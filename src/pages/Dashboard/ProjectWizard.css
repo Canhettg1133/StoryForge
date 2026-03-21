@@ -1,0 +1,226 @@
+/* ═══════════════════════════════════════════
+   Project Wizard — AI Creation Flow
+   ═══════════════════════════════════════════ */
+
+.wizard-modal {
+  max-width: 680px;
+  width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Progress bar */
+.wizard-progress {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.wizard-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  flex: 1;
+}
+
+.wizard-step--active {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.wizard-step--done {
+  color: var(--color-success, #22c55e);
+}
+
+.wizard-step-number {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+}
+
+.wizard-step--active .wizard-step-number {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.wizard-step--done .wizard-step-number {
+  background: var(--color-success, #22c55e);
+  color: #fff;
+  border-color: transparent;
+}
+
+.wizard-step-label {
+  white-space: nowrap;
+}
+
+/* Body */
+.wizard-body {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.wizard-loading {
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  text-align: center;
+}
+
+.wizard-loading h3 {
+  margin: var(--space-3) 0 0;
+  color: var(--color-text);
+}
+
+.wizard-loading p {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.wizard-loading .spin {
+  color: var(--color-accent);
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Template toggle */
+.wizard-template-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.wizard-template-toggle input {
+  accent-color: var(--color-accent);
+}
+
+/* Error */
+.wizard-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-2) var(--space-3);
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--color-danger, #ef4444);
+  font-size: 13px;
+}
+
+/* Review sections */
+.wizard-review {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.wizard-section {
+  margin-bottom: var(--space-2);
+}
+
+.wizard-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--space-2);
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.wizard-section h4 svg {
+  color: var(--color-accent);
+}
+
+.wizard-premise {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  padding: var(--space-3);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-lg);
+  border-left: 3px solid var(--color-accent);
+  margin: 0;
+}
+
+/* Items list */
+.wizard-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wizard-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+}
+
+.wizard-item--excluded {
+  opacity: 0.35;
+  background: transparent;
+}
+
+.wizard-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.wizard-item-content strong {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.wizard-item-content p {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin: 2px 0 0;
+  line-height: 1.4;
+}
+
+.wizard-items--compact .wizard-item {
+  padding: 6px var(--space-2);
+}
+
+.wizard-items--compact .wizard-item-content p {
+  font-size: 11px;
+}
+
+/* Badge sm */
+.badge-sm {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-muted, rgba(139, 92, 246, 0.15));
+  color: var(--color-accent);
+  margin-left: 6px;
+}
+
+/* Header actions */
+.codex-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

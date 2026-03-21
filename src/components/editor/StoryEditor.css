@@ -1,0 +1,199 @@
+/* ============================================
+   Story Editor Styles
+   ============================================ */
+
+.story-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.story-editor-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Header */
+.story-editor-header {
+  padding: var(--space-4) var(--space-8);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.story-editor-scene-title {
+  width: 100%;
+  font-family: var(--font-prose);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+  background: none;
+  border: none;
+  outline: none;
+  padding: 0;
+}
+
+.story-editor-scene-title::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* Editor Content */
+.story-editor-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-6) var(--space-8);
+  max-width: 780px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.story-editor-content {
+  font-family: var(--font-prose);
+  font-size: 1.1rem;
+  line-height: 1.8;
+  color: var(--color-text-primary);
+  outline: none;
+  min-height: 300px;
+}
+
+.story-editor-content p {
+  margin-bottom: 0.8em;
+}
+
+.story-editor-content h1,
+.story-editor-content h2,
+.story-editor-content h3 {
+  font-family: var(--font-prose);
+  font-weight: var(--weight-bold);
+  margin-top: 1.4em;
+  margin-bottom: 0.6em;
+  line-height: var(--leading-tight);
+}
+
+.story-editor-content h1 { font-size: 1.8rem; }
+.story-editor-content h2 { font-size: 1.4rem; }
+.story-editor-content h3 { font-size: 1.2rem; }
+
+.story-editor-content blockquote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: var(--space-4);
+  color: var(--color-text-secondary);
+  font-style: italic;
+  margin: 1em 0;
+}
+
+.story-editor-content strong {
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+}
+
+.story-editor-content em {
+  font-style: italic;
+}
+
+.story-editor-content ul, .story-editor-content ol {
+  padding-left: 1.5em;
+  margin: 0.8em 0;
+}
+
+.story-editor-content li {
+  margin-bottom: 0.3em;
+}
+
+.story-editor-content hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 2em 0;
+}
+
+/* Placeholder */
+.story-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  height: 0;
+  font-style: italic;
+}
+
+/* Footer */
+.story-editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-8);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  flex-shrink: 0;
+}
+
+.story-editor-stats {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.story-editor-stats-divider {
+  color: var(--color-text-muted);
+}
+
+.story-editor-status {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.story-editor-autosave {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.story-editor-autosave::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success);
+  display: inline-block;
+}
+
+/* Word Count Progress */
+.story-editor-progress-label {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.story-editor-progress {
+  flex: 1;
+  height: 3px;
+  background: var(--color-surface-2);
+  border-radius: 2px;
+  margin: 0 var(--space-4);
+  overflow: hidden;
+}
+
+.story-editor-progress-bar {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.story-editor-progress-bar[data-complete="true"] {
+  background: var(--color-success);
+}
+
+.story-editor-progress-pct {
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-right: var(--space-2);
+}
+
+.story-editor-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}

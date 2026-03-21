@@ -1,0 +1,233 @@
+# Phase 4 — Implementation Plan
+
+StoryForge Phase 4: Canon & Genre + AI Flexibility. Mục tiêu kép: **cải thiện chất lượng AI output** và **tăng tự do sáng tạo** cho tác giả.
+
+---
+
+## Proposed Changes
+
+### DB Migration (v3)
+
+#### [MODIFY] [database.js](file:///e:/StoryForge/src/services/db/database.js)
+
+Thêm DB version 3 với fields mới:
+
+**Projects** — thêm 2 fields:
+- `ai_guidelines` (text) — chỉ dẫn AI, pre-fill từ genre, user sửa thoải mái
+- `ai_strictness` (`'relaxed'|'balanced'|'strict'`) — mức nghiêm ngặt
+
+**Scenes** — thêm 4 fields (bổ sung Scene Contract):
+- `must_happen` (JSON string `[]`) — điều bắt buộc xảy ra
+- `must_not_happen` (JSON string `[]`) — điều cấm
+- `pacing` (`'slow'|'medium'|'fast'|''`) — nhịp cảnh
+- `characters_present` (JSON string `[]`) — ID nhân vật có mặt
+
+> [!NOTE]
+> Scenes **đã có sẵn**: `goal`, `conflict`, `emotional_start`, `emotional_end`, `pov_character_id`, `location_id`. Chỉ thêm 4 fields thiếu.
+
+---
+
+### Genre Expansion (5 genres mới)
+
+#### [MODIFY] [constants.js](file:///e:/StoryForge/src/utils/constants.js)
+
+Thêm vào `GENRES[]`:
+
+| Key | Label | Emoji |
+|-----|-------|-------|
+| `tien_hiep` | Tiên hiệp | 🏔️ |
+| `huyen_huyen` | Huyền huyễn | 🌀 |
+| `he_thong` | Hệ thống / LitRPG | 🎮 |
+| `mat_the` | Mạt thế | 💀 |
+| `ngon_tinh_cd` | Ngôn tình cổ đại | 🌸 |
+
+Đổi label `fantasy` từ "Fantasy" → "Fantasy phương Tây". Thêm `PRONOUN_PRESETS.tien_hiep` và cập nhật `GENRE_PRONOUN_MAP`.
+
+#### [MODIFY] [genreTemplates.js](file:///e:/StoryForge/src/utils/genreTemplates.js)
+
+Thêm 5 templates mới với `worldRules`, `terms`, `locations`, `characters`.
+
+#### [MODIFY] [promptBuilder.js](file:///e:/StoryForge/src/services/ai/promptBuilder.js)
+
+Thêm 5 entries mới trong `GENRE_CONSTRAINTS` (dùng làm source pre-fill cho `ai_guidelines`, giữ lại cho fallback).
+
+---
+
+### PromptBuilder Upgrades (3 layers)
+
+#### [MODIFY] [promptBuilder.js](file:///e:/StoryForge/src/services/ai/promptBuilder.js)
+
+**Layer 3 — Genre:** Ưu tiên `project.ai_guidelines` nếu có, fallback về `GENRE_CONSTRAINTS[genre]` nếu không. Tone adjustments theo `ai_strictness`.
+
+```diff
+-  const genreConstraint = GENRE_CONSTRAINTS[genreKey];
+-  if (genreConstraint) {
+-    systemParts.push(`\n[THỂ LOẠI]\n${genreConstraint}`);
+-  }
++  // Ưu tiên ai_guidelines (editable), fallback genre constraint
++  if (aiGuidelines) {
++    systemParts.push(`\n[CHỈ DẪN TÁC GIẢ]\n${aiGuidelines}`);
++  } else if (genreConstraint) {
++    systemParts.push(`\n[THỂ LOẠI]\n${genreConstraint}`);
++  }
+```
+
+**Layer 5 — Characters:** Inject relationships nếu có.
+
+```javascript
+// Sau khi inject characters, thêm:
+if (relationships.length > 0) {
+  const relInfo = relationships.map(r => 
+    `- ${r.charA} ⟷ ${r.charB}: ${r.label}${r.description ? ` (${r.description})` : ''}`
+  ).join('\n');
+  systemParts.push(`\n[QUAN HỆ NHÂN VẬT]\n${relInfo}`);
+}
+```
+
+**Layer 6 — Scene Contract (MỚI):** Inject khi có data.
+
+```javascript
+// Layer 6: Scene Contract — chỉ inject fields có data
+const contractParts = [];
+if (sceneContract.goal) contractParts.push(`Mục tiêu: ${sceneContract.goal}`);
+if (sceneContract.conflict) contractParts.push(`Xung đột: ${sceneContract.conflict}`);
+if (sceneContract.emotional_start || sceneContract.emotional_end)
+  contractParts.push(`Cảm xúc: ${sceneContract.emotional_start} → ${sceneContract.emotional_end}`);
+if (sceneContract.must_happen?.length)
+  contractParts.push(`BẮT BUỘC:\n${sceneContract.must_happen.map(m=>`✅ ${m}`).join('\n')}`);
+if (sceneContract.must_not_happen?.length)
+  contractParts.push(`CẤM:\n${sceneContract.must_not_happen.map(m=>`⛔ ${m}`).join('\n')}`);
+if (sceneContract.pacing) contractParts.push(`Nhịp: ${sceneContract.pacing}`);
+// Tone adjustment theo ai_strictness
+if (contractParts.length > 0) {
+  const prefix = strictness === 'strict' ? 'BẮT BUỘC tuân thủ' : 
+                 strictness === 'relaxed' ? 'Tham khảo' : 'Tuân theo';
+  systemParts.push(`\n[HỢP ĐỒNG CẢNH — ${prefix}]\n${contractParts.join('\n')}`);
+}
+```
+
+**Taboos tone** theo `ai_strictness`:
+
+```diff
+-  tabooLines = `⛔ TUYỆT ĐỐI KHÔNG: ${who} — ${t.description}`;
++  const tabooPrefix = strictness === 'strict' ? '⛔ TUYỆT ĐỐI KHÔNG' :
++                      strictness === 'relaxed' ? '⚠️ Nên tránh' : '❌ Không nên';
+```
+
+---
+
+### Context Engine Updates
+
+#### [MODIFY] [contextEngine.js](file:///e:/StoryForge/src/services/ai/contextEngine.js)
+
+1. **Fix entity detection** — `includes()` → word boundary regex
+2. **Load relationships** cho detected characters
+3. **Load scene contract data** (existing + new fields)
+4. **Truyền `ai_guidelines`, `ai_strictness`** từ project
+
+```diff
+-  const detectedCharacters = allCharacters.filter(
+-    c => c.name && cleanText.includes(c.name.toLowerCase())
+-  );
++  const detectedCharacters = allCharacters.filter(c => {
++    if (!c.name || c.name.length < 2) return false;
++    const regex = new RegExp(`\\b${escapeRegex(c.name)}\\b`, 'i');
++    return regex.test(cleanText);
++  });
+```
+
+---
+
+### Flexibility UI
+
+#### [MODIFY] [NewProjectModal.jsx](file:///e:/StoryForge/src/pages/Dashboard/NewProjectModal.jsx)
+
+Khi tạo project manual: [createProject()](file:///e:/StoryForge/src/stores/projectStore.js#20-79) → pre-fill `ai_guidelines` từ `GENRE_CONSTRAINTS[genre]`.
+
+#### [MODIFY] [projectStore.js](file:///e:/StoryForge/src/stores/projectStore.js)
+
+- [createProject()](file:///e:/StoryForge/src/stores/projectStore.js#20-79): thêm `ai_guidelines`, `ai_strictness` defaults
+- Thêm `updateProjectSettings()` method
+
+#### [NEW] Project Settings section
+
+Tùy chọn vị trí — có thể là:
+- Tab mới trong Settings page, hoặc
+- Section mới trong Sidebar khi đang ở project
+
+Nội dung:
+- `ai_guidelines` textarea (pre-filled, editable, label: "Chỉ dẫn cho AI")
+- `ai_strictness` radio 3 lựa chọn (Thoải mái / Cân bằng / Nghiêm ngặt)
+- Nút "Reset về mặc định genre"
+
+---
+
+### Scene Contract UI
+
+#### [MODIFY] [ChapterDetailModal.jsx](file:///e:/StoryForge/src/pages/OutlineBoard/ChapterDetailModal.jsx)
+
+Thêm fields bổ sung vào scene detail (**tùy chọn**, collapse mặc định):
+- `must_happen` — tag input hoặc textarea, mỗi dòng 1 item
+- `must_not_happen` — tương tự
+- `pacing` — select (Chậm / Trung bình / Nhanh)
+- `characters_present` — multi-select từ danh sách characters
+
+---
+
+### Canon Engine Lite
+
+#### [NEW] [CanonPanel.jsx](file:///e:/StoryForge/src/components/common/CanonPanel.jsx)
+
+Modal/panel CRUD cho canon facts. Sử dụng bảng `canonFacts` **đã có sẵn** trong DB.
+
+Fields:
+- `fact_type`: Sự thật / Bí mật / Quy tắc
+- `description`: Nội dung
+- `subject_type` + `subject_id`: Liên kết nhân vật/địa điểm
+- `revealed_at_chapter`: Tiết lộ ở chương nào
+- `known_by`: Nhân vật nào biết (JSON array IDs)
+- `status`: active / revealed / retconned
+
+Inject vào prompt Layer 4:
+```
+[SỰ THẬT TRUYỆN]
+- Minh là con nuôi (chỉ cha biết)
+[BÍ MẬT — CHƯA TIẾT LỘ]
+⛔ Hà có khả năng đọc tâm trí — chưa được lộ
+```
+
+#### [MODIFY] [contextEngine.js](file:///e:/StoryForge/src/services/ai/contextEngine.js)
+
+Load canon facts + filter theo chapter hiện tại.
+
+---
+
+### Quick Wins
+
+#### [MODIFY] [contextEngine.js](file:///e:/StoryForge/src/services/ai/contextEngine.js)
+Fix entity detection word boundary.
+
+#### [NEW] Export/Import utility
+JSON export toàn bộ project data (project + chapters + scenes + characters + locations + objects + terms + taboos + relationships + canonFacts).
+
+---
+
+## Verification Plan
+
+### Automated Tests
+```bash
+npm run dev
+```
+1. Tạo project mới → verify 5 genres mới hiện trong dropdown
+2. Verify `ai_guidelines` pre-fill đúng khi chọn genre "Tiên hiệp"
+3. Mở editor → viết text có tên nhân vật → verify AI detect đúng (word boundary)
+4. Thêm relationship → gọi AI → verify prompt có "[QUAN HỆ NHÂN VẬT]"
+5. Điền Scene Contract → gọi AI → verify prompt có "[HỢP ĐỒNG CẢNH]"
+6. Tạo Canon Fact "bí mật" → gọi AI → verify prompt có "[BÍ MẬT]"
+7. Export project → xóa project → Import lại → verify data đầy đủ
+
+### Manual Verification
+- Test nghiêm túc 9 items Phase 3 pending
+- Test 3 mức ai_strictness → so sánh AI output
+- Test Scene Contract trống (phải bỏ qua, không inject)
+- Test tên nhân vật ngắn ("An", "Mai") không false positive

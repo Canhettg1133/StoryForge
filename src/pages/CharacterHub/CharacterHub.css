@@ -1,0 +1,418 @@
+/* ═══════════════════════════════════════════
+   CharacterHub — Phase 3
+   ═══════════════════════════════════════════ */
+
+.character-hub {
+  padding: var(--space-6) var(--space-8);
+  max-width: 1200px;
+  animation: fadeIn 0.3s ease;
+}
+
+/* Header */
+.codex-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.codex-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 200px;
+}
+
+.codex-header-left h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-xl);
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.codex-count {
+  font-size: var(--font-sm);
+  color: var(--color-text-muted);
+  background: var(--color-surface-2);
+  padding: 2px 10px;
+  border-radius: var(--radius-full);
+}
+
+/* Tabs */
+.codex-tabs {
+  display: flex;
+  gap: var(--space-1);
+  background: var(--color-surface-2);
+  padding: 3px;
+  border-radius: var(--radius-lg);
+}
+
+.codex-tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--font-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.codex-tab:hover {
+  color: var(--color-text);
+}
+
+.codex-tab--active {
+  background: var(--color-surface-3);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.codex-tab-badge {
+  font-size: 11px;
+  background: var(--color-warning);
+  color: var(--color-bg);
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  font-weight: 700;
+}
+
+/* Character Grid */
+.character-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-4);
+}
+
+.character-card {
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.character-card:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.character-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.character-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+}
+
+.character-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.character-name {
+  font-size: var(--font-base);
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.character-role {
+  font-size: var(--font-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.character-card-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.character-card:hover .character-card-actions {
+  opacity: 1;
+}
+
+.character-pronoun {
+  font-size: var(--font-sm);
+  color: var(--color-accent);
+  margin-bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: rgba(var(--color-accent-rgb, 99, 102, 241), 0.08);
+  border-radius: var(--radius-sm);
+}
+
+.character-snippet {
+  font-size: var(--font-sm);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.character-delete-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-sm);
+  color: var(--color-danger);
+}
+
+/* Taboo List */
+.taboo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.taboo-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-warning);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  transition: border-color 0.2s;
+}
+
+.taboo-card:hover {
+  border-color: var(--color-warning);
+}
+
+.taboo-card-content {
+  flex: 1;
+}
+
+.taboo-char-badge {
+  display: inline-block;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: var(--color-warning);
+  background: rgba(251, 191, 36, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  margin-bottom: var(--space-1);
+}
+
+.taboo-desc {
+  font-size: var(--font-sm);
+  color: var(--color-text);
+  margin: var(--space-1) 0;
+  line-height: 1.5;
+}
+
+.taboo-chapter {
+  font-size: var(--font-xs);
+  color: var(--color-text-muted);
+}
+
+.taboo-card-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* Modal */
+.codex-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.2s ease;
+}
+
+.codex-modal {
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  width: 90%;
+  max-width: 700px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  animation: slideUp 0.3s ease;
+}
+
+.codex-modal--sm {
+  max-width: 500px;
+}
+
+.codex-modal--lg {
+  max-width: 800px;
+  max-height: 90vh;
+}
+
+.codex-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.codex-modal-header h3 {
+  margin: 0;
+  font-size: var(--font-lg);
+}
+
+.codex-modal-body {
+  padding: var(--space-4) var(--space-5);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.codex-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Form */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+.form-group {
+  margin-bottom: var(--space-3);
+}
+
+.form-group--wide {
+  grid-column: 1;
+}
+
+.form-group label {
+  display: block;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-1);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: var(--font-sm);
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.form-hint {
+  display: block;
+  font-size: var(--font-xs);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+}
+
+/* Pronoun presets */
+.pronoun-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.pronoun-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pronoun-chip {
+  padding: 2px 8px;
+  font-size: 11px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pronoun-chip:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.pronoun-chip--active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: white;
+}
+
+.pronoun-genre-hint {
+  font-size: var(--font-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+}
+
+/* Animation */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

@@ -1,0 +1,102 @@
+# 🔍 StoryForge — Tổng đánh giá Phase 1-4
+
+## 🔴 Bugs / Issues quan trọng
+
+### 1. Context Engine không được gọi từ AISidebar
+**Nghiêm trọng: CAO** — AI sidebar gửi messages thẳng mà KHÔNG gọi `contextEngine.gatherContext()`. Nghĩa là khi bạn nhờ AI "viết tiếp", AI **không biết** nhân vật/địa điểm/thế giới nào đang có.
+
+**File:** [AISidebar.jsx](file:///e:/StoryForge/src/components/ai/AISidebar.jsx) → gọi `aiService.send()` trực tiếp
+**Thiếu:** Inject context từ `contextEngine` + `promptBuilder` vào messages
+
+---
+
+### 2. `worldTerms` table — naming mismatch
+**Nghiêm trọng: TRUNG BÌNH** — [database.js](file:///e:/StoryForge/src/services/db/database.js) không có table `worldTerms`, nhưng [codexStore.js](file:///e:/StoryForge/src/stores/codexStore.js) + [contextEngine.js](file:///e:/StoryForge/src/services/ai/contextEngine.js) dùng `db.worldTerms`. Cần kiểm tra bảng thực tế lưu thuật ngữ tên gì (`world_terms`? hay dùng generic store?)
+
+**File:** [database.js](file:///e:/StoryForge/src/services/db/database.js) dòng 5 vs [codexStore.js](file:///e:/StoryForge/src/stores/codexStore.js)
+
+---
+
+### 3. `chapterMeta` table — Continuity Bar & Codex Panel phụ thuộc
+**Nghiêm trọng: TRUNG BÌNH** — ContinuityBar và CodexPanel đọc `chapterMetas` từ `codexStore`, nhưng `chapterMeta` chỉ được **ghi** khi "Hoàn thành chương" → Nếu user chưa bao giờ hoàn thành chương → Continuity Bar sẽ luôn trống.
+
+**Gợi ý:** Fallback dùng `chapter.summary` (đã có trong Outline Board) nếu chapterMeta chưa có.
+
+---
+
+### 4. Outline Board — [createChapter()](file:///e:/StoryForge/src/stores/projectStore.js#146-193) không truyền `projectId`  
+**Nghiêm trọng: THẤP** — Trong OutlineBoard, [addChapterToAct](file:///e:/StoryForge/src/pages/OutlineBoard/OutlineBoard.jsx#105-113) gọi [createChapter()](file:///e:/StoryForge/src/stores/projectStore.js#146-193) không có `projectId` → dựa vào `currentProject` từ store (hoạt động, nhưng fragile).
+
+---
+
+### 5. `Sparkles` icon chưa import trong WorldLore
+**Nghiêm trọng: THẤP** — WorldLore sử dụng `<Sparkles>` cho nút "Tạo hàng loạt" nhưng cần kiểm tra đã import chưa.
+
+---
+
+## 🟡 UX Issues — Cần cải thiện
+
+### 1. AI Sidebar KHÔNG inject context — đây là issue #1
+Khi user bấm "Viết tiếp" hay "Gợi ý plot", AI chỉ thấy text hiện tại, **KHÔNG** biết:
+- Nhân vật nào đang có (tên, tính cách, xưng hô)
+- Thế giới, quy tắc
+- Cấm kỵ (taboos)
+- Tóm tắt chương trước
+
+→ **AI trả lời rất chung chung, không nhất quán với câu chuyện.**
+
+**Fix:** AISidebar nên call [gatherContext()](file:///e:/StoryForge/src/services/ai/contextEngine.js#11-119) → [buildPrompt()](file:///e:/StoryForge/src/services/ai/promptBuilder.js#90-310) → inject vào system message trước khi gửi.
+
+### 2. Outline Board → Editor flow thiếu smooth
+Bấm "Viết" trong Outline Board → nhảy sang `/editor`, nhưng không highlight chapter/scene đang active → User bối rối.
+
+### 3. Dashboard không hiện progress
+Card project chỉ hiện tên + thể loại. Thiếu: tiến độ viết (bao nhiêu chương draft/done), số từ tổng.
+
+### 4. Story Bible chỉ read-only
+Story Bible là trang wiki tĩnh. User không thể quick-edit từ đây → phải navigate sang CharacterHub/WorldLore. Nên thêm edit button inline.
+
+### 5. Settings không lưu provider khi reload
+Kiểm tra lại: `preferredProvider` lưu trong `localStorage` nhưng [AIService](file:///e:/StoryForge/src/services/ai/client.js#279-366) init lại mỗi lần? Router có persist không?
+
+### 6. ChapterList sidebar quá hẹp cho tên chương dài
+Tên dạng "Chương 1: Điểm rơi hạt nhân của..." bị cắt. Cần tooltip hover.
+
+---
+
+## 🟢 Feature Ideas — Ý tưởng mới
+
+### 1. 📊 Word Count Goal + Progress Bar (dễ, impact cao)
+Mỗi chương có `word_count_target: 3000` trong DB nhưng **chưa dùng**. Hiện thanh progress "1200/3000 từ" trong editor header và chapter cards.
+
+### 2. 🔗 Relationship Map (đã có schema)
+DB có table `relationships` (character_a, character_b, relation_type) nhưng chưa có UI. Thêm tab "Quan hệ" trong CharacterHub — dạng graph hoặc danh sách.
+
+### 3. 📝 Scene Contract / Beat Sheet (Phase 4)
+Trước khi viết mỗi scene, modal yêu cầu:
+- Mục tiêu cảnh
+- Xung đột
+- Emotion arc (bắt đầu vs kết thúc)
+
+DB đã có fields: `goal`, `conflict`, `emotional_start`, `emotional_end` — chỉ cần UI.
+
+### 4. ⏱️ Writing Session Timer
+Đếm thời gian viết + số từ viết trong session. Giúp tác giả track thói quen viết.
+
+### 5. 🎯 Outline ↔ Editor Deep Link
+Từ Outline Board, click scene → mở trực tiếp scene đó trong editor (không chỉ chapter). Hiện tại chỉ link đến chapter.
+
+---
+
+## 📋 Ưu tiên đề xuất
+
+| # | Task | Loại | Impact | Effort |
+|---|------|------|--------|--------|
+| 1 | **AISidebar inject context** | 🔴 Bug | ⭐⭐⭐⭐⭐ | Medium |
+| 2 | **Word Count Progress** | 🟢 Feature | ⭐⭐⭐⭐ | Easy |
+| 3 | **ContinuityBar fallback** | 🔴 Bug | ⭐⭐⭐ | Easy |
+| 4 | **Dashboard progress** | 🟡 UX | ⭐⭐⭐ | Easy |
+| 5 | **WorldTerms table check** | 🔴 Bug | ⭐⭐⭐ | Easy |
+| 6 | **Scene Contract UI** | 🟢 Feature | ⭐⭐⭐ | Medium |
+| 7 | **Relationship Map** | 🟢 Feature | ⭐⭐⭐ | Medium |
+| 8 | **Writing Session Timer** | 🟢 Feature | ⭐⭐ | Easy |

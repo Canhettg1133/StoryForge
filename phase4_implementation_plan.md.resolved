@@ -1,0 +1,342 @@
+# 🚀 StoryForge — Phase 4 Implementation Plan
+
+> Canon & Genre — Kế hoạch triển khai 7 ngày
+
+---
+
+## Vấn đề với genre hiện tại
+
+Hiện tại `fantasy` được label "Tu tiên / Fantasy" — **trộn lẫn** Western Fantasy với Tu tiên. Cần tách ra rõ ràng:
+
+| Hiện tại | Vấn đề |
+|----------|--------|
+| `fantasy` = "Tu tiên / Fantasy" | Trộn 2 thể loại khác nhau hoàn toàn |
+| Thiếu **Tiên hiệp** | Thể loại #1 web novel Việt/Trung |
+| Thiếu **Huyền huyễn** | Thể loại #2, khác tiên hiệp ở worldbuilding |
+| Thiếu **Hệ thống/LitRPG** | Đang trend mạnh |
+| Thiếu **Mạt thế** | Phổ biến |
+| Thiếu **Đam mỹ/Bách hợp** | Thị trường lớn |
+
+---
+
+## Danh sách thể loại mới (18 genres)
+
+### Tách + Thêm mới
+
+| Key | Tên | Emoji | Pronoun Preset | Mới? |
+|-----|-----|-------|---------------|------|
+| `tien_hiep` | Tiên hiệp | 🏔️ | fantasy | ✨ MỚI |
+| `huyen_huyen` | Huyền huyễn | 🌀 | fantasy | ✨ MỚI |
+| `fantasy` | Fantasy phương Tây | 🐉 | modern | 🔄 ĐỔI label |
+| `he_thong` | Hệ thống / LitRPG | 🎮 | modern | ✨ MỚI |
+| `vo_hiep` | Võ hiệp | ⚔️ | vo_hiep | Giữ nguyên |
+| `co_dai` | Cổ đại / Cung đấu | 🏯 | co_dai | Giữ nguyên |
+| `mystery` | Trinh thám | 🔍 | modern | Giữ nguyên |
+| `romance` | Ngôn tình hiện đại | 💕 | modern | Giữ nguyên |
+| `ngon_tinh_cd` | Ngôn tình cổ đại | 🌸 | co_dai | ✨ MỚI |
+| `horror` | Kinh dị | 👻 | modern | Giữ nguyên |
+| `scifi` | Sci-fi | 🚀 | modern | Giữ nguyên |
+| `xuyen_khong` | Xuyên không | ⏳ | xuyen_khong | Giữ nguyên |
+| `trong_sinh` | Trọng sinh | 🔄 | xuyen_khong | Giữ nguyên |
+| `do_thi` | Đô thị | 🏙️ | modern | Giữ nguyên |
+| `mat_the` | Mạt thế / Post-Apocalyptic | 💀 | modern | ✨ MỚI |
+| `dam_my` | Đam mỹ | 🌈 | modern | ✨ MỚI |
+| `slice_of_life` | Slice of Life | ☕ | modern | Giữ nguyên |
+| `drama` | Drama | 🎭 | modern | Giữ nguyên |
+| `other` | Khác | 📝 | modern | Giữ nguyên |
+
+---
+
+## Chi tiết Genre Packs mới
+
+### 🏔️ Tiên hiệp (`tien_hiep`)
+
+**Khác Fantasy ở đâu:** Thế giới có hệ thống tu luyện nghiêm ngặt, cảnh giới phân cấp rõ ràng, mục tiêu cuối cùng là đắc đạo/phi thăng. Có Thiên Đạo, Thiên Kiếp, quy tắc tu tiên chặt chẽ.
+
+```javascript
+{
+  label: 'Tiên hiệp',
+  worldRules: [
+    'Hệ thống cảnh giới tu tiên rõ ràng: Luyện Khí → Trúc Cơ → Kim Đan → Nguyên Anh → Hóa Thần → Luyện Hư → Hợp Thể → Đại Thừa → Độ Kiếp',
+    'Tu tiên tuân theo Thiên Đạo — vi phạm sẽ gặp Thiên Kiếp', 
+    'Thọ mệnh tăng theo cảnh giới: Kim Đan ~500 năm, Nguyên Anh ~1000 năm',
+    'Đột phá cảnh giới cần tích lũy đủ linh lực + ngộ đạo, không thể vội vàng',
+    'Tài nguyên tu luyện khan hiếm — tranh đoạt là bản chất giang hồ tu tiên',
+  ],
+  terms: [
+    { name: 'Linh khí', definition: 'Năng lượng tự nhiên, tu sĩ hấp thụ để tăng cảnh giới', category: 'magic' },
+    { name: 'Thiên Kiếp', definition: 'Sấm sét Thiên Đạo, tu sĩ phải vượt qua để đột phá', category: 'magic' },
+    { name: 'Linh mạch', definition: 'Mạch đất chứa linh khí dồi dào, nơi tông môn lập cơ sở', category: 'concept' },
+    { name: 'Linh thạch', definition: 'Đá chứa linh khí cô đọng, dùng làm tiền tệ và tài nguyên tu luyện', category: 'magic' },
+    { name: 'Tông môn', definition: 'Tổ chức tu tiên, có sư phụ-đệ tử, trưởng lão hội, chưởng môn', category: 'organization' },
+    { name: 'Pháp bảo', definition: 'Vũ khí luyện chế bằng linh lực, chia cấp: hạ/trung/thượng phẩm', category: 'magic' },
+    { name: 'Đan dược', definition: 'Thuốc luyện từ linh thảo, có công dụng hồi phục/đột phá/giải độc', category: 'magic' },
+    { name: 'Thần thức', definition: 'Ý thức tinh thần, dùng để thăm dò, giao tiếp, điều khiển pháp bảo', category: 'magic' },
+  ],
+  locations: [
+    { name: 'Tông môn chính', description: 'Cứ điểm tu luyện, xây trên linh mạch, có cấm chế bảo hộ' },
+    { name: 'Phường thị tu tiên', description: 'Chợ giao dịch linh đan, pháp bảo, tài nguyên' },
+    { name: 'Bí cảnh', description: 'Không gian ẩn giấu chứa cơ duyên và nguy hiểm' },
+  ],
+  characters: [
+    { name: 'Nhân vật chính', role: 'protagonist', personality: 'Kiên định tu đạo, không khuất phục áp bức' },
+    { name: 'Sư phụ', role: 'mentor', personality: 'Đạo nhân tu luyện lâu năm, dẫn dắt đồ đệ' },
+  ],
+  // Genre Pack extras
+  characterExtras: [
+    { key: 'cultivation_level', label: 'Cảnh giới', type: 'text' },
+    { key: 'techniques', label: 'Công pháp / Thuật pháp', type: 'textarea' },
+    { key: 'treasures', label: 'Pháp bảo sở hữu', type: 'textarea' },
+    { key: 'dao_heart', label: 'Tâm đạo / Đạo tâm', type: 'text' },
+  ],
+  sceneExtras: [
+    { key: 'power_display', label: 'Chiến đấu / Thể hiện sức mạnh', type: 'checkbox' },
+    { key: 'breakthrough', label: 'Đột phá cảnh giới', type: 'checkbox' },
+    { key: 'resource_cost', label: 'Tài nguyên tiêu hao', type: 'text' },
+  ],
+  promptConstraint: 'Thể loại: Tiên hiệp. Tuân thủ nghiêm ngặt hệ thống cảnh giới — không được vượt cấp vô lý. Đột phá phải có tích lũy. Chiến đấu phải theo sức mạnh cảnh giới. Ngôn từ cổ kính khi tương tác giữa tu sĩ. Mỗi cấp có giới hạn rõ ràng (thọ mệnh, sức mạnh, tốc độ).'
+}
+```
+
+### 🌀 Huyền huyễn (`huyen_huyen`)
+
+**Khác Tiên hiệp ở đâu:** Tự do hơn, worldbuilding đa dạng hơn (có thể có nhiều chủng tộc, nhiều hệ thống sức mạnh song song, không bắt buộc tu tiên truyền thống). Thường có yếu tố epic scale.
+
+```javascript
+{
+  label: 'Huyền huyễn',
+  worldRules: [
+    'Thế giới có nhiều hệ thống sức mạnh song song (võ đạo, ma pháp, linh hồn...)',
+    'Đa chủng tộc: nhân, yêu, ma, thần, linh...',
+    'Quy tắc thế giới do tác giả tự xây — nhưng phải nhất quán',
+    'Scale lớn: đại lục, vũ trụ, nhiều cõi/giới',
+    'Sức mạnh có thể kết hợp nhiều hệ thống',
+  ],
+  terms: [
+    { name: 'Đấu khí', definition: 'Năng lượng chiến đấu, khác hệ ma pháp', category: 'magic' },
+    { name: 'Huyết mạch', definition: 'Dòng máu đặc biệt mang sức mạnh bẩm sinh', category: 'race' },
+    { name: 'Vị diện/Cõi giới', definition: 'Các tầng không gian khác nhau: nhân giới, ma giới, thần giới', category: 'concept' },
+    { name: 'Gia tộc', definition: 'Dòng tộc lớn nắm giữ sức mạnh và tài nguyên', category: 'organization' },
+    { name: 'Huyết mạch giác tỉnh', definition: 'Quá trình kích hoạt sức mạnh tiềm ẩn trong dòng máu', category: 'magic' },
+  ],
+  locations: [
+    { name: 'Đại lục chính', description: 'Lục địa chính nơi câu chuyện diễn ra' },
+    { name: 'Vùng cấm', description: 'Khu vực nguy hiểm chứa cơ duyên và hung thú mạnh' },
+  ],
+  characters: [
+    { name: 'Nhân vật chính', role: 'protagonist', personality: 'Thiên tài ẩn giấu, quyết tâm vươn lên đỉnh cao' },
+  ],
+  characterExtras: [
+    { key: 'power_system', label: 'Hệ thống sức mạnh', type: 'text' },
+    { key: 'power_rank', label: 'Đẳng cấp', type: 'text' },
+    { key: 'bloodline', label: 'Huyết mạch / Chủng tộc', type: 'text' },
+    { key: 'special_ability', label: 'Năng lực đặc biệt', type: 'textarea' },
+  ],
+  sceneExtras: [
+    { key: 'power_display', label: 'Chiến đấu / Thể hiện sức mạnh', type: 'checkbox' },
+    { key: 'rank_up', label: 'Thăng cấp / Tiến hóa', type: 'checkbox' },
+    { key: 'world_reveal', label: 'Hé lộ bí mật thế giới', type: 'checkbox' },
+  ],
+  promptConstraint: 'Thể loại: Huyền huyễn. Thế giới tự do nhưng PHẢI nhất quán — hệ thống sức mạnh đã thiết lập không được thay đổi. Đa chủng tộc/hệ thống phải tương tác logic. Cấp bậc sức mạnh phải được tôn trọng. Scale lớn nhưng chi tiết phải chặt chẽ.'
+}
+```
+
+### 🎮 Hệ thống / LitRPG (`he_thong`)
+
+```javascript
+{
+  label: 'Hệ thống / LitRPG',
+  worldRules: [
+    'Nhân vật có hệ thống (status window, quest, inventory)',
+    'Level/Exp/Skill có quy tắc rõ ràng, không tùy tiện',
+    'Hệ thống có giới hạn — không phải muốn gì được nấy',
+    'Quest/nhiệm vụ có deadline, thưởng/phạt phân minh',
+  ],
+  terms: [
+    { name: 'Status Window', definition: 'Bảng trạng thái hiện sức mạnh, kỹ năng, nhiệm vụ', category: 'magic' },
+    { name: 'Skill', definition: 'Kỹ năng do hệ thống ban hoặc học được, có cấp bậc', category: 'magic' },
+    { name: 'Quest', definition: 'Nhiệm vụ từ hệ thống, hoàn thành nhận thưởng', category: 'concept' },
+    { name: 'Dungeon', definition: 'Không gian quái vật, nơi farm tài nguyên và kinh nghiệm', category: 'concept' },
+    { name: 'Gacha / Random Box', definition: 'Phần thưởng ngẫu nhiên từ hệ thống', category: 'concept' },
+  ],
+  locations: [
+    { name: 'Dungeon tân thủ', description: 'Khu vực đầu tiên để nhân vật chính thử sức' },
+  ],
+  characters: [
+    { name: 'Nhân vật chính', role: 'protagonist', personality: 'Người được hệ thống chọn, tư duy logic, biết khai thác lợi thế' },
+  ],
+  characterExtras: [
+    { key: 'level', label: 'Level', type: 'text' },
+    { key: 'class', label: 'Class / Nghề nghiệp', type: 'text' },
+    { key: 'skills', label: 'Danh sách Skill', type: 'textarea' },
+    { key: 'stats', label: 'Chỉ số (STR/AGI/INT...)', type: 'textarea' },
+  ],
+  sceneExtras: [
+    { key: 'level_up', label: 'Level up', type: 'checkbox' },
+    { key: 'new_skill', label: 'Nhận skill mới', type: 'checkbox' },
+    { key: 'quest_progress', label: 'Tiến độ quest', type: 'text' },
+  ],
+  promptConstraint: 'Thể loại: Hệ thống/LitRPG. Mọi số liệu (level, skill, stats) phải nhất quán xuyên suốt. Level up phải hợp lý (không nhảy 10 level sau 1 trận). Skill mới phải được giải thích nguồn gốc. Hệ thống có rule — không phải deus ex machina.'
+}
+```
+
+### 💀 Mạt thế (`mat_the`)
+
+```javascript
+{
+  label: 'Mạt thế / Post-Apocalyptic',
+  worldRules: [
+    'Tài nguyên khan hiếm — sinh tồn là ưu tiên số 1',
+    'Xã hội sụp đổ/tái cấu trúc, luật rừng',
+    'Mối đe dọa rõ ràng: zombie/quái vật/thiên tai/dịch bệnh',
+    'Niềm tin và đạo đức bị thử thách liên tục',
+  ],
+  terms: [
+    { name: 'Tinh thể năng lượng', definition: 'Vật phẩm rơi từ quái vật, dùng để tăng sức mạnh hoặc đổi tài nguyên', category: 'magic' },
+    { name: 'Vùng an toàn', definition: 'Khu vực được bảo vệ, nơi con người tập trung sinh sống', category: 'concept' },
+    { name: 'Dị năng giả', definition: 'Người có năng lực đặc biệt sau thảm họa', category: 'race' },
+  ],
+  locations: [
+    { name: 'Căn cứ chính', description: 'Nơi trú ẩn an toàn, trung tâm hoạt động' },
+    { name: 'Vùng hoang tàn', description: 'Đô thị bị phá hủy, đầy nguy hiểm nhưng có tài nguyên' },
+  ],
+  characters: [
+    { name: 'Nhân vật chính', role: 'protagonist', personality: 'Sinh tồn bản năng mạnh, thực dụng nhưng vẫn giữ nhân tính' },
+  ],
+  promptConstraint: 'Thể loại: Mạt thế. Tài nguyên PHẢI khan hiếm — không có gì miễn phí. Sinh tồn là cốt lõi. Con người phải đối mặt lựa chọn đạo đức khó khăn. Sức mạnh có cái giá. Bầu không khí luôn căng thẳng, nguy hiểm rình rập.'
+}
+```
+
+### 🌸 Ngôn tình cổ đại (`ngon_tinh_cd`)
+
+```javascript
+{
+  label: 'Ngôn tình cổ đại',
+  worldRules: [
+    'Bối cảnh phong kiến, lễ nghi và giai cấp rõ ràng',
+    'Hôn nhân là chính trị — tình yêu thường bị cản trở bởi gia tộc/xã hội',
+    'Phụ nữ phải đấu tranh trong khuôn khổ thời đại',
+    'Nhịp tình cảm chậm, tinh tế qua cử chỉ nhỏ',
+  ],
+  terms: [
+    { name: 'Đích nữ/Thứ nữ', definition: 'Con gái chính thất/tì thiếp, ảnh hưởng địa vị lớn', category: 'culture' },
+    { name: 'Sính lễ/Hồi môn', definition: 'Lễ vật cưới hỏi, thể hiện địa vị gia tộc', category: 'culture' },
+    { name: 'Trạch đấu', definition: 'Đấu đá trong nội viện giữa các phu nhân/tiểu thư', category: 'concept' },
+  ],
+  locations: [
+    { name: 'Phủ đệ', description: 'Dinh thự gia tộc, không gian chính của trạch đấu' },
+  ],
+  characters: [
+    { name: 'Nữ chính', role: 'protagonist', personality: 'Thông minh, nhẫn nại, biết cách sinh tồn trong hậu trạch' },
+    { name: 'Nam chính', role: 'deuteragonist', personality: 'Quyền quý, lạnh lùng nhưng chỉ dịu dàng với nữ chính' },
+  ],
+  promptConstraint: 'Thể loại: Ngôn tình cổ đại. Xưng hô phải đúng thời đại và giai cấp. Cảm xúc thể hiện qua hành động nhỏ, ÁNH MẮT, cử chỉ — không nói thẳng. Nhịp tình cảm chậm, tinh tế. Bối cảnh phong kiến phải chân thực.'
+}
+```
+
+### 🌈 Đam mỹ (`dam_my`)
+
+```javascript
+{
+  label: 'Đam mỹ',
+  worldRules: [
+    'Quan hệ tình cảm nam-nam là trung tâm',
+    'Không stereotype — nhân vật phải có chiều sâu',
+    'Tùy bối cảnh (cổ đại/hiện đại) mà áp dụng xưng hô phù hợp',
+    'Cảm xúc chân thực, tránh mô típ toxic',
+  ],
+  terms: [],
+  locations: [],
+  characters: [
+    { name: 'Công', role: 'protagonist', personality: 'Mạnh mẽ, chủ động' },
+    { name: 'Thụ', role: 'deuteragonist', personality: 'Có cá tính riêng, không yếu đuối vô lý' },
+  ],
+  promptConstraint: 'Thể loại: Đam mỹ. Nhân vật nam phải có chiều sâu và cá tính riêng. Tình cảm phát triển tự nhiên. Tránh stereotype toxic. Cảm xúc chân thực, chemistry rõ ràng qua tương tác.'
+}
+```
+
+---
+
+## Pronoun Presets bổ sung
+
+```javascript
+// Thêm vào PRONOUN_PRESETS
+tien_hiep: {
+  label: 'Tiên hiệp',
+  options: ['tại hạ', 'ta', 'bản tọa', 'bản nhân', 'đạo hữu', 'tiền bối', 
+            'sư huynh', 'sư đệ', 'sư muội', 'lão phu', 'ngươi', 'các hạ',
+            'sư tổ', 'chưởng môn', 'trưởng lão'],
+  default_self: 'tại hạ',
+  default_other: 'đạo hữu',
+},
+
+// Thêm vào GENRE_PRONOUN_MAP
+tien_hiep: 'tien_hiep',  // (hoặc dùng 'fantasy' nếu đủ)
+huyen_huyen: 'fantasy',
+he_thong: 'modern',
+mat_the: 'modern',
+ngon_tinh_cd: 'co_dai',
+dam_my: 'modern',        // dynamic — tùy bối cảnh cổ đại/hiện đại
+```
+
+---
+
+## Files cần sửa (Phase 4 — Genre expansion)
+
+| File | Thay đổi |
+|------|----------|
+| [constants.js](file:///e:/StoryForge/src/utils/constants.js) | Thêm 6 genres mới vào `GENRES`, thêm pronoun presets |
+| [genreTemplates.js](file:///e:/StoryForge/src/utils/genreTemplates.js) | Thêm 6 genre templates mới, đổi label `fantasy` |
+| [promptBuilder.js](file:///e:/StoryForge/src/services/ai/promptBuilder.js) | Thêm 6 `GENRE_CONSTRAINTS` mới |
+| [contextEngine.js](file:///e:/StoryForge/src/services/ai/contextEngine.js) | Truyền genre extras nếu có |
+| [database.js](file:///e:/StoryForge/src/services/db/database.js) | DB v3: thêm Scene Contract fields |
+| `CharacterHub.jsx` | Hiện genre-specific fields (cultivation_level, skills...) |
+| `ChapterDetailModal.jsx` | Scene Contract UI + genre-specific scene extras |
+| **MỚI:** `CanonFacts.jsx` | CRUD page cho Canon Facts |
+| **MỚI:** `genrePacks.js` | Config file cho genre pack extras |
+
+---
+
+## Kế hoạch 7 ngày (cập nhật)
+
+### Ngày 1-2: Quick Wins + Genre Expansion
+- [ ] Verify 9 test items Phase 3
+- [ ] Fix entity detection (word boundary regex)
+- [ ] Inject relationships vào promptBuilder Layer 5
+- [ ] JSON Export/Import project data
+- [ ] **Thêm 6 genres mới** vào [constants.js](file:///e:/StoryForge/src/utils/constants.js), [genreTemplates.js](file:///e:/StoryForge/src/utils/genreTemplates.js), [promptBuilder.js](file:///e:/StoryForge/src/services/ai/promptBuilder.js)
+- [ ] Tạo `genrePacks.js` — config cho character/scene extras per genre
+- [ ] Update PROGRESS.md
+
+### Ngày 3-4: Scene Contract
+- [ ] DB v3: thêm Scene Contract fields
+- [ ] UI Scene Contract (mở rộng ChapterDetailModal)
+- [ ] Genre-specific scene extras (breakthrough, level_up, chemistry_beat...)
+- [ ] Prompt Layer 6: inject Scene Contract
+- [ ] Test end-to-end
+
+### Ngày 5-6: Canon Engine Lite
+- [ ] Canon Facts page/modal (CRUD)
+- [ ] Auto-extract facts khi hoàn thành chương
+- [ ] Inject facts + secrets vào prompt Layer 4
+- [ ] Secret visibility logic
+
+### Ngày 7: Genre-specific Character Fields + Polish
+- [ ] Genre-specific character extras UI (cultivation_level, skills, stats...)
+- [ ] Phân cấp địa điểm (parent_id) nếu kịp
+- [ ] Test toàn bộ Phase 4
+- [ ] Update docs
+
+---
+
+## Bảng so sánh thể loại — Genre-specific features
+
+> Bảng này cho thấy mỗi genre pack cần gì khác nhau:
+
+| Feature | Tiên hiệp | Huyền huyễn | Hệ thống | Võ hiệp | Cổ đại | Ngôn tình | Trinh thám | Kinh dị | Mạt thế |
+|---------|-----------|-------------|----------|---------|--------|-----------|-----------|---------|---------|
+| **Power level tracking** | ✅ Cảnh giới | ✅ Đẳng cấp | ✅ Level | ✅ Nội lực | ❌ | ❌ | ❌ | ❌ | ✅ Dị năng |
+| **Custom char fields** | Cảnh giới, Công pháp, Pháp bảo, Đạo tâm | Hệ sức mạnh, Huyết mạch | Level, Class, Skills, Stats | Nội lực, Võ công | Phẩm cấp, Gia tộc | Cảm xúc arc | Vai trò vụ án | Fear triggers | Dị năng, Trang bị |
+| **Scene contract extras** | Đột phá?, Chiến đấu? | Rank up? | Level up?, New skill? | Giao đấu? | Lễ nghi?, Trạch đấu? | Chemistry beat | Manh mối mới? | Tension level | Sinh tồn check |
+| **Pronoun preset** | Tiên hiệp | Fantasy | Modern | Võ hiệp | Cổ đại | Modern | Modern | Modern | Modern |
+| **QA checks (tương lai)** | Power scaling | World consistency | Stats consistency | Võ công logic | Lịch sử/phong tục | Pacing tình cảm | Clue fairness | Tension curve | Resource balance |

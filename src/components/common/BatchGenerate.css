@@ -1,0 +1,225 @@
+/* ============================================
+   Batch Generate — Multi-entity AI creation
+   ============================================ */
+
+.batch-gen {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  animation: scaleUp 200ms ease;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.batch-gen-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.batch-gen-header h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-accent);
+}
+
+/* Config */
+.batch-gen-config {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.batch-gen-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.batch-gen-row label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.batch-gen-count {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.batch-gen-count-value {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  color: var(--color-accent);
+  min-width: 32px;
+  text-align: center;
+}
+
+.batch-gen-hint {
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+  resize: none;
+  transition: border-color var(--transition-fast);
+}
+
+.batch-gen-hint:focus {
+  border-color: var(--color-accent);
+}
+
+.batch-gen-hint::placeholder {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+/* Context preview */
+.batch-gen-context-preview {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.batch-gen-context-label {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.batch-gen-context-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.batch-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+}
+
+.batch-gen-error {
+  padding: var(--space-2);
+  background: var(--color-danger-muted);
+  color: var(--color-danger);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+/* Loading */
+.batch-gen-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8);
+  color: var(--color-text-secondary);
+}
+
+.batch-gen-loading p {
+  font-size: var(--text-sm);
+}
+
+/* Results */
+.batch-gen-results {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.batch-gen-results-info {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.batch-gen-items {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+}
+
+.batch-gen-item {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-2);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.batch-gen-item:hover {
+  border-color: var(--color-accent);
+  background: var(--color-bg-hover);
+}
+
+.batch-gen-item--excluded {
+  opacity: 0.4;
+  background: var(--color-bg-tertiary);
+}
+
+.batch-gen-item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.batch-gen-item-check {
+  font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+
+.batch-gen-item-body {
+  padding-left: calc(var(--text-sm) + var(--space-2));
+  margin-top: var(--space-1);
+}
+
+.batch-gen-item-body p {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  margin: 2px 0;
+  line-height: 1.4;
+}
+
+.batch-gen-item-notes {
+  color: var(--color-text-muted) !important;
+  font-style: italic;
+}
+
+/* Actions */
+.batch-gen-actions {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+@keyframes scaleUp {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}

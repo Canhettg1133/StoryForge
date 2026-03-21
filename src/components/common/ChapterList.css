@@ -1,0 +1,235 @@
+/* ============================================
+   Chapter List Styles
+   ============================================ */
+
+.chapter-list {
+  width: 260px;
+  height: 100%;
+  background: var(--color-bg-secondary);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.chapter-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  height: var(--topbar-height);
+}
+
+.chapter-list-title {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.chapter-list-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+/* Chapter Item */
+.chapter-node {
+  margin-bottom: 2px;
+}
+
+.chapter-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  user-select: none;
+}
+
+.chapter-item:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.chapter-item--active {
+  color: var(--color-text-primary);
+}
+
+.chapter-expand-icon {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.chapter-item-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.chapter-scene-count {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: var(--color-bg-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.chapter-rename-input {
+  flex: 1;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+  padding: 2px 6px;
+  outline: none;
+  font-family: var(--font-ui);
+}
+
+/* Scene Items */
+.scene-list {
+  padding-left: var(--space-5);
+}
+
+.scene-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.scene-item:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.scene-item--active {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+}
+
+.scene-item-icon {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.scene-item-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.scene-add-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 4px var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  font-family: var(--font-ui);
+  margin-top: 2px;
+}
+
+.scene-add-btn:hover {
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
+}
+
+/* Phase 3: Chapter complete */
+.chapter-item--done {
+  opacity: 0.7;
+}
+
+.chapter-item--done .chapter-item-title {
+  color: var(--color-success, #22c55e);
+}
+
+.chapter-done-icon {
+  color: var(--color-success, #22c55e);
+  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.chapter-loading-icon {
+  animation: spin 1s linear infinite;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Context Menu */
+.context-menu {
+  background: var(--color-surface-1, var(--color-bg-secondary));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg, 8px);
+  padding: var(--space-1, 4px);
+  min-width: 160px;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: 100%;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  font-size: var(--text-sm, 13px);
+  color: var(--color-text-secondary, #ccc);
+  background: none;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.context-menu-item:hover {
+  background: var(--color-bg-hover, rgba(255,255,255,0.05));
+  color: var(--color-text-primary, #fff);
+}
+
+.context-menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--color-danger, #ef4444);
+}
+
+.context-menu-item--success {
+  color: var(--color-success, #22c55e);
+}
+
+.context-menu-item--success:hover {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--color-success, #22c55e);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--color-border);
+  margin: var(--space-1, 4px) 0;
+}
+
