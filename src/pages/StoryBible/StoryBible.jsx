@@ -13,10 +13,12 @@ import {
   POV_MODES, STORY_STRUCTURES, PRONOUN_STYLE_PRESETS,
   GENRE_TO_PRONOUN_STYLE, AI_STRICTNESS_LEVELS,
 } from '../../utils/constants';
+import { TASK_TYPES } from '../../services/ai/router';
 import {
   BookMarked, BookOpen, Users, MapPin, Package, Shield,
   Star, Sword, UserCheck, Heart, ChevronRight, ChevronDown,
   Eye, MessageSquare, Save, Edit3, Check, Settings, FileText,
+  Terminal, BookKey, Plus, X,
 } from 'lucide-react';
 import './StoryBible.css';
 
@@ -46,8 +48,9 @@ export default function StoryBible() {
   const navigate = useNavigate();
   const { currentProject, chapters, updateProjectSettings } = useProjectStore();
   const {
-    characters, locations, objects, worldTerms, taboos,
+    characters, locations, objects, worldTerms, taboos, canonFacts,
     chapterMetas, loading, loadCodex,
+    createCanonFact, updateCanonFact, deleteCanonFact,
   } = useCodexStore();
 
   // Editable fields
@@ -61,10 +64,13 @@ export default function StoryBible() {
   const [storyStructure, setStoryStructure] = useState('');
   const [aiGuidelines, setAiGuidelines] = useState('');
   const [aiStrictness, setAiStrictness] = useState('balanced');
+  
+  // Prompt Templates local state
+  const [promptTemplates, setPromptTemplates] = useState({});
 
   // Collapsible sections
   const [openSections, setOpenSections] = useState({
-    overview: true, ai: false, characters: true,
+    overview: true, ai: false, prompts: false, canon: true, characters: true,
     locations: true, objects: true, terms: true, summaries: true,
   });
 
@@ -84,6 +90,11 @@ export default function StoryBible() {
       setStoryStructure(currentProject.story_structure || '');
       setAiGuidelines(currentProject.ai_guidelines || '');
       setAiStrictness(currentProject.ai_strictness || 'balanced');
+      try {
+        setPromptTemplates(currentProject.prompt_templates ? JSON.parse(currentProject.prompt_templates) : {});
+      } catch (e) {
+        setPromptTemplates({});
+      }
     }
   }, [currentProject?.id]);
 
@@ -94,6 +105,7 @@ export default function StoryBible() {
   const descSaved = useAutoSave(description, (v) => save({ description: v }));
   const synopsisSaved = useAutoSave(synopsis, (v) => save({ synopsis: v }));
   const guidelinesSaved = useAutoSave(aiGuidelines, (v) => save({ ai_guidelines: v }));
+  const promptsSaved = useAutoSave(promptTemplates, (v) => save({ prompt_templates: JSON.stringify(v) }), 1500);
 
   // Immediate save for dropdowns
   const handleGenreChange = (v) => {
@@ -110,6 +122,19 @@ export default function StoryBible() {
 
   const currentPronoun = useMemo(() =>
     PRONOUN_STYLE_PRESETS.find(p => p.value === pronounStyle), [pronounStyle]);
+
+  const activeCanonFacts = useMemo(() => canonFacts.filter(f => f.status === 'active'), [canonFacts]);
+  const deprecatedCanonFacts = useMemo(() => canonFacts.filter(f => f.status === 'deprecated'), [canonFacts]);
+
+  // Handle Prompt Templates
+  const handlePromptChange = (taskType, value) => {
+    setPromptTemplates(prev => ({ ...prev, [taskType]: value }));
+  };
+
+  // Handle Canon Facts
+  const handleAddCanonFact = () => {
+    createCanonFact({ project_id: currentProject.id, description: '', fact_type: 'fact', status: 'active' });
+  };
 
   if (!currentProject) {
     return (
@@ -259,6 +284,101 @@ export default function StoryBible() {
                 placeholder="Nhap chi dan rieng cho AI khi viet truyen nay..."
               />
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ═══ SECTION: Prompt AI (Templates) ═══ */}
+      <div className="bible-section">
+        <SectionHeader icon={Terminal} title="Prompt AI" sectionKey="prompts" />
+        {openSections.prompts && (
+          <div className="bible-edit-card">
+            <p className="bible-subtitle" style={{ marginBottom: 'var(--space-2)' }}>
+              Tùy chỉnh prompt hệ thống cho từng tính năng. Để trống để dùng mặc định. {promptsSaved && <span className="save-indicator">Đã lưu</span>}
+            </p>
+            {Object.entries(TASK_TYPES).map(([key, taskType]) => (
+              <div key={key} className="form-group">
+                <label className="form-label">{key} <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal', fontSize: '11px' }}>({taskType})</span></label>
+                <textarea 
+                  className="textarea" 
+                  value={promptTemplates[taskType] || ''} 
+                  onChange={(e) => handlePromptChange(taskType, e.target.value)} 
+                  rows={2}
+                  placeholder={`Mặc định của hệ thống cho ${taskType}...`}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ═══ SECTION: Canon Facts ═══ */}
+      <div className="bible-section">
+        <div className="bible-section-header" onClick={() => toggleSection('canon')} style={{ cursor: 'pointer' }}>
+          <h3 className="bible-section-title">
+            <ChevronDown size={14} style={{ transform: openSections.canon ? 'rotate(0)' : 'rotate(-90deg)', transition: '0.2s' }} />
+            <BookKey size={18} /> Sự thật Canon ({activeCanonFacts.length})
+          </h3>
+          <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); handleAddCanonFact(); }}>
+            <Plus size={14} /> Thêm
+          </button>
+        </div>
+        {openSections.canon && (
+          <div className="bible-cards-list">
+            {activeCanonFacts.map(fact => (
+              <div key={fact.id} className="bible-edit-card" style={{ gap: 'var(--space-2)' }}>
+                <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <select 
+                    className="select" 
+                    style={{ width: '120px' }} 
+                    value={fact.fact_type} 
+                    onChange={(e) => updateCanonFact(fact.id, { fact_type: e.target.value })}
+                  >
+                    <option value="fact">Sự thật</option>
+                    <option value="secret">Bí mật</option>
+                    <option value="rule">Quy tắc</option>
+                  </select>
+                  <input 
+                    className="input" 
+                    style={{ flex: 1 }} 
+                    value={fact.description} 
+                    onChange={(e) => updateCanonFact(fact.id, { description: e.target.value })} 
+                    placeholder="Mô tả sự thật / bí mật / quy luật..."
+                  />
+                  <button className="btn btn-icon text-danger" onClick={() => updateCanonFact(fact.id, { status: 'deprecated' })} title="Lưu trữ">
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {activeCanonFacts.length === 0 && (
+              <p className="text-muted" style={{ fontSize: '13px', fontStyle: 'italic' }}>Chưa có Canon Fact nào đang hoạt động. Canon Fact là những thông tin cốt lõi bắt buộc AI phải nhớ và tuân thủ tuyệt đối.</p>
+            )}
+
+            {deprecatedCanonFacts.length > 0 && (
+              <details style={{ marginTop: 'var(--space-4)' }}>
+                <summary style={{ cursor: 'pointer', color: 'var(--color-text-muted)', fontSize: '13px' }}>
+                  Hiển thị {deprecatedCanonFacts.length} lưu trữ
+                </summary>
+                <div className="bible-cards-list" style={{ marginTop: 'var(--space-2)', opacity: 0.7 }}>
+                  {deprecatedCanonFacts.map(fact => (
+                    <div key={fact.id} className="bible-edit-card" style={{ padding: 'var(--space-2) var(--space-3)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '13px' }}>[{fact.fact_type}] {fact.description}</span>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => updateCanonFact(fact.id, { status: 'active' })}>
+                            <RotateCcw size={14} /> Khôi phục
+                          </button>
+                          <button className="btn btn-ghost btn-danger btn-sm" onClick={() => deleteCanonFact(fact.id)}>
+                            <Trash2 size={14} /> Xóa vĩnh viễn
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         )}
       </div>

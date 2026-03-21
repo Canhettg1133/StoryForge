@@ -15,24 +15,26 @@ const useCodexStore = create((set, get) => ({
   objects: [],
   worldTerms: [],
   taboos: [],
+  canonFacts: [],
   chapterMetas: [],
   loading: false,
 
-  // ═══════════════════════════════════════════
+  // =============================================
   // LOAD ALL codex data for a project
-  // ═══════════════════════════════════════════
+  // =============================================
   loadCodex: async (projectId) => {
     if (!projectId) return;
     set({ loading: true });
-    const [characters, locations, objects, worldTerms, taboos, chapterMetas] = await Promise.all([
+    const [characters, locations, objects, worldTerms, taboos, canonFacts, chapterMetas] = await Promise.all([
       db.characters.where('project_id').equals(projectId).toArray(),
       db.locations.where('project_id').equals(projectId).toArray(),
       db.objects.where('project_id').equals(projectId).toArray(),
       db.worldTerms.where('project_id').equals(projectId).toArray(),
       db.taboos.where('project_id').equals(projectId).toArray(),
+      db.canonFacts.where('project_id').equals(projectId).toArray(),
       db.chapterMeta.where('project_id').equals(projectId).toArray(),
     ]);
-    set({ characters, locations, objects, worldTerms, taboos, chapterMetas, loading: false });
+    set({ characters, locations, objects, worldTerms, taboos, canonFacts, chapterMetas, loading: false });
   },
 
   // ═══════════════════════════════════════════
@@ -195,7 +197,39 @@ const useCodexStore = create((set, get) => ({
       }));
   },
 
-  // ═══════════════════════════════════════════
+  // =============================================
+  // CANON FACTS (Phase 4)
+  // =============================================
+  createCanonFact: async (data) => {
+    const id = await db.canonFacts.add({
+      project_id: data.project_id,
+      description: data.description || '',
+      fact_type: data.fact_type || 'fact', // fact | secret | rule
+      status: data.status || 'active', // active | deprecated
+      source_chapter_id: data.source_chapter_id || null,
+      created_at: Date.now(),
+    });
+    await get().loadCodex(data.project_id);
+    return id;
+  },
+
+  updateCanonFact: async (id, data) => {
+    await db.canonFacts.update(id, data);
+    set(state => ({
+      canonFacts: state.canonFacts.map(f => f.id === id ? { ...f, ...data } : f),
+    }));
+  },
+
+  deleteCanonFact: async (id, projectId) => {
+    await db.canonFacts.delete(id);
+    if (projectId) await get().loadCodex(projectId);
+  },
+
+  getActiveCanonFacts: () => {
+    return get().canonFacts.filter(f => f.status === 'active');
+  },
+
+  // =============================================
   // CHAPTER META (Summary, etc.)
   // ═══════════════════════════════════════════
   getChapterMeta: (chapterId) => {
