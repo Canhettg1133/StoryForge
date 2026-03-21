@@ -130,17 +130,15 @@ const useProjectStore = create((set, get) => ({
     set({ currentProject: updated });
   },
 
-  // --- Phase 4: Project Settings (AI) ---
+  // --- Phase 4: Project Settings (general) ---
   updateProjectSettings: async (data) => {
     const { currentProject } = get();
     if (!currentProject) return;
-    await db.projects.update(currentProject.id, {
-      ai_guidelines: data.ai_guidelines ?? currentProject.ai_guidelines,
-      ai_strictness: data.ai_strictness ?? currentProject.ai_strictness,
-      genre_primary: data.genre_primary ?? currentProject.genre_primary,
-      genre_secondary: data.genre_secondary ?? currentProject.genre_secondary,
-      updated_at: Date.now(),
-    });
+    const updates = { ...data, updated_at: Date.now() };
+    // Remove fields that shouldn't be directly set
+    delete updates.id;
+    delete updates.created_at;
+    await db.projects.update(currentProject.id, updates);
     const updated = await db.projects.get(currentProject.id);
     set({ currentProject: updated });
   },
