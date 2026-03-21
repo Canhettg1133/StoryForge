@@ -4,7 +4,10 @@
  */
 
 import React, { useState } from 'react';
-import { GENRES, TONES } from '../../utils/constants';
+import {
+  GENRES, TONES, POV_MODES, STORY_STRUCTURES,
+  PRONOUN_STYLE_PRESETS, GENRE_TO_PRONOUN_STYLE,
+} from '../../utils/constants';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
@@ -14,7 +17,7 @@ import { buildPrompt } from '../../services/ai/promptBuilder';
 import {
   Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
   RotateCcw, Users, MapPin, BookOpen, List, AlertCircle,
-  Trash2, Globe,
+  Trash2, Globe, Eye, MessageSquare,
 } from 'lucide-react';
 import './ProjectWizard.css';
 
@@ -29,6 +32,17 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [genre, setGenre] = useState('fantasy');
   const [tone, setTone] = useState('');
   const [useTemplate, setUseTemplate] = useState(true);
+  const [povMode, setPovMode] = useState('third_limited');
+  const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE['fantasy'] || 'phuong_tay');
+  const [synopsis, setSynopsis] = useState('');
+  const [storyStructure, setStoryStructure] = useState('');
+
+  const handleGenreChange = (val) => {
+    setGenre(val);
+    setPronounStyle(GENRE_TO_PRONOUN_STYLE[val] || 'hien_dai');
+  };
+
+  const currentPronoun = PRONOUN_STYLE_PRESETS.find(p => p.value === pronounStyle);
 
   // AI result
   const [result, setResult] = useState(null);
@@ -86,7 +100,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
       },
       {
         role: 'user',
-        content: `Thể loại: ${genreLabel}\nTone: ${tone || 'mặc định'}\n\nÝ tưởng: ${idea}${templateHint}`,
+        content: `Thể loại: ${genreLabel}\nTone: ${tone || 'mặc định'}\nGóc nhìn: ${POV_MODES.find(p => p.value === povMode)?.label || 'Ngôi 3'}\nXưng hô: ${currentPronoun?.label || 'Mặc định'}\n${synopsis ? 'Cốt truyện: ' + synopsis + '\n' : ''}${storyStructure ? 'Cấu trúc: ' + STORY_STRUCTURES.find(s => s.value === storyStructure)?.label + '\n' : ''}\nÝ tưởng: ${idea}${templateHint}`,
       },
     ];
 
@@ -146,6 +160,10 @@ Chỉ trả về JSON, không thêm gì khác.`,
         world_era: wp.world_era || '',
         world_rules: JSON.stringify(wp.world_rules || []),
         world_description: wp.world_description || '',
+        pov_mode: povMode,
+        pronoun_style: pronounStyle,
+        synopsis: synopsis || result.premise || '',
+        story_structure: storyStructure,
         skipFirstChapter: true, // AI Wizard creates chapters itself
       });
 
@@ -246,21 +264,57 @@ Chỉ trả về JSON, không thêm gì khác.`,
               </div>
             )}
 
-            <div className="form-group">
-              <label className="form-label">Thể loại</label>
-              <select className="select" value={genre} onChange={(e) => setGenre(e.target.value)}>
-                {GENRES.map(g => (
-                  <option key={g.value} value={g.value}>{g.emoji} {g.label}</option>
-                ))}
-              </select>
+            {/* Genre + Tone */}
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Thể loại</label>
+                <select className="select" value={genre} onChange={(e) => handleGenreChange(e.target.value)}>
+                  {GENRES.map(g => (
+                    <option key={g.value} value={g.value}>{g.emoji} {g.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Tone</label>
+                <select className="select" value={tone} onChange={(e) => setTone(e.target.value)}>
+                  <option value="">Mặc định</option>
+                  {TONES.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
+            {/* POV + Xưng hô */}
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label"><Eye size={13} /> Góc nhìn</label>
+                <select className="select" value={povMode} onChange={(e) => setPovMode(e.target.value)}>
+                  {POV_MODES.map(p => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
+                </select>
+                <span className="form-hint">{POV_MODES.find(p => p.value === povMode)?.desc}</span>
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label"><MessageSquare size={13} /> Xưng hô</label>
+                <select className="select" value={pronounStyle} onChange={(e) => setPronounStyle(e.target.value)}>
+                  {PRONOUN_STYLE_PRESETS.map(p => (
+                    <option key={p.value} value={p.value}>{p.label}</option>
+                  ))}
+                </select>
+                {currentPronoun && currentPronoun.value !== 'custom' && (
+                  <span className="form-hint">Xưng: "{currentPronoun.default_self}" — Gọi: "{currentPronoun.default_other}"</span>
+                )}
+              </div>
+            </div>
+
+            {/* Cấu trúc truyện */}
             <div className="form-group">
-              <label className="form-label">Tone</label>
-              <select className="select" value={tone} onChange={(e) => setTone(e.target.value)}>
-                <option value="">Mặc định</option>
-                {TONES.map(t => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+              <label className="form-label"><BookOpen size={13} /> Cấu trúc truyện</label>
+              <select className="select" value={storyStructure} onChange={(e) => setStoryStructure(e.target.value)}>
+                {STORY_STRUCTURES.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
             </div>
@@ -272,8 +326,20 @@ Chỉ trả về JSON, không thêm gì khác.`,
                 placeholder="Ví dụ: Thiếu niên mồ côi phát hiện mình có huyết mạch cổ thần, gia nhập tông môn nhỏ nhưng nhanh chóng vượt qua các thiên tài..."
                 value={idea}
                 onChange={(e) => setIdea(e.target.value)}
-                rows={4}
+                rows={3}
                 autoFocus
+              />
+            </div>
+
+            {/* Synopsis */}
+            <div className="form-group">
+              <label className="form-label">📖 Cốt truyện chính (Synopsis)</label>
+              <textarea
+                className="textarea"
+                placeholder="Tóm tắt mạch truyện chính... (không bắt buộc — AI dùng để duy trì mạch truyện)"
+                value={synopsis}
+                onChange={(e) => setSynopsis(e.target.value)}
+                rows={2}
               />
             </div>
 
