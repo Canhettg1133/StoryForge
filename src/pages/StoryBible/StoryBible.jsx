@@ -14,11 +14,12 @@ import {
   GENRE_TO_PRONOUN_STYLE, AI_STRICTNESS_LEVELS,
 } from '../../utils/constants';
 import { TASK_TYPES } from '../../services/ai/router';
+import { TASK_INSTRUCTIONS } from '../../services/ai/promptBuilder';
 import {
   BookMarked, BookOpen, Users, MapPin, Package, Shield,
   Star, Sword, UserCheck, Heart, ChevronRight, ChevronDown,
   Eye, MessageSquare, Save, Edit3, Check, Settings, FileText,
-  Terminal, BookKey, Plus, X,
+  Terminal, BookKey, Plus, X, Trash2, RotateCcw,
 } from 'lucide-react';
 import './StoryBible.css';
 
@@ -51,6 +52,7 @@ export default function StoryBible() {
     characters, locations, objects, worldTerms, taboos, canonFacts,
     chapterMetas, loading, loadCodex,
     createCanonFact, updateCanonFact, deleteCanonFact,
+    updateCharacter, updateLocation, updateObject, updateWorldTerm,
   } = useCodexStore();
 
   // Editable fields
@@ -294,20 +296,38 @@ export default function StoryBible() {
         {openSections.prompts && (
           <div className="bible-edit-card">
             <p className="bible-subtitle" style={{ marginBottom: 'var(--space-2)' }}>
-              Tùy chỉnh prompt hệ thống cho từng tính năng. Để trống để dùng mặc định. {promptsSaved && <span className="save-indicator">Đã lưu</span>}
+              Tùy chỉnh prompt hệ thống cho từng tính năng. Sửa để ghi đè mặc định. {promptsSaved && <span className="save-indicator">Đã lưu</span>}
             </p>
-            {Object.entries(TASK_TYPES).map(([key, taskType]) => (
-              <div key={key} className="form-group">
-                <label className="form-label">{key} <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal', fontSize: '11px' }}>({taskType})</span></label>
-                <textarea 
-                  className="textarea" 
-                  value={promptTemplates[taskType] || ''} 
-                  onChange={(e) => handlePromptChange(taskType, e.target.value)} 
-                  rows={2}
-                  placeholder={`Mặc định của hệ thống cho ${taskType}...`}
-                />
-              </div>
-            ))}
+            {Object.entries(TASK_TYPES).map(([key, taskType]) => {
+              const defaultPrompt = TASK_INSTRUCTIONS[taskType] || '';
+              const hasCustom = !!(promptTemplates[taskType]);
+              return (
+                <div key={key} className="form-group">
+                  <label className="form-label">
+                    {key} <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal', fontSize: '11px' }}>({taskType})</span>
+                    {hasCustom && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>✏️ Tùy chỉnh</span>}
+                  </label>
+                  {/* Show default prompt */}
+                  {defaultPrompt && (
+                    <div className="prompt-default-preview">
+                      <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Mặc định:</span> {defaultPrompt.substring(0, 200)}{defaultPrompt.length > 200 ? '...' : ''}
+                    </div>
+                  )}
+                  <textarea 
+                    className="textarea" 
+                    value={promptTemplates[taskType] || ''} 
+                    onChange={(e) => handlePromptChange(taskType, e.target.value)} 
+                    rows={2}
+                    placeholder="Để trống = dùng mặc định ở trên"
+                  />
+                  {hasCustom && (
+                    <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', fontSize: '11px' }} onClick={() => handlePromptChange(taskType, '')}>
+                      ↩ Xóa tùy chỉnh (dùng mặc định)
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -383,28 +403,29 @@ export default function StoryBible() {
         )}
       </div>
 
-      {/* ═══ SECTION: Characters ═══ */}
+      {/* ═══ SECTION: Characters (editable) ═══ */}
       {characters.length > 0 && (
         <div className="bible-section">
-          <SectionHeader icon={Users} title="Nhan vat" count={characters.length} sectionKey="characters" navTo="/characters" />
+          <SectionHeader icon={Users} title="Nhân vật" count={characters.length} sectionKey="characters" navTo="/characters" />
           {openSections.characters && (
             <div className="bible-grid">
               {characters.map(c => {
-                const RoleIcon = ROLE_ICONS[c.role] || Users;
                 const roleLabel = CHARACTER_ROLES.find(r => r.value === c.role)?.label || c.role;
                 return (
-                  <div key={c.id} className="bible-card">
+                  <div key={c.id} className="bible-card bible-card--editable">
                     <div className="bible-card-header">
-                      <RoleIcon size={16} className="bible-card-icon" />
-                      <strong>{c.name}</strong>
-                      <span className="badge badge-sm">{roleLabel}</span>
+                      <select className="select select-mini" value={c.role} onChange={(e) => updateCharacter(c.id, { role: e.target.value })}>
+                        {CHARACTER_ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+                      </select>
                     </div>
-                    {c.appearance && <p><b>Ngoai hinh:</b> {c.appearance}</p>}
-                    {c.personality && <p><b>Tinh cach:</b> {c.personality}</p>}
-                    {c.goals && <p><b>Muc tieu:</b> {c.goals}</p>}
-                    {c.pronouns_self && (
-                      <p className="bible-card-pronoun">Xung: "{c.pronouns_self}"{c.pronouns_other ? ` / "${c.pronouns_other}"` : ''}</p>
-                    )}
+                    <input className="input input-inline" value={c.name} placeholder="Tên" onChange={(e) => updateCharacter(c.id, { name: e.target.value })} />
+                    <input className="input input-inline" value={c.appearance || ''} placeholder="Ngoại hình" onChange={(e) => updateCharacter(c.id, { appearance: e.target.value })} />
+                    <input className="input input-inline" value={c.personality || ''} placeholder="Tính cách" onChange={(e) => updateCharacter(c.id, { personality: e.target.value })} />
+                    <input className="input input-inline" value={c.goals || ''} placeholder="Mục tiêu" onChange={(e) => updateCharacter(c.id, { goals: e.target.value })} />
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <input className="input input-inline" style={{ flex: 1 }} value={c.pronouns_self || ''} placeholder="Xưng" onChange={(e) => updateCharacter(c.id, { pronouns_self: e.target.value })} />
+                      <input className="input input-inline" style={{ flex: 1 }} value={c.pronouns_other || ''} placeholder="Gọi" onChange={(e) => updateCharacter(c.id, { pronouns_other: e.target.value })} />
+                    </div>
                   </div>
                 );
               })}
@@ -413,17 +434,17 @@ export default function StoryBible() {
         </div>
       )}
 
-      {/* ═══ SECTION: Locations ═══ */}
+      {/* ═══ SECTION: Locations (editable) ═══ */}
       {locations.length > 0 && (
         <div className="bible-section">
-          <SectionHeader icon={MapPin} title="Dia diem" count={locations.length} sectionKey="locations" navTo="/world" />
+          <SectionHeader icon={MapPin} title="Địa điểm" count={locations.length} sectionKey="locations" navTo="/world" />
           {openSections.locations && (
             <div className="bible-grid">
               {locations.map(l => (
-                <div key={l.id} className="bible-card">
-                  <strong>{l.name}</strong>
-                  {l.description && <p>{l.description}</p>}
-                  {l.details && <p className="bible-card-details">{l.details}</p>}
+                <div key={l.id} className="bible-card bible-card--editable">
+                  <input className="input input-inline input-bold" value={l.name} placeholder="Tên" onChange={(e) => updateLocation(l.id, { name: e.target.value })} />
+                  <input className="input input-inline" value={l.description || ''} placeholder="Mô tả" onChange={(e) => updateLocation(l.id, { description: e.target.value })} />
+                  <input className="input input-inline" value={l.details || ''} placeholder="Chi tiết" onChange={(e) => updateLocation(l.id, { details: e.target.value })} />
                 </div>
               ))}
             </div>
@@ -431,46 +452,45 @@ export default function StoryBible() {
         </div>
       )}
 
-      {/* ═══ SECTION: Objects ═══ */}
+      {/* ═══ SECTION: Objects (editable) ═══ */}
       {objects.length > 0 && (
         <div className="bible-section">
-          <SectionHeader icon={Package} title="Vat pham" count={objects.length} sectionKey="objects" navTo="/world" />
+          <SectionHeader icon={Package} title="Vật phẩm" count={objects.length} sectionKey="objects" navTo="/world" />
           {openSections.objects && (
             <div className="bible-grid">
-              {objects.map(o => {
-                const owner = characters.find(c => c.id === o.owner_character_id);
-                return (
-                  <div key={o.id} className="bible-card">
-                    <strong>{o.name}</strong>
-                    {owner && <span className="bible-card-owner">Chu: {owner.name}</span>}
-                    {o.description && <p>{o.description}</p>}
-                    {o.properties && <p className="bible-card-details">{o.properties}</p>}
-                  </div>
-                );
-              })}
+              {objects.map(o => (
+                <div key={o.id} className="bible-card bible-card--editable">
+                  <input className="input input-inline input-bold" value={o.name} placeholder="Tên" onChange={(e) => updateObject(o.id, { name: e.target.value })} />
+                  <input className="input input-inline" value={o.description || ''} placeholder="Mô tả" onChange={(e) => updateObject(o.id, { description: e.target.value })} />
+                  <input className="input input-inline" value={o.properties || ''} placeholder="Thuộc tính" onChange={(e) => updateObject(o.id, { properties: e.target.value })} />
+                  <select className="select select-mini" value={o.owner_character_id || ''} onChange={(e) => updateObject(o.id, { owner_character_id: e.target.value || null })}>
+                    <option value="">Không có chủ</option>
+                    {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              ))}
             </div>
           )}
         </div>
       )}
 
-      {/* ═══ SECTION: World Terms ═══ */}
+      {/* ═══ SECTION: World Terms (editable) ═══ */}
       {worldTerms.length > 0 && (
         <div className="bible-section">
-          <SectionHeader icon={BookOpen} title="Thuat ngu" count={worldTerms.length} sectionKey="terms" navTo="/world" />
+          <SectionHeader icon={BookOpen} title="Thuật ngữ" count={worldTerms.length} sectionKey="terms" navTo="/world" />
           {openSections.terms && (
             <div className="bible-grid bible-grid--terms">
-              {worldTerms.map(t => {
-                const catLabel = WORLD_TERM_CATEGORIES.find(c => c.value === t.category)?.label || t.category;
-                return (
-                  <div key={t.id} className="bible-card">
-                    <div className="bible-card-header">
-                      <strong>{t.name}</strong>
-                      <span className="bible-card-category">{catLabel}</span>
-                    </div>
-                    {t.definition && <p>{t.definition}</p>}
+              {worldTerms.map(t => (
+                <div key={t.id} className="bible-card bible-card--editable">
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <input className="input input-inline input-bold" style={{ flex: 1 }} value={t.name} placeholder="Tên" onChange={(e) => updateWorldTerm(t.id, { name: e.target.value })} />
+                    <select className="select select-mini" value={t.category} onChange={(e) => updateWorldTerm(t.id, { category: e.target.value })}>
+                      {WORLD_TERM_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                    </select>
                   </div>
-                );
-              })}
+                  <input className="input input-inline" value={t.definition || ''} placeholder="Định nghĩa" onChange={(e) => updateWorldTerm(t.id, { definition: e.target.value })} />
+                </div>
+              ))}
             </div>
           )}
         </div>

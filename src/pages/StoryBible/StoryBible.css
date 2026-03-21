@@ -330,3 +330,86 @@
   color: var(--color-accent);
 }
 
+/* Editable cards */
+.bible-card--editable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.input-inline {
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 4px 6px;
+  font-size: 13px;
+  border-radius: var(--radius-sm, 4px);
+  transition: all 0.15s;
+}
+
+.input-inline:hover {
+  border-color: var(--color-border);
+}
+
+.input-inline:focus {
+  border-color: var(--color-accent);
+  background: var(--color-surface-1, rgba(255,255,255,0.03));
+  outline: none;
+}
+
+.input-inline.input-bold {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.select-mini {
+  font-size: 12px;
+  padding: 2px 6px;
+  min-height: auto;
+  height: 26px;
+  width: auto;
+}
+
+.bible-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Prompt default preview */
+.prompt-default-preview {
+  background: var(--color-surface-1, rgba(255,255,255,0.03));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 4px);
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary, #999);
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+
+/* Strictness buttons */
+.strictness-options {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.strictness-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md, 8px);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s;
+}
+
+.strictness-btn:hover {
+  border-color: var(--color-accent);
+}
+
+.strictness-btn--active {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: white;
+}

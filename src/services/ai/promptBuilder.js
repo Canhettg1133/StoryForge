@@ -29,7 +29,7 @@ const LAYER_1_IDENTITY = [
 // =============================================
 // Layer 2: Task Instructions
 // =============================================
-const TASK_INSTRUCTIONS = {
+export const TASK_INSTRUCTIONS = {
   [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Viet khoang 200-400 tu.',
   [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung giu nguyen noi dung va y nghia. Lam cho no tu nhien hon, giau cam xuc hon.',
   [TASK_TYPES.EXPAND]: 'Mo rong doan van, them chi tiet mieu ta, cam xuc, va hanh dong. Giu nguyen giong van.',

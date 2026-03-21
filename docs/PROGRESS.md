@@ -142,13 +142,16 @@
 
 ---
 
-## Phase 4 — Canon & Genre 🔲
+## Phase 4 — Canon & Genre ✅
 
 | Tính năng | Trạng thái | Ghi chú |
 |-----------|-----------|---------|
-| Canon Engine (facts, secrets, validity range) | 🔲 | |
-| Scene Contract | 🔲 | Mục tiêu + ràng buộc trước khi viết |
-| Phân cấp địa điểm (tree view) | 🔲 | Location cha-con |
+| Canon Engine (facts, secrets, validity range) | ✅ | CRUD trong StoryBible |
+| Scene Contract | ✅ | Mục tiêu + ràng buộc trước khi viết |
+| Tùy chỉnh Pronouns + POV + Genre Settings | ✅ | Xưng hô 10 preset, 5 Thể loại mới |
+| Prompt Template Manager | ✅ | Tùy chỉnh prompt hệ thống cho từng task |
+| Context Engine v2 | ✅ | Cải thiện regex + Entity detection |
+| DB Version 3 + Đóng gói Backup | ✅ | Migrate fields, Export/Import project |
 | Relationship Map (quan hệ nhân vật) | 🔲 | DB `relationships` sẵn schema |
 | Genre Pack: Fantasy | 🔲 | World rules, magic system, power scaling |
 | Genre Pack: Trinh thám | 🔲 | Clue map, suspects, knowledge asymmetry |
