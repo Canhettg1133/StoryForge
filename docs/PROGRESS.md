@@ -11,7 +11,8 @@
 | 1 | Nền tảng | ✅ Xong | ~Tuần 1 |
 | 2 | Editor & AI | ✅ Xong | ~Tuần 2 |
 | 3 | Memory | ✅ Xong | ~Tuần 3 |
-| 4 | Canon & Genre | 🔲 Chưa bắt đầu | — |
+| 4 | Canon & Genre | ✅ Xong | ~Tuần 4 |
+| 4.5 | Continuity & Intelligence | ✅ Xong | ~Tuần 5 |
 | 5 | Pipeline & Style | 🔲 Chưa bắt đầu | — |
 | 6 | Polish | 🔲 Chưa bắt đầu | — |
 
@@ -157,6 +158,16 @@
 | Genre Pack: Trinh thám | 🔲 | Clue map, suspects, knowledge asymmetry |
 | Genre Pack: Ngôn tình | 🔲 | Chemistry arc, emotional beat |
 | Genre Pack: Kinh dị | 🔲 | Dread build-up, tension curve |
+
+---
+
+## Phase 4.5 — Continuity & Intelligence ✅
+
+| Tính năng | Trạng thái | Ghi chú |
+|-----------|-----------|---------|
+| Changelog Timeline | ✅ | Ghi lại lịch sử thay đổi states của entity theo chương |
+| Conflict Detection (AI QA) | ✅ | Nhận diện mâu thuẫn logic với Canon + Timeline |
+| Tích hợp UI Sidebar | ✅ | Nút Check Mâu Thuẫn trực tiếp trên AI Sidebar |
 
 ---
 

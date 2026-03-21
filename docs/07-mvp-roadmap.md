@@ -37,8 +37,9 @@
 | **1 — Nền tảng** | Tuần 1 | Vite+React, Design System (dark theme), Layout, IndexedDB, Project/Chapter/Scene CRUD | ✅ Xong |
 | **2 — Editor & AI** | Tuần 2 | Tiptap editor, AI proxy client (streaming), Key rotation, Model router, AI sidebar | ✅ Xong |
 | **3 — Memory** | Tuần 3 | Codex nhân vật + thế giới, Context Engine, Prompt 8 tầng, Cấm kỵ, Feedback Loop, **AI Wizard tạo project, AI Generate (Characters/World), Genre Templates (8 thể loại), Story Bible auto-wiki, World Profile tổng quan** | ✅ Xong |
-| **4 — Canon & Genre** | Tuần 4 | Canon Engine, Scene Contract, Phân cấp địa điểm (tree view), 4+ Genre Packs (Fantasy/Trinh thám/Ngôn tình/Kinh dị) | 🔲 Chưa |
-| **5 — Pipeline & Style** | Tuần 5 | Draft Pipeline 5 bước, Style Lab Lite, QA cơ bản | 🔲 Chưa |
+| **4 — Canon & Genre** | Tuần 4 | Canon Engine, Scene Contract, Phân cấp địa điểm (tree view), 4+ Genre Packs (Fantasy/Trinh thám/Ngôn tình/Kinh dị) | ✅ Xong |
+| **4.5 — Continuity & QA** | Tuần 4-5 | Changelog Timeline, Conflict Detection (AI tự phát hiện mâu thuẫn) | 🔲 Chưa |
+| **5 — Pipeline & Style** | Tuần 5 | Draft Pipeline 5 bước, Style Lab Lite, QA cấu trúc/ngôn từ | 🔲 Chưa |
 | **6 — Polish** | Tuần 6 | Dashboard nâng cao, Export (EPUB/DOCX/PDF), Quota UI, UX polish | 🔲 Chưa |
 
 ---

@@ -13,6 +13,7 @@ import {
 import { WORLD_TERM_CATEGORIES } from '../../utils/constants';
 import AIGenerateButton from '../../components/common/AIGenerateButton';
 import BatchGenerate from '../../components/common/BatchGenerate';
+import EntityTimeline from '../../components/common/EntityTimeline';
 import './WorldLore.css';
 
 const TABS = [
@@ -36,6 +37,7 @@ export default function WorldLore() {
   const [editingItem, setEditingItem] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [showBatchGen, setShowBatchGen] = useState(false);
+  const [modalTab, setModalTab] = useState('info'); // 'info' | 'timeline'
 
   // Form state
   const [form, setForm] = useState({});
@@ -82,6 +84,7 @@ export default function WorldLore() {
   const openCreate = () => {
     setEditingItem(null);
     setForm(getEmptyForm());
+    setModalTab('info');
     setShowModal(true);
   };
 
@@ -94,6 +97,7 @@ export default function WorldLore() {
     } else {
       setForm({ name: item.name || '', definition: item.definition || '', category: item.category || 'other' });
     }
+    setModalTab('info');
     setShowModal(true);
   };
 
@@ -359,114 +363,143 @@ export default function WorldLore() {
                 <X size={18} />
               </button>
             </div>
-            <div className="codex-modal-body">
-              <div className="form-group">
-                <label>Tên *</label>
-                <input
-                  type="text"
-                  value={form.name || ''}
-                  onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder={
-                    activeTab === 'locations' ? 'Ví dụ: Nguyệt Kinh' :
-                    activeTab === 'objects' ? 'Ví dụ: Thanh kiếm Nguyệt Hồn' :
-                    'Ví dụ: Linh khí'
-                  }
-                  autoFocus
-                />
+
+            {editingItem && (
+              <div className="codex-tabs" style={{ padding: '0 24px', borderBottom: '1px solid var(--color-border)' }}>
+                <button
+                  className={`codex-tab ${modalTab === 'info' ? 'codex-tab--active' : ''}`}
+                  onClick={() => setModalTab('info')}
+                >
+                  Thông tin
+                </button>
+                <button
+                  className={`codex-tab ${modalTab === 'timeline' ? 'codex-tab--active' : ''}`}
+                  onClick={() => setModalTab('timeline')}
+                >
+                  Dòng thời gian
+                </button>
               </div>
+            )}
 
-              {/* Location-specific fields */}
-              {activeTab === 'locations' && (
+            <div className="codex-modal-body">
+              {modalTab === 'info' ? (
                 <>
                   <div className="form-group">
-                    <label>Mô tả</label>
-                    <textarea
-                      value={form.description || ''}
-                      onChange={e => setForm({ ...form, description: e.target.value })}
-                      placeholder="Tòa thành cổ nằm trên đỉnh núi, bao quanh bởi sương mù..."
-                      rows={3}
+                    <label>Tên *</label>
+                    <input
+                      type="text"
+                      value={form.name || ''}
+                      onChange={e => setForm({ ...form, name: e.target.value })}
+                      placeholder={
+                        activeTab === 'locations' ? 'Ví dụ: Nguyệt Kinh' :
+                          activeTab === 'objects' ? 'Ví dụ: Thanh kiếm Nguyệt Hồn' :
+                            'Ví dụ: Linh khí'
+                      }
+                      autoFocus
                     />
                   </div>
-                  <div className="form-group">
-                    <label>Chi tiết bổ sung</label>
-                    <textarea
-                      value={form.details || ''}
-                      onChange={e => setForm({ ...form, details: e.target.value })}
-                      placeholder="4 tháp canh, cổng chính hướng đông, có mật đạo dưới hầm..."
-                      rows={3}
-                    />
-                  </div>
-                </>
-              )}
 
-              {/* Object-specific fields */}
-              {activeTab === 'objects' && (
-                <>
-                  <div className="form-group">
-                    <label>Chủ sở hữu</label>
-                    <select
-                      value={form.owner_character_id || ''}
-                      onChange={e => setForm({ ...form, owner_character_id: e.target.value ? Number(e.target.value) : null })}
-                    >
-                      <option value="">— Không có chủ —</option>
-                      {characters.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Mô tả</label>
-                    <textarea
-                      value={form.description || ''}
-                      onChange={e => setForm({ ...form, description: e.target.value })}
-                      placeholder="Thanh kiếm có lưỡi màu bạc, phát sáng trong bóng tối..."
-                      rows={3}
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Thuộc tính</label>
-                    <textarea
-                      value={form.properties || ''}
-                      onChange={e => setForm({ ...form, properties: e.target.value })}
-                      placeholder="Tăng sức mạnh x2, nhưng tiêu hao sinh lực người dùng..."
-                      rows={2}
-                    />
-                  </div>
-                </>
-              )}
+                  {/* Location-specific fields */}
+                  {activeTab === 'locations' && (
+                    <>
+                      <div className="form-group">
+                        <label>Mô tả</label>
+                        <textarea
+                          value={form.description || ''}
+                          onChange={e => setForm({ ...form, description: e.target.value })}
+                          placeholder="Tòa thành cổ nằm trên đỉnh núi, bao quanh bởi sương mù..."
+                          rows={3}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Chi tiết bổ sung</label>
+                        <textarea
+                          value={form.details || ''}
+                          onChange={e => setForm({ ...form, details: e.target.value })}
+                          placeholder="4 tháp canh, cổng chính hướng đông, có mật đạo dưới hầm..."
+                          rows={3}
+                        />
+                      </div>
+                    </>
+                  )}
 
-              {/* Term-specific fields */}
-              {activeTab === 'terms' && (
-                <>
-                  <div className="form-group">
-                    <label>Phân loại</label>
-                    <select
-                      value={form.category || 'other'}
-                      onChange={e => setForm({ ...form, category: e.target.value })}
-                    >
-                      {WORLD_TERM_CATEGORIES.map(c => (
-                        <option key={c.value} value={c.value}>{c.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label>Định nghĩa</label>
-                    <textarea
-                      value={form.definition || ''}
-                      onChange={e => setForm({ ...form, definition: e.target.value })}
-                      placeholder="Năng lượng tự nhiên thẩm thấu khắp nơi, tu sĩ hấp thụ để tăng cảnh giới..."
-                      rows={4}
-                    />
-                  </div>
+                  {/* Object-specific fields */}
+                  {activeTab === 'objects' && (
+                    <>
+                      <div className="form-group">
+                        <label>Chủ sở hữu</label>
+                        <select
+                          value={form.owner_character_id || ''}
+                          onChange={e => setForm({ ...form, owner_character_id: e.target.value ? Number(e.target.value) : null })}
+                        >
+                          <option value="">— Không có chủ —</option>
+                          {characters.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Mô tả</label>
+                        <textarea
+                          value={form.description || ''}
+                          onChange={e => setForm({ ...form, description: e.target.value })}
+                          placeholder="Thanh kiếm có lưỡi màu bạc, phát sáng trong bóng tối..."
+                          rows={3}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Thuộc tính</label>
+                        <textarea
+                          value={form.properties || ''}
+                          onChange={e => setForm({ ...form, properties: e.target.value })}
+                          placeholder="Tăng sức mạnh x2, nhưng tiêu hao sinh lực người dùng..."
+                          rows={2}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* Term-specific fields */}
+                  {activeTab === 'terms' && (
+                    <>
+                      <div className="form-group">
+                        <label>Phân loại</label>
+                        <select
+                          value={form.category || 'other'}
+                          onChange={e => setForm({ ...form, category: e.target.value })}
+                        >
+                          {WORLD_TERM_CATEGORIES.map(c => (
+                            <option key={c.value} value={c.value}>{c.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="form-group">
+                        <label>Định nghĩa</label>
+                        <textarea
+                          value={form.definition || ''}
+                          onChange={e => setForm({ ...form, definition: e.target.value })}
+                          placeholder="Năng lượng tự nhiên thẩm thấu khắp nơi, tu sĩ hấp thụ để tăng cảnh giới..."
+                          rows={4}
+                        />
+                      </div>
+                    </>
+                  )}
                 </>
+              ) : (
+                <EntityTimeline
+                  entityId={editingItem.id}
+                  entityType={activeTab === 'locations' ? 'location' : activeTab === 'objects' ? 'object' : 'worldTerm'}
+                />
               )}
             </div>
 
             <div className="codex-modal-footer">
               <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Huỷ</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={!form.name?.trim()}>
-                <Save size={15} /> {editingItem ? 'Lưu' : 'Tạo'}
-              </button>
+              {modalTab === 'info' && (
+                <button className="btn btn-primary" onClick={handleSave} disabled={!form.name?.trim()}>
+                  <Save size={15} /> {editingItem ? 'Lưu' : 'Tạo'}
+                </button>
+              )}
             </div>
           </div>
         </div>

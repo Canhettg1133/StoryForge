@@ -194,13 +194,14 @@ async function streamSSE(response, { onToken, onComplete, onError }) {
           const p = JSON.parse(d);
           const delta = p.choices?.[0]?.delta?.content || '';
           if (delta) { fullText += delta; onToken?.(delta, fullText); }
-        } catch {}
+        } catch { }
       }
     }
     onComplete?.(fullText);
   } catch (err) {
     if (err.name === 'AbortError') { onComplete?.(fullText); return; }
-    onError?.(err);
+    // Preserve partial text on error
+    if (fullText) { onComplete?.(fullText); } else { onError?.(err); }
   }
 }
 
@@ -222,13 +223,14 @@ async function streamGeminiSSE(response, { onToken, onComplete, onError }) {
           const p = JSON.parse(t.slice(6));
           const text = p.candidates?.[0]?.content?.parts?.[0]?.text || '';
           if (text) { fullText += text; onToken?.(text, fullText); }
-        } catch {}
+        } catch { }
       }
     }
     onComplete?.(fullText);
   } catch (err) {
     if (err.name === 'AbortError') { onComplete?.(fullText); return; }
-    onError?.(err);
+    // Preserve partial text on error
+    if (fullText) { onComplete?.(fullText); } else { onError?.(err); }
   }
 }
 
@@ -251,13 +253,14 @@ async function streamNDJSON(response, { onToken, onComplete, onError }) {
           if (p.done) continue;
           const c = p.message?.content || '';
           if (c) { fullText += c; onToken?.(c, fullText); }
-        } catch {}
+        } catch { }
       }
     }
     onComplete?.(fullText);
   } catch (err) {
     if (err.name === 'AbortError') { onComplete?.(fullText); return; }
-    onError?.(err);
+    // Preserve partial text on error
+    if (fullText) { onComplete?.(fullText); } else { onError?.(err); }
   }
 }
 

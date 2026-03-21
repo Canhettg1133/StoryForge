@@ -44,6 +44,11 @@ const useProjectStore = create((set, get) => ({
       synopsis: data.synopsis || '',
       story_structure: data.story_structure || '',
       pronoun_style: data.pronoun_style || '',
+      // Phase 5 — AI Auto Generation: Pacing Control
+      target_length: data.target_length || 0,
+      target_length_type: data.target_length_type || 'unset',
+      ultimate_goal: data.ultimate_goal || '',
+      milestones: data.milestones || '[]',
       created_at: now,
       updated_at: now,
     });
@@ -58,7 +63,7 @@ const useProjectStore = create((set, get) => ({
         summary: '',
         purpose: '',
         status: 'draft',
-        word_count_target: 3000,
+        word_count_target: 7000,
         actual_word_count: 0,
       });
 
@@ -108,6 +113,7 @@ const useProjectStore = create((set, get) => ({
       db.voicePacks.where('project_id').equals(id).delete(),
       db.aiJobs.where('project_id').equals(id).delete(),
       db.qaReports.where('project_id').equals(id).delete(),
+      db.suggestions.where('project_id').equals(id).delete(),
     ]);
     set({ currentProject: null, chapters: [], scenes: [], activeChapterId: null, activeSceneId: null });
     await get().loadProjects();

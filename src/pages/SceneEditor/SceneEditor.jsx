@@ -3,14 +3,12 @@ import ChapterList from '../../components/common/ChapterList';
 import StoryEditor from '../../components/editor/StoryEditor';
 import AISidebar from '../../components/ai/AISidebar';
 import useProjectStore from '../../stores/projectStore';
-import useUIStore from '../../stores/uiStore';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, PanelRightOpen, PanelRightClose } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import './SceneEditor.css';
 
 export default function SceneEditor() {
   const { currentProject } = useProjectStore();
-  const { rightPanelOpen, toggleRightPanel } = useUIStore();
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
 
@@ -37,17 +35,9 @@ export default function SceneEditor() {
     <div className="scene-editor-layout">
       <ChapterList />
       <div className="scene-editor-main">
-        {/* AI toggle button */}
-        <button
-          className="ai-toggle-btn btn btn-ghost btn-icon"
-          onClick={toggleRightPanel}
-          title={rightPanelOpen ? 'Ẩn AI' : 'Mở AI'}
-        >
-          {rightPanelOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
-        </button>
         <StoryEditor onEditorReady={handleEditorReady} />
       </div>
-      {rightPanelOpen && <AISidebar editor={editorInstance} />}
+      <AISidebar editor={editorInstance} />
     </div>
   );
 }

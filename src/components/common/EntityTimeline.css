@@ -1,0 +1,130 @@
+.entity-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.timeline-header h4 {
+  font-size: var(--text-md);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.timeline-add-box {
+  background: var(--color-surface-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.timeline-add-box input[type="text"] {
+  width: 100%;
+}
+
+.timeline-add-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.timeline-add-row select, .timeline-add-row input[type="number"] {
+  flex: 1;
+}
+
+.timeline-empty {
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--color-text-dim);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.timeline-stepper {
+  position: relative;
+  padding-left: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.timeline-stepper::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  width: 2px;
+  background: var(--color-border);
+}
+
+.timeline-item {
+  position: relative;
+  margin-bottom: var(--space-4);
+}
+
+.timeline-item:last-child {
+  margin-bottom: 0;
+}
+
+.timeline-dot {
+  position: absolute;
+  left: -var(--space-4);
+  top: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-surface-1);
+}
+
+.timeline-content {
+  background: var(--color-surface-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border-left: 2px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.timeline-content:hover {
+  border-left-color: var(--color-accent);
+}
+
+.timeline-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-dim);
+  margin-bottom: var(--space-1);
+}
+
+.timeline-type-badge {
+  background: var(--color-surface-3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.timeline-content p {
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.timeline-del {
+  margin-left: auto;
+  opacity: 0;
+}
+
+.timeline-content:hover .timeline-del {
+  opacity: 1;
+}

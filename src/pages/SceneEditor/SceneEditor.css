@@ -5,24 +5,12 @@
 }
 
 .scene-editor-main {
-  flex: 1;
+  flex: 6;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
-}
-
-.ai-toggle-btn {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  z-index: 10;
-  opacity: 0.6;
-  transition: opacity var(--transition-fast);
-}
-
-.ai-toggle-btn:hover {
-  opacity: 1;
+  min-width: 300px;
 }
 
 .scene-editor-no-project {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -6,6 +6,7 @@ import CharacterCount from '@tiptap/extension-character-count';
 import useProjectStore from '../../stores/projectStore';
 import { countWords } from '../../utils/constants';
 import ContinuityBar from './ContinuityBar';
+import { ChevronDown, ChevronRight, BookOpen, ListChecks } from 'lucide-react';
 import './StoryEditor.css';
 
 export default function StoryEditor({ onEditorReady }) {
@@ -13,6 +14,23 @@ export default function StoryEditor({ onEditorReady }) {
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
   const saveTimerRef = useRef(null);
   const lastSavedRef = useRef('');
+  const [outlinePanelOpen, setOutlinePanelOpen] = useState(true);
+
+  // Parse chapter outline data (summary + key_events from purpose)
+  const chapterOutline = useMemo(() => {
+    const chapter = chapters.find(c => c.id === activeChapterId);
+    if (!chapter) return null;
+    const summary = chapter.summary || '';
+    let keyEvents = [];
+    if (chapter.purpose) {
+      try {
+        const parsed = JSON.parse(chapter.purpose);
+        if (Array.isArray(parsed)) keyEvents = parsed;
+      } catch { /* purpose is plain text, not JSON */ }
+    }
+    if (!summary && keyEvents.length === 0) return null;
+    return { summary, keyEvents };
+  }, [activeChapterId, chapters]);
 
   const editor = useEditor({
     extensions: [
@@ -87,7 +105,8 @@ export default function StoryEditor({ onEditorReady }) {
   const chapterProgress = useMemo(() => {
     const chapter = chapters.find(c => c.id === activeChapterId);
     if (!chapter) return null;
-    const target = chapter.word_count_target || 3000;
+    let target = chapter.word_count_target || 7000;
+    if (target === 3000) target = 7000; // Ép các chương cũ đã lưu 3000 thành 7000
     const chapterScenes = scenes.filter(s => s.chapter_id === activeChapterId);
     const total = chapterScenes.reduce((sum, s) => {
       const text = (s.draft_text || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
@@ -121,6 +140,42 @@ export default function StoryEditor({ onEditorReady }) {
           placeholder="Tên cảnh..."
         />
       </div>
+
+      {/* Chapter Outline Panel — Dàn Ý Chương */}
+      {chapterOutline && (
+        <div className={`chapter-outline-panel ${outlinePanelOpen ? 'chapter-outline-panel--open' : ''}`}>
+          <button
+            className="chapter-outline-toggle"
+            onClick={() => setOutlinePanelOpen(!outlinePanelOpen)}
+          >
+            {outlinePanelOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            <BookOpen size={14} />
+            <span>Dàn Ý Chương</span>
+          </button>
+          {outlinePanelOpen && (
+            <div className="chapter-outline-body">
+              {chapterOutline.summary && (
+                <div className="chapter-outline-section">
+                  <div className="chapter-outline-label">Tóm tắt</div>
+                  <p className="chapter-outline-text">{chapterOutline.summary}</p>
+                </div>
+              )}
+              {chapterOutline.keyEvents.length > 0 && (
+                <div className="chapter-outline-section">
+                  <div className="chapter-outline-label">
+                    <ListChecks size={13} /> Sự kiện chính
+                  </div>
+                  <ul className="chapter-outline-events">
+                    {chapterOutline.keyEvents.map((evt, i) => (
+                      <li key={i}>{evt}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Continuity Bar — "Previously on..." */}
       <ContinuityBar />

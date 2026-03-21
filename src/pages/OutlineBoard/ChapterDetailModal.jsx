@@ -6,11 +6,13 @@
  * Scene Contract: must_happen, must_not_happen, pacing, emotional arc, characters_present.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useProjectStore from '../../stores/projectStore';
+import usePlotStore from '../../stores/plotStore';
+import db from '../../services/db/database';
 import {
   X, Save, PenTool, Target, Zap, Users, MapPin, FileText,
-  ChevronDown, ChevronRight, Heart, Clock, Shield,
+  ChevronDown, ChevronRight, Heart, Clock, Shield, Combine
 } from 'lucide-react';
 import { SCENE_STATUSES } from '../../utils/constants';
 
@@ -30,6 +32,7 @@ export default function ChapterDetailModal({
   onGoEditor,
 }) {
   const { updateChapter, updateScene } = useProjectStore();
+  const { plotThreads, threadBeats, loadThreadBeatsForProject } = usePlotStore();
 
   // Chapter form
   const [chForm, setChForm] = useState({
@@ -46,9 +49,9 @@ export default function ChapterDetailModal({
       let mustHappen = [];
       let mustNotHappen = [];
       let charsPresent = [];
-      try { mustHappen = JSON.parse(s.must_happen || '[]'); } catch {}
-      try { mustNotHappen = JSON.parse(s.must_not_happen || '[]'); } catch {}
-      try { charsPresent = JSON.parse(s.characters_present || '[]'); } catch {}
+      try { mustHappen = JSON.parse(s.must_happen || '[]'); } catch { }
+      try { mustNotHappen = JSON.parse(s.must_not_happen || '[]'); } catch { }
+      try { charsPresent = JSON.parse(s.characters_present || '[]'); } catch { }
       return {
         id: s.id,
         title: s.title || '',
@@ -74,6 +77,17 @@ export default function ChapterDetailModal({
 
   const [expandedScene, setExpandedScene] = useState(scenes[0]?.id || null);
   const [saving, setSaving] = useState(false);
+
+  // Scene Beats (mapping sceneId -> string[] of plot_thread_id)
+  const [sceneBeats, setSceneBeats] = useState({});
+
+  useEffect(() => {
+    const beats = {};
+    scenes.forEach(s => {
+      beats[s.id] = threadBeats.filter(b => b.scene_id === s.id).map(b => b.plot_thread_id);
+    });
+    setSceneBeats(beats);
+  }, [threadBeats, scenes]);
 
   const updateSceneForm = (sceneId, field, value) => {
     setSceneForms(prev => prev.map(sf =>
@@ -111,6 +125,25 @@ export default function ChapterDetailModal({
         characters_present: JSON.stringify(sf.characters_present || []),
       });
     }
+
+    // Save thread beats
+    for (const sceneIdStr of Object.keys(sceneBeats)) {
+      const sceneId = Number(sceneIdStr);
+      const selectedThreadIds = sceneBeats[sceneId] || [];
+
+      const oldBeats = await db.threadBeats.where('scene_id').equals(sceneId).toArray();
+      const oldIds = oldBeats.map(b => b.id);
+      if (oldIds.length) await db.threadBeats.bulkDelete(oldIds);
+
+      const newBeats = selectedThreadIds.map(tid => ({
+        plot_thread_id: tid,
+        scene_id: sceneId,
+        beat_type: 'develop'
+      }));
+      if (newBeats.length) await db.threadBeats.bulkAdd(newBeats);
+    }
+
+    await loadThreadBeatsForProject(chapter.project_id);
 
     setSaving(false);
     onClose();
@@ -376,6 +409,44 @@ export default function ChapterDetailModal({
                                 placeholder="Nhập rồi nhấn Enter..."
                               />
                             </div>
+                          </div>
+
+                          {/* Plot Threads */}
+                          <div className="form-group">
+                            <label><Combine size={12} /> Tuyến truyện (Plot Threads)</label>
+                            <div className="tag-list">
+                              {(sceneBeats[sf.id] || []).map((tid, i) => {
+                                const t = plotThreads.find(x => x.id === tid);
+                                return t ? (
+                                  <span key={i} className="tag tag--info" style={{ backgroundColor: 'var(--color-surface-3)' }}>
+                                    {t.title}
+                                    <button type="button" onClick={() => {
+                                      setSceneBeats(prev => ({
+                                        ...prev,
+                                        [sf.id]: prev[sf.id].filter(id => id !== tid)
+                                      }));
+                                    }}>×</button>
+                                  </span>
+                                ) : null;
+                              })}
+                            </div>
+                            <select
+                              value=""
+                              onChange={e => {
+                                const id = Number(e.target.value);
+                                if (id && !(sceneBeats[sf.id] || []).includes(id)) {
+                                  setSceneBeats(prev => ({
+                                    ...prev,
+                                    [sf.id]: [...(prev[sf.id] || []), id]
+                                  }));
+                                }
+                              }}
+                            >
+                              <option value="">+ Gắn tuyến truyện...</option>
+                              {plotThreads.filter(t => t.state === 'active' && !(sceneBeats[sf.id] || []).includes(t.id)).map(t => (
+                                <option key={t.id} value={t.id}>{t.title}</option>
+                              ))}
+                            </select>
                           </div>
 
                           {/* Characters Present */}

@@ -19,8 +19,9 @@ import {
   BookMarked, BookOpen, Users, MapPin, Package, Shield,
   Star, Sword, UserCheck, Heart, ChevronRight, ChevronDown,
   Eye, MessageSquare, Save, Edit3, Check, Settings, FileText,
-  Terminal, BookKey, Plus, X, Trash2, RotateCcw,
+  Terminal, BookKey, Plus, X, Trash2, RotateCcw, Sparkles,
 } from 'lucide-react';
+import SuggestionInbox from '../../components/ai/SuggestionInbox';
 import './StoryBible.css';
 
 const ROLE_ICONS = {
@@ -66,14 +67,20 @@ export default function StoryBible() {
   const [storyStructure, setStoryStructure] = useState('');
   const [aiGuidelines, setAiGuidelines] = useState('');
   const [aiStrictness, setAiStrictness] = useState('balanced');
-  
+
+  // Phase 5 Pacing Control
+  const [targetLength, setTargetLength] = useState(0);
+  const [targetLengthType, setTargetLengthType] = useState('unset');
+  const [ultimateGoal, setUltimateGoal] = useState('');
+  const [milestonesInfo, setMilestonesInfo] = useState([]);
+
   // Prompt Templates local state
   const [promptTemplates, setPromptTemplates] = useState({});
 
   // Collapsible sections
   const [openSections, setOpenSections] = useState({
-    overview: true, ai: false, prompts: false, canon: true, characters: true,
-    locations: true, objects: true, terms: true, summaries: true,
+    overview: true, ai: false, prompts: false, suggestions: true, canon: true,
+    characters: true, locations: true, objects: true, terms: true, summaries: true,
   });
 
   const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
@@ -92,6 +99,14 @@ export default function StoryBible() {
       setStoryStructure(currentProject.story_structure || '');
       setAiGuidelines(currentProject.ai_guidelines || '');
       setAiStrictness(currentProject.ai_strictness || 'balanced');
+      setTargetLength(currentProject.target_length || 0);
+      setTargetLengthType(currentProject.target_length_type || 'unset');
+      setUltimateGoal(currentProject.ultimate_goal || '');
+      try {
+        setMilestonesInfo(JSON.parse(currentProject.milestones || '[]'));
+      } catch (e) {
+        setMilestonesInfo([]);
+      }
       try {
         setPromptTemplates(currentProject.prompt_templates ? JSON.parse(currentProject.prompt_templates) : {});
       } catch (e) {
@@ -108,6 +123,29 @@ export default function StoryBible() {
   const synopsisSaved = useAutoSave(synopsis, (v) => save({ synopsis: v }));
   const guidelinesSaved = useAutoSave(aiGuidelines, (v) => save({ ai_guidelines: v }));
   const promptsSaved = useAutoSave(promptTemplates, (v) => save({ prompt_templates: JSON.stringify(v) }), 1500);
+
+  const ultimateGoalSaved = useAutoSave(ultimateGoal, (v) => save({ ultimate_goal: v }));
+  const targetLengthSaved = useAutoSave(targetLength, (v) => save({ target_length: Number(v) || 0 }));
+  const milestonesSaved = useAutoSave(milestonesInfo, (v) => save({ milestones: JSON.stringify(v) }), 1500);
+
+  const handleTargetLengthTypeChange = (v) => {
+    setTargetLengthType(v);
+    let newLen = targetLength;
+    if (v === 'short') newLen = 50;
+    else if (v === 'medium') newLen = 150;
+    else if (v === 'long') newLen = 400;
+    else if (v === 'epic') newLen = 800;
+    setTargetLength(newLen);
+    save({ target_length_type: v, target_length: newLen });
+  };
+
+  const addMilestone = () => setMilestonesInfo(prev => [...prev, { percent: 50, description: '' }]);
+  const updateMilestone = (idx, field, val) => {
+    const next = [...milestonesInfo];
+    next[idx] = { ...next[idx], [field]: val };
+    setMilestonesInfo(next);
+  };
+  const removeMilestone = (idx) => setMilestonesInfo(prev => prev.filter((_, i) => i !== idx));
 
   // Immediate save for dropdowns
   const handleGenreChange = (v) => {
@@ -238,6 +276,47 @@ export default function StoryBible() {
               />
             </div>
 
+            {/* Pacing Control (Phase 5) */}
+            <div className="bible-edit-row" style={{ marginTop: '16px' }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Độ dài dự kiến</label>
+                <select className="select" value={targetLengthType} onChange={(e) => handleTargetLengthTypeChange(e.target.value)}>
+                  <option value="unset">Chưa xác định</option>
+                  <option value="short">Truyện ngắn (30-50 chương)</option>
+                  <option value="medium">Truyện vừa (100-200 chương)</option>
+                  <option value="long">Trường thiên (300-500 chương)</option>
+                  <option value="epic">Sử thi (500+ chương)</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Số chương mục tiêu {targetLengthSaved && <span className="save-indicator">Đã lưu</span>}</label>
+                <input type="number" className="input" value={targetLength} onChange={(e) => setTargetLength(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Đích đến tối thượng (Long-term Goal) {ultimateGoalSaved && <span className="save-indicator">Đã lưu</span>}</label>
+              <textarea className="textarea" value={ultimateGoal} onChange={(e) => setUltimateGoal(e.target.value)} rows={2}
+                placeholder="VD: Main đạt cảnh giới Thần Tôn và báo thù diệt tộc. (AI lấy để tránh end sớm)"
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Cột mốc lớn (Milestones) {milestonesSaved && <span className="save-indicator">Đã lưu</span>}
+                <button className="btn btn-ghost btn-xs ml-2" onClick={addMilestone}><Plus size={12} /> Thêm</button>
+              </label>
+              {milestonesInfo.map((m, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <input type="number" className="input" style={{ width: '80px' }} value={m.percent} onChange={e => updateMilestone(idx, 'percent', Number(e.target.value))} placeholder="%" />
+                  <span style={{ alignSelf: 'center', fontSize: '12px' }}>%</span>
+                  <input className="input" style={{ flex: 1 }} value={m.description} onChange={e => updateMilestone(idx, 'description', e.target.value)} placeholder="Mô tả cột mốc..." />
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeMilestone(idx)}><X size={14} /></button>
+                </div>
+              ))}
+              {milestonesInfo.length === 0 && <span className="form-hint" style={{ marginTop: '0' }}>Chia cốt truyện thành các phần trăm để AI dẫn dắt tốt hơn.</span>}
+            </div>
+
             {/* Description */}
             <div className="form-group">
               <label className="form-label">Mo ta {descSaved && <span className="save-indicator">Da luu</span>}</label>
@@ -313,10 +392,10 @@ export default function StoryBible() {
                       <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Mặc định:</span> {defaultPrompt.substring(0, 200)}{defaultPrompt.length > 200 ? '...' : ''}
                     </div>
                   )}
-                  <textarea 
-                    className="textarea" 
-                    value={promptTemplates[taskType] || ''} 
-                    onChange={(e) => handlePromptChange(taskType, e.target.value)} 
+                  <textarea
+                    className="textarea"
+                    value={promptTemplates[taskType] || ''}
+                    onChange={(e) => handlePromptChange(taskType, e.target.value)}
                     rows={2}
                     placeholder="Để trống = dùng mặc định ở trên"
                   />
@@ -328,6 +407,19 @@ export default function StoryBible() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      {/* ═══ SECTION: Suggestion Inbox ═══ */}
+      <div className="bible-section">
+        <SectionHeader icon={Sparkles} title="Suggestion Inbox" sectionKey="suggestions" />
+        {openSections.suggestions && currentProject && (
+          <div className="bible-edit-card">
+            <SuggestionInbox
+              projectId={currentProject.id}
+              onAccepted={() => loadCodex(currentProject.id)}
+            />
           </div>
         )}
       </div>
@@ -348,21 +440,21 @@ export default function StoryBible() {
             {activeCanonFacts.map(fact => (
               <div key={fact.id} className="bible-edit-card" style={{ gap: 'var(--space-2)' }}>
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-                  <select 
-                    className="select" 
-                    style={{ width: '120px' }} 
-                    value={fact.fact_type} 
+                  <select
+                    className="select"
+                    style={{ width: '120px' }}
+                    value={fact.fact_type}
                     onChange={(e) => updateCanonFact(fact.id, { fact_type: e.target.value })}
                   >
                     <option value="fact">Sự thật</option>
                     <option value="secret">Bí mật</option>
                     <option value="rule">Quy tắc</option>
                   </select>
-                  <input 
-                    className="input" 
-                    style={{ flex: 1 }} 
-                    value={fact.description} 
-                    onChange={(e) => updateCanonFact(fact.id, { description: e.target.value })} 
+                  <input
+                    className="input"
+                    style={{ flex: 1 }}
+                    value={fact.description}
+                    onChange={(e) => updateCanonFact(fact.id, { description: e.target.value })}
                     placeholder="Mô tả sự thật / bí mật / quy luật..."
                   />
                   <button className="btn btn-icon text-danger" onClick={() => updateCanonFact(fact.id, { status: 'deprecated' })} title="Lưu trữ">

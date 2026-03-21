@@ -73,7 +73,7 @@ export async function gatherContext({
 
   // World Profile
   let worldRules = [];
-  try { worldRules = JSON.parse(project?.world_rules || '[]'); } catch {}
+  try { worldRules = JSON.parse(project?.world_rules || '[]'); } catch { }
   const worldProfile = {
     name: project?.world_name || '',
     type: project?.world_type || '',
@@ -82,6 +82,13 @@ export async function gatherContext({
     rules: worldRules,
     description: project?.world_description || '',
   };
+
+  // Pacing Control fields (Phase 5)
+  const targetLength = project?.target_length || 0;
+  const targetLengthType = project?.target_length_type || 'unset';
+  const ultimateGoal = project?.ultimate_goal || '';
+  let milestones = [];
+  try { milestones = JSON.parse(project?.milestones || '[]'); } catch { }
 
   // AI settings from project
   const aiGuidelines = project?.ai_guidelines || '';
@@ -176,9 +183,9 @@ export async function gatherContext({
       let mustHappen = [];
       let mustNotHappen = [];
       let charactersPresent = [];
-      try { mustHappen = JSON.parse(scene.must_happen || '[]'); } catch {}
-      try { mustNotHappen = JSON.parse(scene.must_not_happen || '[]'); } catch {}
-      try { charactersPresent = JSON.parse(scene.characters_present || '[]'); } catch {}
+      try { mustHappen = JSON.parse(scene.must_happen || '[]'); } catch { }
+      try { mustNotHappen = JSON.parse(scene.must_not_happen || '[]'); } catch { }
+      try { charactersPresent = JSON.parse(scene.characters_present || '[]'); } catch { }
 
       sceneContract = {
         goal: scene.goal || '',
@@ -207,6 +214,24 @@ export async function gatherContext({
     return true;
   });
 
+  // --- Phase 4.5/5: Plot Threads ---
+  let activePlotThreads = [];
+  try {
+    const allThreads = await db.plotThreads.where('project_id').equals(projectId).toArray();
+    activePlotThreads = allThreads.filter(pt => pt.state === 'active');
+
+    if (sceneId) {
+      const beats = await db.threadBeats.where('scene_id').equals(sceneId).toArray();
+      const beatThreadIds = beats.map(b => b.plot_thread_id);
+      activePlotThreads = activePlotThreads.map(pt => ({
+        ...pt,
+        is_focus_in_scene: beatThreadIds.includes(pt.id)
+      }));
+    }
+  } catch (e) {
+    console.error('Error loading plot threads in context engine:', e);
+  }
+
   return {
     characters: detectedCharacters,
     locations: detectedLocations,
@@ -217,12 +242,18 @@ export async function gatherContext({
     worldProfile,
     genre,
     allCharacters,
-    // Phase 4 additions
+    // Phase 4/5 additions
     aiGuidelines,
     aiStrictness,
     relationships,
     sceneContract,
     canonFacts,
+    plotThreads: activePlotThreads,
+    targetLength,
+    targetLengthType,
+    ultimateGoal,
+    milestones,
+    currentChapterIndex: chapterIndex,
   };
 }
 

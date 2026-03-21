@@ -16,6 +16,7 @@ import {
 import AIGenerateButton from '../../components/common/AIGenerateButton';
 import BatchGenerate from '../../components/common/BatchGenerate';
 import RelationshipMap from '../../components/common/RelationshipMap';
+import EntityTimeline from '../../components/common/EntityTimeline';
 import './CharacterHub.css';
 
 const EMPTY_CHARACTER = {
@@ -57,6 +58,7 @@ export default function CharacterHub() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [showBatchGen, setShowBatchGen] = useState(false);
   const [showRelMap, setShowRelMap] = useState(false);
+  const [modalTab, setModalTab] = useState('info'); // 'info' | 'timeline'
 
   // Taboo form
   const [showTabooModal, setShowTabooModal] = useState(false);
@@ -83,6 +85,7 @@ export default function CharacterHub() {
       pronouns_self: preset.default_self,
       pronouns_other: preset.default_other,
     });
+    setModalTab('info');
     setShowModal(true);
   };
 
@@ -101,6 +104,7 @@ export default function CharacterHub() {
       personality_tags: char.personality_tags || '',
       current_status: char.current_status || '',
     });
+    setModalTab('info');
     setShowModal(true);
   };
 
@@ -285,10 +289,10 @@ export default function CharacterHub() {
                         ))}
                       </div>
                     )}
-                    
+
                     {char.current_status && (
                       <p className="character-snippet" style={{ color: 'var(--color-warning)', fontWeight: 500 }}>
-                        <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }}/>
+                        <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }} />
                         Trạng thái: {char.current_status}
                       </p>
                     )}
@@ -359,152 +363,177 @@ export default function CharacterHub() {
               </button>
             </div>
 
+            {editingChar && (
+              <div className="codex-tabs" style={{ padding: '0 24px', borderBottom: '1px solid var(--color-border)' }}>
+                <button
+                  className={`codex-tab ${modalTab === 'info' ? 'codex-tab--active' : ''}`}
+                  onClick={() => setModalTab('info')}
+                >
+                  Thông tin
+                </button>
+                <button
+                  className={`codex-tab ${modalTab === 'timeline' ? 'codex-tab--active' : ''}`}
+                  onClick={() => setModalTab('timeline')}
+                >
+                  Dòng thời gian
+                </button>
+              </div>
+            )}
+
             <div className="codex-modal-body">
-              <div className="form-row">
-                <div className="form-group form-group--wide">
-                  <label>Tên nhân vật *</label>
-                  <input
-                    type="text"
-                    value={form.name}
-                    onChange={e => setForm({ ...form, name: e.target.value })}
-                    placeholder="Ví dụ: Lý Minh"
-                    autoFocus
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Vai trò</label>
-                  <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                    {CHARACTER_ROLES.map(r => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Pronouns */}
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Cách xưng hô (tự xưng)</label>
-                  <div className="pronoun-input-group">
-                    <input
-                      type="text"
-                      value={form.pronouns_self}
-                      onChange={e => setForm({ ...form, pronouns_self: e.target.value })}
-                      placeholder={preset.default_self}
-                    />
-                    <div className="pronoun-presets">
-                      {preset.options.slice(0, 6).map(p => (
-                        <button
-                          key={p} type="button"
-                          className={`pronoun-chip ${form.pronouns_self === p ? 'pronoun-chip--active' : ''}`}
-                          onClick={() => setForm({ ...form, pronouns_self: p })}
-                        >{p}</button>
-                      ))}
+              {modalTab === 'info' ? (
+                <>
+                  <div className="form-row">
+                    <div className="form-group form-group--wide">
+                      <label>Tên nhân vật *</label>
+                      <input
+                        type="text"
+                        value={form.name}
+                        onChange={e => setForm({ ...form, name: e.target.value })}
+                        placeholder="Ví dụ: Lý Minh"
+                        autoFocus
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Vai trò</label>
+                      <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+                        {CHARACTER_ROLES.map(r => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
-                </div>
-                <div className="form-group">
-                  <label>Cách gọi người khác</label>
-                  <div className="pronoun-input-group">
-                    <input
-                      type="text"
-                      value={form.pronouns_other}
-                      onChange={e => setForm({ ...form, pronouns_other: e.target.value })}
-                      placeholder={preset.default_other}
-                    />
-                    <div className="pronoun-presets">
-                      {preset.options.slice(0, 6).map(p => (
-                        <button
-                          key={p} type="button"
-                          className={`pronoun-chip ${form.pronouns_other === p ? 'pronoun-chip--active' : ''}`}
-                          onClick={() => setForm({ ...form, pronouns_other: p })}
-                        >{p}</button>
-                      ))}
+
+                  {/* Pronouns */}
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Cách xưng hô (tự xưng)</label>
+                      <div className="pronoun-input-group">
+                        <input
+                          type="text"
+                          value={form.pronouns_self}
+                          onChange={e => setForm({ ...form, pronouns_self: e.target.value })}
+                          placeholder={preset.default_self}
+                        />
+                        <div className="pronoun-presets">
+                          {preset.options.slice(0, 6).map(p => (
+                            <button
+                              key={p} type="button"
+                              className={`pronoun-chip ${form.pronouns_self === p ? 'pronoun-chip--active' : ''}`}
+                              onClick={() => setForm({ ...form, pronouns_self: p })}
+                            >{p}</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Cách gọi người khác</label>
+                      <div className="pronoun-input-group">
+                        <input
+                          type="text"
+                          value={form.pronouns_other}
+                          onChange={e => setForm({ ...form, pronouns_other: e.target.value })}
+                          placeholder={preset.default_other}
+                        />
+                        <div className="pronoun-presets">
+                          {preset.options.slice(0, 6).map(p => (
+                            <button
+                              key={p} type="button"
+                              className={`pronoun-chip ${form.pronouns_other === p ? 'pronoun-chip--active' : ''}`}
+                              onClick={() => setForm({ ...form, pronouns_other: p })}
+                            >{p}</button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-              <div className="pronoun-genre-hint">
-                Preset: <strong>{preset.label}</strong> (theo thể loại truyện)
-              </div>
+                  <div className="pronoun-genre-hint">
+                    Preset: <strong>{preset.label}</strong> (theo thể loại truyện)
+                  </div>
 
-              <div className="form-group">
-                <label>Ngoại hình</label>
-                <textarea
-                  value={form.appearance}
-                  onChange={e => setForm({ ...form, appearance: e.target.value })}
-                  placeholder="Cao, tóc dài, mặc áo xanh đậm, vết sẹo trên mặt trái..."
-                  rows={2}
-                />
-              </div>
+                  <div className="form-group">
+                    <label>Ngoại hình</label>
+                    <textarea
+                      value={form.appearance}
+                      onChange={e => setForm({ ...form, appearance: e.target.value })}
+                      placeholder="Cao, tóc dài, mặc áo xanh đậm, vết sẹo trên mặt trái..."
+                      rows={2}
+                    />
+                  </div>
 
-              <div className="form-group">
-                <label>Tính cách</label>
-                <textarea
-                  value={form.personality}
-                  onChange={e => setForm({ ...form, personality: e.target.value })}
-                  placeholder="Trầm tĩnh, lạnh lùng bên ngoài nhưng bảo vệ người thân..."
-                  rows={2}
-                />
-              </div>
+                  <div className="form-group">
+                    <label>Tính cách</label>
+                    <textarea
+                      value={form.personality}
+                      onChange={e => setForm({ ...form, personality: e.target.value })}
+                      placeholder="Trầm tĩnh, lạnh lùng bên ngoài nhưng bảo vệ người thân..."
+                      rows={2}
+                    />
+                  </div>
 
-              <div className="form-group">
-                <label>Tags Tâm lý / Nét đặc trưng</label>
-                <input
-                  type="text"
-                  value={form.personality_tags}
-                  onChange={e => setForm({ ...form, personality_tags: e.target.value })}
-                  placeholder="Ví dụ: #Kiên_nhẫn, #Quyết_đoán, #Thâm_trầm"
-                />
-              </div>
+                  <div className="form-group">
+                    <label>Tags Tâm lý / Nét đặc trưng</label>
+                    <input
+                      type="text"
+                      value={form.personality_tags}
+                      onChange={e => setForm({ ...form, personality_tags: e.target.value })}
+                      placeholder="Ví dụ: #Kiên_nhẫn, #Quyết_đoán, #Thâm_trầm"
+                    />
+                  </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Mục tiêu</label>
-                  <textarea
-                    value={form.goals}
-                    onChange={e => setForm({ ...form, goals: e.target.value })}
-                    placeholder="Tìm lại sư phụ, khôi phục môn phái..."
-                    rows={2}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Trạng thái hiện tại (bối cảnh cho AI)</label>
-                  <textarea
-                    value={form.current_status}
-                    onChange={e => setForm({ ...form, current_status: e.target.value })}
-                    placeholder="Ví dụ: Đang bị thương nặng ở tay trái, mất trí nhớ tạm thời..."
-                    rows={2}
-                  />
-                </div>
-              </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Mục tiêu</label>
+                      <textarea
+                        value={form.goals}
+                        onChange={e => setForm({ ...form, goals: e.target.value })}
+                        placeholder="Tìm lại sư phụ, khôi phục môn phái..."
+                        rows={2}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Trạng thái hiện tại (bối cảnh cho AI)</label>
+                      <textarea
+                        value={form.current_status}
+                        onChange={e => setForm({ ...form, current_status: e.target.value })}
+                        placeholder="Ví dụ: Đang bị thương nặng ở tay trái, mất trí nhớ tạm thời..."
+                        rows={2}
+                      />
+                    </div>
+                  </div>
 
-              <div className="form-group">
-                <label>Bí mật</label>
-                <textarea
-                  value={form.secrets}
-                  onChange={e => setForm({ ...form, secrets: e.target.value })}
-                  placeholder="Thực ra là con trai bị thất lạc của..."
-                  rows={2}
-                />
-              </div>
+                  <div className="form-group">
+                    <label>Bí mật</label>
+                    <textarea
+                      value={form.secrets}
+                      onChange={e => setForm({ ...form, secrets: e.target.value })}
+                      placeholder="Thực ra là con trai bị thất lạc của..."
+                      rows={2}
+                    />
+                  </div>
 
-              <div className="form-group">
-                <label>Ghi chú</label>
-                <textarea
-                  value={form.notes}
-                  onChange={e => setForm({ ...form, notes: e.target.value })}
-                  placeholder="Ghi chú riêng..."
-                  rows={2}
-                />
-              </div>
+                  <div className="form-group">
+                    <label>Ghi chú</label>
+                    <textarea
+                      value={form.notes}
+                      onChange={e => setForm({ ...form, notes: e.target.value })}
+                      placeholder="Ghi chú riêng..."
+                      rows={2}
+                    />
+                  </div>
+                </>
+              ) : (
+                <EntityTimeline entityId={editingChar.id} entityType="character" />
+              )}
             </div>
 
             <div className="codex-modal-footer">
               <button className="btn btn-ghost" onClick={() => setShowModal(false)}>Huỷ</button>
-              <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim()}>
-                <Save size={15} /> {editingChar ? 'Lưu' : 'Tạo'}
-              </button>
+              {modalTab === 'info' && (
+                <button className="btn btn-primary" onClick={handleSave} disabled={!form.name.trim()}>
+                  <Save size={15} /> {editingChar ? 'Lưu' : 'Tạo'}
+                </button>
+              )}
             </div>
           </div>
         </div>

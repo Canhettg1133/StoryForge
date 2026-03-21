@@ -16,21 +16,21 @@ export const PROVIDERS = {
 
 // --- Gemini Direct: Free-tier models with real quota ---
 export const DIRECT_MODELS = [
-  { id: 'gemini-2.5-flash',      label: 'Gemini 2.5 Flash',      rpm: 5,  rpd: 20,   default: true },
-  { id: 'gemini-3-flash',        label: 'Gemini 3 Flash',        rpm: 5,  rpd: 20,   default: true },
-  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', rpm: 10, rpd: 20,   default: true },
-  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', rpm: 15, rpd: 500,  default: true },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', rpm: 5, rpd: 20, default: true },
+  { id: 'gemini-3-flash', label: 'Gemini 3 Flash', rpm: 5, rpd: 20, default: true },
+  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', rpm: 10, rpd: 20, default: true },
+  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', rpm: 15, rpd: 500, default: true },
 ];
 
 // --- Gemini Proxy: 星星 真流 models ---
 export const PROXY_MODELS = [
-  { id: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',        label: '2.5 Flash',       tier: 'flash' },
-  { id: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',      label: '3 Flash High',    tier: 'flash' },
-  { id: 'gemini-3-flash-medium-真流-[星星公益站-CLI渠道]',    label: '3 Flash Medium',  tier: 'flash' },
-  { id: 'gemini-3-flash-preview-真流-[星星公益站-CLI渠道]',   label: '3 Flash Preview', tier: 'flash' },
-  { id: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',           label: '2.5 Pro',         tier: 'pro' },
-  { id: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',        label: '3 Pro High',      tier: 'pro' },
-  { id: 'gemini-3-pro-low-真流-[星星公益站-CLI渠道]',         label: '3 Pro Low',       tier: 'pro' },
+  { id: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]', label: '2.5 Flash', tier: 'flash' },
+  { id: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]', label: '3 Flash High', tier: 'flash' },
+  { id: 'gemini-3-flash-medium-真流-[星星公益站-CLI渠道]', label: '3 Flash Medium', tier: 'flash' },
+  { id: 'gemini-3-flash-preview-真流-[星星公益站-CLI渠道]', label: '3 Flash Preview', tier: 'flash' },
+  { id: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]', label: '2.5 Pro', tier: 'pro' },
+  { id: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]', label: '3 Pro High', tier: 'pro' },
+  { id: 'gemini-3-pro-low-真流-[星星公益站-CLI渠道]', label: '3 Pro Low', tier: 'pro' },
 ];
 
 // --- Task Types ---
@@ -48,6 +48,7 @@ export const TASK_TYPES = {
   STYLE_ANALYZE: 'style_analyze',
   STYLE_WRITE: 'style_write',
   QA_CHECK: 'qa_check',
+  CHECK_CONFLICT: 'check_conflict',
   FREE_PROMPT: 'free_prompt',
   // Phase 3 — Memory
   CHAPTER_SUMMARY: 'chapter_summary',
@@ -55,6 +56,11 @@ export const TASK_TYPES = {
   // AI Enhancement
   AI_GENERATE_ENTITY: 'ai_generate_entity',
   PROJECT_WIZARD: 'project_wizard',
+  // Phase A — Suggestion Inbox
+  SUGGEST_UPDATES: 'suggest_updates',
+  // Phase 5 — AI Auto Generation
+  ARC_OUTLINE: 'arc_outline',
+  ARC_CHAPTER_DRAFT: 'arc_chapter_draft',
 };
 
 // --- Quality Modes ---
@@ -66,69 +72,95 @@ export const QUALITY_MODES = {
 
 // ─── Direct: quality → model ───
 const DIRECT_QUALITY_MAP = {
-  fast:     'gemini-3.1-flash-lite',
+  fast: 'gemini-3.1-flash-lite',
   balanced: 'gemini-2.5-flash',
-  best:     'gemini-3-flash',
+  best: 'gemini-3-flash',
 };
 
 // ─── Proxy: task-specific model mapping ───
 const PROXY_DEFAULT = {
-  fast:     'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+  fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
   balanced: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
-  best:     'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+  best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
 };
 
 const PROXY_TASK_MAP = {
   scene_draft: {
-    fast:     'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
   },
   continue: {
-    fast:     'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
   },
   rewrite: {
-    fast:     'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
   },
   expand: {
-    fast:     'gemini-3-flash-medium-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-3-flash-medium-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
   },
   summarize: {
-    fast:     'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
   },
   extract_terms: {
-    fast:     'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
   },
   // Phase 3 — Flash tasks (analytical, not creative)
   chapter_summary: {
-    fast:     'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
   },
   feedback_extract: {
-    fast:     'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
   },
   ai_generate_entity: {
-    fast:     'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
   },
   project_wizard: {
-    fast:     'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
-    best:     'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+  },
+  // Phase A — Suggestion Inbox (analytical)
+  suggest_updates: {
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+  },
+  arc_outline: {
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
+  },
+  arc_chapter_draft: {
+    fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
+  },
+  check_conflict: {
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
+  },
+  free_prompt: {
+    fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
   },
 };
 
@@ -139,7 +171,7 @@ function getActiveDirectModels() {
   try {
     const saved = localStorage.getItem(ACTIVE_MODELS_KEY);
     if (saved) return JSON.parse(saved);
-  } catch {}
+  } catch { }
   return DIRECT_MODELS.filter(m => m.default).map(m => ({ id: m.id, rpm: m.rpm }));
 }
 

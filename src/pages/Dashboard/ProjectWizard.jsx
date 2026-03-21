@@ -17,7 +17,7 @@ import { buildPrompt } from '../../services/ai/promptBuilder';
 import {
   Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
   RotateCcw, Users, MapPin, BookOpen, List, AlertCircle,
-  Trash2, Globe, Eye, MessageSquare,
+  Trash2, Globe, Eye, MessageSquare, Plus,
 } from 'lucide-react';
 import './ProjectWizard.css';
 
@@ -36,6 +36,29 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE['fantasy'] || 'phuong_tay');
   const [synopsis, setSynopsis] = useState('');
   const [storyStructure, setStoryStructure] = useState('');
+
+  // Phase 5: Pacing Fields
+  const [targetLength, setTargetLength] = useState(0);
+  const [targetLengthType, setTargetLengthType] = useState('unset');
+  const [ultimateGoal, setUltimateGoal] = useState('');
+  const [milestonesInfo, setMilestonesInfo] = useState([]);
+
+  const handleTargetLengthTypeChange = (v) => {
+    setTargetLengthType(v);
+    let newLen = targetLength;
+    if (v === 'short') newLen = 50;
+    else if (v === 'medium') newLen = 150;
+    else if (v === 'long') newLen = 400;
+    else if (v === 'epic') newLen = 800;
+    setTargetLength(newLen);
+  };
+  const addMilestone = () => setMilestonesInfo(prev => [...prev, { percent: 50, description: '' }]);
+  const updateMilestone = (idx, field, val) => {
+    const next = [...milestonesInfo];
+    next[idx] = { ...next[idx], [field]: val };
+    setMilestonesInfo(next);
+  };
+  const removeMilestone = (idx) => setMilestonesInfo(prev => prev.filter((_, i) => i !== idx));
 
   const handleGenreChange = (val) => {
     setGenre(val);
@@ -90,7 +113,7 @@ Trả về CHÍNH XÁC JSON format:
     "world_rules": ["Quy tắc 1", "Quy tắc 2", "Quy tắc 3"],
     "world_description": "Mô tả tổng quan thế giới 2-3 câu"
   },
-  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "goals": "..."}],
+  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "goals": "..."}],
   "locations": [{"name": "...", "description": "..."}],
   "terms": [{"name": "...", "definition": "...", "category": "magic|organization|race|technology|other"}],
   "chapters": [{"title": "Chương 1: ...", "summary": "Tóm tắt nội dung chương"}]
@@ -164,6 +187,10 @@ Chỉ trả về JSON, không thêm gì khác.`,
         pronoun_style: pronounStyle,
         synopsis: synopsis || result.premise || '',
         story_structure: storyStructure,
+        target_length: Number(targetLength) || 0,
+        target_length_type: targetLengthType,
+        ultimate_goal: ultimateGoal,
+        milestones: JSON.stringify(milestonesInfo),
         skipFirstChapter: true, // AI Wizard creates chapters itself
       });
 
@@ -188,6 +215,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
               role: c.role || 'supporting',
               appearance: c.appearance || '',
               personality: c.personality || '',
+              personality_tags: c.personality_tags || '',
               goals: c.goals || '',
             });
           }
@@ -317,6 +345,47 @@ Chỉ trả về JSON, không thêm gì khác.`,
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
               </select>
+            </div>
+
+            {/* Pacing Control (Phase 5) */}
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Độ dài dự kiến</label>
+                <select className="select" value={targetLengthType} onChange={(e) => handleTargetLengthTypeChange(e.target.value)}>
+                  <option value="unset">Chưa xác định</option>
+                  <option value="short">Truyện ngắn (30-50 chương)</option>
+                  <option value="medium">Truyện vừa (100-200 chương)</option>
+                  <option value="long">Trường thiên (300-500 chương)</option>
+                  <option value="epic">Sử thi (500+ chương)</option>
+                </select>
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Số chương mục tiêu</label>
+                <input type="number" className="input" value={targetLength} onChange={(e) => setTargetLength(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Đích đến tối thượng (Long-term Goal)</label>
+              <textarea className="textarea" value={ultimateGoal} onChange={(e) => setUltimateGoal(e.target.value)} rows={2}
+                placeholder="VD: Main đạt cảnh giới Thần Tôn và báo thù diệt tộc."
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Cột mốc lớn (Milestones)
+                <button className="btn btn-ghost btn-xs ml-2" onClick={addMilestone}><Plus size={12} /> Thêm</button>
+              </label>
+              {milestonesInfo.map((m, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  <input type="number" className="input" style={{ width: '80px' }} value={m.percent} onChange={e => updateMilestone(idx, 'percent', Number(e.target.value))} placeholder="%" />
+                  <span style={{ alignSelf: 'center', fontSize: '12px' }}>%</span>
+                  <input className="input" style={{ flex: 1 }} value={m.description} onChange={e => updateMilestone(idx, 'description', e.target.value)} placeholder="Mô tả cột mốc..." />
+                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeMilestone(idx)}><X size={14} /></button>
+                </div>
+              ))}
+              {milestonesInfo.length === 0 && <span className="form-hint" style={{ marginTop: '0' }}>Chia cốt truyện thành phần trăm để AI dẫn dắt tốt hơn.</span>}
             </div>
 
             <div className="form-group">

@@ -383,8 +383,13 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* ── Scene Contract (Phase 4) ── */
@@ -485,3 +490,142 @@
   padding: var(--space-1) var(--space-2);
 }
 
+/* ── Plot Threads Sidebar (Phase 4.5/5) ── */
+.outline-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: var(--space-4);
+}
+
+.outline-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.outline-plot-sidebar {
+  width: 280px;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.plot-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3);
+  border-bottom: 2px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.plot-sidebar-header h3 {
+  margin: 0;
+  font-size: var(--font-sm);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.plot-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.plot-sidebar-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.plot-sidebar-body::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+.plot-thread-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.plot-thread-card:hover {
+  border-color: var(--color-accent);
+}
+
+.plot-thread-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--color-border);
+}
+
+.plot-thread-card--main::before {
+  background: var(--color-danger);
+}
+
+.plot-thread-card--subplot::before {
+  background: var(--color-info);
+}
+
+.plot-thread-card--character_arc::before {
+  background: var(--color-warning);
+}
+
+.plot-thread-card--mystery::before {
+  background: var(--color-accent);
+}
+
+.plot-thread-card--romance::before {
+  background: var(--color-success);
+}
+
+.plot-thread-card--resolved {
+  opacity: 0.6;
+}
+
+.plot-thread-card--dropped {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.plot-thread-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plot-thread-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.plot-thread-badge {
+  background: var(--color-surface-2);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
