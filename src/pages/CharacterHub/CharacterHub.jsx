@@ -28,6 +28,8 @@ const EMPTY_CHARACTER = {
   goals: '',
   secrets: '',
   notes: '',
+  personality_tags: '',
+  current_status: '',
 };
 
 const ROLE_ICONS = {
@@ -96,6 +98,8 @@ export default function CharacterHub() {
       goals: char.goals || '',
       secrets: char.secrets || '',
       notes: char.notes || '',
+      personality_tags: char.personality_tags || '',
+      current_status: char.current_status || '',
     });
     setShowModal(true);
   };
@@ -210,6 +214,8 @@ export default function CharacterHub() {
                     goals: data.goals || '',
                     secrets: data.secrets || '',
                     notes: data.notes || '',
+                    personality_tags: data.personality_tags || '',
+                    current_status: data.current_status || '',
                   });
                   setShowModal(true);
                 }}
@@ -268,6 +274,23 @@ export default function CharacterHub() {
                         Xưng: <strong>{char.pronouns_self}</strong>
                         {char.pronouns_other && <> — Gọi người: <strong>{char.pronouns_other}</strong></>}
                       </div>
+                    )}
+
+                    {char.personality_tags && (
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', margin: '4px 0' }}>
+                        {char.personality_tags.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
+                          <span key={idx} style={{ background: 'var(--color-surface-2)', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', color: 'var(--color-accent)' }}>
+                            {t.startsWith('#') ? t : `#${t}`}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {char.current_status && (
+                      <p className="character-snippet" style={{ color: 'var(--color-warning)', fontWeight: 500 }}>
+                        <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }}/>
+                        Trạng thái: {char.current_status}
+                      </p>
                     )}
 
                     {char.personality && (
@@ -425,6 +448,16 @@ export default function CharacterHub() {
                 />
               </div>
 
+              <div className="form-group">
+                <label>Tags Tâm lý / Nét đặc trưng</label>
+                <input
+                  type="text"
+                  value={form.personality_tags}
+                  onChange={e => setForm({ ...form, personality_tags: e.target.value })}
+                  placeholder="Ví dụ: #Kiên_nhẫn, #Quyết_đoán, #Thâm_trầm"
+                />
+              </div>
+
               <div className="form-row">
                 <div className="form-group">
                   <label>Mục tiêu</label>
@@ -436,14 +469,24 @@ export default function CharacterHub() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Bí mật</label>
+                  <label>Trạng thái hiện tại (bối cảnh cho AI)</label>
                   <textarea
-                    value={form.secrets}
-                    onChange={e => setForm({ ...form, secrets: e.target.value })}
-                    placeholder="Thực ra là con trai bị thất lạc của..."
+                    value={form.current_status}
+                    onChange={e => setForm({ ...form, current_status: e.target.value })}
+                    placeholder="Ví dụ: Đang bị thương nặng ở tay trái, mất trí nhớ tạm thời..."
                     rows={2}
                   />
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label>Bí mật</label>
+                <textarea
+                  value={form.secrets}
+                  onChange={e => setForm({ ...form, secrets: e.target.value })}
+                  placeholder="Thực ra là con trai bị thất lạc của..."
+                  rows={2}
+                />
               </div>
 
               <div className="form-group">

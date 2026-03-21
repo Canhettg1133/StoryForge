@@ -421,6 +421,8 @@ export default function StoryBible() {
                     <input className="input input-inline" value={c.name} placeholder="Tên" onChange={(e) => updateCharacter(c.id, { name: e.target.value })} />
                     <input className="input input-inline" value={c.appearance || ''} placeholder="Ngoại hình" onChange={(e) => updateCharacter(c.id, { appearance: e.target.value })} />
                     <input className="input input-inline" value={c.personality || ''} placeholder="Tính cách" onChange={(e) => updateCharacter(c.id, { personality: e.target.value })} />
+                    <input className="input input-inline" value={c.personality_tags || ''} placeholder="Tags (VD: #Kiên_nhẫn, #Quyết_đoán)" onChange={(e) => updateCharacter(c.id, { personality_tags: e.target.value })} />
+                    <input className="input input-inline" value={c.current_status || ''} placeholder="Trạng thái hiện tại" onChange={(e) => updateCharacter(c.id, { current_status: e.target.value })} />
                     <input className="input input-inline" value={c.goals || ''} placeholder="Mục tiêu" onChange={(e) => updateCharacter(c.id, { goals: e.target.value })} />
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <input className="input input-inline" style={{ flex: 1 }} value={c.pronouns_self || ''} placeholder="Xưng" onChange={(e) => updateCharacter(c.id, { pronouns_self: e.target.value })} />

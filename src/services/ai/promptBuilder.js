@@ -242,7 +242,9 @@ export function buildPrompt(taskType, context = {}) {
       const parts = ['- ' + c.name + ' (' + (c.role || 'nhan vat') + ')'];
       if (c.pronouns_self) parts.push('  Xung: "' + c.pronouns_self + '"' + (c.pronouns_other ? ', goi nguoi: "' + c.pronouns_other + '"' : ''));
       if (c.appearance) parts.push('  Ngoai hinh: ' + c.appearance);
+      if (c.personality_tags) parts.push('  Tags: ' + c.personality_tags);
       if (c.personality) parts.push('  Tinh cach: ' + c.personality);
+      if (c.current_status) parts.push('  Trang thai hien tai: ' + c.current_status);
       return parts.join('\n');
     }).join('\n');
     systemParts.push('\n[NHAN VAT XUAT HIEN]\n' + charInfo);
