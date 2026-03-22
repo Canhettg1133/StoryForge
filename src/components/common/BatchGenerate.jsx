@@ -16,6 +16,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, X, Loader2, Check, RotateCcw, Trash2, Plus } from 'lucide-react';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
+import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import './BatchGenerate.css';
 
 const ENTITY_CONFIG = {
@@ -155,7 +156,10 @@ export default function BatchGenerate({
     setExcluded(new Set());
 
     const contextStr = buildContext();
-    const systemPrompt = config.prompt(projectContext.genre, contextStr);
+    const characterSchemaHint = entityType === 'character'
+      ? '\n\nBat buoc voi moi nhan vat: co truong "personality_tags" (chuoi tag ngan, phan tach bang dau phay) va truong "flaws" (diem yeu/khuyet diem ro rang). Khong tao nhan vat hoan hao.'
+      : '';
+    const systemPrompt = config.prompt(projectContext.genre, contextStr) + characterSchemaHint;
     const userHint = customHint.trim() 
       ? `\n\nYêu cầu bổ sung: ${customHint}\n\nTạo chính xác ${count} ${config.plural}.`
       : `\n\nTạo chính xác ${count} ${config.plural} phù hợp với cốt truyện trên.`;
@@ -172,18 +176,12 @@ export default function BatchGenerate({
       onComplete: (text) => {
         setIsGenerating(false);
         try {
-          let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-          const startIdx = cleaned.indexOf('{');
-          if (startIdx === -1) throw new Error('No JSON');
-          let depth = 0, endIdx = -1;
-          for (let i = startIdx; i < cleaned.length; i++) {
-            if (cleaned[i] === '{') depth++;
-            else if (cleaned[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
-          }
-          if (endIdx === -1) throw new Error('Incomplete JSON');
-
-          const parsed = JSON.parse(cleaned.substring(startIdx, endIdx + 1));
-          const items = parsed.items || parsed.characters || parsed.locations || parsed.terms || parsed.objects || [];
+          const parsed = parseAIJsonValue(text);
+          const items = Array.isArray(parsed)
+            ? parsed
+            : isPlainObject(parsed)
+              ? parsed.items || parsed.characters || parsed.locations || parsed.terms || parsed.objects || []
+              : [];
           setResults(Array.isArray(items) ? items : []);
         } catch (e) {
           console.error('[BatchGenerate] Parse error:', e, '\nRaw:', text);
@@ -299,6 +297,8 @@ export default function BatchGenerate({
                 </div>
                 <div className="batch-gen-item-body">
                   {item.personality && <p>{item.personality}</p>}
+                  {item.personality_tags && <p><b>Tags:</b> {item.personality_tags}</p>}
+                  {item.flaws && <p><b>Flaws:</b> {item.flaws}</p>}
                   {item.description && <p>{item.description}</p>}
                   {item.definition && <p>{item.definition}</p>}
                   {item.goals && <p><b>Mục tiêu:</b> {item.goals}</p>}

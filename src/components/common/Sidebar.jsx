@@ -1,5 +1,5 @@
 import React from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import useUIStore from '../../stores/uiStore';
 import useProjectStore from '../../stores/projectStore';
 import {
@@ -40,12 +40,16 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { projectId } = useParams();
   const { sidebarCollapsed, toggleSidebar, theme, toggleTheme } = useUIStore();
   const { currentProject } = useProjectStore();
 
+  const activeProjectId = currentProject?.id || projectId;
+
   const handleNav = (item) => {
-    if (item.needsProject && !currentProject) return;
-    navigate(item.path);
+    if (item.needsProject && !activeProjectId) return;
+    const path = item.needsProject ? `/project/${activeProjectId}${item.path}` : item.path;
+    navigate(path);
   };
 
   const handleBackToDashboard = () => {
@@ -71,7 +75,7 @@ export default function Sidebar() {
       {currentProject && !sidebarCollapsed && (
         <div className="sidebar-project" onClick={handleBackToDashboard}>
           <ChevronLeft size={14} />
-          <span className="truncate">{currentProject.title}</span>
+          <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{currentProject.title}</span>
         </div>
       )}
 
@@ -82,8 +86,9 @@ export default function Sidebar() {
             return <div key={`div-${i}`} className="sidebar-divider" />;
           }
 
-          const isActive = location.pathname === item.path;
-          const isDisabled = item.needsProject && !currentProject;
+          const expectedPath = item.needsProject && activeProjectId ? `/project/${activeProjectId}${item.path}` : item.path;
+          const isActive = location.pathname === expectedPath || (item.path !== '/' && item.path !== '/settings' && location.pathname.startsWith(expectedPath));
+          const isDisabled = item.needsProject && !activeProjectId;
           const isComingSoon = item.comingSoon && !isActive;
           const Icon = item.icon;
 

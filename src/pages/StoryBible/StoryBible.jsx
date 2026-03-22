@@ -181,8 +181,8 @@ export default function StoryBible() {
       <div style={{ padding: 'var(--space-8)' }}>
         <div className="empty-state">
           <BookOpen size={48} />
-          <h3>Chon mot du an truoc</h3>
-          <p>Quay ve Dashboard de chon hoac tao du an.</p>
+          <h3>Chọn một dự án trước</h3>
+          <p>Quay về Dashboard để chọn hoặc tạo dự án.</p>
         </div>
       </div>
     );
@@ -198,7 +198,7 @@ export default function StoryBible() {
       </h3>
       {navTo && (
         <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); navigate(navTo); }}>
-          Quan ly <ChevronRight size={14} />
+          Quản lý <ChevronRight size={14} />
         </button>
       )}
     </div>
@@ -209,24 +209,24 @@ export default function StoryBible() {
       {/* Header */}
       <div className="bible-header">
         <h2><BookMarked size={22} /> Story Bible</h2>
-        <p className="bible-subtitle">Trung tam quan ly truyen - {totalItems} muc</p>
+        <p className="bible-subtitle">Trung tâm quản lý truyện - {totalItems} mục</p>
       </div>
 
       {/* ═══ SECTION: Overview (editable) ═══ */}
       <div className="bible-section">
-        <SectionHeader icon={Edit3} title="Tong quan" sectionKey="overview" />
+        <SectionHeader icon={Edit3} title="Tổng quan" sectionKey="overview" />
         {openSections.overview && (
           <div className="bible-edit-card">
             {/* Title */}
             <div className="form-group">
-              <label className="form-label">Ten truyen {titleSaved && <span className="save-indicator">Da luu</span>}</label>
-              <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <label className="form-label">Tên truyện {titleSaved && <span className="save-indicator">Đã lưu</span>}</label>
+              <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={(e) => save({ title: e.target.value })} />
             </div>
 
             {/* Genre + Tone row */}
             <div className="bible-edit-row">
               <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">The loai</label>
+                <label className="form-label">Thể loại</label>
                 <select className="select" value={genrePrimary} onChange={(e) => handleGenreChange(e.target.value)}>
                   {GENRES.map(g => <option key={g.value} value={g.value}>{g.emoji} {g.label}</option>)}
                 </select>
@@ -234,7 +234,7 @@ export default function StoryBible() {
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label">Tone</label>
                 <select className="select" value={tone} onChange={(e) => handleToneChange(e.target.value)}>
-                  <option value="">Mac dinh</option>
+                  <option value="">Mặc định</option>
                   {TONES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
@@ -243,26 +243,26 @@ export default function StoryBible() {
             {/* POV + Pronouns row */}
             <div className="bible-edit-row">
               <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label"><Eye size={13} /> Goc nhin</label>
+                <label className="form-label"><Eye size={13} /> Góc nhìn</label>
                 <select className="select" value={povMode} onChange={(e) => handlePovChange(e.target.value)}>
                   {POV_MODES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
                 <span className="form-hint">{POV_MODES.find(p => p.value === povMode)?.desc}</span>
               </div>
               <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label"><MessageSquare size={13} /> Xung ho</label>
+                <label className="form-label"><MessageSquare size={13} /> Xưng hô</label>
                 <select className="select" value={pronounStyle} onChange={(e) => handlePronounChange(e.target.value)}>
                   {PRONOUN_STYLE_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                 </select>
                 {currentPronoun && currentPronoun.value !== 'custom' && (
-                  <span className="form-hint">Xung: "{currentPronoun.default_self}" - Goi: "{currentPronoun.default_other}"</span>
+                  <span className="form-hint">Xưng: "{currentPronoun.default_self}" - Gọi: "{currentPronoun.default_other}"</span>
                 )}
               </div>
             </div>
 
             {/* Structure */}
             <div className="form-group">
-              <label className="form-label"><BookOpen size={13} /> Cau truc truyen</label>
+              <label className="form-label"><BookOpen size={13} /> Cấu trúc truyện</label>
               <select className="select" value={storyStructure} onChange={(e) => handleStructureChange(e.target.value)}>
                 {STORY_STRUCTURES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
@@ -270,9 +270,9 @@ export default function StoryBible() {
 
             {/* Synopsis */}
             <div className="form-group">
-              <label className="form-label">Cot truyen chinh (Synopsis) {synopsisSaved && <span className="save-indicator">Da luu</span>}</label>
+              <label className="form-label">Cốt truyện chính (Synopsis) {synopsisSaved && <span className="save-indicator">Đã lưu</span>}</label>
               <textarea className="textarea" value={synopsis} onChange={(e) => setSynopsis(e.target.value)} rows={3}
-                placeholder="Tom tat mach truyen chinh... AI dung de duy tri mach truyen"
+                placeholder="Tóm tắt mạch truyện chính... AI dùng để duy trì mạch truyện"
               />
             </div>
 
@@ -319,19 +319,19 @@ export default function StoryBible() {
 
             {/* Description */}
             <div className="form-group">
-              <label className="form-label">Mo ta {descSaved && <span className="save-indicator">Da luu</span>}</label>
-              <textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
-                placeholder="Mo ta ngan ve du an..."
+              <label className="form-label">Mô tả {descSaved && <span className="save-indicator">Đã lưu</span>}</label>
+              <textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} rows={6}
+                placeholder="Mô tả ngắn về dự án..."
               />
             </div>
 
             {/* Stats */}
             <div className="bible-stats">
-              <span>{chapters.length} chuong</span>
-              <span>{characters.length} nhan vat</span>
-              <span>{locations.length} dia diem</span>
-              <span>{objects.length} vat pham</span>
-              <span>{worldTerms.length} thuat ngu</span>
+              <span>{chapters.length} chương</span>
+              <span>{characters.length} nhân vật</span>
+              <span>{locations.length} địa điểm</span>
+              <span>{objects.length} vật phẩm</span>
+              <span>{worldTerms.length} thuật ngữ</span>
             </div>
           </div>
         )}
@@ -339,12 +339,12 @@ export default function StoryBible() {
 
       {/* ═══ SECTION: AI Settings ═══ */}
       <div className="bible-section">
-        <SectionHeader icon={Settings} title="Cai dat AI" sectionKey="ai" />
+        <SectionHeader icon={Settings} title="Cài đặt AI" sectionKey="ai" />
         {openSections.ai && (
           <div className="bible-edit-card">
             {/* Strictness */}
             <div className="form-group">
-              <label className="form-label">Muc do nghiem ngat</label>
+              <label className="form-label">Mức độ nghiêm ngặt</label>
               <div className="strictness-options">
                 {AI_STRICTNESS_LEVELS.map(level => (
                   <button key={level.value}
@@ -360,9 +360,9 @@ export default function StoryBible() {
 
             {/* Guidelines */}
             <div className="form-group">
-              <label className="form-label">Chi dan cho AI {guidelinesSaved && <span className="save-indicator">Da luu</span>}</label>
+              <label className="form-label">Chỉ dẫn cho AI {guidelinesSaved && <span className="save-indicator">Đã lưu</span>}</label>
               <textarea className="textarea" value={aiGuidelines} onChange={(e) => setAiGuidelines(e.target.value)} rows={4}
-                placeholder="Nhap chi dan rieng cho AI khi viet truyen nay..."
+                placeholder="Nhập chỉ dẫn riêng cho AI khi viết truyện này..."
               />
             </div>
           </div>
@@ -516,6 +516,7 @@ export default function StoryBible() {
                     <input className="input input-inline" value={c.personality_tags || ''} placeholder="Tags (VD: #Kiên_nhẫn, #Quyết_đoán)" onChange={(e) => updateCharacter(c.id, { personality_tags: e.target.value })} />
                     <input className="input input-inline" value={c.current_status || ''} placeholder="Trạng thái hiện tại" onChange={(e) => updateCharacter(c.id, { current_status: e.target.value })} />
                     <input className="input input-inline" value={c.goals || ''} placeholder="Mục tiêu" onChange={(e) => updateCharacter(c.id, { goals: e.target.value })} />
+                    <input className="input input-inline" value={c.flaws || ''} placeholder="Diem yeu / khuyet diem" onChange={(e) => updateCharacter(c.id, { flaws: e.target.value })} />
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <input className="input input-inline" style={{ flex: 1 }} value={c.pronouns_self || ''} placeholder="Xưng" onChange={(e) => updateCharacter(c.id, { pronouns_self: e.target.value })} />
                       <input className="input input-inline" style={{ flex: 1 }} value={c.pronouns_other || ''} placeholder="Gọi" onChange={(e) => updateCharacter(c.id, { pronouns_other: e.target.value })} />
@@ -593,7 +594,7 @@ export default function StoryBible() {
       {/* ═══ SECTION: Chapter Summaries ═══ */}
       {chapterMetas.length > 0 && (
         <div className="bible-section">
-          <SectionHeader icon={FileText} title="Tom tat chuong" sectionKey="summaries" />
+          <SectionHeader icon={FileText} title="Tóm tắt chương" sectionKey="summaries" />
           {openSections.summaries && (
             <div className="bible-summaries">
               {chapters.map((ch, idx) => {
@@ -601,7 +602,7 @@ export default function StoryBible() {
                 if (!meta?.summary) return null;
                 return (
                   <div key={ch.id} className="bible-summary-item">
-                    <strong>{ch.title || `Chuong ${idx + 1}`}</strong>
+                    <strong>{ch.title || `Chương ${idx + 1}`}</strong>
                     <p>{meta.summary}</p>
                   </div>
                 );
@@ -615,14 +616,14 @@ export default function StoryBible() {
       {totalItems === 0 && (
         <div className="empty-state">
           <BookOpen size={48} />
-          <h3>Story Bible trong</h3>
-          <p>Them nhan vat, dia diem, thuat ngu qua trang Nhan vat & The gioi.</p>
+          <h3>Story Bible trống</h3>
+          <p>Thêm nhân vật, địa điểm, thuật ngữ qua trang Nhân vật & Thế giới.</p>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button className="btn btn-primary" onClick={() => navigate('/characters')}>
-              <Users size={16} /> Nhan vat
+            <button className="btn btn-primary" onClick={() => navigate(`/project/${currentProject?.id}/characters`)}>
+              <Users size={16} /> Nhân vật
             </button>
-            <button className="btn btn-ghost" onClick={() => navigate('/world')}>
-              <MapPin size={16} /> The gioi
+            <button className="btn btn-ghost" onClick={() => navigate(`/project/${currentProject?.id}/world`)}>
+              <MapPin size={16} /> Thế giới
             </button>
           </div>
         </div>

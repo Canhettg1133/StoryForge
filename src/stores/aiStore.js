@@ -13,9 +13,41 @@ import modelRouter from '../services/ai/router';
 import keyManager from '../services/ai/keyManager';
 import { gatherContext } from '../services/ai/contextEngine';
 import db from '../services/db/database';
+import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 
 // Inject router into aiService (avoid circular import)
 aiService.setRouter(modelRouter);
+
+function normalizeExtractResult(parsed) {
+  if (Array.isArray(parsed)) {
+    return {
+      characters: [],
+      locations: [],
+      terms: [],
+      objects: [],
+      items: parsed,
+    };
+  }
+  return isPlainObject(parsed) ? parsed : null;
+}
+
+function normalizeConflictResult(parsed) {
+  if (Array.isArray(parsed)) {
+    return { conflicts: parsed };
+  }
+  return isPlainObject(parsed) ? parsed : { conflicts: [] };
+}
+
+function normalizeSuggestionResult(parsed) {
+  if (Array.isArray(parsed)) {
+    return {
+      character_updates: [],
+      new_canon_facts: [],
+      items: parsed,
+    };
+  }
+  return isPlainObject(parsed) ? parsed : null;
+}
 
 const useAIStore = create((set, get) => ({
   // --- State ---
@@ -167,27 +199,15 @@ const useAIStore = create((set, get) => ({
         onComplete: (text) => {
           set({ isExtracting: false, keyCount: keyManager.getTotalKeys() });
           try {
-            // Parse JSON using balanced brace counting (same as AIGenerateButton fix)
-            let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-            const startIdx = cleaned.indexOf('{');
-            if (startIdx !== -1) {
-              let depth = 0, endIdx = -1;
-              for (let i = startIdx; i < cleaned.length; i++) {
-                if (cleaned[i] === '{') depth++;
-                else if (cleaned[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
-              }
-              if (endIdx !== -1) {
-                const result = JSON.parse(cleaned.substring(startIdx, endIdx + 1));
-                set({ lastExtractResult: result });
-                resolve(result);
-              } else {
-                set({ lastExtractResult: null });
-                resolve(null);
-              }
-            } else {
+            const parsed = parseAIJsonValue(text);
+            const result = normalizeExtractResult(parsed);
+            if (!result) {
               set({ lastExtractResult: null });
               resolve(null);
+              return;
             }
+            set({ lastExtractResult: result });
+            resolve(result);
           } catch (e) {
             console.warn('[AI] Failed to parse extraction result:', e);
             set({ lastExtractResult: null });
@@ -232,23 +252,8 @@ const useAIStore = create((set, get) => ({
           onComplete: (text) => {
             set({ isCheckingConflict: false, keyCount: keyManager.getTotalKeys() });
             try {
-              let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-              const startIdx = cleaned.indexOf('{');
-              if (startIdx !== -1) {
-                let depth = 0, endIdx = -1;
-                for (let i = startIdx; i < cleaned.length; i++) {
-                  if (cleaned[i] === '{') depth++;
-                  else if (cleaned[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
-                }
-                if (endIdx !== -1) {
-                  const result = JSON.parse(cleaned.substring(startIdx, endIdx + 1));
-                  resolve(result);
-                } else {
-                  resolve({ conflicts: [] });
-                }
-              } else {
-                resolve({ conflicts: [] });
-              }
+              const parsed = parseAIJsonValue(text);
+              resolve(normalizeConflictResult(parsed));
             } catch (e) {
               console.warn('[AI] Failed to parse conflict result:', e);
               resolve({ conflicts: [] });
@@ -353,19 +358,12 @@ const useAIStore = create((set, get) => ({
           onComplete: async (text) => {
             set({ isSuggesting: false, keyCount: keyManager.getTotalKeys() });
             try {
-              // Parse JSON with balanced brace counting
-              let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-              const startIdx = cleaned.indexOf('{');
-              if (startIdx === -1) { resolve(null); return; }
-
-              let depth = 0, endIdx = -1;
-              for (let i = startIdx; i < cleaned.length; i++) {
-                if (cleaned[i] === '{') depth++;
-                else if (cleaned[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
+              const parsed = parseAIJsonValue(text);
+              const result = normalizeSuggestionResult(parsed);
+              if (!result) {
+                resolve(null);
+                return;
               }
-              if (endIdx === -1) { resolve(null); return; }
-
-              const result = JSON.parse(cleaned.substring(startIdx, endIdx + 1));
               const suggestionItems = [];
 
               // Process character_updates

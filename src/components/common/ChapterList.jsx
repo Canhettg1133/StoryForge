@@ -80,7 +80,7 @@ export default function ChapterList() {
     }
   };
 
-  // ── Phase 3: Chapter Complete ──
+  // â”€â”€ Phase 3: Chapter Complete â”€â”€
   const handleCompleteChapter = async (chapterId) => {
     setContextMenu(null);
     setCompletingChapterId(chapterId);
@@ -128,7 +128,15 @@ export default function ChapterList() {
           if (extracted.characters?.length > 0) {
             for (const c of extracted.characters) {
               if (c.name && !nameMatch(existChars, c.name)) {
-                await createCharacter({ project_id: pid, name: c.name, role: c.role || 'minor', appearance: c.appearance || '', personality: c.personality || '' });
+                await createCharacter({
+                  project_id: pid,
+                  name: c.name,
+                  role: c.role || 'minor',
+                  appearance: c.appearance || '',
+                  personality: c.personality || '',
+                  flaws: c.flaws || '',
+                  personality_tags: c.personality_tags || '',
+                });
               }
             }
           }
@@ -179,7 +187,7 @@ export default function ChapterList() {
     <div className="chapter-list" onClick={() => setContextMenu(null)}>
       <div className="chapter-list-header">
         <span className="chapter-list-title">Chương & Cảnh</span>
-        <button className="btn btn-ghost btn-icon btn-sm" onClick={createChapter} title="Thêm chương">
+        <button className="btn btn-ghost btn-icon btn-sm" onClick={() => createChapter()} title="Thêm chương">
           <Plus size={16} />
         </button>
       </div>
@@ -286,10 +294,10 @@ export default function ChapterList() {
               startRename(contextMenu.type, contextMenu.id, item?.title || '', e);
             }}
           >
-            <Edit3 size={14} /> Đổi tên
+            <Edit3 size={14} /> Äá»•i tĂªn
           </button>
 
-          {/* Chapter Complete button — only for chapters */}
+          {/* Chapter Complete button â€” only for chapters */}
           {contextMenu.type === 'chapter' && (
             <button
               className="context-menu-item context-menu-item--success"
@@ -313,4 +321,3 @@ export default function ChapterList() {
     </div>
   );
 }
-

@@ -31,8 +31,8 @@ const LAYER_1_IDENTITY = [
 // =============================================
 export const TASK_INSTRUCTIONS = {
   [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Hay mieu ta that chi tiet tung hanh dong, tam ly, canh vat, doi thoai. Viet DAI va CHI TIET, muc tieu 2000-4000 tu de dong gop vao muc tieu chuong truyen 7000 tu. KHONG viet ngan, KHONG luoc bo, KHONG tom tat.',
-  [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung giu nguyen noi dung va y nghia. Lam cho no tu nhien hon, giau cam xuc hon.',
-  [TASK_TYPES.EXPAND]: 'Mo rong doan van, them chi tiet mieu ta, cam xuc, doi thoai, va hanh dong. Giu nguyen giong van. Viet CUC KY CHI TIET va DAI, muc tieu 2000-4000 tu. Mieu ta dao sau vao tam ly nhan vat, boi canh, va tung hanh dong nho.',
+  [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung giu nguyen noi dung va y nghia. Lam cho no tu nhien hon, giau cam xuc hon. Muc tieu tra ve tu 5000-7000 tu.',
+  [TASK_TYPES.EXPAND]: 'Mo rong doan van, them chi tiet mieu ta, cam xuc, doi thoai, va hanh dong. Giu nguyen giong van. Viet CUC KY CHI TIET va DAI, muc tieu cot loi doan van duoc mo rong ra phai dai 6000 tu. Mieu ta dao sau vao tam ly nhan vat, boi canh, va tung hanh dong nho.',
   [TASK_TYPES.BRAINSTORM]: 'Brainstorm y tuong sang tao, dua ra nhieu huong khac nhau.',
   [TASK_TYPES.OUTLINE]: 'Tao outline cau truc ro rang, logic.',
   [TASK_TYPES.PLOT_SUGGEST]: 'Goi y 3 huong plot co the xay ra tiep theo. Moi huong gom: tom tat, xung dot, va dieu gi se thay doi.',
@@ -58,12 +58,12 @@ export const TASK_INSTRUCTIONS = {
     'Neu khong phat hien mau thuan nao, tra ve: {"conflicts": []}',
     'Chi tra ve JSON, KHONG tra ve bat ky ki tu la nao khac, KHONG dung markdown code blocks.',
   ].join('\n'),
-  [TASK_TYPES.FREE_PROMPT]: 'Thuc hien yeu cau cua tac gia. Neu duoc yeu cau viet noi dung truyen, hay viet CUC KY CHI TIET va DAI: mieu ta hanh dong, tam ly, doi thoai, canh vat. Muc tieu toi thieu 3000-7000 tu khi viet noi dung chuong. KHONG tom tat, KHONG luoc bo, KHONG viet ngan.',
+  [TASK_TYPES.FREE_PROMPT]: 'Thuc hien yeu cau cua tac gia. Neu duoc yeu cau viet noi dung truyen, hay viet CUC KY CHI TIET va DAI: mieu ta hanh dong, tam ly, doi thoai, canh vat. Muc tieu toi thieu 5000-7000 tu khi viet noi dung chuong. KHONG tom tat, KHONG luoc bo, KHONG viet ngan.',
   [TASK_TYPES.CHAPTER_SUMMARY]: 'Tom tat chuong nay trong khoang 150-200 tu. Bao gom: su kien chinh, thay doi quan trong, nhan vat xuat hien, va trang thai ket thuc. Chi tra ve tom tat, khong them tieu de hay ghi chu.',
   [TASK_TYPES.FEEDBACK_EXTRACT]: [
     'Phan tich doan van va trich xuat thong tin moi duoi dang JSON. Tra ve CHINH XAC format nay:',
     '{',
-    '  "characters": [{"name": "...", "role": "...", "appearance": "...", "personality": "..."}],',
+    '  "characters": [{"name": "...", "role": "...", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem"}],',
     '  "locations": [{"name": "...", "description": "..."}],',
     '  "terms": [{"name": "...", "definition": "...", "category": "..."}],',
     '  "objects": [{"name": "...", "description": "...", "owner": "..."}]',
@@ -75,7 +75,7 @@ export const TASK_INSTRUCTIONS = {
     'Dua tren the loai va y tuong, tao blueprint cho du an truyen. Tra ve CHINH XAC JSON format:',
     '{',
     '  "premise": "Tom tat premise 2-3 cau",',
-    '  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "mo ta ngan", "personality": "mo ta ngan", "goals": "muc tieu"}],',
+    '  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "mo ta ngan", "personality": "mo ta ngan", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem", "goals": "muc tieu"}],',
     '  "locations": [{"name": "...", "description": "mo ta ngan"}],',
     '  "terms": [{"name": "...", "definition": "...", "category": "magic|organization|race|technology|other"}],',
     '  "chapters": [{"title": "Chuong 1: ...", "summary": "Tom tat noi dung chuong"}]',
@@ -358,6 +358,7 @@ export function buildPrompt(taskType, context = {}) {
       if (c.appearance) parts.push('  Ngoai hinh: ' + c.appearance);
       if (c.personality_tags) parts.push('  Tags: ' + c.personality_tags);
       if (c.personality) parts.push('  Tinh cach: ' + c.personality);
+      if (c.flaws) parts.push('  Diem yeu: ' + c.flaws);
       if (c.current_status) parts.push('  Trang thai hien tai: ' + c.current_status);
       return parts.join('\n');
     }).join('\n');

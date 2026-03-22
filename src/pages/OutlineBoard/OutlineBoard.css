@@ -629,3 +629,98 @@
   padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
+
+/* ── Plot Thread Suggestion (AI Gợi ý — Chờ duyệt) ── */
+
+/* Nhóm wrapper chứa label + các card gợi ý */
+.plot-suggestions-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px dashed var(--color-border);
+}
+
+/* Label nhỏ phía trên các card gợi ý */
+.plot-suggestions-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--color-accent);
+  padding: 0 var(--space-1);
+}
+
+/* Card gợi ý — nền nhạt, viền nét đứt, ánh accent */
+.plot-thread-card--suggested {
+  background: var(--color-accent-muted, rgba(139, 92, 246, 0.06));
+  border-style: dashed;
+  border-color: var(--color-accent);
+  cursor: default;
+  /* không click để mở modal như card đã chốt */
+  box-shadow: 0 0 0 1px var(--color-accent-muted, rgba(139, 92, 246, 0.15));
+}
+
+.plot-thread-card--suggested:hover {
+  border-color: var(--color-accent);
+  /* giữ nguyên, không transform vì không clickable */
+}
+
+/* Thanh màu bên trái vẫn kế thừa từ --main/subplot/... nên không cần override */
+
+/* Mô tả ngắn bên dưới title trong card gợi ý */
+.plot-thread-desc {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  line-height: 1.4;
+  margin: var(--space-1) 0 var(--space-2);
+  white-space: normal;
+  /* cho phép xuống dòng */
+}
+
+/* Hàng nút Duyệt / Bỏ */
+.plot-thread-suggestion-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.plot-thread-suggestion-actions .btn-xs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.plot-thread-suggestion-actions .btn-accent {
+  background: var(--color-accent-muted, rgba(139, 92, 246, 0.12));
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.plot-thread-suggestion-actions .btn-accent:hover {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.plot-thread-suggestion-actions .btn-ghost {
+  background: none;
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+
+.plot-thread-suggestion-actions .btn-ghost:hover {
+  background: var(--color-surface-2);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}

@@ -16,11 +16,12 @@ import ArcGenerationModal from './ArcGenerationModal';
 import {
   Map, Plus, Sparkles, Loader2, ChevronDown, FileText,
   Users, MapPin, Target, Zap, PenTool, LayoutGrid, List,
-  CheckCircle2, GitPullRequest, Search, Combine
+  CheckCircle2, GitPullRequest, Search, Combine, X
 } from 'lucide-react';
 import { SCENE_STATUSES } from '../../utils/constants';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
+import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import './OutlineBoard.css';
 
 const ACTS = [
@@ -28,6 +29,8 @@ const ACTS = [
   { id: 2, label: 'Hồi 2 — Xung đột', desc: 'Leo thang, bước ngoặt, khủng hoảng', percent: '50%', color: 'var(--color-warning)' },
   { id: 3, label: 'Hồi 3 — Giải quyết', desc: 'Cao trào, kết thúc', percent: '25%', color: 'var(--color-success)' },
 ];
+
+const VALID_THREAD_TYPES = ['main', 'subplot', 'character_arc', 'mystery', 'romance'];
 
 export default function OutlineBoard() {
   const navigate = useNavigate();
@@ -37,7 +40,7 @@ export default function OutlineBoard() {
     setActiveChapter, setActiveScene,
   } = useProjectStore();
   const { characters, locations, loadCodex } = useCodexStore();
-  const { plotThreads, loadPlotThreads, loadThreadBeatsForProject } = usePlotStore();
+  const { plotThreads, loadPlotThreads, loadThreadBeatsForProject, createPlotThread, deletePlotThread } = usePlotStore();
 
   const [selectedChapter, setSelectedChapter] = useState(null);
   const [viewMode, setViewMode] = useState('board'); // 'board' | 'list'
@@ -50,6 +53,10 @@ export default function OutlineBoard() {
 
   // Arc Gen Modal state
   const [showArcGen, setShowArcGen] = useState(false);
+
+  // [MỚI] AI Suggest Threads state
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [suggestedThreads, setSuggestedThreads] = useState([]);
 
   useEffect(() => {
     if (currentProject) {
@@ -114,16 +121,12 @@ export default function OutlineBoard() {
     const scene = scenes.find(s => s.chapter_id === chapterId);
     setActiveChapter(chapterId);
     if (scene) setActiveScene(scene.id);
-    navigate('/editor');
+    navigate(`/project/${currentProject.id}/editor`);
   };
 
   // Add chapter to specific act
   const addChapterToAct = async (act) => {
-    await createChapter();
-    // Set the latest chapter's arc_id
-    const latest = await useProjectStore.getState().chapters;
-    const last = latest[latest.length - 1];
-    if (last) await updateChapter(last.id, { arc_id: act });
+    await createChapter(undefined, undefined, { arc_id: act });
   };
 
   // AI Generate Outline
@@ -152,8 +155,13 @@ ${chapters.length > 0
         ? 'Phân tích outline hiện tại và GỢI Ý purpose (mục tiêu) + summary (tóm tắt) cho từng chương. Gán mỗi chương vào act (1, 2, hoặc 3).'
         : 'Tạo outline 10 chương theo cấu trúc 3 hồi. Mỗi chương phải có mục tiêu rõ ràng.'}
 
+Ngoài ra, dựa trên toàn bộ outline, hãy phân tích và trích xuất 2-4 Tuyến truyện (Plot Threads) lớn, vĩ mô, xuyên suốt nhiều chương. Chỉ trích xuất các tuyến thực sự quan trọng, có tính bước ngoặt — KHÔNG tạo tuyến truyện nhỏ lặt vặt.
+
 Trả về CHÍNH XÁC JSON:
-{ "chapters": [{"title":"...","purpose":"mục tiêu chương 1-2 câu","summary":"tóm tắt nội dung 2-3 câu","act":1}] }`;
+{
+  "chapters": [{"title":"...","purpose":"mục tiêu chương 1-2 câu","summary":"tóm tắt nội dung 2-3 câu","act":1}],
+  "plot_threads": [{"title":"...","type":"main|subplot|character_arc|mystery|romance","description":"mô tả tuyến truyện 1-2 câu","state":"active"}]
+}`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -171,42 +179,49 @@ Trả về CHÍNH XÁC JSON:
       onComplete: async (text) => {
         setIsGenerating(false);
         try {
-          let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-          const startIdx = cleaned.indexOf('{');
-          if (startIdx === -1) throw new Error('No JSON');
-          let depth = 0, endIdx = -1;
-          for (let i = startIdx; i < cleaned.length; i++) {
-            if (cleaned[i] === '{') depth++;
-            else if (cleaned[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
-          }
-          if (endIdx === -1) throw new Error('Incomplete JSON');
-          const parsed = JSON.parse(cleaned.substring(startIdx, endIdx + 1));
-          const aiChapters = parsed.chapters || [];
+          const parsedValue = parseAIJsonValue(text);
+          const normalized = Array.isArray(parsedValue)
+            ? { chapters: parsedValue.filter(isPlainObject) }
+            : (isPlainObject(parsedValue) ? parsedValue : null);
+          if (!normalized) throw new Error('Unexpected JSON format');
+
+          const nextChapters = Array.isArray(normalized.chapters) ? normalized.chapters : [];
 
           if (chapters.length > 0) {
-            // Update existing chapters
-            for (let i = 0; i < Math.min(aiChapters.length, chapters.length); i++) {
+            for (let i = 0; i < Math.min(nextChapters.length, chapters.length); i++) {
               await updateChapter(chapters[i].id, {
-                purpose: aiChapters[i].purpose || '',
-                summary: aiChapters[i].summary || '',
-                arc_id: aiChapters[i].act || null,
+                purpose: nextChapters[i].purpose || '',
+                summary: nextChapters[i].summary || '',
+                arc_id: nextChapters[i].act || null,
               });
             }
           } else {
-            // Create new chapters
-            for (const ac of aiChapters) {
-              await createChapter(currentProject.id, ac.title);
-              const latest = useProjectStore.getState().chapters;
-              const last = latest[latest.length - 1];
-              if (last) {
-                await updateChapter(last.id, {
-                  purpose: ac.purpose || '',
-                  summary: ac.summary || '',
-                  arc_id: ac.act || null,
-                });
-              }
+            for (const ac of nextChapters) {
+              await createChapter(currentProject.id, ac.title, {
+                purpose: ac.purpose || '',
+                summary: ac.summary || '',
+                arc_id: ac.act || null,
+              });
             }
           }
+
+          const nextPlotThreads = Array.isArray(normalized.plot_threads)
+            ? normalized.plot_threads.filter(isPlainObject)
+            : [];
+
+          for (const pt of nextPlotThreads) {
+            if (!pt.title?.trim()) continue;
+            await createPlotThread({
+              project_id: currentProject.id,
+              title: pt.title.trim(),
+              type: VALID_THREAD_TYPES.includes(pt.type) ? pt.type : 'subplot',
+              description: pt.description || '',
+              state: pt.state === 'resolved' ? 'resolved' : 'active',
+            });
+          }
+
+          await loadPlotThreads(currentProject.id);
+          return;
         } catch (e) {
           console.error('[OutlineBoard] AI parse error:', e);
           setGenError('Không parse được. Thử lại?');
@@ -217,6 +232,99 @@ Trả về CHÍNH XÁC JSON:
         setGenError(err.message || 'Lỗi AI');
       },
     });
+  };
+
+  // [MỚI] AI Suggest Threads — gợi ý tuyến truyện bổ sung từ sidebar
+  const handleSuggestThreads = async () => {
+    if (!currentProject || isSuggesting) return;
+    setIsSuggesting(true);
+
+    const synopsisText = currentProject.synopsis || currentProject.description || 'Chưa có';
+    const charList = characters.map(c => `${c.name} (${c.role})`).join(', ') || 'Chưa có';
+    const chapterList = chapters.length > 0
+      ? chapters.map((ch, i) =>
+        `${i + 1}. ${ch.title}${ch.purpose ? ' — ' + ch.purpose : ''}${ch.summary ? ': ' + ch.summary : ''}`
+      ).join('\n')
+      : 'Chưa có';
+    const existingThreads = plotThreads.length > 0
+      ? plotThreads.map(pt => `- [${pt.type}] ${pt.title}: ${pt.description || ''}`).join('\n')
+      : 'Chưa có';
+
+    const systemPrompt = `Bạn là trợ lý phân tích cốt truyện cho ứng dụng StoryForge.
+
+Thông tin truyện:
+- Tên: ${currentProject.title}
+- Thể loại: ${currentProject.genre_primary || 'Chưa có'}
+- Cốt truyện: ${synopsisText}
+- Nhân vật: ${charList}
+- Outline chương:
+${chapterList}
+
+Các tuyến truyện ĐÃ CÓ (không được lặp lại):
+${existingThreads}
+
+Nhiệm vụ: Đọc toàn bộ thông tin trên, phân tích các khoảng trống chưa được khai thác, và đề xuất thêm 2-3 Tuyến Truyện MỚI để câu chuyện thêm chiều sâu.
+- KHÔNG lặp lại bất kỳ tuyến truyện đã có.
+- CHỈ gợi ý các tuyến có tính bước ngoặt, ảnh hưởng vĩ mô đến nhiều chương.
+- KHÔNG tạo tuyến truyện nhỏ lặt vặt.
+
+Trả về CHÍNH XÁC JSON:
+{"plot_threads": [{"title":"...","type":"main|subplot|character_arc|mystery|romance","description":"mô tả 1-2 câu"}]}`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: 'Hãy phân tích và gợi ý tuyến truyện mới cho tôi.' },
+    ];
+
+    aiService.send({
+      taskType: TASK_TYPES.PROJECT_WIZARD,
+      messages,
+      stream: false,
+      onComplete: (text) => {
+        setIsSuggesting(false);
+        try {
+          const parsedValue = parseAIJsonValue(text);
+          const normalized = isPlainObject(parsedValue) ? parsedValue : null;
+          if (!normalized) throw new Error('Unexpected JSON format');
+
+          const suggestions = Array.isArray(normalized.plot_threads)
+            ? normalized.plot_threads.filter(pt => isPlainObject(pt) && pt.title?.trim())
+            : [];
+
+          setSuggestedThreads(suggestions);
+        } catch (e) {
+          console.error('[OutlineBoard] Suggest threads parse error:', e);
+        }
+      },
+      onError: (err) => {
+        setIsSuggesting(false);
+        console.error('[OutlineBoard] Suggest threads error:', err);
+      },
+    });
+  };
+
+  // [MỚI] Duyệt một gợi ý — lưu vào DB và xóa khỏi danh sách chờ
+  const handleApproveThread = async (pt, index) => {
+    await createPlotThread({
+      project_id: currentProject.id,
+      title: pt.title.trim(),
+      type: VALID_THREAD_TYPES.includes(pt.type) ? pt.type : 'subplot',
+      description: pt.description || '',
+      state: 'active',
+    });
+    await loadPlotThreads(currentProject.id);
+    setSuggestedThreads(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // [MỚI] Bỏ qua một gợi ý
+  const handleDismissThread = (index) => {
+    setSuggestedThreads(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Xóa tuyến truyện đã chốt
+  const handleDeleteThread = async (pt) => {
+    if (!window.confirm(`Xóa tuyến truyện "${pt.title}"? Các beat liên quan cũng sẽ bị xóa.`)) return;
+    await deletePlotThread(pt.id, currentProject.id);
   };
 
   // ── Render ──
@@ -439,12 +547,70 @@ Trả về CHÍNH XÁC JSON:
         <div className="outline-plot-sidebar">
           <div className="plot-sidebar-header">
             <h3><Combine size={16} /> Tuyến truyện</h3>
-            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openThreadModal(null)} title="Thêm tuyến truyện">
-              <Plus size={16} />
-            </button>
+            <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+              {/* [MỚI] Nút AI Gợi ý */}
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={handleSuggestThreads}
+                disabled={isSuggesting}
+                title="AI gợi ý tuyến truyện mới"
+              >
+                {isSuggesting
+                  ? <Loader2 size={15} className="spin" />
+                  : <Sparkles size={15} />
+                }
+              </button>
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => openThreadModal(null)}
+                title="Thêm tuyến truyện"
+              >
+                <Plus size={16} />
+              </button>
+            </div>
           </div>
+
           <div className="plot-sidebar-body">
-            {plotThreads.length === 0 ? (
+
+            {/* [MỚI] Suggested threads — hiển thị phía trên danh sách đã chốt */}
+            {suggestedThreads.length > 0 && (
+              <div className="plot-suggestions-section">
+                <div className="plot-suggestions-label">
+                  <Sparkles size={11} /> Gợi ý từ AI — chờ duyệt
+                </div>
+                {suggestedThreads.map((pt, index) => (
+                  <div
+                    key={index}
+                    className={`plot-thread-card plot-thread-card--suggested plot-thread-card--${pt.type || 'subplot'}`}
+                  >
+                    <div className="plot-thread-title" title={pt.title}>{pt.title}</div>
+                    <div className="plot-thread-meta">
+                      <span className="plot-thread-badge">{TYPE_LABELS[pt.type] || pt.type}</span>
+                    </div>
+                    {pt.description && (
+                      <p className="plot-thread-desc">{pt.description}</p>
+                    )}
+                    <div className="plot-thread-suggestion-actions">
+                      <button
+                        className="btn btn-xs btn-accent"
+                        onClick={() => handleApproveThread(pt, index)}
+                      >
+                        <CheckCircle2 size={11} /> Duyệt
+                      </button>
+                      <button
+                        className="btn btn-xs btn-ghost"
+                        onClick={() => handleDismissThread(index)}
+                      >
+                        <X size={11} /> Bỏ
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Danh sách tuyến truyện đã chốt */}
+            {plotThreads.length === 0 && suggestedThreads.length === 0 ? (
               <div className="text-muted" style={{ fontSize: '13px', textAlign: 'center', marginTop: 'var(--space-4)' }}>
                 Chưa có Tuyến truyện.<br /><br /> Hãy tạo để AI nhớ các diễn biến mạch truyện vĩ mô.
               </div>
@@ -458,8 +624,18 @@ Trả về CHÍNH XÁC JSON:
                   <div className="plot-thread-title" title={pt.title}>{pt.title}</div>
                   <div className="plot-thread-meta">
                     <span className="plot-thread-badge">{TYPE_LABELS[pt.type] || pt.type}</span>
-                    {pt.state === 'resolved' && <CheckCircle2 size={12} style={{ color: 'var(--color-success)' }} />}
-                    {pt.state === 'active' && <GitPullRequest size={12} style={{ color: 'var(--color-accent)' }} />}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {pt.state === 'resolved' && <CheckCircle2 size={12} style={{ color: 'var(--color-success)' }} />}
+                      {pt.state === 'active' && <GitPullRequest size={12} style={{ color: 'var(--color-accent)' }} />}
+                      <button
+                        className="btn btn-ghost btn-icon"
+                        style={{ width: '18px', height: '18px', padding: 0, opacity: 0.4 }}
+                        title="Xóa tuyến truyện"
+                        onClick={e => { e.stopPropagation(); handleDeleteThread(pt); }}
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))

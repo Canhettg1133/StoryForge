@@ -11,9 +11,27 @@ import modelRouter, { TASK_TYPES } from '../services/ai/router';
 import { gatherContext } from '../services/ai/contextEngine';
 import db from '../services/db/database';
 import useProjectStore from './projectStore';
+import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 
 // Ensure router is injected (same pattern as aiStore.js)
 aiService.setRouter(modelRouter);
+
+function getNextOrderIndex(items) {
+    return items.reduce((max, item) => {
+        const order = Number.isFinite(item?.order_index) ? item.order_index : -1;
+        return Math.max(max, order);
+    }, -1) + 1;
+}
+
+function normalizeOutlineResult(parsed) {
+    if (Array.isArray(parsed)) {
+        return {
+            arc_title: '',
+            chapters: parsed.filter(isPlainObject),
+        };
+    }
+    return isPlainObject(parsed) ? parsed : null;
+}
 
 const useArcGenStore = create((set, get) => ({
     // --- State ---
@@ -115,17 +133,10 @@ const useArcGenStore = create((set, get) => ({
                     onToken: () => { },
                     onComplete: (text) => {
                         try {
-                            const cleaned = text.replace(/```json\n?|\n?```/g, '').trim();
-                            const startIdx = cleaned.indexOf('{');
-                            if (startIdx === -1) throw new Error('No JSON found');
-                            let depth = 0, endIdx = -1;
-                            for (let i = startIdx; i < cleaned.length; i++) {
-                                if (cleaned[i] === '{') depth++;
-                                else if (cleaned[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
-                            }
-                            if (endIdx === -1) throw new Error('Incomplete JSON');
-                            const parsed = JSON.parse(cleaned.substring(startIdx, endIdx + 1));
-                            set({ generatedOutline: parsed, outlineStatus: 'ready' });
+                            const parsed = parseAIJsonValue(text);
+                            const outline = normalizeOutlineResult(parsed);
+                            if (!outline) throw new Error('Unexpected outline format');
+                            set({ generatedOutline: outline, outlineStatus: 'ready' });
                         } catch (e) {
                             console.error('Failed to parse outline JSON:', e, text);
                             set({ outlineStatus: 'error' });
@@ -258,7 +269,7 @@ const useArcGenStore = create((set, get) => ({
         const { generatedOutline } = get();
         if (!generatedOutline?.chapters) return;
         const { chapters } = useProjectStore.getState();
-        const baseIndex = chapters.length;
+        const baseIndex = getNextOrderIndex(chapters);
 
         for (let i = 0; i < generatedOutline.chapters.length; i++) {
             const ch = generatedOutline.chapters[i];
@@ -302,7 +313,8 @@ const useArcGenStore = create((set, get) => ({
     commitDraftsToProject: async (projectId) => {
         const { draftResults, generatedOutline } = get();
         const { chapters } = useProjectStore.getState();
-        const baseIndex = chapters.length;
+        const baseIndex = getNextOrderIndex(chapters);
+        let createdCount = 0;
 
         for (let di = 0; di < draftResults.length; di++) {
             const draft = draftResults[di];
@@ -311,7 +323,7 @@ const useArcGenStore = create((set, get) => ({
             const chapterId = await db.chapters.add({
                 project_id: projectId,
                 arc_id: null,
-                order_index: baseIndex + di,
+                order_index: baseIndex + createdCount,
                 title: draft.title,
                 summary: generatedOutline.chapters[di]?.summary || '',
                 purpose: '',
@@ -319,6 +331,7 @@ const useArcGenStore = create((set, get) => ({
                 word_count_target: 7000,
                 actual_word_count: draft.wordCount,
             });
+            createdCount++;
 
             await db.scenes.add({
                 project_id: projectId,

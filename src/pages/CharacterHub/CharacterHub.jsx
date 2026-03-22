@@ -24,6 +24,7 @@ const EMPTY_CHARACTER = {
   role: 'supporting',
   appearance: '',
   personality: '',
+  flaws: '',
   pronouns_self: '',
   pronouns_other: '',
   goals: '',
@@ -96,6 +97,7 @@ export default function CharacterHub() {
       role: char.role || 'supporting',
       appearance: char.appearance || '',
       personality: char.personality || '',
+      flaws: char.flaws || '',
       pronouns_self: char.pronouns_self || '',
       pronouns_other: char.pronouns_other || '',
       goals: char.goals || '',
@@ -213,6 +215,7 @@ export default function CharacterHub() {
                     role: data.role || 'supporting',
                     appearance: data.appearance || '',
                     personality: data.personality || '',
+                    flaws: data.flaws || '',
                     pronouns_self: data.pronouns_self || preset.default_self,
                     pronouns_other: data.pronouns_other || preset.default_other,
                     goals: data.goals || '',
@@ -294,6 +297,12 @@ export default function CharacterHub() {
                       <p className="character-snippet" style={{ color: 'var(--color-warning)', fontWeight: 500 }}>
                         <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }} />
                         Trạng thái: {char.current_status}
+                      </p>
+                    )}
+
+                    {char.flaws && (
+                      <p className="character-snippet" style={{ color: 'var(--color-warning)', fontWeight: 500 }}>
+                        Diem yeu: {char.flaws}
                       </p>
                     )}
 
@@ -383,6 +392,16 @@ export default function CharacterHub() {
             <div className="codex-modal-body">
               {modalTab === 'info' ? (
                 <>
+                  <div className="form-group">
+                    <label>Diem yeu / Khuyet diem</label>
+                    <textarea
+                      value={form.flaws}
+                      onChange={e => setForm({ ...form, flaws: e.target.value })}
+                      placeholder="Vi du: Nong voi, qua tu tin, bi anh huong boi qua khu..."
+                      rows={2}
+                    />
+                  </div>
+
                   <div className="form-row">
                     <div className="form-group form-group--wide">
                       <label>Tên nhân vật *</label>
@@ -621,6 +640,8 @@ export default function CharacterHub() {
                     role: item.role || 'supporting',
                     appearance: item.appearance || '',
                     personality: item.personality || '',
+                    flaws: item.flaws || '',
+                    personality_tags: item.personality_tags || '',
                     goals: item.goals || '',
                     notes: item.notes || '',
                   });

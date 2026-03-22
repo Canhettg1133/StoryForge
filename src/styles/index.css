@@ -3,7 +3,9 @@
    ============================================ */
 
 /* --- Reset --- */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -11,6 +13,7 @@
 
 /* --- CSS Variables (Dark Theme Default) --- */
 :root {
+  color-scheme: dark;
   /* Colors — Dark Theme */
   --color-bg-primary: #0a0e1a;
   --color-bg-secondary: #111827;
@@ -137,6 +140,7 @@
 
 /* --- Light Theme --- */
 [data-theme="light"] {
+  color-scheme: light;
   --color-bg-primary: #f8fafc;
   --color-bg-secondary: #ffffff;
   --color-bg-tertiary: #f1f5f9;
@@ -192,6 +196,7 @@ a {
   color: var(--color-accent);
   text-decoration: none;
 }
+
 a:hover {
   color: var(--color-accent-hover);
 }
@@ -200,13 +205,16 @@ a:hover {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
   background: var(--color-text-muted);
   border-radius: var(--radius-full);
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-tertiary);
 }

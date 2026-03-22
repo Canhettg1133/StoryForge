@@ -70,7 +70,7 @@ export default function StoryEditor({ onEditorReady }) {
       editor.commands.setContent('', false);
       lastSavedRef.current = '';
     }
-  }, [activeSceneId, editor]);
+  }, [activeSceneId, activeScene?.draft_text, editor]);
 
   // Expose editor to parent (for AI sidebar)
   useEffect(() => {
@@ -84,7 +84,6 @@ export default function StoryEditor({ onEditorReady }) {
     if (html === lastSavedRef.current) return;
 
     lastSavedRef.current = html;
-    const wordCount = countWords(html);
     await updateScene(activeSceneId, {
       draft_text: html,
     });

@@ -1,15 +1,15 @@
 /**
- * StoryForge — AI Generate Button (Reusable)
- * 
- * A floating "✨ Tạo bằng AI" button with:
+ * StoryForge - AI Generate Button (Reusable)
+ *
+ * A floating "Tao bang AI" button with:
  * - Prompt input popup
- * - AI streaming call
- * - Preview → Approve/Edit flow
- * 
+ * - AI request
+ * - Preview -> Approve/Edit flow
+ *
  * Props:
  *   entityType: 'character' | 'location' | 'object' | 'term'
  *   projectContext: { projectTitle, genre }
- *   onApprove: (data) => void — called with parsed entity data
+ *   onApprove: (data) => void
  *   buttonLabel?: string
  */
 
@@ -17,67 +17,67 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, X, Loader2, Check, RotateCcw } from 'lucide-react';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
-import modelRouter from '../../services/ai/router';
-import keyManager from '../../services/ai/keyManager';
+import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import './AIGenerateButton.css';
 
 const ENTITY_PROMPTS = {
   character: {
-    placeholder: 'Ví dụ: Nữ sát thủ lạnh lùng, 20 tuổi, có bí mật đen tối...',
-    systemPrompt: (genre) => `Bạn là trợ lý tạo nhân vật cho truyện thể loại ${genre || 'fantasy'}.
-Dựa trên mô tả của tác giả, tạo 1 nhân vật chi tiết.
-Trả về CHÍNH XÁC JSON (không thêm gì khác):
+    placeholder: 'Vi du: Nu sat thu lanh lung, 20 tuoi, co bi mat den toi...',
+    systemPrompt: (genre) => `Ban la tro ly tao nhan vat cho truyen the loai ${genre || 'fantasy'}.
+Dua tren mo ta cua tac gia, tao 1 nhan vat chi tiet.
+Tra ve CHINH XAC JSON (khong them gi khac):
 {
-  "name": "Tên nhân vật",
+  "name": "Ten nhan vat",
   "role": "protagonist|antagonist|supporting|mentor|minor",
-  "appearance": "Mô tả ngoại hình 2-3 câu",
-  "personality": "Mô tả tính cách 2-3 câu",
-  "goals": "Mục tiêu chính",
-  "secrets": "Bí mật (nếu có)",
-  "notes": "Ghi chú thêm"
+  "appearance": "Mo ta ngoai hinh 2-3 cau",
+  "personality": "Mo ta tinh cach 2-3 cau",
+  "personality_tags": "tag1, tag2",
+  "flaws": "Diem yeu / khuyet diem ro rang",
+  "goals": "Muc tieu chinh",
+  "secrets": "Bi mat (neu co)",
+  "notes": "Ghi chu them"
 }`,
   },
   location: {
-    placeholder: 'Ví dụ: Tòa thành cổ trên đỉnh núi, bao quanh bởi sương mù...',
-    systemPrompt: (genre) => `Bạn là trợ lý xây dựng thế giới cho truyện thể loại ${genre || 'fantasy'}.
-Dựa trên mô tả, tạo 1 địa điểm chi tiết.
-Trả về CHÍNH XÁC JSON:
+    placeholder: 'Vi du: Toa thanh co tren dinh nui, bao quanh boi suong mu...',
+    systemPrompt: (genre) => `Ban la tro ly xay dung the gioi cho truyen the loai ${genre || 'fantasy'}.
+Dua tren mo ta, tao 1 dia diem chi tiet.
+Tra ve CHINH XAC JSON:
 {
-  "name": "Tên địa điểm",
-  "description": "Mô tả tổng quan 2-3 câu",
-  "details": "Chi tiết bổ sung: kiến trúc, đặc điểm nổi bật, bí mật..."
+  "name": "Ten dia diem",
+  "description": "Mo ta tong quan 2-3 cau",
+  "details": "Chi tiet bo sung: kien truc, dac diem noi bat, bi mat..."
 }`,
   },
   object: {
-    placeholder: 'Ví dụ: Thanh kiếm cổ phát sáng trong bóng tối, có ý chí riêng...',
-    systemPrompt: (genre) => `Bạn là trợ lý xây dựng thế giới cho truyện thể loại ${genre || 'fantasy'}.
-Dựa trên mô tả, tạo 1 vật phẩm chi tiết.
-Trả về CHÍNH XÁC JSON:
+    placeholder: 'Vi du: Thanh kiem co phat sang trong bong toi, co y chi rieng...',
+    systemPrompt: (genre) => `Ban la tro ly xay dung the gioi cho truyen the loai ${genre || 'fantasy'}.
+Dua tren mo ta, tao 1 vat pham chi tiet.
+Tra ve CHINH XAC JSON:
 {
-  "name": "Tên vật phẩm",
-  "description": "Mô tả ngoại hình và lịch sử 2-3 câu",
-  "properties": "Thuộc tính đặc biệt, công dụng, hạn chế..."
+  "name": "Ten vat pham",
+  "description": "Mo ta ngoai hinh va lich su 2-3 cau",
+  "properties": "Thuoc tinh dac biet, cong dung, han che..."
 }`,
   },
   term: {
-    placeholder: 'Ví dụ: Năng lượng phép thuật, hệ thống cấp bậc tu luyện...',
-    systemPrompt: (genre) => `Bạn là trợ lý xây dựng thế giới cho truyện thể loại ${genre || 'fantasy'}.
-Dựa trên mô tả, tạo 1 thuật ngữ/khái niệm chi tiết.
-Trả về CHÍNH XÁC JSON:
+    placeholder: 'Vi du: Nang luong phep thuat, he thong cap bac tu luyen...',
+    systemPrompt: (genre) => `Ban la tro ly xay dung the gioi cho truyen the loai ${genre || 'fantasy'}.
+Dua tren mo ta, tao 1 thuat ngu/khai niem chi tiet.
+Tra ve CHINH XAC JSON:
 {
-  "name": "Tên thuật ngữ",
-  "definition": "Định nghĩa chi tiết 3-5 câu",
+  "name": "Ten thuat ngu",
+  "definition": "Dinh nghia chi tiet 3-5 cau",
   "category": "magic|organization|race|technology|other"
 }`,
   },
 };
 
-// Labels
 const ENTITY_LABELS = {
-  character: 'nhân vật',
-  location: 'địa điểm',
-  object: 'vật phẩm',
-  term: 'thuật ngữ',
+  character: 'nhan vat',
+  location: 'dia diem',
+  object: 'vat pham',
+  term: 'thuat ngu',
 };
 
 export default function AIGenerateButton({ entityType, projectContext = {}, onApprove, buttonLabel }) {
@@ -89,29 +89,31 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
   const popupRef = useRef(null);
 
   const config = ENTITY_PROMPTS[entityType] || ENTITY_PROMPTS.character;
-  const label = ENTITY_LABELS[entityType] || 'mục';
+  const label = ENTITY_LABELS[entityType] || 'muc';
 
-  // Close on outside click
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) return undefined;
+
     const handler = (e) => {
       if (popupRef.current && !popupRef.current.contains(e.target)) {
         setIsOpen(false);
       }
     };
+
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [isOpen]);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
+
     setIsGenerating(true);
     setError(null);
     setResult(null);
 
     const messages = [
       { role: 'system', content: config.systemPrompt(projectContext.genre) },
-      { role: 'user', content: `Truyện: ${projectContext.projectTitle || 'Chưa đặt tên'}\n\nYêu cầu: ${prompt}` },
+      { role: 'user', content: `Truyen: ${projectContext.projectTitle || 'Chua dat ten'}\n\nYeu cau: ${prompt}` },
     ];
 
     aiService.send({
@@ -121,45 +123,25 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
       onComplete: (text) => {
         setIsGenerating(false);
         try {
-          // Clean up AI response: remove markdown code blocks, trim
-          let cleaned = text
-            .replace(/```json\s*/gi, '')
-            .replace(/```\s*/g, '')
-            .trim();
+          const parsedValue = parseAIJsonValue(text);
+          const nextResult = Array.isArray(parsedValue)
+            ? (parsedValue.length === 1 && isPlainObject(parsedValue[0]) ? parsedValue[0] : null)
+            : (isPlainObject(parsedValue) ? parsedValue : null);
 
-          // Extract JSON by finding balanced braces
-          const startIdx = cleaned.indexOf('{');
-          if (startIdx === -1) {
-            setError('AI không trả về JSON. Thử lại?');
+          if (!nextResult) {
+            setError('AI tra ve sai dinh dang cho mot muc don. Thu lai?');
             return;
           }
 
-          let depth = 0;
-          let endIdx = -1;
-          for (let i = startIdx; i < cleaned.length; i++) {
-            if (cleaned[i] === '{') depth++;
-            else if (cleaned[i] === '}') {
-              depth--;
-              if (depth === 0) { endIdx = i; break; }
-            }
-          }
-
-          if (endIdx === -1) {
-            setError('JSON không đầy đủ. Thử lại?');
-            return;
-          }
-
-          const jsonStr = cleaned.substring(startIdx, endIdx + 1);
-          const parsed = JSON.parse(jsonStr);
-          setResult(parsed);
+          setResult(nextResult);
         } catch (e) {
           console.error('[AIGenerate] Parse error:', e, '\nRaw text:', text);
-          setError('Không parse được kết quả. Thử lại?');
+          setError('Khong parse duoc ket qua. Thu lai?');
         }
       },
       onError: (err) => {
         setIsGenerating(false);
-        setError(err.message || 'Lỗi kết nối AI');
+        setError(err.message || 'Loi ket noi AI');
       },
     });
   };
@@ -168,7 +150,7 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
     if (result && onApprove) {
       onApprove(result);
     }
-    // Reset
+
     setIsOpen(false);
     setResult(null);
     setPrompt('');
@@ -192,22 +174,21 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
       <button
         className="btn btn-accent btn-sm ai-gen-trigger"
         onClick={() => setIsOpen(!isOpen)}
-        title={`Tạo ${label} bằng AI`}
+        title={`Tao ${label} bang AI`}
       >
         <Sparkles size={14} />
-        {buttonLabel || `AI tạo ${label}`}
+        {buttonLabel || `AI tao ${label}`}
       </button>
 
       {isOpen && (
         <div className="ai-gen-popup" ref={popupRef}>
           <div className="ai-gen-popup-header">
-            <h4><Sparkles size={14} /> Tạo {label} bằng AI</h4>
+            <h4><Sparkles size={14} /> Tao {label} bang AI</h4>
             <button className="btn btn-ghost btn-icon btn-sm" onClick={handleClose}>
               <X size={16} />
             </button>
           </div>
 
-          {/* Input phase */}
           {!result && !error && (
             <div className="ai-gen-popup-body">
               <textarea
@@ -231,25 +212,23 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
                 disabled={!prompt.trim() || isGenerating}
               >
                 {isGenerating ? (
-                  <><Loader2 size={14} className="spin" /> Đang tạo...</>
+                  <><Loader2 size={14} className="spin" /> Dang tao...</>
                 ) : (
-                  <><Sparkles size={14} /> Tạo</>
+                  <><Sparkles size={14} /> Tao</>
                 )}
               </button>
             </div>
           )}
 
-          {/* Error */}
           {error && (
             <div className="ai-gen-popup-body">
               <div className="ai-gen-error">{error}</div>
               <button className="btn btn-ghost btn-sm" onClick={handleRetry}>
-                <RotateCcw size={14} /> Thử lại
+                <RotateCcw size={14} /> Thu lai
               </button>
             </div>
           )}
 
-          {/* Preview result */}
           {result && (
             <div className="ai-gen-popup-body">
               <div className="ai-gen-preview">
@@ -264,10 +243,10 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
               </div>
               <div className="ai-gen-actions">
                 <button className="btn btn-ghost btn-sm" onClick={handleRetry}>
-                  <RotateCcw size={14} /> Tạo lại
+                  <RotateCcw size={14} /> Tao lai
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={handleApprove}>
-                  <Check size={14} /> Dùng kết quả
+                  <Check size={14} /> Dung ket qua
                 </button>
               </div>
             </div>

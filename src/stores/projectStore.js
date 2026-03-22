@@ -1,8 +1,111 @@
 import { create } from 'zustand';
 import db from '../services/db/database';
+import { countWords } from '../utils/constants';
+
+function getNextOrderIndex(items) {
+  return items.reduce((max, item) => {
+    const order = Number.isFinite(item?.order_index) ? item.order_index : -1;
+    return Math.max(max, order);
+  }, -1) + 1;
+}
+
+function isEventLike(value) {
+  return value
+    && typeof value === 'object'
+    && (typeof value.preventDefault === 'function' || typeof value.stopPropagation === 'function');
+}
+
+function getFirstSceneForChapter(scenes, chapterId) {
+  return scenes.find((scene) => scene.chapter_id === chapterId) || null;
+}
+
+function resolveActiveSelection(chapters, scenes, requestedChapterId, requestedSceneId) {
+  let activeScene = requestedSceneId != null
+    ? scenes.find((scene) => scene.id === requestedSceneId) || null
+    : null;
+  let activeChapter = activeScene
+    ? chapters.find((chapter) => chapter.id === activeScene.chapter_id) || null
+    : null;
+
+  if (!activeChapter && requestedChapterId != null) {
+    activeChapter = chapters.find((chapter) => chapter.id === requestedChapterId) || null;
+  }
+
+  if (!activeScene && activeChapter) {
+    activeScene = getFirstSceneForChapter(scenes, activeChapter.id);
+  }
+
+  if (!activeChapter && !activeScene) {
+    for (const chapter of chapters) {
+      const firstScene = getFirstSceneForChapter(scenes, chapter.id);
+      if (firstScene) {
+        activeChapter = chapter;
+        activeScene = firstScene;
+        break;
+      }
+    }
+  }
+
+  if (!activeChapter) {
+    activeChapter = chapters[0] || null;
+  }
+
+  return {
+    activeChapterId: activeChapter?.id || null,
+    activeSceneId: activeScene?.id || null,
+  };
+}
+
+async function syncChapterWordCounts(chapters, scenes) {
+  const totals = new Map();
+
+  for (const chapter of chapters) {
+    totals.set(chapter.id, 0);
+  }
+
+  for (const scene of scenes) {
+    const text = scene.draft_text || scene.final_text || '';
+    const currentTotal = totals.get(scene.chapter_id) || 0;
+    totals.set(scene.chapter_id, currentTotal + countWords(text));
+  }
+
+  const updates = [];
+  const nextChapters = chapters.map((chapter) => {
+    const actualWordCount = totals.get(chapter.id) || 0;
+    if (chapter.actual_word_count === actualWordCount) {
+      return chapter;
+    }
+
+    updates.push(db.chapters.update(chapter.id, { actual_word_count: actualWordCount }));
+    return { ...chapter, actual_word_count: actualWordCount };
+  });
+
+  if (updates.length > 0) {
+    await Promise.all(updates);
+  }
+
+  return nextChapters;
+}
+
+async function reindexProjectChapters(projectId) {
+  const chapters = await db.chapters.where('project_id').equals(projectId).sortBy('order_index');
+  for (let index = 0; index < chapters.length; index++) {
+    if (chapters[index].order_index !== index) {
+      await db.chapters.update(chapters[index].id, { order_index: index });
+    }
+  }
+}
+
+async function reindexChapterScenes(chapterId) {
+  const scenes = await db.scenes.where('chapter_id').equals(chapterId).sortBy('order_index');
+  for (let index = 0; index < scenes.length; index++) {
+    if (scenes[index].order_index !== index) {
+      await db.scenes.update(scenes[index].id, { order_index: index });
+    }
+  }
+}
 
 const useProjectStore = create((set, get) => ({
-  // --- State ---
   projects: [],
   currentProject: null,
   chapters: [],
@@ -11,7 +114,6 @@ const useProjectStore = create((set, get) => ({
   activeSceneId: null,
   loading: false,
 
-  // --- Projects ---
   loadProjects: async () => {
     const projects = await db.projects.orderBy('updated_at').reverse().toArray();
     set({ projects });
@@ -29,22 +131,18 @@ const useProjectStore = create((set, get) => ({
       status: 'draft',
       writing_mode: 'balanced',
       default_style_pack_id: null,
-      // World Profile
       world_name: data.world_name || '',
       world_type: data.world_type || '',
       world_scale: data.world_scale || '',
       world_era: data.world_era || '',
       world_rules: data.world_rules || '[]',
       world_description: data.world_description || '',
-      // Phase 4 — AI Flexibility
       ai_guidelines: data.ai_guidelines || '',
       ai_strictness: data.ai_strictness || 'balanced',
-      // Phase 4 — POV, Synopsis, Structure, Pronouns
       pov_mode: data.pov_mode || 'third_limited',
       synopsis: data.synopsis || '',
       story_structure: data.story_structure || '',
       pronoun_style: data.pronoun_style || '',
-      // Phase 5 — AI Auto Generation: Pacing Control
       target_length: data.target_length || 0,
       target_length_type: data.target_length_type || 'unset',
       ultimate_goal: data.ultimate_goal || '',
@@ -53,7 +151,6 @@ const useProjectStore = create((set, get) => ({
       updated_at: now,
     });
 
-    // Skip auto-creating first chapter if AI Wizard will create chapters
     if (!data.skipFirstChapter) {
       const chapterId = await db.chapters.add({
         project_id: id,
@@ -83,7 +180,6 @@ const useProjectStore = create((set, get) => ({
         status: 'draft',
         draft_text: '',
         final_text: '',
-        // Phase 4 — Scene Contract
         must_happen: '[]',
         must_not_happen: '[]',
         pacing: '',
@@ -96,7 +192,6 @@ const useProjectStore = create((set, get) => ({
   },
 
   deleteProject: async (id) => {
-    // Delete all related data
     await Promise.all([
       db.projects.delete(id),
       db.chapters.where('project_id').equals(id).delete(),
@@ -115,11 +210,16 @@ const useProjectStore = create((set, get) => ({
       db.qaReports.where('project_id').equals(id).delete(),
       db.suggestions.where('project_id').equals(id).delete(),
     ]);
-    set({ currentProject: null, chapters: [], scenes: [], activeChapterId: null, activeSceneId: null });
+    set({
+      currentProject: null,
+      chapters: [],
+      scenes: [],
+      activeChapterId: null,
+      activeSceneId: null,
+    });
     await get().loadProjects();
   },
 
-  // --- World Profile ---
   updateWorldProfile: async (data) => {
     const { currentProject } = get();
     if (!currentProject) return;
@@ -136,12 +236,10 @@ const useProjectStore = create((set, get) => ({
     set({ currentProject: updated });
   },
 
-  // --- Phase 4: Project Settings (general) ---
   updateProjectSettings: async (data) => {
     const { currentProject } = get();
     if (!currentProject) return;
     const updates = { ...data, updated_at: Date.now() };
-    // Remove fields that shouldn't be directly set
     delete updates.id;
     delete updates.created_at;
     await db.projects.update(currentProject.id, updates);
@@ -149,56 +247,57 @@ const useProjectStore = create((set, get) => ({
     set({ currentProject: updated });
   },
 
-  // --- Load Project (open) ---
-  loadProject: async (id) => {
+  loadProject: async (id, options = {}) => {
     set({ loading: true });
+    const { currentProject, activeChapterId, activeSceneId } = get();
     const project = await db.projects.get(id);
-    const chapters = await db.chapters
-      .where('project_id').equals(id)
-      .sortBy('order_index');
-    const scenes = await db.scenes
-      .where('project_id').equals(id)
-      .sortBy('order_index');
-
-    const firstChapter = chapters[0] || null;
-    const firstScene = firstChapter
-      ? scenes.find(s => s.chapter_id === firstChapter.id) || null
-      : null;
+    const chapters = await db.chapters.where('project_id').equals(id).sortBy('order_index');
+    const scenes = await db.scenes.where('project_id').equals(id).sortBy('order_index');
+    const syncedChapters = await syncChapterWordCounts(chapters, scenes);
+    const shouldPreserveSelection = options.preserveSelection !== false && currentProject?.id === id;
+    const requestedChapterId = options.activeChapterId ?? (shouldPreserveSelection ? activeChapterId : null);
+    const requestedSceneId = options.activeSceneId ?? (shouldPreserveSelection ? activeSceneId : null);
+    const selection = resolveActiveSelection(
+      syncedChapters,
+      scenes,
+      requestedChapterId,
+      requestedSceneId,
+    );
 
     set({
       currentProject: project,
-      chapters,
+      chapters: syncedChapters,
       scenes,
-      activeChapterId: firstChapter?.id || null,
-      activeSceneId: firstScene?.id || null,
+      ...selection,
       loading: false,
     });
   },
 
-  // --- Chapters ---
-  createChapter: async (projectId, title) => {
+  createChapter: async (projectId, title, chapterData = {}) => {
+    if (isEventLike(projectId)) projectId = null;
+    if (isEventLike(title)) title = '';
+
     const { currentProject, chapters } = get();
     const pid = projectId || currentProject?.id;
-    if (!pid) return;
+    if (!pid) return null;
 
     const existingChapters = projectId
       ? await db.chapters.where('project_id').equals(pid).sortBy('order_index')
       : chapters;
-    const order = existingChapters.length;
+    const order = getNextOrderIndex(existingChapters);
     const chapterId = await db.chapters.add({
       project_id: pid,
-      arc_id: null,
+      arc_id: chapterData.arc_id ?? null,
       order_index: order,
-      title: title || `Chương ${order + 1}`,
-      summary: '',
-      purpose: '',
-      status: 'draft',
-      word_count_target: 3000,
-      actual_word_count: 0,
+      title: title || chapterData.title || `Chương ${order + 1}`,
+      summary: chapterData.summary || '',
+      purpose: chapterData.purpose || '',
+      status: chapterData.status || 'draft',
+      word_count_target: chapterData.word_count_target ?? 3000,
+      actual_word_count: chapterData.actual_word_count ?? 0,
     });
 
-    // Auto-create first scene
-    await db.scenes.add({
+    const sceneId = await db.scenes.add({
       project_id: pid,
       chapter_id: chapterId,
       order_index: 0,
@@ -214,39 +313,54 @@ const useProjectStore = create((set, get) => ({
       status: 'draft',
       draft_text: '',
       final_text: '',
+      must_happen: '[]',
+      must_not_happen: '[]',
+      pacing: '',
+      characters_present: '[]',
     });
 
-    // Only reload state if this is the current project
-    if (currentProject && currentProject.id === pid) {
-      await get().loadProject(pid);
-      set({ activeChapterId: chapterId });
+    if (currentProject?.id === pid) {
+      await get().loadProject(pid, { activeChapterId: chapterId, activeSceneId: sceneId });
     }
+
+    return { chapterId, sceneId };
   },
 
   updateChapter: async (id, data) => {
+    const chapter = get().chapters.find((item) => item.id === id) || await db.chapters.get(id);
+    if (!chapter) return;
+
     await db.chapters.update(id, data);
     const { currentProject } = get();
-    if (currentProject) await get().loadProject(currentProject.id);
+    if (currentProject?.id === chapter.project_id) {
+      await get().loadProject(currentProject.id);
+    }
   },
 
   deleteChapter: async (id) => {
+    const chapter = get().chapters.find((item) => item.id === id) || await db.chapters.get(id);
+    if (!chapter) return;
+
     await db.chapters.delete(id);
     await db.scenes.where('chapter_id').equals(id).delete();
+    await reindexProjectChapters(chapter.project_id);
     const { currentProject } = get();
-    if (currentProject) await get().loadProject(currentProject.id);
+    if (currentProject?.id === chapter.project_id) {
+      await get().loadProject(currentProject.id);
+    }
   },
 
-  // --- Scenes ---
   createScene: async (chapterId) => {
     const { currentProject, scenes } = get();
-    if (!currentProject) return;
+    if (!currentProject) return null;
 
-    const chapterScenes = scenes.filter(s => s.chapter_id === chapterId);
+    const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapterId);
+    const order = getNextOrderIndex(chapterScenes);
     const sceneId = await db.scenes.add({
       project_id: currentProject.id,
       chapter_id: chapterId,
-      order_index: chapterScenes.length,
-      title: `Cảnh ${chapterScenes.length + 1}`,
+      order_index: order,
+      title: `Cảnh ${order + 1}`,
       summary: '',
       pov_character_id: null,
       location_id: null,
@@ -258,38 +372,78 @@ const useProjectStore = create((set, get) => ({
       status: 'draft',
       draft_text: '',
       final_text: '',
-      // Phase 4 — Scene Contract
       must_happen: '[]',
       must_not_happen: '[]',
       pacing: '',
       characters_present: '[]',
     });
 
-    await get().loadProject(currentProject.id);
-    set({ activeSceneId: sceneId, activeChapterId: chapterId });
+    await get().loadProject(currentProject.id, { activeChapterId: chapterId, activeSceneId: sceneId });
+    return sceneId;
   },
 
   updateScene: async (id, data) => {
+    const scene = get().scenes.find((item) => item.id === id) || await db.scenes.get(id);
+    if (!scene) return;
+
     await db.scenes.update(id, data);
-    // Update local state without full reload for performance
-    set(state => ({
-      scenes: state.scenes.map(s => s.id === id ? { ...s, ...data } : s),
-    }));
+
+    const { currentProject } = get();
+    if (currentProject?.id === scene.project_id) {
+      set((state) => ({
+        scenes: state.scenes.map((item) => (item.id === id ? { ...item, ...data } : item)),
+      }));
+    }
+
+    if ('draft_text' in data || 'final_text' in data) {
+      await get().refreshChapterWordCount(scene.chapter_id);
+    }
   },
 
   deleteScene: async (id) => {
+    const scene = get().scenes.find((item) => item.id === id) || await db.scenes.get(id);
+    if (!scene) return;
+
     await db.scenes.delete(id);
+    await reindexChapterScenes(scene.chapter_id);
+    await get().refreshChapterWordCount(scene.chapter_id);
     const { currentProject } = get();
-    if (currentProject) await get().loadProject(currentProject.id);
+    if (currentProject?.id === scene.project_id) {
+      await get().loadProject(currentProject.id);
+    }
   },
 
   setActiveChapter: (id) => set({ activeChapterId: id }),
   setActiveScene: (id) => set({ activeSceneId: id }),
 
-  // --- Helpers ---
   getActiveScene: () => {
     const { scenes, activeSceneId } = get();
-    return scenes.find(s => s.id === activeSceneId) || null;
+    return scenes.find((scene) => scene.id === activeSceneId) || null;
+  },
+
+  refreshChapterWordCount: async (chapterId) => {
+    if (!chapterId) return 0;
+
+    const chapter = get().chapters.find((item) => item.id === chapterId) || await db.chapters.get(chapterId);
+    if (!chapter) return 0;
+
+    const chapterScenes = await db.scenes.where('chapter_id').equals(chapterId).toArray();
+    const actualWordCount = chapterScenes.reduce((total, scene) => {
+      return total + countWords(scene.draft_text || scene.final_text || '');
+    }, 0);
+
+    await db.chapters.update(chapterId, { actual_word_count: actualWordCount });
+
+    const { currentProject } = get();
+    if (currentProject?.id === chapter.project_id) {
+      set((state) => ({
+        chapters: state.chapters.map((item) => (
+          item.id === chapterId ? { ...item, actual_word_count: actualWordCount } : item
+        )),
+      }));
+    }
+
+    return actualWordCount;
   },
 
   updateProjectTimestamp: async () => {

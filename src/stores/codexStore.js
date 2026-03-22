@@ -41,18 +41,32 @@ const useCodexStore = create((set, get) => ({
   // CHARACTERS
   // ═══════════════════════════════════════════
   createCharacter: async (data) => {
+    const now = Date.now();
+    const flawSuffixes = data.flaws
+      ? [`\nĐiểm yếu: ${data.flaws}`, `\nÄiá»ƒm yáº¿u: ${data.flaws}`]
+      : [];
+    let personality = data.personality || '';
+    for (const suffix of flawSuffixes) {
+      if (personality.endsWith(suffix)) {
+        personality = personality.slice(0, -suffix.length);
+        break;
+      }
+    }
     const id = await db.characters.add({
       project_id: data.project_id,
       name: data.name || '',
       role: data.role || 'supporting',
       appearance: data.appearance || '',
-      personality: data.personality || '',
+      personality,
+      flaws: data.flaws || '',
+      personality_tags: data.personality_tags || '',
       pronouns_self: data.pronouns_self || '',
       pronouns_other: data.pronouns_other || '',
+      current_status: data.current_status || '',
       goals: data.goals || '',
       secrets: data.secrets || '',
       notes: data.notes || '',
-      created_at: Date.now(),
+      created_at: now,
     });
     await get().loadCodex(data.project_id);
     return id;
@@ -238,18 +252,29 @@ const useCodexStore = create((set, get) => ({
 
   saveChapterSummary: async (chapterId, projectId, summary) => {
     const existing = get().chapterMetas.find(m => m.chapter_id === chapterId);
+    const now = Date.now();
     if (existing) {
-      await db.chapterMeta.update(existing.id, { summary, updated_at: Date.now() });
+      await db.chapterMeta.update(existing.id, { summary, updated_at: now });
+      set(state => ({
+        chapterMetas: state.chapterMetas.map(m => (
+          m.id === existing.id ? { ...m, summary, updated_at: now } : m
+        )),
+      }));
     } else {
-      await db.chapterMeta.add({
+      const id = await db.chapterMeta.add({
         chapter_id: chapterId,
         project_id: projectId,
         summary,
-        created_at: Date.now(),
-        updated_at: Date.now(),
+        created_at: now,
+        updated_at: now,
       });
+      set(state => ({
+        chapterMetas: [
+          ...state.chapterMetas,
+          { id, chapter_id: chapterId, project_id: projectId, summary, created_at: now, updated_at: now },
+        ],
+      }));
     }
-    await get().loadCodex(projectId);
   },
 
   // ═══════════════════════════════════════════

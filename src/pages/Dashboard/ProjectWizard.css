@@ -95,8 +95,13 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Template toggle */
@@ -176,6 +181,8 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   transition: all 0.2s;
+  /* [MỚI] cho phép mini-form xuống dòng full-width */
+  flex-wrap: wrap;
 }
 
 .wizard-item--excluded {
@@ -223,4 +230,89 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* ── Inline Edit Mini-form ── */
+
+/* Form expand bên dưới item — chiếm toàn bộ width */
+.wizard-item-edit {
+  width: 100%;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  animation: fadeInEdit 0.15s ease;
+}
+
+@keyframes fadeInEdit {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Hàng 2 cột (ví dụ: Tên + Vai trò) */
+.wizard-edit-row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.wizard-edit-row .wizard-edit-field {
+  flex: 1;
+}
+
+/* Label + input trong form */
+.wizard-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wizard-edit-field label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Input / textarea / select nhỏ */
+.input-sm,
+.textarea-sm,
+.select-sm {
+  font-size: 13px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.input-sm:focus,
+.textarea-sm:focus,
+.select-sm:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  background: var(--color-surface-1);
+}
+
+.textarea-sm {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+/* Nút bút chì active */
+.wizard-item .btn--active {
+  color: var(--color-accent) !important;
+  background: var(--color-accent-muted, rgba(139, 92, 246, 0.1)) !important;
 }

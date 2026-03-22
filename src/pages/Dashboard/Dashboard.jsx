@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
 import { getGenreEmoji, getGenreLabel, formatDate, countWords } from '../../utils/constants';
-import { Plus, BookOpen, Trash2, MoreVertical } from 'lucide-react';
+import { Plus, BookOpen, Trash2, MoreVertical, Download } from 'lucide-react';
 import NewProjectModal from './NewProjectModal';
+import ExportModal from '../../components/common/ExportModal';
 import './Dashboard.css';
 
 export default function Dashboard() {
@@ -11,6 +12,7 @@ export default function Dashboard() {
   const { projects, loadProjects, loadProject, deleteProject } = useProjectStore();
   const [showModal, setShowModal] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
+  const [exportingProject, setExportingProject] = useState(null);
 
   useEffect(() => {
     loadProjects();
@@ -18,7 +20,7 @@ export default function Dashboard() {
 
   const handleOpenProject = async (id) => {
     await loadProject(id);
-    navigate('/editor');
+    navigate(`/project/${id}/editor`);
   };
 
   const handleDeleteProject = async (id, e) => {
@@ -32,7 +34,7 @@ export default function Dashboard() {
   const handleProjectCreated = async (id) => {
     setShowModal(false);
     await loadProject(id);
-    navigate('/editor');
+    navigate(`/project/${id}/editor`);
   };
 
   return (
@@ -80,6 +82,9 @@ export default function Dashboard() {
                 </button>
                 {contextMenu === project.id && (
                   <div className="context-menu project-context-menu">
+                    <button className="context-menu-item" onClick={(e) => { e.stopPropagation(); setContextMenu(null); setExportingProject(project); }}>
+                      <Download size={14} /> Xuất bản truyện
+                    </button>
                     <button className="context-menu-item danger" onClick={(e) => handleDeleteProject(project.id, e)}>
                       <Trash2 size={14} /> Xoá dự án
                     </button>
@@ -121,6 +126,13 @@ export default function Dashboard() {
         <NewProjectModal
           onClose={() => setShowModal(false)}
           onCreated={handleProjectCreated}
+        />
+      )}
+
+      {exportingProject && (
+        <ExportModal
+          project={exportingProject}
+          onClose={() => setExportingProject(null)}
         />
       )}
     </div>

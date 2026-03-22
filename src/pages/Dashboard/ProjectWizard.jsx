@@ -11,29 +11,40 @@ import {
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
+import usePlotStore from '../../stores/plotStore';
+import db from '../../services/db/database';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
-import { buildPrompt } from '../../services/ai/promptBuilder';
+import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import {
   Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
   RotateCcw, Users, MapPin, BookOpen, List, AlertCircle,
-  Trash2, Globe, Eye, MessageSquare, Plus,
+  Trash2, Globe, Eye, MessageSquare, Plus, GitPullRequest, Pencil,
 } from 'lucide-react';
 import './ProjectWizard.css';
 
 const STEPS = ['Ý tưởng', 'AI đang tạo...', 'Xem & Duyệt'];
 
+const VALID_THREAD_TYPES = ['main', 'subplot', 'character_arc', 'mystery', 'romance'];
+const TYPE_LABELS = {
+  main: 'Tuyến chính', subplot: 'Tuyến phụ', character_arc: 'Nhân vật',
+  mystery: 'Bí ẩn', romance: 'Tình cảm',
+};
+const CHAR_ROLES = ['protagonist', 'antagonist', 'supporting', 'mentor', 'minor'];
+const TERM_CATEGORIES = ['magic', 'organization', 'race', 'technology', 'other'];
+
 export default function ProjectWizard({ onClose, onCreated }) {
-  const { createProject, createChapter } = useProjectStore();
-  const { createCharacter, createLocation, createWorldTerm } = useCodexStore();
+  const { createProject, createChapter, updateChapter } = useProjectStore();
+  const { createCharacter, createLocation, createWorldTerm, saveChapterSummary } = useCodexStore();
+  const { createPlotThread } = usePlotStore();
 
   const [step, setStep] = useState(0);
   const [idea, setIdea] = useState('');
-  const [genre, setGenre] = useState('fantasy');
+  const [genre, setGenre] = useState('tien_hiep');
   const [tone, setTone] = useState('');
   const [useTemplate, setUseTemplate] = useState(true);
-  const [povMode, setPovMode] = useState('third_limited');
-  const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE['fantasy'] || 'phuong_tay');
+  const [povMode, setPovMode] = useState('third_omni');
+  const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE['tien_hiep'] || 'tien_hiep');
   const [synopsis, setSynopsis] = useState('');
   const [storyStructure, setStoryStructure] = useState('');
 
@@ -74,7 +85,6 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
   // Toggle items in result
   const [excluded, setExcluded] = useState(new Set());
-
   const toggleExclude = (key) => {
     setExcluded(prev => {
       const next = new Set(prev);
@@ -83,6 +93,139 @@ export default function ProjectWizard({ onClose, onCreated }) {
       return next;
     });
   };
+
+  // ── Inline edit state ──
+  // editingKey: e.g. 'char-0', 'loc-1', 'term-2', 'chapter-3', 'thread-0'
+  const [editingKey, setEditingKey] = useState(null);
+  const toggleEdit = (key) => setEditingKey(prev => prev === key ? null : key);
+
+  // Update a field inside result.[section][index]
+  const updateResultItem = (section, index, field, value) => {
+    setResult(prev => {
+      const arr = [...(prev[section] || [])];
+      arr[index] = { ...arr[index], [field]: value };
+      return { ...prev, [section]: arr };
+    });
+  };
+
+  // ── Mini-form renderers ──
+
+  const renderCharEdit = (c, i) => (
+    <div className="wizard-item-edit">
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Tên</label>
+          <input className="input input-sm" value={c.name || ''} onChange={e => updateResultItem('characters', i, 'name', e.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Vai trò</label>
+          <select className="select select-sm" value={c.role || 'supporting'} onChange={e => updateResultItem('characters', i, 'role', e.target.value)}>
+            {CHAR_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="wizard-edit-field">
+        <label>Tính cách</label>
+        <textarea className="textarea textarea-sm" rows={2} value={c.personality || ''} onChange={e => updateResultItem('characters', i, 'personality', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Điểm yếu</label>
+        <input className="input input-sm" value={c.flaws || ''} onChange={e => updateResultItem('characters', i, 'flaws', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Mục tiêu</label>
+        <input className="input input-sm" value={c.goals || ''} onChange={e => updateResultItem('characters', i, 'goals', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Ngoại hình</label>
+        <input className="input input-sm" value={c.appearance || ''} onChange={e => updateResultItem('characters', i, 'appearance', e.target.value)} />
+      </div>
+    </div>
+  );
+
+  const renderLocEdit = (l, i) => (
+    <div className="wizard-item-edit">
+      <div className="wizard-edit-field">
+        <label>Tên địa điểm</label>
+        <input className="input input-sm" value={l.name || ''} onChange={e => updateResultItem('locations', i, 'name', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Mô tả</label>
+        <textarea className="textarea textarea-sm" rows={2} value={l.description || ''} onChange={e => updateResultItem('locations', i, 'description', e.target.value)} />
+      </div>
+    </div>
+  );
+
+  const renderTermEdit = (t, i) => (
+    <div className="wizard-item-edit">
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Thuật ngữ</label>
+          <input className="input input-sm" value={t.name || ''} onChange={e => updateResultItem('terms', i, 'name', e.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Danh mục</label>
+          <select className="select select-sm" value={t.category || 'other'} onChange={e => updateResultItem('terms', i, 'category', e.target.value)}>
+            {TERM_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="wizard-edit-field">
+        <label>Định nghĩa</label>
+        <textarea className="textarea textarea-sm" rows={2} value={t.definition || ''} onChange={e => updateResultItem('terms', i, 'definition', e.target.value)} />
+      </div>
+    </div>
+  );
+
+  const renderChapterEdit = (ch, i) => (
+    <div className="wizard-item-edit">
+      <div className="wizard-edit-field">
+        <label>Tiêu đề</label>
+        <input className="input input-sm" value={ch.title || ''} onChange={e => updateResultItem('chapters', i, 'title', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Tóm tắt</label>
+        <textarea className="textarea textarea-sm" rows={3} value={ch.summary || ''} onChange={e => updateResultItem('chapters', i, 'summary', e.target.value)} />
+      </div>
+    </div>
+  );
+
+  const renderThreadEdit = (pt, i) => (
+    <div className="wizard-item-edit">
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Tên tuyến truyện</label>
+          <input className="input input-sm" value={pt.title || ''} onChange={e => updateResultItem('plot_threads', i, 'title', e.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Loại</label>
+          <select className="select select-sm" value={pt.type || 'subplot'} onChange={e => updateResultItem('plot_threads', i, 'type', e.target.value)}>
+            {VALID_THREAD_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="wizard-edit-field">
+        <label>Mô tả</label>
+        <textarea className="textarea textarea-sm" rows={2} value={pt.description || ''} onChange={e => updateResultItem('plot_threads', i, 'description', e.target.value)} />
+      </div>
+    </div>
+  );
+
+  // Shared action buttons for each item (edit + exclude/restore)
+  const renderItemActions = (key, editRenderer) => (
+    <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
+      <button
+        className={`btn btn-ghost btn-icon btn-sm ${editingKey === key ? 'btn--active' : ''}`}
+        onClick={() => toggleEdit(key)}
+        title={editingKey === key ? 'Đóng chỉnh sửa' : 'Chỉnh sửa'}
+      >
+        <Pencil size={14} />
+      </button>
+      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => toggleExclude(key)}>
+        {excluded.has(key) ? <RotateCcw size={14} /> : <Trash2 size={14} />}
+      </button>
+    </div>
+  );
 
   // Step 1 → Step 2: Generate
   const handleGenerate = async () => {
@@ -113,17 +256,19 @@ Trả về CHÍNH XÁC JSON format:
     "world_rules": ["Quy tắc 1", "Quy tắc 2", "Quy tắc 3"],
     "world_description": "Mô tả tổng quan thế giới 2-3 câu"
   },
-  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "goals": "..."}],
+  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu chí mạng / khuyết điểm lúc đầu", "goals": "..."}],
   "locations": [{"name": "...", "description": "..."}],
   "terms": [{"name": "...", "definition": "...", "category": "magic|organization|race|technology|other"}],
-  "chapters": [{"title": "Chương 1: ...", "summary": "Tóm tắt nội dung chương"}]
+  "chapters": [{"title": "Chương 1: ...", "summary": "Tóm tắt nội dung chương"}],
+  "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mô tả tuyến truyện 1-2 câu", "state": "active"}]
 }
-Tạo world_profile chi tiết, 3-5 nhân vật, 3-5 địa điểm, 3-5 thuật ngữ, và 8-12 chương.
+Tạo world_profile chi tiết, 3-5 nhân vật, 3-5 địa điểm, 3-5 thuật ngữ, 8-12 chương, và 2-4 tuyến truyện lớn xuyên suốt (chỉ các tuyến thực sự quan trọng, có tính bước ngoặt).
+LƯU Ý QUAN TRỌNG: Dựa vào Độ dài dự kiến, BẤT KỲ NHÂN VẬT NÀO ở điểm bắt đầu cũng phải có điểm yếu (flaws) rõ ràng hoặc xuất phát điểm thấp để giữ dư địa cày cuốc phát triển sau này. Cấm tạo nhân vật xuất chúng hoàn mỹ ngay từ đầu.
 Chỉ trả về JSON, không thêm gì khác.`,
       },
       {
         role: 'user',
-        content: `Thể loại: ${genreLabel}\nTone: ${tone || 'mặc định'}\nGóc nhìn: ${POV_MODES.find(p => p.value === povMode)?.label || 'Ngôi 3'}\nXưng hô: ${currentPronoun?.label || 'Mặc định'}\n${synopsis ? 'Cốt truyện: ' + synopsis + '\n' : ''}${storyStructure ? 'Cấu trúc: ' + STORY_STRUCTURES.find(s => s.value === storyStructure)?.label + '\n' : ''}\nÝ tưởng: ${idea}${templateHint}`,
+        content: `Thể loại: ${genreLabel}\nTone: ${tone || 'mặc định'}\nGóc nhìn: ${POV_MODES.find(p => p.value === povMode)?.label || 'Ngôi 3'}\nXưng hô: ${currentPronoun?.label || 'Mặc định'}\nĐộ dài dự kiến: ${targetLength > 0 ? targetLength + ' chương' : 'Chưa xác định'}\nĐích đến tối thượng: ${ultimateGoal || 'Chưa có'}\n${synopsis ? 'Cốt truyện: ' + synopsis + '\n' : ''}${storyStructure ? 'Cấu trúc: ' + STORY_STRUCTURES.find(s => s.value === storyStructure)?.label + '\n' : ''}\nÝ tưởng: ${idea}${templateHint}`,
       },
     ];
 
@@ -134,22 +279,20 @@ Chỉ trả về JSON, không thêm gì khác.`,
       onComplete: (text) => {
         setIsGenerating(false);
         try {
-          // Clean markdown code blocks
-          let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+          const parsedValue = parseAIJsonValue(text);
+          const nextResult = Array.isArray(parsedValue)
+            ? (parsedValue.length === 1 && isPlainObject(parsedValue[0])
+              ? parsedValue[0]
+              : (parsedValue.every(isPlainObject)
+                ? { premise: '', characters: [], locations: [], terms: [], chapters: parsedValue }
+                : null))
+            : (isPlainObject(parsedValue) ? parsedValue : null);
 
-          // Extract JSON by balanced braces
-          const startIdx = cleaned.indexOf('{');
-          if (startIdx === -1) throw new Error('No JSON');
-          let depth = 0, endIdx = -1;
-          for (let i = startIdx; i < cleaned.length; i++) {
-            if (cleaned[i] === '{') depth++;
-            else if (cleaned[i] === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
-          }
-          if (endIdx === -1) throw new Error('Incomplete JSON');
+          if (!nextResult) throw new Error('Unexpected JSON format');
 
-          const parsed = JSON.parse(cleaned.substring(startIdx, endIdx + 1));
-          setResult(parsed);
+          setResult(nextResult);
           setStep(2);
+          return;
         } catch (e) {
           console.error('[Wizard] Parse error:', e, '\nRaw:', text);
           setError('Không parse được kết quả. Thử lại?');
@@ -191,7 +334,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
         target_length_type: targetLengthType,
         ultimate_goal: ultimateGoal,
         milestones: JSON.stringify(milestonesInfo),
-        skipFirstChapter: true, // AI Wizard creates chapters itself
+        skipFirstChapter: true,
       });
 
       // 2. Create chapters
@@ -201,6 +344,24 @@ Chỉ trả về JSON, không thêm gì khác.`,
           if (!excluded.has(`chapter-${i}`)) {
             await createChapter(projectId, ch.title || `Chương ${i + 1}`);
           }
+        }
+      }
+
+      if (result.chapters?.length > 0) {
+        const createdChapters = await db.chapters
+          .where('project_id').equals(projectId)
+          .sortBy('order_index');
+        let createdIndex = 0;
+
+        for (let i = 0; i < result.chapters.length; i++) {
+          if (excluded.has(`chapter-${i}`)) continue;
+          const createdChapter = createdChapters[createdIndex];
+          if (createdChapter) {
+            const summary = result.chapters[i]?.summary || '';
+            if (summary) await saveChapterSummary(createdChapter.id, projectId, summary);
+            await updateChapter(createdChapter.id, { summary });
+          }
+          createdIndex++;
         }
       }
 
@@ -214,7 +375,8 @@ Chỉ trả về JSON, không thêm gì khác.`,
               name: c.name,
               role: c.role || 'supporting',
               appearance: c.appearance || '',
-              personality: c.personality || '',
+              personality: (c.personality || '') + (c.flaws ? `\nĐiểm yếu: ${c.flaws}` : ''),
+              flaws: c.flaws || '',
               personality_tags: c.personality_tags || '',
               goals: c.goals || '',
             });
@@ -249,6 +411,23 @@ Chỉ trả về JSON, không thêm gì khác.`,
             });
           }
         }
+      }
+
+      // 6. Create plot threads
+      const nextPlotThreads = Array.isArray(result.plot_threads)
+        ? result.plot_threads.filter(isPlainObject)
+        : [];
+
+      for (let i = 0; i < nextPlotThreads.length; i++) {
+        const pt = nextPlotThreads[i];
+        if (!pt.title?.trim() || excluded.has(`thread-${i}`)) continue;
+        await createPlotThread({
+          project_id: projectId,
+          title: pt.title.trim(),
+          type: VALID_THREAD_TYPES.includes(pt.type) ? pt.type : 'subplot',
+          description: pt.description || '',
+          state: pt.state === 'resolved' ? 'resolved' : 'active',
+        });
       }
 
       onCreated(projectId);
@@ -292,7 +471,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
               </div>
             )}
 
-            {/* Genre + Tone */}
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label">Thể loại</label>
@@ -313,7 +491,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
               </div>
             </div>
 
-            {/* POV + Xưng hô */}
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label"><Eye size={13} /> Góc nhìn</label>
@@ -337,7 +514,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
               </div>
             </div>
 
-            {/* Cấu trúc truyện */}
             <div className="form-group">
               <label className="form-label"><BookOpen size={13} /> Cấu trúc truyện</label>
               <select className="select" value={storyStructure} onChange={(e) => setStoryStructure(e.target.value)}>
@@ -347,7 +523,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
               </select>
             </div>
 
-            {/* Pacing Control (Phase 5) */}
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label">Độ dài dự kiến</label>
@@ -400,7 +575,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
               />
             </div>
 
-            {/* Synopsis */}
             <div className="form-group">
               <label className="form-label">📖 Cốt truyện chính (Synopsis)</label>
               <textarea
@@ -414,11 +588,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
 
             {GENRE_TEMPLATES[genre] && (
               <label className="wizard-template-toggle">
-                <input
-                  type="checkbox"
-                  checked={useTemplate}
-                  onChange={(e) => setUseTemplate(e.target.checked)}
-                />
+                <input type="checkbox" checked={useTemplate} onChange={(e) => setUseTemplate(e.target.checked)} />
                 <span>Dùng template "{GENRE_TEMPLATES[genre].label}" làm cơ sở</span>
               </label>
             )}
@@ -444,6 +614,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
         {/* Step 2: Review */}
         {step === 2 && result && (
           <div className="wizard-body wizard-review">
+
             {/* Premise */}
             <div className="wizard-section">
               <h4>📖 Premise</h4>
@@ -475,17 +646,20 @@ Chỉ trả về JSON, không thêm gì khác.`,
               <div className="wizard-section">
                 <h4><Users size={16} /> Nhân vật ({result.characters.filter((_, i) => !excluded.has(`char-${i}`)).length})</h4>
                 <div className="wizard-items">
-                  {result.characters.map((c, i) => (
-                    <div key={i} className={`wizard-item ${excluded.has(`char-${i}`) ? 'wizard-item--excluded' : ''}`}>
-                      <div className="wizard-item-content">
-                        <strong>{c.name}</strong> <span className="badge badge-sm">{c.role}</span>
-                        {c.personality && <p>{c.personality}</p>}
+                  {result.characters.map((c, i) => {
+                    const key = `char-${i}`;
+                    return (
+                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
+                        <div className="wizard-item-content">
+                          <strong>{c.name}</strong> <span className="badge badge-sm">{c.role}</span>
+                          {c.personality && <p>{c.personality}</p>}
+                          {c.flaws && <p style={{ fontSize: '13px', marginTop: '4px', color: 'var(--color-warning, #f59e0b)' }}><strong>Điểm yếu:</strong> {c.flaws}</p>}
+                        </div>
+                        {renderItemActions(key)}
+                        {editingKey === key && renderCharEdit(c, i)}
                       </div>
-                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => toggleExclude(`char-${i}`)}>
-                        {excluded.has(`char-${i}`) ? <RotateCcw size={14} /> : <Trash2 size={14} />}
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -495,17 +669,19 @@ Chỉ trả về JSON, không thêm gì khác.`,
               <div className="wizard-section">
                 <h4><MapPin size={16} /> Địa điểm ({result.locations.filter((_, i) => !excluded.has(`loc-${i}`)).length})</h4>
                 <div className="wizard-items">
-                  {result.locations.map((l, i) => (
-                    <div key={i} className={`wizard-item ${excluded.has(`loc-${i}`) ? 'wizard-item--excluded' : ''}`}>
-                      <div className="wizard-item-content">
-                        <strong>{l.name}</strong>
-                        {l.description && <p>{l.description}</p>}
+                  {result.locations.map((l, i) => {
+                    const key = `loc-${i}`;
+                    return (
+                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
+                        <div className="wizard-item-content">
+                          <strong>{l.name}</strong>
+                          {l.description && <p>{l.description}</p>}
+                        </div>
+                        {renderItemActions(key)}
+                        {editingKey === key && renderLocEdit(l, i)}
                       </div>
-                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => toggleExclude(`loc-${i}`)}>
-                        {excluded.has(`loc-${i}`) ? <RotateCcw size={14} /> : <Trash2 size={14} />}
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -515,17 +691,19 @@ Chỉ trả về JSON, không thêm gì khác.`,
               <div className="wizard-section">
                 <h4><BookOpen size={16} /> Thuật ngữ ({result.terms.filter((_, i) => !excluded.has(`term-${i}`)).length})</h4>
                 <div className="wizard-items">
-                  {result.terms.map((t, i) => (
-                    <div key={i} className={`wizard-item ${excluded.has(`term-${i}`) ? 'wizard-item--excluded' : ''}`}>
-                      <div className="wizard-item-content">
-                        <strong>{t.name}</strong>
-                        {t.definition && <p>{t.definition}</p>}
+                  {result.terms.map((t, i) => {
+                    const key = `term-${i}`;
+                    return (
+                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
+                        <div className="wizard-item-content">
+                          <strong>{t.name}</strong>
+                          {t.definition && <p>{t.definition}</p>}
+                        </div>
+                        {renderItemActions(key)}
+                        {editingKey === key && renderTermEdit(t, i)}
                       </div>
-                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => toggleExclude(`term-${i}`)}>
-                        {excluded.has(`term-${i}`) ? <RotateCcw size={14} /> : <Trash2 size={14} />}
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -535,26 +713,53 @@ Chỉ trả về JSON, không thêm gì khác.`,
               <div className="wizard-section">
                 <h4><List size={16} /> Chapters ({result.chapters.filter((_, i) => !excluded.has(`chapter-${i}`)).length})</h4>
                 <div className="wizard-items wizard-items--compact">
-                  {result.chapters.map((ch, i) => (
-                    <div key={i} className={`wizard-item ${excluded.has(`chapter-${i}`) ? 'wizard-item--excluded' : ''}`}>
-                      <div className="wizard-item-content">
-                        <strong>{ch.title}</strong>
-                        {ch.summary && <p>{ch.summary}</p>}
+                  {result.chapters.map((ch, i) => {
+                    const key = `chapter-${i}`;
+                    return (
+                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
+                        <div className="wizard-item-content">
+                          <strong>{ch.title}</strong>
+                          {ch.summary && <p>{ch.summary}</p>}
+                        </div>
+                        {renderItemActions(key)}
+                        {editingKey === key && renderChapterEdit(ch, i)}
                       </div>
-                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => toggleExclude(`chapter-${i}`)}>
-                        {excluded.has(`chapter-${i}`) ? <RotateCcw size={14} /> : <Trash2 size={14} />}
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Plot Threads */}
+            {result.plot_threads?.length > 0 && (
+              <div className="wizard-section">
+                <h4><GitPullRequest size={16} /> Tuyến truyện ({result.plot_threads.filter((_, i) => !excluded.has(`thread-${i}`)).length})</h4>
+                <div className="wizard-items">
+                  {result.plot_threads.map((pt, i) => {
+                    const key = `thread-${i}`;
+                    return (
+                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
+                        <div className="wizard-item-content">
+                          <strong>{pt.title}</strong>
+                          <span className="badge badge-sm" style={{ marginLeft: '6px' }}>
+                            {TYPE_LABELS[pt.type] || pt.type}
+                          </span>
+                          {pt.description && <p>{pt.description}</p>}
+                        </div>
+                        {renderItemActions(key)}
+                        {editingKey === key && renderThreadEdit(pt, i)}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={() => { setStep(0); setResult(null); setExcluded(new Set()); }}>
+              <button className="btn btn-ghost" onClick={() => { setStep(0); setResult(null); setExcluded(new Set()); setEditingKey(null); }}>
                 <ArrowLeft size={16} /> Quay lại
               </button>
-              <button className="btn btn-ghost" onClick={() => { setResult(null); setStep(0); }}>
+              <button className="btn btn-ghost" onClick={() => { setResult(null); setStep(0); setEditingKey(null); }}>
                 <RotateCcw size={16} /> Tạo lại
               </button>
               <button className="btn btn-primary" onClick={handleApprove} disabled={isGenerating}>
