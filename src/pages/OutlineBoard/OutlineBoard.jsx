@@ -5,7 +5,7 @@
  * Uses existing DB fields: summary, purpose, arc_id (as act), goal, conflict, pov, location.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
@@ -16,7 +16,7 @@ import ArcGenerationModal from './ArcGenerationModal';
 import {
   Map, Plus, Sparkles, Loader2, ChevronDown, FileText,
   Users, MapPin, Target, Zap, PenTool, LayoutGrid, List,
-  CheckCircle2, GitPullRequest, Search, Combine, X
+  CheckCircle2, GitPullRequest, Search, Combine, X, ArrowRight
 } from 'lucide-react';
 import { SCENE_STATUSES } from '../../utils/constants';
 import aiService from '../../services/ai/client';
@@ -43,7 +43,7 @@ export default function OutlineBoard() {
   const { plotThreads, loadPlotThreads, loadThreadBeatsForProject, createPlotThread, deletePlotThread } = usePlotStore();
 
   const [selectedChapter, setSelectedChapter] = useState(null);
-  const [viewMode, setViewMode] = useState('board'); // 'board' | 'list'
+  const [viewMode, setViewMode] = useState('board');
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
 
@@ -54,9 +54,14 @@ export default function OutlineBoard() {
   // Arc Gen Modal state
   const [showArcGen, setShowArcGen] = useState(false);
 
-  // [MỚI] AI Suggest Threads state
+  // AI Suggest Threads state
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestedThreads, setSuggestedThreads] = useState([]);
+
+  // [MỚI] Suggest input expand state
+  const [showSuggestInput, setShowSuggestInput] = useState(false);
+  const [suggestHint, setSuggestHint] = useState('');
+  const suggestTextareaRef = useRef(null);
 
   useEffect(() => {
     if (currentProject) {
@@ -65,6 +70,13 @@ export default function OutlineBoard() {
       loadThreadBeatsForProject(currentProject.id);
     }
   }, [currentProject?.id]);
+
+  // [MỚI] Auto-focus textarea khi expand
+  useEffect(() => {
+    if (showSuggestInput && suggestTextareaRef.current) {
+      suggestTextareaRef.current.focus();
+    }
+  }, [showSuggestInput]);
 
   // Group chapters by act (arc_id)
   const chaptersByAct = useMemo(() => {
@@ -80,7 +92,6 @@ export default function OutlineBoard() {
     return groups;
   }, [chapters]);
 
-  // Scene count per chapter
   const sceneCountMap = useMemo(() => {
     const map = {};
     chapters.forEach(ch => {
@@ -89,7 +100,6 @@ export default function OutlineBoard() {
     return map;
   }, [chapters, scenes]);
 
-  // Word count per chapter
   const wordCountMap = useMemo(() => {
     const map = {};
     chapters.forEach(ch => {
@@ -102,21 +112,18 @@ export default function OutlineBoard() {
     return map;
   }, [chapters, scenes]);
 
-  // Get POV character name for a chapter (from first scene)
   const getChapterPOV = (chapterId) => {
     const firstScene = scenes.find(s => s.chapter_id === chapterId && s.pov_character_id);
     if (!firstScene?.pov_character_id) return null;
     return characters.find(c => c.id === firstScene.pov_character_id)?.name || null;
   };
 
-  // Get location name for a chapter (from first scene)
   const getChapterLocation = (chapterId) => {
     const firstScene = scenes.find(s => s.chapter_id === chapterId && s.location_id);
     if (!firstScene?.location_id) return null;
     return locations.find(l => l.id === firstScene.location_id)?.name || null;
   };
 
-  // Navigate to editor
   const goToEditor = (chapterId) => {
     const scene = scenes.find(s => s.chapter_id === chapterId);
     setActiveChapter(chapterId);
@@ -124,7 +131,6 @@ export default function OutlineBoard() {
     navigate(`/project/${currentProject.id}/editor`);
   };
 
-  // Add chapter to specific act
   const addChapterToAct = async (act) => {
     await createChapter(undefined, undefined, { arc_id: act });
   };
@@ -234,10 +240,11 @@ Trả về CHÍNH XÁC JSON:
     });
   };
 
-  // [MỚI] AI Suggest Threads — gợi ý tuyến truyện bổ sung từ sidebar
+  // AI Suggest Threads — nhận hint tùy chọn từ tác giả
   const handleSuggestThreads = async () => {
     if (!currentProject || isSuggesting) return;
     setIsSuggesting(true);
+    setShowSuggestInput(false); // đóng input sau khi gửi
 
     const synopsisText = currentProject.synopsis || currentProject.description || 'Chưa có';
     const charList = characters.map(c => `${c.name} (${c.role})`).join(', ') || 'Chưa có';
@@ -249,6 +256,11 @@ Trả về CHÍNH XÁC JSON:
     const existingThreads = plotThreads.length > 0
       ? plotThreads.map(pt => `- [${pt.type}] ${pt.title}: ${pt.description || ''}`).join('\n')
       : 'Chưa có';
+
+    // [MỚI] Inject hint của tác giả vào prompt nếu có
+    const hintSection = suggestHint.trim()
+      ? `\nHướng đi tác giả muốn khai thác: ${suggestHint.trim()}\nƯu tiên gợi ý theo hướng này nếu phù hợp với câu chuyện.\n`
+      : '';
 
     const systemPrompt = `Bạn là trợ lý phân tích cốt truyện cho ứng dụng StoryForge.
 
@@ -262,7 +274,7 @@ ${chapterList}
 
 Các tuyến truyện ĐÃ CÓ (không được lặp lại):
 ${existingThreads}
-
+${hintSection}
 Nhiệm vụ: Đọc toàn bộ thông tin trên, phân tích các khoảng trống chưa được khai thác, và đề xuất thêm 2-3 Tuyến Truyện MỚI để câu chuyện thêm chiều sâu.
 - KHÔNG lặp lại bất kỳ tuyến truyện đã có.
 - CHỈ gợi ý các tuyến có tính bước ngoặt, ảnh hưởng vĩ mô đến nhiều chương.
@@ -282,6 +294,7 @@ Trả về CHÍNH XÁC JSON:
       stream: false,
       onComplete: (text) => {
         setIsSuggesting(false);
+        setSuggestHint(''); // reset hint sau khi gửi
         try {
           const parsedValue = parseAIJsonValue(text);
           const normalized = isPlainObject(parsedValue) ? parsedValue : null;
@@ -303,7 +316,24 @@ Trả về CHÍNH XÁC JSON:
     });
   };
 
-  // [MỚI] Duyệt một gợi ý — lưu vào DB và xóa khỏi danh sách chờ
+  // [MỚI] Toggle suggest input — click Sparkles lần 2 để đóng
+  const handleToggleSuggestInput = () => {
+    if (isSuggesting) return;
+    setShowSuggestInput(prev => !prev);
+  };
+
+  // [MỚI] Gửi bằng Enter (Shift+Enter = xuống dòng)
+  const handleSuggestKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSuggestThreads();
+    }
+    if (e.key === 'Escape') {
+      setShowSuggestInput(false);
+    }
+  };
+
+  // Duyệt một gợi ý
   const handleApproveThread = async (pt, index) => {
     await createPlotThread({
       project_id: currentProject.id,
@@ -316,7 +346,7 @@ Trả về CHÍNH XÁC JSON:
     setSuggestedThreads(prev => prev.filter((_, i) => i !== index));
   };
 
-  // [MỚI] Bỏ qua một gợi ý
+  // Bỏ qua một gợi ý
   const handleDismissThread = (index) => {
     setSuggestedThreads(prev => prev.filter((_, i) => i !== index));
   };
@@ -479,7 +509,6 @@ Trả về CHÍNH XÁC JSON:
               </div>
             </div>
           ) : viewMode === 'board' ? (
-            /* ── Board View: 3-Act Lanes ── */
             <div className="outline-lanes">
               {ACTS.map(act => (
                 <div key={act.id} className="outline-lane">
@@ -493,18 +522,13 @@ Trả về CHÍNH XÁC JSON:
 
                   <div className="outline-lane-body">
                     {chaptersByAct[act.id].map(renderChapterCard)}
-
-                    <button
-                      className="outline-add-card"
-                      onClick={() => addChapterToAct(act.id)}
-                    >
+                    <button className="outline-add-card" onClick={() => addChapterToAct(act.id)}>
                       <Plus size={14} /> Thêm vào {act.label.split('—')[0].trim()}
                     </button>
                   </div>
                 </div>
               ))}
 
-              {/* Unassigned */}
               {chaptersByAct.unassigned.length > 0 && (
                 <div className="outline-lane outline-lane--unassigned">
                   <div className="outline-lane-header">
@@ -520,7 +544,6 @@ Trả về CHÍNH XÁC JSON:
               )}
             </div>
           ) : (
-            /* ── List View ── */
             <div className="outline-list">
               {chapters.map((chapter, idx) => {
                 const act = ACTS.find(a => a.id === chapter.arc_id);
@@ -548,10 +571,10 @@ Trả về CHÍNH XÁC JSON:
           <div className="plot-sidebar-header">
             <h3><Combine size={16} /> Tuyến truyện</h3>
             <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-              {/* [MỚI] Nút AI Gợi ý */}
+              {/* Nút Sparkles — toggle input */}
               <button
-                className="btn btn-ghost btn-icon btn-sm"
-                onClick={handleSuggestThreads}
+                className={`btn btn-ghost btn-icon btn-sm ${showSuggestInput ? 'btn--active' : ''}`}
+                onClick={handleToggleSuggestInput}
                 disabled={isSuggesting}
                 title="AI gợi ý tuyến truyện mới"
               >
@@ -570,9 +593,35 @@ Trả về CHÍNH XÁC JSON:
             </div>
           </div>
 
-          <div className="plot-sidebar-body">
+          {/* [MỚI] Suggest input — slide down khi showSuggestInput = true */}
+          {showSuggestInput && (
+            <div className="plot-suggest-input-bar">
+              <textarea
+                ref={suggestTextareaRef}
+                className="plot-suggest-textarea"
+                rows={2}
+                value={suggestHint}
+                onChange={e => setSuggestHint(e.target.value)}
+                onKeyDown={handleSuggestKeyDown}
+                placeholder="Hướng đi bạn muốn AI khai thác... (không bắt buộc)"
+              />
+              <button
+                className="btn btn-accent btn-sm plot-suggest-send"
+                onClick={handleSuggestThreads}
+                disabled={isSuggesting}
+                title="Gửi (Enter)"
+              >
+                <ArrowRight size={14} />
+              </button>
+              <p className="plot-suggest-hint">
+                Để trống → AI tự phân tích khoảng trống.<br />
+                Shift+Enter để xuống dòng · Esc để đóng.
+              </p>
+            </div>
+          )}
 
-            {/* [MỚI] Suggested threads — hiển thị phía trên danh sách đã chốt */}
+          <div className="plot-sidebar-body">
+            {/* Suggested threads — hiển thị phía trên danh sách đã chốt */}
             {suggestedThreads.length > 0 && (
               <div className="plot-suggestions-section">
                 <div className="plot-suggestions-label">
@@ -591,16 +640,10 @@ Trả về CHÍNH XÁC JSON:
                       <p className="plot-thread-desc">{pt.description}</p>
                     )}
                     <div className="plot-thread-suggestion-actions">
-                      <button
-                        className="btn btn-xs btn-accent"
-                        onClick={() => handleApproveThread(pt, index)}
-                      >
+                      <button className="btn btn-xs btn-accent" onClick={() => handleApproveThread(pt, index)}>
                         <CheckCircle2 size={11} /> Duyệt
                       </button>
-                      <button
-                        className="btn btn-xs btn-ghost"
-                        onClick={() => handleDismissThread(index)}
-                      >
+                      <button className="btn btn-xs btn-ghost" onClick={() => handleDismissThread(index)}>
                         <X size={11} /> Bỏ
                       </button>
                     </div>
@@ -644,7 +687,6 @@ Trả về CHÍNH XÁC JSON:
         </div>
       </div>
 
-      {/* Chapter Detail Modal */}
       {selectedChapter && (
         <ChapterDetailModal
           chapter={selectedChapter}
@@ -656,7 +698,6 @@ Trả về CHÍNH XÁC JSON:
         />
       )}
 
-      {/* Plot Thread Edit Modal */}
       {showPlotModal && (
         <PlotThreadModal
           projectId={currentProject.id}
@@ -665,7 +706,6 @@ Trả về CHÍNH XÁC JSON:
         />
       )}
 
-      {/* Arc Generation Modal */}
       {showArcGen && (
         <ArcGenerationModal
           projectId={currentProject.id}

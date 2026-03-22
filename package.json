@@ -9,17 +9,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tiptap/extension-character-count": "^2.11.0",
+    "@tiptap/extension-placeholder": "^2.11.0",
+    "@tiptap/react": "^2.11.0",
+    "@tiptap/starter-kit": "^2.11.0",
+    "dexie": "^4.0.0",
+    "dexie-react-hooks": "^1.1.7",
+    "docx": "^9.6.1",
+    "file-saver": "^2.0.5",
+    "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.0",
-    "zustand": "^5.0.0",
-    "dexie": "^4.0.0",
-    "dexie-react-hooks": "^1.1.7",
-    "@tiptap/react": "^2.11.0",
-    "@tiptap/starter-kit": "^2.11.0",
-    "@tiptap/extension-placeholder": "^2.11.0",
-    "@tiptap/extension-character-count": "^2.11.0",
-    "lucide-react": "^0.469.0"
+    "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.0",

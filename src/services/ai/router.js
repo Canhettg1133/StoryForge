@@ -14,12 +14,11 @@ export const PROVIDERS = {
   OLLAMA: 'ollama',
 };
 
-// --- Gemini Direct: Free-tier models with real quota ---
+// --- Gemini Direct: Free-tier models (ID thực từ ListModels) ---
 export const DIRECT_MODELS = [
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', rpm: 5, rpd: 20, default: true },
-  { id: 'gemini-3-flash', label: 'Gemini 3 Flash', rpm: 5, rpd: 20, default: true },
-  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite', rpm: 10, rpd: 20, default: true },
-  { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', rpm: 15, rpd: 500, default: true },
+  { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', rpm: 5, rpd: 20, default: true },
+  { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite Preview', rpm: 15, rpd: 500, default: true },
 ];
 
 // --- Gemini Proxy: 星星 真流 models ---
@@ -71,10 +70,13 @@ export const QUALITY_MODES = {
 };
 
 // ─── Direct: quality → model ───
+// fast     = gemini-2.5-flash               (5 RPM, 20 RPD)
+// balanced = gemini-3-flash-preview         (5 RPM, 20 RPD)
+// best     = gemini-3.1-flash-lite-preview  (15 RPM, 500 RPD — quota cao nhất)
 const DIRECT_QUALITY_MAP = {
-  fast: 'gemini-3.1-flash-lite',
-  balanced: 'gemini-2.5-flash',
-  best: 'gemini-3-flash',
+  fast: 'gemini-2.5-flash',
+  balanced: 'gemini-3-flash-preview',
+  best: 'gemini-3.1-flash-lite-preview',
 };
 
 // ─── Proxy: task-specific model mapping ───
@@ -115,7 +117,6 @@ const PROXY_TASK_MAP = {
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
   },
-  // Phase 3 — Flash tasks (analytical, not creative)
   chapter_summary: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
@@ -136,7 +137,6 @@ const PROXY_TASK_MAP = {
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
   },
-  // Phase A — Suggestion Inbox (analytical)
   suggest_updates: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
@@ -242,7 +242,7 @@ class ModelRouter {
       fallbacks.push({ provider: PROVIDERS.GEMINI_PROXY, model: PROXY_MODELS[1].id, tier: 'flash' });
     }
     if (p === PROVIDERS.GEMINI_DIRECT) {
-      fallbacks.push({ provider: PROVIDERS.GEMINI_DIRECT, model: 'gemini-3.1-flash-lite', tier: 'free' });
+      fallbacks.push({ provider: PROVIDERS.GEMINI_DIRECT, model: 'gemini-3.1-flash-lite-preview', tier: 'free' });
     }
     if (this.ollamaModel) {
       fallbacks.push({ provider: PROVIDERS.OLLAMA, model: this.ollamaModel, tier: 'local' });

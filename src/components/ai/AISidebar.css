@@ -10,7 +10,8 @@
   flex-direction: column;
   flex: 4;
   min-width: 280px;
-  overflow: hidden;
+  overflow: visible;
+  /* đổi từ hidden → visible để resize: vertical trên codex-panel hoạt động */
 }
 
 /* Header */
@@ -157,6 +158,8 @@
   flex-direction: column;
   overflow: hidden;
   border-bottom: 1px solid var(--color-border);
+  min-height: 0;
+  /* flex child scroll fix */
 }
 
 .ai-output-header {
@@ -308,7 +311,7 @@
   margin-left: auto;
 }
 
-/* Guidance Chips (plot suggestions inside guidance panel) */
+/* Guidance Chips */
 .ai-guidance-chips {
   margin-bottom: var(--space-2);
 }

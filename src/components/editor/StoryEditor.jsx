@@ -6,15 +6,24 @@ import CharacterCount from '@tiptap/extension-character-count';
 import useProjectStore from '../../stores/projectStore';
 import { countWords } from '../../utils/constants';
 import ContinuityBar from './ContinuityBar';
-import { ChevronDown, ChevronRight, BookOpen, ListChecks } from 'lucide-react';
+import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X } from 'lucide-react';
 import './StoryEditor.css';
 
 export default function StoryEditor({ onEditorReady }) {
-  const { activeSceneId, activeChapterId, scenes, chapters, updateScene, updateProjectTimestamp } = useProjectStore();
+  const {
+    activeSceneId, activeChapterId, scenes, chapters,
+    updateScene, updateChapter, updateProjectTimestamp,
+  } = useProjectStore();
+
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
   const saveTimerRef = useRef(null);
   const lastSavedRef = useRef('');
   const [outlinePanelOpen, setOutlinePanelOpen] = useState(true);
+
+  // [MỚI] Outline edit state
+  const [isEditingOutline, setIsEditingOutline] = useState(false);
+  const [editSummary, setEditSummary] = useState('');
+  const [editPurpose, setEditPurpose] = useState('');
 
   // Parse chapter outline data (summary + key_events from purpose)
   const chapterOutline = useMemo(() => {
@@ -28,9 +37,50 @@ export default function StoryEditor({ onEditorReady }) {
         if (Array.isArray(parsed)) keyEvents = parsed;
       } catch { /* purpose is plain text, not JSON */ }
     }
-    if (!summary && keyEvents.length === 0) return null;
-    return { summary, keyEvents };
+    // Hiện panel ngay cả khi chưa có nội dung để tác giả có thể thêm
+    return { summary, keyEvents, purposeRaw: chapter.purpose || '' };
   }, [activeChapterId, chapters]);
+
+  // [MỚI] Mở form chỉnh sửa — prefill từ data hiện tại
+  const handleStartEdit = () => {
+    if (!chapterOutline) return;
+    setEditSummary(chapterOutline.summary);
+    // Nếu purpose là JSON array thì join thành multiline text để dễ edit
+    if (chapterOutline.keyEvents.length > 0) {
+      setEditPurpose(chapterOutline.keyEvents.join('\n'));
+    } else {
+      setEditPurpose(chapterOutline.purposeRaw);
+    }
+    setIsEditingOutline(true);
+  };
+
+  // [MỚI] Lưu chỉnh sửa
+  const handleSaveOutline = async () => {
+    if (!activeChapterId) return;
+    // Nếu purpose được nhập dạng multiline → lưu dạng JSON array (mỗi dòng = 1 event)
+    // Nếu chỉ 1 dòng hoặc không có newline → lưu plain text
+    const lines = editPurpose.split('\n').map(l => l.trim()).filter(Boolean);
+    const purposeToSave = lines.length > 1 ? JSON.stringify(lines) : (lines[0] || '');
+
+    await updateChapter(activeChapterId, {
+      summary: editSummary.trim(),
+      purpose: purposeToSave,
+    });
+    await updateProjectTimestamp();
+    setIsEditingOutline(false);
+  };
+
+  // [MỚI] Huỷ chỉnh sửa
+  const handleCancelEdit = () => {
+    setIsEditingOutline(false);
+    setEditSummary('');
+    setEditPurpose('');
+  };
+
+  // [MỚI] Reset edit state khi đổi chương
+  useEffect(() => {
+    setIsEditingOutline(false);
+  }, [activeChapterId]);
 
   const editor = useEditor({
     extensions: [
@@ -50,7 +100,6 @@ export default function StoryEditor({ onEditorReady }) {
       },
     },
     onUpdate: ({ editor }) => {
-      // Debounced auto-save
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
         handleSave(editor.getHTML());
@@ -58,7 +107,6 @@ export default function StoryEditor({ onEditorReady }) {
     },
   });
 
-  // Load scene content when active scene changes
   useEffect(() => {
     if (editor && activeScene) {
       const content = activeScene.draft_text || '';
@@ -72,7 +120,6 @@ export default function StoryEditor({ onEditorReady }) {
     }
   }, [activeSceneId, activeScene?.draft_text, editor]);
 
-  // Expose editor to parent (for AI sidebar)
   useEffect(() => {
     if (editor && onEditorReady) {
       onEditorReady(editor);
@@ -82,15 +129,11 @@ export default function StoryEditor({ onEditorReady }) {
   const handleSave = useCallback(async (html) => {
     if (!activeSceneId) return;
     if (html === lastSavedRef.current) return;
-
     lastSavedRef.current = html;
-    await updateScene(activeSceneId, {
-      draft_text: html,
-    });
+    await updateScene(activeSceneId, { draft_text: html });
     await updateProjectTimestamp();
   }, [activeSceneId, updateScene, updateProjectTimestamp]);
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -100,19 +143,18 @@ export default function StoryEditor({ onEditorReady }) {
   const wordCount = editor ? countWords(editor.getHTML()) : 0;
   const charCount = editor ? editor.storage.characterCount.characters() : 0;
 
-  // Chapter-level word count progress
   const chapterProgress = useMemo(() => {
     const chapter = chapters.find(c => c.id === activeChapterId);
     if (!chapter) return null;
     let target = chapter.word_count_target || 7000;
-    if (target === 3000) target = 7000; // Ép các chương cũ đã lưu 3000 thành 7000
+    if (target === 3000) target = 7000;
     const chapterScenes = scenes.filter(s => s.chapter_id === activeChapterId);
     const total = chapterScenes.reduce((sum, s) => {
       const text = (s.draft_text || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
       return sum + (text.trim() ? text.trim().split(/\s+/).length : 0);
     }, 0);
     return { current: total, target, percent: Math.min(100, Math.round((total / target) * 100)) };
-  }, [activeChapterId, scenes, chapters, wordCount]); // wordCount triggers recalc on typing
+  }, [activeChapterId, scenes, chapters, wordCount]);
 
   if (!activeScene) {
     return (
@@ -141,34 +183,117 @@ export default function StoryEditor({ onEditorReady }) {
       </div>
 
       {/* Chapter Outline Panel — Dàn Ý Chương */}
-      {chapterOutline && (
+      {chapterOutline !== null && (
         <div className={`chapter-outline-panel ${outlinePanelOpen ? 'chapter-outline-panel--open' : ''}`}>
-          <button
-            className="chapter-outline-toggle"
-            onClick={() => setOutlinePanelOpen(!outlinePanelOpen)}
-          >
-            {outlinePanelOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-            <BookOpen size={14} />
-            <span>Dàn Ý Chương</span>
-          </button>
+          <div className="chapter-outline-toggle-row">
+            <button
+              className="chapter-outline-toggle"
+              onClick={() => setOutlinePanelOpen(!outlinePanelOpen)}
+            >
+              {outlinePanelOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              <BookOpen size={14} />
+              <span>Dàn Ý Chương</span>
+            </button>
+
+            {/* [MỚI] Nút bút chì — chỉ hiện khi panel mở */}
+            {outlinePanelOpen && !isEditingOutline && (
+              <button
+                className="chapter-outline-edit-btn"
+                onClick={handleStartEdit}
+                title="Chỉnh sửa dàn ý"
+              >
+                <Pencil size={13} />
+              </button>
+            )}
+
+            {/* [MỚI] Nút Lưu / Huỷ khi đang edit */}
+            {outlinePanelOpen && isEditingOutline && (
+              <div className="chapter-outline-edit-actions">
+                <button
+                  className="btn btn-xs btn-accent"
+                  onClick={handleSaveOutline}
+                  title="Lưu"
+                >
+                  <Check size={12} /> Lưu
+                </button>
+                <button
+                  className="btn btn-xs btn-ghost"
+                  onClick={handleCancelEdit}
+                  title="Huỷ"
+                >
+                  <X size={12} /> Huỷ
+                </button>
+              </div>
+            )}
+          </div>
+
           {outlinePanelOpen && (
             <div className="chapter-outline-body">
-              {chapterOutline.summary && (
-                <div className="chapter-outline-section">
-                  <div className="chapter-outline-label">Tóm tắt</div>
-                  <p className="chapter-outline-text">{chapterOutline.summary}</p>
-                </div>
+              {/* ── Chế độ xem ── */}
+              {!isEditingOutline && (
+                <>
+                  {chapterOutline.summary ? (
+                    <div className="chapter-outline-section">
+                      <div className="chapter-outline-label">Tóm tắt</div>
+                      <p className="chapter-outline-text">{chapterOutline.summary}</p>
+                    </div>
+                  ) : (
+                    <div className="chapter-outline-section">
+                      <p className="chapter-outline-empty">
+                        Chưa có tóm tắt. <button className="chapter-outline-add-link" onClick={handleStartEdit}>Thêm ngay</button>
+                      </p>
+                    </div>
+                  )}
+
+                  {chapterOutline.keyEvents.length > 0 && (
+                    <div className="chapter-outline-section">
+                      <div className="chapter-outline-label">
+                        <ListChecks size={13} /> Sự kiện chính
+                      </div>
+                      <ul className="chapter-outline-events">
+                        {chapterOutline.keyEvents.map((evt, i) => (
+                          <li key={i}>{evt}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {chapterOutline.purposeRaw && chapterOutline.keyEvents.length === 0 && (
+                    <div className="chapter-outline-section">
+                      <div className="chapter-outline-label">Mục tiêu chương</div>
+                      <p className="chapter-outline-text">{chapterOutline.purposeRaw}</p>
+                    </div>
+                  )}
+                </>
               )}
-              {chapterOutline.keyEvents.length > 0 && (
-                <div className="chapter-outline-section">
-                  <div className="chapter-outline-label">
-                    <ListChecks size={13} /> Sự kiện chính
+
+              {/* ── Chế độ chỉnh sửa ── */}
+              {isEditingOutline && (
+                <div className="chapter-outline-edit-form">
+                  <div className="chapter-outline-edit-field">
+                    <label className="chapter-outline-edit-label">Tóm tắt chương</label>
+                    <textarea
+                      className="chapter-outline-edit-textarea"
+                      rows={3}
+                      value={editSummary}
+                      onChange={e => setEditSummary(e.target.value)}
+                      placeholder="Tóm tắt nội dung chương 2-3 câu..."
+                      autoFocus
+                    />
                   </div>
-                  <ul className="chapter-outline-events">
-                    {chapterOutline.keyEvents.map((evt, i) => (
-                      <li key={i}>{evt}</li>
-                    ))}
-                  </ul>
+                  <div className="chapter-outline-edit-field">
+                    <label className="chapter-outline-edit-label">
+                      <ListChecks size={12} /> Sự kiện chính
+                      <span className="chapter-outline-edit-hint">(mỗi dòng = 1 sự kiện)</span>
+                    </label>
+                    <textarea
+                      className="chapter-outline-edit-textarea"
+                      rows={4}
+                      value={editPurpose}
+                      onChange={e => setEditPurpose(e.target.value)}
+                      placeholder={"Sự kiện 1\nSự kiện 2\nSự kiện 3..."}
+                    />
+                  </div>
                 </div>
               )}
             </div>
@@ -176,7 +301,7 @@ export default function StoryEditor({ onEditorReady }) {
         </div>
       )}
 
-      {/* Continuity Bar — "Previously on..." */}
+      {/* Continuity Bar */}
       <ContinuityBar />
 
       {/* Editor */}
@@ -184,7 +309,7 @@ export default function StoryEditor({ onEditorReady }) {
         <EditorContent editor={editor} />
       </div>
 
-      {/* Footer with progress */}
+      {/* Footer */}
       <div className="story-editor-footer">
         <div className="story-editor-stats">
           <span>{wordCount.toLocaleString()} từ</span>
