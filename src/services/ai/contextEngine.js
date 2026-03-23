@@ -1,37 +1,19 @@
 /**
  * StoryForge — Context Engine v2 (Phase 4)
  * 
- * The "brain" of Memory. Before every AI call, this module automatically
- * gathers relevant context from the Codex and returns a structured object
- * to be injected into the 8-layer prompt.
- * 
- * Phase 4 additions:
- *   - Word boundary entity detection (fixes false positives)
- *   - Relationships loading for detected characters
- *   - Scene Contract data
- *   - Canon Facts loading
- *   - ai_guidelines & ai_strictness passthrough
+ * Phase 4:  Word boundary detection, relationships, scene contract, canon facts
+ * Phase 7:  bridgeBuffer, previousEmotionalState
+ * Phase 8:  currentChapterOutline, upcomingChapters
+ *           → AI biết nhiệm vụ chương đang viết
+ *           → AI biết KHÔNG được viết trước nội dung 3 chương tiếp theo
  */
 
 import db from '../db/database';
 
-// Escape special regex characters in a string
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/**
- * Gather all relevant context for an AI call.
- * 
- * @param {object} params
- * @param {number} params.projectId
- * @param {number} params.chapterId - current chapter ID
- * @param {number} params.chapterIndex - current chapter order_index (0-based)
- * @param {number} params.sceneId - current scene ID
- * @param {string} params.sceneText - current scene text (HTML or plain)
- * @param {string} params.genre - project genre
- * @returns {Promise<object>} context object for promptBuilder
- */
 export async function gatherContext({
   projectId,
   chapterId,
@@ -47,6 +29,10 @@ export async function gatherContext({
       worldTerms: [],
       taboos: [],
       previousSummary: '',
+      bridgeBuffer: '',
+      previousEmotionalState: null,
+      currentChapterOutline: null,
+      upcomingChapters: [],
       genre,
       relationships: [],
       sceneContract: {},
@@ -56,20 +42,22 @@ export async function gatherContext({
     };
   }
 
-  // Load all codex data in parallel
-  const [project, allCharacters, allLocations, allObjects, allTerms, allTaboos, chapterMetas, chapters, allRelationships, allCanonFacts] =
-    await Promise.all([
-      db.projects.get(projectId),
-      db.characters.where('project_id').equals(projectId).toArray(),
-      db.locations.where('project_id').equals(projectId).toArray(),
-      db.objects.where('project_id').equals(projectId).toArray(),
-      db.worldTerms.where('project_id').equals(projectId).toArray(),
-      db.taboos.where('project_id').equals(projectId).toArray(),
-      db.chapterMeta.where('project_id').equals(projectId).toArray(),
-      db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
-      db.relationships.where('project_id').equals(projectId).toArray(),
-      db.canonFacts.where('project_id').equals(projectId).toArray(),
-    ]);
+  // Tất cả data load song song — chapters đã có sẵn, dùng lại cho outline, không tốn query thêm
+  const [
+    project, allCharacters, allLocations, allObjects, allTerms,
+    allTaboos, chapterMetas, chapters, allRelationships, allCanonFacts,
+  ] = await Promise.all([
+    db.projects.get(projectId),
+    db.characters.where('project_id').equals(projectId).toArray(),
+    db.locations.where('project_id').equals(projectId).toArray(),
+    db.objects.where('project_id').equals(projectId).toArray(),
+    db.worldTerms.where('project_id').equals(projectId).toArray(),
+    db.taboos.where('project_id').equals(projectId).toArray(),
+    db.chapterMeta.where('project_id').equals(projectId).toArray(),
+    db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
+    db.relationships.where('project_id').equals(projectId).toArray(),
+    db.canonFacts.where('project_id').equals(projectId).toArray(),
+  ]);
 
   // World Profile
   let worldRules = [];
@@ -83,65 +71,39 @@ export async function gatherContext({
     description: project?.world_description || '',
   };
 
-  // Pacing Control fields (Phase 5)
   const targetLength = project?.target_length || 0;
   const targetLengthType = project?.target_length_type || 'unset';
   const ultimateGoal = project?.ultimate_goal || '';
   let milestones = [];
   try { milestones = JSON.parse(project?.milestones || '[]'); } catch { }
 
-  // AI settings from project
   const aiGuidelines = project?.ai_guidelines || '';
   const aiStrictness = project?.ai_strictness || 'balanced';
 
-  // Clean text for matching
   const cleanText = (sceneText || '').replace(/<[^>]*>/g, ' ').toLowerCase();
 
-  // --- Detect characters in current scene text (word boundary) ---
-  const detectedCharacters = allCharacters.filter(c => {
-    if (!c.name || c.name.length < 2) return false;
-    try {
-      const regex = new RegExp(`(?:^|\\s|[,."'!?;:()\\[\\]{}])${escapeRegex(c.name.toLowerCase())}(?:\\s|[,."'!?;:()\\[\\]{}]|$)`, 'i');
-      return regex.test(cleanText);
-    } catch {
-      return cleanText.includes(c.name.toLowerCase());
-    }
-  });
+  // --- Entity detection (word boundary) ---
+  function detectByName(list) {
+    return list.filter(item => {
+      if (!item.name || item.name.length < 2) return false;
+      try {
+        const rx = new RegExp(
+          `(?:^|\\s|[,."'!?;:()\\[\\]{}])${escapeRegex(item.name.toLowerCase())}(?:\\s|[,."'!?;:()\\[\\]{}]|$)`,
+          'i'
+        );
+        return rx.test(cleanText);
+      } catch {
+        return cleanText.includes(item.name.toLowerCase());
+      }
+    });
+  }
 
-  // --- Detect locations in current scene text ---
-  const detectedLocations = allLocations.filter(l => {
-    if (!l.name || l.name.length < 2) return false;
-    try {
-      const regex = new RegExp(`(?:^|\\s|[,."'!?;:()\\[\\]{}])${escapeRegex(l.name.toLowerCase())}(?:\\s|[,."'!?;:()\\[\\]{}]|$)`, 'i');
-      return regex.test(cleanText);
-    } catch {
-      return cleanText.includes(l.name.toLowerCase());
-    }
-  });
+  const detectedCharacters = detectByName(allCharacters);
+  const detectedLocations = detectByName(allLocations);
+  const detectedObjects = detectByName(allObjects);
+  const detectedTerms = detectByName(allTerms);
 
-  // --- Detect objects in current scene text ---
-  const detectedObjects = allObjects.filter(o => {
-    if (!o.name || o.name.length < 2) return false;
-    try {
-      const regex = new RegExp(`(?:^|\\s|[,."'!?;:()\\[\\]{}])${escapeRegex(o.name.toLowerCase())}(?:\\s|[,."'!?;:()\\[\\]{}]|$)`, 'i');
-      return regex.test(cleanText);
-    } catch {
-      return cleanText.includes(o.name.toLowerCase());
-    }
-  });
-
-  // --- Detect world terms in current scene text ---
-  const detectedTerms = allTerms.filter(t => {
-    if (!t.name || t.name.length < 2) return false;
-    try {
-      const regex = new RegExp(`(?:^|\\s|[,."'!?;:()\\[\\]{}])${escapeRegex(t.name.toLowerCase())}(?:\\s|[,."'!?;:()\\[\\]{}]|$)`, 'i');
-      return regex.test(cleanText);
-    } catch {
-      return cleanText.includes(t.name.toLowerCase());
-    }
-  });
-
-  // --- Get active taboos for current chapter ---
+  // --- Active taboos ---
   const activeTaboos = allTaboos
     .filter(t => (chapterIndex + 1) < t.effective_before_chapter)
     .map(t => ({
@@ -149,17 +111,56 @@ export async function gatherContext({
       characterName: allCharacters.find(c => c.id === t.character_id)?.name || null,
     }));
 
-  // --- Get previous chapter summary ---
+  // --- Previous chapter: summary + Bridge Memory (Phase 7) ---
   let previousSummary = '';
+  let bridgeBuffer = '';
+  let previousEmotionalState = null;
+
   if (chapterIndex > 0) {
     const prevChapter = chapters.find(c => c.order_index === chapterIndex - 1);
     if (prevChapter) {
       const prevMeta = chapterMetas.find(m => m.chapter_id === prevChapter.id);
-      previousSummary = prevMeta?.summary || '';
+      if (prevMeta) {
+        previousSummary = prevMeta.summary || '';
+        bridgeBuffer = prevMeta.last_prose_buffer || '';
+        previousEmotionalState = prevMeta.emotional_state || null;
+      }
     }
   }
 
-  // --- Phase 4: Relationships for detected characters ---
+  // --- Phase 8: Chapter Outline Context ---
+  //
+  // Vấn đề cần giải quyết:
+  //   Khi AI viết Chương N, nó không biết outline chương đó yêu cầu gì.
+  //   Kết quả: AI tự bịa nội dung, hoặc "xài trước" nội dung của chương sau.
+  //
+  // Giải pháp:
+  //   1. currentChapterOutline — outline của chương đang viết
+  //      AI biết phạm vi nhiệm vụ: viết CÁI GÌ, không được vượt ra ngoài.
+  //
+  //   2. upcomingChapters — outline 3 chương tiếp theo (chỉ title + summary)
+  //      AI biết những gì SẼ xảy ra ở chương sau → không viết trước.
+  //      Giới hạn 3 chương để không tốn token thừa.
+  //
+  // Zero DB query thêm — chapters đã load ở Promise.all trên.
+
+  const currentRaw = chapters.find(c => c.order_index === chapterIndex);
+  const currentChapterOutline = currentRaw
+    ? {
+      title: currentRaw.title || '',
+      summary: currentRaw.summary || '',
+      keyEvents: (() => {
+        try { return JSON.parse(currentRaw.key_events || '[]'); } catch { return []; }
+      })(),
+    }
+    : null;
+
+  const upcomingChapters = chapters
+    .filter(c => c.order_index > chapterIndex && c.order_index <= chapterIndex + 3)
+    .map(c => ({ title: c.title || '', summary: c.summary || '' }))
+    .filter(c => c.title || c.summary); // bỏ chương trống hoàn toàn
+
+  // --- Relationships for detected characters ---
   const detectedCharIds = new Set(detectedCharacters.map(c => c.id));
   const RELATION_LABELS = {
     ally: 'Đồng minh', enemy: 'Kẻ thù', lover: 'Người yêu',
@@ -175,14 +176,12 @@ export async function gatherContext({
       description: r.description || '',
     }));
 
-  // --- Phase 4: Scene Contract data ---
+  // --- Scene Contract ---
   let sceneContract = {};
   if (sceneId) {
     const scene = await db.scenes.get(sceneId);
     if (scene) {
-      let mustHappen = [];
-      let mustNotHappen = [];
-      let charactersPresent = [];
+      let mustHappen = [], mustNotHappen = [], charactersPresent = [];
       try { mustHappen = JSON.parse(scene.must_happen || '[]'); } catch { }
       try { mustNotHappen = JSON.parse(scene.must_not_happen || '[]'); } catch { }
       try { charactersPresent = JSON.parse(scene.characters_present || '[]'); } catch { }
@@ -204,17 +203,16 @@ export async function gatherContext({
     }
   }
 
-  // --- Phase 4: Canon Facts (filter secrets by chapter) ---
+  // --- Canon Facts ---
   const canonFacts = allCanonFacts.filter(f => {
     if (f.status !== 'active') return false;
-    // Secrets that have been revealed before current chapter are just facts now
     if (f.fact_type === 'secret' && f.revealed_at_chapter && f.revealed_at_chapter <= chapterIndex + 1) {
-      return false; // Already revealed, skip
+      return false;
     }
     return true;
   });
 
-  // --- Phase 4.5/5: Plot Threads ---
+  // --- Plot Threads ---
   let activePlotThreads = [];
   try {
     const allThreads = await db.plotThreads.where('project_id').equals(projectId).toArray();
@@ -225,7 +223,7 @@ export async function gatherContext({
       const beatThreadIds = beats.map(b => b.plot_thread_id);
       activePlotThreads = activePlotThreads.map(pt => ({
         ...pt,
-        is_focus_in_scene: beatThreadIds.includes(pt.id)
+        is_focus_in_scene: beatThreadIds.includes(pt.id),
       }));
     }
   } catch (e) {
@@ -239,10 +237,15 @@ export async function gatherContext({
     worldTerms: detectedTerms,
     taboos: activeTaboos,
     previousSummary,
+    // Phase 7
+    bridgeBuffer,
+    previousEmotionalState,
+    // Phase 8
+    currentChapterOutline,
+    upcomingChapters,
     worldProfile,
     genre,
     allCharacters,
-    // Phase 4/5 additions
     aiGuidelines,
     aiStrictness,
     relationships,

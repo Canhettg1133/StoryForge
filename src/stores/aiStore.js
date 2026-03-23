@@ -3,6 +3,7 @@
  * 
  * Zustand store for AI interactions.
  * Phase 3: Context Engine integration, chapter summary, feedback loop.
+ * Phase 7: Bridge Memory — auto-save last_prose_buffer after writing tasks.
  */
 
 import { create } from 'zustand';
@@ -17,6 +18,53 @@ import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 
 // Inject router into aiService (avoid circular import)
 aiService.setRouter(modelRouter);
+
+// Task types that produce prose → cần lưu bridge buffer
+const WRITING_TASK_TYPES = new Set([
+  TASK_TYPES.CONTINUE,
+  TASK_TYPES.EXPAND,
+  TASK_TYPES.REWRITE,
+  TASK_TYPES.SCENE_DRAFT,
+]);
+
+/**
+ * Lưu ~150 từ cuối của văn bản vừa generate vào chapterMeta.last_prose_buffer.
+ * Upsert: tạo mới nếu chưa có record, update nếu đã có.
+ * Non-blocking: lỗi chỉ warn, không throw.
+ *
+ * @param {number} chapterId
+ * @param {number} projectId
+ * @param {string} rawText - full text vừa AI trả về
+ */
+async function saveProseBuffer(chapterId, projectId, rawText) {
+  try {
+    // Strip HTML tags trước khi đếm từ
+    const plainText = rawText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const words = plainText.split(' ').filter(Boolean);
+
+    // ~150 từ ≈ 500-600 ký tự tiếng Việt — đủ để AI bắt nhịp mà không tốn quá nhiều token
+    const buffer = words.slice(-150).join(' ');
+
+    const existing = await db.chapterMeta
+      .where('chapter_id').equals(chapterId)
+      .first();
+
+    if (existing) {
+      await db.chapterMeta.update(existing.id, { last_prose_buffer: buffer });
+    } else {
+      await db.chapterMeta.add({
+        chapter_id: chapterId,
+        project_id: projectId,
+        last_prose_buffer: buffer,
+        emotional_state: null,
+        tension_level: null,
+      });
+    }
+  } catch (err) {
+    // Non-fatal: bridge buffer là "nice to have", không block luồng chính
+    console.warn('[AI] saveProseBuffer failed (non-fatal):', err);
+  }
+}
 
 function normalizeExtractResult(parsed) {
   if (Array.isArray(parsed)) {
@@ -76,6 +124,7 @@ const useAIStore = create((set, get) => ({
   /**
    * Run an AI task with streaming.
    * Phase 3: Automatically gathers context before building prompt.
+   * Phase 7: Auto-saves bridge buffer after writing tasks complete.
    */
   runTask: async ({ taskType, context = {}, routeOptions = {} }) => {
     set({ isStreaming: true, streamingText: '', completedText: '', error: null, lastRouteInfo: null });
@@ -108,6 +157,11 @@ const useAIStore = create((set, get) => ({
 
     const messages = buildPrompt(taskType, enrichedContext);
 
+    // Snapshot các giá trị cần dùng trong callback (closure-safe)
+    const isWritingTask = WRITING_TASK_TYPES.has(taskType);
+    const chapterId = enrichedContext.chapterId;
+    const projectId = enrichedContext.projectId;
+
     const { abort, routeInfo } = aiService.send({
       taskType,
       messages,
@@ -116,7 +170,13 @@ const useAIStore = create((set, get) => ({
       onToken: (chunk, fullText) => {
         set({ streamingText: fullText });
       },
-      onComplete: (text, meta) => {
+      onComplete: async (text, meta) => {
+        // Phase 7: Auto-save bridge buffer sau khi AI xong một writing task
+        if (isWritingTask && chapterId && projectId) {
+          // Fire-and-forget: không await để không delay UI update
+          saveProseBuffer(chapterId, projectId, text);
+        }
+
         set({
           isStreaming: false,
           streamingText: '',
@@ -423,6 +483,44 @@ const useAIStore = create((set, get) => ({
         reject(err);
       }
     });
+  },
+
+  // ═══════════════════════════════════════════
+  // Phase 7: Bridge Memory — Manual emotional state update
+  // ═══════════════════════════════════════════
+
+  /**
+   * Cập nhật emotional_state và tension_level cho một chương.
+   * Được gọi từ UI khi tác giả điền form sau khi hoàn thành chương.
+   *
+   * @param {number} chapterId
+   * @param {number} projectId
+   * @param {{ mood: string, activeConflict: string, lastAction: string }} emotionalState
+   * @param {number} tensionLevel - 1 đến 10
+   */
+  updateEmotionalState: async ({ chapterId, projectId, emotionalState, tensionLevel }) => {
+    try {
+      const existing = await db.chapterMeta
+        .where('chapter_id').equals(chapterId)
+        .first();
+
+      if (existing) {
+        await db.chapterMeta.update(existing.id, {
+          emotional_state: emotionalState,
+          tension_level: tensionLevel,
+        });
+      } else {
+        await db.chapterMeta.add({
+          chapter_id: chapterId,
+          project_id: projectId,
+          last_prose_buffer: '',
+          emotional_state: emotionalState,
+          tension_level: tensionLevel,
+        });
+      }
+    } catch (err) {
+      console.warn('[AI] updateEmotionalState failed:', err);
+    }
   },
 }));
 

@@ -2,14 +2,19 @@
  * StoryForge - Prompt Builder v3 (Phase 4)
  *
  * 8-layer prompt architecture:
- *   1. System Identity
- *   2. Task Instruction
- *   3. Genre / AI Guidelines (editable, pre-filled from genre)
- *   4. Canon Context (world profile, terms, locations, objects, canon facts)
- *   5. Character State (characters + pronouns + relationships + taboos)
- *   6. Scene Contract (goal, conflict, must/must-not, pacing)
- *   7. Style Pack (placeholder - Phase 5)
- *   8. Output Format
+ *   1.   System Identity
+ *   2.   Task Instruction
+ *   3.   Genre / AI Guidelines (editable, pre-filled from genre)
+ *   4.   Canon Context (world profile, terms, locations, objects, canon facts)
+ *   4.2  Chapter Outline (Phase 8) — nhiệm vụ chương hiện tại + fence chương sau
+ *        CHỈ inject cho writing tasks
+ *   4.5  Pacing Control
+ *   5.   Character State (characters + pronouns + relationships + taboos)
+ *   5.5  Bridge Memory (Phase 7) — prose buffer + emotional state từ chương trước
+ *        CHỈ inject cho writing tasks: CONTINUE, EXPAND, REWRITE, SCENE_DRAFT, ARC_CHAPTER_DRAFT
+ *   6.   Scene Contract (goal, conflict, must/must-not, pacing)
+ *   7.   Style Pack (placeholder - Phase 5)
+ *   8.   Output Format
  */
 
 import { TASK_TYPES } from './router';
@@ -154,6 +159,109 @@ export const TASK_INSTRUCTIONS = {
 };
 
 // =============================================
+// Phase 8 — Layer 4.2: Chapter Outline Context
+// Chỉ áp dụng cho writing tasks
+// =============================================
+
+// Task types dùng chung cho cả Layer 4.2 và Layer 5.5
+const WRITING_TASKS_FOR_BRIDGE = new Set([
+  TASK_TYPES.CONTINUE,
+  TASK_TYPES.EXPAND,
+  TASK_TYPES.REWRITE,
+  TASK_TYPES.SCENE_DRAFT,
+  TASK_TYPES.ARC_CHAPTER_DRAFT,
+  TASK_TYPES.FREE_PROMPT,
+]);
+
+/**
+ * Build Layer 4.2 — Chapter Outline Context.
+ *
+ * Hai mục đích:
+ *   1. currentChapterOutline → AI biết phải viết GÌ trong chương này, không lan chương khác
+ *   2. upcomingChapters      → AI biết KHÔNG được viết trước nội dung chương sau
+ *
+ * @param {string} taskType
+ * @param {object|null} currentChapterOutline - { title, summary, keyEvents[] }
+ * @param {Array}  upcomingChapters - [{ title, summary }, ...]
+ * @returns {string}
+ */
+function buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapters) {
+  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
+  if (!currentChapterOutline && (!upcomingChapters || upcomingChapters.length === 0)) return '';
+
+  const parts = [];
+
+  if (currentChapterOutline && (currentChapterOutline.title || currentChapterOutline.summary)) {
+    const cur = [];
+    if (currentChapterOutline.title) cur.push('Tieu de: ' + currentChapterOutline.title);
+    if (currentChapterOutline.summary) cur.push('Noi dung can viet: ' + currentChapterOutline.summary);
+    if (currentChapterOutline.keyEvents && currentChapterOutline.keyEvents.length > 0) {
+      cur.push(
+        'Su kien bat buoc xay ra:\n' +
+        currentChapterOutline.keyEvents.map(function (e) { return '- ' + e; }).join('\n')
+      );
+    }
+    parts.push('[NHIEM VU CHUONG NAY - BAM SAT, KHONG LAC SANG CHUONG KHAC]\n' + cur.join('\n'));
+  }
+
+  if (upcomingChapters && upcomingChapters.length > 0) {
+    const fence = upcomingChapters
+      .map(function (c, i) {
+        return '- Chuong tiep theo ' + (i + 1) + ': "' + c.title + '"' + (c.summary ? ' — ' + c.summary : '');
+      })
+      .join('\n');
+    parts.push('[CAC CHUONG TIEP THEO - TUYET DOI KHONG VIET TRUOC NOI DUNG NAY]\n' + fence);
+  }
+
+  if (parts.length === 0) return '';
+  return '\n[DAN Y TRUYEN]\n' + parts.join('\n\n');
+}
+
+// =============================================
+// Layer 5.5 helper — Bridge Memory
+// Chỉ áp dụng cho các writing tasks tạo ra prose
+// =============================================
+
+/**
+ * Build Layer 5.5 Bridge Memory block.
+ * Trả về string rỗng nếu không có dữ liệu hoặc task không phải writing task.
+ *
+ * @param {string} taskType
+ * @param {string} bridgeBuffer - ~150 từ cuối chương trước
+ * @param {object|null} emotionalState - { mood, activeConflict, lastAction }
+ * @param {number|null} tensionLevel - 1-10
+ * @returns {string}
+ */
+function buildBridgeMemoryLayer(taskType, bridgeBuffer, emotionalState, tensionLevel) {
+  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
+  if (!bridgeBuffer && !emotionalState) return '';
+
+  const parts = [];
+
+  if (bridgeBuffer) {
+    parts.push(
+      'Doan van ket thuc chuong truoc (viet tiep TU DAY, KHONG lap lai, KHONG mo dau lai tu dau):\n' +
+      '"""\n' + bridgeBuffer + '\n"""'
+    );
+  }
+
+  if (emotionalState) {
+    const stateParts = [];
+    if (emotionalState.mood) stateParts.push('Trang thai cam xuc: ' + emotionalState.mood);
+    if (emotionalState.activeConflict) stateParts.push('Xung dot dang mo: ' + emotionalState.activeConflict);
+    if (emotionalState.lastAction) stateParts.push('Hanh dong cuoi: ' + emotionalState.lastAction);
+    if (tensionLevel != null) stateParts.push('Muc do cang thang: ' + tensionLevel + '/10');
+    if (stateParts.length > 0) {
+      parts.push('Trang thai nhan vat khi ket thuc chuong truoc:\n' + stateParts.join('\n'));
+    }
+  }
+
+  if (parts.length === 0) return '';
+
+  return '\n[DIEM NOI MACH TRUYEN - BAT BUOC DOC TRUOC KHI VIET]\n' + parts.join('\n\n');
+}
+
+// =============================================
 // Layer 3: Genre Constraints
 // =============================================
 export const GENRE_CONSTRAINTS = {
@@ -211,6 +319,13 @@ export function buildPrompt(taskType, context = {}) {
     ultimateGoal = '',
     milestones = [],
     currentChapterIndex = 0,
+    // Phase 7: Bridge Memory
+    bridgeBuffer = '',
+    previousEmotionalState = null,
+    tensionLevel = null,
+    // Phase 8: Chapter Outline Context
+    currentChapterOutline = null,
+    upcomingChapters = [],
   } = context;
 
   const systemParts = [];
@@ -331,6 +446,13 @@ export function buildPrompt(taskType, context = {}) {
     systemParts.push('\n[BOI CANH TRUYEN]\n' + canonContextParts.join('\n\n'));
   }
 
+  // -- Layer 4.2: Chapter Outline Context (Phase 8) --
+  // AI biết nhiệm vụ chương đang viết + không viết trước nội dung chương sau
+  const chapterOutlineLayer = buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapters);
+  if (chapterOutlineLayer) {
+    systemParts.push(chapterOutlineLayer);
+  }
+
   // -- Layer 4.5: Pacing Control (AI Auto Generation) --
   if (targetLength > 0 && ultimateGoal) {
     const progressPercent = Math.round((currentChapterIndex / targetLength) * 100);
@@ -384,6 +506,13 @@ export function buildPrompt(taskType, context = {}) {
     const tabooHeader = aiStrictness === 'strict' ? 'CAM KY - VI PHAM LA LOI NGHIEM TRONG' :
       aiStrictness === 'relaxed' ? 'LUU Y - NEN TRANH' : 'CAM KY';
     systemParts.push('\n[' + tabooHeader + ']\n' + tabooLines);
+  }
+
+  // -- Layer 5.5: Bridge Memory (Phase 7) --
+  // Chỉ inject cho writing tasks, bị bỏ qua hoàn toàn với JSON/analysis tasks
+  const bridgeLayer = buildBridgeMemoryLayer(taskType, bridgeBuffer, previousEmotionalState, tensionLevel);
+  if (bridgeLayer) {
+    systemParts.push(bridgeLayer);
   }
 
   // -- Layer 6: Scene Contract (Phase 4) --

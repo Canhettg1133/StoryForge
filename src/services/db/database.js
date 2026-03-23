@@ -224,4 +224,52 @@ db.version(7).stores({
   factions: '++id, project_id, name, faction_type',
 });
 
+// Phase 7 — Bridge Memory: Working Memory fields on chapterMeta
+//
+// Các trường mới được lưu trên bảng chapterMeta (non-indexed):
+//   last_prose_buffer  : string  — ~150 từ cuối của lần generate gần nhất
+//   emotional_state    : object  — { mood, activeConflict, lastAction }
+//   tension_level      : number  — thang 1-10, do tác giả hoặc AI cập nhật
+//
+// Lý do KHÔNG thêm vào schema string:
+//   Dexie chỉ yêu cầu khai báo các trường CẦN INDEX (để query WHERE).
+//   Ba trường trên chỉ được đọc theo chapter_id (đã indexed) nên không cần index riêng.
+//   Thêm vào schema string sẽ tạo index thừa, lãng phí storage và làm chậm write.
+//
+// Upgrade function dưới đây khởi tạo giá trị mặc định cho các record cũ.
+db.version(8).stores({
+  projects: '++id, title, genre_primary, status, created_at, updated_at',
+  chapters: '++id, project_id, arc_id, order_index, title, status',
+  scenes: '++id, project_id, chapter_id, order_index, title, pov_character_id, status',
+  characters: '++id, project_id, name, role',
+  characterStates: '++id, project_id, character_id, scene_id',
+  relationships: '++id, project_id, character_a_id, character_b_id, relation_type',
+  locations: '++id, project_id, name',
+  objects: '++id, project_id, name, owner_character_id',
+  canonFacts: '++id, project_id, fact_type, subject_type, subject_id, status',
+  plotThreads: '++id, project_id, title, type, state',
+  threadBeats: '++id, plot_thread_id, scene_id, beat_type',
+  timelineEvents: '++id, project_id, scene_id, date_marker',
+  stylePacks: '++id, project_id, name, type, source_kind',
+  voicePacks: '++id, project_id, character_id',
+  styleJobs: '++id, project_id, style_pack_id, parsing_status',
+  genrePacks: '++id, name',
+  aiJobs: '++id, project_id, scene_id, chapter_id, job_type, status',
+  revisions: '++id, scene_id, objective, created_at',
+  qaReports: '++id, project_id, chapter_id, scene_id, report_type, severity',
+  worldTerms: '++id, project_id, name, category',
+  taboos: '++id, project_id, character_id, effective_before_chapter',
+  chapterMeta: '++id, chapter_id, project_id',
+  suggestions: '++id, project_id, type, status, source_chapter_id, target_id, created_at',
+  entityTimeline: '++id, project_id, entity_id, entity_type, chapter_id, type, timestamp',
+  factions: '++id, project_id, name, faction_type',
+}).upgrade(tx => {
+  // Khởi tạo các trường Bridge Memory cho tất cả record chapterMeta cũ
+  return tx.table('chapterMeta').toCollection().modify(meta => {
+    if (meta.last_prose_buffer === undefined) meta.last_prose_buffer = '';
+    if (meta.emotional_state === undefined) meta.emotional_state = null;
+    if (meta.tension_level === undefined) meta.tension_level = null;
+  });
+});
+
 export default db;

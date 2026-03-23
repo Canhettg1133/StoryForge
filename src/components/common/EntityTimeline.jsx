@@ -52,20 +52,24 @@ export default function EntityTimeline({ entityId, entityType }) {
             {showAdd && (
                 <div className="timeline-add-box">
                     <input
+                        className="input input-sm"
+                        style={{ width: '100%', marginBottom: '8px' }}
                         type="text"
                         placeholder="Mô tả sự kiện (VD: Bị thương nặng...)"
                         value={form.description}
                         onChange={(e) => setForm({ ...form, description: e.target.value })}
                         autoFocus
                     />
-                    <div className="timeline-add-row">
-                        <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+                    <div className="timeline-add-row" style={{ display: 'flex', gap: '8px' }}>
+                        <select className="select select-sm" style={{ flex: 1 }} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
                             <option value="INFO_CHANGE">Thay đổi thông tin</option>
                             <option value="STATUS_CHANGE">Thay đổi trạng thái (Khỏe/Yếu)</option>
                             <option value="RELATION_CHANGE">Quan hệ</option>
                             <option value="APPEARANCE">Ngoại hình</option>
                         </select>
                         <input
+                            className="input input-sm"
+                            style={{ width: '100px' }}
                             type="number"
                             placeholder="Chương số"
                             value={form.chapter_id}
