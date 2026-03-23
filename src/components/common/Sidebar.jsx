@@ -20,6 +20,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import './Sidebar.css';
+import ArcNavigator from './ArcNavigator';
 
 const NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
@@ -42,7 +43,7 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { projectId } = useParams();
   const { sidebarCollapsed, toggleSidebar, theme, toggleTheme } = useUIStore();
-  const { currentProject } = useProjectStore();
+  const { currentProject, chapters, activeChapterId } = useProjectStore();
 
   const activeProjectId = currentProject?.id || projectId;
 
@@ -73,9 +74,17 @@ export default function Sidebar() {
 
       {/* Project indicator */}
       {currentProject && !sidebarCollapsed && (
-        <div className="sidebar-project" onClick={handleBackToDashboard}>
-          <ChevronLeft size={14} />
-          <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{currentProject.title}</span>
+        <div className="sidebar-project-container">
+          <div className="sidebar-project" onClick={handleBackToDashboard}>
+            <ChevronLeft size={14} />
+            <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{currentProject.title}</span>
+          </div>
+          <ArcNavigator
+            projectId={currentProject.id}
+            currentChapter={chapters.findIndex(c => c.id === activeChapterId)}
+            totalChapters={currentProject.target_length || 0}
+            compact={true}
+          />
         </div>
       )}
 

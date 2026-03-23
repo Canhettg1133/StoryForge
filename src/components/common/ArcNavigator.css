@@ -1,0 +1,184 @@
+/* ─── ArcNavigator ─── */
+
+.arc-nav {
+    padding: var(--space-3);
+    background: var(--color-surface-2, rgba(255, 255, 255, 0.04));
+    border-radius: var(--radius-md, 8px);
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+    font-size: 12px;
+    color: var(--color-text-muted);
+}
+
+/* Header */
+.arc-nav__header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+}
+
+.arc-nav__progress-text {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Progress bar */
+.arc-nav__bar-wrap {
+    height: 4px;
+    background: var(--color-surface-3, rgba(255, 255, 255, 0.08));
+    border-radius: 2px;
+    position: relative;
+    overflow: visible;
+}
+
+.arc-nav__bar-wrap--full {
+    margin-bottom: 12px;
+}
+
+.arc-nav__bar-fill {
+    height: 100%;
+    background: var(--color-accent, #7c3aed);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+}
+
+.arc-nav__marker {
+    position: absolute;
+    top: -2px;
+    width: 2px;
+    height: 8px;
+    background: var(--color-text-muted);
+    border-radius: 1px;
+    transform: translateX(-50%);
+    opacity: 0.5;
+}
+
+/* Compact */
+.arc-nav--compact {
+    padding: var(--space-2) var(--space-3);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: none;
+}
+
+.arc-nav--compact .arc-nav__bar-wrap {
+    flex: 1;
+}
+
+.arc-nav__compact-label {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+
+/* Milestones list */
+.arc-nav__milestones {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.arc-nav__milestone {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 0;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.arc-nav__milestone--current {
+    opacity: 1;
+}
+
+.arc-nav__milestone--done {
+    opacity: 0.4;
+}
+
+.arc-nav__milestone-dot {
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    font-size: 10px;
+    margin-top: 1px;
+    color: var(--color-accent, #7c3aed);
+}
+
+.arc-nav__milestone--current .arc-nav__milestone-dot {
+    color: var(--color-accent, #7c3aed);
+}
+
+.arc-nav__milestone-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+}
+
+.arc-nav__milestone-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.arc-nav__milestone--current .arc-nav__milestone-title {
+    color: var(--color-accent, #7c3aed);
+}
+
+.arc-nav__milestone-range {
+    font-size: 10px;
+    color: var(--color-text-muted);
+}
+
+.arc-nav__milestone-emotion {
+    font-size: 10px;
+    color: var(--color-text-muted);
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Next milestone */
+.arc-nav__next {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border, rgba(255, 255, 255, 0.08));
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--color-text-muted);
+}
+
+.arc-nav__next strong {
+    color: var(--color-text);
+}
+
+.arc-nav__next-range {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Empty */
+.arc-nav__empty {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-style: italic;
+    opacity: 0.6;
+}

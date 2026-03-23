@@ -313,10 +313,10 @@ export default function ChapterList() {
               startRename(contextMenu.type, contextMenu.id, item?.title || '', e);
             }}
           >
-            <Edit3 size={14} /> Äá»•i tĂªn
+            <Edit3 size={14} /> Đổi tên
           </button>
 
-          {/* Chapter Complete button â€” only for chapters */}
+          {/* Chapter Complete button — only for chapters */}
           {contextMenu.type === 'chapter' && (
             <button
               className="context-menu-item context-menu-item--success"

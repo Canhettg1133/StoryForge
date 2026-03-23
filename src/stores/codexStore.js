@@ -95,7 +95,7 @@ const useCodexStore = create((set, get) => ({
   createCharacter: async (data) => {
     const now = Date.now();
     const flawSuffixes = data.flaws
-      ? [`\nĐiểm yếu: ${data.flaws}`, `\nÄiá»ƒm yáº¿u: ${data.flaws}`]
+      ? [`\nĐiểm yếu: ${data.flaws}`]
       : [];
     let personality = data.personality || '';
     for (const suffix of flawSuffixes) {

@@ -272,4 +272,53 @@ db.version(8).stores({
   });
 });
 
+// Phase 9 — Grand Strategy: macro_arcs & arcs tables
+//
+// macro_arcs: 5-8 cột mốc lớn của toàn bộ truyện (do tác giả định nghĩa thủ công / AI gợi ý)
+//   Indexed  : project_id, order_index
+//   Non-indexed (lưu nhưng không query WHERE): title, description, chapter_from,
+//              chapter_to, emotional_peak
+//
+// arcs: Các hồi truyện (50-100 chương / hồi), thuộc về một macro_arc
+//   Indexed  : project_id, macro_arc_id, order_index
+//   Non-indexed: title, summary, goal, chapter_start, chapter_end,
+//               status, power_level_start, power_level_end
+//
+// Quan hệ:
+//   projects (1) → macro_arcs (N) → arcs (N) → chapters (N)
+//   chapters.arc_id đã có từ v1, nay được dùng thực sự
+//
+// Không cần upgrade function vì đây là bảng mới — dữ liệu cũ không bị ảnh hưởng.
+db.version(9).stores({
+  projects: '++id, title, genre_primary, status, created_at, updated_at',
+  chapters: '++id, project_id, arc_id, order_index, title, status',
+  scenes: '++id, project_id, chapter_id, order_index, title, pov_character_id, status',
+  characters: '++id, project_id, name, role',
+  characterStates: '++id, project_id, character_id, scene_id',
+  relationships: '++id, project_id, character_a_id, character_b_id, relation_type',
+  locations: '++id, project_id, name',
+  objects: '++id, project_id, name, owner_character_id',
+  canonFacts: '++id, project_id, fact_type, subject_type, subject_id, status',
+  plotThreads: '++id, project_id, title, type, state',
+  threadBeats: '++id, plot_thread_id, scene_id, beat_type',
+  timelineEvents: '++id, project_id, scene_id, date_marker',
+  stylePacks: '++id, project_id, name, type, source_kind',
+  voicePacks: '++id, project_id, character_id',
+  styleJobs: '++id, project_id, style_pack_id, parsing_status',
+  genrePacks: '++id, name',
+  aiJobs: '++id, project_id, scene_id, chapter_id, job_type, status',
+  revisions: '++id, scene_id, objective, created_at',
+  qaReports: '++id, project_id, chapter_id, scene_id, report_type, severity',
+  worldTerms: '++id, project_id, name, category',
+  taboos: '++id, project_id, character_id, effective_before_chapter',
+  chapterMeta: '++id, chapter_id, project_id',
+  suggestions: '++id, project_id, type, status, source_chapter_id, target_id, created_at',
+  entityTimeline: '++id, project_id, entity_id, entity_type, chapter_id, type, timestamp',
+  factions: '++id, project_id, name, faction_type',
+
+  // New in v9: Grand Strategy — 3 tầng lập kế hoạch
+  macro_arcs: '++id, project_id, order_index',
+  arcs: '++id, project_id, macro_arc_id, order_index',
+});
+
 export default db;

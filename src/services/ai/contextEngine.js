@@ -6,6 +6,9 @@
  * Phase 8:  currentChapterOutline, upcomingChapters
  *           → AI biết nhiệm vụ chương đang viết
  *           → AI biết KHÔNG được viết trước nội dung 3 chương tiếp theo
+ * Phase 9:  currentArc, currentMacroArc
+ *           → AI biết đang ở hồi nào, cột mốc lớn nào của đại cục
+ *           → Ngăn AI cho nhân vật "lên cấp" vượt ngoài kế hoạch tổng thể
  */
 
 import db from '../db/database';
@@ -33,6 +36,8 @@ export async function gatherContext({
       previousEmotionalState: null,
       currentChapterOutline: null,
       upcomingChapters: [],
+      currentArc: null,
+      currentMacroArc: null,
       genre,
       relationships: [],
       sceneContract: {},
@@ -160,6 +165,35 @@ export async function gatherContext({
     .map(c => ({ title: c.title || '', summary: c.summary || '' }))
     .filter(c => c.title || c.summary); // bỏ chương trống hoàn toàn
 
+  // --- Phase 9: Arc & Macro Arc Context ---
+  //
+  // Mục đích:
+  //   Từ chương hiện tại → tìm arc_id → load arc → tìm macro_arc_id → load macro arc.
+  //   Chuỗi: chapter.arc_id → arcs → macro_arc_id → macro_arcs.
+  //
+  // Kết quả được inject vào Layer 0 của promptBuilder (Grand Strategy).
+  // AI sẽ biết:
+  //   - Đang ở hồi nào (currentArc.title, currentArc.goal)
+  //   - Cột mốc lớn nào của đại cục (currentMacroArc.title, emotional_peak)
+  //   - Không được vượt qua ranh giới power level của arc này
+  //
+  // 2 query nhỏ (get by id), non-blocking nếu bảng chưa có dữ liệu.
+
+  let currentArc = null;
+  let currentMacroArc = null;
+
+  if (currentRaw?.arc_id) {
+    try {
+      currentArc = await db.arcs.get(currentRaw.arc_id);
+      if (currentArc?.macro_arc_id) {
+        currentMacroArc = await db.macro_arcs.get(currentArc.macro_arc_id);
+      }
+    } catch (e) {
+      // Non-fatal: tables có thể chưa có data nếu tác giả chưa tạo đại cục
+      console.warn('[Context] Failed to load arc/macro arc (non-fatal):', e);
+    }
+  }
+
   // --- Relationships for detected characters ---
   const detectedCharIds = new Set(detectedCharacters.map(c => c.id));
   const RELATION_LABELS = {
@@ -243,6 +277,9 @@ export async function gatherContext({
     // Phase 8
     currentChapterOutline,
     upcomingChapters,
+    // Phase 9
+    currentArc,
+    currentMacroArc,
     worldProfile,
     genre,
     allCharacters,

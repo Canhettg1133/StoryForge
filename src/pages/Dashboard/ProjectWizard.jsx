@@ -9,6 +9,10 @@
  *  - Import createFaction từ codexStore
  *  - Review step: thêm section "Thế lực" với edit + exclude
  *  - handleApprove: tạo factions vào DB
+ *
+ * Phase 9:
+ *  - Thêm section "Đại Cục" trong Step 0 — tác giả nhập 5-8 cột mốc lớn
+ *  - handleApprove: lưu macro arcs vào bảng macro_arcs
  */
 
 import React, { useState } from 'react';
@@ -28,7 +32,7 @@ import {
   Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
   RotateCcw, Users, MapPin, BookOpen, List, AlertCircle,
   Trash2, Globe, Eye, MessageSquare, Plus, GitPullRequest,
-  Pencil, Landmark,
+  Pencil, Landmark, Flag, TrendingUp,
 } from 'lucide-react';
 import './ProjectWizard.css';
 
@@ -40,7 +44,7 @@ const TYPE_LABELS = {
   mystery: 'Bí ẩn', romance: 'Tình cảm',
 };
 const CHAR_ROLES = ['protagonist', 'antagonist', 'supporting', 'mentor', 'minor'];
-const TERM_CATEGORIES = ['magic', 'race', 'technology', 'other'];  // bỏ 'organization' — nay dùng factions
+const TERM_CATEGORIES = ['magic', 'race', 'technology', 'other'];
 const FACTION_TYPES = ['sect', 'kingdom', 'organization', 'other'];
 const FACTION_TYPE_LABELS = {
   sect: 'Tông môn', kingdom: 'Vương quốc', organization: 'Tổ chức', other: 'Thế lực',
@@ -50,7 +54,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const { createProject, createChapter, updateChapter } = useProjectStore();
   const {
     createCharacter, createLocation, createWorldTerm,
-    createFaction,           // [MỚI]
+    createFaction,
     saveChapterSummary,
   } = useCodexStore();
   const { createPlotThread } = usePlotStore();
@@ -71,6 +75,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [ultimateGoal, setUltimateGoal] = useState('');
   const [milestonesInfo, setMilestonesInfo] = useState([]);
 
+  // Phase 9: Macro Arcs (Đại Cục) — optional, tác giả nhập thủ công
+  const [macroArcsInput, setMacroArcsInput] = useState([]);
+  const [showMacroArcs, setShowMacroArcs] = useState(false);
+
   const handleTargetLengthTypeChange = (v) => {
     setTargetLengthType(v);
     let newLen = targetLength;
@@ -87,6 +95,23 @@ export default function ProjectWizard({ onClose, onCreated }) {
     setMilestonesInfo(next);
   };
   const removeMilestone = (idx) => setMilestonesInfo(prev => prev.filter((_, i) => i !== idx));
+
+  // Phase 9: Macro Arc handlers
+  const addMacroArc = () => {
+    setMacroArcsInput(prev => [...prev, {
+      title: 'Cột mốc ' + (prev.length + 1),
+      description: '',
+      chapter_from: '',
+      chapter_to: '',
+      emotional_peak: '',
+    }]);
+  };
+  const updateMacroArc = (idx, field, val) => {
+    const next = [...macroArcsInput];
+    next[idx] = { ...next[idx], [field]: val };
+    setMacroArcsInput(next);
+  };
+  const removeMacroArc = (idx) => setMacroArcsInput(prev => prev.filter((_, i) => i !== idx));
 
   const handleGenreChange = (val) => {
     setGenre(val);
@@ -192,7 +217,6 @@ export default function ProjectWizard({ onClose, onCreated }) {
     </div>
   );
 
-  // [MỚI] Faction edit form
   const renderFactionEdit = (f, i) => (
     <div className="wizard-item-edit">
       <div className="wizard-edit-row">
@@ -252,7 +276,6 @@ export default function ProjectWizard({ onClose, onCreated }) {
     </div>
   );
 
-  // Shared action buttons (edit + exclude/restore)
   const renderItemActions = (key) => (
     <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
       <button
@@ -307,8 +330,8 @@ Trả về CHÍNH XÁC JSON format:
 
 PHÂN LOẠI RÕ RÀNG — RẤT QUAN TRỌNG:
 - "locations": CHỈ địa điểm VẬT LÝ có thể đến được: núi, thành phố, tòa nhà, hang động, vùng đất. KHÔNG đặt tông môn hay tổ chức vào đây.
-- "factions": Tông môn, bang phái, vương triều, tổ chức, thế lực chính trị. Ví dụ: Thanh Vân Tông, Ma Đạo Tổng Đàn, Đế Quốc Bắc Minh — dù chúng có địa điểm trụ sở, bản thân chúng là THỰC THỂ TỔ CHỨC chứ không phải địa điểm.
-- "terms": CHỈ khái niệm trừu tượng, hệ thống tu luyện, chủng tộc, công nghệ. Ví dụ: Nguyên Anh, Đan Điền, Linh Khí, Tiên Đạo.
+- "factions": Tông môn, bang phái, vương triều, tổ chức, thế lực chính trị.
+- "terms": CHỈ khái niệm trừu tượng, hệ thống tu luyện, chủng tộc, công nghệ.
 
 Tạo: world_profile chi tiết, 3-5 nhân vật, 3-5 địa điểm vật lý, 2-4 thế lực/tông môn (nếu phù hợp thể loại), 3-5 thuật ngữ, 8-12 chương, 2-4 tuyến truyện lớn.
 LƯU Ý: Bất kỳ nhân vật nào ở điểm bắt đầu cũng phải có điểm yếu (flaws) rõ ràng. Cấm tạo nhân vật hoàn mỹ ngay từ đầu.
@@ -337,8 +360,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
             : (isPlainObject(parsedValue) ? parsedValue : null);
 
           if (!nextResult) throw new Error('Unexpected JSON format');
-
-          // Đảm bảo factions luôn là array (AI cũ có thể không trả về)
           if (!Array.isArray(nextResult.factions)) nextResult.factions = [];
 
           setResult(nextResult);
@@ -448,7 +469,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
         }
       }
 
-      // 5. Create factions [MỚI]
+      // 5. Create factions
       if (result.factions?.length > 0) {
         for (let i = 0; i < result.factions.length; i++) {
           const f = result.factions[i];
@@ -494,6 +515,21 @@ Chỉ trả về JSON, không thêm gì khác.`,
           type: VALID_THREAD_TYPES.includes(pt.type) ? pt.type : 'subplot',
           description: pt.description || '',
           state: pt.state === 'resolved' ? 'resolved' : 'active',
+        });
+      }
+
+      // 8. Phase 9: Save macro arcs (Đại Cục) nếu tác giả đã nhập
+      const validMacroArcs = macroArcsInput.filter(m => m.title?.trim());
+      for (let i = 0; i < validMacroArcs.length; i++) {
+        const m = validMacroArcs[i];
+        await db.macro_arcs.add({
+          project_id: projectId,
+          order_index: i,
+          title: m.title.trim(),
+          description: m.description || '',
+          chapter_from: Number(m.chapter_from) || 0,
+          chapter_to: Number(m.chapter_to) || 0,
+          emotional_peak: m.emotional_peak || '',
         });
       }
 
@@ -638,7 +674,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
 
             <div className="form-group">
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                Cột mốc lớn (Milestones)
+                Cột mốc %
                 <button className="btn btn-ghost btn-xs ml-2" onClick={addMilestone}>
                   <Plus size={12} /> Thêm
                 </button>
@@ -663,10 +699,87 @@ Chỉ trả về JSON, không thêm gì khác.`,
                   </button>
                 </div>
               ))}
-              {milestonesInfo.length === 0 && (
-                <span className="form-hint" style={{ marginTop: '0' }}>
-                  Chia cốt truyện thành phần trăm để AI dẫn dắt tốt hơn.
+            </div>
+
+            {/* ─── Phase 9: Đại Cục (optional, collapsible) ─── */}
+            <div className="form-group">
+              <label
+                className="form-label"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
+                onClick={() => setShowMacroArcs(v => !v)}
+              >
+                <TrendingUp size={13} />
+                Đại Cục — Cột mốc lớn
+                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontWeight: 'normal' }}>
+                  (không bắt buộc — có thể thêm sau trong Story Bible)
                 </span>
+                <span style={{ marginLeft: 'auto', fontSize: '11px' }}>
+                  {showMacroArcs ? '▲ Ẩn' : '▼ Mở'}
+                </span>
+              </label>
+
+              {showMacroArcs && (
+                <div style={{ marginTop: 'var(--space-2)' }}>
+                  <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
+                    Định nghĩa 5–8 cột mốc lớn của toàn bộ truyện. AI sẽ không cho nhân vật vượt qua cột mốc hiện tại.
+                  </p>
+
+                  {macroArcsInput.map((m, idx) => (
+                    <div key={idx} style={{
+                      background: 'var(--color-surface-2)',
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: 'var(--space-2) var(--space-3)',
+                      marginBottom: 'var(--space-2)',
+                    }}>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                        <span style={{
+                          width: '20px', height: '20px', borderRadius: '50%',
+                          background: 'var(--color-accent)', color: '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '10px', fontWeight: 700, flexShrink: 0,
+                        }}>{idx + 1}</span>
+                        <input
+                          className="input input-sm"
+                          style={{ flex: 1 }}
+                          value={m.title}
+                          onChange={e => updateMacroArc(idx, 'title', e.target.value)}
+                          placeholder="Tên cột mốc (VD: Kẻ Dị Biệt)"
+                        />
+                        <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeMacroArc(idx)}>
+                          <X size={13} />
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                        <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Ch.</span>
+                        <input
+                          type="number" className="input input-sm" style={{ width: '70px' }}
+                          value={m.chapter_from}
+                          onChange={e => updateMacroArc(idx, 'chapter_from', e.target.value)}
+                          placeholder="Từ"
+                        />
+                        <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>→</span>
+                        <input
+                          type="number" className="input input-sm" style={{ width: '70px' }}
+                          value={m.chapter_to}
+                          onChange={e => updateMacroArc(idx, 'chapter_to', e.target.value)}
+                          placeholder="Đến"
+                        />
+                      </div>
+                      <input
+                        className="input input-sm"
+                        style={{ marginBottom: 'var(--space-1)' }}
+                        value={m.emotional_peak}
+                        onChange={e => updateMacroArc(idx, 'emotional_peak', e.target.value)}
+                        placeholder="Cảm xúc độc giả khi kết thúc cột mốc này..."
+                      />
+                    </div>
+                  ))}
+
+                  <button className="btn btn-ghost btn-sm" onClick={addMacroArc}>
+                    <Plus size={13} /> Thêm cột mốc
+                  </button>
+                </div>
               )}
             </div>
 
@@ -686,7 +799,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
               <label className="form-label">📖 Cốt truyện chính (Synopsis)</label>
               <textarea
                 className="textarea"
-                placeholder="Tóm tắt mạch truyện chính... (không bắt buộc — AI dùng để duy trì mạch truyện)"
+                placeholder="Tóm tắt mạch truyện chính... (không bắt buộc)"
                 value={synopsis}
                 onChange={(e) => setSynopsis(e.target.value)}
                 rows={2}
@@ -820,7 +933,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
               </div>
             )}
 
-            {/* Factions [MỚI] */}
+            {/* Factions */}
             {result.factions?.length > 0 && (
               <div className="wizard-section">
                 <h4>
@@ -918,6 +1031,30 @@ Chỉ trả về JSON, không thêm gì khác.`,
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* Macro Arcs preview (nếu đã nhập) */}
+            {macroArcsInput.filter(m => m.title?.trim()).length > 0 && (
+              <div className="wizard-section">
+                <h4>
+                  <TrendingUp size={16} /> Đại Cục ({macroArcsInput.filter(m => m.title?.trim()).length} cột mốc)
+                </h4>
+                <div className="wizard-items">
+                  {macroArcsInput.filter(m => m.title?.trim()).map((m, i) => (
+                    <div key={i} className="wizard-item">
+                      <div className="wizard-item-content">
+                        <strong>{m.title}</strong>
+                        {(m.chapter_from || m.chapter_to) && (
+                          <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginLeft: '8px' }}>
+                            Ch.{m.chapter_from}–{m.chapter_to}
+                          </span>
+                        )}
+                        {m.emotional_peak && <p style={{ fontSize: '12px', fontStyle: 'italic' }}>{m.emotional_peak}</p>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

@@ -60,6 +60,11 @@ export const TASK_TYPES = {
   // Phase 5 — AI Auto Generation
   ARC_OUTLINE: 'arc_outline',
   ARC_CHAPTER_DRAFT: 'arc_chapter_draft',
+  // Phase 9 — Grand Strategy
+  // GENERATE_MACRO_MILESTONES: AI gợi ý 5-8 cột mốc từ ý tưởng của tác giả
+  // AUDIT_ARC_ALIGNMENT: Kiểm tra độ lệch của arc hiện tại so với đại cục
+  GENERATE_MACRO_MILESTONES: 'generate_macro_milestones',
+  AUDIT_ARC_ALIGNMENT: 'audit_arc_alignment',
 };
 
 // --- Quality Modes ---
@@ -159,6 +164,19 @@ const PROXY_TASK_MAP = {
   },
   free_prompt: {
     fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
+  },
+  // Phase 9 — Grand Strategy
+  // generate_macro_milestones: Planning task — dùng pro để output có chiều sâu
+  generate_macro_milestones: {
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
+  },
+  // audit_arc_alignment: Analysis task — cần pro để phân tích độ lệch chính xác
+  audit_arc_alignment: {
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
     best: 'gemini-3-pro-high-真流-[星星公益站-CLI渠道]',
   },

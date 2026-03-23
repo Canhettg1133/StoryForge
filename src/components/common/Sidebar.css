@@ -55,6 +55,11 @@
 }
 
 /* Project Indicator */
+.sidebar-project-container {
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary, rgba(0, 0, 0, 0.2));
+}
+
 .sidebar-project {
   display: flex;
   align-items: center;
@@ -64,7 +69,6 @@
   color: var(--color-accent);
   cursor: pointer;
   transition: all var(--transition-fast);
-  border-bottom: 1px solid var(--color-border);
 }
 
 .sidebar-project:hover {

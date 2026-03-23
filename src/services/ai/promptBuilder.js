@@ -1,7 +1,9 @@
 /**
  * StoryForge - Prompt Builder v3 (Phase 4)
  *
- * 8-layer prompt architecture:
+ * Layer architecture:
+ *   0.   Grand Strategy (Phase 9) — đại cục + hồi truyện hiện tại
+ *        CHỈ inject cho writing tasks khi có dữ liệu macro arc / arc
  *   1.   System Identity
  *   2.   Task Instruction
  *   3.   Genre / AI Guidelines (editable, pre-filled from genre)
@@ -30,6 +32,18 @@ const LAYER_1_IDENTITY = [
   'Ban KHONG tu y them phan giai thich, ghi chu, hay meta-commentary - chi tra ve ket qua yeu cau.',
   'Ban PHAI tuan thu tuyet doi moi cam ky (taboo) duoc liet ke.',
 ].join('\n');
+
+// =============================================
+// Writing tasks — dùng chung cho Layer 0, 4.2, 5.5
+// =============================================
+const WRITING_TASKS_FOR_BRIDGE = new Set([
+  TASK_TYPES.CONTINUE,
+  TASK_TYPES.EXPAND,
+  TASK_TYPES.REWRITE,
+  TASK_TYPES.SCENE_DRAFT,
+  TASK_TYPES.ARC_CHAPTER_DRAFT,
+  TASK_TYPES.FREE_PROMPT,
+]);
 
 // =============================================
 // Layer 2: Task Instructions
@@ -159,31 +173,125 @@ export const TASK_INSTRUCTIONS = {
 };
 
 // =============================================
-// Phase 8 — Layer 4.2: Chapter Outline Context
-// Chỉ áp dụng cho writing tasks
+// Layer 0: Grand Strategy (Phase 9)
+// Inject trước tất cả các layer khác để AI luôn
+// "nhìn thấy bản đồ" trước khi bắt đầu viết.
+//
+// Lý do đặt Layer 0 (trước Layer 1):
+//   LLM chú ý nhiều nhất vào đầu và cuối prompt.
+//   Grand Strategy ở đầu = AI không bao giờ "quên" đại cục dù context dài.
+//
+// Chỉ inject khi:
+//   1. Là writing task
+//   2. Có ít nhất một trong: currentArc hoặc currentMacroArc
 // =============================================
 
-// Task types dùng chung cho cả Layer 4.2 và Layer 5.5
-const WRITING_TASKS_FOR_BRIDGE = new Set([
-  TASK_TYPES.CONTINUE,
-  TASK_TYPES.EXPAND,
-  TASK_TYPES.REWRITE,
-  TASK_TYPES.SCENE_DRAFT,
-  TASK_TYPES.ARC_CHAPTER_DRAFT,
-  TASK_TYPES.FREE_PROMPT,
-]);
+/**
+ * Build Layer 0 — Grand Strategy.
+ *
+ * @param {string}      taskType
+ * @param {object|null} currentMacroArc - record từ bảng macro_arcs
+ * @param {object|null} currentArc      - record từ bảng arcs
+ * @param {string}      ultimateGoal    - mục tiêu tổng thể từ project
+ * @param {number}      targetLength    - tổng số chương dự kiến
+ * @param {number}      currentChapterIndex
+ * @returns {string}
+ */
+function buildGrandStrategyLayer(
+  taskType,
+  currentMacroArc,
+  currentArc,
+  ultimateGoal,
+  targetLength,
+  currentChapterIndex
+) {
+  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
+  if (!currentMacroArc && !currentArc) return '';
+
+  const parts = [];
+
+  // Phần 1: Cột mốc lớn (Macro Arc)
+  if (currentMacroArc) {
+    const macroLines = [];
+    macroLines.push('Cot moc lon hien tai: ' + currentMacroArc.title);
+    if (currentMacroArc.description) {
+      macroLines.push('Mo ta: ' + currentMacroArc.description);
+    }
+    if (currentMacroArc.chapter_from && currentMacroArc.chapter_to) {
+      macroLines.push(
+        'Pham vi: Chuong ' + currentMacroArc.chapter_from +
+        ' den Chuong ' + currentMacroArc.chapter_to
+      );
+    }
+    if (currentMacroArc.emotional_peak) {
+      macroLines.push('Cam xuc doc gia can dat khi ket thuc cot moc nay: ' + currentMacroArc.emotional_peak);
+    }
+    parts.push('[COT MOC LON]\n' + macroLines.join('\n'));
+  }
+
+  // Phần 2: Hồi truyện hiện tại (Arc)
+  if (currentArc) {
+    const arcLines = [];
+    arcLines.push('Hoi truyen hien tai: ' + (currentArc.title || '(chua dat ten)'));
+    if (currentArc.goal) {
+      arcLines.push('Muc tieu hoi nay: ' + currentArc.goal);
+    }
+    if (currentArc.chapter_start && currentArc.chapter_end) {
+      arcLines.push(
+        'Pham vi: Chuong ' + currentArc.chapter_start +
+        ' den Chuong ' + currentArc.chapter_end
+      );
+    }
+    if (currentArc.power_level_start || currentArc.power_level_end) {
+      arcLines.push(
+        'Cap do suc manh trong hoi nay: ' +
+        (currentArc.power_level_start || '?') + ' → ' +
+        (currentArc.power_level_end || '?')
+      );
+    }
+    parts.push('[HOI TRUYEN HIEN TAI]\n' + arcLines.join('\n'));
+  }
+
+  // Phần 3: Ràng buộc tuyệt đối
+  const constraints = [];
+  if (currentMacroArc?.chapter_to && targetLength > 0) {
+    const remainingInMacro = currentMacroArc.chapter_to - (currentChapterIndex + 1);
+    if (remainingInMacro > 0) {
+      constraints.push(
+        'Con ' + remainingInMacro + ' chuong nua moi ket thuc cot moc "' +
+        currentMacroArc.title + '" — KHONG duoc giai quyet som.'
+      );
+    }
+  }
+  if (currentArc?.chapter_end) {
+    const remainingInArc = currentArc.chapter_end - (currentChapterIndex + 1);
+    if (remainingInArc > 0) {
+      constraints.push(
+        'Con ' + remainingInArc + ' chuong nua moi ket thuc hoi nay — ' +
+        'KHONG duoc de nhan vat dat muc tieu hoi qua som.'
+      );
+    }
+  }
+  if (ultimateGoal) {
+    constraints.push('Muc tieu CUOI CUNG cua ca bo truyen: "' + ultimateGoal + '" — TUYET DOI CHUA duoc dat den.');
+  }
+
+  if (constraints.length > 0) {
+    parts.push('[RANG BUOC TUYET DOI - KHONG DUOC VI PHAM]\n' + constraints.map(function (c) { return '- ' + c; }).join('\n'));
+  }
+
+  if (parts.length === 0) return '';
+
+  return '[CHIEN LUOC TONG THE - DAI CUC]\n' + parts.join('\n\n');
+}
+
+// =============================================
+// Layer 4.2: Chapter Outline (Phase 8)
+// =============================================
 
 /**
  * Build Layer 4.2 — Chapter Outline Context.
- *
- * Hai mục đích:
- *   1. currentChapterOutline → AI biết phải viết GÌ trong chương này, không lan chương khác
- *   2. upcomingChapters      → AI biết KHÔNG được viết trước nội dung chương sau
- *
- * @param {string} taskType
- * @param {object|null} currentChapterOutline - { title, summary, keyEvents[] }
- * @param {Array}  upcomingChapters - [{ title, summary }, ...]
- * @returns {string}
+ * Chỉ inject cho writing tasks.
  */
 function buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapters) {
   if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
@@ -218,19 +326,12 @@ function buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapt
 }
 
 // =============================================
-// Layer 5.5 helper — Bridge Memory
-// Chỉ áp dụng cho các writing tasks tạo ra prose
+// Layer 5.5: Bridge Memory (Phase 7)
 // =============================================
 
 /**
  * Build Layer 5.5 Bridge Memory block.
  * Trả về string rỗng nếu không có dữ liệu hoặc task không phải writing task.
- *
- * @param {string} taskType
- * @param {string} bridgeBuffer - ~150 từ cuối chương trước
- * @param {object|null} emotionalState - { mood, activeConflict, lastAction }
- * @param {number|null} tensionLevel - 1-10
- * @returns {string}
  */
 function buildBridgeMemoryLayer(taskType, bridgeBuffer, emotionalState, tensionLevel) {
   if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
@@ -326,9 +427,26 @@ export function buildPrompt(taskType, context = {}) {
     // Phase 8: Chapter Outline Context
     currentChapterOutline = null,
     upcomingChapters = [],
+    // Phase 9: Grand Strategy
+    currentArc = null,
+    currentMacroArc = null,
   } = context;
 
   const systemParts = [];
+
+  // -- Layer 0: Grand Strategy (Phase 9) --
+  // Đặt trước Layer 1 để AI luôn thấy đại cục đầu tiên
+  const grandStrategyLayer = buildGrandStrategyLayer(
+    taskType,
+    currentMacroArc,
+    currentArc,
+    ultimateGoal,
+    targetLength,
+    currentChapterIndex
+  );
+  if (grandStrategyLayer) {
+    systemParts.push(grandStrategyLayer);
+  }
 
   // -- Layer 1: System Identity --
   systemParts.push(LAYER_1_IDENTITY);
@@ -447,13 +565,14 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 4.2: Chapter Outline Context (Phase 8) --
-  // AI biết nhiệm vụ chương đang viết + không viết trước nội dung chương sau
   const chapterOutlineLayer = buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapters);
   if (chapterOutlineLayer) {
     systemParts.push(chapterOutlineLayer);
   }
 
   // -- Layer 4.5: Pacing Control (AI Auto Generation) --
+  // Lưu ý: Khi đã có Grand Strategy (Layer 0), Layer 4.5 đóng vai trò bổ sung
+  // thông tin tiến độ số liệu (%), còn Grand Strategy cung cấp ngữ cảnh định tính.
   if (targetLength > 0 && ultimateGoal) {
     const progressPercent = Math.round((currentChapterIndex / targetLength) * 100);
     const pacingParts = [];
@@ -509,7 +628,6 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 5.5: Bridge Memory (Phase 7) --
-  // Chỉ inject cho writing tasks, bị bỏ qua hoàn toàn với JSON/analysis tasks
   const bridgeLayer = buildBridgeMemoryLayer(taskType, bridgeBuffer, previousEmotionalState, tensionLevel);
   if (bridgeLayer) {
     systemParts.push(bridgeLayer);
@@ -656,11 +774,9 @@ export function buildPrompt(taskType, context = {}) {
       break;
 
     case TASK_TYPES.SUGGEST_UPDATES: {
-      // Build context of current character statuses
       const charStatuses = characters.map(function (c) {
         return '- ' + c.name + ': ' + (c.current_status || '(chua co trang thai)');
       }).join('\n');
-      // Build list of existing canon facts
       const existingFacts = canonFacts
         .filter(function (f) { return f.status === 'active'; })
         .map(function (f) { return '- [' + f.fact_type + '] ' + f.description; })

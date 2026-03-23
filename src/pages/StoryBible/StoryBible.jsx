@@ -2,12 +2,15 @@
  * StoryForge - Story Bible (Editable Wiki + Settings)
  * Aggregates all project data: settings, codex, chapters.
  * All project fields are editable inline.
+ *
+ * Phase 9: Thêm section "Đại Cục" — CRUD cho macro_arcs
  */
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
+import db from '../../services/db/database';
 import {
   GENRES, TONES, CHARACTER_ROLES, WORLD_TERM_CATEGORIES,
   POV_MODES, STORY_STRUCTURES, PRONOUN_STYLE_PRESETS,
@@ -20,8 +23,11 @@ import {
   Star, Sword, UserCheck, Heart, ChevronRight, ChevronDown,
   Eye, MessageSquare, Save, Edit3, Check, Settings, FileText,
   Terminal, BookKey, Plus, X, Trash2, RotateCcw, Sparkles,
+  Flag, TrendingUp, Loader2, Wand2,
 } from 'lucide-react';
 import SuggestionInbox from '../../components/ai/SuggestionInbox';
+import ArcNavigator from '../../components/common/ArcNavigator';
+import useArcGenStore from '../../stores/arcGenerationStore';
 import './StoryBible.css';
 
 const ROLE_ICONS = {
@@ -74,12 +80,28 @@ export default function StoryBible() {
   const [ultimateGoal, setUltimateGoal] = useState('');
   const [milestonesInfo, setMilestonesInfo] = useState([]);
 
+  // Phase 9: Grand Strategy — Đại Cục
+  const [macroArcs, setMacroArcs] = useState([]);
+  const [macroArcSaving, setMacroArcSaving] = useState(false);
+
+  // Phase 9: AI Suggest milestones
+  const [aiIdeaInput, setAiIdeaInput] = useState('');
+  const [showAiSuggest, setShowAiSuggest] = useState(false);
+  const [selectedMilestoneIdxs, setSelectedMilestoneIdxs] = useState(new Set());
+  const {
+    isSuggestingMilestones,
+    macroMilestoneSuggestions,
+    generateMacroMilestones,
+    saveMacroMilestones,
+  } = useArcGenStore();
+
   // Prompt Templates local state
   const [promptTemplates, setPromptTemplates] = useState({});
 
   // Collapsible sections
   const [openSections, setOpenSections] = useState({
-    overview: true, ai: false, prompts: false, suggestions: true, canon: true,
+    overview: true, ai: false, grandStrategy: false, prompts: false,
+    suggestions: true, canon: true,
     characters: true, locations: true, objects: true, terms: true, summaries: true,
   });
 
@@ -112,6 +134,13 @@ export default function StoryBible() {
       } catch (e) {
         setPromptTemplates({});
       }
+
+      // Phase 9: Load macro arcs
+      db.macro_arcs
+        .where('project_id').equals(currentProject.id)
+        .sortBy('order_index')
+        .then(setMacroArcs)
+        .catch(() => setMacroArcs([]));
     }
   }, [currentProject?.id]);
 
@@ -148,12 +177,7 @@ export default function StoryBible() {
   const removeMilestone = (idx) => setMilestonesInfo(prev => prev.filter((_, i) => i !== idx));
 
   // Immediate save for dropdowns
-  const handleGenreChange = (v) => {
-    setGenrePrimary(v);
-    const newPronoun = GENRE_TO_PRONOUN_STYLE[v] || 'hien_dai';
-    setPronounStyle(newPronoun);
-    save({ genre_primary: v, pronoun_style: newPronoun });
-  };
+  const handleGenreChange = (v) => { setGenrePrimary(v); const np = GENRE_TO_PRONOUN_STYLE[v] || 'hien_dai'; setPronounStyle(np); save({ genre_primary: v, pronoun_style: np }); };
   const handleToneChange = (v) => { setTone(v); save({ tone: v }); };
   const handlePovChange = (v) => { setPovMode(v); save({ pov_mode: v }); };
   const handlePronounChange = (v) => { setPronounStyle(v); save({ pronoun_style: v }); };
@@ -171,9 +195,94 @@ export default function StoryBible() {
     setPromptTemplates(prev => ({ ...prev, [taskType]: value }));
   };
 
+  // Phase 9: AI generate milestones handler
+  const handleGenerateMilestones = async () => {
+    if (!currentProject) return;
+    // Truyền đầy đủ context của project hiện tại cho AI
+    const contextIdea = [
+      aiIdeaInput,
+      title ? 'Tên truyện: ' + title : '',
+      synopsis ? 'Cốt truyện: ' + synopsis : '',
+      ultimateGoal ? 'Đích đến: ' + ultimateGoal : '',
+    ].filter(Boolean).join('\n');
+    await generateMacroMilestones({
+      projectId: currentProject.id,
+      authorIdea: contextIdea,
+      genre: genrePrimary,
+    });
+    // Auto-select tất cả khi có kết quả
+    setSelectedMilestoneIdxs(new Set());
+  };
+
+  // Auto-select tất cả khi suggestions vừa load xong
+  useEffect(() => {
+    if (macroMilestoneSuggestions?.milestones?.length > 0) {
+      setSelectedMilestoneIdxs(new Set(macroMilestoneSuggestions.milestones.map((_, i) => i)));
+    }
+  }, [macroMilestoneSuggestions]);
+
+  const handleSaveMilestones = async () => {
+    if (!macroMilestoneSuggestions?.milestones) return;
+    const selected = macroMilestoneSuggestions.milestones.filter((_, i) => selectedMilestoneIdxs.has(i));
+    if (selected.length === 0) return;
+    const ids = await saveMacroMilestones(currentProject.id, selected);
+    // Reload macro arcs from DB
+    const updated = await db.macro_arcs
+      .where('project_id').equals(currentProject.id)
+      .sortBy('order_index');
+    setMacroArcs(updated);
+    setShowAiSuggest(false);
+    setAiIdeaInput('');
+  };
+
   // Handle Canon Facts
   const handleAddCanonFact = () => {
     createCanonFact({ project_id: currentProject.id, description: '', fact_type: 'fact', status: 'active' });
+  };
+
+  // ─── Phase 9: Macro Arc handlers ───
+
+  const handleAddMacroArc = async () => {
+    if (!currentProject) return;
+    const existingCount = macroArcs.length;
+    const newMacroArc = {
+      project_id: currentProject.id,
+      order_index: existingCount,
+      title: 'Cột mốc ' + (existingCount + 1),
+      description: '',
+      chapter_from: 0,
+      chapter_to: 0,
+      emotional_peak: '',
+    };
+    try {
+      const id = await db.macro_arcs.add(newMacroArc);
+      setMacroArcs(prev => [...prev, { ...newMacroArc, id }]);
+    } catch (e) {
+      console.error('[StoryBible] addMacroArc error:', e);
+    }
+  };
+
+  const handleUpdateMacroArc = async (id, field, value) => {
+    // Optimistic update UI
+    setMacroArcs(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
+    // Debounced save — đơn giản dùng timeout
+    clearTimeout(window._macroArcSaveTimer);
+    window._macroArcSaveTimer = setTimeout(async () => {
+      try {
+        await db.macro_arcs.update(id, { [field]: value });
+      } catch (e) {
+        console.error('[StoryBible] updateMacroArc error:', e);
+      }
+    }, 600);
+  };
+
+  const handleDeleteMacroArc = async (id) => {
+    try {
+      await db.macro_arcs.delete(id);
+      setMacroArcs(prev => prev.filter(m => m.id !== id));
+    } catch (e) {
+      console.error('[StoryBible] deleteMacroArc error:', e);
+    }
   };
 
   if (!currentProject) {
@@ -303,7 +412,7 @@ export default function StoryBible() {
 
             <div className="form-group">
               <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                Cột mốc lớn (Milestones) {milestonesSaved && <span className="save-indicator">Đã lưu</span>}
+                Cột mốc % (Milestones) {milestonesSaved && <span className="save-indicator">Đã lưu</span>}
                 <button className="btn btn-ghost btn-xs ml-2" onClick={addMilestone}><Plus size={12} /> Thêm</button>
               </label>
               {milestonesInfo.map((m, idx) => (
@@ -369,6 +478,277 @@ export default function StoryBible() {
         )}
       </div>
 
+      {/* ═══ SECTION: Grand Strategy — Đại Cục (Phase 9) ═══ */}
+      <div className="bible-section">
+        <div className="bible-section-header" onClick={() => toggleSection('grandStrategy')} style={{ cursor: 'pointer' }}>
+          <h3 className="bible-section-title">
+            <ChevronDown size={14} style={{ transform: openSections.grandStrategy ? 'rotate(0)' : 'rotate(-90deg)', transition: '0.2s' }} />
+            <TrendingUp size={18} /> Đại Cục ({macroArcs.length} cột mốc)
+          </h3>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }} onClick={(e) => e.stopPropagation()}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowAiSuggest(v => !v)}
+              title="Gợi ý cột mốc bằng AI"
+            >
+              <Wand2 size={14} /> Gợi ý AI
+            </button>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={(e) => { e.stopPropagation(); handleAddMacroArc(); }}
+            >
+              <Plus size={14} /> Thêm cột mốc
+            </button>
+          </div>
+        </div>
+
+        {openSections.grandStrategy && (
+          <div className="bible-edit-card">
+            <p className="bible-subtitle" style={{ marginBottom: 'var(--space-3)' }}>
+              Định nghĩa 5–8 cột mốc lớn của toàn bộ truyện. AI đọc và tôn trọng tuyệt đối — nhân vật không được vượt qua cột mốc hiện tại.
+            </p>
+
+            {/* AI Suggest Panel */}
+            {showAiSuggest && (
+              <div style={{
+                background: 'var(--color-surface-2)',
+                border: '1px solid var(--color-accent)',
+                borderRadius: 'var(--radius-md)',
+                padding: 'var(--space-3)',
+                marginBottom: 'var(--space-3)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: 'var(--space-2)', fontSize: '13px', fontWeight: 600 }}>
+                  <Wand2 size={14} style={{ color: 'var(--color-accent)' }} />
+                  Gợi ý đại cục bằng AI
+                </div>
+                <textarea
+                  className="textarea"
+                  rows={2}
+                  value={aiIdeaInput}
+                  onChange={(e) => setAiIdeaInput(e.target.value)}
+                  placeholder="Mô tả ngắn về truyện (để trống = AI tự đọc từ Synopsis + Goal)..."
+                  style={{ marginBottom: 'var(--space-2)' }}
+                />
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={handleGenerateMilestones}
+                    disabled={isSuggestingMilestones}
+                  >
+                    {isSuggestingMilestones
+                      ? <><Loader2 size={14} className="spin" /> Đang gợi ý...</>
+                      : <><Sparkles size={14} /> Gợi ý</>}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => { setShowAiSuggest(false); setAiIdeaInput(''); }}
+                  >
+                    <X size={14} /> Hủy
+                  </button>
+                </div>
+
+                {/* Show suggestions with checkboxes */}
+                {macroMilestoneSuggestions?.milestones?.length > 0 && (
+                  <div style={{ marginTop: 'var(--space-3)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                        AI gợi ý {macroMilestoneSuggestions.milestones.length} cột mốc — chọn những cái muốn lưu:
+                      </span>
+                      <button
+                        className="btn btn-ghost btn-xs"
+                        style={{ fontSize: '11px' }}
+                        onClick={() => {
+                          if (selectedMilestoneIdxs.size === macroMilestoneSuggestions.milestones.length) {
+                            setSelectedMilestoneIdxs(new Set());
+                          } else {
+                            setSelectedMilestoneIdxs(new Set(macroMilestoneSuggestions.milestones.map((_, i) => i)));
+                          }
+                        }}
+                      >
+                        {selectedMilestoneIdxs.size === macroMilestoneSuggestions.milestones.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                      </button>
+                    </div>
+                    {macroMilestoneSuggestions.milestones.map((m, i) => (
+                      <div
+                        key={i}
+                        onClick={() => setSelectedMilestoneIdxs(prev => {
+                          const next = new Set(prev);
+                          if (next.has(i)) next.delete(i); else next.add(i);
+                          return next;
+                        })}
+                        style={{
+                          display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start',
+                          padding: 'var(--space-2)',
+                          background: selectedMilestoneIdxs.has(i)
+                            ? 'var(--color-accent-subtle, rgba(124,58,237,0.12))'
+                            : 'var(--color-surface-3, rgba(255,255,255,0.04))',
+                          border: selectedMilestoneIdxs.has(i)
+                            ? '1px solid var(--color-accent)'
+                            : '1px solid transparent',
+                          borderRadius: 'var(--radius-sm)',
+                          marginBottom: 'var(--space-1)',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedMilestoneIdxs.has(i)}
+                          onChange={() => { }}
+                          style={{ marginTop: '2px', flexShrink: 0, accentColor: 'var(--color-accent)' }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <strong>{i + 1}. {m.title}</strong>
+                          {(m.chapter_from || m.chapter_to) && (
+                            <span style={{ color: 'var(--color-text-muted)', marginLeft: '6px' }}>
+                              Ch.{m.chapter_from}–{m.chapter_to}
+                            </span>
+                          )}
+                          {m.description && (
+                            <div style={{ color: 'var(--color-text-muted)', marginTop: '2px' }}>{m.description}</div>
+                          )}
+                          {m.emotional_peak && (
+                            <div style={{ color: 'var(--color-text-muted)', fontStyle: 'italic', marginTop: '2px' }}>
+                              🎭 {m.emotional_peak}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={handleSaveMilestones}
+                        disabled={selectedMilestoneIdxs.size === 0}
+                      >
+                        <Check size={14} /> Lưu {selectedMilestoneIdxs.size > 0 ? `(${selectedMilestoneIdxs.size})` : ''}
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={handleGenerateMilestones} disabled={isSuggestingMilestones}>
+                        <RotateCcw size={14} /> Tạo lại
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ marginLeft: 'auto' }}
+                        onClick={() => { setShowAiSuggest(false); setAiIdeaInput(''); }}
+                      >
+                        <X size={14} /> Hủy
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {macroArcs.length > 0 && (
+              <div style={{ marginBottom: 'var(--space-4)' }}>
+                <ArcNavigator
+                  projectId={currentProject.id}
+                  currentChapter={chapters.length > 0 ? chapters.length - 1 : 0}
+                  totalChapters={targetLength || 800}
+                />
+              </div>
+            )}
+
+            {macroArcs.length === 0 && (
+              <div className="empty-state" style={{ padding: 'var(--space-4)', minHeight: 'unset' }}>
+                <Flag size={32} style={{ opacity: 0.4 }} />
+                <p style={{ fontSize: '13px' }}>Chưa có cột mốc nào. Nhấn "Thêm cột mốc" để bắt đầu xây đại cục.</p>
+              </div>
+            )}
+
+            {macroArcs.map((m, idx) => (
+              <div key={m.id} className="bible-edit-card" style={{ marginBottom: 'var(--space-3)', border: '1px solid var(--color-border)' }}>
+                {/* Row 1: Order + Title + Delete */}
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                  <span style={{
+                    flexShrink: 0,
+                    width: '24px', height: '24px',
+                    borderRadius: '50%',
+                    background: 'var(--color-accent)',
+                    color: '#fff',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '11px', fontWeight: 700,
+                  }}>
+                    {idx + 1}
+                  </span>
+                  <input
+                    className="input"
+                    style={{ flex: 1, fontWeight: 600 }}
+                    value={m.title}
+                    onChange={(e) => handleUpdateMacroArc(m.id, 'title', e.target.value)}
+                    placeholder="Tên cột mốc (VD: Kẻ Dị Biệt)"
+                  />
+                  <button
+                    className="btn btn-ghost btn-icon btn-sm"
+                    onClick={() => handleDeleteMacroArc(m.id)}
+                    title="Xóa cột mốc"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                {/* Row 2: Chapter range */}
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', flexShrink: 0 }}>Chương</span>
+                  <input
+                    type="number"
+                    className="input"
+                    style={{ width: '80px' }}
+                    value={m.chapter_from || ''}
+                    onChange={(e) => handleUpdateMacroArc(m.id, 'chapter_from', Number(e.target.value))}
+                    placeholder="Từ"
+                  />
+                  <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>→</span>
+                  <input
+                    type="number"
+                    className="input"
+                    style={{ width: '80px' }}
+                    value={m.chapter_to || ''}
+                    onChange={(e) => handleUpdateMacroArc(m.id, 'chapter_to', Number(e.target.value))}
+                    placeholder="Đến"
+                  />
+                  {m.chapter_from > 0 && m.chapter_to > 0 && (
+                    <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                      ({m.chapter_to - m.chapter_from + 1} chương)
+                    </span>
+                  )}
+                </div>
+
+                {/* Row 3: Description */}
+                <div className="form-group" style={{ marginBottom: 'var(--space-2)' }}>
+                  <label className="form-label">Mô tả sự kiện chính</label>
+                  <textarea
+                    className="textarea"
+                    rows={2}
+                    value={m.description || ''}
+                    onChange={(e) => handleUpdateMacroArc(m.id, 'description', e.target.value)}
+                    placeholder="Những gì xảy ra ở cột mốc này..."
+                  />
+                </div>
+
+                {/* Row 4: Emotional peak */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Cảm xúc độc giả khi kết thúc cột mốc</label>
+                  <input
+                    className="input"
+                    value={m.emotional_peak || ''}
+                    onChange={(e) => handleUpdateMacroArc(m.id, 'emotional_peak', e.target.value)}
+                    placeholder="VD: Hứng khởi, tò mò — 'người này sẽ đi đến đâu?'"
+                  />
+                </div>
+              </div>
+            ))}
+
+            {macroArcs.length > 0 && (
+              <div style={{ padding: 'var(--space-2)', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-sm)', fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                💡 AI sẽ đọc đại cục này trước khi viết mỗi chương. Thay đổi được lưu tự động.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* ═══ SECTION: Prompt AI (Templates) ═══ */}
       <div className="bible-section">
         <SectionHeader icon={Terminal} title="Prompt AI" sectionKey="prompts" />
@@ -386,7 +766,6 @@ export default function StoryBible() {
                     {key} <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal', fontSize: '11px' }}>({taskType})</span>
                     {hasCustom && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>✏️ Tùy chỉnh</span>}
                   </label>
-                  {/* Show default prompt */}
                   {defaultPrompt && (
                     <div className="prompt-default-preview">
                       <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Mặc định:</span> {defaultPrompt.substring(0, 200)}{defaultPrompt.length > 200 ? '...' : ''}
@@ -464,7 +843,7 @@ export default function StoryBible() {
               </div>
             ))}
             {activeCanonFacts.length === 0 && (
-              <p className="text-muted" style={{ fontSize: '13px', fontStyle: 'italic' }}>Chưa có Canon Fact nào đang hoạt động. Canon Fact là những thông tin cốt lõi bắt buộc AI phải nhớ và tuân thủ tuyệt đối.</p>
+              <p className="text-muted" style={{ fontSize: '13px', fontStyle: 'italic' }}>Chưa có Canon Fact nào đang hoạt động.</p>
             )}
 
             {deprecatedCanonFacts.length > 0 && (
