@@ -40,6 +40,17 @@ export default function ChapterList() {
     setActiveScene(sceneId);
   };
 
+  const handleSelectChapter = (chapterId) => {
+    setActiveChapter(chapterId);
+    // Tự động chọn cảnh đầu tiên nếu có
+    const chapterScenes = scenes.filter(s => s.chapter_id === chapterId);
+    if (chapterScenes.length > 0) {
+      setActiveScene(chapterScenes[0].id);
+    }
+    // Luôn mở rộng khi chọn chương
+    setExpandedChapters(prev => new Set(prev).add(chapterId));
+  };
+
   const startRename = (type, id, currentName, e) => {
     e.stopPropagation();
     setEditingId(`${type}-${id}`);
@@ -205,10 +216,15 @@ export default function ChapterList() {
               {/* Chapter header */}
               <div
                 className={`chapter-item ${activeChapterId === chapter.id ? 'chapter-item--active' : ''} ${isDone ? 'chapter-item--done' : ''}`}
-                onClick={() => toggleChapter(chapter.id)}
                 onContextMenu={(e) => handleContextMenu(e, 'chapter', chapter.id)}
               >
-                <span className="chapter-expand-icon">
+                <span
+                  className="chapter-expand-icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleChapter(chapter.id);
+                  }}
+                >
                   {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </span>
 
@@ -223,7 +239,10 @@ export default function ChapterList() {
                     autoFocus
                   />
                 ) : (
-                  <span className="chapter-item-title truncate">
+                  <span
+                    className="chapter-item-title truncate"
+                    onClick={() => handleSelectChapter(chapter.id)}
+                  >
                     {isDone && <CheckCircle2 size={12} className="chapter-done-icon" />}
                     {chapter.title}
                   </span>
