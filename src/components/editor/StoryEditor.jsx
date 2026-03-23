@@ -18,6 +18,7 @@ export default function StoryEditor({ onEditorReady }) {
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
   const saveTimerRef = useRef(null);
   const lastSavedRef = useRef('');
+  const editorWrapperRef = useRef(null);
   const [outlinePanelOpen, setOutlinePanelOpen] = useState(true);
 
   // [MỚI] Outline edit state
@@ -119,6 +120,13 @@ export default function StoryEditor({ onEditorReady }) {
       lastSavedRef.current = '';
     }
   }, [activeSceneId, activeScene?.draft_text, editor]);
+
+  // [MỚI] Reset thanh cuộn khi đổi cảnh/chương
+  useEffect(() => {
+    if (editorWrapperRef.current) {
+      editorWrapperRef.current.scrollTop = 0;
+    }
+  }, [activeSceneId]);
 
   useEffect(() => {
     if (editor && onEditorReady) {
@@ -305,7 +313,7 @@ export default function StoryEditor({ onEditorReady }) {
       <ContinuityBar />
 
       {/* Editor */}
-      <div className="story-editor-wrapper">
+      <div className="story-editor-wrapper" ref={editorWrapperRef}>
         <EditorContent editor={editor} />
       </div>
 
