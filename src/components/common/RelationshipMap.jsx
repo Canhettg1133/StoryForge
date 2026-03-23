@@ -134,7 +134,7 @@ export default function RelationshipMap({ onClose }) {
               <div className="form-row">
                 <div className="form-group">
                   <label>Nhân vật A</label>
-                  <select value={form.character_a_id} onChange={e => setForm({ ...form, character_a_id: e.target.value })}>
+                  <select className="select" value={form.character_a_id} onChange={e => setForm({ ...form, character_a_id: e.target.value })}>
                     <option value="">— Chọn —</option>
                     {characters.map(c => (
                       <option key={c.id} value={c.id}>{c.name} ({c.role})</option>
@@ -146,7 +146,7 @@ export default function RelationshipMap({ onClose }) {
                 </div>
                 <div className="form-group">
                   <label>Nhân vật B</label>
-                  <select value={form.character_b_id} onChange={e => setForm({ ...form, character_b_id: e.target.value })}>
+                  <select className="select" value={form.character_b_id} onChange={e => setForm({ ...form, character_b_id: e.target.value })}>
                     <option value="">— Chọn —</option>
                     {characters.filter(c => String(c.id) !== String(form.character_a_id)).map(c => (
                       <option key={c.id} value={c.id}>{c.name} ({c.role})</option>
@@ -157,7 +157,7 @@ export default function RelationshipMap({ onClose }) {
               <div className="form-row">
                 <div className="form-group">
                   <label>Loại quan hệ</label>
-                  <select value={form.relation_type} onChange={e => setForm({ ...form, relation_type: e.target.value })}>
+                  <select className="select" value={form.relation_type} onChange={e => setForm({ ...form, relation_type: e.target.value })}>
                     {RELATION_TYPES.map(r => (
                       <option key={r.value} value={r.value}>{r.label}</option>
                     ))}

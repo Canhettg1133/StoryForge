@@ -415,7 +415,7 @@ export default function CharacterHub() {
                     </div>
                     <div className="form-group">
                       <label>Vai trò</label>
-                      <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+                      <select className="select" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
                         {CHARACTER_ROLES.map(r => (
                           <option key={r.value} value={r.value}>{r.label}</option>
                         ))}
@@ -572,6 +572,7 @@ export default function CharacterHub() {
               <div className="form-group">
                 <label>Nhân vật liên quan</label>
                 <select
+                  className="select"
                   value={tabooForm.character_id}
                   onChange={e => setTabooForm({ ...tabooForm, character_id: Number(e.target.value) })}
                 >
