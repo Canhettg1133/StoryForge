@@ -1,6 +1,10 @@
 {
     "rewrites": [
         {
+            "source": "/api/proxy/:match*",
+            "destination": "https://ag.beijixingxing.com/:match*"
+        },
+        {
             "source": "/(.*)",
             "destination": "/index.html"
         }
