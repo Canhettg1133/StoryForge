@@ -107,6 +107,31 @@ export async function gatherContext({
   }
 
   const detectedCharacters = detectByName(allCharacters);
+
+  // [FIX] Bootstrap nhân vật khi scene mới rỗng:
+  // Nếu chưa có kí tự nào (chương/scene mới), tự động add POV char và characters_present
+  if (sceneId && detectedCharacters.length === 0) {
+    try {
+      // Find scene manually since we only have ID at this point, but actually we do load it below.
+      // However doing it quickly via memory is fine if we loaded them, but we don't have allScenes.
+      // We will just do a quick DB fetch.
+      const scene = await db.scenes.get(sceneId);
+      if (scene) {
+        const povChar = allCharacters.find(c => c.id === scene.pov_character_id);
+        if (povChar && !detectedCharacters.some(c => c.id === povChar.id)) {
+          detectedCharacters.push(povChar);
+        }
+        const presentIds = JSON.parse(scene.characters_present || '[]');
+        presentIds.forEach(id => {
+          const c = allCharacters.find(char => char.id === id);
+          if (c && !detectedCharacters.some(extC => extC.id === c.id)) {
+            detectedCharacters.push(c);
+          }
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   const detectedLocations = detectByName(allLocations);
   const detectedObjects = detectByName(allObjects);
   const detectedTerms = detectByName(allTerms);

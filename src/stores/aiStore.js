@@ -19,13 +19,18 @@ import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 // Inject router into aiService (avoid circular import)
 aiService.setRouter(modelRouter);
 
-// Task types that produce prose → cần lưu bridge buffer
+// Task types that should update bridge buffer for continuity
 const WRITING_TASK_TYPES = new Set([
   TASK_TYPES.CONTINUE,
-  TASK_TYPES.EXPAND,
-  TASK_TYPES.REWRITE,
   TASK_TYPES.SCENE_DRAFT,
 ]);
+
+function extractTextTail(rawText, wordLimit = 150) {
+  const plainText = (rawText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!plainText) return '';
+  const words = plainText.split(' ').filter(Boolean);
+  return words.slice(-wordLimit).join(' ');
+}
 
 /**
  * Lưu ~150 từ cuối của văn bản vừa generate vào chapterMeta.last_prose_buffer.
@@ -137,21 +142,25 @@ const useAIStore = create((set, get) => ({
           projectId: context.projectId,
           chapterId: context.chapterId,
           chapterIndex: context.chapterIndex || 0,
+          sceneId: context.sceneId || null,
           sceneText: context.sceneText || '',
           genre: context.genre || '',
         });
-        // Merge memory context into the user context
+        // Keep full contextEngine output, then let explicit caller context override.
         enrichedContext = {
+          ...memoryContext,
           ...context,
-          characters: memoryContext.characters,
-          locations: memoryContext.locations,
-          objects: memoryContext.objects,
-          worldTerms: memoryContext.worldTerms,
-          taboos: memoryContext.taboos,
-          previousSummary: memoryContext.previousSummary || context.previousSummary,
         };
       } catch (err) {
         console.warn('[AI] Context Engine error (non-fatal):', err);
+      }
+    }
+
+    // CONTINUE: ưu tiên tail của scene hiện tại làm bridge/mood source.
+    if (taskType === TASK_TYPES.CONTINUE) {
+      const liveSceneTail = extractTextTail(context.sceneText || '', 150);
+      if (liveSceneTail) {
+        enrichedContext.bridgeBuffer = liveSceneTail;
       }
     }
 
@@ -171,11 +180,8 @@ const useAIStore = create((set, get) => ({
         set({ streamingText: fullText });
       },
       onComplete: async (text, meta) => {
-        // Phase 7: Auto-save bridge buffer sau khi AI xong một writing task
-        if (isWritingTask && chapterId && projectId) {
-          // Fire-and-forget: không await để không delay UI update
-          saveProseBuffer(chapterId, projectId, text);
-        }
+        // [FIX] Bỏ lưu bridgeBuffer ngay lúc AI mới trả text (tránh hỏng context nếu user chưa accept text).
+        // Bridge memory giờ sẽ được cập nhật từ phía Editor thông qua auto-save.
 
         set({
           isStreaming: false,

@@ -100,6 +100,7 @@ export default function AISidebar({ editor }) {
       // Phase 3: Context Engine needs these
       projectId: currentProject?.id || null,
       chapterId: activeChapterId || null,
+      sceneId: activeSceneId || null,
       chapterIndex: chapter ? chapters.indexOf(chapter) : 0,
     };
   };

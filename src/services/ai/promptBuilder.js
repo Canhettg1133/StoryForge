@@ -60,7 +60,7 @@ const FULL_WRITING_TASKS = new Set([
   TASK_TYPES.CONTINUE,
   TASK_TYPES.SCENE_DRAFT,
   TASK_TYPES.ARC_CHAPTER_DRAFT,
-  TASK_TYPES.FREE_PROMPT,
+  // [FIX] Bỏ FREE_PROMPT khỏi nhóm full-injection để tránh gò ép continuity quá mức
 ]);
 
 // Style-only injection: AI làm việc với text đã có
@@ -617,9 +617,11 @@ function buildMoodBoardLayer(taskType, genreKey, bridgeBuffer, selectedText) {
   const defaultSamples = (MOOD_BOARD_DEFAULTS[genreKey] || MOOD_BOARD_DEFAULTS['do_thi'] || []).slice(0, 2);
 
   // Ưu tiên câu của tác giả, fallback sang defaults
+  // [FIX] Nếu sourceText có nội dung nhưng không đạt chuẩn (VD < 30 ký tự),
+  // KHÔNG ĐƯỢC ép dùng defaults vì sẽ kéo lệch tone. Chỉ dùng defaults khi text trắng tinh.
   const samples = authorSamples.length >= 1
     ? authorSamples.slice(0, 2)
-    : defaultSamples;
+    : ((!sourceText || sourceText.trim() === '') ? defaultSamples : []);
 
   if (samples.length === 0) return '';
 
