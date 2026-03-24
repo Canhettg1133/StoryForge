@@ -44,6 +44,13 @@ const TYPE_LABELS = {
   mystery: 'Bí ẩn', romance: 'Tình cảm',
 };
 const CHAR_ROLES = ['protagonist', 'antagonist', 'supporting', 'mentor', 'minor'];
+const CHAR_ROLE_LABELS = {
+  protagonist: 'Nhân vật chính',
+  antagonist: 'Phản diện',
+  supporting: 'Phụ trợ',
+  mentor: 'Sư phụ / Cố vấn',
+  minor: 'Quần chúng',
+};
 const TERM_CATEGORIES = ['magic', 'race', 'technology', 'other'];
 const FACTION_TYPES = ['sect', 'kingdom', 'organization', 'other'];
 const FACTION_TYPE_LABELS = {
@@ -160,7 +167,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
         <div className="wizard-edit-field">
           <label>Vai trò</label>
           <select className="select select-sm" value={c.role || 'supporting'} onChange={e => updateResultItem('characters', i, 'role', e.target.value)}>
-            {CHAR_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+            {CHAR_ROLES.map(r => <option key={r} value={r}>{CHAR_ROLE_LABELS[r] || r}</option>)}
           </select>
         </div>
       </div>

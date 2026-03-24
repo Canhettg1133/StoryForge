@@ -20,7 +20,7 @@
  */
 
 import { TASK_TYPES } from './router';
-import { PRONOUN_PRESETS, GENRE_PRONOUN_MAP } from '../../utils/constants';
+import { PRONOUN_PRESETS, GENRE_PRONOUN_MAP, AUTHOR_ROLE_TABLE, MOOD_BOARD_DEFAULTS, detectWritingStyle } from '../../utils/constants';
 
 // =============================================
 // Layer 1: System Identity
@@ -34,7 +34,17 @@ const LAYER_1_IDENTITY = [
 ].join('\n');
 
 // =============================================
-// Writing tasks — dùng chung cho Layer 0, 4.2, 5.5
+// Writing tasks — 3 mức injection
+//
+// FULL_WRITING: Author DNA đầy đủ + Style DNA + Mood Board + Priority Anchor
+//   → AI tự do sáng tác, cần định hướng cảm xúc và vai trò đầy đủ
+//
+// STYLE_ONLY: Chỉ Style DNA + Mood Board + Priority Anchor nhẹ
+//   → AI làm việc với text đã có, không được "kéo" cảm xúc theo hướng mới
+//   → EXPAND: giữ nguyên hướng, chỉ làm phong phú
+//   → REWRITE: giữ nguyên nội dung, chỉ nâng câu chữ
+//
+// Dùng chung cho Layer 0, 4.2, 5.5:
 // =============================================
 const WRITING_TASKS_FOR_BRIDGE = new Set([
   TASK_TYPES.CONTINUE,
@@ -43,6 +53,20 @@ const WRITING_TASKS_FOR_BRIDGE = new Set([
   TASK_TYPES.SCENE_DRAFT,
   TASK_TYPES.ARC_CHAPTER_DRAFT,
   TASK_TYPES.FREE_PROMPT,
+]);
+
+// Full injection: AI tự do sáng tác từ đầu
+const FULL_WRITING_TASKS = new Set([
+  TASK_TYPES.CONTINUE,
+  TASK_TYPES.SCENE_DRAFT,
+  TASK_TYPES.ARC_CHAPTER_DRAFT,
+  TASK_TYPES.FREE_PROMPT,
+]);
+
+// Style-only injection: AI làm việc với text đã có
+const STYLE_ONLY_TASKS = new Set([
+  TASK_TYPES.EXPAND,
+  TASK_TYPES.REWRITE,
 ]);
 
 // =============================================
@@ -362,6 +386,305 @@ function buildBridgeMemoryLayer(taskType, bridgeBuffer, emotionalState, tensionL
   return '\n[DIEM NOI MACH TRUYEN - BAT BUOC DOC TRUOC KHI VIET]\n' + parts.join('\n\n');
 }
 
+
+// =============================================
+// Layer 0.5: Author DNA
+//
+// Inject TRƯỚC System Identity để AI internalize role
+// trước khi đọc bất kỳ instruction nào.
+//
+// - FULL_WRITING tasks: đầy đủ (role + triết lý + mục tiêu cảm xúc)
+// - STYLE_ONLY tasks: chỉ role + triết lý (không có emotional goals vì
+//   AI đang làm việc với text có sẵn, không được thay đổi hướng cảm xúc)
+// =============================================
+
+/**
+ * Lấy role theo giai đoạn chương.
+ */
+function getAuthorRole(writingStyle, chapterIndex, targetLength) {
+  const roles = AUTHOR_ROLE_TABLE[writingStyle] || AUTHOR_ROLE_TABLE['thuan_viet'];
+  const pct = targetLength > 0 ? (chapterIndex / targetLength) * 100 : 50;
+  if (pct <= 20) return roles[0];
+  if (pct <= 70) return roles[1];
+  if (pct <= 90) return roles[2];
+  return roles[3];
+}
+
+/**
+ * Build Layer 0.5 — Author DNA.
+ * @param {string} taskType
+ * @param {string} writingStyle - 'han_viet' | 'thuan_viet'
+ * @param {number} chapterIndex
+ * @param {number} targetLength
+ * @param {object|null} currentChapterOutline
+ * @param {object|null} currentMacroArc
+ * @returns {string}
+ */
+function buildAuthorDNALayer(taskType, writingStyle, chapterIndex, targetLength, currentChapterOutline, currentMacroArc) {
+  const isFullWriting = FULL_WRITING_TASKS.has(taskType);
+  const isStyleOnly = STYLE_ONLY_TASKS.has(taskType);
+  if (!isFullWriting && !isStyleOnly) return '';
+
+  const role = getAuthorRole(writingStyle || 'thuan_viet', chapterIndex, targetLength);
+  const lines = [];
+
+  lines.push('[LINH HON TAC GIA]');
+  lines.push('');
+  lines.push('VAI TRO CUA BAN: Ban la ' + role + '.');
+  lines.push('');
+  lines.push('TRIET LY VIET (BAT BUOC INTERNALIZE):');
+  lines.push('1. Viet bang cam xuc, khong phai thong tin.');
+  lines.push('   SAI: "Canh gioi han dot pha len Truc Co ky."');
+  lines.push('   DUNG: "Linh hai trong nguoi han bot nhien vo vun — roi tai sinh, manh liet hon gap boi."');
+  lines.push('2. Moi canh PHAI thay doi trang thai nhan vat. Truoc canh: nhan vat muon/so/nghi gi? Sau canh: con nguyen ven khong?');
+  lines.push('3. Doc gia CAM truoc, HIEU sau. Khong bao gio giai thich truoc khi de doc gia trai nghiem.');
+  lines.push('4. Moi cau phai "lam mot viec": mo ta, day chuyen, tiet lo, HOAC gay cam xuc. Cau khong lam duoc gi → cat.');
+
+  // Chỉ thêm emotional goals cho FULL_WRITING tasks
+  if (isFullWriting) {
+    lines.push('');
+    lines.push('MUC TIEU CAM XUC CHUONG NAY:');
+
+    const hookEmotion = currentChapterOutline?.summary
+      ? 'Cuon hut doc gia ngay lap tuc qua: ' + currentChapterOutline.summary.substring(0, 80)
+      : 'Tao hook manh me ngay dong dau tien — doc gia phai muon doc tiep';
+    const peakEmotion = currentMacroArc?.emotional_peak
+      ? currentMacroArc.emotional_peak
+      : 'Day len muc cam xuc cao nhat co the trong canh nay';
+    const cliffhanger = 'De lai it nhat mot cau hoi chua duoc tra loi — doc gia phai muon sang chuong sau';
+
+    lines.push('- DAU CHUONG (hook): ' + hookEmotion);
+    lines.push('- DINH DIEM (peak): ' + peakEmotion);
+    lines.push('- CUOI CHUONG (cliffhanger): ' + cliffhanger);
+  } else {
+    // STYLE_ONLY: nhắc nhở không thay đổi hướng
+    lines.push('');
+    lines.push('LUU Y QUAN TRONG (STYLE_ONLY MODE):');
+    lines.push('Ban dang lam viec voi text DA CO SAN. KHONG duoc thay doi huong cam xuc hay cot truyen.');
+    lines.push('Chi nang cap van phong, nhip dieu, tu ngu theo Style DNA ben duoi.');
+  }
+
+  return lines.join('\n');
+}
+
+// =============================================
+// Layer 7: Style DNA
+//
+// Thay thế placeholder "Style Pack" cũ.
+// Hai bộ hoàn toàn khác nhau: Hán Việt và Thuần Việt.
+// Inject cho tất cả writing tasks (FULL + STYLE_ONLY).
+// =============================================
+
+/**
+ * Build Layer 7 — Style DNA.
+ * @param {string} taskType
+ * @param {string} writingStyle - 'han_viet' | 'thuan_viet'
+ * @returns {string}
+ */
+function buildStyleDNALayer(taskType, writingStyle) {
+  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
+
+  if (writingStyle === 'han_viet') {
+    return `
+[VAN PHONG DNA - HAN VIET / SANGTACVIET STYLE]
+
+1. TU DIEN BAT BUOC DUNG — KHONG DUOC THUAN VIET HOA:
+Xung ho: nguoi, han, nang, lao, tieu tu, dao huu, huynh, de, ty, muoi, lao phu
+Trang thai: bang bac, lanh mang, tham thuy, u am, hung hon, kinh nguoi, uy ap
+Hanh dong: thi trien, van chuyen, dot pha, ngung ket, tan loan, thu liem, tung hoanh
+Tu luyen: linh khi, dan dien, kinh mach, canh gioi, thien tu, linh hai, thien hoa
+Cam thach: van phan, thien ha vo dich, kinh thien dong dia, khung bo, bat kha tu nghi
+Cam xuc: lanh nhan bang quan, khe nhech moi, anh mat ben nhu kiem
+
+2. CAU TRUC CAU DAC TRUNG (DAO NGU TRUNG QUOC):
+DUNG: "Han anh mat ben trong loe len mot tia lanh mang."
+SAI:  "Trong mat han loe len anh nhin lanh le."
+DUNG: "Linh khi bang bac, han ngoi ket gia, tam than sac ben nhu kiem."
+SAI:  "Han ngoi ket gia, linh khi toa ra va tam than rat sac ben."
+DUNG: "Dao huu nay... thuc su khien lao kinh so."
+SAI:  "Nguoi nay thuc su khien ong ta so hai."
+
+3. NHIP DIEU THEO TINH HUONG:
+Hanh dong nhanh: cau 5-8 chu, lien tiep, moi cau = 1 hanh dong ro rang.
+  VD: "Han xuat thu. Kiem quang loe len. Dich nhan chua kip phan ung."
+Cam xuc / noi tam: cau dai, nhieu menh de, cham rai suy tu.
+  VD: "Han dung do, nhin vao hu khong ma trong long lai day len mot cam giac ky la..."
+Cao trao CONG THUC: 3 cau ngan → 1 cau dai bung no.
+  VD: "Linh khi rung chuyen. Dai dia run ray. Khong gian meo mo. Va roi — trong tieng gao thet kinh thien cua thien dia, canh gioi han vo toang!"
+
+4. CONG THUC SANG DIEM (BAT BUOC NAM VUNG):
+Va mat (humiliation → reversal):
+  Setup: ke dich kieu ngao + cong khai si nhuc truoc dong nguoi.
+  Twist: nhan vat chinh tiet lo bi an / suc manh that su.
+  Payoff: 1 cau thoai ngan, lanh, chinh xac den tan nhan.
+  Phan ung: dam dong kinh ngac → im lang → xon xao.
+Dot pha canh gioi:
+  Giai doan 1: co the dau don / linh hai sap vo.
+  Giai doan 2: diem bung vo — mo ta vat ly cuc ky chi tiet.
+  Giai doan 3: su yen tinh sau bao — nhan vat nhan ra minh da khac.
+Tiet lo bi mat: de doc gia nhan ra TRUOC nhan vat (dramatic irony) HOAC cung luc (shock).
+
+5. CAM KY TUYET DOI:
+- KHONG giai thich he thong nhu nguoi dan truyen: "Truc Co ky la canh gioi thu 2..."
+- KHONG de nhan vat binh than truoc dieu phi thuong
+- KHONG ket thuc canh ma khong co he qua cam xuc
+- KHONG dung ngoac don () tru mau sac pham cap: (luc), (lam), (tu), (hoang), (xich), (chanh), (hac), (bach), (thai sac)
+- KHONG viet "Han nghi:" — thay bang gian tiep noi tam`;
+  }
+
+  // Thuần Việt
+  return `
+[VAN PHONG DNA - THUAN VIET]
+
+1. NGUYEN TAC GOC:
+Moi thu phai nghe nhu nguoi Viet thuc su nghi va cam.
+Khong cung nhac, khong dich may, khong Han hoa.
+Tu nao nguoi binh thuong khong noi → thay bang tu tu nhien hon.
+
+2. NHIP DIEU VA CAU TRUC:
+Hanh dong: cau ngan, dong tu manh, KHONG trang tu thua.
+  DUNG: "Anh chay. Tim dap loan. Hoi tho can."
+  SAI:  "Anh vo cung voi va chay rat nhanh."
+Noi tam: cau dai hon, chay tu nhien nhu dong y thuc.
+  DUNG: "Co khong hieu tai sao minh lai dung lai o day — chi biet rang neu buoc them mot buoc nua, co dieu gi do se vinh vien thay doi."
+Doi thoai: ngan, that, co tinh cach tung nguoi — khong ai noi dai hon 2 cau neu khong can.
+
+3. MOI TRUONG VA GIAC QUAN:
+Mo ta = 5 giac quan, KHONG phai buc tranh.
+Mui, am thanh, ket cau, nhiet do TRUOC ve ngoai.
+  DUNG: "Khong khi am va tanh cua mua sap den"
+  SAI:  "Bau troi xam xit"
+Chi tiet cu the > tong quat:
+  DUNG: "Cai ban go som bong tron son o goc trai"
+  SAI:  "Can phong cu ky"
+
+4. XU LY CAM XUC:
+KHONG bao gio viet cam xuc truc tiep: "Co rat buon."
+THAY BANG hanh dong the hien cam xuc:
+  "Co ngoi xuong san. Khong khoc. Chi nhin vao buc tuong trang cho den khi mat mo di."
+Cung bac cam xuc = thay doi vat ly: nhip tho, nhiet do, trong luong co the.
+
+5. CAM KY:
+- KHONG dung: nguoi, han (→ anh ay, ong ta, y, ga...), nang (→ co ay, chi ay)
+- KHONG cau truc dao ngu kieu Trung Quoc
+- KHONG ket thuc canh bang tong ket nhu nguoi ke chuyen
+- KHONG mieu ta cam xuc bang tinh tu: "buon", "vui", "so" — chi hanh dong`;
+}
+
+// =============================================
+// Layer 7.5: Mood Board
+//
+// Inject 2-3 câu mẫu thể hiện đúng giọng văn cần đạt.
+// Ưu tiên: câu hay nhất từ bridgeBuffer của tác giả (họ đã viết gì thì tiếp tục đúng tone đó).
+// Fallback: MOOD_BOARD_DEFAULTS theo genre.
+// =============================================
+
+/**
+ * Trích 1-2 câu dài nhất từ buffer làm mood sample.
+ * Proxy đơn giản: câu dài = câu có nhiều thông tin và nhịp điệu.
+ */
+function extractMoodSamples(text, maxSamples) {
+  if (!text || text.length < 30) return [];
+  // Split theo dấu chấm / ! / ? / —
+  const sentences = text
+    .replace(/<[^>]*>/g, ' ')
+    .split(/(?<=[.!?…])\s+|(?<=—)\s*/)
+    .map(s => s.trim())
+    .filter(s => s.length > 30 && s.length < 300);
+
+  // Lấy câu dài nhất (nhịp điệu thường tốt hơn)
+  return sentences
+    .sort((a, b) => b.length - a.length)
+    .slice(0, maxSamples);
+}
+
+/**
+ * Build Layer 7.5 — Mood Board.
+ * @param {string} taskType
+ * @param {string} genreKey
+ * @param {string} bridgeBuffer - văn bản chương trước
+ * @param {string} selectedText - text được chọn (cho EXPAND/REWRITE)
+ * @returns {string}
+ */
+function buildMoodBoardLayer(taskType, genreKey, bridgeBuffer, selectedText) {
+  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
+
+  const sourceText = FULL_WRITING_TASKS.has(taskType)
+    ? bridgeBuffer
+    : (selectedText || bridgeBuffer); // EXPAND/REWRITE dùng text đang xử lý
+
+  const authorSamples = extractMoodSamples(sourceText, 2);
+  const defaultSamples = (MOOD_BOARD_DEFAULTS[genreKey] || MOOD_BOARD_DEFAULTS['do_thi'] || []).slice(0, 2);
+
+  // Ưu tiên câu của tác giả, fallback sang defaults
+  const samples = authorSamples.length >= 1
+    ? authorSamples.slice(0, 2)
+    : defaultSamples;
+
+  if (samples.length === 0) return '';
+
+  const lines = ['[MAU VAN PHONG - DOC VA CAM NHAN TRUOC KHI VIET]'];
+  lines.push('Day la giong van va nhip dieu can dat — hoc phong cach, KHONG copy tu ngu:');
+  lines.push('');
+  samples.forEach(s => lines.push('• "' + s.replace(/"/g, '\"') + '"'));
+  lines.push('');
+  lines.push('Viet theo CAM GIAC nay. Khong copy tu ngu, chi can nhip dieu tuong tu.');
+  return lines.join('\n');
+}
+
+// =============================================
+// Layer 9: Priority Anchor (Double Sandwich)
+//
+// Đặt ở CUỐI userContent — LLM chú ý đầu và cuối nhất.
+// Grand Strategy ở đầu + Priority Anchor ở cuối = double anchor.
+//
+// Khác nhau giữa FULL và STYLE:
+// - FULL: checklist 3 câu hỏi tự kiểm để định hướng generation
+// - STYLE: nhắc nhở không thay đổi nội dung
+// =============================================
+
+/**
+ * Build Layer 9 — Priority Anchor.
+ * Append vào cuối userContent, không phải systemParts.
+ * @param {string} taskType
+ * @param {string} userPrompt
+ * @returns {string}
+ */
+function buildPriorityAnchorLayer(taskType, userPrompt) {
+  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
+
+  const instruction = (userPrompt || '').trim();
+  const isFullWriting = FULL_WRITING_TASKS.has(taskType);
+
+  const lines = ['---'];
+  lines.push('[NHIEM VU TOI THUONG - UU TIEN CAO NHAT]');
+
+  if (instruction) {
+    lines.push('>>> ' + instruction + ' <<<');
+  } else {
+    lines.push(isFullWriting
+      ? '>>> Viet tiep tu diem nay, giu nguyen mach truyen va day manh cam xuc <<< '
+      : '>>> Nang cap van phong theo Style DNA, giu nguyen noi dung va cam xuc goc <<<');
+  }
+
+  if (isFullWriting) {
+    lines.push('');
+    lines.push('TRUOC KHI VIET, TU HOI TRONG 3 GIAY:');
+    lines.push('1. Cam xuc doc gia khi doc DONG DAU TIEN chuong nay la gi?');
+    lines.push('2. Nhan vat chinh thay doi nhu the nao khi KET THUC canh nay?');
+    lines.push('3. Cau hoi nao doc gia se MANG SANG chuong tiep theo?');
+    lines.push('Viet sao cho 3 cau hoi nay deu co cau tra loi RO RANG trong noi dung.');
+    lines.push('KHONG can tra loi cac cau hoi nay — chi dam bao bai viet tra loi duoc chung.');
+  } else {
+    // EXPAND / REWRITE
+    lines.push('');
+    lines.push('RANG BUOC: KHONG thay doi su kien, huong di, hoac cam xuc goc cua doan van.');
+    lines.push('Chi nang cap: nhip dieu cau, tu ngu, cau truc theo Style DNA da cho.');
+  }
+
+  return lines.join('\n');
+}
+
 // =============================================
 // Layer 3: Genre Constraints
 // =============================================
@@ -430,8 +753,13 @@ export function buildPrompt(taskType, context = {}) {
     // Phase 9: Grand Strategy
     currentArc = null,
     currentMacroArc = null,
+    // Soul Injection
+    writingStyle = '',
   } = context;
 
+  // Resolve writing style: context > auto-detect từ genre
+  const genreKey = genre ? genre.toLowerCase().replace(/\s+/g, '_') : '';
+  const resolvedWritingStyle = writingStyle || detectWritingStyle(genreKey || '');
   const systemParts = [];
 
   // -- Layer 0: Grand Strategy (Phase 9) --
@@ -446,6 +774,21 @@ export function buildPrompt(taskType, context = {}) {
   );
   if (grandStrategyLayer) {
     systemParts.push(grandStrategyLayer);
+  }
+
+  // -- Layer 0.5: Author DNA --
+  // Inject trước Layer 1 để AI internalize role và triết lý viết
+  // TRƯỚC KHI đọc bất kỳ instruction hay context nào
+  const authorDNALayer = buildAuthorDNALayer(
+    taskType,
+    resolvedWritingStyle,
+    currentChapterIndex,
+    targetLength,
+    currentChapterOutline,
+    currentMacroArc
+  );
+  if (authorDNALayer) {
+    systemParts.push(authorDNALayer);
   }
 
   // -- Layer 1: System Identity --
@@ -479,7 +822,6 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 3: Genre / AI Guidelines --
-  const genreKey = genre ? genre.toLowerCase().replace(/\s+/g, '_') : '';
   if (aiGuidelines) {
     systemParts.push('\n[CHI DAN TAC GIA]\n' + aiGuidelines);
   } else {
@@ -679,7 +1021,24 @@ export function buildPrompt(taskType, context = {}) {
     systemParts.push('\n[CAC TUYEN TRUYEN DANG MO (ACTIVE PLOT THREADS)]\n' + threadInfo + '\nLuu y: Duy tri hoac phat trien nhung mach truyen nay neu phu hop. Dac biet chu tam vao cac TIEU DIEM CANH.');
   }
 
-  // -- Layer 7: Style Pack (Phase 5 placeholder) --
+  // -- Layer 7: Style DNA --
+  // Thay thế Style Pack placeholder. Inject cho tất cả writing tasks.
+  const styleDNALayer = buildStyleDNALayer(taskType, resolvedWritingStyle);
+  if (styleDNALayer) {
+    systemParts.push(styleDNALayer);
+  }
+
+  // -- Layer 7.5: Mood Board --
+  // Câu mẫu giọng văn — từ bridgeBuffer của tác giả hoặc genre defaults
+  const moodBoardLayer = buildMoodBoardLayer(
+    taskType,
+    genreKey,
+    bridgeBuffer,
+    selectedText || ''
+  );
+  if (moodBoardLayer) {
+    systemParts.push(moodBoardLayer);
+  }
 
   // -- Layer 8: Output Format --
   if (taskType === TASK_TYPES.EXTRACT_TERMS || taskType === TASK_TYPES.FEEDBACK_EXTRACT) {
@@ -805,6 +1164,14 @@ export function buildPrompt(taskType, context = {}) {
 
     default:
       userContent = userPrompt || 'Hay giup toi voi tac pham nay.';
+  }
+
+  // -- Layer 9: Priority Anchor --
+  // Append vào CUỐI userContent (không phải systemParts)
+  // Double sandwich: Grand Strategy ở đầu + Priority Anchor ở cuối
+  const priorityAnchor = buildPriorityAnchorLayer(taskType, userPrompt);
+  if (priorityAnchor) {
+    userContent += priorityAnchor;
   }
 
   return [

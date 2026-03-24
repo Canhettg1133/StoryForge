@@ -12,6 +12,7 @@
  */
 
 import db from '../db/database';
+import { detectWritingStyle } from '../../utils/constants';
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -38,6 +39,7 @@ export async function gatherContext({
       upcomingChapters: [],
       currentArc: null,
       currentMacroArc: null,
+      writingStyle: 'thuan_viet',
       genre,
       relationships: [],
       sceneContract: {},
@@ -84,6 +86,7 @@ export async function gatherContext({
 
   const aiGuidelines = project?.ai_guidelines || '';
   const aiStrictness = project?.ai_strictness || 'balanced';
+  const genreKey = (genre || '').toLowerCase().replace(/\s+/g, '_');
 
   const cleanText = (sceneText || '').replace(/<[^>]*>/g, ' ').toLowerCase();
 
@@ -280,6 +283,8 @@ export async function gatherContext({
     // Phase 9
     currentArc,
     currentMacroArc,
+    // Soul Injection — writing style tự động detect từ genre
+    writingStyle: detectWritingStyle(genreKey || genre?.toLowerCase().replace(/\s+/g, '_') || ''),
     worldProfile,
     genre,
     allCharacters,

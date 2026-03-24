@@ -95,8 +95,8 @@ export const PRONOUN_PRESETS = {
   tien_hiep: {
     label: 'Tiên hiệp',
     options: ['tại hạ', 'ta', 'bản tọa', 'bản nhân', 'đạo hữu', 'tiền bối',
-              'sư huynh', 'sư đệ', 'sư muội', 'lão phu', 'ngươi', 'các hạ',
-              'sư tổ', 'chưởng môn', 'trưởng lão'],
+      'sư huynh', 'sư đệ', 'sư muội', 'lão phu', 'ngươi', 'các hạ',
+      'sư tổ', 'chưởng môn', 'trưởng lão'],
     default_self: 'tại hạ',
     default_other: 'đạo hữu',
   },
@@ -274,4 +274,97 @@ export const GENRE_TO_PRONOUN_STYLE = {
   drama: 'hien_dai',
   other: 'hien_dai',
 };
+
+// ============================================================
+// Soul Injection Architecture — Writing Style Constants
+// Dùng bởi promptBuilder.js cho Layer 0.5, 7, 7.5
+// ============================================================
+
+// Các genre dùng văn phong Hán Việt (tự động detect)
+export const HAN_VIET_GENRES = new Set([
+  'tien_hiep', 'huyen_huyen', 'vo_hiep', 'co_dai',
+  'ngon_tinh_cd', 'xuyen_khong', 'trong_sinh',
+]);
+
+// Role động theo genre + giai đoạn chương
+// Format: [role_opening (0-20%), role_mid (20-70%), role_climax (70-90%), role_ending (90-100%)]
+export const AUTHOR_ROLE_TABLE = {
+  han_viet: [
+    'kien truc su the gioi va nhan vat — xay dung nen mong, tao an tuong dau tien manh me, TUYET DOI khong nhet thiet lap',
+    '"Dai than" chuyen tao "sang diem" (diem nhan kich tinh) trong truyen Han Viet — day manh mau thuan, tao canh "va mat" dam da, doi thoai sac ben nhu dao',
+    '"Dao dien hanh dong" chuyen viet canh cao trao va dot pha canh gioi — moi tu ngu phai gay can va bung no nhu phao hoa',
+    '"Dai than" chuyen ket thuc truyen Han Viet — de lai cam giac man nhan nhung van them doc tiep, khong bao gio ket thuc phang',
+  ],
+  thuan_viet: [
+    'tac gia Viet Nam chuyen xay dung nhan vat song dong — giong van tu nhien chan thuc, doc gia thay minh trong do',
+    'bac thay tam ly nhan vat — cam xuc hien ra qua hanh dong va chi tiet nho, khong bao gio ke thang ra cam xuc',
+    '"Dao dien cam xuc" chuyen day cao trao — su cang thang tang dan khong ngung, giu doc gia khong the roi mat',
+    'nha van chuyen ket thuc lay dong — giai quyet bat ngo nhung hoan toan logic, de lai cam xuc am long',
+  ],
+};
+
+// Mood board mặc định theo genre
+// 2-3 câu mẫu thể hiện đúng giọng văn — AI học nhịp điệu, không copy từ ngữ
+export const MOOD_BOARD_DEFAULTS = {
+  tien_hiep: [
+    'Linh khi bang bac, han ngoi ket gia, mat nham ho ma tam than lai sac ben nhu kiem. Ben ngoai, gio nui rit qua khe da — vo thanh.',
+    'Lao gia khe cuoi, ngon tay go nhe len ban da — tieng dong tuy nho nhung khien khong khi trong dai dien ngung dac lai.',
+    'Han xuat thu. Kiem quang loe len. Dich nhan chua kip phan ung. Tat ca xay ra trong khoanh khac ngan hon mot nhip tho.',
+  ],
+  huyen_huyen: [
+    'Man dem nuot chung toan bo anh sang. Chi con han, va thu dang nhin lai han tu bong toi — khong co mat, nhung han biet no dang nhin.',
+    'Linh vat cau mat nhin han, trong dong mat do ruc ay la ca mot bien cam xuc ma ngon ngu con nguoi khong du de dien dat.',
+  ],
+  vo_hiep: [
+    'Kiem chua ra khoi vo. Nhung ba nguoi dung truoc han da lui lai nua buoc — ban nang sinh ton khong bao gio noi doi.',
+    'Giang ho rong lon, nhung cho nao cung chi co ke manh va ke yeu. Han da qua lau o phia sau — gio la luc buoc ra phia truoc.',
+  ],
+  co_dai: [
+    'Nang khong ngoai dau lai. Nhung got chan khe khung, chi trong mot nhip — du de han biet rang nang da nghe.',
+    'Trong hau cung nay, moi nu cuoi deu an giau con dao. Nang da hoc duoc dieu do tu rat lau — truoc ca khi hieu y nghia cua no.',
+  ],
+  ngon_tinh_cd: [
+    'Han nhin nang, nang nhin di cho khac. Nhung ca hai deu biet — khoang cach giua ho dang thu hep lai, khong phai vi ho buoc lai gan, ma vi the gioi dang thu nho.',
+  ],
+  do_thi: [
+    'Cai tin nhan hien ra luc 2 gio sang. Ba chu thoi. Anh doc di doc lai bay lan ma van khong hieu tai sao minh lai run.',
+    'Co ngoi xuong san. Khong khoc. Chi nhin vao buc tuong trang cho den khi mat mo di.',
+  ],
+  romance: [
+    'Co khong nho khi nao minh bat dau de y den cach anh uong ca phe. Chi biet rang gio thi khong the khong de y nua.',
+    'Anh khong noi gi. Nhung anh o lai — va doi khi, chi vay thoi cung du.',
+  ],
+  mat_the: [
+    'Lon do hop cuoi cung. Anh lat di lat lai trong tay — nang hon tat ca nhung thu anh tung mang theo, nhe hon tat ca nhung gi da bo lai.',
+    'Khong co anh hung trong the gioi nay. Chi co nguoi song sot va nguoi chua song sot.',
+  ],
+  he_thong: [
+    'Con so kho can. Nhung con nguoi thi khong phai. Va day la dieu ma bat ky he thong nao cung khong the tinh toan duoc.',
+  ],
+  horror: [
+    'Co gi do khong on trong can phong nay. Anh mat vai phut moi nhan ra — bong cua nguoi dung o goc tuong khong khop voi bat ky ai dang o day.',
+    'Tieng dong dung lai. Im lang con kinh hon tieng dong.',
+  ],
+  mystery: [
+    'Co gi do khong on. Anh mat vai phut moi dat ten duoc no — khong phai la canh, ma la su vang mat cua thu le ra phai o day.',
+  ],
+  scifi: [
+    'Thiet bi bip mot tieng. Mot tieng thoi — nhung trong su im lang cua tram vu tru, no vang vong nhu tieng song.',
+    'Con nguoi tao ra may moc de thay minh. Va may moc hoc duoc mot dieu con nguoi khong ngo: cam xuc.',
+  ],
+  fantasy: [
+    'Phep thuat co gia. Moi nguoi hoc phep thuat deu biet dieu nay. Nhung chi den khi that su tra gia, nguoi ta moi hieu no co nghia la gi.',
+  ],
+  xuyen_khong: [
+    'Han nho tat ca — ten nguoi, ngay thang, su kien. Nhung tro thanh biet truoc moi thu hoa ra khong mang lai binh yen, ma chi them su co don.',
+  ],
+  trong_sinh: [
+    'Lan nay han se khac. Han tu noi voi minh nhu vay — nhung trong long biet rang cai gia phai tra van con o phia truoc.',
+  ],
+};
+
+// Helper: detect writing style từ genre key
+export function detectWritingStyle(genreKey) {
+  return HAN_VIET_GENRES.has(genreKey) ? 'han_viet' : 'thuan_viet';
+}
 
