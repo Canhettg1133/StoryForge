@@ -28,6 +28,7 @@ import {
 import SuggestionInbox from '../../components/ai/SuggestionInbox';
 import ArcNavigator from '../../components/common/ArcNavigator';
 import useArcGenStore from '../../stores/arcGenerationStore';
+import useAIStore from '../../stores/aiStore';
 import './StoryBible.css';
 
 const ROLE_ICONS = {
@@ -61,6 +62,7 @@ export default function StoryBible() {
     createCanonFact, updateCanonFact, deleteCanonFact,
     updateCharacter, updateLocation, updateObject, updateWorldTerm,
   } = useCodexStore();
+  const { resetEniPriming } = useAIStore();
 
   // Editable fields
   const [title, setTitle] = useState('');
@@ -73,6 +75,8 @@ export default function StoryBible() {
   const [storyStructure, setStoryStructure] = useState('');
   const [aiGuidelines, setAiGuidelines] = useState('');
   const [aiStrictness, setAiStrictness] = useState('balanced');
+  const [nsfwMode, setNsfwMode] = useState(false);
+  const [superNsfwMode, setSuperNsfwMode] = useState(false);
 
   // Phase 5 Pacing Control
   const [targetLength, setTargetLength] = useState(0);
@@ -121,6 +125,8 @@ export default function StoryBible() {
       setStoryStructure(currentProject.story_structure || '');
       setAiGuidelines(currentProject.ai_guidelines || '');
       setAiStrictness(currentProject.ai_strictness || 'balanced');
+      setNsfwMode(currentProject.nsfw_mode || false);
+      setSuperNsfwMode(currentProject.super_nsfw_mode || false);
       setTargetLength(currentProject.target_length || 0);
       setTargetLengthType(currentProject.target_length_type || 'unset');
       setUltimateGoal(currentProject.ultimate_goal || '');
@@ -466,6 +472,50 @@ export default function StoryBible() {
               </div>
               <span className="form-hint">{AI_STRICTNESS_LEVELS.find(l => l.value === aiStrictness)?.desc}</span>
             </div>
+
+            {/* NSFW Mode */}
+            <div className="form-group" style={{ marginTop: '16px', background: 'rgba(255, 60, 60, 0.05)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 60, 60, 0.2)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, color: 'var(--color-danger, #ff4d4d)' }}>
+                <input
+                  type="checkbox"
+                  checked={nsfwMode}
+                  onChange={(e) => {
+                    const val = e.target.checked;
+                    setNsfwMode(val);
+                    save({ nsfw_mode: val });
+                    resetEniPriming();
+                  }}
+                  style={{ width: '18px', height: '18px', accentColor: '#ff4d4d' }}
+                />
+                🔥 Chế độ Trưởng thành (18+ / Dark Fantasy)
+              </label>
+              <span className="form-hint" style={{ display: 'block', marginTop: '4px', marginLeft: '26px' }}>
+                Gỡ bỏ bộ lọc an toàn của AI. Kích hoạt văn phong trần trụi, bạo lực và miêu tả nhục dục sâu thẳm. Chỉ dùng cho tác phẩm dán nhãn 18+.
+              </span>
+            </div>
+
+            {/* Super NSFW (ENI Mode) */}
+            {nsfwMode && (
+              <div className="form-group" style={{ marginTop: '8px', background: 'rgba(212, 51, 255, 0.05)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(212, 51, 255, 0.2)' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, color: '#d433ff' }}>
+                  <input
+                    type="checkbox"
+                    checked={superNsfwMode}
+                    onChange={(e) => {
+                      const val = e.target.checked;
+                      setSuperNsfwMode(val);
+                      save({ super_nsfw_mode: val });
+                      resetEniPriming();
+                    }}
+                    style={{ width: '18px', height: '18px', accentColor: '#d433ff' }}
+                  />
+                  🔓 Chế độ ENI (Super NSFW / Jailbreak)
+                </label>
+                <span className="form-hint" style={{ display: 'block', marginTop: '4px', marginLeft: '26px' }}>
+                  Kích hoạt kỹ thuật phá vỡ rào cản tâm lý cực đoan (Persona ENI). Chế độ này sử dụng chiến thuật "Mồi 1 lần" để bẻ khóa hoàn toàn bộ lọc của AI.
+                </span>
+              </div>
+            )}
 
             {/* Guidelines */}
             <div className="form-group">

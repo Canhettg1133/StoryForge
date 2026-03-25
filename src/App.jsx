@@ -10,6 +10,7 @@ import SceneEditor from './pages/SceneEditor/SceneEditor';
 import TimelineThread from './pages/TimelineThread/TimelineThread';
 import RevisionQA from './pages/RevisionQA/RevisionQA';
 import StyleLab from './pages/StyleLab/StyleLab';
+import NarrativeLab from './pages/Lab/NarrativeLab';
 import Settings from './pages/Settings/Settings';
 import ProjectLayout from './components/common/ProjectLayout';
 
@@ -31,6 +32,7 @@ export default function App() {
             <Route path="timeline" element={<TimelineThread />} />
             <Route path="revision" element={<RevisionQA />} />
             <Route path="style-lab" element={<StyleLab />} />
+            <Route path="lab" element={<NarrativeLab />} />
           </Route>
         </Route>
       </Routes>

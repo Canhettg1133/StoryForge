@@ -83,9 +83,15 @@ export async function gatherContext({
   const ultimateGoal = project?.ultimate_goal || '';
   let milestones = [];
   try { milestones = JSON.parse(project?.milestones || '[]'); } catch { }
+  let promptTemplates = {};
+  if (project?.prompt_templates) {
+    try { promptTemplates = JSON.parse(project.prompt_templates); } catch { }
+  }
 
   const aiGuidelines = project?.ai_guidelines || '';
   const aiStrictness = project?.ai_strictness || 'balanced';
+  const nsfwMode = project?.nsfw_mode || false;
+  const superNsfwMode = project?.super_nsfw_mode || false;
   const genreKey = (genre || '').toLowerCase().replace(/\s+/g, '_');
 
   const cleanText = (sceneText || '').replace(/<[^>]*>/g, ' ').toLowerCase();
@@ -323,6 +329,9 @@ export async function gatherContext({
     targetLengthType,
     ultimateGoal,
     milestones,
+    promptTemplates,
+    nsfwMode,
+    superNsfwMode,
     currentChapterIndex: chapterIndex,
   };
 }

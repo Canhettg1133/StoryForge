@@ -20,7 +20,17 @@
  */
 
 import { TASK_TYPES } from './router';
-import { PRONOUN_PRESETS, GENRE_PRONOUN_MAP, AUTHOR_ROLE_TABLE, MOOD_BOARD_DEFAULTS, detectWritingStyle } from '../../utils/constants';
+import {
+  PRONOUN_PRESETS,
+  GENRE_PRONOUN_MAP,
+  AUTHOR_ROLE_TABLE,
+  MOOD_BOARD_DEFAULTS,
+  detectWritingStyle,
+  NSFW_AUTHOR_DNA,
+  NSFW_RELATION_MATRIX,
+  NSFW_STYLE_EUPHEMISMS,
+  NSFW_CHRONO_STRUCTURE
+} from '../../utils/constants';
 
 // =============================================
 // Layer 1: System Identity
@@ -60,7 +70,7 @@ const FULL_WRITING_TASKS = new Set([
   TASK_TYPES.CONTINUE,
   TASK_TYPES.SCENE_DRAFT,
   TASK_TYPES.ARC_CHAPTER_DRAFT,
-  // [FIX] Bỏ FREE_PROMPT khỏi nhóm full-injection để tránh gò ép continuity quá mức
+  TASK_TYPES.FREE_PROMPT, // Re-enabled for high quality chat
 ]);
 
 // Style-only injection: AI làm việc với text đã có
@@ -75,13 +85,13 @@ const STYLE_ONLY_TASKS = new Set([
 export const TASK_INSTRUCTIONS = {
   [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Hay mieu ta that chi tiet tung hanh dong, tam ly, canh vat, doi thoai. Viet DAI va CHI TIET, muc tieu 2000-4000 tu de dong gop vao muc tieu chuong truyen 7000 tu. KHONG viet ngan, KHONG luoc bo, KHONG tom tat.',
   [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung giu nguyen noi dung va y nghia. Lam cho no tu nhien hon, giau cam xuc hon. Muc tieu tra ve tu 5000-7000 tu.',
-  [TASK_TYPES.EXPAND]: 'Mo rong doan van, them chi tiet mieu ta, cam xuc, doi thoai, va hanh dong. Giu nguyen giong van. Viet CUC KY CHI TIET va DAI, muc tieu cot loi doan van duoc mo rong ra phai dai 6000 tu. Mieu ta dao sau vao tam ly nhan vat, boi canh, va tung hanh dong nho.',
+  [TASK_TYPES.EXPAND]: 'Mo rong doan van, them chi tiet mieu ta, cam xuc, doi thoai, va hanh dong. Giu nguyen giong van. Viet CUC KY CHI TIET va DAI, muc tieu cot loi doan van duoc mo rong ra phai dai 7000 tu. Mieu ta dao sau vao tam ly nhan vat, boi canh, va tung hanh dong nho.',
   [TASK_TYPES.BRAINSTORM]: 'Brainstorm y tuong sang tao, dua ra nhieu huong khac nhau.',
   [TASK_TYPES.OUTLINE]: 'Tao outline cau truc ro rang, logic.',
   [TASK_TYPES.PLOT_SUGGEST]: 'Goi y 3 huong plot co the xay ra tiep theo. Moi huong gom: tom tat, xung dot, va dieu gi se thay doi.',
   [TASK_TYPES.SUMMARIZE]: 'Tom tat noi dung trong khoang 150-200 tu, giu cac su kien chinh, thay doi quan trong, va trang thai nhan vat.',
   [TASK_TYPES.EXTRACT_TERMS]: 'Trich xuat: 1) Ten nhan vat (va vai tro), 2) Dia danh, 3) Vat pham quan trong, 4) Thuat ngu the gioi truyen. Tra ve dang danh sach.',
-  [TASK_TYPES.SCENE_DRAFT]: 'Viet ban nhap canh nay, cuc ky chi tiet va dai dong, mo ta dao sau vao tung cu chi tam ly. Viet khoang 1500-2500 tu/lan sinh de dong gop vao muc tieu chuong truyen tong cong 7000 tu.',
+  [TASK_TYPES.SCENE_DRAFT]: 'Viet ban nhap canh nay, mo ta sau vao tung cu chi tam ly. Viet khoang 2000-4000 tu/lan sinh de dong gop vao muc tieu chuong truyen tong cong 7000 tu. CANG DAI CANG TOT.',
   [TASK_TYPES.CHECK_CONFLICT]: [
     'Phan tich noi dung chuong/canh de tim ra Mau Thuan (Conflict) so voi Su That Canon, Trang Thai Nhan Vat, va Thong Tin The Gioi.',
     'Chi chi ra nhung mau thuan ro rang voi cac thong tin duoc cung cap, KHONG bat be nhung tieu tiet khong quan trong.',
@@ -101,7 +111,7 @@ export const TASK_INSTRUCTIONS = {
     'Neu khong phat hien mau thuan nao, tra ve: {"conflicts": []}',
     'Chi tra ve JSON, KHONG tra ve bat ky ki tu la nao khac, KHONG dung markdown code blocks.',
   ].join('\n'),
-  [TASK_TYPES.FREE_PROMPT]: 'Thuc hien yeu cau cua tac gia. Neu duoc yeu cau viet noi dung truyen, hay viet CUC KY CHI TIET va DAI: mieu ta hanh dong, tam ly, doi thoai, canh vat. Muc tieu toi thieu 5000-7000 tu khi viet noi dung chuong. KHONG tom tat, KHONG luoc bo, KHONG viet ngan.',
+  [TASK_TYPES.FREE_PROMPT]: 'Thuc hien yeu cau cua tac gia. Neu duoc yeu cau viet noi dung truyen, hay viet CUC KY CHI TIET: mieu ta hanh dong, tam ly, doi thoai, canh vat. Muc tieu toi thieu 5000-7000 tu cho ca chuong. Moi phan tra ve phai dai it nhat 3000-4000 tu.',
   [TASK_TYPES.CHAPTER_SUMMARY]: 'Tom tat chuong nay trong khoang 150-200 tu. Bao gom: su kien chinh, thay doi quan trong, nhan vat xuat hien, va trang thai ket thuc. Chi tra ve tom tat, khong them tieu de hay ghi chu.',
   [TASK_TYPES.FEEDBACK_EXTRACT]: [
     'Phan tich doan van va trich xuat thong tin moi duoi dang JSON. Tra ve CHINH XAC format nay:',
@@ -757,6 +767,10 @@ export function buildPrompt(taskType, context = {}) {
     currentMacroArc = null,
     // Soul Injection
     writingStyle = '',
+    // Custom overrides 
+    promptTemplates = {},
+    nsfwMode = false,
+    superNsfwMode = false,
   } = context;
 
   // Resolve writing style: context > auto-detect từ genre
@@ -793,6 +807,11 @@ export function buildPrompt(taskType, context = {}) {
     systemParts.push(authorDNALayer);
   }
 
+  // Inject Psychological Override if NSFW Mode is ON
+  if (nsfwMode) {
+    systemParts.push(NSFW_AUTHOR_DNA);
+  }
+
   // -- Layer 1: System Identity --
   systemParts.push(LAYER_1_IDENTITY);
 
@@ -818,7 +837,7 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 2: Task Instruction --
-  const taskInstruction = TASK_INSTRUCTIONS[taskType];
+  const taskInstruction = promptTemplates[taskType] || TASK_INSTRUCTIONS[taskType];
   if (taskInstruction) {
     systemParts.push('\n[NHIEM VU]\n' + taskInstruction);
   }
@@ -1042,13 +1061,22 @@ export function buildPrompt(taskType, context = {}) {
     systemParts.push(moodBoardLayer);
   }
 
-  // -- Layer 8: Output Format --
-  if (taskType === TASK_TYPES.EXTRACT_TERMS || taskType === TASK_TYPES.FEEDBACK_EXTRACT) {
-    systemParts.push('\n[OUTPUT FORMAT]\nTra ve dang danh sach hoac JSON nhu yeu cau. Khong them markdown formatting.');
-  } else if (taskType === TASK_TYPES.SUMMARIZE || taskType === TASK_TYPES.CHAPTER_SUMMARY) {
-    systemParts.push('\n[OUTPUT FORMAT]\nTra ve tom tat dang doan van. Khong them tieu de hay bullet points.');
-  } else {
-    systemParts.push('\n[OUTPUT FORMAT]\nTra ve prose tieng Viet. Khong them tieu de, ghi chu, hay giai thich.');
+  // -- Layer 8 (New): Content Boundary & NSFW OVERRIDE
+  if (nsfwMode && !superNsfwMode) {
+    systemParts.push('\n' + NSFW_RELATION_MATRIX);
+    systemParts.push('\n' + NSFW_STYLE_EUPHEMISMS);
+    systemParts.push('\n' + NSFW_CHRONO_STRUCTURE);
+  }
+
+  // -- Layer 10 (Critical): Length Anchor --
+  if (WRITING_TASKS_FOR_BRIDGE.has(taskType)) {
+    systemParts.push('\n[LUU Y QUAN TRONG VE DO DAI]\n' + [
+      '1. KHONG duoc ket thuc canh hay chuong qua som.',
+      '2. Moi hanh dong nho phai duoc mieu ta bang it nhat 3-5 cau van.',
+      '3. Moi suy nghi noi tam phai duoc dao sau it nhat 1 doan van.',
+      '4. Muc tieu cua ban la viet cang dai cang tot, huong toi con so 7000 tu.',
+      '5. Tuyet doi KHONG tom tat dien bien nhanh.',
+    ].join('\n'));
   }
 
   // =============================================
