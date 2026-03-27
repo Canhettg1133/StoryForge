@@ -106,7 +106,7 @@ export default function ProjectSettingsPanel() {
           {/* AI Guidelines */}
           <div className="form-group">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <label>📝 Chỉ dẫn cho AI</label>
+              <label>📝 Nguyên tắc sáng tác</label>
               <button
                 className="btn btn-ghost btn-sm"
                 onClick={handleResetGuidelines}
@@ -119,14 +119,14 @@ export default function ProjectSettingsPanel() {
               className="textarea"
               value={guidelines}
               onChange={e => handleChange('guidelines', e.target.value)}
-              placeholder="Nhập chỉ dẫn riêng cho AI... (để trống = dùng mặc định thể loại)"
+              placeholder={`Đặt nguyên tắc bất biến cho AI tuân thủ xuyên suốt dự án.\nVí dụ:\n1. Mọi nhân vật phải có động cơ rõ ràng — không hành động vì "cốt truyện cần"\n2. Phục bút phải được thu hồi trong vòng 10 chương\n3. Không dùng ngôn ngữ hiện đại trong bối cảnh cổ đại\n4. Mỗi chương phải có ít nhất 1 xung đột\n(để trống = chỉ dùng quy tắc thể loại)`}
               rows={4}
               style={{ fontSize: '13px' }}
             />
             <p className="settings-hint">
               {guidelines
-                ? 'AI sẽ tuân theo chỉ dẫn này thay vì quy tắc mặc định thể loại.'
-                : 'Đang dùng quy tắc mặc định thể loại. Nhập để tùy chỉnh.'}
+                ? `AI sẽ coi đây là nguyên tắc ${strictness === 'strict' ? 'TUYỆT ĐỐI' : strictness === 'relaxed' ? 'gợi ý' : 'cần tuân thủ'} + quy tắc thể loại.`
+                : 'Đang dùng quy tắc thể loại mặc định. Thêm nguyên tắc riêng để AI tuân thủ chặt hơn.'}
             </p>
           </div>
 

@@ -29,7 +29,8 @@ import {
   NSFW_AUTHOR_DNA,
   NSFW_RELATION_MATRIX,
   NSFW_STYLE_EUPHEMISMS,
-  NSFW_CHRONO_STRUCTURE
+  NSFW_CHRONO_STRUCTURE,
+  ANTI_AI_BLACKLIST,
 } from '../../utils/constants';
 
 // =============================================
@@ -41,6 +42,7 @@ const LAYER_1_IDENTITY = [
   'Ban viet bang tieng Viet tru khi duoc yeu cau khac.',
   'Ban KHONG tu y them phan giai thich, ghi chu, hay meta-commentary - chi tra ve ket qua yeu cau.',
   'Ban PHAI tuan thu tuyet doi moi cam ky (taboo) duoc liet ke.',
+  'Ban KHONG duoc tu y tao ra nhan vat, dia danh, ky nang, he thong suc manh, hay bat ky thuc the nao CHUA DUOC liet ke trong Canon hoac The Gioi truyen — tru khi tac gia yeu cau ro rang hoac task la brainstorm/outline/project_wizard.',
 ].join('\n');
 
 // =============================================
@@ -80,14 +82,52 @@ const STYLE_ONLY_TASKS = new Set([
 ]);
 
 // =============================================
+// FREE_PROMPT intent detection
+// Writing requests → full Author DNA + Style DNA injection
+// Questions/chat → lightweight (Canon + Characters only)
+// =============================================
+function isWritingIntent(userPrompt) {
+  if (!userPrompt) return true; // No prompt = likely continuation
+  const lower = userPrompt.toLowerCase();
+  // Question patterns → NOT writing
+  if (lower.includes('?')) return false;
+  const chatPatterns = ['la gi', 'giai thich', 'tai sao', 'the nao', 'bao nhieu',
+    'dat ten', 'goi y ten', 'liet ke', 'so sanh', 'phan tich', 'cho toi biet',
+    'giup toi', 'hay cho', 'la sao', 'nhu the nao', 'o dau', 'khi nao'];
+  if (chatPatterns.some(function(p) { return lower.includes(p); })) return false;
+  // Default: treat as writing (over-inject is better than under-inject for creative tasks)
+  return true;
+}
+
+// =============================================
 // Layer 2: Task Instructions
 // =============================================
 export const TASK_INSTRUCTIONS = {
-  [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Hay mieu ta that chi tiet tung hanh dong, tam ly, canh vat, doi thoai. Viet DAI va CHI TIET, muc tieu 2000-4000 tu de dong gop vao muc tieu chuong truyen 7000 tu. KHONG viet ngan, KHONG luoc bo, KHONG tom tat.',
-  [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung giu nguyen noi dung va y nghia. Lam cho no tu nhien hon, giau cam xuc hon. Muc tieu tra ve tu 5000-7000 tu.',
-  [TASK_TYPES.EXPAND]: 'Mo rong doan van, them chi tiet mieu ta, cam xuc, doi thoai, va hanh dong. Giu nguyen giong van. Viet CUC KY CHI TIET va DAI, muc tieu cot loi doan van duoc mo rong ra phai dai 7000 tu. Mieu ta dao sau vao tam ly nhan vat, boi canh, va tung hanh dong nho.',
-  [TASK_TYPES.BRAINSTORM]: 'Brainstorm y tuong sang tao, dua ra nhieu huong khac nhau.',
-  [TASK_TYPES.OUTLINE]: 'Tao outline cau truc ro rang, logic.',
+  [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Hay mieu ta that chi tiet tung hanh dong, tam ly, canh vat, doi thoai. Viet DAI va CHI TIET, muc tieu 2000-4000 tu de dong gop vao muc tieu chuong truyen 7000 tu. KHONG viet ngan, KHONG luoc bo, KHONG tom tat. KHONG duoc nhay thoi gian (time skip) — moi su kien phai dien ra LIEN TUC tu vi tri cuoi cung, cam viet kieu "Ba ngay sau...", "Mot thoi gian troi qua...", "Khong lau sau...". Neu can chuyen canh, hay ket thuc canh hien tai bang cliffhanger roi mo canh moi tu nhien.',
+  [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung GIU NGUYEN noi dung, cot truyen va y nghia. Lam cho no tu nhien hon, giau cam xuc hon, nhip dieu tot hon. GIU do dai TUONG DUONG doan goc (cho phep dai hon 20-50% de them mieu ta cam xuc va chi tiet ngu giac). TUYET DOI KHONG tu y them su kien moi, nhan vat moi, dia danh moi, hay thay doi dien bien — chi nang cap cau van, nhip dieu, va chieu sau cam xuc.',
+  [TASK_TYPES.EXPAND]: 'Mo rong doan van GAP 3-5 LAN do dai goc. Giu nguyen giong van va mach truyen. Them vao: mieu ta ngu giac (nhin/nghe/ngui/cham/vi), noi tam nhan vat, doi thoai tu nhien, va hanh dong cham (slow motion). KHONG duoc them su kien moi hay thay doi cot truyen — chi lam PHONG PHU nhung gi da co. Dao sau vao tam ly nhan vat (ho nghi gi, so gi, muon gi trong khoang khac do), boi canh (am thanh, mui, anh sang, nhiet do), va tung cu dong nho.',
+  [TASK_TYPES.BRAINSTORM]: [
+    'Brainstorm 5 y tuong KHAC BIET cho tinh huong dang xet. Moi y tuong gom:',
+    '1. Tom tat huong di (2-3 cau)',
+    '2. Xung dot chinh se la gi — nhan vat doi mat voi thach thuc/mat mat gi',
+    '3. Nhan vat nao bi anh huong nhieu nhat va thay doi nhu the nao',
+    '4. Diem hay: tai sao huong nay hap dan doc gia',
+    '5. Rui ro: diem nao co the bi nhat/chen ep neu khong xu ly tot',
+    '',
+    'Sap xep tu AN TOAN nhat (theo logic truyen) den TAO BAO nhat (bat ngo nhung van hop ly).',
+    'KHONG chon y tuong chung chung kieu "nhan vat manh len". Moi y tuong phai co XUNG DOT that su va HE QUA ro rang.',
+  ].join('\n'),
+  [TASK_TYPES.OUTLINE]: [
+    'Tao outline CHI TIET 5-8 diem chinh cho chuong/phan tiep theo. Moi diem bao gom:',
+    '- Su kien/hanh dong CU THE (khong chung chung kieu "nhan vat chien dau" — ma phai la "nhan vat bi don vao the ket, phai chon giua mat mang hoac phan boi...")',
+    '- Cam xuc nhan vat chuyen bien nhu the nao qua su kien do',
+    '- Lien ket voi tuyen truyen nao dang mo (neu co)',
+    '',
+    'Outline phai co 3 phan:',
+    '- HOOK: diem cuon hut o dau — doc gia doc dong dau tien phai muon doc tiep',
+    '- ESCALATION: tang dan cang thang va do phuc tap qua tung diem',
+    '- CLIFFHANGER: ket mo bang cau hoi/tinh huong khien doc gia khong the ngu duoc',
+  ].join('\n'),
   [TASK_TYPES.PLOT_SUGGEST]: 'Goi y 3 huong plot co the xay ra tiep theo. Moi huong gom: tom tat, xung dot, va dieu gi se thay doi.',
   [TASK_TYPES.SUMMARIZE]: 'Tom tat noi dung trong khoang 150-200 tu, giu cac su kien chinh, thay doi quan trong, va trang thai nhan vat.',
   [TASK_TYPES.EXTRACT_TERMS]: 'Trich xuat: 1) Ten nhan vat (va vai tro), 2) Dia danh, 3) Vat pham quan trong, 4) Thuat ngu the gioi truyen. Tra ve dang danh sach.',
@@ -221,14 +261,19 @@ export const TASK_INSTRUCTIONS = {
 // =============================================
 
 /**
- * Build Layer 0 — Grand Strategy.
+ * Build Layer 0 — Grand Strategy & Pacing (merged).
+ * Combines old Layer 0 (Grand Strategy) + old Layer 4.5 (Pacing Control)
+ * into a single unified layer. Deduplicates "don't resolve early" constraints.
+ *
+ * Triggers when any of these exist: macroArc, arc, or pacing info.
  *
  * @param {string}      taskType
- * @param {object|null} currentMacroArc - record từ bảng macro_arcs
- * @param {object|null} currentArc      - record từ bảng arcs
- * @param {string}      ultimateGoal    - mục tiêu tổng thể từ project
- * @param {number}      targetLength    - tổng số chương dự kiến
+ * @param {object|null} currentMacroArc
+ * @param {object|null} currentArc
+ * @param {string}      ultimateGoal
+ * @param {number}      targetLength
  * @param {number}      currentChapterIndex
+ * @param {Array}       milestones
  * @returns {string}
  */
 function buildGrandStrategyLayer(
@@ -237,86 +282,88 @@ function buildGrandStrategyLayer(
   currentArc,
   ultimateGoal,
   targetLength,
-  currentChapterIndex
+  currentChapterIndex,
+  milestones
 ) {
   if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
-  if (!currentMacroArc && !currentArc) return '';
 
-  const parts = [];
+  var hasArcInfo = currentMacroArc || currentArc;
+  var hasPacingInfo = targetLength > 0 && ultimateGoal;
+  if (!hasArcInfo && !hasPacingInfo) return '';
 
-  // Phần 1: Cột mốc lớn (Macro Arc)
+  var parts = [];
+
+  // Progress overview (merged from old Layer 4.5)
+  if (hasPacingInfo) {
+    var progressPercent = Math.round((currentChapterIndex / targetLength) * 100);
+    var progressLines = [];
+    progressLines.push('Truyen du kien dai ' + targetLength + ' chuong. Hien tai: chuong ' + (currentChapterIndex + 1) + ' (' + progressPercent + '%).');
+    if (milestones && milestones.length > 0) {
+      var nextMs = milestones.find(function(m) { return m.percent > progressPercent; });
+      if (nextMs) {
+        progressLines.push('Cot moc ke tiep (' + nextMs.percent + '%): "' + nextMs.description + '".');
+      }
+    }
+    parts.push('[TIEN DO]\n' + progressLines.join('\n'));
+  }
+
+  // Macro Arc
   if (currentMacroArc) {
-    const macroLines = [];
+    var macroLines = [];
     macroLines.push('Cot moc lon hien tai: ' + currentMacroArc.title);
     if (currentMacroArc.description) {
       macroLines.push('Mo ta: ' + currentMacroArc.description);
     }
     if (currentMacroArc.chapter_from && currentMacroArc.chapter_to) {
-      macroLines.push(
-        'Pham vi: Chuong ' + currentMacroArc.chapter_from +
-        ' den Chuong ' + currentMacroArc.chapter_to
-      );
+      macroLines.push('Pham vi: Chuong ' + currentMacroArc.chapter_from + ' den Chuong ' + currentMacroArc.chapter_to);
     }
     if (currentMacroArc.emotional_peak) {
-      macroLines.push('Cam xuc doc gia can dat khi ket thuc cot moc nay: ' + currentMacroArc.emotional_peak);
+      macroLines.push('Cam xuc can dat khi ket thuc: ' + currentMacroArc.emotional_peak);
     }
     parts.push('[COT MOC LON]\n' + macroLines.join('\n'));
   }
 
-  // Phần 2: Hồi truyện hiện tại (Arc)
+  // Arc
   if (currentArc) {
-    const arcLines = [];
+    var arcLines = [];
     arcLines.push('Hoi truyen hien tai: ' + (currentArc.title || '(chua dat ten)'));
     if (currentArc.goal) {
       arcLines.push('Muc tieu hoi nay: ' + currentArc.goal);
     }
     if (currentArc.chapter_start && currentArc.chapter_end) {
-      arcLines.push(
-        'Pham vi: Chuong ' + currentArc.chapter_start +
-        ' den Chuong ' + currentArc.chapter_end
-      );
+      arcLines.push('Pham vi: Chuong ' + currentArc.chapter_start + ' den Chuong ' + currentArc.chapter_end);
     }
     if (currentArc.power_level_start || currentArc.power_level_end) {
-      arcLines.push(
-        'Cap do suc manh trong hoi nay: ' +
-        (currentArc.power_level_start || '?') + ' → ' +
-        (currentArc.power_level_end || '?')
-      );
+      arcLines.push('Cap do suc manh: ' + (currentArc.power_level_start || '?') + ' \u2192 ' + (currentArc.power_level_end || '?'));
     }
     parts.push('[HOI TRUYEN HIEN TAI]\n' + arcLines.join('\n'));
   }
 
-  // Phần 3: Ràng buộc tuyệt đối
-  const constraints = [];
-  if (currentMacroArc?.chapter_to && targetLength > 0) {
-    const remainingInMacro = currentMacroArc.chapter_to - (currentChapterIndex + 1);
+  // Unified constraints (single source of truth — NO duplication)
+  var constraints = [];
+  if (currentMacroArc && currentMacroArc.chapter_to && targetLength > 0) {
+    var remainingInMacro = currentMacroArc.chapter_to - (currentChapterIndex + 1);
     if (remainingInMacro > 0) {
-      constraints.push(
-        'Con ' + remainingInMacro + ' chuong nua moi ket thuc cot moc "' +
-        currentMacroArc.title + '" — KHONG duoc giai quyet som.'
-      );
+      constraints.push('Con ' + remainingInMacro + ' chuong nua moi ket thuc cot moc "' + currentMacroArc.title + '".');
     }
   }
-  if (currentArc?.chapter_end) {
-    const remainingInArc = currentArc.chapter_end - (currentChapterIndex + 1);
+  if (currentArc && currentArc.chapter_end) {
+    var remainingInArc = currentArc.chapter_end - (currentChapterIndex + 1);
     if (remainingInArc > 0) {
-      constraints.push(
-        'Con ' + remainingInArc + ' chuong nua moi ket thuc hoi nay — ' +
-        'KHONG duoc de nhan vat dat muc tieu hoi qua som.'
-      );
+      constraints.push('Con ' + remainingInArc + ' chuong nua moi ket thuc hoi nay.');
     }
   }
   if (ultimateGoal) {
-    constraints.push('Muc tieu CUOI CUNG cua ca bo truyen: "' + ultimateGoal + '" — TUYET DOI CHUA duoc dat den.');
+    constraints.push('Muc tieu cuoi cung cua bo truyen: "' + ultimateGoal + '" \u2014 chua den luc dat duoc.');
   }
 
   if (constraints.length > 0) {
-    parts.push('[RANG BUOC TUYET DOI - KHONG DUOC VI PHAM]\n' + constraints.map(function (c) { return '- ' + c; }).join('\n'));
+    parts.push('[RANG BUOC TIEN DO]\n' + constraints.map(function(c) { return '- ' + c; }).join('\n'));
   }
 
   if (parts.length === 0) return '';
 
-  return '[CHIEN LUOC TONG THE - DAI CUC]\n' + parts.join('\n\n');
+  return '[CHIEN LUOC & TIEN DO]\n' + parts.join('\n\n');
 }
 
 // =============================================
@@ -581,6 +628,40 @@ Cung bac cam xuc = thay doi vat ly: nhip tho, nhiet do, trong luong co the.
 - KHONG mieu ta cam xuc bang tinh tu: "buon", "vui", "so" — chi hanh dong`;
 }
 
+/**
+ * Pick random N entries từ array (Fisher-Yates partial shuffle).
+ * Không mutate array gốc.
+ */
+function pickRandom(arr, n) {
+  if (!arr || arr.length === 0) return [];
+  const copy = arr.slice();
+  const count = Math.min(n, copy.length);
+  for (let i = copy.length - 1; i > copy.length - 1 - count && i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(-count);
+}
+
+/**
+ * Build Anti-AI Blacklist block.
+ * Random pick 12 entries mỗi lần từ pool (style-specific + common).
+ * Giữ prompt fresh, AI không "nhờn".
+ */
+function buildAntiAIBlock(writingStyle) {
+  const styleEntries = ANTI_AI_BLACKLIST[writingStyle] || ANTI_AI_BLACKLIST.thuan_viet;
+  const commonEntries = ANTI_AI_BLACKLIST.common || [];
+  const pool = [...styleEntries, ...commonEntries];
+  const picked = pickRandom(pool, 12);
+  if (picked.length === 0) return '';
+
+  const lines = ['\n[CHONG VAN PHONG AI — TU/CUM CAM DUNG]'];
+  lines.push('Cac cum tu sau la DAU HIEU AI — KHONG DUOC DUNG:');
+  picked.forEach(e => lines.push('  X "' + e.bad + '"  →  V ' + e.good));
+  lines.push('Neu thay minh sap viet bat ky cum nao o tren → dung lai, viet cach khac.');
+  return lines.join('\n');
+}
+
 // =============================================
 // Layer 7.5: Mood Board
 //
@@ -590,22 +671,44 @@ Cung bac cam xuc = thay doi vat ly: nhip tho, nhiet do, trong luong co the.
 // =============================================
 
 /**
- * Trích 1-2 câu dài nhất từ buffer làm mood sample.
- * Proxy đơn giản: câu dài = câu có nhiều thông tin và nhịp điệu.
+ * Trích câu có nhịp điệu tốt nhất từ buffer làm mood sample.
+ * Scoring: độ phức tạp dấu câu (rhythm) > độ dài thô.
+ * Câu dài nhất KHÔNG nhất thiết là câu hay nhất.
  */
 function extractMoodSamples(text, maxSamples) {
   if (!text || text.length < 30) return [];
-  // Split theo dấu chấm / ! / ? / —
-  const sentences = text
+  var sentences = text
     .replace(/<[^>]*>/g, ' ')
     .split(/(?<=[.!?…])\s+|(?<=—)\s*/)
-    .map(s => s.trim())
-    .filter(s => s.length > 30 && s.length < 300);
+    .map(function(s) { return s.trim(); })
+    .filter(function(s) { return s.length > 30 && s.length < 300; });
 
-  // Lấy câu dài nhất (nhịp điệu thường tốt hơn)
-  return sentences
-    .sort((a, b) => b.length - a.length)
-    .slice(0, maxSamples);
+  if (sentences.length === 0) return [];
+
+  // Multi-factor scoring: rhythm > length
+  var scored = sentences.map(function(s) {
+    var score = 0;
+    // Punctuation diversity = rhythm complexity (commas, dashes, semicolons)
+    var punctCount = (s.match(/[,;:\u2014\u2013\u2026]/g) || []).length;
+    score += punctCount * 15;
+    // Moderate length is ideal (80-200 chars)
+    if (s.length >= 80 && s.length <= 200) score += 20;
+    else if (s.length > 200) score += 5;
+    else score += 2;
+    // Penalize dialogue (starts with quote marks) — dialogue is not a good mood sample
+    if (/^[\u201C\u201D"'\u2018\u2019\u00AB\u00BB\u2015\u2014\u2013-]/.test(s)) score -= 30;
+    // Penalize very short sentences (likely stage directions)
+    if (s.length < 50) score -= 10;
+    // Bonus for sensory/emotional words (Vietnamese)
+    var sensory = ['nghe', 'nhin', 'mui', 'nong', 'lanh', 'am', 'toi', 'sang', 'run', 'dau', 'tho'];
+    sensory.forEach(function(w) { if (s.toLowerCase().includes(w)) score += 5; });
+    return { text: s, score: score };
+  });
+
+  return scored
+    .sort(function(a, b) { return b.score - a.score; })
+    .slice(0, maxSamples)
+    .map(function(item) { return item.text; });
 }
 
 /**
@@ -681,16 +784,20 @@ function buildPriorityAnchorLayer(taskType, userPrompt) {
 
   if (isFullWriting) {
     lines.push('');
-    lines.push('TRUOC KHI VIET, TU HOI TRONG 3 GIAY:');
-    lines.push('1. Cam xuc doc gia khi doc DONG DAU TIEN chuong nay la gi?');
-    lines.push('2. Nhan vat chinh thay doi nhu the nao khi KET THUC canh nay?');
-    lines.push('3. Cau hoi nao doc gia se MANG SANG chuong tiep theo?');
-    lines.push('Viet sao cho 3 cau hoi nay deu co cau tra loi RO RANG trong noi dung.');
-    lines.push('KHONG can tra loi cac cau hoi nay — chi dam bao bai viet tra loi duoc chung.');
+    lines.push('DAM BAO 3 DIEU SAU THE HIEN RO TRONG BAI VIET:');
+    lines.push('- Dong dau tien phai tao cam xuc manh, cuon doc gia vao ngay lap tuc.');
+    lines.push('- Nhan vat chinh phai THAY DOI qua canh nay (cam xuc, nhan thuc, hoac vi the).');
+    lines.push('- Cuoi canh de lai tinh huong mo hoac cau hoi khien doc gia muon sang chuong tiep.');
+    lines.push('');
+    lines.push('CU THE HOA — KHONG VIET TRUU TUONG:');
+    lines.push('- Thoi gian: KHONG "gan day", "lau lam" → viet "3 ngay truoc", "nua thang", "tu sang den gio"');
+    lines.push('- So luong: KHONG "nhieu nguoi" → viet "nam ba nguoi", "ca tram ke", "vai chuc ten"');
+    lines.push('- Cam giac: KHONG "rat dau", "vo cung lo lang" → viet hanh dong: "han cong nguoi lai", "tay nam chat den trang bech"');
+    lines.push('- Canh vat: KHONG "can phong rat lon" → viet 1 chi tiet: "tran nha cao gap 3 lan nguoi dung", "vach da am am nuoc"');
   } else {
     // EXPAND / REWRITE
     lines.push('');
-    lines.push('RANG BUOC: KHONG thay doi su kien, huong di, hoac cam xuc goc cua doan van.');
+    lines.push('Giu nguyen su kien, huong di, va cam xuc goc cua doan van.');
     lines.push('Chi nang cap: nhip dieu cau, tu ngu, cau truc theo Style DNA da cho.');
   }
 
@@ -778,7 +885,10 @@ export function buildPrompt(taskType, context = {}) {
   const resolvedWritingStyle = writingStyle || detectWritingStyle(genreKey || '');
   const systemParts = [];
 
-  // -- Layer 0: Grand Strategy (Phase 9) --
+  // FREE_PROMPT: skip heavy writing layers for questions/chat
+  const skipWritingLayers = taskType === TASK_TYPES.FREE_PROMPT && !isWritingIntent(userPrompt);
+
+  // -- Layer 0: Grand Strategy & Pacing (merged) --
   // Đặt trước Layer 1 để AI luôn thấy đại cục đầu tiên
   const grandStrategyLayer = buildGrandStrategyLayer(
     taskType,
@@ -786,9 +896,10 @@ export function buildPrompt(taskType, context = {}) {
     currentArc,
     ultimateGoal,
     targetLength,
-    currentChapterIndex
+    currentChapterIndex,
+    milestones
   );
-  if (grandStrategyLayer) {
+  if (grandStrategyLayer && !skipWritingLayers) {
     systemParts.push(grandStrategyLayer);
   }
 
@@ -803,7 +914,7 @@ export function buildPrompt(taskType, context = {}) {
     currentChapterOutline,
     currentMacroArc
   );
-  if (authorDNALayer) {
+  if (authorDNALayer && !skipWritingLayers) {
     systemParts.push(authorDNALayer);
   }
 
@@ -836,16 +947,29 @@ export function buildPrompt(taskType, context = {}) {
     systemParts.push('[GOC NHIN]: Da goc nhin - moi canh/chuong theo 1 nhan vat. Giu nhat quan trong cung 1 canh.');
   }
 
+  // -- Layer 1.5: Writing Constitution (nguyen tac sang tac) --
+  // Di chuyen tu Layer 3 len day — LLM chu y dau prompt nhat.
+  // Dung strictness de frame: strict = khong the vi pham, relaxed = goi y.
+  if (aiGuidelines) {
+    const principleHeader = aiStrictness === 'strict'
+      ? 'NGUYEN TAC SANG TAC — TUYET DOI TUAN THU'
+      : aiStrictness === 'relaxed'
+        ? 'GOI Y SANG TAC'
+        : 'NGUYEN TAC SANG TAC';
+    systemParts.push('\n[' + principleHeader + ']\n' + aiGuidelines);
+  }
+
   // -- Layer 2: Task Instruction --
   const taskInstruction = promptTemplates[taskType] || TASK_INSTRUCTIONS[taskType];
   if (taskInstruction) {
     systemParts.push('\n[NHIEM VU]\n' + taskInstruction);
   }
 
-  // -- Layer 3: Genre / AI Guidelines --
-  if (aiGuidelines) {
-    systemParts.push('\n[CHI DAN TAC GIA]\n' + aiGuidelines);
-  } else {
+  // -- Layer 3: Genre Constraints --
+  // LUON inject genre constraint khi co — khong bi if/else voi aiGuidelines nua.
+  // aiGuidelines (Constitution) la nguyen tac CUA TAC GIA.
+  // Genre constraint la quy tac CUA THE LOAI. Hai thu khac nhau, can ca hai.
+  {
     const genreConstraint = GENRE_CONSTRAINTS[genreKey];
     if (genreConstraint) {
       systemParts.push('\n[THE LOAI]\n' + genreConstraint);
@@ -929,40 +1053,23 @@ export function buildPrompt(taskType, context = {}) {
 
   // -- Layer 4.2: Chapter Outline Context (Phase 8) --
   const chapterOutlineLayer = buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapters);
-  if (chapterOutlineLayer) {
+  if (chapterOutlineLayer && !skipWritingLayers) {
     systemParts.push(chapterOutlineLayer);
   }
 
-  // -- Layer 4.5: Pacing Control (AI Auto Generation) --
-  // Lưu ý: Khi đã có Grand Strategy (Layer 0), Layer 4.5 đóng vai trò bổ sung
-  // thông tin tiến độ số liệu (%), còn Grand Strategy cung cấp ngữ cảnh định tính.
-  if (targetLength > 0 && ultimateGoal) {
-    const progressPercent = Math.round((currentChapterIndex / targetLength) * 100);
-    const pacingParts = [];
-    pacingParts.push(`Truyen nay du kien dai ${targetLength} chuong. Hien tai dang o chuong ${currentChapterIndex + 1} (${progressPercent}% tien do).`);
-    pacingParts.push(`Muc tieu cuoi cung cua toan bo truyen: "${ultimateGoal}".`);
-    pacingParts.push(`TUYET DOI KHONG de nhan vat dat duoc muc tieu nay trong dot sinh nay.`);
+  // [Layer 4.5 removed — merged into Grand Strategy (Layer 0)]
 
-    // Tìm milestone tiếp theo
-    if (milestones.length > 0) {
-      const nextMilestone = milestones.find(m => m.percent > progressPercent);
-      if (nextMilestone) {
-        pacingParts.push(`Cot moc ke tiep o ${nextMilestone.percent}%: "${nextMilestone.description}". Chua duoc phep vuot qua cot moc nay trong dot sinh nay.`);
-      }
-    }
-
-    systemParts.push('\n[KIEM SOAT TIEN DO TRUYEN]\n' + pacingParts.join('\n'));
-  }
-
-  // -- Layer 5: Character State --
-  if (characters.length > 0) {
-    const charInfo = characters.map(function (c) {
+  // -- Layer 5: Character State (token budget: max 15) --
+  var cappedCharacters = characters.slice(0, 15);
+  if (cappedCharacters.length > 0) {
+    const charInfo = cappedCharacters.map(function (c) {
       const parts = ['- ' + c.name + ' (' + (c.role || 'nhan vat') + ')'];
       if (c.pronouns_self) parts.push('  Xung: "' + c.pronouns_self + '"' + (c.pronouns_other ? ', goi nguoi: "' + c.pronouns_other + '"' : ''));
       if (c.appearance) parts.push('  Ngoai hinh: ' + c.appearance);
       if (c.personality_tags) parts.push('  Tags: ' + c.personality_tags);
       if (c.personality) parts.push('  Tinh cach: ' + c.personality);
       if (c.flaws) parts.push('  Diem yeu: ' + c.flaws);
+      if (c.speech_pattern) parts.push('  Giong noi: ' + c.speech_pattern);
       if (c.current_status) parts.push('  Trang thai hien tai: ' + c.current_status);
       return parts.join('\n');
     }).join('\n');
@@ -992,7 +1099,7 @@ export function buildPrompt(taskType, context = {}) {
 
   // -- Layer 5.5: Bridge Memory (Phase 7) --
   const bridgeLayer = buildBridgeMemoryLayer(taskType, bridgeBuffer, previousEmotionalState, tensionLevel);
-  if (bridgeLayer) {
+  if (bridgeLayer && !skipWritingLayers) {
     systemParts.push(bridgeLayer);
   }
 
@@ -1033,31 +1140,33 @@ export function buildPrompt(taskType, context = {}) {
 
   // -- Layer 6.5: Plot Threads --
   if (plotThreads.length > 0) {
-    const threadInfo = plotThreads.map(function (pt) {
+    var cappedThreads = plotThreads.slice(0, 10);
+    const threadInfo = cappedThreads.map(function (pt) {
       const typeMap = { main: 'Tuyen Chinh', subplot: 'Tuyen Phu', character_arc: 'Phat Trien Nhan Vat', mystery: 'Bi An', romance: 'Tinh Cam' };
       const ptType = typeMap[pt.type] || 'Tuyen Truyen';
       const mark = pt.is_focus_in_scene ? '[TIEU DIEM CANH] ' : '';
       return '- ' + mark + '[' + ptType + '] ' + pt.title + (pt.description ? ': ' + pt.description : '');
     }).join('\n');
-    systemParts.push('\n[CAC TUYEN TRUYEN DANG MO (ACTIVE PLOT THREADS)]\n' + threadInfo + '\nLuu y: Duy tri hoac phat trien nhung mach truyen nay neu phu hop. Dac biet chu tam vao cac TIEU DIEM CANH.');
+    systemParts.push('\n[CAC TUYEN TRUYEN DANG MO]\n' + threadInfo);
   }
 
   // -- Layer 7: Style DNA --
-  // Thay thế Style Pack placeholder. Inject cho tất cả writing tasks.
   const styleDNALayer = buildStyleDNALayer(taskType, resolvedWritingStyle);
-  if (styleDNALayer) {
+  if (styleDNALayer && !skipWritingLayers) {
     systemParts.push(styleDNALayer);
+    // Anti-AI Blacklist — append vào cùng block với Style DNA
+    const antiAIBlock = buildAntiAIBlock(resolvedWritingStyle);
+    if (antiAIBlock) systemParts.push(antiAIBlock);
   }
 
   // -- Layer 7.5: Mood Board --
-  // Câu mẫu giọng văn — từ bridgeBuffer của tác giả hoặc genre defaults
   const moodBoardLayer = buildMoodBoardLayer(
     taskType,
     genreKey,
     bridgeBuffer,
     selectedText || ''
   );
-  if (moodBoardLayer) {
+  if (moodBoardLayer && !skipWritingLayers) {
     systemParts.push(moodBoardLayer);
   }
 
@@ -1068,14 +1177,17 @@ export function buildPrompt(taskType, context = {}) {
     systemParts.push('\n' + NSFW_CHRONO_STRUCTURE);
   }
 
-  // -- Layer 10 (Critical): Length Anchor --
-  if (WRITING_TASKS_FOR_BRIDGE.has(taskType)) {
-    systemParts.push('\n[LUU Y QUAN TRONG VE DO DAI]\n' + [
-      '1. KHONG duoc ket thuc canh hay chuong qua som.',
-      '2. Moi hanh dong nho phai duoc mieu ta bang it nhat 3-5 cau van.',
-      '3. Moi suy nghi noi tam phai duoc dao sau it nhat 1 doan van.',
-      '4. Muc tieu cua ban la viet cang dai cang tot, huong toi con so 7000 tu.',
-      '5. Tuyet doi KHONG tom tat dien bien nhanh.',
+  // -- Layer 10: Length & Rhythm Anchor (reframed: positive > negative) --
+  if (WRITING_TASKS_FOR_BRIDGE.has(taskType) && !skipWritingLayers) {
+    systemParts.push('\n[DO DAI VA NHIP DO]\n' + [
+      '1. Phat trien day du moi canh truoc khi chuyen tiep — moi hanh dong nho duoc mieu ta 3-5 cau, tao hinh anh song dong.',
+      '2. Suy nghi noi tam duoc dao sau it nhat 1 doan van day du.',
+      '3. Huong toi 2000-4000 tu moi lan sinh, dong gop vao muc tieu 7000 tu cho CA CHUONG (khong phai 1 lan).',
+      '4. Duy tri nhip ke lien tuc — moi cau day chuyen tiep sang cau sau tu nhien.',
+      '5. Neu gan het do dai output: dung lai o diem kich tinh, de ngo cho phan tiep. Tot hon la de doc gia them muon doc tiep hon la cuong ket thuc.',
+      '6. CAU TRUC DOAN VAN: 30-50% doan nen la doan 1-2 cau. Thong tin quan trong tach rieng thanh doan ngan. KHONG viet khoi van dai 5-6 cau lien tuc.',
+      '7. MOI DOAN toi da 80-100 tu. Doan dai hon → tach thanh 2. Doc gia Viet doc nhanh, doan ngan de theo doi.',
+      '8. NHIP THO: Xen ke doan ngan (1-2 cau) va doan dai (3-4 cau) — nhu nhip tho van xuoi. Tranh viet deu deu cung nhip.',
     ].join('\n'));
   }
 
@@ -1200,7 +1312,7 @@ export function buildPrompt(taskType, context = {}) {
   // Append vào CUỐI userContent (không phải systemParts)
   // Double sandwich: Grand Strategy ở đầu + Priority Anchor ở cuối
   const priorityAnchor = buildPriorityAnchorLayer(taskType, userPrompt);
-  if (priorityAnchor) {
+  if (priorityAnchor && !skipWritingLayers) {
     userContent += priorityAnchor;
   }
 

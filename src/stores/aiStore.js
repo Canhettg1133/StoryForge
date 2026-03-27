@@ -255,6 +255,12 @@ const useAIStore = create((set, get) => ({
           lastElapsed: meta?.elapsed || null,
         });
         set({ keyCount: keyManager.getTotalKeys() });
+
+        // Phase 7: Auto-save bridge buffer for writing tasks
+        // Lưu ~150 từ cuối để AI bắt nhịp khi viết chương tiếp theo
+        if (isWritingTask && chapterId && projectId) {
+          saveProseBuffer(chapterId, projectId, text);
+        }
       },
       onError: (err) => {
         set({

@@ -27,6 +27,7 @@ const EMPTY_CHARACTER = {
   flaws: '',
   pronouns_self: '',
   pronouns_other: '',
+  speech_pattern: '',
   goals: '',
   secrets: '',
   notes: '',
@@ -100,6 +101,7 @@ export default function CharacterHub() {
       flaws: char.flaws || '',
       pronouns_self: char.pronouns_self || '',
       pronouns_other: char.pronouns_other || '',
+      speech_pattern: char.speech_pattern || '',
       goals: char.goals || '',
       secrets: char.secrets || '',
       notes: char.notes || '',
@@ -218,6 +220,7 @@ export default function CharacterHub() {
                     flaws: data.flaws || '',
                     pronouns_self: data.pronouns_self || preset.default_self,
                     pronouns_other: data.pronouns_other || preset.default_other,
+                    speech_pattern: data.speech_pattern || '',
                     goals: data.goals || '',
                     secrets: data.secrets || '',
                     notes: data.notes || '',
@@ -491,6 +494,16 @@ export default function CharacterHub() {
                   </div>
 
                   <div className="form-group">
+                    <label>🗣️ Giọng nói / Khẩu ngữ</label>
+                    <textarea
+                      value={form.speech_pattern}
+                      onChange={e => setForm({ ...form, speech_pattern: e.target.value })}
+                      placeholder={'Ví dụ: Nói chậm rãi, hay dùng "hừm...", gọi mọi người là "tiểu tử".\nKhi tức giận chuyển sang giọng lạnh, cắt ngắn câu.\nKhẩu ngữ: "Ngươi... thật sự muốn chết sao?"'}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="form-group">
                     <label>Tags Tâm lý / Nét đặc trưng</label>
                     <input
                       type="text"
@@ -643,6 +656,7 @@ export default function CharacterHub() {
                     personality: item.personality || '',
                     flaws: item.flaws || '',
                     personality_tags: item.personality_tags || '',
+                    speech_pattern: item.speech_pattern || '',
                     goals: item.goals || '',
                     notes: item.notes || '',
                   });

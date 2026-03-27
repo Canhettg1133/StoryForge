@@ -192,6 +192,10 @@ const useProjectStore = create((set, get) => ({
   },
 
   deleteProject: async (id) => {
+    // First: get plotThread IDs for indirect threadBeats deletion
+    const projectPlotThreads = await db.plotThreads.where('project_id').equals(id).toArray();
+    const plotThreadIds = projectPlotThreads.map(pt => pt.id);
+
     await Promise.all([
       db.projects.delete(id),
       db.chapters.where('project_id').equals(id).delete(),
@@ -209,6 +213,18 @@ const useProjectStore = create((set, get) => ({
       db.aiJobs.where('project_id').equals(id).delete(),
       db.qaReports.where('project_id').equals(id).delete(),
       db.suggestions.where('project_id').equals(id).delete(),
+      // Phase 3+: tables added in later versions
+      db.worldTerms.where('project_id').equals(id).delete(),
+      db.taboos.where('project_id').equals(id).delete(),
+      db.chapterMeta.where('project_id').equals(id).delete(),
+      db.entityTimeline.where('project_id').equals(id).delete(),
+      db.factions.where('project_id').equals(id).delete(),
+      db.macro_arcs.where('project_id').equals(id).delete(),
+      db.arcs.where('project_id').equals(id).delete(),
+      // threadBeats: no project_id index, delete via plotThread IDs
+      ...(plotThreadIds.length > 0
+        ? [db.threadBeats.where('plot_thread_id').anyOf(plotThreadIds).delete()]
+        : []),
     ]);
     set({
       currentProject: null,

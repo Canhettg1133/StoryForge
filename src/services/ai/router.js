@@ -75,13 +75,13 @@ export const QUALITY_MODES = {
 };
 
 // ─── Direct: quality → model ───
-// fast     = gemini-2.5-flash               (5 RPM, 20 RPD)
-// balanced = gemini-3-flash-preview         (5 RPM, 20 RPD)
-// best     = gemini-3.1-flash-lite-preview  (15 RPM, 500 RPD — quota cao nhất)
+// fast     = gemini-3.1-flash-lite-preview  (15 RPM, 500 RPD — lightest, highest quota)
+// balanced = gemini-2.5-flash               (5 RPM, 20 RPD — proven, reliable)
+// best     = gemini-3-flash-preview         (5 RPM, 20 RPD — newest gen, highest quality)
 const DIRECT_QUALITY_MAP = {
-  fast: 'gemini-2.5-flash',
-  balanced: 'gemini-3-flash-preview',
-  best: 'gemini-3.1-flash-lite-preview',
+  fast: 'gemini-3.1-flash-lite-preview',
+  balanced: 'gemini-2.5-flash',
+  best: 'gemini-3-flash-preview',
 };
 
 // ─── Proxy: task-specific model mapping ───

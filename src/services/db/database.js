@@ -321,4 +321,43 @@ db.version(9).stores({
   arcs: '++id, project_id, macro_arc_id, order_index',
 });
 
+// Phase 10 — Character Voice DNA: speech_pattern field
+//
+// Thêm trường speech_pattern (non-indexed) vào characters.
+// Mô tả giọng nói, khẩu ngữ, cách nói đặc trưng của nhân vật.
+// Không thay đổi schema string vì không cần index.
+db.version(10).stores({
+  projects: '++id, title, genre_primary, status, created_at, updated_at',
+  chapters: '++id, project_id, arc_id, order_index, title, status',
+  scenes: '++id, project_id, chapter_id, order_index, title, pov_character_id, status',
+  characters: '++id, project_id, name, role',
+  characterStates: '++id, project_id, character_id, scene_id',
+  relationships: '++id, project_id, character_a_id, character_b_id, relation_type',
+  locations: '++id, project_id, name',
+  objects: '++id, project_id, name, owner_character_id',
+  canonFacts: '++id, project_id, fact_type, subject_type, subject_id, status',
+  plotThreads: '++id, project_id, title, type, state',
+  threadBeats: '++id, plot_thread_id, scene_id, beat_type',
+  timelineEvents: '++id, project_id, scene_id, date_marker',
+  stylePacks: '++id, project_id, name, type, source_kind',
+  voicePacks: '++id, project_id, character_id',
+  styleJobs: '++id, project_id, style_pack_id, parsing_status',
+  genrePacks: '++id, name',
+  aiJobs: '++id, project_id, scene_id, chapter_id, job_type, status',
+  revisions: '++id, scene_id, objective, created_at',
+  qaReports: '++id, project_id, chapter_id, scene_id, report_type, severity',
+  worldTerms: '++id, project_id, name, category',
+  taboos: '++id, project_id, character_id, effective_before_chapter',
+  chapterMeta: '++id, chapter_id, project_id',
+  suggestions: '++id, project_id, type, status, source_chapter_id, target_id, created_at',
+  entityTimeline: '++id, project_id, entity_id, entity_type, chapter_id, type, timestamp',
+  factions: '++id, project_id, name, faction_type',
+  macro_arcs: '++id, project_id, order_index',
+  arcs: '++id, project_id, macro_arc_id, order_index',
+}).upgrade(tx => {
+  return tx.table('characters').toCollection().modify(char => {
+    if (char.speech_pattern === undefined) char.speech_pattern = '';
+  });
+});
+
 export default db;

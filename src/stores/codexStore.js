@@ -115,6 +115,7 @@ const useCodexStore = create((set, get) => ({
       personality_tags: data.personality_tags || '',
       pronouns_self: data.pronouns_self || '',
       pronouns_other: data.pronouns_other || '',
+      speech_pattern: data.speech_pattern || '',
       current_status: data.current_status || '',
       goals: data.goals || '',
       secrets: data.secrets || '',

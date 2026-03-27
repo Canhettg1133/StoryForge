@@ -96,6 +96,9 @@ export async function gatherContext({
 
   const cleanText = (sceneText || '').replace(/<[^>]*>/g, ' ').toLowerCase();
 
+  // Cache scene once for reuse in bootstrap and scene contract
+  const cachedScene = sceneId ? await db.scenes.get(sceneId).catch(() => null) : null;
+
   // --- Entity detection (word boundary) ---
   function detectByName(list) {
     return list.filter(item => {
@@ -121,7 +124,7 @@ export async function gatherContext({
       // Find scene manually since we only have ID at this point, but actually we do load it below.
       // However doing it quickly via memory is fine if we loaded them, but we don't have allScenes.
       // We will just do a quick DB fetch.
-      const scene = await db.scenes.get(sceneId);
+      const scene = cachedScene;
       if (scene) {
         const povChar = allCharacters.find(c => c.id === scene.pov_character_id);
         if (povChar && !detectedCharacters.some(c => c.id === povChar.id)) {
@@ -247,7 +250,7 @@ export async function gatherContext({
   // --- Scene Contract ---
   let sceneContract = {};
   if (sceneId) {
-    const scene = await db.scenes.get(sceneId);
+    const scene = cachedScene;
     if (scene) {
       let mustHappen = [], mustNotHappen = [], charactersPresent = [];
       try { mustHappen = JSON.parse(scene.must_happen || '[]'); } catch { }
