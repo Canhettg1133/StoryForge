@@ -4,6 +4,7 @@ import {
   GENRES, TONES, POV_MODES, STORY_STRUCTURES,
   PRONOUN_STYLE_PRESETS, GENRE_TO_PRONOUN_STYLE,
 } from '../../utils/constants';
+import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import { X, Sparkles, PenTool, Eye, BookOpen, MessageSquare } from 'lucide-react';
 import ProjectWizard from './ProjectWizard';
 
@@ -38,13 +39,25 @@ export default function NewProjectModal({ onClose, onCreated }) {
   // Get pronoun preset info for display
   const pronounPreset = useMemo(() =>
     PRONOUN_STYLE_PRESETS.find(p => p.value === (form.pronoun_style || GENRE_TO_PRONOUN_STYLE[form.genre_primary] || 'hien_dai'))
-  , [form.pronoun_style, form.genre_primary]);
+    , [form.pronoun_style, form.genre_primary]);
+
+  // Lấy thông tin DNA của thể loại đang chọn để hiển thị hint
+  const selectedTemplate = GENRE_TEMPLATES[form.genre_primary];
+  const dnaHint = useMemo(() => {
+    if (!selectedTemplate) return null;
+    const parts = [];
+    if (selectedTemplate.constitution?.length) parts.push(`${selectedTemplate.constitution.length} luật Constitution`);
+    if (selectedTemplate.style_dna?.length) parts.push(`${selectedTemplate.style_dna.length} Style DNA`);
+    if (selectedTemplate.anti_ai_blacklist?.length) parts.push(`${selectedTemplate.anti_ai_blacklist.length} từ Blacklist`);
+    return parts.length ? parts.join(' · ') : null;
+  }, [selectedTemplate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
     setCreating(true);
     try {
+      // DNA Văn phong tự động được bơm bởi buildInitialPromptTemplates() trong projectStore
       const id = await createProject({
         ...form,
         pronoun_style: form.pronoun_style || GENRE_TO_PRONOUN_STYLE[form.genre_primary] || 'hien_dai',
@@ -147,6 +160,19 @@ export default function NewProjectModal({ onClose, onCreated }) {
                   <option key={g.value} value={g.value}>{g.emoji} {g.label}</option>
                 ))}
               </select>
+
+              {/* DNA auto-load hint — hiển thị ngay dưới genre select */}
+              {dnaHint && (
+                <span className="form-hint" style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  color: 'var(--color-accent)',
+                  opacity: 0.8,
+                }}>
+                  🧬 DNA tự nạp: {dnaHint}
+                </span>
+              )}
             </div>
             <div className="form-group" style={{ flex: 1 }}>
               <label className="form-label">Tone / Phong cách</label>

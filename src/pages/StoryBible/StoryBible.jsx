@@ -4,6 +4,11 @@
  * All project fields are editable inline.
  *
  * Phase 9: Thêm section "Đại Cục" — CRUD cho macro_arcs
+ *
+ * [UPDATE] Prompt AI section:
+ *  - Thêm subsection "🧬 DNA Văn phong" hiển thị constitution/style_dna/anti_ai_blacklist
+ *  - Nút "Tải lại DNA" để reset về template mặc định của thể loại hiện tại
+ *  - Merge thông minh: chỉ overwrite 3 key DNA, giữ nguyên task-type overrides
  */
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
@@ -16,6 +21,7 @@ import {
   POV_MODES, STORY_STRUCTURES, PRONOUN_STYLE_PRESETS,
   GENRE_TO_PRONOUN_STYLE, AI_STRICTNESS_LEVELS,
 } from '../../utils/constants';
+import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import { TASK_TYPES } from '../../services/ai/router';
 import { TASK_INSTRUCTIONS } from '../../services/ai/promptBuilder';
 import {
@@ -23,7 +29,7 @@ import {
   Star, Sword, UserCheck, Heart, ChevronRight, ChevronDown,
   Eye, MessageSquare, Save, Edit3, Check, Settings, FileText,
   Terminal, BookKey, Plus, X, Trash2, RotateCcw, Sparkles,
-  Flag, TrendingUp, Loader2, Wand2,
+  Flag, TrendingUp, Loader2, Wand2, ChevronUp,
 } from 'lucide-react';
 import SuggestionInbox from '../../components/ai/SuggestionInbox';
 import ArcNavigator from '../../components/common/ArcNavigator';
@@ -101,6 +107,11 @@ export default function StoryBible() {
 
   // Prompt Templates local state
   const [promptTemplates, setPromptTemplates] = useState({});
+
+  // DNA section — expand/collapse preview
+  const [showDNADetail, setShowDNADetail] = useState(false);
+  // Trạng thái flash sau khi reload DNA thành công
+  const [dnaReloaded, setDnaReloaded] = useState(false);
 
   // Collapsible sections
   const [openSections, setOpenSections] = useState({
@@ -196,15 +207,54 @@ export default function StoryBible() {
   const activeCanonFacts = useMemo(() => canonFacts.filter(f => f.status === 'active'), [canonFacts]);
   const deprecatedCanonFacts = useMemo(() => canonFacts.filter(f => f.status === 'deprecated'), [canonFacts]);
 
-  // Handle Prompt Templates
+  // Handle Prompt Templates (task-type overrides)
   const handlePromptChange = (taskType, value) => {
     setPromptTemplates(prev => ({ ...prev, [taskType]: value }));
   };
 
+  // ─── [NEW] Reload DNA Văn phong từ template thể loại hiện tại ───
+  // Chỉ overwrite 3 key DNA, giữ nguyên tất cả task-type overrides
+  const handleReloadGenreDNA = useCallback(() => {
+    const template = GENRE_TEMPLATES[genrePrimary];
+    if (!template) return;
+
+    const freshDNA = {
+      constitution: template.constitution || [],
+      style_dna: template.style_dna || [],
+      anti_ai_blacklist: template.anti_ai_blacklist || [],
+    };
+
+    // Merge: DNA keys bị reset, task-type overrides giữ nguyên
+    setPromptTemplates(prev => ({ ...prev, ...freshDNA }));
+
+    // Flash indicator
+    setDnaReloaded(true);
+    setTimeout(() => setDnaReloaded(false), 2000);
+  }, [genrePrimary]);
+
+  // DNA hiện tại từ promptTemplates (có thể đã được user chỉnh sửa)
+  const currentDNA = useMemo(() => ({
+    constitution: Array.isArray(promptTemplates.constitution) ? promptTemplates.constitution : [],
+    style_dna: Array.isArray(promptTemplates.style_dna) ? promptTemplates.style_dna : [],
+    anti_ai_blacklist: Array.isArray(promptTemplates.anti_ai_blacklist) ? promptTemplates.anti_ai_blacklist : [],
+  }), [promptTemplates]);
+
+  const hasDNA = currentDNA.constitution.length > 0
+    || currentDNA.style_dna.length > 0
+    || currentDNA.anti_ai_blacklist.length > 0;
+
+  // Kiểm tra DNA hiện tại có khớp với template mặc định không
+  const templateDNA = GENRE_TEMPLATES[genrePrimary];
+  const isDNAModified = useMemo(() => {
+    if (!templateDNA) return false;
+    return JSON.stringify(currentDNA.constitution) !== JSON.stringify(templateDNA.constitution || [])
+      || JSON.stringify(currentDNA.style_dna) !== JSON.stringify(templateDNA.style_dna || [])
+      || JSON.stringify(currentDNA.anti_ai_blacklist) !== JSON.stringify(templateDNA.anti_ai_blacklist || []);
+  }, [currentDNA, templateDNA]);
+
   // Phase 9: AI generate milestones handler
   const handleGenerateMilestones = async () => {
     if (!currentProject) return;
-    // Truyền đầy đủ context của project hiện tại cho AI
     const contextIdea = [
       aiIdeaInput,
       title ? 'Tên truyện: ' + title : '',
@@ -216,11 +266,9 @@ export default function StoryBible() {
       authorIdea: contextIdea,
       genre: genrePrimary,
     });
-    // Auto-select tất cả khi có kết quả
     setSelectedMilestoneIdxs(new Set());
   };
 
-  // Auto-select tất cả khi suggestions vừa load xong
   useEffect(() => {
     if (macroMilestoneSuggestions?.milestones?.length > 0) {
       setSelectedMilestoneIdxs(new Set(macroMilestoneSuggestions.milestones.map((_, i) => i)));
@@ -232,7 +280,6 @@ export default function StoryBible() {
     const selected = macroMilestoneSuggestions.milestones.filter((_, i) => selectedMilestoneIdxs.has(i));
     if (selected.length === 0) return;
     const ids = await saveMacroMilestones(currentProject.id, selected);
-    // Reload macro arcs from DB
     const updated = await db.macro_arcs
       .where('project_id').equals(currentProject.id)
       .sortBy('order_index');
@@ -269,9 +316,7 @@ export default function StoryBible() {
   };
 
   const handleUpdateMacroArc = async (id, field, value) => {
-    // Optimistic update UI
     setMacroArcs(prev => prev.map(m => m.id === id ? { ...m, [field]: value } : m));
-    // Debounced save — đơn giản dùng timeout
     clearTimeout(window._macroArcSaveTimer);
     window._macroArcSaveTimer = setTimeout(async () => {
       try {
@@ -597,7 +642,6 @@ export default function StoryBible() {
                   </button>
                 </div>
 
-                {/* Show suggestions with checkboxes */}
                 {macroMilestoneSuggestions?.milestones?.length > 0 && (
                   <div style={{ marginTop: 'var(--space-3)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
@@ -709,7 +753,6 @@ export default function StoryBible() {
 
             {macroArcs.map((m, idx) => (
               <div key={m.id} className="bible-edit-card" style={{ marginBottom: 'var(--space-3)', border: '1px solid var(--color-border)' }}>
-                {/* Row 1: Order + Title + Delete */}
                 <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
                   <span style={{
                     flexShrink: 0,
@@ -738,22 +781,17 @@ export default function StoryBible() {
                   </button>
                 </div>
 
-                {/* Row 2: Chapter range */}
                 <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
                   <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', flexShrink: 0 }}>Chương</span>
                   <input
-                    type="number"
-                    className="input"
-                    style={{ width: '80px' }}
+                    type="number" className="input" style={{ width: '80px' }}
                     value={m.chapter_from || ''}
                     onChange={(e) => handleUpdateMacroArc(m.id, 'chapter_from', Number(e.target.value))}
                     placeholder="Từ"
                   />
                   <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>→</span>
                   <input
-                    type="number"
-                    className="input"
-                    style={{ width: '80px' }}
+                    type="number" className="input" style={{ width: '80px' }}
                     value={m.chapter_to || ''}
                     onChange={(e) => handleUpdateMacroArc(m.id, 'chapter_to', Number(e.target.value))}
                     placeholder="Đến"
@@ -765,19 +803,16 @@ export default function StoryBible() {
                   )}
                 </div>
 
-                {/* Row 3: Description */}
                 <div className="form-group" style={{ marginBottom: 'var(--space-2)' }}>
                   <label className="form-label">Mô tả sự kiện chính</label>
                   <textarea
-                    className="textarea"
-                    rows={2}
+                    className="textarea" rows={2}
                     value={m.description || ''}
                     onChange={(e) => handleUpdateMacroArc(m.id, 'description', e.target.value)}
                     placeholder="Những gì xảy ra ở cột mốc này..."
                   />
                 </div>
 
-                {/* Row 4: Emotional peak */}
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Cảm xúc độc giả khi kết thúc cột mốc</label>
                   <input
@@ -804,9 +839,133 @@ export default function StoryBible() {
         <SectionHeader icon={Terminal} title="Prompt AI" sectionKey="prompts" />
         {openSections.prompts && (
           <div className="bible-edit-card">
-            <p className="bible-subtitle" style={{ marginBottom: 'var(--space-2)' }}>
+            <p className="bible-subtitle" style={{ marginBottom: 'var(--space-3)' }}>
               Tùy chỉnh prompt hệ thống cho từng tính năng. Sửa để ghi đè mặc định. {promptsSaved && <span className="save-indicator">Đã lưu</span>}
             </p>
+
+            {/* ─── [NEW] DNA Văn phong subsection ─── */}
+            <div style={{
+              background: 'var(--color-surface-2)',
+              border: '1px solid var(--color-accent-muted, rgba(124,58,237,0.25))',
+              borderRadius: 'var(--radius-md)',
+              padding: 'var(--space-3)',
+              marginBottom: 'var(--space-4)',
+            }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '16px' }}>🧬</span>
+                  <span style={{ fontWeight: 600, fontSize: '13px' }}>DNA Văn phong</span>
+                  <span className="badge badge-sm" style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-accent)' }}>
+                    {GENRE_TEMPLATES[genrePrimary]?.label || genrePrimary}
+                  </span>
+                  {isDNAModified && (
+                    <span style={{ fontSize: '11px', color: 'var(--color-warning, #f59e0b)' }}>✏️ Đã chỉnh sửa</span>
+                  )}
+                  {dnaReloaded && (
+                    <span style={{ fontSize: '11px', color: 'var(--color-success, #10b981)' }}>✓ Đã tải lại</span>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setShowDNADetail(v => !v)}
+                    title={showDNADetail ? 'Ẩn chi tiết' : 'Xem chi tiết'}
+                  >
+                    {showDNADetail ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    {showDNADetail ? 'Ẩn' : 'Xem'}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={handleReloadGenreDNA}
+                    title={`Tải lại DNA mặc định cho thể loại ${GENRE_TEMPLATES[genrePrimary]?.label || genrePrimary}`}
+                    disabled={!GENRE_TEMPLATES[genrePrimary]}
+                  >
+                    <RotateCcw size={13} /> Tải lại DNA
+                  </button>
+                </div>
+              </div>
+
+              {/* Summary stats */}
+              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: showDNADetail ? 'var(--space-3)' : 0 }}>
+                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', background: 'var(--color-surface-3)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
+                  ⚖️ Constitution: {currentDNA.constitution.length} luật
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', background: 'var(--color-surface-3)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
+                  🎨 Style DNA: {currentDNA.style_dna.length} hướng dẫn
+                </span>
+                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', background: 'var(--color-surface-3)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
+                  🚫 Blacklist: {currentDNA.anti_ai_blacklist.length} từ cấm
+                </span>
+              </div>
+
+              {/* Detail view (expandable) */}
+              {showDNADetail && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+
+                  {/* Constitution */}
+                  {currentDNA.constitution.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
+                        ⚖️ Constitution — Luật thế giới bất phá
+                      </p>
+                      <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+                        {currentDNA.constitution.map((rule, i) => <li key={i}>{rule}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Style DNA */}
+                  {currentDNA.style_dna.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
+                        🎨 Style DNA — Giọng văn & Nhịp điệu
+                      </p>
+                      <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
+                        {currentDNA.style_dna.map((rule, i) => <li key={i}>{rule}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Anti-AI Blacklist */}
+                  {currentDNA.anti_ai_blacklist.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
+                        🚫 Anti-AI Blacklist — Cụm từ sáo rỗng bị cấm
+                      </p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                        {currentDNA.anti_ai_blacklist.map((word, i) => (
+                          <span key={i} style={{
+                            fontSize: '11px',
+                            padding: '2px 6px',
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            color: 'var(--color-danger, #ef4444)',
+                            borderRadius: 'var(--radius-xs)',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                          }}>
+                            {word}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Empty state */}
+                  {!hasDNA && (
+                    <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                      Chưa có DNA. Nhấn "Tải lại DNA" để nạp từ template thể loại hiện tại.
+                    </p>
+                  )}
+
+                  {/* Hint */}
+                  <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', margin: 0 }}>
+                    💡 DNA được AI đọc mỗi khi viết. Muốn thay đổi thể loại → đổi Thể loại ở Tổng quan rồi nhấn "Tải lại DNA".
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* ─── Task-type overrides (unchanged) ─── */}
             {Object.entries(TASK_TYPES).map(([key, taskType]) => {
               const defaultPrompt = TASK_INSTRUCTIONS[taskType] || '';
               const hasCustom = !!(promptTemplates[taskType]);

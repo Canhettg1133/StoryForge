@@ -247,10 +247,24 @@ const useAIStore = create((set, get) => ({
         set({ streamingText: fullText });
       },
       onComplete: async (text, meta) => {
+        const safeText = typeof text === 'string' ? text : '';
+        if (!safeText.trim()) {
+          set({
+            isStreaming: false,
+            streamingText: '',
+            completedText: '',
+            error: 'AI không trả nội dung (EMPTY_STREAM). Thử lại hoặc đổi chất lượng trong Settings.',
+            lastRouteInfo: meta || routeInfo,
+            lastElapsed: meta?.elapsed || null,
+          });
+          set({ keyCount: keyManager.getTotalKeys() });
+          return;
+        }
         set({
           isStreaming: false,
           streamingText: '',
-          completedText: text,
+          completedText: safeText,
+          error: null,
           lastRouteInfo: meta || routeInfo,
           lastElapsed: meta?.elapsed || null,
         });
@@ -259,7 +273,7 @@ const useAIStore = create((set, get) => ({
         // Phase 7: Auto-save bridge buffer for writing tasks
         // Lưu ~150 từ cuối để AI bắt nhịp khi viết chương tiếp theo
         if (isWritingTask && chapterId && projectId) {
-          saveProseBuffer(chapterId, projectId, text);
+          saveProseBuffer(chapterId, projectId, safeText);
         }
       },
       onError: (err) => {

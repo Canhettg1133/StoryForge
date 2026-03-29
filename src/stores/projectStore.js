@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import db from '../services/db/database';
 import { countWords } from '../utils/constants';
+import { GENRE_TEMPLATES } from '../utils/genreTemplates';
 
 function getNextOrderIndex(items) {
   return items.reduce((max, item) => {
@@ -105,6 +106,45 @@ async function reindexChapterScenes(chapterId) {
   }
 }
 
+/**
+ * Builds the initial prompt_templates JSON string from a genre key.
+ * Extracts constitution, style_dna, anti_ai_blacklist from GENRE_TEMPLATES.
+ * Merges with any existing prompt_templates passed in data (custom overrides win).
+ *
+ * @param {string} genreKey - e.g. 'tien_hiep', 'do_thi'
+ * @param {string|object} [existingTemplates] - existing prompt_templates from data (optional)
+ * @returns {string} - JSON string ready for DB storage
+ */
+function buildInitialPromptTemplates(genreKey, existingTemplates) {
+  const template = GENRE_TEMPLATES[genreKey];
+
+  // Start with genre DNA defaults (empty if genre not found)
+  const genreDNA = template
+    ? {
+      constitution: template.constitution || [],
+      style_dna: template.style_dna || [],
+      anti_ai_blacklist: template.anti_ai_blacklist || [],
+    }
+    : {};
+
+  // Parse any existing templates passed in (e.g. from AI Wizard or manual form)
+  let existing = {};
+  if (existingTemplates) {
+    try {
+      existing = typeof existingTemplates === 'string'
+        ? JSON.parse(existingTemplates)
+        : existingTemplates;
+    } catch {
+      existing = {};
+    }
+  }
+
+  // Merge: existing custom overrides take priority over genre defaults
+  const merged = { ...genreDNA, ...existing };
+
+  return JSON.stringify(merged);
+}
+
 const useProjectStore = create((set, get) => ({
   projects: [],
   currentProject: null,
@@ -121,6 +161,16 @@ const useProjectStore = create((set, get) => ({
 
   createProject: async (data) => {
     const now = Date.now();
+
+    // ─── Tự động nạp DNA Văn phong từ template thể loại ───
+    // Lấy genre_primary người dùng vừa chọn, tra GENRE_TEMPLATES,
+    // bơm constitution + style_dna + anti_ai_blacklist vào prompt_templates.
+    const genreKey = data.genre_primary || 'fantasy';
+    const initialPromptTemplates = buildInitialPromptTemplates(
+      genreKey,
+      data.prompt_templates, // nếu caller đã truyền vào thì merge thay vì ghi đè
+    );
+
     const id = await db.projects.add({
       title: data.title || 'Truyện chưa đặt tên',
       description: data.description || '',
@@ -147,6 +197,7 @@ const useProjectStore = create((set, get) => ({
       target_length_type: data.target_length_type || 'unset',
       ultimate_goal: data.ultimate_goal || '',
       milestones: data.milestones || '[]',
+      prompt_templates: initialPromptTemplates, // ← DNA văn phong đã được bơm vào đây
       created_at: now,
       updated_at: now,
     });

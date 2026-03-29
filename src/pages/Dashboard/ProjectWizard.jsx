@@ -13,6 +13,10 @@
  * Phase 9:
  *  - Thêm section "Đại Cục" trong Step 0 — tác giả nhập 5-8 cột mốc lớn
  *  - handleApprove: lưu macro arcs vào bảng macro_arcs
+ *
+ * [UPDATE] Template Toggle:
+ *  - Label mở rộng: nêu rõ Constitution + Style DNA + Anti-AI Blacklist sẽ tự động nạp
+ *  - DNA được bơm vào DB ngay khi createProject() — không cần thao tác thêm
  */
 
 import React, { useState } from 'react';
@@ -32,7 +36,7 @@ import {
   Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
   RotateCcw, Users, MapPin, BookOpen, List, AlertCircle,
   Trash2, Globe, Eye, MessageSquare, Plus, GitPullRequest,
-  Pencil, Landmark, Flag, TrendingUp,
+  Pencil, Landmark, Flag, TrendingUp, Dna,
 } from 'lucide-react';
 import './ProjectWizard.css';
 
@@ -126,6 +130,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
   };
 
   const currentPronoun = PRONOUN_STYLE_PRESETS.find(p => p.value === pronounStyle);
+
+  // Kiểm tra template hiện tại có DNA không
+  const currentTemplate = GENRE_TEMPLATES[genre];
+  const hasDNA = !!(currentTemplate?.constitution?.length || currentTemplate?.style_dna?.length);
 
   // AI result
   const [result, setResult] = useState(null);
@@ -392,6 +400,8 @@ Chỉ trả về JSON, không thêm gì khác.`,
 
     try {
       // 1. Create project
+      // DNA Văn phong (constitution, style_dna, anti_ai_blacklist) sẽ được
+      // tự động bơm vào prompt_templates bởi buildInitialPromptTemplates() trong projectStore
       const wp = result.world_profile || {};
       const projectId = await createProject({
         title: result.premise?.substring(0, 50) || idea.substring(0, 50) || 'Dự án mới',
@@ -813,15 +823,40 @@ Chỉ trả về JSON, không thêm gì khác.`,
               />
             </div>
 
-            {GENRE_TEMPLATES[genre] && (
-              <label className="wizard-template-toggle">
-                <input
-                  type="checkbox"
-                  checked={useTemplate}
-                  onChange={(e) => setUseTemplate(e.target.checked)}
-                />
-                <span>Dùng template "{GENRE_TEMPLATES[genre].label}" làm cơ sở</span>
-              </label>
+            {/* ─── Template toggle — cập nhật để nêu rõ DNA sẽ được nạp ─── */}
+            {currentTemplate && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                <label className="wizard-template-toggle">
+                  <input
+                    type="checkbox"
+                    checked={useTemplate}
+                    onChange={(e) => setUseTemplate(e.target.checked)}
+                  />
+                  <span>Dùng template <strong>"{currentTemplate.label}"</strong> làm cơ sở cho AI Wizard</span>
+                </label>
+
+                {/* DNA auto-load notice — luôn hiển thị, không phụ thuộc useTemplate */}
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '6px',
+                  padding: '6px 10px',
+                  background: 'var(--color-accent-subtle, rgba(124,58,237,0.08))',
+                  border: '1px solid var(--color-accent-muted, rgba(124,58,237,0.2))',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: '11px',
+                  color: 'var(--color-text-muted)',
+                }}>
+                  <span style={{ fontSize: '13px', flexShrink: 0 }}>🧬</span>
+                  <span>
+                    <strong style={{ color: 'var(--color-accent)' }}>DNA Văn phong sẽ tự động nạp</strong>
+                    {hasDNA
+                      ? ` — Constitution (${currentTemplate.constitution?.length || 0} luật), Style DNA (${currentTemplate.style_dna?.length || 0} hướng dẫn), Anti-AI Blacklist (${currentTemplate.anti_ai_blacklist?.length || 0} từ cấm) cho thể loại ${currentTemplate.label}.`
+                      : ' vào dự án. Có thể chỉnh sửa trong Story Bible → Prompt AI.'}
+                    {' '}Có thể chỉnh sửa trong Story Bible → Prompt AI.
+                  </span>
+                </div>
+              </div>
             )}
 
             <div className="modal-actions">

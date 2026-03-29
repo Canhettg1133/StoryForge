@@ -8,11 +8,62 @@
  */
 
 import keyManager from './keyManager';
-import { PROVIDERS, TASK_TYPES } from './router';
+import { PROXY_MODELS, PROVIDERS, TASK_TYPES } from './router';
 import { NSFW_REBUKE_PROMPT } from '../../utils/constants';
 
 const SETTINGS_KEY = 'sf-ai-settings';
 const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 50000;
+
+function createStreamError(message, code, options = {}) {
+  const err = new Error(message || code || 'STREAM_ERROR');
+  if (code) err.code = code;
+  if (options.payloadError) err.isPayloadError = true;
+  return err;
+}
+
+function extractSSEDataValue(rawLine) {
+  const trimmed = (rawLine || '').trim();
+  if (!trimmed || !trimmed.startsWith('data:')) return null;
+  return trimmed.slice(5).trimStart();
+}
+
+function extractPayloadError(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+
+  const errorField = payload.error;
+  if (typeof errorField === 'string' && errorField.trim()) {
+    return {
+      message: errorField.trim(),
+      code: payload.code || 'STREAM_PAYLOAD_ERROR',
+    };
+  }
+
+  if (errorField && typeof errorField === 'object') {
+    return {
+      message: errorField.message || payload.message || 'STREAM_PAYLOAD_ERROR',
+      code: errorField.code || payload.code || errorField.type || 'STREAM_PAYLOAD_ERROR',
+    };
+  }
+
+  if (payload.code && payload.message && !payload.choices && !payload.candidates) {
+    return { message: payload.message, code: payload.code };
+  }
+
+  return null;
+}
+
+function getProxyBestFreePromptFallbackModels(taskType, route) {
+  if (taskType !== TASK_TYPES.FREE_PROMPT) return [];
+  if (route?.provider !== PROVIDERS.GEMINI_PROXY) return [];
+  if (!route?.model || !route.model.includes('gemini-3-pro-high')) return [];
+
+  const stableModels = [
+    PROXY_MODELS.find((m) => m.id.includes('gemini-2.5-pro'))?.id,
+    PROXY_MODELS.find((m) => m.id.includes('gemini-3-flash-high'))?.id,
+  ].filter(Boolean);
+
+  return stableModels.filter((id, index, arr) => id !== route.model && arr.indexOf(id) === index);
+}
 
 function getSettings() {
   try {
@@ -191,6 +242,7 @@ async function streamSSE(response, { onToken, onComplete, onError }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let fullText = '', buffer = '';
+  let hasToken = false;
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -199,20 +251,38 @@ async function streamSSE(response, { onToken, onComplete, onError }) {
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
       for (const line of lines) {
-        const t = line.trim();
-        if (!t || !t.startsWith('data: ')) continue;
-        const d = t.slice(6);
+        const d = extractSSEDataValue(line);
+        if (!d) continue;
         if (d === '[DONE]') continue;
+
         try {
           const p = JSON.parse(d);
+          const payloadError = extractPayloadError(p);
+          if (payloadError) {
+            throw createStreamError(payloadError.message, payloadError.code, { payloadError: true });
+          }
+
           const delta = p.choices?.[0]?.delta?.content || '';
-          if (delta) { fullText += delta; onToken?.(delta, fullText); }
-        } catch { }
+          const messageContent = p.choices?.[0]?.message?.content || '';
+          const textChunk = delta || messageContent;
+          if (textChunk) {
+            hasToken = true;
+            fullText += textChunk;
+            onToken?.(textChunk, fullText);
+          }
+        } catch (err) {
+          if (err?.name !== 'SyntaxError') throw err;
+        }
       }
     }
+    if (!hasToken) throw createStreamError('EMPTY_STREAM', 'EMPTY_STREAM');
     onComplete?.(fullText);
   } catch (err) {
     if (err.name === 'AbortError') { onComplete?.(fullText); return; }
+    if (err.message === 'EMPTY_STREAM' || err.code === 'EMPTY_STREAM' || err.isPayloadError) {
+      onError?.(err);
+      return;
+    }
     // Preserve partial text on error
     if (fullText) { onComplete?.(fullText); } else { onError?.(err); }
   }
@@ -338,7 +408,7 @@ class AIService {
     const route = this._router.route(taskType, routeOptions);
     const startTime = Date.now();
 
-    const wrappedOnComplete = async (text) => {
+    const wrappedOnComplete = async (text, routeMeta = route) => {
       let processedText = text;
 
       // Post-processing: Remove internal thinking and metadata tags
@@ -355,7 +425,7 @@ class AIService {
         if (messages.some(m => m.content === NSFW_REBUKE_PROMPT)) {
           console.warn('[AI] Already rebuked in this chain. Aborting to avoid loop.');
           this.activeController = null;
-          onComplete?.(processedText, { model: route.model, provider: route.provider, elapsed: Date.now() - startTime });
+          onComplete?.(processedText, { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
           return;
         }
 
@@ -396,7 +466,7 @@ class AIService {
             onComplete: (finalText) => {
               this.activeController = null;
               // Clean final text
-              onComplete?.(cleanMetadata(cleanThoughts(finalText)), { model: route.model, provider: route.provider, elapsed: Date.now() - startTime });
+              onComplete?.(cleanMetadata(cleanThoughts(finalText)), { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
             },
             onError: (e) => { this.activeController = null; onError?.(e); },
             nsfwMode: true
@@ -409,7 +479,7 @@ class AIService {
       }
 
       this.activeController = null;
-      onComplete?.(processedText, { model: route.model, provider: route.provider, elapsed: Date.now() - startTime });
+      onComplete?.(processedText, { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
     };
 
     const wrappedOnError = async (err) => {
@@ -445,13 +515,36 @@ class AIService {
         }
       }
 
+      if (err.message === 'EMPTY_STREAM' && route.provider === PROVIDERS.GEMINI_PROXY && taskType === TASK_TYPES.FREE_PROMPT) {
+        const stableFallbackModels = getProxyBestFreePromptFallbackModels(taskType, route);
+        for (const fallbackModel of stableFallbackModels) {
+          const fallbackRoute = { ...route, model: fallbackModel, tier: fallbackModel.includes('pro') ? 'pro' : 'flash' };
+          try {
+            console.warn('[AI] EMPTY_STREAM on proxy best model. Retrying with fallback model:', fallbackModel);
+            await getCallFn(PROVIDERS.GEMINI_PROXY)({
+              model: fallbackModel,
+              messages,
+              stream,
+              signal: controller.signal,
+              onToken,
+              onComplete: (text) => wrappedOnComplete(text, fallbackRoute),
+              onError: () => { },
+              nsfwMode,
+            });
+            return;
+          } catch (retryErr) {
+            err = retryErr;
+          }
+        }
+      }
+
       if (err.message === 'RATE_LIMITED' && this._router) {
         const fallbacks = this._router.getFallbacks(route);
         for (const fb of fallbacks) {
           try {
             await getCallFn(fb.provider)({
               model: fb.model, messages, stream, signal: controller.signal,
-              onToken, onComplete: wrappedOnComplete,
+              onToken, onComplete: (text) => wrappedOnComplete(text, fb),
               onError: (e) => { this.activeController = null; onError?.(e); },
               nsfwMode
             });
