@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Output Tokens Proxy (StoryForge Test)</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif; padding: 20px; background: #0f1115; color: #fff; margin: 0; }
+        h2 { color: #60a5fa; }
+        .container { display: flex; gap: 20px; margin-top: 20px; }
+        .panel { flex: 1; border: 1px solid #1f2937; padding: 15px; border-radius: 8px; background: #111827; display: flex; flex-direction: column; }
+        h3 { margin-top: 0; color: #d1d5db; border-bottom: 1px solid #374151; padding-bottom: 10px; }
+        button { padding: 12px 20px; cursor: pointer; background: #3b82f6; color: white; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; transition: background 0.2s; }
+        button:hover { background: #2563eb; }
+        button:disabled { background: #374151; cursor: not-allowed; color: #9ca3af; }
+        .btn-green { background: #10b981; }
+        .btn-green:hover:not(:disabled) { background: #059669; }
+        .output { flex: 1; height: 500px; overflow-y: auto; background: #000; padding: 15px; margin-top: 15px; font-family: ui-monospace, 'Cascadia Code', monospace; font-size: 13px; color: #10b981; white-space: pre-wrap; line-height: 1.5; border-radius: 4px; border: 1px solid #374151; }
+        .stats { margin-top: 15px; display: flex; justify-content: space-between; align-items: center; border-radius: 4px; background: #1f2937; padding: 10px; font-weight: 500; }
+        .config-box { background: #1f2937; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #374151; }
+        label { display: inline-block; width: 150px; color: #9ca3af; }
+        input[type="text"] { width: calc(100% - 160px); padding: 8px; background: #111827; color: white; border: 1px solid #374151; border-radius: 4px; }
+        .highlight { color: #f59e0b; }
+    </style>
+</head>
+<body>
+    <h2>Thực nghiệm cường độ chịu tải Proxy (Max Output Tokens)</h2>
+    <p>Script dùng trực tiếp cấu hình localStorage của dự án để chạy thực nghiệm. Hai tác vụ sẽ chạy song song một prompt kèn cựa hệ thống bắt viết cực dài để đo lường giới hạn thật sự.</p>
+    
+    <div class="config-box">
+        <label>Model cần Test:</label>
+        <input type="text" id="modelName" value="gemini-2.5-pro-真流-[星星公益站-CLI渠道]">
+    </div>
+
+    <div class="container">
+        <!-- Default Panel -->
+        <div class="panel">
+            <h3>Test 1: Sức bền Mặc định Proxy<br><code>(Không truyền max_tokens)</code></h3>
+            <button id="btnDefault">▶ Bắt Đầu Viết Mặc Định</button>
+            <div class="stats">
+                <span id="statusDefault">Sẵn sàng.</span>
+                <span id="infoDefault" class="highlight">0 Ký tự | 0 s</span>
+            </div>
+            <div class="output" id="outDefault"></div>
+        </div>
+
+        <!-- 40k Panel -->
+        <div class="panel">
+            <h3>Test 2: Sức bền Ép xung<br><code>(Truyền max_tokens: 40000)</code></h3>
+            <button id="btn40k" class="btn-green">▶ Bắt Đầu Viết Ép Xung 40k</button>
+            <div class="stats">
+                <span id="status40k">Sẵn sàng.</span>
+                <span id="info40k" class="highlight">0 Ký tự | 0 s</span>
+            </div>
+            <div class="output" id="out40k"></div>
+        </div>
+    </div>
+
+    <script>
+        // Lấy Config
+        function getConfig() {
+            // Mặc định dùng proxy nội bộ của Vite (/api/proxy) nếu chạy ở localhost
+            let proxyUrl = window.location.hostname === 'localhost' ? '/api/proxy' : 'https://ag.beijixingxing.com';
+            let apiKey = '';
+            try {
+                const settings = JSON.parse(localStorage.getItem('sf-ai-settings') || '{}');
+                if (settings.proxyUrl) {
+                    proxyUrl = settings.proxyUrl;
+                }
+
+                const keys = JSON.parse(localStorage.getItem('sf-api-keys-v2') || '{}');
+                if (keys.gemini_proxy && keys.gemini_proxy.length > 0) {
+                    apiKey = keys.gemini_proxy[0].key;
+                }
+            } catch (e) { console.error(e); }
+
+            // Đảm bảo không bị trùng /v1/v1
+            if (proxyUrl.endsWith('/')) proxyUrl = proxyUrl.slice(0, -1);
+            
+            return { proxyUrl, apiKey };
+        }
+
+        const PROMPT = `Viết một bài luận văn học và lịch sử khổng lồ, đi sâu vào chi tiết của TOÀN BỘ CÁC NỀN VĂN MINH TỪ THỜI CỔ ĐẠI ĐẾN HIỆN ĐẠI. Kể chi tiết từng cuộc chiến tranh, từng vị vua, từng loại kiến trúc. Không được viết ngắn gọn, không được tóm tắt. Cố gắng sử dụng hết toàn bộ vốn từ vựng và kiến thức của bạn. Viết liên tục không được dừng lại cho đến khi bộ nhớ đệm của bạn không thể cho phép viết thêm một chữ nào nữa.`;
+
+        async function runTest(type, useMaxTokens) {
+            const outEl = document.getElementById('out' + type);
+            const statusEl = document.getElementById('status' + type);
+            const infoEl = document.getElementById('info' + type);
+            const btn = document.getElementById('btn' + type);
+            const model = document.getElementById('modelName').value;
+
+            const { proxyUrl, apiKey } = getConfig();
+            if (!apiKey) {
+                alert('Không tìm thấy API Key proxy! Mở trang StoryForge gốc cho nó lưu key trước nhé.');
+                return;
+            }
+
+            btn.disabled = true;
+            outEl.textContent = '';
+            statusEl.textContent = '🔄 Đang suy nghĩ...';
+            
+            const payload = {
+                model: model,
+                messages: [{ role: 'system', content: "Bạn là một nhà sử học với lượng kiến thức vô tận, khả năng viết hàng trăm trang sách không biết mỏi." }, { role: 'user', content: PROMPT }],
+                stream: true
+            };
+
+            if (useMaxTokens) {
+                payload.max_tokens = 40000;
+            }
+
+            const startTime = Date.now();
+            let charCount = 0;
+            let fullText = '';
+            
+            let timer = setInterval(() => {
+                const elapsed = Math.round((Date.now() - startTime) / 1000);
+                infoEl.textContent = `${charCount.toLocaleString()} Ký tự | ${elapsed} s`;
+            }, 1000);
+
+            try {
+                const response = await fetch(`${proxyUrl}/v1/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(await response.text());
+                }
+
+                statusEl.textContent = '⚡ Đang trả lời...';
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        const t = line.trim();
+                        if (!t.startsWith('data: ')) continue;
+                        const jsonStr = t.slice(6);
+                        if (jsonStr === '[DONE]') continue;
+                        try {
+                            const p = JSON.parse(jsonStr);
+                            const text = p.choices?.[0]?.delta?.content || '';
+                            if (text) {
+                                fullText += text;
+                                charCount += text.length;
+                                outEl.appendChild(document.createTextNode(text));
+                                outEl.scrollTop = outEl.scrollHeight;
+                            }
+                        } catch(e) {}
+                    }
+                }
+                
+                statusEl.textContent = '✅ Đã hoàn thành!';
+            } catch (err) {
+                statusEl.textContent = '❌ Lỗi: ' + err.message;
+            } finally {
+                clearInterval(timer);
+                const finalTime = Math.round((Date.now() - startTime) / 1000);
+                infoEl.textContent = `${charCount.toLocaleString()} Ký tự | Hoàn tất ở ${finalTime}s`;
+                btn.disabled = false;
+            }
+        }
+
+        document.getElementById('btnDefault').onclick = () => runTest('Default', false);
+        document.getElementById('btn40k').onclick = () => runTest('40k', true);
+    </script>
+</body>
+</html>

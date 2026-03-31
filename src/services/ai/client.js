@@ -12,7 +12,8 @@ import { PROXY_MODELS, PROVIDERS, TASK_TYPES } from './router';
 import { NSFW_REBUKE_PROMPT } from '../../utils/constants';
 
 const SETTINGS_KEY = 'sf-ai-settings';
-const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 50000;
+const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 40000;
+const PROXY_MAX_OUTPUT_TOKENS = 40000;
 
 function createStreamError(message, code, options = {}) {
   const err = new Error(message || code || 'STREAM_ERROR');
@@ -55,11 +56,11 @@ function extractPayloadError(payload) {
 function getProxyBestFreePromptFallbackModels(taskType, route) {
   if (taskType !== TASK_TYPES.FREE_PROMPT) return [];
   if (route?.provider !== PROVIDERS.GEMINI_PROXY) return [];
-  if (!route?.model || !(route.model.includes('gemini-3-pro-high') || route.model.includes('gemini-3.1-pro-high'))) return [];
+  if (!route?.model || !route.model.includes('pro')) return [];
 
   const stableModels = [
-    PROXY_MODELS.find((m) => m.id.includes('gemini-2.5-pro'))?.id,
     PROXY_MODELS.find((m) => m.id.includes('gemini-3-flash-high'))?.id,
+    PROXY_MODELS.find((m) => m.id.includes('gemini-2.5-flash'))?.id,
   ].filter(Boolean);
 
   return stableModels.filter((id, index, arr) => id !== route.model && arr.indexOf(id) === index);
@@ -106,12 +107,7 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ 
-        model, 
-        messages, 
-        stream,
-        max_tokens: 60000 
-      }),
+      body: JSON.stringify({ model, messages, stream, max_tokens: PROXY_MAX_OUTPUT_TOKENS }),
       signal,
     });
 

@@ -97,29 +97,29 @@ const DIRECT_QUALITY_MAP = {
 const PROXY_DEFAULT = {
   fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
   balanced: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
-  best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+  best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
 };
 
 const PROXY_TASK_MAP = {
   scene_draft: {
     fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   continue: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   rewrite: {
     fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   expand: {
     fast: 'gemini-3-flash-medium-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   summarize: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
@@ -159,35 +159,35 @@ const PROXY_TASK_MAP = {
   arc_outline: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   arc_chapter_draft: {
     fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   check_conflict: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   free_prompt: {
     fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   // Phase 9 — Grand Strategy
   // generate_macro_milestones: Planning task — dùng pro để output có chiều sâu
   generate_macro_milestones: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   // audit_arc_alignment: Analysis task — cần pro để phân tích độ lệch chính xác
   audit_arc_alignment: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
 };
 
