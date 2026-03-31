@@ -55,7 +55,7 @@ function extractPayloadError(payload) {
 function getProxyBestFreePromptFallbackModels(taskType, route) {
   if (taskType !== TASK_TYPES.FREE_PROMPT) return [];
   if (route?.provider !== PROVIDERS.GEMINI_PROXY) return [];
-  if (!route?.model || !route.model.includes('gemini-3-pro-high')) return [];
+  if (!route?.model || !(route.model.includes('gemini-3-pro-high') || route.model.includes('gemini-3.1-pro-high'))) return [];
 
   const stableModels = [
     PROXY_MODELS.find((m) => m.id.includes('gemini-2.5-pro'))?.id,
@@ -106,7 +106,12 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model, messages, stream }),
+      body: JSON.stringify({ 
+        model, 
+        messages, 
+        stream,
+        max_tokens: 60000 
+      }),
       signal,
     });
 

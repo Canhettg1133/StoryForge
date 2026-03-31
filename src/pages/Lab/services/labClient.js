@@ -60,7 +60,12 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`,
             },
-            body: JSON.stringify({ model, messages, stream }),
+            body: JSON.stringify({ 
+                model, 
+                messages, 
+                stream,
+                max_tokens: 60000
+            }),
             signal,
         });
 
