@@ -154,6 +154,9 @@ const useProjectStore = create((set, get) => ({
   activeSceneId: null,
   loading: false,
 
+  // Tracks chapters currently running auto-complete to prevent double-trigger
+  completingChapterId: null,
+
   loadProjects: async () => {
     const projects = await db.projects.orderBy('updated_at').reverse().toArray();
     set({ projects });
@@ -511,6 +514,85 @@ const useProjectStore = create((set, get) => ({
     }
 
     return actualWordCount;
+  },
+
+  /**
+   * Auto-complete a chapter: summarize + extract Codex entries + mark done.
+   * Called automatically when chapter reaches 100% word target.
+   * Non-blocking — errors are silently handled.
+   */
+  autoCompleteChapter: async (chapterId) => {
+    const { completingChapterId, currentProject, chapters, scenes } = get();
+    if (completingChapterId === chapterId) return;
+    if (!currentProject || !chapterId) return;
+
+    const chapter = chapters.find(c => c.id === chapterId);
+    if (!chapter || chapter.status === 'done') return;
+
+    set({ completingChapterId: chapterId });
+
+    try {
+      const chapterScenes = scenes.filter(s => s.chapter_id === chapterId);
+      const chapterText = chapterScenes
+        .map(s => s.draft_text || '')
+        .join('\n')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .trim();
+
+      if (!chapterText) {
+        set({ completingChapterId: null });
+        return;
+      }
+
+      const context = {
+        sceneText: chapterText,
+        chapterTitle: chapter.title,
+        projectTitle: currentProject.title,
+        genre: currentProject.genre_primary || '',
+        projectId: currentProject.id,
+      };
+
+      // Step 1: Summarize chapter
+      try {
+        const { summarizeChapter, extractFromChapter } = await import('./aiStore').then(m => m.default.getState());
+        const summary = await summarizeChapter(context);
+        if (summary?.trim()) {
+          const existingMeta = await db.chapterMeta
+            .where('chapter_id').equals(chapterId)
+            .first();
+          const metaData = {
+            chapter_id: chapterId,
+            project_id: currentProject.id,
+            last_prose_buffer: '',
+            emotional_state: null,
+            tension_level: null,
+          };
+          if (existingMeta) {
+            await db.chapterMeta.update(existingMeta.id, { summary });
+          } else {
+            await db.chapterMeta.add({ ...metaData, summary });
+          }
+        }
+      } catch (e) {
+        console.warn('[AutoComplete] Summarize failed (non-fatal):', e);
+      }
+
+      // Step 2: Extract Codex entries
+      try {
+        const { extractFromChapter } = await import('./aiStore').then(m => m.default.getState());
+        await extractFromChapter(context);
+      } catch (e) {
+        console.warn('[AutoComplete] Extract failed (non-fatal):', e);
+      }
+
+      // Step 3: Mark chapter as done
+      await get().updateChapter(chapterId, { status: 'done' });
+    } catch (e) {
+      console.warn('[AutoComplete] Failed:', e);
+    } finally {
+      set({ completingChapterId: null });
+    }
   },
 
   updateProjectTimestamp: async () => {

@@ -1,0 +1,19 @@
+# Normalize line endings and keep text files UTF-8 in working tree.
+* text=auto
+
+*.js   text working-tree-encoding=UTF-8
+*.jsx  text working-tree-encoding=UTF-8
+*.ts   text working-tree-encoding=UTF-8
+*.tsx  text working-tree-encoding=UTF-8
+*.json text working-tree-encoding=UTF-8
+*.css  text working-tree-encoding=UTF-8
+*.scss text working-tree-encoding=UTF-8
+*.html text working-tree-encoding=UTF-8
+*.md   text working-tree-encoding=UTF-8
+*.txt  text working-tree-encoding=UTF-8
+*.yml  text working-tree-encoding=UTF-8
+*.yaml text working-tree-encoding=UTF-8
+
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf

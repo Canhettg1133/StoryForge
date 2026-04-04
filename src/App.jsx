@@ -11,6 +11,8 @@ import TimelineThread from './pages/TimelineThread/TimelineThread';
 import RevisionQA from './pages/RevisionQA/RevisionQA';
 import StyleLab from './pages/StyleLab/StyleLab';
 import NarrativeLab from './pages/Lab/NarrativeLab';
+import CorpusLab from './pages/Lab/CorpusLab/CorpusLab';
+import AnalysisViewer from './pages/Lab/CorpusLab/AnalysisViewer';
 import Settings from './pages/Settings/Settings';
 import ProjectLayout from './components/common/ProjectLayout';
 
@@ -33,6 +35,8 @@ export default function App() {
             <Route path="revision" element={<RevisionQA />} />
             <Route path="style-lab" element={<StyleLab />} />
             <Route path="lab" element={<NarrativeLab />} />
+            <Route path="corpus-lab" element={<CorpusLab />} />
+            <Route path="corpus-lab/viewer" element={<AnalysisViewer />} />
           </Route>
         </Route>
       </Routes>

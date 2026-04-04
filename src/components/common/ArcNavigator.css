@@ -26,6 +26,15 @@
     font-variant-numeric: tabular-nums;
 }
 
+.arc-nav__over-target {
+    margin-left: 4px;
+    color: var(--color-warning, #f59e0b);
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: default;
+}
+
 /* Progress bar */
 .arc-nav__bar-wrap {
     height: 4px;

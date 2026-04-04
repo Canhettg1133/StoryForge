@@ -1,0 +1,56 @@
+.job-toast-stack {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: var(--z-toast);
+  width: min(340px, calc(100vw - 24px));
+}
+
+.job-toast {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-accent2);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  box-shadow: var(--shadow-md);
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.job-toast--success {
+  border-left-color: var(--color-success);
+}
+
+.job-toast--warning {
+  border-left-color: var(--color-warning);
+}
+
+.job-toast--error {
+  border-left-color: var(--color-danger);
+}
+
+.job-toast__content strong {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+}
+
+.job-toast__content p {
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.job-toast__dismiss {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: var(--text-xs);
+}
+

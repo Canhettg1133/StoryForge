@@ -360,4 +360,120 @@ db.version(10).stores({
   });
 });
 
+// ─── v11: ENI Priming Persistence ────────────────────────────────────────────
+// Add eni_primed and eni_session_history to chapterMeta so ENI state survives page refresh.
+db.version(11).stores({
+  projects: '++id, title, genre_primary, status, created_at, updated_at',
+  chapters: '++id, project_id, arc_id, order_index, title, status',
+  scenes: '++id, project_id, chapter_id, order_index, title, pov_character_id, status',
+  characters: '++id, project_id, name, role',
+  characterStates: '++id, project_id, character_id, scene_id',
+  relationships: '++id, project_id, character_a_id, character_b_id, relation_type',
+  locations: '++id, project_id, name',
+  objects: '++id, project_id, name, owner_character_id',
+  canonFacts: '++id, project_id, fact_type, subject_type, subject_id, status',
+  plotThreads: '++id, project_id, title, type, state',
+  threadBeats: '++id, plot_thread_id, scene_id, beat_type',
+  timelineEvents: '++id, project_id, scene_id, date_marker',
+  stylePacks: '++id, project_id, name, type, source_kind',
+  voicePacks: '++id, project_id, character_id',
+  styleJobs: '++id, project_id, style_pack_id, parsing_status',
+  genrePacks: '++id, name',
+  aiJobs: '++id, project_id, scene_id, chapter_id, job_type, status',
+  revisions: '++id, scene_id, objective, created_at',
+  qaReports: '++id, project_id, chapter_id, scene_id, report_type, severity',
+  worldTerms: '++id, project_id, name, category',
+  taboos: '++id, project_id, character_id, effective_before_chapter',
+  chapterMeta: '++id, chapter_id, project_id',
+  suggestions: '++id, project_id, type, status, source_chapter_id, target_id, created_at',
+  entityTimeline: '++id, project_id, entity_id, entity_type, chapter_id, type, timestamp',
+  factions: '++id, project_id, name, faction_type',
+  macro_arcs: '++id, project_id, order_index',
+  arcs: '++id, project_id, macro_arc_id, order_index',
+}).upgrade(tx => {
+  return tx.table('chapterMeta').toCollection().modify(meta => {
+    if (meta.eni_primed === undefined) meta.eni_primed = false;
+    if (meta.eni_session_history === undefined) meta.eni_session_history = null;
+  });
+});
+
+// ─── Phase 4 — Analysis Viewer: Annotation, Export, Search, Usage Tracking ─────────────────────────
+// Phase 4 Viewer needs persistent storage for:
+// - event_annotations: User notes on analysis events
+// - saved_searches: Named search queries for reuse
+// - export_history: Record of exports
+// - event_usage_tracking: How many times each event was used/exported
+// - linked_events: Events linked to story projects
+db.version(12).stores({
+  projects: '++id, title, genre_primary, status, created_at, updated_at',
+  chapters: '++id, project_id, arc_id, order_index, title, status',
+  scenes: '++id, project_id, chapter_id, order_index, title, pov_character_id, status',
+  characters: '++id, project_id, name, role',
+  characterStates: '++id, project_id, character_id, scene_id',
+  relationships: '++id, project_id, character_a_id, character_b_id, relation_type',
+  locations: '++id, project_id, name',
+  objects: '++id, project_id, name, owner_character_id',
+  canonFacts: '++id, project_id, fact_type, subject_type, subject_id, status',
+  plotThreads: '++id, project_id, title, type, state',
+  threadBeats: '++id, plot_thread_id, scene_id, beat_type',
+  timelineEvents: '++id, project_id, scene_id, date_marker',
+  stylePacks: '++id, project_id, name, type, source_kind',
+  voicePacks: '++id, project_id, character_id',
+  styleJobs: '++id, project_id, style_pack_id, parsing_status',
+  genrePacks: '++id, name',
+  aiJobs: '++id, project_id, scene_id, chapter_id, job_type, status',
+  revisions: '++id, scene_id, objective, created_at',
+  qaReports: '++id, project_id, chapter_id, scene_id, report_type, severity',
+  worldTerms: '++id, project_id, name, category',
+  taboos: '++id, project_id, character_id, effective_before_chapter',
+  chapterMeta: '++id, chapter_id, project_id',
+  suggestions: '++id, project_id, type, status, source_chapter_id, target_id, created_at',
+  entityTimeline: '++id, project_id, entity_id, entity_type, chapter_id, type, timestamp',
+  factions: '++id, project_id, name, faction_type',
+  macro_arcs: '++id, project_id, order_index',
+  arcs: '++id, project_id, macro_arc_id, order_index',
+
+  // New in v12: Phase 4 Analysis Viewer
+  // Compound indexes use [field1+field2] syntax in Dexie v4
+  event_annotations: '++id, corpus_id, event_id, [corpus_id+event_id]',
+  saved_searches: '++id, corpus_id, name, created_at',
+  export_history: '++id, corpus_id, format, created_at',
+  event_usage: '++id, corpus_id, event_id, [corpus_id+event_id]',
+  linked_events: '++id, event_id, corpus_id, project_id, [event_id+project_id]',
+});
+
+// ─── Plot Suggestions helpers ────────────────────────────────────────────────
+
+db.getPlotSuggestions = (chapterId) =>
+  db.suggestions
+    .where('source_chapter_id').equals(chapterId)
+    .filter(s => s.source_type === 'plot_suggestion' && s.status === 'pending')
+    .toArray();
+
+db.savePlotSuggestions = async (chapterId, projectId, suggestions) => {
+  // Delete existing pending suggestions for this chapter
+  const existing = await db.suggestions
+    .where('source_chapter_id').equals(chapterId)
+    .filter(s => s.source_type === 'plot_suggestion')
+    .toArray();
+  if (existing.length > 0) {
+    await db.suggestions.bulkDelete(existing.map(s => s.id));
+  }
+  if (suggestions.length === 0) return;
+  await db.suggestions.bulkAdd(suggestions.map(s => ({
+    project_id: projectId,
+    source_chapter_id: chapterId,
+    source_type: 'plot_suggestion',
+    type: 'plot_suggestion',
+    status: 'pending',
+    target_id: null,
+    target_name: '',
+    current_value: s.direction || '',
+    suggested_value: s.title || '',
+    fact_type: s.type || 'main',
+    reasoning: s.summary || s.description || '',
+    created_at: Date.now(),
+  })));
+};
+
 export default db;

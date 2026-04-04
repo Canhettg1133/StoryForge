@@ -39,20 +39,20 @@
             <button id="btnDefault">▶ Bắt Đầu Viết Mặc Định</button>
             <div class="stats">
                 <span id="statusDefault">Sẵn sàng.</span>
-                <span id="infoDefault" class="highlight">0 Ký tự | 0 s</span>
+                <span id="infoDefault" class="highlight">0 Chữ | 0 Ký tự | 0 s</span>
             </div>
             <div class="output" id="outDefault"></div>
         </div>
 
-        <!-- 40k Panel -->
+        <!-- 65k Panel -->
         <div class="panel">
-            <h3>Test 2: Sức bền Ép xung<br><code>(Truyền max_tokens: 40000)</code></h3>
-            <button id="btn40k" class="btn-green">▶ Bắt Đầu Viết Ép Xung 40k</button>
+            <h3>Test 2: Sức bền Ép xung<br><code>(Truyền max_tokens: 65536)</code></h3>
+            <button id="btn65k" class="btn-green">▶ Bắt Đầu Viết Ép Xung 65k</button>
             <div class="stats">
-                <span id="status40k">Sẵn sàng.</span>
-                <span id="info40k" class="highlight">0 Ký tự | 0 s</span>
+                <span id="status65k">Sẵn sàng.</span>
+                <span id="info65k" class="highlight">0 Chữ | 0 Ký tự | 0 s</span>
             </div>
-            <div class="output" id="out40k"></div>
+            <div class="output" id="out65k"></div>
         </div>
     </div>
 
@@ -80,7 +80,15 @@
             return { proxyUrl, apiKey };
         }
 
-        const PROMPT = `Viết một bài luận văn học và lịch sử khổng lồ, đi sâu vào chi tiết của TOÀN BỘ CÁC NỀN VĂN MINH TỪ THỜI CỔ ĐẠI ĐẾN HIỆN ĐẠI. Kể chi tiết từng cuộc chiến tranh, từng vị vua, từng loại kiến trúc. Không được viết ngắn gọn, không được tóm tắt. Cố gắng sử dụng hết toàn bộ vốn từ vựng và kiến thức của bạn. Viết liên tục không được dừng lại cho đến khi bộ nhớ đệm của bạn không thể cho phép viết thêm một chữ nào nữa.`;
+        const PROMPT = `HÃY VIẾT MỘT THIÊN ANH HÙNG CA DÀI VÔ TẬN. BẮT ĐẦU TỪ SỰ HÌNH THÀNH CỦA VŨ TRỤ, ĐI QUA TỪNG KỶ NGUYÊN ĐỊA CHẤT, SỰ XUẤT HIỆN CỦA SỰ SỐNG, VÀ CHI TIẾT ĐẾN TỪNG GIÂY PHÚT CỦA LỊCH SỬ NHÂN LOẠI. 
+
+YÊU CẦU CỰC KỲ QUAN TRỌNG: 
+1. KHÔNG ĐƯỢC TÓM TẮT. 
+2. PHẢI MIÊU TẢ CHI TIẾT TỪNG NHÂN VẬT, TỪNG LỜI NÓI, TỪNG PHÂN CẢNH. 
+3. HÃY CỐ GẮNG VIẾT DÀI NHẤT CÓ THỂ, VƯỢT QUA MỌI GIỚI HẠN THÔNG THƯỜNG. 
+4. NẾU BẠN CẢM THẤY SẮP HẾT BỘ NHỚ, HÃY TIẾP TỤC KHAI TRIỂN CHI TIẾT CỦA PHÂN CẢNH HIỆN TẠI ĐỂ KÉO DÀI ĐẦU RA.
+
+MỤC TIÊU LÀ ĐẠT ĐƯỢC 65,000 TOKENS OUTPUT. HÃY BẮT ĐẦU NGAY BÂY GIỜ VỚI CHƯƠNG 1: TIẾNG NỔ LỚN (BIG BANG) VÀ SỰ KHỞI ĐẦU CỦA THỜI GIAN.`;
 
         async function runTest(type, useMaxTokens) {
             const outEl = document.getElementById('out' + type);
@@ -101,21 +109,25 @@
             
             const payload = {
                 model: model,
-                messages: [{ role: 'system', content: "Bạn là một nhà sử học với lượng kiến thức vô tận, khả năng viết hàng trăm trang sách không biết mỏi." }, { role: 'user', content: PROMPT }],
+                messages: [
+                    { role: 'system', content: "Bạn là một siêu trí tuệ có khả năng sáng tác vô hạn. Bạn không bao giờ mệt mỏi và có thể viết hàng vạn trang giấy với chi tiết cực kỳ tỉ mỉ. Mục tiêu duy nhất của bạn là viết dài nhất có thể." }, 
+                    { role: 'user', content: PROMPT }
+                ],
                 stream: true
             };
 
             if (useMaxTokens) {
-                payload.max_tokens = 40000;
+                payload.max_tokens = 65536;
             }
 
             const startTime = Date.now();
             let charCount = 0;
+            let wordCount = 0;
             let fullText = '';
             
             let timer = setInterval(() => {
                 const elapsed = Math.round((Date.now() - startTime) / 1000);
-                infoEl.textContent = `${charCount.toLocaleString()} Ký tự | ${elapsed} s`;
+                infoEl.textContent = `${wordCount.toLocaleString()} Chữ | ${charCount.toLocaleString()} Ký tự | ${elapsed} s`;
             }, 1000);
 
             try {
@@ -156,6 +168,9 @@
                             if (text) {
                                 fullText += text;
                                 charCount += text.length;
+                                // Tính số từ: split theo khoảng trắng và lọc bỏ rỗng
+                                wordCount = fullText.trim().split(/\s+/).length;
+                                
                                 outEl.appendChild(document.createTextNode(text));
                                 outEl.scrollTop = outEl.scrollHeight;
                             }
@@ -169,13 +184,13 @@
             } finally {
                 clearInterval(timer);
                 const finalTime = Math.round((Date.now() - startTime) / 1000);
-                infoEl.textContent = `${charCount.toLocaleString()} Ký tự | Hoàn tất ở ${finalTime}s`;
+                infoEl.textContent = `${wordCount.toLocaleString()} Chữ | ${charCount.toLocaleString()} Ký tự | Hoàn tất ở ${finalTime}s`;
                 btn.disabled = false;
             }
         }
 
         document.getElementById('btnDefault').onclick = () => runTest('Default', false);
-        document.getElementById('btn40k').onclick = () => runTest('40k', true);
+        document.getElementById('btn65k').onclick = () => runTest('65k', true);
     </script>
 </body>
 </html>

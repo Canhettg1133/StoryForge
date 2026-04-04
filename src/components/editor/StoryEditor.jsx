@@ -6,7 +6,9 @@ import CharacterCount from '@tiptap/extension-character-count';
 import useProjectStore from '../../stores/projectStore';
 import { countWords } from '../../utils/constants';
 import ContinuityBar from './ContinuityBar';
-import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X } from 'lucide-react';
+import SceneDetailPanel from './SceneDetailPanel';
+import db from '../../services/db/database';
+import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings } from 'lucide-react';
 import './StoryEditor.css';
 
 export default function StoryEditor({ onEditorReady }) {
@@ -20,6 +22,8 @@ export default function StoryEditor({ onEditorReady }) {
   const lastSavedRef = useRef('');
   const editorWrapperRef = useRef(null);
   const [outlinePanelOpen, setOutlinePanelOpen] = useState(true);
+  const [sceneDetailOpen, setSceneDetailOpen] = useState(false);
+  const [allCharacters, setAllCharacters] = useState([]);
 
   // [MỚI] Outline edit state
   const [isEditingOutline, setIsEditingOutline] = useState(false);
@@ -108,6 +112,15 @@ export default function StoryEditor({ onEditorReady }) {
     },
   });
 
+  // Load characters when project changes
+  const { currentProject } = useProjectStore();
+  useEffect(() => {
+    if (!currentProject?.id) { setAllCharacters([]); return; }
+    db.characters.where('project_id').equals(currentProject.id).toArray()
+      .then(setAllCharacters)
+      .catch(() => setAllCharacters([]));
+  }, [currentProject?.id]);
+
   useEffect(() => {
     if (editor && activeScene) {
       const content = activeScene.draft_text || '';
@@ -134,20 +147,6 @@ export default function StoryEditor({ onEditorReady }) {
     }
   }, [editor, onEditorReady]);
 
-  const handleSave = useCallback(async (html) => {
-    if (!activeSceneId) return;
-    if (html === lastSavedRef.current) return;
-    lastSavedRef.current = html;
-    await updateScene(activeSceneId, { draft_text: html });
-    await updateProjectTimestamp();
-  }, [activeSceneId, updateScene, updateProjectTimestamp]);
-
-  useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    };
-  }, []);
-
   const wordCount = editor ? countWords(editor.getHTML()) : 0;
   const charCount = editor ? editor.storage.characterCount.characters() : 0;
 
@@ -163,6 +162,30 @@ export default function StoryEditor({ onEditorReady }) {
     }, 0);
     return { current: total, target, percent: Math.min(100, Math.round((total / target) * 100)) };
   }, [activeChapterId, scenes, chapters, wordCount]);
+
+  const handleSave = useCallback(async (html) => {
+    if (!activeSceneId) return;
+    if (html === lastSavedRef.current) return;
+    lastSavedRef.current = html;
+    await updateScene(activeSceneId, { draft_text: html });
+    await updateProjectTimestamp();
+
+    // Auto-complete the chapter this scene belongs to (not activeChapterId,
+    // which may have changed if user switched chapters while writing)
+    const chapterId = activeScene?.chapter_id;
+    if (chapterProgress && chapterProgress.percent >= 100 && chapterId) {
+      const chapter = chapters.find(c => c.id === chapterId);
+      if (chapter && chapter.status !== 'done') {
+        useProjectStore.getState().autoCompleteChapter(chapterId);
+      }
+    }
+  }, [activeSceneId, activeScene, updateScene, updateProjectTimestamp, chapterProgress, chapters]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, []);
 
   if (!activeScene) {
     return (
@@ -188,7 +211,27 @@ export default function StoryEditor({ onEditorReady }) {
           onChange={(e) => updateScene(activeSceneId, { title: e.target.value })}
           placeholder="Tên cảnh..."
         />
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => setSceneDetailOpen(true)}
+          title="Chi tiết cảnh"
+        >
+          <Settings size={14} /> Chi tiết cảnh
+        </button>
       </div>
+
+      {/* Scene Detail Drawer */}
+      {sceneDetailOpen && (
+        <SceneDetailPanel
+          scene={activeScene}
+          characters={allCharacters}
+          onSave={async (data) => {
+            await updateScene(activeSceneId, data);
+            setSceneDetailOpen(false);
+          }}
+          onClose={() => setSceneDetailOpen(false)}
+        />
+      )}
 
       {/* Chapter Outline Panel — Dàn Ý Chương */}
       {chapterOutline !== null && (
@@ -299,7 +342,7 @@ export default function StoryEditor({ onEditorReady }) {
                       rows={4}
                       value={editPurpose}
                       onChange={e => setEditPurpose(e.target.value)}
-                      placeholder={"Sự kiện 1\nSự kiện 2\nSự kiện 3..."}
+                      placeholder="Sự kiện 1\nSự kiện 2\nSự kiện 3..."
                     />
                   </div>
                 </div>

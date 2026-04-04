@@ -33,6 +33,7 @@ const NAV_ITEMS = [
   { path: '/editor', icon: PenTool, label: 'Viết truyện', id: 'editor', needsProject: true, primary: true },
   { divider: true },
   { path: '/lab', icon: FlaskConical, label: 'Narrative Lab', id: 'lab', needsProject: true },
+  { path: '/corpus-lab', icon: FlaskConical, label: 'Corpus Lab', id: 'corpus-lab', needsProject: true },
   { divider: true },
   { path: '/timeline', icon: Clock, label: 'Timeline', id: 'timeline', needsProject: true, comingSoon: true },
   { path: '/revision', icon: FileSearch, label: 'Revision & QA', id: 'revision', needsProject: true, comingSoon: true },

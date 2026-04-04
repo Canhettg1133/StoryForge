@@ -1,6 +1,9 @@
 import React from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import JobNotificationToast from '../jobs/JobNotificationToast';
+import JobQueuePanel from '../jobs/JobQueuePanel';
+import StorageWarning from './StorageWarning';
 import './AppLayout.css';
 
 export default function AppLayout() {
@@ -10,6 +13,9 @@ export default function AppLayout() {
       <main className="app-main">
         <Outlet />
       </main>
+      <StorageWarning />
+      <JobQueuePanel />
+      <JobNotificationToast />
     </div>
   );
 }

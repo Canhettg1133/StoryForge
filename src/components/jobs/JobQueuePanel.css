@@ -1,0 +1,154 @@
+.job-queue-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100vh - 36px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  z-index: var(--z-topbar);
+  overflow: auto;
+}
+
+.job-queue-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.job-queue-panel__header h3 {
+  font-size: var(--text-md);
+}
+
+.job-queue-panel__header button {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.job-queue-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.job-queue-panel__section h4 {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.job-queue-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: var(--color-bg-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.job-queue-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.job-queue-card__title {
+  font-size: var(--text-sm);
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.job-queue-card__meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.job-queue-card__cancel {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-danger);
+  border-radius: var(--radius-md);
+  padding: 6px 10px;
+  width: fit-content;
+  cursor: pointer;
+}
+
+.job-queue-status {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.job-queue-status--running {
+  color: var(--color-info);
+}
+
+.job-queue-status--pending {
+  color: var(--color-warning);
+}
+
+.job-queue-status--completed {
+  color: var(--color-success);
+}
+
+.job-queue-status--failed {
+  color: var(--color-danger);
+}
+
+.job-queue-status--cancelled {
+  color: var(--color-text-secondary);
+}
+
+.job-queue-progress {
+  height: 6px;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.job-queue-progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent2), var(--color-accent));
+  transition: width var(--transition-normal);
+}
+
+.job-queue-history {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.job-queue-history li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+}
+
+.job-queue-empty {
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+@media (max-width: 768px) {
+  .job-queue-panel {
+    width: calc(100vw - 16px);
+    right: 8px;
+    bottom: 8px;
+    max-height: 45vh;
+  }
+}
+

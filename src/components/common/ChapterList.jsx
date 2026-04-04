@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import useProjectStore from '../../stores/projectStore';
 import useAIStore from '../../stores/aiStore';
 import useCodexStore from '../../stores/codexStore';
@@ -15,6 +15,8 @@ export default function ChapterList() {
     createChapter, createScene, deleteChapter, deleteScene,
     updateChapter, updateScene,
     setActiveChapter, setActiveScene,
+    refreshChapterWordCount,
+    completingChapterId, setCompletingChapterId,
   } = useProjectStore();
 
   const { summarizeChapter, extractFromChapter, isSummarizing, isExtracting } = useAIStore();
@@ -24,7 +26,35 @@ export default function ChapterList() {
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [contextMenu, setContextMenu] = useState(null);
-  const [completingChapterId, setCompletingChapterId] = useState(null);
+  const [completeBanner, setCompleteBanner] = useState(null); // { chapterId, title }
+
+  // Sync word counts whenever the active scene changes (real-time update)
+  useEffect(() => {
+    if (!activeSceneId || !activeChapterId) return;
+    const scene = scenes.find(s => s.id === activeSceneId);
+    if (!scene) return;
+    // If draft_text changed, trigger word count refresh for the chapter
+    refreshChapterWordCount(activeChapterId);
+  }, [activeSceneId]);
+
+  // Track completion: when completingChapterId goes null → show success banner
+  useEffect(() => {
+    if (completingChapterId !== null) return;
+    const prevRef = prevCompletingRef.current;
+    prevCompletingRef.current = null;
+    if (!prevRef) return;
+    const ch = chapters.find(c => c.id === prevRef);
+    setCompleteBanner({ chapterId: prevRef, title: ch?.title || `Chương` });
+    const timer = setTimeout(() => setCompleteBanner(null), 5000);
+    return () => clearTimeout(timer);
+  }, [completingChapterId]);
+
+  const prevCompletingRef = useRef(null);
+  useEffect(() => {
+    if (completingChapterId !== null) {
+      prevCompletingRef.current = completingChapterId;
+    }
+  }, [completingChapterId]);
 
   const toggleChapter = (id) => {
     setExpandedChapters(prev => {
@@ -250,6 +280,9 @@ export default function ChapterList() {
 
                 {isThisCompleting && <Loader2 size={14} className="chapter-loading-icon" />}
                 <span className="chapter-scene-count">{chapterScenes.length}</span>
+                {chapter.actual_word_count > 0 && (
+                  <span className="chapter-word-count">{chapter.actual_word_count.toLocaleString()} từ</span>
+                )}
               </div>
 
               {/* Scenes */}
@@ -316,17 +349,20 @@ export default function ChapterList() {
             <Edit3 size={14} /> Đổi tên
           </button>
 
-          {/* Chapter Complete button — only for chapters */}
-          {contextMenu.type === 'chapter' && (
-            <button
-              className="context-menu-item context-menu-item--success"
-              onClick={() => handleCompleteChapter(contextMenu.id)}
-              disabled={isCompleting}
-            >
-              {isCompleting ? <Loader2 size={14} className="chapter-loading-icon" /> : <CheckCircle2 size={14} />}
-              Hoàn thành chương
-            </button>
-          )}
+          {/* Chapter Complete button — only for chapters not already done */}
+          {contextMenu.type === 'chapter' && (() => {
+            const chapter = chapters.find(c => c.id === contextMenu.id);
+            return chapter && chapter.status !== 'done' && (
+              <button
+                className="context-menu-item context-menu-item--success"
+                onClick={() => handleCompleteChapter(contextMenu.id)}
+                disabled={isCompleting}
+              >
+                {isCompleting ? <Loader2 size={14} className="chapter-loading-icon" /> : <CheckCircle2 size={14} />}
+                Hoàn thành chương
+              </button>
+            );
+          })()}
 
           <div className="context-menu-divider" />
           <button

@@ -84,8 +84,20 @@ export function getProxyUrl() {
   return getSettings().proxyUrl || '/api/proxy';
 }
 
+export function getGeminiDirectBaseUrl() {
+  return getSettings().geminiDirectUrl || 'https://generativelanguage.googleapis.com';
+}
+
 export function getOllamaUrl() {
   return getSettings().ollamaUrl || 'http://localhost:11434';
+}
+
+function buildGeminiDirectEndpoint(baseUrl, pathWithQuery = '') {
+  const normalizedBase = String(baseUrl || '').replace(/\/+$/u, '');
+  const versionBase = normalizedBase.endsWith('/v1beta')
+    ? normalizedBase
+    : `${normalizedBase}/v1beta`;
+  return `${versionBase}${pathWithQuery}`;
 }
 
 // ================================
@@ -143,7 +155,10 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
   if (!apiKey) throw new Error('Không có API key cho Gemini Direct.');
 
   const action = stream ? 'streamGenerateContent' : 'generateContent';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}?key=${apiKey}${stream ? '&alt=sse' : ''}`;
+  const url = buildGeminiDirectEndpoint(
+    getGeminiDirectBaseUrl(),
+    `/models/${model}:${action}?key=${apiKey}${stream ? '&alt=sse' : ''}`,
+  );
 
   const contents = messages
     .filter(m => m.role !== 'system')
@@ -594,7 +609,7 @@ class AIService {
         const apiKey = keyManager.getNextKey('gemini_direct');
         if (!apiKey) return { success: false, error: 'Chưa có API key' };
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+          buildGeminiDirectEndpoint(getGeminiDirectBaseUrl(), `/models?key=${apiKey}`),
           { signal: AbortSignal.timeout(8000) },
         );
         if (!res.ok) throw new Error(`Status ${res.status}`);
