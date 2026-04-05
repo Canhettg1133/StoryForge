@@ -40,8 +40,9 @@ export function createJobsRouter(queue) {
       const { type, inputData, dependsOn, priority } = req.body || {};
 
       if (!Object.values(JOB_TYPES).includes(type)) {
+        const expectedTypes = Object.values(JOB_TYPES).join(', ');
         return res.status(400).json({
-          error: 'Invalid job type. Expected corpus_analysis or file_parsing.',
+          error: `Invalid job type. Expected one of: ${expectedTypes}.`,
         });
       }
 
@@ -170,4 +171,3 @@ export function createJobsRouter(queue) {
 
   return router;
 }
-

@@ -29,12 +29,17 @@ export function parseAnalysisResults(rawResults) {
 
     // L3: World-building
     worldbuilding: rawResults.worldbuilding || parseJsonField(rawResults.resultL3, {}),
+    worldProfile: parseWorldProfile(rawResults),
 
     // L4: Characters profiles
     characterProfiles: parseCharacterProfiles(rawResults),
 
     // L5: Relationships
     relationships: parseRelationships(rawResults),
+
+    // Extended knowledge entities
+    objects: parseObjects(rawResults),
+    terms: parseTerms(rawResults),
 
     // L6: Craft
     craft: rawResults.craft || parseJsonField(rawResults.resultL6, {}),
@@ -118,12 +123,51 @@ function parseEvents(raw) {
 }
 
 function parseLocations(raw) {
-  const source = raw?.locations || raw?.locationEntities || raw?.worldbuilding?.locations || [];
-  if (!Array.isArray(source)) return [];
+  const knowledge = getKnowledgeNode(raw);
+  const sourceGroups = [
+    Array.isArray(knowledge?.locations) ? knowledge.locations : [],
+    Array.isArray(raw?.worldbuilding?.locations) ? raw.worldbuilding.locations : [],
+    Array.isArray(raw?.locations) ? raw.locations : [],
+    Array.isArray(raw?.locationEntities) ? raw.locationEntities : [],
+  ];
 
-  return source
-    .map((location) => normalizeLocation(location))
-    .filter(Boolean);
+  const merged = new Map();
+  for (let groupIndex = 0; groupIndex < sourceGroups.length; groupIndex += 1) {
+    const priority = sourceGroups.length - groupIndex;
+    for (const item of sourceGroups[groupIndex]) {
+      const normalized = normalizeLocation(item);
+      if (!normalized) continue;
+      if (!isLikelyLocationRecord(normalized, priority >= 3)) continue;
+
+      const key = (normalized.name || '').toLowerCase();
+      if (!key) continue;
+
+      const existing = merged.get(key);
+      if (!existing) {
+        merged.set(key, { ...normalized, _priority: priority });
+        continue;
+      }
+
+      const keepCurrent = priority > (existing._priority || 0);
+      merged.set(key, {
+        ...(keepCurrent ? existing : normalized),
+        ...(keepCurrent ? normalized : existing),
+        name: existing.name || normalized.name,
+        description: existing.description || normalized.description,
+        aliases: [...new Set([...(existing.aliases || []), ...(normalized.aliases || [])])],
+        timeline: normalizeTimeline([...(existing.timeline || []), ...(normalized.timeline || [])]),
+        mentionCount: Math.max(existing.mentionCount || 0, normalized.mentionCount || 0),
+        chapterSpread: Math.max(existing.chapterSpread || 0, normalized.chapterSpread || 0),
+        chapterStart: chooseMinChapter(existing.chapterStart, normalized.chapterStart),
+        chapterEnd: chooseMaxChapter(existing.chapterEnd, normalized.chapterEnd),
+        _priority: Math.max(priority, existing._priority || 0),
+      });
+    }
+  }
+
+  return [...merged.values()]
+    .sort((a, b) => (b.importance - a.importance) || ((b.mentionCount || 0) - (a.mentionCount || 0)))
+    .map(({ _priority, ...item }) => item);
 }
 
 function normalizeLocation(location) {
@@ -139,6 +183,9 @@ function normalizeLocation(location) {
       chapterSpread: 0,
       chapterStart: null,
       chapterEnd: null,
+      description: '',
+      aliases: [],
+      timeline: [],
       importance: 0,
       isMajor: false,
       evidence: [],
@@ -156,6 +203,9 @@ function normalizeLocation(location) {
     chapterSpread: Number.isFinite(Number(location.chapterSpread)) ? Number(location.chapterSpread) : 0,
     chapterStart: parseChapter(location.chapterStart),
     chapterEnd: parseChapter(location.chapterEnd),
+    description: String(location.description || '').trim(),
+    aliases: Array.isArray(location.aliases) ? location.aliases.map((x) => String(x || '').trim()).filter(Boolean) : [],
+    timeline: normalizeTimeline(location.timeline || location.timelineEvents || []),
     importance: Number.isFinite(Number(location.importance)) ? Number(location.importance) : 0,
     isMajor: Boolean(location.isMajor),
     evidence: Array.isArray(location.evidence) ? location.evidence : [],
@@ -171,19 +221,30 @@ function parseIncidents(raw) {
     .filter(Boolean);
 }
 
+// [FIX] Mở rộng normalizeIncident:
+// - Thêm các field narrative từ Pass B (preconditions/progression/turningPoints/climax/outcome/consequences/evidenceRefs)
+// - Fix confidence default: null thay vì 0 khi không có giá trị (tránh incident mới bị filter sai)
+// - Thêm description và why (trigger)
 function normalizeIncident(incident) {
   if (!incident || typeof incident !== 'object') return null;
 
   const title = String(incident.title || incident.name || incident.anchorEventDescription || '').trim();
   if (!title) return null;
 
+  // confidence: null khi không có giá trị, không default về 0
+  const rawConfidence = incident.confidence ?? incident.score;
+  const confidence = rawConfidence != null ? clamp(rawConfidence, 0, 1) : null;
+
   return {
     id: incident.id || generateEventId({ incident: title }),
     title,
+    // [NEW] description và why cho incident card
+    description: String(incident.description || incident.summary || '').trim(),
+    why: String(incident.why || incident.trigger || incident.triggerDescription || '').trim(),
     location: incident.location ? normalizeIncidentLocation(incident.location) : null,
     chapterStart: parseChapter(incident.chapterStart),
     chapterEnd: parseChapter(incident.chapterEnd),
-    confidence: clamp(incident.confidence ?? incident.score ?? 0, 0, 1),
+    confidence,
     anchorEventId: incident.anchorEventId || null,
     anchorEventDescription: String(incident.anchorEventDescription || '').trim(),
     eventIds: Array.isArray(incident.eventIds)
@@ -195,6 +256,14 @@ function normalizeIncident(incident) {
     subeventCount: Number.isFinite(Number(incident.subeventCount)) ? Number(incident.subeventCount) : 0,
     evidenceSnippet: String(incident.evidenceSnippet || '').trim(),
     tags: Array.isArray(incident.tags) ? normalizeTags(incident.tags) : [],
+    // [NEW] Narrative fields từ Pass B deep analysis
+    preconditions: normalizeStringArray(incident.preconditions || []),
+    progression: normalizeStringArray(incident.progression || []),
+    turningPoints: normalizeStringArray(incident.turning_points || incident.turningPoints || []),
+    climax: String(incident.climax || '').trim(),
+    outcome: String(incident.outcome || '').trim(),
+    consequences: normalizeStringArray(incident.consequences || []),
+    evidenceRefs: normalizeStringArray(incident.evidence_refs || incident.evidenceRefs || []),
   };
 }
 
@@ -326,15 +395,20 @@ function normalizeEvent(event, sourceType = 'event') {
   };
 }
 
-function generateEventId(event) {
-  const str = JSON.stringify(event);
-  let hash = 0;
+// [FIX] Thay thế djb2 32-bit bằng dual hash 64-bit để giảm collision risk
+// với corpus lớn. ID vẫn deterministic (cùng input → cùng output) để dedup hoạt động đúng.
+function generateEventId(input) {
+  const str = typeof input === 'string' ? input : JSON.stringify(input);
+  let h1 = 0;
+  let h2 = 0x5f3759df;
   for (let i = 0; i < str.length; i++) {
     const ch = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + ch;
-    hash |= 0;
+    h1 = Math.imul(((h1 << 5) - h1) + ch, 0x9e3779b9) | 0;
+    h2 = Math.imul(((h2 << 5) - h2) + ch, 0x6c62272e) | 0;
   }
-  return `evt_${Math.abs(hash).toString(36)}`;
+  const p1 = Math.abs(h1 >>> 0).toString(36).padStart(7, '0');
+  const p2 = Math.abs(h2 >>> 0).toString(36).padStart(7, '0');
+  return `evt_${p1}${p2}`;
 }
 
 function normalizeEventType(value) {
@@ -533,11 +607,39 @@ function clamp(value, min, max) {
 }
 
 function parseCharacterProfiles(raw) {
-  const l4 = raw?.characters || raw?.resultL4 || {};
-  if (Array.isArray(l4)) return l4.map(normalizeCharacter);
-  if (typeof l4 === 'object') {
-    return Object.entries(l4).map(([id, profile]) => normalizeCharacter({ id, ...profile }));
+  const knowledge = getKnowledgeNode(raw);
+  const top = raw?.characters;
+  const l4 = parseJsonField(raw?.resultL4, null);
+
+  const directProfiles = [
+    ...(Array.isArray(knowledge?.characters) ? knowledge.characters : []),
+    ...(Array.isArray(top?.profiles) ? top.profiles : []),
+    ...(Array.isArray(top?.characters) ? top.characters : []),
+    ...(Array.isArray(l4?.profiles) ? l4.profiles : []),
+    ...(Array.isArray(l4?.characters) ? l4.characters : []),
+  ];
+
+  if (directProfiles.length > 0) {
+    return directProfiles.map(normalizeCharacter).filter(Boolean);
   }
+
+  if (Array.isArray(top)) return top.map(normalizeCharacter).filter(Boolean);
+  if (Array.isArray(l4)) return l4.map(normalizeCharacter).filter(Boolean);
+
+  if (top && typeof top === 'object') {
+    return Object.entries(top)
+      .filter(([, profile]) => profile && typeof profile === 'object' && !Array.isArray(profile))
+      .map(([id, profile]) => normalizeCharacter({ id, ...profile }))
+      .filter(Boolean);
+  }
+
+  if (l4 && typeof l4 === 'object') {
+    return Object.entries(l4)
+      .filter(([, profile]) => profile && typeof profile === 'object' && !Array.isArray(profile))
+      .map(([id, profile]) => normalizeCharacter({ id, ...profile }))
+      .filter(Boolean);
+  }
+
   return [];
 }
 
@@ -548,6 +650,19 @@ function normalizeCharacter(char) {
     name: char.name || char.characterName || 'Unknown',
     description: char.description || char.summary || '',
     role: char.role || char.type || 'secondary',
+    appearance: char.appearance || '',
+    personality: char.personality || '',
+    personalityTags: normalizeTags(
+      char.personalityTags
+      || char.personality_tags
+      || char.personalityTagsText
+      || char.tags
+      || [],
+    ),
+    flaws: char.flaws || '',
+    goals: char.goals || char.goal || '',
+    secrets: char.secrets || char.secret || '',
+    timeline: normalizeTimeline(char.timeline || char.timelineEvents || []),
     isPOV: Boolean(char.isPOV || char.pov || char.mainPOV),
     appearanceCount: clamp(char.appearanceCount || char.appearances || 0, 0, Infinity),
     arc: char.arc || char.characterArc || '',
@@ -604,6 +719,194 @@ function extractSummary(raw) {
     wordCount: s.wordCount || raw?.meta?.wordCount || 0,
     chapters: s.chapters || raw?.meta?.chapters || 0,
   };
+}
+
+function parseWorldProfile(raw) {
+  const knowledge = getKnowledgeNode(raw);
+  const top = raw?.world_profile || raw?.worldProfile || knowledge?.world_profile || knowledge?.worldProfile || {};
+  const worldbuilding = raw?.worldbuilding || parseJsonField(raw?.resultL3, {});
+  const setting = worldbuilding?.setting || {};
+
+  return {
+    worldName: top.world_name || top.worldName || setting.worldName || setting.name || setting.primaryLocation || worldbuilding.worldName || '',
+    worldType: top.world_type || top.worldType || setting.worldType || setting.type || worldbuilding.worldType || 'unknown',
+    worldScale: top.world_scale || top.worldScale || setting.worldScale || setting.scale || worldbuilding.worldScale || '',
+    worldEra: top.world_era || top.worldEra || setting.worldEra || setting.era || worldbuilding.worldEra || '',
+    worldRules: normalizeStringArray(
+      top.world_rules
+      || top.worldRules
+      || setting.rules
+      || worldbuilding.rules
+      || worldbuilding.worldRules
+      || [],
+    ),
+    worldDescription: top.world_description
+      || top.worldDescription
+      || setting.description
+      || worldbuilding.description
+      || '',
+  };
+}
+
+function parseObjects(raw) {
+  const knowledge = getKnowledgeNode(raw);
+  const worldbuilding = raw?.worldbuilding || parseJsonField(raw?.resultL3, {});
+  const source = [
+    ...(Array.isArray(knowledge?.objects) ? knowledge.objects : []),
+    ...(Array.isArray(raw?.objects) ? raw.objects : []),
+    ...(Array.isArray(worldbuilding?.objects) ? worldbuilding.objects : []),
+    ...(Array.isArray(worldbuilding?.items) ? worldbuilding.items : []),
+  ];
+
+  return source
+    .map((item, index) => normalizeObject(item, index))
+    .filter(Boolean);
+}
+
+function normalizeObject(item, index = 0) {
+  if (!item) return null;
+  if (typeof item === 'string') {
+    const name = item.trim();
+    if (!name) return null;
+    return {
+      id: `obj_${index}_${generateEventId(name)}`,
+      name,
+      owner: '',
+      description: '',
+      properties: '',
+      timeline: [],
+    };
+  }
+
+  const name = String(item.name || item.title || '').trim();
+  if (!name) return null;
+  return {
+    id: item.id || `obj_${index}_${generateEventId(name)}`,
+    name,
+    owner: String(item.owner || item.ownerName || '').trim(),
+    description: String(item.description || item.summary || '').trim(),
+    properties: typeof item.properties === 'string'
+      ? item.properties.trim()
+      : JSON.stringify(item.properties || {}),
+    timeline: normalizeTimeline(item.timeline || item.timelineEvents || []),
+  };
+}
+
+function parseTerms(raw) {
+  const knowledge = getKnowledgeNode(raw);
+  const worldbuilding = raw?.worldbuilding || parseJsonField(raw?.resultL3, {});
+  const powers = worldbuilding?.powers || {};
+  const magicSystem = worldbuilding?.magicSystem || {};
+
+  const source = [
+    ...(Array.isArray(knowledge?.terms) ? knowledge.terms : []),
+    ...(Array.isArray(raw?.terms) ? raw.terms : []),
+    ...(Array.isArray(raw?.worldTerms) ? raw.worldTerms : []),
+    ...(Array.isArray(worldbuilding?.terms) ? worldbuilding.terms : []),
+    ...(Array.isArray(powers?.terms) ? powers.terms : []),
+    ...(Array.isArray(magicSystem?.terms) ? magicSystem.terms : []),
+  ];
+
+  return source
+    .map((item, index) => normalizeTerm(item, index))
+    .filter(Boolean);
+}
+
+function normalizeTerm(item, index = 0) {
+  if (!item) return null;
+  if (typeof item === 'string') {
+    const name = item.trim();
+    if (!name) return null;
+    return {
+      id: `term_${index}_${generateEventId(name)}`,
+      name,
+      category: 'other',
+      definition: '',
+      timeline: [],
+    };
+  }
+
+  const name = String(item.name || item.term || item.title || '').trim();
+  if (!name) return null;
+  return {
+    id: item.id || `term_${index}_${generateEventId(name)}`,
+    name,
+    category: String(item.category || item.type || 'other').trim() || 'other',
+    definition: String(item.definition || item.description || '').trim(),
+    timeline: normalizeTimeline(item.timeline || item.timelineEvents || []),
+  };
+}
+
+function normalizeStringArray(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/[\n,;]+/u)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeTimeline(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      eventId: item.eventId || item.id || null,
+      chapter: parseChapter(item.chapter),
+      summary: String(item.summary || item.description || '').trim(),
+    }))
+    .filter((item) => item.eventId || item.chapter || item.summary);
+}
+
+function getKnowledgeNode(raw) {
+  if (raw?.knowledge && typeof raw.knowledge === 'object') {
+    return raw.knowledge;
+  }
+
+  const summaryKnowledge = raw?.summary?.knowledge;
+  if (summaryKnowledge && typeof summaryKnowledge === 'object') {
+    return summaryKnowledge;
+  }
+
+  return null;
+}
+
+function isLikelyLocationRecord(location, trusted = false) {
+  const name = String(location?.name || '').trim();
+  if (!name) return false;
+  if (!isLikelyEntityName(name, 9, 90)) return false;
+
+  if (trusted) return true;
+  const mentionCount = Number(location?.mentionCount || 0);
+  const hasDescription = String(location?.description || '').trim().length >= 8;
+  const isMajor = Boolean(location?.isMajor);
+  if (hasDescription || isMajor) return true;
+  return mentionCount >= 2;
+}
+
+function isLikelyEntityName(name, maxWords = 8, maxLength = 72) {
+  const text = String(name || '').trim();
+  if (!text) return false;
+  if (text.length > maxLength) return false;
+  if (/[.!?]/u.test(text)) return false;
+  const words = text.split(/\s+/u).filter(Boolean);
+  if (words.length > maxWords) return false;
+  return true;
+}
+
+function chooseMinChapter(a, b) {
+  const values = [a, b].filter((item) => Number.isFinite(Number(item)) && Number(item) > 0);
+  return values.length ? Math.min(...values) : null;
+}
+
+function chooseMaxChapter(a, b) {
+  const values = [a, b].filter((item) => Number.isFinite(Number(item)) && Number(item) > 0);
+  return values.length ? Math.max(...values) : null;
 }
 
 /**
@@ -761,7 +1064,21 @@ export function buildTimeline(events) {
     })
     .map(([chapter, chapterEvents]) => ({
       chapter: Number(chapter),
-      events: chapterEvents.sort((a, b) => a.position.localeCompare(b.position)),
+      events: chapterEvents.sort((a, b) => {
+        const pos = { start: 1, middle: 2, end: 3 };
+        const posA = pos[String(a.position || '').toLowerCase()] || 2;
+        const posB = pos[String(b.position || '').toLowerCase()] || 2;
+        if (posA !== posB) return posA - posB;
+
+        const severityRank = { crucial: 4, major: 3, moderate: 2, minor: 1 };
+        const sevA = severityRank[String(a.severity || '').toLowerCase()] || 0;
+        const sevB = severityRank[String(b.severity || '').toLowerCase()] || 0;
+        if (sevA !== sevB) return sevB - sevA;
+
+        const qualityA = Number(a.quality?.score || 0);
+        const qualityB = Number(b.quality?.score || 0);
+        return qualityB - qualityA;
+      }),
     }));
 }
 

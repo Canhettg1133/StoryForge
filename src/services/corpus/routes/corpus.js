@@ -3,6 +3,19 @@ import multer from 'multer';
 import { ANALYSIS_CONFIG } from '../../analysis/analysisConfig.js';
 import { getCorpusAnalysisService } from '../../analysis/index.js';
 import {
+  getIncidentById,
+  getLatestAnalysisIdForCorpus,
+  getReviewQueueItemById,
+  getReviewQueueStatsByAnalysis,
+  listAnalysisEventsByIncident,
+  listAnalysisLocationsByAnalysis,
+  listConsistencyRisksByAnalysis,
+  listIncidentsByAnalysis,
+  listReviewQueueByAnalysis,
+  upsertIncident,
+  upsertReviewQueueItem,
+} from '../../analysis/db/incidentFirstQueries.js';
+import {
   createCorpusFromUpload,
   getCorpusChunkPreview,
   getCorpusChapter,
@@ -60,6 +73,29 @@ function toHttpError(error) {
 export function createCorpusRouter() {
   const router = express.Router();
   const analysisService = getCorpusAnalysisService();
+
+  function resolveAnalysisId(corpusId, requestedAnalysisId = null) {
+    if (requestedAnalysisId) {
+      const analysis = analysisService.getRawById(requestedAnalysisId);
+      if (!analysis || analysis.corpusId !== corpusId) {
+        return null;
+      }
+      return requestedAnalysisId;
+    }
+
+    return getLatestAnalysisIdForCorpus(corpusId, { includeNonTerminal: true });
+  }
+
+  function parseReviewFilter(filter) {
+    const value = String(filter || 'all').trim();
+    if (value === 'needs_review') {
+      return { status: 'pending', priority: null, filter: value };
+    }
+    if (['P0', 'P1', 'P2'].includes(value)) {
+      return { status: null, priority: value, filter: value };
+    }
+    return { status: null, priority: null, filter: 'all' };
+  }
 
   router.post('/', upload.single('file'), async (req, res) => {
     try {
@@ -165,6 +201,29 @@ export function createCorpusRouter() {
     }
   });
 
+  router.post('/:id/incident-analysis', async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const mode = payload.mode || payload.runMode || 'balanced';
+      const analysis = await analysisService.start(req.params.id, {
+        ...payload,
+        runMode: mode,
+      });
+
+      return res.status(201).json({
+        id: analysis.id,
+        corpusId: analysis.corpusId,
+        status: analysis.status,
+        mode,
+        estimatedTime: analysis.estimatedTime || null,
+        estimatedMinutes: analysis.estimatedMinutes || null,
+      });
+    } catch (error) {
+      const httpError = toHttpError(error);
+      return res.status(httpError.status).json({ error: httpError.message });
+    }
+  });
+
   router.get('/:id/analysis', (req, res) => {
     const corpus = getCorpusRecord(req.params.id, { includeChapterContent: false });
     if (!corpus) {
@@ -255,6 +314,147 @@ export function createCorpusRouter() {
       corpusId: req.params.id,
       layer: layer.layer,
       result: layer.value,
+    });
+  });
+
+  router.get('/:id/incidents', (req, res) => {
+    const corpus = getCorpusRecord(req.params.id, { includeChapterContent: false });
+    if (!corpus) {
+      return res.status(404).json({ error: 'Không tìm thấy corpus.' });
+    }
+
+    const analysisId = resolveAnalysisId(req.params.id, req.query?.analysisId);
+    if (!analysisId) {
+      return res.json({ analysisId: null, incidents: [], total: 0 });
+    }
+
+    const incidents = listIncidentsByAnalysis(analysisId);
+    return res.json({
+      analysisId,
+      incidents,
+      total: incidents.length,
+    });
+  });
+
+  router.get('/:id/incidents/:incidentId', (req, res) => {
+    const incident = getIncidentById(req.params.incidentId);
+    if (!incident || incident.corpusId !== req.params.id) {
+      return res.status(404).json({ error: 'Không tìm thấy incident.' });
+    }
+
+    const events = listAnalysisEventsByIncident(incident.id);
+    const allLocations = listAnalysisLocationsByAnalysis(incident.analysisId);
+    const locationIds = new Set([
+      ...(incident.relatedLocations || []),
+      ...events
+        .map((event) => event?.locationLink?.locationId)
+        .filter(Boolean),
+    ]);
+
+    const locations = allLocations.filter((location) => {
+      if (locationIds.has(location.id)) return true;
+      return Array.isArray(location?.incidentIds) && location.incidentIds.includes(incident.id);
+    });
+
+    const eventIds = new Set(events.map((event) => event.id));
+    const consistencyRisks = listConsistencyRisksByAnalysis(incident.analysisId).filter((risk) => {
+      if (Array.isArray(risk?.involvedIncidents) && risk.involvedIncidents.includes(incident.id)) return true;
+      if (!Array.isArray(risk?.involvedEvents)) return false;
+      return risk.involvedEvents.some((eventId) => eventIds.has(eventId));
+    });
+
+    return res.json({
+      analysisId: incident.analysisId,
+      incident,
+      events,
+      locations,
+      consistencyRisks,
+    });
+  });
+
+  router.patch('/:id/incidents/:incidentId', (req, res) => {
+    const incident = getIncidentById(req.params.incidentId);
+    if (!incident || incident.corpusId !== req.params.id) {
+      return res.status(404).json({ error: 'Không tìm thấy incident.' });
+    }
+
+    const updates = req.body || {};
+    const next = upsertIncident({
+      ...incident,
+      ...updates,
+      id: incident.id,
+      corpusId: incident.corpusId,
+      analysisId: incident.analysisId,
+      reviewedAt: Date.now(),
+    });
+
+    return res.json({
+      updated: true,
+      incident: next,
+    });
+  });
+
+  router.get('/:id/review-queue', (req, res) => {
+    const corpus = getCorpusRecord(req.params.id, { includeChapterContent: false });
+    if (!corpus) {
+      return res.status(404).json({ error: 'Không tìm thấy corpus.' });
+    }
+
+    const analysisId = resolveAnalysisId(req.params.id, req.query?.analysisId);
+    if (!analysisId) {
+      return res.json({
+        analysisId: null,
+        items: [],
+        stats: { total: 0, P0: 0, P1: 0, P2: 0, pending: 0 },
+        total: 0,
+      });
+    }
+
+    const filterConfig = parseReviewFilter(req.query?.filter);
+    const limit = Math.max(1, Math.min(500, Number(req.query?.limit) || 20));
+    const offset = Math.max(0, Number(req.query?.offset) || 0);
+
+    const items = listReviewQueueByAnalysis(analysisId, {
+      status: filterConfig.status,
+      priority: filterConfig.priority,
+      limit,
+      offset,
+    });
+    const stats = getReviewQueueStatsByAnalysis(analysisId);
+
+    return res.json({
+      analysisId,
+      filter: filterConfig.filter,
+      items,
+      stats,
+      total: items.length,
+      limit,
+      offset,
+    });
+  });
+
+  router.patch('/:id/review-queue/:itemId', (req, res) => {
+    const item = getReviewQueueItemById(req.params.itemId);
+    if (!item || item.corpusId !== req.params.id) {
+      return res.status(404).json({ error: 'Không tìm thấy review item.' });
+    }
+
+    const payload = req.body || {};
+    const status = payload.status || item.status;
+    const resolved = status === 'resolved' || status === 'ignored';
+
+    const next = upsertReviewQueueItem({
+      ...item,
+      ...payload,
+      id: item.id,
+      corpusId: item.corpusId,
+      analysisId: item.analysisId,
+      reviewedAt: resolved ? Date.now() : item.reviewedAt,
+    });
+
+    return res.json({
+      updated: true,
+      item: next,
     });
   });
 

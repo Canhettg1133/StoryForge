@@ -207,13 +207,17 @@ async function materializeLinkedEventToProject({
 
 function summarizeAnalysisResult(result) {
   const raw = safeJsonParse(result, result) || {};
+  const knowledge = parseResultLayer(raw.knowledge);
   const l2 = raw?.events || raw?.resultL2 || {};
   const majorEvents = l2?.majorEvents || l2?.major || l2?.major_events || [];
   const minorEvents = l2?.minorEvents || l2?.minor || l2?.minor_events || [];
   const twists = l2?.plotTwists || l2?.twists || l2?.plot_twists || [];
   const cliffhangers = l2?.cliffhangers || l2?.cliffhanger || l2?.cliff_hangers || [];
-  const locations = raw?.locations || raw?.locationEntities || raw?.worldbuilding?.locations || [];
+  const locations = knowledge?.locations || raw?.worldbuilding?.locations || raw?.locations || raw?.locationEntities || [];
   const incidents = raw?.incidents || raw?.incidentClusters || [];
+  const objects = knowledge?.objects || raw?.objects || raw?.worldbuilding?.objects || raw?.worldbuilding?.items || [];
+  const terms = knowledge?.terms || raw?.terms || raw?.worldTerms || raw?.worldbuilding?.terms || [];
+  const characters = knowledge?.characters || raw?.characters?.profiles || raw?.structural?.characters || [];
 
   const count = (list) => (Array.isArray(list) ? list.length : 0);
 
@@ -225,7 +229,812 @@ function summarizeAnalysisResult(result) {
     totalEvents: count(majorEvents) + count(minorEvents) + count(twists) + count(cliffhangers),
     locations: count(locations),
     incidents: count(incidents),
+    characters: count(characters),
+    objects: count(objects),
+    terms: count(terms),
   };
+}
+
+function toArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function safeArrayFromValue(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    return trimmed
+      .split(/[\n,;|]+/u)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function mergeUniqueText(existing = [], incoming = []) {
+  const map = new Map();
+  for (const item of [...existing, ...incoming]) {
+    const text = normalizeText(item);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, text);
+    }
+  }
+  return [...map.values()];
+}
+
+function pickFirstText(...values) {
+  for (const value of values) {
+    const text = normalizeText(value);
+    if (text) return text;
+  }
+  return '';
+}
+
+function normalizeEntityName(value) {
+  return normalizeText(value);
+}
+
+function isLikelyEntityName(name, maxWords = 8, maxLength = 72) {
+  const text = normalizeText(name);
+  if (!text) return false;
+  if (text.length > maxLength) return false;
+  if (/[.!?]/u.test(text)) return false;
+  const words = text.split(/\s+/u).filter(Boolean);
+  if (words.length > maxWords) return false;
+  return true;
+}
+
+function dedupeByName(items = []) {
+  const map = new Map();
+
+  for (const item of toArray(items)) {
+    const name = normalizeEntityName(item?.name);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const aliases = mergeUniqueText([], safeArrayFromValue(item?.aliases));
+
+    if (!map.has(key)) {
+      map.set(key, { ...item, name, aliases });
+      continue;
+    }
+
+    const existing = map.get(key);
+    map.set(key, {
+      ...existing,
+      ...item,
+      name: existing.name || name,
+      aliases: mergeUniqueText(existing.aliases, aliases),
+      description: pickFirstText(existing.description, item.description),
+      details: pickFirstText(existing.details, item.details),
+      role: pickFirstText(existing.role, item.role),
+      personality: pickFirstText(existing.personality, item.personality),
+      goals: pickFirstText(existing.goals, item.goals),
+      appearance: pickFirstText(existing.appearance, item.appearance),
+      category: pickFirstText(existing.category, item.category),
+      definition: pickFirstText(existing.definition, item.definition),
+      timeline: [
+        ...toArray(existing.timeline),
+        ...toArray(item.timeline),
+      ],
+    });
+  }
+
+  return [...map.values()];
+}
+
+function parseResultLayer(value) {
+  return safeJsonParse(value, value) || {};
+}
+
+function getKnowledgeNode(raw = {}) {
+  const knowledge = parseResultLayer(raw.knowledge);
+  if (knowledge && typeof knowledge === 'object' && Object.keys(knowledge).length > 0) {
+    return knowledge;
+  }
+  return {};
+}
+
+function normalizeEntityTimeline(value) {
+  return toArray(value)
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      eventId: normalizeText(item.eventId || item.id || ''),
+      chapter: Number.isFinite(Number(item.chapter)) ? Number(item.chapter) : null,
+      summary: normalizeText(item.summary || item.description || ''),
+    }))
+    .filter((item) => item.eventId || item.chapter || item.summary);
+}
+
+function extractWorldProfile(raw = {}) {
+  const knowledge = getKnowledgeNode(raw);
+  const top = parseResultLayer(raw.world_profile || raw.worldProfile);
+  const worldProfileNode = parseResultLayer(knowledge.world_profile || knowledge.worldProfile);
+  const worldbuilding = parseResultLayer(raw.worldbuilding);
+  const l3 = parseResultLayer(raw.resultL3);
+  const setting = parseResultLayer(worldbuilding.setting || l3.setting);
+  const powers = parseResultLayer(worldbuilding.powers || l3.powers);
+  const magicSystem = parseResultLayer(worldbuilding.magicSystem || l3.magicSystem);
+  const summary = parseResultLayer(raw.summary);
+
+  const worldName = pickFirstText(
+    top.world_name,
+    top.worldName,
+    worldProfileNode.world_name,
+    worldProfileNode.worldName,
+    setting.worldName,
+    setting.name,
+    worldbuilding.worldName,
+    worldbuilding.name,
+    summary.worldName,
+  );
+  const worldType = pickFirstText(
+    top.world_type,
+    top.worldType,
+    worldProfileNode.world_type,
+    worldProfileNode.worldType,
+    setting.worldType,
+    setting.type,
+    worldbuilding.worldType,
+    summary.worldType,
+  );
+  const worldScale = pickFirstText(
+    top.world_scale,
+    top.worldScale,
+    worldProfileNode.world_scale,
+    worldProfileNode.worldScale,
+    setting.scale,
+    setting.worldScale,
+    worldbuilding.worldScale,
+    summary.worldScale,
+  );
+  const worldEra = pickFirstText(
+    top.world_era,
+    top.worldEra,
+    worldProfileNode.world_era,
+    worldProfileNode.worldEra,
+    setting.era,
+    setting.worldEra,
+    worldbuilding.worldEra,
+    summary.worldEra,
+  );
+  const worldDescription = pickFirstText(
+    top.world_description,
+    top.worldDescription,
+    worldProfileNode.world_description,
+    worldProfileNode.worldDescription,
+    setting.description,
+    worldbuilding.description,
+    summary.worldDescription,
+  );
+
+  const worldRules = mergeUniqueText(
+    safeArrayFromValue(top.world_rules || top.worldRules),
+    safeArrayFromValue(worldProfileNode.world_rules || worldProfileNode.worldRules),
+    safeArrayFromValue(setting.rules),
+    [
+      ...safeArrayFromValue(worldbuilding.rules),
+      ...safeArrayFromValue(powers.rules),
+      ...safeArrayFromValue(magicSystem.rules),
+      ...safeArrayFromValue(summary.worldRules),
+    ],
+  );
+
+  return {
+    world_name: worldName,
+    world_type: worldType,
+    world_scale: worldScale,
+    world_era: worldEra,
+    world_description: worldDescription,
+    world_rules: worldRules,
+  };
+}
+
+function normalizeCharacterRecord(item) {
+  if (typeof item === 'string') {
+    const name = normalizeEntityName(item);
+    return name ? { name, aliases: [], role: 'supporting' } : null;
+  }
+
+  if (!item || typeof item !== 'object') return null;
+
+  const name = normalizeEntityName(
+    item.name
+    || item.character
+    || item.fullName
+    || item.title,
+  );
+  if (!name) return null;
+
+  return {
+    name,
+    aliases: safeArrayFromValue(item.aliases),
+    role: pickFirstText(item.role, item.type, item.archetype, 'supporting'),
+    appearance: pickFirstText(item.appearance, item.look, item.visual),
+    personality: pickFirstText(item.personality, item.traits, item.temperament),
+    personalityTags: pickFirstText(item.personalityTags, item.personality_tags, item.tags),
+    flaws: pickFirstText(item.flaws, item.weakness, item.weaknesses),
+    goals: pickFirstText(item.goals, item.goal, item.motivation),
+    secrets: pickFirstText(item.secrets, item.secret),
+    notes: pickFirstText(item.notes, item.description, item.summary),
+    timeline: normalizeEntityTimeline(item.timeline || item.timelineEvents),
+  };
+}
+
+function extractCharacters(raw = {}) {
+  const knowledge = getKnowledgeNode(raw);
+  const l1 = parseResultLayer(raw.resultL1);
+  const l4 = parseResultLayer(raw.resultL4);
+  const structural = parseResultLayer(raw.structural);
+  const charactersNode = parseResultLayer(raw.characters);
+
+  const source = [
+    ...toArray(knowledge.characters),
+    ...toArray(structural.characters),
+    ...toArray(l1.characters),
+    ...toArray(charactersNode.profiles),
+    ...toArray(raw.characterProfiles),
+    ...toArray(l4.profiles),
+  ];
+
+  return dedupeByName(source
+    .map((item) => normalizeCharacterRecord(item))
+    .filter(Boolean));
+}
+
+function normalizeLocationRecord(item, { trusted = false } = {}) {
+  if (typeof item === 'string') {
+    const name = normalizeEntityName(item);
+    return name ? { name, aliases: [], description: '' } : null;
+  }
+
+  if (!item || typeof item !== 'object') return null;
+
+  const name = normalizeEntityName(item.name || item.location || item.label);
+  if (!name || !isLikelyEntityName(name, 9, 84)) return null;
+
+  const mentionCount = Number(item.mentionCount || item.mentions || 0);
+  const isMajor = Boolean(item.isMajor);
+  const description = pickFirstText(item.description, item.summary);
+
+  if (!trusted) {
+    if (!description && !isMajor && mentionCount < 2) {
+      return null;
+    }
+  }
+
+  return {
+    name,
+    aliases: safeArrayFromValue(item.aliases),
+    description,
+    details: pickFirstText(item.details, item.evidence?.join?.('\n')),
+    timeline: normalizeEntityTimeline(item.timeline || item.timelineEvents),
+  };
+}
+
+function extractLocationsFromEvents(raw = {}) {
+  const events = parseResultLayer(raw.events || raw.resultL2);
+  const groups = [
+    ...toArray(events.majorEvents || events.major || events.major_events),
+    ...toArray(events.minorEvents || events.minor || events.minor_events),
+    ...toArray(events.plotTwists || events.twists || events.plot_twists),
+    ...toArray(events.cliffhangers || events.cliffhanger || events.cliff_hangers),
+  ];
+
+  return groups
+    .map((event) => {
+      const name = pickFirstText(
+        event?.locationLink?.locationName,
+        event?.primaryLocationName,
+        event?.locationName,
+      );
+      return name ? { name } : null;
+    })
+    .filter(Boolean);
+}
+
+function extractLocations(raw = {}) {
+  const knowledge = getKnowledgeNode(raw);
+  const worldbuilding = parseResultLayer(raw.worldbuilding);
+  const trusted = [
+    ...toArray(knowledge.locations),
+    ...toArray(worldbuilding.locations),
+  ];
+  const fallback = [
+    ...toArray(raw.locations),
+    ...toArray(raw.locationEntities),
+    ...extractLocationsFromEvents(raw),
+  ];
+
+  return dedupeByName([
+    ...trusted.map((item) => normalizeLocationRecord(item, { trusted: true })).filter(Boolean),
+    ...fallback.map((item) => normalizeLocationRecord(item, { trusted: false })).filter(Boolean),
+  ]);
+}
+
+function normalizeWorldTermRecord(item) {
+  if (typeof item === 'string') {
+    const name = normalizeEntityName(item);
+    return name ? { name, category: 'other', definition: '' } : null;
+  }
+
+  if (!item || typeof item !== 'object') return null;
+  const name = normalizeEntityName(item.name || item.term || item.title);
+  if (!name) return null;
+
+  return {
+    name,
+    aliases: safeArrayFromValue(item.aliases),
+    category: pickFirstText(item.category, item.type, 'other'),
+    definition: pickFirstText(item.definition, item.description, item.note),
+    timeline: normalizeEntityTimeline(item.timeline || item.timelineEvents),
+  };
+}
+
+function extractWorldTerms(raw = {}) {
+  const knowledge = getKnowledgeNode(raw);
+  const worldbuilding = parseResultLayer(raw.worldbuilding);
+  const l3 = parseResultLayer(raw.resultL3);
+  const powers = parseResultLayer(worldbuilding.powers || l3.powers);
+  const magicSystem = parseResultLayer(worldbuilding.magicSystem || l3.magicSystem);
+  const source = [
+    ...toArray(knowledge.terms),
+    ...toArray(raw.worldTerms),
+    ...toArray(worldbuilding.terms),
+    ...toArray(l3.terms),
+    ...toArray(powers.terms),
+    ...toArray(magicSystem.terms),
+  ];
+
+  return dedupeByName(source
+    .map((item) => normalizeWorldTermRecord(item))
+    .filter(Boolean));
+}
+
+function normalizeObjectRecord(item) {
+  if (typeof item === 'string') {
+    const name = normalizeEntityName(item);
+    return name ? { name, owner: '', description: '', properties: '' } : null;
+  }
+
+  if (!item || typeof item !== 'object') return null;
+  const name = normalizeEntityName(item.name || item.title || item.object);
+  if (!name) return null;
+
+  return {
+    name,
+    owner: pickFirstText(item.owner, item.ownerName, item.holder),
+    description: pickFirstText(item.description, item.summary),
+    properties: typeof item.properties === 'string'
+      ? item.properties
+      : safeJsonStringify(item.properties || {}, '{}'),
+    timeline: normalizeEntityTimeline(item.timeline || item.timelineEvents),
+  };
+}
+
+function extractObjects(raw = {}) {
+  const knowledge = getKnowledgeNode(raw);
+  const worldbuilding = parseResultLayer(raw.worldbuilding);
+  const source = [
+    ...toArray(knowledge.objects),
+    ...toArray(raw.objects),
+    ...toArray(worldbuilding.objects),
+    ...toArray(worldbuilding.items),
+  ];
+
+  return dedupeByName(source
+    .map((item) => normalizeObjectRecord(item))
+    .filter(Boolean));
+}
+
+function flattenEventsForTimeline(raw = {}) {
+  const events = parseResultLayer(raw.events || raw.resultL2);
+  const groups = [
+    ...toArray(events.majorEvents || events.major || events.major_events),
+    ...toArray(events.minorEvents || events.minor || events.minor_events),
+    ...toArray(events.plotTwists || events.twists || events.plot_twists),
+    ...toArray(events.cliffhangers || events.cliffhanger || events.cliff_hangers),
+  ];
+
+  return groups
+    .filter((item) => item && typeof item === 'object')
+    .map((item, index) => ({
+      id: normalizeText(item.id || `evt_${index}`),
+      chapter: Number.isFinite(Number(item.chapter || item.chapterIndex))
+        ? Number(item.chapter || item.chapterIndex)
+        : null,
+      summary: normalizeText(item.description || item.summary || item.title || ''),
+      locationName: normalizeText(
+        item.locationLink?.locationName
+        || item.primaryLocationName
+        || item.locationName
+        || '',
+      ),
+      tags: toArray(item.tags).map((tag) => normalizeText(tag).toLowerCase()).filter(Boolean),
+    }))
+    .filter((item) => item.chapter || item.summary || item.locationName);
+}
+
+function findTimelineForEntity(name, events = [], type = 'generic') {
+  const normalizedName = toComparableName(name);
+  if (!normalizedName) return [];
+
+  const matched = [];
+  for (const event of events) {
+    const eventSummary = normalizeText(event.summary);
+    const eventSummaryLower = eventSummary.toLowerCase();
+    const eventLocationLower = normalizeText(event.locationName).toLowerCase();
+    const tagHit = toArray(event.tags).some((tag) => tag.includes(normalizedName));
+    const locationHit = (
+      eventLocationLower
+      && (eventLocationLower.includes(normalizedName) || normalizedName.includes(eventLocationLower))
+    );
+    const summaryHit = eventSummaryLower.includes(normalizedName);
+
+    const hit = type === 'location'
+      ? (locationHit || summaryHit)
+      : (summaryHit || tagHit);
+    if (!hit) continue;
+
+    matched.push({
+      eventId: event.id || null,
+      chapter: event.chapter || null,
+      summary: eventSummary || '',
+    });
+  }
+
+  return matched
+    .sort((a, b) => Number(a.chapter || 999999) - Number(b.chapter || 999999))
+    .slice(0, 10);
+}
+
+function timelineToText(timeline = []) {
+  if (!timeline.length) return '';
+  return timeline
+    .map((item) => {
+      const chapterText = item.chapter ? `Ch.${item.chapter}` : 'Ch.?';
+      const summary = normalizeText(item.summary || item.eventId || '');
+      return `${chapterText}: ${summary}`;
+    })
+    .join('\n');
+}
+
+async function materializeSnapshotIntoProject(projectId, result) {
+  if (!projectId) {
+    return null;
+  }
+
+  const raw = safeJsonParse(result, result) || {};
+  const worldProfile = extractWorldProfile(raw);
+  const characters = extractCharacters(raw);
+  const objects = extractObjects(raw);
+  const locations = extractLocations(raw);
+  const worldTerms = extractWorldTerms(raw);
+  const timelineEvents = flattenEventsForTimeline(raw);
+
+  const now = Date.now();
+  const stats = {
+    worldUpdated: false,
+    charactersAdded: 0,
+    charactersUpdated: 0,
+    locationsAdded: 0,
+    locationsUpdated: 0,
+    objectsAdded: 0,
+    objectsUpdated: 0,
+    worldTermsAdded: 0,
+    worldTermsUpdated: 0,
+    extracted: {
+      characters: characters.length,
+      locations: locations.length,
+      objects: objects.length,
+      worldTerms: worldTerms.length,
+    },
+  };
+
+  await db.transaction(
+    'rw',
+    db.projects,
+    db.characters,
+    db.locations,
+    db.objects,
+    db.worldTerms,
+    async () => {
+      const project = await db.projects.get(projectId);
+      if (project) {
+        const patch = {};
+        const existingRules = safeArrayFromValue(
+          safeJsonParse(project.world_rules, project.world_rules),
+        );
+        const nextRules = mergeUniqueText(existingRules, worldProfile.world_rules);
+
+        if (!normalizeText(project.world_name) && worldProfile.world_name) {
+          patch.world_name = worldProfile.world_name;
+        }
+        if (!normalizeText(project.world_type) && worldProfile.world_type) {
+          patch.world_type = worldProfile.world_type;
+        }
+        if (!normalizeText(project.world_scale) && worldProfile.world_scale) {
+          patch.world_scale = worldProfile.world_scale;
+        }
+        if (!normalizeText(project.world_era) && worldProfile.world_era) {
+          patch.world_era = worldProfile.world_era;
+        }
+        if (!normalizeText(project.world_description) && worldProfile.world_description) {
+          patch.world_description = worldProfile.world_description;
+        }
+        if (nextRules.length > 0 && JSON.stringify(existingRules) !== JSON.stringify(nextRules)) {
+          patch.world_rules = JSON.stringify(nextRules);
+        }
+
+        if (Object.keys(patch).length > 0) {
+          patch.updated_at = now;
+          await db.projects.update(projectId, patch);
+          stats.worldUpdated = true;
+        }
+      }
+
+      const existingCharacters = await db.characters.where('project_id').equals(projectId).toArray();
+      const charMap = new Map(
+        existingCharacters.map((item) => [toComparableName(item.name), item]),
+      );
+
+      for (const incoming of characters) {
+        const key = toComparableName(incoming.name);
+        if (!key) continue;
+        const existing = charMap.get(key);
+        const personalityTagsText = Array.isArray(incoming.personalityTags)
+          ? incoming.personalityTags.join(', ')
+          : normalizeText(incoming.personalityTags || '');
+
+        if (!existing) {
+          const createdId = await db.characters.add({
+            project_id: projectId,
+            name: incoming.name,
+            aliases: incoming.aliases || [],
+            role: incoming.role || 'supporting',
+            appearance: incoming.appearance || '',
+            personality: incoming.personality || '',
+            flaws: incoming.flaws || '',
+            personality_tags: personalityTagsText,
+            pronouns_self: '',
+            pronouns_other: '',
+            speech_pattern: '',
+            current_status: '',
+            goals: incoming.goals || '',
+            secrets: incoming.secrets || '',
+            notes: incoming.notes || '',
+            created_at: now,
+          });
+          stats.charactersAdded += 1;
+          charMap.set(key, {
+            id: createdId,
+            ...incoming,
+            name: incoming.name,
+          });
+          continue;
+        }
+
+        const patch = {};
+        const nextAliases = mergeUniqueText(existing.aliases, incoming.aliases);
+        if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
+          patch.aliases = nextAliases;
+        }
+        if (!normalizeText(existing.appearance) && incoming.appearance) {
+          patch.appearance = incoming.appearance;
+        }
+        if (!normalizeText(existing.personality) && incoming.personality) {
+          patch.personality = incoming.personality;
+        }
+        if (!normalizeText(existing.flaws) && incoming.flaws) {
+          patch.flaws = incoming.flaws;
+        }
+        if (!normalizeText(existing.personality_tags) && personalityTagsText) {
+          patch.personality_tags = personalityTagsText;
+        }
+        if (!normalizeText(existing.goals) && incoming.goals) {
+          patch.goals = incoming.goals;
+        }
+        if (!normalizeText(existing.secrets) && incoming.secrets) {
+          patch.secrets = incoming.secrets;
+        }
+        if (!normalizeText(existing.notes) && incoming.notes) {
+          patch.notes = incoming.notes;
+        }
+        const existingRole = normalizeText(existing.role || 'supporting').toLowerCase();
+        const incomingRole = normalizeText(incoming.role || '').toLowerCase();
+        if (
+          incomingRole
+          && incomingRole !== existingRole
+          && (existingRole === 'supporting' || !existingRole)
+        ) {
+          patch.role = incomingRole;
+        }
+
+        if (Object.keys(patch).length > 0) {
+          await db.characters.update(existing.id, patch);
+          stats.charactersUpdated += 1;
+        }
+      }
+
+      const ownerIdForName = (ownerName) => {
+        const key = toComparableName(ownerName);
+        if (!key) return null;
+        return charMap.get(key)?.id || null;
+      };
+
+      const mergeTimelineText = (baseText, timelineText) => {
+        const base = normalizeText(baseText);
+        if (!timelineText) return base;
+        if (base.toLowerCase().includes('timeline:')) return base;
+        if (!base) return `Timeline:\n${timelineText}`;
+        return `${base}\n\nTimeline:\n${timelineText}`;
+      };
+
+      const resolveEntityTimeline = (incoming, type = 'generic') => {
+        const explicit = normalizeEntityTimeline(incoming?.timeline || []);
+        if (explicit.length > 0) {
+          return explicit;
+        }
+        return findTimelineForEntity(incoming?.name, timelineEvents, type);
+      };
+
+      const existingObjects = await db.objects.where('project_id').equals(projectId).toArray();
+      const objectMap = new Map(
+        existingObjects.map((item) => [toComparableName(item.name), item]),
+      );
+
+      for (const incoming of objects) {
+        const key = toComparableName(incoming.name);
+        if (!key) continue;
+        const existing = objectMap.get(key);
+        const timeline = resolveEntityTimeline(incoming, 'generic');
+        const timelineText = timelineToText(timeline);
+        const resolvedOwnerId = ownerIdForName(incoming.owner);
+        const mergedProperties = mergeTimelineText(incoming.properties, timelineText);
+
+        if (!existing) {
+          const createdId = await db.objects.add({
+            project_id: projectId,
+            name: incoming.name,
+            description: incoming.description || '',
+            owner_character_id: resolvedOwnerId,
+            properties: mergedProperties || '',
+            created_at: now,
+          });
+          stats.objectsAdded += 1;
+          objectMap.set(key, {
+            id: createdId,
+            ...incoming,
+          });
+          continue;
+        }
+
+        const patch = {};
+        if (!normalizeText(existing.description) && incoming.description) {
+          patch.description = incoming.description;
+        }
+        if (!existing.owner_character_id && resolvedOwnerId) {
+          patch.owner_character_id = resolvedOwnerId;
+        }
+        if (timelineText) {
+          patch.properties = mergeTimelineText(existing.properties || incoming.properties || '', timelineText);
+        } else if (!normalizeText(existing.properties) && mergedProperties) {
+          patch.properties = mergedProperties;
+        }
+
+        if (Object.keys(patch).length > 0) {
+          await db.objects.update(existing.id, patch);
+          stats.objectsUpdated += 1;
+        }
+      }
+
+      const existingLocations = await db.locations.where('project_id').equals(projectId).toArray();
+      const locationMap = new Map(
+        existingLocations.map((item) => [toComparableName(item.name), item]),
+      );
+
+      for (const incoming of locations) {
+        const key = toComparableName(incoming.name);
+        if (!key) continue;
+        const existing = locationMap.get(key);
+        const timeline = resolveEntityTimeline(incoming, 'location');
+        const timelineText = timelineToText(timeline);
+        const mergedDetails = mergeTimelineText(incoming.details, timelineText);
+
+        if (!existing) {
+          const createdId = await db.locations.add({
+            project_id: projectId,
+            name: incoming.name,
+            aliases: incoming.aliases || [],
+            description: incoming.description || '',
+            details: mergedDetails || '',
+            parent_location_id: null,
+            created_at: now,
+            source_type: 'analysis_snapshot',
+          });
+          stats.locationsAdded += 1;
+          locationMap.set(key, {
+            id: createdId,
+            ...incoming,
+          });
+          continue;
+        }
+
+        const patch = {};
+        const nextAliases = mergeUniqueText(existing.aliases, incoming.aliases);
+        if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
+          patch.aliases = nextAliases;
+        }
+        if (!normalizeText(existing.description) && incoming.description) {
+          patch.description = incoming.description;
+        }
+        if (timelineText) {
+          patch.details = mergeTimelineText(existing.details || incoming.details || '', timelineText);
+        } else if (!normalizeText(existing.details) && incoming.details) {
+          patch.details = incoming.details;
+        }
+
+        if (Object.keys(patch).length > 0) {
+          await db.locations.update(existing.id, patch);
+          stats.locationsUpdated += 1;
+        }
+      }
+
+      const existingWorldTerms = await db.worldTerms.where('project_id').equals(projectId).toArray();
+      const termMap = new Map(
+        existingWorldTerms.map((item) => [toComparableName(item.name), item]),
+      );
+
+      for (const incoming of worldTerms) {
+        const key = toComparableName(incoming.name);
+        if (!key) continue;
+        const existing = termMap.get(key);
+        const timeline = resolveEntityTimeline(incoming, 'generic');
+        const timelineText = timelineToText(timeline);
+        const mergedDefinition = mergeTimelineText(incoming.definition, timelineText);
+
+        if (!existing) {
+          const createdId = await db.worldTerms.add({
+            project_id: projectId,
+            name: incoming.name,
+            aliases: incoming.aliases || [],
+            definition: mergedDefinition || '',
+            category: incoming.category || 'other',
+            created_at: now,
+          });
+          stats.worldTermsAdded += 1;
+          termMap.set(key, {
+            id: createdId,
+            ...incoming,
+          });
+          continue;
+        }
+
+        const patch = {};
+        const nextAliases = mergeUniqueText(existing.aliases, incoming.aliases);
+        if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
+          patch.aliases = nextAliases;
+        }
+        if (timelineText) {
+          patch.definition = mergeTimelineText(existing.definition || incoming.definition || '', timelineText);
+        } else if (!normalizeText(existing.definition) && incoming.definition) {
+          patch.definition = incoming.definition;
+        }
+        if (!normalizeText(existing.category) && incoming.category) {
+          patch.category = incoming.category;
+        }
+
+        if (Object.keys(patch).length > 0) {
+          await db.worldTerms.update(existing.id, patch);
+          stats.worldTermsUpdated += 1;
+        }
+      }
+    },
+  );
+
+  return stats;
 }
 
 // ─── Event Annotations ────────────────────────────────────────────────────────
@@ -837,6 +1646,7 @@ export async function saveAnalysisSnapshotToProject({
   status = 'completed',
   layers = [],
   result = null,
+  materializeProjectEntities = true,
 }) {
   if (!projectId || !analysisId) {
     throw new Error('projectId và analysisId là bắt buộc để lưu snapshot.');
@@ -862,15 +1672,27 @@ export async function saveAnalysisSnapshotToProject({
     updated_at: now,
   };
 
+  let snapshotId = null;
   if (existing) {
     await db.project_analysis_snapshots.update(existing.id, record);
-    return existing.id;
+    snapshotId = existing.id;
+  } else {
+    snapshotId = await db.project_analysis_snapshots.add({
+      ...record,
+      created_at: now,
+    });
   }
 
-  return db.project_analysis_snapshots.add({
-    ...record,
-    created_at: now,
-  });
+  let materialized = null;
+  if (materializeProjectEntities) {
+    materialized = await materializeSnapshotIntoProject(projectId, result);
+  }
+
+  return {
+    snapshotId,
+    summary,
+    materialized,
+  };
 }
 
 export async function getProjectAnalysisSnapshots(projectId, limit = 20) {

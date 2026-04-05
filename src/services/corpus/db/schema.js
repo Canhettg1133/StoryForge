@@ -1,14 +1,33 @@
 ﻿import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
 let dbInstance = null;
 
+function resolveModuleDefaultPath() {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(moduleDir, '..', '..', '..', '..', 'data', 'storyforge-corpus.sqlite');
+}
+
 function resolveDbPath() {
-  return (
-    process.env.STORYFORGE_CORPUS_DB_PATH
-    || path.resolve(process.cwd(), 'data', 'storyforge-corpus.sqlite')
-  );
+  const explicit = String(process.env.STORYFORGE_CORPUS_DB_PATH || '').trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const cwdCandidate = path.resolve(process.cwd(), 'data', 'storyforge-corpus.sqlite');
+  const moduleCandidate = resolveModuleDefaultPath();
+
+  if (fs.existsSync(cwdCandidate)) {
+    return cwdCandidate;
+  }
+
+  if (fs.existsSync(moduleCandidate)) {
+    return moduleCandidate;
+  }
+
+  return cwdCandidate;
 }
 
 function hasColumn(db, tableName, columnName) {
@@ -188,6 +207,208 @@ export function initCorpusSchema() {
       ON corpus_analyses(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_chunk_results_analysis
       ON chunk_results(analysis_id, chunk_index);
+
+    CREATE TABLE IF NOT EXISTS incidents (
+      id TEXT PRIMARY KEY,
+      corpus_id TEXT NOT NULL,
+      analysis_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('major_plot_point', 'subplot', 'pov_thread')),
+      description TEXT,
+      start_chapter_id TEXT,
+      start_chunk_id TEXT,
+      end_chapter_id TEXT,
+      end_chunk_id TEXT,
+      chapter_start_index INTEGER,
+      chapter_end_index INTEGER,
+      chunk_start_index INTEGER,
+      chunk_end_index INTEGER,
+      start_anchor TEXT,
+      active_span INTEGER,
+      climax_anchor TEXT,
+      end_anchor TEXT,
+      boundary_note TEXT,
+      uncertain_start INTEGER DEFAULT 0,
+      uncertain_end INTEGER DEFAULT 0,
+      confidence REAL DEFAULT 0,
+      evidence TEXT,
+      contained_events TEXT,
+      sub_incident_ids TEXT,
+      related_incidents TEXT,
+      related_locations TEXT,
+      causal_predecessors TEXT,
+      causal_successors TEXT,
+      major_score REAL DEFAULT 0,
+      impact_score REAL DEFAULT 0,
+      status TEXT DEFAULT 'pending',
+      review_status TEXT DEFAULT 'needs_review',
+      priority TEXT,
+      created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+      analyzed_at INTEGER,
+      reviewed_at INTEGER,
+      FOREIGN KEY (corpus_id) REFERENCES corpuses(id) ON DELETE CASCADE,
+      FOREIGN KEY (analysis_id) REFERENCES corpus_analyses(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_incidents_corpus
+      ON incidents(corpus_id);
+    CREATE INDEX IF NOT EXISTS idx_incidents_analysis
+      ON incidents(analysis_id);
+    CREATE INDEX IF NOT EXISTS idx_incidents_type
+      ON incidents(type);
+    CREATE INDEX IF NOT EXISTS idx_incidents_chapter_range
+      ON incidents(chapter_start_index, chapter_end_index);
+    CREATE INDEX IF NOT EXISTS idx_incidents_confidence
+      ON incidents(confidence);
+    CREATE INDEX IF NOT EXISTS idx_incidents_priority
+      ON incidents(priority);
+    CREATE INDEX IF NOT EXISTS idx_incidents_review_status
+      ON incidents(review_status);
+
+    CREATE TABLE IF NOT EXISTS analysis_events (
+      id TEXT PRIMARY KEY,
+      corpus_id TEXT NOT NULL,
+      analysis_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      severity REAL DEFAULT 0,
+      tags TEXT,
+      chapter_id TEXT,
+      chapter_index INTEGER,
+      chunk_id TEXT,
+      chunk_index INTEGER,
+      incident_id TEXT,
+      link_role TEXT DEFAULT 'primary' CHECK (link_role IN ('primary', 'secondary')),
+      secondary_incident_ids TEXT,
+      location_link TEXT,
+      causal_links TEXT,
+      confidence REAL DEFAULT 0,
+      evidence TEXT,
+      quality_proxy INTEGER DEFAULT 0,
+      review_status TEXT DEFAULT 'needs_review',
+      needs_review INTEGER DEFAULT 1,
+      annotation TEXT,
+      created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+      grounded_at INTEGER,
+      reviewed_at INTEGER,
+      FOREIGN KEY (corpus_id) REFERENCES corpuses(id) ON DELETE CASCADE,
+      FOREIGN KEY (analysis_id) REFERENCES corpus_analyses(id) ON DELETE CASCADE,
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_events_corpus
+      ON analysis_events(corpus_id);
+    CREATE INDEX IF NOT EXISTS idx_events_analysis
+      ON analysis_events(analysis_id);
+    CREATE INDEX IF NOT EXISTS idx_events_incident
+      ON analysis_events(incident_id);
+    CREATE INDEX IF NOT EXISTS idx_events_chapter
+      ON analysis_events(chapter_index);
+    CREATE INDEX IF NOT EXISTS idx_events_confidence
+      ON analysis_events(confidence);
+    CREATE INDEX IF NOT EXISTS idx_events_review_status
+      ON analysis_events(review_status);
+
+    CREATE TABLE IF NOT EXISTS analysis_locations (
+      id TEXT PRIMARY KEY,
+      corpus_id TEXT NOT NULL,
+      analysis_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      normalized TEXT,
+      aliases TEXT,
+      mention_count INTEGER DEFAULT 0,
+      chapter_start INTEGER,
+      chapter_end INTEGER,
+      chapter_spread TEXT,
+      importance REAL DEFAULT 0,
+      is_major INTEGER DEFAULT 0,
+      tokens TEXT,
+      evidence TEXT,
+      incident_ids TEXT,
+      event_ids TEXT,
+      confidence REAL DEFAULT 0,
+      evidence_strength REAL DEFAULT 0,
+      review_status TEXT DEFAULT 'needs_review',
+      created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+      reviewed_at INTEGER,
+      FOREIGN KEY (corpus_id) REFERENCES corpuses(id) ON DELETE CASCADE,
+      FOREIGN KEY (analysis_id) REFERENCES corpus_analyses(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_analysis_locations_corpus
+      ON analysis_locations(corpus_id);
+    CREATE INDEX IF NOT EXISTS idx_analysis_locations_analysis
+      ON analysis_locations(analysis_id);
+    CREATE INDEX IF NOT EXISTS idx_analysis_locations_name
+      ON analysis_locations(name);
+    CREATE INDEX IF NOT EXISTS idx_analysis_locations_major
+      ON analysis_locations(is_major);
+    CREATE INDEX IF NOT EXISTS idx_analysis_locations_confidence
+      ON analysis_locations(confidence);
+
+    CREATE TABLE IF NOT EXISTS consistency_risks (
+      id TEXT PRIMARY KEY,
+      corpus_id TEXT NOT NULL,
+      analysis_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK (severity IN ('hard', 'medium', 'soft')),
+      description TEXT,
+      details TEXT,
+      involved_incidents TEXT,
+      involved_events TEXT,
+      involved_locations TEXT,
+      evidence TEXT,
+      chapter_start INTEGER,
+      chapter_end INTEGER,
+      resolved INTEGER DEFAULT 0,
+      resolution TEXT,
+      resolved_at INTEGER,
+      detected_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+      FOREIGN KEY (corpus_id) REFERENCES corpuses(id) ON DELETE CASCADE,
+      FOREIGN KEY (analysis_id) REFERENCES corpus_analyses(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_consistency_corpus
+      ON consistency_risks(corpus_id);
+    CREATE INDEX IF NOT EXISTS idx_consistency_analysis
+      ON consistency_risks(analysis_id);
+    CREATE INDEX IF NOT EXISTS idx_consistency_type
+      ON consistency_risks(type);
+    CREATE INDEX IF NOT EXISTS idx_consistency_severity
+      ON consistency_risks(severity);
+    CREATE INDEX IF NOT EXISTS idx_consistency_resolved
+      ON consistency_risks(resolved);
+
+    CREATE TABLE IF NOT EXISTS review_queue (
+      id TEXT PRIMARY KEY,
+      corpus_id TEXT NOT NULL,
+      analysis_id TEXT NOT NULL,
+      item_type TEXT NOT NULL CHECK (item_type IN ('incident', 'event', 'location', 'consistency_risk')),
+      item_id TEXT NOT NULL,
+      priority TEXT NOT NULL CHECK (priority IN ('P0', 'P1', 'P2')),
+      priority_score REAL DEFAULT 0,
+      score_breakdown TEXT,
+      reason TEXT,
+      suggestions TEXT,
+      status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'in_review', 'resolved', 'ignored')),
+      reviewed_by TEXT,
+      reviewed_at INTEGER,
+      resolution TEXT,
+      created_at INTEGER DEFAULT (CAST(strftime('%s', 'now') AS INTEGER) * 1000),
+      FOREIGN KEY (corpus_id) REFERENCES corpuses(id) ON DELETE CASCADE,
+      FOREIGN KEY (analysis_id) REFERENCES corpus_analyses(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_review_corpus
+      ON review_queue(corpus_id);
+    CREATE INDEX IF NOT EXISTS idx_review_analysis
+      ON review_queue(analysis_id);
+    CREATE INDEX IF NOT EXISTS idx_review_priority
+      ON review_queue(priority);
+    CREATE INDEX IF NOT EXISTS idx_review_status
+      ON review_queue(status);
+    CREATE INDEX IF NOT EXISTS idx_review_item
+      ON review_queue(item_type, item_id);
   `);
 
   ensureColumn(db, 'corpuses', 'chunk_size_used INTEGER');
@@ -197,6 +418,34 @@ export function initCorpusSchema() {
   ensureColumn(db, 'corpus_analyses', 'progress REAL DEFAULT 0');
   ensureColumn(db, 'corpus_analyses', 'current_phase TEXT');
   ensureColumn(db, 'corpus_analyses', 'parts_generated INTEGER DEFAULT 0');
+
+  ensureColumn(db, 'incidents', 'contained_events TEXT');
+  ensureColumn(db, 'incidents', 'sub_incident_ids TEXT');
+  ensureColumn(db, 'incidents', 'related_incidents TEXT');
+  ensureColumn(db, 'incidents', 'related_locations TEXT');
+  ensureColumn(db, 'incidents', 'causal_predecessors TEXT');
+  ensureColumn(db, 'incidents', 'causal_successors TEXT');
+
+  ensureColumn(db, 'analysis_events', 'chapter_id TEXT');
+  ensureColumn(db, 'analysis_events', 'chapter_index INTEGER');
+  ensureColumn(db, 'analysis_events', 'chunk_id TEXT');
+  ensureColumn(db, 'analysis_events', 'chunk_index INTEGER');
+  ensureColumn(db, 'analysis_events', 'incident_id TEXT');
+  ensureColumn(db, 'analysis_events', 'link_role TEXT DEFAULT \'primary\'');
+  ensureColumn(db, 'analysis_events', 'secondary_incident_ids TEXT');
+  ensureColumn(db, 'analysis_events', 'location_link TEXT');
+  ensureColumn(db, 'analysis_events', 'causal_links TEXT');
+  ensureColumn(db, 'analysis_events', 'quality_proxy INTEGER DEFAULT 0');
+  ensureColumn(db, 'analysis_events', 'review_status TEXT DEFAULT \'needs_review\'');
+  ensureColumn(db, 'analysis_events', 'needs_review INTEGER DEFAULT 1');
+  ensureColumn(db, 'analysis_events', 'annotation TEXT');
+
+  ensureColumn(db, 'analysis_locations', 'incident_ids TEXT');
+  ensureColumn(db, 'analysis_locations', 'importance REAL DEFAULT 0');
+  ensureColumn(db, 'analysis_locations', 'is_major INTEGER DEFAULT 0');
+  ensureColumn(db, 'analysis_locations', 'event_ids TEXT');
+  ensureColumn(db, 'analysis_locations', 'confidence REAL DEFAULT 0');
+  ensureColumn(db, 'analysis_locations', 'evidence_strength REAL DEFAULT 0');
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_chunks_corpus_position

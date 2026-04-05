@@ -208,3 +208,13 @@
 | Timeline | `/timeline` | ⏳ Placeholder (Phase 6) |
 | Revision & QA | `/revision` | ⏳ Placeholder (Phase 5) |
 | Style Lab | `/style-lab` | ⏳ Placeholder (Phase 5) |
+
+---
+
+## Phase 6B/6C Update (2026-04-05)
+
+- [x] Incident-only 1M flow scaffolded (Pass A/B/C job + prompts).
+- [x] Unit/integration/e2e maintenance tests added (`src/tests/phases/phase6c-maintenance.test.js`).
+- [x] Backup automation added (`npm run backup:corpus`).
+- [x] Backfill automation added (`npm run backfill:incident-first`).
+- [x] One-command maintenance runner added (`npm run phase6:maintenance`).

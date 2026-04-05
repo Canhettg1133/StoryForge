@@ -4,13 +4,13 @@ import useAnalysisStore from '../../../../stores/analysisStore';
 const EMPTY_IDS = [];
 
 export default function useCorpusAnalysis(corpusId) {
-  const analysisIds = useAnalysisStore((state) => {
-    if (!corpusId) {
-      return EMPTY_IDS;
-    }
-    return state.analysisIdsByCorpus[corpusId] || EMPTY_IDS;
-  });
+  const analysisIdsByCorpus = useAnalysisStore((state) => state.analysisIdsByCorpus);
   const analysesMap = useAnalysisStore((state) => state.analyses);
+  const analysisIds = useMemo(() => {
+    if (!corpusId) return EMPTY_IDS;
+    const ids = analysisIdsByCorpus?.[corpusId];
+    return Array.isArray(ids) ? ids : EMPTY_IDS;
+  }, [analysisIdsByCorpus, corpusId]);
 
   const loadAnalyses = useAnalysisStore((state) => state.loadAnalyses);
   const startAnalysis = useAnalysisStore((state) => state.startAnalysis);

@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useCorpusStore from '../../../../stores/corpusStore';
 import useAnalysisStore from '../../../../stores/analysisStore';
+import { corpusApi } from '../../../../services/api/corpusApi.js';
 import {
   parseAnalysisResults,
   flattenEvents,
@@ -58,7 +59,7 @@ export const DEFAULT_FILTERS = {
   _type: 'all',
 };
 
-export const VIEW_MODES = ['incidents', 'list', 'mindmap', 'timeline', 'graph', 'compare'];
+export const VIEW_MODES = ['knowledge', 'incidents', 'list', 'review', 'mindmap', 'timeline', 'graph', 'compare'];
 
 export default function useAnalysisViewer({ corpusId, analysisId }) {
   // Core state
@@ -82,16 +83,29 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
   const [searchHistory, setSearchHistory] = useState([]);
   const [dbLoading, setDbLoading] = useState(false);
   const [dbError, setDbError] = useState(null);
+  const [incidentRecords, setIncidentRecords] = useState([]);
+  const [reviewQueueItems, setReviewQueueItems] = useState([]);
+  const [reviewQueueStats, setReviewQueueStats] = useState({
+    total: 0,
+    P0: 0,
+    P1: 0,
+    P2: 0,
+    pending: 0,
+  });
 
   const initializedRef = useRef(false);
 
   // Stores
   const corpus = useCorpusStore((state) => state.corpuses[corpusId]);
   const analyses = useAnalysisStore((state) => state.analyses);
-  const analysisIdsForCorpus = useAnalysisStore(
-    (state) => state.analysisIdsByCorpus[corpusId] ?? EMPTY_ARRAY,
-  );
+  const analysisIdsByCorpus = useAnalysisStore((state) => state.analysisIdsByCorpus);
   const loadAnalyses = useAnalysisStore((state) => state.loadAnalyses);
+
+  const analysisIdsForCorpus = useMemo(() => {
+    if (!corpusId) return EMPTY_ARRAY;
+    const ids = analysisIdsByCorpus?.[corpusId];
+    return Array.isArray(ids) ? ids : EMPTY_ARRAY;
+  }, [analysisIdsByCorpus, corpusId]);
 
   // Get the analysis object
   const analysis = useMemo(() => {
@@ -237,18 +251,20 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     const map = new Map();
     for (const location of locations) {
       if (!location?.name) continue;
+      if (!isReasonableEntityLabel(location.name)) continue;
       map.set(location.id || location.name, location.name);
     }
-    for (const event of allEvents) {
-      const name = event.locationLink?.locationName || event.primaryLocationName;
-      const id = event.locationLink?.locationId || name;
+    for (const incident of incidentClusters) {
+      const name = incident?.location?.name;
+      const id = incident?.location?.id || name;
       if (!name || !id) continue;
+      if (!isLikelyLocationName(name)) continue;
       map.set(id, name);
     }
     return [...map.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [allEvents, locations]);
+  }, [incidentClusters, locations]);
 
   // Search results
   const searchResults = useMemo(() => {
@@ -312,10 +328,42 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       .filter(Boolean);
   }, [incidentClusters, displayEvents]);
 
+  const incidents = useMemo(() => {
+    if (incidentRecords.length > 0) {
+      return incidentRecords.map((incident) => ({
+        ...incident,
+        startChapter: incident.chapterStartIndex ?? incident.startChapter ?? incident.chapterRange?.[0] ?? null,
+        endChapter: incident.chapterEndIndex ?? incident.endChapter ?? incident.chapterRange?.[1] ?? null,
+        eventCount: Array.isArray(incident.containedEvents)
+          ? incident.containedEvents.length
+          : 0,
+      }));
+    }
+
+    return displayIncidents.map((incident) => ({
+      ...incident,
+      startChapter: incident.chapterStart ?? null,
+      endChapter: incident.chapterEnd ?? null,
+      containedEvents: incident.filteredEventIds || incident.eventIds || [],
+      eventCount: incident.filteredEventCount || incident.eventCount || 0,
+      reviewStatus: incident.reviewStatus || 'needs_review',
+      priority: incident.priority || null,
+    }));
+  }, [displayIncidents, incidentRecords]);
+
   // Selected items
   const selectedItems = useMemo(() => {
     return displayEvents.filter(e => selectedIds.has(e.id));
   }, [displayEvents, selectedIds]);
+
+  const eventById = useMemo(() => {
+    const map = new Map();
+    for (const event of allEventsWithAnnotations) {
+      if (!event?.id) continue;
+      map.set(event.id, event);
+    }
+    return map;
+  }, [allEventsWithAnnotations]);
 
   // Mind map data
   const mindMapData = useMemo(() => {
@@ -391,9 +439,38 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     }
   }, [corpusId]);
 
+  const loadIncidentFirstData = useCallback(async () => {
+    if (!corpusId) return;
+
+    const targetAnalysisId = analysis?.id || null;
+
+    try {
+      const [incidentResp, reviewResp] = await Promise.all([
+        corpusApi.listIncidents(corpusId, targetAnalysisId ? { analysisId: targetAnalysisId } : {}),
+        corpusApi.getReviewQueue(corpusId, targetAnalysisId ? { analysisId: targetAnalysisId, limit: 200 } : { limit: 200 }),
+      ]);
+
+      setIncidentRecords(Array.isArray(incidentResp?.incidents) ? incidentResp.incidents : []);
+      setReviewQueueItems(Array.isArray(reviewResp?.items) ? reviewResp.items : []);
+      setReviewQueueStats(reviewResp?.stats || {
+        total: 0,
+        P0: 0,
+        P1: 0,
+        P2: 0,
+        pending: 0,
+      });
+    } catch (err) {
+      setDbError(err?.message || 'Không thể tải dữ liệu incident-first.');
+    }
+  }, [analysis?.id, corpusId]);
+
   useEffect(() => {
     loadDbData();
   }, [loadDbData]);
+
+  useEffect(() => {
+    loadIncidentFirstData();
+  }, [loadIncidentFirstData]);
 
   // Load analyses when corpusId changes (for direct viewer navigation)
   useEffect(() => {
@@ -600,17 +677,18 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
   }, [corpusId, selectedIds]);
 
   // Project linking
-  const handleLinkToProject = useCallback(async ({ eventId, projectId, chapterId, sceneId, notes }) => {
+  const handleLinkToProject = useCallback(async ({ eventId, projectId, chapterId, sceneId, notes, eventPayload }) => {
     if (!corpusId) return;
     try {
-      await linkEventToProject(eventId, corpusId, projectId, chapterId, sceneId, notes);
+      const payload = eventPayload || eventById.get(eventId) || null;
+      await linkEventToProject(eventId, corpusId, projectId, chapterId, sceneId, notes, payload);
       const links = await getEventLinksForCorpus(corpusId);
       setLinkedEvents(links);
       setLinkModalEvent(null);
     } catch (err) {
       setDbError(err.message);
     }
-  }, [corpusId]);
+  }, [corpusId, eventById]);
 
   const handleUnlinkFromProject = useCallback(async (eventId, projectId) => {
     try {
@@ -622,6 +700,42 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       setDbError(err.message);
     }
   }, []);
+
+  const handleResolveReview = useCallback(async (itemId, payload = {}) => {
+    if (!corpusId || !itemId) return null;
+
+    try {
+      const response = await corpusApi.updateReviewQueueItem(corpusId, itemId, payload);
+      const updated = response?.item;
+      if (!updated) return null;
+
+      setReviewQueueItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setReviewQueueStats((prev) => ({
+        ...prev,
+        pending: Math.max(0, prev.pending - (updated.status === 'resolved' || updated.status === 'ignored' ? 1 : 0)),
+      }));
+      return updated;
+    } catch (err) {
+      setDbError(err?.message || 'Không thể cập nhật review item.');
+      throw err;
+    }
+  }, [corpusId]);
+
+  const handleUpdateIncident = useCallback(async (incidentId, updates = {}) => {
+    if (!corpusId || !incidentId) return null;
+
+    try {
+      const response = await corpusApi.updateIncident(corpusId, incidentId, updates);
+      const updated = response?.incident;
+      if (!updated) return null;
+
+      setIncidentRecords((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      return updated;
+    } catch (err) {
+      setDbError(err?.message || 'Không thể cập nhật incident.');
+      throw err;
+    }
+  }, [corpusId]);
 
   return {
     // Data
@@ -636,6 +750,9 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     timelineData,
     locations,
     incidentClusters: displayIncidents,
+    incidents,
+    reviewQueue: reviewQueueItems,
+    reviewQueueStats,
     stats,
     qualityStats,
     autoAcceptThreshold: AUTO_ACCEPT_QUALITY_THRESHOLD,
@@ -700,6 +817,9 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     handleTrackUsage,
     handleLinkToProject,
     handleUnlinkFromProject,
+    handleResolveReview,
+    handleUpdateIncident,
+    refreshIncidentFirstData: loadIncidentFirstData,
     clearDbError: () => setDbError(null),
 
     // Count helpers
@@ -715,67 +835,267 @@ function buildIncidentFallback(events = []) {
     return [];
   }
 
-  const buckets = new Map();
+  const normalizedEvents = events
+    .filter((event) => event?.id && isMeaningfulEventDescription(event?.description || ''))
+    .map((event) => ({
+      ...event,
+      chapterSafe: Number.isFinite(Number(event.chapter)) ? Number(event.chapter) : 0,
+      locationNameSafe: resolveCleanLocationName(
+        event.locationLink?.locationName || event.primaryLocationName || '',
+      ) || 'Không rõ địa điểm',
+      locationIdSafe: event.locationLink?.locationId
+        || event.primaryLocationId
+        || resolveCleanLocationName(event.locationLink?.locationName || event.primaryLocationName || '')
+        || 'unknown',
+    }));
 
-  for (const event of events) {
-    const locationName = event.locationLink?.locationName || event.primaryLocationName || 'Chưa xác định địa điểm';
-    const locationId = event.locationLink?.locationId || event.primaryLocationId || 'unknown';
-    const chapter = Number.isFinite(Number(event.chapter)) ? Number(event.chapter) : 0;
-    const chapterBucket = chapter > 0 ? Math.floor((chapter - 1) / 2) : 0;
-    const key = `${locationId}|${chapterBucket}`;
-
-    const existing = buckets.get(key) || {
-      id: `incident_fallback_${locationId}_${chapterBucket}`,
-      title: `${locationName} - Cụm sự kiện`,
-      location: {
-        id: locationId !== 'unknown' ? locationId : null,
-        name: locationName,
-        confidence: Number(event.locationLink?.confidence || 0),
-        isMajor: Boolean(event.locationLink?.isMajorLocation),
-      },
-      chapterStart: chapter > 0 ? chapter : null,
-      chapterEnd: chapter > 0 ? chapter : null,
-      confidence: 0,
-      eventIds: [],
-      eventCount: 0,
-      subeventCount: 0,
-      anchorEventId: null,
-      anchorEventDescription: '',
-      evidenceSnippet: '',
-      tags: [],
-    };
-
-    existing.eventIds.push(event.id);
-    existing.eventCount += 1;
-    existing.subeventCount = Math.max(0, existing.eventCount - 1);
-    existing.confidence += Number(event.locationLink?.confidence || 0);
-
-    if (chapter > 0) {
-      existing.chapterStart = existing.chapterStart == null ? chapter : Math.min(existing.chapterStart, chapter);
-      existing.chapterEnd = existing.chapterEnd == null ? chapter : Math.max(existing.chapterEnd, chapter);
-    }
-
-    if (!existing.anchorEventId || Number(event.quality?.score || 0) > Number(existing.anchorQuality || 0)) {
-      existing.anchorEventId = event.id;
-      existing.anchorEventDescription = event.description || '';
-      existing.evidenceSnippet = event.locationLink?.evidenceSnippet || event.grounding?.evidenceSnippet || '';
-      existing.anchorQuality = Number(event.quality?.score || 0);
-      existing.title = `${locationName} - ${(event.description || 'Sự kiện').slice(0, 80)}`;
-    }
-
-    const newTags = Array.isArray(event.tags) ? event.tags : [];
-    existing.tags = [...new Set([...existing.tags, ...newTags])].slice(0, 10);
-
-    buckets.set(key, existing);
+  const groupedByLocation = new Map();
+  for (const event of normalizedEvents) {
+    const key = String(event.locationIdSafe || 'unknown');
+    const list = groupedByLocation.get(key) || [];
+    list.push(event);
+    groupedByLocation.set(key, list);
   }
 
-  return [...buckets.values()]
-    .map((item) => ({
-      ...item,
-      confidence: item.eventCount > 0 ? item.confidence / item.eventCount : 0,
-      eventIds: [...new Set(item.eventIds)],
-      eventCount: [...new Set(item.eventIds)].length,
-    }))
-    .sort((a, b) => Number(b.confidence || 0) - Number(a.confidence || 0));
+  const incidents = [];
+  for (const [locationKey, locationEventsRaw] of groupedByLocation.entries()) {
+    const locationEvents = [...locationEventsRaw]
+      .sort((a, b) => Number(a.chapterSafe || 0) - Number(b.chapterSafe || 0));
+
+    const segments = splitIncidentSegments(locationEvents);
+    for (const segment of segments) {
+      if (segment.length === 0) continue;
+      const anchor = pickAnchorEvent(segment);
+      if (!anchor) continue;
+
+      const chapters = segment
+        .map((item) => item.chapterSafe)
+        .filter((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+      const chapterStart = chapters.length ? Math.min(...chapters) : null;
+      const chapterEnd = chapters.length ? Math.max(...chapters) : null;
+
+      const eventIds = [...new Set(segment.map((item) => item.id).filter(Boolean))];
+      const majorLikeCount = segment.filter((item) => isMajorLikeEvent(item)).length;
+      const confidence = Math.max(
+        0.45,
+        Math.min(0.95, (majorLikeCount / Math.max(1, segment.length)) * 0.55 + 0.35),
+      );
+
+      incidents.push({
+        id: `incident_fallback_${String(locationKey)}_${String(chapterStart || 0)}_${String(eventIds.length)}`,
+        title: `${anchor.locationNameSafe} - ${truncateIncidentTitle(anchor.description || 'Sự kiện lớn')}`,
+        type: inferIncidentType(anchor),
+        location: {
+          id: locationKey !== 'unknown' ? locationKey : null,
+          name: anchor.locationNameSafe || 'Không rõ địa điểm',
+          confidence: Number(anchor.locationLink?.confidence || 0),
+          isMajor: Boolean(anchor.locationLink?.isMajorLocation),
+        },
+        chapterStart,
+        chapterEnd,
+        confidence,
+        eventIds,
+        eventCount: eventIds.length,
+        subeventCount: Math.max(0, eventIds.length - 1),
+        anchorEventId: anchor.id || null,
+        anchorEventDescription: anchor.description || '',
+        evidenceSnippet: anchor.locationLink?.evidenceSnippet || anchor.grounding?.evidenceSnippet || '',
+        tags: [...new Set(segment.flatMap((item) => Array.isArray(item.tags) ? item.tags : []))].slice(0, 10),
+      });
+    }
+  }
+
+  const openingAnchor = pickOpeningIncidentAnchor(normalizedEvents);
+  if (openingAnchor) {
+    const exists = incidents.some((incident) => incident.anchorEventId === openingAnchor.id);
+    if (!exists) {
+      incidents.unshift({
+        id: `incident_opening_${openingAnchor.id}`,
+        title: `${openingAnchor.locationNameSafe} - ${truncateIncidentTitle(openingAnchor.description || 'Sự kiện mở đầu')}`,
+        type: 'major_plot_point',
+        location: {
+          id: openingAnchor.locationIdSafe !== 'unknown' ? openingAnchor.locationIdSafe : null,
+          name: openingAnchor.locationNameSafe || 'Không rõ địa điểm',
+          confidence: Number(openingAnchor.locationLink?.confidence || 0),
+          isMajor: true,
+        },
+        chapterStart: openingAnchor.chapterSafe || null,
+        chapterEnd: openingAnchor.chapterSafe || null,
+        confidence: 0.92,
+        eventIds: [openingAnchor.id],
+        eventCount: 1,
+        subeventCount: 0,
+        anchorEventId: openingAnchor.id,
+        anchorEventDescription: openingAnchor.description || '',
+        evidenceSnippet: openingAnchor.locationLink?.evidenceSnippet || openingAnchor.grounding?.evidenceSnippet || '',
+        tags: Array.isArray(openingAnchor.tags) ? openingAnchor.tags.slice(0, 8) : [],
+      });
+    }
+  }
+
+  return incidents
+    .filter((item) => item.eventCount > 0)
+    .sort((a, b) => {
+      const chapterA = Number.isFinite(Number(a.chapterStart)) ? Number(a.chapterStart) : Number.MAX_SAFE_INTEGER;
+      const chapterB = Number.isFinite(Number(b.chapterStart)) ? Number(b.chapterStart) : Number.MAX_SAFE_INTEGER;
+      if (chapterA !== chapterB) return chapterA - chapterB;
+      return Number(b.confidence || 0) - Number(a.confidence || 0);
+    });
+}
+
+function normalizeText(value) {
+  return String(value || '').replace(/\s+/gu, ' ').trim();
+}
+
+function normalizeLooseText(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+}
+
+function isMeaningfulEventDescription(text) {
+  const normalized = normalizeText(text);
+  return normalized.length >= 14;
+}
+
+function resolveCleanLocationName(value) {
+  const name = normalizeText(value);
+  if (!name) return '';
+  if (!isLikelyLocationName(name)) return '';
+  return name;
+}
+
+function isLikelyLocationName(name) {
+  const normalized = normalizeLooseText(name);
+  if (!normalized) return false;
+  if (normalized.length > 84) return false;
+  if (/[.!?]/u.test(normalized)) return false;
+
+  const tokens = normalized.split(/\s+/u).filter(Boolean);
+  if (tokens.length < 1 || tokens.length > 8) return false;
+
+  const locationHints = new Set([
+    'nha', 'tro', 'thanh', 'pho', 'quan', 'huyen', 'xa', 'thon', 'lang',
+    'truong', 'vien', 'toa', 'lau', 'duong', 'ngo', 'hem',
+    'nui', 'rung', 'song', 'ho', 'dao', 'dong', 'hang',
+    'khu', 'vung', 'den', 'chua', 'dinh', 'cung', 'thap', 'dien',
+    'nghia', 'trang', 'cau', 'ben', 'cang', 'bien',
+  ]);
+  const noiseTokens = new Set([
+    'hoan', 'toan', 'khong', 'co', 'nghe', 'nhung', 'nguoi', 'khac',
+    'xong', 'roi', 'truoc', 'sau', 'thi', 'la', 'ma',
+  ]);
+
+  const hintCount = tokens.reduce((count, token) => count + (locationHints.has(token) ? 1 : 0), 0);
+  const noiseCount = tokens.reduce((count, token) => count + (noiseTokens.has(token) ? 1 : 0), 0);
+
+  if (noiseCount >= 2 && hintCount <= 1) return false;
+  if (tokens.length >= 4 && hintCount === 0) return false;
+  return hintCount > 0 || tokens.length <= 2;
+}
+
+function isReasonableEntityLabel(name) {
+  const normalized = normalizeText(name);
+  if (!normalized) return false;
+  if (normalized.length > 84) return false;
+  if (/[.!?]/u.test(normalized)) return false;
+  const words = normalized.split(/\s+/u).filter(Boolean);
+  if (words.length > 10) return false;
+  return true;
+}
+
+function splitIncidentSegments(events = []) {
+  if (!events.length) return [];
+  const segments = [];
+  let current = [];
+
+  for (const event of events) {
+    if (!current.length) {
+      current.push(event);
+      continue;
+    }
+
+    const previous = current[current.length - 1];
+    const chapterGap = Math.abs(Number(event.chapterSafe || 0) - Number(previous.chapterSafe || 0));
+    const triggerSplit = chapterGap >= 4 || isStrongBoundaryEvent(event);
+    if (triggerSplit && current.length > 0) {
+      segments.push(current);
+      current = [event];
+    } else {
+      current.push(event);
+    }
+  }
+
+  if (current.length > 0) {
+    segments.push(current);
+  }
+  return segments;
+}
+
+function isMajorLikeEvent(event = {}) {
+  const severity = String(event.severity || '').toLowerCase();
+  if (severity === 'crucial' || severity === 'major') return true;
+  return Number(event.quality?.score || 0) >= 80;
+}
+
+function isStrongBoundaryEvent(event = {}) {
+  const text = normalizeLooseText(event.description || '');
+  if (!text) return false;
+  const boundaryKeywords = [
+    'bi dich chuyen', 'dich chuyen den', 'bat dau tham hiem', 'mo cua',
+    'buoc vao', 'lan dau den', 'xuất hien o', 'xuat hien o', 'vao nha tro',
+  ];
+  return boundaryKeywords.some((keyword) => text.includes(keyword));
+}
+
+function pickAnchorEvent(events = []) {
+  if (!events.length) return null;
+  return [...events].sort((a, b) => {
+    const severityRank = { crucial: 4, major: 3, moderate: 2, minor: 1 };
+    const rankA = severityRank[String(a.severity || '').toLowerCase()] || 0;
+    const rankB = severityRank[String(b.severity || '').toLowerCase()] || 0;
+    if (rankA !== rankB) return rankB - rankA;
+
+    const qualityA = Number(a.quality?.score || 0);
+    const qualityB = Number(b.quality?.score || 0);
+    if (qualityA !== qualityB) return qualityB - qualityA;
+
+    return Number(a.chapterSafe || 0) - Number(b.chapterSafe || 0);
+  })[0];
+}
+
+function pickOpeningIncidentAnchor(events = []) {
+  if (!events.length) return null;
+  const sorted = [...events].sort((a, b) => Number(a.chapterSafe || 0) - Number(b.chapterSafe || 0));
+  const openingWindow = sorted.filter((item) => Number(item.chapterSafe || 0) <= 2);
+  const candidates = openingWindow.filter((item) => {
+    const text = normalizeLooseText(item.description || '');
+    return (
+      isMajorLikeEvent(item)
+      || text.includes('dich chuyen')
+      || text.includes('nha tro')
+      || text.includes('bat dau')
+    );
+  });
+  return candidates[0] || null;
+}
+
+function inferIncidentType(anchor = {}) {
+  const text = normalizeLooseText(anchor.description || '');
+  if (text.includes('dich chuyen') || text.includes('bat dau') || text.includes('tham hiem')) {
+    return 'major_plot_point';
+  }
+  const severity = String(anchor.severity || '').toLowerCase();
+  if (severity === 'crucial' || severity === 'major') {
+    return 'major_plot_point';
+  }
+  return 'subplot';
+}
+
+function truncateIncidentTitle(text, maxLength = 80) {
+  const normalized = normalizeText(text);
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1)}…`;
 }
 

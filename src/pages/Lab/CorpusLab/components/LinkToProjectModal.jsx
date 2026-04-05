@@ -47,6 +47,7 @@ export default function LinkToProjectModal({ event, corpusId, onLink, onUnlink, 
         chapterId: selectedChapterId,
         sceneId: selectedSceneId,
         notes,
+        eventPayload: event,
       });
       onClose();
     } finally {
@@ -79,7 +80,8 @@ export default function LinkToProjectModal({ event, corpusId, onLink, onUnlink, 
             <select
               value={selectedProjectId || ''}
               onChange={(e) => {
-                setSelectedProjectId(e.target.value || null);
+                const value = e.target.value;
+                setSelectedProjectId(value ? Number(value) : null);
                 setSelectedChapterId(null);
                 setSelectedSceneId(null);
               }}
@@ -101,7 +103,8 @@ export default function LinkToProjectModal({ event, corpusId, onLink, onUnlink, 
             <select
               value={selectedChapterId || ''}
               onChange={(e) => {
-                setSelectedChapterId(e.target.value || null);
+                const value = e.target.value;
+                setSelectedChapterId(value ? Number(value) : null);
                 setSelectedSceneId(null);
               }}
             >
@@ -121,7 +124,10 @@ export default function LinkToProjectModal({ event, corpusId, onLink, onUnlink, 
             <label>3. Chọn cảnh (tùy chọn)</label>
             <select
               value={selectedSceneId || ''}
-              onChange={(e) => setSelectedSceneId(e.target.value || null)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setSelectedSceneId(value ? Number(value) : null);
+              }}
             >
               <option value="">Không chỉ định cảnh</option>
               {/* Scenes would be loaded from project store */}

@@ -21,7 +21,15 @@ export const JOB_PRIORITY = {
 export const JOB_TYPES = {
   CORPUS_ANALYSIS: 'corpus_analysis',
   FILE_PARSING: 'file_parsing',
+  INCIDENT_ANALYSIS: 'incident_analysis',
+  COHERENCE_PASS: 'coherence_pass',
 };
+
+export const ANALYSIS_JOB_TYPES = [
+  JOB_TYPES.CORPUS_ANALYSIS,
+  JOB_TYPES.INCIDENT_ANALYSIS,
+  JOB_TYPES.COHERENCE_PASS,
+];
 
 export const JOB_STATUS = {
   PENDING: 'pending',
@@ -44,4 +52,3 @@ export const NO_RETRY_ERRORS = [
   'UNAUTHORIZED',
   'JOB_CANCELLED',
 ];
-

@@ -341,7 +341,13 @@ export function getRunningJobStats() {
     .prepare(`
       SELECT
         COUNT(*) AS running_count,
-        SUM(CASE WHEN type = 'corpus_analysis' THEN 1 ELSE 0 END) AS running_analysis_count
+        SUM(
+          CASE
+            WHEN type IN ('corpus_analysis', 'incident_analysis', 'coherence_pass')
+            THEN 1
+            ELSE 0
+          END
+        ) AS running_analysis_count
       FROM jobs
       WHERE status = @running
     `)
@@ -368,4 +374,3 @@ export function countQueuedAndRunningJobs() {
 
   return Number(row?.total ?? 0);
 }
-

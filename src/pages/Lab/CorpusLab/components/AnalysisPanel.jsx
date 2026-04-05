@@ -15,6 +15,10 @@ import {
   resolveProviderModel,
 } from '../../../../services/analysis/analysisConfig';
 import { corpusApi } from '../../../../services/api/corpusApi';
+import {
+  getProjectAnalysisSnapshots,
+  saveAnalysisSnapshotToProject,
+} from '../../../../services/viewer/viewerDbService.js';
 import useCorpusAnalysis from '../hooks/useCorpusAnalysis';
 import AnalysisConfig from './AnalysisConfig';
 import AnalysisProgress from './AnalysisProgress';
@@ -78,6 +82,8 @@ function toDefaultConfig() {
   return {
     provider: ANALYSIS_PROVIDERS.GEMINI_PROXY,
     model: getDefaultModel(ANALYSIS_PROVIDERS.GEMINI_PROXY),
+    runMode: 'balanced',
+    enableIncidentAiPipeline: false,
     temperature: 0.2,
     maxParts: 6,
     analysisChunkSize: ANALYSIS_CONFIG.session.maxInputWords,
@@ -133,6 +139,7 @@ function stringifyResult(result) {
 export default function AnalysisPanel({ corpus }) {
   const navigate = useNavigate();
   const { projectId } = useParams();
+  const numericProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
   const [config, setConfig] = useState(() => toDefaultConfig());
   const [requestError, setRequestError] = useState(null);
   const [starting, setStarting] = useState(false);
@@ -141,6 +148,11 @@ export default function AnalysisPanel({ corpus }) {
   const [resultError, setResultError] = useState(null);
   const [resultPreview, setResultPreview] = useState('');
   const [resultAnalysisId, setResultAnalysisId] = useState(null);
+  const [projectSnapshots, setProjectSnapshots] = useState([]);
+  const [snapshotSaving, setSnapshotSaving] = useState(false);
+  const [snapshotError, setSnapshotError] = useState(null);
+  const [snapshotSavedAt, setSnapshotSavedAt] = useState(null);
+  const [snapshotSyncStats, setSnapshotSyncStats] = useState(null);
 
   const {
     analyses,
@@ -155,6 +167,10 @@ export default function AnalysisPanel({ corpus }) {
     () => analyses.find((analysis) => analysis.status === 'completed') || null,
     [analyses],
   );
+  const latestIsSavedToProject = useMemo(() => {
+    if (!latestCompleted?.id) return false;
+    return projectSnapshots.some((item) => String(item.analysis_id) === String(latestCompleted.id));
+  }, [latestCompleted?.id, projectSnapshots]);
 
   const latestTerminalIssue = useMemo(() => {
     const recent = analyses[0];
@@ -170,7 +186,34 @@ export default function AnalysisPanel({ corpus }) {
     setResultError(null);
     setResultPreview('');
     setResultAnalysisId(null);
+    setSnapshotSyncStats(null);
   }, [corpus?.id]);
+
+  useEffect(() => {
+    let disposed = false;
+    const loadSnapshots = async () => {
+      if (!numericProjectId) {
+        setProjectSnapshots([]);
+        return;
+      }
+
+      try {
+        const rows = await getProjectAnalysisSnapshots(numericProjectId, 30);
+        if (!disposed) {
+          setProjectSnapshots(rows);
+        }
+      } catch (err) {
+        if (!disposed) {
+          setSnapshotError(err?.message || 'Khong the tai danh sach snapshot du an.');
+        }
+      }
+    };
+
+    loadSnapshots();
+    return () => {
+      disposed = true;
+    };
+  }, [numericProjectId]);
 
   useEffect(() => {
     if (!showResult || !latestCompleted?.id || !corpus?.id) {
@@ -254,6 +297,8 @@ export default function AnalysisPanel({ corpus }) {
       const payload = {
         provider: selectedProvider,
         model: resolveProviderModel(selectedProvider, config.model),
+        runMode: String(config.runMode || 'balanced'),
+        enableIncidentAiPipeline: Boolean(config.enableIncidentAiPipeline),
         chunkSize: Number(config.analysisChunkSize) || ANALYSIS_CONFIG.session.maxInputWords,
         chunkOverlap: 0,
         temperature: Number(config.temperature) || 0.2,
@@ -301,6 +346,59 @@ export default function AnalysisPanel({ corpus }) {
       },
     });
   };
+
+  const handleSaveLatestToProject = async (silent = false) => {
+    if (!numericProjectId || !corpus?.id || !latestCompleted?.id) {
+      return;
+    }
+
+    try {
+      setSnapshotSaving(true);
+      setSnapshotSyncStats(null);
+      if (!silent) {
+        setSnapshotError(null);
+      }
+
+      let payload = latestCompleted.result || latestCompleted.finalResult || null;
+      if (!payload) {
+        const detail = await corpusApi.getAnalysis(corpus.id, latestCompleted.id);
+        payload = detail?.result || detail?.finalResult || detail?.layers || null;
+      }
+
+      const saveResult = await saveAnalysisSnapshotToProject({
+        projectId: numericProjectId,
+        corpusId: corpus.id,
+        analysisId: latestCompleted.id,
+        status: latestCompleted.status,
+        layers: Array.isArray(latestCompleted.layers) ? latestCompleted.layers : [],
+        result: payload,
+      });
+      setSnapshotSyncStats(saveResult?.materialized || null);
+
+      const rows = await getProjectAnalysisSnapshots(numericProjectId, 30);
+      setProjectSnapshots(rows);
+      setSnapshotSavedAt(Date.now());
+    } catch (err) {
+      if (!silent) {
+        setSnapshotError(err?.message || 'Khong the luu ket qua phan tich vao du an.');
+      }
+    } finally {
+      setSnapshotSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!latestCompleted?.id || !numericProjectId || !corpus?.id) {
+      return;
+    }
+
+    if (latestIsSavedToProject) {
+      return;
+    }
+
+    handleSaveLatestToProject(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestCompleted?.id, latestIsSavedToProject, numericProjectId, corpus?.id]);
 
   return (
     <div className="corpus-card analysis-panel">
@@ -364,6 +462,19 @@ export default function AnalysisPanel({ corpus }) {
           <span>Mo hinh: {latestCompleted.model || 'Chua co'}</span>
           <span>Hoan tat: {formatTime(latestCompleted.completedAt)}</span>
           <span>So phan output: {latestCompleted.partsGenerated || 0}</span>
+          <span>
+            Luu vao du an: {latestIsSavedToProject ? 'Da luu' : 'Chua luu'}
+          </span>
+          {snapshotSavedAt && (
+            <span>Cap nhat: {formatTime(snapshotSavedAt)}</span>
+          )}
+          {snapshotSyncStats && (
+            <span>
+              Dong bo du an: +{snapshotSyncStats.charactersAdded || 0} nhan vat, +{snapshotSyncStats.locationsAdded || 0} dia diem, +{snapshotSyncStats.objectsAdded || 0} vat pham, +{snapshotSyncStats.worldTermsAdded || 0} thuat ngu
+              {snapshotSyncStats.worldUpdated ? ', da cap nhat the gioi' : ''}
+            </span>
+          )}
+          {snapshotError && <p className="corpus-error">{snapshotError}</p>}
 
           <div className="analysis-actions" style={{ marginTop: 8 }}>
             <button
@@ -373,6 +484,14 @@ export default function AnalysisPanel({ corpus }) {
               disabled={!projectId}
             >
               Mo Analysis Viewer
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => handleSaveLatestToProject(false)}
+              disabled={!numericProjectId || snapshotSaving}
+            >
+              {snapshotSaving ? 'Dang luu...' : 'Luu vao du an'}
             </button>
             <button
               type="button"
@@ -393,6 +512,22 @@ export default function AnalysisPanel({ corpus }) {
                   {resultPreview || 'Khong co du lieu output de hien thi.'}
                 </pre>
               )}
+            </div>
+          )}
+
+          {projectSnapshots.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <strong>Snapshot da luu trong du an ({projectSnapshots.length})</strong>
+              <ul style={{ marginTop: 6, paddingLeft: 18 }}>
+                {projectSnapshots.slice(0, 5).map((item) => {
+                  const summary = item.summary || {};
+                  return (
+                    <li key={item.id}>
+                      #{item.analysis_id} - {formatTime(item.updated_at || item.created_at)} - {summary.totalEvents || 0} su kien, {summary.locations || 0} dia diem, {summary.incidents || 0} cum lon
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
         </div>

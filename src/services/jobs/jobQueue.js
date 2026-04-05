@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import {
+  ANALYSIS_JOB_TYPES,
   JOB_CONFIG,
   JOB_PRIORITY,
   JOB_STATUS,
@@ -20,7 +21,9 @@ import {
 } from './db/queries.js';
 import { initJobSchema } from './db/schema.js';
 import { processCorpusAnalysisJob } from './jobTypes/corpusAnalysis.js';
+import { processCoherenceJob } from './jobTypes/coherenceJob.js';
 import { processFileParsingJob } from './jobTypes/fileParsing.js';
+import { processIncidentAnalysisJob } from './jobTypes/incidentAnalysisJob.js';
 import { JobWorker } from './workers/index.js';
 
 const TERMINAL_STATUSES = new Set([
@@ -59,6 +62,8 @@ class JobQueue extends EventEmitter {
     this.handlers = new Map([
       [JOB_TYPES.CORPUS_ANALYSIS, processCorpusAnalysisJob],
       [JOB_TYPES.FILE_PARSING, processFileParsingJob],
+      [JOB_TYPES.INCIDENT_ANALYSIS, processIncidentAnalysisJob],
+      [JOB_TYPES.COHERENCE_PASS, processCoherenceJob],
     ]);
     this.workers = [];
     this.runningJobs = new Map();
@@ -183,8 +188,8 @@ class JobQueue extends EventEmitter {
       }
 
       if (
-        candidate.type === JOB_TYPES.CORPUS_ANALYSIS &&
-        runningAnalysisCount >= JOB_CONFIG.MAX_CONCURRENT_ANALYSIS
+        ANALYSIS_JOB_TYPES.includes(candidate.type)
+        && runningAnalysisCount >= JOB_CONFIG.MAX_CONCURRENT_ANALYSIS
       ) {
         continue;
       }
@@ -415,4 +420,3 @@ export function getJobQueue() {
   queueInstance = new JobQueue();
   return queueInstance;
 }
-

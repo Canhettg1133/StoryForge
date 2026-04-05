@@ -15,13 +15,18 @@ import {
   estimateAnalysisTime,
   resolveAnalysisConfig,
 } from './analysisConfig.js';
-import { groundAnalysisEvents } from './eventGrounding.js';
-import { enrichWithIncidentIntelligence } from './incidentIntelligence.js';
+import { groundAnalysisEvents } from './grounding/enhancedGrounding.js';
+import { enrichWithIncidentIntelligence } from './grounding/incidentGrounding.js';
+import { extractKnowledgeProfile, mergeKnowledgeProfile } from './grounding/knowledgeExtraction.js';
+import { persistIncidentFirstArtifacts } from './incidentFirstPersistence.js';
 import { mergeOutputParts, parseJsonField, splitLayerResults } from './outputChunker.js';
+import { getRunMode } from './pipeline/modes.js';
 import {
   analyzeWithSession,
   buildCorpusSessionInputs,
 } from './sessionAnalyzer.js';
+// [NEW] Import job riêng cho mode incident_only_1m
+import { runIncidentOnly1MJob } from './jobs/incidentOnly1MJob.js';
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 
@@ -48,7 +53,7 @@ function throwIfAborted(signal) {
     return;
   }
 
-  throw createServiceError('ANALYSIS_CANCELLED', 'ÄĂ£ há»§y phĂ¢n tĂ­ch');
+  throw createServiceError('ANALYSIS_CANCELLED', 'Đã hủy phân tích');
 }
 
 function serializeAnalysis(analysis, options = {}) {
@@ -171,7 +176,7 @@ class CorpusAnalysisService extends EventEmitter {
   async start(corpusId, rawConfig = {}) {
     const corpus = getCorpusById(corpusId, { includeChapterContent: false });
     if (!corpus) {
-      throw createServiceError('CORPUS_NOT_FOUND', 'KhĂ´ng tĂ¬m tháº¥y corpus.');
+      throw createServiceError('CORPUS_NOT_FOUND', 'Không tìm thấy corpus.');
     }
 
     const config = resolveAnalysisConfig(rawConfig);
@@ -208,7 +213,7 @@ class CorpusAnalysisService extends EventEmitter {
       ...serialized,
       phase: 'queued',
       progress: 0,
-      message: 'ÄĂ£ xáº¿p hĂ ng phĂ¢n tĂ­ch',
+      message: 'Đã xếp hàng phân tích',
     });
 
     const abortController = new AbortController();
@@ -227,9 +232,12 @@ class CorpusAnalysisService extends EventEmitter {
         apiKeys: rawConfig.apiKeys,
         proxyUrl: rawConfig.proxyUrl,
         directUrl: rawConfig.directUrl,
+        enableIncidentAiPipeline:
+          rawConfig.enableIncidentAiPipeline === true
+          || String(rawConfig.enableIncidentAiPipeline || '').toLowerCase() === 'true',
       },
       signal: abortController.signal,
-    }).catch(() => {});
+    }).catch(() => { });
 
     return {
       ...serialized,
@@ -241,6 +249,13 @@ class CorpusAnalysisService extends EventEmitter {
   async runAnalysis({ analysisId, corpusId, config, signal }) {
     try {
       throwIfAborted(signal);
+      const runMode = getRunMode(config.runMode);
+
+      // [NEW] Route incident_only_1m sang flow riêng biệt trước khi làm bất cứ thứ gì
+      if (runMode.id === 'incident_only_1m') {
+        await this.runIncidentOnly1MFlow({ analysisId, corpusId, config, signal });
+        return;
+      }
 
       let analysis = updateCorpusAnalysis(analysisId, {
         status: 'processing',
@@ -256,13 +271,13 @@ class CorpusAnalysisService extends EventEmitter {
       this.emitAnalysisEvent(analysisId, 'progress', {
         ...serializeAnalysis(analysis),
         phase: 'preparing',
-        message: 'Äang chuáº©n bá»‹ chunk cá»§a corpus',
+        message: 'Đang chuẩn bị chunk của corpus',
       });
 
       const chunks = listCorpusChunksForAnalysis(corpusId);
       console.error('[ANALYSIS-DEBUG] chunks.length:', chunks.length, 'chunkSize:', config.chunkSize);
       if (!chunks.length) {
-        throw createServiceError('EMPTY_CORPUS_CHUNKS', 'Corpus khĂ´ng cĂ³ chunk Ä‘á»ƒ phĂ¢n tĂ­ch.');
+        throw createServiceError('EMPTY_CORPUS_CHUNKS', 'Corpus không có chunk để phân tích.');
       }
 
       const sessionInputs = buildCorpusSessionInputs(chunks, config.chunkSize);
@@ -295,7 +310,7 @@ class CorpusAnalysisService extends EventEmitter {
       this.emitAnalysisEvent(analysisId, 'progress', {
         ...serializeAnalysis(analysis),
         phase: 'session_input_ready',
-        message: 'ÄĂ£ chuáº©n bá»‹ dá»¯ liá»‡u Ä‘áº§u vĂ o',
+        message: 'Đã chuẩn bị dữ liệu đầu vào',
       });
 
       const normalizedApiKeys = [...new Set(
@@ -521,23 +536,118 @@ class CorpusAnalysisService extends EventEmitter {
         message: 'Dang trich xuat dia diem va gom incident clusters',
       });
 
+      const incidentModeOptions = {
+        incidentChapterWindow: runMode.id === 'deep' ? 3 : 2,
+        maxIncidentCount: runMode.id === 'fast' ? 25 : (runMode.id === 'deep' ? 80 : 40),
+        majorLocationMentionThreshold: runMode.id === 'fast' ? 3 : 2,
+        linkThreshold: runMode.id === 'deep' ? 0.3 : 0.35,
+      };
+
       const incidentIntelligence = enrichWithIncidentIntelligence(
         grounding.result || mergedResult,
         chunks,
+        incidentModeOptions,
       );
 
       const finalResult = incidentIntelligence.result || grounding.result || mergedResult;
+      let incidentFirstPersistence = null;
+      let knowledgeExtraction = {
+        applied: false,
+        reason: 'skipped',
+      };
+
+      persistAndEmitProgress({
+        phase: 'incident_first_persist',
+        message: 'Dang luu du lieu incident-first',
+      });
+
+      try {
+        incidentFirstPersistence = await persistIncidentFirstArtifacts({
+          corpusId,
+          analysisId,
+          result: finalResult,
+          pipelineOptions: {
+            chapters: chunks,
+            provider: config.provider,
+            model: config.model,
+            apiKey: config.apiKey,
+            apiKeys: normalizedApiKeys,
+            proxyUrl: config.proxyUrl,
+            directUrl: config.directUrl,
+            temperature: config.temperature,
+            ai: {
+              enabled: runMode.id === 'deep' || config.enableIncidentAiPipeline === true,
+              maxSegmentationWords: runMode.maxSegmentationWords,
+              perIncidentMaxWords: runMode.perIncidentMaxWords,
+              maxIncidents: runMode.id === 'fast' ? 8 : (runMode.id === 'deep' ? 20 : 12),
+            },
+          },
+        });
+      } catch (persistError) {
+        incidentFirstPersistence = {
+          persisted: false,
+          reason: persistError?.message || 'Unknown persistence error.',
+        };
+      }
+
+      let finalResultForStorage = finalResult;
+      const shouldExtractKnowledge = runMode.id !== 'fast';
+
+      if (shouldExtractKnowledge) {
+        persistAndEmitProgress({
+          phase: 'knowledge_extraction',
+          message: 'Dang trich xuat tri thuc the gioi/nhan vat/dia diem',
+        });
+
+        try {
+          const knowledge = await extractKnowledgeProfile(finalResult, {
+            provider: config.provider,
+            model: config.model,
+            apiKey: config.apiKey,
+            apiKeys: normalizedApiKeys,
+            proxyUrl: config.proxyUrl,
+            directUrl: config.directUrl,
+            temperature: config.temperature,
+          }, signal);
+
+          knowledgeExtraction = {
+            applied: Boolean(knowledge?.applied),
+            reason: knowledge?.reason || null,
+            usageMetadata: knowledge?.usageMetadata || null,
+            counts: {
+              characters: Array.isArray(knowledge?.data?.characters) ? knowledge.data.characters.length : 0,
+              locations: Array.isArray(knowledge?.data?.locations) ? knowledge.data.locations.length : 0,
+              objects: Array.isArray(knowledge?.data?.objects) ? knowledge.data.objects.length : 0,
+              terms: Array.isArray(knowledge?.data?.terms) ? knowledge.data.terms.length : 0,
+            },
+          };
+
+          if (knowledge?.applied && knowledge?.data) {
+            finalResultForStorage = mergeKnowledgeProfile(finalResult, knowledge.data);
+          }
+        } catch (knowledgeError) {
+          knowledgeExtraction = {
+            applied: false,
+            reason: knowledgeError?.message || 'knowledge_extraction_failed',
+          };
+        }
+      }
+
       console.error(
         '[ANALYSIS-DEBUG] merged sessions:',
         mergedResults.length,
         'final keys:',
-        Object.keys(finalResult),
+        Object.keys(finalResultForStorage),
         'grounding stats:',
         grounding.stats,
         'incident stats:',
         incidentIntelligence.stats,
+        'incident-first persistence:',
+        incidentFirstPersistence,
+        'knowledge extraction:',
+        knowledgeExtraction,
       );
-      const layerResults = splitLayerResults(finalResult);
+      const layerResults = splitLayerResults(finalResultForStorage);
 
       analysis = updateCorpusAnalysis(analysisId, {
         status: 'completed',
@@ -555,12 +665,13 @@ class CorpusAnalysisService extends EventEmitter {
         resultL5: layerResults.resultL5,
         resultL6: layerResults.resultL6,
         finalResult: JSON.stringify({
-          ...finalResult,
+          ...finalResultForStorage,
           tokenUsage,
           meta: {
-            ...(finalResult.meta || {}),
+            ...(finalResultForStorage.meta || {}),
             provider: config.provider,
             model: config.model,
+            runMode: runMode.id,
             layers: config.layers,
             inputWords: totalInputWords,
             parts: totalPartsGenerated,
@@ -569,6 +680,8 @@ class CorpusAnalysisService extends EventEmitter {
             totalChunks: totalSourceChunks,
             eventGrounding: grounding.stats,
             incidentIntelligence: incidentIntelligence.stats,
+            incidentFirstPersistence,
+            knowledgeExtraction,
             completedAt: Date.now(),
           },
         }),
@@ -582,7 +695,7 @@ class CorpusAnalysisService extends EventEmitter {
 
       this.emitAnalysisEvent(analysisId, 'completed', {
         ...serializeAnalysis(analysis, { includeResults: true }),
-        message: 'PhĂ¢n tĂ­ch hoĂ n táº¥t',
+        message: 'Phân tích hoàn tất',
       });
     } catch (error) {
       const cancelled = isAbortError(error);
@@ -591,19 +704,174 @@ class CorpusAnalysisService extends EventEmitter {
         status: cancelled ? 'cancelled' : 'failed',
         progress: cancelled ? 0 : undefined,
         currentPhase: cancelled ? 'cancelled' : 'failed',
-        errorMessage: cancelled ? 'ÄĂ£ há»§y phĂ¢n tĂ­ch' : (error?.message || 'PhĂ¢n tĂ­ch tháº¥t báº¡i'),
+        errorMessage: cancelled ? 'Đã hủy phân tích' : (error?.message || 'Phân tích thất bại'),
         completedAt: Date.now(),
       });
 
       if (cancelled) {
         this.emitAnalysisEvent(analysisId, 'cancelled', {
           ...serializeAnalysis(failed),
-          message: 'ÄĂ£ há»§y phĂ¢n tĂ­ch',
+          message: 'Đã hủy phân tích',
         });
       } else {
         this.emitAnalysisEvent(analysisId, 'error', {
           ...serializeAnalysis(failed),
-          message: error?.message || 'PhĂ¢n tĂ­ch tháº¥t báº¡i',
+          message: error?.message || 'Phân tích thất bại',
+          retrying: false,
+        });
+      }
+    } finally {
+      this.running.delete(analysisId);
+    }
+  }
+
+  // [NEW] Flow riêng cho mode incident_only_1m
+  // Pass A (global corpus → incident list) + Pass B (parallel deep per incident) + Pass C (knowledge)
+  // đều được xử lý bên trong runIncidentOnly1MJob.
+  // Flow này chỉ lo: setup DB, emit progress, lưu kết quả, cleanup.
+  async runIncidentOnly1MFlow({ analysisId, corpusId, config, signal }) {
+    try {
+      throwIfAborted(signal);
+
+      let analysis = updateCorpusAnalysis(analysisId, {
+        status: 'processing',
+        progress: 0.03,
+        currentPhase: 'preparing',
+        startedAt: Date.now(),
+        level0Status: 'processing',
+        level1Status: 'pending',
+        level2Status: 'pending',
+        errorMessage: null,
+      });
+
+      this.emitAnalysisEvent(analysisId, 'progress', {
+        ...serializeAnalysis(analysis),
+        phase: 'preparing',
+        message: 'Đang chuẩn bị dữ liệu cho phân tích Incident-Only 1M',
+      });
+
+      const chunks = listCorpusChunksForAnalysis(corpusId);
+      console.error('[ANALYSIS-DEBUG][1M] chunks.length:', chunks.length);
+      if (!chunks.length) {
+        throw createServiceError('EMPTY_CORPUS_CHUNKS', 'Corpus không có chunk để phân tích.');
+      }
+
+      const normalizedApiKeys = [...new Set(
+        (Array.isArray(config.apiKeys) ? config.apiKeys : [config.apiKeys, config.apiKey])
+          .flat()
+          .map((item) => String(item || '').trim())
+          .filter(Boolean),
+      )];
+
+      analysis = updateCorpusAnalysis(analysisId, {
+        totalChunks: chunks.length,
+        processedChunks: 0,
+        progress: 0.05,
+        currentPhase: 'incident_1m_ready',
+      });
+
+      this.emitAnalysisEvent(analysisId, 'progress', {
+        ...serializeAnalysis(analysis),
+        phase: 'incident_1m_ready',
+        message: `Sẵn sàng phân tích 1M: ${chunks.length} chunks, ${normalizedApiKeys.length} key`,
+      });
+
+      const jobResult = await runIncidentOnly1MJob({
+        corpusId,
+        chunks,
+        options: {
+          provider: config.provider,
+          model: config.model,
+          apiKey: config.apiKey,
+          apiKeys: normalizedApiKeys,
+          proxyUrl: config.proxyUrl,
+          directUrl: config.directUrl,
+          temperature: config.temperature,
+        },
+        signal,
+        onProgress: ({ phase, progress, message }) => {
+          throwIfAborted(signal);
+          const mappedProgress = Math.min(0.95, 0.05 + (Number(progress) || 0) * 0.88);
+          const updated = updateCorpusAnalysis(analysisId, {
+            progress: mappedProgress,
+            currentPhase: phase || 'processing',
+          });
+          this.emitAnalysisEvent(analysisId, 'progress', {
+            ...serializeAnalysis(updated),
+            phase: phase || 'processing',
+            message: message || 'Đang xử lý',
+          });
+        },
+      });
+
+      const finalResultForStorage = jobResult.finalResult || {};
+      const layerResults = splitLayerResults(finalResultForStorage);
+
+      console.error(
+        '[ANALYSIS-DEBUG][1M] job done:',
+        'incidents:', jobResult.incidentCount || 0,
+        'aiSteps:', jobResult.aiSteps || [],
+        'partsGenerated:', jobResult.partsGenerated || 0,
+      );
+
+      analysis = updateCorpusAnalysis(analysisId, {
+        status: 'completed',
+        progress: 1,
+        currentPhase: 'completed',
+        level0Status: 'completed',
+        level1Status: 'completed',
+        level2Status: 'completed',
+        processedChunks: chunks.length,
+        partsGenerated: jobResult.partsGenerated || 0,
+        resultL1: layerResults.resultL1,
+        resultL2: layerResults.resultL2,
+        resultL3: layerResults.resultL3,
+        resultL4: layerResults.resultL4,
+        resultL5: layerResults.resultL5,
+        resultL6: layerResults.resultL6,
+        finalResult: JSON.stringify({
+          ...finalResultForStorage,
+          meta: {
+            ...(finalResultForStorage.meta || {}),
+            provider: config.provider,
+            model: config.model,
+            runMode: 'incident_only_1m',
+            totalChunks: chunks.length,
+            incidentCount: jobResult.incidentCount || 0,
+            aiSteps: jobResult.aiSteps || [],
+            completedAt: Date.now(),
+          },
+        }),
+        completedAt: Date.now(),
+        errorMessage: null,
+      });
+
+      updateCorpusById(corpusId, { status: 'analyzed' });
+
+      this.emitAnalysisEvent(analysisId, 'completed', {
+        ...serializeAnalysis(analysis, { includeResults: true }),
+        message: 'Phân tích Incident-Only 1M hoàn tất',
+      });
+    } catch (error) {
+      const cancelled = isAbortError(error);
+
+      const failed = updateCorpusAnalysis(analysisId, {
+        status: cancelled ? 'cancelled' : 'failed',
+        progress: cancelled ? 0 : undefined,
+        currentPhase: cancelled ? 'cancelled' : 'failed',
+        errorMessage: cancelled ? 'Đã hủy phân tích' : (error?.message || 'Phân tích thất bại'),
+        completedAt: Date.now(),
+      });
+
+      if (cancelled) {
+        this.emitAnalysisEvent(analysisId, 'cancelled', {
+          ...serializeAnalysis(failed),
+          message: 'Đã hủy phân tích',
+        });
+      } else {
+        this.emitAnalysisEvent(analysisId, 'error', {
+          ...serializeAnalysis(failed),
+          message: error?.message || 'Phân tích thất bại',
           retrying: false,
         });
       }
@@ -630,13 +898,13 @@ class CorpusAnalysisService extends EventEmitter {
     const cancelled = updateCorpusAnalysis(analysisId, {
       status: 'cancelled',
       currentPhase: 'cancelled',
-      errorMessage: 'ÄĂ£ há»§y phĂ¢n tĂ­ch',
+      errorMessage: 'Đã hủy phân tích',
       completedAt: Date.now(),
     });
 
     this.emitAnalysisEvent(analysisId, 'cancelled', {
       ...serializeAnalysis(cancelled),
-      message: 'ÄĂ£ há»§y phĂ¢n tĂ­ch',
+      message: 'Đã hủy phân tích',
     });
 
     return serializeAnalysis(cancelled, { includeResults: false });
@@ -656,4 +924,3 @@ export function getCorpusAnalysisService() {
 export {
   serializeAnalysis,
 };
-

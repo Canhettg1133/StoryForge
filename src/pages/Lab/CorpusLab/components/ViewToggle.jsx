@@ -3,8 +3,10 @@
  */
 
 export const VIEW_ICONS = {
+  knowledge: '🧭',
   incidents: '📍',
   list: '📋',
+  review: '🧪',
   mindmap: '🗺️',
   timeline: '🕒',
   graph: '👥',
@@ -12,15 +14,17 @@ export const VIEW_ICONS = {
 };
 
 export const VIEW_LABELS = {
+  knowledge: 'Tri thức',
   incidents: 'Sự kiện lớn',
   list: 'Danh sách',
+  review: 'Review queue',
   mindmap: 'Sơ đồ tư duy',
   timeline: 'Dòng thời gian',
   graph: 'Đồ thị',
   compare: 'So sánh',
 };
 
-const DEFAULT_MODES = ['incidents', 'list', 'mindmap', 'timeline', 'graph', 'compare'];
+const DEFAULT_MODES = ['knowledge', 'incidents', 'list', 'review', 'mindmap', 'timeline', 'graph', 'compare'];
 
 export default function ViewToggle({ view, onChange, modes = DEFAULT_MODES }) {
   return (

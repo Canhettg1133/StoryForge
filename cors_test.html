@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <script>
+        fetch('https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSy_FAKE_KEY')
+            .then(r => console.log('Response status:', r.status))
+            .catch(e => console.error('Fetch error (CORS?):', e));
+    </script>
+</body>
+</html>

@@ -18,6 +18,24 @@ const LAYER_OPTIONS = [
   { id: 'l6', label: 'L6 Văn phong' },
 ];
 
+const RUN_MODE_OPTIONS = [
+  {
+    id: 'fast',
+    label: 'Fast',
+    description: 'Nhanh nhất, ưu tiên tốc độ.',
+  },
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    description: 'Cân bằng chất lượng và chi phí.',
+  },
+  {
+    id: 'deep',
+    label: 'Deep',
+    description: 'Kỹ hơn, chạy coherence/review nghiêm hơn.',
+  },
+];
+
 function formatWords(value) {
   return Number(value || 0).toLocaleString('vi-VN');
 }
@@ -260,6 +278,39 @@ export default function AnalysisConfig({
           ))}
         </select>
       </label>
+
+      <div className="analysis-config-row">
+        <label>
+          <span>Chế độ incident-first</span>
+          <select
+            value={config.runMode || 'balanced'}
+            disabled={disabled}
+            onChange={(event) => onChange?.({
+              ...config,
+              runMode: event.target.value,
+            })}
+          >
+            {RUN_MODE_OPTIONS.map((mode) => (
+              <option key={mode.id} value={mode.id}>
+                {mode.label} - {mode.description}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="analysis-layer-item" style={{ alignSelf: 'end' }}>
+          <input
+            type="checkbox"
+            checked={Boolean(config.enableIncidentAiPipeline)}
+            disabled={disabled}
+            onChange={(event) => onChange?.({
+              ...config,
+              enableIncidentAiPipeline: event.target.checked,
+            })}
+          />
+          <span>Bật AI step-pipeline cho incident</span>
+        </label>
+      </div>
 
       <div className="analysis-config-row">
         <label>

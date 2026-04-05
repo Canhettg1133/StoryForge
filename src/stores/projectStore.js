@@ -267,6 +267,7 @@ const useProjectStore = create((set, get) => ({
       db.aiJobs.where('project_id').equals(id).delete(),
       db.qaReports.where('project_id').equals(id).delete(),
       db.suggestions.where('project_id').equals(id).delete(),
+      db.project_analysis_snapshots.where('project_id').equals(id).delete(),
       // Phase 3+: tables added in later versions
       db.worldTerms.where('project_id').equals(id).delete(),
       db.taboos.where('project_id').equals(id).delete(),

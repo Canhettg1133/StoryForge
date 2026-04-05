@@ -110,6 +110,13 @@ export const corpusApi = {
     });
   },
 
+  startIncidentAnalysis(corpusId, payload = {}) {
+    return request(`/api/corpus/${corpusId}/incident-analysis`, {
+      method: 'POST',
+      body: payload,
+    });
+  },
+
   listAnalyses(corpusId, query = {}) {
     return request(`/api/corpus/${corpusId}/analysis`, { query });
   },
@@ -120,6 +127,32 @@ export const corpusApi = {
 
   getAnalysisLayer(corpusId, analysisId, layer) {
     return request(`/api/corpus/${corpusId}/analysis/${analysisId}/layer/${layer}`);
+  },
+
+  listIncidents(corpusId, query = {}) {
+    return request(`/api/corpus/${corpusId}/incidents`, { query });
+  },
+
+  getIncidentDetail(corpusId, incidentId) {
+    return request(`/api/corpus/${corpusId}/incidents/${incidentId}`);
+  },
+
+  updateIncident(corpusId, incidentId, payload = {}) {
+    return request(`/api/corpus/${corpusId}/incidents/${incidentId}`, {
+      method: 'PATCH',
+      body: payload,
+    });
+  },
+
+  getReviewQueue(corpusId, query = {}) {
+    return request(`/api/corpus/${corpusId}/review-queue`, { query });
+  },
+
+  updateReviewQueueItem(corpusId, itemId, payload = {}) {
+    return request(`/api/corpus/${corpusId}/review-queue/${itemId}`, {
+      method: 'PATCH',
+      body: payload,
+    });
   },
 
   cancelAnalysis(analysisId) {

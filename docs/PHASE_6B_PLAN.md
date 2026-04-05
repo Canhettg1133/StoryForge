@@ -1,10 +1,10 @@
-# PHASE 6B: Hybrid Incident-First - Pipeline & Implementation
+﻿# PHASE 6B: Hybrid Incident-First - Pipeline & Implementation
 
-## Tổng quan
+## Tá»•ng quan
 
-Phase này cover **Pipeline Implementation** (Steps 1-6), **ConsistencyRisk System**, **Frontend Changes**, và **API Endpoints**.
+Phase nĂ y cover **Pipeline Implementation** (Steps 1-6), **ConsistencyRisk System**, **Frontend Changes**, vĂ  **API Endpoints**.
 
-> **Điều kiện tiên quyết:** Đọc [PHASE_6A_PLAN.md](./PHASE_6A_PLAN.md) trước để hiểu Data Models, Database Schema, và Rules.
+> **Äiá»u kiá»‡n tiĂªn quyáº¿t:** Äá»c [PHASE_6A_PLAN.md](./PHASE_6A_PLAN.md) trÆ°á»›c Ä‘á»ƒ hiá»ƒu Data Models, Database Schema, vĂ  Rules.
 
 ---
 
@@ -12,45 +12,45 @@ Phase này cover **Pipeline Implementation** (Steps 1-6), **ConsistencyRisk Syst
 
 ```
 src/
-├── services/
-│   └── analysis/
-│       ├── models/                    # PHASE 6A
-│       │   ├── incident.js
-│       │   ├── event.js
-│       │   ├── location.js
-│       │   ├── consistencyRisk.js
-│       │   └── reviewQueue.js
-│       │
-│       ├── pipeline/                  # NEW - Incident-First Pipeline
-│       │   ├── incidentAnalyzer.js    # Main orchestrator
-│       │   ├── globalSegmentation.js  # Step 1: Identify incidents
-│       │   ├── boundaryRefine.js      # Step 2: Refine boundaries
-│       │   ├── deepIncidentAnalysis.js # Step 3: Analyze per incident
-│       │   ├── coherencePass.js       # Step 4: Global coherence
-│       │   ├── scoringEngine.js       # Step 5: Score & rank
-│       │   ├── reviewQueueBuilder.js  # Step 6: Build review queue
-│       │   └── modes.js              # Run mode configs
-│       │
-│       ├── consistency/                # NEW - Consistency checking
-│       │   ├── consistencyChecker.js  # Main checker
-│       │   ├── timelineValidator.js  # Timeline conflicts
-│       │   ├── stateValidator.js     # State contradictions
-│       │   ├── causalValidator.js     # Causal chain validator
-│       │   └── spanValidator.js       # Span anomaly detector
-│       │
-│       ├── grounding/                  # Mở rộng từ hiện tại
-│       │   ├── enhancedGrounding.js   # Ground events to chapters
-│       │   └── incidentGrounding.js  # Ground incidents
-│       │
-│       ├── jobs/                       # Job integration
-│       │   ├── incidentAnalysisJob.js # Job type cho incident analysis
-│       │   └── coherenceJob.js        # Job type cho coherence pass
-│       │
-│       └── prompts/                    # Prompts mới
-│           ├── incidentSegmentationPrompt.js
-│           ├── incidentAnalysisPrompt.js
-│           ├── coherencePrompt.js
-│           └── consistencyCheckPrompt.js
+â”œâ”€â”€ services/
+â”‚   â””â”€â”€ analysis/
+â”‚       â”œâ”€â”€ models/                    # PHASE 6A
+â”‚       â”‚   â”œâ”€â”€ incident.js
+â”‚       â”‚   â”œâ”€â”€ event.js
+â”‚       â”‚   â”œâ”€â”€ location.js
+â”‚       â”‚   â”œâ”€â”€ consistencyRisk.js
+â”‚       â”‚   â””â”€â”€ reviewQueue.js
+â”‚       â”‚
+â”‚       â”œâ”€â”€ pipeline/                  # NEW - Incident-First Pipeline
+â”‚       â”‚   â”œâ”€â”€ incidentAnalyzer.js    # Main orchestrator
+â”‚       â”‚   â”œâ”€â”€ globalSegmentation.js  # Step 1: Identify incidents
+â”‚       â”‚   â”œâ”€â”€ boundaryRefine.js      # Step 2: Refine boundaries
+â”‚       â”‚   â”œâ”€â”€ deepIncidentAnalysis.js # Step 3: Analyze per incident
+â”‚       â”‚   â”œâ”€â”€ coherencePass.js       # Step 4: Global coherence
+â”‚       â”‚   â”œâ”€â”€ scoringEngine.js       # Step 5: Score & rank
+â”‚       â”‚   â”œâ”€â”€ reviewQueueBuilder.js  # Step 6: Build review queue
+â”‚       â”‚   â””â”€â”€ modes.js              # Run mode configs
+â”‚       â”‚
+â”‚       â”œâ”€â”€ consistency/                # NEW - Consistency checking
+â”‚       â”‚   â”œâ”€â”€ consistencyChecker.js  # Main checker
+â”‚       â”‚   â”œâ”€â”€ timelineValidator.js  # Timeline conflicts
+â”‚       â”‚   â”œâ”€â”€ stateValidator.js     # State contradictions
+â”‚       â”‚   â”œâ”€â”€ causalValidator.js     # Causal chain validator
+â”‚       â”‚   â””â”€â”€ spanValidator.js       # Span anomaly detector
+â”‚       â”‚
+â”‚       â”œâ”€â”€ grounding/                  # Má»Ÿ rá»™ng tá»« hiá»‡n táº¡i
+â”‚       â”‚   â”œâ”€â”€ enhancedGrounding.js   # Ground events to chapters
+â”‚       â”‚   â””â”€â”€ incidentGrounding.js  # Ground incidents
+â”‚       â”‚
+â”‚       â”œâ”€â”€ jobs/                       # Job integration
+â”‚       â”‚   â”œâ”€â”€ incidentAnalysisJob.js # Job type cho incident analysis
+â”‚       â”‚   â””â”€â”€ coherenceJob.js        # Job type cho coherence pass
+â”‚       â”‚
+â”‚       â””â”€â”€ prompts/                    # Prompts má»›i
+â”‚           â”œâ”€â”€ incidentSegmentationPrompt.js
+â”‚           â”œâ”€â”€ incidentAnalysisPrompt.js
+â”‚           â”œâ”€â”€ coherencePrompt.js
+â”‚           â””â”€â”€ consistencyCheckPrompt.js
 ```
 
 ---
@@ -63,10 +63,10 @@ src/
 // src/services/analysis/pipeline/globalSegmentation.js
 
 /**
- * Global Segmentation - Step 1 của Incident-First Pipeline
+ * Global Segmentation - Step 1 cá»§a Incident-First Pipeline
  * 
- * Mục tiêu: AI đọc ngữ cảnh lớn (hoặc compressed context),
- * trả về danh sách incidents với:
+ * Má»¥c tiĂªu: AI Ä‘á»c ngá»¯ cáº£nh lá»›n (hoáº·c compressed context),
+ * tráº£ vá» danh sĂ¡ch incidents vá»›i:
  * - title
  * - type (major_plot_point | subplot | pov_thread)
  * - start/end (theo chapter index)
@@ -87,7 +87,7 @@ export async function globalSegmentation(corpus, options = {}) {
   // 2. Build context
   let context;
   if (mode === 'fast') {
-    // Fast: chỉ load chapter titles + first 500 words mỗi chapter
+    // Fast: chá»‰ load chapter titles + first 500 words má»—i chapter
     context = buildCompressedContext(chapters, { maxWords: 50000 });
   } else if (mode === 'balanced') {
     // Balanced: load more context
@@ -135,38 +135,38 @@ export async function globalSegmentation(corpus, options = {}) {
 
 export function buildSegmentationPrompt(context, options) {
   return `
-Bạn là chuyên gia phân tích truyện. Nhiệm vụ: XÁC ĐỊNH CÁC INCIDENTS (sự kiện lớn) trong truyện.
+Báº¡n lĂ  chuyĂªn gia phĂ¢n tĂ­ch truyá»‡n. Nhiá»‡m vá»¥: XĂC Äá»NH CĂC INCIDENTS (sá»± kiá»‡n lá»›n) trong truyá»‡n.
 
-ĐỊNH NGHĨA INCIDENT:
-- Incident = đơn vị kể chuyện CẤP CAO, không phải mọi sự kiện nhỏ
-- Incident là điểm nút thay đổi cốt truyện, có thể bao gồm nhiều sự kiện con
-- Ví dụ: "Cuộc chiến Hogwarts", "Chuyến đi đầu tiên", "Cuộc ly hôn"
+Äá»NH NGHÄ¨A INCIDENT:
+- Incident = Ä‘Æ¡n vá»‹ ká»ƒ chuyá»‡n Cáº¤P CAO, khĂ´ng pháº£i má»i sá»± kiá»‡n nhá»
+- Incident lĂ  Ä‘iá»ƒm nĂºt thay Ä‘á»•i cá»‘t truyá»‡n, cĂ³ thá»ƒ bao gá»“m nhiá»u sá»± kiá»‡n con
+- VĂ­ dá»¥: "Cuá»™c chiáº¿n Hogwarts", "Chuyáº¿n Ä‘i Ä‘áº§u tiĂªn", "Cuá»™c ly hĂ´n"
 
-PHÂN LOẠI INCIDENT:
-- major_plot_point: Điểm nút cốt truyện chính, ảnh hưởng toàn bộ truyện
-- subplot: Câu chuyện phụ, có thể chồng lấn timeline
-- pov_thread: POV lane riêng (ví dụ: GoT - chapter của Tyrion vs Daenerys)
+PHĂ‚N LOáº I INCIDENT:
+- major_plot_point: Äiá»ƒm nĂºt cá»‘t truyá»‡n chĂ­nh, áº£nh hÆ°á»Ÿng toĂ n bá»™ truyá»‡n
+- subplot: CĂ¢u chuyá»‡n phá»¥, cĂ³ thá»ƒ chá»“ng láº¥n timeline
+- pov_thread: POV lane riĂªng (vĂ­ dá»¥: GoT - chapter cá»§a Tyrion vs Daenerys)
 
-QUY TẮC BOUNDARY:
-- Dùng chapter INDEX (0-based) cho start/end, KHÔNG dùng offset ký tự
-- Mỗi incident phải có: title, type, startChapter, endChapter, confidence, evidence
-- Nếu chưa chắc biên, đánh dấu uncertainStart hoặc uncertainEnd = true
-- BẮT BUỘC có boundaryNote giải thích
+QUY Táº®C BOUNDARY:
+- DĂ¹ng chapter INDEX (0-based) cho start/end, KHĂ”NG dĂ¹ng offset kĂ½ tá»±
+- Má»—i incident pháº£i cĂ³: title, type, startChapter, endChapter, confidence, evidence
+- Náº¿u chÆ°a cháº¯c biĂªn, Ä‘Ă¡nh dáº¥u uncertainStart hoáº·c uncertainEnd = true
+- Báº®T BUá»˜C cĂ³ boundaryNote giáº£i thĂ­ch
 
 OUTPUT FORMAT (JSON):
 {
   "incidents": [
     {
-      "title": "Tên incident (ngắn gọn, có ý nghĩa)",
+      "title": "TĂªn incident (ngáº¯n gá»n, cĂ³ Ă½ nghÄ©a)",
       "type": "major_plot_point | subplot | pov_thread",
       "startChapter": 0,  // 0-based index
       "endChapter": 5,    // 0-based index, inclusive
       "confidence": 0.9,  // 0-1
       "uncertainStart": false,
       "uncertainEnd": false,
-      "boundaryNote": "Giải thích tại sao chọn boundary này",
-      "evidence": ["snippet 1 từ text gốc", "snippet 2"],
-      "description": "Mô tả ngắn incident"
+      "boundaryNote": "Giáº£i thĂ­ch táº¡i sao chá»n boundary nĂ y",
+      "evidence": ["snippet 1 tá»« text gá»‘c", "snippet 2"],
+      "description": "MĂ´ táº£ ngáº¯n incident"
     }
   ],
   "analysis": {
@@ -180,7 +180,7 @@ OUTPUT FORMAT (JSON):
 CONTEXT (${options.chapterCount} chapters):
 ${context.text}
 
-Hãy phân tích context và trả về JSON.`;
+HĂ£y phĂ¢n tĂ­ch context vĂ  tráº£ vá» JSON.`;
 }
 ```
 
@@ -194,12 +194,12 @@ Hãy phân tích context và trả về JSON.`;
 // src/services/analysis/pipeline/boundaryRefine.js
 
 /**
- * Boundary Refine - Step 2 của Incident-First Pipeline
+ * Boundary Refine - Step 2 cá»§a Incident-First Pipeline
  * 
- * Mục tiêu: Cải thiện boundary của incidents bằng:
- * 1. Lexical overlap giữa các chapter biên
+ * Má»¥c tiĂªu: Cáº£i thiá»‡n boundary cá»§a incidents báº±ng:
+ * 1. Lexical overlap giá»¯a cĂ¡c chapter biĂªn
  * 2. BM25 scoring cho semantic similarity
- * 3. Đánh dấu uncertain boundaries
+ * 3. ÄĂ¡nh dáº¥u uncertain boundaries
  */
 
 export async function refineBoundaries(incidents, chapters, options = {}) {
@@ -295,9 +295,9 @@ function calculateLexicalOverlap(text1, text2) {
 // src/services/analysis/pipeline/deepIncidentAnalysis.js
 
 /**
- * Deep Per Incident - Step 3 của Incident-First Pipeline
+ * Deep Per Incident - Step 3 cá»§a Incident-First Pipeline
  * 
- * CHẠY SONG SONG các incidents
+ * CHáº Y SONG SONG cĂ¡c incidents
  */
 
 export async function analyzeIncidents(incidents, chapters, options = {}) {
@@ -378,40 +378,40 @@ async function analyzeSingleIncident(incident, chapters, options) {
 
 export function buildIncidentAnalysisPrompt(incident, context) {
   return `
-Bạn là chuyên gia phân tích truyện. Nhiệm vụ: PHÂN TÍCH CHI TIẾT một INCIDENT.
+Báº¡n lĂ  chuyĂªn gia phĂ¢n tĂ­ch truyá»‡n. Nhiá»‡m vá»¥: PHĂ‚N TĂCH CHI TIáº¾T má»™t INCIDENT.
 
-INCIDENT ĐANG PHÂN TÍCH:
+INCIDENT ÄANG PHĂ‚N TĂCH:
 - Title: ${incident.title}
 - Type: ${incident.type}
 - Chapters: ${incident.startChapter} - ${incident.endChapter}
 - Confidence: ${incident.confidence}
 - Description: ${incident.description}
 
-ĐỊNH NGHĨA EVENT:
-- Event = sự kiện/cảnh cụ thể trong incident
-- Event có thể thuộc nhiều incident (dùng linkRole: secondary)
-- Event phải có: title, description, chapter, severity, causalLinks
+Äá»NH NGHÄ¨A EVENT:
+- Event = sá»± kiá»‡n/cáº£nh cá»¥ thá»ƒ trong incident
+- Event cĂ³ thá»ƒ thuá»™c nhiá»u incident (dĂ¹ng linkRole: secondary)
+- Event pháº£i cĂ³: title, description, chapter, severity, causalLinks
 
 OUTPUT FORMAT (JSON):
 {
   "events": [
     {
-      "title": "Tên event",
-      "description": "Mô tả chi tiết event",
+      "title": "TĂªn event",
+      "description": "MĂ´ táº£ chi tiáº¿t event",
       "chapter": 3,  // 0-based, relative to incident start
       "severity": 0.8,  // 0-1
       "tags": ["angst", "character_development"],
       "characters": ["Char A", "Char B"],
       "causesEventIds": ["evt-1"],
       "causedByEventIds": [],
-      "locationHint": "Mô tả địa điểm",
+      "locationHint": "MĂ´ táº£ Ä‘á»‹a Ä‘iá»ƒm",
       "confidence": 0.9,
       "evidence": ["snippet"]
     }
   ],
   "locations": [
     {
-      "name": "Tên địa điểm",
+      "name": "TĂªn Ä‘á»‹a Ä‘iá»ƒm",
       "aliases": ["alias1", "alias2"],
       "firstMentionChapter": 1,
       "importance": 0.8,
@@ -420,14 +420,14 @@ OUTPUT FORMAT (JSON):
   ],
   "climaxAnchor": {
     "eventId": "evt-3",
-    "description": "Đỉnh điểm của incident"
+    "description": "Äá»‰nh Ä‘iá»ƒm cá»§a incident"
   }
 }
 
 CONTEXT (${context.chapters.length} chapters):
 ${context.text}
 
-Hãy phân tích và trả về JSON.`;
+HĂ£y phĂ¢n tĂ­ch vĂ  tráº£ vá» JSON.`;
 }
 ```
 
@@ -439,14 +439,14 @@ Hãy phân tích và trả về JSON.`;
 // src/services/analysis/pipeline/coherencePass.js
 
 /**
- * Global Coherence Pass - Step 4 của Incident-First Pipeline
+ * Global Coherence Pass - Step 4 cá»§a Incident-First Pipeline
  * 
- * Mục tiêu:
- * 1. Merge incidents trùng lặp/chồng lấn
- * 2. Split incidents chứa 2 cụm event không liên thông
- * 3. Chuẩn hóa tên nhân vật/địa điểm
- * 4. Sửa thứ tự timeline
- * 5. Chấm lại major/minor score toàn cục
+ * Má»¥c tiĂªu:
+ * 1. Merge incidents trĂ¹ng láº·p/chá»“ng láº¥n
+ * 2. Split incidents chá»©a 2 cá»¥m event khĂ´ng liĂªn thĂ´ng
+ * 3. Chuáº©n hĂ³a tĂªn nhĂ¢n váº­t/Ä‘á»‹a Ä‘iá»ƒm
+ * 4. Sá»­a thá»© tá»± timeline
+ * 5. Cháº¥m láº¡i major/minor score toĂ n cá»¥c
  */
 
 export async function coherencePass(incidents, events, locations, options = {}) {
@@ -552,7 +552,7 @@ function calculatePairMergeScore(inc1, inc2) {
 // src/services/analysis/pipeline/scoringEngine.js
 
 /**
- * Scoring Engine - Step 5 của Incident-First Pipeline
+ * Scoring Engine - Step 5 cá»§a Incident-First Pipeline
  */
 
 export async function scoreItems(incidents, events, locations, consistencyRisks) {
@@ -593,10 +593,10 @@ export async function scoreItems(incidents, events, locations, consistencyRisks)
 }
 
 // Confidence thresholds:
-// Incident: >= 0.85 + evidence → auto-accept
-// Event: >= 0.75 + valid chapter/chunk → auto-accept
-// Location: >= 0.80 + evidence snippet → auto-accept
-// Thiếu evidence → luôn needs_review
+// Incident: >= 0.85 + evidence â†’ auto-accept
+// Event: >= 0.75 + valid chapter/chunk â†’ auto-accept
+// Location: >= 0.80 + evidence snippet â†’ auto-accept
+// Thiáº¿u evidence â†’ luĂ´n needs_review
 
 function calculateIncidentScore(incident, events, consistencyRisks) {
   let confidence = incident.confidence || 0.5;
@@ -652,7 +652,7 @@ function calculateIncidentScore(incident, events, consistencyRisks) {
 // src/services/analysis/pipeline/reviewQueueBuilder.js
 
 /**
- * Review Queue Builder - Step 6 của Incident-First Pipeline
+ * Review Queue Builder - Step 6 cá»§a Incident-First Pipeline
  * 
  * Priority formula:
  * priorityScore = 0.30*impact + 0.25*(1-confidence) + 0.20*consistencyRisk 
@@ -812,7 +812,7 @@ export async function checkConsistency(incidents, events, locations, options = {
 ```javascript
 // src/services/analysis/consistency/timelineValidator.js
 
-// Timeline Inversion: Event A gây ra Event B nhưng B xảy ra trước A
+// Timeline Inversion: Event A gĂ¢y ra Event B nhÆ°ng B xáº£y ra trÆ°á»›c A
 
 async function checkTimelineInversion(incidents, events) {
   const risks = [];
@@ -830,7 +830,7 @@ async function checkTimelineInversion(incidents, events) {
           id: generateId(),
           type: 'timeline_inversion',
           severity: 'hard',
-          description: `Event "${causeEvent.title}" được cho là gây ra "${event.title}" nhưng xảy ra SAU (Ch.${causeEvent.chapterIndex} > Ch.${event.chapterIndex})`,
+          description: `Event "${causeEvent.title}" Ä‘Æ°á»£c cho lĂ  gĂ¢y ra "${event.title}" nhÆ°ng xáº£y ra SAU (Ch.${causeEvent.chapterIndex} > Ch.${event.chapterIndex})`,
           details: {
             causeEvent: { id: causeEvent.id, chapter: causeEvent.chapterIndex },
             effectEvent: { id: event.id, chapter: event.chapterIndex },
@@ -1112,9 +1112,9 @@ export function AnalysisViewer({ corpusId }) {
         
         {reviewStats && (
           <div className="review-stats">
-            <span className="stat P0">⚠️ P0: {reviewStats.P0}</span>
-            <span className="stat P1">📋 P1: {reviewStats.P1}</span>
-            <span className="stat P2">📝 P2: {reviewStats.P2}</span>
+            <span className="stat P0">â ï¸ P0: {reviewStats.P0}</span>
+            <span className="stat P1">đŸ“‹ P1: {reviewStats.P1}</span>
+            <span className="stat P2">đŸ“ P2: {reviewStats.P2}</span>
           </div>
         )}
       </header>
@@ -1123,11 +1123,11 @@ export function AnalysisViewer({ corpusId }) {
         view={view} 
         onChange={setView}
         options={[
-          { id: 'incidents', label: '📍 Incidents', icon: '📍' },
-          { id: 'events', label: '📖 Events', icon: '📖' },
-          { id: 'review', label: '🔍 Review Queue', icon: '🔍' },
-          { id: 'timeline', label: '📅 Timeline', icon: '📅' },
-          { id: 'locations', label: '🏰 Locations', icon: '🏰' },
+          { id: 'incidents', label: 'đŸ“ Incidents', icon: 'đŸ“' },
+          { id: 'events', label: 'đŸ“– Events', icon: 'đŸ“–' },
+          { id: 'review', label: 'đŸ” Review Queue', icon: 'đŸ”' },
+          { id: 'timeline', label: 'đŸ“… Timeline', icon: 'đŸ“…' },
+          { id: 'locations', label: 'đŸ° Locations', icon: 'đŸ°' },
         ]}
       />
       
@@ -1181,10 +1181,10 @@ export function IncidentListView({ incidents, events, onIncidentClick }) {
     <div className="incident-list-view">
       <div className="filters">
         <select value={filterType} onChange={e => setFilterType(e.target.value)}>
-          <option value="all">Tất cả types</option>
-          <option value="major_plot_point">⭐ Major Plot Points</option>
-          <option value="subplot">📖 Subplots</option>
-          <option value="pov_thread">👁️ POV Threads</option>
+          <option value="all">Táº¥t cáº£ types</option>
+          <option value="major_plot_point">â­ Major Plot Points</option>
+          <option value="subplot">đŸ“– Subplots</option>
+          <option value="pov_thread">đŸ‘ï¸ POV Threads</option>
         </select>
         <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
           <option value="chapter">Theo Chapter</option>
@@ -1226,16 +1226,16 @@ export function ReviewQueueView({ items, filter, onFilterChange, onResolve }) {
     <div className="review-queue-view">
       <div className="filters">
         <button className={filter === 'all' ? 'active' : ''} onClick={() => onFilterChange('all')}>
-          Tất cả ({items.length})
+          Táº¥t cáº£ ({items.length})
         </button>
         <button className={`priority P0 ${filter === 'P0' ? 'active' : ''}`} onClick={() => onFilterChange('P0')}>
-          ⚠️ P0 ({items.filter(i => i.priority === 'P0').length})
+          â ï¸ P0 ({items.filter(i => i.priority === 'P0').length})
         </button>
         <button className={`priority P1 ${filter === 'P1' ? 'active' : ''}`} onClick={() => onFilterChange('P1')}>
-          📋 P1 ({items.filter(i => i.priority === 'P1').length})
+          đŸ“‹ P1 ({items.filter(i => i.priority === 'P1').length})
         </button>
         <button className={`priority P2 ${filter === 'P2' ? 'active' : ''}`} onClick={() => onFilterChange('P2')}>
-          📝 P2 ({items.filter(i => i.priority === 'P2').length})
+          đŸ“ P2 ({items.filter(i => i.priority === 'P2').length})
         </button>
       </div>
       
@@ -1334,86 +1334,113 @@ Request:
 ## 12. Implementation Phases
 
 ### Phase 6.1: Data Models & Database
-- [ ] Create incident model
-- [ ] Create consistencyRisk model  
-- [ ] Create reviewQueue model
-- [ ] Add columns to events table
-- [ ] Create new database tables
-- [ ] Update DB queries
+- [x] Create incident model
+- [x] Create consistencyRisk model  
+- [x] Create reviewQueue model
+- [x] Add columns to events table
+- [x] Create new database tables
+- [x] Update DB queries
 
 ### Phase 6.2: Pipeline Core
-- [ ] Implement globalSegmentation
-- [ ] Implement boundaryRefine
-- [ ] Implement deepIncidentAnalysis
-- [ ] Implement coherencePass
-- [ ] Implement scoringEngine
-- [ ] Implement reviewQueueBuilder
+- [x] Implement globalSegmentation
+- [x] Implement boundaryRefine
+- [x] Implement deepIncidentAnalysis
+- [x] Implement coherencePass
+- [x] Implement scoringEngine
+- [x] Implement reviewQueueBuilder
 
 ### Phase 6.3: Consistency System
-- [ ] Implement consistencyChecker
-- [ ] Implement timelineValidator
-- [ ] Implement stateValidator
-- [ ] Implement causalValidator
-- [ ] Implement spanValidator
+- [x] Implement consistencyChecker
+- [x] Implement timelineValidator
+- [x] Implement stateValidator
+- [x] Implement causalValidator
+- [x] Implement spanValidator
 
 ### Phase 6.4: Frontend
-- [ ] Update AnalysisViewer for incident-first
-- [ ] Create IncidentListView
-- [ ] Create IncidentCard
-- [ ] Create ReviewQueueView
-- [ ] Create ReviewQueueCard
-- [ ] Update filters and sorting
+- [x] Update AnalysisViewer for incident-first
+- [x] Create IncidentListView
+- [x] Create IncidentCard
+- [x] Create ReviewQueueView
+- [x] Create ReviewQueueCard
+- [x] Update filters and sorting
 
 ### Phase 6.5: Integration
-- [ ] Connect pipeline to job system
-- [ ] Add SSE progress updates
-- [ ] Connect to existing stores
-- [ ] Add review resolution actions
+- [x] Connect pipeline to job system
+- [x] Add SSE progress updates
+- [x] Connect to existing stores
+- [x] Add review resolution actions
+
+### Phase 6.6: Ops & Maintenance
+- [x] Add backup automation script (`scripts/backup-corpus-db.js`)
+- [x] Add backfill automation module (`src/services/analysis/maintenance/backfillAutomation.js`)
+- [x] Add one-command maintenance runner (`scripts/phase6-maintenance.js`)
+- [x] Keep migration compatibility wrapper (`scripts/migrate-incident-first.js`)
+- [x] Add dedicated unit/integration/e2e tests for maintenance flow
 
 ---
 
 ## 13. Migration Strategy
 
-### Từ Pipeline cũ sang Incident-First
+### Tá»« Pipeline cÅ© sang Incident-First
 
-1. **Giữ nguyên dữ liệu cũ**
-   - Events cũ vẫn lưu trong bảng
-   - Tạo bảng mới cho incidents
+1. **Giá»¯ nguyĂªn dá»¯ liá»‡u cÅ©**
+   - Events cÅ© váº«n lÆ°u trong báº£ng
+   - Táº¡o báº£ng má»›i cho incidents
 
-2. **Backup trước khi migrate**
+2. **Backup trÆ°á»›c khi migrate**
    ```sql
    -- Backup events
    CREATE TABLE events_backup AS SELECT * FROM analysis_events;
    ```
 
-3. **Chạy incident analysis cho corpus đã có**
-   - Tạo API endpoint để re-analyze
+3. **Cháº¡y incident analysis cho corpus Ä‘Ă£ cĂ³**
+   - Táº¡o API endpoint Ä‘á»ƒ re-analyze
    - UI: "Analyze with Incident-First"
 
 4. **Timeline:**
-   - Phase 6.1-6.3: 2-3 tuần
-   - Phase 6.4-6.5: 1-2 tuần
-   - Testing: 1 tuần
+   - Phase 6.1-6.3: 2-3 tuáº§n
+   - Phase 6.4-6.5: 1-2 tuáº§n
+   - Testing: 1 tuáº§n
 
 ---
 
 ## 14. Testing Checklist
 
 ### Unit Tests
-- [ ] Test incident parsing
-- [ ] Test boundary calculation
-- [ ] Test merge/split algorithms
-- [ ] Test scoring engine
-- [ ] Test consistency checks
+- [x] Test incident parsing
+- [x] Test boundary calculation
+- [x] Test merge/split algorithms
+- [x] Test scoring engine
+- [x] Test consistency checks
+- [x] Test backup utility create/prune behavior
 
 ### Integration Tests
-- [ ] Test full pipeline with small corpus
-- [ ] Test pipeline with different modes
-- [ ] Test review queue building
-- [ ] Test database operations
+- [x] Test full pipeline with small corpus
+- [x] Test pipeline with different modes
+- [x] Test review queue building
+- [x] Test database operations
+- [x] Test backfill automation persists incidents/events/locations
 
 ### E2E Tests
-- [ ] Test user flow: upload → analyze → review
-- [ ] Test incident detail view
-- [ ] Test review queue resolution
-- [ ] Test viewer performance with large corpus
+- [x] Test user flow: upload -> analyze -> review
+- [x] Test incident detail view
+- [x] Test review queue resolution
+- [x] Test viewer performance with large corpus
+- [x] Test maintenance script (backup + backfill) end-to-end
+
+---
+
+## 15. Ops Automation Update (2026-04-05)
+
+### Automation Commands
+
+```bash
+# Backup corpus DB (+ WAL/SHM sidecars if present)
+npm run backup:corpus -- --db data/storyforge-corpus.sqlite --keep-last 20
+
+# Backfill incident-first artifacts from existing corpus_analyses.final_result
+npm run backfill:incident-first -- --force
+
+# One command: backup + backfill
+npm run phase6:maintenance -- --force
+```

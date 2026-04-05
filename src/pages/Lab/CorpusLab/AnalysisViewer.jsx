@@ -3,13 +3,14 @@
  * Phase 4: Analysis Results Viewer - Complete with DB integration
  */
 
+import { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import useAnalysisViewer, { VIEW_MODES } from './hooks/useAnalysisViewer.js';
 import ViewToggle from './components/ViewToggle.jsx';
 import FilterPanel from './components/FilterPanel.jsx';
 import SearchPanel from './components/SearchPanel.jsx';
 import EventListView from './components/EventListView.jsx';
-import IncidentClusterView from './components/IncidentClusterView.jsx';
+import IncidentListView from './components/IncidentListView.jsx';
 import MindMapView from './components/MindMapView.jsx';
 import TimelineView from './components/TimelineView.jsx';
 import CharacterGraph from './components/CharacterGraph.jsx';
@@ -20,6 +21,8 @@ import EventEditModal from './components/EventEditModal.jsx';
 import ExportModal from './components/ExportModal.jsx';
 import LinkToProjectModal from './components/LinkToProjectModal.jsx';
 import AdaptationPanel from './components/AdaptationPanel.jsx';
+import ReviewQueueView from './components/ReviewQueueView.jsx';
+import KnowledgeView from './components/KnowledgeView.jsx';
 import './AnalysisViewer.css';
 import './AnalysisViewer.components.css';
 
@@ -29,14 +32,19 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
   const { projectId } = useParams();
   const corpusId = propCorpusId || location.state?.corpusId;
   const analysisId = propAnalysisId || location.state?.analysisId;
+  const [reviewFilter, setReviewFilter] = useState('all');
 
   const {
     // Data
     corpus,
     analysis,
     parsed,
+    allEvents,
     displayEvents,
+    incidents,
     incidentClusters,
+    reviewQueue,
+    reviewQueueStats,
     selectedItems,
     characterGraph,
     timelineData,
@@ -100,6 +108,8 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
     handleClearHistory,
     handleLinkToProject,
     handleUnlinkFromProject,
+    handleResolveReview,
+    handleUpdateIncident,
 
     // Counts
     displayCount,
@@ -150,6 +160,9 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
             ← Kho Corpus
           </button>
           <h2>{corpus?.title || 'Kết quả phân tích'}</h2>
+          {analysis?.result?.meta?.runMode && (
+            <span className="mode-badge">Mode: {analysis.result.meta.runMode}</span>
+          )}
           {stats && (
             <div className="analysis-stats-summary">
               <span>{stats.total} sự kiện</span>
@@ -165,6 +178,12 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
               <span>{stats.locationLinkedCount ?? 0} đã gắn địa điểm</span>
               <span className="separator">·</span>
               <span>{incidentClusters.length} cụm sự kiện lớn</span>
+              <span className="separator">·</span>
+              <span>P0: {reviewQueueStats?.P0 || 0}</span>
+              <span className="separator">·</span>
+              <span>P1: {reviewQueueStats?.P1 || 0}</span>
+              <span className="separator">·</span>
+              <span>P2: {reviewQueueStats?.P2 || 0}</span>
               <span className="separator">·</span>
               <span>Cường độ TB: {stats.avgIntensity}/10</span>
             </div>
@@ -283,13 +302,18 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
 
           <div className={`view-content view-${view}`}>
             {view === 'incidents' && (
-              <IncidentClusterView
-                incidents={incidentClusters}
+              <IncidentListView
+                incidents={incidents}
                 events={displayEvents}
-                selectedIds={selectedIds}
-                onToggle={toggleSelection}
-                onEdit={handleEditEvent}
-                onAnnotate={handleAddAnnotation}
+                onIncidentClick={null}
+                onUpdateIncident={handleUpdateIncident}
+              />
+            )}
+
+            {view === 'knowledge' && (
+              <KnowledgeView
+                parsed={parsed}
+                events={allEvents}
               />
             )}
 
@@ -349,6 +373,15 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
                 corpusId={corpusId}
                 compareCorpusId={compareCorpusId}
                 onSelectCorpusB={setCompareCorpusId}
+              />
+            )}
+
+            {view === 'review' && (
+              <ReviewQueueView
+                items={reviewQueue}
+                filter={reviewFilter}
+                onFilterChange={setReviewFilter}
+                onResolve={handleResolveReview}
               />
             )}
           </div>

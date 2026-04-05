@@ -1,3 +1,5 @@
+import { getRunMode } from './pipeline/modes.js';
+
 export const ANALYSIS_PROVIDERS = {
   GEMINI_PROXY: 'gemini_proxy',
   GEMINI_DIRECT: 'gemini_direct',
@@ -32,13 +34,14 @@ export const ANALYSIS_CONFIG = {
     maxOutputPerPart: 65536,
     maxParts: 6,
     continuePrompt:
-      'Tiep tuc dung ngay vi tri dang do. Chi tra ve phan JSON hop le tiep theo. Noi dung hien thi phai bang tieng Viet (giu nguyen key schema tieng Anh) va cap nhat meta.hasMore chinh xac.',
+      'Tiếp tục đúng ngay vị trí đang dở. Chỉ trả về phần JSON hợp lệ tiếp theo. Nội dung hiển thị bằng tiếng Việt (giữ nguyên key schema tiếng Anh) và cập nhật meta.hasMore chính xác.',
   },
   defaults: {
     chunkSize: 666666,
     chunkOverlap: 0,
     temperature: 0.2,
     layers: [...ANALYSIS_LAYERS],
+    runMode: 'balanced',
   },
   sse: {
     retryMs: 5000,
@@ -88,6 +91,7 @@ export function resolveProviderModel(provider, requestedModel) {
 }
 
 export function resolveAnalysisConfig(input = {}) {
+  const runMode = getRunMode(input.runMode || input.mode || ANALYSIS_CONFIG.defaults.runMode);
   const provider = Object.values(ANALYSIS_PROVIDERS).includes(input.provider)
     ? input.provider
     : ANALYSIS_CONFIG.provider;
@@ -121,6 +125,7 @@ export function resolveAnalysisConfig(input = {}) {
   );
 
   return {
+    runMode: runMode.id,
     provider,
     model,
     chunkSize,

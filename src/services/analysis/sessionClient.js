@@ -9,6 +9,13 @@ function createRequestError(message, code, details = null) {
   return error;
 }
 
+function getErrorCodeFromHttpStatus(status) {
+  if (status === 429) return 'AI_RATE_LIMIT';
+  if (status === 401 || status === 403) return 'AI_UNAUTHORIZED';
+  if (status >= 500) return 'AI_SERVICE_UNAVAILABLE';
+  return 'AI_REQUEST_FAILED';
+}
+
 function resolveProxyUrl(explicitUrl) {
   const trimmed = String(explicitUrl || '').trim();
 
@@ -226,7 +233,12 @@ export class SessionClient {
 
   async executeWithApiKeyRotation(requestFn) {
     const keyCount = this.apiKeys.length;
-    let lastRateLimitError = null;
+    let lastRetryableError = null;
+    const retryableCodes = new Set([
+      'AI_RATE_LIMIT',
+      'AI_UNAUTHORIZED',
+      'AI_SERVICE_UNAVAILABLE',
+    ]);
 
     for (let offset = 0; offset < keyCount; offset += 1) {
       const keyIndex = (this.apiKeyCursor + offset) % keyCount;
@@ -241,8 +253,8 @@ export class SessionClient {
         this.apiKeyCursor = (keyIndex + 1) % keyCount;
         return result;
       } catch (error) {
-        if (error?.code === 'AI_RATE_LIMIT') {
-          lastRateLimitError = error;
+        if (retryableCodes.has(error?.code)) {
+          lastRetryableError = error;
           continue;
         }
 
@@ -250,8 +262,8 @@ export class SessionClient {
       }
     }
 
-    if (lastRateLimitError) {
-      throw lastRateLimitError;
+    if (lastRetryableError) {
+      throw lastRetryableError;
     }
 
     throw createRequestError(
@@ -279,15 +291,24 @@ export class SessionClient {
     };
 
     const payload = await this.executeWithApiKeyRotation(async (apiKey) => {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: options.signal,
-      });
+      let response;
+      try {
+        response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: options.signal,
+        });
+      } catch (error) {
+        throw createRequestError(
+          `Không thể kết nối Gemini proxy: ${error?.message || 'Network error'}`,
+          'AI_SERVICE_UNAVAILABLE',
+          { cause: error?.message || String(error || '') },
+        );
+      }
 
       const responsePayload = await response.json().catch(() => null);
 
@@ -296,8 +317,13 @@ export class SessionClient {
           responsePayload?.error?.message
             || responsePayload?.error
             || `Yêu cầu Gemini proxy thất bại với mã ${response.status}`,
-          response.status === 429 ? 'AI_RATE_LIMIT' : 'AI_REQUEST_FAILED',
-          responsePayload,
+          getErrorCodeFromHttpStatus(response.status),
+          {
+            ...(responsePayload && typeof responsePayload === 'object'
+              ? responsePayload
+              : { payload: responsePayload }),
+            status: response.status,
+          },
         );
       }
 
@@ -343,22 +369,36 @@ export class SessionClient {
 
     const payload = await this.executeWithApiKeyRotation(async (apiKey) => {
       const requestUrl = buildGeminiDirectUrl(this.directUrl, this.model, apiKey);
-      const response = await fetch(requestUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: options.signal,
-      });
+      let response;
+      try {
+        response = await fetch(requestUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+          signal: options.signal,
+        });
+      } catch (error) {
+        throw createRequestError(
+          `Không thể kết nối Gemini direct: ${error?.message || 'Network error'}`,
+          'AI_SERVICE_UNAVAILABLE',
+          { cause: error?.message || String(error || '') },
+        );
+      }
 
       const responsePayload = await response.json().catch(() => null);
 
       if (!response.ok) {
         throw createRequestError(
           responsePayload?.error?.message || `Yêu cầu Gemini trực tiếp thất bại với mã ${response.status}`,
-          response.status === 429 ? 'AI_RATE_LIMIT' : 'AI_REQUEST_FAILED',
-          responsePayload,
+          getErrorCodeFromHttpStatus(response.status),
+          {
+            ...(responsePayload && typeof responsePayload === 'object'
+              ? responsePayload
+              : { payload: responsePayload }),
+            status: response.status,
+          },
         );
       }
 

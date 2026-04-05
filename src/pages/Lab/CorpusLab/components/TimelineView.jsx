@@ -12,14 +12,6 @@ const ARC_COLORS = {
   resolution: '#22c55e',
 };
 
-const ARC_LABELS = {
-  setup: 'Mở đầu',
-  rising: 'Tăng tiến',
-  climax: 'Cao trào',
-  falling: 'Hạ nhiệt',
-  resolution: 'Kết',
-};
-
 const SEVERITY_LABELS = {
   crucial: 'Cốt lõi',
   major: 'Quan trọng',
@@ -61,12 +53,10 @@ export default function TimelineView({
       {/* Timeline header */}
       <div className="timeline-header">
         <div className="timeline-legend">
-          {Object.entries(ARC_COLORS).map(([arc, color]) => (
-            <span key={arc} className="legend-item">
-              <span className="legend-dot" style={{ background: color }} />
-              {ARC_LABELS[arc] || capitalize(arc)}
-            </span>
-          ))}
+          <span className="legend-item">
+            <span className="legend-dot" style={{ background: '#6366f1' }} />
+            Dòng thời gian theo chương
+          </span>
         </div>
       </div>
 

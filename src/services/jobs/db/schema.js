@@ -1,14 +1,33 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
 let dbInstance = null;
 
+function resolveModuleDefaultPath() {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(moduleDir, '..', '..', '..', '..', 'data', 'storyforge-jobs.sqlite');
+}
+
 function resolveDbPath() {
-  return (
-    process.env.STORYFORGE_JOB_DB_PATH ||
-    path.resolve(process.cwd(), 'data', 'storyforge-jobs.sqlite')
-  );
+  const explicit = String(process.env.STORYFORGE_JOB_DB_PATH || '').trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const cwdCandidate = path.resolve(process.cwd(), 'data', 'storyforge-jobs.sqlite');
+  const moduleCandidate = resolveModuleDefaultPath();
+
+  if (fs.existsSync(cwdCandidate)) {
+    return cwdCandidate;
+  }
+
+  if (fs.existsSync(moduleCandidate)) {
+    return moduleCandidate;
+  }
+
+  return cwdCandidate;
 }
 
 export function getJobsDb() {
