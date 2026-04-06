@@ -1,5 +1,7 @@
 # PHASE 1: Backend Job Queue System
 
+> Archival note (2026-04-06): This document records the original design. The current runtime has been migrated to a PostgreSQL-only backend, so SQLite references below are historical only.
+
 ## Mục tiêu
 
 Xây dựng hệ thống job queue để AI phân tích truyện chạy **nền**, không block UI. User có thể đóng tab, job vẫn chạy và thông báo khi hoàn thành.
@@ -465,7 +467,7 @@ export const useJobStore = create(
 ### 6.2 IndexedDB Persistence
 
 ```javascript
-// services/db/indexedDB.js
+// legacy frontend persistence example (retired)
 // Lưu job state để offline-ready
 
 const DB_NAME = 'storyforge-jobs';

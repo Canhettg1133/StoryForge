@@ -125,6 +125,25 @@ export const corpusApi = {
     return request(`/api/corpus/${corpusId}/analysis/${analysisId}`);
   },
 
+  getAnalysisGraph(corpusId, analysisId) {
+    return request(`/api/corpus/${corpusId}/analysis/${analysisId}/graph`);
+  },
+
+  getAnalysisProvenance(corpusId, analysisId, nodeId) {
+    return request(`/api/corpus/${corpusId}/analysis/${analysisId}/provenance/${nodeId}`);
+  },
+
+  listProjectAnalysisSnapshots(projectId, query = {}) {
+    return request(`/api/corpus/projects/${projectId}/analysis-snapshots`, { query });
+  },
+
+  saveProjectAnalysisSnapshot(projectId, payload = {}) {
+    return request(`/api/corpus/projects/${projectId}/analysis-snapshots`, {
+      method: 'POST',
+      body: payload,
+    });
+  },
+
   getAnalysisLayer(corpusId, analysisId, layer) {
     return request(`/api/corpus/${corpusId}/analysis/${analysisId}/layer/${layer}`);
   },

@@ -18,7 +18,7 @@ import { corpusApi } from '../../../../services/api/corpusApi';
 import {
   getProjectAnalysisSnapshots,
   saveAnalysisSnapshotToProject,
-} from '../../../../services/viewer/viewerDbService.js';
+} from '../../../../services/projects/projectGateway.js';
 import useCorpusAnalysis from '../hooks/useCorpusAnalysis';
 import AnalysisConfig from './AnalysisConfig';
 import AnalysisProgress from './AnalysisProgress';
@@ -82,7 +82,7 @@ function toDefaultConfig() {
   return {
     provider: ANALYSIS_PROVIDERS.GEMINI_PROXY,
     model: getDefaultModel(ANALYSIS_PROVIDERS.GEMINI_PROXY),
-    runMode: 'balanced',
+    runMode: 'full_corpus_1m',
     enableIncidentAiPipeline: false,
     temperature: 0.2,
     maxParts: 6,
@@ -373,7 +373,7 @@ export default function AnalysisPanel({ corpus }) {
         layers: Array.isArray(latestCompleted.layers) ? latestCompleted.layers : [],
         result: payload,
       });
-      setSnapshotSyncStats(saveResult?.materialized || null);
+      setSnapshotSyncStats(saveResult || null);
 
       const rows = await getProjectAnalysisSnapshots(numericProjectId, 30);
       setProjectSnapshots(rows);
@@ -403,9 +403,9 @@ export default function AnalysisPanel({ corpus }) {
   return (
     <div className="corpus-card analysis-panel">
       <div className="analysis-panel-header">
-        <h3>Bo may phan tich (Giai doan 3)</h3>
+        <h3>Bo may phan tich Analysis V2</h3>
         <span className="muted">
-          Phan tich L1-L6 theo session, tu noi output khi vuot gioi han
+          Pipeline incident-first contract-driven voi run report, degraded report va story graph
         </span>
       </div>
 
@@ -468,10 +468,15 @@ export default function AnalysisPanel({ corpus }) {
           {snapshotSavedAt && (
             <span>Cap nhat: {formatTime(snapshotSavedAt)}</span>
           )}
-          {snapshotSyncStats && (
+          {snapshotSyncStats?.materialized && (
             <span>
-              Dong bo du an: +{snapshotSyncStats.charactersAdded || 0} nhan vat, +{snapshotSyncStats.locationsAdded || 0} dia diem, +{snapshotSyncStats.objectsAdded || 0} vat pham, +{snapshotSyncStats.worldTermsAdded || 0} thuat ngu
-              {snapshotSyncStats.worldUpdated ? ', da cap nhat the gioi' : ''}
+              Dong bo du an: +{snapshotSyncStats.materialized.charactersAdded || 0} nhan vat, +{snapshotSyncStats.materialized.locationsAdded || 0} dia diem, +{snapshotSyncStats.materialized.objectsAdded || 0} vat pham, +{snapshotSyncStats.materialized.worldTermsAdded || 0} thuat ngu
+              {snapshotSyncStats.materialized.worldUpdated ? ', da cap nhat the gioi' : ''}
+            </span>
+          )}
+          {snapshotSyncStats && !snapshotSyncStats.materialized && snapshotSyncStats.sourceOfTruth === 'postgres' && (
+            <span>
+              Snapshot da duoc luu len server. Day la ban luu artifact, chua materialize entity vao project store local.
             </span>
           )}
           {snapshotError && <p className="corpus-error">{snapshotError}</p>}

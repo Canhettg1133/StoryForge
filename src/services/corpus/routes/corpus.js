@@ -2,19 +2,9 @@ import express from 'express';
 import multer from 'multer';
 import { ANALYSIS_CONFIG } from '../../analysis/analysisConfig.js';
 import { getCorpusAnalysisService } from '../../analysis/index.js';
-import {
-  getIncidentById,
-  getLatestAnalysisIdForCorpus,
-  getReviewQueueItemById,
-  getReviewQueueStatsByAnalysis,
-  listAnalysisEventsByIncident,
-  listAnalysisLocationsByAnalysis,
-  listConsistencyRisksByAnalysis,
-  listIncidentsByAnalysis,
-  listReviewQueueByAnalysis,
-  upsertIncident,
-  upsertReviewQueueItem,
-} from '../../analysis/db/incidentFirstQueries.js';
+import { incidentFirstRepository } from '../../analysis/repositories/incidentFirstRepository.js';
+import { analysisRepository } from '../../analysis/repositories/analysisRepository.js';
+import { projectSnapshotRepository } from '../../projects/repositories/projectSnapshotRepository.js';
 import {
   createCorpusFromUpload,
   getCorpusChunkPreview,
@@ -39,6 +29,21 @@ const ANALYSIS_TERMINAL_EVENTS = new Set(['completed', 'error', 'cancelled']);
 function sendSseEvent(res, event, data) {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function getStoryGraphPayload(analysis = null) {
+  const result = analysis?.result || null;
+  if (!result || typeof result !== 'object') {
+    return {
+      graph: null,
+      graphSummary: null,
+    };
+  }
+
+  return {
+    graph: result.story_graph || result.storyGraph || null,
+    graphSummary: result.graph_summary || result.graphSummary || null,
+  };
 }
 
 function toHttpError(error) {
@@ -74,16 +79,16 @@ export function createCorpusRouter() {
   const router = express.Router();
   const analysisService = getCorpusAnalysisService();
 
-  function resolveAnalysisId(corpusId, requestedAnalysisId = null) {
+  async function resolveAnalysisId(corpusId, requestedAnalysisId = null) {
     if (requestedAnalysisId) {
-      const analysis = analysisService.getRawById(requestedAnalysisId);
+      const analysis = await analysisService.getRawById(requestedAnalysisId);
       if (!analysis || analysis.corpusId !== corpusId) {
         return null;
       }
       return requestedAnalysisId;
     }
 
-    return getLatestAnalysisIdForCorpus(corpusId, { includeNonTerminal: true });
+    return incidentFirstRepository.getLatestAnalysisIdForCorpusAsync(corpusId, { includeNonTerminal: true });
   }
 
   function parseReviewFilter(filter) {
@@ -113,6 +118,8 @@ export function createCorpusRouter() {
         title: corpus.title,
         author: corpus.author,
         status: corpus.status,
+        frontMatter: corpus.frontMatter || null,
+        parseDiagnostics: corpus.parseDiagnostics || null,
         chapterCount: corpus.chapterCount,
         wordCount: corpus.wordCount,
         fileType: corpus.fileType,
@@ -132,8 +139,8 @@ export function createCorpusRouter() {
     }
   });
 
-  router.get('/', (req, res) => {
-    const result = listCorpusRecords({
+  router.get('/', async (req, res) => {
+    const result = await listCorpusRecords({
       fandom: req.query?.fandom,
       status: req.query?.status,
       search: req.query?.search,
@@ -144,8 +151,8 @@ export function createCorpusRouter() {
     return res.json(result);
   });
 
-  router.get('/:id/chapters/:chapterId', (req, res) => {
-    const chapter = getCorpusChapter(req.params.id, req.params.chapterId);
+  router.get('/:id/chapters/:chapterId', async (req, res) => {
+    const chapter = await getCorpusChapter(req.params.id, req.params.chapterId);
     if (!chapter) {
       return res.status(404).json({ error: 'Không tìm thấy chương.' });
     }
@@ -153,9 +160,9 @@ export function createCorpusRouter() {
     return res.json(chapter);
   });
 
-  router.get('/:id/chunk-preview', (req, res) => {
+  router.get('/:id/chunk-preview', async (req, res) => {
     try {
-      const preview = getCorpusChunkPreview(req.params.id, {
+      const preview = await getCorpusChunkPreview(req.params.id, {
         chunkSizeWords: req.query?.chunkSizeWords,
         preset: req.query?.preset,
         customWords: req.query?.customWords,
@@ -170,9 +177,9 @@ export function createCorpusRouter() {
     }
   });
 
-  router.post('/:id/rechunk', (req, res) => {
+  router.post('/:id/rechunk', async (req, res) => {
     try {
-      const result = rechunkCorpusRecord(req.params.id, {
+      const result = await rechunkCorpusRecord(req.params.id, {
         chunkSizeWords: req.body?.chunkSizeWords,
         preset: req.body?.preset,
         customWords: req.body?.customWords,
@@ -224,13 +231,13 @@ export function createCorpusRouter() {
     }
   });
 
-  router.get('/:id/analysis', (req, res) => {
-    const corpus = getCorpusRecord(req.params.id, { includeChapterContent: false });
+  router.get('/:id/analysis', async (req, res) => {
+    const corpus = await getCorpusRecord(req.params.id, { includeChapterContent: false });
     if (!corpus) {
       return res.status(404).json({ error: 'Không tìm thấy corpus.' });
     }
 
-    const result = analysisService.listByCorpus(req.params.id, {
+    const result = await analysisService.listByCorpus(req.params.id, {
       limit: req.query?.limit,
       offset: req.query?.offset,
     });
@@ -238,8 +245,8 @@ export function createCorpusRouter() {
     return res.json(result);
   });
 
-  router.get('/:id/analysis/:analysisId/stream', (req, res) => {
-    const analysis = analysisService.getRawById(req.params.analysisId);
+  router.get('/:id/analysis/:analysisId/stream', async (req, res) => {
+    const analysis = await analysisService.getRawById(req.params.analysisId);
     if (!analysis || analysis.corpusId !== req.params.id) {
       return res.status(404).json({ error: 'Không tìm thấy bản phân tích.' });
     }
@@ -254,7 +261,7 @@ export function createCorpusRouter() {
     sendSseEvent(
       res,
       'snapshot',
-      analysisService.getById(req.params.analysisId, {
+      await analysisService.getById(req.params.analysisId, {
         includeResults: analysis.status === 'completed',
       }),
     );
@@ -286,8 +293,8 @@ export function createCorpusRouter() {
     });
   });
 
-  router.get('/:id/analysis/:analysisId', (req, res) => {
-    const analysis = analysisService.getById(req.params.analysisId, {
+  router.get('/:id/analysis/:analysisId', async (req, res) => {
+    const analysis = await analysisService.getById(req.params.analysisId, {
       includeResults: true,
     });
 
@@ -298,13 +305,62 @@ export function createCorpusRouter() {
     return res.json(analysis);
   });
 
-  router.get('/:id/analysis/:analysisId/layer/:layer', (req, res) => {
-    const analysis = analysisService.getById(req.params.analysisId);
+  router.get('/:id/analysis/:analysisId/graph', async (req, res) => {
+    const analysis = await analysisService.getById(req.params.analysisId, {
+      includeResults: true,
+    });
+
+    if (!analysis || analysis.corpusId !== req.params.id) {
+      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+    }
+
+    const graph = await analysisRepository.getStoryGraphByAnalysisAsync(req.params.analysisId);
+    const graphPayload = graph
+      ? {
+        graph,
+        graphSummary: analysis?.graphSummary || analysis?.result?.graph_summary || graph.summary || null,
+      }
+      : getStoryGraphPayload(analysis);
+    return res.json({
+      analysisId: req.params.analysisId,
+      corpusId: req.params.id,
+      ...graphPayload,
+    });
+  });
+
+  router.get('/:id/analysis/:analysisId/provenance/:nodeId', async (req, res) => {
+    const analysis = await analysisService.getById(req.params.analysisId, {
+      includeResults: true,
+    });
+
+    if (!analysis || analysis.corpusId !== req.params.id) {
+      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+    }
+
+    const nodeId = String(req.params.nodeId || '').trim();
+    if (!nodeId) {
+      return res.status(404).json({ error: 'Khong tim thay provenance cho node.' });
+    }
+
+    const provenance = await analysisRepository.getStoryGraphProvenanceAsync(req.params.analysisId, nodeId);
+    if (!provenance) {
+      return res.status(404).json({ error: 'Khong tim thay node provenance.' });
+    }
+
+    return res.json({
+      analysisId: req.params.analysisId,
+      corpusId: req.params.id,
+      ...provenance,
+    });
+  });
+
+  router.get('/:id/analysis/:analysisId/layer/:layer', async (req, res) => {
+    const analysis = await analysisService.getById(req.params.analysisId);
     if (!analysis || analysis.corpusId !== req.params.id) {
       return res.status(404).json({ error: 'Không tìm thấy bản phân tích.' });
     }
 
-    const layer = analysisService.getLayer(req.params.analysisId, req.params.layer);
+    const layer = await analysisService.getLayer(req.params.analysisId, req.params.layer);
     if (!layer?.valid) {
       return res.status(400).json({ error: 'Layer không hợp lệ. Dùng l1-l6.' });
     }
@@ -317,18 +373,18 @@ export function createCorpusRouter() {
     });
   });
 
-  router.get('/:id/incidents', (req, res) => {
-    const corpus = getCorpusRecord(req.params.id, { includeChapterContent: false });
+  router.get('/:id/incidents', async (req, res) => {
+    const corpus = await getCorpusRecord(req.params.id, { includeChapterContent: false });
     if (!corpus) {
       return res.status(404).json({ error: 'Không tìm thấy corpus.' });
     }
 
-    const analysisId = resolveAnalysisId(req.params.id, req.query?.analysisId);
+    const analysisId = await resolveAnalysisId(req.params.id, req.query?.analysisId);
     if (!analysisId) {
       return res.json({ analysisId: null, incidents: [], total: 0 });
     }
 
-    const incidents = listIncidentsByAnalysis(analysisId);
+    const incidents = await incidentFirstRepository.listIncidentsByAnalysisAsync(analysisId);
     return res.json({
       analysisId,
       incidents,
@@ -336,14 +392,14 @@ export function createCorpusRouter() {
     });
   });
 
-  router.get('/:id/incidents/:incidentId', (req, res) => {
-    const incident = getIncidentById(req.params.incidentId);
+  router.get('/:id/incidents/:incidentId', async (req, res) => {
+    const incident = await incidentFirstRepository.getIncidentByIdAsync(req.params.incidentId);
     if (!incident || incident.corpusId !== req.params.id) {
       return res.status(404).json({ error: 'Không tìm thấy incident.' });
     }
 
-    const events = listAnalysisEventsByIncident(incident.id);
-    const allLocations = listAnalysisLocationsByAnalysis(incident.analysisId);
+    const events = await incidentFirstRepository.listAnalysisEventsByIncidentAsync(incident.id);
+    const allLocations = await incidentFirstRepository.listAnalysisLocationsByAnalysisAsync(incident.analysisId);
     const locationIds = new Set([
       ...(incident.relatedLocations || []),
       ...events
@@ -357,7 +413,8 @@ export function createCorpusRouter() {
     });
 
     const eventIds = new Set(events.map((event) => event.id));
-    const consistencyRisks = listConsistencyRisksByAnalysis(incident.analysisId).filter((risk) => {
+    const allRisks = await incidentFirstRepository.listConsistencyRisksByAnalysisAsync(incident.analysisId);
+    const consistencyRisks = allRisks.filter((risk) => {
       if (Array.isArray(risk?.involvedIncidents) && risk.involvedIncidents.includes(incident.id)) return true;
       if (!Array.isArray(risk?.involvedEvents)) return false;
       return risk.involvedEvents.some((eventId) => eventIds.has(eventId));
@@ -372,14 +429,14 @@ export function createCorpusRouter() {
     });
   });
 
-  router.patch('/:id/incidents/:incidentId', (req, res) => {
-    const incident = getIncidentById(req.params.incidentId);
+  router.patch('/:id/incidents/:incidentId', async (req, res) => {
+    const incident = await incidentFirstRepository.getIncidentByIdAsync(req.params.incidentId);
     if (!incident || incident.corpusId !== req.params.id) {
       return res.status(404).json({ error: 'Không tìm thấy incident.' });
     }
 
     const updates = req.body || {};
-    const next = upsertIncident({
+    const next = await incidentFirstRepository.upsertIncident({
       ...incident,
       ...updates,
       id: incident.id,
@@ -394,13 +451,13 @@ export function createCorpusRouter() {
     });
   });
 
-  router.get('/:id/review-queue', (req, res) => {
-    const corpus = getCorpusRecord(req.params.id, { includeChapterContent: false });
+  router.get('/:id/review-queue', async (req, res) => {
+    const corpus = await getCorpusRecord(req.params.id, { includeChapterContent: false });
     if (!corpus) {
       return res.status(404).json({ error: 'Không tìm thấy corpus.' });
     }
 
-    const analysisId = resolveAnalysisId(req.params.id, req.query?.analysisId);
+    const analysisId = await resolveAnalysisId(req.params.id, req.query?.analysisId);
     if (!analysisId) {
       return res.json({
         analysisId: null,
@@ -414,13 +471,13 @@ export function createCorpusRouter() {
     const limit = Math.max(1, Math.min(500, Number(req.query?.limit) || 20));
     const offset = Math.max(0, Number(req.query?.offset) || 0);
 
-    const items = listReviewQueueByAnalysis(analysisId, {
+    const items = await incidentFirstRepository.listReviewQueueByAnalysisAsync(analysisId, {
       status: filterConfig.status,
       priority: filterConfig.priority,
       limit,
       offset,
     });
-    const stats = getReviewQueueStatsByAnalysis(analysisId);
+    const stats = await incidentFirstRepository.getReviewQueueStatsByAnalysisAsync(analysisId);
 
     return res.json({
       analysisId,
@@ -433,17 +490,17 @@ export function createCorpusRouter() {
     });
   });
 
-  router.patch('/:id/review-queue/:itemId', (req, res) => {
-    const item = getReviewQueueItemById(req.params.itemId);
+  router.patch('/:id/review-queue/:itemId', async (req, res) => {
+    const item = await incidentFirstRepository.getReviewQueueItemByIdAsync(req.params.itemId);
     if (!item || item.corpusId !== req.params.id) {
-      return res.status(404).json({ error: 'Không tìm thấy review item.' });
+      return res.status(404).json({ error: 'Khong tim thay review item.' });
     }
 
     const payload = req.body || {};
     const status = payload.status || item.status;
     const resolved = status === 'resolved' || status === 'ignored';
 
-    const next = upsertReviewQueueItem({
+    const next = await incidentFirstRepository.upsertReviewQueueItem({
       ...item,
       ...payload,
       id: item.id,
@@ -458,33 +515,70 @@ export function createCorpusRouter() {
     });
   });
 
-  router.delete('/analysis/:analysisId', (req, res) => {
-    const analysis = analysisService.cancel(req.params.analysisId);
+  router.delete('/analysis/:analysisId', async (req, res) => {
+    const analysis = await analysisService.cancel(req.params.analysisId);
     if (!analysis) {
-      return res.status(404).json({ error: 'Không tìm thấy bản phân tích.' });
+      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
     }
 
     return res.json(analysis);
   });
 
-  router.get('/:id', (req, res) => {
-    const corpus = getCorpusRecord(req.params.id, {
+  router.get('/projects/:projectId/analysis-snapshots', async (req, res) => {
+    try {
+      const items = await projectSnapshotRepository.listByProject(
+        req.params.projectId,
+        req.query?.limit,
+      );
+      return res.json({
+        projectId: req.params.projectId,
+        items,
+        total: items.length,
+      });
+    } catch (error) {
+      return res.status(503).json({
+        error: error?.message || 'Khong the doc project snapshots tu Postgres.',
+      });
+    }
+  });
+
+  router.post('/projects/:projectId/analysis-snapshots', async (req, res) => {
+    try {
+      const saved = await projectSnapshotRepository.saveSnapshot({
+        projectId: req.params.projectId,
+        corpusId: req.body?.corpusId,
+        analysisId: req.body?.analysisId,
+        status: req.body?.status,
+        layers: req.body?.layers,
+        result: req.body?.result,
+        artifactVersion: req.body?.artifactVersion,
+      });
+      return res.status(201).json(saved);
+    } catch (error) {
+      return res.status(503).json({
+        error: error?.message || 'Khong the luu project snapshot vao Postgres.',
+      });
+    }
+  });
+
+  router.get('/:id', async (req, res) => {
+    const corpus = await getCorpusRecord(req.params.id, {
       includeChapterContent: false,
     });
 
     if (!corpus) {
-      return res.status(404).json({ error: 'Không tìm thấy corpus.' });
+      return res.status(404).json({ error: 'Khong tim thay corpus.' });
     }
 
     return res.json(corpus);
   });
 
-  router.patch('/:id', (req, res) => {
+  router.patch('/:id', async (req, res) => {
     const updates = req.body || {};
-    const updated = updateCorpusRecord(req.params.id, updates);
+    const updated = await updateCorpusRecord(req.params.id, updates);
 
     if (!updated) {
-      return res.status(404).json({ error: 'Không tìm thấy corpus.' });
+      return res.status(404).json({ error: 'Khong tim thay corpus.' });
     }
 
     return res.json({
@@ -494,10 +588,10 @@ export function createCorpusRouter() {
     });
   });
 
-  router.delete('/:id', (req, res) => {
-    const deleted = removeCorpusRecord(req.params.id);
+  router.delete('/:id', async (req, res) => {
+    const deleted = await removeCorpusRecord(req.params.id);
     if (!deleted) {
-      return res.status(404).json({ error: 'Không tìm thấy corpus.' });
+      return res.status(404).json({ error: 'Khong tim thay corpus.' });
     }
 
     return res.json({ success: true });

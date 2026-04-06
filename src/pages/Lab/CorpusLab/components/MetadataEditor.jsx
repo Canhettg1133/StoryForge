@@ -14,14 +14,10 @@ const CANON_TYPES = [
   { value: 'both', label: 'Cả hai' },
 ];
 
-const CHUNK_SIZES = [500, 750, 1500];
-
 export default function MetadataEditor({
   metadata,
   onChange,
   onSubmit,
-  chunkSize,
-  onChunkSizeChange,
   detectedFandom,
   disabled,
   canSubmit,
@@ -108,31 +104,20 @@ export default function MetadataEditor({
         </label>
       </div>
 
-      <div className="metadata-row">
-        <label>
-          <span>Ngôn ngữ</span>
-          <input
-            type="text"
-            value={metadata.language || 'vi'}
-            onChange={(event) => onChange?.('language', event.target.value)}
-            placeholder="vi / en"
-            disabled={disabled}
-          />
-        </label>
+      <label>
+        <span>Ngôn ngữ</span>
+        <input
+          type="text"
+          value={metadata.language || 'vi'}
+          onChange={(event) => onChange?.('language', event.target.value)}
+          placeholder="vi / en"
+          disabled={disabled}
+        />
+      </label>
 
-        <label>
-          <span>Kích thước chunk</span>
-          <select
-            value={chunkSize}
-            onChange={(event) => onChunkSizeChange?.(Number(event.target.value))}
-            disabled={disabled}
-          >
-            {CHUNK_SIZES.map((size) => (
-              <option key={size} value={size}>{size} từ</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <p className="metadata-note">
+        Nút này chỉ tải file lên và tách chương. Chunk nội bộ vẫn được tạo ở backend để phục vụ grounding và phân tích về sau, nhưng không còn là bước cấu hình chính của bạn ở đây.
+      </p>
 
       <button type="submit" className="btn btn-primary" disabled={disabled || !canSubmit}>
         Tải lên và tách chương

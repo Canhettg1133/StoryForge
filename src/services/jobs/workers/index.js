@@ -36,7 +36,7 @@ export class JobWorker {
 
   async runLoop() {
     while (this.keepRunning) {
-      const job = this.queue.claimNextJob(this.workerId);
+      const job = await this.queue.claimNextJob(this.workerId);
 
       if (!job) {
         await sleep(1000);
@@ -85,9 +85,9 @@ export class JobWorker {
         throw cancelledError;
       }
 
-      this.queue.handleJobSuccess(job.id, outputData);
+      await this.queue.handleJobSuccess(job.id, outputData);
     } catch (error) {
-      this.queue.handleJobError(job, error);
+      await this.queue.handleJobError(job, error);
     } finally {
       this.queue.clearRunningJob(job.id);
       this.isProcessing = false;
@@ -96,4 +96,3 @@ export class JobWorker {
     }
   }
 }
-

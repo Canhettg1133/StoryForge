@@ -71,15 +71,15 @@ export default function JobQueuePanel() {
   const jobHistory = useJobStore((state) => state.jobHistory);
   const cancelJob = useJobStore((state) => state.cancelJob);
   const clearPanel = useJobStore((state) => state.clearPanel);
-  const hydrateJobsFromIndexedDB = useJobStore(
-    (state) => state.hydrateJobsFromIndexedDB,
+  const hydrateJobsFromApi = useJobStore(
+    (state) => state.hydrateJobsFromApi,
   );
   const resumeActiveSubscriptions = useJobStore(
     (state) => state.resumeActiveSubscriptions,
   );
 
   React.useEffect(() => {
-    hydrateJobsFromIndexedDB()
+    hydrateJobsFromApi()
       .then(() => resumeActiveSubscriptions())
       .catch(() => {});
 
@@ -88,7 +88,7 @@ export default function JobQueuePanel() {
         Notification.requestPermission().catch(() => {});
       }
     }
-  }, [hydrateJobsFromIndexedDB, resumeActiveSubscriptions]);
+  }, [hydrateJobsFromApi, resumeActiveSubscriptions]);
 
   const activeJobData = useMemo(
     () => activeJobs.map((id) => jobs[id]).filter(Boolean),

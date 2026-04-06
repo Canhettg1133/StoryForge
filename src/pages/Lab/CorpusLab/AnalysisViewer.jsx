@@ -23,6 +23,7 @@ import LinkToProjectModal from './components/LinkToProjectModal.jsx';
 import AdaptationPanel from './components/AdaptationPanel.jsx';
 import ReviewQueueView from './components/ReviewQueueView.jsx';
 import KnowledgeView from './components/KnowledgeView.jsx';
+import StoryGraphView from './components/StoryGraphView.jsx';
 import './AnalysisViewer.css';
 import './AnalysisViewer.components.css';
 
@@ -45,6 +46,7 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
     incidentClusters,
     reviewQueue,
     reviewQueueStats,
+    storyGraph,
     selectedItems,
     characterGraph,
     timelineData,
@@ -162,6 +164,9 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
           <h2>{corpus?.title || 'Kết quả phân tích'}</h2>
           {analysis?.result?.meta?.runMode && (
             <span className="mode-badge">Mode: {analysis.result.meta.runMode}</span>
+          )}
+          {analysis?.artifactVersion && (
+            <span className="mode-badge">Artifact: {analysis.artifactVersion}</span>
           )}
           {stats && (
             <div className="analysis-stats-summary">
@@ -314,6 +319,8 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
               <KnowledgeView
                 parsed={parsed}
                 events={allEvents}
+                passStatus={analysis?.passStatus || analysis?.result?.pass_status}
+                degradedReport={analysis?.degradedReport || analysis?.result?.degraded_run_report}
               />
             )}
 
@@ -357,15 +364,18 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
             )}
 
             {view === 'graph' && (
-              <CharacterGraph
-                data={characterGraph}
-                events={displayEvents}
-                selectedIds={selectedIds}
-                onNodeClick={(node) => {
-                  // Filter by character
-                  updateFilter('character', node.id);
-                }}
-              />
+              storyGraph?.nodes?.length ? (
+                <StoryGraphView graph={storyGraph} />
+              ) : (
+                <CharacterGraph
+                  data={characterGraph}
+                  events={displayEvents}
+                  selectedIds={selectedIds}
+                  onNodeClick={(node) => {
+                    updateFilter('character', node.id);
+                  }}
+                />
+              )
             )}
 
             {view === 'compare' && (

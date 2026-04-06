@@ -1,7 +1,8 @@
 export const RUN_MODES = {
-  FAST: {
-    id: 'fast',
-    name: 'Fast',
+  FAST_PREVIEW: {
+    id: 'fast_preview',
+    aliases: ['fast'],
+    name: 'Fast Preview',
     description: 'Skip heavy global context and boundary refinement for speed.',
     segmentationContext: 'compressed',
     maxSegmentationWords: 50000,
@@ -15,6 +16,7 @@ export const RUN_MODES = {
   },
   BALANCED: {
     id: 'balanced',
+    aliases: [],
     name: 'Balanced',
     description: 'Default mode with boundary refine, moderate coherence and review queue.',
     segmentationContext: 'compressed',
@@ -30,6 +32,7 @@ export const RUN_MODES = {
   },
   DEEP: {
     id: 'deep',
+    aliases: [],
     name: 'Deep',
     description: 'Most thorough mode with full coherence, strict review and lower auto-accept thresholds.',
     segmentationContext: 'full',
@@ -42,69 +45,83 @@ export const RUN_MODES = {
     multiplePasses: true,
     coherencePass: 'full',
     autoMergeThreshold: 0.82,
-    suggestMergeThreshold: 0.70,
+    suggestMergeThreshold: 0.7,
     scoringDetail: 'full',
     reviewQueueBuild: true,
     strictThreshold: true,
   },
-  // [NEW] Mode dùng toàn bộ context 1M: Pass A global → Pass B parallel per incident → Pass C knowledge
-  INCIDENT_ONLY_1M: {
-    id: 'incident_only_1m',
-    name: 'Incident Only (1M)',
-    description: 'Full-corpus global pass to extract major incidents, then parallel deep analysis per incident using full key pool. Minor events hidden by default.',
-    // Context
+  FULL_CORPUS_1M: {
+    id: 'full_corpus_1m',
+    aliases: ['incident_only_1m'],
+    name: 'Full Corpus 1M',
+    description: 'Full-corpus incident map, parallel deep analysis, then knowledge consolidation.',
     segmentationContext: 'full_corpus',
     maxSegmentationWords: 900000,
-    // AI passes
-    useAiGlobalPass: true,          // Pass A: toàn corpus → danh sách incident lớn
-    useAiDeepPass: true,            // Pass B: per incident song song theo key pool
-    useAiKnowledgePass: true,       // Pass C: consolidate knowledge từ incident output
-    // Concurrency: dynamic theo key pool, không hardcode
+    useAiGlobalPass: true,
+    useAiDeepPass: true,
+    useAiKnowledgePass: true,
     deepAnalysisConcurrency: 'key_pool',
     perIncidentMaxWords: 900000,
-    // Max incidents Pass A có thể trả về trong 65K output budget
-    // (~500 token/incident → tối đa ~130 incident)
     maxIncidentsGlobalPass: 130,
-    // Heuristic pipeline
-    boundaryRefine: false,          // AI Pass A đã handle boundary
+    boundaryRefine: false,
     coherencePass: 'none',
-    autoMergeThreshold: 0.80,
+    autoMergeThreshold: 0.8,
     scoringDetail: 'full',
     reviewQueueBuild: false,
-    // UI behavior
-    skipMinorEvents: true,          // event nhỏ ẩn mặc định ở màn chính
-    evidenceOnDemand: true,         // chỉ load event khi user bấm "chi tiết"
+    skipMinorEvents: true,
+    evidenceOnDemand: true,
+  },
+  LEGACY: {
+    id: 'legacy',
+    aliases: [],
+    name: 'Legacy',
+    description: 'Legacy incident-first heuristic pipeline with optional AI step pipeline.',
+    segmentationContext: 'compressed',
+    maxSegmentationWords: 200000,
+    boundaryRefine: true,
+    overlapThreshold: 0.3,
+    deepAnalysisConcurrency: 3,
+    perIncidentMaxWords: 100000,
+    coherencePass: 'light',
+    autoMergeThreshold: 0.82,
+    scoringDetail: 'detailed',
+    reviewQueueBuild: true,
+    useLegacyPipeline: true,
   },
 };
 
 export const MODE_AUTO_ACCEPT_THRESHOLDS = {
-  fast: {
-    incident: 0.90,
+  fast_preview: {
+    incident: 0.9,
     event: 0.85,
-    location: 0.90,
+    location: 0.9,
   },
   balanced: {
     incident: 0.85,
     event: 0.75,
-    location: 0.80,
+    location: 0.8,
   },
   deep: {
-    incident: 0.80,
-    event: 0.70,
+    incident: 0.8,
+    event: 0.7,
     location: 0.75,
   },
-  // [NEW]
-  incident_only_1m: {
+  full_corpus_1m: {
     incident: 0.75,
     event: 0.65,
-    location: 0.70,
+    location: 0.7,
+  },
+  legacy: {
+    incident: 0.85,
+    event: 0.75,
+    location: 0.8,
   },
 };
 
 export function getRunMode(mode) {
   const normalized = String(mode || '').toLowerCase();
   const allModes = Object.values(RUN_MODES);
-  return allModes.find((item) => item.id === normalized) || RUN_MODES.BALANCED;
+  return allModes.find((item) => item.id === normalized || item.aliases?.includes(normalized)) || RUN_MODES.BALANCED;
 }
 
 export function listRunModes() {

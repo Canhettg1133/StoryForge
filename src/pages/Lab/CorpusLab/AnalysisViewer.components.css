@@ -404,6 +404,22 @@
   gap: 8px;
 }
 
+.knowledge-note {
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(15, 23, 42, 0.18);
+  color: var(--color-text-secondary);
+  padding: 10px 12px;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.knowledge-note-warning {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(120, 53, 15, 0.18);
+  color: #fde68a;
+}
+
 .knowledge-card {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -3775,6 +3791,177 @@
 @media (max-width: 768px) {
   .incident-list-grid,
   .review-queue-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Analysis V2 Run Report / Story Graph ---- */
+.run-report-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(125, 104, 74, 0.18);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 249, 240, 0.9), rgba(246, 236, 220, 0.9));
+  color: #5d4a2f;
+}
+
+.run-report-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.run-report-header > div,
+.run-report-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.run-report-panel strong,
+.run-report-panel span,
+.run-report-panel li,
+.run-report-panel .muted {
+  color: inherit;
+}
+
+.run-report-panel .muted {
+  opacity: 0.78;
+}
+
+.run-report-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.run-report-toggle {
+  border: 1px solid rgba(125, 104, 74, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #5d4a2f;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.run-report-toggle:hover {
+  border-color: rgba(125, 104, 74, 0.35);
+  background: #fff;
+}
+
+.run-report-pass-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.run-report-pass {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(125, 104, 74, 0.16);
+  color: #5d4a2f;
+}
+
+.run-report-pass.completed {
+  border-color: rgba(44, 110, 73, 0.28);
+}
+
+.run-report-pass.degraded {
+  border-color: rgba(181, 114, 38, 0.28);
+}
+
+.run-report-pass header,
+.run-report-pass-body {
+  display: grid;
+  gap: 6px;
+}
+
+.story-graph-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.story-graph-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f6eadc;
+  border: 1px solid rgba(141, 90, 43, 0.18);
+  color: #7d684a;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.run-report-degraded ul,
+.story-graph-evidence ul,
+.story-graph-relations ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.story-graph-view {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 520px;
+}
+
+.story-graph-sidebar,
+.story-graph-detail {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(125, 104, 74, 0.16);
+  color: #5d4a2f;
+}
+
+.story-graph-summary {
+  display: grid;
+  gap: 4px;
+}
+
+.story-graph-node-list {
+  display: grid;
+  gap: 8px;
+  max-height: 480px;
+  overflow: auto;
+}
+
+.story-graph-node-btn {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(125, 104, 74, 0.16);
+  background: #fdf7ed;
+}
+
+.story-graph-node-btn.active {
+  border-color: #8d5a2b;
+  background: #fff4e0;
+}
+
+.story-graph-detail-header,
+.story-graph-detail-meta,
+.story-graph-relations {
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 960px) {
+  .story-graph-view {
     grid-template-columns: 1fr;
   }
 }

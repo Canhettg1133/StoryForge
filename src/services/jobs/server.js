@@ -2,8 +2,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import express from 'express';
-import { initCorpusSchema } from '../corpus/db/schema.js';
+import { analysisRepository } from '../analysis/repositories/analysisRepository.js';
 import { createCorpusRouter } from '../corpus/routes/corpus.js';
+import { bootstrapPostgres } from '../storage/postgres/bootstrap.js';
+import { requirePostgresDatabase } from '../storage/postgres/client.js';
 import { JOB_CONFIG } from './config.js';
 import { getJobQueue } from './jobQueue.js';
 import { createJobsRouter } from './routes/jobs.js';
@@ -40,7 +42,6 @@ function createApp(queue) {
 }
 
 export function createJobServer({ port = JOB_CONFIG.PORT } = {}) {
-  initCorpusSchema();
   const queue = getJobQueue();
   const app = createApp(queue);
 
@@ -54,6 +55,9 @@ export function createJobServer({ port = JOB_CONFIG.PORT } = {}) {
         return server;
       }
 
+      requirePostgresDatabase('StoryForge jobs server');
+      await bootstrapPostgres();
+      await jobRepositoryRecovery(queue);
       queue.start();
 
       await new Promise((resolve, reject) => {
@@ -83,6 +87,11 @@ export function createJobServer({ port = JOB_CONFIG.PORT } = {}) {
       server = null;
     },
   };
+}
+
+async function jobRepositoryRecovery(queue) {
+  await queue.recoverInterruptedState?.();
+  await analysisRepository.failStaleProcessingAnalyses();
 }
 
 const modulePath = fileURLToPath(import.meta.url);

@@ -2,14 +2,22 @@
  * @vitest-environment node
  */
 
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runCoherenceJob } from '../../services/analysis/jobs/coherenceJob.js';
 import { runIncidentAnalysisJob } from '../../services/analysis/jobs/incidentAnalysisJob.js';
 import { groundAnalysisEvents as groundEnhanced } from '../../services/analysis/grounding/enhancedGrounding.js';
 import { groundAnalysisEvents as groundLegacy } from '../../services/analysis/eventGrounding.js';
+import { getRunMode } from '../../services/analysis/pipeline/modes.js';
+import { bootstrapPostgres } from '../../services/storage/postgres/bootstrap.js';
+import { queryPostgres } from '../../services/storage/postgres/client.js';
+import {
+  pgCreateAnalysis,
+  pgInsertCorpusGraph,
+  pgReplaceIncidentFirstArtifacts,
+} from '../../services/storage/postgres/write.js';
+
+const hasDatabaseUrl = Boolean(String(process.env.DATABASE_URL || '').trim());
+const postgresIt = hasDatabaseUrl ? it : it.skip;
 
 function buildSamplePayload() {
   return {
@@ -126,7 +134,7 @@ describe('Phase 6B - Incident-First Unit/Integration/E2E', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.mode).toBe(mode);
+      expect(result.mode).toBe(getRunMode(mode).id);
     }
   });
 
@@ -148,30 +156,28 @@ describe('Phase 6B - Incident-First Unit/Integration/E2E', () => {
     expect(coherence.aiAdvice).toBeNull();
   });
 
-  it('e2e: api flow for incidents -> review queue -> resolve item', async () => {
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'storyforge-phase6b-'));
-    const corpusDbPath = path.join(tmpRoot, 'corpus.sqlite');
-    const jobsDbPath = path.join(tmpRoot, 'jobs.sqlite');
-
-    process.env.STORYFORGE_CORPUS_DB_PATH = corpusDbPath;
-    process.env.STORYFORGE_JOB_DB_PATH = jobsDbPath;
-
+  postgresIt('e2e: api flow for incidents -> review queue -> resolve item', async () => {
     vi.resetModules();
 
     const { createJobServer } = await import('../../services/jobs/server.js');
-    const { initCorpusSchema } = await import('../../services/corpus/db/schema.js');
-    const { insertCorpusGraph } = await import('../../services/corpus/db/queries.js');
-    const { createCorpusAnalysis } = await import('../../services/analysis/db/queries.js');
-    const { replaceIncidentFirstArtifacts } = await import('../../services/analysis/db/incidentFirstQueries.js');
-
-    initCorpusSchema();
+    await bootstrapPostgres();
 
     const corpusId = 'corpus-e2e-1';
     const analysisId = 'analysis-e2e-1';
     const reviewItemId = 'rq-e2e-1';
     const now = Date.now();
 
-    insertCorpusGraph(
+    await queryPostgres('DELETE FROM project_analysis_snapshots WHERE analysis_id = $1', [analysisId]);
+    await queryPostgres('DELETE FROM review_queue WHERE analysis_id = $1', [analysisId]);
+    await queryPostgres('DELETE FROM consistency_risks WHERE analysis_id = $1', [analysisId]);
+    await queryPostgres('DELETE FROM analysis_events WHERE analysis_id = $1', [analysisId]);
+    await queryPostgres('DELETE FROM analysis_locations WHERE analysis_id = $1', [analysisId]);
+    await queryPostgres('DELETE FROM incidents WHERE analysis_id = $1', [analysisId]);
+    await queryPostgres('DELETE FROM chunk_results WHERE analysis_id = $1', [analysisId]);
+    await queryPostgres('DELETE FROM corpus_analyses WHERE id = $1', [analysisId]);
+    await queryPostgres('DELETE FROM corpuses WHERE id = $1', [corpusId]);
+
+    await pgInsertCorpusGraph(
       {
         id: corpusId,
         title: 'Corpus E2E',
@@ -222,7 +228,7 @@ describe('Phase 6B - Incident-First Unit/Integration/E2E', () => {
       ],
     );
 
-    createCorpusAnalysis({
+    await pgCreateAnalysis({
       id: analysisId,
       corpusId,
       status: 'completed',
@@ -245,7 +251,7 @@ describe('Phase 6B - Incident-First Unit/Integration/E2E', () => {
       completedAt: now,
     });
 
-    replaceIncidentFirstArtifacts({
+    await pgReplaceIncidentFirstArtifacts({
       corpusId,
       analysisId,
       incidents: [
@@ -339,13 +345,14 @@ describe('Phase 6B - Incident-First Unit/Integration/E2E', () => {
       expect(String(patchPayload.item.resolution || '')).toContain('Accepted');
     } finally {
       await server.stop();
-      delete process.env.STORYFORGE_CORPUS_DB_PATH;
-      delete process.env.STORYFORGE_JOB_DB_PATH;
-      try {
-        fs.rmSync(tmpRoot, { recursive: true, force: true });
-      } catch {
-        // better-sqlite3 may keep a short-lived handle; ignore temp cleanup failure in test.
-      }
+      await queryPostgres('DELETE FROM review_queue WHERE analysis_id = $1', [analysisId]);
+      await queryPostgres('DELETE FROM consistency_risks WHERE analysis_id = $1', [analysisId]);
+      await queryPostgres('DELETE FROM analysis_events WHERE analysis_id = $1', [analysisId]);
+      await queryPostgres('DELETE FROM analysis_locations WHERE analysis_id = $1', [analysisId]);
+      await queryPostgres('DELETE FROM incidents WHERE analysis_id = $1', [analysisId]);
+      await queryPostgres('DELETE FROM chunk_results WHERE analysis_id = $1', [analysisId]);
+      await queryPostgres('DELETE FROM corpus_analyses WHERE id = $1', [analysisId]);
+      await queryPostgres('DELETE FROM corpuses WHERE id = $1', [corpusId]);
     }
   });
 });

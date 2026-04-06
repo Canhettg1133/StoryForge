@@ -21,8 +21,6 @@ export default function useCorpusUpload() {
   const uploadState = useCorpusStore((state) => state.uploadState);
   const uploadProgress = useCorpusStore((state) => state.uploadProgress);
   const uploadError = useCorpusStore((state) => state.uploadError);
-  const chunkSize = useCorpusStore((state) => state.chunkSize);
-
   const uploadCorpus = useCorpusStore((state) => state.uploadCorpus);
   const resetUpload = useCorpusStore((state) => state.resetUpload);
 
@@ -58,7 +56,6 @@ export default function useCorpusUpload() {
 
     const payload = {
       ...metadata,
-      chunkSize,
     };
 
     const result = await uploadCorpus(file, payload);

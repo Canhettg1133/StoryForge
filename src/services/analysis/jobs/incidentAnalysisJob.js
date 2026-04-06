@@ -88,9 +88,11 @@ function collectSegmentationContext(chapters = [], maxWords = 60000) {
     const chapterIndex = Number.isFinite(Number(chapter.chapterIndex))
       ? Number(chapter.chapterIndex)
       : Number(chapter.index || selected.length);
+    const chapterNumber = chapterIndex + 1;
 
     selected.push({
       chapterIndex,
+      chapterNumber,
       title: normalizeWhitespace(chapter.title || ''),
       text,
     });
@@ -98,7 +100,7 @@ function collectSegmentationContext(chapters = [], maxWords = 60000) {
   }
 
   const contextText = selected
-    .map((item) => `Chapter ${item.chapterIndex}: ${item.title}\n${item.text}`)
+    .map((item) => `Chapter ${item.chapterNumber}: ${item.title}\n${item.text}`)
     .join('\n\n')
     .trim();
 
@@ -141,13 +143,13 @@ function getIncidentRange(incident = {}, chapterCount = null) {
     return [null, null];
   }
 
-  const safeStart = Math.max(0, Math.min(start, end));
+  const safeStart = Math.max(1, Math.min(start, end));
   const safeEnd = Math.max(safeStart, end);
   if (chapterCount == null) {
     return [safeStart, safeEnd];
   }
 
-  const maxBound = Math.max(0, chapterCount - 1);
+  const maxBound = Math.max(1, chapterCount);
   return [Math.min(safeStart, maxBound), Math.min(safeEnd, maxBound)];
 }
 
@@ -178,6 +180,9 @@ function collectIncidentContext(chapters = [], incident = {}, maxWords = 14000) 
       chapterIndex: Number.isFinite(Number(chapter.chapterIndex))
         ? Number(chapter.chapterIndex)
         : Number(chapter.index),
+      chapterNumber: (Number.isFinite(Number(chapter.chapterIndex))
+        ? Number(chapter.chapterIndex)
+        : Number(chapter.index)) + 1,
       title: normalizeWhitespace(chapter.title || ''),
       text,
     });
@@ -185,7 +190,7 @@ function collectIncidentContext(chapters = [], incident = {}, maxWords = 14000) 
   }
 
   const contextText = selected
-    .map((item) => `Chapter ${item.chapterIndex}: ${item.title}\n${item.text}`)
+    .map((item) => `Chapter ${item.chapterNumber}: ${item.title}\n${item.text}`)
     .join('\n\n')
     .trim();
 
@@ -259,14 +264,13 @@ function normalizeAiEvent(raw = {}, incident = {}) {
         ? 0.6
         : clamp(raw.severity, 0, 1, 0.55);
 
-  const chapterOffset = Number.isFinite(Number(raw.chapter))
+  const chapterNumber = Number.isFinite(Number(raw.chapter))
     ? Number(raw.chapter)
     : Number.isFinite(Number(raw.chapterIndex))
       ? Number(raw.chapterIndex)
-      : 0;
-
-  const [startChapter] = getIncidentRange(incident);
-  const chapterIndex = startChapter == null ? chapterOffset : Math.max(0, startChapter + chapterOffset);
+      : Number.isFinite(Number(incident.startChapter))
+        ? Number(incident.startChapter)
+        : 1;
   const eventId = raw.id || `evt_ai_${randomUUID()}`;
 
   return {
@@ -274,7 +278,8 @@ function normalizeAiEvent(raw = {}, incident = {}) {
     title: normalizeWhitespace(raw.title || raw.name || raw.description || eventId),
     description: normalizeWhitespace(raw.description || raw.summary || ''),
     severity: mappedSeverity,
-    chapterIndex,
+    chapterIndex: Math.max(0, chapterNumber - 1),
+    chapterNumber,
     incidentId: incident.id || null,
     tags: toArray(raw.tags).map((x) => normalizeWhitespace(x)).filter(Boolean),
     characters: toArray(raw.characters).map((x) => normalizeWhitespace(x)).filter(Boolean),

@@ -1,5 +1,7 @@
 # PROMPT: Implement Phase 1 - Job Queue System
 
+> Archival note (2026-04-06): This document records the original plan. The current runtime has been migrated to a PostgreSQL-only backend, so SQLite references below are historical only.
+
 ## Project Context
 - App: StoryForge - Writing tool for fanfiction writers
 - Tech: Tauri (Rust) + React + Express backend (Node.js)

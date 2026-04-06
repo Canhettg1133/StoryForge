@@ -9,17 +9,8 @@ import {
   RETRY_ON_ERRORS,
 } from './config.js';
 import {
-  assignJobToWorker,
-  countQueuedAndRunningJobs,
-  createJobRecord,
-  getJobById,
-  getRunningJobStats,
-  listJobs,
-  listRunnablePendingJobs,
-  updateJobRecord,
-  upsertJobStep,
-} from './db/queries.js';
-import { initJobSchema } from './db/schema.js';
+  jobRepository,
+} from './repositories/jobRepository.js';
 import { processCorpusAnalysisJob } from './jobTypes/corpusAnalysis.js';
 import { processCoherenceJob } from './jobTypes/coherenceJob.js';
 import { processFileParsingJob } from './jobTypes/fileParsing.js';
@@ -92,20 +83,24 @@ class JobQueue extends EventEmitter {
     this.workers = [];
   }
 
-  createJob({ type, inputData, dependsOn = [], priority }) {
+  async recoverInterruptedState() {
+    await jobRepository.recoverInterruptedJobs();
+  }
+
+  async createJob({ type, inputData, dependsOn = [], priority }) {
     if (!Object.values(JOB_TYPES).includes(type)) {
       const error = new Error(`Unsupported job type: ${type}`);
       error.code = 'INVALID_INPUT';
       throw error;
     }
 
-    if (countQueuedAndRunningJobs() >= JOB_CONFIG.MAX_QUEUE_SIZE) {
+    if (await jobRepository.countQueuedAndRunningJobs() >= JOB_CONFIG.MAX_QUEUE_SIZE) {
       const error = new Error('Job queue is full');
       error.code = 'QUEUE_FULL';
       throw error;
     }
 
-    const job = createJobRecord({
+    const job = await jobRepository.createJob({
       type,
       inputData,
       dependsOn,
@@ -124,16 +119,16 @@ class JobQueue extends EventEmitter {
     return job;
   }
 
-  getJob(jobId) {
-    return getJobById(jobId);
+  async getJobAsync(jobId) {
+    return jobRepository.getJobByIdAsync(jobId);
   }
 
-  listJobs(filters = {}) {
-    return listJobs(filters);
+  async listJobsAsync(filters = {}) {
+    return jobRepository.listJobsAsync(filters);
   }
 
-  cancelJob(jobId) {
-    const job = getJobById(jobId);
+  async cancelJob(jobId) {
+    const job = await jobRepository.getJobByIdAsync(jobId);
 
     if (!job) {
       return null;
@@ -150,7 +145,7 @@ class JobQueue extends EventEmitter {
 
     this.retryState.delete(jobId);
 
-    const updated = updateJobRecord(jobId, {
+    const updated = await jobRepository.updateJob(jobId, {
       status: JOB_STATUS.CANCELLED,
       progressMessage: 'Job cancelled',
       completedAt: Date.now(),
@@ -167,17 +162,17 @@ class JobQueue extends EventEmitter {
     return updated;
   }
 
-  claimNextJob(workerId) {
+  async claimNextJob(workerId) {
     if (!this.started) {
       return null;
     }
 
-    const { runningCount, runningAnalysisCount } = getRunningJobStats();
+    const { runningCount, runningAnalysisCount } = await jobRepository.getRunningJobStats();
     if (runningCount >= JOB_CONFIG.MAX_CONCURRENT_JOBS) {
       return null;
     }
 
-    const pendingJobs = listRunnablePendingJobs(JOB_CONFIG.MAX_QUEUE_SIZE);
+    const pendingJobs = await jobRepository.listRunnablePendingJobs(JOB_CONFIG.MAX_QUEUE_SIZE);
     const now = Date.now();
 
     for (const candidate of pendingJobs) {
@@ -194,7 +189,7 @@ class JobQueue extends EventEmitter {
         continue;
       }
 
-      const claimedJob = assignJobToWorker(candidate.id, workerId);
+      const claimedJob = await jobRepository.assignJobToWorker(candidate.id, workerId);
       if (!claimedJob) {
         continue;
       }
@@ -232,17 +227,17 @@ class JobQueue extends EventEmitter {
     this.runningJobs.delete(jobId);
   }
 
-  handleProgressUpdate(jobId, progress, message, meta = {}) {
+  async handleProgressUpdate(jobId, progress, message, meta = {}) {
     const nextProgress = clampProgress(progress);
 
-    updateJobRecord(jobId, {
+    await jobRepository.updateJob(jobId, {
       status: JOB_STATUS.RUNNING,
       progress: nextProgress,
       progressMessage: message,
     });
 
     if (meta.step?.name) {
-      upsertJobStep({
+      await jobRepository.upsertJobStep({
         jobId,
         stepName: meta.step.name,
         status: meta.step.status || 'running',
@@ -263,10 +258,10 @@ class JobQueue extends EventEmitter {
     });
   }
 
-  handleJobSuccess(jobId, outputData) {
+  async handleJobSuccess(jobId, outputData) {
     this.retryState.delete(jobId);
 
-    const updated = updateJobRecord(jobId, {
+    const updated = await jobRepository.updateJob(jobId, {
       status: JOB_STATUS.COMPLETED,
       progress: 100,
       progressMessage: 'Job completed',
@@ -288,8 +283,8 @@ class JobQueue extends EventEmitter {
     return updated;
   }
 
-  handleJobError(job, error) {
-    const currentJob = getJobById(job.id);
+  async handleJobError(job, error) {
+    const currentJob = await jobRepository.getJobByIdAsync(job.id);
     if (!currentJob) {
       return null;
     }
@@ -302,7 +297,7 @@ class JobQueue extends EventEmitter {
 
       const cancelled = currentJob.status === JOB_STATUS.CANCELLED
         ? currentJob
-        : updateJobRecord(job.id, {
+        : await jobRepository.updateJob(job.id, {
           status: JOB_STATUS.CANCELLED,
           progressMessage: 'Job cancelled',
           completedAt: Date.now(),
@@ -338,7 +333,7 @@ class JobQueue extends EventEmitter {
         nextAttemptAt: Date.now() + delay,
       });
 
-      const pending = updateJobRecord(job.id, {
+      const pending = await jobRepository.updateJob(job.id, {
         status: JOB_STATUS.PENDING,
         workerId: null,
         errorMessage: error?.message || 'Unknown processing error',
@@ -361,7 +356,7 @@ class JobQueue extends EventEmitter {
 
     this.retryState.delete(job.id);
 
-    const failed = updateJobRecord(job.id, {
+    const failed = await jobRepository.updateJob(job.id, {
       status: JOB_STATUS.FAILED,
       workerId: null,
       completedAt: Date.now(),
@@ -416,7 +411,6 @@ export function getJobQueue() {
     return queueInstance;
   }
 
-  initJobSchema();
   queueInstance = new JobQueue();
   return queueInstance;
 }

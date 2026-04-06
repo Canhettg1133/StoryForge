@@ -20,7 +20,7 @@ export const VIEW_LABELS = {
   review: 'Review queue',
   mindmap: 'Sơ đồ tư duy',
   timeline: 'Dòng thời gian',
-  graph: 'Đồ thị',
+  graph: 'Story Graph',
   compare: 'So sánh',
 };
 

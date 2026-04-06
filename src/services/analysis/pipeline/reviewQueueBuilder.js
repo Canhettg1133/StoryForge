@@ -12,17 +12,53 @@ function toPriorityWeight(priority) {
   return 2;
 }
 
-function buildReasons(item, itemType, consistencyRisks = []) {
+function buildGraphSignals(graph = null) {
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+  const degree = new Map();
+
+  for (const node of nodes) {
+    degree.set(node.id, 0);
+  }
+  for (const edge of edges) {
+    degree.set(edge.from, (degree.get(edge.from) || 0) + 1);
+    degree.set(edge.to, (degree.get(edge.to) || 0) + 1);
+  }
+
+  const isolatedNodeIds = new Set(
+    [...degree.entries()]
+      .filter(([, count]) => count === 0)
+      .map(([nodeId]) => nodeId),
+  );
+  const weakNodeIds = new Set(
+    [...degree.entries()]
+      .filter(([, count]) => count <= 1)
+      .map(([nodeId]) => nodeId),
+  );
+
+  return {
+    isolatedNodeIds,
+    weakNodeIds,
+  };
+}
+
+function buildReasons(item, itemType, consistencyRisks = [], graphSignals = null) {
   const reasons = [];
 
   if (needsReview(item, itemType)) {
-    reasons.push('Below auto-accept threshold.');
+    reasons.push('Diem tin cay chua du de tu dong chap nhan.');
   }
   if (!Array.isArray(item?.evidence) || item.evidence.length === 0) {
-    reasons.push('Missing evidence snippet.');
+    reasons.push('Thieu bang chung hoac trich dan doi chieu.');
   }
   if (item?.uncertainStart || item?.uncertainEnd) {
-    reasons.push('Incident boundary is uncertain.');
+    reasons.push('Ranh gioi incident con mo ho.');
+  }
+
+  if (graphSignals?.isolatedNodeIds?.has?.(item.id)) {
+    reasons.push('Node nay dang bi co lap trong story graph.');
+  } else if (graphSignals?.weakNodeIds?.has?.(item.id)) {
+    reasons.push('Node nay co it lien ket trong story graph.');
   }
 
   const keyByType = {
@@ -37,33 +73,36 @@ function buildReasons(item, itemType, consistencyRisks = []) {
     )).length;
 
     if (relatedRiskCount > 0) {
-      reasons.push(`Related consistency risks: ${relatedRiskCount}.`);
+      reasons.push(`Co ${relatedRiskCount} canh bao consistency lien quan.`);
     }
   }
 
   return reasons;
 }
 
-function buildSuggestions(itemType) {
+function buildSuggestions(itemType, graphSignals = null, itemId = '') {
+  const suggestions = [];
+
   if (itemType === REVIEW_ITEM_TYPES.INCIDENT) {
-    return [
-      'Check chapter boundaries and causal links.',
-      'Confirm title and type (major/subplot/POV thread).',
-    ];
+    suggestions.push('Kiem tra chuong bat dau/ket thuc va lien ket nhan qua.');
+    suggestions.push('Xac nhan tieu de va loai incident.');
+  } else if (itemType === REVIEW_ITEM_TYPES.EVENT) {
+    suggestions.push('Kiem tra grounding theo chuong/chunk.');
+    suggestions.push('Doi chieu mo ta su kien voi bang chung va do quan trong.');
+  } else if (itemType === REVIEW_ITEM_TYPES.LOCATION) {
+    suggestions.push('Gop alias trung neu can.');
+    suggestions.push('Xac nhan dia diem that su xuat hien o cac chuong da gan.');
+  } else {
+    suggestions.push('Xem lai canh bao va chon huong xu ly phu hop.');
   }
-  if (itemType === REVIEW_ITEM_TYPES.EVENT) {
-    return [
-      'Verify chapter/chunk grounding.',
-      'Review evidence snippet and severity score.',
-    ];
+
+  if (graphSignals?.isolatedNodeIds?.has?.(itemId)) {
+    suggestions.push('Kiem tra vi sao node nay chua co quan he nao trong story graph.');
+  } else if (graphSignals?.weakNodeIds?.has?.(itemId)) {
+    suggestions.push('Xac nhan xem co thieu quan he, event hoac location lien quan hay khong.');
   }
-  if (itemType === REVIEW_ITEM_TYPES.LOCATION) {
-    return [
-      'Merge duplicate aliases if needed.',
-      'Confirm location evidence and chapter spread.',
-    ];
-  }
-  return ['Review and resolve this risk item.'];
+
+  return suggestions;
 }
 
 function createQueueItem({
@@ -72,9 +111,10 @@ function createQueueItem({
   itemType,
   item,
   consistencyRisks,
+  graphSignals,
 }) {
   const priority = buildPriorityResult({ ...item, itemType, type: itemType }, consistencyRisks);
-  const reasons = buildReasons(item, itemType, consistencyRisks);
+  const reasons = buildReasons(item, itemType, consistencyRisks, graphSignals);
 
   return {
     id: `rq_${randomUUID()}`,
@@ -86,7 +126,7 @@ function createQueueItem({
     priorityScore: priority.priorityScore,
     scoreBreakdown: priority.scoreBreakdown,
     reason: reasons,
-    suggestions: buildSuggestions(itemType),
+    suggestions: buildSuggestions(itemType, graphSignals, item.id),
     status: REVIEW_ITEM_STATUS.PENDING,
     createdAt: Date.now(),
   };
@@ -105,7 +145,7 @@ function createRiskQueueItems(consistencyRisks = [], { corpusId, analysisId }) {
       itemType: REVIEW_ITEM_TYPES.CONSISTENCY_RISK,
       itemId: risk.id,
       priority,
-      priorityScore: priority === PRIORITY.P0 ? 0.95 : (priority === PRIORITY.P1 ? 0.70 : 0.50),
+      priorityScore: priority === PRIORITY.P0 ? 0.95 : (priority === PRIORITY.P1 ? 0.7 : 0.5),
       scoreBreakdown: {
         impact: priority === PRIORITY.P0 ? 1 : 0.8,
         confidenceDeficit: 0.5,
@@ -113,8 +153,8 @@ function createRiskQueueItems(consistencyRisks = [], { corpusId, analysisId }) {
         boundaryAmbiguity: 0.2,
         missingEvidence: 0.2,
       },
-      reason: [risk.description || 'Consistency issue detected.'],
-      suggestions: ['Review conflict and apply resolution action.'],
+      reason: [risk.description || 'Co canh bao consistency can xu ly.'],
+      suggestions: ['Mo chi tiet risk, doi chieu bang chung va xac nhan cach giai quyet.'],
       status: REVIEW_ITEM_STATUS.PENDING,
       createdAt: Date.now(),
     };
@@ -130,7 +170,7 @@ export function buildReviewQueue(
 ) {
   const corpusId = options.corpusId || null;
   const analysisId = options.analysisId || null;
-
+  const graphSignals = buildGraphSignals(options.graph || null);
   const reviewItems = [];
 
   for (const incident of incidents || []) {
@@ -141,6 +181,7 @@ export function buildReviewQueue(
       itemType: REVIEW_ITEM_TYPES.INCIDENT,
       item: incident,
       consistencyRisks,
+      graphSignals,
     }));
   }
 
@@ -152,6 +193,7 @@ export function buildReviewQueue(
       itemType: REVIEW_ITEM_TYPES.EVENT,
       item: event,
       consistencyRisks,
+      graphSignals,
     }));
   }
 
@@ -163,6 +205,7 @@ export function buildReviewQueue(
       itemType: REVIEW_ITEM_TYPES.LOCATION,
       item: location,
       consistencyRisks,
+      graphSignals,
     }));
   }
 

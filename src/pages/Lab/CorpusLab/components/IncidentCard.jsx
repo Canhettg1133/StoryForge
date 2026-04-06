@@ -2,10 +2,10 @@ function formatChapterRange(start, end) {
   const a = Number(start);
   const b = Number(end);
   if (Number.isFinite(a) && Number.isFinite(b)) {
-    if (a === b) return `Chương ${a + 1}`;
-    return `Chương ${a + 1} - ${b + 1}`;
+    if (a === b) return `Chương ${a}`;
+    return `Chương ${a} - ${b}`;
   }
-  if (Number.isFinite(a)) return `Chương ${a + 1}`;
+  if (Number.isFinite(a)) return `Chương ${a}`;
   return 'Chưa rõ chương';
 }
 
@@ -35,7 +35,9 @@ export default function IncidentCard({
     <article className={`incident-first-card ${expanded ? 'expanded' : ''}`}>
       <header className="incident-first-header">
         <div className="incident-first-main">
-          <h3 className="incident-first-title" onClick={() => onOpen?.(incident)}>{incident.title || 'Incident chưa đặt tên'}</h3>
+          <h3 className="incident-first-title" onClick={() => onOpen?.(incident)}>
+            {incident.title || 'Incident chưa đặt tên'}
+          </h3>
           <p className="incident-first-meta">
             <span>{formatChapterRange(incident.startChapter, incident.endChapter)}</span>
             <span>Độ tin cậy {formatPercent(incident.confidence)}</span>
@@ -71,7 +73,7 @@ export default function IncidentCard({
             <span className="incident-event-title">{event.title || event.description || 'Sự kiện'}</span>
             <span className="incident-event-chapter">
               {Number.isFinite(Number(event.chapterIndex ?? event.chapter))
-                ? `Ch. ${Number(event.chapterIndex ?? event.chapter) + 1}`
+                ? `Ch. ${Number(event.chapterIndex ?? event.chapter)}`
                 : 'Chưa rõ chương'}
             </span>
           </div>

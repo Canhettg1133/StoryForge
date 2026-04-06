@@ -1,18 +1,25 @@
 function getPriorityLabel(priority) {
-  if (priority === 'P0') return 'Khẩn cấp';
-  if (priority === 'P1') return 'Quan trọng';
-  return 'Theo dõi';
+  if (priority === 'P0') return 'Khan cap';
+  if (priority === 'P1') return 'Quan trong';
+  return 'Theo doi';
 }
 
 function getItemTypeLabel(type) {
-  if (type === 'incident') return 'Incident';
-  if (type === 'event') return 'Event';
-  if (type === 'location') return 'Địa điểm';
+  if (type === 'incident') return 'Su kien lon';
+  if (type === 'event') return 'Su kien';
+  if (type === 'location') return 'Dia diem';
   if (type === 'consistency_risk') return 'Consistency';
   return type || 'Item';
 }
 
+function normalizeReasonList(value) {
+  return Array.isArray(value) ? value.filter(Boolean) : [];
+}
+
 export default function ReviewQueueCard({ item, rank, onResolve }) {
+  const reasons = normalizeReasonList(item.reason);
+  const suggestions = normalizeReasonList(item.suggestions);
+
   return (
     <article className={`review-queue-card ${item.priority || 'P2'} ${item.status || 'pending'}`}>
       <header className="review-queue-header">
@@ -22,20 +29,20 @@ export default function ReviewQueueCard({ item, rank, onResolve }) {
           <strong>{getPriorityLabel(item.priority)}</strong>
           <span className="review-item-type">{getItemTypeLabel(item.itemType)}</span>
         </div>
-        <div className="review-score">Điểm {Math.round((Number(item.priorityScore || 0)) * 100)}%</div>
+        <div className="review-score">Diem duyet {Math.round((Number(item.priorityScore || 0)) * 100)}%</div>
       </header>
 
-      {Array.isArray(item.reason) && item.reason.length > 0 && (
+      {reasons.length > 0 && (
         <ul className="review-reasons">
-          {item.reason.slice(0, 3).map((reason) => (
+          {reasons.slice(0, 3).map((reason) => (
             <li key={`${item.id}_${reason}`}>{reason}</li>
           ))}
         </ul>
       )}
 
-      {Array.isArray(item.suggestions) && item.suggestions.length > 0 && (
+      {suggestions.length > 0 && (
         <div className="review-suggestions">
-          {item.suggestions.slice(0, 2).map((suggestion) => (
+          {suggestions.slice(0, 2).map((suggestion) => (
             <span key={`${item.id}_${suggestion}`} className="review-suggestion-chip">{suggestion}</span>
           ))}
         </div>
@@ -43,7 +50,7 @@ export default function ReviewQueueCard({ item, rank, onResolve }) {
 
       <footer className="review-actions">
         <span className={`review-status-badge ${item.status || 'pending'}`}>
-          {item.status === 'resolved' ? 'Đã xử lý' : item.status === 'ignored' ? 'Đã bỏ qua' : 'Đang chờ'}
+          {item.status === 'resolved' ? 'Da xu ly' : item.status === 'ignored' ? 'Da bo qua' : 'Dang cho'}
         </span>
 
         {item.status === 'pending' && (
@@ -51,16 +58,16 @@ export default function ReviewQueueCard({ item, rank, onResolve }) {
             <button
               type="button"
               className="review-btn resolve"
-              onClick={() => onResolve?.(item.id, { status: 'resolved', resolution: 'Accepted as-is' })}
+              onClick={() => onResolve?.(item.id, { status: 'resolved', resolution: 'Da xac nhan' })}
             >
-              Đánh dấu xong
+              Danh dau xong
             </button>
             <button
               type="button"
               className="review-btn ignore"
-              onClick={() => onResolve?.(item.id, { status: 'ignored', resolution: 'Ignored' })}
+              onClick={() => onResolve?.(item.id, { status: 'ignored', resolution: 'Bo qua' })}
             >
-              Bỏ qua
+              Bo qua
             </button>
           </div>
         )}

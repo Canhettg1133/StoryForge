@@ -47,7 +47,7 @@ export async function processCorpusAnalysisJob(
   for (const step of STEPS) {
     throwIfCancelled(signal);
 
-    onProgress(completedWeight, `Starting ${step.name}`, {
+    await onProgress(completedWeight, `Starting ${step.name}`, {
       step: {
         name: step.name,
         status: 'running',
@@ -67,7 +67,7 @@ export async function processCorpusAnalysisJob(
         Math.round(completedWeight + (step.weight * stepProgress) / 100),
       );
 
-      onProgress(overallProgress, `${step.name}: ${stepProgress}%`, {
+      await onProgress(overallProgress, `${step.name}: ${stepProgress}%`, {
         step: {
           name: step.name,
           status: 'running',
@@ -79,7 +79,7 @@ export async function processCorpusAnalysisJob(
 
     completedWeight += step.weight;
 
-    onProgress(completedWeight, `${step.name} completed`, {
+    await onProgress(completedWeight, `${step.name} completed`, {
       event: 'step_complete',
       step: {
         name: step.name,
@@ -97,4 +97,3 @@ export async function processCorpusAnalysisJob(
     generatedAt: Date.now(),
   };
 }
-

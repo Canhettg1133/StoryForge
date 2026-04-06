@@ -4,9 +4,23 @@ import { ANALYSIS_CONFIG } from '../analysisConfig.js';
 import { extractKnowledgeProfile, mergeKnowledgeProfile } from '../grounding/knowledgeExtraction.js';
 import { mergeOutputParts, shouldContinueOutput } from '../outputChunker.js';
 import { runIncidentAnalysis } from '../pipeline/incidentAnalyzer.js';
+import { buildReviewQueue } from '../pipeline/reviewQueueBuilder.js';
 import { buildDeepIncidentPassPrompt } from '../prompts/deepIncidentPassPrompt.js';
 import { buildGlobalIncidentPassPrompt } from '../prompts/globalIncidentPassPrompt.js';
 import SessionClient from '../sessionClient.js';
+import {
+  completePass,
+  consolidateCanonicalKnowledge,
+  createPassTracker,
+  finalizeTracker,
+  markPassDegraded,
+  normalizePublicRunMode,
+  startPass,
+  validatePassAOutput,
+  validatePassBOutput,
+  validatePassCOutput,
+} from '../v2/contracts.js';
+import { buildStoryGraph } from '../v2/storyGraph.js';
 
 const DEFAULT_OPTIONS = {
   maxGlobalWords: 900000,
@@ -69,6 +83,13 @@ function emitProgress(onProgress, phase, progress, message) {
     progress: Math.max(0, Math.min(1, Number(progress) || 0)),
     message: normalizeText(message),
   });
+}
+
+function formatIssues(issues = []) {
+  return toArray(issues)
+    .map((item) => `${item.path || 'root'}: ${item.message || 'invalid'}`)
+    .filter(Boolean)
+    .slice(0, 6);
 }
 
 function parseKeyList(value) {
@@ -308,6 +329,68 @@ async function callStepJsonMultipart({
   }
 }
 
+async function callValidatedMultipartStep({
+  prompt,
+  inputText,
+  options,
+  signal,
+  maxOutputTokens,
+  maxParts,
+  validator,
+  repairTitle,
+  apiKeyCursorStart = 0,
+}) {
+  const attempts = [];
+  let lastValidation = null;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const repairSuffix = attempt === 0
+      ? ''
+      : `\n\nRepair instruction:\nThe previous JSON failed validation for ${repairTitle}. Fix these issues exactly and return valid JSON only:\n- ${formatIssues(lastValidation?.issues).join('\n- ')}`;
+
+    const ai = await callStepJsonMultipart({
+      prompt: `${prompt}${repairSuffix}`,
+      inputText,
+      options,
+      signal,
+      maxOutputTokens,
+      maxParts,
+      apiKeyCursorStart,
+    });
+
+    const validation = validator(ai.parsed);
+    lastValidation = validation;
+    attempts.push({
+      attempt: attempt + 1,
+      valid: validation.valid,
+      issues: validation.issues || [],
+    });
+
+    if (validation.valid) {
+      return {
+        parsed: validation.value,
+        usageMetadata: ai.usageMetadata,
+        partCount: ai.partCount,
+        repaired: attempt > 0,
+        retries: attempt,
+        issues: validation.issues || [],
+        attempts,
+      };
+    }
+  }
+
+  return {
+    parsed: lastValidation?.value || {},
+    usageMetadata: { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 },
+    partCount: 0,
+    repaired: false,
+    retries: 1,
+    issues: lastValidation?.issues || [],
+    attempts,
+    failedValidation: true,
+  };
+}
+
 function normalizeIncidentType(value) {
   const s = normalizeText(value).toLowerCase();
   if (['major_plot_point', 'major', 'main'].includes(s)) return 'major_plot_point';
@@ -448,6 +531,18 @@ function normalizeTimeline(raw = [], chapterCount = 1) {
     .filter((item) => item.eventId || item.chapter || item.summary);
 }
 
+function makeStableLocationId(name = '', fallback = 'location') {
+  const normalized = normalizeText(name)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z0-9]+/gu, '_')
+    .replace(/^_+|_+$/gu, '')
+    .replace(/_+/gu, '_')
+    .slice(0, 56);
+  return `loc_1m_${normalized || fallback}`;
+}
+
 function normalizeDeepLocations(rawLocations = [], incident = {}, chapterCount = 1) {
   const source = toArray(rawLocations).filter((item) => item && typeof item === 'object');
   const normalized = [];
@@ -458,7 +553,7 @@ function normalizeDeepLocations(rawLocations = [], incident = {}, chapterCount =
     if (!name) continue;
 
     normalized.push({
-      id: normalizeText(item?.id || '') || `loc_1m_${incident.id}_${index + 1}`,
+      id: normalizeText(item?.id || '') || makeStableLocationId(name, `${incident.id}_${index + 1}`),
       name,
       description: normalizeText(item?.description || item?.summary || ''),
       aliases: normalizeStringArray(item?.aliases),
@@ -524,6 +619,22 @@ function dedupeLocations(locations = []) {
       mentionCount: Math.max(Number(existing.mentionCount || 0), Number(location.mentionCount || 0)),
       confidence: Math.max(Number(existing.confidence || 0), Number(location.confidence || 0)),
       importance: Math.max(Number(existing.importance || 0), Number(location.importance || 0)),
+    });
+  }
+  return [...map.values()];
+}
+
+function dedupeCharactersForResult(items = []) {
+  const map = new Map();
+  for (const item of items) {
+    const name = normalizeText(item?.name || '');
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const existing = map.get(key) || {};
+    map.set(key, {
+      ...existing,
+      ...item,
+      name,
     });
   }
   return [...map.values()];
@@ -694,6 +805,10 @@ function buildFinalResult({
 }) {
   const dedupedEvents = dedupeEvents(events);
   const dedupedLocations = dedupeLocations(locations);
+  const structuralCharacters = dedupeCharactersForResult([
+    ...toArray(knowledge?.characters),
+    ...dedupedEvents.flatMap((event) => toArray(event?.characters).map((name) => ({ name }))),
+  ]);
   const eventsLayer = buildEventsLayer(dedupedEvents, dedupedLocations);
   const deepMap = new Map();
 
@@ -749,7 +864,7 @@ function buildFinalResult({
       runMode: mode,
     },
     structural: {
-      characters: [],
+      characters: structuralCharacters,
       ships: [],
       tropes: [],
       metadata: {},
@@ -757,7 +872,7 @@ function buildFinalResult({
     events: eventsLayer,
     worldbuilding,
     characters: {
-      profiles: toArray(knowledge?.characters),
+      profiles: structuralCharacters,
     },
     locations: worldbuilding.locations,
     objects: worldbuilding.objects,
@@ -846,6 +961,7 @@ async function runPassA({
   options,
   modeOptions,
   signal,
+  tracker,
 }) {
   const context = collectContext(chapters, modeOptions.maxGlobalWords);
   if (!context.text) {
@@ -862,19 +978,32 @@ async function runPassA({
     outputBudget: modeOptions.maxGlobalOutputTokens,
   });
 
-  const ai = await callStepJsonMultipart({
+  const ai = await callValidatedMultipartStep({
     prompt,
     inputText: context.text,
     options,
     signal,
     maxOutputTokens: modeOptions.maxGlobalOutputTokens,
     maxParts: modeOptions.maxGlobalParts,
+    repairTitle: 'Pass A incidents',
+    validator: (parsed) => validatePassAOutput(parsed, chapters.length),
   });
+
+  if (ai.failedValidation) {
+    markPassDegraded(tracker, 'pass_a', 'validation_failed', {
+      issues: ai.issues,
+      fallback: 'heuristic_incidents',
+    });
+  }
 
   return {
     incidents: normalizeGlobalIncidents(ai.parsed, chapters.length, modeOptions.maxGlobalIncidents),
     usage: ai.usageMetadata,
     partsGenerated: ai.partCount,
+    repaired: ai.repaired,
+    retries: ai.retries,
+    issues: ai.issues,
+    failedValidation: Boolean(ai.failedValidation),
   };
 }
 
@@ -885,6 +1014,7 @@ async function runPassB({
   modeOptions,
   signal,
   onProgress,
+  tracker,
 }) {
   const keyPool = resolveApiKeys(options);
   const concurrency = Math.max(1, Math.min(Math.max(1, keyPool.length), incidents.length || 1));
@@ -898,6 +1028,10 @@ async function runPassB({
   const processOneIncident = async (incident, globalIndex) => {
     const context = collectIncidentContext(chapters, incident, modeOptions.perIncidentMaxWords);
     if (!context.text) {
+      markPassDegraded(tracker, 'pass_b', 'empty_incident_context', {
+        incidentId: incident.id,
+        fallback: 'skip_incident',
+      });
       return {
         incidentId: incident.id,
         patch: normalizeIncidentPatch({}),
@@ -905,6 +1039,7 @@ async function runPassB({
         locations: [],
         usageMetadata: { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 },
         partCount: 0,
+        failedValidation: false,
       };
     }
 
@@ -913,7 +1048,7 @@ async function runPassB({
       eventBudget: modeOptions.maxEventsPerIncident,
     });
 
-    const ai = await callStepJsonMultipart({
+    const ai = await callValidatedMultipartStep({
       prompt,
       inputText: context.text,
       options,
@@ -921,6 +1056,8 @@ async function runPassB({
       maxOutputTokens: modeOptions.maxDeepOutputTokens,
       maxParts: modeOptions.maxDeepParts,
       apiKeyCursorStart: globalIndex,
+      repairTitle: `Pass B incident ${incident.id}`,
+      validator: (parsed) => validatePassBOutput(parsed, chapters.length),
     });
 
     const parsed = toObject(ai.parsed);
@@ -940,6 +1077,10 @@ async function runPassB({
       locations,
       usageMetadata: ai.usageMetadata,
       partCount: ai.partCount,
+      repaired: ai.repaired,
+      retries: ai.retries,
+      issues: ai.issues,
+      failedValidation: Boolean(ai.failedValidation),
     };
   };
 
@@ -965,6 +1106,13 @@ async function runPassB({
 
       if (result.status !== 'fulfilled') continue;
       const value = result.value;
+      if (value.failedValidation) {
+        markPassDegraded(tracker, 'pass_b', 'validation_failed', {
+          incidentId: value.incidentId,
+          issues: value.issues,
+          fallback: 'skip_incident',
+        });
+      }
       deepByIncident.set(value.incidentId, {
         patch: value.patch,
         events: value.events,
@@ -1003,6 +1151,7 @@ export async function runIncidentOnly1MJob({
     ...DEFAULT_OPTIONS,
     ...toObject(options.ai),
   };
+  const tracker = createPassTracker(options.runMode || options.mode || 'full_corpus_1m');
   const chapters = buildChaptersFromChunks(chunks);
   if (!chapters.length) {
     const error = new Error('Corpus does not contain readable chapter text');
@@ -1010,22 +1159,66 @@ export async function runIncidentOnly1MJob({
     throw error;
   }
 
+  startPass(tracker, 'pass_0', 'Canonical Corpus Build');
   emitProgress(onProgress, 'incident_1m_bootstrap', 0.04, 'Preparing 1M corpus context');
   const heuristicArtifacts = buildHeuristicArtifacts(corpusId, chapters, options);
+  completePass(tracker, 'pass_0', {
+    metrics: {
+      chapters: chapters.length,
+      heuristicIncidents: heuristicArtifacts.incidents.length,
+      heuristicEvents: heuristicArtifacts.events.length,
+    },
+  });
 
   if (!canUseAi(options)) {
-    const finalResult = buildFinalResult({
+    markPassDegraded(tracker, 'pass_a', 'missing_model_or_key', {
+      fallback: 'heuristic_only',
+    });
+    const storyGraph = buildStoryGraph({
+      incidents: heuristicArtifacts.incidents,
+      events: heuristicArtifacts.events,
+      knowledge: {},
+    });
+    const finalResultBase = buildFinalResult({
       incidents: heuristicArtifacts.incidents,
       events: heuristicArtifacts.events,
       locations: heuristicArtifacts.locations,
-      mode: 'incident_only_1m',
+      mode: 'full_corpus_1m',
+    });
+    const reviewQueue = buildReviewQueue(
+      heuristicArtifacts.incidents,
+      heuristicArtifacts.events,
+      heuristicArtifacts.locations,
+      [],
+      {
+        corpusId,
+        analysisId: `analysis_v2_${corpusId}`,
+        graph: storyGraph,
+      },
+    );
+    const finalResult = {
+      ...finalResultBase,
+      reviewQueue,
+      review_queue: reviewQueue,
+    };
+    const finalized = finalizeTracker(tracker, {
+      incidentCount: heuristicArtifacts.incidents.length,
+      graphSummary: storyGraph.summary,
     });
     return {
       success: true,
       incidentCount: heuristicArtifacts.incidents.length,
       aiSteps: [],
       partsGenerated: 0,
-      finalResult,
+      finalResult: {
+        ...finalResult,
+        analysis_run_manifest: finalized.manifest,
+        pass_status: finalized.passStatus,
+        degraded_run_report: finalized.degradedRunReport,
+        story_graph: storyGraph,
+        graph_summary: storyGraph.summary,
+        artifact_version: 'v2',
+      },
       aiApplied: false,
       reason: 'missing_model_or_key',
     };
@@ -1037,16 +1230,27 @@ export async function runIncidentOnly1MJob({
 
   try {
     throwIfAborted(signal);
+    startPass(tracker, 'pass_a', 'Global Incident Map');
     emitProgress(onProgress, 'incident_1m_pass_a', 0.18, 'Pass A: global major-incident extraction');
     const passA = await runPassA({
       chapters,
       options,
       modeOptions,
       signal,
+      tracker,
     });
 
     totalPartsGenerated += Number(passA.partsGenerated || 0);
     tokenUsage = mergeUsage(tokenUsage, passA.usage);
+    completePass(tracker, 'pass_a', {
+      metrics: {
+        incidents: passA.incidents.length,
+        partsGenerated: passA.partsGenerated || 0,
+      },
+      repaired: passA.repaired,
+      retries: passA.retries,
+      status: passA.failedValidation ? 'degraded' : 'completed',
+    });
 
     let incidents = passA.incidents.length
       ? passA.incidents
@@ -1056,24 +1260,61 @@ export async function runIncidentOnly1MJob({
     }
 
     if (!incidents.length) {
-      const finalResult = buildFinalResult({
+      markPassDegraded(tracker, 'pass_a', 'no_incidents_after_validation', {
+        fallback: 'heuristic_incidents',
+      });
+      const storyGraph = buildStoryGraph({
+        incidents: heuristicArtifacts.incidents,
+        events: heuristicArtifacts.events,
+        knowledge: {},
+      });
+      const finalResultBase = buildFinalResult({
         incidents: heuristicArtifacts.incidents,
         events: heuristicArtifacts.events,
         locations: heuristicArtifacts.locations,
-        mode: 'incident_only_1m',
+        mode: 'full_corpus_1m',
         tokenUsage,
+      });
+      const reviewQueue = buildReviewQueue(
+        heuristicArtifacts.incidents,
+        heuristicArtifacts.events,
+        heuristicArtifacts.locations,
+        [],
+        {
+          corpusId,
+          analysisId: `analysis_v2_${corpusId}`,
+          graph: storyGraph,
+        },
+      );
+      const finalResult = {
+        ...finalResultBase,
+        reviewQueue,
+        review_queue: reviewQueue,
+      };
+      const finalized = finalizeTracker(tracker, {
+        incidentCount: 0,
+        graphSummary: storyGraph.summary,
       });
       return {
         success: true,
         incidentCount: 0,
         aiSteps,
         partsGenerated: totalPartsGenerated,
-        finalResult,
+        finalResult: {
+          ...finalResult,
+          analysis_run_manifest: finalized.manifest,
+          pass_status: finalized.passStatus,
+          degraded_run_report: finalized.degradedRunReport,
+          story_graph: storyGraph,
+          graph_summary: storyGraph.summary,
+          artifact_version: 'v2',
+        },
         aiApplied: aiSteps.length > 0,
         reason: 'no_incidents',
       };
     }
 
+    startPass(tracker, 'pass_b', 'Per-Incident Deep Extraction');
     emitProgress(onProgress, 'incident_1m_pass_b', 0.42, 'Pass B: parallel deep analysis per incident');
     const passB = await runPassB({
       incidents,
@@ -1082,10 +1323,18 @@ export async function runIncidentOnly1MJob({
       modeOptions,
       signal,
       onProgress,
+      tracker,
     });
 
     totalPartsGenerated += Number(passB.partsGenerated || 0);
     tokenUsage = mergeUsage(tokenUsage, passB.usage);
+    completePass(tracker, 'pass_b', {
+      metrics: {
+        events: passB.events.length,
+        locations: passB.locations.length,
+        partsGenerated: passB.partsGenerated || 0,
+      },
+    });
     if (passB.events.length > 0 || passB.locations.length > 0) {
       aiSteps.push('pass_b_deep_parallel');
     }
@@ -1115,10 +1364,11 @@ export async function runIncidentOnly1MJob({
       incidents,
       events: baseEvents,
       locations: baseLocations,
-      mode: 'incident_only_1m',
+      mode: 'full_corpus_1m',
       tokenUsage,
     });
 
+    startPass(tracker, 'pass_c', 'Knowledge Extraction');
     emitProgress(onProgress, 'incident_1m_pass_c', 0.84, 'Pass C: knowledge extraction from incidents/events');
     let knowledge = null;
     try {
@@ -1131,24 +1381,105 @@ export async function runIncidentOnly1MJob({
         signal,
       );
       if (extracted?.applied && extracted?.data) {
-        knowledge = extracted.data;
-        finalResult = mergeKnowledgeProfile(finalResult, extracted.data);
+        const validatedKnowledge = validatePassCOutput(extracted.data);
+        knowledge = consolidateCanonicalKnowledge(validatedKnowledge.value, baseEvents);
+        finalResult = mergeKnowledgeProfile(finalResult, knowledge);
         aiSteps.push('pass_c_knowledge');
+        completePass(tracker, 'pass_c', {
+          metrics: {
+            characters: toArray(knowledge.characters).length,
+            locations: toArray(knowledge.locations).length,
+            objects: toArray(knowledge.objects).length,
+            terms: toArray(knowledge.terms).length,
+          },
+          status: validatedKnowledge.issues.length > 0 ? 'degraded' : 'completed',
+        });
+        if (validatedKnowledge.issues.length > 0) {
+          markPassDegraded(tracker, 'pass_c', 'schema_repaired', {
+            issues: validatedKnowledge.issues,
+            fallback: 'normalized_knowledge',
+          });
+        }
+      } else {
+        completePass(tracker, 'pass_c', {
+          metrics: {
+            characters: 0,
+            locations: 0,
+            objects: 0,
+            terms: 0,
+          },
+          status: 'degraded',
+        });
+        markPassDegraded(tracker, 'pass_c', 'knowledge_not_applied', {
+          fallback: 'skip_knowledge',
+        });
       }
       tokenUsage = mergeUsage(tokenUsage, extracted?.usageMetadata || {});
     } catch {
-      // Keep finalResult from previous step as fallback.
+      markPassDegraded(tracker, 'pass_c', 'knowledge_extraction_failed', {
+        fallback: 'skip_knowledge',
+      });
     }
 
+    startPass(tracker, 'pass_e', 'Story Graph Build');
+    const storyGraph = buildStoryGraph({
+      incidents,
+      events: baseEvents,
+      knowledge: knowledge || finalResult.knowledge || {},
+      relationships: finalResult.relationships?.ships || [],
+    });
+    completePass(tracker, 'pass_e', {
+      metrics: storyGraph.summary,
+    });
+    startPass(tracker, 'pass_f', 'Consistency + Coherence');
+    completePass(tracker, 'pass_f', {
+      metrics: {
+        consistencyRisks: toArray(finalResult.consistencyRisks).length,
+      },
+    });
+    startPass(tracker, 'pass_g', 'Review Pack');
+    const reviewQueue = buildReviewQueue(
+      incidents,
+      baseEvents,
+      baseLocations,
+      toArray(finalResult.consistencyRisks),
+      {
+        corpusId,
+        analysisId: `analysis_v2_${corpusId}`,
+        graph: storyGraph,
+      },
+    );
+    finalResult = {
+      ...finalResult,
+      reviewQueue,
+      review_queue: reviewQueue,
+    };
+    completePass(tracker, 'pass_g', {
+      metrics: {
+        reviewQueueItems: reviewQueue.length,
+      },
+    });
     emitProgress(onProgress, 'incident_1m_finalize', 0.95, 'Finalizing incident-only analysis');
+    const finalized = finalizeTracker(tracker, {
+      incidentCount: incidents.length,
+      graphSummary: storyGraph.summary,
+    });
     finalResult = {
       ...finalResult,
       tokenUsage,
+      analysis_run_manifest: finalized.manifest,
+      pass_status: finalized.passStatus,
+      degraded_run_report: finalized.degradedRunReport,
+      story_graph: storyGraph,
+      graph_summary: storyGraph.summary,
+      artifact_version: 'v2',
       meta: {
         ...(finalResult.meta || {}),
         aiSteps,
         incidentCount: incidents.length,
         aiApplied: aiSteps.length > 0,
+        runMode: normalizePublicRunMode(options.runMode || options.mode || 'full_corpus_1m'),
+        artifactVersion: 'v2',
       },
       knowledge: knowledge || finalResult.knowledge || null,
     };
@@ -1162,12 +1493,40 @@ export async function runIncidentOnly1MJob({
       aiApplied: aiSteps.length > 0,
     };
   } catch (error) {
-    const fallback = buildFinalResult({
+    markPassDegraded(tracker, 'pass_a', error?.message || 'incident_only_1m_failed', {
+      fallback: 'heuristic_pipeline',
+    });
+    const storyGraph = buildStoryGraph({
+      incidents: heuristicArtifacts.incidents,
+      events: heuristicArtifacts.events,
+      knowledge: {},
+    });
+    const fallbackBase = buildFinalResult({
       incidents: heuristicArtifacts.incidents,
       events: heuristicArtifacts.events,
       locations: heuristicArtifacts.locations,
-      mode: 'incident_only_1m',
+      mode: 'full_corpus_1m',
       tokenUsage,
+    });
+    const reviewQueue = buildReviewQueue(
+      heuristicArtifacts.incidents,
+      heuristicArtifacts.events,
+      heuristicArtifacts.locations,
+      [],
+      {
+        corpusId,
+        analysisId: `analysis_v2_${corpusId}`,
+        graph: storyGraph,
+      },
+    );
+    const fallback = {
+      ...fallbackBase,
+      reviewQueue,
+      review_queue: reviewQueue,
+    };
+    const finalized = finalizeTracker(tracker, {
+      incidentCount: heuristicArtifacts.incidents.length,
+      graphSummary: storyGraph.summary,
     });
 
     return {
@@ -1175,7 +1534,15 @@ export async function runIncidentOnly1MJob({
       incidentCount: heuristicArtifacts.incidents.length,
       aiSteps,
       partsGenerated: totalPartsGenerated,
-      finalResult: fallback,
+      finalResult: {
+        ...fallback,
+        analysis_run_manifest: finalized.manifest,
+        pass_status: finalized.passStatus,
+        degraded_run_report: finalized.degradedRunReport,
+        story_graph: storyGraph,
+        graph_summary: storyGraph.summary,
+        artifact_version: 'v2',
+      },
       aiApplied: aiSteps.length > 0,
       aiError: error?.message || 'incident_only_1m_failed',
     };

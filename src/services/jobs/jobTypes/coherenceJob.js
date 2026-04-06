@@ -18,8 +18,8 @@ function toObject(value) {
   return value && typeof value === 'object' ? value : {};
 }
 
-function emitStep(onProgress, overall, message, stepName, stepProgress, event = null) {
-  onProgress(overall, message, {
+async function emitStep(onProgress, overall, message, stepName, stepProgress, event = null) {
+  await onProgress(overall, message, {
     ...(event ? { event } : {}),
     step: {
       name: stepName,
@@ -53,10 +53,10 @@ export async function processCoherenceJob(job, onProgress, { signal } = {}) {
     throw simulatedError;
   }
 
-  emitStep(onProgress, 10, 'Preparing coherence pass input', 'prepare', 40);
+  await emitStep(onProgress, 10, 'Preparing coherence pass input', 'prepare', 40);
   throwIfCancelled(signal);
 
-  emitStep(onProgress, 35, 'Running merge/split coherence rules', 'coherence', 30);
+  await emitStep(onProgress, 35, 'Running merge/split coherence rules', 'coherence', 30);
   const result = await runCoherenceJob({
     incidents,
     events,
@@ -76,13 +76,13 @@ export async function processCoherenceJob(job, onProgress, { signal } = {}) {
   });
 
   throwIfCancelled(signal);
-  emitStep(onProgress, 75, 'Rebuilding normalized links', 'normalize', 85);
+  await emitStep(onProgress, 75, 'Rebuilding normalized links', 'normalize', 85);
 
   const merged = Number(result?.changes?.merged || 0);
   const splitSuggestions = Number(result?.changes?.splitSuggestions || 0);
   const normalizedLocations = Number(result?.changes?.normalizedLocations || 0);
 
-  emitStep(
+  await emitStep(
     onProgress,
     100,
     'Coherence pass completed',

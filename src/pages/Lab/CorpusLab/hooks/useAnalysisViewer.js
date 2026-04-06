@@ -18,6 +18,7 @@ import {
   AUTO_ACCEPT_QUALITY_THRESHOLD,
   AUTO_ACCEPT_CHAPTER_CONFIDENCE_THRESHOLD,
 } from '../../../../services/viewer/analysisParser.js';
+import { buildStoryGraph } from '../../../../services/analysis/v2/storyGraph.js';
 import { searchEvents } from '../../../../services/viewer/searchEngine.js';
 import {
   saveAnnotation,
@@ -142,6 +143,39 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     }
   }, [analysis]);
 
+  const storyGraph = useMemo(() => {
+    const rawPayload = analysis?.result ?? analysis?.finalResult ?? null;
+    if (rawPayload) {
+      try {
+        const raw = typeof rawPayload === 'string'
+          ? JSON.parse(rawPayload)
+          : rawPayload;
+        if (raw.story_graph || raw.storyGraph) {
+          return raw.story_graph || raw.storyGraph || null;
+        }
+      } catch {
+        return null;
+      }
+    }
+
+    if (!parsed) {
+      return null;
+    }
+
+    const fallbackEvents = flattenEvents(parsed.events || {});
+    return buildStoryGraph({
+      incidents: Array.isArray(parsed.incidents) ? parsed.incidents : [],
+      events: fallbackEvents,
+      knowledge: {
+        characters: Array.isArray(parsed.characterProfiles) ? parsed.characterProfiles : [],
+        locations: Array.isArray(parsed.locations) ? parsed.locations : [],
+        objects: Array.isArray(parsed.objects) ? parsed.objects : [],
+        terms: Array.isArray(parsed.terms) ? parsed.terms : [],
+      },
+      relationships: Array.isArray(parsed.relationships) ? parsed.relationships : [],
+    });
+  }, [analysis, parsed]);
+
   // Flatten all events
   const allEvents = useMemo(() => {
     if (!parsed?.events) return [];
@@ -249,6 +283,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
 
   const allLocations = useMemo(() => {
     const map = new Map();
+    const characterNameSet = new Set(allCharacters.map((item) => normalizeLooseText(item)).filter(Boolean));
     for (const location of locations) {
       if (!location?.name) continue;
       if (!isReasonableEntityLabel(location.name)) continue;
@@ -258,13 +293,13 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       const name = incident?.location?.name;
       const id = incident?.location?.id || name;
       if (!name || !id) continue;
-      if (!isLikelyLocationName(name)) continue;
+      if (!isLikelyLocationName(name, characterNameSet)) continue;
       map.set(id, name);
     }
     return [...map.entries()]
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [incidentClusters, locations]);
+  }, [allCharacters, incidentClusters, locations]);
 
   // Search results
   const searchResults = useMemo(() => {
@@ -753,6 +788,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     incidents,
     reviewQueue: reviewQueueItems,
     reviewQueueStats,
+    storyGraph,
     stats,
     qualityStats,
     autoAcceptThreshold: AUTO_ACCEPT_QUALITY_THRESHOLD,
@@ -835,6 +871,12 @@ function buildIncidentFallback(events = []) {
     return [];
   }
 
+  const characterNameSet = new Set(
+    events.flatMap((event) => (Array.isArray(event?.characters) ? event.characters : []))
+      .map((item) => normalizeLooseText(item))
+      .filter(Boolean),
+  );
+
   const normalizedEvents = events
     .filter((event) => event?.id && isMeaningfulEventDescription(event?.description || ''))
     .map((event) => ({
@@ -842,10 +884,11 @@ function buildIncidentFallback(events = []) {
       chapterSafe: Number.isFinite(Number(event.chapter)) ? Number(event.chapter) : 0,
       locationNameSafe: resolveCleanLocationName(
         event.locationLink?.locationName || event.primaryLocationName || '',
+        characterNameSet,
       ) || 'Không rõ địa điểm',
       locationIdSafe: event.locationLink?.locationId
         || event.primaryLocationId
-        || resolveCleanLocationName(event.locationLink?.locationName || event.primaryLocationName || '')
+        || resolveCleanLocationName(event.locationLink?.locationName || event.primaryLocationName || '', characterNameSet)
         || 'unknown',
     }));
 
@@ -883,7 +926,7 @@ function buildIncidentFallback(events = []) {
 
       incidents.push({
         id: `incident_fallback_${String(locationKey)}_${String(chapterStart || 0)}_${String(eventIds.length)}`,
-        title: `${anchor.locationNameSafe} - ${truncateIncidentTitle(anchor.description || 'Sự kiện lớn')}`,
+        title: buildFallbackIncidentTitle(anchor),
         type: inferIncidentType(anchor),
         location: {
           id: locationKey !== 'unknown' ? locationKey : null,
@@ -911,7 +954,7 @@ function buildIncidentFallback(events = []) {
     if (!exists) {
       incidents.unshift({
         id: `incident_opening_${openingAnchor.id}`,
-        title: `${openingAnchor.locationNameSafe} - ${truncateIncidentTitle(openingAnchor.description || 'Sự kiện mở đầu')}`,
+        title: buildFallbackIncidentTitle(openingAnchor, 'Sự kiện mở đầu'),
         type: 'major_plot_point',
         location: {
           id: openingAnchor.locationIdSafe !== 'unknown' ? openingAnchor.locationIdSafe : null,
@@ -959,16 +1002,17 @@ function isMeaningfulEventDescription(text) {
   return normalized.length >= 14;
 }
 
-function resolveCleanLocationName(value) {
+function resolveCleanLocationName(value, characterNameSet = new Set()) {
   const name = normalizeText(value);
   if (!name) return '';
-  if (!isLikelyLocationName(name)) return '';
+  if (!isLikelyLocationName(name, characterNameSet)) return '';
   return name;
 }
 
-function isLikelyLocationName(name) {
+function isLikelyLocationName(name, characterNameSet = new Set()) {
   const normalized = normalizeLooseText(name);
   if (!normalized) return false;
+  if (characterNameSet.has(normalized)) return false;
   if (normalized.length > 84) return false;
   if (/[.!?]/u.test(normalized)) return false;
 
@@ -993,6 +1037,15 @@ function isLikelyLocationName(name) {
   if (noiseCount >= 2 && hintCount <= 1) return false;
   if (tokens.length >= 4 && hintCount === 0) return false;
   return hintCount > 0 || tokens.length <= 2;
+}
+
+function buildFallbackIncidentTitle(anchor = {}, fallback = 'Sự kiện lớn') {
+  const description = truncateIncidentTitle(anchor.description || fallback);
+  const locationName = normalizeText(anchor.locationNameSafe || '');
+  if (!locationName || locationName === 'Không rõ địa điểm') {
+    return description;
+  }
+  return `${locationName} - ${description}`;
 }
 
 function isReasonableEntityLabel(name) {

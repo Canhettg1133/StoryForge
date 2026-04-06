@@ -11,14 +11,8 @@ import {
   validateChunkSize,
 } from './chunkCalculator.js';
 import {
-  deleteCorpusById,
-  getChapterById,
-  getCorpusById,
-  insertCorpusGraph,
-  listCorpuses,
-  replaceCorpusChunks,
-  updateCorpusById,
-} from './db/queries.js';
+  corpusRepository,
+} from './repositories/corpusRepository.js';
 import { getFandomSuggestion } from './detector/fandomDetector.js';
 import { parseCorpusFile } from './parser/index.js';
 import { createRechunkRows } from './rechunker.js';
@@ -197,6 +191,8 @@ export async function createCorpusFromUpload({ file, metadata, chunkSize }) {
       || null,
     sourceFile: file.originalname,
     fileType: parsed.fileType,
+    frontMatter: parsed.frontMatter || null,
+    parseDiagnostics: parsed.diagnostics || null,
     fandom: normalizeString(parsedMetadata.fandom) || fandomSuggestion?.fandom || null,
     fandomConfidence: fandomSuggestion?.confidence ?? null,
     isCanonFanfic: normalizeString(parsedMetadata.isCanonFanfic) || null,
@@ -213,9 +209,7 @@ export async function createCorpusFromUpload({ file, metadata, chunkSize }) {
     updatedAt: now,
   };
 
-  insertCorpusGraph(corpusRow, chapterRows, chunkRows);
-
-  const storedCorpus = getCorpusById(corpusId, { includeChapterContent: false });
+  const storedCorpus = await corpusRepository.insertGraph(corpusRow, chapterRows, chunkRows);
 
   return {
     ...storedCorpus,
@@ -223,28 +217,28 @@ export async function createCorpusFromUpload({ file, metadata, chunkSize }) {
   };
 }
 
-export function listCorpusRecords(filters = {}) {
-  return listCorpuses(filters);
+export async function listCorpusRecords(filters = {}) {
+  return corpusRepository.listAsync(filters);
 }
 
-export function getCorpusRecord(corpusId, options = {}) {
-  return getCorpusById(corpusId, options);
+export async function getCorpusRecord(corpusId, options = {}) {
+  return corpusRepository.getByIdAsync(corpusId, options);
 }
 
 export function updateCorpusRecord(corpusId, updates = {}) {
-  return updateCorpusById(corpusId, updates);
+  return corpusRepository.updateById(corpusId, updates);
 }
 
 export function removeCorpusRecord(corpusId) {
-  return deleteCorpusById(corpusId);
+  return corpusRepository.deleteById(corpusId);
 }
 
-export function getCorpusChapter(corpusId, chapterId) {
-  return getChapterById(corpusId, chapterId);
+export async function getCorpusChapter(corpusId, chapterId) {
+  return corpusRepository.getChapterByIdAsync(corpusId, chapterId);
 }
 
-export function getCorpusChunkPreview(corpusId, options = {}) {
-  const corpus = getCorpusById(corpusId, { includeChapterContent: false });
+export async function getCorpusChunkPreview(corpusId, options = {}) {
+  const corpus = await corpusRepository.getByIdAsync(corpusId, { includeChapterContent: false });
   if (!corpus) {
     throw createServiceError('CORPUS_NOT_FOUND', 'Corpus không tồn tại.');
   }
@@ -279,8 +273,8 @@ export function getCorpusChunkPreview(corpusId, options = {}) {
   };
 }
 
-export function rechunkCorpusRecord(corpusId, options = {}) {
-  const corpus = getCorpusById(corpusId, { includeChapterContent: true });
+export async function rechunkCorpusRecord(corpusId, options = {}) {
+  const corpus = await corpusRepository.getByIdAsync(corpusId, { includeChapterContent: true });
   if (!corpus) {
     throw createServiceError('CORPUS_NOT_FOUND', 'Corpus không tồn tại.');
   }
@@ -313,12 +307,12 @@ export function rechunkCorpusRecord(corpusId, options = {}) {
     throw createServiceError('PARSE_FAILED', 'Không thể tạo chunk mới từ corpus hiện tại.');
   }
 
-  const savedChunkCount = replaceCorpusChunks(corpusId, newChunkRows);
+  const savedChunkCount = await corpusRepository.replaceChunks(corpusId, newChunkRows);
   const savedAt = Date.now();
   const parallelChunks = normalizeParallelChunks(options.parallelChunks);
   const partsPerChunk = getPartsPerChunk(model, preset);
 
-  const updatedCorpus = updateCorpusById(corpusId, {
+  const updatedCorpus = await corpusRepository.updateById(corpusId, {
     chunkSize: chunkSizeWords,
     chunkSizeUsed: chunkSizeWords,
     chunkCount: savedChunkCount,

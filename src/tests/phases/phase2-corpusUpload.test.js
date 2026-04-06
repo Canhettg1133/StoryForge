@@ -2,14 +2,18 @@ import { Buffer } from 'node:buffer';
 import { describe, expect, it } from 'vitest';
 import { createChunks } from '../../services/corpus/chunker.js';
 import {
-  detectFileType,
-  parseCorpusFile,
-  SUPPORTED_TYPES,
-} from '../../services/corpus/parser/index.js';
+  analyzeChapterSegmentation,
+  splitTextIntoChapters,
+} from '../../services/corpus/detector/chapterDetector.js';
 import {
   detectFandom,
   getFandomSuggestion,
 } from '../../services/corpus/detector/fandomDetector.js';
+import {
+  detectFileType,
+  parseCorpusFile,
+  SUPPORTED_TYPES,
+} from '../../services/corpus/parser/index.js';
 
 describe('Phase 2 - Corpus Upload & Parse', () => {
   it('detects supported file types from extension and mime type', () => {
@@ -46,6 +50,102 @@ describe('Phase 2 - Corpus Upload & Parse', () => {
     expect(parsed.rawText.length).toBeGreaterThan(10);
   });
 
+  it('does not split duplicated chapter headings separated by decorative lines', () => {
+    const text = [
+      '========================================',
+      'Số 18 Nhà Trọ',
+      '========================================',
+      '',
+      '────────────────────',
+      'Chương 01: Hoan nghênh nhập chức',
+      '────────────────────',
+      '',
+      'Chương 01: Hoan nghênh nhập chức',
+      '',
+      '【 hoan nghênh nhập chức số 18 lầu trọ Phòng Quản Lý trợ lý. 】',
+      'Đông',
+      'Đông',
+      'Đông',
+      '',
+      'Lâm Thâm ánh mắt đờ đẫn mà nhìn chằm chằm vào trước mặt sàn nhà.',
+      '',
+      '────────────────────',
+      'Chương 02: Công tác nhật ký',
+      '────────────────────',
+      '',
+      'Chương 02: Công tác nhật ký',
+      '',
+      '【10, trợ lý đối Phòng Quản Lý công việc có giữ bí mật nghĩa vụ. 】',
+      'Chỉ tiêu lại là cái gì chỉ tiêu?',
+      '【 cuối cùng, hoan nghênh nhập chức, Lâm Thâm tiên sinh. 】',
+    ].join('\n');
+
+    const parsed = splitTextIntoChapters(text, {
+      fallbackTitlePrefix: 'Chapter',
+    });
+
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0].title).toContain('Chương 01');
+    expect(parsed[1].title).toContain('Chương 02');
+    expect(parsed[0].content).toContain('Lâm Thâm ánh mắt đờ đẫn');
+    expect(parsed[1].content).toContain('Chỉ tiêu lại là cái gì chỉ tiêu');
+  });
+
+  it('keeps front matter out of fake chapter 1 while preserving the real first chapter', () => {
+    const text = [
+      'Truyện bạn đang theo dõi được thực hiện & thuộc bản quyền của Sắc Hiệp Viện.',
+      '',
+      '\tTheo nữ tiểu quỷ mông bự Loli muội muội bị xanh biếc bắt đầu dị thế giới toàn bộ thành viên hậu cung nón xanh tác giả: MP9494 (1-52)',
+      '',
+      '\tNTR! Theo nữ tiểu quỷ mông bự Loli muội muội bị xanh biếc bắt đầu dị thế giới mạo hiểm chung đồ nhị!',
+      '',
+      '\tChương 1:',
+      '',
+      '\t"Ca ca, ô ~ ta mông thịt lại biến nhiều rồi, làm sao bây giờ làm sao bây giờ! Ta rốt cuộc phải làm sao a ô ô ~ "',
+      '',
+      '\tXanh biếc ý dồi dào rừng rậm đường nhỏ phía trên, bá có chút im lặng quay đầu nhìn về phía muội muội của mình.',
+    ].join('\n');
+
+    const parsed = splitTextIntoChapters(text, {
+      fallbackTitlePrefix: 'Chapter',
+    });
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].title).toContain('Chương 1');
+    expect(parsed[0].content).toContain('"Ca ca, ô ~ ta mông thịt lại biến nhiều');
+    expect(parsed[0].content).not.toContain('Sắc Hiệp Viện');
+  });
+
+  it('emits front matter and diagnostics for noisy chapter segmentation', () => {
+    const text = [
+      'Truyện bạn đang theo dõi được thực hiện & thuộc bản quyền của Sắc Hiệp Viện.',
+      '',
+      'Tên truyện rất dài tác giả: MP9494',
+      '',
+      'Chương 1:',
+      '',
+      '"Ca ca, ô ~ ta mông thịt lại biến nhiều rồi..."',
+      '',
+      'Nội dung thật bắt đầu từ đây.',
+      '',
+      'Chỉ bất quá cùng số 1 cửa khác biệt, lần này số 2 cửa cũng không có bởi vì bọn họ tới gần mà mở ra.',
+      '',
+      'Chương 2: Tiếp diễn',
+      '',
+      'Nội dung chương 2.',
+    ].join('\n');
+
+    const result = analyzeChapterSegmentation(text, {
+      fallbackTitlePrefix: 'Chapter',
+    });
+
+    expect(result.frontMatter?.content).toContain('bản quyền của Sắc Hiệp Viện');
+    expect(result.chapters).toHaveLength(2);
+    expect(result.diagnostics.hasFrontMatter).toBe(true);
+    expect(result.diagnostics.acceptedBoundaries).toHaveLength(2);
+    expect(result.diagnostics.headingCandidates.some((item) => item.text.includes('Chỉ bất quá'))).toBe(false);
+  });
+
   it('throws a clear error for unsupported file type', async () => {
     await expect(
       parseCorpusFile({
@@ -54,6 +154,32 @@ describe('Phase 2 - Corpus Upload & Parse', () => {
         mimeType: 'application/octet-stream',
       }),
     ).rejects.toMatchObject({ code: 'UNSUPPORTED_FILE_TYPE' });
+  });
+
+  it('splits chapters whose numbers are written out in words', () => {
+    const text = [
+      'Chương bốn mươi ba',
+      '',
+      'Nội dung chương 43.',
+      '',
+      'Sau đó...',
+      '',
+      'Chương bốn mươi lăm',
+      '',
+      'Tiếng xúc xắc rơi xuống đất, hắn lại thua một cách nhục nhã.',
+      '',
+      '"Bá! Ngươi!!!"',
+    ].join('\n');
+
+    const parsed = splitTextIntoChapters(text, {
+      fallbackTitlePrefix: 'Chapter',
+      minWordsBeforeSplit: 10,
+    });
+
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0].title).toContain('bốn mươi ba');
+    expect(parsed[1].title).toContain('bốn mươi lăm');
+    expect(parsed[1].content).toContain('Tiếng xúc xắc rơi xuống đất');
   });
 
   it('chunks chapter text and returns chunk metadata', () => {

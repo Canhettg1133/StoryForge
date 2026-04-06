@@ -24,6 +24,11 @@ function prettyPhase(phase) {
   return normalized;
 }
 
+function toNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 export default function AnalysisProgress({ analysis }) {
   if (!analysis) {
     return null;
@@ -33,6 +38,20 @@ export default function AnalysisProgress({ analysis }) {
   const partsGenerated = Number(analysis.partsGenerated || 0);
   const sessionIndex = Number(analysis.sessionIndex || 0);
   const totalSessions = Number(analysis.totalSessions || 0);
+  const passStatus = analysis.passStatus || analysis.result?.pass_status || {};
+  const runningPass = Object.values(passStatus).find((item) => item?.status === 'running');
+  const degradedPasses = Object.values(passStatus).filter((item) => item?.status === 'degraded').length;
+  const retryCount = Object.values(passStatus).reduce((sum, item) => sum + toNumber(item?.retries, 0), 0);
+  const validationFailures = Object.values(passStatus).reduce((sum, item) => {
+    const metrics = item?.metrics || {};
+    return sum + toNumber(
+      metrics.validationFailures
+      ?? metrics.validationFailed
+      ?? metrics.validation_errors
+      ?? 0,
+      0,
+    );
+  }, 0);
 
   return (
     <div className="analysis-progress">
@@ -57,6 +76,18 @@ export default function AnalysisProgress({ analysis }) {
           <span>
             Chunk đã xử lý: {analysis.processedChunks}/{analysis.totalChunks}
           </span>
+        )}
+        {runningPass && (
+          <span>Pass dang chay: {runningPass.title || runningPass.id}</span>
+        )}
+        {Object.keys(passStatus).length > 0 && (
+          <span>Pass degraded: {degradedPasses}</span>
+        )}
+        {retryCount > 0 && (
+          <span>Retry: {retryCount}</span>
+        )}
+        {validationFailures > 0 && (
+          <span>Validation fail: {validationFailures}</span>
         )}
       </div>
 

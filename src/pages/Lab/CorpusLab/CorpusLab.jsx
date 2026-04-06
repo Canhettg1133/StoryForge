@@ -2,18 +2,44 @@
 import useCorpusStore from '../../../stores/corpusStore';
 import AnalysisPanel from './components/AnalysisPanel';
 import ChapterList from './components/ChapterList';
-import ChunkOptimizer from './components/ChunkOptimizer';
+import ChapterParsePreview from './components/ChapterParsePreview';
+import CleanExportPanel from './components/CleanExportPanel';
 import CorpusList from './components/CorpusList';
 import FilePreview from './components/FilePreview';
 import MetadataEditor from './components/MetadataEditor';
 import UploadDropzone from './components/UploadDropzone';
 import useCorpusUpload from './hooks/useCorpusUpload';
+import {
+  exportCorpusToDocx,
+  exportCorpusToEpub,
+  exportCorpusToPdf,
+  exportCorpusToTxt,
+} from '../../../services/corpus/corpusCleanExport';
 import './CorpusLab.css';
 
 function getOrderedCorpuses(corpusOrder, corpusesMap) {
   return corpusOrder
     .map((id) => corpusesMap[id])
     .filter(Boolean);
+}
+
+function stripLeadingChapterPrefix(title) {
+  let normalized = String(title || '').trim();
+
+  for (let guard = 0; guard < 3; guard += 1) {
+    const next = normalized
+      .replace(/^(chương|chuong|chapter|chap|ch\.?)\s*/iu, '')
+      .replace(/^(\d+|[ivxlcdm]+)\s*[:.)\-]?\s*/iu, '')
+      .trim();
+
+    if (next === normalized) {
+      break;
+    }
+
+    normalized = next;
+  }
+
+  return normalized.trim();
 }
 
 function getChapterDisplayTitle(chapter) {
@@ -29,13 +55,20 @@ function getChapterDisplayTitle(chapter) {
     return `Chương ${safeIndex}`;
   }
 
-  return `Chương ${safeIndex}: ${title}`;
+  const normalized = stripLeadingChapterPrefix(title);
+  if (!normalized) {
+    return `Chương ${safeIndex}`;
+  }
+
+  return `Chương ${safeIndex}: ${normalized}`;
 }
 
 export default function CorpusLab() {
   const [previewChapter, setPreviewChapter] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState(null);
+  const [exportState, setExportState] = useState({ busy: false, format: null });
+  const [exportError, setExportError] = useState(null);
 
   const corpuses = useCorpusStore((state) => state.corpuses);
   const corpusOrder = useCorpusStore((state) => state.corpusOrder);
@@ -45,13 +78,11 @@ export default function CorpusLab() {
   const listLoading = useCorpusStore((state) => state.listLoading);
   const detailLoading = useCorpusStore((state) => state.detailLoading);
   const filters = useCorpusStore((state) => state.filters);
-  const chunkSize = useCorpusStore((state) => state.chunkSize);
   const listCorpuses = useCorpusStore((state) => state.listCorpuses);
   const getCorpus = useCorpusStore((state) => state.getCorpus);
   const getChapter = useCorpusStore((state) => state.getChapter);
   const deleteCorpus = useCorpusStore((state) => state.deleteCorpus);
   const setFilters = useCorpusStore((state) => state.setFilters);
-  const setChunkSize = useCorpusStore((state) => state.setChunkSize);
   const setCurrentCorpus = useCorpusStore((state) => state.setCurrentCorpus);
   const setCurrentChapter = useCorpusStore((state) => state.setCurrentChapter);
   const updateMetadata = useCorpusStore((state) => state.updateMetadata);
@@ -157,16 +188,58 @@ export default function CorpusLab() {
     await listCorpuses(filters);
   };
 
-  const handleCorpusUpdated = async () => {
+  const loadCorpusChaptersForExport = async (corpus) => {
+    const chapters = Array.isArray(corpus?.chapters) ? corpus.chapters : [];
+    if (!corpus?.id || chapters.length === 0) {
+      return [];
+    }
+
+    const resolved = await Promise.all(
+      chapters.map(async (chapter) => {
+        if (String(chapter?.content || '').trim()) {
+          return chapter;
+        }
+
+        return getChapter(corpus.id, chapter.id);
+      }),
+    );
+
+    return resolved.filter(Boolean);
+  };
+
+  const handleExportCleanCorpus = async (format) => {
     if (!selectedCorpus?.id) {
       return;
     }
 
-    const detail = await getCorpus(selectedCorpus.id);
-    const nextChapterId = currentChapter || detail?.chapters?.[0]?.id;
+    setExportState({ busy: true, format });
+    setExportError(null);
 
-    if (nextChapterId) {
-      await getChapter(selectedCorpus.id, nextChapterId);
+    try {
+      const latestCorpus = await getCorpus(selectedCorpus.id);
+      const exportCorpus = latestCorpus || selectedCorpus;
+      const chapters = await loadCorpusChaptersForExport(exportCorpus);
+
+      switch (format) {
+        case 'txt':
+          await exportCorpusToTxt(exportCorpus, chapters);
+          break;
+        case 'epub':
+          await exportCorpusToEpub(exportCorpus, chapters);
+          break;
+        case 'docx':
+          await exportCorpusToDocx(exportCorpus, chapters);
+          break;
+        case 'pdf':
+          await exportCorpusToPdf(exportCorpus, chapters);
+          break;
+        default:
+          throw new Error('Định dạng export không hợp lệ.');
+      }
+    } catch (error) {
+      setExportError(error?.message || 'Không thể clean export corpus này.');
+    } finally {
+      setExportState({ busy: false, format: null });
     }
   };
 
@@ -190,12 +263,14 @@ export default function CorpusLab() {
             metadata={metadata}
             onChange={updateUploadMetadata}
             onSubmit={handleUpload}
-            chunkSize={chunkSize}
-            onChunkSizeChange={setChunkSize}
             detectedFandom={selectedCorpus?.fandomSuggestion}
             disabled={isUploading}
             canSubmit={!!file}
           />
+
+          {selectedCorpus && (
+            <ChapterParsePreview corpus={selectedCorpus} />
+          )}
 
           {selectedCorpus && (
             <div className="corpus-card metadata-actions">
@@ -232,9 +307,11 @@ export default function CorpusLab() {
           />
 
           {selectedCorpus && (
-            <ChunkOptimizer
+            <CleanExportPanel
               corpus={selectedCorpus}
-              onCorpusUpdated={handleCorpusUpdated}
+              onExport={handleExportCleanCorpus}
+              exportState={exportState}
+              exportError={exportError}
             />
           )}
 

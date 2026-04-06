@@ -3,9 +3,7 @@ import { normalizeIncident } from './models/incident.js';
 import { normalizeEvent } from './models/event.js';
 import { normalizeLocation } from './models/location.js';
 import { normalizeConsistencyRisk } from './models/consistencyRisk.js';
-import { replaceIncidentFirstArtifacts } from './db/incidentFirstQueries.js';
-import { runIncidentAnalysisJob } from './jobs/incidentAnalysisJob.js';
-import { runIncidentAnalysis } from './pipeline/incidentAnalyzer.js';
+import { incidentFirstRepository } from './repositories/incidentFirstRepository.js';
 
 const EVENT_COLLECTION_KEYS = [
   'majorEvents',
@@ -112,11 +110,17 @@ function mapIncidents(incidents, { corpusId, analysisId }) {
         analysisId,
         chapterStartIndex,
         chapterEndIndex,
+        chapterStartNumber: chapterStartIndex,
+        chapterEndNumber: chapterEndIndex,
         confidence: Number(item.confidence ?? 0),
         evidence: item.evidence || (item.evidenceSnippet ? [item.evidenceSnippet] : []),
         containedEvents: item.containedEvents || item.eventIds || [],
         relatedLocations: item.relatedLocations
           || (item.location?.id ? [item.location.id] : []),
+        provenance: item.provenance || {
+          sourcePass: 'materialized_result',
+          reviewStatus: item.reviewStatus || 'needs_review',
+        },
       });
     });
 }
@@ -157,6 +161,7 @@ function mapEvents(rawEvents, incidents, { corpusId, analysisId }) {
       description: resolveEventDescription(item),
       chapterId: item.chapterId || item.grounding?.chapterId || null,
       chapterIndex,
+      chapterNumber: chapterIndex,
       chunkId: item.chunkId || item.grounding?.chunkId || null,
       chunkIndex,
       incidentId: item.incidentId || incidentByEventId.get(id) || null,
@@ -168,6 +173,10 @@ function mapEvents(rawEvents, incidents, { corpusId, analysisId }) {
       reviewStatus: item.reviewStatus || (item.needsReview ? 'needs_review' : 'auto_accepted'),
       needsReview: Boolean(item.needsReview),
       groundedAt: item.groundedAt || null,
+      provenance: item.provenance || {
+        sourcePass: 'materialized_result',
+        reviewStatus: item.reviewStatus || (item.needsReview ? 'needs_review' : 'auto_accepted'),
+      },
     });
   });
 }
@@ -230,6 +239,8 @@ function mapLocations(locations, events, { corpusId, analysisId }) {
       mentionCount: item.eventIds.length,
       chapterStart,
       chapterEnd,
+      chapterStartNumber: chapterStart,
+      chapterEndNumber: chapterEnd,
       chapterSpread: [chapterStart, chapterEnd],
       eventIds: [...new Set(item.eventIds)],
       incidentIds: [...new Set(item.incidentIds)],
@@ -239,6 +250,10 @@ function mapLocations(locations, events, { corpusId, analysisId }) {
       importance: Math.min(1, item.eventIds.length / 10),
       isMajor: item.eventIds.length >= 3,
       reviewStatus: avgConfidence >= 0.8 ? 'auto_accepted' : 'needs_review',
+      provenance: item.provenance || {
+        sourcePass: 'materialized_result',
+        reviewStatus: avgConfidence >= 0.8 ? 'auto_accepted' : 'needs_review',
+      },
     });
   });
 }
@@ -275,54 +290,18 @@ export async function persistIncidentFirstArtifacts({
     corpusId,
     analysisId,
   });
-  let pipeline;
-  try {
-    pipeline = await runIncidentAnalysisJob({
-      corpusId,
-      payload: {
-        chapters: toArray(pipelineOptions.chapters),
-        incidents,
-        events,
-        locations,
-        consistencyRisks: mappedConsistencyRisks,
-      },
-      options: {
-        analysisId,
-        mode: result?.meta?.runMode || 'balanced',
-        provider: pipelineOptions.provider,
-        model: pipelineOptions.model,
-        apiKey: pipelineOptions.apiKey,
-        apiKeys: pipelineOptions.apiKeys,
-        proxyUrl: pipelineOptions.proxyUrl,
-        directUrl: pipelineOptions.directUrl,
-        temperature: pipelineOptions.temperature,
-        ai: pipelineOptions.ai || {},
-      },
-    });
-  } catch {
-    pipeline = runIncidentAnalysis(corpusId, {
-      incidents,
-      events,
-      locations,
-      consistencyRisks: mappedConsistencyRisks,
-    }, {
-      analysisId,
-      mode: result?.meta?.runMode || 'balanced',
-    });
-  }
-
-  const finalIncidents = pipeline?.incidents || incidents;
-  const finalEvents = pipeline?.events || events;
-  const finalLocations = pipeline?.locations || locations;
-  const consistencyRisks = pipeline?.consistencyRisks || mappedConsistencyRisks;
-  const reviewQueue = (pipeline?.reviewQueue || []).map((item) => ({
+  const finalIncidents = incidents;
+  const finalEvents = events;
+  const finalLocations = locations;
+  const consistencyRisks = mappedConsistencyRisks;
+  const reviewQueue = toArray(result.reviewQueue || result.review_queue).map((item) => ({
     ...item,
     id: item.id || `rq_${randomUUID()}`,
     corpusId,
     analysisId,
   }));
 
-  replaceIncidentFirstArtifacts({
+  await incidentFirstRepository.replaceArtifacts({
     corpusId,
     analysisId,
     incidents: finalIncidents,
@@ -341,5 +320,6 @@ export async function persistIncidentFirstArtifacts({
       consistencyRisks: consistencyRisks.length,
       reviewQueue: reviewQueue.length,
     },
+    sourceOfTruth: 'analysis_run_artifact',
   };
 }

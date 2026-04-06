@@ -10,11 +10,22 @@ function formatWords(value) {
 }
 
 function stripLeadingChapterPrefix(title) {
-  return String(title || '')
-    .trim()
-    .replace(/^(chapter|chap|ch\.?|chuong|chương)\s*/iu, '')
-    .replace(/^(\d+|[ivxlcdm]+)\s*[:.)\-]?\s*/iu, '')
-    .trim();
+  let normalized = String(title || '').trim();
+
+  for (let guard = 0; guard < 3; guard += 1) {
+    const next = normalized
+      .replace(/^(chương|chuong|chapter|chap|ch\.?)\s*/iu, '')
+      .replace(/^(\d+|[ivxlcdm]+)\s*[:.)\-]?\s*/iu, '')
+      .trim();
+
+    if (next === normalized) {
+      break;
+    }
+
+    normalized = next;
+  }
+
+  return normalized.trim();
 }
 
 function formatChapterTitle(chapter, fallbackIndex) {

@@ -29,3 +29,5 @@ tmp
 tinix-story/
 _reference/
 external/
+data/*.sqlite*
+dist/

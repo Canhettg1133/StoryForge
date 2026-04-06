@@ -1,5 +1,5 @@
 ﻿import path from 'node:path';
-import { splitTextIntoChapters } from '../detector/chapterDetector.js';
+import { analyzeChapterSegmentation } from '../detector/chapterDetector.js';
 import { cleanTitle, decodeTextBuffer, sanitizeWhitespace } from '../utils/textUtils.js';
 
 function inferTitleFromFilename(fileName = '') {
@@ -9,9 +9,10 @@ function inferTitleFromFilename(fileName = '') {
 
 export function parseTxt(buffer, options = {}) {
   const rawText = sanitizeWhitespace(decodeTextBuffer(buffer));
-  const chapters = splitTextIntoChapters(rawText, {
+  const segmentation = analyzeChapterSegmentation(rawText, {
     fallbackTitlePrefix: options.fallbackTitlePrefix || 'Chapter',
   });
+  const chapters = segmentation.chapters;
 
   return {
     metadata: {
@@ -20,6 +21,8 @@ export function parseTxt(buffer, options = {}) {
       language: options.language || null,
     },
     chapters,
+    frontMatter: segmentation.frontMatter || null,
+    diagnostics: segmentation.diagnostics || null,
     rawText,
   };
 }

@@ -1,15 +1,7 @@
 ﻿import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { getCorpusById, updateCorpusById } from '../corpus/db/queries.js';
-import {
-  createCorpusAnalysis,
-  getCorpusAnalysisById,
-  insertChunkResult,
-  listChunkResultsByAnalysis,
-  listCorpusAnalysesByCorpus,
-  listCorpusChunksForAnalysis,
-  updateCorpusAnalysis,
-} from './db/queries.js';
+import { corpusRepository } from '../corpus/repositories/corpusRepository.js';
+import { analysisRepository } from './repositories/analysisRepository.js';
 import {
   ANALYSIS_CONFIG,
   estimateAnalysisTime,
@@ -21,6 +13,7 @@ import { extractKnowledgeProfile, mergeKnowledgeProfile } from './grounding/know
 import { persistIncidentFirstArtifacts } from './incidentFirstPersistence.js';
 import { mergeOutputParts, parseJsonField, splitLayerResults } from './outputChunker.js';
 import { getRunMode } from './pipeline/modes.js';
+import { normalizePublicRunMode } from './v2/contracts.js';
 import {
   analyzeWithSession,
   buildCorpusSessionInputs,
@@ -84,6 +77,15 @@ function serializeAnalysis(analysis, options = {}) {
   };
 
   if (!includeResults) {
+    const parsedManifest = parseJsonField(analysis.analysisRunManifest, null);
+    const parsedPassStatus = parseJsonField(analysis.passStatus, null);
+    const parsedDegraded = parseJsonField(analysis.degradedRunReport, null);
+    const parsedGraphSummary = parseJsonField(analysis.graphSummary, null);
+    if (parsedManifest) payload.manifest = parsedManifest;
+    if (parsedPassStatus) payload.passStatus = parsedPassStatus;
+    if (parsedDegraded) payload.degradedReport = parsedDegraded;
+    if (parsedGraphSummary) payload.graphSummary = parsedGraphSummary;
+    if (analysis.artifactVersion) payload.artifactVersion = analysis.artifactVersion;
     return payload;
   }
 
@@ -96,6 +98,23 @@ function serializeAnalysis(analysis, options = {}) {
     l5: parseJsonField(analysis.resultL5, null),
     l6: parseJsonField(analysis.resultL6, null),
   };
+  payload.manifest = parseJsonField(
+    analysis.analysisRunManifest,
+    payload.result?.analysis_run_manifest || null,
+  );
+  payload.passStatus = parseJsonField(
+    analysis.passStatus,
+    payload.result?.pass_status || null,
+  );
+  payload.degradedReport = parseJsonField(
+    analysis.degradedRunReport,
+    payload.result?.degraded_run_report || null,
+  );
+  payload.graphSummary = parseJsonField(
+    analysis.graphSummary,
+    payload.result?.graph_summary || null,
+  );
+  payload.artifactVersion = analysis.artifactVersion || payload.result?.artifact_version || 'legacy';
 
   return payload;
 }
@@ -118,25 +137,25 @@ class CorpusAnalysisService extends EventEmitter {
     });
   }
 
-  listByCorpus(corpusId, options = {}) {
-    const result = listCorpusAnalysesByCorpus(corpusId, options);
+  async listByCorpus(corpusId, options = {}) {
+    const result = await analysisRepository.listAnalysesByCorpusAsync(corpusId, options);
     return {
       ...result,
       analyses: result.analyses.map((item) => serializeAnalysis(item, { includeResults: false })),
     };
   }
 
-  getById(analysisId, options = {}) {
-    const analysis = getCorpusAnalysisById(analysisId);
+  async getById(analysisId, options = {}) {
+    const analysis = await analysisRepository.getAnalysisByIdAsync(analysisId);
     return serializeAnalysis(analysis, options);
   }
 
-  getRawById(analysisId) {
-    return getCorpusAnalysisById(analysisId);
+  async getRawById(analysisId) {
+    return analysisRepository.getAnalysisByIdAsync(analysisId);
   }
 
-  getLayer(analysisId, layer) {
-    const analysis = getCorpusAnalysisById(analysisId);
+  async getLayer(analysisId, layer) {
+    const analysis = await analysisRepository.getAnalysisByIdAsync(analysisId);
     if (!analysis) {
       return null;
     }
@@ -166,15 +185,16 @@ class CorpusAnalysisService extends EventEmitter {
     };
   }
 
-  getChunkResults(analysisId) {
-    return listChunkResultsByAnalysis(analysisId).map((row) => ({
+  async getChunkResults(analysisId) {
+    const rows = await analysisRepository.listChunkResultsByAnalysisAsync(analysisId);
+    return rows.map((row) => ({
       ...row,
       result: parseJsonField(row.result, row.result),
     }));
   }
 
   async start(corpusId, rawConfig = {}) {
-    const corpus = getCorpusById(corpusId, { includeChapterContent: false });
+    const corpus = await corpusRepository.getByIdAsync(corpusId, { includeChapterContent: false });
     if (!corpus) {
       throw createServiceError('CORPUS_NOT_FOUND', 'Không tìm thấy corpus.');
     }
@@ -187,7 +207,7 @@ class CorpusAnalysisService extends EventEmitter {
       chunkSize: config.chunkSize,
     });
 
-    const analysisRecord = createCorpusAnalysis({
+    const analysisRecord = await analysisRepository.createAnalysis({
       id: analysisId,
       corpusId,
       chunkSize: config.chunkSize,
@@ -251,13 +271,13 @@ class CorpusAnalysisService extends EventEmitter {
       throwIfAborted(signal);
       const runMode = getRunMode(config.runMode);
 
-      // [NEW] Route incident_only_1m sang flow riêng biệt trước khi làm bất cứ thứ gì
-      if (runMode.id === 'incident_only_1m') {
+      // V2: all non-legacy modes run through the full-corpus incident pipeline.
+      if (runMode.id !== 'legacy') {
         await this.runIncidentOnly1MFlow({ analysisId, corpusId, config, signal });
         return;
       }
 
-      let analysis = updateCorpusAnalysis(analysisId, {
+      let analysis = await analysisRepository.updateAnalysis(analysisId, {
         status: 'processing',
         progress: 0.03,
         currentPhase: 'preparing',
@@ -274,7 +294,7 @@ class CorpusAnalysisService extends EventEmitter {
         message: 'Đang chuẩn bị chunk của corpus',
       });
 
-      const chunks = listCorpusChunksForAnalysis(corpusId);
+      const chunks = await analysisRepository.listCorpusChunksForAnalysisAsync(corpusId);
       console.error('[ANALYSIS-DEBUG] chunks.length:', chunks.length, 'chunkSize:', config.chunkSize);
       if (!chunks.length) {
         throw createServiceError('EMPTY_CORPUS_CHUNKS', 'Corpus không có chunk để phân tích.');
@@ -300,7 +320,7 @@ class CorpusAnalysisService extends EventEmitter {
       const totalSessions = sessionInputs.length;
       let processedChunkCount = 0;
 
-      analysis = updateCorpusAnalysis(analysisId, {
+      analysis = await analysisRepository.updateAnalysis(analysisId, {
         totalChunks: totalSourceChunks,
         processedChunks: 0,
         progress: 0.05,
@@ -337,7 +357,7 @@ class CorpusAnalysisService extends EventEmitter {
         status: 'pending',
       }));
 
-      const persistAndEmitProgress = ({
+      const persistAndEmitProgress = async ({
         phase,
         message,
         sessionIndex = null,
@@ -355,7 +375,7 @@ class CorpusAnalysisService extends EventEmitter {
         const ratio = totalSourceChunks > 0 ? (weightedProgress / totalSourceChunks) : 0;
         const progress = Math.min(0.95, 0.05 + (ratio * 0.88));
 
-        const updated = updateCorpusAnalysis(analysisId, {
+        const updated = await analysisRepository.updateAnalysis(analysisId, {
           progress,
           currentPhase: phase || 'processing',
           processedChunks: processedChunkCount,
@@ -390,7 +410,7 @@ class CorpusAnalysisService extends EventEmitter {
         this.emitAnalysisEvent(analysisId, 'progress', payload);
       };
 
-      persistAndEmitProgress({
+      await persistAndEmitProgress({
         phase: 'session_dispatch_ready',
         message: `San sang chay ${totalSessions} session, toi da ${maxParallelSessions} session song song`,
       });
@@ -405,7 +425,7 @@ class CorpusAnalysisService extends EventEmitter {
 
         sessionState.status = 'running';
         sessionState.progress = 0.02;
-        persistAndEmitProgress({
+        await persistAndEmitProgress({
           phase: 'session_processing',
           sessionIndex: currentSession,
           sessionChunkCount,
@@ -420,7 +440,7 @@ class CorpusAnalysisService extends EventEmitter {
             apiKeyStartIndex: sessionIndex,
           },
           signal,
-          onProgress: (payload) => {
+          onProgress: async (payload) => {
             throwIfAborted(signal);
 
             const part = Math.max(0, Number(payload.part) || 0);
@@ -431,7 +451,7 @@ class CorpusAnalysisService extends EventEmitter {
             const sessionProgress = Math.max(0, Math.min(1, Number(payload.progress) || 0));
             sessionState.progress = Math.max(sessionState.progress, sessionProgress);
 
-            persistAndEmitProgress({
+            await persistAndEmitProgress({
               phase: payload.phase || 'processing',
               sessionIndex: currentSession,
               sessionChunkCount,
@@ -440,13 +460,13 @@ class CorpusAnalysisService extends EventEmitter {
               message: payload.message || `Dang xu ly session ${currentSession}/${totalSessions}`,
             });
           },
-          onPart: ({ part, response, hasMore }) => {
+          onPart: async ({ part, response, hasMore }) => {
             throwIfAborted(signal);
 
             totalPartsGenerated += 1;
             const globalPart = totalPartsGenerated;
 
-            insertChunkResult({
+            await analysisRepository.insertChunkResult({
               id: randomUUID(),
               analysisId,
               chunkIndex: globalPart,
@@ -459,7 +479,7 @@ class CorpusAnalysisService extends EventEmitter {
               error: null,
             });
 
-            persistAndEmitProgress({
+            await persistAndEmitProgress({
               phase: 'part_saved',
               sessionIndex: currentSession,
               sessionChunkCount,
@@ -480,7 +500,7 @@ class CorpusAnalysisService extends EventEmitter {
         sessionState.status = 'completed';
         sessionState.progress = 1;
 
-        persistAndEmitProgress({
+        await persistAndEmitProgress({
           phase: 'chunk_completed',
           sessionIndex: currentSession,
           sessionChunkCount,
@@ -519,7 +539,7 @@ class CorpusAnalysisService extends EventEmitter {
 
       throwIfAborted(signal);
 
-      persistAndEmitProgress({
+      await persistAndEmitProgress({
         phase: 'event_grounding',
         message: 'Dang grounding su kien vao chapter/chunk',
       });
@@ -531,7 +551,7 @@ class CorpusAnalysisService extends EventEmitter {
         qualityThreshold: 60,
         chapterConfidenceThreshold: 0.45,
       });
-      persistAndEmitProgress({
+      await persistAndEmitProgress({
         phase: 'incident_intelligence',
         message: 'Dang trich xuat dia diem va gom incident clusters',
       });
@@ -556,7 +576,7 @@ class CorpusAnalysisService extends EventEmitter {
         reason: 'skipped',
       };
 
-      persistAndEmitProgress({
+      await persistAndEmitProgress({
         phase: 'incident_first_persist',
         message: 'Dang luu du lieu incident-first',
       });
@@ -594,7 +614,7 @@ class CorpusAnalysisService extends EventEmitter {
       const shouldExtractKnowledge = runMode.id !== 'fast';
 
       if (shouldExtractKnowledge) {
-        persistAndEmitProgress({
+        await persistAndEmitProgress({
           phase: 'knowledge_extraction',
           message: 'Dang trich xuat tri thuc the gioi/nhan vat/dia diem',
         });
@@ -649,7 +669,7 @@ class CorpusAnalysisService extends EventEmitter {
       );
       const layerResults = splitLayerResults(finalResultForStorage);
 
-      analysis = updateCorpusAnalysis(analysisId, {
+      analysis = await analysisRepository.updateAnalysis(analysisId, {
         status: 'completed',
         progress: 1,
         currentPhase: 'completed',
@@ -689,9 +709,16 @@ class CorpusAnalysisService extends EventEmitter {
         errorMessage: null,
       });
 
-      updateCorpusById(corpusId, {
+      await corpusRepository.updateById(corpusId, {
         status: 'analyzed',
       });
+
+      await analysisRepository.persistGraph(
+        analysisId,
+        corpusId,
+        finalResultForStorage.story_graph || finalResultForStorage.storyGraph || null,
+        finalResultForStorage.pass_status || null,
+      );
 
       this.emitAnalysisEvent(analysisId, 'completed', {
         ...serializeAnalysis(analysis, { includeResults: true }),
@@ -700,7 +727,7 @@ class CorpusAnalysisService extends EventEmitter {
     } catch (error) {
       const cancelled = isAbortError(error);
 
-      const failed = updateCorpusAnalysis(analysisId, {
+      const failed = await analysisRepository.updateAnalysis(analysisId, {
         status: cancelled ? 'cancelled' : 'failed',
         progress: cancelled ? 0 : undefined,
         currentPhase: cancelled ? 'cancelled' : 'failed',
@@ -733,7 +760,7 @@ class CorpusAnalysisService extends EventEmitter {
     try {
       throwIfAborted(signal);
 
-      let analysis = updateCorpusAnalysis(analysisId, {
+      let analysis = await analysisRepository.updateAnalysis(analysisId, {
         status: 'processing',
         progress: 0.03,
         currentPhase: 'preparing',
@@ -750,7 +777,7 @@ class CorpusAnalysisService extends EventEmitter {
         message: 'Đang chuẩn bị dữ liệu cho phân tích Incident-Only 1M',
       });
 
-      const chunks = listCorpusChunksForAnalysis(corpusId);
+      const chunks = await analysisRepository.listCorpusChunksForAnalysisAsync(corpusId);
       console.error('[ANALYSIS-DEBUG][1M] chunks.length:', chunks.length);
       if (!chunks.length) {
         throw createServiceError('EMPTY_CORPUS_CHUNKS', 'Corpus không có chunk để phân tích.');
@@ -763,7 +790,7 @@ class CorpusAnalysisService extends EventEmitter {
           .filter(Boolean),
       )];
 
-      analysis = updateCorpusAnalysis(analysisId, {
+      analysis = await analysisRepository.updateAnalysis(analysisId, {
         totalChunks: chunks.length,
         processedChunks: 0,
         progress: 0.05,
@@ -780,6 +807,7 @@ class CorpusAnalysisService extends EventEmitter {
         corpusId,
         chunks,
         options: {
+          runMode: normalizePublicRunMode(config.runMode),
           provider: config.provider,
           model: config.model,
           apiKey: config.apiKey,
@@ -789,10 +817,10 @@ class CorpusAnalysisService extends EventEmitter {
           temperature: config.temperature,
         },
         signal,
-        onProgress: ({ phase, progress, message }) => {
+        onProgress: async ({ phase, progress, message }) => {
           throwIfAborted(signal);
           const mappedProgress = Math.min(0.95, 0.05 + (Number(progress) || 0) * 0.88);
-          const updated = updateCorpusAnalysis(analysisId, {
+          const updated = await analysisRepository.updateAnalysis(analysisId, {
             progress: mappedProgress,
             currentPhase: phase || 'processing',
           });
@@ -806,6 +834,7 @@ class CorpusAnalysisService extends EventEmitter {
 
       const finalResultForStorage = jobResult.finalResult || {};
       const layerResults = splitLayerResults(finalResultForStorage);
+      let incidentFirstPersistence = null;
 
       console.error(
         '[ANALYSIS-DEBUG][1M] job done:',
@@ -814,7 +843,7 @@ class CorpusAnalysisService extends EventEmitter {
         'partsGenerated:', jobResult.partsGenerated || 0,
       );
 
-      analysis = updateCorpusAnalysis(analysisId, {
+      analysis = await analysisRepository.updateAnalysis(analysisId, {
         status: 'completed',
         progress: 1,
         currentPhase: 'completed',
@@ -835,18 +864,43 @@ class CorpusAnalysisService extends EventEmitter {
             ...(finalResultForStorage.meta || {}),
             provider: config.provider,
             model: config.model,
-            runMode: 'incident_only_1m',
+            runMode: normalizePublicRunMode(config.runMode),
             totalChunks: chunks.length,
             incidentCount: jobResult.incidentCount || 0,
             aiSteps: jobResult.aiSteps || [],
             completedAt: Date.now(),
           },
         }),
+        analysisRunManifest: JSON.stringify(finalResultForStorage.analysis_run_manifest || null),
+        passStatus: JSON.stringify(finalResultForStorage.pass_status || null),
+        degradedRunReport: JSON.stringify(finalResultForStorage.degraded_run_report || null),
+        graphSummary: JSON.stringify(finalResultForStorage.graph_summary || null),
+        artifactVersion: finalResultForStorage.artifact_version || 'v2',
         completedAt: Date.now(),
         errorMessage: null,
       });
 
-      updateCorpusById(corpusId, { status: 'analyzed' });
+      try {
+        incidentFirstPersistence = await persistIncidentFirstArtifacts({
+          corpusId,
+          analysisId,
+          result: finalResultForStorage,
+        });
+      } catch (persistError) {
+        incidentFirstPersistence = {
+          persisted: false,
+          reason: persistError?.message || 'incident_first_persist_failed',
+        };
+      }
+
+      await corpusRepository.updateById(corpusId, { status: 'analyzed' });
+
+      await analysisRepository.persistGraph(
+        analysisId,
+        corpusId,
+        finalResultForStorage.story_graph || finalResultForStorage.storyGraph || null,
+        finalResultForStorage.pass_status || null,
+      );
 
       this.emitAnalysisEvent(analysisId, 'completed', {
         ...serializeAnalysis(analysis, { includeResults: true }),
@@ -855,7 +909,7 @@ class CorpusAnalysisService extends EventEmitter {
     } catch (error) {
       const cancelled = isAbortError(error);
 
-      const failed = updateCorpusAnalysis(analysisId, {
+      const failed = await analysisRepository.updateAnalysis(analysisId, {
         status: cancelled ? 'cancelled' : 'failed',
         progress: cancelled ? 0 : undefined,
         currentPhase: cancelled ? 'cancelled' : 'failed',
@@ -880,8 +934,8 @@ class CorpusAnalysisService extends EventEmitter {
     }
   }
 
-  cancel(analysisId) {
-    const analysis = getCorpusAnalysisById(analysisId);
+  async cancel(analysisId) {
+    const analysis = await analysisRepository.getAnalysisByIdAsync(analysisId);
     if (!analysis) {
       return null;
     }
@@ -895,7 +949,7 @@ class CorpusAnalysisService extends EventEmitter {
       running.abortController.abort();
     }
 
-    const cancelled = updateCorpusAnalysis(analysisId, {
+    const cancelled = await analysisRepository.updateAnalysis(analysisId, {
       status: 'cancelled',
       currentPhase: 'cancelled',
       errorMessage: 'Đã hủy phân tích',

@@ -18,8 +18,8 @@ function toObject(value) {
   return value && typeof value === 'object' ? value : {};
 }
 
-function emitStep(onProgress, overall, message, stepName, stepProgress, event = null) {
-  onProgress(overall, message, {
+async function emitStep(onProgress, overall, message, stepName, stepProgress, event = null) {
+  await onProgress(overall, message, {
     ...(event ? { event } : {}),
     step: {
       name: stepName,
@@ -75,7 +75,7 @@ export async function processIncidentAnalysisJob(
   const mode = String(inputData.mode || inputData.runMode || 'balanced').toLowerCase();
   const payload = normalizePayload(inputData);
 
-  emitStep(onProgress, 5, 'Preparing incident-first analysis payload', 'prepare', 20);
+  await emitStep(onProgress, 5, 'Preparing incident-first analysis payload', 'prepare', 20);
   throwIfCancelled(signal);
 
   const result = await runAnalysisJob({
@@ -92,12 +92,12 @@ export async function processIncidentAnalysisJob(
       directUrl: inputData.directUrl,
       temperature: inputData.temperature,
       ai: toObject(inputData.ai),
-      onProgress: (state = {}) => {
+      onProgress: async (state = {}) => {
         const phase = String(state.phase || 'processing');
         const progress = Math.max(0, Math.min(1, Number(state.progress) || 0));
         const overall = Math.max(6, Math.min(96, Math.round(6 + (progress * 90))));
 
-        emitStep(
+        await emitStep(
           onProgress,
           overall,
           String(state.message || `Incident analysis: ${phase}`),
@@ -110,7 +110,7 @@ export async function processIncidentAnalysisJob(
   });
 
   throwIfCancelled(signal);
-  emitStep(
+  await emitStep(
     onProgress,
     100,
     'Incident-first analysis completed',

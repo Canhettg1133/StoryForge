@@ -214,7 +214,7 @@
 ## Phase 6B/6C Update (2026-04-05)
 
 - [x] Incident-only 1M flow scaffolded (Pass A/B/C job + prompts).
-- [x] Unit/integration/e2e maintenance tests added (`src/tests/phases/phase6c-maintenance.test.js`).
-- [x] Backup automation added (`npm run backup:corpus`).
-- [x] Backfill automation added (`npm run backfill:incident-first`).
-- [x] One-command maintenance runner added (`npm run phase6:maintenance`).
+- [x] Backend main flows migrated to Postgres-only repositories.
+- [x] Job queue persistence migrated from SQLite to Postgres async storage.
+- [x] Project snapshot flow no longer falls back to Dexie.
+- [x] Legacy SQLite maintenance scripts/tests retired from active runtime path.

@@ -74,6 +74,8 @@ export async function parseCorpusFile({
     fileType,
     metadata: parsed.metadata || {},
     chapters: parsed.chapters || [],
+    frontMatter: parsed.frontMatter || null,
+    diagnostics: parsed.diagnostics || null,
     rawText: parsed.rawText || '',
   };
 }

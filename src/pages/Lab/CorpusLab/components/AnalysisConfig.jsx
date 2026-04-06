@@ -20,19 +20,29 @@ const LAYER_OPTIONS = [
 
 const RUN_MODE_OPTIONS = [
   {
-    id: 'fast',
-    label: 'Fast',
-    description: 'Nhanh nhất, ưu tiên tốc độ.',
+    id: 'fast_preview',
+    label: 'Fast Preview',
+    description: 'Pipeline V2, budget nhe hon, uu tien toc do.',
   },
   {
     id: 'balanced',
     label: 'Balanced',
-    description: 'Cân bằng chất lượng và chi phí.',
+    description: 'Pipeline V2 can bang chat luong va chi phi.',
   },
   {
     id: 'deep',
     label: 'Deep',
-    description: 'Kỹ hơn, chạy coherence/review nghiêm hơn.',
+    description: 'Pipeline V2 ky hon, retry va review nghiem hon.',
+  },
+  {
+    id: 'full_corpus_1m',
+    label: 'Full Corpus 1M',
+    description: 'Pipeline V2 day du: incident map -> deep pass -> knowledge.',
+  },
+  {
+    id: 'legacy',
+    label: 'Legacy',
+    description: 'Pipeline incident-first cu, chi dung de fallback/tuong thich.',
   },
 ];
 
@@ -221,6 +231,7 @@ export default function AnalysisConfig({
     () => getModelOptions(config?.provider),
     [config?.provider],
   );
+  const isLegacyMode = (config?.runMode || 'balanced') === 'legacy';
 
   const toggleLayer = (layerId) => {
     const exists = selectedLayers.includes(layerId);
@@ -298,18 +309,24 @@ export default function AnalysisConfig({
           </select>
         </label>
 
-        <label className="analysis-layer-item" style={{ alignSelf: 'end' }}>
-          <input
-            type="checkbox"
-            checked={Boolean(config.enableIncidentAiPipeline)}
-            disabled={disabled}
-            onChange={(event) => onChange?.({
-              ...config,
-              enableIncidentAiPipeline: event.target.checked,
-            })}
-          />
-          <span>Bật AI step-pipeline cho incident</span>
-        </label>
+        {isLegacyMode ? (
+          <label className="analysis-layer-item" style={{ alignSelf: 'end' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(config.enableIncidentAiPipeline)}
+              disabled={disabled}
+              onChange={(event) => onChange?.({
+                ...config,
+                enableIncidentAiPipeline: event.target.checked,
+              })}
+            />
+            <span>Bật AI step-pipeline cho incident</span>
+          </label>
+        ) : (
+          <div className="analysis-estimate" style={{ alignSelf: 'end', margin: 0 }}>
+            <span>Mode V2 se chay pass-based pipeline va tu sinh run report/degraded report.</span>
+          </div>
+        )}
       </div>
 
       <div className="analysis-config-row">

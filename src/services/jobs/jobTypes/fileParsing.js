@@ -34,7 +34,7 @@ export async function processFileParsingJob(job, onProgress, { signal } = {}) {
   for (const step of STEPS) {
     throwIfCancelled(signal);
 
-    onProgress(completedWeight, `Starting ${step.name}`, {
+    await onProgress(completedWeight, `Starting ${step.name}`, {
       step: {
         name: step.name,
         status: 'running',
@@ -54,7 +54,7 @@ export async function processFileParsingJob(job, onProgress, { signal } = {}) {
         Math.round(completedWeight + (step.weight * stepProgress) / 100),
       );
 
-      onProgress(overallProgress, `${step.name}: ${stepProgress}%`, {
+      await onProgress(overallProgress, `${step.name}: ${stepProgress}%`, {
         step: {
           name: step.name,
           status: 'running',
@@ -66,7 +66,7 @@ export async function processFileParsingJob(job, onProgress, { signal } = {}) {
 
     completedWeight += step.weight;
 
-    onProgress(completedWeight, `${step.name} completed`, {
+    await onProgress(completedWeight, `${step.name} completed`, {
       event: 'step_complete',
       step: {
         name: step.name,
@@ -84,4 +84,3 @@ export async function processFileParsingJob(job, onProgress, { signal } = {}) {
     generatedAt: Date.now(),
   };
 }
-

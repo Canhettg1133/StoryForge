@@ -124,6 +124,7 @@ function parseEvents(raw) {
 
 function parseLocations(raw) {
   const knowledge = getKnowledgeNode(raw);
+  const characterNameSet = collectKnownCharacterNames(raw);
   const sourceGroups = [
     Array.isArray(knowledge?.locations) ? knowledge.locations : [],
     Array.isArray(raw?.worldbuilding?.locations) ? raw.worldbuilding.locations : [],
@@ -137,7 +138,10 @@ function parseLocations(raw) {
     for (const item of sourceGroups[groupIndex]) {
       const normalized = normalizeLocation(item);
       if (!normalized) continue;
-      if (!isLikelyLocationRecord(normalized, priority >= 3)) continue;
+      if (!isLikelyLocationRecord(normalized, {
+        trusted: priority >= 3,
+        characterNameSet,
+      })) continue;
 
       const key = (normalized.name || '').toLowerCase();
       if (!key) continue;
@@ -610,6 +614,8 @@ function parseCharacterProfiles(raw) {
   const knowledge = getKnowledgeNode(raw);
   const top = raw?.characters;
   const l4 = parseJsonField(raw?.resultL4, null);
+  const structuralCharacters = extractCharacters(raw);
+  const eventCharacters = extractCharacterProfilesFromEvents(raw);
 
   const directProfiles = [
     ...(Array.isArray(knowledge?.characters) ? knowledge.characters : []),
@@ -617,30 +623,23 @@ function parseCharacterProfiles(raw) {
     ...(Array.isArray(top?.characters) ? top.characters : []),
     ...(Array.isArray(l4?.profiles) ? l4.profiles : []),
     ...(Array.isArray(l4?.characters) ? l4.characters : []),
+    ...(Array.isArray(top) ? top : []),
+    ...(Array.isArray(l4) ? l4 : []),
+    ...((top && typeof top === 'object' && !Array.isArray(top))
+      ? Object.entries(top)
+        .filter(([, profile]) => profile && typeof profile === 'object' && !Array.isArray(profile))
+        .map(([id, profile]) => ({ id, ...profile }))
+      : []),
+    ...((l4 && typeof l4 === 'object' && !Array.isArray(l4))
+      ? Object.entries(l4)
+        .filter(([, profile]) => profile && typeof profile === 'object' && !Array.isArray(profile))
+        .map(([id, profile]) => ({ id, ...profile }))
+      : []),
+    ...structuralCharacters,
+    ...eventCharacters,
   ];
 
-  if (directProfiles.length > 0) {
-    return directProfiles.map(normalizeCharacter).filter(Boolean);
-  }
-
-  if (Array.isArray(top)) return top.map(normalizeCharacter).filter(Boolean);
-  if (Array.isArray(l4)) return l4.map(normalizeCharacter).filter(Boolean);
-
-  if (top && typeof top === 'object') {
-    return Object.entries(top)
-      .filter(([, profile]) => profile && typeof profile === 'object' && !Array.isArray(profile))
-      .map(([id, profile]) => normalizeCharacter({ id, ...profile }))
-      .filter(Boolean);
-  }
-
-  if (l4 && typeof l4 === 'object') {
-    return Object.entries(l4)
-      .filter(([, profile]) => profile && typeof profile === 'object' && !Array.isArray(profile))
-      .map(([id, profile]) => normalizeCharacter({ id, ...profile }))
-      .filter(Boolean);
-  }
-
-  return [];
+  return dedupeCharacterProfiles(directProfiles.map(normalizeCharacter).filter(Boolean));
 }
 
 function normalizeCharacter(char) {
@@ -729,7 +728,7 @@ function parseWorldProfile(raw) {
 
   return {
     worldName: top.world_name || top.worldName || setting.worldName || setting.name || setting.primaryLocation || worldbuilding.worldName || '',
-    worldType: top.world_type || top.worldType || setting.worldType || setting.type || worldbuilding.worldType || 'unknown',
+    worldType: top.world_type || top.worldType || setting.worldType || setting.type || worldbuilding.worldType || '',
     worldScale: top.world_scale || top.worldScale || setting.worldScale || setting.scale || worldbuilding.worldScale || '',
     worldEra: top.world_era || top.worldEra || setting.worldEra || setting.era || worldbuilding.worldEra || '',
     worldRules: normalizeStringArray(
@@ -751,16 +750,22 @@ function parseWorldProfile(raw) {
 function parseObjects(raw) {
   const knowledge = getKnowledgeNode(raw);
   const worldbuilding = raw?.worldbuilding || parseJsonField(raw?.resultL3, {});
-  const source = [
+  const source = Array.isArray(knowledge?.objects) && knowledge.objects.length > 0
+    ? [...knowledge.objects]
+    : [
     ...(Array.isArray(knowledge?.objects) ? knowledge.objects : []),
     ...(Array.isArray(raw?.objects) ? raw.objects : []),
     ...(Array.isArray(worldbuilding?.objects) ? worldbuilding.objects : []),
     ...(Array.isArray(worldbuilding?.items) ? worldbuilding.items : []),
   ];
+  const fallbackSource = source.length > 0 ? source : inferObjectsFromNarrative(raw);
 
-  return source
+  return dedupeNamedKnowledgeEntities(
+    fallbackSource
     .map((item, index) => normalizeObject(item, index))
-    .filter(Boolean);
+    .filter(Boolean),
+    'object',
+  );
 }
 
 function normalizeObject(item, index = 0) {
@@ -798,7 +803,9 @@ function parseTerms(raw) {
   const powers = worldbuilding?.powers || {};
   const magicSystem = worldbuilding?.magicSystem || {};
 
-  const source = [
+  const source = Array.isArray(knowledge?.terms) && knowledge.terms.length > 0
+    ? [...knowledge.terms]
+    : [
     ...(Array.isArray(knowledge?.terms) ? knowledge.terms : []),
     ...(Array.isArray(raw?.terms) ? raw.terms : []),
     ...(Array.isArray(raw?.worldTerms) ? raw.worldTerms : []),
@@ -806,10 +813,14 @@ function parseTerms(raw) {
     ...(Array.isArray(powers?.terms) ? powers.terms : []),
     ...(Array.isArray(magicSystem?.terms) ? magicSystem.terms : []),
   ];
+  const fallbackSource = source.length > 0 ? source : inferTermsFromNarrative(raw);
 
-  return source
+  return dedupeNamedKnowledgeEntities(
+    fallbackSource
     .map((item, index) => normalizeTerm(item, index))
-    .filter(Boolean);
+    .filter(Boolean),
+    'term',
+  );
 }
 
 function normalizeTerm(item, index = 0) {
@@ -837,6 +848,128 @@ function normalizeTerm(item, index = 0) {
   };
 }
 
+const OBJECT_FALLBACK_PATTERNS = [
+  { label: 'Chia khoa van nang', regex: /ch[iì]a\s*kh[oó]a\s*v[aạ]n\s*n[aă]ng/iu },
+  { label: 'Nhat ky', regex: /nh[aạ]t\s*k[yý]/iu },
+  { label: 'To giay', regex: /t[ơo]\s*gi[aấ]y/iu },
+  { label: 'Manh kinh vo', regex: /m[aả]nh\s*k[ií]nh(?:\s*v[ơo]?)?/iu },
+  { label: 'Pha le', regex: /pha\s*l[eê]/iu },
+  { label: 'Nen', regex: /\bn[eê]n\b/iu },
+  { label: 'Xich sat', regex: /x[ií]ch\s*s[aắ]t/iu },
+  { label: 'Ghe', regex: /\bgh[eế]\b/iu },
+];
+
+const TERM_FALLBACK_PATTERNS = [
+  { label: 'Thanh ly gian phong', regex: /thanh\s*l[yý]\s*gian\s*ph[oò]ng/iu, category: 'concept' },
+  { label: 'O khoa chu Nguc', regex: /(?:[oổ]\s*)?kh[oó]a\s*ch(?:u|u)\s*['"]?ng[uụ]c['"]?/iu, category: 'concept' },
+  { label: 'Quy tac 3 nam 1 nu', regex: /quy\s*t[aă]c\s*3\s*nam\s*1\s*n[uữ]/iu, category: 'concept' },
+  { label: 'Nguoi thu nam', regex: /ng[uư]oi\s*th[uứ]\s*n[aă]m/iu, category: 'concept' },
+  { label: 'Quy tac sinh ton', regex: /quy\s*t[aă]c\s*sinh\s*t[oồ]n/iu, category: 'concept' },
+  { label: 'Tra mat', regex: /tr[aả]\s*m[aặ]t/iu, category: 'concept' },
+  { label: 'Khong gian di biet', regex: /kh[oô]ng\s*gian\s*d[iị]\s*bi[eệ]t/iu, category: 'concept' },
+  { label: 'Dua ta', regex: /d[uư]a\s*ta/iu, category: 'phrase' },
+];
+
+function collectNarrativeEventSources(raw) {
+  return flattenEvents(parseEvents(raw));
+}
+
+function inferObjectsFromNarrative(raw) {
+  const events = collectNarrativeEventSources(raw);
+  const map = new Map();
+
+  for (const event of events) {
+    const haystack = [
+      event?.description,
+      event?.evidenceSnippet,
+      ...(Array.isArray(event?.tags) ? event.tags : []),
+    ]
+      .map((item) => String(item || ''))
+      .join(' ');
+
+    for (const pattern of OBJECT_FALLBACK_PATTERNS) {
+      if (!pattern.regex.test(haystack)) continue;
+      const key = pattern.label.toLowerCase();
+      const existing = map.get(key) || {
+        name: pattern.label,
+        owner: '',
+        description: '',
+        properties: '',
+        timeline: [],
+      };
+      existing.timeline = [
+        ...(existing.timeline || []),
+        {
+          eventId: event?.id || null,
+          chapter: parseChapter(event?.chapter),
+          summary: String(event?.description || '').trim(),
+        },
+      ];
+      map.set(key, existing);
+    }
+  }
+
+  return [...map.values()];
+}
+
+function inferTermsFromNarrative(raw) {
+  const events = collectNarrativeEventSources(raw);
+  const incidents = Array.isArray(raw?.incidents) ? raw.incidents : [];
+  const map = new Map();
+
+  const ingest = (text, timelineEntry = null) => {
+    const haystack = String(text || '');
+    if (!haystack.trim()) return;
+    for (const pattern of TERM_FALLBACK_PATTERNS) {
+      if (!pattern.regex.test(haystack)) continue;
+      const key = pattern.label.toLowerCase();
+      const existing = map.get(key) || {
+        name: pattern.label,
+        category: pattern.category || 'other',
+        definition: '',
+        timeline: [],
+      };
+      if (timelineEntry) {
+        existing.timeline = [...(existing.timeline || []), timelineEntry];
+      }
+      map.set(key, existing);
+    }
+  };
+
+  for (const event of events) {
+    ingest(
+      [
+        event?.description,
+        event?.evidenceSnippet,
+        ...(Array.isArray(event?.tags) ? event.tags : []),
+      ].join(' '),
+      {
+        eventId: event?.id || null,
+        chapter: parseChapter(event?.chapter),
+        summary: String(event?.description || '').trim(),
+      },
+    );
+  }
+
+  for (const incident of incidents) {
+    const summaryText = [
+      incident?.title,
+      incident?.description,
+      incident?.why,
+      incident?.climax,
+      incident?.outcome,
+      ...(Array.isArray(incident?.consequences) ? incident.consequences : []),
+    ].join(' ');
+    ingest(summaryText, {
+      eventId: incident?.anchorEventId || null,
+      chapter: parseChapter(incident?.chapterStart),
+      summary: String(incident?.title || incident?.description || '').trim(),
+    });
+  }
+
+  return [...map.values()];
+}
+
 function normalizeStringArray(value) {
   if (!value) return [];
   if (Array.isArray(value)) {
@@ -853,7 +986,7 @@ function normalizeStringArray(value) {
 
 function normalizeTimeline(value) {
   if (!Array.isArray(value)) return [];
-  return value
+  const normalized = value
     .filter((item) => item && typeof item === 'object')
     .map((item) => ({
       eventId: item.eventId || item.id || null,
@@ -861,6 +994,16 @@ function normalizeTimeline(value) {
       summary: String(item.summary || item.description || '').trim(),
     }))
     .filter((item) => item.eventId || item.chapter || item.summary);
+
+  const deduped = [];
+  const seen = new Set();
+  for (const item of normalized) {
+    const key = `${item.eventId || ''}|${item.chapter || ''}|${item.summary || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+  return deduped;
 }
 
 function getKnowledgeNode(raw) {
@@ -876,16 +1019,22 @@ function getKnowledgeNode(raw) {
   return null;
 }
 
-function isLikelyLocationRecord(location, trusted = false) {
+function isLikelyLocationRecord(location, options = {}) {
+  const trusted = options?.trusted === true;
+  const characterNameSet = options?.characterNameSet instanceof Set
+    ? options.characterNameSet
+    : new Set();
   const name = String(location?.name || '').trim();
   if (!name) return false;
   if (!isLikelyEntityName(name, 9, 90)) return false;
+  if (!isLikelyLocationName(name)) return false;
+  if (isCharacterLikeLocationName(name, characterNameSet)) return false;
 
-  if (trusted) return true;
   const mentionCount = Number(location?.mentionCount || 0);
   const hasDescription = String(location?.description || '').trim().length >= 8;
   const isMajor = Boolean(location?.isMajor);
   if (hasDescription || isMajor) return true;
+  if (trusted) return mentionCount >= 1;
   return mentionCount >= 2;
 }
 
@@ -897,6 +1046,206 @@ function isLikelyEntityName(name, maxWords = 8, maxLength = 72) {
   const words = text.split(/\s+/u).filter(Boolean);
   if (words.length > maxWords) return false;
   return true;
+}
+
+function normalizeLooseText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+}
+
+function isLikelyLocationName(name) {
+  const normalized = normalizeLooseText(name);
+  if (!normalized) return false;
+  if (/[.!?]/u.test(normalized)) return false;
+
+  const tokens = normalized.split(/\s+/u).filter(Boolean);
+  if (tokens.length < 1 || tokens.length > 9) return false;
+
+  const locationHints = new Set([
+    'nha', 'tro', 'thanh', 'pho', 'quan', 'huyen', 'xa', 'thon', 'lang',
+    'truong', 'vien', 'toa', 'lau', 'duong', 'ngo', 'hem',
+    'nui', 'rung', 'song', 'ho', 'dao', 'dong', 'hang',
+    'khu', 'vung', 'den', 'chua', 'dinh', 'cung', 'thap', 'dien',
+    'nghia', 'trang', 'cau', 'ben', 'cang', 'bien',
+    'phong', 'lop', 'san', 'sanh',
+  ]);
+  const noiseTokens = new Set([
+    'thay', 'the', 'roi', 'sau', 'truoc', 'nhung', 'nguoi', 'khac',
+    'dang', 'da', 'se', 'van', 'hay', 'la', 'ma', 'va',
+    'dat', 'lay', 'xich', 'sat',
+  ]);
+
+  const hintCount = tokens.reduce((count, token) => count + (locationHints.has(token) ? 1 : 0), 0);
+  const noiseCount = tokens.reduce((count, token) => count + (noiseTokens.has(token) ? 1 : 0), 0);
+
+  if (tokens.length >= 4 && hintCount === 0) return false;
+  if (noiseCount >= 2 && hintCount === 0) return false;
+  return true;
+}
+
+function collectKnownCharacterNames(raw) {
+  const knowledge = getKnowledgeNode(raw);
+  const top = raw?.characters;
+  const l4 = parseJsonField(raw?.resultL4, null);
+  const parsedEvents = flattenEvents(parseEvents(raw));
+  const values = [
+    ...(Array.isArray(knowledge?.characters) ? knowledge.characters : []),
+    ...(Array.isArray(top?.profiles) ? top.profiles : []),
+    ...(Array.isArray(top?.characters) ? top.characters : []),
+    ...(Array.isArray(raw?.structural?.characters) ? raw.structural.characters : []),
+    ...(Array.isArray(l4?.profiles) ? l4.profiles : []),
+    ...(Array.isArray(l4?.characters) ? l4.characters : []),
+    ...parsedEvents.flatMap((event) => toCharacterRecords(event?.characters)),
+  ];
+
+  const names = new Set();
+  for (const item of values) {
+    const name = normalizeLooseText(item?.name || item?.characterName || '');
+    if (!name) continue;
+    names.add(name);
+  }
+  return names;
+}
+
+function extractCharacterProfilesFromEvents(raw) {
+  const parsedEvents = flattenEvents(parseEvents(raw));
+  const items = [];
+  for (const event of parsedEvents) {
+    const chapter = Number.isFinite(Number(event?.chapter)) ? Number(event.chapter) : null;
+    const summary = String(event?.description || '').trim();
+    for (const char of toCharacterRecords(event?.characters)) {
+      items.push({
+        ...char,
+        timeline: chapter || summary
+          ? [{ eventId: event.id || null, chapter, summary }]
+          : [],
+      });
+    }
+  }
+  return items;
+}
+
+function toCharacterRecords(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string') {
+          const name = item.trim();
+          return name ? { name } : null;
+        }
+        if (item && typeof item === 'object') {
+          const name = String(item.name || item.characterName || '').trim();
+          return name ? { ...item, name } : null;
+        }
+        return null;
+      })
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value.split(',').map((item) => item.trim()).filter(Boolean).map((name) => ({ name }));
+  }
+  return [];
+}
+
+function isCharacterLikeLocationName(name, characterNameSet) {
+  if (!(characterNameSet instanceof Set) || characterNameSet.size === 0) return false;
+
+  const normalized = normalizeLooseText(name);
+  if (!normalized) return false;
+  if (characterNameSet.has(normalized)) return true;
+
+  for (const characterName of characterNameSet) {
+    if (!characterName || characterName.length < 3) continue;
+    if (normalized.startsWith(`${characterName} `)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function dedupeCharacterProfiles(characters = []) {
+  const map = new Map();
+
+  for (const item of characters) {
+    if (!item) continue;
+    const name = String(item.name || '').trim();
+    if (!name) continue;
+
+    const key = name.toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, item);
+      continue;
+    }
+
+    const existing = map.get(key);
+    map.set(key, {
+      ...existing,
+      ...item,
+      id: existing.id || item.id,
+      name: existing.name || item.name,
+      description: existing.description || item.description,
+      role: existing.role || item.role,
+      appearance: existing.appearance || item.appearance,
+      personality: existing.personality || item.personality,
+      personalityTags: [...new Set([...(existing.personalityTags || []), ...(item.personalityTags || [])])],
+      flaws: existing.flaws || item.flaws,
+      goals: existing.goals || item.goals,
+      secrets: existing.secrets || item.secrets,
+      timeline: normalizeTimeline([...(existing.timeline || []), ...(item.timeline || [])]),
+      isPOV: Boolean(existing.isPOV || item.isPOV),
+      appearanceCount: Math.max(Number(existing.appearanceCount || 0), Number(item.appearanceCount || 0)),
+      arc: existing.arc || item.arc,
+      motivation: existing.motivation || item.motivation,
+      traits: [...new Set([...(existing.traits || []), ...(item.traits || [])])],
+      relationships: [...(existing.relationships || []), ...(item.relationships || [])],
+    });
+  }
+
+  return [...map.values()];
+}
+
+function dedupeNamedKnowledgeEntities(items = [], entityType = 'entity') {
+  const map = new Map();
+
+  for (const item of items) {
+    if (!item) continue;
+    const name = String(item.name || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const existing = map.get(key);
+    if (!existing) {
+      map.set(key, item);
+      continue;
+    }
+
+    map.set(key, {
+      ...existing,
+      ...item,
+      id: existing.id || item.id || `${entityType}_${generateEventId(name)}`,
+      name: existing.name || item.name,
+      description: existing.description || item.description,
+      definition: existing.definition || item.definition,
+      owner: existing.owner || item.owner,
+      category: existing.category || item.category,
+      properties: chooseLongerText(existing.properties, item.properties),
+      timeline: normalizeTimeline([...(existing.timeline || []), ...(item.timeline || [])]),
+    });
+  }
+
+  return [...map.values()];
+}
+
+function chooseLongerText(a, b) {
+  const first = String(a || '').trim();
+  const second = String(b || '').trim();
+  if (!first) return second;
+  if (!second) return first;
+  return second.length > first.length ? second : first;
 }
 
 function chooseMinChapter(a, b) {
@@ -1065,6 +1414,10 @@ export function buildTimeline(events) {
     .map(([chapter, chapterEvents]) => ({
       chapter: Number(chapter),
       events: chapterEvents.sort((a, b) => {
+        const chunkA = Number.isFinite(Number(a.grounding?.chunkIndex)) ? Number(a.grounding.chunkIndex) : null;
+        const chunkB = Number.isFinite(Number(b.grounding?.chunkIndex)) ? Number(b.grounding.chunkIndex) : null;
+        if (chunkA != null && chunkB != null && chunkA !== chunkB) return chunkA - chunkB;
+
         const pos = { start: 1, middle: 2, end: 3 };
         const posA = pos[String(a.position || '').toLowerCase()] || 2;
         const posB = pos[String(b.position || '').toLowerCase()] || 2;

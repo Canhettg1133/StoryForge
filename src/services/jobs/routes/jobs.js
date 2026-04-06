@@ -35,7 +35,7 @@ function sendSseEvent(res, event, data) {
 export function createJobsRouter(queue) {
   const router = express.Router();
 
-  router.post('/', (req, res) => {
+  router.post('/', async (req, res) => {
     try {
       const { type, inputData, dependsOn, priority } = req.body || {};
 
@@ -52,7 +52,7 @@ export function createJobsRouter(queue) {
         });
       }
 
-      const job = queue.createJob({
+      const job = await queue.createJob({
         type,
         inputData,
         dependsOn: Array.isArray(dependsOn) ? dependsOn : [],
@@ -88,9 +88,9 @@ export function createJobsRouter(queue) {
     }
   });
 
-  router.get('/:id/progress', (req, res) => {
+  router.get('/:id/progress', async (req, res) => {
     const jobId = req.params.id;
-    const job = queue.getJob(jobId);
+    const job = await queue.getJobAsync(jobId);
 
     if (!job) {
       return res.status(404).json({ error: 'Job not found.' });
@@ -136,8 +136,8 @@ export function createJobsRouter(queue) {
     });
   });
 
-  router.get('/:id', (req, res) => {
-    const job = queue.getJob(req.params.id);
+  router.get('/:id', async (req, res) => {
+    const job = await queue.getJobAsync(req.params.id);
     if (!job) {
       return res.status(404).json({ error: 'Job not found.' });
     }
@@ -145,9 +145,9 @@ export function createJobsRouter(queue) {
     return res.json(job);
   });
 
-  router.get('/', (req, res) => {
+  router.get('/', async (req, res) => {
     const { status, type, limit, offset } = req.query;
-    const result = queue.listJobs({
+    const result = await queue.listJobsAsync({
       status,
       type,
       limit,
@@ -157,8 +157,8 @@ export function createJobsRouter(queue) {
     return res.json(result);
   });
 
-  router.delete('/:id', (req, res) => {
-    const job = queue.cancelJob(req.params.id);
+  router.delete('/:id', async (req, res) => {
+    const job = await queue.cancelJob(req.params.id);
     if (!job) {
       return res.status(404).json({ error: 'Job not found.' });
     }

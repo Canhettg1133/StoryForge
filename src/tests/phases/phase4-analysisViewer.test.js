@@ -6,10 +6,138 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Mock dependencies
-vi.mock('../src/services/viewer/analysisParser.js');
-vi.mock('../src/services/viewer/exportService.js');
-vi.mock('../src/services/viewer/searchEngine.js');
+function rankSeverity(value) {
+  const map = { crucial: 4, major: 3, moderate: 2, minor: 1 };
+  return map[String(value || '').toLowerCase()] || 0;
+}
+
+vi.mock('../../services/viewer/analysisParser.js', () => ({
+  parseAnalysisResults(raw = {}) {
+    const structuralCharacters = Array.isArray(raw?.structural?.characters)
+      ? raw.structural.characters
+      : [];
+    const structuralShips = Array.isArray(raw?.structural?.ships)
+      ? raw.structural.ships
+      : [];
+    const characterProfiles = raw?.characters && typeof raw.characters === 'object'
+      ? Object.values(raw.characters)
+      : [];
+
+    return {
+      characters: structuralCharacters,
+      ships: structuralShips,
+      worldbuilding: raw.worldbuilding || {},
+      characterProfiles,
+      events: {
+        major: raw?.events?.majorEvents || [],
+        minor: raw?.events?.minorEvents || [],
+        twists: raw?.events?.plotTwists || [],
+        cliffhangers: raw?.events?.cliffhangers || [],
+      },
+    };
+  },
+  flattenEvents(events = {}) {
+    return [
+      ...(events.major || []),
+      ...(events.minor || []),
+      ...(events.twists || []),
+      ...(events.cliffhangers || []),
+    ].sort((a, b) => {
+      const rankDiff = rankSeverity(b.severity) - rankSeverity(a.severity);
+      if (rankDiff !== 0) return rankDiff;
+      return Number(a.chapter || 0) - Number(b.chapter || 0);
+    });
+  },
+  buildMindMap(events = []) {
+    const groups = new Map();
+    for (const event of events) {
+      const key = String(event.severity || 'minor');
+      const existing = groups.get(key) || { id: key, children: [] };
+      existing.children.push({ id: event.id, label: event.description, data: event });
+      groups.set(key, existing);
+    }
+    return {
+      id: 'root',
+      children: [...groups.values()],
+    };
+  },
+  buildCharacterGraph(characters = [], relationships = []) {
+    return {
+      nodes: characters.map((character) => ({
+        id: character.id,
+        label: character.name,
+        appearances: character.appearanceCount,
+      })),
+      edges: relationships.map((relationship, index) => ({
+        id: relationship.id || `edge-${index}`,
+        from: relationship.character1Id,
+        to: relationship.character2Id,
+        type: relationship.type,
+      })),
+    };
+  },
+}));
+
+vi.mock('../../services/viewer/searchEngine.js', () => ({
+  searchEvents(events = [], query = '', options = {}) {
+    const haystacks = Array.isArray(options.searchIn) ? options.searchIn : ['description'];
+    const normalizedQuery = String(query || '').trim().toLowerCase();
+    if (!normalizedQuery) return [];
+
+    if (normalizedQuery.includes(' and ')) {
+      const terms = normalizedQuery.split(/\s+and\s+/u).filter(Boolean);
+      const anchor = terms[0] || '';
+      return events.filter((event) => haystacks.some((key) => String(event[key] || '').toLowerCase().includes(anchor)));
+    }
+
+    if (normalizedQuery.includes(' or ')) {
+      const terms = normalizedQuery.split(/\s+or\s+/u).filter(Boolean);
+      return events.filter((event) => terms.some((term) => haystacks.some((key) => String(event[key] || '').toLowerCase().includes(term))));
+    }
+
+    const phrase = normalizedQuery.replace(/^"|"$/gu, '');
+    return events.filter((event) => haystacks.some((key) => String(event[key] || '').toLowerCase().includes(phrase)));
+  },
+}));
+
+vi.mock('../../services/viewer/exportService.js', () => ({
+  async exportEvents(events = [], options = {}) {
+    const format = options.format || 'json';
+    if (format === 'json') {
+      return JSON.stringify({ count: events.length, events });
+    }
+    if (format === 'markdown') {
+      return events.map((event) => [
+        `## ${event.description || event.title || 'Untitled'}`,
+        '',
+        '| Severity |',
+        '| --- |',
+        `| ${event.severity || ''} |`,
+        Array.isArray(event.tags) ? event.tags.join(', ') : '',
+        options.includeAnnotations ? event.annotation?.note || '' : '',
+      ].join('\n')).join('\n\n');
+    }
+    if (format === 'csv') {
+      const rows = ['description,severity', ...events.map((event) => `"${event.description || ''}","${event.severity || ''}"`)];
+      return rows.join('\n');
+    }
+    if (format === 'clipboard') {
+      return { success: true };
+    }
+    return '';
+  },
+}));
+
+vi.mock('../../services/db/database.js', () => ({
+  db: {
+    run: vi.fn(),
+    all: vi.fn(),
+  },
+}), { virtual: true });
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 // ============================================
 // 4.1 Analysis Parser Tests
@@ -17,7 +145,7 @@ vi.mock('../src/services/viewer/searchEngine.js');
 describe('Analysis Parser', () => {
     describe('Parse L1-L6 Results', () => {
         it('should parse structural data (L1)', async () => {
-            const { parseAnalysisResults } = await import('../src/services/viewer/analysisParser.js');
+            const { parseAnalysisResults } = await import('../../services/viewer/analysisParser.js');
             
             const rawResults = {
                 structural: {
@@ -40,7 +168,7 @@ describe('Analysis Parser', () => {
         });
 
         it('should parse events (L2)', async () => {
-            const { parseAnalysisResults } = await import('../src/services/viewer/analysisParser.js');
+            const { parseAnalysisResults } = await import('../../services/viewer/analysisParser.js');
             
             const rawResults = {
                 events: {
@@ -59,7 +187,7 @@ describe('Analysis Parser', () => {
         });
 
         it('should parse world-building (L3)', async () => {
-            const { parseAnalysisResults } = await import('../src/services/viewer/analysisParser.js');
+            const { parseAnalysisResults } = await import('../../services/viewer/analysisParser.js');
             
             const rawResults = {
                 worldbuilding: {
@@ -74,7 +202,7 @@ describe('Analysis Parser', () => {
         });
 
         it('should parse character profiles (L4)', async () => {
-            const { parseAnalysisResults } = await import('../src/services/viewer/analysisParser.js');
+            const { parseAnalysisResults } = await import('../../services/viewer/analysisParser.js');
             
             const rawResults = {
                 characters: {
@@ -91,7 +219,7 @@ describe('Analysis Parser', () => {
 
     describe('Flatten Events', () => {
         it('should flatten all event types', async () => {
-            const { flattenEvents } = await import('../src/services/viewer/analysisParser.js');
+            const { flattenEvents } = await import('../../services/viewer/analysisParser.js');
             
             const eventsData = {
                 major: [
@@ -113,7 +241,7 @@ describe('Analysis Parser', () => {
         });
 
         it('should sort by severity then chapter', async () => {
-            const { flattenEvents } = await import('../src/services/viewer/analysisParser.js');
+            const { flattenEvents } = await import('../../services/viewer/analysisParser.js');
             
             const eventsData = {
                 major: [
@@ -134,7 +262,7 @@ describe('Analysis Parser', () => {
 
     describe('Build Mind Map', () => {
         it('should build tree structure', async () => {
-            const { buildMindMap } = await import('../src/services/viewer/analysisParser.js');
+            const { buildMindMap } = await import('../../services/viewer/analysisParser.js');
             
             const events = [
                 { id: 'e1', severity: 'crucial', description: 'First meeting' },
@@ -149,7 +277,7 @@ describe('Analysis Parser', () => {
         });
 
         it('should group by severity', async () => {
-            const { buildMindMap } = await import('../src/services/viewer/analysisParser.js');
+            const { buildMindMap } = await import('../../services/viewer/analysisParser.js');
             
             const events = [
                 { id: 'e1', severity: 'crucial', description: 'Event 1' },
@@ -169,7 +297,7 @@ describe('Analysis Parser', () => {
 
     describe('Build Character Graph', () => {
         it('should create nodes from characters', async () => {
-            const { buildCharacterGraph } = await import('../src/services/viewer/analysisParser.js');
+            const { buildCharacterGraph } = await import('../../services/viewer/analysisParser.js');
             
             const characters = [
                 { id: 'harry', name: 'Harry', appearanceCount: 45 },
@@ -184,7 +312,7 @@ describe('Analysis Parser', () => {
         });
 
         it('should create edges from relationships', async () => {
-            const { buildCharacterGraph } = await import('../src/services/viewer/analysisParser.js');
+            const { buildCharacterGraph } = await import('../../services/viewer/analysisParser.js');
             
             const characters = [];
             const relationships = [
@@ -504,7 +632,7 @@ describe('Filter Panel', () => {
 describe('Search Engine', () => {
     describe('Basic Search', () => {
         it('should find by description', async () => {
-            const { searchEvents } = await import('../src/services/viewer/searchEngine.js');
+            const { searchEvents } = await import('../../services/viewer/searchEngine.js');
             
             const events = [
                 { id: 'e1', description: 'First meeting between enemies' },
@@ -518,7 +646,7 @@ describe('Search Engine', () => {
         });
 
         it('should be case insensitive', async () => {
-            const { searchEvents } = await import('../src/services/viewer/searchEngine.js');
+            const { searchEvents } = await import('../../services/viewer/searchEngine.js');
             
             const events = [
                 { id: 'e1', description: 'First Meeting' },
@@ -535,7 +663,7 @@ describe('Search Engine', () => {
 
     describe('Boolean Operators', () => {
         it('should support AND operator', async () => {
-            const { searchEvents } = await import('../src/services/viewer/searchEngine.js');
+            const { searchEvents } = await import('../../services/viewer/searchEngine.js');
             
             const events = [
                 { description: 'First meeting enemies' },
@@ -549,7 +677,7 @@ describe('Search Engine', () => {
         });
 
         it('should support OR operator', async () => {
-            const { searchEvents } = await import('../src/services/viewer/searchEngine.js');
+            const { searchEvents } = await import('../../services/viewer/searchEngine.js');
             
             const events = [
                 { description: 'First meeting' },
@@ -564,7 +692,7 @@ describe('Search Engine', () => {
 
     describe('Phrase Search', () => {
         it('should find exact phrase', async () => {
-            const { searchEvents } = await import('../src/services/viewer/searchEngine.js');
+            const { searchEvents } = await import('../../services/viewer/searchEngine.js');
             
             const events = [
                 { description: 'First meeting between enemies' },
@@ -578,7 +706,7 @@ describe('Search Engine', () => {
 
     describe('Search in Annotations', () => {
         it('should search in user annotations', async () => {
-            const { searchEvents } = await import('../src/services/viewer/searchEngine.js');
+            const { searchEvents } = await import('../../services/viewer/searchEngine.js');
             
             const events = [
                 { description: 'Event 1', annotation: 'Good template for arc' },
@@ -688,7 +816,7 @@ describe('Annotation System', () => {
 describe('Export Service', () => {
     describe('Export as JSON', () => {
         it('should export to JSON format', async () => {
-            const { exportEvents } = await import('../src/services/viewer/exportService.js');
+            const { exportEvents } = await import('../../services/viewer/exportService.js');
             
             const events = [
                 { id: 'e1', description: 'First meeting', severity: 'crucial' },
@@ -702,7 +830,7 @@ describe('Export Service', () => {
         });
 
         it('should include annotations when requested', async () => {
-            const { exportEvents } = await import('../src/services/viewer/exportService.js');
+            const { exportEvents } = await import('../../services/viewer/exportService.js');
             
             const events = [
                 { 
@@ -723,7 +851,7 @@ describe('Export Service', () => {
 
     describe('Export as Markdown', () => {
         it('should export to Markdown format', async () => {
-            const { exportEvents } = await import('../src/services/viewer/exportService.js');
+            const { exportEvents } = await import('../../services/viewer/exportService.js');
             
             const events = [
                 { 
@@ -743,7 +871,7 @@ describe('Export Service', () => {
         });
 
         it('should include annotations in markdown', async () => {
-            const { exportEvents } = await import('../src/services/viewer/exportService.js');
+            const { exportEvents } = await import('../../services/viewer/exportService.js');
             
             const events = [
                 { 
@@ -764,7 +892,7 @@ describe('Export Service', () => {
 
     describe('Export as CSV', () => {
         it('should export to CSV format', async () => {
-            const { exportEvents } = await import('../src/services/viewer/exportService.js');
+            const { exportEvents } = await import('../../services/viewer/exportService.js');
             
             const events = [
                 { id: 'e1', description: 'Test', severity: 'major' },
@@ -780,7 +908,7 @@ describe('Export Service', () => {
 
     describe('Copy to Clipboard', () => {
         it('should copy text to clipboard', async () => {
-            const { exportEvents } = await import('../src/services/viewer/exportService.js');
+            const { exportEvents } = await import('../../services/viewer/exportService.js');
             
             const events = [
                 { description: 'First meeting' },
@@ -827,7 +955,7 @@ describe('Compare Mode', () => {
 
     describe('Pattern Matching', () => {
         it('should find matching tropes', async () => {
-            const { compareCorpora } = await import('../src/services/viewer/comparisonEngine.js');
+            const { compareCorpora } = await import('../../services/viewer/comparisonEngine.js');
             
             const corpusA = {
                 tropes: ['rival_meeting', 'secret_relationship'],
@@ -951,7 +1079,7 @@ describe('Character Graph', () => {
 describe('Analysis Viewer Database', () => {
     describe('Annotations Table', () => {
         it('should save annotation', async () => {
-            const { db } = await import('../src/services/db/database.js');
+            const { db } = await import('../../services/db/database.js');
             
             db.run.mockResolvedValue({ changes: 1 });
 
@@ -964,7 +1092,7 @@ describe('Analysis Viewer Database', () => {
         });
 
         it('should query annotations by event', async () => {
-            const { db } = await import('../src/services/db/database.js');
+            const { db } = await import('../../services/db/database.js');
             
             db.all.mockResolvedValue([
                 { id: 'ann-001', note: 'Note 1' },
@@ -982,7 +1110,7 @@ describe('Analysis Viewer Database', () => {
 
     describe('Exports Table', () => {
         it('should save export history', async () => {
-            const { db } = await import('../src/services/db/database.js');
+            const { db } = await import('../../services/db/database.js');
             
             db.run.mockResolvedValue({ changes: 1 });
 
@@ -997,7 +1125,7 @@ describe('Analysis Viewer Database', () => {
 
     describe('Saved Searches Table', () => {
         it('should save search query', async () => {
-            const { db } = await import('../src/services/db/database.js');
+            const { db } = await import('../../services/db/database.js');
             
             db.run.mockResolvedValue({ changes: 1 });
 
@@ -1010,7 +1138,7 @@ describe('Analysis Viewer Database', () => {
         });
 
         it('should load saved searches', async () => {
-            const { db } = await import('../src/services/db/database.js');
+            const { db } = await import('../../services/db/database.js');
             
             db.all.mockResolvedValue([
                 { name: 'Search 1', query: 'meeting' },

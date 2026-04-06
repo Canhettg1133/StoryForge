@@ -1435,12 +1435,6 @@ Request:
 ### Automation Commands
 
 ```bash
-# Backup corpus DB (+ WAL/SHM sidecars if present)
-npm run backup:corpus -- --db data/storyforge-corpus.sqlite --keep-last 20
-
-# Backfill incident-first artifacts from existing corpus_analyses.final_result
-npm run backfill:incident-first -- --force
-
-# One command: backup + backfill
-npm run phase6:maintenance -- --force
+# Retired after Postgres-only cleanup.
+# Keep this block as rollout history only; do not execute from current repo state.
 ```
