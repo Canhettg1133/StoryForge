@@ -21,6 +21,7 @@ import {
   validatePassCOutput,
 } from '../v2/contracts.js';
 import { buildStoryGraph } from '../v2/storyGraph.js';
+import { buildAnalysisArtifactV3 } from '../v3/artifactBuilder.js';
 
 const DEFAULT_OPTIONS = {
   maxGlobalWords: 900000,
@@ -183,6 +184,550 @@ function normalizeStringArray(value) {
       .filter(Boolean);
   }
   return [];
+}
+
+function dedupeStrings(items = []) {
+  return [...new Set(normalizeStringArray(items))];
+}
+
+function normalizeMentionEntities(items = [], kind = 'generic') {
+  const map = new Map();
+  for (const item of toArray(items)) {
+    const source = toObject(item);
+    const name = normalizeText(source.name || '');
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const existing = map.get(key) || {};
+    map.set(key, {
+      ...existing,
+      ...source,
+      name,
+      roleHint: normalizeText(existing.roleHint || source.roleHint || source.role || ''),
+      ownerHint: normalizeText(existing.ownerHint || source.ownerHint || source.owner || ''),
+      kind: normalizeText(existing.kind || source.kind || ''),
+      category: normalizeText(existing.category || source.category || ''),
+      definitionHint: normalizeText(existing.definitionHint || source.definitionHint || source.definition || ''),
+      eventIds: dedupeStrings([...(existing.eventIds || []), ...(source.eventIds || [])]),
+      chapters: [...new Set([
+        ...toArray(existing.chapters).map((value) => parseChapter(value)).filter((value) => Number.isFinite(value)),
+        ...toArray(source.chapters).map((value) => parseChapter(value)).filter((value) => Number.isFinite(value)),
+      ])].sort((left, right) => left - right),
+      evidence: dedupeStrings([...(existing.evidence || []), ...(source.evidence || [])]).slice(0, 8),
+      mentionCount: Math.max(
+        Number(existing.mentionCount || 0),
+        Number(source.mentionCount || 0),
+        dedupeStrings([...(existing.eventIds || []), ...(source.eventIds || [])]).length,
+        dedupeStrings([...(existing.evidence || []), ...(source.evidence || [])]).length,
+        1,
+      ),
+      _kind: kind,
+    });
+  }
+  return [...map.values()];
+}
+
+function normalizeRelationshipMentions(items = []) {
+  const map = new Map();
+  for (const item of toArray(items)) {
+    const source = toObject(item);
+    const left = normalizeText(source.source || source.character1Id || '');
+    const right = normalizeText(source.target || source.character2Id || '');
+    if (!left || !right) continue;
+    const type = normalizeText(source.type || 'neutral') || 'neutral';
+    const key = `${left.toLowerCase()}|${right.toLowerCase()}|${type}`;
+    const existing = map.get(key) || {};
+    map.set(key, {
+      ...existing,
+      source: left,
+      target: right,
+      type,
+      eventIds: dedupeStrings([...(existing.eventIds || []), ...(source.eventIds || [])]),
+      chapters: [...new Set([
+        ...toArray(existing.chapters).map((value) => parseChapter(value)).filter((value) => Number.isFinite(value)),
+        ...toArray(source.chapters).map((value) => parseChapter(value)).filter((value) => Number.isFinite(value)),
+      ])].sort((a, b) => a - b),
+      evidence: dedupeStrings([...(existing.evidence || []), ...(source.evidence || [])]).slice(0, 8),
+    });
+  }
+  return [...map.values()];
+}
+
+function normalizeStyleObservations(items = []) {
+  const result = [];
+  const seen = new Set();
+  for (const item of toArray(items)) {
+    const source = toObject(item);
+    const observation = normalizeText(source.observation || source.note || '');
+    if (!observation) continue;
+    const normalized = {
+      id: normalizeText(source.id || '') || `style_obs_${result.length + 1}`,
+      chapter: parseChapter(source.chapter),
+      eventId: normalizeText(source.eventId || ''),
+      signalType: normalizeText(source.signalType || source.type || 'other') || 'other',
+      observation,
+      evidence: normalizeText(source.evidence || ''),
+    };
+    const signature = [
+      normalized.chapter || '',
+      normalized.eventId,
+      normalized.signalType,
+      normalized.observation,
+    ].join('|').toLowerCase();
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function summarizeStyleEvidence(styleEvidence = {}) {
+  return {
+    observations: normalizeStyleObservations(styleEvidence.observations),
+  };
+}
+
+function normalizeWorldSeed(seed = {}) {
+  const source = toObject(seed);
+  return {
+    world_name: normalizeText(source.world_name || source.worldName || ''),
+    world_type: normalizeText(source.world_type || source.worldType || ''),
+    world_rules: dedupeStrings(source.world_rules || source.worldRules),
+    primary_locations: dedupeStrings(source.primary_locations || source.primaryLocations),
+    dominant_forces: dedupeStrings(source.dominant_forces || source.dominantForces),
+    world_description: normalizeText(source.world_description || source.worldDescription || ''),
+  };
+}
+
+function normalizeStyleSeed(seed = {}) {
+  const source = toObject(seed);
+  const normalizeDensity = (value, fallback = 'medium') => {
+    const normalized = normalizeText(value).toLowerCase();
+    return ['low', 'medium', 'high'].includes(normalized) ? normalized : fallback;
+  };
+  return {
+    pov: normalizeText(source.pov || ''),
+    tense: normalizeText(source.tense || ''),
+    register: normalizeText(source.register || ''),
+    tone: dedupeStrings(source.tone),
+    dialogue_density: normalizeDensity(source.dialogue_density || source.dialogueDensity, 'medium'),
+    description_density: normalizeDensity(source.description_density || source.descriptionDensity, 'medium'),
+    action_density: normalizeDensity(source.action_density || source.actionDensity, 'medium'),
+    style_signals: dedupeStrings(source.style_signals || source.styleSignals),
+    motifs: dedupeStrings(source.motifs),
+  };
+}
+
+function createEntityMentions() {
+  return {
+    characters: [],
+    objects: [],
+    terms: [],
+    relationships: [],
+  };
+}
+
+export function mergeEntityMentions(left = createEntityMentions(), right = createEntityMentions()) {
+  return {
+    characters: normalizeMentionEntities([...(left.characters || []), ...(right.characters || [])], 'character'),
+    objects: normalizeMentionEntities([...(left.objects || []), ...(right.objects || [])], 'object'),
+    terms: normalizeMentionEntities([...(left.terms || []), ...(right.terms || [])], 'term'),
+    relationships: normalizeRelationshipMentions([...(left.relationships || []), ...(right.relationships || [])]),
+  };
+}
+
+export function buildKnowledgeFallback({
+  worldSeed = {},
+  mentions = createEntityMentions(),
+  locations = [],
+  events = [],
+} = {}) {
+  const normalizedWorldSeed = normalizeWorldSeed(worldSeed);
+  const eventById = new Map(
+    toArray(events)
+      .filter((item) => item?.id)
+      .map((item) => [item.id, item]),
+  );
+  const buildMentionTimeline = (item = {}) => {
+    const eventIds = toArray(item.eventIds);
+    const chapters = toArray(item.chapters);
+    const evidence = toArray(item.evidence);
+    const singleEventFallback = eventIds.length <= 1 ? normalizeText(evidence[0] || '') : '';
+
+    return eventIds.map((eventId, index) => {
+      const event = eventById.get(eventId) || {};
+      const chapter = chapters[index] || event.chapter || (eventIds.length <= 1 ? chapters[0] || null : null);
+      const summary = normalizeText(
+        evidence[index]
+        || event.description
+        || event.evidenceSnippet
+        || singleEventFallback,
+      );
+
+      return {
+        eventId,
+        chapter,
+        summary,
+      };
+    }).filter((item) => item.eventId || item.chapter || item.summary);
+  };
+  const characterMap = new Map();
+  for (const mention of normalizeMentionEntities(mentions.characters, 'character')) {
+    characterMap.set(mention.name.toLowerCase(), {
+      name: mention.name,
+      role: mention.roleHint || 'supporting',
+      appearance: '',
+      personality: '',
+      personality_tags: [],
+      flaws: '',
+      goals: '',
+      secrets: '',
+      timeline: buildMentionTimeline(mention),
+    });
+  }
+  for (const event of toArray(events)) {
+    for (const rawName of toArray(event.characters)) {
+      const name = normalizeText(rawName);
+      if (!name) continue;
+      const key = name.toLowerCase();
+      const existing = characterMap.get(key) || {
+        name,
+        role: 'supporting',
+        appearance: '',
+        personality: '',
+        personality_tags: [],
+        flaws: '',
+        goals: '',
+        secrets: '',
+        timeline: [],
+      };
+      existing.timeline = [...existing.timeline, {
+        eventId: event.id || null,
+        chapter: event.chapter || null,
+        summary: event.description || '',
+      }];
+      characterMap.set(key, existing);
+    }
+  }
+
+  const locationMap = new Map();
+  for (const location of toArray(locations)) {
+    const name = normalizeText(location?.name || '');
+    if (!name) continue;
+    locationMap.set(name.toLowerCase(), {
+      name,
+      description: normalizeText(location.description || ''),
+      aliases: dedupeStrings(location.aliases),
+      timeline: toArray(location.timeline),
+    });
+  }
+  for (const name of normalizedWorldSeed.primary_locations) {
+    const key = name.toLowerCase();
+    if (!locationMap.has(key)) {
+      locationMap.set(key, {
+        name,
+        description: '',
+        aliases: [],
+        timeline: [],
+      });
+    }
+  }
+
+  const objects = normalizeMentionEntities(mentions.objects, 'object').map((item) => ({
+    name: item.name,
+    owner: item.ownerHint || '',
+    description: '',
+    properties: item.kind || '',
+    timeline: buildMentionTimeline(item),
+  }));
+
+  const terms = normalizeMentionEntities(mentions.terms, 'term').map((item) => ({
+    name: item.name,
+    category: item.category || 'other',
+    definition: item.definitionHint || '',
+    timeline: buildMentionTimeline(item),
+  }));
+
+  return {
+    world_profile: {
+      world_name: normalizedWorldSeed.world_name,
+      world_type: normalizedWorldSeed.world_type,
+      world_scale: '',
+      world_era: '',
+      world_rules: normalizedWorldSeed.world_rules,
+      world_description: normalizedWorldSeed.world_description,
+    },
+    characters: [...characterMap.values()],
+    locations: [...locationMap.values()],
+    objects,
+    terms,
+  };
+}
+
+export function buildRelationshipLayer(relationshipMentions = []) {
+  return normalizeRelationshipMentions(relationshipMentions).map((item) => ({
+    id: `${item.source}_${item.target}_${item.type}`.toLowerCase().replace(/[^a-z0-9_]+/gu, '_'),
+    character1Id: item.source,
+    character2Id: item.target,
+    type: item.type,
+    polarity: item.type === 'enemies' ? 'negative' : (item.type === 'romantic' || item.type === 'allies' ? 'positive' : 'neutral'),
+    canonOrFanon: { type: 'canon' },
+    interactionCount: Math.max(item.eventIds.length, item.chapters.length, item.evidence.length, 1),
+    description: item.evidence[0] || '',
+  }));
+}
+
+export function buildCraftProfile({ styleSeed = {}, styleEvidence = {}, events = [] } = {}) {
+  const seed = normalizeStyleSeed(styleSeed);
+  const observations = normalizeStyleObservations(styleEvidence.observations);
+  const densityObservations = (type) => observations.filter((item) => item.signalType === type).map((item) => item.observation);
+  const averageIntensity = events.length
+    ? Number((events.reduce((sum, item) => sum + clampNumber(item.emotionalIntensity, 1, 10, 6), 0) / events.length).toFixed(2))
+    : 0;
+  const peakEvent = toArray(events)
+    .slice()
+    .sort((left, right) => clampNumber(right.emotionalIntensity, 1, 10, 0) - clampNumber(left.emotionalIntensity, 1, 10, 0))[0] || null;
+  const chaptersWithEvents = new Set(toArray(events).map((item) => parseChapter(item.chapter)).filter((value) => Number.isFinite(value)));
+
+  return {
+    style: {
+      pov: seed.pov || 'khong_ro',
+      tense: seed.tense || 'khong_ro',
+      register: seed.register || 'trung_tinh',
+      tone: seed.tone,
+      styleSignals: dedupeStrings([
+        ...seed.style_signals,
+        ...observations.map((item) => item.observation),
+      ]).slice(0, 12),
+      motifs: seed.motifs,
+      evidenceCount: observations.length,
+    },
+    emotional: {
+      averageIntensity,
+      peakChapter: peakEvent?.chapter || null,
+      peakEvent: peakEvent?.description || '',
+      toneAnchors: seed.tone.slice(0, 6),
+    },
+    pacing: {
+      dialogueDensity: seed.dialogue_density,
+      descriptionDensity: seed.description_density,
+      actionDensity: seed.action_density,
+      eventCount: events.length,
+      activeChapters: chaptersWithEvents.size,
+      rhythmSignals: densityObservations('rhythm').slice(0, 6),
+    },
+    dialogueTechniques: {
+      density: seed.dialogue_density,
+      observations: densityObservations('dialogue_density').slice(0, 6),
+      povSupport: observations
+        .filter((item) => ['pov', 'tense'].includes(item.signalType))
+        .map((item) => item.observation)
+        .slice(0, 6),
+    },
+  };
+}
+
+export function buildCoverageAudit({
+  knowledge = {},
+  mentions = createEntityMentions(),
+  locations = [],
+  events = [],
+  relationships = [],
+} = {}) {
+  const toCoverageRatio = (returned, observed) => {
+    if (!observed) return 1;
+    const ratio = Number(returned || 0) / Number(observed || 0);
+    return Math.max(0, Math.min(1, ratio));
+  };
+  const knowledgeSource = toObject(knowledge);
+  const observedCharacterNames = new Set([
+    ...normalizeMentionEntities(mentions.characters, 'character').map((item) => item.name),
+    ...toArray(events).flatMap((item) => normalizeStringArray(item.characters)),
+  ].map((item) => item.toLowerCase()));
+  const observedLocationNames = new Set([
+    ...toArray(locations).map((item) => normalizeText(item?.name || '')),
+    ...normalizeStringArray(knowledgeSource.world_profile?.primary_locations),
+  ].filter(Boolean).map((item) => item.toLowerCase()));
+  const observedObjectMentions = normalizeMentionEntities(mentions.objects, 'object');
+  const observedTermMentions = normalizeMentionEntities(mentions.terms, 'term');
+  const observedRelationshipMentions = normalizeRelationshipMentions(mentions.relationships);
+
+  const returnedCharacters = new Set(toArray(knowledgeSource.characters).map((item) => normalizeText(item?.name || '').toLowerCase()).filter(Boolean));
+  const returnedLocations = new Set(toArray(knowledgeSource.locations).map((item) => normalizeText(item?.name || '').toLowerCase()).filter(Boolean));
+  const returnedObjects = new Set(toArray(knowledgeSource.objects).map((item) => normalizeText(item?.name || '').toLowerCase()).filter(Boolean));
+  const returnedTerms = new Set(toArray(knowledgeSource.terms).map((item) => normalizeText(item?.name || '').toLowerCase()).filter(Boolean));
+  const returnedRelationships = new Set(toArray(relationships).map((item) => `${normalizeText(item.character1Id).toLowerCase()}|${normalizeText(item.character2Id).toLowerCase()}|${normalizeText(item.type).toLowerCase()}`));
+
+  const omittedCandidates = {
+    characters: normalizeMentionEntities(mentions.characters, 'character').filter((item) => !returnedCharacters.has(item.name.toLowerCase())),
+    locations: toArray(locations)
+      .map((item) => ({
+        name: normalizeText(item?.name || ''),
+        evidence: normalizeStringArray(item?.evidence),
+        eventIds: toArray(item?.timeline).map((entry) => normalizeText(entry?.eventId || '')).filter(Boolean),
+      }))
+      .filter((item) => item.name && !returnedLocations.has(item.name.toLowerCase())),
+    objects: observedObjectMentions.filter((item) => !returnedObjects.has(item.name.toLowerCase())),
+    terms: observedTermMentions.filter((item) => !returnedTerms.has(item.name.toLowerCase())),
+    relationships: observedRelationshipMentions.filter((item) => !returnedRelationships.has(`${item.source.toLowerCase()}|${item.target.toLowerCase()}|${item.type.toLowerCase()}`)),
+  };
+
+  const observedCount = {
+    characters: observedCharacterNames.size,
+    locations: observedLocationNames.size,
+    objects: observedObjectMentions.length,
+    terms: observedTermMentions.length,
+    relationships: observedRelationshipMentions.length,
+  };
+  const returnedCount = {
+    characters: returnedCharacters.size,
+    locations: returnedLocations.size,
+    objects: returnedObjects.size,
+    terms: returnedTerms.size,
+    relationships: returnedRelationships.size,
+  };
+
+  const coverage = {
+    characters: toCoverageRatio(returnedCount.characters, observedCount.characters),
+    locations: toCoverageRatio(returnedCount.locations, observedCount.locations),
+    objects: toCoverageRatio(returnedCount.objects, observedCount.objects),
+    terms: toCoverageRatio(returnedCount.terms, observedCount.terms),
+    relationships: toCoverageRatio(returnedCount.relationships, observedCount.relationships),
+  };
+  const rawCoverage = {
+    characters: observedCount.characters ? returnedCount.characters / observedCount.characters : 1,
+    locations: observedCount.locations ? returnedCount.locations / observedCount.locations : 1,
+    objects: observedCount.objects ? returnedCount.objects / observedCount.objects : 1,
+    terms: observedCount.terms ? returnedCount.terms / observedCount.terms : 1,
+    relationships: observedCount.relationships ? returnedCount.relationships / observedCount.relationships : 1,
+  };
+  const overReturned = {
+    characters: returnedCount.characters > observedCount.characters && observedCount.characters > 0,
+    locations: returnedCount.locations > observedCount.locations && observedCount.locations > 0,
+    objects: returnedCount.objects > observedCount.objects && observedCount.objects > 0,
+    terms: returnedCount.terms > observedCount.terms && observedCount.terms > 0,
+    relationships: returnedCount.relationships > observedCount.relationships && observedCount.relationships > 0,
+  };
+  const overReturnedCount = {
+    characters: Math.max(0, returnedCount.characters - observedCount.characters),
+    locations: Math.max(0, returnedCount.locations - observedCount.locations),
+    objects: Math.max(0, returnedCount.objects - observedCount.objects),
+    terms: Math.max(0, returnedCount.terms - observedCount.terms),
+    relationships: Math.max(0, returnedCount.relationships - observedCount.relationships),
+  };
+  const complete = Object.entries(coverage).every(([key, value]) => value >= 0.6 && !overReturned[key]);
+
+  return {
+    observedCount,
+    returnedCount,
+    coverage,
+    rawCoverage,
+    overReturned,
+    overReturnedCount,
+    complete,
+    omittedCandidates,
+  };
+}
+
+export function applyCoverageRecall({
+  knowledge = {},
+  coverageAudit = null,
+  relationships = [],
+} = {}) {
+  const source = {
+    world_profile: toObject(knowledge.world_profile),
+    characters: toArray(knowledge.characters).slice(),
+    locations: toArray(knowledge.locations).slice(),
+    objects: toArray(knowledge.objects).slice(),
+    terms: toArray(knowledge.terms).slice(),
+  };
+  const audit = toObject(coverageAudit);
+  const omitted = toObject(audit.omittedCandidates);
+  let recallApplied = false;
+
+  for (const item of toArray(omitted.characters)) {
+    if ((item.evidence || []).length === 0 && (item.eventIds || []).length === 0) continue;
+    source.characters.push({
+      name: item.name,
+      role: item.roleHint || 'supporting',
+      appearance: '',
+      personality: '',
+      personality_tags: [],
+      flaws: '',
+      goals: '',
+      secrets: '',
+      timeline: toArray(item.eventIds).map((eventId, index) => ({
+        eventId,
+        chapter: item.chapters?.[index] || item.chapters?.[0] || null,
+        summary: item.evidence?.[index] || item.evidence?.[0] || '',
+      })),
+    });
+    recallApplied = true;
+  }
+
+  for (const item of toArray(omitted.locations)) {
+    if (!item.name) continue;
+    source.locations.push({
+      name: item.name,
+      description: '',
+      aliases: [],
+      timeline: toArray(item.eventIds).map((eventId, index) => ({
+        eventId,
+        chapter: item.chapters?.[index] || item.chapters?.[0] || null,
+        summary: item.evidence?.[index] || item.evidence?.[0] || '',
+      })),
+    });
+    recallApplied = true;
+  }
+
+  for (const item of toArray(omitted.objects)) {
+    source.objects.push({
+      name: item.name,
+      owner: item.ownerHint || '',
+      description: '',
+      properties: item.kind || '',
+      timeline: toArray(item.eventIds).map((eventId, index) => ({
+        eventId,
+        chapter: item.chapters?.[index] || item.chapters?.[0] || null,
+        summary: item.evidence?.[index] || item.evidence?.[0] || '',
+      })),
+    });
+    recallApplied = true;
+  }
+
+  for (const item of toArray(omitted.terms)) {
+    source.terms.push({
+      name: item.name,
+      category: item.category || 'other',
+      definition: item.definitionHint || '',
+      timeline: toArray(item.eventIds).map((eventId, index) => ({
+        eventId,
+        chapter: item.chapters?.[index] || item.chapters?.[0] || null,
+        summary: item.evidence?.[index] || item.evidence?.[0] || '',
+      })),
+    });
+    recallApplied = true;
+  }
+
+  const nextRelationships = relationships.slice();
+  for (const item of toArray(omitted.relationships)) {
+    nextRelationships.push({
+      id: `${item.source}_${item.target}_${item.type}`.toLowerCase().replace(/[^a-z0-9_]+/gu, '_'),
+      character1Id: item.source,
+      character2Id: item.target,
+      type: item.type,
+      polarity: item.type === 'enemies' ? 'negative' : (item.type === 'romantic' || item.type === 'allies' ? 'positive' : 'neutral'),
+      canonOrFanon: { type: 'canon' },
+      interactionCount: Math.max((item.eventIds || []).length, (item.evidence || []).length, 1),
+      description: item.evidence?.[0] || '',
+    });
+    recallApplied = true;
+  }
+
+  return {
+    knowledge: source,
+    relationships: nextRelationships,
+    recallApplied,
+  };
 }
 
 function buildChaptersFromChunks(chunks = []) {
@@ -799,15 +1344,27 @@ function buildFinalResult({
   incidents = [],
   events = [],
   locations = [],
+  worldSeed = null,
+  styleSeed = null,
+  entityMentions = null,
+  styleEvidence = null,
   knowledge = null,
+  relationships = [],
+  craft = null,
+  coverageAudit = null,
   mode = 'incident_only_1m',
   tokenUsage = null,
 }) {
   const dedupedEvents = dedupeEvents(events);
   const dedupedLocations = dedupeLocations(locations);
+  const normalizedWorldSeed = normalizeWorldSeed(worldSeed || {});
+  const normalizedStyleSeed = normalizeStyleSeed(styleSeed || {});
+  const normalizedEntityMentions = mergeEntityMentions(createEntityMentions(), entityMentions || createEntityMentions());
+  const normalizedStyleEvidence = summarizeStyleEvidence(styleEvidence || {});
   const structuralCharacters = dedupeCharactersForResult([
     ...toArray(knowledge?.characters),
     ...dedupedEvents.flatMap((event) => toArray(event?.characters).map((name) => ({ name }))),
+    ...toArray(normalizedEntityMentions.characters).map((item) => ({ name: item.name, role: item.roleHint || 'supporting' })),
   ]);
   const eventsLayer = buildEventsLayer(dedupedEvents, dedupedLocations);
   const deepMap = new Map();
@@ -841,12 +1398,12 @@ function buildFinalResult({
   const worldProfile = toObject(knowledge?.world_profile);
   const worldbuilding = {
     setting: {
-      worldName: normalizeText(worldProfile.world_name || ''),
-      worldType: normalizeText(worldProfile.world_type || ''),
+      worldName: normalizeText(worldProfile.world_name || normalizedWorldSeed.world_name || ''),
+      worldType: normalizeText(worldProfile.world_type || normalizedWorldSeed.world_type || ''),
       worldScale: normalizeText(worldProfile.world_scale || ''),
       worldEra: normalizeText(worldProfile.world_era || ''),
-      rules: normalizeStringArray(worldProfile.world_rules),
-      description: normalizeText(worldProfile.world_description || ''),
+      rules: dedupeStrings([...(worldProfile.world_rules || []), ...(normalizedWorldSeed.world_rules || [])]),
+      description: normalizeText(worldProfile.world_description || normalizedWorldSeed.world_description || ''),
     },
     powers: {},
     magicSystem: {},
@@ -854,6 +1411,12 @@ function buildFinalResult({
     objects: toArray(knowledge?.objects),
     terms: toArray(knowledge?.terms),
   };
+  const resolvedCraft = craft || buildCraftProfile({
+    styleSeed: normalizedStyleSeed,
+    styleEvidence: normalizedStyleEvidence,
+    events: dedupedEvents,
+  });
+  const resolvedRelationships = toArray(relationships);
 
   const result = {
     meta: {
@@ -863,6 +1426,11 @@ function buildFinalResult({
       coveredLayers: ['l1', 'l2', 'l3', 'l4', 'l5', 'l6'],
       runMode: mode,
     },
+    world_seed: normalizedWorldSeed,
+    style_seed: normalizedStyleSeed,
+    entity_mentions: normalizedEntityMentions,
+    style_evidence: normalizedStyleEvidence,
+    coverage_audit: coverageAudit,
     structural: {
       characters: structuralCharacters,
       ships: [],
@@ -877,17 +1445,8 @@ function buildFinalResult({
     locations: worldbuilding.locations,
     objects: worldbuilding.objects,
     terms: worldbuilding.terms,
-    relationships: {
-      ships: [],
-      plotHoles: [],
-      unresolvedThreads: [],
-    },
-    craft: {
-      style: {},
-      emotional: {},
-      pacing: {},
-      dialogueTechniques: {},
-    },
+    relationships: resolvedRelationships,
+    craft: resolvedCraft,
     incidents: incidentsLayer,
     summary: {
       rarityScore: 0,
@@ -903,7 +1462,15 @@ function buildFinalResult({
   if (knowledge && typeof knowledge === 'object') {
     result.knowledge = knowledge;
     result.world_profile = knowledge.world_profile || null;
-    return mergeKnowledgeProfile(result, knowledge);
+    const merged = mergeKnowledgeProfile(result, knowledge);
+    merged.relationships = resolvedRelationships;
+    merged.craft = resolvedCraft;
+    merged.coverage_audit = coverageAudit;
+    merged.world_seed = normalizedWorldSeed;
+    merged.style_seed = normalizedStyleSeed;
+    merged.entity_mentions = normalizedEntityMentions;
+    merged.style_evidence = normalizedStyleEvidence;
+    return merged;
   }
 
   if (tokenUsage) {
@@ -911,6 +1478,54 @@ function buildFinalResult({
   }
 
   return result;
+}
+
+function finalizeV3Result({
+  corpusId,
+  analysisId,
+  chunks,
+  baseResult,
+  finalized,
+  storyGraph,
+  aiSteps = [],
+  incidentCount = 0,
+  aiApplied = false,
+  runMode = 'full_corpus_1m',
+  knowledge = null,
+}) {
+  const withCoreMeta = {
+    ...baseResult,
+    analysis_run_manifest: finalized.manifest,
+    pass_status: finalized.passStatus,
+    degraded_run_report: finalized.degradedRunReport,
+    story_graph: storyGraph,
+    graph_summary: storyGraph.summary,
+    knowledge: knowledge || baseResult.knowledge || null,
+  };
+
+  const artifact = buildAnalysisArtifactV3({
+    corpusId,
+    analysisId,
+    chunks,
+    finalResult: withCoreMeta,
+  });
+
+  return {
+    ...withCoreMeta,
+    ...artifact,
+    reviewQueue: artifact.review_queue,
+    story_graph: storyGraph,
+    graph_summary: storyGraph.summary,
+    artifact_version: 'v3',
+    meta: {
+      ...(baseResult.meta || {}),
+      aiSteps,
+      incidentCount,
+      aiApplied,
+      runMode,
+      artifactVersion: 'v3',
+    },
+  };
 }
 
 function buildHeuristicArtifacts(corpusId, chapters = [], options = {}) {
@@ -998,6 +1613,8 @@ async function runPassA({
 
   return {
     incidents: normalizeGlobalIncidents(ai.parsed, chapters.length, modeOptions.maxGlobalIncidents),
+    worldSeed: normalizeWorldSeed(ai.parsed.world_seed || ai.parsed.worldSeed || {}),
+    styleSeed: normalizeStyleSeed(ai.parsed.style_seed || ai.parsed.styleSeed || {}),
     usage: ai.usageMetadata,
     partsGenerated: ai.partCount,
     repaired: ai.repaired,
@@ -1022,6 +1639,8 @@ async function runPassB({
   const deepByIncident = new Map();
   const allEvents = [];
   const allLocations = [];
+  let allMentions = createEntityMentions();
+  const allStyleObservations = [];
   let partsGenerated = 0;
   let usage = { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 };
 
@@ -1037,6 +1656,8 @@ async function runPassB({
         patch: normalizeIncidentPatch({}),
         events: [],
         locations: [],
+        mentions: createEntityMentions(),
+        styleEvidence: { observations: [] },
         usageMetadata: { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 },
         partCount: 0,
         failedValidation: false,
@@ -1061,7 +1682,7 @@ async function runPassB({
     });
 
     const parsed = toObject(ai.parsed);
-    const patch = normalizeIncidentPatch(parsed.incident || parsed.summary || {});
+    const patch = normalizeIncidentPatch(parsed.incident_patch || parsed.incident || parsed.summary || {});
     const events = normalizeDeepEvents(
       parsed.events || parsed.timelineEvents || [],
       incident,
@@ -1069,12 +1690,16 @@ async function runPassB({
       modeOptions.maxEventsPerIncident,
     );
     const locations = normalizeDeepLocations(parsed.locations || [], incident, chapters.length);
+    const mentions = mergeEntityMentions(createEntityMentions(), parsed.mentions || createEntityMentions());
+    const styleEvidence = summarizeStyleEvidence(parsed.style_evidence || parsed.styleEvidence || {});
 
     return {
       incidentId: incident.id,
       patch,
       events,
       locations,
+      mentions,
+      styleEvidence,
       usageMetadata: ai.usageMetadata,
       partCount: ai.partCount,
       repaired: ai.repaired,
@@ -1120,6 +1745,8 @@ async function runPassB({
       });
       allEvents.push(...value.events);
       allLocations.push(...value.locations);
+      allMentions = mergeEntityMentions(allMentions, value.mentions || createEntityMentions());
+      allStyleObservations.push(...toArray(value.styleEvidence?.observations));
       partsGenerated += Number(value.partCount || 0);
       usage = mergeUsage(usage, value.usageMetadata);
     }
@@ -1129,6 +1756,10 @@ async function runPassB({
     deepByIncident,
     events: dedupeEvents(allEvents),
     locations: dedupeLocations(allLocations),
+    mentions: allMentions,
+    styleEvidence: {
+      observations: normalizeStyleObservations(allStyleObservations),
+    },
     usage,
     partsGenerated,
   };
@@ -1136,6 +1767,7 @@ async function runPassB({
 
 export async function runIncidentOnly1MJob({
   corpusId,
+  analysisId = null,
   chunks = [],
   options = {},
   signal,
@@ -1210,15 +1842,18 @@ export async function runIncidentOnly1MJob({
       incidentCount: heuristicArtifacts.incidents.length,
       aiSteps: [],
       partsGenerated: 0,
-      finalResult: {
-        ...finalResult,
-        analysis_run_manifest: finalized.manifest,
-        pass_status: finalized.passStatus,
-        degraded_run_report: finalized.degradedRunReport,
-        story_graph: storyGraph,
-        graph_summary: storyGraph.summary,
-        artifact_version: 'v2',
-      },
+      finalResult: finalizeV3Result({
+        corpusId,
+        analysisId,
+        chunks,
+        baseResult: finalResult,
+        finalized,
+        storyGraph,
+        aiSteps: [],
+        incidentCount: heuristicArtifacts.incidents.length,
+        aiApplied: false,
+        runMode: normalizePublicRunMode(options.runMode || options.mode || 'full_corpus_1m'),
+      }),
       aiApplied: false,
       reason: 'missing_model_or_key',
     };
@@ -1245,6 +1880,8 @@ export async function runIncidentOnly1MJob({
     completePass(tracker, 'pass_a', {
       metrics: {
         incidents: passA.incidents.length,
+        worldSeedRules: toArray(passA.worldSeed?.world_rules).length,
+        styleSeedSignals: toArray(passA.styleSeed?.style_signals).length,
         partsGenerated: passA.partsGenerated || 0,
       },
       repaired: passA.repaired,
@@ -1255,6 +1892,8 @@ export async function runIncidentOnly1MJob({
     let incidents = passA.incidents.length
       ? passA.incidents
       : heuristicArtifacts.incidents;
+    const worldSeed = passA.worldSeed || normalizeWorldSeed({});
+    const styleSeed = passA.styleSeed || normalizeStyleSeed({});
     if (passA.incidents.length > 0) {
       aiSteps.push('pass_a_global_incidents');
     }
@@ -1272,6 +1911,8 @@ export async function runIncidentOnly1MJob({
         incidents: heuristicArtifacts.incidents,
         events: heuristicArtifacts.events,
         locations: heuristicArtifacts.locations,
+        worldSeed,
+        styleSeed,
         mode: 'full_corpus_1m',
         tokenUsage,
       });
@@ -1300,15 +1941,18 @@ export async function runIncidentOnly1MJob({
         incidentCount: 0,
         aiSteps,
         partsGenerated: totalPartsGenerated,
-        finalResult: {
-          ...finalResult,
-          analysis_run_manifest: finalized.manifest,
-          pass_status: finalized.passStatus,
-          degraded_run_report: finalized.degradedRunReport,
-          story_graph: storyGraph,
-          graph_summary: storyGraph.summary,
-          artifact_version: 'v2',
-        },
+        finalResult: finalizeV3Result({
+          corpusId,
+          analysisId,
+          chunks,
+          baseResult: finalResult,
+          finalized,
+          storyGraph,
+          aiSteps,
+          incidentCount: 0,
+          aiApplied: aiSteps.length > 0,
+          runMode: normalizePublicRunMode(options.runMode || options.mode || 'full_corpus_1m'),
+        }),
         aiApplied: aiSteps.length > 0,
         reason: 'no_incidents',
       };
@@ -1332,6 +1976,10 @@ export async function runIncidentOnly1MJob({
       metrics: {
         events: passB.events.length,
         locations: passB.locations.length,
+        characterMentions: toArray(passB.mentions?.characters).length,
+        objectMentions: toArray(passB.mentions?.objects).length,
+        termMentions: toArray(passB.mentions?.terms).length,
+        styleObservations: toArray(passB.styleEvidence?.observations).length,
         partsGenerated: passB.partsGenerated || 0,
       },
     });
@@ -1360,17 +2008,35 @@ export async function runIncidentOnly1MJob({
 
     const baseEvents = passB.events.length ? passB.events : heuristicArtifacts.events;
     const baseLocations = passB.locations.length ? passB.locations : heuristicArtifacts.locations;
+    const entityMentions = mergeEntityMentions(createEntityMentions(), passB.mentions || createEntityMentions());
+    const styleEvidence = summarizeStyleEvidence(passB.styleEvidence || { observations: [] });
     let finalResult = buildFinalResult({
       incidents,
       events: baseEvents,
       locations: baseLocations,
+      worldSeed,
+      styleSeed,
+      entityMentions,
+      styleEvidence,
       mode: 'full_corpus_1m',
       tokenUsage,
     });
 
-    startPass(tracker, 'pass_c', 'Knowledge Extraction');
-    emitProgress(onProgress, 'incident_1m_pass_c', 0.84, 'Pass C: knowledge extraction from incidents/events');
-    let knowledge = null;
+    startPass(tracker, 'pass_c', 'Consolidation');
+    emitProgress(onProgress, 'incident_1m_pass_c', 0.84, 'Pass C: consolidation of knowledge, style, and coverage');
+    let knowledge = buildKnowledgeFallback({
+      worldSeed,
+      mentions: entityMentions,
+      locations: baseLocations,
+      events: baseEvents,
+    });
+    let relationships = buildRelationshipLayer(entityMentions.relationships);
+    let craft = buildCraftProfile({
+      styleSeed,
+      styleEvidence,
+      events: baseEvents,
+    });
+    let coverageAudit = null;
     try {
       const extracted = await extractKnowledgeProfile(
         finalResult,
@@ -1382,18 +2048,15 @@ export async function runIncidentOnly1MJob({
       );
       if (extracted?.applied && extracted?.data) {
         const validatedKnowledge = validatePassCOutput(extracted.data);
-        knowledge = consolidateCanonicalKnowledge(validatedKnowledge.value, baseEvents);
-        finalResult = mergeKnowledgeProfile(finalResult, knowledge);
+        knowledge = consolidateCanonicalKnowledge({
+          ...knowledge,
+          ...validatedKnowledge.value,
+          characters: [...toArray(knowledge.characters), ...toArray(validatedKnowledge.value.characters)],
+          locations: [...toArray(knowledge.locations), ...toArray(validatedKnowledge.value.locations)],
+          objects: [...toArray(knowledge.objects), ...toArray(validatedKnowledge.value.objects)],
+          terms: [...toArray(knowledge.terms), ...toArray(validatedKnowledge.value.terms)],
+        }, baseEvents);
         aiSteps.push('pass_c_knowledge');
-        completePass(tracker, 'pass_c', {
-          metrics: {
-            characters: toArray(knowledge.characters).length,
-            locations: toArray(knowledge.locations).length,
-            objects: toArray(knowledge.objects).length,
-            terms: toArray(knowledge.terms).length,
-          },
-          status: validatedKnowledge.issues.length > 0 ? 'degraded' : 'completed',
-        });
         if (validatedKnowledge.issues.length > 0) {
           markPassDegraded(tracker, 'pass_c', 'schema_repaired', {
             issues: validatedKnowledge.issues,
@@ -1401,15 +2064,6 @@ export async function runIncidentOnly1MJob({
           });
         }
       } else {
-        completePass(tracker, 'pass_c', {
-          metrics: {
-            characters: 0,
-            locations: 0,
-            objects: 0,
-            terms: 0,
-          },
-          status: 'degraded',
-        });
         markPassDegraded(tracker, 'pass_c', 'knowledge_not_applied', {
           fallback: 'skip_knowledge',
         });
@@ -1420,13 +2074,69 @@ export async function runIncidentOnly1MJob({
         fallback: 'skip_knowledge',
       });
     }
+    coverageAudit = buildCoverageAudit({
+      knowledge,
+      mentions: entityMentions,
+      locations: baseLocations,
+      events: baseEvents,
+      relationships,
+    });
+    if (!coverageAudit.complete) {
+      const recalled = applyCoverageRecall({
+        knowledge,
+        coverageAudit,
+        relationships,
+      });
+      if (recalled.recallApplied) {
+        knowledge = consolidateCanonicalKnowledge(recalled.knowledge, baseEvents);
+        relationships = recalled.relationships;
+        coverageAudit = buildCoverageAudit({
+          knowledge,
+          mentions: entityMentions,
+          locations: baseLocations,
+          events: baseEvents,
+          relationships,
+        });
+      }
+      markPassDegraded(tracker, 'pass_c', 'coverage_incomplete', {
+        coverage: coverageAudit.coverage,
+        fallback: 'local_recall',
+      });
+    }
+    finalResult = buildFinalResult({
+      incidents,
+      events: baseEvents,
+      locations: baseLocations,
+      worldSeed,
+      styleSeed,
+      entityMentions,
+      styleEvidence,
+      knowledge,
+      relationships,
+      craft,
+      coverageAudit,
+      mode: 'full_corpus_1m',
+      tokenUsage,
+    });
+    completePass(tracker, 'pass_c', {
+      metrics: {
+        characters: toArray(knowledge.characters).length,
+        locations: toArray(knowledge.locations).length,
+        objects: toArray(knowledge.objects).length,
+        terms: toArray(knowledge.terms).length,
+        relationships: relationships.length,
+        styleObservations: toArray(styleEvidence.observations).length,
+        coverageComplete: coverageAudit.complete ? 1 : 0,
+      },
+      status: coverageAudit.complete ? 'completed' : 'degraded',
+    });
 
     startPass(tracker, 'pass_e', 'Story Graph Build');
     const storyGraph = buildStoryGraph({
       incidents,
       events: baseEvents,
       knowledge: knowledge || finalResult.knowledge || {},
-      relationships: finalResult.relationships?.ships || [],
+      relationships,
     });
     completePass(tracker, 'pass_e', {
       metrics: storyGraph.summary,
@@ -1467,22 +2177,30 @@ export async function runIncidentOnly1MJob({
     finalResult = {
       ...finalResult,
       tokenUsage,
-      analysis_run_manifest: finalized.manifest,
-      pass_status: finalized.passStatus,
-      degraded_run_report: finalized.degradedRunReport,
-      story_graph: storyGraph,
-      graph_summary: storyGraph.summary,
-      artifact_version: 'v2',
       meta: {
         ...(finalResult.meta || {}),
         aiSteps,
         incidentCount: incidents.length,
         aiApplied: aiSteps.length > 0,
         runMode: normalizePublicRunMode(options.runMode || options.mode || 'full_corpus_1m'),
-        artifactVersion: 'v2',
+        artifactVersion: 'v3',
       },
       knowledge: knowledge || finalResult.knowledge || null,
     };
+
+    finalResult = finalizeV3Result({
+      corpusId,
+      analysisId,
+      chunks,
+      baseResult: finalResult,
+      finalized,
+      storyGraph,
+      aiSteps,
+      incidentCount: incidents.length,
+      aiApplied: aiSteps.length > 0,
+      runMode: normalizePublicRunMode(options.runMode || options.mode || 'full_corpus_1m'),
+      knowledge: knowledge || finalResult.knowledge || null,
+    });
 
     return {
       success: true,
@@ -1534,15 +2252,18 @@ export async function runIncidentOnly1MJob({
       incidentCount: heuristicArtifacts.incidents.length,
       aiSteps,
       partsGenerated: totalPartsGenerated,
-      finalResult: {
-        ...fallback,
-        analysis_run_manifest: finalized.manifest,
-        pass_status: finalized.passStatus,
-        degraded_run_report: finalized.degradedRunReport,
-        story_graph: storyGraph,
-        graph_summary: storyGraph.summary,
-        artifact_version: 'v2',
-      },
+      finalResult: finalizeV3Result({
+        corpusId,
+        analysisId,
+        chunks,
+        baseResult: fallback,
+        finalized,
+        storyGraph,
+        aiSteps,
+        incidentCount: heuristicArtifacts.incidents.length,
+        aiApplied: aiSteps.length > 0,
+        runMode: normalizePublicRunMode(options.runMode || options.mode || 'full_corpus_1m'),
+      }),
       aiApplied: aiSteps.length > 0,
       aiError: error?.message || 'incident_only_1m_failed',
     };

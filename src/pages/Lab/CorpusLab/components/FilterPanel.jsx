@@ -69,12 +69,12 @@ export default function FilterPanel({
       {/* Tags */}
       {allTags.length > 0 && (
         <label className="filter-group">
-          <span className="filter-label">Tag</span>
+          <span className="filter-label">Nhãn</span>
           <select
             value={filters.tag}
             onChange={(e) => handleChange('tag', e.target.value)}
           >
-            <option value="all">Tất cả tag</option>
+            <option value="all">Tất cả nhãn</option>
             {allTags.map((tag) => (
               <option key={tag} value={tag}>
                 {tag}
@@ -123,12 +123,12 @@ export default function FilterPanel({
       {/* Ships */}
       {allShips.length > 0 && (
         <label className="filter-group">
-          <span className="filter-label">Cặp đôi (Ship)</span>
+          <span className="filter-label">Cặp ghép</span>
           <select
             value={filters.ship}
             onChange={(e) => handleChange('ship', e.target.value)}
           >
-            <option value="all">Tất cả ship</option>
+            <option value="all">Tất cả cặp ghép</option>
             {allShips.map((ship) => (
               <option key={ship} value={ship}>
                 {ship}
@@ -162,8 +162,8 @@ export default function FilterPanel({
           <option value="all">Tất cả loại</option>
           <option value="major">Sự kiện lớn</option>
           <option value="minor">Sự kiện nhỏ</option>
-          <option value="twist">Plot twist</option>
-          <option value="cliffhanger">Cliffhanger</option>
+          <option value="twist">Cú bẻ lái</option>
+          <option value="cliffhanger">Treo nút</option>
         </select>
       </label>
 

@@ -11,10 +11,21 @@ import {
 import {
   jobRepository,
 } from './repositories/jobRepository.js';
+import { analysisRepository } from '../analysis/repositories/analysisRepository.js';
 import { processCorpusAnalysisJob } from './jobTypes/corpusAnalysis.js';
 import { processCoherenceJob } from './jobTypes/coherenceJob.js';
 import { processFileParsingJob } from './jobTypes/fileParsing.js';
 import { processIncidentAnalysisJob } from './jobTypes/incidentAnalysisJob.js';
+import {
+  processAnalysisWindowJob,
+  processCharacterCanonicalizerJob,
+  processGraphProjectionJob,
+  processIncidentReducerJob,
+  processIncidentWorkerJob,
+  processReviewIntelligenceJob,
+  processWorldCanonicalizerJob,
+} from './jobTypes/narrativeDecomposedJobs.js';
+import { processScopedRerunJob } from './jobTypes/scopedRerunJob.js';
 import { JobWorker } from './workers/index.js';
 
 const TERMINAL_STATUSES = new Set([
@@ -55,6 +66,14 @@ class JobQueue extends EventEmitter {
       [JOB_TYPES.FILE_PARSING, processFileParsingJob],
       [JOB_TYPES.INCIDENT_ANALYSIS, processIncidentAnalysisJob],
       [JOB_TYPES.COHERENCE_PASS, processCoherenceJob],
+      [JOB_TYPES.SCOPED_RERUN, processScopedRerunJob],
+      [JOB_TYPES.ANALYSIS_WINDOW, processAnalysisWindowJob],
+      [JOB_TYPES.INCIDENT_REDUCER, processIncidentReducerJob],
+      [JOB_TYPES.INCIDENT_WORKER, processIncidentWorkerJob],
+      [JOB_TYPES.CHARACTER_CANONICALIZER, processCharacterCanonicalizerJob],
+      [JOB_TYPES.WORLD_CANONICALIZER, processWorldCanonicalizerJob],
+      [JOB_TYPES.GRAPH_PROJECTION, processGraphProjectionJob],
+      [JOB_TYPES.REVIEW_INTELLIGENCE, processReviewIntelligenceJob],
     ]);
     this.workers = [];
     this.runningJobs = new Map();
@@ -144,6 +163,16 @@ class JobQueue extends EventEmitter {
     }
 
     this.retryState.delete(jobId);
+
+    const sessionId = job?.inputData?.sessionId;
+    if (sessionId) {
+      await analysisRepository.updateExecutionSession(sessionId, {
+        status: 'failed',
+        errorMessage: 'Execution cancelled by user',
+        releasedAt: Date.now(),
+        completedAt: Date.now(),
+      }).catch(() => {});
+    }
 
     const updated = await jobRepository.updateJob(jobId, {
       status: JOB_STATUS.CANCELLED,
@@ -364,6 +393,16 @@ class JobQueue extends EventEmitter {
       errorStack: error?.stack || null,
       progressMessage: error?.message || 'Job failed',
     });
+
+    const sessionId = job?.inputData?.sessionId;
+    if (sessionId) {
+      await analysisRepository.updateExecutionSession(sessionId, {
+        status: 'failed',
+        errorMessage: error?.message || 'Execution failed',
+        releasedAt: Date.now(),
+        completedAt: Date.now(),
+      }).catch(() => {});
+    }
 
     this.emitJobEvent(job.id, 'error', {
       id: job.id,

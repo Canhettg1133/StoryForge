@@ -40,6 +40,8 @@ Yeu cau bat buoc:
 - events[] chi chua event co y nghia dien bien (bo event vo thuong vo phat).
 - chapter trong events/timeline phai la 1-based (1..${chapterCount}).
 - Khong tao event trung lap y nghia.
+- Trich mention theo bang chung co that; neu khong chac chan thi bo qua.
+- style_evidence chi la quan sat ngan gon co bang chung, khong viet thanh bai binh van dai.
 - Gioi han toi da ${eventBudget} events.
 
 Schema output:
@@ -85,7 +87,59 @@ Schema output:
         }
       ]
     }
-  ]
+  ],
+  "mentions": {
+    "characters": [
+      {
+        "name": "",
+        "roleHint": "",
+        "eventIds": [],
+        "chapters": [],
+        "evidence": []
+      }
+    ],
+    "objects": [
+      {
+        "name": "",
+        "ownerHint": "",
+        "kind": "",
+        "eventIds": [],
+        "chapters": [],
+        "evidence": []
+      }
+    ],
+    "terms": [
+      {
+        "name": "",
+        "category": "",
+        "definitionHint": "",
+        "eventIds": [],
+        "chapters": [],
+        "evidence": []
+      }
+    ],
+    "relationships": [
+      {
+        "source": "",
+        "target": "",
+        "type": "allies|enemies|romantic|family|neutral",
+        "eventIds": [],
+        "chapters": [],
+        "evidence": []
+      }
+    ]
+  },
+  "style_evidence": {
+    "observations": [
+      {
+        "chapter": 1,
+        "eventId": "evt_...",
+        "signalType": "dialogue_density|description_density|action_density|tone|pov|tense|motif|rhythm",
+        "observation": "",
+        "evidence": ""
+      }
+    ]
+  }
 }
 `.trim();
 }

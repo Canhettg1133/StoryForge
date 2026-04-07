@@ -9,9 +9,11 @@
     "db:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-local-postgres.ps1",
     "backend:start": "powershell -ExecutionPolicy Bypass -File scripts/start-local-backend.ps1",
     "jobs:server": "node src/services/jobs/server.js",
+    "analysis:eval:live": "node scripts/analysis-live-eval.mjs",
     "test": "vitest run",
     "test:phase6b": "vitest run src/tests/phases/phase6b-incidentFirst.test.js",
     "test:phase6d": "vitest run src/tests/phases/phase6d-analysisV2.test.js",
+    "test:phase6f": "vitest run src/tests/phases/phase6f-analysisLiveEval.test.js",
     "build": "vite build",
     "preview": "vite preview"
   },

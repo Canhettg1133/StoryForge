@@ -196,9 +196,18 @@ function collectContext(result = {}, options = {}) {
     .filter((item) => item.name)
     .slice(0, 80);
 
+  const worldSeed = result?.world_seed || result?.worldSeed || null;
+  const styleSeed = result?.style_seed || result?.styleSeed || null;
+  const entityMentions = result?.entity_mentions || result?.entityMentions || null;
+  const styleEvidence = result?.style_evidence || result?.styleEvidence || null;
+
   return {
     worldbuilding: result?.worldbuilding || {},
     summary: result?.summary || {},
+    world_seed: worldSeed,
+    style_seed: styleSeed,
+    entity_mentions: entityMentions,
+    style_evidence: styleEvidence,
     incidents,
     characters,
     events,

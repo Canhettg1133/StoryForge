@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useCorpusStore from '../../../../stores/corpusStore';
 import useAnalysisStore from '../../../../stores/analysisStore';
+import { useJobStore } from '../../../../stores/jobStore';
 import { corpusApi } from '../../../../services/api/corpusApi.js';
 import {
   parseAnalysisResults,
@@ -18,6 +19,7 @@ import {
   AUTO_ACCEPT_QUALITY_THRESHOLD,
   AUTO_ACCEPT_CHAPTER_CONFIDENCE_THRESHOLD,
 } from '../../../../services/viewer/analysisParser.js';
+import { normalizeIncident } from '../../../../services/analysis/models/incident.js';
 import { buildStoryGraph } from '../../../../services/analysis/v2/storyGraph.js';
 import { searchEvents } from '../../../../services/viewer/searchEngine.js';
 import {
@@ -60,7 +62,7 @@ export const DEFAULT_FILTERS = {
   _type: 'all',
 };
 
-export const VIEW_MODES = ['knowledge', 'incidents', 'list', 'review', 'mindmap', 'timeline', 'graph', 'compare'];
+export const VIEW_MODES = ['knowledge', 'incidents', 'review', 'timeline', 'graph', 'compare', 'list', 'mindmap', 'debug'];
 
 export default function useAnalysisViewer({ corpusId, analysisId }) {
   // Core state
@@ -93,14 +95,20 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     P2: 0,
     pending: 0,
   });
+  const [artifactData, setArtifactData] = useState(null);
+  const [analysisWindows, setAnalysisWindows] = useState([]);
 
   const initializedRef = useRef(false);
+  const lastHandledRerunJobRef = useRef(null);
 
   // Stores
   const corpus = useCorpusStore((state) => state.corpuses[corpusId]);
   const analyses = useAnalysisStore((state) => state.analyses);
   const analysisIdsByCorpus = useAnalysisStore((state) => state.analysisIdsByCorpus);
   const loadAnalyses = useAnalysisStore((state) => state.loadAnalyses);
+  const jobs = useJobStore((state) => state.jobs);
+  const jobHistory = useJobStore((state) => state.jobHistory);
+  const trackExternalJob = useJobStore((state) => state.trackExternalJob);
 
   const analysisIdsForCorpus = useMemo(() => {
     if (!corpusId) return EMPTY_ARRAY;
@@ -128,7 +136,11 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
 
   // Parse analysis results
   const parsed = useMemo(() => {
-    const rawPayload = analysis?.result ?? analysis?.finalResult ?? null;
+    if (isArtifactEnvelopeV3(artifactData)) {
+      return artifactToParsed(artifactData);
+    }
+
+    const rawPayload = artifactData || analysis?.result || analysis?.finalResult || null;
     if (!rawPayload) return null;
 
     try {
@@ -141,9 +153,13 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       console.warn('Failed to parse analysis results:', e);
       return null;
     }
-  }, [analysis]);
+  }, [analysis, artifactData]);
 
   const storyGraph = useMemo(() => {
+    if (artifactData?.graphProjections) {
+      return flattenGraphProjections(artifactData.graphProjections);
+    }
+
     const rawPayload = analysis?.result ?? analysis?.finalResult ?? null;
     if (rawPayload) {
       try {
@@ -174,13 +190,20 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       },
       relationships: Array.isArray(parsed.relationships) ? parsed.relationships : [],
     });
-  }, [analysis, parsed]);
+  }, [analysis, artifactData, parsed]);
+
+  const sourceEventMap = useMemo(() => {
+    return buildSourceEventMap(analysis?.result ?? analysis?.finalResult ?? null);
+  }, [analysis]);
 
   // Flatten all events
   const allEvents = useMemo(() => {
+    if (artifactData?.incidentBeats?.length) {
+      return artifactData.incidentBeats.map((beat) => beatToLegacyEvent(beat, artifactData.incidents || [], sourceEventMap));
+    }
     if (!parsed?.events) return [];
     return flattenEvents(parsed.events);
-  }, [parsed]);
+  }, [artifactData, parsed, sourceEventMap]);
 
   // Inject annotations and usage into events
   const allEventsWithAnnotations = useMemo(() => {
@@ -203,8 +226,11 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
   }, [allEventsWithAnnotations]);
 
   const locations = useMemo(() => {
+    if (artifactData?.canonicalEntities?.locations?.length) {
+      return artifactData.canonicalEntities.locations;
+    }
     return Array.isArray(parsed?.locations) ? parsed.locations : [];
-  }, [parsed]);
+  }, [artifactData, parsed]);
 
   const incidentClusters = useMemo(() => {
     const parsedIncidents = Array.isArray(parsed?.incidents) ? parsed.incidents : [];
@@ -348,7 +374,9 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     const displayIdSet = new Set(displayEvents.map((item) => item.id));
     return incidentClusters
       .map((incident) => {
-        const eventIds = Array.isArray(incident.eventIds) ? incident.eventIds : [];
+        const eventIds = Array.isArray(incident.containedEvents)
+          ? incident.containedEvents
+          : (Array.isArray(incident.eventIds) ? incident.eventIds : []);
         const matchedIds = eventIds.filter((id) => displayIdSet.has(id));
         if (matchedIds.length === 0) {
           return null;
@@ -364,11 +392,27 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
   }, [incidentClusters, displayEvents]);
 
   const incidents = useMemo(() => {
+    if (artifactData?.incidents?.length) {
+      return (parsed?.incidents || []).map((incident) => {
+        const containedEvents = Array.isArray(incident.containedEvents) && incident.containedEvents.length > 0
+          ? incident.containedEvents
+          : allEvents
+            .filter((event) => event.incidentId === incident.id)
+            .map((event) => event.id);
+
+        return {
+          ...incident,
+          containedEvents,
+          eventIds: containedEvents,
+          eventCount: containedEvents.length,
+          reviewStatus: incident.reviewStatus || 'needs_review',
+        };
+      });
+    }
+
     if (incidentRecords.length > 0) {
       return incidentRecords.map((incident) => ({
         ...incident,
-        startChapter: incident.chapterStartIndex ?? incident.startChapter ?? incident.chapterRange?.[0] ?? null,
-        endChapter: incident.chapterEndIndex ?? incident.endChapter ?? incident.chapterRange?.[1] ?? null,
         eventCount: Array.isArray(incident.containedEvents)
           ? incident.containedEvents.length
           : 0,
@@ -377,14 +421,18 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
 
     return displayIncidents.map((incident) => ({
       ...incident,
-      startChapter: incident.chapterStart ?? null,
-      endChapter: incident.chapterEnd ?? null,
-      containedEvents: incident.filteredEventIds || incident.eventIds || [],
-      eventCount: incident.filteredEventCount || incident.eventCount || 0,
+      containedEvents: incident.filteredEventIds || incident.containedEvents || incident.eventIds || [],
+      eventIds: incident.filteredEventIds || incident.containedEvents || incident.eventIds || [],
+      eventCount: incident.filteredEventCount || incident.eventCount || incident.containedEvents?.length || 0,
       reviewStatus: incident.reviewStatus || 'needs_review',
       priority: incident.priority || null,
     }));
-  }, [displayIncidents, incidentRecords]);
+  }, [allEvents, artifactData, displayIncidents, incidentRecords, parsed]);
+
+  const reviewQueue = useMemo(() => {
+    const rawItems = artifactData?.reviewQueue?.length ? artifactData.reviewQueue : reviewQueueItems;
+    return enrichReviewItems(rawItems, allEvents, incidents, locations);
+  }, [allEvents, artifactData, incidents, locations, reviewQueueItems]);
 
   // Selected items
   const selectedItems = useMemo(() => {
@@ -480,9 +528,11 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     const targetAnalysisId = analysis?.id || null;
 
     try {
-      const [incidentResp, reviewResp] = await Promise.all([
+      const [incidentResp, reviewResp, artifactResp, windowsResp] = await Promise.all([
         corpusApi.listIncidents(corpusId, targetAnalysisId ? { analysisId: targetAnalysisId } : {}),
         corpusApi.getReviewQueue(corpusId, targetAnalysisId ? { analysisId: targetAnalysisId, limit: 200 } : { limit: 200 }),
+        targetAnalysisId ? corpusApi.getAnalysisArtifact(corpusId, targetAnalysisId) : Promise.resolve(null),
+        targetAnalysisId ? corpusApi.getAnalysisWindows(corpusId, targetAnalysisId) : Promise.resolve(null),
       ]);
 
       setIncidentRecords(Array.isArray(incidentResp?.incidents) ? incidentResp.incidents : []);
@@ -494,6 +544,8 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
         P2: 0,
         pending: 0,
       });
+      setArtifactData(normalizeArtifactEnvelope(artifactResp?.artifact || null));
+      setAnalysisWindows(Array.isArray(windowsResp?.windows) ? windowsResp.windows : []);
     } catch (err) {
       setDbError(err?.message || 'Không thể tải dữ liệu incident-first.');
     }
@@ -512,6 +564,26 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     if (!corpusId) return;
     loadAnalyses(corpusId).catch(() => {});
   }, [corpusId, loadAnalyses]);
+
+  useEffect(() => {
+    if (!analysis?.id || !jobHistory.length) return;
+
+    const rerunJobId = jobHistory.find((jobId) => {
+      const job = jobs[jobId];
+      return (
+        job?.type === 'review_intelligence'
+        && job?.status === 'completed'
+        && job?.outputData?.analysisId === analysis.id
+      );
+    });
+
+    if (!rerunJobId || lastHandledRerunJobRef.current === rerunJobId) {
+      return;
+    }
+
+    lastHandledRerunJobRef.current = rerunJobId;
+    loadIncidentFirstData();
+  }, [analysis?.id, jobHistory, jobs, loadIncidentFirstData]);
 
   // Add search to history on query change
   const prevQueryRef = useRef('');
@@ -772,6 +844,48 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     }
   }, [corpusId]);
 
+  const handleRerunScope = useCallback(async (payload = {}) => {
+    const targetAnalysisId = analysis?.id || analysisId || null;
+    if (!corpusId || !targetAnalysisId) {
+      return null;
+    }
+
+    try {
+      const response = await corpusApi.rerunAnalysisScope(corpusId, targetAnalysisId, payload);
+      if (Array.isArray(response?.jobs)) {
+        for (const job of response.jobs) {
+          trackExternalJob({
+            id: job.id,
+            type: job.type,
+            status: 'pending',
+            progressMessage: 'Queued',
+            inputData: {
+              title: job.title || 'Narrative job',
+              ...response.rerunRequest,
+            },
+            createdAt: response.createdAt,
+          });
+        }
+      } else if (response?.jobId) {
+        trackExternalJob({
+          id: response.jobId,
+          type: response.jobType || 'scoped_rerun',
+          status: 'pending',
+          progressMessage: 'Queued',
+          inputData: {
+            title: 'Scoped rerun',
+            ...response.rerunRequest,
+          },
+          createdAt: response.createdAt,
+        });
+      }
+      return response;
+    } catch (err) {
+      setDbError(err?.message || 'Không thể chạy scoped rerun.');
+      throw err;
+    }
+  }, [analysis?.id, analysisId, corpusId, trackExternalJob]);
+
   return {
     // Data
     corpus,
@@ -786,9 +900,11 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     locations,
     incidentClusters: displayIncidents,
     incidents,
-    reviewQueue: reviewQueueItems,
+    reviewQueue,
     reviewQueueStats,
     storyGraph,
+    artifactData,
+    analysisWindows,
     stats,
     qualityStats,
     autoAcceptThreshold: AUTO_ACCEPT_QUALITY_THRESHOLD,
@@ -855,6 +971,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
     handleUnlinkFromProject,
     handleResolveReview,
     handleUpdateIncident,
+    handleRerunScope,
     refreshIncidentFirstData: loadIncidentFirstData,
     clearDbError: () => setDbError(null),
 
@@ -924,7 +1041,7 @@ function buildIncidentFallback(events = []) {
         Math.min(0.95, (majorLikeCount / Math.max(1, segment.length)) * 0.55 + 0.35),
       );
 
-      incidents.push({
+      incidents.push(normalizeIncident({
         id: `incident_fallback_${String(locationKey)}_${String(chapterStart || 0)}_${String(eventIds.length)}`,
         title: buildFallbackIncidentTitle(anchor),
         type: inferIncidentType(anchor),
@@ -937,14 +1054,15 @@ function buildIncidentFallback(events = []) {
         chapterStart,
         chapterEnd,
         confidence,
-        eventIds,
+        containedEvents: eventIds,
         eventCount: eventIds.length,
         subeventCount: Math.max(0, eventIds.length - 1),
         anchorEventId: anchor.id || null,
         anchorEventDescription: anchor.description || '',
         evidenceSnippet: anchor.locationLink?.evidenceSnippet || anchor.grounding?.evidenceSnippet || '',
         tags: [...new Set(segment.flatMap((item) => Array.isArray(item.tags) ? item.tags : []))].slice(0, 10),
-      });
+        provenance: { source: 'fallback' },
+      }));
     }
   }
 
@@ -952,7 +1070,7 @@ function buildIncidentFallback(events = []) {
   if (openingAnchor) {
     const exists = incidents.some((incident) => incident.anchorEventId === openingAnchor.id);
     if (!exists) {
-      incidents.unshift({
+      incidents.unshift(normalizeIncident({
         id: `incident_opening_${openingAnchor.id}`,
         title: buildFallbackIncidentTitle(openingAnchor, 'Sự kiện mở đầu'),
         type: 'major_plot_point',
@@ -965,14 +1083,15 @@ function buildIncidentFallback(events = []) {
         chapterStart: openingAnchor.chapterSafe || null,
         chapterEnd: openingAnchor.chapterSafe || null,
         confidence: 0.92,
-        eventIds: [openingAnchor.id],
+        containedEvents: [openingAnchor.id],
         eventCount: 1,
         subeventCount: 0,
         anchorEventId: openingAnchor.id,
         anchorEventDescription: openingAnchor.description || '',
         evidenceSnippet: openingAnchor.locationLink?.evidenceSnippet || openingAnchor.grounding?.evidenceSnippet || '',
         tags: Array.isArray(openingAnchor.tags) ? openingAnchor.tags.slice(0, 8) : [],
-      });
+        provenance: { source: 'fallback' },
+      }));
     }
   }
 
@@ -984,6 +1103,292 @@ function buildIncidentFallback(events = []) {
       if (chapterA !== chapterB) return chapterA - chapterB;
       return Number(b.confidence || 0) - Number(a.confidence || 0);
     });
+}
+
+function artifactToParsed(artifact) {
+  const beats = Array.isArray(artifact?.incidentBeats) ? artifact.incidentBeats : [];
+  const incidents = Array.isArray(artifact?.incidents)
+    ? artifact.incidents.map((incident) => normalizeIncident(incident))
+    : [];
+  const canonical = artifact?.canonicalEntities || {};
+
+  return {
+    structural: { characters: canonical.characters || [] },
+    events: buildEventsFromBeats(beats),
+    incidents,
+    worldProfile: canonical.worldProfile || {},
+    characterProfiles: canonical.characters || [],
+    locations: canonical.locations || [],
+    objects: canonical.objects || [],
+    terms: canonical.terms || [],
+    relationships: [],
+    knowledge: canonical,
+  };
+}
+
+export function normalizeArtifactEnvelope(artifact) {
+  if (!artifact || typeof artifact !== 'object') {
+    return null;
+  }
+
+  return {
+    ...artifact,
+    canonicalCorpus: artifact.canonicalCorpus || artifact.canonical_corpus || null,
+    incidentBeats: Array.isArray(artifact.incidentBeats)
+      ? artifact.incidentBeats
+      : (Array.isArray(artifact.incident_beats) ? artifact.incident_beats : []),
+    canonicalEntities: artifact.canonicalEntities || artifact.canonical_entities || {},
+    reviewQueue: Array.isArray(artifact.reviewQueue)
+      ? artifact.reviewQueue
+      : (Array.isArray(artifact.review_queue) ? artifact.review_queue : []),
+    analysisWindows: Array.isArray(artifact.analysisWindows)
+      ? artifact.analysisWindows
+      : (Array.isArray(artifact.analysis_windows) ? artifact.analysis_windows : []),
+    graphProjections: artifact.graphProjections || artifact.graph_projections || null,
+    incidentMap: artifact.incidentMap || artifact.incident_map || null,
+    rerunManifest: artifact.rerunManifest || artifact.rerun_manifest || null,
+    passStatus: artifact.passStatus || artifact.pass_status || null,
+    degradedRunReport: artifact.degradedRunReport || artifact.degraded_run_report || null,
+    storyGraph: artifact.storyGraph || artifact.story_graph || null,
+    graphSummary: artifact.graphSummary || artifact.graph_summary || null,
+  };
+}
+
+function flattenSourceEvents(raw = {}) {
+  if (Array.isArray(raw)) {
+    return raw.filter((item) => item && typeof item === 'object');
+  }
+
+  const layer = raw && typeof raw === 'object' ? raw : {};
+  const result = [];
+  const visit = (event, bucket) => {
+    if (!event || typeof event !== 'object') return;
+    result.push({
+      ...event,
+      eventType: event.eventType || event.type || event._type || bucket,
+    });
+    for (const key of ['subevents', 'subEvents', 'children']) {
+      const children = Array.isArray(event[key]) ? event[key] : [];
+      for (const child of children) {
+        visit(child, bucket);
+      }
+    }
+  };
+
+  for (const key of [
+    'majorEvents',
+    'major',
+    'major_events',
+    'minorEvents',
+    'minor',
+    'minor_events',
+    'plotTwists',
+    'twists',
+    'plot_twists',
+    'cliffhangers',
+    'cliffhanger',
+    'cliff_hangers',
+  ]) {
+    const items = Array.isArray(layer[key]) ? layer[key] : [];
+    for (const event of items) {
+      visit(event, key);
+    }
+  }
+
+  return result;
+}
+
+function isArtifactEnvelopeV3(artifact) {
+  if (!artifact || typeof artifact !== 'object') {
+    return false;
+  }
+
+  return (
+    Array.isArray(artifact.incidentBeats)
+    || Array.isArray(artifact.incident_beats)
+    || Array.isArray(artifact.analysisWindows)
+    || Array.isArray(artifact.analysis_windows)
+    || Boolean(artifact.canonicalEntities)
+    || Boolean(artifact.canonical_entities)
+    || Boolean(artifact.incidentMap)
+    || Boolean(artifact.incident_map)
+  );
+}
+
+function buildEventsFromBeats(beats = []) {
+  return {
+    major: beats.filter((beat) => String(beat.beatType || '').toLowerCase() !== 'minor')
+      .map((beat) => beatToLegacyEvent(beat)),
+    minor: beats.filter((beat) => String(beat.beatType || '').toLowerCase() === 'minor')
+      .map((beat) => beatToLegacyEvent(beat)),
+    twists: [],
+    cliffhangers: [],
+  };
+}
+
+function buildSourceEventMap(rawPayload) {
+  if (!rawPayload) return new Map();
+
+  try {
+    const raw = typeof rawPayload === 'string'
+      ? JSON.parse(rawPayload)
+      : rawPayload;
+    const sourceEvents = flattenSourceEvents(raw?.events || raw?.incident_beats || []);
+    const entries = [];
+    for (const item of sourceEvents) {
+      if (!item || typeof item !== 'object') continue;
+      if (item.id) entries.push([item.id, item]);
+      if (item.sourceEventId) entries.push([item.sourceEventId, item]);
+    }
+    return new Map(entries);
+  } catch {
+    return new Map();
+  }
+}
+
+function beatToLegacyEvent(beat, incidents = [], sourceEventMap = new Map()) {
+  const incident = Array.isArray(incidents)
+    ? incidents.find((item) => item.id === beat.incidentId)
+    : null;
+  const sourceEvent = beat?.sourceEvent
+    || beat?.payload
+    || sourceEventMap.get(beat?.sourceEventId)
+    || sourceEventMap.get(beat?.id)
+    || {};
+  const chapter = Number.isFinite(Number(beat.chapterNumber)) ? Number(beat.chapterNumber) : null;
+  const locationName = normalizeText(
+    beat.locationName
+    || sourceEvent.locationName
+    || sourceEvent.primaryLocationName
+    || sourceEvent.locationLink?.locationName
+    || '',
+  );
+  return {
+    id: beat.sourceEventId || beat.id,
+    title: beat.summary,
+    description: beat.summary,
+    severity: String(beat.beatType || '').toLowerCase().includes('minor') ? 'minor' : 'major',
+    chapter,
+    chapterNumber: chapter,
+    incidentId: beat.incidentId || null,
+    confidence: Number(beat.confidence || incident?.confidence || 0),
+    evidence: Array.isArray(beat.evidenceRefs) ? beat.evidenceRefs : [],
+    reviewStatus: incident?.reviewStatus || 'needs_review',
+    needsReview: (incident?.reviewStatus || 'needs_review') !== 'auto_accepted',
+    characters: Array.isArray(beat.characters) && beat.characters.length > 0
+      ? beat.characters
+      : (Array.isArray(sourceEvent.characters) ? sourceEvent.characters : []),
+    objects: Array.isArray(beat.objects) && beat.objects.length > 0
+      ? beat.objects
+      : (Array.isArray(sourceEvent.objects) ? sourceEvent.objects : []),
+    terms: Array.isArray(beat.terms) && beat.terms.length > 0
+      ? beat.terms
+      : (Array.isArray(sourceEvent.terms) ? sourceEvent.terms : []),
+    tags: Array.isArray(beat.tags) && beat.tags.length > 0
+      ? beat.tags
+      : (Array.isArray(sourceEvent.tags) ? sourceEvent.tags : []),
+    locationLink: locationName ? { locationName } : null,
+    primaryLocationName: locationName || null,
+    _type: 'major',
+    quality: {
+      score: Math.round((Number(beat.confidence || 0.6) || 0.6) * 100),
+      autoAccepted: (incident?.reviewStatus || 'needs_review') === 'auto_accepted',
+    },
+  };
+}
+
+function formatReviewItemTitle(item, { eventById, incidentById, locationById }) {
+  if (item.displayTitle) return item.displayTitle;
+
+  if (item.itemType === 'incident') {
+    const incident = incidentById.get(item.itemId);
+    return incident?.title || `Sự kiện lớn ${item.itemId || ''}`.trim();
+  }
+
+  if (item.itemType === 'event' || item.itemType === 'beat') {
+    const event = eventById.get(item.itemId);
+    return normalizeText(event?.description || event?.title || '') || `Nhịp ${item.itemId || ''}`.trim();
+  }
+
+  if (item.itemType === 'location') {
+    const location = locationById.get(item.itemId);
+    return location?.name || `Địa điểm ${item.itemId || ''}`.trim();
+  }
+
+  if (item.itemType === 'consistency_risk') {
+    return normalizeText(item.reason?.[0] || item.description || 'Rủi ro nhất quán');
+  }
+
+  return normalizeText(item.title || item.label || item.itemId || 'Mục review');
+}
+
+function normalizeReviewScope(item = {}) {
+  const rerunScope = String(item.rerunScope || item.rerun_scope || '').trim();
+  if ((item.itemType === 'event' || item.itemType === 'beat') && rerunScope === 'graph_projection') {
+    return 'incident';
+  }
+  return rerunScope || 'incident';
+}
+
+function enrichReviewItems(items = [], events = [], incidents = [], locations = []) {
+  const eventById = new Map(events.filter((item) => item?.id).map((item) => [item.id, item]));
+  const incidentById = new Map(incidents.filter((item) => item?.id).map((item) => [item.id, item]));
+  const locationById = new Map(locations.filter((item) => item?.id).map((item) => [item.id, item]));
+
+  return items.map((item) => {
+    const scope = normalizeReviewScope(item);
+    const event = eventById.get(item.itemId);
+    const incident = incidentById.get(item.itemId);
+
+    return {
+      ...item,
+      rerunScope: scope,
+      suggestedAction: item.suggestedAction || item.suggested_action || 'Kiểm tra mục này và chạy lại đúng scope nếu cần',
+      displayTitle: formatReviewItemTitle(item, { eventById, incidentById, locationById }),
+      displayChapter: Number.isFinite(Number(event?.chapter))
+        ? Number(event.chapter)
+        : (Number.isFinite(Number(incident?.chapterStart)) ? Number(incident.chapterStart) : null),
+    };
+  });
+}
+
+function flattenGraphProjections(graphProjections = {}) {
+  const nodes = [];
+  const edges = [];
+  const nodeSeen = new Set();
+
+  for (const [graphKind, projection] of Object.entries(graphProjections || {})) {
+    for (const node of Array.isArray(projection?.nodes) ? projection.nodes : []) {
+      if (!node?.id || nodeSeen.has(node.id)) continue;
+      nodeSeen.add(node.id);
+      nodes.push({
+        ...node,
+        graphKind: node.graphKind || node.graph_kind || graphKind,
+      });
+    }
+    for (const edge of Array.isArray(projection?.edges) ? projection.edges : []) {
+      if (!edge?.id) continue;
+      edges.push({
+        ...edge,
+        graphKind: edge.graphKind || edge.graph_kind || graphKind,
+      });
+    }
+  }
+
+  return {
+    nodes,
+    edges,
+    summary: {
+      nodeCount: nodes.length,
+      edgeCount: edges.length,
+      edgeTypes: edges.reduce((acc, edge) => {
+        const key = edge.graphKind || edge.type || 'unknown';
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {}),
+    },
+    projections: graphProjections,
+  };
 }
 
 function normalizeText(value) {

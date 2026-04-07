@@ -11,20 +11,22 @@ export const VIEW_ICONS = {
   timeline: '🕒',
   graph: '👥',
   compare: '⚖️',
+  debug: '🧰',
 };
 
 export const VIEW_LABELS = {
   knowledge: 'Tri thức',
   incidents: 'Sự kiện lớn',
   list: 'Danh sách',
-  review: 'Review queue',
+  review: 'Hàng duyệt',
   mindmap: 'Sơ đồ tư duy',
   timeline: 'Dòng thời gian',
-  graph: 'Story Graph',
+  graph: 'Đồ thị truyện',
   compare: 'So sánh',
+  debug: 'Gỡ lỗi',
 };
 
-const DEFAULT_MODES = ['knowledge', 'incidents', 'list', 'review', 'mindmap', 'timeline', 'graph', 'compare'];
+const DEFAULT_MODES = ['knowledge', 'incidents', 'review', 'timeline', 'graph', 'compare', 'list', 'mindmap', 'debug'];
 
 export default function ViewToggle({ view, onChange, modes = DEFAULT_MODES }) {
   return (

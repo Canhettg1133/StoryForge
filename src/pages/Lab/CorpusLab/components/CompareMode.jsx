@@ -60,7 +60,6 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
 
   return (
     <div className="compare-mode">
-      {/* Corpus selector */}
       <div className="compare-header">
         <div className="compare-corpus compare-corpus-a">
           <label>Bộ dữ liệu A</label>
@@ -70,7 +69,7 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
           </div>
         </div>
 
-        <div className="compare-vs">VS</div>
+        <div className="compare-vs">Đối chiếu</div>
 
         <div className="compare-corpus compare-corpus-b">
           <label>Bộ dữ liệu B</label>
@@ -102,7 +101,6 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
         </div>
       </div>
 
-      {/* Comparison content */}
       {!corpusB ? (
         <div className="compare-placeholder">
           <p>Chọn corpus thứ hai ở trên để bắt đầu so sánh.</p>
@@ -110,7 +108,7 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
       ) : loading ? (
         <div className="compare-loading">
           <div className="loading-spinner" />
-          <p>Đang so sánh corpus...</p>
+          <p>Đang so sánh dữ liệu...</p>
         </div>
       ) : error ? (
         <div className="compare-error">
@@ -118,7 +116,6 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
         </div>
       ) : comparison ? (
         <div className="compare-content">
-          {/* Stats comparison */}
           <div className="compare-stats-grid">
             <div className="stat-card">
               <h4>{comparison.stats.corpusA.title}</h4>
@@ -161,7 +158,6 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
             </div>
           </div>
 
-          {/* Similarity score */}
           <div className="similarity-score">
             <span className="score-label">Điểm tương đồng</span>
             <div className="score-bar">
@@ -175,7 +171,6 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
             </span>
           </div>
 
-          {/* Similar patterns */}
           <div className="compare-section">
             <h4>Mẫu tương tự ({comparison.similarities.length})</h4>
             {comparison.similarities.length === 0 ? (
@@ -202,7 +197,6 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
             )}
           </div>
 
-          {/* Unique patterns */}
           <div className="compare-sections-split">
             <div className="compare-section half">
               <h4>Chỉ có ở {comparison.stats.corpusA.title} ({comparison.uniqueA.length})</h4>
@@ -229,10 +223,9 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
             </div>
           </div>
 
-          {/* Trope equivalents */}
           {tropeEquivalents && (
             <div className="compare-section">
-              <h4>Trope tương đương</h4>
+              <h4>Mô-típ tương đương</h4>
               <div className="trope-list">
                 {tropeEquivalents.map((trope, i) => (
                   <div key={i} className={`trope-item status-${trope.status}`}>

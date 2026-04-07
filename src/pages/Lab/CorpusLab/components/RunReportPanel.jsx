@@ -9,7 +9,7 @@ function formatTimestamp(value) {
 
 function prettyStatus(status) {
   const normalized = String(status || '').replace(/_/g, ' ').trim();
-  return normalized || 'unknown';
+  return normalized || 'chưa rõ';
 }
 
 function toNumber(value, fallback = 0) {
@@ -47,19 +47,19 @@ export default function RunReportPanel({
     <section className="run-report-panel">
       <div className="run-report-header">
         <div>
-          <strong>Run Report</strong>
+          <strong>Báo cáo run</strong>
           <span className="muted">
-            {artifactVersion === 'v2' ? 'Analysis V2 artifact' : 'Legacy artifact'}
+            {artifactVersion === 'v2' ? 'Artifact phân tích V2' : 'Artifact kế thừa'}
           </span>
         </div>
         <div className="run-report-meta">
-          <span>Mode: {manifest?.runMode || 'unknown'}</span>
+          <span>Chế độ: {manifest?.runMode || 'chưa rõ'}</span>
           <span>Bắt đầu: {formatTimestamp(manifest?.startedAt)}</span>
           <span>Hoàn tất: {formatTimestamp(manifest?.completedAt)}</span>
-          <span>Retries: {retryCount}</span>
-          <span>Schema repaired: {repairedCount}</span>
-          <span>Validation fail: {validationFailureCount}</span>
-          <span>Degraded items: {degradedItems.length}</span>
+          <span>Số lần thử lại: {retryCount}</span>
+          <span>Đã repair schema: {repairedCount}</span>
+          <span>Lỗi validate: {validationFailureCount}</span>
+          <span>Mục degraded: {degradedItems.length}</span>
         </div>
       </div>
 
@@ -69,7 +69,7 @@ export default function RunReportPanel({
           className="run-report-toggle"
           onClick={() => setExpanded((current) => !current)}
         >
-          {expanded ? 'Thu gọn run report' : 'Mở chi tiết run report'}
+          {expanded ? 'Thu gọn báo cáo run' : 'Mở chi tiết báo cáo run'}
         </button>
       </div>
 
@@ -82,11 +82,11 @@ export default function RunReportPanel({
                 <span>{prettyStatus(pass.status)}</span>
               </header>
               <div className="run-report-pass-body">
-                <span>Retries: {Number(pass.retries || 0)}</span>
+                <span>Thử lại: {Number(pass.retries || 0)}</span>
                 <span>Repair: {pass.repaired ? 'Có' : 'Không'}</span>
                 {pass.metrics && Object.keys(pass.metrics).length > 0 && (
                   <span>
-                    Metrics: {Object.entries(pass.metrics).map(([key, value]) => `${key}=${value}`).join(', ')}
+                    Chỉ số: {Object.entries(pass.metrics).map(([key, value]) => `${key}=${value}`).join(', ')}
                   </span>
                 )}
               </div>
@@ -97,12 +97,12 @@ export default function RunReportPanel({
 
       {expanded && degradedItems.length > 0 && (
         <div className="run-report-degraded">
-          <strong>Degraded Run</strong>
+          <strong>Run bị degraded</strong>
           <ul>
             {degradedItems.map((item, index) => (
               <li key={`${item.passId || 'pass'}-${index}`}>
-                [{item.passId || 'unknown'}] {item.reason || 'unknown'}
-                {item.fallback ? ` -> fallback: ${item.fallback}` : ''}
+                [{item.passId || 'unknown'}] {item.reason || 'chưa rõ'}
+                {item.fallback ? ` -> dùng fallback: ${item.fallback}` : ''}
               </li>
             ))}
           </ul>

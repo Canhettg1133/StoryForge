@@ -41,6 +41,15 @@ function parseJsonish(value) {
   }
 }
 
+function buildGraphStorageId(analysisId, graphItemId) {
+  const normalizedAnalysisId = String(analysisId || '').trim();
+  const normalizedGraphItemId = String(graphItemId || '').trim();
+  if (!normalizedAnalysisId || !normalizedGraphItemId) {
+    return normalizedGraphItemId || normalizedAnalysisId;
+  }
+  return `${normalizedAnalysisId}:${normalizedGraphItemId}`;
+}
+
 function schedule(label, task) {
   if (!hasPostgresDatabase()) {
     return;
@@ -493,7 +502,7 @@ export function mirrorStoryGraph({
             id, corpus_id, analysis_id, node_type, label, confidence, chapter_number, payload, created_at
           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         `, [
-          node.id,
+          buildGraphStorageId(analysisId, node.id),
           corpusId,
           analysisId,
           node.type || 'unknown',
@@ -512,7 +521,7 @@ export function mirrorStoryGraph({
             source_pass, review_status, payload, created_at
           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         `, [
-          edge.id,
+          buildGraphStorageId(analysisId, edge.id),
           corpusId,
           analysisId,
           edge.type || 'unknown',

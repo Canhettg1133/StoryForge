@@ -4,6 +4,12 @@ import { ANALYSIS_CONFIG } from '../../analysis/analysisConfig.js';
 import { getCorpusAnalysisService } from '../../analysis/index.js';
 import { incidentFirstRepository } from '../../analysis/repositories/incidentFirstRepository.js';
 import { analysisRepository } from '../../analysis/repositories/analysisRepository.js';
+import { buildScopedRerunJobPlan } from '../../analysis/v3/rerunJobPlanner.js';
+import { buildAnalysisArtifactV3 } from '../../analysis/v3/artifactBuilder.js';
+import { buildSlimArtifactEnvelope, buildSlimFinalResult, normalizeAnalysisPayloadMode } from '../../analysis/v3/payloadModes.js';
+import { persistIncidentFirstArtifacts } from '../../analysis/incidentFirstPersistence.js';
+import { JOB_PRIORITY, JOB_TYPES } from '../../jobs/config.js';
+import { getJobQueue } from '../../jobs/jobQueue.js';
 import { projectSnapshotRepository } from '../../projects/repositories/projectSnapshotRepository.js';
 import {
   createCorpusFromUpload,
@@ -75,9 +81,74 @@ function toHttpError(error) {
   }
 }
 
+function parseAnalysisResultPayload(analysis = null) {
+  if (!analysis) {
+    return null;
+  }
+
+  const candidate = analysis.result ?? analysis.finalResult ?? null;
+  if (!candidate) {
+    return null;
+  }
+
+  if (typeof candidate === 'object') {
+    return candidate;
+  }
+
+  if (typeof candidate !== 'string') {
+    return null;
+  }
+
+  try {
+    return JSON.parse(candidate);
+  } catch {
+    return null;
+  }
+}
+
+async function ensureArtifactV3({
+  analysis,
+  corpusId,
+}) {
+  if (!analysis?.id || !corpusId) {
+    return null;
+  }
+
+  const existing = await analysisRepository.getAnalysisArtifactByAnalysisAsync(analysis.id);
+  if (existing) {
+    return existing;
+  }
+
+  const rawResult = parseAnalysisResultPayload(analysis);
+  if (!rawResult || typeof rawResult !== 'object') {
+    return null;
+  }
+
+  const chunks = await analysisRepository.listCorpusChunksForAnalysisAsync(corpusId);
+  const artifact = String(rawResult.artifact_version || '').toLowerCase() === 'v3'
+    && rawResult.canonical_corpus
+    && rawResult.incident_map
+    ? rawResult
+    : buildAnalysisArtifactV3({
+      corpusId,
+      analysisId: analysis.id,
+      chunks,
+      finalResult: rawResult,
+    });
+
+  await persistIncidentFirstArtifacts({
+    corpusId,
+    analysisId: analysis.id,
+    result: artifact,
+  });
+
+  return analysisRepository.getAnalysisArtifactByAnalysisAsync(analysis.id);
+}
+
 export function createCorpusRouter() {
   const router = express.Router();
   const analysisService = getCorpusAnalysisService();
+  const jobQueue = getJobQueue();
 
   async function resolveAnalysisId(corpusId, requestedAnalysisId = null) {
     if (requestedAnalysisId) {
@@ -294,8 +365,10 @@ export function createCorpusRouter() {
   });
 
   router.get('/:id/analysis/:analysisId', async (req, res) => {
+    const mode = normalizeAnalysisPayloadMode(req.query?.mode);
     const analysis = await analysisService.getById(req.params.analysisId, {
       includeResults: true,
+      mode,
     });
 
     if (!analysis || analysis.corpusId !== req.params.id) {
@@ -325,6 +398,222 @@ export function createCorpusRouter() {
       analysisId: req.params.analysisId,
       corpusId: req.params.id,
       ...graphPayload,
+    });
+  });
+
+  router.get('/:id/analysis/:analysisId/artifact', async (req, res) => {
+    const mode = normalizeAnalysisPayloadMode(req.query?.mode);
+    const analysis = await analysisService.getById(req.params.analysisId, {
+      includeResults: true,
+      mode,
+    });
+
+    if (!analysis || analysis.corpusId !== req.params.id) {
+      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+    }
+
+    const artifact = await ensureArtifactV3({
+      analysis,
+      corpusId: req.params.id,
+    });
+    if (!artifact) {
+      const fallbackArtifact = mode === 'full'
+        ? (analysis.result || null)
+        : buildSlimFinalResult(analysis.result || {});
+      return res.json({
+        analysisId: req.params.analysisId,
+        corpusId: req.params.id,
+        artifact: fallbackArtifact,
+        artifactVersion: analysis.artifactVersion || analysis.result?.artifact_version || 'legacy',
+      });
+    }
+
+    return res.json({
+      analysisId: req.params.analysisId,
+      corpusId: req.params.id,
+      artifactVersion: artifact.artifactVersion,
+      artifact: mode === 'full' ? artifact : buildSlimArtifactEnvelope(artifact),
+    });
+  });
+
+  router.get('/:id/analysis/:analysisId/windows', async (req, res) => {
+    const analysis = await analysisService.getById(req.params.analysisId, {
+      includeResults: false,
+    });
+
+    if (!analysis || analysis.corpusId !== req.params.id) {
+      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+    }
+
+    const windows = await analysisRepository.listAnalysisWindowsByAnalysisAsync(req.params.analysisId);
+    const beats = await analysisRepository.listAnalysisBeatsByAnalysisAsync(req.params.analysisId);
+
+    return res.json({
+      analysisId: req.params.analysisId,
+      corpusId: req.params.id,
+      windows,
+      beatCount: beats.length,
+      total: windows.length,
+    });
+  });
+
+  router.post('/:id/analysis/:analysisId/rerun', async (req, res) => {
+    const analysis = await analysisService.getById(req.params.analysisId, {
+      includeResults: true,
+    });
+
+    if (!analysis || analysis.corpusId !== req.params.id) {
+      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+    }
+
+    const artifact = await ensureArtifactV3({
+      analysis,
+      corpusId: req.params.id,
+    });
+    if (!artifact) {
+      return res.status(409).json({
+        error: 'Artifact V3 chua san sang cho rerun scope.',
+      });
+    }
+
+    const payload = req.body || {};
+    const requestedPhase = String(payload.phase || '').trim() || 'incident';
+    const windowIds = Array.isArray(payload.windowIds) ? payload.windowIds.map((item) => String(item || '').trim()).filter(Boolean) : [];
+    const incidentIds = Array.isArray(payload.incidentIds) ? payload.incidentIds.map((item) => String(item || '').trim()).filter(Boolean) : [];
+    const canonicalizerKinds = Array.isArray(payload.canonicalizerKinds)
+      ? payload.canonicalizerKinds.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const reason = String(payload.reason || '').trim() || null;
+
+    const activeSession = await analysisRepository.getActiveExecutionSessionByAnalysisAsync(req.params.analysisId);
+    if (activeSession) {
+      return res.status(409).json({
+        error: 'Analysis da co mot rerun session dang chay.',
+        activeSession,
+      });
+    }
+
+    const { preview, jobs: plannedJobs } = buildScopedRerunJobPlan({
+      artifact,
+      corpusId: req.params.id,
+      analysisId: req.params.analysisId,
+      phase: requestedPhase,
+      windowIds,
+      incidentIds,
+      canonicalizerKinds,
+      reason,
+      keyCount: 1,
+    });
+    let session;
+    try {
+      session = await analysisRepository.acquireExecutionSession({
+        corpusId: req.params.id,
+        analysisId: req.params.analysisId,
+        scopePhase: requestedPhase,
+        requestedScope: preview.rerunRequest,
+        plannedJobs: plannedJobs.map((job) => ({
+          key: job.key,
+          type: job.type,
+          dependsOn: job.dependsOn,
+          title: job.inputData?.title || job.key,
+        })),
+      });
+    } catch (error) {
+      if (error?.code === 'ANALYSIS_LOCKED') {
+        return res.status(409).json({
+          error: error.message,
+          activeSession: error.details || null,
+        });
+      }
+      throw error;
+    }
+    const keyToJobId = new Map();
+    const createdJobs = [];
+
+    try {
+      for (const plannedJob of plannedJobs) {
+        const dependsOn = plannedJob.dependsOn.map((key) => keyToJobId.get(key)).filter(Boolean);
+        const inputData = {
+          ...plannedJob.inputData,
+          sessionId: session.id,
+          lockToken: session.lockToken,
+          dependencyJobIds: dependsOn,
+        };
+
+        if (plannedJob.type === JOB_TYPES.GRAPH_PROJECTION) {
+          inputData.incidentDependencyJobIds = plannedJobs
+            .filter((item) => item.type === JOB_TYPES.INCIDENT_WORKER)
+            .map((item) => keyToJobId.get(item.key))
+            .filter(Boolean);
+          inputData.canonicalizerDependencyJobIds = plannedJobs
+            .filter((item) => [JOB_TYPES.CHARACTER_CANONICALIZER, JOB_TYPES.WORLD_CANONICALIZER].includes(item.type))
+            .map((item) => keyToJobId.get(item.key))
+            .filter(Boolean);
+        }
+
+        if (plannedJob.type === JOB_TYPES.REVIEW_INTELLIGENCE) {
+          inputData.incidentDependencyJobIds = plannedJobs
+            .filter((item) => item.type === JOB_TYPES.INCIDENT_WORKER)
+            .map((item) => keyToJobId.get(item.key))
+            .filter(Boolean);
+          inputData.canonicalizerDependencyJobIds = plannedJobs
+            .filter((item) => [JOB_TYPES.CHARACTER_CANONICALIZER, JOB_TYPES.WORLD_CANONICALIZER].includes(item.type))
+            .map((item) => keyToJobId.get(item.key))
+            .filter(Boolean);
+          inputData.graphDependencyJobIds = plannedJobs
+            .filter((item) => item.type === JOB_TYPES.GRAPH_PROJECTION)
+            .map((item) => keyToJobId.get(item.key))
+            .filter(Boolean);
+        }
+
+        const created = await jobQueue.createJob({
+          type: plannedJob.type,
+          inputData,
+          dependsOn,
+          priority: plannedJob.priority ?? (
+            requestedPhase === 'window' || requestedPhase === 'reducer'
+              ? JOB_PRIORITY.HIGH
+              : JOB_PRIORITY.NORMAL
+          ),
+        });
+        keyToJobId.set(plannedJob.key, created.id);
+        createdJobs.push({
+          id: created.id,
+          type: plannedJob.type,
+          dependsOn,
+          title: inputData.title || plannedJob.key,
+        });
+      }
+    } catch (error) {
+      await analysisRepository.updateExecutionSession(session.id, {
+        status: 'failed',
+        errorMessage: error?.message || 'Failed to enqueue rerun DAG',
+        releasedAt: Date.now(),
+        completedAt: Date.now(),
+      }).catch(() => {});
+      throw error;
+    }
+
+    const finalJob = createdJobs[createdJobs.length - 1] || null;
+    await analysisRepository.updateExecutionSession(session.id, {
+      rootJobId: createdJobs[0]?.id || null,
+      finalJobId: finalJob?.id || null,
+      status: 'pending',
+    });
+
+    return res.status(202).json({
+      accepted: true,
+      executionMode: 'job_dag',
+      analysisId: req.params.analysisId,
+      corpusId: req.params.id,
+      sessionId: session.id,
+      jobId: finalJob?.id || null,
+      jobType: finalJob?.type || null,
+      createdAt: Date.now(),
+      rerunRequest: preview.rerunRequest,
+      invalidation: preview.invalidation,
+      executionPlan: preview.executionPlan,
+      jobs: createdJobs,
     });
   });
 

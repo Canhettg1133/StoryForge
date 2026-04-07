@@ -29,6 +29,12 @@ describe('Phase 1 - Job Queue Core', () => {
     expect(JOB_TYPES.FILE_PARSING).toBe('file_parsing');
     expect(JOB_TYPES.INCIDENT_ANALYSIS).toBe('incident_analysis');
     expect(JOB_TYPES.COHERENCE_PASS).toBe('coherence_pass');
+    expect(JOB_TYPES.SCOPED_RERUN).toBe('scoped_rerun');
+    expect(JOB_TYPES.ANALYSIS_WINDOW).toBe('analysis_window');
+    expect(JOB_TYPES.INCIDENT_REDUCER).toBe('incident_reducer');
+    expect(JOB_TYPES.INCIDENT_WORKER).toBe('incident_worker');
+    expect(JOB_TYPES.GRAPH_PROJECTION).toBe('graph_projection');
+    expect(JOB_TYPES.REVIEW_INTELLIGENCE).toBe('review_intelligence');
 
     expect(JOB_STATUS.PENDING).toBe('pending');
     expect(JOB_STATUS.RUNNING).toBe('running');

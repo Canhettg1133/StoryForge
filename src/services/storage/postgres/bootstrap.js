@@ -114,6 +114,8 @@ CREATE TABLE IF NOT EXISTS analysis_run_artifacts (
   updated_at BIGINT NOT NULL
 );
 
+ALTER TABLE corpus_analyses ADD COLUMN IF NOT EXISTS artifact_revision INTEGER DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS analysis_windows (
   id TEXT PRIMARY KEY,
   corpus_id TEXT NOT NULL REFERENCES corpuses(id) ON DELETE CASCADE,
@@ -430,6 +432,44 @@ CREATE TABLE IF NOT EXISTS analysis_pass_reports (
   created_at BIGINT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS analysis_execution_sessions (
+  id TEXT PRIMARY KEY,
+  corpus_id TEXT NOT NULL REFERENCES corpuses(id) ON DELETE CASCADE,
+  analysis_id TEXT NOT NULL REFERENCES corpus_analyses(id) ON DELETE CASCADE,
+  lock_token TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  scope_phase TEXT NOT NULL,
+  requested_scope JSONB NOT NULL DEFAULT '{}'::jsonb,
+  planned_jobs JSONB NOT NULL DEFAULT '[]'::jsonb,
+  baseline_artifact_revision INTEGER NOT NULL DEFAULT 0,
+  target_artifact_revision INTEGER NOT NULL DEFAULT 1,
+  current_stage_key TEXT,
+  current_job_id TEXT,
+  root_job_id TEXT,
+  final_job_id TEXT,
+  error_message TEXT,
+  last_heartbeat_at BIGINT NOT NULL,
+  lease_expires_at BIGINT NOT NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  completed_at BIGINT,
+  released_at BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS analysis_execution_stage_outputs (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES analysis_execution_sessions(id) ON DELETE CASCADE,
+  corpus_id TEXT NOT NULL REFERENCES corpuses(id) ON DELETE CASCADE,
+  analysis_id TEXT NOT NULL REFERENCES corpus_analyses(id) ON DELETE CASCADE,
+  stage_key TEXT NOT NULL,
+  job_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  UNIQUE (session_id, stage_key)
+);
+
 CREATE TABLE IF NOT EXISTS project_analysis_snapshots (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -499,6 +539,8 @@ CREATE INDEX IF NOT EXISTS idx_graph_nodes_analysis_kind ON analysis_graph_nodes
 CREATE INDEX IF NOT EXISTS idx_graph_edges_analysis_kind ON analysis_graph_edges(analysis_id, graph_kind);
 CREATE INDEX IF NOT EXISTS idx_project_analysis_snapshots_project ON project_analysis_snapshots(project_id, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_status_priority_created ON jobs(status, priority DESC, created_at ASC);
+CREATE INDEX IF NOT EXISTS idx_analysis_execution_sessions_analysis_status ON analysis_execution_sessions(analysis_id, status, lease_expires_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analysis_execution_stage_outputs_session_stage ON analysis_execution_stage_outputs(session_id, stage_key);
 `;
 
 export async function bootstrapPostgres() {

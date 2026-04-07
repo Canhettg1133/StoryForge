@@ -49,7 +49,7 @@ const QUICK_SELECT_BUTTONS = [
   },
   {
     id: 'autoAccepted',
-    label: '✅ Tự động nhận',
+    label: '✅ Tự động duyệt',
     type: 'reviewStatus',
     value: 'auto_accepted',
     title: 'Chọn các sự kiện đủ chất lượng để tự động chấp nhận',

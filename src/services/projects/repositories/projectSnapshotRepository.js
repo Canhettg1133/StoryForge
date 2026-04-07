@@ -27,21 +27,23 @@ function summarizeAnalysisResult(result) {
   const raw = safeJson(result, result || {});
   const l2 = raw?.events || raw?.resultL2 || {};
   const knowledge = raw?.knowledge || {};
+  const canonical = raw?.canonical_entities || raw?.canonicalEntities || {};
+  const beats = toArray(raw?.incident_beats || raw?.incidentBeats);
   const majorEvents = toArray(l2?.majorEvents || l2?.major || l2?.major_events);
   const minorEvents = toArray(l2?.minorEvents || l2?.minor || l2?.minor_events);
   const twists = toArray(l2?.plotTwists || l2?.twists || l2?.plot_twists);
   const cliffhangers = toArray(l2?.cliffhangers || l2?.cliffhanger || l2?.cliff_hangers);
   return {
-    totalEvents: majorEvents.length + minorEvents.length + twists.length + cliffhangers.length,
+    totalEvents: beats.length || (majorEvents.length + minorEvents.length + twists.length + cliffhangers.length),
     majorEvents: majorEvents.length,
     minorEvents: minorEvents.length,
     twists: twists.length,
     cliffhangers: cliffhangers.length,
     incidents: toArray(raw?.incidents || raw?.incidentClusters).length,
-    locations: toArray(knowledge?.locations || raw?.locations || raw?.worldbuilding?.locations).length,
-    characters: toArray(knowledge?.characters || raw?.characters?.profiles || raw?.structural?.characters).length,
-    objects: toArray(knowledge?.objects || raw?.objects || raw?.worldbuilding?.objects).length,
-    terms: toArray(knowledge?.terms || raw?.terms || raw?.worldTerms || raw?.worldbuilding?.terms).length,
+    locations: toArray(canonical?.locations || knowledge?.locations || raw?.locations || raw?.worldbuilding?.locations).length,
+    characters: toArray(canonical?.characters || knowledge?.characters || raw?.characters?.profiles || raw?.structural?.characters).length,
+    objects: toArray(canonical?.objects || knowledge?.objects || raw?.objects || raw?.worldbuilding?.objects).length,
+    terms: toArray(canonical?.terms || knowledge?.terms || raw?.terms || raw?.worldTerms || raw?.worldbuilding?.terms).length,
   };
 }
 

@@ -23,11 +23,11 @@ const RARITY_STAR = {
 };
 
 const EVENT_TYPE_LABELS = {
-  major: 'Sự kiện lớn',
-  minor: 'Sự kiện nhỏ',
-  twist: 'Twist',
-  cliffhanger: 'Cliffhanger',
-  event: 'Sự kiện',
+  major: 'Nhịp chính',
+  minor: 'Nhịp phụ',
+  twist: 'Cú bẻ lái',
+  cliffhanger: 'Treo nút',
+  event: 'Nhịp',
 };
 
 export default function EventCard({

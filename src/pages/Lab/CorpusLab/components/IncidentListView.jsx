@@ -11,6 +11,7 @@ export default function IncidentListView({
   events = [],
   onIncidentClick,
   onUpdateIncident,
+  onRerunIncident,
 }) {
   const [sortBy, setSortBy] = useState('chapter');
   const [filterType, setFilterType] = useState('all');
@@ -57,7 +58,7 @@ export default function IncidentListView({
 
     return filtered.sort((left, right) => {
       if (sortBy === 'chapter') {
-        return toNumber(left.startChapter, Number.MAX_SAFE_INTEGER) - toNumber(right.startChapter, Number.MAX_SAFE_INTEGER);
+        return toNumber(left.chapterStart, Number.MAX_SAFE_INTEGER) - toNumber(right.chapterStart, Number.MAX_SAFE_INTEGER);
       }
       if (sortBy === 'confidence') {
         return toNumber(right.confidence, 0) - toNumber(left.confidence, 0);
@@ -81,8 +82,8 @@ export default function IncidentListView({
   if (!displayIncidents.length) {
     return (
       <div className="incident-list-empty">
-        <h3>Chưa có incident</h3>
-        <p>Hệ thống chưa tìm được incident phù hợp với bộ lọc hiện tại.</p>
+        <h3>Chưa có sự kiện lớn</h3>
+        <p>Hệ thống chưa tìm được sự kiện lớn phù hợp với bộ lọc hiện tại.</p>
       </div>
     );
   }
@@ -91,16 +92,16 @@ export default function IncidentListView({
     <section className="incident-list-view">
       <div className="incident-list-toolbar">
         <div className="incident-list-control">
-          <label htmlFor="incident-filter-type">Loại incident</label>
+          <label htmlFor="incident-filter-type">Loại sự kiện lớn</label>
           <select
             id="incident-filter-type"
             value={filterType}
             onChange={(event) => setFilterType(event.target.value)}
           >
             <option value="all">Tất cả</option>
-            <option value="major_plot_point">Major plot point</option>
-            <option value="subplot">Subplot</option>
-            <option value="pov_thread">POV thread</option>
+            <option value="major_plot_point">Điểm nút chính</option>
+            <option value="subplot">Tuyến phụ</option>
+            <option value="pov_thread">Tuyến góc nhìn</option>
           </select>
         </div>
 
@@ -131,6 +132,7 @@ export default function IncidentListView({
               onToggle={() => toggleExpand(incident.id)}
               onOpen={onIncidentClick}
               onUpdate={onUpdateIncident}
+              onRerun={onRerunIncident}
             />
           );
         })}

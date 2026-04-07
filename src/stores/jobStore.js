@@ -132,6 +132,32 @@ export const useJobStore = create(
       return response;
     },
 
+    trackExternalJob: (job) => {
+      if (!job?.id) {
+        return;
+      }
+
+      set((state) => ({
+        jobs: {
+          ...state.jobs,
+          [job.id]: normalizeIncomingJob(state.jobs[job.id], {
+            id: job.id,
+            type: job.type,
+            status: job.status || 'pending',
+            progress: job.progress ?? 0,
+            progressMessage: job.progressMessage || 'Queued',
+            inputData: job.inputData || {},
+            createdAt: job.createdAt || Date.now(),
+          }),
+        },
+        activeJobs: state.activeJobs.includes(job.id)
+          ? state.activeJobs
+          : [...state.activeJobs, job.id],
+      }));
+
+      get().subscribeToJob(job.id);
+    },
+
     subscribeToJob: (jobId) => {
       const currentStream = get().streams[jobId];
       if (currentStream) {

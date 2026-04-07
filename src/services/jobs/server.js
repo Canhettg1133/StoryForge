@@ -91,6 +91,7 @@ export function createJobServer({ port = JOB_CONFIG.PORT } = {}) {
 
 async function jobRepositoryRecovery(queue) {
   await queue.recoverInterruptedState?.();
+  await analysisRepository.recoverExecutionSessions?.();
   await analysisRepository.failStaleProcessingAnalyses();
 }
 

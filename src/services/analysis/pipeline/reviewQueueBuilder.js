@@ -105,16 +105,88 @@ function buildSuggestions(itemType, graphSignals = null, itemId = '') {
   return suggestions;
 }
 
+function normalizeWindowIds(item = {}) {
+  const value = item.relatedWindowIds
+    || item.related_window_ids
+    || item.windowIds
+    || item.window_ids
+    || item.rerunScope?.windowIds
+    || item.rerunScope?.window_ids
+    || item.lineage?.supporting_window_ids
+    || [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return value ? [value] : [];
+}
+
+function buildIncidentWindowMap(incidents = []) {
+  const map = new Map();
+  for (const incident of incidents || []) {
+    if (!incident?.id) continue;
+    map.set(incident.id, normalizeWindowIds(incident));
+  }
+  return map;
+}
+
+function inferRelatedIncidentIds(itemType, item = {}, incidents = [], events = []) {
+  const explicitValue = item.relatedIncidentIds || item.related_incident_ids || item.incidentIds || item.incident_ids;
+  const explicit = Array.isArray(explicitValue) ? explicitValue.filter(Boolean) : (explicitValue ? [explicitValue] : []);
+  if (explicit.length > 0) return explicit;
+
+  if (itemType === REVIEW_ITEM_TYPES.INCIDENT) {
+    return item?.id ? [item.id] : [];
+  }
+
+  if (itemType === REVIEW_ITEM_TYPES.EVENT) {
+    return item.incidentId || item.incident_id ? [item.incidentId || item.incident_id] : [];
+  }
+
+  if (itemType === REVIEW_ITEM_TYPES.LOCATION) {
+    const locationId = item.id || null;
+    const eventIds = new Set(toArray(item.timeline).map((entry) => entry?.eventId).filter(Boolean));
+    const eventIncidentIds = (events || [])
+      .filter((event) => eventIncidentIdsMatch(event, eventIds))
+      .flatMap((event) => (event.incidentId || event.incident_id ? [event.incidentId || event.incident_id] : []));
+    const incidentEntityIds = (incidents || [])
+      .filter((incident) => {
+        const refs = incident?.entityRefs?.locations;
+        return locationId && Array.isArray(refs) && refs.includes(locationId);
+      })
+      .map((incident) => incident.id);
+    return [...new Set([...eventIncidentIds, ...incidentEntityIds].filter(Boolean))];
+  }
+
+  return [];
+}
+
+function eventIncidentIdsMatch(event = {}, eventIds = new Set()) {
+  return event?.id && eventIds.has(event.id);
+}
+
+function inferRelatedWindowIds(itemType, item = {}, relatedIncidentIds = [], incidentWindowMap = new Map()) {
+  const explicit = normalizeWindowIds(item);
+  if (explicit.length > 0) return explicit;
+  if (itemType === REVIEW_ITEM_TYPES.INCIDENT) return relatedIncidentIds.flatMap((id) => incidentWindowMap.get(id) || []);
+  if (itemType === REVIEW_ITEM_TYPES.EVENT || itemType === REVIEW_ITEM_TYPES.LOCATION) {
+    return [...new Set(relatedIncidentIds.flatMap((id) => incidentWindowMap.get(id) || []).filter(Boolean))];
+  }
+  return [];
+}
+
 function createQueueItem({
   corpusId,
   analysisId,
   itemType,
   item,
+  incidents,
+  events,
+  incidentWindowMap,
   consistencyRisks,
   graphSignals,
 }) {
   const priority = buildPriorityResult({ ...item, itemType, type: itemType }, consistencyRisks);
   const reasons = buildReasons(item, itemType, consistencyRisks, graphSignals);
+  const relatedIncidentIds = inferRelatedIncidentIds(itemType, item, incidents, events);
+  const relatedWindowIds = inferRelatedWindowIds(itemType, item, relatedIncidentIds, incidentWindowMap);
 
   return {
     id: `rq_${randomUUID()}`,
@@ -127,6 +199,9 @@ function createQueueItem({
     scoreBreakdown: priority.scoreBreakdown,
     reason: reasons,
     suggestions: buildSuggestions(itemType, graphSignals, item.id),
+    rerunScope: itemType === REVIEW_ITEM_TYPES.LOCATION ? 'world_canonicalizer' : 'incident',
+    relatedIncidentIds,
+    relatedWindowIds,
     status: REVIEW_ITEM_STATUS.PENDING,
     createdAt: Date.now(),
   };
@@ -171,6 +246,7 @@ export function buildReviewQueue(
   const corpusId = options.corpusId || null;
   const analysisId = options.analysisId || null;
   const graphSignals = buildGraphSignals(options.graph || null);
+  const incidentWindowMap = buildIncidentWindowMap(incidents);
   const reviewItems = [];
 
   for (const incident of incidents || []) {
@@ -180,6 +256,9 @@ export function buildReviewQueue(
       analysisId,
       itemType: REVIEW_ITEM_TYPES.INCIDENT,
       item: incident,
+      incidents,
+      events,
+      incidentWindowMap,
       consistencyRisks,
       graphSignals,
     }));
@@ -192,6 +271,9 @@ export function buildReviewQueue(
       analysisId,
       itemType: REVIEW_ITEM_TYPES.EVENT,
       item: event,
+      incidents,
+      events,
+      incidentWindowMap,
       consistencyRisks,
       graphSignals,
     }));
@@ -204,6 +286,9 @@ export function buildReviewQueue(
       analysisId,
       itemType: REVIEW_ITEM_TYPES.LOCATION,
       item: location,
+      incidents,
+      events,
+      incidentWindowMap,
       consistencyRisks,
       graphSignals,
     }));

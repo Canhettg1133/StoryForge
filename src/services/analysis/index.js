@@ -14,6 +14,7 @@ import { persistIncidentFirstArtifacts } from './incidentFirstPersistence.js';
 import { mergeOutputParts, parseJsonField, splitLayerResults } from './outputChunker.js';
 import { getRunMode } from './pipeline/modes.js';
 import { normalizePublicRunMode } from './v2/contracts.js';
+import { buildSlimFinalResult, normalizeAnalysisPayloadMode } from './v3/payloadModes.js';
 import {
   analyzeWithSession,
   buildCorpusSessionInputs,
@@ -55,6 +56,7 @@ function serializeAnalysis(analysis, options = {}) {
   }
 
   const includeResults = options.includeResults === true;
+  const payloadMode = normalizeAnalysisPayloadMode(options.mode);
 
   const payload = {
     id: analysis.id,
@@ -86,10 +88,12 @@ function serializeAnalysis(analysis, options = {}) {
     if (parsedDegraded) payload.degradedReport = parsedDegraded;
     if (parsedGraphSummary) payload.graphSummary = parsedGraphSummary;
     if (analysis.artifactVersion) payload.artifactVersion = analysis.artifactVersion;
+    if (analysis.artifactRevision != null) payload.artifactRevision = analysis.artifactRevision;
     return payload;
   }
 
-  payload.result = parseJsonField(analysis.finalResult, null);
+  const parsedResult = parseJsonField(analysis.finalResult, null);
+  payload.result = payloadMode === 'full' ? parsedResult : buildSlimFinalResult(parsedResult);
   payload.layers = {
     l1: parseJsonField(analysis.resultL1, null),
     l2: parseJsonField(analysis.resultL2, null),
@@ -115,6 +119,7 @@ function serializeAnalysis(analysis, options = {}) {
     payload.result?.graph_summary || null,
   );
   payload.artifactVersion = analysis.artifactVersion || payload.result?.artifact_version || 'legacy';
+  payload.artifactRevision = analysis.artifactRevision ?? 0;
 
   return payload;
 }
@@ -668,6 +673,7 @@ class CorpusAnalysisService extends EventEmitter {
         knowledgeExtraction,
       );
       const layerResults = splitLayerResults(finalResultForStorage);
+      const slimFinalResultForStorage = buildSlimFinalResult(finalResultForStorage);
 
       analysis = await analysisRepository.updateAnalysis(analysisId, {
         status: 'completed',
@@ -685,10 +691,10 @@ class CorpusAnalysisService extends EventEmitter {
         resultL5: layerResults.resultL5,
         resultL6: layerResults.resultL6,
         finalResult: JSON.stringify({
-          ...finalResultForStorage,
+          ...slimFinalResultForStorage,
           tokenUsage,
           meta: {
-            ...(finalResultForStorage.meta || {}),
+            ...(slimFinalResultForStorage.meta || {}),
             provider: config.provider,
             model: config.model,
             runMode: runMode.id,
@@ -716,7 +722,10 @@ class CorpusAnalysisService extends EventEmitter {
       await analysisRepository.persistGraph(
         analysisId,
         corpusId,
-        finalResultForStorage.story_graph || finalResultForStorage.storyGraph || null,
+        finalResultForStorage.graph_projections
+          || finalResultForStorage.story_graph
+          || finalResultForStorage.storyGraph
+          || null,
         finalResultForStorage.pass_status || null,
       );
 
@@ -805,6 +814,7 @@ class CorpusAnalysisService extends EventEmitter {
 
       const jobResult = await runIncidentOnly1MJob({
         corpusId,
+        analysisId,
         chunks,
         options: {
           runMode: normalizePublicRunMode(config.runMode),
@@ -833,6 +843,7 @@ class CorpusAnalysisService extends EventEmitter {
       });
 
       const finalResultForStorage = jobResult.finalResult || {};
+      const slimFinalResultForStorage = buildSlimFinalResult(finalResultForStorage);
       const layerResults = splitLayerResults(finalResultForStorage);
       let incidentFirstPersistence = null;
 
@@ -859,9 +870,9 @@ class CorpusAnalysisService extends EventEmitter {
         resultL5: layerResults.resultL5,
         resultL6: layerResults.resultL6,
         finalResult: JSON.stringify({
-          ...finalResultForStorage,
+          ...slimFinalResultForStorage,
           meta: {
-            ...(finalResultForStorage.meta || {}),
+            ...(slimFinalResultForStorage.meta || {}),
             provider: config.provider,
             model: config.model,
             runMode: normalizePublicRunMode(config.runMode),

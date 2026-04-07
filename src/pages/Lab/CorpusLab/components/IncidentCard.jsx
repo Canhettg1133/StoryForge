@@ -16,9 +16,9 @@ function formatPercent(value) {
 }
 
 function getTypeLabel(type) {
-  if (type === 'major_plot_point') return 'Nút chính';
-  if (type === 'pov_thread') return 'POV thread';
-  return 'Subplot';
+  if (type === 'major_plot_point') return 'Điểm nút chính';
+  if (type === 'pov_thread') return 'Tuyến góc nhìn';
+  return 'Tuyến phụ';
 }
 
 export default function IncidentCard({
@@ -28,20 +28,23 @@ export default function IncidentCard({
   onToggle,
   onOpen,
   onUpdate,
+  onRerun,
 }) {
   const previewEvents = expanded ? events : events.slice(0, 3);
+  const description = incident.detailedSummary || incident.description || '';
+  const consequences = Array.isArray(incident.consequences) ? incident.consequences : [];
 
   return (
     <article className={`incident-first-card ${expanded ? 'expanded' : ''}`}>
       <header className="incident-first-header">
         <div className="incident-first-main">
           <h3 className="incident-first-title" onClick={() => onOpen?.(incident)}>
-            {incident.title || 'Incident chưa đặt tên'}
+            {incident.title || 'Sự kiện lớn chưa đặt tên'}
           </h3>
           <p className="incident-first-meta">
-            <span>{formatChapterRange(incident.startChapter, incident.endChapter)}</span>
-            <span>Độ tin cậy {formatPercent(incident.confidence)}</span>
-            <span>{incident.eventCount ?? events.length} sự kiện</span>
+            <span>{formatChapterRange(incident.chapterStart, incident.chapterEnd)}</span>
+            <span>Tin cậy {formatPercent(incident.confidence)}</span>
+            <span>{incident.eventCount ?? events.length} nhịp</span>
           </p>
         </div>
 
@@ -51,26 +54,49 @@ export default function IncidentCard({
             <span className={`incident-priority-badge ${incident.priority}`}>{incident.priority}</span>
           )}
           <span className={`incident-review-badge ${incident.reviewStatus || 'needs_review'}`}>
-            {incident.reviewStatus === 'auto_accepted' ? 'Tự động' : 'Cần duyệt'}
+            {incident.reviewStatus === 'auto_accepted' ? 'Đã tự duyệt' : 'Cần duyệt'}
           </span>
         </div>
       </header>
 
-      {incident.description && (
-        <p className="incident-first-description">{incident.description}</p>
+      {description && (
+        <p className="incident-first-description">{description}</p>
       )}
 
       {incident.boundaryNote && (
         <p className="incident-first-boundary-note">{incident.boundaryNote}</p>
       )}
 
+      {(incident.climax || incident.outcome || consequences.length > 0) && (
+        <div className="incident-first-events">
+          {incident.climax && (
+            <div className="incident-event-item">
+              <span className="incident-event-title">Cao trào</span>
+              <span>{incident.climax}</span>
+            </div>
+          )}
+          {incident.outcome && (
+            <div className="incident-event-item">
+              <span className="incident-event-title">Kết quả</span>
+              <span>{incident.outcome}</span>
+            </div>
+          )}
+          {consequences.slice(0, 2).map((item) => (
+            <div key={`${incident.id}_${item}`} className="incident-event-item">
+              <span className="incident-event-title">Hệ quả</span>
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="incident-first-events">
         {previewEvents.length === 0 && (
-          <p className="incident-empty-events">Chưa có sự kiện liên kết.</p>
+          <p className="incident-empty-events">Chưa có nhịp liên kết.</p>
         )}
         {previewEvents.map((event) => (
           <div key={event.id} className="incident-event-item">
-            <span className="incident-event-title">{event.title || event.description || 'Sự kiện'}</span>
+            <span className="incident-event-title">{event.title || event.description || 'Nhịp'}</span>
             <span className="incident-event-chapter">
               {Number.isFinite(Number(event.chapterIndex ?? event.chapter))
                 ? `Ch. ${Number(event.chapterIndex ?? event.chapter)}`
@@ -83,11 +109,18 @@ export default function IncidentCard({
       <footer className="incident-first-actions">
         {events.length > 3 && (
           <button type="button" className="incident-first-btn ghost" onClick={onToggle}>
-            {expanded ? 'Thu gọn' : `Xem thêm ${events.length - 3} sự kiện`}
+            {expanded ? 'Thu gọn' : `Xem thêm ${events.length - 3}`}
           </button>
         )}
         <button type="button" className="incident-first-btn" onClick={() => onOpen?.(incident)}>
-          Xem chi tiết
+          Chi tiết
+        </button>
+        <button
+          type="button"
+          className="incident-first-btn ghost"
+          onClick={() => onRerun?.(incident)}
+        >
+          Chạy lại sự kiện lớn
         </button>
         {incident.reviewStatus !== 'auto_accepted' && (
           <button

@@ -17,9 +17,12 @@ Quy tac bat buoc:
 - Noi dung doc duoc boi con nguoi phai la tieng Viet.
 - chapterStart/chapterEnd la so nguyen 1-based (1..${Math.max(1, Number(chapterCount) || 1)}).
 - Khong tao incident placeholder, khong lap lai y nghia.
+- Incident chi duoc promote len cap nay khi co thay doi ben vung ve muc tieu, luat choi, khong gian, nhom hoac phase truyen.
+- Khong dua puzzle don le, canh gay soc, reveal ngan han, combat don le len incidents[] neu no nam trong mot incident lon hon.
 - Neu khong chac chan, giam confidence va ghi boundaryNote.
 - Tong incident toi da: ${Math.max(1, Number(maxIncidents) || 120)}.
-- Gioi han output: uu tien giu day du incidents[] truoc, rut gon note/evidence khi can.
+- Dong thoi tra ve world_seed va style_seed o muc TOM TAT; khong co gang exhaustive.
+- Gioi han output: uu tien giu day du incidents[] truoc, sau do den world_seed, style_seed; rut gon note/evidence khi can.
 - Neu bi gioi han output, dung meta.hasMore/meta.complete de phan manh output.
 
 Schema output:
@@ -27,7 +30,27 @@ Schema output:
   "meta": {
     "part": 1,
     "hasMore": false,
-    "complete": true
+    "complete": true,
+    "resumeFrom": ""
+  },
+  "world_seed": {
+    "world_name": "",
+    "world_type": "",
+    "world_rules": [],
+    "primary_locations": [],
+    "dominant_forces": [],
+    "world_description": ""
+  },
+  "style_seed": {
+    "pov": "",
+    "tense": "",
+    "register": "",
+    "tone": [],
+    "dialogue_density": "low|medium|high",
+    "description_density": "low|medium|high",
+    "action_density": "low|medium|high",
+    "style_signals": [],
+    "motifs": []
   },
   "incidents": [
     {

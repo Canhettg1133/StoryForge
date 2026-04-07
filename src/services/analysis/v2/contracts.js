@@ -64,6 +64,103 @@ function normalizeNameList(value) {
   return [];
 }
 
+function normalizeDensity(value, fallback = 'medium') {
+  const normalized = normalizeText(value).toLowerCase();
+  if (['low', 'medium', 'high'].includes(normalized)) return normalized;
+  return fallback;
+}
+
+function normalizeWorldSeed(raw = {}) {
+  const source = toObject(raw);
+  return {
+    world_name: normalizeText(source.world_name || source.worldName || ''),
+    world_type: normalizeText(source.world_type || source.worldType || ''),
+    world_rules: normalizeNameList(source.world_rules || source.worldRules),
+    primary_locations: normalizeNameList(source.primary_locations || source.primaryLocations),
+    dominant_forces: normalizeNameList(source.dominant_forces || source.dominantForces),
+    world_description: normalizeText(source.world_description || source.worldDescription || ''),
+  };
+}
+
+function normalizeStyleSeed(raw = {}) {
+  const source = toObject(raw);
+  return {
+    pov: normalizeText(source.pov || ''),
+    tense: normalizeText(source.tense || ''),
+    register: normalizeText(source.register || ''),
+    tone: normalizeNameList(source.tone),
+    dialogue_density: normalizeDensity(source.dialogue_density || source.dialogueDensity, 'medium'),
+    description_density: normalizeDensity(source.description_density || source.descriptionDensity, 'medium'),
+    action_density: normalizeDensity(source.action_density || source.actionDensity, 'medium'),
+    style_signals: normalizeNameList(source.style_signals || source.styleSignals),
+    motifs: normalizeNameList(source.motifs),
+  };
+}
+
+function normalizeMentionList(items = [], kind = 'generic') {
+  return toArray(items)
+    .map((item, index) => {
+      const source = toObject(item);
+      const name = normalizeText(
+        source.name
+        || source.term
+        || source.object
+        || source.location
+        || source.source
+        || '',
+      );
+      if (!name && kind !== 'relationship') {
+        return null;
+      }
+      if (kind === 'relationship') {
+        const sourceName = normalizeText(source.source || source.character1Id || '');
+        const targetName = normalizeText(source.target || source.character2Id || '');
+        if (!sourceName || !targetName) return null;
+        return {
+          id: normalizeText(source.id || '') || `rel_v2_${index + 1}`,
+          source: sourceName,
+          target: targetName,
+          type: normalizeText(source.type || 'neutral') || 'neutral',
+          eventIds: normalizeNameList(source.eventIds || source.events),
+          chapters: normalizeNameList(source.chapters).map((value) => resolveChapterNumber(value, 99999, null)).filter(Boolean),
+          evidence: normalizeEvidenceList(source.evidence),
+        };
+      }
+      return {
+        id: normalizeText(source.id || '') || `${kind}_v2_${index + 1}`,
+        name,
+        roleHint: normalizeText(source.roleHint || source.role || ''),
+        ownerHint: normalizeText(source.ownerHint || source.owner || ''),
+        kind: normalizeText(source.kind || ''),
+        category: normalizeText(source.category || ''),
+        definitionHint: normalizeText(source.definitionHint || source.definition || ''),
+        eventIds: normalizeNameList(source.eventIds || source.events),
+        chapters: normalizeNameList(source.chapters).map((value) => resolveChapterNumber(value, 99999, null)).filter(Boolean),
+        evidence: normalizeEvidenceList(source.evidence),
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeStyleEvidence(raw = {}) {
+  const source = toObject(raw);
+  return {
+    observations: toArray(source.observations).map((item, index) => {
+      const observation = toObject(item);
+      const note = normalizeText(observation.observation || observation.note || '');
+      if (!note) return null;
+      return {
+        id: normalizeText(observation.id || '') || `style_obs_${index + 1}`,
+        chapter: resolveChapterNumber(observation.chapter, 99999, null),
+        eventId: normalizeText(observation.eventId || ''),
+        signalType: normalizeText(observation.signalType || observation.type || 'other') || 'other',
+        observation: note,
+        evidence: normalizeText(observation.evidence || ''),
+      };
+    }).filter(Boolean),
+  };
+}
+
 function makeStableEntityId(prefix, name, fallback = 'item') {
   const normalized = normalizeText(name)
     .toLowerCase()
@@ -159,6 +256,8 @@ export function validatePassAOutput(raw = {}, chapterCount = 1) {
     valid: incidents.length > 0 && !issues.some((item) => item.severity === 'error'),
     value: {
       meta: toObject(raw.meta),
+      world_seed: normalizeWorldSeed(raw.world_seed || raw.worldSeed),
+      style_seed: normalizeStyleSeed(raw.style_seed || raw.styleSeed),
       incidents,
     },
     issues,
@@ -251,6 +350,13 @@ export function validatePassBOutput(raw = {}, chapterCount = 1) {
       },
       events,
       locations,
+      mentions: {
+        characters: normalizeMentionList(raw.mentions?.characters, 'character'),
+        objects: normalizeMentionList(raw.mentions?.objects, 'object'),
+        terms: normalizeMentionList(raw.mentions?.terms, 'term'),
+        relationships: normalizeMentionList(raw.mentions?.relationships, 'relationship'),
+      },
+      style_evidence: normalizeStyleEvidence(raw.style_evidence || raw.styleEvidence),
       causal_links: causalLinks,
     },
     issues,

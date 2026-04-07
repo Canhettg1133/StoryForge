@@ -1,32 +1,60 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useJobStore } from '../../stores/jobStore';
 import './JobQueuePanel.css';
 
 function formatRelativeTime(timestamp) {
   if (!timestamp) {
-    return 'just now';
+    return 'vừa xong';
   }
 
   const elapsed = Date.now() - Number(timestamp);
   const minutes = Math.max(1, Math.round(elapsed / 60000));
   if (minutes < 60) {
-    return `${minutes}m ago`;
+    return `${minutes} phút trước`;
   }
 
   const hours = Math.round(minutes / 60);
-  return `${hours}h ago`;
+  return `${hours} giờ trước`;
+}
+
+function getJobLabel(job) {
+  if (job.type === 'corpus_analysis') return 'Phân tích kho truyện';
+  if (job.type === 'incident_analysis') return 'Phân tích sự kiện lớn';
+  if (job.type === 'coherence_pass') return 'Pass mạch truyện';
+  if (job.type === 'scoped_rerun') return 'Chạy lại theo scope';
+  if (job.type === 'analysis_window') return 'Xử lý cửa sổ';
+  if (job.type === 'incident_reducer') return 'Gộp sự kiện lớn';
+  if (job.type === 'incident_worker') return 'Phân tích chi tiết sự kiện lớn';
+  if (job.type === 'character_canonicalizer') return 'Chuẩn hóa nhân vật';
+  if (job.type === 'world_canonicalizer') return 'Chuẩn hóa thế giới';
+  if (job.type === 'graph_projection') return 'Dựng đồ thị';
+  if (job.type === 'review_intelligence') return 'Suy luận review';
+  if (job.type === 'file_parsing') return 'Tách file';
+  return job.type || 'Tác vụ';
+}
+
+function getStatusLabel(status) {
+  if (status === 'running') return 'đang chạy';
+  if (status === 'pending') return 'đang chờ';
+  if (status === 'completed') return 'hoàn tất';
+  if (status === 'failed') return 'thất bại';
+  if (status === 'cancelled') return 'đã hủy';
+  return status || 'chưa rõ';
 }
 
 function JobCard({ job, queueIndex, onCancel }) {
   const isRunning = job.status === 'running';
   const isPending = job.status === 'pending';
+  const activeSteps = Array.isArray(job.steps)
+    ? job.steps.filter((step) => step.status === 'running' || step.status === 'completed').slice(-2)
+    : [];
 
   return (
     <article className="job-queue-card">
       <header className="job-queue-card__header">
-        <strong>{job.type === 'corpus_analysis' ? 'Analyzing' : 'Parsing'}</strong>
+        <strong>{getJobLabel(job)}</strong>
         <span className={`job-queue-status job-queue-status--${job.status}`}>
-          {job.status}
+          {getStatusLabel(job.status)}
         </span>
       </header>
 
@@ -41,15 +69,25 @@ function JobCard({ job, queueIndex, onCancel }) {
             />
           </div>
           <p className="job-queue-card__meta">
-            {job.progressMessage || 'Processing...'} ({job.progress || 0}%)
+            {job.progressMessage || 'Đang xử lý...'} ({job.progress || 0}%)
           </p>
         </>
       ) : null}
 
       {isPending ? (
         <p className="job-queue-card__meta">
-          Waiting in queue ({queueIndex + 1})
+          Đang chờ trong hàng ({queueIndex + 1})
         </p>
+      ) : null}
+
+      {activeSteps.length > 0 ? (
+        <div className="job-queue-card__meta">
+          {activeSteps.map((step) => (
+            <div key={`${job.id}-${step.name}`}>
+              {step.name}: {step.message || `${step.progress || 0}%`}
+            </div>
+          ))}
+        </div>
       ) : null}
 
       {(isRunning || isPending) && (
@@ -58,7 +96,7 @@ function JobCard({ job, queueIndex, onCancel }) {
           className="job-queue-card__cancel"
           onClick={() => onCancel(job.id)}
         >
-          Cancel
+          Hủy
         </button>
       )}
     </article>
@@ -66,19 +104,16 @@ function JobCard({ job, queueIndex, onCancel }) {
 }
 
 export default function JobQueuePanel() {
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const jobs = useJobStore((state) => state.jobs);
   const activeJobs = useJobStore((state) => state.activeJobs);
   const jobHistory = useJobStore((state) => state.jobHistory);
   const cancelJob = useJobStore((state) => state.cancelJob);
   const clearPanel = useJobStore((state) => state.clearPanel);
-  const hydrateJobsFromApi = useJobStore(
-    (state) => state.hydrateJobsFromApi,
-  );
-  const resumeActiveSubscriptions = useJobStore(
-    (state) => state.resumeActiveSubscriptions,
-  );
+  const hydrateJobsFromApi = useJobStore((state) => state.hydrateJobsFromApi);
+  const resumeActiveSubscriptions = useJobStore((state) => state.resumeActiveSubscriptions);
 
-  React.useEffect(() => {
+  useEffect(() => {
     hydrateJobsFromApi()
       .then(() => resumeActiveSubscriptions())
       .catch(() => {});
@@ -104,25 +139,50 @@ export default function JobQueuePanel() {
     [jobHistory, jobs],
   );
 
-  const shouldShowPanel = activeJobData.length > 0 || historyData.length > 0;
+  const hasActiveJobs = activeJobData.length > 0;
+  const hasHistory = historyData.length > 0;
 
-  if (!shouldShowPanel) {
+  useEffect(() => {
+    if (hasActiveJobs) {
+      setHistoryExpanded(true);
+    }
+  }, [hasActiveJobs]);
+
+  if (!hasActiveJobs && !hasHistory) {
     return null;
+  }
+
+  if (!hasActiveJobs && hasHistory && !historyExpanded) {
+    return (
+      <button
+        type="button"
+        className="job-queue-launcher glass"
+        onClick={() => setHistoryExpanded(true)}
+      >
+        <strong>Job gần đây</strong>
+        <span>{historyData.length} mục</span>
+      </button>
+    );
   }
 
   return (
     <aside className="job-queue-panel glass">
       <header className="job-queue-panel__header">
-        <h3>Job Queue</h3>
-        <button type="button" onClick={() => clearPanel().catch(() => {})}>
-          Clear
-        </button>
+        <h3>Hàng đợi job</h3>
+        <div className="job-queue-panel__actions">
+          {!hasActiveJobs && hasHistory && (
+            <button type="button" onClick={() => setHistoryExpanded(false)}>
+              Thu gọn
+            </button>
+          )}
+          <button type="button" onClick={() => clearPanel().catch(() => {})}>
+            Xóa
+          </button>
+        </div>
       </header>
 
       <section className="job-queue-panel__section">
-        {activeJobData.length === 0 ? (
-          <p className="job-queue-empty">No active jobs.</p>
-        ) : (
+        {hasActiveJobs ? (
           activeJobData.map((job, index) => (
             <JobCard
               key={job.id}
@@ -131,14 +191,14 @@ export default function JobQueuePanel() {
               onCancel={cancelJob}
             />
           ))
+        ) : (
+          <p className="job-queue-empty">Không có job đang chạy.</p>
         )}
       </section>
 
       <section className="job-queue-panel__section">
-        <h4>Completed (Recent)</h4>
-        {historyData.length === 0 ? (
-          <p className="job-queue-empty">No completed jobs yet.</p>
-        ) : (
+        <h4>Đã xong gần đây</h4>
+        {hasHistory ? (
           <ul className="job-queue-history">
             {historyData.map((job) => (
               <li key={job.id}>
@@ -147,6 +207,8 @@ export default function JobQueuePanel() {
               </li>
             ))}
           </ul>
+        ) : (
+          <p className="job-queue-empty">Chưa có job nào hoàn tất.</p>
         )}
       </section>
     </aside>

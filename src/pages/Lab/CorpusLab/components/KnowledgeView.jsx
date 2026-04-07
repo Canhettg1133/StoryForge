@@ -4,6 +4,13 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+function normalizeLooseText(value) {
+  return normalizeText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+}
+
 function toArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -20,6 +27,10 @@ function makeSlug(value) {
     .replace(/[^a-z0-9]+/gu, '_')
     .replace(/^_+|_+$/gu, '')
     .replace(/_+/gu, '_');
+}
+
+function tokenizeName(value) {
+  return normalizeText(value).split(/\s+/u).filter(Boolean);
 }
 
 function dedupeTimeline(items = []) {
@@ -40,6 +51,22 @@ function dedupeTimeline(items = []) {
   return [...map.values()].sort((left, right) => Number(left.chapter || 999999) - Number(right.chapter || 999999));
 }
 
+function mergeKnowledgeItem(existing, item) {
+  return {
+    ...existing,
+    ...item,
+    id: existing.id || item.id,
+    name: existing.name || item.name,
+    description: existing.description || item.description,
+    definition: existing.definition || item.definition,
+    owner: existing.owner || item.owner,
+    category: existing.category || item.category,
+    properties: existing.properties || item.properties,
+    aliases: [...new Set([...(existing.aliases || []), ...(item.aliases || [])])],
+    timeline: dedupeTimeline([...(existing.timeline || []), ...(item.timeline || [])]),
+  };
+}
+
 function dedupeKnowledgeItems(items = []) {
   const map = new Map();
 
@@ -55,19 +82,7 @@ function dedupeKnowledgeItems(items = []) {
       continue;
     }
 
-    map.set(key, {
-      ...existing,
-      ...item,
-      id: existing.id || item.id,
-      name: existing.name || item.name,
-      description: existing.description || item.description,
-      definition: existing.definition || item.definition,
-      owner: existing.owner || item.owner,
-      category: existing.category || item.category,
-      properties: existing.properties || item.properties,
-      aliases: [...new Set([...(existing.aliases || []), ...(item.aliases || [])])],
-      timeline: dedupeTimeline([...(existing.timeline || []), ...(item.timeline || [])]),
-    });
+    map.set(key, mergeKnowledgeItem(existing, item));
   }
 
   return [...map.values()];
@@ -75,8 +90,7 @@ function dedupeKnowledgeItems(items = []) {
 
 function extractTimeline(events = [], matcher = () => false, limit = 8) {
   const matched = [];
-  for (const event of events || []) {
-    if (!event) continue;
+  for (const event of toArray(events)) {
     if (!matcher(event)) continue;
     matched.push({
       eventId: event.id || null,
@@ -99,6 +113,8 @@ function timelineFromEntity(entity = {}, events = []) {
     const eventLocation = toComparable(event.locationLink?.locationName || event.primaryLocationName);
     const desc = toComparable(event.description || '');
     const tags = toArray(event.tags).map(toComparable);
+    const terms = toArray(event.terms).map(toComparable);
+    const objects = toArray(event.objects).map(toComparable);
 
     if (eventLocation && (eventLocation === entityName || eventLocation.includes(entityName) || entityName.includes(eventLocation))) {
       return true;
@@ -109,6 +125,12 @@ function timelineFromEntity(entity = {}, events = []) {
     if (tags.some((tag) => tag.includes(entityName) || entityName.includes(tag))) {
       return true;
     }
+    if (terms.some((term) => term.includes(entityName) || entityName.includes(term))) {
+      return true;
+    }
+    if (objects.some((object) => object.includes(entityName) || entityName.includes(object))) {
+      return true;
+    }
     return false;
   });
 }
@@ -117,50 +139,6 @@ function entityViewKey(prefix, item, index) {
   const id = normalizeText(item?.id);
   const name = makeSlug(item?.name || '');
   return `${prefix}:${id || 'noid'}:${name || 'noname'}:${index}`;
-}
-
-function countCharacterAppearances(name, events = []) {
-  const comparable = toComparable(name);
-  let count = 0;
-  for (const event of toArray(events)) {
-    const names = toArray(event.characters).map(toComparable);
-    if (names.includes(comparable)) count += 1;
-  }
-  return count;
-}
-
-function characterChapters(name, events = []) {
-  const comparable = toComparable(name);
-  const chapters = toArray(events)
-    .filter((event) => toArray(event.characters).map(toComparable).includes(comparable))
-    .map((event) => Number(event.chapter))
-    .filter((chapter) => Number.isFinite(chapter) && chapter > 0);
-  return [...new Set(chapters)].sort((left, right) => left - right);
-}
-
-function characterLocations(name, events = []) {
-  const comparable = toComparable(name);
-  const map = new Map();
-  for (const event of toArray(events)) {
-    const names = toArray(event.characters).map(toComparable);
-    if (!names.includes(comparable)) continue;
-    const locationName = normalizeText(event.locationLink?.locationName || event.primaryLocationName || '');
-    if (!locationName) continue;
-    const key = makeSlug(locationName);
-    if (!map.has(key)) {
-      map.set(key, locationName);
-    }
-  }
-  return [...map.values()];
-}
-
-function inferFallbackRole(name, events = [], rankedNames = new Map()) {
-  const appearances = countCharacterAppearances(name, events);
-  const top = rankedNames.get('top') || 0;
-  if (appearances === 0) return 'chưa suy ra';
-  if (appearances === top && top > 0) return 'trung tâm';
-  if (top > 0 && appearances >= Math.ceil(top * 0.5)) return 'nổi bật';
-  return 'phụ';
 }
 
 function hasMeaningfulWorldProfile(worldProfile = {}) {
@@ -188,6 +166,145 @@ function hasDetailedCharacterProfile(item = {}) {
   );
 }
 
+function characterTailKey(name) {
+  const tokens = tokenizeName(name);
+  if (!tokens.length) return '';
+  return normalizeLooseText(tokens.slice(-Math.min(2, tokens.length)).join(' '));
+}
+
+function mergeCharacterProfiles(items = []) {
+  const merged = [];
+
+  const mergeIntoTarget = (target, source) => ({
+    ...mergeKnowledgeItem(target, source),
+    name: hasDetailedCharacterProfile(target) ? target.name : (source.name || target.name),
+    role: target.role || source.role,
+    appearance: target.appearance || source.appearance,
+    description: target.description || source.description,
+    personality: target.personality || source.personality,
+    flaws: target.flaws || source.flaws,
+    goals: target.goals || source.goals,
+    motivation: target.motivation || source.motivation,
+    secrets: target.secrets || source.secrets,
+    aliases: [...new Set([
+      target.name,
+      source.name,
+      ...(target.aliases || []),
+      ...(source.aliases || []),
+    ].map((entry) => normalizeText(entry)).filter(Boolean))],
+  });
+
+  for (const item of toArray(items)) {
+    if (!item?.name) continue;
+
+    const exactIndex = merged.findIndex((existing) => toComparable(existing.name) === toComparable(item.name));
+    if (exactIndex >= 0) {
+      merged[exactIndex] = mergeIntoTarget(merged[exactIndex], item);
+      continue;
+    }
+
+    const itemTail = characterTailKey(item.name);
+    const similarIndex = merged.findIndex((existing) => {
+      if (!itemTail || itemTail !== characterTailKey(existing.name)) return false;
+      const eitherFallback = !hasDetailedCharacterProfile(existing) || !hasDetailedCharacterProfile(item);
+      const eitherShort = Math.min(tokenizeName(existing.name).length, tokenizeName(item.name).length) <= 2;
+      return eitherFallback || eitherShort;
+    });
+
+    if (similarIndex >= 0) {
+      merged[similarIndex] = mergeIntoTarget(merged[similarIndex], item);
+      continue;
+    }
+
+    merged.push({
+      ...item,
+      aliases: [...new Set([item.name, ...(item.aliases || [])].map((entry) => normalizeText(entry)).filter(Boolean))],
+    });
+  }
+
+  return merged;
+}
+
+function characterNameSet(character = {}) {
+  return new Set(
+    [character?.name, ...(character?.aliases || [])]
+      .map(toComparable)
+      .filter(Boolean),
+  );
+}
+
+function countCharacterAppearances(character, events = []) {
+  const comparableNames = characterNameSet(character);
+  let count = 0;
+  for (const event of toArray(events)) {
+    const names = toArray(event.characters).map(toComparable);
+    if (names.some((name) => comparableNames.has(name))) count += 1;
+  }
+  return count;
+}
+
+function characterChapters(character, events = []) {
+  const comparableNames = characterNameSet(character);
+  const chapters = toArray(events)
+    .filter((event) => toArray(event.characters).map(toComparable).some((name) => comparableNames.has(name)))
+    .map((event) => Number(event.chapter))
+    .filter((chapter) => Number.isFinite(chapter) && chapter > 0);
+  return [...new Set(chapters)].sort((left, right) => left - right);
+}
+
+function characterLocations(character, events = []) {
+  const comparableNames = characterNameSet(character);
+  const map = new Map();
+  for (const event of toArray(events)) {
+    const names = toArray(event.characters).map(toComparable);
+    if (!names.some((name) => comparableNames.has(name))) continue;
+    const locationName = normalizeText(event.locationLink?.locationName || event.primaryLocationName || '');
+    if (!locationName) continue;
+    const key = makeSlug(locationName);
+    if (!map.has(key)) {
+      map.set(key, locationName);
+    }
+  }
+  return [...map.values()];
+}
+
+function inferFallbackRole(character, events = [], rankedNames = new Map()) {
+  const appearances = countCharacterAppearances(character, events);
+  const top = rankedNames.get('top') || 0;
+  if (appearances === 0) return 'chưa suy ra';
+  if (appearances === top && top > 0) return 'trung tâm';
+  if (top > 0 && appearances >= Math.ceil(top * 0.5)) return 'nổi bật';
+  return 'phụ';
+}
+
+function buildTermEnrichment(term, events = []) {
+  const variants = new Set([term.name, ...(term.aliases || [])].map(toComparable).filter(Boolean));
+  const matchedEvents = toArray(events).filter((event) => {
+    const eventTerms = toArray(event.terms).map(toComparable);
+    return eventTerms.some((item) => variants.has(item));
+  });
+  const chapters = [...new Set(
+    matchedEvents
+      .map((event) => Number(event.chapter))
+      .filter((chapter) => Number.isFinite(chapter) && chapter > 0),
+  )].sort((left, right) => left - right);
+
+  return {
+    ...term,
+    _mentionCount: matchedEvents.length,
+    _chapters: chapters,
+    _fallbackDefinition: normalizeText(term.definition)
+      || normalizeText(term.description)
+      || normalizeText(matchedEvents[0]?.description || ''),
+    _fallback: !normalizeText(term.definition),
+  };
+}
+
+function renderTimeline(timeline = []) {
+  if (!timeline.length) return 'Chưa có';
+  return timeline.map((item) => `Ch.${item.chapter || '?'} ${item.summary || item.eventId || ''}`).join(' | ');
+}
+
 function Section({ title, count, children }) {
   return (
     <section className="knowledge-section">
@@ -207,7 +324,7 @@ export default function KnowledgeView({
   degradedReport = null,
 }) {
   const worldProfile = parsed?.worldProfile || {};
-  const characters = dedupeKnowledgeItems(parsed?.characterProfiles);
+  const characters = mergeCharacterProfiles(dedupeKnowledgeItems(parsed?.characterProfiles));
   const locations = dedupeKnowledgeItems(parsed?.locations);
   const objects = dedupeKnowledgeItems(parsed?.objects);
   const terms = dedupeKnowledgeItems(parsed?.terms);
@@ -218,17 +335,17 @@ export default function KnowledgeView({
 
   const characterRankMap = useMemo(() => {
     const counts = characters
-      .map((item) => countCharacterAppearances(item.name, events))
+      .map((item) => countCharacterAppearances(item, events))
       .sort((left, right) => right - left);
     return new Map([['top', counts[0] || 0]]);
   }, [characters, events]);
 
   const enrichedCharacters = useMemo(() => {
     return characters.map((item) => {
-      const appearances = countCharacterAppearances(item.name, events);
-      const chapters = characterChapters(item.name, events);
-      const relatedLocations = characterLocations(item.name, events);
-      const fallbackRole = inferFallbackRole(item.name, events, characterRankMap);
+      const appearances = countCharacterAppearances(item, events);
+      const chapters = characterChapters(item, events);
+      const relatedLocations = characterLocations(item, events);
+      const fallbackRole = inferFallbackRole(item, events, characterRankMap);
       return {
         ...item,
         _fallback: !hasDetailedCharacterProfile(item),
@@ -258,19 +375,24 @@ export default function KnowledgeView({
     return map;
   }, [objects, events]);
 
+  const enrichedTerms = useMemo(() => {
+    return terms.map((term) => buildTermEnrichment(term, events));
+  }, [events, terms]);
+
   const termTimelineMap = useMemo(() => {
     const map = new Map();
-    for (const term of terms) {
+    for (const term of enrichedTerms) {
       map.set(makeSlug(term.name), timelineFromEntity(term, events));
     }
     return map;
-  }, [terms, events]);
+  }, [enrichedTerms, events]);
 
   return (
     <div className="knowledge-view">
       {hasKnowledgeDegraded && (
         <div className="knowledge-note knowledge-note-warning">
-          Pass tri thức đang ở trạng thái degraded. Màn này hiện đang ghép từ dữ liệu sự kiện/incidents có sẵn, nên hồ sơ chi tiết có thể thiếu.
+          Pass tri thức đang ở trạng thái degraded. Màn này đang ghép từ dữ liệu sự kiện và incident có sẵn,
+          nên hồ sơ chi tiết có thể chưa đầy đủ.
         </div>
       )}
 
@@ -290,7 +412,8 @@ export default function KnowledgeView({
           </div>
         ) : (
           <div className="knowledge-note">
-            Run này chưa có world profile đủ tốt để hiển thị. Nguyên nhân thường là Pass C không rút được tri thức thế giới từ incidents/events.
+            Run này chưa có world profile đủ tốt để hiển thị. Thường là Pass C chưa rút được tri thức thế giới
+            đủ chắc từ incidents và beats.
           </div>
         )}
       </Section>
@@ -301,6 +424,9 @@ export default function KnowledgeView({
             <article key={entityViewKey('char', item, index)} className="knowledge-card">
               <p><strong>Tên:</strong> {item.name || 'Chưa rõ'}</p>
               <p><strong>Vai trò:</strong> {item._displayRole || 'chưa suy ra'}</p>
+              {toArray(item.aliases).length > 1 && (
+                <p><strong>Bí danh:</strong> {toArray(item.aliases).filter((alias) => alias !== item.name).join(', ')}</p>
+              )}
               {item._fallback ? (
                 <>
                   <p><strong>Nguồn:</strong> fallback từ events/incidents</p>
@@ -317,7 +443,7 @@ export default function KnowledgeView({
                   {toArray(item.personalityTags || item.personality_tags || item.traits).length > 0 && (
                     <p><strong>Tags tâm lý:</strong> {toArray(item.personalityTags || item.personality_tags || item.traits).join(', ')}</p>
                   )}
-                  {item.flaws && <p><strong>Điểm yếu / khuyết điểm:</strong> {item.flaws}</p>}
+                  {item.flaws && <p><strong>Điểm yếu:</strong> {item.flaws}</p>}
                   {(item.goals || item.motivation) && <p><strong>Mục tiêu:</strong> {item.goals || item.motivation}</p>}
                   {item.secrets && <p><strong>Bí mật:</strong> {item.secrets}</p>}
                 </>
@@ -339,7 +465,7 @@ export default function KnowledgeView({
                   {(item.chapterStart || item.chapterEnd) && (
                     <p><strong>Chương:</strong> {item.chapterStart || '?'} - {item.chapterEnd || '?'}</p>
                   )}
-                  <p><strong>Dòng thời gian:</strong> {timeline.length ? timeline.map((t) => `Ch.${t.chapter || '?'} ${t.summary || t.eventId || ''}`).join(' | ') : 'Chưa có'}</p>
+                  <p><strong>Dòng thời gian:</strong> {renderTimeline(timeline)}</p>
                 </article>
               );
             })}
@@ -360,7 +486,7 @@ export default function KnowledgeView({
                   {item.owner && <p><strong>Chủ sở hữu:</strong> {item.owner}</p>}
                   {item.description && <p><strong>Mô tả:</strong> {item.description}</p>}
                   {item.properties && <p><strong>Thuộc tính:</strong> {item.properties}</p>}
-                  <p><strong>Dòng thời gian:</strong> {timeline.length ? timeline.map((t) => `Ch.${t.chapter || '?'} ${t.summary || t.eventId || ''}`).join(' | ') : 'Chưa có'}</p>
+                  <p><strong>Dòng thời gian:</strong> {renderTimeline(timeline)}</p>
                 </article>
               );
             })}
@@ -370,17 +496,29 @@ export default function KnowledgeView({
         )}
       </Section>
 
-      <Section title="Thuật Ngữ" count={terms.length}>
-        {terms.length > 0 ? (
+      <Section title="Thuật Ngữ" count={enrichedTerms.length}>
+        {enrichedTerms.length > 0 ? (
           <div className="knowledge-grid">
-            {terms.map((item, index) => {
+            {enrichedTerms.map((item, index) => {
               const timeline = termTimelineMap.get(makeSlug(item.name)) || [];
               return (
                 <article key={entityViewKey('term', item, index)} className="knowledge-card">
                   <p><strong>Tên:</strong> {item.name || 'Chưa rõ'}</p>
                   {item.category && <p><strong>Phân loại:</strong> {item.category}</p>}
-                  {item.definition && <p><strong>Định nghĩa:</strong> {item.definition}</p>}
-                  <p><strong>Dòng thời gian:</strong> {timeline.length ? timeline.map((t) => `Ch.${t.chapter || '?'} ${t.summary || t.eventId || ''}`).join(' | ') : 'Chưa có'}</p>
+                  {item._fallback ? (
+                    <>
+                      <p><strong>Nguồn:</strong> fallback từ events/incidents</p>
+                      {item._fallbackDefinition && <p><strong>Diễn giải:</strong> {item._fallbackDefinition}</p>}
+                      <p><strong>Nhắc tới:</strong> {item._mentionCount || 0} sự kiện</p>
+                      <p><strong>Chương:</strong> {item._chapters.length ? `${item._chapters[0]} - ${item._chapters[item._chapters.length - 1]}` : 'Chưa rõ'}</p>
+                    </>
+                  ) : (
+                    <>
+                      {item.definition && <p><strong>Định nghĩa:</strong> {item.definition}</p>}
+                      {item.description && <p><strong>Mô tả:</strong> {item.description}</p>}
+                    </>
+                  )}
+                  <p><strong>Dòng thời gian:</strong> {renderTimeline(timeline)}</p>
                 </article>
               );
             })}

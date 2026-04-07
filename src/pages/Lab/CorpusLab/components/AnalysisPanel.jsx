@@ -110,6 +110,27 @@ function formatTime(timestamp) {
   return date.toLocaleString('vi-VN');
 }
 
+function formatDuration(startedAt, completedAt) {
+  const start = Number(startedAt);
+  const end = Number(completedAt);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    return 'Chua ro';
+  }
+
+  const totalSeconds = Math.floor((end - start) / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}g ${String(minutes).padStart(2, '0')}p ${String(seconds).padStart(2, '0')}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}p ${String(seconds).padStart(2, '0')}s`;
+  }
+  return `${seconds}s`;
+}
+
 function normalizeApiKeys(keys) {
   if (!Array.isArray(keys)) {
     return [];
@@ -148,6 +169,8 @@ export default function AnalysisPanel({ corpus }) {
   const [resultError, setResultError] = useState(null);
   const [resultPreview, setResultPreview] = useState('');
   const [resultAnalysisId, setResultAnalysisId] = useState(null);
+  const [resultPreviewModeLoaded, setResultPreviewModeLoaded] = useState(null);
+  const [resultViewMode, setResultViewMode] = useState('slim');
   const [projectSnapshots, setProjectSnapshots] = useState([]);
   const [snapshotSaving, setSnapshotSaving] = useState(false);
   const [snapshotError, setSnapshotError] = useState(null);
@@ -186,6 +209,7 @@ export default function AnalysisPanel({ corpus }) {
     setResultError(null);
     setResultPreview('');
     setResultAnalysisId(null);
+    setResultPreviewModeLoaded(null);
     setSnapshotSyncStats(null);
   }, [corpus?.id]);
 
@@ -221,15 +245,16 @@ export default function AnalysisPanel({ corpus }) {
     }
 
     const localResult = latestCompleted.result || latestCompleted.finalResult || null;
-    if (localResult) {
+    if (localResult && resultViewMode === 'slim') {
       setResultPreview(stringifyResult(localResult));
       setResultAnalysisId(latestCompleted.id);
+      setResultPreviewModeLoaded('slim');
       setResultError(null);
       setResultLoading(false);
       return;
     }
 
-    if (resultAnalysisId === latestCompleted.id && resultPreview) {
+    if (resultAnalysisId === latestCompleted.id && resultPreview && resultPreviewModeLoaded === resultViewMode) {
       return;
     }
 
@@ -239,16 +264,17 @@ export default function AnalysisPanel({ corpus }) {
         setResultLoading(true);
         setResultError(null);
 
-        const detail = await corpusApi.getAnalysis(corpus.id, latestCompleted.id);
+        const payload = resultViewMode === 'full'
+          ? (await corpusApi.getAnalysisArtifact(corpus.id, latestCompleted.id, { mode: 'full' }))?.artifact
+          : (await corpusApi.getAnalysis(corpus.id, latestCompleted.id, { mode: 'slim' }))?.result;
         if (disposed) {
           return;
         }
-
-        const payload = detail?.result || detail?.finalResult || detail?.layers || null;
         const previewText = stringifyResult(payload);
 
         setResultPreview(previewText || 'Khong co du lieu output de hien thi.');
         setResultAnalysisId(latestCompleted.id);
+        setResultPreviewModeLoaded(resultViewMode);
       } catch (loadError) {
         if (disposed) {
           return;
@@ -273,7 +299,9 @@ export default function AnalysisPanel({ corpus }) {
     latestCompleted?.id,
     latestCompleted?.result,
     resultAnalysisId,
+    resultPreviewModeLoaded,
     resultPreview,
+    resultViewMode,
     showResult,
   ]);
 
@@ -403,9 +431,9 @@ export default function AnalysisPanel({ corpus }) {
   return (
     <div className="corpus-card analysis-panel">
       <div className="analysis-panel-header">
-        <h3>Bo may phan tich Analysis V2</h3>
+        <h3>Bo may phan tich Narrative Pipeline V3</h3>
         <span className="muted">
-          Pipeline incident-first contract-driven voi run report, degraded report va story graph
+          Incident-first, windowed, stateful: artifact V3, review/resume, graph projections va compat projections
         </span>
       </div>
 
@@ -461,6 +489,12 @@ export default function AnalysisPanel({ corpus }) {
           <strong>Lan phan tich hoan tat gan nhat</strong>
           <span>Mo hinh: {latestCompleted.model || 'Chua co'}</span>
           <span>Hoan tat: {formatTime(latestCompleted.completedAt)}</span>
+          <span>
+            Tong thoi gian: {formatDuration(
+              latestCompleted.startedAt || latestCompleted.createdAt,
+              latestCompleted.completedAt,
+            )}
+          </span>
           <span>So phan output: {latestCompleted.partsGenerated || 0}</span>
           <span>
             Luu vao du an: {latestIsSavedToProject ? 'Da luu' : 'Chua luu'}
@@ -510,6 +544,24 @@ export default function AnalysisPanel({ corpus }) {
 
           {showResult && (
             <div style={{ marginTop: 8 }}>
+              <div className="analysis-actions" style={{ marginBottom: 8 }}>
+                <button
+                  type="button"
+                  className={`btn ${resultViewMode === 'slim' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setResultViewMode('slim')}
+                  disabled={resultLoading}
+                >
+                  Export Slim
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${resultViewMode === 'full' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setResultViewMode('full')}
+                  disabled={resultLoading}
+                >
+                  Export Full Debug
+                </button>
+              </div>
               {resultLoading && <p className="muted">Dang tai ket qua...</p>}
               {resultError && <p className="corpus-error">{resultError}</p>}
               {!resultLoading && !resultError && (

@@ -6,6 +6,7 @@ export default function ReviewQueueView({
   filter = 'all',
   onFilterChange,
   onResolve,
+  onRerun,
 }) {
   const filteredItems = useMemo(() => {
     if (filter === 'all') return items;
@@ -64,7 +65,7 @@ export default function ReviewQueueView({
       <div className="review-queue-list">
         {filteredItems.length === 0 && (
           <div className="review-queue-empty">
-            <h3>Không có mục cần duyệt</h3>
+            <h3>Không có mục review</h3>
             <p>Bộ lọc hiện tại không có kết quả.</p>
           </div>
         )}
@@ -75,6 +76,7 @@ export default function ReviewQueueView({
             item={item}
             rank={index + 1}
             onResolve={onResolve}
+            onRerun={onRerun}
           />
         ))}
       </div>

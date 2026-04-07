@@ -1,264 +1,450 @@
-﻿/**
- * TimelineView - Horizontal timeline for events
- */
+import { useEffect, useMemo, useState } from 'react';
 
-import { useRef, useState } from 'react';
-
-const ARC_COLORS = {
-  setup: '#6366f1',
-  rising: '#f59e0b',
-  climax: '#ef4444',
-  falling: '#f97316',
-  resolution: '#22c55e',
+const ZOOM_PRESETS = {
+  broad: { label: 'Toàn cảnh', count: 16 },
+  balanced: { label: 'Cân bằng', count: 10 },
+  focused: { label: 'Chi tiết', count: 6 },
 };
 
-const SEVERITY_LABELS = {
-  crucial: 'Cốt lõi',
-  major: 'Quan trọng',
-  moderate: 'Trung bình',
-  minor: 'Nhẹ',
+const INCIDENT_TYPES = {
+  major_plot_point: 'Điểm nút chính',
+  subplot: 'Tuyến phụ',
+  pov_thread: 'Tuyến góc nhìn',
 };
+
+const LABEL_COLUMN_WIDTH = 280;
+const CHAPTER_COLUMN_WIDTH = 84;
 
 export default function TimelineView({
   data,
-  events,
-  selectedIds,
-  onToggle,
+  events = [],
+  incidents = [],
   onEdit,
   onAnnotate,
 }) {
-  const scrollRef = useRef(null);
-  const [hoveredChapter, setHoveredChapter] = useState(null);
+  const chapters = useMemo(
+    () => (Array.isArray(data) && data.length ? data : buildChapters(events)),
+    [data, events],
+  );
+  const chapterNumbers = useMemo(
+    () => chapters.map((item) => Number(item.chapter)).filter((item) => item > 0).sort((a, b) => a - b),
+    [chapters],
+  );
+  const chapterEventMap = useMemo(
+    () => new Map(chapters.map((item) => [item.chapter, item.events || []])),
+    [chapters],
+  );
+  const incidentRows = useMemo(
+    () => buildIncidentRows(incidents, events),
+    [incidents, events],
+  );
 
-  // data is timeline data from buildTimeline()
-  const chapters = data || [];
+  const [zoom, setZoom] = useState(getInitialZoom(chapterNumbers.length));
+  const [rangeStart, setRangeStart] = useState(0);
+  const [focusedChapter, setFocusedChapter] = useState(null);
+  const [selectedIncidentId, setSelectedIncidentId] = useState('');
 
-  // Fallback: build from events if data not provided
-  const displayChapters = chapters.length > 0 ? chapters : buildChaptersFromEvents(events);
-  const isSingleChapter = displayChapters.length <= 1;
-  const chapterWidth = isSingleChapter ? 560 : 280;
+  const visibleCount = Math.min(ZOOM_PRESETS[zoom].count, Math.max(chapterNumbers.length, 1));
+  const maxRangeStart = Math.max(chapterNumbers.length - visibleCount, 0);
+  const visibleChapters = useMemo(
+    () => chapterNumbers.slice(rangeStart, rangeStart + visibleCount),
+    [chapterNumbers, rangeStart, visibleCount],
+  );
+  const visibleStart = visibleChapters[0] || 0;
+  const visibleEnd = visibleChapters[visibleChapters.length - 1] || 0;
 
-  if (!events || events.length === 0) {
+  useEffect(() => {
+    if (rangeStart > maxRangeStart) setRangeStart(maxRangeStart);
+  }, [maxRangeStart, rangeStart]);
+
+  useEffect(() => {
+    if (!focusedChapter || !visibleChapters.includes(focusedChapter)) {
+      setFocusedChapter(null);
+    }
+  }, [focusedChapter, visibleChapters]);
+
+  const visibleIncidents = useMemo(
+    () => incidentRows.filter((item) => item.startChapter <= visibleEnd && item.endChapter >= visibleStart),
+    [incidentRows, visibleEnd, visibleStart],
+  );
+  const visibleChapterGroups = useMemo(
+    () => buildVisibleChapterGroups(visibleChapters, visibleIncidents),
+    [visibleChapters, visibleIncidents],
+  );
+  const filteredIncidents = useMemo(
+    () => (focusedChapter
+      ? visibleIncidents.filter((item) => focusedChapter >= item.startChapter && focusedChapter <= item.endChapter)
+      : visibleIncidents),
+    [focusedChapter, visibleIncidents],
+  );
+
+  useEffect(() => {
+    if (!filteredIncidents.length) {
+      setSelectedIncidentId('');
+      return;
+    }
+    if (!filteredIncidents.some((item) => item.id === selectedIncidentId)) {
+      setSelectedIncidentId(filteredIncidents[0].id);
+    }
+  }, [filteredIncidents, selectedIncidentId]);
+
+  const selectedIncident = useMemo(
+    () => filteredIncidents.find((item) => item.id === selectedIncidentId) || null,
+    [filteredIncidents, selectedIncidentId],
+  );
+
+  const overviewBuckets = useMemo(
+    () => buildOverviewBuckets(chapterNumbers, chapterEventMap),
+    [chapterEventMap, chapterNumbers],
+  );
+  const showOverview = chapterNumbers.length > 30;
+
+  if (!events.length) {
     return (
       <div className="timeline-empty">
         <div className="empty-icon">🕒</div>
-        <h3>Không có sự kiện để hiển thị</h3>
-        <p>Hãy thêm sự kiện để xem trên dòng thời gian.</p>
+        <h3>Không có dữ liệu dòng thời gian</h3>
+        <p>Hãy chạy lại phân tích để xem mạch truyện theo chương.</p>
       </div>
     );
   }
 
   return (
-    <div className={`timeline-view ${isSingleChapter ? 'single-chapter' : ''}`}>
-      {/* Timeline header */}
-      <div className="timeline-header">
-        <div className="timeline-legend">
-          <span className="legend-item">
-            <span className="legend-dot" style={{ background: '#6366f1' }} />
-            Dòng thời gian theo chương
-          </span>
+    <div className="narrative-timeline">
+      <header className="narrative-timeline__toolbar">
+        <div className="narrative-timeline__summary">
+          <strong>Ch. {visibleStart || '?'} - Ch. {visibleEnd || '?'}</strong>
+          <span>{filteredIncidents.length} sự kiện lớn</span>
+          <span>{visibleChapters.length} chương</span>
+          {focusedChapter ? <span>Lọc theo Ch. {focusedChapter}</span> : null}
         </div>
-      </div>
 
-      {/* Timeline scroll area */}
-      <div ref={scrollRef} className="timeline-scroll">
-        <div
-          className="timeline-track"
-          style={{
-            width: isSingleChapter
-              ? '100%'
-              : Math.max(displayChapters.length * chapterWidth, 760),
-            minWidth: '100%',
-          }}
-        >
-          {/* Arc background */}
-          <svg className="timeline-arc-line" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="arc-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                {displayChapters.map((_, i) => (
-                  <stop
-                    key={i}
-                    offset={`${(i / (displayChapters.length - 1)) * 100}%`}
-                    stopColor={getArcColor(i, displayChapters.length)}
-                  />
-                ))}
-              </linearGradient>
-            </defs>
-            <path
-              d={generateArcPath(displayChapters.length, chapterWidth)}
-              stroke="url(#arc-gradient)"
-              strokeWidth="4"
-              fill="none"
-              strokeLinecap="round"
-            />
-          </svg>
-
-          {/* Chapter markers */}
-          <div className="timeline-chapters">
-            {displayChapters.map((chapter) => (
-              <div
-                key={chapter.chapter}
-                className={`timeline-chapter ${hoveredChapter === chapter.chapter ? 'hovered' : ''}`}
-                style={{ width: isSingleChapter ? '100%' : chapterWidth }}
-                onMouseEnter={() => setHoveredChapter(chapter.chapter)}
-                onMouseLeave={() => setHoveredChapter(null)}
+        <div className="narrative-timeline__controls">
+          <div className="narrative-timeline__group">
+            {Object.entries(ZOOM_PRESETS).map(([key, value]) => (
+              <button
+                key={key}
+                type="button"
+                className={zoom === key ? 'active' : ''}
+                onClick={() => setZoom(key)}
               >
-                <div className="chapter-marker">
-                  <div className="chapter-line" />
-                  <span className="chapter-label">Ch. {formatChapter(chapter.chapter)}</span>
-                  <span className="chapter-count">{chapter.events.length}</span>
-                </div>
-
-                {/* Events on chapter */}
-                <div className="chapter-events">
-                  {chapter.events.map((event, index) => {
-                    const canonType = event.canonOrFanon?.type === 'fanon' ? 'fanon' : 'canon';
-                    const shortDescription = truncateText(
-                      event.description || 'Không có mô tả',
-                      isSingleChapter ? 130 : 85
-                    );
-
-                    return (
-                    <div
-                      key={event.id}
-                      className={`timeline-event ${selectedIds.has(event.id) ? 'selected' : ''}`}
-                      onClick={() => onToggle(event.id)}
-                    >
-                      <div
-                        className="event-dot"
-                        style={{
-                          backgroundColor: getSeverityColor(event.severity),
-                          borderColor: event.canonOrFanon?.type === 'fanon' ? '#a855f7' : '#3b82f6',
-                        }}
-                      />
-                      <div className="event-preview">
-                        <div className="event-topline">
-                          <span className="event-order">#{index + 1}</span>
-                          <span className={`event-source ${canonType}`}>
-                            {canonType === 'canon' ? 'Chính sử' : 'Phi chính sử'}
-                          </span>
-                        </div>
-                        <span className="event-title">
-                          {shortDescription}
-                        </span>
-                        <div className="event-meta">
-                          <span className={`event-severity severity-${event.severity || 'minor'}`}>
-                            {SEVERITY_LABELS[event.severity] || 'Nhẹ'}
-                          </span>
-                          {event.emotionalIntensity ? (
-                            <span className="event-intensity">🔥 {event.emotionalIntensity}/10</span>
-                          ) : null}
-                        </div>
-                        <div className="event-quick-actions">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEdit?.(event);
-                            }}
-                            title="Chỉnh sửa"
-                          >
-                            ✏️
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onAnnotate?.(event);
-                            }}
-                            title="Ghi chú"
-                          >
-                            📝
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    );
-                  })}
-                </div>
-              </div>
+                {value.label}
+              </button>
             ))}
           </div>
-        </div>
-      </div>
 
-      {/* Zoom controls */}
-      <div className="timeline-zoom">
-        <button
-          onClick={() => scrollRef.current?.scrollBy({ left: -200, behavior: 'smooth' })}
-          title="Cuộn trái"
-        >
-          ←
-        </button>
-        <button
-          onClick={() => scrollRef.current?.scrollBy({ left: 200, behavior: 'smooth' })}
-          title="Cuộn phải"
-        >
-          →
-        </button>
-      </div>
+          <div className="narrative-timeline__group">
+            <button
+              type="button"
+              onClick={() => setRangeStart((value) => Math.max(value - visibleCount, 0))}
+              disabled={rangeStart <= 0}
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => setRangeStart((value) => Math.min(value + visibleCount, maxRangeStart))}
+              disabled={rangeStart >= maxRangeStart}
+            >
+              →
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {showOverview ? (
+        <div className="narrative-timeline__overview">
+          {overviewBuckets.map((bucket) => (
+            <button
+              key={`${bucket.startChapter}-${bucket.endChapter}`}
+              type="button"
+              className={`narrative-timeline__overview-bucket ${bucket.startChapter <= visibleEnd && bucket.endChapter >= visibleStart ? 'active' : ''}`}
+              title={`Ch. ${bucket.startChapter}${bucket.startChapter !== bucket.endChapter ? `-${bucket.endChapter}` : ''}`}
+              onClick={() => setRangeStart(findClosestIndex(chapterNumbers, bucket.startChapter))}
+            >
+              <span style={{ height: `${bucket.height}%` }} />
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <section className="narrative-timeline__rail">
+        <div className="narrative-timeline__chapters">
+          <button
+            type="button"
+            className={`narrative-timeline__chapter-pill narrative-timeline__chapter-pill--all ${focusedChapter == null ? 'active' : ''}`}
+            onClick={() => setFocusedChapter(null)}
+          >
+            <strong>Toàn dải</strong>
+            <span>{events.length} nhịp</span>
+          </button>
+
+          {visibleChapterGroups.map((group) => (
+            <div
+              key={group.key}
+              className={`narrative-timeline__chapter-group ${focusedChapter && group.chapters.includes(focusedChapter) ? 'active' : ''}`}
+            >
+              {group.chapters.map((chapter) => {
+                const eventCount = (chapterEventMap.get(chapter) || []).length;
+                return (
+                  <button
+                    key={chapter}
+                    type="button"
+                    className={`narrative-timeline__chapter-pill ${focusedChapter === chapter ? 'active' : ''}`}
+                    onClick={() => setFocusedChapter(chapter)}
+                  >
+                    <strong>Ch. {chapter}</strong>
+                    <span>{eventCount} nhịp</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+
+        <div className={`narrative-timeline__content is-list-only ${selectedIncident ? 'with-detail' : ''}`}>
+          <div className="narrative-timeline__incident-list">
+            {filteredIncidents.length === 0 ? (
+              <div className="narrative-timeline__empty">Không có sự kiện lớn trong phạm vi này.</div>
+            ) : (
+              filteredIncidents.map((incident) => {
+                const active = selectedIncidentId === incident.id;
+                return (
+                  <button
+                    key={incident.id}
+                    type="button"
+                    className={`narrative-timeline__label ${active ? 'active' : ''}`}
+                    onClick={() => setSelectedIncidentId(incident.id)}
+                  >
+                    <strong>{incident.title}</strong>
+                    <span>{formatRange(incident.startChapter, incident.endChapter)}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {selectedIncident ? (
+            <aside className="narrative-timeline__detail">
+              <div className="narrative-timeline__detail-card">
+                <div className="narrative-timeline__detail-topline">
+                  <span className="narrative-timeline__detail-badge">Sự kiện lớn</span>
+                  <span className="narrative-timeline__detail-badge muted">
+                    {INCIDENT_TYPES[selectedIncident.type] || 'Tuyến phụ'}
+                  </span>
+                </div>
+
+                <h3>{selectedIncident.title}</h3>
+                <p>{selectedIncident.description || 'Chưa có mô tả chi tiết cho sự kiện lớn này.'}</p>
+
+                <div className="narrative-timeline__detail-meta">
+                  <div>
+                    <span>Dải chương</span>
+                    <strong>{formatRange(selectedIncident.startChapter, selectedIncident.endChapter)}</strong>
+                  </div>
+                  <div>
+                    <span>Số nhịp</span>
+                    <strong>{selectedIncident.events.length}</strong>
+                  </div>
+                  <div>
+                    <span>Độ tin cậy</span>
+                    <strong>{formatPercent(selectedIncident.confidence)}</strong>
+                  </div>
+                  <div>
+                    <span>Trạng thái</span>
+                    <strong>{selectedIncident.reviewStatus === 'auto_accepted' ? 'Đã tự duyệt' : 'Cần duyệt'}</strong>
+                  </div>
+                </div>
+
+                <div className="narrative-timeline__beats">
+                  <div className="narrative-timeline__beats-head">
+                    <strong>Nhịp bên trong</strong>
+                    <span>{selectedIncident.events.length} nhịp</span>
+                  </div>
+
+                  {selectedIncident.events.length === 0 ? (
+                    <div className="narrative-timeline__empty">Chưa có nhịp liên kết.</div>
+                  ) : (
+                    <div className="narrative-timeline__beats-list">
+                      {selectedIncident.events.slice(0, 8).map((event) => (
+                        <div key={event.id} className="narrative-timeline__beat-item">
+                          <div className="narrative-timeline__beat-copy">
+                            <strong>{truncate(resolveEventTitle(event), 92)}</strong>
+                            <span>
+                              Ch. {toChapter(event.chapter) || '?'} · {event.locationLink?.locationName || 'Chưa rõ địa điểm'}
+                            </span>
+                          </div>
+                          <div className="narrative-timeline__beat-actions">
+                            <button type="button" onClick={() => onEdit?.(event)}>Chỉnh sửa</button>
+                            <button type="button" onClick={() => onAnnotate?.(event)}>Ghi chú</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </aside>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }
 
-function buildChaptersFromEvents(events) {
-  if (!events || !events.length) return [];
+function buildChapters(events) {
+  const chapterMap = new Map();
+  for (const event of events || []) {
+    const chapter = toChapter(event.chapter);
+    if (!chapter) continue;
+    if (!chapterMap.has(chapter)) chapterMap.set(chapter, []);
+    chapterMap.get(chapter).push(event);
+  }
+  return [...chapterMap.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([chapter, chapterEvents]) => ({ chapter, events: chapterEvents }));
+}
 
-  const chapters = {};
-  for (const event of events) {
-    const ch = Number.isFinite(Number(event.chapter)) ? Number(event.chapter) : 0;
-    if (!chapters[ch]) {
-      chapters[ch] = { chapter: ch, events: [] };
-    }
-    chapters[ch].events.push(event);
+function buildIncidentRows(incidents, events) {
+  const byEventId = new Map((events || []).filter((item) => item?.id).map((item) => [item.id, item]));
+  const fallbackMap = new Map();
+
+  for (const event of events || []) {
+    if (!event?.incidentId) continue;
+    if (!fallbackMap.has(event.incidentId)) fallbackMap.set(event.incidentId, []);
+    fallbackMap.get(event.incidentId).push(event);
   }
 
-  return Object.values(chapters).sort((a, b) => {
-    if (a.chapter === 0) return 1;
-    if (b.chapter === 0) return -1;
-    return a.chapter - b.chapter;
+  const rows = [];
+  for (const incident of incidents || []) {
+    const explicitEvents = Array.isArray(incident.containedEvents)
+      ? incident.containedEvents.map((id) => byEventId.get(id)).filter(Boolean)
+      : [];
+    const linkedEvents = (explicitEvents.length ? explicitEvents : (fallbackMap.get(incident.id) || []))
+      .sort((left, right) => toChapter(left.chapter) - toChapter(right.chapter));
+    const startChapter = toChapter(incident.chapterStart) || toChapter(linkedEvents[0]?.chapter);
+    const endChapter = toChapter(incident.chapterEnd) || toChapter(linkedEvents[linkedEvents.length - 1]?.chapter) || startChapter;
+
+    if (!incident?.id || !startChapter) continue;
+
+    rows.push({
+      id: incident.id,
+      title: incident.title || resolveEventTitle(linkedEvents[0]) || 'Sự kiện lớn chưa đặt tên',
+      type: incident.type || 'subplot',
+      confidence: Number(incident.confidence || 0),
+      reviewStatus: incident.reviewStatus || 'needs_review',
+      description: incident.detailedSummary || incident.description || '',
+      startChapter,
+      endChapter: Math.max(startChapter, endChapter),
+      events: linkedEvents,
+    });
+  }
+
+  return rows.sort((left, right) => {
+    if (left.startChapter !== right.startChapter) return left.startChapter - right.startChapter;
+    return left.endChapter - right.endChapter;
   });
 }
 
-function generateArcPath(chapterCount, chapterWidth = 200) {
-  if (chapterCount < 2) return '';
+function buildOverviewBuckets(chapterNumbers, chapterEventMap) {
+  if (!chapterNumbers.length) return [];
+  const bucketSize = Math.max(1, Math.ceil(chapterNumbers.length / 40));
+  const buckets = [];
+  let max = 1;
 
-  const width = chapterCount * chapterWidth;
-  const height = 80;
-  const midX = width / 2;
-  const midY = height;
+  for (let index = 0; index < chapterNumbers.length; index += bucketSize) {
+    const slice = chapterNumbers.slice(index, index + bucketSize);
+    const count = slice.reduce((sum, chapter) => sum + (chapterEventMap.get(chapter)?.length || 0), 0);
+    max = Math.max(max, count);
+    buckets.push({
+      startChapter: slice[0],
+      endChapter: slice[slice.length - 1],
+      count,
+    });
+  }
 
-  return `M 0 ${midY} Q ${midX} ${midY - height} ${width} ${midY}`;
+  return buckets.map((bucket) => ({
+    ...bucket,
+    height: Math.max(18, Math.round((bucket.count / max) * 100)),
+  }));
 }
 
-function getArcColor(index, total) {
-  const progress = index / (total - 1 || 1);
-  if (progress < 0.2) return ARC_COLORS.setup;
-  if (progress < 0.4) return ARC_COLORS.rising;
-  if (progress < 0.7) return ARC_COLORS.climax;
-  if (progress < 0.85) return ARC_COLORS.falling;
-  return ARC_COLORS.resolution;
+function buildVisibleChapterGroups(visibleChapters, incidents) {
+  if (!Array.isArray(visibleChapters) || !visibleChapters.length) return [];
+
+  const groups = [];
+  let currentGroup = [];
+  let lastChapter = null;
+
+  const membership = new Map();
+  for (const chapter of visibleChapters) {
+    const incidentIds = incidents
+      .filter((item) => chapter >= item.startChapter && chapter <= item.endChapter)
+      .map((item) => item.id)
+      .sort();
+    membership.set(chapter, incidentIds.join('|'));
+  }
+
+  for (const chapter of visibleChapters) {
+    const currentSignature = membership.get(chapter) || '';
+    const previousSignature = lastChapter != null ? membership.get(lastChapter) || '' : '';
+    const sameCluster =
+      lastChapter != null &&
+      chapter === lastChapter + 1 &&
+      currentSignature &&
+      currentSignature === previousSignature;
+
+    if (!currentGroup.length || sameCluster) {
+      currentGroup.push(chapter);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [chapter];
+    }
+
+    lastChapter = chapter;
+  }
+
+  if (currentGroup.length) groups.push(currentGroup);
+
+  return groups.map((chapters) => ({
+    key: `${chapters[0]}-${chapters[chapters.length - 1]}`,
+    chapters,
+  }));
 }
 
-function getSeverityColor(severity) {
-  const colors = {
-    crucial: '#22c55e',
-    major: '#3b82f6',
-    moderate: '#f97316',
-    minor: '#9ca3af',
-  };
-  return colors[severity] || colors.minor;
+function getInitialZoom(chapterCount) {
+  if (chapterCount > 120) return 'broad';
+  if (chapterCount > 36) return 'balanced';
+  return 'focused';
 }
 
-function capitalize(str) {
-  return str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
+function toChapter(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
 }
 
-function truncateText(text, maxLength) {
-  if (!text) return '';
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1)}…`;
+function resolveEventTitle(event) {
+  return event?.title || event?.description || event?.summary || '';
 }
 
-function formatChapter(chapter) {
-  const value = Number(chapter);
-  return Number.isFinite(value) && value > 0 ? value : '?';
+function formatRange(startChapter, endChapter) {
+  if (startChapter && endChapter && startChapter !== endChapter) return `Ch. ${startChapter} - ${endChapter}`;
+  if (startChapter) return `Ch. ${startChapter}`;
+  return 'Chưa rõ chương';
+}
+
+function formatPercent(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? `${Math.round(numeric * 100)}%` : '--';
+}
+
+function truncate(text, maxLength) {
+  const value = String(text || '').trim();
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function findClosestIndex(chapterNumbers, chapter) {
+  const index = chapterNumbers.findIndex((item) => item >= chapter);
+  return index >= 0 ? index : Math.max(chapterNumbers.length - 1, 0);
 }

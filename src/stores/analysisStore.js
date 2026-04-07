@@ -5,6 +5,38 @@ import { corpusApi } from '../services/api/corpusApi';
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const ACTIVE_STATUSES = new Set(['pending', 'processing']);
 
+function sanitizePersistedAnalysis(analysis = {}) {
+  if (!analysis || typeof analysis !== 'object') {
+    return null;
+  }
+
+  return {
+    id: analysis.id || null,
+    corpusId: analysis.corpusId || null,
+    chunkSize: analysis.chunkSize ?? null,
+    chunkOverlap: analysis.chunkOverlap ?? null,
+    provider: analysis.provider ?? null,
+    model: analysis.model ?? null,
+    temperature: analysis.temperature ?? null,
+    status: analysis.status || 'pending',
+    progress: analysis.progress ?? 0,
+    currentPhase: analysis.currentPhase ?? null,
+    totalChunks: analysis.totalChunks ?? 0,
+    processedChunks: analysis.processedChunks ?? 0,
+    partsGenerated: analysis.partsGenerated ?? 0,
+    errorMessage: analysis.errorMessage ?? null,
+    createdAt: analysis.createdAt ?? null,
+    startedAt: analysis.startedAt ?? null,
+    completedAt: analysis.completedAt ?? null,
+    manifest: analysis.manifest ?? null,
+    passStatus: analysis.passStatus ?? null,
+    degradedReport: analysis.degradedReport ?? null,
+    graphSummary: analysis.graphSummary ?? null,
+    artifactVersion: analysis.artifactVersion ?? null,
+    artifactRevision: analysis.artifactRevision ?? null,
+  };
+}
+
 function normalizeAnalysis(existing = null, payload = {}) {
   const merged = {
     ...(existing || {}),
@@ -367,7 +399,12 @@ export const useAnalysisStore = create(
             continue;
           }
 
-          analyses[analysisId] = analysis;
+          const sanitized = sanitizePersistedAnalysis(analysis);
+          if (!sanitized) {
+            continue;
+          }
+
+          analyses[analysisId] = sanitized;
 
           if (!analysis.corpusId) {
             continue;

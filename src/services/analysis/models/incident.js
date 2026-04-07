@@ -37,11 +37,21 @@ export const incidentSchema = {
   title: 'string',
   type: 'INCIDENT_TYPES',
   description: 'string',
+  detailedSummary: 'string',
+  location: 'object | null',
   startChapterId: 'string',
   startChunkId: 'string',
   endChapterId: 'string',
   endChunkId: 'string',
+  chapterStartIndex: 'number | null',
+  chapterEndIndex: 'number | null',
+  chapterStartNumber: 'number | null',
+  chapterEndNumber: 'number | null',
+  chapterStart: 'number | null',
+  chapterEnd: 'number | null',
   chapterRange: '[startIndex, endIndex]',
+  chunkStartIndex: 'number | null',
+  chunkEndIndex: 'number | null',
   chunkRange: '[startIndex, endIndex]',
   startAnchor: 'object',
   activeSpan: 'number',
@@ -51,8 +61,22 @@ export const incidentSchema = {
   uncertainStart: 'boolean',
   uncertainEnd: 'boolean',
   confidence: 'number (0-1)',
+  anchorEventId: 'string | null',
+  anchorEventDescription: 'string',
   evidence: 'string[]',
+  evidenceSnippet: 'string',
+  evidenceRefs: 'string[]',
   containedEvents: 'string[]',
+  eventIds: 'string[]',
+  eventCount: 'number',
+  subeventCount: 'number',
+  tags: 'string[]',
+  preconditions: 'string[]',
+  progression: 'string[]',
+  turningPoints: 'string[]',
+  climax: 'string',
+  outcome: 'string',
+  consequences: 'string[]',
   subIncidentIds: 'string[]',
   relatedIncidents: 'string[]',
   relatedLocations: 'string[]',
@@ -63,6 +87,8 @@ export const incidentSchema = {
   status: 'INCIDENT_STATUS',
   reviewStatus: 'INCIDENT_REVIEW_STATUS',
   priority: 'INCIDENT_PRIORITY | null',
+  provenance: 'object | null',
+  schemaVersion: 'string',
   createdAt: 'timestamp',
   analyzedAt: 'timestamp',
   reviewedAt: 'timestamp',
@@ -78,30 +104,133 @@ function toArray(value) {
   return Array.isArray(value) ? value.filter(Boolean) : [];
 }
 
+function toStringArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(/[\n,;]+/u)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function toNullableNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeChapter(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'string') {
+    const match = value.match(/(\d{1,4})/u);
+    if (match) {
+      const parsed = Number(match[1]);
+      return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
+    }
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
+}
+
+function normalizeObject(value) {
+  return value && typeof value === 'object' ? value : null;
+}
+
+function normalizeIncidentLocation(value) {
+  if (!value || typeof value !== 'object') return null;
+  const name = String(value.name || value.label || '').trim();
+  const id = String(value.id || '').trim() || null;
+  if (!name && !id) return null;
+
+  const confidence = toNullableNumber(value.confidence ?? value.conf);
+  return {
+    id,
+    name: name || null,
+    confidence: confidence == null ? null : clamp(confidence, 0, 1),
+    isMajor: Boolean(value.isMajor),
+  };
+}
+
+function normalizeIncidentType(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['major_plot_point', 'major', 'main'].includes(normalized)) {
+    return INCIDENT_TYPES.MAJOR_PLOT_POINT;
+  }
+  if (['pov_thread', 'pov'].includes(normalized)) {
+    return INCIDENT_TYPES.POV_THREAD;
+  }
+  return INCIDENT_TYPES.SUBPLOT;
+}
+
+function choosePrimaryText(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
 export function normalizeIncident(raw = {}, defaults = {}) {
   const merged = { ...defaults, ...(raw || {}) };
 
-  const chapterStart = Number.isFinite(Number(merged.chapterStartIndex))
-    ? Number(merged.chapterStartIndex)
-    : Number.isFinite(Number(merged.startChapter))
-      ? Number(merged.startChapter)
-      : null;
-  const chapterEnd = Number.isFinite(Number(merged.chapterEndIndex))
-    ? Number(merged.chapterEndIndex)
-    : Number.isFinite(Number(merged.endChapter))
-      ? Number(merged.endChapter)
-      : null;
+  const chapterStart = normalizeChapter(
+    merged.chapterStart
+    ?? merged.chapterStartNumber
+    ?? merged.chapterStartIndex
+    ?? merged.startChapter
+    ?? merged.chapterRange?.[0],
+  );
+  const chapterEnd = normalizeChapter(
+    merged.chapterEnd
+    ?? merged.chapterEndNumber
+    ?? merged.chapterEndIndex
+    ?? merged.endChapter
+    ?? merged.chapterRange?.[1]
+    ?? chapterStart,
+  );
 
-  const chunkStart = Number.isFinite(Number(merged.chunkStartIndex))
-    ? Number(merged.chunkStartIndex)
-    : Number.isFinite(Number(merged.startChunkIndex))
-      ? Number(merged.startChunkIndex)
-      : null;
-  const chunkEnd = Number.isFinite(Number(merged.chunkEndIndex))
-    ? Number(merged.chunkEndIndex)
-    : Number.isFinite(Number(merged.endChunkIndex))
-      ? Number(merged.endChunkIndex)
-      : null;
+  const chapterStartIndex = normalizeChapter(merged.chapterStartIndex ?? chapterStart);
+  const chapterEndIndex = normalizeChapter(merged.chapterEndIndex ?? chapterEnd);
+  const chapterStartNumber = normalizeChapter(merged.chapterStartNumber ?? chapterStart);
+  const chapterEndNumber = normalizeChapter(merged.chapterEndNumber ?? chapterEnd);
+
+  const chunkStart = toNullableNumber(
+    merged.chunkStartIndex
+    ?? merged.startChunkIndex
+    ?? merged.chunkRange?.[0],
+  );
+  const chunkEnd = toNullableNumber(
+    merged.chunkEndIndex
+    ?? merged.endChunkIndex
+    ?? merged.chunkRange?.[1]
+    ?? chunkStart,
+  );
+
+  const confidenceValue = toNullableNumber(merged.confidence ?? merged.score);
+  const evidence = toStringArray(
+    toArray(merged.evidence).length
+      ? merged.evidence
+      : (merged.evidenceSnippet ? [merged.evidenceSnippet] : []),
+  );
+  const containedEvents = toStringArray(
+    toArray(merged.containedEvents).length
+      ? merged.containedEvents
+      : (
+        toArray(merged.eventIds).length
+          ? merged.eventIds
+          : merged.filteredEventIds
+      ),
+  );
+  const location = normalizeIncidentLocation(merged.location);
+  const relatedLocations = toStringArray(
+    toArray(merged.relatedLocations).length
+      ? merged.relatedLocations
+      : (location?.id ? [location.id] : []),
+  );
 
   const span = (
     chapterStart != null
@@ -109,38 +238,80 @@ export function normalizeIncident(raw = {}, defaults = {}) {
     && chapterEnd >= chapterStart
   )
     ? (chapterEnd - chapterStart + 1)
-    : Number(merged.activeSpan) || 0;
+    : (toNullableNumber(merged.activeSpan) || 0);
 
   const normalized = {
     id: merged.id || null,
     corpusId: merged.corpusId || merged.corpus_id || null,
     analysisId: merged.analysisId || merged.analysis_id || null,
-    title: String(merged.title || '').trim(),
-    type: Object.values(INCIDENT_TYPES).includes(merged.type)
-      ? merged.type
-      : INCIDENT_TYPES.SUBPLOT,
-    description: String(merged.description || '').trim(),
+    title: choosePrimaryText(merged.title, merged.name, merged.anchorEventDescription, merged.description),
+    type: normalizeIncidentType(merged.type),
+    description: choosePrimaryText(
+      merged.description,
+      merged.detailedSummary,
+      merged.detailed_summary,
+      merged.summary,
+    ),
+    detailedSummary: choosePrimaryText(
+      merged.detailedSummary,
+      merged.detailed_summary,
+      merged.description,
+      merged.summary,
+    ),
+    location,
     startChapterId: merged.startChapterId || merged.start_chapter_id || null,
     startChunkId: merged.startChunkId || merged.start_chunk_id || null,
     endChapterId: merged.endChapterId || merged.end_chapter_id || null,
     endChunkId: merged.endChunkId || merged.end_chunk_id || null,
+    chapterStartIndex,
+    chapterEndIndex,
+    chunkStartIndex: chunkStart,
+    chunkEndIndex: chunkEnd,
+    chapterStartNumber,
+    chapterEndNumber,
+    chapterStart,
+    chapterEnd,
+    startChapter: chapterStart,
+    endChapter: chapterEnd,
     chapterRange: [chapterStart, chapterEnd],
-    chunkRange: [chunkStart, chunkEnd],
-    startAnchor: merged.startAnchor && typeof merged.startAnchor === 'object' ? merged.startAnchor : null,
+    chunkRange: [chunkStart, chunkEnd ?? chunkStart],
+    startAnchor: normalizeObject(merged.startAnchor),
     activeSpan: span,
-    climaxAnchor: merged.climaxAnchor && typeof merged.climaxAnchor === 'object' ? merged.climaxAnchor : null,
-    endAnchor: merged.endAnchor && typeof merged.endAnchor === 'object' ? merged.endAnchor : null,
+    climaxAnchor: normalizeObject(merged.climaxAnchor),
+    endAnchor: normalizeObject(merged.endAnchor),
     boundaryNote: String(merged.boundaryNote || '').trim(),
     uncertainStart: Boolean(merged.uncertainStart),
     uncertainEnd: Boolean(merged.uncertainEnd),
-    confidence: clamp(merged.confidence, 0, 1),
-    evidence: toArray(merged.evidence).map((item) => String(item).trim()).filter(Boolean),
-    containedEvents: toArray(merged.containedEvents),
-    subIncidentIds: toArray(merged.subIncidentIds),
-    relatedIncidents: toArray(merged.relatedIncidents),
-    relatedLocations: toArray(merged.relatedLocations),
-    causalPredecessors: toArray(merged.causalPredecessors),
-    causalSuccessors: toArray(merged.causalSuccessors),
+    confidence: confidenceValue == null ? null : clamp(confidenceValue, 0, 1),
+    anchorEventId: String(merged.anchorEventId || '').trim() || null,
+    anchorEventDescription: String(merged.anchorEventDescription || '').trim(),
+    evidence,
+    evidenceSnippet: String(merged.evidenceSnippet || evidence[0] || '').trim(),
+    evidenceRefs: toStringArray(
+      toArray(merged.evidenceRefs).length
+        ? merged.evidenceRefs
+        : (
+          toArray(merged.primaryEvidenceRefs).length
+            ? merged.primaryEvidenceRefs
+            : (toArray(merged.primary_evidence_refs).length ? merged.primary_evidence_refs : merged.evidence_refs)
+        ),
+    ),
+    containedEvents,
+    eventIds: containedEvents,
+    eventCount: toNullableNumber(merged.eventCount) ?? containedEvents.length,
+    subeventCount: toNullableNumber(merged.subeventCount) ?? 0,
+    tags: toStringArray(merged.tags),
+    preconditions: toStringArray(merged.preconditions),
+    progression: toStringArray(merged.progression),
+    turningPoints: toStringArray(merged.turningPoints || merged.turning_points),
+    climax: String(merged.climax || '').trim(),
+    outcome: String(merged.outcome || '').trim(),
+    consequences: toStringArray(merged.consequences),
+    subIncidentIds: toStringArray(merged.subIncidentIds),
+    relatedIncidents: toStringArray(merged.relatedIncidents),
+    relatedLocations,
+    causalPredecessors: toStringArray(merged.causalPredecessors),
+    causalSuccessors: toStringArray(merged.causalSuccessors),
     majorScore: clamp(merged.majorScore, 0, 10),
     impactScore: clamp(merged.impactScore, 0, 10),
     status: Object.values(INCIDENT_STATUS).includes(merged.status)
@@ -152,6 +323,8 @@ export function normalizeIncident(raw = {}, defaults = {}) {
     priority: Object.values(INCIDENT_PRIORITY).includes(merged.priority)
       ? merged.priority
       : null,
+    provenance: normalizeObject(merged.provenance),
+    schemaVersion: String(merged.schemaVersion || merged.schema_version || 'incident.v1'),
     createdAt: merged.createdAt || merged.created_at || null,
     analyzedAt: merged.analyzedAt || merged.analyzed_at || null,
     reviewedAt: merged.reviewedAt || merged.reviewed_at || null,

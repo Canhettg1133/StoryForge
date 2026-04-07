@@ -4,6 +4,7 @@
  */
 
 import { parseJsonField } from '../analysis/outputChunker.js';
+import { normalizeIncident as normalizeCanonicalIncident } from '../analysis/models/incident.js';
 
 export const AUTO_ACCEPT_QUALITY_THRESHOLD = 60;
 export const AUTO_ACCEPT_CHAPTER_CONFIDENCE_THRESHOLD = 0.45;
@@ -221,67 +222,11 @@ function parseIncidents(raw) {
   if (!Array.isArray(source)) return [];
 
   return source
-    .map((incident) => normalizeIncident(incident))
-    .filter(Boolean);
-}
-
-// [FIX] Mở rộng normalizeIncident:
-// - Thêm các field narrative từ Pass B (preconditions/progression/turningPoints/climax/outcome/consequences/evidenceRefs)
-// - Fix confidence default: null thay vì 0 khi không có giá trị (tránh incident mới bị filter sai)
-// - Thêm description và why (trigger)
-function normalizeIncident(incident) {
-  if (!incident || typeof incident !== 'object') return null;
-
-  const title = String(incident.title || incident.name || incident.anchorEventDescription || '').trim();
-  if (!title) return null;
-
-  // confidence: null khi không có giá trị, không default về 0
-  const rawConfidence = incident.confidence ?? incident.score;
-  const confidence = rawConfidence != null ? clamp(rawConfidence, 0, 1) : null;
-
-  return {
-    id: incident.id || generateEventId({ incident: title }),
-    title,
-    // [NEW] description và why cho incident card
-    description: String(incident.description || incident.summary || '').trim(),
-    why: String(incident.why || incident.trigger || incident.triggerDescription || '').trim(),
-    location: incident.location ? normalizeIncidentLocation(incident.location) : null,
-    chapterStart: parseChapter(incident.chapterStart),
-    chapterEnd: parseChapter(incident.chapterEnd),
-    confidence,
-    anchorEventId: incident.anchorEventId || null,
-    anchorEventDescription: String(incident.anchorEventDescription || '').trim(),
-    eventIds: Array.isArray(incident.eventIds)
-      ? incident.eventIds.map((item) => String(item || '').trim()).filter(Boolean)
-      : [],
-    eventCount: Number.isFinite(Number(incident.eventCount))
-      ? Number(incident.eventCount)
-      : (Array.isArray(incident.eventIds) ? incident.eventIds.length : 0),
-    subeventCount: Number.isFinite(Number(incident.subeventCount)) ? Number(incident.subeventCount) : 0,
-    evidenceSnippet: String(incident.evidenceSnippet || '').trim(),
-    tags: Array.isArray(incident.tags) ? normalizeTags(incident.tags) : [],
-    // [NEW] Narrative fields từ Pass B deep analysis
-    preconditions: normalizeStringArray(incident.preconditions || []),
-    progression: normalizeStringArray(incident.progression || []),
-    turningPoints: normalizeStringArray(incident.turning_points || incident.turningPoints || []),
-    climax: String(incident.climax || '').trim(),
-    outcome: String(incident.outcome || '').trim(),
-    consequences: normalizeStringArray(incident.consequences || []),
-    evidenceRefs: normalizeStringArray(incident.evidence_refs || incident.evidenceRefs || []),
-  };
-}
-
-function normalizeIncidentLocation(location) {
-  if (!location || typeof location !== 'object') return null;
-  const name = String(location.name || '').trim();
-  if (!name) return null;
-
-  return {
-    id: location.id || null,
-    name,
-    confidence: clamp(location.confidence ?? 0, 0, 1),
-    isMajor: Boolean(location.isMajor),
-  };
+    .map((incident) => normalizeCanonicalIncident({
+      ...incident,
+      id: incident?.id || generateEventId({ incident: incident?.title || incident?.description || incident?.anchorEventDescription || '' }),
+    }))
+    .filter((incident) => incident && incident.title);
 }
 
 function normalizeEventArray(arr, sourceType = 'event') {

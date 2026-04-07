@@ -8,6 +8,8 @@ import {
   pgCountQueuedAndRunningJobs,
   pgGetAnalysisById,
   pgGetCorpusById,
+  pgGetExecutionSessionById,
+  pgGetExecutionStageOutput,
   pgGetIncidentById,
   pgGetJobById,
   pgGetReviewQueueItemById,
@@ -37,6 +39,36 @@ function toJsonText(value, fallback = null) {
   }
 }
 
+function toJsonbParam(value, fallback = null) {
+  if (value == null) {
+    return fallback == null ? null : JSON.stringify(fallback);
+  }
+
+  if (typeof value === 'string') {
+    try {
+      JSON.parse(value);
+      return value;
+    } catch {
+      return JSON.stringify(value);
+    }
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return fallback == null ? null : JSON.stringify(fallback);
+  }
+}
+
+function buildGraphStorageId(analysisId, graphItemId) {
+  const normalizedAnalysisId = String(analysisId || '').trim();
+  const normalizedGraphItemId = String(graphItemId || '').trim();
+  if (!normalizedAnalysisId || !normalizedGraphItemId) {
+    return normalizedGraphItemId || normalizedAnalysisId;
+  }
+  return `${normalizedAnalysisId}:${normalizedGraphItemId}`;
+}
+
 function buildUpdateParts(updates = {}, mapping = {}) {
   const setClauses = [];
   const values = [];
@@ -64,11 +96,11 @@ const CORPUS_UPDATE_FIELDS = {
   author: 'author',
   frontMatter: {
     column: 'front_matter',
-    transform: (value) => parseJsonish(value, null),
+    transform: (value) => toJsonbParam(value, null),
   },
   parseDiagnostics: {
     column: 'parse_diagnostics',
-    transform: (value) => parseJsonish(value, null),
+    transform: (value) => toJsonbParam(value, null),
   },
   fandom: 'fandom',
   isCanonFanfic: 'is_canon_fanfic',
@@ -100,21 +132,22 @@ const ANALYSIS_UPDATE_FIELDS = {
   finalResult: 'final_result',
   analysisRunManifest: {
     column: 'analysis_run_manifest',
-    transform: (value) => parseJsonish(value, null),
+    transform: (value) => toJsonbParam(value, null),
   },
   passStatus: {
     column: 'pass_status',
-    transform: (value) => parseJsonish(value, null),
+    transform: (value) => toJsonbParam(value, null),
   },
   degradedRunReport: {
     column: 'degraded_run_report',
-    transform: (value) => parseJsonish(value, null),
+    transform: (value) => toJsonbParam(value, null),
   },
   graphSummary: {
     column: 'graph_summary',
-    transform: (value) => parseJsonish(value, null),
+    transform: (value) => toJsonbParam(value, null),
   },
   artifactVersion: 'artifact_version',
+  artifactRevision: 'artifact_revision',
   totalChunks: 'total_chunks',
   processedChunks: 'processed_chunks',
   progress: 'progress',
@@ -183,8 +216,8 @@ export async function pgInsertCorpusGraph(corpus, chapters = [], chunks = []) {
       corpus.author ?? null,
       corpus.sourceFile ?? null,
       corpus.fileType ?? null,
-      parseJsonish(corpus.frontMatter, null),
-      parseJsonish(corpus.parseDiagnostics, null),
+      toJsonbParam(corpus.frontMatter, null),
+      toJsonbParam(corpus.parseDiagnostics, null),
       corpus.fandom ?? null,
       corpus.fandomConfidence ?? null,
       corpus.isCanonFanfic ?? null,
@@ -333,10 +366,10 @@ export async function pgCreateAnalysis(payload = {}) {
     payload.level0Status ?? 'pending',
     payload.level1Status ?? 'pending',
     payload.level2Status ?? 'pending',
-    parseJsonish(payload.analysisRunManifest, null),
-    parseJsonish(payload.passStatus, null),
-    parseJsonish(payload.degradedRunReport, null),
-    parseJsonish(payload.graphSummary, null),
+    toJsonbParam(payload.analysisRunManifest, null),
+    toJsonbParam(payload.passStatus, null),
+    toJsonbParam(payload.degradedRunReport, null),
+    toJsonbParam(payload.graphSummary, null),
     payload.artifactVersion ?? 'legacy',
     payload.totalChunks ?? 1,
     payload.processedChunks ?? 0,
@@ -624,6 +657,267 @@ export async function pgReplaceIncidentFirstArtifacts({
   });
 }
 
+export async function pgPersistAnalysisArtifactV3({
+  analysisId,
+  corpusId,
+  artifact = {},
+  windows = [],
+  incidents = [],
+  beats = [],
+  entities = [],
+  entityMentions = [],
+  reviewQueue = [],
+} = {}) {
+  if (!analysisId || !corpusId) {
+    return;
+  }
+
+  await bootstrapPostgres();
+  const now = Date.now();
+
+  await withPostgresTransaction(async (client) => {
+    await client.query(`
+      INSERT INTO analysis_run_artifacts (
+        analysis_id, corpus_id, artifact_version, canonical_corpus, analysis_windows,
+        window_results, carry_packets, incident_map, incidents, incident_beats,
+        entity_mentions, canonical_entities, graph_projections, review_queue,
+        pass_status, rerun_manifest, degraded_run_report, payload, created_at, updated_at
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
+      )
+      ON CONFLICT (analysis_id) DO UPDATE SET
+        corpus_id = EXCLUDED.corpus_id,
+        artifact_version = EXCLUDED.artifact_version,
+        canonical_corpus = EXCLUDED.canonical_corpus,
+        analysis_windows = EXCLUDED.analysis_windows,
+        window_results = EXCLUDED.window_results,
+        carry_packets = EXCLUDED.carry_packets,
+        incident_map = EXCLUDED.incident_map,
+        incidents = EXCLUDED.incidents,
+        incident_beats = EXCLUDED.incident_beats,
+        entity_mentions = EXCLUDED.entity_mentions,
+        canonical_entities = EXCLUDED.canonical_entities,
+        graph_projections = EXCLUDED.graph_projections,
+        review_queue = EXCLUDED.review_queue,
+        pass_status = EXCLUDED.pass_status,
+        rerun_manifest = EXCLUDED.rerun_manifest,
+        degraded_run_report = EXCLUDED.degraded_run_report,
+        payload = EXCLUDED.payload,
+        updated_at = EXCLUDED.updated_at
+    `, [
+      analysisId,
+      corpusId,
+      artifact.artifact_version || 'v3',
+      toJsonbParam(artifact.canonical_corpus, {}),
+      toJsonbParam(artifact.analysis_windows, []),
+      toJsonbParam(artifact.window_results, []),
+      toJsonbParam(artifact.carry_packets, []),
+      toJsonbParam(artifact.incident_map, {}),
+      toJsonbParam(artifact.incidents, []),
+      toJsonbParam(artifact.incident_beats, []),
+      toJsonbParam(artifact.entity_mentions, []),
+      toJsonbParam(artifact.canonical_entities, {}),
+      toJsonbParam(artifact.graph_projections, {}),
+      toJsonbParam(artifact.review_queue, []),
+      toJsonbParam(artifact.pass_status, {}),
+      toJsonbParam(artifact.rerun_manifest, {}),
+      toJsonbParam(artifact.degraded_run_report, {}),
+      toJsonbParam(artifact, {}),
+      now,
+      now,
+    ]);
+
+    await client.query('DELETE FROM analysis_windows WHERE analysis_id = $1', [analysisId]);
+    await client.query('DELETE FROM analysis_entity_mentions WHERE analysis_id = $1', [analysisId]);
+    await client.query('DELETE FROM analysis_beats WHERE analysis_id = $1', [analysisId]);
+    await client.query('DELETE FROM analysis_entities WHERE analysis_id = $1', [analysisId]);
+    await client.query('DELETE FROM analysis_incidents WHERE analysis_id = $1', [analysisId]);
+    await client.query('DELETE FROM analysis_review_queue WHERE analysis_id = $1', [analysisId]);
+
+    for (const item of windows) {
+      await client.query(`
+        INSERT INTO analysis_windows (
+          id, corpus_id, analysis_id, window_id, window_order, chapter_start, chapter_end,
+          overlap_from_previous, chapter_numbers, carry_in, carry_out, open_boundaries,
+          incidents, status, retries, degraded_reason, prompt_version, schema_version,
+          created_at, updated_at
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
+        )
+      `, [
+        item.id || `${analysisId}:${item.windowId}`,
+        corpusId,
+        analysisId,
+        item.windowId,
+        item.windowOrder ?? 0,
+        item.chapterStart ?? null,
+        item.chapterEnd ?? null,
+        item.overlapFromPrevious ?? 0,
+        toJsonbParam(item.chapterNumbers, []),
+        toJsonbParam(item.carryIn, null),
+        toJsonbParam(item.carryOut, null),
+        toJsonbParam(item.openBoundaries, []),
+        toJsonbParam(item.incidents, []),
+        item.status || 'pending',
+        item.retries ?? 0,
+        item.degradedReason ?? null,
+        item.promptVersion ?? null,
+        item.schemaVersion || 'v3',
+        item.createdAt ?? now,
+        item.updatedAt ?? now,
+      ]);
+    }
+
+    for (const item of incidents) {
+      await client.query(`
+        INSERT INTO analysis_incidents (
+          id, corpus_id, analysis_id, title, type, chapter_start, chapter_end,
+          chapter_start_number, chapter_end_number, confidence, summary, detailed_summary,
+          climax, outcome, consequences, primary_evidence_refs, entity_refs, review_status,
+          degraded_flags, lineage, rerun_scope, payload, created_at, updated_at
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24
+        )
+      `, [
+        item.id,
+        corpusId,
+        analysisId,
+        item.title || 'Untitled incident',
+        item.type || 'subplot',
+        item.chapterStart ?? null,
+        item.chapterEnd ?? null,
+        item.chapterStartNumber ?? item.chapterStart ?? null,
+        item.chapterEndNumber ?? item.chapterEnd ?? null,
+        item.confidence ?? 0,
+        item.summary ?? item.description ?? null,
+        item.detailedSummary ?? item.detailed_summary ?? item.description ?? null,
+        item.climax ?? null,
+        item.outcome ?? null,
+        toJsonbParam(item.consequences, []),
+        toJsonbParam(item.primaryEvidenceRefs || item.primary_evidence_refs, []),
+        toJsonbParam(item.entityRefs || item.entity_refs, {}),
+        item.reviewStatus || 'needs_review',
+        toJsonbParam(item.degradedFlags || item.degraded_flags, []),
+        toJsonbParam(item.lineage, {}),
+        toJsonbParam(item.rerunScope || item.rerun_scope, {}),
+        toJsonbParam(item, {}),
+        item.createdAt ?? now,
+        item.updatedAt ?? now,
+      ]);
+    }
+
+    for (const item of beats) {
+      await client.query(`
+        INSERT INTO analysis_beats (
+          id, corpus_id, analysis_id, incident_id, sequence, chapter_number, beat_type,
+          summary, causal_links, evidence_refs, confidence, payload, created_at, updated_at
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+        )
+      `, [
+        item.id,
+        corpusId,
+        analysisId,
+        item.incidentId ?? null,
+        item.sequence ?? 0,
+        item.chapterNumber ?? item.chapter ?? null,
+        item.beatType || item.beat_type || 'beat',
+        item.summary || '',
+        toJsonbParam(item.causalLinks || item.causal_links, {}),
+        toJsonbParam(item.evidenceRefs || item.evidence_refs, []),
+        item.confidence ?? 0,
+        toJsonbParam(item, {}),
+        item.createdAt ?? now,
+        item.updatedAt ?? now,
+      ]);
+    }
+
+    for (const item of entities) {
+      await client.query(`
+        INSERT INTO analysis_entities (
+          id, corpus_id, analysis_id, entity_kind, name, normalized_name, aliases,
+          summary, description, confidence, review_status, payload, created_at, updated_at
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14
+        )
+      `, [
+        item.id,
+        corpusId,
+        analysisId,
+        item.entityKind || item.entity_kind || 'entity',
+        item.name || 'Unknown',
+        item.normalizedName || item.normalized_name || null,
+        toJsonbParam(item.aliases, []),
+        item.summary ?? null,
+        item.description ?? null,
+        item.confidence ?? 0,
+        item.reviewStatus || 'needs_review',
+        toJsonbParam(item, {}),
+        item.createdAt ?? now,
+        item.updatedAt ?? now,
+      ]);
+    }
+
+    for (const item of entityMentions) {
+      await client.query(`
+        INSERT INTO analysis_entity_mentions (
+          id, corpus_id, analysis_id, entity_id, beat_id, entity_kind, surface_form,
+          canonical_entity_id, chapter_number, evidence_ref, payload, created_at
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
+        )
+      `, [
+        item.id,
+        corpusId,
+        analysisId,
+        item.entityId ?? null,
+        item.beatId ?? null,
+        item.entityKind || item.entity_kind || 'entity',
+        item.surfaceForm || item.surface_form || '',
+        item.canonicalEntityId || item.canonical_entity_id || null,
+        item.chapterNumber ?? null,
+        item.evidenceRef || item.evidence_ref || null,
+        toJsonbParam(item, {}),
+        item.createdAt ?? now,
+      ]);
+    }
+
+    for (const item of reviewQueue) {
+      await client.query(`
+        INSERT INTO analysis_review_queue (
+          id, corpus_id, analysis_id, item_type, item_id, priority, priority_score,
+          source_phase, rerun_scope, related_window_ids, related_incident_ids,
+          suggested_action, score_breakdown, reason, suggestions, status,
+          resolution, payload, created_at, updated_at
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20
+        )
+      `, [
+        item.id,
+        corpusId,
+        analysisId,
+        item.itemType || item.item_type || 'incident',
+        item.itemId || item.item_id || '',
+        item.priority || 'P2',
+        item.priorityScore ?? item.priority_score ?? 0,
+        item.sourcePhase || item.source_phase || null,
+        item.rerunScope || item.rerun_scope || null,
+        toJsonbParam(item.relatedWindowIds || item.related_window_ids, []),
+        toJsonbParam(item.relatedIncidentIds || item.related_incident_ids, []),
+        item.suggestedAction || item.suggested_action || null,
+        toJsonbParam(item.scoreBreakdown || item.score_breakdown, {}),
+        toJsonbParam(item.reason, []),
+        toJsonbParam(item.suggestions, []),
+        item.status || 'pending',
+        item.resolution ?? null,
+        toJsonbParam(item, {}),
+        item.createdAt ?? now,
+        item.updatedAt ?? now,
+      ]);
+    }
+  });
+}
+
 export async function pgUpsertIncident(payload = {}) {
   await bootstrapPostgres();
   const id = payload.id || randomUUID();
@@ -786,8 +1080,9 @@ export async function pgPersistStoryGraph({
   }
 
   await bootstrapPostgres();
-  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
-  const edges = Array.isArray(graph.edges) ? graph.edges : [];
+  const normalizedGraph = normalizeGraphInput(graph);
+  const nodes = normalizedGraph.nodes;
+  const edges = normalizedGraph.edges;
   const passEntries = Object.values(passStatus || {});
 
   await withPostgresTransaction(async (client) => {
@@ -798,17 +1093,18 @@ export async function pgPersistStoryGraph({
     for (const node of nodes) {
       await client.query(`
         INSERT INTO analysis_graph_nodes (
-          id, corpus_id, analysis_id, node_type, label, confidence, chapter_number, payload, created_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+          id, corpus_id, analysis_id, node_type, label, confidence, chapter_number, graph_kind, payload, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       `, [
-        node.id,
+        buildGraphStorageId(analysisId, node.id),
         corpusId,
         analysisId,
         node.type || 'unknown',
         node.label || node.id,
         node.confidence ?? 0,
         node.chapterNumber ?? node.chapter ?? null,
-        node,
+        node.graphKind || node.graph_kind || 'incident',
+        toJsonbParam(node, {}),
         Date.now(),
       ]);
     }
@@ -817,10 +1113,10 @@ export async function pgPersistStoryGraph({
       await client.query(`
         INSERT INTO analysis_graph_edges (
           id, corpus_id, analysis_id, edge_type, from_node_id, to_node_id, confidence,
-          source_pass, review_status, payload, created_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          source_pass, review_status, graph_kind, payload, created_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       `, [
-        edge.id,
+        buildGraphStorageId(analysisId, edge.id),
         corpusId,
         analysisId,
         edge.type || 'unknown',
@@ -829,7 +1125,8 @@ export async function pgPersistStoryGraph({
         edge.confidence ?? 0,
         edge.sourcePass ?? edge.provenance?.sourcePass ?? null,
         edge.reviewStatus ?? edge.provenance?.reviewStatus ?? null,
-        edge,
+        edge.graphKind || edge.graph_kind || 'incident',
+        toJsonbParam(edge, {}),
         Date.now(),
       ]);
     }
@@ -845,11 +1142,53 @@ export async function pgPersistStoryGraph({
         analysisId,
         pass.id,
         pass.status || 'unknown',
-        pass,
+        toJsonbParam(pass, {}),
         Date.now(),
       ]);
     }
   });
+}
+
+function normalizeGraphInput(graph) {
+  if (!graph || typeof graph !== 'object') {
+    return { nodes: [], edges: [] };
+  }
+
+  if (Array.isArray(graph.nodes) || Array.isArray(graph.edges)) {
+    return {
+      nodes: Array.isArray(graph.nodes) ? graph.nodes : [],
+      edges: Array.isArray(graph.edges) ? graph.edges : [],
+    };
+  }
+
+  const nodes = [];
+  const edges = [];
+  const nodeSeen = new Set();
+  const edgeSeen = new Set();
+
+  for (const [graphKind, projection] of Object.entries(graph)) {
+    for (const node of Array.isArray(projection?.nodes) ? projection.nodes : []) {
+      if (!node?.id) continue;
+      if (nodeSeen.has(node.id)) continue;
+      nodeSeen.add(node.id);
+      nodes.push({
+        ...node,
+        graphKind: node.graphKind || node.graph_kind || graphKind,
+      });
+    }
+
+    for (const edge of Array.isArray(projection?.edges) ? projection.edges : []) {
+      if (!edge?.id) continue;
+      if (edgeSeen.has(edge.id)) continue;
+      edgeSeen.add(edge.id);
+      edges.push({
+        ...edge,
+        graphKind: edge.graphKind || edge.graph_kind || graphKind,
+      });
+    }
+  }
+
+  return { nodes, edges };
 }
 
 export async function pgResetRunningJobs() {
@@ -1007,6 +1346,212 @@ export async function pgAssignJobToWorker(jobId, workerId) {
   }
 
   return pgGetJobById(jobId);
+}
+
+export async function pgAcquireExecutionSession({
+  sessionId = randomUUID(),
+  corpusId,
+  analysisId,
+  lockToken = randomUUID(),
+  scopePhase,
+  requestedScope = {},
+  plannedJobs = [],
+  leaseMs = 30 * 60 * 1000,
+} = {}) {
+  await bootstrapPostgres();
+  const now = Date.now();
+
+  await withPostgresTransaction(async (client) => {
+    const analysisResult = await client.query(
+      'SELECT id, corpus_id, artifact_revision FROM corpus_analyses WHERE id = $1 FOR UPDATE',
+      [analysisId],
+    );
+    const analysisRow = analysisResult.rows?.[0];
+    if (!analysisRow) {
+      const error = new Error('Analysis not found for execution session.');
+      error.code = 'INVALID_INPUT';
+      throw error;
+    }
+
+    const activeResult = await client.query(`
+      SELECT *
+      FROM analysis_execution_sessions
+      WHERE analysis_id = $1
+        AND status IN ('pending', 'running')
+        AND lease_expires_at > $2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `, [analysisId, now]);
+
+    if (activeResult.rows?.[0]) {
+      const active = activeResult.rows[0];
+      const error = new Error('Analysis already has an active rerun session.');
+      error.code = 'ANALYSIS_LOCKED';
+      error.details = {
+        sessionId: active.id,
+        status: active.status,
+        currentJobId: active.current_job_id,
+        leaseExpiresAt: Number(active.lease_expires_at || 0),
+      };
+      throw error;
+    }
+
+    await client.query(`
+      INSERT INTO analysis_execution_sessions (
+        id, corpus_id, analysis_id, lock_token, status, scope_phase, requested_scope,
+        planned_jobs, baseline_artifact_revision, target_artifact_revision, current_stage_key,
+        current_job_id, root_job_id, final_job_id, error_message, last_heartbeat_at,
+        lease_expires_at, created_at, updated_at, completed_at, released_at
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21
+      )
+    `, [
+      sessionId,
+      corpusId || analysisRow.corpus_id,
+      analysisId,
+      lockToken,
+      'pending',
+      scopePhase || 'incident',
+      toJsonbParam(requestedScope, {}),
+      toJsonbParam(plannedJobs, []),
+      Number(analysisRow.artifact_revision || 0),
+      Number(analysisRow.artifact_revision || 0) + 1,
+      null,
+      null,
+      null,
+      null,
+      null,
+      now,
+      now + Math.max(60_000, Number(leaseMs) || 30 * 60 * 1000),
+      now,
+      now,
+      null,
+      null,
+    ]);
+  });
+
+  return pgGetExecutionSessionById(sessionId);
+}
+
+export async function pgUpdateExecutionSession(sessionId, updates = {}) {
+  await bootstrapPostgres();
+  const mapping = {
+    status: 'status',
+    scopePhase: 'scope_phase',
+    requestedScope: {
+      column: 'requested_scope',
+      transform: (value) => toJsonbParam(value, {}),
+    },
+    plannedJobs: {
+      column: 'planned_jobs',
+      transform: (value) => toJsonbParam(value, []),
+    },
+    baselineArtifactRevision: 'baseline_artifact_revision',
+    targetArtifactRevision: 'target_artifact_revision',
+    currentStageKey: 'current_stage_key',
+    currentJobId: 'current_job_id',
+    rootJobId: 'root_job_id',
+    finalJobId: 'final_job_id',
+    errorMessage: 'error_message',
+    lastHeartbeatAt: 'last_heartbeat_at',
+    leaseExpiresAt: 'lease_expires_at',
+    completedAt: 'completed_at',
+    releasedAt: 'released_at',
+  };
+  const { setClauses, values } = buildUpdateParts(updates, mapping);
+  if (!setClauses.length) {
+    return pgGetExecutionSessionById(sessionId);
+  }
+
+  values.push(Date.now());
+  values.push(sessionId);
+  await queryPostgres(`
+    UPDATE analysis_execution_sessions
+    SET ${setClauses.join(', ')}, updated_at = $${values.length - 1}
+    WHERE id = $${values.length}
+  `, values);
+
+  return pgGetExecutionSessionById(sessionId);
+}
+
+export async function pgTouchExecutionSession(sessionId, updates = {}) {
+  const now = Date.now();
+  const leaseMs = Math.max(60_000, Number(updates.leaseMs) || 30 * 60 * 1000);
+  return pgUpdateExecutionSession(sessionId, {
+    ...updates,
+    lastHeartbeatAt: now,
+    leaseExpiresAt: updates.leaseExpiresAt || (now + leaseMs),
+  });
+}
+
+export async function pgUpsertExecutionStageOutput({
+  sessionId,
+  corpusId,
+  analysisId,
+  stageKey,
+  jobId = null,
+  status = 'completed',
+  payload = {},
+} = {}) {
+  await bootstrapPostgres();
+  const now = Date.now();
+  const id = `${sessionId}:${stageKey}`;
+
+  await queryPostgres(`
+    INSERT INTO analysis_execution_stage_outputs (
+      id, session_id, corpus_id, analysis_id, stage_key, job_id, status, payload, created_at, updated_at
+    ) VALUES (
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
+    )
+    ON CONFLICT (session_id, stage_key) DO UPDATE SET
+      job_id = EXCLUDED.job_id,
+      status = EXCLUDED.status,
+      payload = EXCLUDED.payload,
+      updated_at = EXCLUDED.updated_at
+  `, [
+    id,
+    sessionId,
+    corpusId,
+    analysisId,
+    stageKey,
+    jobId,
+    status,
+    toJsonbParam(payload, {}),
+    now,
+    now,
+  ]);
+
+  return pgGetExecutionStageOutput(sessionId, stageKey);
+}
+
+export async function pgRecoverExecutionSessions() {
+  await bootstrapPostgres();
+  const now = Date.now();
+  await queryPostgres(`
+    UPDATE analysis_execution_sessions
+    SET status = 'failed',
+        error_message = COALESCE(error_message, 'Execution session expired'),
+        released_at = $1,
+        updated_at = $1
+    WHERE status IN ('pending', 'running')
+      AND lease_expires_at <= $1
+  `, [now]);
+
+  await queryPostgres(`
+    UPDATE analysis_execution_sessions
+    SET status = CASE
+      WHEN status = 'running' THEN 'pending'
+      ELSE status
+    END,
+        current_job_id = NULL,
+        last_heartbeat_at = $1,
+        lease_expires_at = CASE
+          WHEN status IN ('pending', 'running') THEN $2
+          ELSE lease_expires_at
+        END,
+        updated_at = $1
+    WHERE status IN ('pending', 'running')
+  `, [now, now + (30 * 60 * 1000)]);
 }
 
 export async function pgCountActiveJobs() {

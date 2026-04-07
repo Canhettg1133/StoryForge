@@ -139,6 +139,33 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+describe('Artifact Envelope Normalization', () => {
+    it('should normalize snake_case slim artifact keys for viewer consumption', async () => {
+        const { normalizeArtifactEnvelope } = await import('../../pages/Lab/CorpusLab/hooks/useAnalysisViewer.js');
+
+        const normalized = normalizeArtifactEnvelope({
+            incident_beats: [{ id: 'beat-1', summary: 'Beat 1' }],
+            canonical_entities: {
+                characters: [{ id: 'character:lam-tham', name: 'Lam Tham' }],
+                locations: [{ id: 'location:lau-tro', name: 'Lau tro so 18' }],
+                objects: [{ id: 'object:key', name: 'Chia khoa' }],
+                terms: [{ id: 'term:nguc', name: 'Nguc' }],
+                worldProfile: { worldName: 'Lau tro so 18' },
+            },
+            review_queue: [{ id: 'rq-1' }],
+            story_graph: { nodes: [{ id: 'inc-1' }], edges: [] },
+        });
+
+        expect(normalized.incidentBeats).toHaveLength(1);
+        expect(normalized.canonicalEntities.characters).toHaveLength(1);
+        expect(normalized.canonicalEntities.locations).toHaveLength(1);
+        expect(normalized.canonicalEntities.objects).toHaveLength(1);
+        expect(normalized.canonicalEntities.terms).toHaveLength(1);
+        expect(normalized.reviewQueue).toHaveLength(1);
+        expect(normalized.storyGraph.nodes).toHaveLength(1);
+    });
+});
+
 // ============================================
 // 4.1 Analysis Parser Tests
 // ============================================

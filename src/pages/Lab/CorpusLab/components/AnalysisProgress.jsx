@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 const STATUS_LABELS = {
   pending: 'Đang chờ',
@@ -29,7 +29,38 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function formatDuration(durationMs) {
+  const safeMs = Math.max(0, Number(durationMs) || 0);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}g ${String(minutes).padStart(2, '0')}p ${String(seconds).padStart(2, '0')}s`;
+  }
+  if (minutes > 0) {
+    return `${minutes}p ${String(seconds).padStart(2, '0')}s`;
+  }
+  return `${seconds}s`;
+}
+
 export default function AnalysisProgress({ analysis }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const isActive = ['pending', 'processing'].includes(String(analysis?.status || '').toLowerCase());
+    if (!isActive) {
+      return undefined;
+    }
+
+    const timerId = window.setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timerId);
+  }, [analysis?.status]);
+
   if (!analysis) {
     return null;
   }
@@ -52,6 +83,11 @@ export default function AnalysisProgress({ analysis }) {
       0,
     );
   }, 0);
+  const startedAt = toNumber(analysis.startedAt || analysis.createdAt, 0);
+  const completedAt = toNumber(analysis.completedAt, 0);
+  const elapsedMs = startedAt > 0
+    ? Math.max(0, (completedAt || now) - startedAt)
+    : 0;
 
   return (
     <div className="analysis-progress">
@@ -66,6 +102,7 @@ export default function AnalysisProgress({ analysis }) {
 
       <div className="analysis-progress-meta">
         <span>Giai đoạn: {prettyPhase(analysis.currentPhase)}</span>
+        <span>Đã chạy: {formatDuration(elapsedMs)}</span>
         <span>Số phần output: {partsGenerated}</span>
         {sessionIndex > 0 && totalSessions > 0 && (
           <span>

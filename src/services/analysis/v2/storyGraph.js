@@ -268,6 +268,25 @@ export function buildStoryGraph({
     });
   }
 
+  for (const incident of toArray(incidents)) {
+    const fromIncidentId = incident?.id;
+    if (!fromIncidentId || !nodeMap.has(fromIncidentId)) continue;
+
+    for (const targetIncidentId of toArray(incident.causalSuccessors)) {
+      if (!nodeMap.has(targetIncidentId)) continue;
+      pushEdge(edges, edgeMap, {
+        id: `edge:${fromIncidentId}:causes:${targetIncidentId}`,
+        type: 'incident_causes_incident',
+        from: fromIncidentId,
+        to: targetIncidentId,
+        confidence: clamp(incident.confidence, 0, 1, 0.68),
+        sourcePass: 'pass_d',
+        reviewStatus: incident.reviewStatus || 'needs_review',
+        evidenceRefs: evidenceRefs(incident),
+      });
+    }
+  }
+
   for (const relation of toArray(relationships)) {
     const source = normalizeText(
       relation.source

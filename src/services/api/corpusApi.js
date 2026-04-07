@@ -121,8 +121,23 @@ export const corpusApi = {
     return request(`/api/corpus/${corpusId}/analysis`, { query });
   },
 
-  getAnalysis(corpusId, analysisId) {
-    return request(`/api/corpus/${corpusId}/analysis/${analysisId}`);
+  getAnalysis(corpusId, analysisId, query = {}) {
+    return request(`/api/corpus/${corpusId}/analysis/${analysisId}`, { query });
+  },
+
+  getAnalysisArtifact(corpusId, analysisId, query = {}) {
+    return request(`/api/corpus/${corpusId}/analysis/${analysisId}/artifact`, { query });
+  },
+
+  getAnalysisWindows(corpusId, analysisId) {
+    return request(`/api/corpus/${corpusId}/analysis/${analysisId}/windows`);
+  },
+
+  rerunAnalysisScope(corpusId, analysisId, payload = {}) {
+    return request(`/api/corpus/${corpusId}/analysis/${analysisId}/rerun`, {
+      method: 'POST',
+      body: payload,
+    });
   },
 
   getAnalysisGraph(corpusId, analysisId) {

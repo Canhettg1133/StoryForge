@@ -1,6 +1,7 @@
 import {
   queryPostgres,
 } from './client.js';
+import { normalizeIncident } from '../../analysis/models/incident.js';
 
 function toNumber(value, fallback = null) {
   if (value == null) return fallback;
@@ -104,9 +105,10 @@ function mapAnalysis(row) {
     analysisRunManifest: parseJsonish(row.analysis_run_manifest, row.analysis_run_manifest),
     passStatus: parseJsonish(row.pass_status, row.pass_status),
     degradedRunReport: parseJsonish(row.degraded_run_report, row.degraded_run_report),
-    graphSummary: parseJsonish(row.graph_summary, row.graph_summary),
-    artifactVersion: row.artifact_version || 'legacy',
-    totalChunks: toNumber(row.total_chunks, 0),
+      graphSummary: parseJsonish(row.graph_summary, row.graph_summary),
+      artifactVersion: row.artifact_version || 'legacy',
+      artifactRevision: toNumber(row.artifact_revision, 0),
+      totalChunks: toNumber(row.total_chunks, 0),
     processedChunks: toNumber(row.processed_chunks, 0),
     progress: toNumber(row.progress, 0),
     currentPhase: row.current_phase,
@@ -138,7 +140,7 @@ function mapChunkResult(row) {
 
 function mapIncident(row) {
   if (!row) return null;
-  return {
+  return normalizeIncident({
     id: row.id,
     corpusId: row.corpus_id,
     analysisId: row.analysis_id,
@@ -181,7 +183,7 @@ function mapIncident(row) {
     createdAt: toNumber(row.created_at),
     analyzedAt: toNumber(row.analyzed_at),
     reviewedAt: toNumber(row.reviewed_at),
-  };
+  });
 }
 
 function mapAnalysisEvent(row) {
@@ -323,27 +325,169 @@ function mapStepRow(row) {
 
 function mapGraphNode(row) {
   const payload = parseJsonish(row.payload, {});
+  const logicalId = payload.id || row.id;
   return {
     ...payload,
-    id: row.id,
+    id: logicalId,
+    storageId: row.id,
     type: payload.type || row.node_type,
     label: payload.label || row.label,
     confidence: payload.confidence ?? toNumber(row.confidence, 0),
     chapterNumber: payload.chapterNumber ?? toNumber(row.chapter_number),
+    graphKind: payload.graphKind || payload.graph_kind || row.graph_kind || 'incident',
   };
 }
 
 function mapGraphEdge(row) {
   const payload = parseJsonish(row.payload, {});
+  const logicalId = payload.id || row.id;
   return {
     ...payload,
-    id: row.id,
+    id: logicalId,
+    storageId: row.id,
     type: payload.type || row.edge_type,
     from: payload.from || row.from_node_id,
     to: payload.to || row.to_node_id,
     confidence: payload.confidence ?? toNumber(row.confidence, 0),
     sourcePass: payload.sourcePass || row.source_pass,
     reviewStatus: payload.reviewStatus || row.review_status,
+    graphKind: payload.graphKind || payload.graph_kind || row.graph_kind || 'incident',
+  };
+}
+
+function mapAnalysisRunArtifact(row) {
+  if (!row) return null;
+  return {
+    analysisId: row.analysis_id,
+    corpusId: row.corpus_id,
+    artifactVersion: row.artifact_version || 'v3',
+    canonicalCorpus: parseJsonish(row.canonical_corpus, {}),
+    analysisWindows: parseJsonish(row.analysis_windows, []),
+    windowResults: parseJsonish(row.window_results, []),
+    carryPackets: parseJsonish(row.carry_packets, []),
+    incidentMap: parseJsonish(row.incident_map, {}),
+    incidents: parseJsonish(row.incidents, []),
+    incidentBeats: parseJsonish(row.incident_beats, []),
+    entityMentions: parseJsonish(row.entity_mentions, []),
+    canonicalEntities: parseJsonish(row.canonical_entities, {}),
+    graphProjections: parseJsonish(row.graph_projections, {}),
+    reviewQueue: parseJsonish(row.review_queue, []),
+    passStatus: parseJsonish(row.pass_status, {}),
+    rerunManifest: parseJsonish(row.rerun_manifest, {}),
+    degradedRunReport: parseJsonish(row.degraded_run_report, {}),
+    payload: parseJsonish(row.payload, {}),
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
+  };
+}
+
+function mapAnalysisWindow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    corpusId: row.corpus_id,
+    analysisId: row.analysis_id,
+    windowId: row.window_id,
+    windowOrder: toNumber(row.window_order, 0),
+    chapterStart: toNumber(row.chapter_start),
+    chapterEnd: toNumber(row.chapter_end),
+    overlapFromPrevious: toNumber(row.overlap_from_previous, 0),
+    chapterNumbers: parseJsonish(row.chapter_numbers, []),
+    carryIn: parseJsonish(row.carry_in, null),
+    carryOut: parseJsonish(row.carry_out, null),
+    openBoundaries: parseJsonish(row.open_boundaries, []),
+    incidents: parseJsonish(row.incidents, []),
+    status: row.status,
+    retries: toNumber(row.retries, 0),
+    degradedReason: row.degraded_reason,
+    promptVersion: row.prompt_version,
+    schemaVersion: row.schema_version || 'v3',
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
+  };
+}
+
+function mapAnalysisBeat(row) {
+  if (!row) return null;
+  const payload = parseJsonish(row.payload, {});
+  return {
+    ...payload,
+    id: row.id,
+    corpusId: row.corpus_id,
+    analysisId: row.analysis_id,
+    incidentId: row.incident_id,
+    sequence: toNumber(row.sequence, 0),
+    chapterNumber: toNumber(row.chapter_number),
+    beatType: payload.beatType || payload.beat_type || row.beat_type,
+    summary: payload.summary || row.summary,
+    causalLinks: payload.causalLinks || payload.causal_links || parseJsonish(row.causal_links, {}),
+    evidenceRefs: payload.evidenceRefs || payload.evidence_refs || parseJsonish(row.evidence_refs, []),
+    confidence: payload.confidence ?? toNumber(row.confidence, 0),
+  };
+}
+
+function mapAnalysisEntity(row) {
+  if (!row) return null;
+  const payload = parseJsonish(row.payload, {});
+  return {
+    ...payload,
+    id: row.id,
+    corpusId: row.corpus_id,
+    analysisId: row.analysis_id,
+    entityKind: payload.entityKind || payload.entity_kind || row.entity_kind,
+    name: payload.name || row.name,
+    normalizedName: payload.normalizedName || payload.normalized_name || row.normalized_name,
+    aliases: payload.aliases || parseJsonish(row.aliases, []),
+    summary: payload.summary || row.summary,
+    description: payload.description || row.description,
+    confidence: payload.confidence ?? toNumber(row.confidence, 0),
+    reviewStatus: payload.reviewStatus || row.review_status,
+  };
+}
+
+function mapAnalysisEntityMention(row) {
+  if (!row) return null;
+  const payload = parseJsonish(row.payload, {});
+  return {
+    ...payload,
+    id: row.id,
+    corpusId: row.corpus_id,
+    analysisId: row.analysis_id,
+    entityId: row.entity_id,
+    beatId: row.beat_id,
+    entityKind: payload.entityKind || payload.entity_kind || row.entity_kind,
+    surfaceForm: payload.surfaceForm || payload.surface_form || row.surface_form,
+    canonicalEntityId: payload.canonicalEntityId || payload.canonical_entity_id || row.canonical_entity_id,
+    chapterNumber: payload.chapterNumber ?? toNumber(row.chapter_number),
+    evidenceRef: payload.evidenceRef || payload.evidence_ref || row.evidence_ref,
+    createdAt: toNumber(row.created_at),
+  };
+}
+
+function mapAnalysisReviewQueueItem(row) {
+  if (!row) return null;
+  const payload = parseJsonish(row.payload, {});
+  return {
+    ...payload,
+    id: row.id,
+    corpusId: row.corpus_id,
+    analysisId: row.analysis_id,
+    itemType: payload.itemType || payload.item_type || row.item_type,
+    itemId: payload.itemId || payload.item_id || row.item_id,
+    priority: payload.priority || row.priority,
+    priorityScore: payload.priorityScore ?? toNumber(row.priority_score, 0),
+    sourcePhase: payload.sourcePhase || payload.source_phase || row.source_phase,
+    rerunScope: payload.rerunScope || payload.rerun_scope || row.rerun_scope,
+    relatedWindowIds: payload.relatedWindowIds || payload.related_window_ids || parseJsonish(row.related_window_ids, []),
+    relatedIncidentIds: payload.relatedIncidentIds || payload.related_incident_ids || parseJsonish(row.related_incident_ids, []),
+    suggestedAction: payload.suggestedAction || payload.suggested_action || row.suggested_action,
+    scoreBreakdown: payload.scoreBreakdown || payload.score_breakdown || parseJsonish(row.score_breakdown, {}),
+    reason: payload.reason || parseJsonish(row.reason, []),
+    suggestions: payload.suggestions || parseJsonish(row.suggestions, []),
+    status: payload.status || row.status,
+    resolution: payload.resolution || row.resolution,
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
   };
 }
 
@@ -361,6 +505,49 @@ function mapProjectSnapshot(row) {
     artifact_version: row.artifact_version || 'v2',
     created_at: toNumber(row.created_at),
     updated_at: toNumber(row.updated_at),
+  };
+}
+
+function mapExecutionSession(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    corpusId: row.corpus_id,
+    analysisId: row.analysis_id,
+    lockToken: row.lock_token,
+    status: row.status,
+    scopePhase: row.scope_phase,
+    requestedScope: parseJsonish(row.requested_scope, {}),
+    plannedJobs: parseJsonish(row.planned_jobs, []),
+    baselineArtifactRevision: toNumber(row.baseline_artifact_revision, 0),
+    targetArtifactRevision: toNumber(row.target_artifact_revision, 1),
+    currentStageKey: row.current_stage_key,
+    currentJobId: row.current_job_id,
+    rootJobId: row.root_job_id,
+    finalJobId: row.final_job_id,
+    errorMessage: row.error_message,
+    lastHeartbeatAt: toNumber(row.last_heartbeat_at),
+    leaseExpiresAt: toNumber(row.lease_expires_at),
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
+    completedAt: toNumber(row.completed_at),
+    releasedAt: toNumber(row.released_at),
+  };
+}
+
+function mapExecutionStageOutput(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    corpusId: row.corpus_id,
+    analysisId: row.analysis_id,
+    stageKey: row.stage_key,
+    jobId: row.job_id,
+    status: row.status,
+    payload: parseJsonish(row.payload, {}),
+    createdAt: toNumber(row.created_at),
+    updatedAt: toNumber(row.updated_at),
   };
 }
 
@@ -558,6 +745,14 @@ export async function pgListAnalysisEventsByIncident(incidentId) {
   return (result?.rows || []).map(mapAnalysisEvent);
 }
 
+export async function pgListAnalysisEventsByAnalysis(analysisId) {
+  const result = await safeQuery(
+    'SELECT * FROM analysis_events WHERE analysis_id = $1 ORDER BY COALESCE(chapter_number, chapter_index, 999999) ASC, created_at ASC',
+    [analysisId],
+  );
+  return (result?.rows || []).map(mapAnalysisEvent);
+}
+
 export async function pgListAnalysisLocationsByAnalysis(analysisId) {
   const result = await safeQuery(
     'SELECT * FROM analysis_locations WHERE analysis_id = $1 ORDER BY importance DESC, mention_count DESC',
@@ -668,6 +863,59 @@ export async function pgGetStoryGraphByAnalysis(analysisId) {
   };
 }
 
+export async function pgGetAnalysisArtifactByAnalysis(analysisId) {
+  const result = await safeQuery(
+    'SELECT * FROM analysis_run_artifacts WHERE analysis_id = $1 LIMIT 1',
+    [analysisId],
+  );
+  return mapAnalysisRunArtifact(result?.rows?.[0]);
+}
+
+export async function pgListAnalysisWindowsByAnalysis(analysisId) {
+  const result = await safeQuery(
+    'SELECT * FROM analysis_windows WHERE analysis_id = $1 ORDER BY window_order ASC, created_at ASC',
+    [analysisId],
+  );
+  return (result?.rows || []).map(mapAnalysisWindow);
+}
+
+export async function pgListAnalysisBeatsByAnalysis(analysisId) {
+  const result = await safeQuery(
+    'SELECT * FROM analysis_beats WHERE analysis_id = $1 ORDER BY sequence ASC, created_at ASC',
+    [analysisId],
+  );
+  return (result?.rows || []).map(mapAnalysisBeat);
+}
+
+export async function pgListAnalysisEntitiesByAnalysis(analysisId) {
+  const result = await safeQuery(
+    'SELECT * FROM analysis_entities WHERE analysis_id = $1 ORDER BY entity_kind ASC, confidence DESC, name ASC',
+    [analysisId],
+  );
+  return (result?.rows || []).map(mapAnalysisEntity);
+}
+
+export async function pgListAnalysisEntityMentionsByAnalysis(analysisId) {
+  const result = await safeQuery(
+    'SELECT * FROM analysis_entity_mentions WHERE analysis_id = $1 ORDER BY created_at ASC',
+    [analysisId],
+  );
+  return (result?.rows || []).map(mapAnalysisEntityMention);
+}
+
+export async function pgListAnalysisReviewQueueByAnalysis(analysisId) {
+  const result = await safeQuery(
+    `SELECT * FROM analysis_review_queue
+     WHERE analysis_id = $1
+     ORDER BY
+       CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 ELSE 2 END ASC,
+       priority_score DESC,
+       created_at DESC`,
+    [analysisId],
+  );
+  return (result?.rows || []).map(mapAnalysisReviewQueueItem);
+}
+
 export async function pgGetStoryGraphProvenance(analysisId, nodeId) {
   const graph = await pgGetStoryGraphByAnalysis(analysisId);
   if (!graph) return null;
@@ -753,11 +1001,23 @@ export async function pgGetRunningJobStats() {
     SELECT
       COUNT(*) AS running_count,
       SUM(
-        CASE
-          WHEN type IN ('corpus_analysis', 'incident_analysis', 'coherence_pass')
-          THEN 1
-          ELSE 0
-        END
+          CASE
+            WHEN type IN (
+              'corpus_analysis',
+              'incident_analysis',
+              'coherence_pass',
+              'scoped_rerun',
+              'analysis_window',
+              'incident_reducer',
+              'incident_worker',
+              'character_canonicalizer',
+              'world_canonicalizer',
+              'graph_projection',
+              'review_intelligence'
+            )
+            THEN 1
+            ELSE 0
+          END
       ) AS running_analysis_count
     FROM jobs
     WHERE status = $1
@@ -778,6 +1038,39 @@ export async function pgCountQueuedAndRunningJobs() {
   `, ['pending', 'running']);
 
   return toNumber(result?.rows?.[0]?.total, 0);
+}
+
+export async function pgGetExecutionSessionById(sessionId) {
+  const result = await safeQuery(
+    'SELECT * FROM analysis_execution_sessions WHERE id = $1 LIMIT 1',
+    [sessionId],
+  );
+  return mapExecutionSession(result?.rows?.[0]);
+}
+
+export async function pgGetActiveExecutionSessionByAnalysis(analysisId) {
+  const now = Date.now();
+  const result = await safeQuery(`
+    SELECT *
+    FROM analysis_execution_sessions
+    WHERE analysis_id = $1
+      AND status IN ('pending', 'running')
+      AND lease_expires_at > $2
+    ORDER BY created_at DESC
+    LIMIT 1
+  `, [analysisId, now]);
+  return mapExecutionSession(result?.rows?.[0]);
+}
+
+export async function pgGetExecutionStageOutput(sessionId, stageKey) {
+  const result = await safeQuery(`
+    SELECT *
+    FROM analysis_execution_stage_outputs
+    WHERE session_id = $1
+      AND stage_key = $2
+    LIMIT 1
+  `, [sessionId, stageKey]);
+  return mapExecutionStageOutput(result?.rows?.[0]);
 }
 
 export async function pgListProjectAnalysisSnapshots(projectId, limit = 30) {

@@ -3,6 +3,7 @@ import { normalizeIncident } from './models/incident.js';
 import { normalizeEvent } from './models/event.js';
 import { normalizeLocation } from './models/location.js';
 import { normalizeConsistencyRisk } from './models/consistencyRisk.js';
+import { analysisRepository } from './repositories/analysisRepository.js';
 import { incidentFirstRepository } from './repositories/incidentFirstRepository.js';
 
 const EVENT_COLLECTION_KEYS = [
@@ -269,6 +270,171 @@ function mapConsistencyRisks(consistencyRisks, { corpusId, analysisId }) {
     }));
 }
 
+function mapV3Incidents(incidents, { corpusId, analysisId }) {
+  return toArray(incidents).map((item) => normalizeIncident({
+    ...item,
+    corpusId,
+    analysisId,
+    chapterStartIndex: parseChapter(item.chapterStart ?? item.chapterStartNumber),
+    chapterEndIndex: parseChapter(item.chapterEnd ?? item.chapterEndNumber),
+    chapterStartNumber: parseChapter(item.chapterStart ?? item.chapterStartNumber),
+    chapterEndNumber: parseChapter(item.chapterEnd ?? item.chapterEndNumber),
+    description: item.detailedSummary || item.detailed_summary || item.summary || item.description || '',
+    evidence: item.primaryEvidenceRefs || item.primary_evidence_refs || item.evidence || [],
+    boundaryNote: item.lineage?.decision_reason || item.boundaryNote || '',
+    provenance: item.provenance || {
+      sourcePass: 'artifact_v3',
+      reviewStatus: item.reviewStatus || 'needs_review',
+      lineage: item.lineage || {},
+      rerunScope: item.rerunScope || item.rerun_scope || {},
+    },
+  }));
+}
+
+function mapV3Events(beats, incidents, { corpusId, analysisId }) {
+  const incidentById = new Map(toArray(incidents).map((item) => [item.id, item]));
+  return toArray(beats).map((item) => {
+    const incident = incidentById.get(item.incidentId);
+    const chapterNumber = parseChapter(item.chapterNumber ?? item.chapter);
+    return normalizeEvent({
+      id: item.sourceEventId || item.id || `evt_${randomUUID()}`,
+      corpusId,
+      analysisId,
+      title: item.summary || `Beat ${item.sequence || 0}`,
+      description: item.summary || '',
+      chapterIndex: chapterNumber,
+      chapterNumber,
+      incidentId: item.incidentId || null,
+      confidence: Number(item.confidence ?? incident?.confidence ?? 0),
+      evidence: item.evidenceRefs || item.evidence_refs || [],
+      causalLinks: item.causalLinks || item.causal_links || { causes: [], causedBy: [] },
+      reviewStatus: incident?.reviewStatus || 'needs_review',
+      needsReview: (incident?.reviewStatus || 'needs_review') !== 'auto_accepted',
+      provenance: {
+        sourcePass: 'artifact_v3',
+        reviewStatus: incident?.reviewStatus || 'needs_review',
+        beatType: item.beatType || item.beat_type || 'beat',
+        beatSequence: item.sequence || 0,
+      },
+    });
+  });
+}
+
+function mapV3Locations(result, beats, { corpusId, analysisId }) {
+  const sourceLocations = toArray(result.canonical_entities?.locations || result.locations);
+  const direct = sourceLocations.map((item) => normalizeLocation({
+    ...item,
+    corpusId,
+    analysisId,
+    chapterStart: parseChapter(item.chapterStart ?? item.chapterStartNumber),
+    chapterEnd: parseChapter(item.chapterEnd ?? item.chapterEndNumber),
+    chapterSpread: item.chapterSpread || [
+      parseChapter(item.chapterStart ?? item.chapterStartNumber),
+      parseChapter(item.chapterEnd ?? item.chapterEndNumber),
+    ],
+    eventIds: item.eventIds || [],
+    incidentIds: item.incidentIds || [],
+    evidence: item.evidence || item.timeline?.map((entry) => entry.summary).filter(Boolean) || [],
+  }));
+
+  if (direct.length > 0) {
+    return direct;
+  }
+
+  return mapLocations([], beats, { corpusId, analysisId });
+}
+
+function dedupeV3Entities(entities = []) {
+  const byId = new Map();
+  for (const item of toArray(entities)) {
+    const id = String(item?.id || '').trim();
+    if (!id) continue;
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, item);
+      continue;
+    }
+    byId.set(id, {
+      ...existing,
+      ...item,
+      aliases: [...new Set([...toArray(existing.aliases), ...toArray(item.aliases)])],
+      summary: existing.summary || item.summary || '',
+      description: existing.description || item.description || '',
+      timeline: [...toArray(existing.timeline), ...toArray(item.timeline)],
+      confidence: Math.max(Number(existing.confidence || 0), Number(item.confidence || 0)),
+    });
+  }
+  return [...byId.values()];
+}
+
+async function persistV3Artifact({ corpusId, analysisId, result }) {
+  const rawIncidents = toArray(result.incidents);
+  const rawBeats = toArray(result.incident_beats);
+  const rawEntities = dedupeV3Entities([
+    ...toArray(result.canonical_entities?.characters).map((item) => ({ ...item, entityKind: 'character' })),
+    ...toArray(result.canonical_entities?.locations).map((item) => ({ ...item, entityKind: 'location' })),
+    ...toArray(result.canonical_entities?.objects).map((item) => ({ ...item, entityKind: 'object' })),
+    ...toArray(result.canonical_entities?.terms).map((item) => ({ ...item, entityKind: 'term' })),
+  ]);
+  const rawMentions = toArray(result.entity_mentions);
+  const rawWindows = toArray(result.analysis_windows).map((item) => ({
+    ...item,
+    id: item?.id ? `${analysisId}:${item.id}` : `${analysisId}:${item?.windowId || `window_${randomUUID().slice(0, 8)}`}`,
+  }));
+  const rawReviewQueue = toArray(result.review_queue || result.reviewQueue).map((item) => ({
+    ...item,
+    id: item.id || `rq_${randomUUID()}`,
+    corpusId,
+    analysisId,
+  }));
+
+  await analysisRepository.persistArtifactV3({
+    analysisId,
+    corpusId,
+    artifact: result,
+    windows: rawWindows,
+    incidents: rawIncidents,
+    beats: rawBeats,
+    entities: rawEntities,
+    entityMentions: rawMentions,
+    reviewQueue: rawReviewQueue,
+  });
+
+  const incidents = mapV3Incidents(rawIncidents, { corpusId, analysisId });
+  const events = mapV3Events(rawBeats, rawIncidents, { corpusId, analysisId });
+  const locations = mapV3Locations(result, events, { corpusId, analysisId });
+  const consistencyRisks = mapConsistencyRisks(result.consistencyRisks || result.consistency_risks, {
+    corpusId,
+    analysisId,
+  });
+
+  await incidentFirstRepository.replaceArtifacts({
+    corpusId,
+    analysisId,
+    incidents,
+    events,
+    locations,
+    consistencyRisks,
+    reviewQueue: rawReviewQueue,
+  });
+
+  return {
+    persisted: true,
+    counts: {
+      incidents: incidents.length,
+      events: events.length,
+      locations: locations.length,
+      consistencyRisks: consistencyRisks.length,
+      reviewQueue: rawReviewQueue.length,
+      windows: rawWindows.length,
+      beats: rawBeats.length,
+      entities: rawEntities.length,
+      mentions: rawMentions.length,
+    },
+    sourceOfTruth: 'analysis_run_artifacts',
+  };
+}
+
 export async function persistIncidentFirstArtifacts({
   corpusId,
   analysisId,
@@ -280,6 +446,10 @@ export async function persistIncidentFirstArtifacts({
       persisted: false,
       reason: 'Missing corpusId/analysisId/result.',
     };
+  }
+
+  if (String(result.artifact_version || '').toLowerCase() === 'v3') {
+    return persistV3Artifact({ corpusId, analysisId, result });
   }
 
   const incidents = mapIncidents(result.incidents, { corpusId, analysisId });
