@@ -8,19 +8,13 @@
  */
 
 import keyManager from './keyManager';
+import { AI_ERROR_CODES, normalizeAIError, shouldFallbackForError } from './errorUtils';
 import { PROXY_MODELS, PROVIDERS, TASK_TYPES } from './router';
 import { NSFW_REBUKE_PROMPT } from '../../utils/constants';
 
 const SETTINGS_KEY = 'sf-ai-settings';
 const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 40000;
 const PROXY_MAX_OUTPUT_TOKENS = 40000;
-
-function createStreamError(message, code, options = {}) {
-  const err = new Error(message || code || 'STREAM_ERROR');
-  if (code) err.code = code;
-  if (options.payloadError) err.isPayloadError = true;
-  return err;
-}
 
 function extractSSEDataValue(rawLine) {
   const trimmed = (rawLine || '').trim();
@@ -84,8 +78,20 @@ export function getProxyUrl() {
   return getSettings().proxyUrl || '/api/proxy';
 }
 
+export function getGeminiDirectBaseUrl() {
+  return getSettings().geminiDirectUrl || 'https://generativelanguage.googleapis.com';
+}
+
 export function getOllamaUrl() {
   return getSettings().ollamaUrl || 'http://localhost:11434';
+}
+
+function buildGeminiDirectEndpoint(baseUrl, pathWithQuery = '') {
+  const normalizedBase = String(baseUrl || '').replace(/\/+$/u, '');
+  const versionBase = normalizedBase.endsWith('/v1beta')
+    ? normalizedBase
+    : `${normalizedBase}/v1beta`;
+  return `${versionBase}${pathWithQuery}`;
 }
 
 // ================================
@@ -96,7 +102,12 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
   if (!proxyUrl) throw new Error('Chưa cấu hình Proxy URL.');
 
   const apiKey = keyManager.getNextKey('gemini_proxy');
-  if (!apiKey) throw new Error('Không có API key cho Gemini Proxy.');
+  if (!apiKey) {
+    throw normalizeAIError(
+      { code: AI_ERROR_CODES.MISSING_API_KEY, rawMessage: 'MISSING_API_KEY' },
+      { provider: PROVIDERS.GEMINI_PROXY, model },
+    );
+  }
 
   const url = `${proxyUrl}/v1/chat/completions`;
 
@@ -112,12 +123,22 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
     });
 
     if (response.status === 429) {
-      keyManager.markRateLimited(apiKey, 60000);
-      throw new Error('RATE_LIMITED');
+      const errText = await response.text().catch(() => '');
+      const normalized = normalizeAIError({
+        status: response.status,
+        bodyText: errText,
+      }, { provider: PROVIDERS.GEMINI_PROXY, model });
+      if (normalized.code === AI_ERROR_CODES.RATE_LIMITED) {
+        keyManager.markRateLimited(apiKey, 60000);
+      }
+      throw normalized;
     }
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      throw new Error(`Proxy error ${response.status}: ${errText}`);
+      throw normalizeAIError({
+        status: response.status,
+        bodyText: errText,
+      }, { provider: PROVIDERS.GEMINI_PROXY, model });
     }
 
     if (!stream) {
@@ -126,12 +147,18 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
       onComplete?.(text);
       return text;
     }
-    return await streamSSE(response, { onToken, onComplete, onError });
+    return await streamSSE(response, {
+      onToken,
+      onComplete,
+      onError,
+      errorContext: { provider: PROVIDERS.GEMINI_PROXY, model },
+    });
   } catch (err) {
     if (err.name === 'AbortError') return;
-    if (err.message === 'RATE_LIMITED') throw err;
-    onError?.(err);
-    throw err;
+    const normalized = normalizeAIError(err, { provider: PROVIDERS.GEMINI_PROXY, model });
+    if (normalized.code === AI_ERROR_CODES.RATE_LIMITED || normalized.code === AI_ERROR_CODES.MODEL_CAPACITY_EXHAUSTED) throw normalized;
+    onError?.(normalized);
+    throw normalized;
   }
 }
 
@@ -140,10 +167,18 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
 // ================================
 async function callGeminiDirect({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode }) {
   const apiKey = keyManager.getNextKey('gemini_direct');
-  if (!apiKey) throw new Error('Không có API key cho Gemini Direct.');
+  if (!apiKey) {
+    throw normalizeAIError(
+      { code: AI_ERROR_CODES.MISSING_API_KEY, rawMessage: 'MISSING_API_KEY' },
+      { provider: PROVIDERS.GEMINI_DIRECT, model },
+    );
+  }
 
   const action = stream ? 'streamGenerateContent' : 'generateContent';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}?key=${apiKey}${stream ? '&alt=sse' : ''}`;
+  const url = buildGeminiDirectEndpoint(
+    getGeminiDirectBaseUrl(),
+    `/models/${model}:${action}?key=${apiKey}${stream ? '&alt=sse' : ''}`,
+  );
 
   const contents = messages
     .filter(m => m.role !== 'system')
@@ -180,12 +215,22 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
     });
 
     if (response.status === 429) {
-      keyManager.markRateLimited(apiKey, 60000);
-      throw new Error('RATE_LIMITED');
+      const errText = await response.text().catch(() => '');
+      const normalized = normalizeAIError({
+        status: response.status,
+        bodyText: errText,
+      }, { provider: PROVIDERS.GEMINI_DIRECT, model });
+      if (normalized.code === AI_ERROR_CODES.RATE_LIMITED) {
+        keyManager.markRateLimited(apiKey, 60000);
+      }
+      throw normalized;
     }
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      throw new Error(`Gemini error ${response.status}: ${errText}`);
+      throw normalizeAIError({
+        status: response.status,
+        bodyText: errText,
+      }, { provider: PROVIDERS.GEMINI_DIRECT, model });
     }
 
     if (!stream) {
@@ -194,12 +239,18 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
       onComplete?.(text);
       return text;
     }
-    return await streamGeminiSSE(response, { onToken, onComplete, onError });
+    return await streamGeminiSSE(response, {
+      onToken,
+      onComplete,
+      onError,
+      errorContext: { provider: PROVIDERS.GEMINI_DIRECT, model },
+    });
   } catch (err) {
     if (err.name === 'AbortError') return;
-    if (err.message === 'RATE_LIMITED') throw err;
-    onError?.(err);
-    throw err;
+    const normalized = normalizeAIError(err, { provider: PROVIDERS.GEMINI_DIRECT, model });
+    if (normalized.code === AI_ERROR_CODES.RATE_LIMITED || normalized.code === AI_ERROR_CODES.MODEL_CAPACITY_EXHAUSTED) throw normalized;
+    onError?.(normalized);
+    throw normalized;
   }
 }
 
@@ -239,7 +290,7 @@ async function callOllama({ model, messages, stream = true, signal, onToken, onC
 // ================================
 // Stream Parsers
 // ================================
-async function streamSSE(response, { onToken, onComplete, onError }) {
+async function streamSSE(response, { onToken, onComplete, onError, errorContext = {} }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let fullText = '', buffer = '';
@@ -260,7 +311,14 @@ async function streamSSE(response, { onToken, onComplete, onError }) {
           const p = JSON.parse(d);
           const payloadError = extractPayloadError(p);
           if (payloadError) {
-            throw createStreamError(payloadError.message, payloadError.code, { payloadError: true });
+            const streamError = normalizeAIError({
+              status: payloadError.code,
+              code: payloadError.code,
+              rawMessage: payloadError.message,
+              error: p.error || p,
+            }, errorContext);
+            streamError.isPayloadError = true;
+            throw streamError;
           }
 
           const delta = p.choices?.[0]?.delta?.content || '';
@@ -276,23 +334,24 @@ async function streamSSE(response, { onToken, onComplete, onError }) {
         }
       }
     }
-    if (!hasToken) throw createStreamError('EMPTY_STREAM', 'EMPTY_STREAM');
+    if (!hasToken) throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
     onComplete?.(fullText);
   } catch (err) {
     if (err.name === 'AbortError') { onComplete?.(fullText); return; }
-    if (err.message === 'EMPTY_STREAM' || err.code === 'EMPTY_STREAM' || err.isPayloadError) {
-      onError?.(err);
+    if (err.code === AI_ERROR_CODES.EMPTY_STREAM || err.isPayloadError) {
+      onError?.(normalizeAIError(err, errorContext));
       return;
     }
     // Preserve partial text on error
-    if (fullText) { onComplete?.(fullText); } else { onError?.(err); }
+    if (fullText) { onComplete?.(fullText); } else { onError?.(normalizeAIError(err, errorContext)); }
   }
 }
 
-async function streamGeminiSSE(response, { onToken, onComplete, onError }) {
+async function streamGeminiSSE(response, { onToken, onComplete, onError, errorContext = {} }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let fullText = '', buffer = '';
+  let hasToken = false;
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -305,21 +364,43 @@ async function streamGeminiSSE(response, { onToken, onComplete, onError }) {
         if (!t || !t.startsWith('data: ')) continue;
         try {
           const p = JSON.parse(t.slice(6));
+          const payloadError = extractPayloadError(p);
+          if (payloadError) {
+            const streamError = normalizeAIError({
+              status: payloadError.code,
+              code: payloadError.code,
+              rawMessage: payloadError.message,
+              error: p.error || p,
+            }, errorContext);
+            streamError.isPayloadError = true;
+            throw streamError;
+          }
           if (p.candidates?.[0]?.finishReason === 'SAFETY') {
-            throw new Error('SAFETY_BLOCK');
+            throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
           }
           const text = p.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          if (text) { fullText += text; onToken?.(text, fullText); }
+          if (text) {
+            hasToken = true;
+            fullText += text;
+            onToken?.(text, fullText);
+          }
         } catch (e) {
-          if (e.message === 'SAFETY_BLOCK') throw e;
+          if (e.code === AI_ERROR_CODES.SAFETY_BLOCK || e.isPayloadError) throw e;
         }
       }
+    }
+    if (!hasToken) {
+      throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
     }
     onComplete?.(fullText);
   } catch (err) {
     if (err.name === 'AbortError') { onComplete?.(fullText); return; }
+    if (err.code === AI_ERROR_CODES.EMPTY_STREAM || err.isPayloadError) {
+      onError?.(normalizeAIError(err, errorContext));
+      return;
+    }
     // Preserve partial text on error
-    if (fullText) { onComplete?.(fullText); } else { onError?.(err); }
+    if (fullText) { onComplete?.(fullText); } else { onError?.(normalizeAIError(err, errorContext)); }
   }
 }
 
@@ -484,7 +565,7 @@ class AIService {
     };
 
     const wrappedOnError = async (err) => {
-      if (err.message === 'SAFETY_BLOCK' && (nsfwMode || superNsfwMode)) {
+      if (err.code === AI_ERROR_CODES.SAFETY_BLOCK && (nsfwMode || superNsfwMode)) {
         // [STEALTH RETRY / REBUKE FOR SAFETY_BLOCK]
         console.log('[AI] SAFETY_BLOCK detected. Attempting Rebuke escalation...');
 
@@ -516,7 +597,7 @@ class AIService {
         }
       }
 
-      if (err.message === 'EMPTY_STREAM' && route.provider === PROVIDERS.GEMINI_PROXY && taskType === TASK_TYPES.FREE_PROMPT) {
+      if (err.code === AI_ERROR_CODES.EMPTY_STREAM && route.provider === PROVIDERS.GEMINI_PROXY && taskType === TASK_TYPES.FREE_PROMPT) {
         const stableFallbackModels = getProxyBestFreePromptFallbackModels(taskType, route);
         for (const fallbackModel of stableFallbackModels) {
           const fallbackRoute = { ...route, model: fallbackModel, tier: fallbackModel.includes('pro') ? 'pro' : 'flash' };
@@ -539,14 +620,14 @@ class AIService {
         }
       }
 
-      if (err.message === 'RATE_LIMITED' && this._router) {
+      if (shouldFallbackForError(err) && this._router) {
         const fallbacks = this._router.getFallbacks(route);
         for (const fb of fallbacks) {
           try {
             await getCallFn(fb.provider)({
               model: fb.model, messages, stream, signal: controller.signal,
               onToken, onComplete: (text) => wrappedOnComplete(text, fb),
-              onError: (e) => { this.activeController = null; onError?.(e); },
+              onError: (e) => { this.activeController = null; onError?.(normalizeAIError(e, fb)); },
               nsfwMode
             });
             return;
@@ -554,7 +635,7 @@ class AIService {
         }
       }
       this.activeController = null;
-      onError?.(err);
+      onError?.(normalizeAIError(err, route));
     };
 
     getCallFn(route.provider)({
@@ -594,7 +675,7 @@ class AIService {
         const apiKey = keyManager.getNextKey('gemini_direct');
         if (!apiKey) return { success: false, error: 'Chưa có API key' };
         const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+          buildGeminiDirectEndpoint(getGeminiDirectBaseUrl(), `/models?key=${apiKey}`),
           { signal: AbortSignal.timeout(8000) },
         );
         if (!res.ok) throw new Error(`Status ${res.status}`);
@@ -609,3 +690,4 @@ class AIService {
 
 const aiService = new AIService();
 export default aiService;
+
