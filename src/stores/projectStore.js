@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import db from '../services/db/database';
 import { countWords } from '../utils/constants';
 import { GENRE_TEMPLATES } from '../utils/genreTemplates';
+import { buildProseBuffer } from '../utils/proseBuffer';
 
 function getNextOrderIndex(items) {
   return items.reduce((max, item) => {
@@ -154,6 +155,9 @@ const useProjectStore = create((set, get) => ({
   activeSceneId: null,
   loading: false,
 
+  // Tracks chapters currently running auto-complete to prevent double-trigger
+  completingChapterId: null,
+
   loadProjects: async () => {
     const projects = await db.projects.orderBy('updated_at').reverse().toArray();
     set({ projects });
@@ -264,6 +268,7 @@ const useProjectStore = create((set, get) => ({
       db.aiJobs.where('project_id').equals(id).delete(),
       db.qaReports.where('project_id').equals(id).delete(),
       db.suggestions.where('project_id').equals(id).delete(),
+      db.project_analysis_snapshots.where('project_id').equals(id).delete(),
       // Phase 3+: tables added in later versions
       db.worldTerms.where('project_id').equals(id).delete(),
       db.taboos.where('project_id').equals(id).delete(),
@@ -511,6 +516,95 @@ const useProjectStore = create((set, get) => ({
     }
 
     return actualWordCount;
+  },
+
+  /**
+   * Auto-complete a chapter: summarize + extract Codex entries + mark done.
+   * Called automatically when chapter reaches 100% word target.
+   * Non-blocking — errors are silently handled.
+   */
+  autoCompleteChapter: async (chapterId) => {
+    const { completingChapterId, currentProject, chapters, scenes } = get();
+    if (completingChapterId === chapterId) return;
+    if (!currentProject || !chapterId) return;
+
+    const chapter = chapters.find(c => c.id === chapterId);
+    if (!chapter || chapter.status === 'done') return;
+
+    set({ completingChapterId: chapterId });
+
+    try {
+      const chapterScenes = scenes.filter(s => s.chapter_id === chapterId);
+      const chapterText = chapterScenes
+        .map(s => s.draft_text || '')
+        .join('\n')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .trim();
+
+      if (!chapterText) {
+        set({ completingChapterId: null });
+        return;
+      }
+
+      const context = {
+        sceneText: chapterText,
+        chapterTitle: chapter.title,
+        projectTitle: currentProject.title,
+        genre: currentProject.genre_primary || '',
+        projectId: currentProject.id,
+      };
+
+      // Step 1: Summarize chapter + persist prose tail for continuity
+      const lastProseBuffer = buildProseBuffer(chapterText);
+      const existingMeta = await db.chapterMeta
+        .where('chapter_id').equals(chapterId)
+        .first();
+      let summary = '';
+      try {
+        const { summarizeChapter } = await import('./aiStore').then(m => m.default.getState());
+        summary = await summarizeChapter(context);
+      } catch (e) {
+        console.warn('[AutoComplete] Summarize failed (non-fatal):', e);
+      }
+
+      const metaData = {
+        chapter_id: chapterId,
+        project_id: currentProject.id,
+        last_prose_buffer: lastProseBuffer,
+        emotional_state: existingMeta?.emotional_state || null,
+        tension_level: existingMeta?.tension_level || null,
+      };
+
+      if (existingMeta) {
+        const updates = {};
+        if (summary?.trim()) updates.summary = summary;
+        if (lastProseBuffer) updates.last_prose_buffer = lastProseBuffer;
+        if (Object.keys(updates).length > 0) {
+          await db.chapterMeta.update(existingMeta.id, updates);
+        }
+      } else {
+        await db.chapterMeta.add({
+          ...metaData,
+          summary: summary?.trim() || '',
+        });
+      }
+
+      // Step 2: Extract Codex entries
+      try {
+        const { extractFromChapter } = await import('./aiStore').then(m => m.default.getState());
+        await extractFromChapter(context);
+      } catch (e) {
+        console.warn('[AutoComplete] Extract failed (non-fatal):', e);
+      }
+
+      // Step 3: Mark chapter as done
+      await get().updateChapter(chapterId, { status: 'done' });
+    } catch (e) {
+      console.warn('[AutoComplete] Failed:', e);
+    } finally {
+      set({ completingChapterId: null });
+    }
   },
 
   updateProjectTimestamp: async () => {
