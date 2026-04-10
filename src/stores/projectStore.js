@@ -487,6 +487,7 @@ const useProjectStore = create((set, get) => ({
 
   setActiveChapter: (id) => set({ activeChapterId: id }),
   setActiveScene: (id) => set({ activeSceneId: id }),
+  setCompletingChapterId: (id) => set({ completingChapterId: id }),
 
   getActiveScene: () => {
     const { scenes, activeSceneId } = get();
