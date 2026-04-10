@@ -192,7 +192,13 @@ export async function gatherContext({
       title: currentRaw.title || '',
       summary: currentRaw.summary || '',
       keyEvents: (() => {
-        try { return JSON.parse(currentRaw.key_events || '[]'); } catch { return []; }
+        try {
+          const raw = currentRaw.purpose || currentRaw.key_events || '[]';
+          const parsed = JSON.parse(raw);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
       })(),
     }
     : null;

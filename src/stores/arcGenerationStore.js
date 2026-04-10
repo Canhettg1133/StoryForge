@@ -40,6 +40,74 @@ function normalizeOutlineResult(parsed) {
     return isPlainObject(parsed) ? parsed : null;
 }
 
+function stripChapterPrefix(title) {
+    if (!title) return '';
+    return String(title)
+        .replace(/^\s*(?:chuong|chương|chapter)\s*\d+\s*[:\-.\]]*\s*/iu, '')
+        .trim();
+}
+
+function normalizeGeneratedChapterTitle(title, chapterNumber) {
+    const cleanTitle = stripChapterPrefix(title);
+    return cleanTitle
+        ? `Chuong ${chapterNumber}: ${cleanTitle}`
+        : `Chuong ${chapterNumber}`;
+}
+
+function normalizeGeneratedOutline(outline, startingChapterIndex) {
+    if (!outline || !Array.isArray(outline.chapters)) return outline;
+    return {
+        ...outline,
+        chapters: outline.chapters.map((chapter, index) => ({
+            ...chapter,
+            title: normalizeGeneratedChapterTitle(chapter?.title, startingChapterIndex + index + 1),
+        })),
+    };
+}
+
+function buildChapterBrief(chapter, meta, fallbackNumber) {
+    const chapterNumber = Number.isFinite(chapter?.order_index) ? chapter.order_index + 1 : fallbackNumber;
+    let purpose = chapter?.purpose || '';
+    try {
+        const parsed = JSON.parse(purpose);
+        if (Array.isArray(parsed)) {
+            purpose = parsed.join('; ');
+        }
+    } catch {
+        // keep plain text purpose
+    }
+    return {
+        chapterNumber,
+        title: chapter?.title || `Chuong ${chapterNumber}`,
+        summary: meta?.summary || chapter?.summary || '',
+        purpose,
+        status: chapter?.status || 'draft',
+    };
+}
+
+async function loadExistingChapterBriefs(projectId) {
+    const [chapters, metas] = await Promise.all([
+        db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
+        db.chapterMeta.where('project_id').equals(projectId).toArray(),
+    ]);
+
+    return chapters.map((chapter, index) => {
+        const meta = metas.find((item) => item.chapter_id === chapter.id);
+        return buildChapterBrief(chapter, meta, index + 1);
+    });
+}
+
+function buildPriorGeneratedBriefs(generatedOutline, upToIndex, startingChapterIndex = 0) {
+    if (!generatedOutline?.chapters || upToIndex <= 0) return [];
+    return generatedOutline.chapters.slice(0, upToIndex).map((chapter, index) => ({
+        chapterNumber: startingChapterIndex + index + 1,
+        title: chapter?.title || `Chuong ${startingChapterIndex + index + 1}`,
+        summary: chapter?.summary || '',
+        purpose: Array.isArray(chapter?.key_events) ? chapter.key_events.join('; ') : '',
+        status: 'planned',
+    }));
+}
+
 // ─── Helper: tạo arc record trong DB ───
 // Dùng chung cho commitOutlineOnly và commitDraftsToProject
 // Trả về arcId vừa tạo
@@ -113,10 +181,15 @@ const useArcGenStore = create((set, get) => ({
         set({ outlineStatus: 'generating' });
         try {
             const { arcGoal, arcChapterCount, arcPacing, arcMode, currentMacroArcId } = get();
+            const existingChapterBriefs = await loadExistingChapterBriefs(projectId);
+            const startingChapterIndex = Math.max(
+                Number.isFinite(chapterIndex) ? chapterIndex : 0,
+                existingChapterBriefs.length,
+            );
 
             // Thu thập ngữ cảnh
             const ctx = await gatherContext({
-                projectId, chapterId, chapterIndex, sceneId: null, sceneText: '', genre,
+                projectId, chapterId, chapterIndex: startingChapterIndex, sceneId: null, sceneText: '', genre,
             });
 
             // Phase 9: Load macro arc context nếu có
@@ -194,6 +267,8 @@ const useArcGenStore = create((set, get) => ({
                 userPrompt: finalGoal,
                 chapterCount: arcChapterCount,
                 arcPacing: arcPacing,
+                startChapterNumber: startingChapterIndex + 1,
+                existingChapterBriefs,
             });
 
             // Gọi AI qua aiService.send() (đúng API)
@@ -206,7 +281,10 @@ const useArcGenStore = create((set, get) => ({
                     onComplete: (text) => {
                         try {
                             const parsed = parseAIJsonValue(text);
-                            const outline = normalizeOutlineResult(parsed);
+                            const outline = normalizeGeneratedOutline(
+                                normalizeOutlineResult(parsed),
+                                startingChapterIndex,
+                            );
                             if (!outline) throw new Error('Unexpected outline format');
                             set({ generatedOutline: outline, outlineStatus: 'ready' });
                         } catch (e) {
@@ -252,6 +330,7 @@ const useArcGenStore = create((set, get) => ({
         if (!generatedOutline || !generatedOutline.chapters) return;
 
         const chapters = generatedOutline.chapters;
+        const existingChapterBriefs = await loadExistingChapterBriefs(projectId);
         set({
             draftStatus: 'drafting',
             draftProgress: { current: 0, total: chapters.length },
@@ -282,6 +361,9 @@ const useArcGenStore = create((set, get) => ({
                     chapterOutlineTitle: ch.title,
                     chapterOutlineSummary: ch.summary,
                     chapterOutlineEvents: ch.key_events || [],
+                    startChapterNumber: chapterIdx + 1,
+                    existingChapterBriefs,
+                    priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(generatedOutline, i, startingChapterIndex),
                 });
 
                 // Dùng aiService.send() — await bằng Promise wrapper
@@ -480,6 +562,7 @@ const useArcGenStore = create((set, get) => ({
         if (!generatedOutline) return;
 
         const chapters = generatedOutline.chapters;
+        const existingChapterBriefs = await loadExistingChapterBriefs(projectId);
 
         set(state => ({
             draftStatus: 'drafting',
@@ -515,6 +598,9 @@ const useArcGenStore = create((set, get) => ({
                     chapterOutlineTitle: ch.title,
                     chapterOutlineSummary: ch.summary + (flagNote ? '. GHI CHU SUA DOI: ' + flagNote : ''),
                     chapterOutlineEvents: ch.key_events || [],
+                    startChapterNumber: chapterIdx + 1,
+                    existingChapterBriefs,
+                    priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(generatedOutline, i, startingChapterIndex),
                 });
 
                 await new Promise((resolve) => {

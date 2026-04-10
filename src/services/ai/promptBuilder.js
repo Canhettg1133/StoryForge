@@ -220,6 +220,9 @@ export const TASK_INSTRUCTIONS = {
     '- Moi chuong phai co xung dot nho hoac kham pha moi de duy tri su hap dan.',
     '- Nhip do theo chi dinh cua tac gia (cham/trung binh/nhanh).',
     '- Tang dan do phuc tap va cang thang theo tien trinh Arc.',
+    '- BAT BUOC tiep noi truc tiep sau chapter hien co; KHONG duoc reset ve Chuong 1.',
+    '- KHONG lap lai su kien, thong tin tiet lo, xung dot, hay ket qua da xay ra trong cac chuong da co.',
+    '- Moi chuong moi phai day cau chuyen tien len it nhat 1 thay doi moi, 1 he qua moi, hoac 1 quyet dinh moi.',
     '',
     'Tra ve CHINH XAC JSON format:',
     '{',
@@ -242,6 +245,8 @@ export const TASK_INSTRUCTIONS = {
     'Viet cuc ky chi tiet: hanh dong, tam ly, doi thoai, mieu ta canh vat.',
     'Muc tieu: 5000-7000 tu.',
     'KHONG tu y them su kien ngoai dan y.',
+    'KHONG duoc viet lai thanh canh chinh nhung gi da xay ra o cac chuong truoc; chi duoc nhac lai rat ngan neu can.',
+    'Moi canh phai la he qua tiep noi tu chuong truoc va day tinh hinh sang trang thai moi.',
     'Chi tra ve noi dung chuong, KHONG them tieu de hay ghi chu.',
   ].join('\n'),
 };
@@ -404,6 +409,22 @@ function buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapt
 
   if (parts.length === 0) return '';
   return '\n[DAN Y TRUYEN]\n' + parts.join('\n\n');
+}
+
+function formatChapterBriefList(briefs, options) {
+  const list = Array.isArray(briefs) ? briefs.filter(Boolean) : [];
+  if (list.length === 0) return '';
+  const limit = options?.limit || list.length;
+  const header = options?.header || '';
+  const lines = list.slice(-limit).map(function (item, index) {
+    const chapterNumber = Number.isFinite(Number(item.chapterNumber))
+      ? Number(item.chapterNumber)
+      : index + 1;
+    const title = item.title || ('Chuong ' + chapterNumber);
+    const summary = item.summary || item.purpose || '(chua co tom tat)';
+    return chapterNumber + '. ' + title + ' - ' + summary;
+  });
+  return header ? header + '\n' + lines.join('\n') : lines.join('\n');
 }
 
 // =============================================
@@ -869,6 +890,9 @@ export function buildPrompt(taskType, context = {}) {
     // Phase 8: Chapter Outline Context
     currentChapterOutline = null,
     upcomingChapters = [],
+    startChapterNumber = 1,
+    existingChapterBriefs = [],
+    priorGeneratedChapterBriefs = [],
     // Phase 9: Grand Strategy
     currentArc = null,
     currentMacroArc = null,
@@ -1247,23 +1271,40 @@ export function buildPrompt(taskType, context = {}) {
     case TASK_TYPES.ARC_OUTLINE: {
       const arcParts = [];
       if (userPrompt) arcParts.push('Muc tieu Arc: ' + userPrompt);
+      arcParts.push('Chuong moi phai bat dau tu: Chuong ' + startChapterNumber);
       arcParts.push('So luong chuong can tao: ' + (context.chapterCount || 10));
       if (context.arcPacing) {
         const pacingDesc = { slow: 'Cham - xay dung, kham pha', medium: 'Trung binh', fast: 'Nhanh - hanh dong, cao trao' };
         arcParts.push('Nhip do: ' + (pacingDesc[context.arcPacing] || context.arcPacing));
       }
       if (previousSummary) arcParts.push('\nTom tat chuong truoc:\n' + previousSummary);
+      const existingBriefText = formatChapterBriefList(existingChapterBriefs, {
+        header: '[CAC CHUONG DA CO - KHONG DUOC LAP LAI]',
+        limit: 12,
+      });
+      if (existingBriefText) arcParts.push(existingBriefText);
       userContent = arcParts.join('\n');
       break;
     }
 
     case TASK_TYPES.ARC_CHAPTER_DRAFT: {
       userContent = '[DAN Y CHUONG]\n';
+      userContent += 'So chuong thuc te: ' + startChapterNumber + '\n';
       userContent += 'Tieu de: ' + (context.chapterOutlineTitle || '') + '\n';
       userContent += 'Tom tat: ' + (context.chapterOutlineSummary || '') + '\n';
       if (context.chapterOutlineEvents) {
         userContent += 'Su kien chinh:\n' + context.chapterOutlineEvents.map(e => '- ' + e).join('\n');
       }
+      const existingBriefText = formatChapterBriefList(existingChapterBriefs, {
+        header: '\n[CAC CHUONG DA CO - CHI NHAC LAI NGAN GON, KHONG VIET LAI]',
+        limit: 10,
+      });
+      if (existingBriefText) userContent += '\n' + existingBriefText;
+      const priorGeneratedText = formatChapterBriefList(priorGeneratedChapterBriefs, {
+        header: '\n[CAC CHUONG MOI DA DUOC LEN DAN Y TRUOC CHUONG NAY]',
+        limit: 6,
+      });
+      if (priorGeneratedText) userContent += '\n' + priorGeneratedText;
       break;
     }
 
