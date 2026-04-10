@@ -169,17 +169,7 @@ export default function StoryEditor({ onEditorReady }) {
     lastSavedRef.current = html;
     await updateScene(activeSceneId, { draft_text: html });
     await updateProjectTimestamp();
-
-    // Auto-complete the chapter this scene belongs to (not activeChapterId,
-    // which may have changed if user switched chapters while writing)
-    const chapterId = activeScene?.chapter_id;
-    if (chapterProgress && chapterProgress.percent >= 100 && chapterId) {
-      const chapter = chapters.find(c => c.id === chapterId);
-      if (chapter && chapter.status !== 'done') {
-        useProjectStore.getState().autoCompleteChapter(chapterId);
-      }
-    }
-  }, [activeSceneId, activeScene, updateScene, updateProjectTimestamp, chapterProgress, chapters]);
+  }, [activeSceneId, updateScene, updateProjectTimestamp]);
 
   useEffect(() => {
     return () => {

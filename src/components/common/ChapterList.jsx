@@ -153,7 +153,7 @@ export default function ChapterList() {
       // Step 1: Summarize chapter
       const summary = await summarizeChapter(context);
       if (summary) {
-        await saveChapterSummary(chapterId, currentProject.id, summary);
+        await saveChapterSummary(chapterId, currentProject.id, summary, chapterText);
       }
 
       // Step 2: Extract new codex entries (with duplicate detection)

@@ -12,6 +12,7 @@
 
 import { create } from 'zustand';
 import db from '../services/db/database';
+import { buildProseBuffer } from '../utils/proseBuffer';
 
 // ─────────────────────────────────────────────
 // Helper: kiểm tra 1 entry có xuất hiện trong text không
@@ -349,14 +350,17 @@ const useCodexStore = create((set, get) => ({
     return get().chapterMetas.find(m => m.chapter_id === chapterId) || null;
   },
 
-  saveChapterSummary: async (chapterId, projectId, summary) => {
+  saveChapterSummary: async (chapterId, projectId, summary, rawText = '') => {
     const existing = get().chapterMetas.find(m => m.chapter_id === chapterId);
     const now = Date.now();
+    const lastProseBuffer = buildProseBuffer(rawText);
     if (existing) {
-      await db.chapterMeta.update(existing.id, { summary, updated_at: now });
+      const updates = { summary, updated_at: now };
+      if (lastProseBuffer) updates.last_prose_buffer = lastProseBuffer;
+      await db.chapterMeta.update(existing.id, updates);
       set(state => ({
         chapterMetas: state.chapterMetas.map(m =>
-          m.id === existing.id ? { ...m, summary, updated_at: now } : m
+          m.id === existing.id ? { ...m, ...updates } : m
         ),
       }));
     } else {
@@ -364,6 +368,7 @@ const useCodexStore = create((set, get) => ({
         chapter_id: chapterId,
         project_id: projectId,
         summary,
+        last_prose_buffer: lastProseBuffer,
         created_at: now,
         updated_at: now,
       });
@@ -375,6 +380,7 @@ const useCodexStore = create((set, get) => ({
             chapter_id: chapterId,
             project_id: projectId,
             summary,
+            last_prose_buffer: lastProseBuffer,
             created_at: now,
             updated_at: now,
           },
