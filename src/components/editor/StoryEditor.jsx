@@ -169,7 +169,8 @@ export default function StoryEditor({ onEditorReady }) {
     lastSavedRef.current = html;
     await updateScene(activeSceneId, { draft_text: html });
     await updateProjectTimestamp();
-  }, [activeSceneId, updateScene, updateProjectTimestamp]);
+
+  }, [activeSceneId, activeScene, updateScene, updateProjectTimestamp, chapterProgress, chapters]);
 
   useEffect(() => {
     return () => {
@@ -195,19 +196,25 @@ export default function StoryEditor({ onEditorReady }) {
     <div className="story-editor">
       {/* Scene title */}
       <div className="story-editor-header">
-        <input
-          className="story-editor-scene-title"
-          value={activeScene.title}
-          onChange={(e) => updateScene(activeSceneId, { title: e.target.value })}
-          placeholder="Tên cảnh..."
-        />
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={() => setSceneDetailOpen(true)}
-          title="Chi tiết cảnh"
-        >
-          <Settings size={14} /> Chi tiết cảnh
-        </button>
+        <div className="story-editor-header-main">
+          <div className="story-editor-heading">
+            <div className="story-editor-scene-meta">Chi tiết của cảnh đang viết</div>
+            <input
+              className="story-editor-scene-title"
+              value={activeScene.title}
+              onChange={(e) => updateScene(activeSceneId, { title: e.target.value })}
+              placeholder="Tên cảnh..."
+            />
+          </div>
+          <button
+            className="story-editor-detail-trigger"
+            onClick={() => setSceneDetailOpen(true)}
+            title="Mở chi tiết cảnh"
+          >
+            <Settings size={14} />
+            <span>Chi tiết cảnh</span>
+          </button>
+        </div>
       </div>
 
       {/* Scene Detail Drawer */}
