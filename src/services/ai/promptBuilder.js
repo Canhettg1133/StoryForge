@@ -58,6 +58,14 @@ function resolveNsfwRules(promptTemplates) {
   return customRules || DEFAULT_NSFW_RULES;
 }
 
+function buildNsfwUserAnchor() {
+  return [
+    '[NHAC LAI UU TIEN NSFW]',
+    'Che do Truong thanh dang BAT. Hay tuan thu tuyet doi block luat NSFW trong system prompt cho toan bo cau tra loi nay.',
+    'Khong tu y lam nhe, ne tranh, lam sach, hay dao duc hoa noi dung neu tac gia khong yeu cau ro rang.',
+  ].join('\n');
+}
+
 // =============================================
 // Layer 1: System Identity
 // =============================================
@@ -968,7 +976,7 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // Inject NSFW rules at high priority when mature mode is enabled.
-  if (nsfwMode) {
+  if (nsfwMode || superNsfwMode) {
     systemParts.push(resolveNsfwRules(promptTemplates));
   }
 
@@ -1373,6 +1381,10 @@ export function buildPrompt(taskType, context = {}) {
   const priorityAnchor = buildPriorityAnchorLayer(taskType, userPrompt);
   if (priorityAnchor && !skipWritingLayers) {
     userContent += priorityAnchor;
+  }
+
+  if (nsfwMode || superNsfwMode) {
+    userContent += '\n\n' + buildNsfwUserAnchor();
   }
 
   return [
