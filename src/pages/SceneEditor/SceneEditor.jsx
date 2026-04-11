@@ -1,6 +1,22 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BookOpen, PanelLeft, Sparkles, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  BookOpen,
+  Clock,
+  FileSearch,
+  FlaskConical,
+  Globe,
+  LayoutDashboard,
+  Map,
+  Menu,
+  Palette,
+  PanelLeft,
+  PenTool,
+  Settings,
+  Sparkles,
+  Users,
+  X,
+} from 'lucide-react';
 import ChapterList from '../../components/common/ChapterList';
 import StoryEditor from '../../components/editor/StoryEditor';
 import AISidebar from '../../components/ai/AISidebar';
@@ -9,9 +25,25 @@ import './SceneEditor.css';
 
 const MOBILE_EDITOR_QUERY = '(max-width: 820px)';
 const MOBILE_KEYBOARD_OFFSET = 140;
+const MOBILE_NAV_ITEMS = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, needsProject: false, getPath: () => '/' },
+  { id: 'story-bible', label: 'Story Bible', icon: BookOpen, needsProject: true, getPath: (projectId) => `/project/${projectId}/story-bible` },
+  { id: 'outline', label: 'Outline Board', icon: Map, needsProject: true, getPath: (projectId) => `/project/${projectId}/outline` },
+  { id: 'characters', label: 'Nhân vật', icon: Users, needsProject: true, getPath: (projectId) => `/project/${projectId}/characters` },
+  { id: 'world', label: 'Thế giới', icon: Globe, needsProject: true, getPath: (projectId) => `/project/${projectId}/world` },
+  { id: 'editor', label: 'Viết truyện', icon: PenTool, needsProject: true, getPath: (projectId) => `/project/${projectId}/editor`, primary: true },
+  { id: 'lab', label: 'Narrative Lab', icon: FlaskConical, needsProject: true, getPath: (projectId) => `/project/${projectId}/lab` },
+  { id: 'corpus-lab', label: 'Corpus Lab', icon: FlaskConical, needsProject: true, getPath: (projectId) => `/project/${projectId}/corpus-lab` },
+  { id: 'timeline', label: 'Timeline', icon: Clock, needsProject: true, getPath: (projectId) => `/project/${projectId}/timeline`, comingSoon: true },
+  { id: 'revision', label: 'Revision & QA', icon: FileSearch, needsProject: true, getPath: (projectId) => `/project/${projectId}/revision`, comingSoon: true },
+  { id: 'style-lab', label: 'Style Lab', icon: Palette, needsProject: true, getPath: (projectId) => `/project/${projectId}/style-lab`, comingSoon: true },
+  { id: 'story-creation-settings', label: 'Cài đặt khi tạo truyện', icon: Sparkles, needsProject: false, getPath: () => '/story-creation-settings' },
+  { id: 'settings', label: 'Cài đặt', icon: Settings, needsProject: false, getPath: () => '/settings' },
+];
 
 export default function SceneEditor() {
   const { currentProject, chapters, scenes, activeChapterId, activeSceneId } = useProjectStore();
+  const location = useLocation();
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
   const [isMobileLayout, setIsMobileLayout] = useState(() => {
@@ -93,6 +125,7 @@ export default function SceneEditor() {
   );
 
   const toolbarMode = keyboardOpen || mobileInputFocused ? 'compact' : 'default';
+  const activeProjectId = currentProject?.id || null;
 
   const openMobilePanel = (panel) => {
     setMobilePanel(panel);
@@ -107,6 +140,12 @@ export default function SceneEditor() {
 
   const closeMobilePanel = () => {
     setMobilePanel(null);
+  };
+
+  const handleMobileNavigate = (item) => {
+    if (item.comingSoon || (item.needsProject && !activeProjectId)) return;
+    navigate(item.getPath(activeProjectId));
+    closeMobilePanel();
   };
 
   if (!currentProject) {
@@ -129,6 +168,53 @@ export default function SceneEditor() {
       {isMobileLayout && mobilePanel && (
         <button className="scene-editor-overlay" onClick={closeMobilePanel} aria-label="Đóng panel đang mở" />
       )}
+
+      <aside
+        className={`scene-editor-side scene-editor-side--nav ${isMobileLayout ? 'scene-editor-side--sheet scene-editor-side--sheet-left' : ''} ${mobilePanel === 'nav' ? 'is-open' : ''}`}
+      >
+        {isMobileLayout && (
+          <div className="scene-editor-sheet-header">
+            <div>
+              <div className="scene-editor-sheet-kicker">Điều hướng</div>
+              <div className="scene-editor-sheet-title">Menu</div>
+            </div>
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={closeMobilePanel} title="Đóng menu">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        {isMobileLayout && (
+          <div className="scene-editor-mobile-nav">
+            {currentProject && (
+              <div className="scene-editor-mobile-nav-project">
+                <div className="scene-editor-mobile-nav-project-kicker">Dự án hiện tại</div>
+                <div className="scene-editor-mobile-nav-project-title">{currentProject.title}</div>
+              </div>
+            )}
+            <div className="scene-editor-mobile-nav-list">
+              {MOBILE_NAV_ITEMS.map((item) => {
+                const Icon = item.icon;
+                const targetPath = item.getPath(activeProjectId);
+                const isActive = location.pathname === targetPath || (targetPath !== '/' && targetPath !== '/settings' && location.pathname.startsWith(targetPath));
+                const isDisabled = item.comingSoon || (item.needsProject && !activeProjectId);
+
+                return (
+                  <button
+                    key={item.id}
+                    className={`scene-editor-mobile-nav-item ${item.primary ? 'scene-editor-mobile-nav-item--primary' : ''} ${isActive ? 'scene-editor-mobile-nav-item--active' : ''} ${isDisabled ? 'scene-editor-mobile-nav-item--disabled' : ''}`}
+                    onClick={() => handleMobileNavigate(item)}
+                    disabled={isDisabled}
+                  >
+                    <Icon size={17} />
+                    <span>{item.label}</span>
+                    {item.comingSoon && <span className="scene-editor-mobile-nav-badge">Soon</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </aside>
 
       <aside
         className={`scene-editor-side scene-editor-side--chapter ${isMobileLayout ? 'scene-editor-side--sheet scene-editor-side--sheet-left' : ''} ${mobilePanel === 'chapters' ? 'is-open' : ''}`}
@@ -156,6 +242,14 @@ export default function SceneEditor() {
       <div className="scene-editor-main">
         {isMobileLayout && mobilePanel === null && (
           <div className={`scene-editor-mobile-toolbar scene-editor-mobile-toolbar--${toolbarMode}`}>
+            <button
+              className="scene-editor-mobile-btn"
+              onClick={() => openMobilePanel('nav')}
+            >
+              <Menu size={16} />
+              <span>Menu</span>
+            </button>
+
             <button
               className="scene-editor-mobile-btn"
               onClick={() => openMobilePanel('chapters')}
