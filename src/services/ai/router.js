@@ -66,6 +66,8 @@ export const TASK_TYPES = {
   PROJECT_WIZARD: 'project_wizard',
   // Phase A — Suggestion Inbox
   SUGGEST_UPDATES: 'suggest_updates',
+  CANON_EXTRACT_OPS: 'canon_extract_ops',
+  CANON_REPAIR: 'canon_repair',
   // Phase 5 — AI Auto Generation
   ARC_OUTLINE: 'arc_outline',
   ARC_CHAPTER_DRAFT: 'arc_chapter_draft',
@@ -155,6 +157,16 @@ const PROXY_TASK_MAP = {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+  },
+  canon_extract_ops: {
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+  },
+  canon_repair: {
+    fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
   },
   arc_outline: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',

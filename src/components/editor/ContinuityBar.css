@@ -36,6 +36,7 @@
   align-items: center;
   gap: var(--space-2);
   overflow: hidden;
+  flex-wrap: wrap;
 }
 
 .continuity-bar-label {
@@ -72,4 +73,107 @@
   background: var(--color-bg-tertiary);
   border-radius: var(--radius-md);
   border-left: 2px solid var(--color-accent);
+}
+
+.continuity-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  margin-right: var(--space-2);
+}
+
+.continuity-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.continuity-bar-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.continuity-bar-btn--ghost {
+  background: transparent;
+}
+
+.continuity-bar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-tertiary);
+}
+
+.continuity-bar-status--canonical {
+  border-color: color-mix(in srgb, var(--color-success) 50%, var(--color-border));
+  color: var(--color-success);
+}
+
+.continuity-bar-status--blocked,
+.continuity-bar-status--invalidated {
+  border-color: color-mix(in srgb, var(--color-danger) 50%, var(--color-border));
+  color: var(--color-danger);
+}
+
+.continuity-bar-status--has_warnings {
+  border-color: color-mix(in srgb, var(--color-warning) 50%, var(--color-border));
+  color: var(--color-warning);
+}
+
+.continuity-bar-count {
+  font-size: 11px;
+  color: var(--color-warning);
+}
+
+.continuity-bar-count--error {
+  color: var(--color-danger);
+}
+
+.continuity-bar-reports {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.continuity-bar-report {
+  font-size: 11px;
+  line-height: 1.5;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary);
+  border-left: 2px solid var(--color-border);
+}
+
+.continuity-bar-report--error {
+  border-left-color: var(--color-danger);
+}
+
+.continuity-bar-report--warning {
+  border-left-color: var(--color-warning);
+}
+
+.continuity-bar-report--info {
+  border-left-color: var(--color-info);
+}
+
+.spin {
+  animation: continuitySpin 1s linear infinite;
+}
+
+@keyframes continuitySpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }

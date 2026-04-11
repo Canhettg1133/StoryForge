@@ -1,72 +1,138 @@
-/**
- * StoryForge — Continuity Bar (Phase 3 Enhancement)
- * 
- * "Previously on..." bar shown at the top of the editor.
- * Shows the summary of the previous chapter so the writer knows context.
- */
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronUp, Clock, Loader2, RotateCcw, ShieldAlert, ShieldCheck } from 'lucide-react';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
-import { Clock, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
+import useCanonStore from '../../stores/canonStore';
 import './ContinuityBar.css';
 
 export default function ContinuityBar() {
-  const { chapters, activeChapterId, currentProject } = useProjectStore();
+  const { chapters, activeChapterId, activeSceneId, currentProject } = useProjectStore();
   const { chapterMetas, loadCodex } = useCodexStore();
+  const {
+    chapterCanon,
+    loadChapterCanon,
+    canonicalizeChapter,
+    rebuildCanonFromChapter,
+    canonicalizing,
+    rebuilding,
+  } = useCanonStore();
   const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
-    if (currentProject) loadCodex(currentProject.id);
+    if (currentProject?.id) loadCodex(currentProject.id);
   }, [currentProject?.id]);
 
-  // Find current chapter index
-  const currentChapterIndex = useMemo(() => {
-    return chapters.findIndex(c => c.id === activeChapterId);
-  }, [chapters, activeChapterId]);
+  useEffect(() => {
+    if (currentProject?.id && activeChapterId) {
+      loadChapterCanon(currentProject.id, activeChapterId, activeSceneId || null);
+    }
+  }, [currentProject?.id, activeChapterId, activeSceneId]);
 
-  // Get previous chapter summary (with fallback)
+  const currentChapterIndex = useMemo(() => (
+    chapters.findIndex((chapter) => chapter.id === activeChapterId)
+  ), [chapters, activeChapterId]);
+
   const prevChapterInfo = useMemo(() => {
     if (currentChapterIndex <= 0) return null;
 
     const prevChapter = chapters[currentChapterIndex - 1];
     if (!prevChapter) return null;
 
-    // Try chapterMeta first (AI-generated summary from "Hoàn thành chương")
-    const meta = chapterMetas.find(m => m.chapter_id === prevChapter.id);
-    // Fallback to chapter.summary (from Outline Board or AI Wizard)
+    const meta = chapterMetas.find((item) => item.chapter_id === prevChapter.id);
     const summary = meta?.summary || prevChapter.summary || null;
     if (!summary) return null;
 
     return {
-      title: prevChapter.title || `Chương ${currentChapterIndex}`,
+      title: prevChapter.title || `Chapter ${currentChapterIndex}`,
       summary,
-      isAISummary: !!meta?.summary, // true if from AI, false if from outline
     };
   }, [currentChapterIndex, chapters, chapterMetas]);
 
-  // Also get current chapter info
   const currentChapterTitle = useMemo(() => {
-    const ch = chapters.find(c => c.id === activeChapterId);
-    return ch?.title || '';
+    const chapter = chapters.find((item) => item.id === activeChapterId);
+    return chapter?.title || '';
   }, [chapters, activeChapterId]);
 
-  if (!prevChapterInfo) return null;
+  const canonStatusLabel = useMemo(() => {
+    const status = chapterCanon?.status || 'draft';
+    if (status === 'canonical') return 'Canonical';
+    if (status === 'blocked') return 'Blocked';
+    if (status === 'invalidated') return 'Invalidated';
+    if (status === 'has_warnings') return 'Warnings';
+    return 'Draft';
+  }, [chapterCanon?.status]);
+
+  const canonStatusClass = `continuity-bar-status continuity-bar-status--${chapterCanon?.status || 'draft'}`;
+  const reports = chapterCanon?.reports || [];
+
+  const handleCanonicalize = async (event) => {
+    event.stopPropagation();
+    if (!currentProject?.id || !activeChapterId) return;
+    await canonicalizeChapter(currentProject.id, activeChapterId);
+  };
+
+  const handleRebuild = async (event) => {
+    event.stopPropagation();
+    if (!currentProject?.id || !activeChapterId) return;
+    await rebuildCanonFromChapter(currentProject.id, activeChapterId);
+  };
+
+  if (!prevChapterInfo && !chapterCanon && !activeChapterId) return null;
 
   return (
     <div className={`continuity-bar ${expanded ? 'continuity-bar--expanded' : ''}`}>
-      <div className="continuity-bar-header" onClick={() => setExpanded(!expanded)}>
+      <div className="continuity-bar-header" onClick={() => setExpanded((value) => !value)}>
         <div className="continuity-bar-left">
           <Clock size={13} />
-          <span className="continuity-bar-label">Chương trước:</span>
-          <span className="continuity-bar-title">{prevChapterInfo.title}</span>
+          {prevChapterInfo ? (
+            <>
+              <span className="continuity-bar-label">Chuong truoc:</span>
+              <span className="continuity-bar-title">{prevChapterInfo.title}</span>
+            </>
+          ) : (
+            <>
+              <span className="continuity-bar-label">Canon:</span>
+              <span className="continuity-bar-title">{currentChapterTitle || 'Chuong hien tai'}</span>
+            </>
+          )}
+          <span className={canonStatusClass}>
+            {chapterCanon?.status === 'canonical' ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+            {canonStatusLabel}
+          </span>
+          {(chapterCanon?.warningCount || 0) > 0 && (
+            <span className="continuity-bar-count">{chapterCanon.warningCount} warning</span>
+          )}
+          {(chapterCanon?.errorCount || 0) > 0 && (
+            <span className="continuity-bar-count continuity-bar-count--error">{chapterCanon.errorCount} error</span>
+          )}
         </div>
+
+        <div className="continuity-bar-actions" onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="continuity-bar-btn" onClick={handleCanonicalize} disabled={canonicalizing || rebuilding || !activeChapterId}>
+            {canonicalizing ? <Loader2 size={12} className="spin" /> : <ShieldCheck size={12} />}
+            Canonize
+          </button>
+          <button type="button" className="continuity-bar-btn continuity-bar-btn--ghost" onClick={handleRebuild} disabled={canonicalizing || rebuilding || !activeChapterId}>
+            {rebuilding ? <Loader2 size={12} className="spin" /> : <RotateCcw size={12} />}
+            Rebuild
+          </button>
+        </div>
+
         {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
       </div>
 
       {expanded && (
         <div className="continuity-bar-body">
-          <p className="continuity-bar-summary">{prevChapterInfo.summary}</p>
+          {prevChapterInfo && <p className="continuity-bar-summary">{prevChapterInfo.summary}</p>}
+          {reports.length > 0 && (
+            <div className="continuity-bar-reports">
+              {reports.slice(0, 4).map((report) => (
+                <div key={report.id || `${report.rule_code}-${report.message}`} className={`continuity-bar-report continuity-bar-report--${report.severity}`}>
+                  <strong>{report.rule_code || report.severity}</strong>: {report.message}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

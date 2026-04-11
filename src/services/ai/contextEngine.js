@@ -14,6 +14,7 @@
 import db from '../db/database';
 import { detectWritingStyle } from '../../utils/constants';
 import { buildProseBuffer } from '../../utils/proseBuffer';
+import { buildRetrievalPacket, buildCharacterStateSummary } from '../canon/engine';
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -339,8 +340,56 @@ export async function gatherContext({
     console.error('Error loading plot threads in context engine:', e);
   }
 
+  let retrievalPacket = null;
+  try {
+    retrievalPacket = await buildRetrievalPacket({
+      projectId,
+      chapterId,
+      sceneId,
+      detectedCharacterIds: detectedCharacters.map((character) => character.id),
+    });
+  } catch (e) {
+    console.warn('[Context] Failed to build retrieval packet (non-fatal):', e);
+  }
+
+  const canonStateByCharacterId = new Map(
+    (retrievalPacket?.relevantEntityStates || []).map((state) => [state.entity_id, state])
+  );
+  const hydratedCharacters = detectedCharacters.map((character) => {
+    const canonState = canonStateByCharacterId.get(character.id);
+    if (!canonState) return character;
+    return {
+      ...character,
+      canon_state: canonState,
+      current_status: buildCharacterStateSummary(canonState, character.current_status || ''),
+      goals: Array.isArray(canonState.goals_active) && canonState.goals_active.length > 0
+        ? canonState.goals_active.join(', ')
+        : character.goals,
+      allegiance: canonState.allegiance || character.allegiance || '',
+    };
+  });
+
+  if (retrievalPacket?.activeThreadStates?.length > 0) {
+    const threadStateMap = new Map(retrievalPacket.activeThreadStates.map((state) => [state.thread_id, state]));
+    activePlotThreads = activePlotThreads.map((thread) => {
+      const canonThreadState = threadStateMap.get(thread.id);
+      return canonThreadState
+        ? {
+          ...thread,
+          state: canonThreadState.state,
+          description: canonThreadState.summary || thread.description || '',
+          canon_state: canonThreadState,
+        }
+        : thread;
+    });
+  }
+
+  const effectiveCanonFacts = retrievalPacket?.factStates?.length > 0
+    ? retrievalPacket.factStates
+    : canonFacts;
+
   return {
-    characters: detectedCharacters,
+    characters: hydratedCharacters,
     locations: detectedLocations,
     objects: detectedObjects,
     worldTerms: detectedTerms,
@@ -364,7 +413,7 @@ export async function gatherContext({
     aiStrictness,
     relationships,
     sceneContract,
-    canonFacts,
+    canonFacts: effectiveCanonFacts,
     plotThreads: activePlotThreads,
     targetLength,
     targetLengthType,
@@ -374,6 +423,7 @@ export async function gatherContext({
     nsfwMode,
     superNsfwMode,
     currentChapterIndex: chapterIndex,
+    retrievalPacket,
   };
 }
 

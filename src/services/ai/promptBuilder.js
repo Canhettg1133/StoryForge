@@ -247,6 +247,54 @@ export const TASK_INSTRUCTIONS = {
     '- Chi tra ve JSON, KHONG them gi khac.',
   ].join('\n'),
 
+  [TASK_TYPES.CANON_EXTRACT_OPS]: [
+    'Phan tich noi dung chuong va trich xuat CAC THAY DOI CANON co bang chung ro rang duoi dang JSON typed operations.',
+    'Chi trich xuat khi su kien thuc su xay ra trong van ban. KHONG doan, KHONG suy dien xa.',
+    'Chi dung cac op_type sau:',
+    '- CHARACTER_STATUS_CHANGED',
+    '- CHARACTER_LOCATION_CHANGED',
+    '- CHARACTER_RESCUED',
+    '- CHARACTER_DIED',
+    '- SECRET_REVEALED',
+    '- GOAL_CHANGED',
+    '- ALLEGIANCE_CHANGED',
+    '- THREAD_OPENED',
+    '- THREAD_PROGRESS',
+    '- THREAD_RESOLVED',
+    '- FACT_REGISTERED',
+    '',
+    'Tra ve CHINH XAC JSON format:',
+    '{',
+    '  "ops": [',
+    '    {',
+    '      "op_type": "CHARACTER_DIED",',
+    '      "scene_index": 1,',
+    '      "subject_name": "Ten nhan vat",',
+    '      "target_name": "",',
+    '      "location_name": "",',
+    '      "thread_title": "",',
+    '      "fact_description": "",',
+    '      "summary": "Tom tat thay doi canon trong 1 cau ngan",',
+    '      "confidence": 0.0,',
+    '      "evidence": "Trich dan ngan tu van ban lam bang chung",',
+    '      "payload": {}',
+    '    }',
+    '  ]',
+    '}',
+    '',
+    'Quy tac:',
+    '- scene_index la so thu tu canh trong danh sach canh duoc cung cap.',
+    '- confidence trong khoang 0 den 1.',
+    '- KHONG tao op neu bang chung yeu.',
+    '- KHONG tra ve bat ky text nao ngoai JSON.',
+  ].join('\n'),
+
+  [TASK_TYPES.CANON_REPAIR]: [
+    'Sua lai noi dung chuong de loai bo cac loi continuity duoc liet ke.',
+    'GIU toi da noi dung goc, chi sua nhung cho can sua de pass validator.',
+    'Khong them mo ta meta, khong liet ke buoc, chi tra ve ban van da sua.',
+  ].join('\n'),
+
   [TASK_TYPES.ARC_OUTLINE]: [
     'Tao dan y chi tiet cho mot dot chuong moi (Story Arc).',
     'Dua tren muc tieu cua Arc, tom tat chuong truoc, va cac tuyen truyen dang mo,',
@@ -940,6 +988,9 @@ export function buildPrompt(taskType, context = {}) {
     promptTemplates = {},
     nsfwMode = false,
     superNsfwMode = false,
+    sceneList = [],
+    validatorReports = [],
+    retrievalPacket = null,
   } = context;
 
   // Resolve writing style: context > auto-detect từ genre
@@ -1200,6 +1251,30 @@ export function buildPrompt(taskType, context = {}) {
     if (cParts.length > 0) systemParts.push('\n[CANON TRUYEN]\n' + cParts.join('\n\n'));
   }
 
+  if (retrievalPacket && (retrievalPacket.relevantEntityStates?.length > 0 || retrievalPacket.activeThreadStates?.length > 0)) {
+    const canonBits = [];
+    if (retrievalPacket.relevantEntityStates?.length > 0) {
+      canonBits.push('Trang thai canon hien tai:\n' + retrievalPacket.relevantEntityStates.map(function (state) {
+        const summaryParts = [];
+        if (state.alive_status === 'dead') summaryParts.push('da chet');
+        else if (state.alive_status === 'alive') summaryParts.push('con song');
+        if (state.rescued) summaryParts.push('da duoc cuu');
+        if (state.current_location_name) summaryParts.push('o ' + state.current_location_name);
+        if (state.allegiance) summaryParts.push('phe ' + state.allegiance);
+        if (Array.isArray(state.goals_active) && state.goals_active.length > 0) summaryParts.push('muc tieu: ' + state.goals_active.join(', '));
+        return '- Entity #' + state.entity_id + ': ' + summaryParts.join(' | ');
+      }).join('\n'));
+    }
+    if (retrievalPacket.activeThreadStates?.length > 0) {
+      canonBits.push('Thread dang mo:\n' + retrievalPacket.activeThreadStates.map(function (threadState) {
+        return '- Thread #' + threadState.thread_id + ' [' + (threadState.state || 'active') + ']: ' + (threadState.summary || '');
+      }).join('\n'));
+    }
+    if (canonBits.length > 0) {
+      systemParts.push('\n[CANON ENGINE]\n' + canonBits.join('\n\n'));
+    }
+  }
+
   // -- Layer 6.5: Plot Threads --
   if (plotThreads.length > 0) {
     var cappedThreads = plotThreads.slice(0, 10);
@@ -1373,6 +1448,38 @@ export function buildPrompt(taskType, context = {}) {
       userContent = '[TRANG THAI NHAN VAT DE KIEM TRA]\n' + (charStatuses || '(chua co nhan vat)');
       userContent += '\n\n[CANON FACTS DE KIEM TRA]\n' + (existingFacts || '(chua co)');
       userContent += '\n\n[NOI DUNG CANH/CHUONG CAN KIEM TRA MAU THUAN]\n---\n' + (sceneText || selectedText || '') + '\n---';
+      break;
+    }
+
+    case TASK_TYPES.CANON_EXTRACT_OPS: {
+      const knownCharacters = characters.map(function (c) {
+        return '- ' + c.name + (c.current_status ? ': ' + c.current_status : '');
+      }).join('\n');
+      const knownThreads = plotThreads.map(function (pt) {
+        return '- ' + pt.title + ' [' + (pt.state || 'active') + ']';
+      }).join('\n');
+      const knownFacts = canonFacts
+        .filter(function (f) { return f.status === 'active'; })
+        .map(function (f) { return '- [' + f.fact_type + '] ' + f.description; })
+        .join('\n');
+      const sceneTextList = (sceneList || []).map(function (scene) {
+        return '[' + scene.index + '] ' + scene.title + '\n' + scene.text;
+      }).join('\n\n');
+
+      userContent = '[NHAN VAT DA BIET]\n' + (knownCharacters || '(khong co)');
+      userContent += '\n\n[THREAD DA BIET]\n' + (knownThreads || '(khong co)');
+      userContent += '\n\n[CANON FACTS DA BIET]\n' + (knownFacts || '(khong co)');
+      userContent += '\n\n[DANH SACH CANH]\n' + (sceneTextList || '(khong co)');
+      userContent += '\n\n[TOAN BO CHUONG]\n---\n' + (sceneText || '') + '\n---';
+      break;
+    }
+
+    case TASK_TYPES.CANON_REPAIR: {
+      const reportLines = (validatorReports || []).map(function (report, index) {
+        return (index + 1) + '. [' + (report.rule_code || report.severity || 'report') + '] ' + report.message;
+      }).join('\n');
+      userContent = '[LOI CONTINUITY CAN SUA]\n' + (reportLines || '(khong co)');
+      userContent += '\n\n[NOI DUNG CHUONG HIEN TAI]\n---\n' + (sceneText || '') + '\n---';
       break;
     }
 

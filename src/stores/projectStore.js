@@ -3,6 +3,7 @@ import db from '../services/db/database';
 import { countWords } from '../utils/constants';
 import { GENRE_TEMPLATES } from '../utils/genreTemplates';
 import { buildProseBuffer } from '../utils/proseBuffer';
+import { canonicalizeChapter as canonicalizeChapterEngine } from '../services/canon/engine';
 
 function getNextOrderIndex(items) {
   return items.reduce((max, item) => {
@@ -277,6 +278,14 @@ const useProjectStore = create((set, get) => ({
       db.factions.where('project_id').equals(id).delete(),
       db.macro_arcs.where('project_id').equals(id).delete(),
       db.arcs.where('project_id').equals(id).delete(),
+      db.story_events.where('project_id').equals(id).delete(),
+      db.entity_state_current.where('project_id').equals(id).delete(),
+      db.plot_thread_state.where('project_id').equals(id).delete(),
+      db.validator_reports.where('project_id').equals(id).delete(),
+      db.memory_evidence.where('project_id').equals(id).delete(),
+      db.chapter_revisions.where('project_id').equals(id).delete(),
+      db.chapter_commits.where('project_id').equals(id).delete(),
+      db.chapter_snapshots.where('project_id').equals(id).delete(),
       // threadBeats: no project_id index, delete via plotThread IDs
       ...(plotThreadIds.length > 0
         ? [db.threadBeats.where('plot_thread_id').anyOf(plotThreadIds).delete()]
@@ -599,8 +608,19 @@ const useProjectStore = create((set, get) => ({
         console.warn('[AutoComplete] Extract failed (non-fatal):', e);
       }
 
-      // Step 3: Mark chapter as done
-      await get().updateChapter(chapterId, { status: 'done' });
+      // Step 3: Canonicalize chapter before marking done
+      let canonResult = null;
+      try {
+        canonResult = await canonicalizeChapterEngine(currentProject.id, chapterId);
+      } catch (e) {
+        console.warn('[AutoComplete] Canonicalize failed:', e);
+      }
+
+      if (canonResult?.ok) {
+        await get().updateChapter(chapterId, { status: 'done' });
+      } else if (canonResult && !canonResult.ok) {
+        await get().updateChapter(chapterId, { status: 'draft' });
+      }
     } catch (e) {
       console.warn('[AutoComplete] Failed:', e);
     } finally {

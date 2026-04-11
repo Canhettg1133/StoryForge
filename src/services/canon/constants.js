@@ -1,0 +1,43 @@
+export const CANON_OP_TYPES = {
+  CHARACTER_STATUS_CHANGED: 'CHARACTER_STATUS_CHANGED',
+  CHARACTER_LOCATION_CHANGED: 'CHARACTER_LOCATION_CHANGED',
+  CHARACTER_RESCUED: 'CHARACTER_RESCUED',
+  CHARACTER_DIED: 'CHARACTER_DIED',
+  SECRET_REVEALED: 'SECRET_REVEALED',
+  GOAL_CHANGED: 'GOAL_CHANGED',
+  ALLEGIANCE_CHANGED: 'ALLEGIANCE_CHANGED',
+  THREAD_OPENED: 'THREAD_OPENED',
+  THREAD_PROGRESS: 'THREAD_PROGRESS',
+  THREAD_RESOLVED: 'THREAD_RESOLVED',
+  FACT_REGISTERED: 'FACT_REGISTERED',
+};
+
+export const CANON_SEVERITY = {
+  ERROR: 'error',
+  WARNING: 'warning',
+  INFO: 'info',
+};
+
+export const CHAPTER_REVISION_STATUS = {
+  DRAFT: 'draft',
+  VALIDATED: 'validated',
+  CANONICAL: 'canonical',
+  SUPERSEDED: 'superseded',
+  INVALIDATED: 'invalidated',
+  BLOCKED: 'blocked',
+};
+
+export const CHAPTER_COMMIT_STATUS = {
+  DRAFT: 'draft',
+  HAS_WARNINGS: 'has_warnings',
+  BLOCKED: 'blocked',
+  CANONICAL: 'canonical',
+  INVALIDATED: 'invalidated',
+};
+
+export const CANON_REPORT_STATUS = {
+  ACTIVE: 'active',
+  RESOLVED: 'resolved',
+};
+
+export const CANON_EXTRACTABLE_OPS = new Set(Object.values(CANON_OP_TYPES));

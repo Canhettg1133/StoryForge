@@ -16,6 +16,12 @@ import { gatherContext } from '../services/ai/contextEngine';
 import db from '../services/db/database';
 import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 import { NSFW_SUPER_PROMPT_1 } from '../utils/constants';
+import {
+  validateSceneDraft,
+  createChapterRevision,
+  validateRevision,
+  repairChapterRevision as repairChapterRevisionEngine,
+} from '../services/canon/engine';
 
 // Inject router into aiService (avoid circular import)
 aiService.setRouter(modelRouter);
@@ -135,6 +141,19 @@ function normalizeConflictResult(parsed) {
   return isPlainObject(parsed) ? parsed : { conflicts: [] };
 }
 
+function reportsToConflictResult(reports = []) {
+  return {
+    conflicts: reports.map((report) => ({
+      type: report.rule_code || 'canon_conflict',
+      severity: report.severity === 'error' ? 'high'
+        : report.severity === 'warning' ? 'medium'
+          : 'low',
+      description: report.message,
+      suggestion: report.evidence || '',
+    })),
+  };
+}
+
 function normalizeSuggestionResult(parsed) {
   if (Array.isArray(parsed)) {
     return {
@@ -162,6 +181,7 @@ const useAIStore = create((set, get) => ({
   isExtracting: false,
   isCheckingConflict: false,
   lastExtractResult: null,
+  lastValidatorReports: [],
 
   // Settings
   qualityMode: modelRouter.getQualityMode(),
@@ -323,6 +343,17 @@ const useAIStore = create((set, get) => ({
         // Lưu ~150 từ cuối để AI bắt nhịp khi viết chương tiếp theo
         if (isWritingTask && chapterId && projectId) {
           saveProseBuffer(chapterId, projectId, safeText);
+          try {
+            const validation = await validateSceneDraft({
+              projectId,
+              chapterId,
+              sceneId: enrichedContext.sceneId || null,
+              sceneText: safeText,
+            });
+            set({ lastValidatorReports: validation.reports || [] });
+          } catch (validationError) {
+            console.warn('[AI] validateSceneDraft failed (non-fatal):', validationError);
+          }
         }
       },
       onError: (err) => {
@@ -467,51 +498,23 @@ const useAIStore = create((set, get) => ({
     return new Promise(async (resolve, reject) => {
       set({ isCheckingConflict: true });
 
-      const { projectId, sceneText, genre } = params;
+      const { projectId, sceneText, chapterId, sceneId } = params;
 
       try {
-        // Gather characters and canon facts for context
-        const project = await db.projects.get(projectId);
-        let promptTemplates = {};
-        if (project?.prompt_templates) {
-          try { promptTemplates = JSON.parse(project.prompt_templates); } catch (e) { }
+        if (!projectId || !chapterId) {
+          resolve({ conflicts: [] });
+          set({ isCheckingConflict: false });
+          return;
         }
 
-        const allCharacters = await db.characters.where('project_id').equals(projectId).toArray();
-        const allCanonFacts = await db.canonFacts.where('project_id').equals(projectId).toArray();
-
-        const messages = buildPrompt(TASK_TYPES.CHECK_CONFLICT, {
+        const validation = await validateSceneDraft({
           projectId,
-          genre,
-          sceneText,
-          characters: allCharacters,
-          canonFacts: allCanonFacts,
-          promptTemplates,
-          nsfwMode: project?.nsfw_mode,
-          superNsfwMode: project?.super_nsfw_mode,
+          chapterId,
+          sceneId: sceneId || null,
+          sceneText: sceneText || '',
         });
-
-        aiService.send({
-          taskType: TASK_TYPES.CHECK_CONFLICT,
-          messages,
-          stream: false,
-          nsfwMode: project?.nsfw_mode,
-          superNsfwMode: project?.super_nsfw_mode,
-          onComplete: (text) => {
-            set({ isCheckingConflict: false, keyCount: keyManager.getTotalKeys() });
-            try {
-              const parsed = parseAIJsonValue(text);
-              resolve(normalizeConflictResult(parsed));
-            } catch (e) {
-              console.warn('[AI] Failed to parse conflict result:', e);
-              resolve({ conflicts: [] });
-            }
-          },
-          onError: (err) => {
-            set({ isCheckingConflict: false, keyCount: keyManager.getTotalKeys() });
-            reject(err);
-          },
-        });
+        set({ isCheckingConflict: false, lastValidatorReports: validation.reports || [], keyCount: keyManager.getTotalKeys() });
+        resolve(reportsToConflictResult(validation.reports || []));
       } catch (err) {
         set({ isCheckingConflict: false });
         reject(err);
@@ -527,7 +530,7 @@ const useAIStore = create((set, get) => ({
 
   /** Clear output */
   clearOutput: () => {
-    set({ streamingText: '', completedText: '', error: null, lastRouteInfo: null, lastElapsed: null, lastExtractResult: null });
+    set({ streamingText: '', completedText: '', error: null, lastRouteInfo: null, lastElapsed: null, lastExtractResult: null, lastValidatorReports: [] });
   },
 
   /** Quality mode */
@@ -734,6 +737,25 @@ const useAIStore = create((set, get) => ({
     } catch (err) {
       console.warn('[AI] updateEmotionalState failed:', err);
     }
+  },
+
+  validateChapterForCanon: async ({ projectId, chapterId }) => {
+    const scenes = await db.scenes.where('chapter_id').equals(chapterId).sortBy('order_index');
+    const chapterText = scenes
+      .map(s => (s.draft_text || s.final_text || '').replace(/<[^>]*>/g, ' '))
+      .join('\n\n');
+    const revision = await createChapterRevision({
+      projectId,
+      chapterId,
+      chapterText,
+    });
+    const result = await validateRevision(revision.id, 'canonicalize');
+    set({ lastValidatorReports: result.reports || [] });
+    return result;
+  },
+
+  repairChapterRevision: async ({ projectId, chapterId, revisionId }) => {
+    return repairChapterRevisionEngine({ projectId, chapterId, revisionId });
   },
 }));
 
