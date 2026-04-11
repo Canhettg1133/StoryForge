@@ -1,11 +1,11 @@
 /**
- * StoryForge - Story Bible (Editable Wiki + Settings)
+ * StoryForge - Sổ tay truyện (chỉnh sửa trực tiếp + cấu hình)
  * Aggregates all project data: settings, codex, chapters.
  * All project fields are editable inline.
  *
  * Phase 9: Thêm section "Đại Cục" — CRUD cho macro_arcs
  *
- * [UPDATE] Prompt AI section:
+ * [UPDATE] Khu vực cấu hình prompt AI:
  *  - Thêm subsection "🧬 DNA Văn phong" hiển thị constitution/style_dna/anti_ai_blacklist
  *  - Nút "Tải lại DNA" để reset về template mặc định của thể loại hiện tại
  *  - Merge thông minh: chỉ overwrite 3 key DNA, giữ nguyên task-type overrides
@@ -23,7 +23,7 @@ import {
 } from '../../utils/constants';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import { TASK_TYPES } from '../../services/ai/router';
-import { TASK_INSTRUCTIONS } from '../../services/ai/promptBuilder';
+import { DEFAULT_NSFW_RULES, TASK_INSTRUCTIONS } from '../../services/ai/promptBuilder';
 import {
   BookMarked, BookOpen, Users, MapPin, Package, Shield,
   Star, Sword, UserCheck, Heart, ChevronRight, ChevronDown,
@@ -40,6 +40,33 @@ import './StoryBible.css';
 const ROLE_ICONS = {
   protagonist: Star, deuteragonist: UserCheck, antagonist: Sword,
   supporting: Users, mentor: Shield, love_interest: Heart, minor: Users,
+};
+
+const TASK_TYPE_META = {
+  [TASK_TYPES.BRAINSTORM]: { label: 'Động não ý tưởng', description: 'Gợi ý nhiều hướng phát triển cho tình huống hiện tại.' },
+  [TASK_TYPES.OUTLINE]: { label: 'Lập dàn ý', description: 'Tạo dàn ý chi tiết cho chương hoặc phần tiếp theo.' },
+  [TASK_TYPES.SCENE_DRAFT]: { label: 'Viết nháp cảnh', description: 'Sinh bản nháp cho một cảnh mới.' },
+  [TASK_TYPES.CONTINUE]: { label: 'Viết tiếp', description: 'Nối tiếp đoạn văn hoặc cảnh đang viết.' },
+  [TASK_TYPES.EXPAND]: { label: 'Mở rộng đoạn', description: 'Kéo dài đoạn hiện có và bổ sung chi tiết.' },
+  [TASK_TYPES.REWRITE]: { label: 'Viết lại', description: 'Sửa lại câu chữ và nhịp văn nhưng giữ ý nghĩa gốc.' },
+  [TASK_TYPES.SUMMARIZE]: { label: 'Tóm tắt', description: 'Rút gọn nội dung thành bản tóm tắt ngắn.' },
+  [TASK_TYPES.CONTINUITY_CHECK]: { label: 'Kiểm tra nhất quán', description: 'Đối chiếu logic với canon và tình trạng hiện có.' },
+  [TASK_TYPES.EXTRACT_TERMS]: { label: 'Trích xuất thực thể', description: 'Rút ra nhân vật, địa danh, vật phẩm và thuật ngữ mới.' },
+  [TASK_TYPES.PLOT_SUGGEST]: { label: 'Gợi ý hướng plot', description: 'Đề xuất các hướng diễn biến tiếp theo.' },
+  [TASK_TYPES.STYLE_ANALYZE]: { label: 'Phân tích văn phong', description: 'Phân tích đặc điểm giọng văn hiện có.' },
+  [TASK_TYPES.STYLE_WRITE]: { label: 'Viết theo văn phong', description: 'Sinh nội dung theo văn phong đã chọn.' },
+  [TASK_TYPES.QA_CHECK]: { label: 'Kiểm tra QA', description: 'Rà soát lỗi logic, lỗi diễn đạt và vấn đề cần sửa.' },
+  [TASK_TYPES.CHECK_CONFLICT]: { label: 'Kiểm tra mâu thuẫn', description: 'Tìm mâu thuẫn với canon, timeline và nhân vật.' },
+  [TASK_TYPES.FREE_PROMPT]: { label: 'Lệnh tự do', description: 'Gửi yêu cầu tự do cho AI.' },
+  [TASK_TYPES.CHAPTER_SUMMARY]: { label: 'Tóm tắt chương', description: 'Tóm tắt một chương để dùng cho bộ nhớ và điều hướng.' },
+  [TASK_TYPES.FEEDBACK_EXTRACT]: { label: 'Rút trích thông tin mới', description: 'Lấy thông tin mới từ văn bản để cập nhật dữ liệu.' },
+  [TASK_TYPES.AI_GENERATE_ENTITY]: { label: 'Tạo thực thể bằng AI', description: 'Sinh nhanh nhân vật, địa điểm hoặc mục dữ liệu từ AI.' },
+  [TASK_TYPES.PROJECT_WIZARD]: { label: 'Khởi tạo dự án', description: 'Lập bộ khung ban đầu cho một dự án mới.' },
+  [TASK_TYPES.SUGGEST_UPDATES]: { label: 'Đề xuất cập nhật Sổ tay truyện', description: 'Gợi ý cập nhật trạng thái nhân vật và dữ liệu canon.' },
+  [TASK_TYPES.ARC_OUTLINE]: { label: 'Dàn ý cho arc', description: 'Lập dàn ý cho một đợt chương mới.' },
+  [TASK_TYPES.ARC_CHAPTER_DRAFT]: { label: 'Nháp chương theo arc', description: 'Viết bản nháp cho một chương trong arc.' },
+  [TASK_TYPES.GENERATE_MACRO_MILESTONES]: { label: 'Gợi ý cột mốc đại cục', description: 'Đề xuất các cột mốc lớn cho toàn bộ truyện.' },
+  [TASK_TYPES.AUDIT_ARC_ALIGNMENT]: { label: 'Kiểm tra độ lệch arc', description: 'Đánh giá arc hiện tại có còn đúng hướng đại cục hay không.' },
 };
 
 // Debounced auto-save hook
@@ -239,6 +266,12 @@ export default function StoryBible() {
     anti_ai_blacklist: Array.isArray(promptTemplates.anti_ai_blacklist) ? promptTemplates.anti_ai_blacklist : [],
   }), [promptTemplates]);
 
+  const customNsfwRules = typeof promptTemplates.nsfw_rules === 'string'
+    ? promptTemplates.nsfw_rules
+    : '';
+  const hasCustomNsfwRules = !!customNsfwRules.trim();
+  const nsfwRulesActive = nsfwMode || superNsfwMode;
+
   const hasDNA = currentDNA.constitution.length > 0
     || currentDNA.style_dna.length > 0
     || currentDNA.anti_ai_blacklist.length > 0;
@@ -288,7 +321,7 @@ export default function StoryBible() {
     setAiIdeaInput('');
   };
 
-  // Handle Canon Facts
+  // Xử lý sự thật canon
   const handleAddCanonFact = () => {
     createCanonFact({ project_id: currentProject.id, description: '', fact_type: 'fact', status: 'active' });
   };
@@ -368,7 +401,7 @@ export default function StoryBible() {
     <div className="story-bible">
       {/* Header */}
       <div className="bible-header">
-        <h2><BookMarked size={22} /> Story Bible</h2>
+        <h2><BookMarked size={22} /> Sổ tay truyện</h2>
         <p className="bible-subtitle">Trung tâm quản lý truyện - {totalItems} mục</p>
       </div>
 
@@ -428,9 +461,9 @@ export default function StoryBible() {
               </select>
             </div>
 
-            {/* Synopsis */}
+            {/* Cốt truyện chính */}
             <div className="form-group">
-              <label className="form-label">Cốt truyện chính (Synopsis) {synopsisSaved && <span className="save-indicator">Đã lưu</span>}</label>
+              <label className="form-label">Cốt truyện chính {synopsisSaved && <span className="save-indicator">Đã lưu</span>}</label>
               <textarea className="textarea" value={synopsis} onChange={(e) => setSynopsis(e.target.value)} rows={3}
                 placeholder="Tóm tắt mạch truyện chính... AI dùng để duy trì mạch truyện"
               />
@@ -455,7 +488,7 @@ export default function StoryBible() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Đích đến tối thượng (Long-term Goal) {ultimateGoalSaved && <span className="save-indicator">Đã lưu</span>}</label>
+              <label className="form-label">Đích đến tối thượng {ultimateGoalSaved && <span className="save-indicator">Đã lưu</span>}</label>
               <textarea className="textarea" value={ultimateGoal} onChange={(e) => setUltimateGoal(e.target.value)} rows={2}
                 placeholder="VD: Main đạt cảnh giới Thần Tôn và báo thù diệt tộc. (AI lấy để tránh end sớm)"
               />
@@ -621,7 +654,7 @@ export default function StoryBible() {
                   rows={2}
                   value={aiIdeaInput}
                   onChange={(e) => setAiIdeaInput(e.target.value)}
-                  placeholder="Mô tả ngắn về truyện (để trống = AI tự đọc từ Synopsis + Goal)..."
+                  placeholder="Mô tả ngắn về truyện (để trống = AI tự đọc từ Tóm tắt truyện + Đích đến)..."
                   style={{ marginBottom: 'var(--space-2)' }}
                 />
                 <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
@@ -819,7 +852,7 @@ export default function StoryBible() {
                     className="input"
                     value={m.emotional_peak || ''}
                     onChange={(e) => handleUpdateMacroArc(m.id, 'emotional_peak', e.target.value)}
-                    placeholder="VD: Hứng khởi, tò mò — 'người này sẽ đi đến đâu?'"
+                    placeholder="VD: Hứng khởi, tò mò - người này sẽ đi đến đâu?"
                   />
                 </div>
               </div>
@@ -834,9 +867,9 @@ export default function StoryBible() {
         )}
       </div>
 
-      {/* ═══ SECTION: Prompt AI (Templates) ═══ */}
+      {/* ═══ SECTION: Cấu hình prompt AI ═══ */}
       <div className="bible-section">
-        <SectionHeader icon={Terminal} title="Prompt AI" sectionKey="prompts" />
+        <SectionHeader icon={Terminal} title="Cấu hình prompt AI" sectionKey="prompts" />
         {openSections.prompts && (
           <div className="bible-edit-card">
             <p className="bible-subtitle" style={{ marginBottom: 'var(--space-3)' }}>
@@ -868,6 +901,7 @@ export default function StoryBible() {
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
                   <button
+                    type="button"
                     className="btn btn-ghost btn-sm"
                     onClick={() => setShowDNADetail(v => !v)}
                     title={showDNADetail ? 'Ẩn chi tiết' : 'Xem chi tiết'}
@@ -876,6 +910,7 @@ export default function StoryBible() {
                     {showDNADetail ? 'Ẩn' : 'Xem'}
                   </button>
                   <button
+                    type="button"
                     className="btn btn-ghost btn-sm"
                     onClick={handleReloadGenreDNA}
                     title={`Tải lại DNA mặc định cho thể loại ${GENRE_TEMPLATES[genrePrimary]?.label || genrePrimary}`}
@@ -889,13 +924,13 @@ export default function StoryBible() {
               {/* Summary stats */}
               <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: showDNADetail ? 'var(--space-3)' : 0 }}>
                 <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', background: 'var(--color-surface-3)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
-                  ⚖️ Constitution: {currentDNA.constitution.length} luật
+                  ⚖️ Luật cốt lõi: {currentDNA.constitution.length} luật
                 </span>
                 <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', background: 'var(--color-surface-3)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
-                  🎨 Style DNA: {currentDNA.style_dna.length} hướng dẫn
+                  🎨 DNA văn phong: {currentDNA.style_dna.length} hướng dẫn
                 </span>
                 <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', background: 'var(--color-surface-3)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
-                  🚫 Blacklist: {currentDNA.anti_ai_blacklist.length} từ cấm
+                  🚫 Từ cấm: {currentDNA.anti_ai_blacklist.length} từ cấm
                 </span>
               </div>
 
@@ -903,11 +938,11 @@ export default function StoryBible() {
               {showDNADetail && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
 
-                  {/* Constitution */}
+                  {/* Luật cốt lõi */}
                   {currentDNA.constitution.length > 0 && (
                     <div>
                       <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
-                        ⚖️ Constitution — Luật thế giới bất phá
+                        ⚖️ Luật cốt lõi — Những nguyên tắc không được phá vỡ
                       </p>
                       <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
                         {currentDNA.constitution.map((rule, i) => <li key={i}>{rule}</li>)}
@@ -915,11 +950,11 @@ export default function StoryBible() {
                     </div>
                   )}
 
-                  {/* Style DNA */}
+                  {/* DNA văn phong */}
                   {currentDNA.style_dna.length > 0 && (
                     <div>
                       <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
-                        🎨 Style DNA — Giọng văn & Nhịp điệu
+                        🎨 DNA văn phong — Giọng văn và nhịp điệu
                       </p>
                       <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
                         {currentDNA.style_dna.map((rule, i) => <li key={i}>{rule}</li>)}
@@ -927,11 +962,11 @@ export default function StoryBible() {
                     </div>
                   )}
 
-                  {/* Anti-AI Blacklist */}
+                  {/* Từ cấm AI */}
                   {currentDNA.anti_ai_blacklist.length > 0 && (
                     <div>
                       <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
-                        🚫 Anti-AI Blacklist — Cụm từ sáo rỗng bị cấm
+                        🚫 Từ cấm AI — Những cụm từ sáo rỗng cần tránh
                       </p>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                         {currentDNA.anti_ai_blacklist.map((word, i) => (
@@ -965,31 +1000,79 @@ export default function StoryBible() {
               )}
             </div>
 
+            <div className="form-group">
+              <label className="form-label">
+                Luật khi bật NSFW
+                {hasCustomNsfwRules && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
+                {nsfwRulesActive && <span style={{ color: 'var(--color-success, #10b981)', fontSize: '11px', marginLeft: 6 }}>Đang áp dụng</span>}
+              </label>
+              <div className="form-hint" style={{ marginBottom: '4px' }}>
+                Đây là block rule hệ thống chỉ được bơm khi bật Chế độ Trưởng thành. AI sẽ nhận lại block này ở mỗi lần gọi,
+                nên về thực tế nó luôn phải đọc lại và tuân theo trên từng request.
+              </div>
+              <div className="prompt-default-preview">
+                <div className="prompt-default-preview__header">
+                  <span>Rule gốc mặc định khi bật NSFW</span>
+                  <code>nsfw_rules</code>
+                </div>
+                <pre className="prompt-default-preview__body">{DEFAULT_NSFW_RULES}</pre>
+              </div>
+              <div className="prompt-editor-header">Rule tùy chỉnh</div>
+              <textarea
+                className="textarea"
+                value={customNsfwRules}
+                onChange={(e) => handlePromptChange('nsfw_rules', e.target.value)}
+                rows={8}
+                placeholder="Để trống = dùng rule gốc mặc định ở trên"
+              />
+              {hasCustomNsfwRules && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ alignSelf: 'flex-start', fontSize: '11px' }}
+                  onClick={() => handlePromptChange('nsfw_rules', '')}
+                >
+                  Xóa tùy chỉnh và quay về rule gốc
+                </button>
+              )}
+            </div>
+
             {/* ─── Task-type overrides (unchanged) ─── */}
             {Object.entries(TASK_TYPES).map(([key, taskType]) => {
+              const taskMeta = TASK_TYPE_META[taskType] || { label: key, description: '' };
               const defaultPrompt = TASK_INSTRUCTIONS[taskType] || '';
               const hasCustom = !!(promptTemplates[taskType]);
               return (
                 <div key={key} className="form-group">
                   <label className="form-label">
-                    {key} <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal', fontSize: '11px' }}>({taskType})</span>
-                    {hasCustom && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>✏️ Tùy chỉnh</span>}
+                    {taskMeta.label} <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal', fontSize: '11px' }}>({taskType})</span>
+                    {hasCustom && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
                   </label>
-                  {defaultPrompt && (
-                    <div className="prompt-default-preview">
-                      <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Mặc định:</span> {defaultPrompt.substring(0, 200)}{defaultPrompt.length > 200 ? '...' : ''}
+                  {taskMeta.description && (
+                    <div className="form-hint" style={{ marginBottom: '4px' }}>
+                      {taskMeta.description}
                     </div>
                   )}
+                  {defaultPrompt && (
+                    <div className="prompt-default-preview">
+                      <div className="prompt-default-preview__header">
+                        <span>Prompt gốc mặc định</span>
+                        <code>{key}</code>
+                      </div>
+                      <pre className="prompt-default-preview__body">{defaultPrompt}</pre>
+                    </div>
+                  )}
+                  <div className="prompt-editor-header">Prompt tùy chỉnh</div>
                   <textarea
                     className="textarea"
                     value={promptTemplates[taskType] || ''}
                     onChange={(e) => handlePromptChange(taskType, e.target.value)}
-                    rows={2}
-                    placeholder="Để trống = dùng mặc định ở trên"
+                    rows={5}
+                    placeholder="Để trống = dùng prompt gốc mặc định ở trên"
                   />
                   {hasCustom && (
-                    <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', fontSize: '11px' }} onClick={() => handlePromptChange(taskType, '')}>
-                      ↩ Xóa tùy chỉnh (dùng mặc định)
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', fontSize: '11px' }} onClick={() => handlePromptChange(taskType, '')}>
+                      Xóa tùy chỉnh và quay về prompt gốc
                     </button>
                   )}
                 </div>
@@ -999,9 +1082,9 @@ export default function StoryBible() {
         )}
       </div>
 
-      {/* ═══ SECTION: Suggestion Inbox ═══ */}
+      {/* ═══ SECTION: Hộp đề xuất ═══ */}
       <div className="bible-section">
-        <SectionHeader icon={Sparkles} title="Suggestion Inbox" sectionKey="suggestions" />
+        <SectionHeader icon={Sparkles} title="Hộp đề xuất" sectionKey="suggestions" />
         {openSections.suggestions && currentProject && (
           <div className="bible-edit-card">
             <SuggestionInbox
@@ -1012,7 +1095,7 @@ export default function StoryBible() {
         )}
       </div>
 
-      {/* ═══ SECTION: Canon Facts ═══ */}
+      {/* ═══ SECTION: Sự thật canon ═══ */}
       <div className="bible-section">
         <div className="bible-section-header" onClick={() => toggleSection('canon')} style={{ cursor: 'pointer' }}>
           <h3 className="bible-section-title">
@@ -1052,7 +1135,7 @@ export default function StoryBible() {
               </div>
             ))}
             {activeCanonFacts.length === 0 && (
-              <p className="text-muted" style={{ fontSize: '13px', fontStyle: 'italic' }}>Chưa có Canon Fact nào đang hoạt động.</p>
+              <p className="text-muted" style={{ fontSize: '13px', fontStyle: 'italic' }}>Chưa có sự thật canon nào đang hoạt động.</p>
             )}
 
             {deprecatedCanonFacts.length > 0 && (
@@ -1204,7 +1287,7 @@ export default function StoryBible() {
       {totalItems === 0 && (
         <div className="empty-state">
           <BookOpen size={48} />
-          <h3>Story Bible trống</h3>
+          <h3>Sổ tay truyện trống</h3>
           <p>Thêm nhân vật, địa điểm, thuật ngữ qua trang Nhân vật & Thế giới.</p>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button className="btn btn-primary" onClick={() => navigate(`/project/${currentProject?.id}/characters`)}>

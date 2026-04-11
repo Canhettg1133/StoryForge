@@ -11,6 +11,11 @@ import './styles/components.css';
 const savedTheme = localStorage.getItem('sf-theme') || 'dark';
 document.documentElement.setAttribute('data-theme', savedTheme);
 
+// Initialize persistent storage for IndexedDB (200MB+ support)
+import('./services/db/storage').then(({ initStorage }) => {
+  initStorage().catch(() => {});
+});
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />

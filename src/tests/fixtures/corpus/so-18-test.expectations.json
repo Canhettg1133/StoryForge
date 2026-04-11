@@ -1,0 +1,24 @@
+{
+  "label": "So 18 Nha Tro",
+  "defaultRunMode": "full_corpus_1m",
+  "structural": {
+    "minIncidents": 1,
+    "incidentCountRange": [2, 40],
+    "minCanonicalCharacters": 2,
+    "minCanonicalLocations": 1,
+    "minCanonicalObjectsOrTerms": 1,
+    "minIncidentEvidenceRatio": 0.55,
+    "minBeatEvidenceRatio": 0.35,
+    "minBeatChapterRatio": 0.9
+  },
+  "warnings": {
+    "minCoverageRatio": 0.6,
+    "minStyleSignalCount": 2,
+    "maxOneChapterIncidentRatio": 0.8,
+    "maxDuplicateIncidentRatio": 0.35,
+    "maxNestedIncidentRatio": 0.65,
+    "maxOverlyBroadIncidentRatio": 0.5,
+    "maxConfidenceOneRatio": 0.75,
+    "maxReviewQueueTotal": 60
+  }
+}

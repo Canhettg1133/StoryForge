@@ -7,7 +7,7 @@
 
 import { create } from 'zustand';
 import labAIService from '../services/labClient';
-import { buildPrompt } from '../services/labPromptBuilder';
+import { buildLabPrompt } from '../services/labPromptBuilder';
 import { TASK_TYPES } from '../../../services/ai/router';
 import modelRouter from '../../../services/ai/router';
 import { NSFW_SUPER_PROMPT_1 } from '../../../utils/constants';
@@ -19,12 +19,14 @@ const useLabStore = create((set, get) => ({
     nsfwMode: false,
     superNsfwMode: false,
     isPrimed: false,
+    // Stores the actual ENI priming messages so buildLabPrompt can inject them
+    eniSessionHistory: [],
     qualityMode: 'balanced',
     genre: 'tien_hiep',
     writingStyle: '',
 
     setNsfwMode: (val) => set({ nsfwMode: val }),
-    setSuperNsfwMode: (val) => set({ superNsfwMode: val, isPrimed: false }),
+    setSuperNsfwMode: (val) => set({ superNsfwMode: val, isPrimed: false, eniSessionHistory: [] }),
     setQualityMode: (val) => set({ qualityMode: val }),
     setGenre: (val) => set({ genre: val }),
     setWritingStyle: (val) => set({ writingStyle: val }),
@@ -48,10 +50,15 @@ const useLabStore = create((set, get) => ({
                 superNsfwMode: true,
                 onToken: (chunk, full) => set({ streamingText: full }),
                 onComplete: (text) => {
+                    const history = [
+                        { role: 'user', content: '[Initial ENI Priming Prompt]' },
+                        { role: 'assistant', content: text }
+                    ];
                     set((state) => ({
                         isStreaming: false,
                         streamingText: '',
                         isPrimed: true,
+                        eniSessionHistory: history,
                         messages: [
                             ...state.messages,
                             { role: 'user', content: '[Initial ENI Priming Prompt]' },
@@ -69,13 +76,13 @@ const useLabStore = create((set, get) => ({
     },
 
     sendMessage: async (userPrompt, context = {}) => {
-        const { messages, nsfwMode, superNsfwMode, qualityMode, genre, writingStyle } = get();
+        const { messages, nsfwMode, superNsfwMode, qualityMode, genre, writingStyle, eniSessionHistory } = get();
 
         // Add user message to history
         const userMsg = { role: 'user', content: userPrompt };
         set({ messages: [...messages, userMsg], isStreaming: true, streamingText: '' });
 
-        // Build the system prompt using Lab logic
+        // Build the system prompt using the unified buildLabPrompt (wraps main promptBuilder)
         const labContext = {
             ...context,
             userPrompt,
@@ -83,24 +90,12 @@ const useLabStore = create((set, get) => ({
             superNsfwMode,
             genre,
             writingStyle,
+            eniSessionHistory,
+            // Pass existing messages so buildLabPrompt can inject conversation history
+            labConversationHistory: messages,
         };
 
-        // For Lab, we build a fresh system prompt for every message 
-        // to allow testing different layer configurations.
-        const aiMessages = buildPrompt(TASK_TYPES.FREE_PROMPT, labContext);
-
-        // If there is existing history in the Lab chat, we might want to inject it
-        // But for "Lab" (Prompt Testing), we often want to test a SINGLE turn 
-        // with different system prompts. 
-        // However, for "Chat", we need history.
-
-        // Narrative Lab Rule: Inject the last 5 turns of conversation
-        const history = messages.slice(-10); // Last 5 pairs
-        const finalMessages = [
-            aiMessages[0], // System
-            ...history,
-            aiMessages[1]  // Current User Prompt
-        ];
+        const finalMessages = buildLabPrompt(TASK_TYPES.FREE_PROMPT, labContext);
 
         try {
             labAIService.setRouter(modelRouter);
@@ -115,6 +110,8 @@ const useLabStore = create((set, get) => ({
                     set({ streamingText: full });
                 },
                 onComplete: (text, meta) => {
+                    // Find the system prompt in finalMessages for storage
+                    const systemMsg = finalMessages.find(m => m.role === 'system');
                     set((state) => ({
                         isStreaming: false,
                         streamingText: '',
@@ -123,7 +120,7 @@ const useLabStore = create((set, get) => ({
                             {
                                 role: 'assistant',
                                 content: text,
-                                systemPrompt: aiMessages[0].content,
+                                systemPrompt: systemMsg?.content || '',
                                 model: meta?.model,
                                 provider: meta?.provider,
                                 elapsed: meta?.elapsed

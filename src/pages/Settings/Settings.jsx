@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import keyManager from '../../services/ai/keyManager';
-import modelRouter, { PROVIDERS, DIRECT_MODELS, PROXY_MODELS } from '../../services/ai/router';
-import aiService, { getProxyUrl, getOllamaUrl, saveSettings } from '../../services/ai/client';
+import modelRouter, { PROVIDERS, DIRECT_MODELS } from '../../services/ai/router';
+import aiService, {
+  getGeminiDirectBaseUrl,
+  getOllamaUrl,
+  getProxyUrl,
+  saveSettings,
+} from '../../services/ai/client';
 import {
   Key, Server, Cpu, Cloud, Trash2, Eye, EyeOff, CheckCircle, XCircle,
   Zap, Gauge, Crown, RefreshCw, TestTube, Download, Upload, Copy, Check,
@@ -216,6 +221,7 @@ function DirectModelManager() {
 // ─── Main Settings Page ───
 export default function Settings() {
   const [proxyUrl, setProxyUrl] = useState(getProxyUrl());
+  const [directUrl, setDirectUrl] = useState(getGeminiDirectBaseUrl());
   const [ollamaUrl, setOllamaUrl] = useState(getOllamaUrl());
   const [ollamaModel, setOllamaModel] = useState(localStorage.getItem('sf-ollama-model') || '');
   const [ollamaModels, setOllamaModels] = useState([]);
@@ -224,7 +230,7 @@ export default function Settings() {
   const [quality, setQuality] = useState(modelRouter.getQualityMode());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
 
-  const handleSaveUrls = () => saveSettings({ proxyUrl, ollamaUrl });
+  const handleSaveUrls = () => saveSettings({ proxyUrl, geminiDirectUrl: directUrl, ollamaUrl });
 
   const handleTest = async (prov) => {
     setTesting(p => ({ ...p, [prov]: true }));
@@ -351,7 +357,13 @@ export default function Settings() {
 
           <div className="form-group">
             <div className="settings-input-row">
-              <input className="input" value="https://generativelanguage.googleapis.com" disabled />
+              <input
+                className="input"
+                value={directUrl}
+                onChange={(e) => setDirectUrl(e.target.value)}
+                placeholder="https://generativelanguage.googleapis.com"
+              />
+              <button className="btn btn-secondary" onClick={handleSaveUrls}>Lưu</button>
               <button className="btn btn-ghost btn-icon" onClick={() => handleTest(PROVIDERS.GEMINI_DIRECT)}
                 disabled={testing[PROVIDERS.GEMINI_DIRECT] || keyManager.getKeyCount('gemini_direct') === 0}>
                 {testing[PROVIDERS.GEMINI_DIRECT] ? <RefreshCw size={16} className="animate-spin" /> : <TestTube size={16} />}

@@ -40,7 +40,7 @@ Tự động quản lý kho dữ liệu về thế giới:
 
 *   **Frontend**: React + Vite + Lucide Icons.
 *   **Styling**: Vanilla CSS (tối ưu tính linh hoạt và aesthetics).
-*   **Database**: **Dexie.js (IndexedDB)** — Toàn bộ dữ liệu nằm trên trình duyệt của bạn (Full Local, bảo mật tuyệt đối).
+*   **Database**: **PostgreSQL** cho backend jobs/analysis/corpus snapshots, và **Dexie.js (IndexedDB)** cho dữ liệu soạn thảo local trên frontend.
 *   **AI Backend**: 
     *   Hỗ trợ **Ollama** (chạy Local).
     *   Hỗ trợ **Gemini AI** (Proxy & Direct).
@@ -77,13 +77,19 @@ Dự án yêu cầu **Node.js 18+**.
 3. **Cấu hình môi trường**:
    - Copy `.env.example` thành `.env`.
    - Nhập API Key (Gemini) hoặc URL Ollama của bạn.
+   - Cấu hình `DATABASE_URL` nếu dùng backend jobs/analysis/corpus snapshots.
 
-4. **Chạy Locally**:
+4. **Chạy frontend locally**:
    ```bash
    npm run dev
    ```
 
-5. **Build cho Production**:
+5. **Chạy jobs server**:
+   ```bash
+   npm run jobs:server
+   ```
+
+6. **Build cho Production**:
    ```bash
    npm run build
    ```
@@ -101,7 +107,7 @@ Dự án yêu cầu **Node.js 18+**.
 
 ## 🛡️ Bảo mật Dữ liệu
 
-Dữ liệu truyện của bạn là **TÀI SẢN DUY NHẤT** của bạn. StoryForge lưu trữ mọi thứ trong `IndexedDB` cục bộ trên thiết bị của bạn. Không có dữ liệu nào được tải lên máy chủ của chúng tôi (ngoại trừ Prompt gửi tới nhà cung cấp AI bạn chọn).
+Dữ liệu truyện của bạn là **TÀI SẢN DUY NHẤT** của bạn. StoryForge hiện dùng `PostgreSQL` cho các luồng backend phân tích/job và dùng `IndexedDB` cục bộ cho phần editor/codex trên frontend. Không có dữ liệu nào được gửi tới dịch vụ bên ngoài ngoại trừ các request AI mà bạn chủ động cấu hình.
 
 ---
 

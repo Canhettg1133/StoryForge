@@ -86,6 +86,11 @@ export default function ArcNavigator({
                 <span className="arc-nav__progress-text">
                     Ch.{currentChapterDisplay}{totalChapters > 0 ? `/${totalChapters}` : ''} · {progressPercent}%
                 </span>
+                {totalChapters > 0 && currentChapterDisplay > totalChapters && (
+                    <span className="arc-nav__over-target" title={`Đã vượt mục tiêu (target: ${totalChapters} chương)`}>
+                        ⚠️ Vượt mục tiêu
+                    </span>
+                )}
             </div>
 
             {/* Tổng tiến trình */}

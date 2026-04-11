@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import useAIStore from '../../stores/aiStore';
 import useProjectStore from '../../stores/projectStore';
+import db from '../../services/db/database';
 import CodexPanel from '../editor/CodexPanel';
 import {
   PenTool, RefreshCw, Maximize2, Lightbulb, Map, Sparkles,
@@ -53,13 +54,13 @@ export default function AISidebar({ editor }) {
   const outputRef = useRef(null);
   const guidanceRef = useRef(null);
 
-  // Load plot suggestions for current chapter from localStorage
+  // Load plot suggestions for current chapter from IndexedDB
   useEffect(() => {
     if (activeChapterId) {
-      try {
-        const saved = localStorage.getItem(`sf-plot-${activeChapterId}`);
-        setPlotSuggestions(saved ? JSON.parse(saved) : []);
-      } catch { setPlotSuggestions([]); }
+      db.getPlotSuggestions(activeChapterId).then(suggestions => {
+        // Map DB records back to the simple string array the UI expects
+        setPlotSuggestions(suggestions.map(s => s.suggested_value || s.reasoning || ''));
+      }).catch(() => setPlotSuggestions([]));
     } else {
       setPlotSuggestions([]);
     }
@@ -252,7 +253,9 @@ export default function AISidebar({ editor }) {
       if (parsed.length > 0) {
         setPlotSuggestions(parsed);
         setShowPlotManager(false);
-        localStorage.setItem(`sf-plot-${activeChapterId}`, JSON.stringify(parsed));
+        db.savePlotSuggestions(activeChapterId, currentProject?.id, parsed).catch(err => {
+          console.warn('[PlotSuggestions] Save failed:', err);
+        });
       }
     }
   }, [isStreaming, completedText, lastTaskId, activeChapterId]);
@@ -326,10 +329,14 @@ export default function AISidebar({ editor }) {
                       setPlotSuggestions(updated);
                       if (activeChapterId) {
                         if (updated.length > 0) {
-                          localStorage.setItem(`sf-plot-${activeChapterId}`, JSON.stringify(updated));
+                          db.savePlotSuggestions(activeChapterId, currentProject?.id, updated).catch(err => {
+                            console.warn('[PlotSuggestions] Delete item failed:', err);
+                          });
                         } else {
-                          localStorage.removeItem(`sf-plot-${activeChapterId}`);
-                          setShowPlotManager(false);
+                          db.suggestions
+                            .where('source_chapter_id').equals(activeChapterId)
+                            .filter(s => s.source_type === 'plot_suggestion')
+                            .delete().then(() => setShowPlotManager(false));
                         }
                       }
                     }}
@@ -343,8 +350,14 @@ export default function AISidebar({ editor }) {
           <div className="ai-guidance-actions">
             <button className="btn btn-ghost btn-sm" onClick={() => {
               setPlotSuggestions([]);
-              if (activeChapterId) localStorage.removeItem(`sf-plot-${activeChapterId}`);
-              setShowPlotManager(false);
+              if (activeChapterId) {
+                db.suggestions
+                  .where('source_chapter_id').equals(activeChapterId)
+                  .filter(s => s.source_type === 'plot_suggestion')
+                  .delete().then(() => setShowPlotManager(false));
+              } else {
+                setShowPlotManager(false);
+              }
             }}>
               <Trash2 size={12} /> Xoá tất cả
             </button>
@@ -374,7 +387,12 @@ export default function AISidebar({ editor }) {
                 <span>Gợi ý plot ({plotSuggestions.length})</span>
                 <button className="btn btn-ghost btn-icon btn-sm" onClick={() => {
                   setPlotSuggestions([]);
-                  if (activeChapterId) localStorage.removeItem(`sf-plot-${activeChapterId}`);
+                  if (activeChapterId) {
+                    db.suggestions
+                      .where('source_chapter_id').equals(activeChapterId)
+                      .filter(s => s.source_type === 'plot_suggestion')
+                      .delete();
+                  }
                 }}>
                   <Trash2 size={11} />
                 </button>

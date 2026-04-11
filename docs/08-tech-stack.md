@@ -1,53 +1,39 @@
-# 08 – Tech Stack & Build Timeline
+# 08 - Tech Stack & Build Timeline
 
-## Tech Stack đề xuất
+## Current Tech Stack
 
-### Phương án A: Web App (khuyến nghị)
+### Option A: Web App
 
-| Thành phần | Công nghệ | Ghi chú |
+| Thanh phan | Cong nghe | Ghi chu |
 |-----------|-----------|---------|
-| Frontend | **Vite + React** hoặc Next.js | Vite nhẹ hơn, Next.js có SSR |
-| Editor | **Tiptap** | Rich text editor mạnh nhất, extensible |
-| Lưu trữ | **IndexedDB** (data lớn) + **localStorage** (cài đặt) | Không cần backend DB |
-| AI calls | Fetch → proxy URL, **ReadableStream** | Streaming realtime |
-| Export | epub.js (EPUB), html-docx-js (DOCX), jspdf (PDF), Markdown, Plain text | Hỗ trợ Wattpad, AO3, Truyenfull, Tangthuvien |
-| Deploy | Vercel / Netlify / self-host | |
+| Frontend | Vite + React | UI chinh cua ung dung |
+| Editor | Tiptap | Rich text editor |
+| Frontend local storage | IndexedDB (Dexie) + localStorage | Luu du lieu editor, codex, UI state o may nguoi dung |
+| Backend runtime storage | PostgreSQL | Source of truth cho jobs, corpus, analyses, review queue, project snapshots |
+| AI calls | Fetch + streaming APIs | Ho tro proxy/direct/local providers |
+| Export | EPUB, DOCX, PDF, Markdown, Plain text | Phuc vu xuat ban va chia se |
+| Deploy | Frontend + jobs server + PostgreSQL | Jobs/analysis backend can `DATABASE_URL` |
 
-### Phương án B: Desktop App
+### Option B: Desktop App
 
-| Thành phần | Công nghệ |
-|-----------|-----------|
-| Framework | **Electron + React** hoặc **Tauri** (nhẹ hơn) |
-| Editor | Tiptap (giống web) |
-| Lợi thế | Lưu file trực tiếp, không CORS, chạy offline |
+| Thanh phan | Cong nghe | Ghi chu |
+|-----------|-----------|---------|
+| Framework | Electron + React hoac Tauri | Co the tan dung UI hien tai |
+| Editor | Tiptap | Giong web app |
+| Loi the | Local-first UX | Van can PostgreSQL neu muon chay backend jobs/analysis day du |
 
-### Gọi Gemini qua proxy
+## Current Architecture Note
 
-```
-Browser/App
-  → POST {proxy_url}/v1/messages
-  → Header: x-api-key: {selected_key}
-  → Body: { model, messages, stream: true }
-  → Proxy forward đến Gemini API
-  → Response: ReadableStream text/event-stream
-```
-
-> Không cần backend riêng nếu proxy đã xử lý. App chỉ cần proxy URL + 6 key.
-
----
+- Frontend van su dung Dexie/IndexedDB cho local authoring data.
+- Backend jobs, analysis, corpus snapshots, project snapshots da la Postgres-only.
+- Jobs server khong con fallback SQLite va se fail-fast neu thieu `DATABASE_URL`.
 
 ## Build Timeline
 
-> 📌 Xem bảng roadmap chính thức tại [07-mvp-roadmap.md](./07-mvp-roadmap.md) — 6 tuần, 6 phase.
+Xem roadmap tong the tai [07-mvp-roadmap.md](./07-mvp-roadmap.md).
 
----
+## Notes
 
-## Lưu ý dễ bỏ sót
-
-| Điểm | Chi tiết |
-|------|----------|
-| **Tóm tắt chương tự động** | Khi chương "Hoàn thành" → Flash tạo ~200 từ tóm tắt → lưu metadata → là nguyên liệu Context Engine |
-| **Giới hạn token** | Không inject toàn bộ Codex → chỉ nhân vật đang xuất hiện, thuật ngữ liên quan, tóm tắt ngắn |
-| **Xưng hô tiếng Việt** | Trường "cách xưng hô" trong Codex không phải trang trí — phải inject vào prompt |
-| **Streaming + Dừng** | User phải có nút Dừng để cancel AI viết sai hướng |
-| **Quota sync** | Nếu nhiều tab → quota tracking lệch → lưu usage theo ngày (reset 07:00) hoặc track phía proxy |
+- Proxy AI van co the duoc dat rieng, nhung backend jobs/analysis hien la mot runtime rieng voi PostgreSQL.
+- Neu chi dung editor local, frontend co the chay doc lap.
+- Neu dung corpus analysis, incident analysis, review queue, hoac jobs streaming, can chay jobs server cung PostgreSQL.

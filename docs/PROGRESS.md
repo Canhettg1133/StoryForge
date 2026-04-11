@@ -208,3 +208,13 @@
 | Timeline | `/timeline` | ⏳ Placeholder (Phase 6) |
 | Revision & QA | `/revision` | ⏳ Placeholder (Phase 5) |
 | Style Lab | `/style-lab` | ⏳ Placeholder (Phase 5) |
+
+---
+
+## Phase 6B/6C Update (2026-04-05)
+
+- [x] Incident-only 1M flow scaffolded (Pass A/B/C job + prompts).
+- [x] Backend main flows migrated to Postgres-only repositories.
+- [x] Job queue persistence migrated from SQLite to Postgres async storage.
+- [x] Project snapshot flow no longer falls back to Dexie.
+- [x] Legacy SQLite maintenance scripts/tests retired from active runtime path.

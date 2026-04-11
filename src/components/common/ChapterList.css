@@ -101,6 +101,14 @@
   flex-shrink: 0;
 }
 
+.chapter-word-count {
+  font-size: 10px;
+  color: var(--color-accent, #6366f1);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
 .chapter-rename-input {
   flex: 1;
   background: var(--color-bg-tertiary);

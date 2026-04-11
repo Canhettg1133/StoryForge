@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini API Fast Tester v3.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --primary: #6366f1;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: #020617;
+            color: #f8fafc;
+            min-height: 100vh;
+        }
+
+        .glass-panel {
+            background: var(--glass);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .row-live { background: rgba(16, 185, 129, 0.05); }
+        .row-dead { background: rgba(239, 68, 68, 0.05); }
+        .row-quota { background: rgba(245, 158, 11, 0.05); }
+
+        .model-popup {
+            position: absolute;
+            z-index: 100;
+            background: #0f172a;
+            border: 1px solid var(--glass-border);
+            padding: 12px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+            display: none;
+            max-width: 300px;
+        }
+
+        .scroll-custom::-webkit-scrollbar { width: 4px; }
+        .scroll-custom::-webkit-scrollbar-track { background: transparent; }
+        .scroll-custom::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+
+        table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        th { text-align: left; padding: 12px 16px; font-size: 0.7rem; text-transform: uppercase; color: #64748b; font-weight: 800; border-bottom: 1px solid var(--glass-border); }
+        td { padding: 10px 16px; font-size: 0.8rem; border-bottom: 1px solid rgba(255,255,255,0.03); vertical-align: middle; }
+        
+        .project-header {
+            background: rgba(99, 102, 241, 0.1);
+            color: #818cf8;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 6px 16px;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-6 lg:p-10">
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-black text-indigo-400 tracking-tight">Gemini API Fast Tester <span class="text-[10px] bg-indigo-500/20 px-2 py-0.5 rounded ml-2">v3.0 SPEED</span></h1>
+                <p class="text-slate-500 text-xs">Ưu tiên tốc độ, kiểm tra sống/chết hàng loạt.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <div id="stats" class="flex gap-4 text-[10px] font-bold mr-4">
+                    <span class="text-emerald-400">SỐNG: <span id="stat-valid">0</span></span>
+                    <span class="text-red-400">CHẾT: <span id="stat-invalid">0</span></span>
+                    <span class="text-amber-400">QUOTA: <span id="stat-quota">0</span></span>
+                </div>
+                <button onclick="downloadCSV()" class="p-2 hover:bg-slate-800 rounded-lg border border-slate-800 transition-all">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                </button>
+                <button onclick="clearResults()" class="p-2 text-red-400 hover:bg-red-500/10 rounded-lg border border-red-500/20 transition-all">
+                    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- Left: Input -->
+            <div class="lg:col-span-3">
+                <div class="glass-panel p-4 flex flex-col h-[750px]">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase mb-2">Nhập danh sách Key</span>
+                    <textarea 
+                        id="api-keys-input"
+                        placeholder="Dán mã tại đây..."
+                        class="flex-1 bg-black/40 border border-slate-800 rounded-xl p-3 text-[11px] font-mono text-indigo-200 focus:outline-none focus:border-indigo-500 scroll-custom"
+                    ></textarea>
+                    
+                    <button 
+                        onclick="startTesting()" 
+                        id="btn-test"
+                        class="w-full mt-4 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black rounded-xl transition-all shadow-lg flex items-center justify-center gap-2"
+                    >
+                        <span id="btn-text">KIỂM TRA NGAY</span>
+                        <div id="loader" class="hidden animate-spin rounded-full h-3 w-3 border-2 border-white/20 border-t-white"></div>
+                    </button>
+                    <p class="text-[9px] text-slate-600 mt-3 text-center italic">Tự động nhận diện Project ID & Quota</p>
+                </div>
+            </div>
+
+            <!-- Right: Table -->
+            <div class="lg:col-span-9">
+                <div class="glass-panel overflow-hidden flex flex-col h-[750px]">
+                    <div class="flex-1 overflow-y-auto scroll-custom" id="results-container">
+                        <table id="main-table">
+                            <thead>
+                                <tr>
+                                    <th width="50">#</th>
+                                    <th>API Key (Rút gọn)</th>
+                                    <th width="150">Trạng thái</th>
+                                    <th>Thông báo / Lỗi</th>
+                                    <th width="100">Chi tiết</th>
+                                </tr>
+                            </thead>
+                            <tbody id="results-body">
+                                <!-- Group headers and rows will be here -->
+                            </tbody>
+                        </table>
+                        <div id="empty-state" class="py-40 text-center text-slate-600">
+                             <p class="text-xs">Chưa có kết quả. Hãy dán Key và nhấn KIỂM TRA.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden Model Modal -->
+    <div id="model-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden z-[200] flex items-center justify-center p-4">
+        <div class="glass-panel max-w-lg w-full p-6 animate-in fade-in zoom-in duration-200">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-indigo-400">Thông tin Model & Quota</h3>
+                <button onclick="closeModal()" class="text-slate-500 hover:text-white">&times;</button>
+            </div>
+            <div id="modal-content" class="max-h-[500px] overflow-y-auto scroll-custom">
+                <!-- Models table will be here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const MODEL_QUOTAS = {
+            "gemini-3.1-flash-lite": { rpm: 15, tpm: "250K", rpd: 500 },
+            "gemini-3-flash": { rpm: 5, tpm: "250K", rpd: 20 },
+            "gemini-2.5-flash": { rpm: 5, tpm: "250K", rpd: 20 },
+            "gemini-2.5-flash-lite": { rpm: 10, tpm: "250K", rpd: 20 },
+            "gemini-1.5-flash": { rpm: 15, tpm: "1M", rpd: 1500 },
+            "gemini-1.5-pro": { rpm: 2, tpm: "32K", rpd: 50 },
+            "gemma-4": { rpm: 15, tpm: "Unlim", rpd: "1.5K" },
+            "gemma-3": { rpm: 30, tpm: "15K", rpd: "14.4K" },
+            "gemini-embedding": { rpm: 100, tpm: "30K", rpd: "1K" }
+        };
+
+        let allResults = [];
+        let isTesting = false;
+
+        async function startTesting() {
+            if (isTesting) return;
+            const input = document.getElementById('api-keys-input').value;
+            const keys = input.split(/[\n, ]+/).map(k => k.trim()).filter(k => k.length > 5);
+            
+            if (keys.length === 0) return alert('Dán Key trước khi test!');
+
+            clearResults();
+            isTesting = true;
+            toggleLoading(true);
+            document.getElementById('empty-state').classList.add('hidden');
+
+            const uniqueKeys = [...new Set(keys)];
+            const groups = new Map();
+
+            for (let i = 0; i < uniqueKeys.length; i++) {
+                const key = uniqueKeys[i];
+                const res = await testKey(key);
+                const pid = res.projectId || "UNKNOWN_PROJECT";
+                
+                if (!groups.has(pid)) groups.set(pid, []);
+                groups.get(pid).push({ ...res, key, index: i + 1 });
+                
+                renderTable(groups);
+                updateStats();
+            }
+
+            isTesting = false;
+            toggleLoading(false);
+        }
+
+        async function testKey(key) {
+            let resObj = { success: false, projectId: null, models: [], status: null, message: "..." };
+            try {
+                const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+                resObj.status = r.status;
+                const d = await r.json();
+                if (r.ok) {
+                    resObj.success = true;
+                    resObj.models = d.models || [];
+                    resObj.message = "OK";
+                } else {
+                    resObj.message = d.error?.message || "Error";
+                }
+
+                // Probing Project ID
+                const p = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/probe-${Math.random().toString(36).substr(2,5)}?key=${key}`);
+                const pd = await p.json();
+                const match = (pd.error?.message || "").match(/projects\/([^/ \n]+)/);
+                if (match) resObj.projectId = match[1];
+            } catch (e) {
+                resObj.message = "CORS/Network Error";
+            }
+            return resObj;
+        }
+
+        function renderTable(groups) {
+            const body = document.getElementById('results-body');
+            body.innerHTML = '';
+            
+            groups.forEach((keys, pid) => {
+                // Header Project
+                const pRow = document.createElement('tr');
+                pRow.innerHTML = `<td colspan="5" class="project-header">Dự án: ${pid} (${keys.length} Keys)</td>`;
+                body.appendChild(pRow);
+
+                // Keys inside project
+                keys.forEach(k => {
+                    const tr = document.createElement('tr');
+                    const colorClass = k.success ? 'row-live' : (k.status === 429 ? 'row-quota' : 'row-dead');
+                    tr.className = colorClass;
+                    
+                    const dotColor = k.success ? 'bg-emerald-500' : (k.status === 429 ? 'bg-amber-500' : 'bg-red-500');
+                    const statusText = k.success ? 'Hoạt động' : (k.status === 429 ? 'Hết Quota' : 'Chết / Lỗi');
+                    
+                    const shortKey = k.key.substring(0, 8) + "..." + k.key.substring(k.key.length - 4);
+
+                    tr.innerHTML = `
+                        <td>${k.index}</td>
+                        <td class="font-mono text-[10px] text-slate-400" title="${k.key}">${shortKey}</td>
+                        <td class="font-bold">
+                            <span class="status-dot ${dotColor}"></span>
+                            <span style="color:${k.success ? '#10b981' : (k.status === 429 ? '#f59e0b' : '#ef4444')}">${statusText}</span>
+                        </td>
+                        <td class="text-slate-500 italic max-w-xs truncate">${k.message}</td>
+                        <td>
+                            ${k.success ? `<button onclick="showModels('${k.key}')" class="text-[10px] bg-slate-800 px-2 py-1 rounded hover:bg-indigo-600 transition-all">Xem Model</button>` : '-'}
+                        </td>
+                    `;
+                    body.appendChild(tr);
+                });
+            });
+            allResults = Array.from(groups.values()).flat();
+        }
+
+        function showModels(keyStr) {
+            const data = allResults.find(r => r.key === keyStr);
+            if (!data) return;
+            
+            const content = document.getElementById('modal-content');
+            let html = `<table class="text-[11px]"><thead><tr><th>Model</th><th>RPM</th><th>TPM</th><th>RPD</th></tr></thead><tbody>`;
+            
+            data.models.forEach(m => {
+                const name = m.name.replace('models/', '');
+                const base = Object.keys(MODEL_QUOTAS).find(b => name.includes(b)) || name;
+                const q = MODEL_QUOTAS[base] || { rpm: "?", tpm: "?", rpd: "?" };
+                html += `<tr><td>${name}</td><td>${q.rpm}</td><td>${q.tpm}</td><td>${q.rpd}</td></tr>`;
+            });
+            html += `</tbody></table>`;
+            
+            content.innerHTML = html;
+            document.getElementById('model-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('model-modal').classList.add('hidden');
+        }
+
+        function updateStats() {
+            let s = 0, c = 0, q = 0;
+            allResults.forEach(r => {
+                if (r.success) s++;
+                else if (r.status === 429) q++;
+                else c++;
+            });
+            document.getElementById('stat-valid').textContent = s;
+            document.getElementById('stat-invalid').textContent = c;
+            document.getElementById('stat-quota').textContent = q;
+        }
+
+        function toggleLoading(l) {
+            const b = document.getElementById('btn-test'), ld = document.getElementById('loader'), t = document.getElementById('btn-text');
+            b.disabled = l;
+            ld.classList.toggle('hidden', !l);
+            t.textContent = l ? 'ĐANG TEST...' : 'KIỂM TRA NGAY';
+        }
+
+        function clearResults() {
+            document.getElementById('results-body').innerHTML = '';
+            document.getElementById('empty-state').classList.remove('hidden');
+            allResults = [];
+            updateStats();
+        }
+
+        function downloadCSV() {
+            if (allResults.length === 0) return;
+            let csv = "Key,Status,Project,Message\n";
+            allResults.forEach(r => {
+                csv += `${r.key},${r.success?'Live':'Dead'},${r.projectId},${r.message}\n`;
+            });
+            const b = new Blob([csv], { type: 'text/csv' }), u = URL.createObjectURL(b), a = document.createElement('a');
+            a.href = u; a.download = `gemini_speed_test.csv`; a.click();
+        }
+    </script>
+</body>
+</html>
