@@ -55,7 +55,16 @@ function resolveNsfwRules(promptTemplates) {
     ? promptTemplates.nsfw_rules.trim()
     : '';
 
-  return customRules || DEFAULT_NSFW_RULES;
+  if (!customRules) {
+    return DEFAULT_NSFW_RULES;
+  }
+
+  return [
+    DEFAULT_NSFW_RULES,
+    '[LUAT NSFW BO SUNG CUA DU AN]',
+    'Cac luat duoi day la phan bo sung, duoc doc SAU rule goc mac dinh va khong duoc lam mat hieu luc cua rule goc.',
+    customRules,
+  ].join('\n\n');
 }
 
 function buildNsfwUserAnchor() {

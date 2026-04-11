@@ -1007,8 +1007,8 @@ export default function StoryBible() {
                 {nsfwRulesActive && <span style={{ color: 'var(--color-success, #10b981)', fontSize: '11px', marginLeft: 6 }}>Đang áp dụng</span>}
               </label>
               <div className="form-hint" style={{ marginBottom: '4px' }}>
-                Đây là block rule hệ thống chỉ được bơm khi bật Chế độ Trưởng thành. AI sẽ nhận lại block này ở mỗi lần gọi,
-                nên về thực tế nó luôn phải đọc lại và tuân theo trên từng request.
+                Rule gốc mặc định luôn được giữ nguyên. Ô bên dưới chỉ thêm luật bổ sung khi bật Chế độ Trưởng thành, và AI sẽ đọc
+                theo thứ tự: rule gốc trước, luật bổ sung sau.
               </div>
               <div className="prompt-default-preview">
                 <div className="prompt-default-preview__header">
@@ -1017,13 +1017,13 @@ export default function StoryBible() {
                 </div>
                 <pre className="prompt-default-preview__body">{DEFAULT_NSFW_RULES}</pre>
               </div>
-              <div className="prompt-editor-header">Rule tùy chỉnh</div>
+              <div className="prompt-editor-header">Luật bổ sung khi bật NSFW</div>
               <textarea
                 className="textarea"
                 value={customNsfwRules}
                 onChange={(e) => handlePromptChange('nsfw_rules', e.target.value)}
                 rows={8}
-                placeholder="Để trống = dùng rule gốc mặc định ở trên"
+                placeholder="Để trống = chỉ dùng rule gốc mặc định ở trên"
               />
               {hasCustomNsfwRules && (
                 <button
@@ -1032,7 +1032,7 @@ export default function StoryBible() {
                   style={{ alignSelf: 'flex-start', fontSize: '11px' }}
                   onClick={() => handlePromptChange('nsfw_rules', '')}
                 >
-                  Xóa tùy chỉnh và quay về rule gốc
+                  Xóa luật bổ sung
                 </button>
               )}
             </div>
