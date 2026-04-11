@@ -96,10 +96,10 @@
 .story-editor-wrapper {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-6) var(--space-8);
-  max-width: 780px;
-  margin: 0 auto;
+  padding: var(--space-6) clamp(20px, 3vw, 40px);
   width: 100%;
+  max-width: none;
+  margin: 0;
 }
 
 .story-editor-content {
@@ -110,6 +110,9 @@
   outline: none;
   min-height: 300px;
   text-align: justify;
+  width: min(100%, 920px);
+  max-width: 920px;
+  margin: 0;
 }
 
 .story-editor-content p {
@@ -536,4 +539,134 @@
     justify-content: center;
     width: 100%;
   }
+}
+
+@media (max-width: 1024px) {
+  .story-editor-header {
+    padding: var(--space-4) var(--space-5);
+  }
+
+  .story-editor-wrapper {
+    padding: var(--space-5);
+  }
+
+  .story-editor-footer {
+    padding: var(--space-3) var(--space-5);
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .story-editor-progress {
+    flex-basis: 100%;
+    margin: 0;
+  }
+
+  .chapter-outline-toggle {
+    padding-inline: var(--space-5);
+  }
+
+  .chapter-outline-body {
+    margin-left: var(--space-5);
+    padding: 0 var(--space-5) var(--space-4);
+  }
+}
+
+@media (max-width: 640px) {
+  .story-editor-header {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .story-editor-scene-title {
+    font-size: var(--text-xl);
+  }
+
+  .story-editor-wrapper {
+    padding: var(--space-4);
+  }
+
+  .story-editor-content {
+    font-size: 1rem;
+    line-height: 1.75;
+    max-width: 100%;
+  }
+
+  .story-editor-footer {
+    padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .story-editor-stats,
+  .story-editor-status {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .chapter-outline-toggle-row {
+    padding-right: 0;
+  }
+
+  .chapter-outline-toggle {
+    padding-inline: var(--space-4);
+  }
+
+  .chapter-outline-body {
+    margin-left: var(--space-4);
+    padding: 0 var(--space-4) var(--space-4);
+  }
+}
+
+.story-editor--mobile .story-editor-header {
+  padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 14px;
+}
+
+.story-editor--mobile .story-editor-scene-meta {
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.story-editor--mobile .story-editor-scene-title {
+  font-size: 1.35rem;
+}
+
+.story-editor--mobile .story-editor-detail-trigger {
+  min-height: 40px;
+  padding: 9px 12px;
+}
+
+.story-editor--mobile .chapter-outline-toggle {
+  padding-inline: 16px;
+}
+
+.story-editor--mobile .chapter-outline-body {
+  margin-left: 16px;
+  padding: 0 16px 16px;
+}
+
+.story-editor--mobile .story-editor-wrapper {
+  padding: 18px 16px 24px;
+}
+
+.story-editor--mobile .story-editor-content {
+  font-size: 1rem;
+  line-height: 1.8;
+  text-align: left;
+  max-width: 100%;
+}
+
+.story-editor--mobile .story-editor-footer {
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  gap: 10px;
+}
+
+.story-editor--mobile .story-editor-stats {
+  display: none;
+}
+
+.story-editor--mobile .story-editor-progress {
+  margin: 0;
+}
+
+.story-editor--mobile .story-editor-status {
+  width: 100%;
+  justify-content: space-between;
 }

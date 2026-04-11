@@ -11,7 +11,7 @@ import db from '../../services/db/database';
 import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings } from 'lucide-react';
 import './StoryEditor.css';
 
-export default function StoryEditor({ onEditorReady }) {
+export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
   const {
     activeSceneId, activeChapterId, scenes, chapters,
     updateScene, updateChapter, updateProjectTimestamp,
@@ -21,7 +21,7 @@ export default function StoryEditor({ onEditorReady }) {
   const saveTimerRef = useRef(null);
   const lastSavedRef = useRef('');
   const editorWrapperRef = useRef(null);
-  const [outlinePanelOpen, setOutlinePanelOpen] = useState(true);
+  const [outlinePanelOpen, setOutlinePanelOpen] = useState(() => !isMobileLayout);
   const [sceneDetailOpen, setSceneDetailOpen] = useState(false);
   const [allCharacters, setAllCharacters] = useState([]);
 
@@ -85,7 +85,8 @@ export default function StoryEditor({ onEditorReady }) {
   // [MỚI] Reset edit state khi đổi chương
   useEffect(() => {
     setIsEditingOutline(false);
-  }, [activeChapterId]);
+    setOutlinePanelOpen(!isMobileLayout);
+  }, [activeChapterId, isMobileLayout]);
 
   const editor = useEditor({
     extensions: [
@@ -193,7 +194,7 @@ export default function StoryEditor({ onEditorReady }) {
   }
 
   return (
-    <div className="story-editor">
+    <div className={`story-editor ${isMobileLayout ? 'story-editor--mobile' : ''}`}>
       {/* Scene title */}
       <div className="story-editor-header">
         <div className="story-editor-header-main">
@@ -350,7 +351,7 @@ export default function StoryEditor({ onEditorReady }) {
       )}
 
       {/* Continuity Bar */}
-      <ContinuityBar />
+      <ContinuityBar isMobileLayout={isMobileLayout} />
 
       {/* Editor */}
       <div className="story-editor-wrapper" ref={editorWrapperRef}>

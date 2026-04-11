@@ -20,6 +20,10 @@
   width: var(--sidebar-collapsed-width);
 }
 
+.sidebar--auto-collapsed .sidebar-logo {
+  justify-content: center;
+}
+
 /* Logo */
 .sidebar-logo {
   display: flex;
@@ -51,7 +55,11 @@
 }
 
 .sidebar--collapsed .sidebar-toggle {
-  margin: 0 auto;
+  margin-left: auto;
+}
+
+.sidebar--collapsed .sidebar-logo {
+  padding-inline: var(--space-2);
 }
 
 /* Project Indicator */
@@ -148,6 +156,16 @@
 .sidebar--collapsed .sidebar-item {
   justify-content: center;
   padding: var(--space-2);
+}
+
+@media (max-width: 1100px) {
+  .sidebar {
+    width: var(--sidebar-collapsed-width);
+  }
+
+  .sidebar-logo {
+    padding-inline: var(--space-2);
+  }
 }
 
 /* Footer */

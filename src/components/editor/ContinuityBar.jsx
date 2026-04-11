@@ -5,7 +5,7 @@ import useCodexStore from '../../stores/codexStore';
 import useCanonStore from '../../stores/canonStore';
 import './ContinuityBar.css';
 
-export default function ContinuityBar() {
+export default function ContinuityBar({ isMobileLayout = false }) {
   const { chapters, activeChapterId, activeSceneId, currentProject } = useProjectStore();
   const { chapterMetas, loadCodex } = useCodexStore();
   const {
@@ -17,6 +17,12 @@ export default function ContinuityBar() {
     rebuilding,
   } = useCanonStore();
   const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (isMobileLayout) {
+      setExpanded(false);
+    }
+  }, [isMobileLayout, activeChapterId, activeSceneId]);
 
   useEffect(() => {
     if (currentProject?.id) loadCodex(currentProject.id);
@@ -80,7 +86,7 @@ export default function ContinuityBar() {
   if (!prevChapterInfo && !chapterCanon && !activeChapterId) return null;
 
   return (
-    <div className={`continuity-bar ${expanded ? 'continuity-bar--expanded' : ''}`}>
+    <div className={`continuity-bar ${expanded ? 'continuity-bar--expanded' : ''} ${isMobileLayout ? 'continuity-bar--mobile' : ''}`}>
       <div className="continuity-bar-header" onClick={() => setExpanded((value) => !value)}>
         <div className="continuity-bar-left">
           <Clock size={13} />

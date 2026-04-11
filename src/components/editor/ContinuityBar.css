@@ -169,6 +169,29 @@
   border-left-color: var(--color-info);
 }
 
+.continuity-bar--mobile .continuity-bar-header {
+  padding: 10px 16px;
+  gap: 10px;
+}
+
+.continuity-bar--mobile .continuity-bar-left {
+  min-width: 0;
+}
+
+.continuity-bar--mobile .continuity-bar-actions {
+  gap: 6px;
+  margin-right: 0;
+}
+
+.continuity-bar--mobile .continuity-bar-btn {
+  padding: 4px 6px;
+  font-size: 10px;
+}
+
+.continuity-bar--mobile .continuity-bar-title {
+  max-width: 100%;
+}
+
 .spin {
   animation: continuitySpin 1s linear infinite;
 }

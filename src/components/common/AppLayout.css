@@ -11,3 +11,9 @@
   overflow-x: hidden;
   position: relative;
 }
+
+@media (max-width: 820px) {
+  .app-layout--editor-route .sidebar {
+    display: none;
+  }
+}

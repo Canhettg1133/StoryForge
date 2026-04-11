@@ -1,20 +1,113 @@
-import React, { useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { BookOpen, PanelLeft, Sparkles, X } from 'lucide-react';
 import ChapterList from '../../components/common/ChapterList';
 import StoryEditor from '../../components/editor/StoryEditor';
 import AISidebar from '../../components/ai/AISidebar';
 import useProjectStore from '../../stores/projectStore';
-import { useNavigate } from 'react-router-dom';
-import { BookOpen } from 'lucide-react';
 import './SceneEditor.css';
 
+const MOBILE_EDITOR_QUERY = '(max-width: 820px)';
+const MOBILE_KEYBOARD_OFFSET = 140;
+
 export default function SceneEditor() {
-  const { currentProject } = useProjectStore();
+  const { currentProject, chapters, scenes, activeChapterId, activeSceneId } = useProjectStore();
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
+  const [isMobileLayout, setIsMobileLayout] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(MOBILE_EDITOR_QUERY).matches;
+  });
+  const [mobilePanel, setMobilePanel] = useState(null);
+  const [mobileAITab, setMobileAITab] = useState('ai');
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [mobileInputFocused, setMobileInputFocused] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const mediaQuery = window.matchMedia(MOBILE_EDITOR_QUERY);
+    const handleChange = (event) => setIsMobileLayout(event.matches);
+
+    setIsMobileLayout(mediaQuery.matches);
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileLayout) {
+      setMobilePanel(null);
+      setKeyboardOpen(false);
+      setMobileInputFocused(false);
+      return undefined;
+    }
+
+    const viewport = window.visualViewport;
+    if (!viewport) return undefined;
+
+    const syncViewport = () => {
+      const availableHeight = Math.min(window.innerHeight, viewport.height);
+      setKeyboardOpen(window.innerHeight - availableHeight > MOBILE_KEYBOARD_OFFSET);
+    };
+
+    syncViewport();
+    viewport.addEventListener('resize', syncViewport);
+    viewport.addEventListener('scroll', syncViewport);
+
+    return () => {
+      viewport.removeEventListener('resize', syncViewport);
+      viewport.removeEventListener('scroll', syncViewport);
+    };
+  }, [isMobileLayout]);
+
+  useEffect(() => {
+    if (!isMobileLayout) return undefined;
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') {
+        setMobilePanel(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isMobileLayout]);
 
   const handleEditorReady = useCallback((editor) => {
     setEditorInstance(editor);
   }, []);
+
+  const activeChapter = useMemo(
+    () => chapters.find((chapter) => chapter.id === activeChapterId) || null,
+    [chapters, activeChapterId],
+  );
+
+  const activeScene = useMemo(
+    () => scenes.find((scene) => scene.id === activeSceneId) || null,
+    [scenes, activeSceneId],
+  );
+
+  const toolbarMode = keyboardOpen || mobileInputFocused ? 'compact' : 'default';
+
+  const openMobilePanel = (panel) => {
+    setMobilePanel(panel);
+    if (panel === 'ai') {
+      setMobileAITab((current) => current || 'ai');
+    }
+  };
+
+  const toggleMobilePanel = (panel) => {
+    setMobilePanel((current) => (current === panel ? null : panel));
+  };
+
+  const closeMobilePanel = () => {
+    setMobilePanel(null);
+  };
 
   if (!currentProject) {
     return (
@@ -32,12 +125,87 @@ export default function SceneEditor() {
   }
 
   return (
-    <div className="scene-editor-layout">
-      <ChapterList />
+    <div className={`scene-editor-layout ${isMobileLayout ? 'scene-editor-layout--mobile' : ''}`}>
+      {isMobileLayout && mobilePanel && (
+        <button className="scene-editor-overlay" onClick={closeMobilePanel} aria-label="Đóng panel đang mở" />
+      )}
+
+      <aside
+        className={`scene-editor-side scene-editor-side--chapter ${isMobileLayout ? 'scene-editor-side--sheet scene-editor-side--sheet-left' : ''} ${mobilePanel === 'chapters' ? 'is-open' : ''}`}
+      >
+        {isMobileLayout && (
+          <div className="scene-editor-sheet-header">
+            <div>
+              <div className="scene-editor-sheet-kicker">Điều hướng</div>
+              <div className="scene-editor-sheet-title">Chương & Cảnh</div>
+            </div>
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={closeMobilePanel} title="Đóng danh sách chương">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        <div className="scene-editor-side-body">
+          <ChapterList
+            allowCollapse={!isMobileLayout}
+            isMobileLayout={isMobileLayout}
+            onItemSelect={() => isMobileLayout && closeMobilePanel()}
+          />
+        </div>
+      </aside>
+
       <div className="scene-editor-main">
-        <StoryEditor onEditorReady={handleEditorReady} />
+        {isMobileLayout && mobilePanel === null && (
+          <div className={`scene-editor-mobile-toolbar scene-editor-mobile-toolbar--${toolbarMode}`}>
+            <button
+              className="scene-editor-mobile-btn"
+              onClick={() => openMobilePanel('chapters')}
+            >
+              <PanelLeft size={16} />
+              <span>{toolbarMode === 'compact' ? 'Chương' : 'Chương & Cảnh'}</span>
+            </button>
+
+            <div className="scene-editor-mobile-context">
+              <span className="scene-editor-mobile-context-kicker">{activeChapter?.title || 'Chưa chọn chương'}</span>
+              <span className="scene-editor-mobile-context-title">{activeScene?.title || 'Chưa chọn cảnh'}</span>
+            </div>
+
+            <button
+              className="scene-editor-mobile-btn scene-editor-mobile-btn--primary"
+              onClick={() => openMobilePanel('ai')}
+            >
+              <Sparkles size={16} />
+              <span>AI</span>
+            </button>
+          </div>
+        )}
+
+        <StoryEditor onEditorReady={handleEditorReady} isMobileLayout={isMobileLayout} />
       </div>
-      <AISidebar editor={editorInstance} />
+
+      <aside
+        className={`scene-editor-side scene-editor-side--ai ${isMobileLayout ? 'scene-editor-side--sheet scene-editor-side--sheet-full' : ''} ${mobilePanel === 'ai' ? 'is-open' : ''}`}
+      >
+        {isMobileLayout && (
+          <div className="scene-editor-sheet-header scene-editor-sheet-header--ai">
+            <div>
+              <div className="scene-editor-sheet-kicker">Trợ lý viết</div>
+              <div className="scene-editor-sheet-title">AI</div>
+            </div>
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={closeMobilePanel} title="Đóng AI">
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        <div className="scene-editor-side-body">
+          <AISidebar
+            editor={editorInstance}
+            isMobileLayout={isMobileLayout}
+            mobileTab={mobileAITab}
+            onMobileTabChange={setMobileAITab}
+            onMobileInputFocusChange={setMobileInputFocused}
+          />
+        </div>
+      </aside>
     </div>
   );
 }
