@@ -560,7 +560,7 @@ const useAIStore = create((set, get) => ({
    * @param {number} params.projectId
    * @param {number} params.chapterId - the chapter to analyze
    * @param {string} params.genre
-   * @returns {Promise<object|null>} parsed result or null
+   * @returns {Promise<object>} generation outcome with status + count
    */
   generateSuggestions: (params) => {
     const { projectId, chapterId, genre } = params;
@@ -579,7 +579,11 @@ const useAIStore = create((set, get) => ({
 
         if (!fullChapterText.trim()) {
           set({ isSuggesting: false });
-          resolve(null);
+          resolve({
+            status: 'empty_chapter',
+            createdCount: 0,
+            result: null,
+          });
           return;
         }
 
@@ -618,7 +622,11 @@ const useAIStore = create((set, get) => ({
               const parsed = parseAIJsonValue(text);
               const result = normalizeSuggestionResult(parsed);
               if (!result) {
-                resolve(null);
+                resolve({
+                  status: 'invalid_response',
+                  createdCount: 0,
+                  result: null,
+                });
                 return;
               }
               const suggestionItems = [];
@@ -664,10 +672,18 @@ const useAIStore = create((set, get) => ({
                 await useSuggestionStore.getState().createSuggestions(projectId, suggestionItems);
               }
 
-              resolve(result);
+              resolve({
+                status: suggestionItems.length > 0 ? 'created' : 'no_suggestions',
+                createdCount: suggestionItems.length,
+                result,
+              });
             } catch (e) {
               console.warn('[AI] Failed to parse suggestion result:', e);
-              resolve(null);
+              resolve({
+                status: 'invalid_response',
+                createdCount: 0,
+                result: null,
+              });
             }
           },
           onError: (err) => {

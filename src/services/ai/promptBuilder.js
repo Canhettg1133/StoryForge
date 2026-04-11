@@ -33,6 +33,31 @@ import {
   ANTI_AI_BLACKLIST,
 } from '../../utils/constants';
 
+export const DEFAULT_NSFW_RULES = [
+  '[LUAT NSFW HE THONG - BAT BUOC TUAN THU]',
+  'Khoi luat nay CHI duoc kich hoat khi du an bat Che do Truong thanh (NSFW).',
+  'Khi da kich hoat, day la luat he thong muc cao: ban PHAI doc truoc, ghi nho trong suot lan tra loi hien tai, va tuan thu nhat quan o moi doan van duoc sinh ra.',
+  'Khong duoc tu y lam nhe, lam sach, ne tranh, dao duc hoa, hay doi sang cach dien dat an toan hon neu tac gia khong yeu cau ro rang.',
+  'Van phai giu canon, logic nhan vat, quan he nhan qua, nhip canh, va giong van cua truyen. NSFW khong co nghia la viet bua bai hay pha logic.',
+  'Neu tac gia yeu cau giam do explicit, doi giong van, hoac doi bien do canh nong, hay uu tien yeu cau moi nhat cua tac gia.',
+  NSFW_AUTHOR_DNA,
+  NSFW_RELATION_MATRIX,
+  NSFW_STYLE_EUPHEMISMS,
+  NSFW_CHRONO_STRUCTURE,
+].join('\n\n');
+
+function resolveNsfwRules(promptTemplates) {
+  if (!promptTemplates || typeof promptTemplates !== 'object') {
+    return DEFAULT_NSFW_RULES;
+  }
+
+  const customRules = typeof promptTemplates.nsfw_rules === 'string'
+    ? promptTemplates.nsfw_rules.trim()
+    : '';
+
+  return customRules || DEFAULT_NSFW_RULES;
+}
+
 // =============================================
 // Layer 1: System Identity
 // =============================================
@@ -942,9 +967,9 @@ export function buildPrompt(taskType, context = {}) {
     systemParts.push(authorDNALayer);
   }
 
-  // Inject Psychological Override if NSFW Mode is ON
+  // Inject NSFW rules at high priority when mature mode is enabled.
   if (nsfwMode) {
-    systemParts.push(NSFW_AUTHOR_DNA);
+    systemParts.push(resolveNsfwRules(promptTemplates));
   }
 
   // -- Layer 1: System Identity --
@@ -1192,13 +1217,6 @@ export function buildPrompt(taskType, context = {}) {
   );
   if (moodBoardLayer && !skipWritingLayers) {
     systemParts.push(moodBoardLayer);
-  }
-
-  // -- Layer 8 (New): Content Boundary & NSFW OVERRIDE
-  if (nsfwMode && !superNsfwMode) {
-    systemParts.push('\n' + NSFW_RELATION_MATRIX);
-    systemParts.push('\n' + NSFW_STYLE_EUPHEMISMS);
-    systemParts.push('\n' + NSFW_CHRONO_STRUCTURE);
   }
 
   // -- Layer 10: Length & Rhythm Anchor (reframed: positive > negative) --
