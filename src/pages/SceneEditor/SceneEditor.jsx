@@ -20,6 +20,7 @@ import {
 import ChapterList from '../../components/common/ChapterList';
 import StoryEditor from '../../components/editor/StoryEditor';
 import AISidebar from '../../components/ai/AISidebar';
+import { shouldShowNavItem } from '../../config/productSurface';
 import useProjectStore from '../../stores/projectStore';
 import './SceneEditor.css';
 
@@ -40,6 +41,7 @@ const MOBILE_NAV_ITEMS = [
   { id: 'story-creation-settings', label: 'Cài đặt khi tạo truyện', icon: Sparkles, needsProject: false, getPath: () => '/story-creation-settings' },
   { id: 'settings', label: 'Cài đặt', icon: Settings, needsProject: false, getPath: () => '/settings' },
 ];
+const VISIBLE_MOBILE_NAV_ITEMS = MOBILE_NAV_ITEMS.filter((item) => shouldShowNavItem(item));
 
 export default function SceneEditor() {
   const { currentProject, chapters, scenes, activeChapterId, activeSceneId } = useProjectStore();
@@ -192,7 +194,7 @@ export default function SceneEditor() {
               </div>
             )}
             <div className="scene-editor-mobile-nav-list">
-              {MOBILE_NAV_ITEMS.map((item) => {
+              {VISIBLE_MOBILE_NAV_ITEMS.map((item) => {
                 const Icon = item.icon;
                 const targetPath = item.getPath(activeProjectId);
                 const isActive = location.pathname === targetPath || (targetPath !== '/' && targetPath !== '/settings' && location.pathname.startsWith(targetPath));

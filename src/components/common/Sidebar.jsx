@@ -1,50 +1,61 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import useUIStore from '../../stores/uiStore';
-import useProjectStore from '../../stores/projectStore';
 import {
-  LayoutDashboard,
-  BookOpen,
   BookKey,
-  Map,
-  Users,
-  Globe,
-  PenTool,
+  BookOpen,
+  ChevronLeft,
   Clock,
   FileSearch,
+  FlaskConical,
+  Globe,
+  LayoutDashboard,
+  Map,
+  Moon,
   Palette,
-  Sparkles,
-  Settings,
   PanelLeftClose,
   PanelLeftOpen,
-  Moon,
+  PenTool,
+  Settings,
+  Sparkles,
   Sun,
-  ChevronLeft,
-  FlaskConical,
+  Users,
 } from 'lucide-react';
-import './Sidebar.css';
+import { shouldShowNavItem } from '../../config/productSurface';
+import useProjectStore from '../../stores/projectStore';
+import useUIStore from '../../stores/uiStore';
 import ArcNavigator from './ArcNavigator';
+import './Sidebar.css';
 
-const NAV_ITEMS = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
-  { path: '/story-bible', icon: BookOpen, label: 'Sổ tay truyện', id: 'story-bible', needsProject: true },
-  { path: '/su-that', icon: BookKey, label: 'Sự thật', id: 'su-that', needsProject: true },
-  { path: '/outline', icon: Map, label: 'Outline Board', id: 'outline', needsProject: true },
-  { path: '/characters', icon: Users, label: 'Nhân vật', id: 'characters', needsProject: true },
-  { path: '/world', icon: Globe, label: 'Thế giới', id: 'world', needsProject: true },
+const RAW_NAV_ITEMS = [
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard', surface: 'core' },
+  { path: '/story-bible', icon: BookOpen, label: 'So tay truyen', id: 'story-bible', needsProject: true, surface: 'core' },
+  { path: '/su-that', icon: BookKey, label: 'Su that', id: 'su-that', needsProject: true, surface: 'core' },
+  { path: '/outline', icon: Map, label: 'Outline Board', id: 'outline', needsProject: true, surface: 'core' },
+  { path: '/characters', icon: Users, label: 'Nhan vat', id: 'characters', needsProject: true, surface: 'core' },
+  { path: '/world', icon: Globe, label: 'The gioi', id: 'world', needsProject: true, surface: 'core' },
   { divider: true },
-  { path: '/editor', icon: PenTool, label: 'Viết truyện', id: 'editor', needsProject: true, primary: true },
+  { path: '/editor', icon: PenTool, label: 'Viet truyen', id: 'editor', needsProject: true, primary: true, surface: 'core' },
   { divider: true },
-  { path: '/lab', icon: FlaskConical, label: 'Narrative Lab', id: 'lab', needsProject: true },
-  { path: '/corpus-lab', icon: FlaskConical, label: 'Corpus Lab', id: 'corpus-lab', needsProject: true },
+  { path: '/lab', icon: FlaskConical, label: 'Narrative Lab', id: 'lab', needsProject: true, surface: 'lab' },
+  { path: '/corpus-lab', icon: FlaskConical, label: 'Corpus Lab', id: 'corpus-lab', needsProject: true, surface: 'lab' },
   { divider: true },
-  { path: '/timeline', icon: Clock, label: 'Timeline', id: 'timeline', needsProject: true, comingSoon: true },
-  { path: '/revision', icon: FileSearch, label: 'Revision & QA', id: 'revision', needsProject: true, comingSoon: true },
-  { path: '/style-lab', icon: Palette, label: 'Style Lab', id: 'style-lab', needsProject: true, comingSoon: true },
+  { path: '/timeline', icon: Clock, label: 'Timeline', id: 'timeline', needsProject: true, comingSoon: true, surface: 'roadmap' },
+  { path: '/revision', icon: FileSearch, label: 'Revision & QA', id: 'revision', needsProject: true, comingSoon: true, surface: 'roadmap' },
+  { path: '/style-lab', icon: Palette, label: 'Style Lab', id: 'style-lab', needsProject: true, comingSoon: true, surface: 'roadmap' },
   { divider: true },
-  { path: '/story-creation-settings', icon: Sparkles, label: 'Cài đặt khi tạo truyện', id: 'story-creation-settings' },
-  { path: '/settings', icon: Settings, label: 'Cài đặt', id: 'settings' },
+  { path: '/story-creation-settings', icon: Sparkles, label: 'Cai dat khi tao truyen', id: 'story-creation-settings', surface: 'core' },
+  { path: '/settings', icon: Settings, label: 'Cai dat', id: 'settings', surface: 'core' },
 ];
+
+const NAV_ITEMS = RAW_NAV_ITEMS.filter((item, index, items) => {
+  if (item.divider) {
+    const prev = items[index - 1];
+    const next = items[index + 1];
+    return shouldShowNavItem(prev || {}) && shouldShowNavItem(next || {});
+  }
+
+  return shouldShowNavItem(item);
+});
 
 const SIDEBAR_COLLAPSE_QUERY = '(max-width: 1100px)';
 
@@ -95,10 +106,10 @@ export default function Sidebar() {
   return (
     <aside className={`sidebar ${isCollapsed ? 'sidebar--collapsed' : ''} ${isAutoCollapsed ? 'sidebar--auto-collapsed' : ''}`}>
       <div className="sidebar-logo">
-        <span className="sidebar-logo-icon" aria-hidden="true">📖</span>
+        <span className="sidebar-logo-icon" aria-hidden="true">SF</span>
         {!isCollapsed && <span className="sidebar-logo-text">StoryForge</span>}
         {!isAutoCollapsed && (
-          <button className="btn btn-ghost btn-icon btn-sm sidebar-toggle" onClick={toggleSidebar} title={isCollapsed ? 'Mở menu' : 'Thu gọn menu'}>
+          <button className="btn btn-ghost btn-icon btn-sm sidebar-toggle" onClick={toggleSidebar} title={isCollapsed ? 'Mo menu' : 'Thu gon menu'}>
             {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
         )}
@@ -106,12 +117,18 @@ export default function Sidebar() {
 
       {currentProject && !isCollapsed && (
         <div className="sidebar-project-container">
-          <div className="sidebar-project" onClick={() => navigate('/')} role="button" tabIndex={0} onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              navigate('/');
-            }
-          }}>
+          <div
+            className="sidebar-project"
+            onClick={() => navigate('/')}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                navigate('/');
+              }
+            }}
+          >
             <ChevronLeft size={14} />
             <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{currentProject.title}</span>
           </div>
