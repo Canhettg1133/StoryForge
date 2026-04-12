@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Bot,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Copy,
   MessageSquare,
   PanelLeftClose,
@@ -79,6 +81,7 @@ function buildFreeSystemPrompt() {
     'Ở chế độ này, bạn không cần bám theo canon hay dữ liệu của bất kỳ truyện nào nếu người dùng không yêu cầu.',
   ].join('\n\n');
 }
+
 
 function buildStorySystemPrompt(project) {
   const lines = [
@@ -240,6 +243,7 @@ export default function ProjectChat() {
   const [saveStatus, setSaveStatus] = useState('');
   const [showSystemPromptDrawer, setShowSystemPromptDrawer] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showTopbarControls, setShowTopbarControls] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [providerSnapshot, setProviderSnapshot] = useState(modelRouter.getPreferredProvider());
   const [qualitySnapshot, setQualitySnapshot] = useState(modelRouter.getQualityMode());
@@ -259,6 +263,11 @@ export default function ProjectChat() {
   const activeThreadMode =
     activeThread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
 
+  function resetComposerHeight(minHeight = 58) {
+    if (!composerTextareaRef.current) return;
+    composerTextareaRef.current.style.height = `${minHeight}px`;
+  }
+
   const routePreview = useMemo(
     () => getRoutePreview(providerSnapshot, activeThread?.model_override || ''),
     [providerSnapshot, activeThread?.model_override],
@@ -269,9 +278,16 @@ export default function ProjectChat() {
     [providerSnapshot],
   );
 
-  const effectiveSystemPrompt =
-    activeThread?.system_prompt ||
-    buildDefaultSystemPrompt(activeThreadMode, projectScopeEnabled ? currentProject : null);
+  const defaultSystemPrompt = buildDefaultSystemPrompt(
+    activeThreadMode,
+    projectScopeEnabled ? currentProject : null,
+  );
+  const effectiveSystemPrompt = activeThread?.system_prompt || defaultSystemPrompt;
+  const hasThreadPromptOverride =
+    !!String(activeThread?.system_prompt || '').trim() &&
+    String(activeThread?.system_prompt || '').trim() !== defaultSystemPrompt.trim();
+  const alternateChatMode =
+    activeThreadMode === CHAT_MODES.STORY ? CHAT_MODES.FREE : CHAT_MODES.STORY;
 
   useEffect(() => {
     if (!projectScopeEnabled) return;
@@ -438,6 +454,7 @@ export default function ProjectChat() {
       setActiveThreadId(id);
       setMessages([]);
       setDraft('');
+      resetComposerHeight();
       setShowSystemPromptDrawer(false);
       window.setTimeout(() => inputRef.current?.focus(), 0);
     }
@@ -582,8 +599,8 @@ export default function ProjectChat() {
       );
       const base = existingUserMessage
         ? baseWithoutTemp.map((message) =>
-            String(message.id) === String(existingUserMessage.id) ? userMessage : message,
-          )
+          String(message.id) === String(existingUserMessage.id) ? userMessage : message,
+        )
         : [...baseWithoutTemp, userMessage];
       return [
         ...base,
@@ -602,6 +619,7 @@ export default function ProjectChat() {
     });
 
     setDraft('');
+    resetComposerHeight();
     setEditingMessageId(null);
     setErrorMessage('');
     setIsStreaming(true);
@@ -721,6 +739,7 @@ export default function ProjectChat() {
     ]);
 
     setDraft('');
+    resetComposerHeight();
     setErrorMessage('');
     setIsStreaming(true);
     setLiveRouteInfo(currentRoute);
@@ -903,11 +922,25 @@ export default function ProjectChat() {
   function handleCancelEditing() {
     setEditingMessageId(null);
     setDraft('');
+    resetComposerHeight();
   }
 
-  async function handleChangeMode(mode) {
+  async function handleChangeMode(mode, options = {}) {
     if (!activeThread || isStreaming) return;
     if (mode === CHAT_MODES.STORY && !projectScopeEnabled) return;
+    if (mode === activeThreadMode && !options.preserveHistory) return;
+
+    if (!options.preserveHistory) {
+      const nextThread = await createThread({ activate: true, initialMode: mode });
+      if (activeThread.model_override) {
+        await persistThreadUpdate(nextThread.id, {
+          model_override: activeThread.model_override,
+          updated_at: Date.now(),
+        });
+      }
+      setSaveStatus('Đã mở một cuộc trò chuyện mới ở chế độ vừa chọn');
+      return;
+    }
 
     const currentDefaultPrompt = buildDefaultSystemPrompt(
       activeThreadMode,
@@ -934,6 +967,7 @@ export default function ProjectChat() {
     setActiveThreadId(threadId);
     setEditingMessageId(null);
     setDraft('');
+    resetComposerHeight();
     window.setTimeout(() => {
       isHydratingThreadRef.current = false;
     }, 0);
@@ -961,36 +995,36 @@ export default function ProjectChat() {
               <h1>{pageTitle}</h1>
             </div>
             <div className="project-chat-sidebar__header-actions">
-            <button
-              type="button"
-              className="btn btn-ghost btn-icon"
-              onClick={() => setSidebarCollapsed((value) => !value)}
-              title={sidebarCollapsed ? 'Mở danh sách chat' : 'Thu gọn danh sách chat'}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary btn-icon"
-              onClick={() =>
-                createThread({
-                  activate: true,
-                  initialMode: projectScopeEnabled ? activeThreadMode : CHAT_MODES.FREE,
-                })
-              }
-              title="Tạo cuộc trò chuyện mới"
-            >
-              <Plus size={16} />
-            </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                onClick={() => setSidebarCollapsed((value) => !value)}
+                title={sidebarCollapsed ? 'Mở danh sách chat' : 'Thu gọn danh sách chat'}
+              >
+                {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-icon"
+                onClick={() =>
+                  createThread({
+                    activate: true,
+                    initialMode: projectScopeEnabled ? activeThreadMode : CHAT_MODES.FREE,
+                  })
+                }
+                title="Tạo cuộc trò chuyện mới"
+              >
+                <Plus size={16} />
+              </button>
             </div>
           </div>
 
           {!sidebarCollapsed ? (
-          <div className="project-chat-sidebar__hint">
-            {projectScopeEnabled
-              ? 'Chat này dùng chung model và API key của dự án. Bạn có thể chuyển giữa AI của truyện và chế độ hỏi đáp tự do ngay trong từng cuộc trò chuyện.'
-              : 'Chat tự do dùng đúng model và API key mà hệ thống hiện đang dùng. Không bám theo truyện nào cả.'}
-          </div>
+            <div className="project-chat-sidebar__hint">
+              {projectScopeEnabled
+                ? 'Chat này dùng chung model và API key của dự án. Bạn có thể chuyển giữa AI của truyện và chế độ hỏi đáp tự do ngay trong từng cuộc trò chuyện.'
+                : 'Chat tự do dùng đúng model và API key mà hệ thống hiện đang dùng. Không bám theo truyện nào cả.'}
+            </div>
           ) : null}
 
           <div className="project-chat-thread-list">
@@ -1052,14 +1086,33 @@ export default function ProjectChat() {
 
         <section className="project-chat-main card">
           <div className="project-chat-topbar">
-            <div>
+            <div className="project-chat-topbar__compact">
+              <div className="project-chat-topbar__meta">
               <div className="project-chat-topbar__kicker">
                 {projectScopeEnabled ? 'Không gian chat của truyện' : 'Không gian chat toàn cục'}
               </div>
-              <h2>{activeThread?.title || CHAT_THREAD_TITLE_FALLBACK}</h2>
+              </div>
+              <div className="project-chat-topbar__header-actions">
+                <button
+                  type="button"
+                  className={`btn btn-secondary project-chat-settings-toggle ${showSystemPromptDrawer ? 'is-open' : ''}`}
+                  onClick={() => setShowSystemPromptDrawer((prev) => !prev)}
+                >
+                  <Settings2 size={16} />
+                  System prompt
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setShowTopbarControls((prev) => !prev)}
+                >
+                  {showTopbarControls ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  {showTopbarControls ? 'Thu gon' : 'Mo tuy chon'}
+                </button>
+              </div>
             </div>
 
-            <div className="project-chat-topbar__controls">
+            <div className={`project-chat-topbar__controls ${showTopbarControls ? 'is-open' : ''}`}>
               <div className="project-chat-topbar__control project-chat-topbar__control--mode">
                 <span className="project-chat-topbar__label">Chế độ chat</span>
                 <div className="project-chat-mode-switch">
@@ -1090,6 +1143,16 @@ export default function ProjectChat() {
                     </button>
                   )}
                 </div>
+                {projectScopeEnabled ? (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm project-chat-topbar__carry-button"
+                    onClick={() => handleChangeMode(alternateChatMode, { preserveHistory: true })}
+                    disabled={isStreaming}
+                  >
+                    Giữ lịch sử rồi chuyển sang {getChatModeLabel(alternateChatMode)}
+                  </button>
+                ) : null}
               </div>
 
               <div className="project-chat-topbar__control">
@@ -1124,14 +1187,6 @@ export default function ProjectChat() {
                 </select>
               </div>
 
-              <button
-                type="button"
-                className={`btn btn-secondary project-chat-settings-toggle ${showSystemPromptDrawer ? 'is-open' : ''}`}
-                onClick={() => setShowSystemPromptDrawer((prev) => !prev)}
-              >
-                <Settings2 size={16} />
-                System prompt
-              </button>
             </div>
           </div>
 
@@ -1296,9 +1351,28 @@ export default function ProjectChat() {
                 disabled={isStreaming}
               >
                 <CheckCircle2 size={16} />
-                Khôi phục prompt mặc định
+                Nạp prompt gốc mới nhất
               </button>
             </div>
+
+            <details className="project-chat-drawer__source">
+              <summary>Prompt gốc hiện tại</summary>
+              <p>
+                Đây là prompt gốc lấy trực tiếp từ code hiện tại. Nếu thread này đang dùng prompt cũ
+                hoặc prompt riêng, bấm "Nạp prompt gốc mới nhất" để áp dụng lại.
+              </p>
+              {hasThreadPromptOverride ? (
+                <div className="project-chat-drawer__override-note">
+                  Cuộc trò chuyện này đang dùng prompt riêng, nên nội dung đang chạy có thể khác với
+                  prompt gốc.
+                </div>
+              ) : null}
+              <textarea
+                className="textarea project-chat-drawer__source-textarea"
+                value={defaultSystemPrompt}
+                readOnly
+              />
+            </details>
 
             <textarea
               className="textarea project-chat-drawer__textarea"
