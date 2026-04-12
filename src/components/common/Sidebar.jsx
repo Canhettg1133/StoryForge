@@ -91,6 +91,17 @@ export default function Sidebar() {
   }, []);
 
   const activeProjectId = currentProject?.id || projectId;
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.divider) return true;
+    if (item.id === 'global-chat') return !activeProjectId;
+    if (item.id === 'project-chat') return !!activeProjectId;
+    return true;
+  }).filter((item, index, items) => {
+    if (!item.divider) return true;
+    const prev = items[index - 1];
+    const next = items[index + 1];
+    return !!prev && !!next && !prev.divider && !next.divider;
+  });
   const isEditorRoute = location.pathname.includes('/editor');
   const isAutoCollapsed = isEditorRoute || isNarrowViewport;
   const isCollapsed = isAutoCollapsed || sidebarCollapsed;
@@ -146,7 +157,7 @@ export default function Sidebar() {
       )}
 
       <nav className="sidebar-nav">
-        {NAV_ITEMS.map((item, index) => {
+        {visibleNavItems.map((item, index) => {
           if (item.divider) {
             return <div key={`div-${index}`} className="sidebar-divider" />;
           }

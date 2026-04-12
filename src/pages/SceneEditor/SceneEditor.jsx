@@ -60,7 +60,6 @@ export default function SceneEditor() {
   const [mobileAITab, setMobileAITab] = useState('ai');
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [mobileInputFocused, setMobileInputFocused] = useState(false);
-
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
@@ -132,6 +131,15 @@ export default function SceneEditor() {
 
   const toolbarMode = keyboardOpen || mobileInputFocused ? 'compact' : 'default';
   const activeProjectId = currentProject?.id || null;
+  const visibleMobileNavItems = useMemo(
+    () =>
+      VISIBLE_MOBILE_NAV_ITEMS.filter((item) => {
+        if (item.id === 'global-chat') return !activeProjectId;
+        if (item.id === 'project-chat') return !!activeProjectId;
+        return true;
+      }),
+    [activeProjectId],
+  );
 
   const openMobilePanel = (panel) => {
     setMobilePanel(panel);
@@ -198,7 +206,7 @@ export default function SceneEditor() {
               </div>
             )}
             <div className="scene-editor-mobile-nav-list">
-              {VISIBLE_MOBILE_NAV_ITEMS.map((item) => {
+                {visibleMobileNavItems.map((item) => {
                 const Icon = item.icon;
                 const targetPath = item.getPath(activeProjectId);
                 const isActive = location.pathname === targetPath || (targetPath !== '/' && targetPath !== '/settings' && location.pathname.startsWith(targetPath));
