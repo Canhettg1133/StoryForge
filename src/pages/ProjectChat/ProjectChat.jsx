@@ -320,6 +320,13 @@ export default function ProjectChat() {
   }, [draft, editingMessageId]);
 
   useEffect(() => {
+    if (!composerTextareaRef.current) return;
+    if (composerTextareaRef.current.value !== draft) {
+      composerTextareaRef.current.value = draft;
+    }
+  }, [draft]);
+
+  useEffect(() => {
     if (projectScopeEnabled && (!currentProject || currentProject.id !== scopedProjectId)) return;
     let cancelled = false;
 
@@ -1272,8 +1279,10 @@ export default function ProjectChat() {
                   composerTextareaRef.current = node;
                 }}
                 className="textarea"
-                value={draft}
                 onChange={(event) => setDraft(event.target.value)}
+                spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
                 onCompositionStart={() => {
                   isComposingRef.current = true;
                 }}
