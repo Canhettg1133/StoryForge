@@ -18,6 +18,7 @@ import {
   resetStoryCreationSettings,
   resetStoryCreationGroup,
 } from '../../services/ai/storyCreationSettings';
+import { GLOBAL_PROMPT_META } from '../../services/ai/promptManagerMeta';
 
 function VariableChips({ variables }) {
   return (
@@ -74,9 +75,9 @@ export default function StoryCreationSettings() {
   return (
     <div className="settings-page">
       <header className="settings-header animate-fade-in">
-        <h1 className="settings-title">Cài đặt khi tạo truyện</h1>
+        <h1 className="settings-title">Quản lý Prompt</h1>
         <p className="settings-subtitle">
-          Chỉnh các prompt dùng cho AI Wizard, tạo outline ban đầu và gợi ý tuyến truyện.
+          Đây là khu vực quản lý <strong>Global Prompts</strong> — các prompt dùng chung cho toàn bộ app, không gắn với riêng một truyện nào.
         </p>
       </header>
 
@@ -85,10 +86,10 @@ export default function StoryCreationSettings() {
           <div className="settings-section-header">
             <Sparkles size={20} />
             <div>
-              <h2>Khi nào nên sửa gì?</h2>
+              <h2>Phân biệt Global Prompt và Prompt truyện</h2>
               <p>
-                Nếu muốn AI nghe lời hơn, ưu tiên sửa <strong>System prompt</strong>. Nếu chỉ muốn thêm ngữ cảnh đầu vào
-                hoặc đổi cách ra lệnh cho từng lần tạo, sửa <strong>Prompt thường</strong>.
+                Trang này chỉ dành cho các prompt tổng của dự án như khởi tạo truyện, dựng outline ban đầu và gợi ý tuyến truyện.
+                Các prompt gắn với một truyện cụ thể sẽ nằm ở trang <strong>Prompt truyện</strong> trong từng project.
               </p>
             </div>
           </div>
@@ -98,21 +99,21 @@ export default function StoryCreationSettings() {
               <Shield size={16} />
               <div>
                 <strong>System prompt</strong>
-                <p>Dùng để khóa vai trò, luật cứng, format JSON, tiêu chí phân loại và mức độ tuân thủ.</p>
+                <p>Dùng để khóa vai trò của AI, luật cứng, format JSON, tiêu chí phân loại và cách AI phải tuân thủ trong từng tính năng.</p>
               </div>
             </div>
             <div className="story-creation-guide">
               <MessageSquare size={16} />
               <div>
-                <strong>Prompt thường</strong>
-                <p>Dùng để thay đổi thông tin đầu vào như thể loại, idea, synopsis, hướng phát triển hay câu lệnh cụ thể.</p>
+                <strong>Prompt đầu vào</strong>
+                <p>Dùng để thay đổi dữ liệu truyền vào cho từng lần gọi AI như thể loại, idea, synopsis, hướng phát triển hoặc câu lệnh cụ thể.</p>
               </div>
             </div>
             <div className="story-creation-guide story-creation-guide--note">
               <Info size={16} />
               <div>
-                <strong>Lưu ý</strong>
-                <p>Phần tạo truyện giờ đã có system prompt riêng và có thể chỉnh ở đây. Muốn ép AI mạnh hơn thì sửa system prompt trước.</p>
+                <strong>Lưu ý sử dụng</strong>
+                <p>Muốn AI nghe lời hơn, sửa <strong>System prompt</strong> trước. Muốn đổi dữ liệu vào hoặc cách yêu cầu, sửa phần <strong>Prompt đầu vào</strong>.</p>
               </div>
             </div>
           </div>
@@ -141,8 +142,27 @@ export default function StoryCreationSettings() {
             <div className="settings-section-header">
               <Sparkles size={20} />
               <div>
-                <h2>{group.label}</h2>
-                <p>{group.description}</p>
+                <h2>{GLOBAL_PROMPT_META[group.key]?.title || group.label}</h2>
+                <p>{GLOBAL_PROMPT_META[group.key]?.summary || group.description}</p>
+              </div>
+            </div>
+
+            <div className="story-creation-info-grid">
+              <div className="story-creation-info-box">
+                <strong>Mục tiêu sử dụng</strong>
+                <p>{GLOBAL_PROMPT_META[group.key]?.purpose}</p>
+              </div>
+              <div className="story-creation-info-box">
+                <strong>Khi nào nên sửa</strong>
+                <p>{GLOBAL_PROMPT_META[group.key]?.whenToEdit}</p>
+              </div>
+              <div className="story-creation-info-box">
+                <strong>Đầu vào thường gặp</strong>
+                <p>{GLOBAL_PROMPT_META[group.key]?.commonInputs}</p>
+              </div>
+              <div className="story-creation-info-box">
+                <strong>Ảnh hưởng đến đâu</strong>
+                <p>{GLOBAL_PROMPT_META[group.key]?.impactArea}</p>
               </div>
             </div>
 
@@ -158,7 +178,11 @@ export default function StoryCreationSettings() {
 
             <div className="form-group">
               <label className="form-label">System prompt</label>
-              <div className="story-creation-field-help">{group.systemHelp}</div>
+              <div className="story-creation-field-help">
+                {group.systemHelp}
+                <br />
+                <strong>Dùng để làm gì:</strong> khóa vai trò và luật nền của AI cho nhóm tác vụ này.
+              </div>
               <textarea
                 className="textarea story-creation-textarea"
                 rows={16}
@@ -174,8 +198,12 @@ export default function StoryCreationSettings() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Prompt thường</label>
-              <div className="story-creation-field-help">{group.userHelp}</div>
+              <label className="form-label">Prompt đầu vào</label>
+              <div className="story-creation-field-help">
+                {group.userHelp}
+                <br />
+                <strong>Dùng để làm gì:</strong> điều chỉnh dữ liệu và câu lệnh được bơm vào từng lần gọi AI.
+              </div>
               <textarea
                 className="textarea story-creation-textarea"
                 rows={10}

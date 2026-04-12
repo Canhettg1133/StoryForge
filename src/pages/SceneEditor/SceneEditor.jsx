@@ -28,17 +28,18 @@ const MOBILE_EDITOR_QUERY = '(max-width: 820px)';
 const MOBILE_KEYBOARD_OFFSET = 140;
 const MOBILE_NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, needsProject: false, getPath: () => '/' },
-  { id: 'story-bible', label: 'Story Bible', icon: BookOpen, needsProject: true, getPath: (projectId) => `/project/${projectId}/story-bible` },
+  { id: 'story-bible', label: 'Sổ tay truyện', icon: BookOpen, needsProject: true, getPath: (projectId) => `/project/${projectId}/story-bible` },
   { id: 'outline', label: 'Outline Board', icon: Map, needsProject: true, getPath: (projectId) => `/project/${projectId}/outline` },
   { id: 'characters', label: 'Nhân vật', icon: Users, needsProject: true, getPath: (projectId) => `/project/${projectId}/characters` },
   { id: 'world', label: 'Thế giới', icon: Globe, needsProject: true, getPath: (projectId) => `/project/${projectId}/world` },
   { id: 'editor', label: 'Viết truyện', icon: PenTool, needsProject: true, getPath: (projectId) => `/project/${projectId}/editor`, primary: true },
+  { id: 'project-prompts', label: 'Prompt truyện', icon: Sparkles, needsProject: true, getPath: (projectId) => `/project/${projectId}/prompts` },
   { id: 'lab', label: 'Narrative Lab', icon: FlaskConical, needsProject: true, getPath: (projectId) => `/project/${projectId}/lab` },
   { id: 'corpus-lab', label: 'Corpus Lab', icon: FlaskConical, needsProject: true, getPath: (projectId) => `/project/${projectId}/corpus-lab` },
   { id: 'timeline', label: 'Timeline', icon: Clock, needsProject: true, getPath: (projectId) => `/project/${projectId}/timeline`, comingSoon: true },
   { id: 'revision', label: 'Revision & QA', icon: FileSearch, needsProject: true, getPath: (projectId) => `/project/${projectId}/revision`, comingSoon: true },
   { id: 'style-lab', label: 'Style Lab', icon: Palette, needsProject: true, getPath: (projectId) => `/project/${projectId}/style-lab`, comingSoon: true },
-  { id: 'story-creation-settings', label: 'Cài đặt khi tạo truyện', icon: Sparkles, needsProject: false, getPath: () => '/story-creation-settings' },
+  { id: 'prompt-manager', label: 'Quản lý Prompt', icon: Sparkles, needsProject: false, getPath: () => '/prompt-manager' },
   { id: 'settings', label: 'Cài đặt', icon: Settings, needsProject: false, getPath: () => '/settings' },
 ];
 const VISIBLE_MOBILE_NAV_ITEMS = MOBILE_NAV_ITEMS.filter((item) => shouldShowNavItem(item));

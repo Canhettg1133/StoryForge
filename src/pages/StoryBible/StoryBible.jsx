@@ -711,9 +711,43 @@ export default function StoryBible() {
             {/* Guidelines */}
             <div className="form-group">
               <label className="form-label">Chỉ dẫn cho AI {guidelinesSaved && <span className="save-indicator">Đã lưu</span>}</label>
-              <textarea className="textarea" value={aiGuidelines} onChange={(e) => setAiGuidelines(e.target.value)} rows={4}
+              <textarea
+                className="textarea"
+                value={aiGuidelines}
+                onChange={(e) => setAiGuidelines(e.target.value)}
+                rows={4}
                 placeholder="Nhập chỉ dẫn riêng cho AI khi viết truyện này..."
               />
+            </div>
+
+            <div className="form-group" style={{ marginTop: '16px' }}>
+              <label className="form-label">Prompt truyện</label>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  padding: '14px 16px',
+                  borderRadius: '12px',
+                  background: 'var(--color-surface-2)',
+                  border: '1px solid var(--color-border)',
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: '4px' }}>Prompt đã được chuyển sang trang riêng</div>
+                  <div className="form-hint" style={{ margin: 0 }}>
+                    Vào trang Prompt truyện để chỉnh prompt viết truyện, canon, ghi nhớ và DNA của riêng dự án này.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => navigate(`/project/${currentProject.id}/prompts`)}
+                >
+                  <Sparkles size={14} /> Mở Prompt truyện
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -980,8 +1014,8 @@ export default function StoryBible() {
         )}
       </div>
 
-      {/* ═══ SECTION: Cấu hình prompt AI ═══ */}
-      <div className="bible-section">
+      {/* ═══ SECTION: Cấu hình prompt AI (đã chuyển sang Prompt truyện) ═══ */}
+      <div className="bible-section" style={{ display: 'none' }}>
         <SectionHeader icon={Terminal} title="Cấu hình prompt AI" sectionKey="prompts" />
         {openSections.prompts && (
           <div className="bible-edit-card">

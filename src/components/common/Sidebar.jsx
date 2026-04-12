@@ -28,13 +28,14 @@ import './Sidebar.css';
 
 const RAW_NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard', surface: 'core' },
-  { path: '/story-bible', icon: BookOpen, label: 'So tay truyen', id: 'story-bible', needsProject: true, surface: 'core' },
-  { path: '/su-that', icon: BookKey, label: 'Su that', id: 'su-that', needsProject: true, surface: 'core' },
+  { path: '/story-bible', icon: BookOpen, label: 'Sổ tay truyện', id: 'story-bible', needsProject: true, surface: 'core' },
+  { path: '/su-that', icon: BookKey, label: 'Sự thật', id: 'su-that', needsProject: true, surface: 'core' },
   { path: '/outline', icon: Map, label: 'Outline Board', id: 'outline', needsProject: true, surface: 'core' },
-  { path: '/characters', icon: Users, label: 'Nhan vat', id: 'characters', needsProject: true, surface: 'core' },
-  { path: '/world', icon: Globe, label: 'The gioi', id: 'world', needsProject: true, surface: 'core' },
+  { path: '/characters', icon: Users, label: 'Nhân vật', id: 'characters', needsProject: true, surface: 'core' },
+  { path: '/world', icon: Globe, label: 'Thế giới', id: 'world', needsProject: true, surface: 'core' },
   { divider: true },
-  { path: '/editor', icon: PenTool, label: 'Viet truyen', id: 'editor', needsProject: true, primary: true, surface: 'core' },
+  { path: '/editor', icon: PenTool, label: 'Viết truyện', id: 'editor', needsProject: true, primary: true, surface: 'core' },
+  { path: '/prompts', icon: Sparkles, label: 'Prompt truyện', id: 'project-prompts', needsProject: true, surface: 'core' },
   { divider: true },
   { path: '/lab', icon: FlaskConical, label: 'Narrative Lab', id: 'lab', needsProject: true, surface: 'lab' },
   { path: '/corpus-lab', icon: FlaskConical, label: 'Corpus Lab', id: 'corpus-lab', needsProject: true, surface: 'lab' },
@@ -43,8 +44,8 @@ const RAW_NAV_ITEMS = [
   { path: '/revision', icon: FileSearch, label: 'Revision & QA', id: 'revision', needsProject: true, comingSoon: true, surface: 'roadmap' },
   { path: '/style-lab', icon: Palette, label: 'Style Lab', id: 'style-lab', needsProject: true, comingSoon: true, surface: 'roadmap' },
   { divider: true },
-  { path: '/story-creation-settings', icon: Sparkles, label: 'Cai dat khi tao truyen', id: 'story-creation-settings', surface: 'core' },
-  { path: '/settings', icon: Settings, label: 'Cai dat', id: 'settings', surface: 'core' },
+  { path: '/prompt-manager', icon: Sparkles, label: 'Quản lý Prompt', id: 'prompt-manager', surface: 'core' },
+  { path: '/settings', icon: Settings, label: 'Cài đặt', id: 'settings', surface: 'core' },
 ];
 
 const NAV_ITEMS = RAW_NAV_ITEMS.filter((item, index, items) => {
@@ -109,7 +110,7 @@ export default function Sidebar() {
         <span className="sidebar-logo-icon" aria-hidden="true">SF</span>
         {!isCollapsed && <span className="sidebar-logo-text">StoryForge</span>}
         {!isAutoCollapsed && (
-          <button className="btn btn-ghost btn-icon btn-sm sidebar-toggle" onClick={toggleSidebar} title={isCollapsed ? 'Mo menu' : 'Thu gon menu'}>
+          <button className="btn btn-ghost btn-icon btn-sm sidebar-toggle" onClick={toggleSidebar} title={isCollapsed ? 'Mở menu' : 'Thu gọn menu'}>
             {isCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
           </button>
         )}
@@ -158,11 +159,11 @@ export default function Sidebar() {
               key={item.id}
               className={`sidebar-item ${isActive ? 'sidebar-item--active' : ''} ${isDisabled ? 'sidebar-item--disabled' : ''} ${item.primary ? 'sidebar-item--primary' : ''} ${isComingSoon ? 'sidebar-item--coming-soon' : ''}`}
               onClick={() => handleNav(item)}
-              title={isCollapsed ? (item.comingSoon ? `${item.label} (Soon)` : item.label) : undefined}
+              title={isCollapsed ? (item.comingSoon ? `${item.label} (Sắp có)` : item.label) : undefined}
             >
               <Icon size={18} />
               {!isCollapsed && <span>{item.label}</span>}
-              {!isCollapsed && item.comingSoon && <span className="sidebar-soon-badge">Soon</span>}
+              {!isCollapsed && item.comingSoon && <span className="sidebar-soon-badge">Sắp có</span>}
               {isActive && <div className="sidebar-item-indicator" />}
             </button>
           );
@@ -170,7 +171,7 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-footer">
-        <button className="btn btn-ghost btn-icon btn-sm" onClick={toggleTheme} title={theme === 'dark' ? 'Light mode' : 'Dark mode'}>
+        <button className="btn btn-ghost btn-icon btn-sm" onClick={toggleTheme} title={theme === 'dark' ? 'Chuyển sang sáng' : 'Chuyển sang tối'}>
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
       </div>
