@@ -259,11 +259,23 @@ function isWritingIntent(userPrompt) {
 // =============================================
 // Layer 2: Task Instructions
 // =============================================
+const PLANNING_AND_CANON_TASK_PREFIX = [
+  'Ban la tro ly AI chuyen xu ly planning, canon va kiem tra logic cho StoryForge.',
+  'Tra loi truc tiep, day du, chi tiet va bam dung nhiem vu duoc giao.',
+  'Khong them loi mo dau, khong vong vo, khong them canh bao hay giai thich du thua neu khong duoc yeu cau.',
+  'Uu tien toi da: dung nhiem vu, dung dinh dang dau ra, dung canon va co the dung lai ket qua trong he thong.',
+  'Neu du lieu chua du, hay tra loi than trong va chi neu gia dinh khi thuc su can.',
+].join('\n');
+
+function withPlanningAndCanonPrefix(instruction) {
+  return [PLANNING_AND_CANON_TASK_PREFIX, instruction].join('\n\n');
+}
+
 export const TASK_INSTRUCTIONS = {
   [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Hay mieu ta that chi tiet tung hanh dong, tam ly, canh vat, doi thoai. Viet DAI va CHI TIET, muc tieu 2000-4000 tu de dong gop vao muc tieu chuong truyen 7000 tu. KHONG viet ngan, KHONG luoc bo, KHONG tom tat. KHONG duoc nhay thoi gian (time skip) — moi su kien phai dien ra LIEN TUC tu vi tri cuoi cung, cam viet kieu "Ba ngay sau...", "Mot thoi gian troi qua...", "Khong lau sau...". Neu can chuyen canh, hay ket thuc canh hien tai bang cliffhanger roi mo canh moi tu nhien.',
   [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung GIU NGUYEN noi dung, cot truyen va y nghia. Lam cho no tu nhien hon, giau cam xuc hon, nhip dieu tot hon. GIU do dai TUONG DUONG doan goc (cho phep dai hon 20-50% de them mieu ta cam xuc va chi tiet ngu giac). TUYET DOI KHONG tu y them su kien moi, nhan vat moi, dia danh moi, hay thay doi dien bien — chi nang cap cau van, nhip dieu, va chieu sau cam xuc.',
   [TASK_TYPES.EXPAND]: 'Mo rong doan van GAP 3-5 LAN do dai goc. Giu nguyen giong van va mach truyen. Them vao: mieu ta ngu giac (nhin/nghe/ngui/cham/vi), noi tam nhan vat, doi thoai tu nhien, va hanh dong cham (slow motion). KHONG duoc them su kien moi hay thay doi cot truyen — chi lam PHONG PHU nhung gi da co. Dao sau vao tam ly nhan vat (ho nghi gi, so gi, muon gi trong khoang khac do), boi canh (am thanh, mui, anh sang, nhiet do), va tung cu dong nho.',
-  [TASK_TYPES.BRAINSTORM]: [
+  [TASK_TYPES.BRAINSTORM]: withPlanningAndCanonPrefix([
     'Brainstorm 5 y tuong KHAC BIET cho tinh huong dang xet. Moi y tuong gom:',
     '1. Tom tat huong di (2-3 cau)',
     '2. Xung dot chinh se la gi — nhan vat doi mat voi thach thuc/mat mat gi',
@@ -273,8 +285,8 @@ export const TASK_INSTRUCTIONS = {
     '',
     'Sap xep tu AN TOAN nhat (theo logic truyen) den TAO BAO nhat (bat ngo nhung van hop ly).',
     'KHONG chon y tuong chung chung kieu "nhan vat manh len". Moi y tuong phai co XUNG DOT that su va HE QUA ro rang.',
-  ].join('\n'),
-  [TASK_TYPES.OUTLINE]: [
+  ].join('\n')),
+  [TASK_TYPES.OUTLINE]: withPlanningAndCanonPrefix([
     'Tao outline CHI TIET 5-8 diem chinh cho chuong/phan tiep theo. Moi diem bao gom:',
     '- Su kien/hanh dong CU THE (khong chung chung kieu "nhan vat chien dau" — ma phai la "nhan vat bi don vao the ket, phai chon giua mat mang hoac phan boi...")',
     '- Cam xuc nhan vat chuyen bien nhu the nao qua su kien do',
@@ -284,12 +296,12 @@ export const TASK_INSTRUCTIONS = {
     '- HOOK: diem cuon hut o dau — doc gia doc dong dau tien phai muon doc tiep',
     '- ESCALATION: tang dan cang thang va do phuc tap qua tung diem',
     '- CLIFFHANGER: ket mo bang cau hoi/tinh huong khien doc gia khong the ngu duoc',
-  ].join('\n'),
-  [TASK_TYPES.PLOT_SUGGEST]: 'Goi y 3 huong plot co the xay ra tiep theo. Moi huong gom: tom tat, xung dot, va dieu gi se thay doi.',
+  ].join('\n')),
+  [TASK_TYPES.PLOT_SUGGEST]: withPlanningAndCanonPrefix('Goi y 3 huong plot co the xay ra tiep theo. Moi huong gom: tom tat, xung dot, va dieu gi se thay doi.'),
   [TASK_TYPES.SUMMARIZE]: 'Tom tat noi dung trong khoang 150-200 tu, giu cac su kien chinh, thay doi quan trong, va trang thai nhan vat.',
   [TASK_TYPES.EXTRACT_TERMS]: 'Trich xuat: 1) Ten nhan vat (va vai tro), 2) Dia danh, 3) Vat pham quan trong, 4) Thuat ngu the gioi truyen. Tra ve dang danh sach.',
   [TASK_TYPES.SCENE_DRAFT]: 'Viet ban nhap canh nay, mo ta sau vao tung cu chi tam ly. Viet khoang 2000-4000 tu/lan sinh de dong gop vao muc tieu chuong truyen tong cong 7000 tu. CANG DAI CANG TOT.',
-  [TASK_TYPES.CHECK_CONFLICT]: [
+  [TASK_TYPES.CHECK_CONFLICT]: withPlanningAndCanonPrefix([
     'Phan tich noi dung chuong/canh de tim ra Mau Thuan (Conflict) so voi Su That Canon, Trang Thai Nhan Vat, va Thong Tin The Gioi.',
     'Chi chi ra nhung mau thuan ro rang voi cac thong tin duoc cung cap, KHONG bat be nhung tieu tiet khong quan trong.',
     '',
@@ -307,8 +319,8 @@ export const TASK_INSTRUCTIONS = {
     '',
     'Neu khong phat hien mau thuan nao, tra ve: {"conflicts": []}',
     'Chi tra ve JSON, KHONG tra ve bat ky ki tu la nao khac, KHONG dung markdown code blocks.',
-  ].join('\n'),
-  [TASK_TYPES.CONTINUITY_CHECK]: [
+  ].join('\n')),
+  [TASK_TYPES.CONTINUITY_CHECK]: withPlanningAndCanonPrefix([
     'Kiem tra tinh nhat quan cua noi dung voi canon, logic nhan vat, trinh tu su kien va rang buoc the gioi.',
     'Tra ve CHINH XAC JSON format sau:',
     '{',
@@ -322,10 +334,10 @@ export const TASK_INSTRUCTIONS = {
     '  ]',
     '}',
     'Neu khong co van de, tra ve {"issues":[]}. Chi tra ve JSON.',
-  ].join('\n'),
+  ].join('\n')),
   [TASK_TYPES.FREE_PROMPT]: 'Thuc hien yeu cau cua tac gia. Neu duoc yeu cau viet noi dung truyen, hay viet CUC KY CHI TIET: mieu ta hanh dong, tam ly, doi thoai, canh vat. Muc tieu toi thieu 5000-7000 tu cho ca chuong. Moi phan tra ve phai dai it nhat 3000-4000 tu.',
   [TASK_TYPES.CHAPTER_SUMMARY]: 'Tom tat chuong nay trong khoang 150-200 tu. Bao gom: su kien chinh, thay doi quan trong, nhan vat xuat hien, va trang thai ket thuc. Chi tra ve tom tat, khong them tieu de hay ghi chu.',
-  [TASK_TYPES.FEEDBACK_EXTRACT]: [
+  [TASK_TYPES.FEEDBACK_EXTRACT]: withPlanningAndCanonPrefix([
     'Phan tich doan van va trich xuat thong tin moi duoi dang JSON. Tra ve CHINH XAC format nay:',
     '{',
     '  "characters": [{"name": "...", "role": "...", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem"}],',
@@ -334,7 +346,7 @@ export const TASK_INSTRUCTIONS = {
     '  "objects": [{"name": "...", "description": "...", "owner": "..."}]',
     '}',
     'Chi liet ke thong tin MOI xuat hien. Neu khong co gi moi, tra ve mang rong. Chi tra ve JSON, khong them gi khac.',
-  ].join('\n'),
+  ].join('\n')),
   [TASK_TYPES.STYLE_ANALYZE]: [
     'Phan tich van phong cua doan van duoc cung cap.',
     'Tra ve CHINH XAC JSON format sau:',
@@ -388,7 +400,7 @@ export const TASK_INSTRUCTIONS = {
   ].join('\n'),
 
   // Phase A — Suggestion Inbox
-  [TASK_TYPES.SUGGEST_UPDATES]: [
+  [TASK_TYPES.SUGGEST_UPDATES]: withPlanningAndCanonPrefix([
     'Phan tich noi dung chuong va so sanh voi trang thai hien tai cua cac nhan vat + su that canon hien co.',
     'De xuat nhung THAY DOI MOI xay ra trong chuong nay. Chi de xuat khi co bang chung ro rang trong van ban.',
     '',
@@ -418,9 +430,9 @@ export const TASK_INSTRUCTIONS = {
     '- Moi de xuat phai co reasoning cu the.',
     '- Neu khong co gi moi, tra ve mang rong.',
     '- Chi tra ve JSON, KHONG them gi khac.',
-  ].join('\n'),
+  ].join('\n')),
 
-  [TASK_TYPES.CANON_EXTRACT_OPS]: [
+  [TASK_TYPES.CANON_EXTRACT_OPS]: withPlanningAndCanonPrefix([
     'Phan tich noi dung chuong va trich xuat CAC THAY DOI CANON co bang chung ro rang duoi dang JSON typed operations.',
     'Chi trich xuat khi su kien thuc su xay ra trong van ban. KHONG doan, KHONG suy dien xa.',
     'Neu khong map chac chan duoc vao nhan vat, dia diem, tuyen truyen hoac bi mat da co san, THI BO QUA op do.',
@@ -477,15 +489,15 @@ export const TASK_INSTRUCTIONS = {
     '- Op quan he/than mat phai map duoc ca subject_name va target_name.',
     '- KHONG tao op neu bang chung yeu.',
     '- KHONG tra ve bat ky text nao ngoai JSON.',
-  ].join('\n'),
+  ].join('\n')),
 
-  [TASK_TYPES.CANON_REPAIR]: [
+  [TASK_TYPES.CANON_REPAIR]: withPlanningAndCanonPrefix([
     'Sua lai noi dung chuong de loai bo cac loi continuity duoc liet ke.',
     'GIU toi da noi dung goc, chi sua nhung cho can sua de pass validator.',
     'Khong them mo ta meta, khong liet ke buoc, chi tra ve ban van da sua.',
-  ].join('\n'),
+  ].join('\n')),
 
-  [TASK_TYPES.ARC_OUTLINE]: [
+  [TASK_TYPES.ARC_OUTLINE]: withPlanningAndCanonPrefix([
     'Tao dan y chi tiet cho mot dot chuong moi (Story Arc).',
     'Dua tren muc tieu cua Arc, tom tat chuong truoc, va cac tuyen truyen dang mo,',
     'tao ra danh sach cac chuong voi tieu de va tom tat ngan (2-3 cau).',
@@ -513,7 +525,7 @@ export const TASK_INSTRUCTIONS = {
     '  ]',
     '}',
     'Chi tra ve JSON, KHONG them gi khac.',
-  ].join('\n'),
+  ].join('\n')),
 
   [TASK_TYPES.ARC_CHAPTER_DRAFT]: [
     'Viet noi dung chi tiet cho DUNG 1 chuong dua tren dan y da cho.',
@@ -525,7 +537,7 @@ export const TASK_INSTRUCTIONS = {
     'Moi canh phai la he qua tiep noi tu chuong truoc va day tinh hinh sang trang thai moi.',
     'Chi tra ve noi dung chuong, KHONG them tieu de hay ghi chu.',
   ].join('\n'),
-  [TASK_TYPES.GENERATE_MACRO_MILESTONES]: [
+  [TASK_TYPES.GENERATE_MACRO_MILESTONES]: withPlanningAndCanonPrefix([
     'Hoach dinh 5-8 cot moc dai cuc cho toan bo truyen, moi cot moc la mot diem ngoat LON cua hanh trinh.',
     'Can phan bo hop ly theo tong do dai du kien, co leo thang, khung hoang, dao chieu va tra gia ro rang.',
     'Tra ve CHINH XAC JSON format sau:',
@@ -542,8 +554,8 @@ export const TASK_INSTRUCTIONS = {
     '  ]',
     '}',
     'Chi tra ve JSON.',
-  ].join('\n'),
-  [TASK_TYPES.AUDIT_ARC_ALIGNMENT]: [
+  ].join('\n')),
+  [TASK_TYPES.AUDIT_ARC_ALIGNMENT]: withPlanningAndCanonPrefix([
     'Kiem tra do lech giua nhung chuong gan day va dai cuc/arc hien tai.',
     'Chi ra do lech cu the, khong noi chung chung.',
     'Tra ve CHINH XAC JSON format sau:',
@@ -555,7 +567,7 @@ export const TASK_INSTRUCTIONS = {
     '  "current_position": "Tom ta vi tri hien tai cua truyen trong 1 cau"',
     '}',
     'Chi tra ve JSON.',
-  ].join('\n'),
+  ].join('\n')),
 };
 
 // =============================================
