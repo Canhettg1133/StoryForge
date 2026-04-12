@@ -1282,7 +1282,7 @@ export default function ProjectChat() {
                     : 'Hỏi gì cũng được ở chế độ tự do hỏi đáp...'
                 }
                 onKeyDown={(event) => {
-                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                  if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
                     handleComposerSubmit();
                   }
