@@ -46,6 +46,7 @@ const RAW_NAV_ITEMS = [
   { path: '/revision', icon: FileSearch, label: 'Revision & QA', id: 'revision', needsProject: true, comingSoon: true, surface: 'roadmap' },
   { path: '/style-lab', icon: Palette, label: 'Style Lab', id: 'style-lab', needsProject: true, comingSoon: true, surface: 'roadmap' },
   { divider: true },
+  { path: '/ai-chat', icon: MessageSquare, label: 'Chat tự do', id: 'global-chat', surface: 'core' },
   { path: '/prompt-manager', icon: Sparkles, label: 'Quản lý Prompt', id: 'prompt-manager', surface: 'core' },
   { path: '/settings', icon: Settings, label: 'Cài đặt', id: 'settings', surface: 'core' },
 ];

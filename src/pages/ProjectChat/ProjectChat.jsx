@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Bot,
   CheckCircle2,
-  ChevronDown,
   Copy,
   MessageSquare,
   Pencil,
@@ -11,8 +10,11 @@ import {
   Save,
   Send,
   Settings2,
+  Sparkles,
   Square,
   Trash2,
+  X,
+  Zap,
 } from 'lucide-react';
 import '../Settings/Settings.css';
 import './ProjectChat.css';
@@ -27,20 +29,15 @@ import modelRouter, {
 } from '../../services/ai/router';
 import db from '../../services/db/database';
 
+const GLOBAL_CHAT_PROJECT_ID = 0;
 const CHAT_THREAD_TITLE_FALLBACK = 'Cuộc trò chuyện mới';
+const CHAT_MODES = {
+  STORY: 'story',
+  FREE: 'free',
+};
 
-function sortThreadsDesc(threads) {
-  return [...threads].sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0));
-}
-
-function formatRelativeTime(timestamp) {
-  if (!timestamp) return 'Vừa xong';
-  const diff = Date.now() - Number(timestamp);
-  if (diff < 60_000) return 'Vừa xong';
-  if (diff < 3_600_000) return `${Math.round(diff / 60_000)} phút trước`;
-  if (diff < 86_400_000) return `${Math.round(diff / 3_600_000)} giờ trước`;
-  return `${Math.round(diff / 86_400_000)} ngày trước`;
-}
+const sortThreadsDesc = (threads) =>
+  [...threads].sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0));
 
 function trimThreadTitle(text) {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim();
@@ -48,30 +45,13 @@ function trimThreadTitle(text) {
   return normalized.length > 48 ? `${normalized.slice(0, 48).trim()}...` : normalized;
 }
 
-function buildDefaultSystemPrompt(project) {
-  const lines = [
-    `Bạn là trợ lý AI cho dự án truyện "${project?.title || 'Chưa đặt tên'}".`,
-    'Trả lời bằng tiếng Việt trừ khi người dùng yêu cầu ngôn ngữ khác.',
-    'Nếu người dùng đang hỏi về truyện, hãy ưu tiên nhất quán với bối cảnh, nhân vật và định hướng hiện có của dự án.',
-  ];
-
-  if (project?.genre_primary) {
-    lines.push(`Thể loại chính của dự án: ${project.genre_primary}.`);
-  }
-
-  if (project?.synopsis) {
-    lines.push(`[Tóm tắt dự án]\n${project.synopsis}`);
-  }
-
-  if (project?.ultimate_goal) {
-    lines.push(`[Đích đến dài hạn]\n${project.ultimate_goal}`);
-  }
-
-  if (project?.ai_guidelines) {
-    lines.push(`[Chỉ dẫn AI của dự án]\n${project.ai_guidelines}`);
-  }
-
-  return lines.join('\n\n');
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return 'Vừa xong';
+  const diff = Date.now() - Number(timestamp);
+  if (diff < 60000) return 'Vừa xong';
+  if (diff < 3600000) return `${Math.round(diff / 60000)} phút trước`;
+  if (diff < 86400000) return `${Math.round(diff / 3600000)} giờ trước`;
+  return `${Math.round(diff / 86400000)} ngày trước`;
 }
 
 function getProviderLabel(provider) {
@@ -84,6 +64,47 @@ function getQualityLabel(quality) {
   if (quality === QUALITY_MODES.FAST) return 'Nhanh';
   if (quality === QUALITY_MODES.BEST) return 'Tốt nhất';
   return 'Cân bằng';
+}
+
+function getChatModeLabel(mode) {
+  return mode === CHAT_MODES.STORY ? 'AI của truyện' : 'Tự do hỏi đáp';
+}
+
+function buildFreeSystemPrompt() {
+  return [
+    'Bạn là trợ lý AI đa năng của StoryForge.',
+    'Trả lời trực tiếp, rõ ràng, hữu ích và bằng tiếng Việt trừ khi người dùng yêu cầu ngôn ngữ khác.',
+    'Ở chế độ này, bạn không cần bám theo canon hay dữ liệu của bất kỳ truyện nào nếu người dùng không yêu cầu.',
+  ].join('\n\n');
+}
+
+function buildStorySystemPrompt(project) {
+  const lines = [
+    `Bạn là trợ lý AI cho dự án truyện "${project?.title || 'Chưa đặt tên'}".`,
+    'Trả lời bằng tiếng Việt trừ khi người dùng yêu cầu ngôn ngữ khác.',
+    'Nếu người dùng hỏi về truyện, hãy ưu tiên tối đa sự nhất quán với thế giới truyện, nhân vật, định hướng cốt truyện và các chỉ dẫn hiện có của dự án.',
+    'Khi dữ liệu chưa đủ, hãy nói rõ giả định ngắn gọn thay vì bịa thêm canon mới.',
+  ];
+
+  if (project?.genre_primary) lines.push(`Thể loại chính: ${project.genre_primary}.`);
+  if (project?.synopsis) lines.push(`[Tóm tắt dự án]\n${project.synopsis}`);
+  if (project?.ultimate_goal) lines.push(`[Đích đến dài hạn]\n${project.ultimate_goal}`);
+  if (project?.ai_guidelines) lines.push(`[Chỉ dẫn AI của dự án]\n${project.ai_guidelines}`);
+
+  return lines.join('\n\n');
+}
+
+function buildDefaultSystemPrompt(mode, project) {
+  return mode === CHAT_MODES.STORY ? buildStorySystemPrompt(project) : buildFreeSystemPrompt();
+}
+
+function getRoutePreview(provider, selectedModel) {
+  return modelRouter.route(
+    TASK_TYPES.FREE_PROMPT,
+    selectedModel
+      ? { providerOverride: provider, modelOverride: selectedModel }
+      : { providerOverride: provider },
+  );
 }
 
 function getAvailableModelOptions(provider) {
@@ -110,42 +131,69 @@ function getAvailableModelOptions(provider) {
   }));
 }
 
-function getRoutePreview(provider, selectedModel) {
-  return modelRouter.route(
-    TASK_TYPES.FREE_PROMPT,
-    selectedModel
-      ? { providerOverride: provider, modelOverride: selectedModel }
-      : { providerOverride: provider },
-  );
+function normalizeThread(thread, projectScopeEnabled, project) {
+  const chatMode = thread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
+  return {
+    ...thread,
+    chat_mode: chatMode,
+    system_prompt:
+      String(thread?.system_prompt || '').trim() || buildDefaultSystemPrompt(chatMode, project),
+    model_override: thread?.model_override || '',
+  };
 }
 
 function MessageBubble({ message, onCopy }) {
-  const isUser = message.role === 'user';
-  const isAssistant = message.role === 'assistant';
+  const roleClass =
+    message.role === 'user'
+      ? 'is-user'
+      : message.role === 'assistant'
+        ? 'is-assistant'
+        : 'is-system';
 
   return (
-    <article className={`project-chat-message ${isUser ? 'is-user' : ''} ${isAssistant ? 'is-assistant' : ''} ${message.is_partial ? 'is-partial' : ''}`}>
+    <article
+      className={[
+        'project-chat-message',
+        roleClass,
+        message.is_partial ? 'is-partial' : '',
+        message.is_streaming ? 'is-streaming' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <div className="project-chat-message__meta">
         <div className="project-chat-message__author">
-          {isUser ? 'Bạn' : isAssistant ? 'AI' : 'Hệ thống'}
+          {message.role === 'user' ? 'Bạn' : message.role === 'assistant' ? 'AI' : 'Hệ thống'}
         </div>
         <div className="project-chat-message__tools">
-          {message.model && (
+          {message.model ? (
             <span className="project-chat-message__chip">
               {message.provider === PROVIDERS.OLLAMA ? 'Local' : 'Cloud'} · {message.model}
             </span>
-          )}
-          {message.elapsed_ms ? (
-            <span className="project-chat-message__chip">{(message.elapsed_ms / 1000).toFixed(1)}s</span>
           ) : null}
-          <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => onCopy(message.content)} title="Sao chép nội dung">
+          {message.is_streaming ? (
+            <span className="project-chat-message__chip project-chat-message__chip--live">
+              <Zap size={12} />
+              Đang trả lời
+            </span>
+          ) : null}
+          {message.elapsed_ms ? (
+            <span className="project-chat-message__chip">
+              {(message.elapsed_ms / 1000).toFixed(1)}s
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="btn btn-ghost btn-icon btn-sm"
+            onClick={() => onCopy(message.content)}
+            title="Sao chép nội dung"
+          >
             <Copy size={14} />
           </button>
         </div>
       </div>
-
       <div className="project-chat-message__content">
-        {message.content}
+        {message.content || (message.is_streaming ? '...' : '')}
       </div>
     </article>
   );
@@ -155,6 +203,8 @@ export default function ProjectChat() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const { currentProject, loadProject } = useProjectStore();
+  const projectScopeEnabled = Boolean(projectId);
+  const scopedProjectId = projectScopeEnabled ? Number(projectId) : GLOBAL_CHAT_PROJECT_ID;
 
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
@@ -163,91 +213,106 @@ export default function ProjectChat() {
   const [isLoadingThreads, setIsLoadingThreads] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingText, setStreamingText] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
-  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
+  const [showSystemPromptDrawer, setShowSystemPromptDrawer] = useState(false);
   const [providerSnapshot, setProviderSnapshot] = useState(modelRouter.getPreferredProvider());
   const [qualitySnapshot, setQualitySnapshot] = useState(modelRouter.getQualityMode());
+  const [liveRouteInfo, setLiveRouteInfo] = useState(null);
 
-  const isHydratingThreadRef = useRef(false);
-  const threadEndRef = useRef(null);
   const inputRef = useRef(null);
+  const threadEndRef = useRef(null);
+  const isHydratingThreadRef = useRef(false);
+  const activeRunRef = useRef(null);
+
   const activeThread = useMemo(
     () => threads.find((thread) => String(thread.id) === String(activeThreadId)) || null,
     [threads, activeThreadId],
   );
 
+  const activeThreadMode =
+    activeThread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
+
   const routePreview = useMemo(
     () => getRoutePreview(providerSnapshot, activeThread?.model_override || ''),
-    [activeThread?.model_override, providerSnapshot, qualitySnapshot],
+    [providerSnapshot, activeThread?.model_override],
   );
+
   const providerOptions = useMemo(
     () => getAvailableModelOptions(providerSnapshot),
     [providerSnapshot],
   );
 
+  const effectiveSystemPrompt =
+    activeThread?.system_prompt ||
+    buildDefaultSystemPrompt(activeThreadMode, projectScopeEnabled ? currentProject : null);
+
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectScopeEnabled) return;
     if (!currentProject || String(currentProject.id) !== String(projectId)) {
       loadProject(Number(projectId)).catch(() => navigate('/'));
     }
-  }, [currentProject, loadProject, navigate, projectId]);
+  }, [currentProject, loadProject, navigate, projectId, projectScopeEnabled]);
 
   useEffect(() => {
-    const syncRouterState = () => {
+    const sync = () => {
       setProviderSnapshot(modelRouter.getPreferredProvider());
       setQualitySnapshot(modelRouter.getQualityMode());
     };
 
-    syncRouterState();
-    window.addEventListener('focus', syncRouterState);
-    return () => window.removeEventListener('focus', syncRouterState);
+    sync();
+    window.addEventListener('focus', sync);
+    return () => window.removeEventListener('focus', sync);
   }, []);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingText]);
+  }, [messages]);
 
   useEffect(() => {
-    if (!currentProject?.id) return;
-
+    if (projectScopeEnabled && (!currentProject || currentProject.id !== scopedProjectId)) return;
     let cancelled = false;
 
-    async function loadThreads() {
+    async function loadThreadsForScope() {
       setIsLoadingThreads(true);
-      const projectThreads = await db.ai_chat_threads.where('project_id').equals(currentProject.id).toArray();
+      const rawThreads = await db.ai_chat_threads.where('project_id').equals(scopedProjectId).toArray();
       if (cancelled) return;
 
-      if (projectThreads.length === 0) {
-        const created = await createThread({ activate: true, project: currentProject });
+      const normalizedThreads = rawThreads.map((thread) =>
+        normalizeThread(thread, projectScopeEnabled, currentProject),
+      );
+
+      if (normalizedThreads.length === 0) {
+        const created = await createThread({
+          activate: true,
+          initialMode: projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE,
+        });
         if (cancelled) return;
         setThreads([created]);
         setActiveThreadId(created.id);
       } else {
-        const sorted = sortThreadsDesc(projectThreads);
+        const sorted = sortThreadsDesc(normalizedThreads);
         setThreads(sorted);
-        setActiveThreadId((current) => {
-          if (current && sorted.some((thread) => String(thread.id) === String(current))) {
-            return current;
-          }
-          return sorted[0]?.id || null;
-        });
+        setActiveThreadId((current) =>
+          current && sorted.some((thread) => String(thread.id) === String(current))
+            ? current
+            : sorted[0]?.id || null,
+        );
       }
 
       setIsLoadingThreads(false);
     }
 
-    loadThreads().catch((error) => {
+    loadThreadsForScope().catch((error) => {
       console.error('Failed to load AI chat threads:', error);
-      setIsLoadingThreads(false);
       setErrorMessage('Không thể tải danh sách cuộc trò chuyện.');
+      setIsLoadingThreads(false);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [currentProject]);
+  }, [scopedProjectId, currentProject, projectScopeEnabled]);
 
   useEffect(() => {
     if (!activeThreadId) {
@@ -259,7 +324,11 @@ export default function ProjectChat() {
 
     async function loadThreadMessages() {
       setIsLoadingMessages(true);
-      const threadMessages = await db.ai_chat_messages.where('thread_id').equals(Number(activeThreadId)).sortBy('created_at');
+      const threadMessages = await db.ai_chat_messages
+        .where('thread_id')
+        .equals(Number(activeThreadId))
+        .sortBy('created_at');
+
       if (cancelled) return;
       setMessages(threadMessages);
       setIsLoadingMessages(false);
@@ -267,8 +336,8 @@ export default function ProjectChat() {
 
     loadThreadMessages().catch((error) => {
       console.error('Failed to load AI chat messages:', error);
-      setIsLoadingMessages(false);
       setErrorMessage('Không thể tải nội dung cuộc trò chuyện.');
+      setIsLoadingMessages(false);
     });
 
     return () => {
@@ -277,63 +346,79 @@ export default function ProjectChat() {
   }, [activeThreadId]);
 
   useEffect(() => {
-    if (!activeThread) return undefined;
-    if (isHydratingThreadRef.current) return undefined;
+    if (!activeThread || isHydratingThreadRef.current) return undefined;
 
     const timeout = window.setTimeout(async () => {
       try {
         await db.ai_chat_threads.update(activeThread.id, {
-          system_prompt: activeThread.system_prompt || '',
+          chat_mode: activeThread.chat_mode || activeThreadMode,
+          system_prompt:
+            activeThread.system_prompt ||
+            buildDefaultSystemPrompt(activeThreadMode, projectScopeEnabled ? currentProject : null),
           model_override: activeThread.model_override || '',
         });
         setSaveStatus('Đã lưu cấu hình chat');
       } catch (error) {
-        console.error('Failed to save AI chat thread config:', error);
+        console.error('Failed to save chat thread config:', error);
         setErrorMessage('Không thể lưu cấu hình chat.');
       }
     }, 500);
 
     return () => window.clearTimeout(timeout);
-  }, [activeThread?.id, activeThread?.system_prompt, activeThread?.model_override]);
+  }, [
+    activeThread?.id,
+    activeThread?.chat_mode,
+    activeThread?.system_prompt,
+    activeThread?.model_override,
+    activeThreadMode,
+    currentProject,
+    projectScopeEnabled,
+  ]);
 
   useEffect(() => {
     if (!saveStatus) return undefined;
-    const timeout = window.setTimeout(() => setSaveStatus(''), 2000);
+    const timeout = window.setTimeout(() => setSaveStatus(''), 1800);
     return () => window.clearTimeout(timeout);
   }, [saveStatus]);
 
-  async function createThread({ activate = true, project = currentProject } = {}) {
+  async function createThread({ activate = true, initialMode } = {}) {
+    const mode = initialMode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
     const now = Date.now();
-    const thread = {
-      project_id: project.id,
+    const payload = {
+      project_id: scopedProjectId,
       title: CHAT_THREAD_TITLE_FALLBACK,
-      system_prompt: buildDefaultSystemPrompt(project),
+      chat_mode: mode,
+      system_prompt: buildDefaultSystemPrompt(mode, projectScopeEnabled ? currentProject : null),
       model_override: '',
       last_provider: '',
       last_model: '',
       created_at: now,
       updated_at: now,
     };
-    const id = await db.ai_chat_threads.add(thread);
-    const created = { ...thread, id };
 
+    const id = await db.ai_chat_threads.add(payload);
+    const created = { ...payload, id };
     setThreads((prev) => sortThreadsDesc([created, ...prev]));
+
     if (activate) {
       setActiveThreadId(id);
       setMessages([]);
       setDraft('');
-      setShowSystemPrompt(true);
+      setShowSystemPromptDrawer(false);
       window.setTimeout(() => inputRef.current?.focus(), 0);
     }
+
     return created;
   }
 
   function updateThreadLocally(threadId, patch) {
-    setThreads((prev) => sortThreadsDesc(prev.map((thread) => (
-      String(thread.id) === String(threadId)
-        ? { ...thread, ...patch }
-        : thread
-    ))));
+    setThreads((prev) =>
+      sortThreadsDesc(
+        prev.map((thread) =>
+          String(thread.id) === String(threadId) ? { ...thread, ...patch } : thread,
+        ),
+      ),
+    );
   }
 
   async function persistThreadUpdate(threadId, patch) {
@@ -341,7 +426,29 @@ export default function ProjectChat() {
     await db.ai_chat_threads.update(Number(threadId), patch);
   }
 
+  async function appendMessage(threadId, message) {
+    const payload = {
+      project_id: scopedProjectId,
+      thread_id: Number(threadId),
+      created_at: Date.now(),
+      ...message,
+    };
+    const id = await db.ai_chat_messages.add(payload);
+    return { ...payload, id };
+  }
+
+  function replaceTempMessage(tempId, nextMessage) {
+    setMessages((prev) =>
+      prev.map((message) => (String(message.id) === String(tempId) ? nextMessage : message)),
+    );
+  }
+
+  function removeTempMessage(tempId) {
+    setMessages((prev) => prev.filter((message) => String(message.id) !== String(tempId)));
+  }
+
   async function handleDeleteThread(threadId) {
+    if (isStreaming) return;
     const target = threads.find((thread) => String(thread.id) === String(threadId));
     if (!target) return;
 
@@ -352,8 +459,11 @@ export default function ProjectChat() {
     await db.ai_chat_threads.delete(Number(threadId));
 
     const remaining = threads.filter((thread) => String(thread.id) !== String(threadId));
-    if (remaining.length === 0 && currentProject) {
-      const created = await createThread({ activate: true, project: currentProject });
+    if (remaining.length === 0) {
+      const created = await createThread({
+        activate: true,
+        initialMode: projectScopeEnabled ? activeThreadMode : CHAT_MODES.FREE,
+      });
       setThreads([created]);
       setActiveThreadId(created.id);
       return;
@@ -367,412 +477,587 @@ export default function ProjectChat() {
   }
 
   async function handleRenameThread(threadId) {
+    if (isStreaming) return;
     const target = threads.find((thread) => String(thread.id) === String(threadId));
     if (!target) return;
 
     const nextTitle = window.prompt('Đổi tên cuộc trò chuyện', target.title || CHAT_THREAD_TITLE_FALLBACK);
     if (nextTitle == null) return;
-
-    const normalized = trimThreadTitle(nextTitle);
-    await persistThreadUpdate(threadId, { title: normalized });
+    await persistThreadUpdate(threadId, { title: trimThreadTitle(nextTitle) });
   }
 
   async function handleClearMessages() {
-    if (!activeThread) return;
+    if (!activeThread || isStreaming) return;
+
     const confirmed = window.confirm('Xóa toàn bộ tin nhắn trong cuộc trò chuyện hiện tại?');
     if (!confirmed) return;
 
     await db.ai_chat_messages.where('thread_id').equals(Number(activeThread.id)).delete();
     setMessages([]);
     await persistThreadUpdate(activeThread.id, {
-      title: activeThread.title || CHAT_THREAD_TITLE_FALLBACK,
       updated_at: Date.now(),
-      last_model: '',
       last_provider: '',
+      last_model: '',
     });
   }
 
-  function buildConversationMessages(nextUserMessage) {
-    const apiMessages = [];
-    const systemPrompt = String(activeThread?.system_prompt || '').trim();
-    if (systemPrompt) {
-      apiMessages.push({ role: 'system', content: systemPrompt });
-    }
+  function buildConversationMessages(nextUserMessage, thread) {
+    const systemPrompt =
+      String(thread.system_prompt || '').trim() ||
+      buildDefaultSystemPrompt(thread.chat_mode || activeThreadMode, projectScopeEnabled ? currentProject : null);
 
+    const apiMessages = [{ role: 'system', content: systemPrompt }];
     messages
       .filter((item) => item.role === 'user' || item.role === 'assistant')
-      .forEach((item) => {
-        apiMessages.push({
-          role: item.role,
-          content: item.content,
-        });
-      });
-
+      .forEach((item) => apiMessages.push({ role: item.role, content: item.content }));
     apiMessages.push({ role: 'user', content: nextUserMessage });
     return apiMessages;
   }
 
-  async function appendMessage(threadId, message) {
-    const payload = {
-      project_id: currentProject.id,
-      thread_id: Number(threadId),
-      created_at: Date.now(),
-      ...message,
-    };
-    const id = await db.ai_chat_messages.add(payload);
-    return { ...payload, id };
-  }
-
-  async function sendMessage() {
-    if (!activeThread || !currentProject || !draft.trim() || isStreaming) return;
+  async function handleSendMessage() {
+    if (!activeThread || !draft.trim() || isStreaming) return;
+    if (activeThreadMode === CHAT_MODES.STORY && !projectScopeEnabled) return;
 
     const userContent = draft.trim();
-    const userMessage = await appendMessage(activeThread.id, {
+    const currentThread = activeThread;
+    const routeOptions = currentThread.model_override
+      ? { providerOverride: providerSnapshot, modelOverride: currentThread.model_override }
+      : { providerOverride: providerSnapshot };
+    const currentRoute = getRoutePreview(providerSnapshot, currentThread.model_override || '');
+    const tempAssistantId = `temp-assistant-${Date.now()}`;
+    const provisionalTitle =
+      !currentThread.title || currentThread.title === CHAT_THREAD_TITLE_FALLBACK
+        ? trimThreadTitle(userContent)
+        : currentThread.title;
+
+    const userMessage = await appendMessage(currentThread.id, {
       role: 'user',
       content: userContent,
     });
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      {
+        id: tempAssistantId,
+        project_id: scopedProjectId,
+        thread_id: currentThread.id,
+        role: 'assistant',
+        content: '',
+        provider: currentRoute.provider,
+        model: currentRoute.model,
+        is_streaming: true,
+        created_at: Date.now(),
+      },
+    ]);
+
     setDraft('');
     setErrorMessage('');
     setIsStreaming(true);
-    setStreamingText('');
+    setLiveRouteInfo(currentRoute);
+    activeRunRef.current = { threadId: currentThread.id, tempAssistantId, route: currentRoute };
 
-    const shouldRename = !activeThread.title || activeThread.title === CHAT_THREAD_TITLE_FALLBACK;
-    const provisionalTitle = shouldRename ? trimThreadTitle(userContent) : activeThread.title;
-    const provisionalTimestamp = Date.now();
-
-    updateThreadLocally(activeThread.id, {
+    await db.ai_chat_threads.update(currentThread.id, {
       title: provisionalTitle,
-      updated_at: provisionalTimestamp,
+      updated_at: Date.now(),
     });
-    await db.ai_chat_threads.update(activeThread.id, {
+    updateThreadLocally(currentThread.id, {
       title: provisionalTitle,
-      updated_at: provisionalTimestamp,
+      updated_at: Date.now(),
     });
 
-    const routeOptions = activeThread.model_override
-      ? { providerOverride: providerSnapshot, modelOverride: activeThread.model_override }
-      : { providerOverride: providerSnapshot };
+    void aiService
+      .send({
+        taskType: TASK_TYPES.FREE_PROMPT,
+        messages: buildConversationMessages(userContent, currentThread),
+        stream: true,
+        routeOptions,
+        onToken: (_chunk, full) => {
+          replaceTempMessage(tempAssistantId, {
+            id: tempAssistantId,
+            project_id: scopedProjectId,
+            thread_id: currentThread.id,
+            role: 'assistant',
+            content: full,
+            provider: currentRoute.provider,
+            model: currentRoute.model,
+            is_streaming: true,
+            created_at: Date.now(),
+          });
+        },
+        onComplete: async (text, meta) => {
+          const assistantMessage = await appendMessage(currentThread.id, {
+            role: 'assistant',
+            content: text,
+            provider: meta?.provider || currentRoute.provider,
+            model: meta?.model || currentRoute.model,
+            elapsed_ms: meta?.elapsed || null,
+            is_partial: false,
+          });
 
-    aiService.send({
-      taskType: TASK_TYPES.FREE_PROMPT,
-      messages: buildConversationMessages(userContent),
-      stream: true,
-      routeOptions,
-      onToken: (_chunk, full) => {
-        setStreamingText(full);
-      },
-      onComplete: async (text, meta) => {
-        const assistantMessage = await appendMessage(activeThread.id, {
-          role: 'assistant',
-          content: text,
-          provider: meta?.provider || '',
-          model: meta?.model || '',
-          elapsed_ms: meta?.elapsed || null,
-          is_partial: false,
-        });
+          replaceTempMessage(tempAssistantId, assistantMessage);
+          setIsStreaming(false);
+          setLiveRouteInfo(null);
+          activeRunRef.current = null;
 
-        setMessages((prev) => [...prev, assistantMessage]);
-        setStreamingText('');
-        setIsStreaming(false);
+          await persistThreadUpdate(currentThread.id, {
+            title: provisionalTitle,
+            updated_at: Date.now(),
+            last_provider: meta?.provider || currentRoute.provider,
+            last_model: meta?.model || currentRoute.model,
+          });
+        },
+        onError: async (error) => {
+          const systemMessage = await appendMessage(currentThread.id, {
+            role: 'system',
+            content:
+              error?.userMessage ||
+              error?.message ||
+              'AI không trả lời được cho yêu cầu này.',
+          });
 
-        await persistThreadUpdate(activeThread.id, {
-          title: provisionalTitle,
-          updated_at: Date.now(),
-          last_provider: meta?.provider || '',
-          last_model: meta?.model || '',
-        });
-      },
-      onError: (error) => {
-        setIsStreaming(false);
-        setStreamingText('');
-        setErrorMessage(error?.userMessage || error?.message || 'AI không trả lời được cho yêu cầu này.');
-      },
-    });
+          replaceTempMessage(tempAssistantId, systemMessage);
+          setErrorMessage(
+            error?.userMessage || error?.message || 'AI không trả lời được cho yêu cầu này.',
+          );
+          setIsStreaming(false);
+          setLiveRouteInfo(null);
+          activeRunRef.current = null;
+        },
+      })
+      .catch((error) => {
+        if (error?.name !== 'AbortError') {
+          console.error('AI chat send failed:', error);
+        }
+      });
   }
 
   async function handleStopStreaming() {
-    aiService.abort();
-    if (!isStreaming) return;
+    if (!isStreaming || !activeRunRef.current) return;
 
-    let partialMessage = null;
-    if (activeThread && streamingText.trim()) {
-      partialMessage = await appendMessage(activeThread.id, {
+    aiService.abort();
+    const { tempAssistantId, threadId, route } = activeRunRef.current;
+    const tempMessage = messages.find((message) => String(message.id) === String(tempAssistantId));
+
+    if (tempMessage?.content?.trim()) {
+      const partialMessage = await appendMessage(threadId, {
         role: 'assistant',
-        content: streamingText.trim(),
-        provider: routePreview.provider,
-        model: routePreview.model,
-        elapsed_ms: null,
+        content: tempMessage.content.trim(),
+        provider: route.provider,
+        model: route.model,
         is_partial: true,
       });
-      setMessages((prev) => [...prev, partialMessage]);
-      await persistThreadUpdate(activeThread.id, {
+      replaceTempMessage(tempAssistantId, partialMessage);
+      await persistThreadUpdate(threadId, {
         updated_at: Date.now(),
-        last_provider: routePreview.provider,
-        last_model: routePreview.model,
+        last_provider: route.provider,
+        last_model: route.model,
       });
+    } else {
+      removeTempMessage(tempAssistantId);
+      const stopMessage = await appendMessage(threadId, {
+        role: 'system',
+        content: 'Đã dừng phản hồi của AI.',
+      });
+      setMessages((prev) => [...prev, stopMessage]);
     }
 
+    activeRunRef.current = null;
     setIsStreaming(false);
-    setStreamingText('');
-    if (!partialMessage) {
-      setErrorMessage('Đã dừng sinh nội dung.');
-    }
+    setLiveRouteInfo(null);
+    setErrorMessage('');
   }
 
   function handleCopy(text) {
-    navigator.clipboard.writeText(text || '').then(() => {
-      setSaveStatus('Đã sao chép nội dung');
-    }).catch(() => {
-      setErrorMessage('Không thể sao chép vào clipboard.');
+    navigator.clipboard
+      .writeText(text || '')
+      .then(() => setSaveStatus('Đã sao chép nội dung'))
+      .catch(() => setErrorMessage('Không thể sao chép vào clipboard.'));
+  }
+
+  async function handleChangeMode(mode) {
+    if (!activeThread || isStreaming) return;
+    if (mode === CHAT_MODES.STORY && !projectScopeEnabled) return;
+
+    const currentDefaultPrompt = buildDefaultSystemPrompt(
+      activeThreadMode,
+      projectScopeEnabled ? currentProject : null,
+    );
+    const nextDefaultPrompt = buildDefaultSystemPrompt(
+      mode,
+      projectScopeEnabled ? currentProject : null,
+    );
+    const shouldSwitchPrompt =
+      !String(activeThread.system_prompt || '').trim() ||
+      String(activeThread.system_prompt || '').trim() === currentDefaultPrompt.trim();
+
+    await persistThreadUpdate(activeThread.id, {
+      chat_mode: mode,
+      system_prompt: shouldSwitchPrompt ? nextDefaultPrompt : activeThread.system_prompt,
+      updated_at: Date.now(),
     });
   }
 
-  if (!currentProject) {
+  function handleThreadSelect(threadId) {
+    if (isStreaming) return;
+    isHydratingThreadRef.current = true;
+    setActiveThreadId(threadId);
+    window.setTimeout(() => {
+      isHydratingThreadRef.current = false;
+    }, 0);
+  }
+
+  const pageTitle = projectScopeEnabled ? currentProject?.title || 'Chat AI' : 'Chat tự do';
+  const pageKicker = projectScopeEnabled ? 'Dự án hiện tại' : 'Không gắn với truyện';
+
+  if (projectScopeEnabled && !currentProject) {
     return (
       <div className="project-chat-empty card">
-        <h2>Chưa có dự án</h2>
-        <p>Quay lại Dashboard để chọn dự án trước khi mở Chat AI.</p>
+        <h2>Đang tải dự án</h2>
+        <p>Chờ một chút để mở chế độ AI của truyện.</p>
       </div>
     );
   }
 
   return (
-    <div className="project-chat-page">
-      <aside className="project-chat-sidebar card">
-        <div className="project-chat-sidebar__header">
-          <div>
-            <div className="project-chat-sidebar__kicker">Chat AI</div>
-            <h1>Trò chuyện với AI</h1>
+    <>
+      <div className="project-chat-page">
+        <aside className="project-chat-sidebar card">
+          <div className="project-chat-sidebar__header">
+            <div>
+              <div className="project-chat-sidebar__kicker">{pageKicker}</div>
+              <h1>{pageTitle}</h1>
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary btn-icon"
+              onClick={() =>
+                createThread({
+                  activate: true,
+                  initialMode: projectScopeEnabled ? activeThreadMode : CHAT_MODES.FREE,
+                })
+              }
+              title="Tạo cuộc trò chuyện mới"
+            >
+              <Plus size={16} />
+            </button>
           </div>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => createThread({ activate: true })}>
-            <Plus size={14} /> Cuộc trò chuyện mới
-          </button>
-        </div>
 
-        <div className="project-chat-sidebar__hint">
-          Dùng chung provider, API key và routing model với toàn bộ dự án. Bạn chỉ đang chọn model cụ thể cho từng cuộc trò chuyện.
-        </div>
+          <div className="project-chat-sidebar__hint">
+            {projectScopeEnabled
+              ? 'Chat này dùng chung model và API key của dự án. Bạn có thể chuyển giữa AI của truyện và chế độ hỏi đáp tự do ngay trong từng cuộc trò chuyện.'
+              : 'Chat tự do dùng đúng model và API key mà hệ thống hiện đang dùng. Không bám theo truyện nào cả.'}
+          </div>
 
-        <div className="project-chat-thread-list">
-          {isLoadingThreads ? (
-            <div className="project-chat-thread-list__empty">Đang tải cuộc trò chuyện...</div>
-          ) : threads.map((thread) => {
-            const isActive = String(thread.id) === String(activeThreadId);
-            return (
-              <article
-                key={thread.id}
-                className={`project-chat-thread ${isActive ? 'is-active' : ''}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  isHydratingThreadRef.current = true;
-                  setActiveThreadId(thread.id);
-                  window.setTimeout(() => {
-                    isHydratingThreadRef.current = false;
-                  }, 0);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    isHydratingThreadRef.current = true;
-                    setActiveThreadId(thread.id);
-                    window.setTimeout(() => {
-                      isHydratingThreadRef.current = false;
-                    }, 0);
-                  }
-                }}
-              >
-                <div className="project-chat-thread__main">
-                  <div className="project-chat-thread__title">{thread.title || CHAT_THREAD_TITLE_FALLBACK}</div>
-                  <div className="project-chat-thread__meta">
-                    <span>{formatRelativeTime(thread.updated_at)}</span>
-                    {thread.last_model ? <span>{thread.last_model}</span> : null}
+          <div className="project-chat-thread-list">
+            {isLoadingThreads ? (
+              <div className="project-chat-thread-list__empty">Đang tải cuộc trò chuyện...</div>
+            ) : threads.length === 0 ? (
+              <div className="project-chat-thread-list__empty">Chưa có cuộc trò chuyện nào.</div>
+            ) : (
+              threads.map((thread) => (
+                <button
+                  key={thread.id}
+                  type="button"
+                  className={`project-chat-thread ${String(thread.id) === String(activeThreadId) ? 'is-active' : ''}`}
+                  onClick={() => handleThreadSelect(thread.id)}
+                >
+                  <div className="project-chat-thread__main">
+                    <div className="project-chat-thread__title">{thread.title}</div>
+                    <div className="project-chat-thread__meta">
+                      <span>{getChatModeLabel(thread.chat_mode)}</span>
+                      <span>{formatRelativeTime(thread.updated_at)}</span>
+                    </div>
                   </div>
-                </div>
-                <div className="project-chat-thread__actions">
-                  <span className="project-chat-thread__icon"><MessageSquare size={14} /></span>
-                  <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={(event) => { event.stopPropagation(); handleRenameThread(thread.id); }} title="Đổi tên">
-                    <Pencil size={13} />
-                  </button>
-                  <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={(event) => { event.stopPropagation(); handleDeleteThread(thread.id); }} title="Xóa">
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </aside>
-
-      <section className="project-chat-main card">
-        <header className="project-chat-topbar">
-          <div>
-            <div className="project-chat-topbar__kicker">Dự án hiện tại</div>
-            <h2>{currentProject.title}</h2>
+                  <div className="project-chat-thread__actions">
+                    <span className="project-chat-thread__icon">
+                      {thread.chat_mode === CHAT_MODES.STORY ? (
+                        <Sparkles size={14} />
+                      ) : (
+                        <MessageSquare size={14} />
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-icon btn-sm"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRenameThread(thread.id);
+                      }}
+                      title="Đổi tên"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-icon btn-sm"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDeleteThread(thread.id);
+                      }}
+                      title="Xóa cuộc trò chuyện"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
+        </aside>
 
-          <div className="project-chat-topbar__controls">
-            <div className="project-chat-topbar__control">
-              <span className="project-chat-topbar__label">Provider</span>
-              <div className="project-chat-topbar__value">{getProviderLabel(routePreview.provider)}</div>
+        <section className="project-chat-main card">
+          <div className="project-chat-topbar">
+            <div>
+              <div className="project-chat-topbar__kicker">
+                {projectScopeEnabled ? 'Không gian chat của truyện' : 'Không gian chat toàn cục'}
+              </div>
+              <h2>{activeThread?.title || CHAT_THREAD_TITLE_FALLBACK}</h2>
             </div>
 
-            <div className="project-chat-topbar__control">
-              <span className="project-chat-topbar__label">Chất lượng</span>
-              <div className="project-chat-topbar__value">{getQualityLabel(qualitySnapshot)}</div>
-            </div>
+            <div className="project-chat-topbar__controls">
+              <div className="project-chat-topbar__control project-chat-topbar__control--mode">
+                <span className="project-chat-topbar__label">Chế độ chat</span>
+                <div className="project-chat-mode-switch">
+                  {projectScopeEnabled ? (
+                    <>
+                      <button
+                        type="button"
+                        className={`project-chat-mode-switch__item ${activeThreadMode === CHAT_MODES.STORY ? 'is-active' : ''}`}
+                        onClick={() => handleChangeMode(CHAT_MODES.STORY)}
+                      >
+                        AI của truyện
+                      </button>
+                      <button
+                        type="button"
+                        className={`project-chat-mode-switch__item ${activeThreadMode === CHAT_MODES.FREE ? 'is-active' : ''}`}
+                        onClick={() => handleChangeMode(CHAT_MODES.FREE)}
+                      >
+                        Tự do hỏi đáp
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className="project-chat-mode-switch__item is-active"
+                      disabled
+                    >
+                      Tự do hỏi đáp
+                    </button>
+                  )}
+                </div>
+              </div>
 
-            <label className="project-chat-topbar__control project-chat-topbar__control--wide">
-              <span className="project-chat-topbar__label">Model cho chat này</span>
-              {routePreview.provider === PROVIDERS.OLLAMA ? (
-                <input
-                  className="input"
-                  value={activeThread?.model_override || ''}
-                  onChange={(event) => updateThreadLocally(activeThread.id, { model_override: event.target.value })}
-                  placeholder={routePreview.model || 'Nhập model Ollama'}
-                  disabled={!activeThread}
-                />
-              ) : (
+              <div className="project-chat-topbar__control">
+                <span className="project-chat-topbar__label">Kênh AI đang dùng</span>
+                <div className="project-chat-topbar__value">
+                  {getProviderLabel(providerSnapshot)} · {getQualityLabel(qualitySnapshot)}
+                </div>
+              </div>
+
+              <div className="project-chat-topbar__control project-chat-topbar__control--wide">
+                <label className="project-chat-topbar__label" htmlFor="chat-model-select">
+                  Model cho cuộc trò chuyện này
+                </label>
                 <select
+                  id="chat-model-select"
                   className="select"
                   value={activeThread?.model_override || ''}
-                  onChange={(event) => updateThreadLocally(activeThread.id, { model_override: event.target.value })}
-                  disabled={!activeThread}
+                  onChange={(event) =>
+                    persistThreadUpdate(activeThread.id, {
+                      model_override: event.target.value,
+                      updated_at: Date.now(),
+                    })
+                  }
+                  disabled={!activeThread || isStreaming}
                 >
-                  <option value="">Theo mặc định của app · {routePreview.model}</option>
+                  <option value="">Theo mặc định hệ thống</option>
                   {providerOptions.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.label} · {option.meta}
                     </option>
                   ))}
                 </select>
-              )}
-            </label>
-
-            <button
-              type="button"
-              className={`btn btn-ghost btn-sm project-chat-settings-toggle ${showSystemPrompt ? 'is-open' : ''}`}
-              onClick={() => setShowSystemPrompt((value) => !value)}
-            >
-              <Settings2 size={14} />
-              System Prompt
-              <ChevronDown size={14} />
-            </button>
-          </div>
-        </header>
-
-        {showSystemPrompt && activeThread && (
-          <section className="project-chat-system-prompt">
-            <div className="project-chat-system-prompt__header">
-              <div>
-                <h3>System Prompt của cuộc trò chuyện</h3>
-                <p>
-                  Prompt này được gửi ở vai trò <code>system</code> cho toàn bộ thread hiện tại. Thay đổi ở đây chỉ áp dụng cho cuộc trò chuyện đang mở.
-                </p>
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => updateThreadLocally(activeThread.id, { system_prompt: buildDefaultSystemPrompt(currentProject) })}>
-                <Save size={14} /> Khôi phục mặc định
+
+              <button
+                type="button"
+                className={`btn btn-secondary project-chat-settings-toggle ${showSystemPromptDrawer ? 'is-open' : ''}`}
+                onClick={() => setShowSystemPromptDrawer((prev) => !prev)}
+              >
+                <Settings2 size={16} />
+                System prompt
               </button>
             </div>
-            <textarea
-              className="textarea project-chat-system-prompt__textarea"
-              rows={8}
-              value={activeThread.system_prompt || ''}
-              onChange={(event) => updateThreadLocally(activeThread.id, { system_prompt: event.target.value })}
-              placeholder="Nhập system prompt riêng cho cuộc trò chuyện này..."
-            />
-          </section>
-        )}
-
-        <div className="project-chat-statusbar">
-          <div className="project-chat-statusbar__item">
-            <strong>Model hiệu lực:</strong> {routePreview.model}
           </div>
-          <div className="project-chat-statusbar__item">
-            <strong>Khóa/API:</strong> Dùng chung cấu hình hiện tại của app
-          </div>
-          {saveStatus ? (
-            <div className="project-chat-statusbar__item project-chat-statusbar__item--success">
-              <CheckCircle2 size={14} /> {saveStatus}
-            </div>
-          ) : null}
-        </div>
 
-        <div className="project-chat-messages">
-          {(isLoadingMessages || isLoadingThreads) ? (
-            <div className="project-chat-messages__empty">Đang tải nội dung cuộc trò chuyện...</div>
-          ) : messages.length === 0 ? (
-            <div className="project-chat-messages__empty">
-              <Bot size={28} />
-              <h3>Bắt đầu một cuộc trò chuyện mới</h3>
-              <p>Trang này dùng đúng provider và API key mà dự án đang dùng. Bạn có thể chọn model riêng cho thread và chỉnh system prompt ngay phía trên.</p>
+          <div className="project-chat-statusbar">
+            <div className="project-chat-statusbar__item">
+              <Bot size={14} />
+              Chế độ: {getChatModeLabel(activeThreadMode)}
             </div>
-          ) : (
-            messages.map((message) => (
-              <MessageBubble key={message.id} message={message} onCopy={handleCopy} />
-            ))
-          )}
-
-          {isStreaming && (
-            <article className="project-chat-message is-assistant is-streaming">
-              <div className="project-chat-message__meta">
-                <div className="project-chat-message__author">AI đang trả lời</div>
-                <div className="project-chat-message__tools">
-                  <span className="project-chat-message__chip">{routePreview.model}</span>
-                </div>
+            <div className="project-chat-statusbar__item">
+              <Sparkles size={14} />
+              Model hiệu lực: {routePreview.model}
+            </div>
+            <div className="project-chat-statusbar__item">
+              <MessageSquare size={14} />
+              API key và provider dùng chung với phần AI của dự án
+            </div>
+            {liveRouteInfo ? (
+              <div className="project-chat-statusbar__item project-chat-statusbar__item--live">
+                <Zap size={14} />
+                AI đang chạy: {getProviderLabel(liveRouteInfo.provider)} · {liveRouteInfo.model}
               </div>
-              <div className="project-chat-message__content">{streamingText || '...'}</div>
-            </article>
-          )}
-
-          <div ref={threadEndRef} />
-        </div>
-
-        {errorMessage ? (
-          <div className="project-chat-error">
-            {errorMessage}
-          </div>
-        ) : null}
-
-        <footer className="project-chat-composer">
-          <div className="project-chat-composer__actions">
-            <button type="button" className="btn btn-ghost btn-sm" onClick={handleClearMessages} disabled={!activeThread || messages.length === 0 || isStreaming}>
-              <Trash2 size={14} /> Xóa hội thoại hiện tại
-            </button>
+            ) : null}
+            {saveStatus ? (
+              <div className="project-chat-statusbar__item project-chat-statusbar__item--success">
+                <Save size={14} />
+                {saveStatus}
+              </div>
+            ) : null}
           </div>
 
-          <div className="project-chat-composer__input">
-            <textarea
-              ref={inputRef}
-              className="textarea"
-              rows={4}
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder="Nhập tin nhắn cho AI. Enter để gửi, Shift+Enter để xuống dòng."
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault();
-                  sendMessage();
+          {errorMessage ? <div className="project-chat-error">{errorMessage}</div> : null}
+
+          <div className="project-chat-messages">
+            {isLoadingMessages ? (
+              <div className="project-chat-messages__empty">Đang tải tin nhắn...</div>
+            ) : messages.length === 0 ? (
+              <div className="project-chat-messages__empty">
+                <Bot size={28} />
+                <h3>Cuộc trò chuyện đang trống</h3>
+                <p>
+                  {activeThreadMode === CHAT_MODES.STORY
+                    ? 'Đặt câu hỏi về truyện, nhân vật, outline, canon hoặc nhờ AI cùng phát triển dự án.'
+                    : 'Dùng như một khung chat tự do. Nó vẫn dùng đúng model và API key của hệ thống.'}
+                </p>
+              </div>
+            ) : (
+              messages.map((message) => (
+                <MessageBubble key={message.id} message={message} onCopy={handleCopy} />
+              ))
+            )}
+            <div ref={threadEndRef} />
+          </div>
+
+          <div className="project-chat-composer">
+            <div className="project-chat-composer__actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={handleClearMessages}
+                disabled={!activeThread || isStreaming}
+              >
+                <Trash2 size={16} />
+                Xóa tin nhắn
+              </button>
+            </div>
+
+            <div className="project-chat-composer__input">
+              <textarea
+                ref={inputRef}
+                className="textarea"
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder={
+                  activeThreadMode === CHAT_MODES.STORY
+                    ? 'Hỏi về truyện, canon, outline, cảnh đang viết hoặc nhờ AI xử lý vấn đề của dự án...'
+                    : 'Hỏi gì cũng được ở chế độ tự do hỏi đáp...'
                 }
-              }}
-            />
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                    event.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+              />
 
-            <div className="project-chat-composer__submit">
-              {isStreaming ? (
-                <button type="button" className="btn btn-secondary" onClick={handleStopStreaming}>
-                  <Square size={14} /> Dừng
-                </button>
-              ) : (
-                <button type="button" className="btn btn-primary" onClick={sendMessage} disabled={!draft.trim() || !activeThread}>
-                  <Send size={14} /> Gửi
-                </button>
-              )}
+              <div className="project-chat-composer__submit">
+                {isStreaming ? (
+                  <button type="button" className="btn btn-secondary" onClick={handleStopStreaming}>
+                    <Square size={16} />
+                    Dừng
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleSendMessage}
+                    disabled={!draft.trim()}
+                  >
+                    <Send size={16} />
+                    Gửi
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </footer>
-      </section>
-    </div>
+        </section>
+      </div>
+
+      {showSystemPromptDrawer && activeThread ? (
+        <>
+          <button
+            type="button"
+            className="project-chat-drawer-backdrop"
+            onClick={() => setShowSystemPromptDrawer(false)}
+            aria-label="Đóng system prompt"
+          />
+          <aside className="project-chat-drawer">
+            <div className="project-chat-drawer__header">
+              <div>
+                <div className="project-chat-drawer__kicker">System prompt của cuộc trò chuyện</div>
+                <h3>{getChatModeLabel(activeThreadMode)}</h3>
+                <p>
+                  Nội dung này áp dụng riêng cho cuộc trò chuyện hiện tại. Bạn có thể đóng panel
+                  lại bất cứ lúc nào mà không chiếm diện tích trang chat.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                onClick={() => setShowSystemPromptDrawer(false)}
+                title="Đóng panel"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="project-chat-drawer__actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() =>
+                  persistThreadUpdate(activeThread.id, {
+                    system_prompt: buildDefaultSystemPrompt(
+                      activeThreadMode,
+                      projectScopeEnabled ? currentProject : null,
+                    ),
+                    updated_at: Date.now(),
+                  })
+                }
+                disabled={isStreaming}
+              >
+                <CheckCircle2 size={16} />
+                Khôi phục prompt mặc định
+              </button>
+            </div>
+
+            <textarea
+              className="textarea project-chat-drawer__textarea"
+              value={effectiveSystemPrompt}
+              onChange={(event) =>
+                persistThreadUpdate(activeThread.id, {
+                  system_prompt: event.target.value,
+                  updated_at: Date.now(),
+                })
+              }
+              disabled={isStreaming}
+            />
+          </aside>
+        </>
+      ) : null}
+    </>
   );
 }

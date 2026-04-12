@@ -31,6 +31,7 @@ export default function App() {
           <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/ai-chat" element={<ProjectChat />} />
           <Route path="/prompt-manager" element={<StoryCreationSettings />} />
           <Route path="/story-creation-settings" element={<Navigate to="/prompt-manager" replace />} />
 

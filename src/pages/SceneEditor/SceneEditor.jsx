@@ -41,6 +41,7 @@ const MOBILE_NAV_ITEMS = [
   { id: 'timeline', label: 'Timeline', icon: Clock, needsProject: true, getPath: (projectId) => `/project/${projectId}/timeline`, comingSoon: true },
   { id: 'revision', label: 'Revision & QA', icon: FileSearch, needsProject: true, getPath: (projectId) => `/project/${projectId}/revision`, comingSoon: true },
   { id: 'style-lab', label: 'Style Lab', icon: Palette, needsProject: true, getPath: (projectId) => `/project/${projectId}/style-lab`, comingSoon: true },
+  { id: 'global-chat', label: 'Chat tự do', icon: MessageSquare, needsProject: false, getPath: () => '/ai-chat' },
   { id: 'prompt-manager', label: 'Quản lý Prompt', icon: Sparkles, needsProject: false, getPath: () => '/prompt-manager' },
   { id: 'settings', label: 'Cài đặt', icon: Settings, needsProject: false, getPath: () => '/settings' },
 ];
