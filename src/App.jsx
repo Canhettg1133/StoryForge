@@ -18,6 +18,7 @@ import AnalysisViewer from './pages/Lab/CorpusLab/AnalysisViewer';
 import Settings from './pages/Settings/Settings';
 import StoryCreationSettings from './pages/StoryCreationSettings/StoryCreationSettings';
 import ProjectPromptManager from './pages/ProjectPromptManager/ProjectPromptManager';
+import ProjectChat from './pages/ProjectChat/ProjectChat';
 import ProjectLayout from './components/common/ProjectLayout';
 
 export default function App() {
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="characters" element={<CharacterHub />} />
             <Route path="world" element={<WorldLore />} />
             <Route path="editor" element={<SceneEditor />} />
+            <Route path="chat" element={<ProjectChat />} />
             <Route path="prompts" element={<ProjectPromptManager />} />
             <Route path="timeline" element={PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback} />
             <Route path="revision" element={PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback} />

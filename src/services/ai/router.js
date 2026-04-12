@@ -248,9 +248,11 @@ class ModelRouter {
     const { qualityOverride, providerOverride, modelOverride } = options;
 
     if (modelOverride) {
-      let provider = PROVIDERS.GEMINI_PROXY;
-      if (!modelOverride.includes('[')) provider = PROVIDERS.GEMINI_DIRECT;
-      if (!modelOverride.startsWith('gemini')) provider = PROVIDERS.OLLAMA;
+      let provider = providerOverride || PROVIDERS.GEMINI_PROXY;
+      if (!providerOverride) {
+        if (!modelOverride.includes('[')) provider = PROVIDERS.GEMINI_DIRECT;
+        if (!modelOverride.startsWith('gemini')) provider = PROVIDERS.OLLAMA;
+      }
       return { provider, model: modelOverride, tier: 'custom' };
     }
 

@@ -287,6 +287,8 @@ const useProjectStore = create((set, get) => ({
       db.chapter_revisions.where('project_id').equals(id).delete(),
       db.chapter_commits.where('project_id').equals(id).delete(),
       db.chapter_snapshots.where('project_id').equals(id).delete(),
+      db.ai_chat_threads.where('project_id').equals(id).delete(),
+      db.ai_chat_messages.where('project_id').equals(id).delete(),
       // threadBeats: no project_id index, delete via plotThread IDs
       ...(plotThreadIds.length > 0
         ? [db.threadBeats.where('plot_thread_id').anyOf(plotThreadIds).delete()]
