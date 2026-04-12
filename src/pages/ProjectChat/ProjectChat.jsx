@@ -1043,11 +1043,18 @@ export default function ProjectChat() {
               <div className="project-chat-thread-list__empty">Chưa có cuộc trò chuyện nào.</div>
             ) : (
               threads.map((thread) => (
-                <button
+                <div
                   key={thread.id}
-                  type="button"
                   className={`project-chat-thread ${String(thread.id) === String(activeThreadId) ? 'is-active' : ''}`}
                   onClick={() => handleThreadSelect(thread.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleThreadSelect(thread.id);
+                    }
+                  }}
                 >
                   <div className="project-chat-thread__main">
                     <div className="project-chat-thread__title">{thread.title}</div>
@@ -1087,7 +1094,7 @@ export default function ProjectChat() {
                       <Trash2 size={14} />
                     </button>
                   </div>
-                </button>
+                </div>
               ))
             )}
           </div>
