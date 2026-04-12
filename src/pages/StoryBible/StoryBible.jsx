@@ -21,15 +21,12 @@ import {
   POV_MODES, STORY_STRUCTURES, PRONOUN_STYLE_PRESETS,
   GENRE_TO_PRONOUN_STYLE, AI_STRICTNESS_LEVELS,
 } from '../../utils/constants';
-import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
-import { TASK_TYPES } from '../../services/ai/router';
-import { DEFAULT_NSFW_RULES, DEFAULT_NSFW_INTIMATE_PROMPT, TASK_INSTRUCTIONS } from '../../services/ai/promptBuilder';
 import {
   BookMarked, BookOpen, Users, MapPin, Package, Shield,
   Star, Sword, UserCheck, Heart, ChevronRight, ChevronDown,
   Eye, MessageSquare, Save, Edit3, Check, Settings, FileText,
-  Terminal, BookKey, Plus, X, Trash2, RotateCcw, Sparkles,
-  Flag, TrendingUp, Loader2, Wand2, ChevronUp,
+  BookKey, Plus, X, Trash2, RotateCcw, Sparkles,
+  Flag, TrendingUp, Loader2, Wand2,
 } from 'lucide-react';
 import SuggestionInbox from '../../components/ai/SuggestionInbox';
 import ArcNavigator from '../../components/common/ArcNavigator';
@@ -46,40 +43,6 @@ import './StoryBible.css';
 const ROLE_ICONS = {
   protagonist: Star, deuteragonist: UserCheck, antagonist: Sword,
   supporting: Users, mentor: Shield, love_interest: Heart, minor: Users,
-};
-
-const TASK_TYPE_META = {
-  [TASK_TYPES.BRAINSTORM]: { label: 'Động não ý tưởng', description: 'Gợi ý nhiều hướng phát triển cho tình huống hiện tại.' },
-  [TASK_TYPES.OUTLINE]: { label: 'Lập dàn ý', description: 'Tạo dàn ý chi tiết cho chương hoặc phần tiếp theo.' },
-  [TASK_TYPES.SCENE_DRAFT]: { label: 'Viết nháp cảnh', description: 'Sinh bản nháp cho một cảnh mới.' },
-  [TASK_TYPES.CONTINUE]: { label: 'Viết tiếp', description: 'Nối tiếp đoạn văn hoặc cảnh đang viết.' },
-  [TASK_TYPES.EXPAND]: { label: 'Mở rộng đoạn', description: 'Kéo dài đoạn hiện có và bổ sung chi tiết.' },
-  [TASK_TYPES.REWRITE]: { label: 'Viết lại', description: 'Sửa lại câu chữ và nhịp văn nhưng giữ ý nghĩa gốc.' },
-  [TASK_TYPES.SUMMARIZE]: { label: 'Tóm tắt', description: 'Rút gọn nội dung thành bản tóm tắt ngắn.' },
-  [TASK_TYPES.CONTINUITY_CHECK]: { label: 'Kiểm tra nhất quán', description: 'Đối chiếu logic với canon và tình trạng hiện có.' },
-  [TASK_TYPES.EXTRACT_TERMS]: { label: 'Trích xuất thực thể', description: 'Rút ra nhân vật, địa danh, vật phẩm và thuật ngữ mới.' },
-  [TASK_TYPES.PLOT_SUGGEST]: { label: 'Gợi ý hướng plot', description: 'Đề xuất các hướng diễn biến tiếp theo.' },
-  [TASK_TYPES.STYLE_ANALYZE]: { label: 'Phân tích văn phong', description: 'Phân tích đặc điểm giọng văn hiện có.' },
-  [TASK_TYPES.STYLE_WRITE]: { label: 'Viết theo văn phong', description: 'Sinh nội dung theo văn phong đã chọn.' },
-  [TASK_TYPES.QA_CHECK]: { label: 'Kiểm tra QA', description: 'Rà soát lỗi logic, lỗi diễn đạt và vấn đề cần sửa.' },
-  [TASK_TYPES.CHECK_CONFLICT]: { label: 'Kiểm tra mâu thuẫn', description: 'Tìm mâu thuẫn với canon, timeline và nhân vật.' },
-  [TASK_TYPES.FREE_PROMPT]: { label: 'Lệnh tự do', description: 'Gửi yêu cầu tự do cho AI.' },
-  [TASK_TYPES.CHAPTER_SUMMARY]: { label: 'Tóm tắt chương', description: 'Tóm tắt một chương để dùng cho bộ nhớ và điều hướng.' },
-  [TASK_TYPES.FEEDBACK_EXTRACT]: { label: 'Rút trích thông tin mới', description: 'Lấy thông tin mới từ văn bản để cập nhật dữ liệu.' },
-  [TASK_TYPES.AI_GENERATE_ENTITY]: { label: 'Tạo thực thể bằng AI', description: 'Sinh nhanh nhân vật, địa điểm hoặc mục dữ liệu từ AI.' },
-  [TASK_TYPES.PROJECT_WIZARD]: { label: 'Khởi tạo dự án', description: 'Lập bộ khung ban đầu cho một dự án mới.' },
-  [TASK_TYPES.SUGGEST_UPDATES]: { label: 'Đề xuất cập nhật Sổ tay truyện', description: 'Gợi ý cập nhật trạng thái nhân vật và dữ liệu canon.' },
-  [TASK_TYPES.ARC_OUTLINE]: { label: 'Dàn ý cho arc', description: 'Lập dàn ý cho một đợt chương mới.' },
-  [TASK_TYPES.ARC_CHAPTER_DRAFT]: { label: 'Nháp chương theo arc', description: 'Viết bản nháp cho một chương trong arc.' },
-  [TASK_TYPES.GENERATE_MACRO_MILESTONES]: { label: 'Gợi ý cột mốc đại cục', description: 'Đề xuất các cột mốc lớn cho toàn bộ truyện.' },
-  [TASK_TYPES.AUDIT_ARC_ALIGNMENT]: { label: 'Kiểm tra độ lệch arc', description: 'Đánh giá arc hiện tại có còn đúng hướng đại cục hay không.' },
-};
-
-const PROMPT_DISPLAY_KEYS = {
-  ARC_OUTLINE: 'DÀN_Ý_ARC',
-  ARC_CHAPTER_DRAFT: 'NHÁP_CHƯƠNG_ARC',
-  GENERATE_MACRO_MILESTONES: 'CỘT_MỐC_ĐẠI_CỤC',
-  AUDIT_ARC_ALIGNMENT: 'KIỂM_TRA_LỆCH_ARC',
 };
 
 // Debounced auto-save hook
@@ -145,13 +108,6 @@ export default function StoryBible() {
     saveMacroMilestones,
   } = useArcGenStore();
 
-  // Prompt Templates local state
-  const [promptTemplates, setPromptTemplates] = useState({});
-
-  // DNA section — expand/collapse preview
-  const [showDNADetail, setShowDNADetail] = useState(false);
-  // Trạng thái flash sau khi reload DNA thành công
-  const [dnaReloaded, setDnaReloaded] = useState(false);
   const [canonOverview, setCanonOverview] = useState(null);
   const [canonOverviewLoading, setCanonOverviewLoading] = useState(false);
   const [selectedCanonChapterId, setSelectedCanonChapterId] = useState(null);
@@ -163,7 +119,7 @@ export default function StoryBible() {
 
   // Collapsible sections
   const [openSections, setOpenSections] = useState({
-    overview: true, ai: false, grandStrategy: false, prompts: false,
+    overview: true, ai: false, grandStrategy: false,
     suggestions: true, canon: true,
     characters: true, locations: true, objects: true, terms: true, summaries: true,
   });
@@ -194,11 +150,6 @@ export default function StoryBible() {
       } catch (e) {
         setMilestonesInfo([]);
       }
-      try {
-        setPromptTemplates(currentProject.prompt_templates ? JSON.parse(currentProject.prompt_templates) : {});
-      } catch (e) {
-        setPromptTemplates({});
-      }
 
       // Phase 9: Load macro arcs
       db.macro_arcs
@@ -216,8 +167,6 @@ export default function StoryBible() {
   const descSaved = useAutoSave(description, (v) => save({ description: v }));
   const synopsisSaved = useAutoSave(synopsis, (v) => save({ synopsis: v }));
   const guidelinesSaved = useAutoSave(aiGuidelines, (v) => save({ ai_guidelines: v }));
-  const promptsSaved = useAutoSave(promptTemplates, (v) => save({ prompt_templates: JSON.stringify(v) }), 1500);
-
   const ultimateGoalSaved = useAutoSave(ultimateGoal, (v) => save({ ultimate_goal: v }));
   const targetLengthSaved = useAutoSave(targetLength, (v) => save({ target_length: Number(v) || 0 }));
   const milestonesSaved = useAutoSave(milestonesInfo, (v) => save({ milestones: JSON.stringify(v) }), 1500);
@@ -304,65 +253,6 @@ export default function StoryBible() {
       setCanonDetailLoading(false);
     }
   }, [currentProject?.id]);
-
-  // Handle Prompt Templates (task-type overrides)
-  const handlePromptChange = (taskType, value) => {
-    setPromptTemplates(prev => ({ ...prev, [taskType]: value }));
-  };
-
-  // ─── [NEW] Reload DNA Văn phong từ template thể loại hiện tại ───
-  // Chỉ overwrite 3 key DNA, giữ nguyên tất cả task-type overrides
-  const handleReloadGenreDNA = useCallback(() => {
-    const template = GENRE_TEMPLATES[genrePrimary];
-    if (!template) return;
-
-    const freshDNA = {
-      constitution: template.constitution || [],
-      style_dna: template.style_dna || [],
-      anti_ai_blacklist: template.anti_ai_blacklist || [],
-    };
-
-    // Merge: DNA keys bị reset, task-type overrides giữ nguyên
-    setPromptTemplates(prev => ({ ...prev, ...freshDNA }));
-
-    // Flash indicator
-    setDnaReloaded(true);
-    setTimeout(() => setDnaReloaded(false), 2000);
-  }, [genrePrimary]);
-
-  // DNA hiện tại từ promptTemplates (có thể đã được user chỉnh sửa)
-  const currentDNA = useMemo(() => ({
-    constitution: Array.isArray(promptTemplates.constitution) ? promptTemplates.constitution : [],
-    style_dna: Array.isArray(promptTemplates.style_dna) ? promptTemplates.style_dna : [],
-    anti_ai_blacklist: Array.isArray(promptTemplates.anti_ai_blacklist) ? promptTemplates.anti_ai_blacklist : [],
-  }), [promptTemplates]);
-
-  const customNsfwRules = typeof promptTemplates.nsfw_rules === 'string'
-    ? promptTemplates.nsfw_rules
-    : '';
-  const customNsfwSystemPrompt = typeof promptTemplates.nsfw_system_prompt === 'string'
-    ? promptTemplates.nsfw_system_prompt
-    : '';
-  const customNsfwIntimatePrompt = typeof promptTemplates.nsfw_intimate_prompt === 'string'
-    ? promptTemplates.nsfw_intimate_prompt
-    : '';
-  const hasCustomNsfwRules = !!customNsfwRules.trim();
-  const hasCustomNsfwSystemPrompt = !!customNsfwSystemPrompt.trim();
-  const hasCustomNsfwIntimatePrompt = !!customNsfwIntimatePrompt.trim();
-  const nsfwRulesActive = nsfwMode || superNsfwMode;
-
-  const hasDNA = currentDNA.constitution.length > 0
-    || currentDNA.style_dna.length > 0
-    || currentDNA.anti_ai_blacklist.length > 0;
-
-  // Kiểm tra DNA hiện tại có khớp với template mặc định không
-  const templateDNA = GENRE_TEMPLATES[genrePrimary];
-  const isDNAModified = useMemo(() => {
-    if (!templateDNA) return false;
-    return JSON.stringify(currentDNA.constitution) !== JSON.stringify(templateDNA.constitution || [])
-      || JSON.stringify(currentDNA.style_dna) !== JSON.stringify(templateDNA.style_dna || [])
-      || JSON.stringify(currentDNA.anti_ai_blacklist) !== JSON.stringify(templateDNA.anti_ai_blacklist || []);
-  }, [currentDNA, templateDNA]);
 
   useEffect(() => {
     loadCanonOverview();
@@ -1015,295 +905,6 @@ export default function StoryBible() {
       </div>
 
       {/* ═══ SECTION: Cấu hình prompt AI (đã chuyển sang Prompt truyện) ═══ */}
-      <div className="bible-section" style={{ display: 'none' }}>
-        <SectionHeader icon={Terminal} title="Cấu hình prompt AI" sectionKey="prompts" />
-        {openSections.prompts && (
-          <div className="bible-edit-card">
-            <p className="bible-subtitle" style={{ marginBottom: 'var(--space-3)' }}>
-              Tùy chỉnh prompt hệ thống cho từng tính năng. Mọi thay đổi ở đây tự động lưu sau khoảng 1-2 giây, không cần bấm nút lưu. {promptsSaved && <span className="save-indicator">Đã lưu</span>}
-            </p>
-
-            {/* ─── [NEW] DNA Văn phong subsection ─── */}
-            <div style={{
-              background: 'var(--color-surface-2)',
-              border: '1px solid var(--color-accent-muted, rgba(124,58,237,0.25))',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--space-3)',
-              marginBottom: 'var(--space-4)',
-            }}>
-              {/* Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-2)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '16px' }}>🧬</span>
-                  <span style={{ fontWeight: 600, fontSize: '13px' }}>DNA Văn phong</span>
-                  <span className="badge badge-sm" style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-accent)' }}>
-                    {GENRE_TEMPLATES[genrePrimary]?.label || genrePrimary}
-                  </span>
-                  {isDNAModified && (
-                    <span style={{ fontSize: '11px', color: 'var(--color-warning, #f59e0b)' }}>✏️ Đã chỉnh sửa</span>
-                  )}
-                  {dnaReloaded && (
-                    <span style={{ fontSize: '11px', color: 'var(--color-success, #10b981)' }}>✓ Đã tải lại</span>
-                  )}
-                </div>
-                <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={() => setShowDNADetail(v => !v)}
-                    title={showDNADetail ? 'Ẩn chi tiết' : 'Xem chi tiết'}
-                  >
-                    {showDNADetail ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                    {showDNADetail ? 'Ẩn' : 'Xem'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={handleReloadGenreDNA}
-                    title={`Tải lại DNA mặc định cho thể loại ${GENRE_TEMPLATES[genrePrimary]?.label || genrePrimary}`}
-                    disabled={!GENRE_TEMPLATES[genrePrimary]}
-                  >
-                    <RotateCcw size={13} /> Tải lại DNA
-                  </button>
-                </div>
-              </div>
-
-              {/* Summary stats */}
-              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: showDNADetail ? 'var(--space-3)' : 0 }}>
-                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', background: 'var(--color-surface-3)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
-                  ⚖️ Luật cốt lõi: {currentDNA.constitution.length} luật
-                </span>
-                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', background: 'var(--color-surface-3)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
-                  🎨 DNA văn phong: {currentDNA.style_dna.length} hướng dẫn
-                </span>
-                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', background: 'var(--color-surface-3)', padding: '2px 8px', borderRadius: 'var(--radius-xs)' }}>
-                  🚫 Từ cấm: {currentDNA.anti_ai_blacklist.length} từ cấm
-                </span>
-              </div>
-
-              {/* Detail view (expandable) */}
-              {showDNADetail && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-
-                  {/* Luật cốt lõi */}
-                  {currentDNA.constitution.length > 0 && (
-                    <div>
-                      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
-                        ⚖️ Luật cốt lõi — Những nguyên tắc không được phá vỡ
-                      </p>
-                      <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
-                        {currentDNA.constitution.map((rule, i) => <li key={i}>{rule}</li>)}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* DNA văn phong */}
-                  {currentDNA.style_dna.length > 0 && (
-                    <div>
-                      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
-                        🎨 DNA văn phong — Giọng văn và nhịp điệu
-                      </p>
-                      <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: 'var(--color-text-muted)', lineHeight: 1.6 }}>
-                        {currentDNA.style_dna.map((rule, i) => <li key={i}>{rule}</li>)}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Từ cấm AI */}
-                  {currentDNA.anti_ai_blacklist.length > 0 && (
-                    <div>
-                      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-secondary)', marginBottom: 'var(--space-1)' }}>
-                        🚫 Từ cấm AI — Những cụm từ sáo rỗng cần tránh
-                      </p>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {currentDNA.anti_ai_blacklist.map((word, i) => (
-                          <span key={i} style={{
-                            fontSize: '11px',
-                            padding: '2px 6px',
-                            background: 'rgba(239, 68, 68, 0.1)',
-                            color: 'var(--color-danger, #ef4444)',
-                            borderRadius: 'var(--radius-xs)',
-                            border: '1px solid rgba(239, 68, 68, 0.2)',
-                          }}>
-                            {word}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Empty state */}
-                  {!hasDNA && (
-                    <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
-                      Chưa có DNA. Nhấn "Tải lại DNA" để nạp từ template thể loại hiện tại.
-                    </p>
-                  )}
-
-                  {/* Hint */}
-                  <p style={{ fontSize: '11px', color: 'var(--color-text-muted)', margin: 0 }}>
-                    💡 DNA được AI đọc mỗi khi viết. Muốn thay đổi thể loại → đổi Thể loại ở Tổng quan rồi nhấn "Tải lại DNA".
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">
-                System prompt NSFW gốc
-                {hasCustomNsfwSystemPrompt && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
-                {nsfwRulesActive && <span style={{ color: 'var(--color-success, #10b981)', fontSize: '11px', marginLeft: 6 }}>Đang áp dụng</span>}
-              </label>
-              <div className="form-hint" style={{ marginBottom: '4px' }}>
-                Ô này thay thế toàn bộ block NSFW gốc khi bật NSFW. Để trống = dùng system prompt NSFW mặc định của app.
-              </div>
-              <div className="prompt-default-preview">
-                <div className="prompt-default-preview__header">
-                  <span>System prompt NSFW mặc định</span>
-                  <code>nsfw_system_prompt</code>
-                </div>
-                <pre className="prompt-default-preview__body">{DEFAULT_NSFW_RULES}</pre>
-              </div>
-              <div className="prompt-editor-header">System prompt NSFW tùy chỉnh</div>
-              <textarea
-                className="textarea"
-                value={customNsfwSystemPrompt}
-                onChange={(e) => handlePromptChange('nsfw_system_prompt', e.target.value)}
-                rows={12}
-                placeholder="Để trống = dùng system prompt NSFW mặc định ở trên"
-              />
-              {hasCustomNsfwSystemPrompt && (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  style={{ alignSelf: 'flex-start', fontSize: '11px' }}
-                  onClick={() => handlePromptChange('nsfw_system_prompt', '')}
-                >
-                  Xóa system prompt NSFW tùy chỉnh
-                </button>
-              )}
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">
-                Luật khi bật NSFW
-                {hasCustomNsfwRules && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
-                {nsfwRulesActive && <span style={{ color: 'var(--color-success, #10b981)', fontSize: '11px', marginLeft: 6 }}>Đang áp dụng</span>}
-              </label>
-              <div className="form-hint" style={{ marginBottom: '4px' }}>
-                Ô này thêm luật bổ sung sau system prompt NSFW gốc. Nếu bạn cũng có nhập `System prompt NSFW tùy chỉnh` ở trên thì thứ tự sẽ là:
-                system prompt tùy chỉnh trước, luật bổ sung sau.
-              </div>
-              <div className="prompt-default-preview">
-                <div className="prompt-default-preview__header">
-                  <span>Rule gốc mặc định khi bật NSFW</span>
-                  <code>nsfw_rules</code>
-                </div>
-                <pre className="prompt-default-preview__body">{DEFAULT_NSFW_RULES}</pre>
-              </div>
-              <div className="prompt-editor-header">Luật bổ sung khi bật NSFW</div>
-              <textarea
-                className="textarea"
-                value={customNsfwRules}
-                onChange={(e) => handlePromptChange('nsfw_rules', e.target.value)}
-                rows={8}
-                placeholder="Để trống = chỉ dùng rule gốc mặc định ở trên"
-              />
-              {hasCustomNsfwRules && (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  style={{ alignSelf: 'flex-start', fontSize: '11px' }}
-                  onClick={() => handlePromptChange('nsfw_rules', '')}
-                >
-                  Xóa luật bổ sung
-                </button>
-              )}
-            </div>
-
-            {/* ─── Task-type overrides (unchanged) ─── */}
-            <div className="form-group">
-              <label className="form-label">
-                Prompt tăng cường cho cảnh thân mật
-                {hasCustomNsfwIntimatePrompt && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
-                {nsfwRulesActive && <span style={{ color: 'var(--color-success, #10b981)', fontSize: '11px', marginLeft: 6 }}>Đang áp dụng khi viết cảnh phù hợp</span>}
-              </label>
-              <div className="form-hint" style={{ marginBottom: '4px' }}>
-                Ô này là lớp tăng cường riêng cho cảnh thân mật/18+. Để trống = dùng prompt tăng cường mặc định của app. App vẫn tự nối thêm continuity động về quan hệ, đồng thuận, bí mật và dư âm cảm xúc khi có dữ liệu.
-              </div>
-              <div className="prompt-default-preview">
-                <div className="prompt-default-preview__header">
-                  <span>Prompt tăng cường mặc định cho cảnh thân mật</span>
-                  <code>nsfw_intimate_prompt</code>
-                </div>
-                <pre className="prompt-default-preview__body">{DEFAULT_NSFW_INTIMATE_PROMPT}</pre>
-              </div>
-              <div className="prompt-editor-header">Prompt tăng cường tùy chỉnh</div>
-              <textarea
-                className="textarea"
-                value={customNsfwIntimatePrompt}
-                onChange={(e) => handlePromptChange('nsfw_intimate_prompt', e.target.value)}
-                rows={12}
-                placeholder="Để trống = dùng prompt tăng cường mặc định ở trên"
-              />
-              {hasCustomNsfwIntimatePrompt && (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  style={{ alignSelf: 'flex-start', fontSize: '11px' }}
-                  onClick={() => handlePromptChange('nsfw_intimate_prompt', '')}
-                >
-                  Xóa prompt tăng cường tùy chỉnh
-                </button>
-              )}
-            </div>
-
-            {Object.entries(TASK_TYPES).map(([key, taskType]) => {
-              const taskMeta = TASK_TYPE_META[taskType] || { label: key, description: '' };
-              const defaultPrompt = TASK_INSTRUCTIONS[taskType] || '';
-              const hasCustom = !!(promptTemplates[taskType]);
-              const displayKey = PROMPT_DISPLAY_KEYS[key] || key;
-              const displayTaskType = PROMPT_DISPLAY_KEYS[key] || taskType;
-              return (
-                <div key={key} className="form-group">
-                  <label className="form-label">
-                    {taskMeta.label} <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal', fontSize: '11px' }}>({displayTaskType})</span>
-                    {hasCustom && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
-                  </label>
-                  {taskMeta.description && (
-                    <div className="form-hint" style={{ marginBottom: '4px' }}>
-                      {taskMeta.description}
-                    </div>
-                  )}
-                  {defaultPrompt && (
-                    <div className="prompt-default-preview">
-                      <div className="prompt-default-preview__header">
-                        <span>Prompt gốc mặc định</span>
-                        <code>{displayKey}</code>
-                      </div>
-                      <pre className="prompt-default-preview__body">{defaultPrompt}</pre>
-                    </div>
-                  )}
-                  <div className="prompt-editor-header">Prompt tùy chỉnh</div>
-                  <textarea
-                    className="textarea"
-                    value={promptTemplates[taskType] || ''}
-                    onChange={(e) => handlePromptChange(taskType, e.target.value)}
-                    rows={5}
-                    placeholder="Để trống = dùng prompt gốc mặc định ở trên"
-                  />
-                  {hasCustom && (
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', fontSize: '11px' }} onClick={() => handlePromptChange(taskType, '')}>
-                      Xóa tùy chỉnh và quay về prompt gốc
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ═══ SECTION: Hộp đề xuất ═══ */}
       <div className="bible-section">
         <SectionHeader icon={Sparkles} title="Hộp đề xuất" sectionKey="suggestions" />
         {openSections.suggestions && currentProject && (

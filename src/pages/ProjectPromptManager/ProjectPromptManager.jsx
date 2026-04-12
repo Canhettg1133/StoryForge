@@ -246,6 +246,8 @@ export default function ProjectPromptManager() {
   const [coreDrafts, setCoreDrafts] = useState({});
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState(null);
+  const [activeGroupKey, setActiveGroupKey] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     if (!projectId) return;
@@ -271,6 +273,47 @@ export default function ProjectPromptManager() {
     setCoreDrafts(nextCoreDrafts);
     setSaveMessage(null);
   }, [currentProject, genreKey]);
+
+  const filteredGroups = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    return PROJECT_PROMPT_GROUPS
+      .filter((group) => activeGroupKey === 'all' || group.key === activeGroupKey)
+      .map((group) => {
+        if (!normalizedSearch) return group;
+
+        const filteredItems = group.items.filter((item) => {
+          const haystack = [
+            item.label,
+            item.key,
+            item.purpose,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+          return haystack.includes(normalizedSearch);
+        });
+
+        return {
+          ...group,
+          items: filteredItems,
+        };
+      })
+      .filter((group) => group.items.length > 0);
+  }, [activeGroupKey, searchTerm]);
+
+  const handleGroupShortcut = (groupKey) => {
+    setActiveGroupKey(groupKey);
+
+    window.requestAnimationFrame(() => {
+      const targetId = groupKey === 'all' ? 'prompt-manager-top' : `prompt-group-${groupKey}`;
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  };
 
   const handleCoreChange = (item, value) => {
     setCoreDrafts((prev) => ({
@@ -351,7 +394,7 @@ export default function ProjectPromptManager() {
   }
 
   return (
-    <div className="settings-page prompt-manager-page">
+    <div className="settings-page prompt-manager-page" id="prompt-manager-top">
       <header className="settings-header animate-fade-in">
         <div className="prompt-manager-page__heading">
           <div>
@@ -368,6 +411,44 @@ export default function ProjectPromptManager() {
           </div>
         </div>
       </header>
+
+      <section className="settings-section card animate-slide-up prompt-manager-toolbar-card">
+        <div className="prompt-toolbar">
+          <div className="prompt-toolbar__search">
+            <label className="form-label" htmlFor="project-prompt-search">Tìm prompt</label>
+            <input
+              id="project-prompt-search"
+              className="input"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Tìm theo tên prompt hoặc mục đích sử dụng..."
+            />
+          </div>
+
+          <div className="prompt-toolbar__groups">
+            <span className="prompt-toolbar__label">Đi tới nhóm</span>
+            <div className="prompt-toolbar__chips">
+              <button
+                type="button"
+                className={`prompt-toolbar__chip ${activeGroupKey === 'all' ? 'is-active' : ''}`}
+                onClick={() => handleGroupShortcut('all')}
+              >
+                Tất cả
+              </button>
+              {PROJECT_PROMPT_GROUPS.map((group) => (
+                <button
+                  key={group.key}
+                  type="button"
+                  className={`prompt-toolbar__chip ${activeGroupKey === group.key ? 'is-active' : ''}`}
+                  onClick={() => handleGroupShortcut(group.key)}
+                >
+                  {group.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
       <section className="settings-section card animate-slide-up prompt-manager-intro">
         <div className="settings-section-header">
@@ -396,9 +477,10 @@ export default function ProjectPromptManager() {
       </section>
 
       <div className="settings-sections">
-        {PROJECT_PROMPT_GROUPS.map((group, groupIndex) => (
+        {filteredGroups.map((group, groupIndex) => (
           <section
             key={group.key}
+            id={`prompt-group-${group.key}`}
             className="settings-section card animate-slide-up"
             style={{ animationDelay: `${groupIndex * 40}ms` }}
           >

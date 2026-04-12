@@ -35,8 +35,13 @@ function VariableChips({ variables }) {
 export default function StoryCreationSettings() {
   const [draft, setDraft] = useState(() => getStoryCreationSettings());
   const [savedMessage, setSavedMessage] = useState('');
+  const [activeGroupKey, setActiveGroupKey] = useState('all');
 
   const previewDefaults = useMemo(() => DEFAULT_STORY_CREATION_SETTINGS, []);
+  const visibleGroups = useMemo(
+    () => STORY_CREATION_PROMPT_GROUPS.filter((group) => activeGroupKey === 'all' || group.key === activeGroupKey),
+    [activeGroupKey],
+  );
 
   const setField = (groupKey, field, value) => {
     setDraft((prev) => ({
@@ -73,13 +78,44 @@ export default function StoryCreationSettings() {
   };
 
   return (
-    <div className="settings-page">
+    <div className="settings-page" id="global-prompt-manager-top">
       <header className="settings-header animate-fade-in">
         <h1 className="settings-title">Quản lý Prompt</h1>
         <p className="settings-subtitle">
           Đây là khu vực quản lý <strong>Global Prompts</strong> — các prompt dùng chung cho toàn bộ app, không gắn với riêng một truyện nào.
         </p>
       </header>
+
+      <section className="settings-section card animate-slide-up story-creation-toolbar-card">
+        <div className="story-creation-shortcuts">
+          <span className="story-creation-shortcuts__label">Đi tới nhóm prompt</span>
+          <div className="story-creation-shortcuts__chips">
+            <button
+              type="button"
+              className={`story-creation-shortcuts__chip ${activeGroupKey === 'all' ? 'is-active' : ''}`}
+              onClick={() => setActiveGroupKey('all')}
+            >
+              Tất cả
+            </button>
+            {STORY_CREATION_PROMPT_GROUPS.map((group) => (
+              <button
+                key={group.key}
+                type="button"
+                className={`story-creation-shortcuts__chip ${activeGroupKey === group.key ? 'is-active' : ''}`}
+                onClick={() => {
+                  setActiveGroupKey(group.key);
+                  window.requestAnimationFrame(() => {
+                    const target = document.getElementById(`global-prompt-${group.key}`);
+                    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  });
+                }}
+              >
+                {GLOBAL_PROMPT_META[group.key]?.title || group.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <div className="settings-sections">
         <section className="settings-section card animate-slide-up story-creation-hero">
@@ -133,9 +169,10 @@ export default function StoryCreationSettings() {
           </div>
         </section>
 
-        {STORY_CREATION_PROMPT_GROUPS.map((group, index) => (
+        {visibleGroups.map((group, index) => (
           <section
             key={group.key}
+            id={`global-prompt-${group.key}`}
             className="settings-section card animate-slide-up"
             style={{ animationDelay: `${80 + index * 60}ms` }}
           >
