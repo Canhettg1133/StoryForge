@@ -4,6 +4,7 @@ import { countWords } from '../utils/constants';
 import { GENRE_TEMPLATES } from '../utils/genreTemplates';
 import { buildProseBuffer } from '../utils/proseBuffer';
 import { canonicalizeChapter as canonicalizeChapterEngine } from '../services/canon/engine';
+import useAIStore from './aiStore';
 
 function getNextOrderIndex(items) {
   return items.reduce((max, item) => {
@@ -572,7 +573,7 @@ const useProjectStore = create((set, get) => ({
         .first();
       let summary = '';
       try {
-        const { summarizeChapter } = await import('./aiStore').then(m => m.default.getState());
+        const { summarizeChapter } = useAIStore.getState();
         summary = await summarizeChapter(context);
       } catch (e) {
         console.warn('[AutoComplete] Summarize failed (non-fatal):', e);
@@ -602,7 +603,7 @@ const useProjectStore = create((set, get) => ({
 
       // Step 2: Extract Codex entries
       try {
-        const { extractFromChapter } = await import('./aiStore').then(m => m.default.getState());
+        const { extractFromChapter } = useAIStore.getState();
         await extractFromChapter(context);
       } catch (e) {
         console.warn('[AutoComplete] Extract failed (non-fatal):', e);

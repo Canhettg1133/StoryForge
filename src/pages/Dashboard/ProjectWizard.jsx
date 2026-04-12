@@ -33,6 +33,10 @@ import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import {
+  getStoryCreationSettings,
+  renderStoryCreationTemplate,
+} from '../../services/ai/storyCreationSettings';
+import {
   Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
   RotateCcw, Users, MapPin, BookOpen, List, AlertCircle,
   Trash2, Globe, Eye, MessageSquare, Plus, GitPullRequest,
@@ -318,6 +322,20 @@ export default function ProjectWizard({ onClose, onCreated }) {
       : '';
 
     const genreLabel = GENRES.find(g => g.value === genre)?.label || genre;
+    const storyCreationSettings = getStoryCreationSettings();
+    const wizardPrompts = storyCreationSettings.projectWizard;
+    const templateVariables = {
+      genre: genreLabel,
+      tone: tone || 'mặc định',
+      pov_label: POV_MODES.find(p => p.value === povMode)?.label || 'Ngôi 3',
+      pronoun_label: currentPronoun?.label || 'Mặc định',
+      target_length_label: targetLength > 0 ? targetLength + ' chương' : 'Chưa xác định',
+      ultimate_goal: ultimateGoal || 'Chưa có',
+      synopsis_line: synopsis ? 'Cốt truyện: ' + synopsis + '\n' : '',
+      story_structure_line: storyStructure ? 'Cấu trúc: ' + STORY_STRUCTURES.find(s => s.value === storyStructure)?.label + '\n' : '',
+      idea,
+      template_hint: templateHint,
+    };
 
     const messages = [
       {
@@ -357,6 +375,9 @@ Chỉ trả về JSON, không thêm gì khác.`,
         content: `Thể loại: ${genreLabel}\nTone: ${tone || 'mặc định'}\nGóc nhìn: ${POV_MODES.find(p => p.value === povMode)?.label || 'Ngôi 3'}\nXưng hô: ${currentPronoun?.label || 'Mặc định'}\nĐộ dài dự kiến: ${targetLength > 0 ? targetLength + ' chương' : 'Chưa xác định'}\nĐích đến tối thượng: ${ultimateGoal || 'Chưa có'}\n${synopsis ? 'Cốt truyện: ' + synopsis + '\n' : ''}${storyStructure ? 'Cấu trúc: ' + STORY_STRUCTURES.find(s => s.value === storyStructure)?.label + '\n' : ''}\nÝ tưởng: ${idea}${templateHint}`,
       },
     ];
+
+    messages[0].content = renderStoryCreationTemplate(wizardPrompts.systemPrompt, templateVariables);
+    messages[1].content = renderStoryCreationTemplate(wizardPrompts.userPromptTemplate, templateVariables);
 
     aiService.send({
       taskType: TASK_TYPES.PROJECT_WIZARD,

@@ -347,6 +347,7 @@ export async function gatherContext({
       chapterId,
       sceneId,
       detectedCharacterIds: detectedCharacters.map((character) => character.id),
+      detectedObjectIds: detectedObjects.map((object) => object.id),
     });
   } catch (e) {
     console.warn('[Context] Failed to build retrieval packet (non-fatal):', e);

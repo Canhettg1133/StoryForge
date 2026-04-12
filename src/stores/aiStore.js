@@ -16,12 +16,15 @@ import { gatherContext } from '../services/ai/contextEngine';
 import db from '../services/db/database';
 import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 import { NSFW_SUPER_PROMPT_1 } from '../utils/constants';
+import useSuggestionStore from './suggestionStore';
+import useProjectStore from './projectStore';
 import {
   validateSceneDraft,
   createChapterRevision,
   validateRevision,
   repairChapterRevision as repairChapterRevisionEngine,
 } from '../services/canon/engine';
+import { CANON_OP_TYPES } from '../services/canon/constants';
 
 // Inject router into aiService (avoid circular import)
 aiService.setRouter(modelRouter);
@@ -387,7 +390,7 @@ const useAIStore = create((set, get) => ({
     set({ eniPrimed: false, eniSessionHistory: [] });
     // Try to clear persisted state from chapterMeta
     try {
-      const { activeChapterId, currentProject } = await import('./projectStore').then(m => m.default.getState());
+      const { activeChapterId, currentProject } = useProjectStore.getState();
       if (activeChapterId && currentProject?.id) {
         await saveEniState(activeChapterId, currentProject.id, false, []);
       }
@@ -649,6 +652,18 @@ const useAIStore = create((set, get) => ({
                     current_value: update.old_status || char?.current_status || '',
                     suggested_value: update.new_status || '',
                     reasoning: update.reasoning || '',
+                    candidate_op: {
+                      op_type: CANON_OP_TYPES.CHARACTER_STATUS_CHANGED,
+                      chapter_id: chapterId,
+                      subject_id: char?.id || null,
+                      subject_name: update.character_name || char?.name || '',
+                      summary: update.new_status || '',
+                      evidence: update.reasoning || update.new_status || '',
+                      confidence: 0.6,
+                      payload: {
+                        status_summary: update.new_status || '',
+                      },
+                    },
                   });
                 }
               }
@@ -665,13 +680,24 @@ const useAIStore = create((set, get) => ({
                     suggested_value: fact.description || '',
                     fact_type: (fact.fact_type || 'fact').trim(),
                     reasoning: fact.reasoning || '',
+                    candidate_op: {
+                      op_type: CANON_OP_TYPES.FACT_REGISTERED,
+                      chapter_id: chapterId,
+                      fact_description: fact.description || '',
+                      summary: fact.description || '',
+                      evidence: fact.reasoning || fact.description || '',
+                      confidence: 0.6,
+                      payload: {
+                        description: fact.description || '',
+                        fact_type: (fact.fact_type || 'fact').trim(),
+                      },
+                    },
                   });
                 }
               }
 
               // 5. Save to DB via suggestionStore
               if (suggestionItems.length > 0) {
-                const { default: useSuggestionStore } = await import('./suggestionStore');
                 await useSuggestionStore.getState().createSuggestions(projectId, suggestionItems);
               }
 

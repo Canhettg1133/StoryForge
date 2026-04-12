@@ -89,12 +89,16 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
   };
 
   const handleAccept = async (id) => {
-    await acceptSuggestion(id, projectId);
-    if (projectId) {
-      loadCodex(projectId);
+    try {
+      await acceptSuggestion(id, projectId);
+      if (projectId) {
+        loadCodex(projectId);
+      }
+      onAccepted?.();
+      setInfo('Đã duyệt đề xuất qua canon engine và cập nhật dữ liệu dự án.', 'success');
+    } catch (err) {
+      setInfo(err.message || 'Không thể canonize đề xuất này.', 'error');
     }
-    onAccepted?.();
-    setInfo('Đã duyệt đề xuất và cập nhật dữ liệu dự án.', 'success');
   };
 
   const handleReject = async (id) => {
@@ -103,12 +107,16 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
   };
 
   const handleAcceptAll = async () => {
-    await acceptAll(projectId);
-    if (projectId) {
-      loadCodex(projectId);
+    try {
+      await acceptAll(projectId);
+      if (projectId) {
+        loadCodex(projectId);
+      }
+      onAccepted?.();
+      setInfo('Đã duyệt toàn bộ đề xuất qua canon engine.', 'success');
+    } catch (err) {
+      setInfo(err.message || 'Không thể canonize toàn bộ đề xuất.', 'error');
     }
-    onAccepted?.();
-    setInfo('Đã duyệt toàn bộ đề xuất đang chờ.', 'success');
   };
 
   const handleRejectAll = async () => {

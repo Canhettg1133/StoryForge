@@ -1,0 +1,108 @@
+.story-creation-hero {
+  border: 1px solid var(--color-accent-muted);
+}
+
+.story-creation-guides {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.story-creation-guide {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+}
+
+.story-creation-guide svg {
+  color: var(--color-accent);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.story-creation-guide strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.story-creation-guide p,
+.story-creation-field-help {
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
+.story-creation-guide--note {
+  background: var(--color-accent-muted);
+}
+
+.story-creation-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.story-creation-save-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-success, #22c55e);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.story-creation-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+}
+
+.story-creation-meta-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.story-creation-vars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.story-creation-var-chip {
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.story-creation-textarea {
+  min-height: 180px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+
+.story-creation-default {
+  margin-top: var(--space-3);
+}
+
+.story-creation-default summary {
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 720px) {
+  .story-creation-meta {
+    flex-direction: column;
+  }
+}

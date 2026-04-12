@@ -5,6 +5,7 @@ import useProjectStore from '../../stores/projectStore';
 import {
   LayoutDashboard,
   BookOpen,
+  BookKey,
   Map,
   Users,
   Globe,
@@ -26,7 +27,8 @@ import ArcNavigator from './ArcNavigator';
 
 const NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
-  { path: '/story-bible', icon: BookOpen, label: 'Story Bible', id: 'story-bible', needsProject: true },
+  { path: '/story-bible', icon: BookOpen, label: 'Sổ tay truyện', id: 'story-bible', needsProject: true },
+  { path: '/su-that', icon: BookKey, label: 'Sự thật', id: 'su-that', needsProject: true },
   { path: '/outline', icon: Map, label: 'Outline Board', id: 'outline', needsProject: true },
   { path: '/characters', icon: Users, label: 'Nhân vật', id: 'characters', needsProject: true },
   { path: '/world', icon: Globe, label: 'Thế giới', id: 'world', needsProject: true },

@@ -35,6 +35,12 @@ import SuggestionInbox from '../../components/ai/SuggestionInbox';
 import ArcNavigator from '../../components/common/ArcNavigator';
 import useArcGenStore from '../../stores/arcGenerationStore';
 import useAIStore from '../../stores/aiStore';
+import {
+  buildCharacterStateSummary,
+  getChapterRevisionDetail,
+  getChapterRevisionHistory,
+  getProjectCanonOverview,
+} from '../../services/canon/engine';
 import './StoryBible.css';
 
 const ROLE_ICONS = {
@@ -139,6 +145,14 @@ export default function StoryBible() {
   const [showDNADetail, setShowDNADetail] = useState(false);
   // Trạng thái flash sau khi reload DNA thành công
   const [dnaReloaded, setDnaReloaded] = useState(false);
+  const [canonOverview, setCanonOverview] = useState(null);
+  const [canonOverviewLoading, setCanonOverviewLoading] = useState(false);
+  const [selectedCanonChapterId, setSelectedCanonChapterId] = useState(null);
+  const [chapterRevisionHistory, setChapterRevisionHistory] = useState(null);
+  const [selectedCanonRevisionId, setSelectedCanonRevisionId] = useState(null);
+  const [selectedRevisionDetail, setSelectedRevisionDetail] = useState(null);
+  const [canonDetailLoading, setCanonDetailLoading] = useState(false);
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState(null);
 
   // Collapsible sections
   const [openSections, setOpenSections] = useState({
@@ -233,6 +247,56 @@ export default function StoryBible() {
 
   const activeCanonFacts = useMemo(() => canonFacts.filter(f => f.status === 'active'), [canonFacts]);
   const deprecatedCanonFacts = useMemo(() => canonFacts.filter(f => f.status === 'deprecated'), [canonFacts]);
+  const characterNameMap = useMemo(
+    () => new Map(characters.map((character) => [character.id, character.name])),
+    [characters]
+  );
+
+  const loadCanonOverview = useCallback(async () => {
+    if (!currentProject?.id) {
+      setCanonOverview(null);
+      return;
+    }
+    setCanonOverviewLoading(true);
+    try {
+      const overview = await getProjectCanonOverview(currentProject.id);
+      setCanonOverview(overview);
+    } finally {
+      setCanonOverviewLoading(false);
+    }
+  }, [currentProject?.id]);
+
+  const loadChapterRevisionInspector = useCallback(async (chapterId, preferredRevisionId = null) => {
+    if (!currentProject?.id || !chapterId) {
+      setChapterRevisionHistory(null);
+      setSelectedRevisionDetail(null);
+      return;
+    }
+
+    setCanonDetailLoading(true);
+    try {
+      const history = await getChapterRevisionHistory(currentProject.id, chapterId);
+      setChapterRevisionHistory(history);
+      const fallbackRevisionId = preferredRevisionId
+        || history?.commit?.current_revision_id
+        || history?.revisions?.[0]?.id
+        || null;
+      setSelectedCanonChapterId(chapterId);
+      setSelectedCanonRevisionId(fallbackRevisionId);
+
+      if (fallbackRevisionId) {
+        const detail = await getChapterRevisionDetail(currentProject.id, fallbackRevisionId);
+        setSelectedRevisionDetail(detail);
+        const firstEvidenceId = detail?.evidence?.[0]?.id || null;
+        setSelectedEvidenceId(firstEvidenceId);
+      } else {
+        setSelectedRevisionDetail(null);
+        setSelectedEvidenceId(null);
+      }
+    } finally {
+      setCanonDetailLoading(false);
+    }
+  }, [currentProject?.id]);
 
   // Handle Prompt Templates (task-type overrides)
   const handlePromptChange = (taskType, value) => {
@@ -284,6 +348,40 @@ export default function StoryBible() {
       || JSON.stringify(currentDNA.style_dna) !== JSON.stringify(templateDNA.style_dna || [])
       || JSON.stringify(currentDNA.anti_ai_blacklist) !== JSON.stringify(templateDNA.anti_ai_blacklist || []);
   }, [currentDNA, templateDNA]);
+
+  useEffect(() => {
+    loadCanonOverview();
+  }, [loadCanonOverview]);
+
+  useEffect(() => {
+    if (!canonOverview?.chapterCommits?.length) {
+      setSelectedCanonChapterId(null);
+      setChapterRevisionHistory(null);
+      setSelectedCanonRevisionId(null);
+      setSelectedRevisionDetail(null);
+      setSelectedEvidenceId(null);
+      return;
+    }
+
+    const targetChapterId = selectedCanonChapterId || canonOverview.chapterCommits[0]?.chapter_id;
+    if (targetChapterId) {
+      loadChapterRevisionInspector(targetChapterId, selectedCanonRevisionId);
+    }
+  }, [canonOverview?.chapterCommits, loadChapterRevisionInspector]);
+
+  const canonEntityCards = useMemo(() => (
+    (canonOverview?.entityStates || []).map((state) => ({
+      ...state,
+      displayName: characterNameMap.get(state.entity_id) || `Character ${state.entity_id}`,
+      summaryText: buildCharacterStateSummary(state),
+    }))
+  ), [canonOverview?.entityStates, characterNameMap]);
+
+  const selectedEvidence = useMemo(() => (
+    (selectedRevisionDetail?.evidence || []).find((item) => item.id === selectedEvidenceId)
+      || selectedRevisionDetail?.evidence?.[0]
+      || null
+  ), [selectedRevisionDetail?.evidence, selectedEvidenceId]);
 
   // Phase 9: AI generate milestones handler
   const handleGenerateMilestones = async () => {
@@ -1102,12 +1200,366 @@ export default function StoryBible() {
             <ChevronDown size={14} style={{ transform: openSections.canon ? 'rotate(0)' : 'rotate(-90deg)', transition: '0.2s' }} />
             <BookKey size={18} /> Sự thật Canon ({activeCanonFacts.length})
           </h3>
-          <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); handleAddCanonFact(); }}>
-            <Plus size={14} /> Thêm
-          </button>
+          <div className="bible-inline-actions">
+            <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); loadCanonOverview(); }} disabled={canonOverviewLoading}>
+              <RotateCcw size={14} className={canonOverviewLoading ? 'spin' : ''} /> Tải lại canon
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); handleAddCanonFact(); }}>
+              <Plus size={14} /> Thêm
+            </button>
+          </div>
         </div>
         {openSections.canon && (
           <div className="bible-cards-list">
+            <div className="bible-canon-dashboard">
+              <div className="bible-canon-summary">
+                <div className="bible-canon-stat">
+                  <span className="bible-canon-stat-label">Chapter canonical</span>
+                  <strong>{canonOverview?.stats?.canonical_count || 0}/{canonOverview?.stats?.chapter_count || chapters.length}</strong>
+                </div>
+                <div className="bible-canon-stat">
+                  <span className="bible-canon-stat-label">Blocked</span>
+                  <strong>{canonOverview?.stats?.blocked_count || 0}</strong>
+                </div>
+                <div className="bible-canon-stat">
+                  <span className="bible-canon-stat-label">Invalidated</span>
+                  <strong>{canonOverview?.stats?.invalidated_count || 0}</strong>
+                </div>
+                <div className="bible-canon-stat">
+                  <span className="bible-canon-stat-label">Events</span>
+                  <strong>{canonOverview?.stats?.event_count || 0}</strong>
+                </div>
+                <div className="bible-canon-stat">
+                  <span className="bible-canon-stat-label">Reports</span>
+                  <strong>{(canonOverview?.stats?.warning_count || 0) + (canonOverview?.stats?.error_count || 0)}</strong>
+                </div>
+                <div className="bible-canon-stat">
+                  <span className="bible-canon-stat-label">Evidence</span>
+                  <strong>{canonOverview?.stats?.evidence_count || 0}</strong>
+                </div>
+              </div>
+
+              <div className="bible-canon-columns">
+                <div className="bible-canon-panel">
+                  <div className="bible-canon-panel-header">
+                    <strong>Chapter status</strong>
+                    <span>{canonOverview?.chapterCommits?.length || 0}</span>
+                  </div>
+                  <div className="bible-canon-list">
+                    {(canonOverview?.chapterCommits || []).map((commit) => (
+                      <button
+                        key={commit.id || commit.chapter_id}
+                        type="button"
+                        className={`bible-canon-list-item bible-canon-list-item--interactive bible-canon-list-item--${commit.status || 'draft'} ${selectedCanonChapterId === commit.chapter_id ? 'is-selected' : ''}`}
+                        onClick={() => loadChapterRevisionInspector(commit.chapter_id)}
+                      >
+                        <div>
+                          <strong>{commit.chapter_title}</strong>
+                          <p>revision hiện tại: r{commit.current_revision?.revision_number || 0}</p>
+                        </div>
+                        <span className="bible-canon-badge">{commit.status || 'draft'}</span>
+                      </button>
+                    ))}
+                    {(canonOverview?.chapterCommits || []).length === 0 && (
+                      <p className="text-muted bible-canon-empty">Chưa có chapter nào được canonize.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bible-canon-panel">
+                  <div className="bible-canon-panel-header">
+                    <strong>Entity state</strong>
+                    <span>{canonEntityCards.length}</span>
+                  </div>
+                  <div className="bible-canon-list">
+                    {canonEntityCards.map((state) => (
+                      <div key={state.id || state.entity_id} className="bible-canon-list-item">
+                        <div>
+                          <strong>{state.displayName}</strong>
+                          <p>{state.summaryText || 'Chưa có state tóm tắt.'}</p>
+                        </div>
+                        <span className={`bible-canon-badge bible-canon-badge--${state.alive_status || 'alive'}`}>
+                          {state.alive_status || 'alive'}
+                        </span>
+                      </div>
+                    ))}
+                    {canonEntityCards.length === 0 && (
+                      <p className="text-muted bible-canon-empty">Chưa có entity state projection.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bible-canon-panel">
+                  <div className="bible-canon-panel-header">
+                    <strong>Plot thread state</strong>
+                    <span>{canonOverview?.threadStates?.length || 0}</span>
+                  </div>
+                  <div className="bible-canon-list">
+                    {(canonOverview?.threadStates || []).map((threadState) => (
+                      <div key={threadState.id || threadState.thread_id} className="bible-canon-list-item">
+                        <div>
+                          <strong>{threadState.thread_title}</strong>
+                          <p>{threadState.summary || 'Không có tóm tắt thread.'}</p>
+                        </div>
+                        <span className={`bible-canon-badge bible-canon-badge--${threadState.state || 'active'}`}>
+                          {threadState.state || 'active'}
+                        </span>
+                      </div>
+                    ))}
+                    {(canonOverview?.threadStates || []).length === 0 && (
+                      <p className="text-muted bible-canon-empty">Chưa có plot thread projection.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bible-canon-panel">
+                  <div className="bible-canon-panel-header">
+                    <strong>Validator reports</strong>
+                    <span>{canonOverview?.recentReports?.length || 0}</span>
+                  </div>
+                  <div className="bible-canon-list">
+                    {(canonOverview?.recentReports || []).map((report) => (
+                      <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--${report.severity}`}>
+                        <div>
+                          <strong>{report.rule_code || report.severity}</strong>
+                          <p>{report.message}</p>
+                        </div>
+                        <span className="bible-canon-meta">{report.chapter_title || 'Draft'}</span>
+                      </div>
+                    ))}
+                    {(canonOverview?.recentReports || []).length === 0 && (
+                      <p className="text-muted bible-canon-empty">Chưa có validator report nào.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bible-canon-panel">
+                  <div className="bible-canon-panel-header">
+                    <strong>Recent events</strong>
+                    <span>{canonOverview?.recentEvents?.length || 0}</span>
+                  </div>
+                  <div className="bible-canon-list">
+                    {(canonOverview?.recentEvents || []).map((event) => (
+                      <div key={event.id} className="bible-canon-list-item">
+                        <div>
+                          <strong>{event.op_type}</strong>
+                          <p>{event.subject_name || event.thread_title || event.fact_description || 'Canon event'}</p>
+                        </div>
+                        <span className="bible-canon-meta">{event.chapter_title || 'Chapter không rõ'}</span>
+                      </div>
+                    ))}
+                    {(canonOverview?.recentEvents || []).length === 0 && (
+                      <p className="text-muted bible-canon-empty">Chưa có story event nào.</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bible-canon-panel">
+                  <div className="bible-canon-panel-header">
+                    <strong>Evidence và revisions</strong>
+                    <span>{(canonOverview?.recentEvidence?.length || 0) + (canonOverview?.recentRevisions?.length || 0)}</span>
+                  </div>
+                  <div className="bible-canon-list">
+                    {(canonOverview?.recentEvidence || []).map((item) => (
+                      <div key={`evidence-${item.id}`} className="bible-canon-list-item">
+                        <div>
+                          <strong>{item.target_type || 'evidence'}</strong>
+                          <p>{item.evidence_text || item.excerpt || 'Không có evidence text.'}</p>
+                        </div>
+                        <span className="bible-canon-meta">{item.chapter_title || 'Chapter không rõ'}</span>
+                      </div>
+                    ))}
+                    {(canonOverview?.recentRevisions || []).map((revision) => (
+                      <div key={`revision-${revision.id}`} className={`bible-canon-list-item bible-canon-list-item--${revision.status || 'draft'}`}>
+                        <div>
+                          <strong>{revision.chapter_title || `Chapter ${revision.chapter_id}`}</strong>
+                          <p>Revision r{revision.revision_number || 0} - {revision.status || 'draft'}</p>
+                        </div>
+                        <span className="bible-canon-meta">rev</span>
+                      </div>
+                    ))}
+                    {(canonOverview?.recentEvidence || []).length === 0 && (canonOverview?.recentRevisions || []).length === 0 && (
+                      <p className="text-muted bible-canon-empty">Chưa có evidence hoặc revision log.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="bible-canon-detail">
+              <div className="bible-canon-detail-header">
+                <div>
+                  <strong>{chapterRevisionHistory?.chapter?.title || 'Revision Inspector'}</strong>
+                  <p>
+                    {chapterRevisionHistory?.revisions?.length || 0} revision
+                    {chapterRevisionHistory?.commit?.canonical_revision_id ? ' · có bản canonical' : ''}
+                  </p>
+                </div>
+                <div className="bible-canon-detail-actions">
+                  <select
+                    className="select"
+                    value={selectedCanonRevisionId || ''}
+                    onChange={async (event) => {
+                      const revisionId = Number(event.target.value) || null;
+                      setSelectedCanonRevisionId(revisionId);
+                      setCanonDetailLoading(true);
+                      try {
+                        const detail = revisionId ? await getChapterRevisionDetail(currentProject.id, revisionId) : null;
+                        setSelectedRevisionDetail(detail);
+                        setSelectedEvidenceId(detail?.evidence?.[0]?.id || null);
+                      } finally {
+                        setCanonDetailLoading(false);
+                      }
+                    }}
+                    disabled={canonDetailLoading || !(chapterRevisionHistory?.revisions?.length > 0)}
+                  >
+                    <option value="">Chọn revision...</option>
+                    {(chapterRevisionHistory?.revisions || []).map((revision) => (
+                      <option key={revision.id} value={revision.id}>
+                        {`r${revision.revision_number || 0} - ${revision.status || 'draft'}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {selectedRevisionDetail && (
+                <>
+                  <div className="bible-canon-detail-meta">
+                    <span className={`bible-canon-badge bible-canon-badge--${selectedRevisionDetail.revision.status || 'draft'}`}>
+                      {selectedRevisionDetail.revision.status || 'draft'}
+                    </span>
+                    {selectedRevisionDetail.revision.is_current && <span className="bible-canon-meta">current</span>}
+                    {selectedRevisionDetail.revision.is_canonical && <span className="bible-canon-meta">canonical</span>}
+                    <span className="bible-canon-meta">
+                      {selectedRevisionDetail.events.length} events
+                    </span>
+                    <span className="bible-canon-meta">
+                      {selectedRevisionDetail.evidence.length} evidence
+                    </span>
+                    <span className="bible-canon-meta">
+                      {selectedRevisionDetail.reports.length} reports
+                    </span>
+                  </div>
+
+                  <div className="bible-canon-detail-grid">
+                    <div className="bible-canon-panel">
+                      <div className="bible-canon-panel-header">
+                        <strong>Events trong revision</strong>
+                        <span>{selectedRevisionDetail.events.length}</span>
+                      </div>
+                      <div className="bible-canon-list">
+                        {selectedRevisionDetail.events.map((event) => (
+                          <div key={event.id} className="bible-canon-list-item">
+                            <div>
+                              <strong>{event.op_type}</strong>
+                              <p>{event.summary || event.subject_name || event.fact_description || 'Canon event'}</p>
+                            </div>
+                            <span className="bible-canon-meta">{event.scene_id ? `scene ${event.scene_id}` : 'chapter'}</span>
+                          </div>
+                        ))}
+                        {selectedRevisionDetail.events.length === 0 && (
+                          <p className="text-muted bible-canon-empty">Revision này chưa có event commit.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bible-canon-panel">
+                      <div className="bible-canon-panel-header">
+                        <strong>Evidence viewer</strong>
+                        <span>{selectedRevisionDetail.evidence.length}</span>
+                      </div>
+                      <div className="bible-canon-evidence-layout">
+                        <div className="bible-canon-evidence-list">
+                          {selectedRevisionDetail.evidence.map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              className={`bible-canon-list-item bible-canon-list-item--interactive ${selectedEvidence?.id === item.id ? 'is-selected' : ''}`}
+                              onClick={() => setSelectedEvidenceId(item.id)}
+                            >
+                              <div>
+                                <strong>{item.target_type || 'evidence'}</strong>
+                                <p>{item.summary || item.evidence_text || 'Không có mô tả evidence.'}</p>
+                              </div>
+                            </button>
+                          ))}
+                          {selectedRevisionDetail.evidence.length === 0 && (
+                            <p className="text-muted bible-canon-empty">Revision này chưa có evidence.</p>
+                          )}
+                        </div>
+                        <div className="bible-canon-evidence-preview">
+                          {selectedEvidence ? (
+                            <>
+                              <strong>{selectedEvidence.target_type || 'evidence'}</strong>
+                              <p>{selectedEvidence.summary || 'Không có summary.'}</p>
+                              <pre>{selectedEvidence.evidence_text || 'Không có evidence text.'}</pre>
+                            </>
+                          ) : (
+                            <p className="text-muted bible-canon-empty">Chọn một evidence để xem chi tiết.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bible-canon-panel">
+                      <div className="bible-canon-panel-header">
+                        <strong>Validator reports</strong>
+                        <span>{selectedRevisionDetail.reports.length}</span>
+                      </div>
+                      <div className="bible-canon-list">
+                        {selectedRevisionDetail.reports.map((report) => (
+                          <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--${report.severity}`}>
+                            <div>
+                              <strong>{report.rule_code || report.severity}</strong>
+                              <p>{report.message}</p>
+                            </div>
+                            <span className="bible-canon-meta">{report.scene_id ? `scene ${report.scene_id}` : 'chapter'}</span>
+                          </div>
+                        ))}
+                        {selectedRevisionDetail.reports.length === 0 && (
+                          <p className="text-muted bible-canon-empty">Revision này không có report.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="bible-canon-panel">
+                      <div className="bible-canon-panel-header">
+                        <strong>Snapshot</strong>
+                        <span>{selectedRevisionDetail.snapshotData ? 'available' : 'none'}</span>
+                      </div>
+                      <div className="bible-canon-snapshot">
+                        {selectedRevisionDetail.snapshotData ? (
+                          <>
+                            <div className="bible-canon-snapshot-stats">
+                              <span>{selectedRevisionDetail.snapshotData.entityStates?.length || 0} entity states</span>
+                              <span>{selectedRevisionDetail.snapshotData.threadStates?.length || 0} thread states</span>
+                              <span>{selectedRevisionDetail.snapshotData.factStates?.length || 0} fact states</span>
+                            </div>
+                            <div className="bible-canon-list">
+                              {(selectedRevisionDetail.snapshotData.entityStates || []).slice(0, 6).map((state) => (
+                                <div key={`snap-entity-${state.entity_id}`} className="bible-canon-list-item">
+                                  <div>
+                                    <strong>{characterNameMap.get(state.entity_id) || `Character ${state.entity_id}`}</strong>
+                                    <p>{buildCharacterStateSummary(state)}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-muted bible-canon-empty">Revision này chưa có snapshot.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {!selectedRevisionDetail && !canonDetailLoading && (
+                <p className="text-muted bible-canon-empty">Chọn một chapter canonical để xem revision và evidence.</p>
+              )}
+            </div>
             {activeCanonFacts.map(fact => (
               <div key={fact.id} className="bible-edit-card" style={{ gap: 'var(--space-2)' }}>
                 <div style={{ display: 'flex', gap: 'var(--space-2)' }}>

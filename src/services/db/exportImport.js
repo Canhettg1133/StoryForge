@@ -10,6 +10,84 @@
 
 import db from '../db/database';
 
+function remapIdList(items, idMap) {
+  if (!Array.isArray(items)) return [];
+  return items.map((item) => idMap[item] || item);
+}
+
+function remapCanonSnapshot(snapshotJson, maps) {
+  try {
+    const snapshot = typeof snapshotJson === 'string' ? JSON.parse(snapshotJson) : snapshotJson;
+    if (!snapshot || typeof snapshot !== 'object') return snapshotJson;
+
+    const next = { ...snapshot };
+
+    if (Array.isArray(next.entityStates)) {
+      next.entityStates = next.entityStates.map((state) => ({
+        ...state,
+        entity_id: state.entity_type === 'character'
+          ? (maps.characterIdMap[state.entity_id] || state.entity_id)
+          : state.entity_id,
+        last_event_id: maps.eventIdMap[state.last_event_id] || state.last_event_id || null,
+        source_revision_id: maps.revisionIdMap[state.source_revision_id] || state.source_revision_id || null,
+      }));
+    }
+
+    if (Array.isArray(next.threadStates)) {
+      next.threadStates = next.threadStates.map((state) => ({
+        ...state,
+        thread_id: maps.plotThreadIdMap[state.thread_id] || state.thread_id,
+        focus_entity_ids: remapIdList(state.focus_entity_ids, maps.characterIdMap),
+        last_event_id: maps.eventIdMap[state.last_event_id] || state.last_event_id || null,
+        source_revision_id: maps.revisionIdMap[state.source_revision_id] || state.source_revision_id || null,
+      }));
+    }
+
+    if (Array.isArray(next.factStates)) {
+      next.factStates = next.factStates.map((fact) => ({
+        ...fact,
+        id: maps.canonFactIdMap[fact.id] || fact.id,
+        subject_id: fact.subject_type === 'character'
+          ? (maps.characterIdMap[fact.subject_id] || fact.subject_id)
+          : fact.subject_type === 'location'
+            ? (maps.locationIdMap[fact.subject_id] || fact.subject_id)
+            : fact.subject_id,
+      }));
+    }
+
+    if (Array.isArray(next.itemStates)) {
+      next.itemStates = next.itemStates.map((state) => ({
+        ...state,
+        object_id: maps.objectIdMap[state.object_id] || state.object_id,
+        owner_character_id: maps.characterIdMap[state.owner_character_id] || state.owner_character_id || null,
+        current_location_id: maps.locationIdMap[state.current_location_id] || state.current_location_id || null,
+        last_event_id: maps.eventIdMap[state.last_event_id] || state.last_event_id || null,
+        source_revision_id: maps.revisionIdMap[state.source_revision_id] || state.source_revision_id || null,
+      }));
+    }
+
+    if (Array.isArray(next.relationshipStates)) {
+      next.relationshipStates = next.relationshipStates.map((state) => ({
+        ...state,
+        character_a_id: maps.characterIdMap[state.character_a_id] || state.character_a_id,
+        character_b_id: maps.characterIdMap[state.character_b_id] || state.character_b_id,
+        last_event_id: maps.eventIdMap[state.last_event_id] || state.last_event_id || null,
+        source_revision_id: maps.revisionIdMap[state.source_revision_id] || state.source_revision_id || null,
+        pair_key: state.character_a_id && state.character_b_id
+          ? [
+            maps.characterIdMap[state.character_a_id] || state.character_a_id,
+            maps.characterIdMap[state.character_b_id] || state.character_b_id,
+          ].sort((a, b) => Number(a) - Number(b)).join(':')
+          : state.pair_key,
+      }));
+    }
+
+    return JSON.stringify(next);
+  } catch {
+    return snapshotJson;
+  }
+}
+
 /**
  * Export a project and all related data as JSON.
  * @param {number} projectId
@@ -20,6 +98,9 @@ export async function exportProject(projectId) {
     project, chapters, scenes, characters, locations, objects,
     worldTerms, taboos, relationships, canonFacts, chapterMeta,
     plotThreads, factions, suggestions, entityTimeline, macroArcs, arcs,
+    storyEvents, entityStateCurrent, plotThreadState, validatorReports,
+    memoryEvidence, chapterRevisions, chapterCommits, chapterSnapshots,
+    itemStateCurrent, relationshipStateCurrent,
   ] = await Promise.all([
     db.projects.get(projectId),
     db.chapters.where('project_id').equals(projectId).toArray(),
@@ -38,6 +119,16 @@ export async function exportProject(projectId) {
     db.entityTimeline.where('project_id').equals(projectId).toArray(),
     db.macro_arcs.where('project_id').equals(projectId).toArray(),
     db.arcs.where('project_id').equals(projectId).toArray(),
+    db.story_events.where('project_id').equals(projectId).toArray(),
+    db.entity_state_current.where('project_id').equals(projectId).toArray(),
+    db.plot_thread_state.where('project_id').equals(projectId).toArray(),
+    db.validator_reports.where('project_id').equals(projectId).toArray(),
+    db.memory_evidence.where('project_id').equals(projectId).toArray(),
+    db.chapter_revisions.where('project_id').equals(projectId).toArray(),
+    db.chapter_commits.where('project_id').equals(projectId).toArray(),
+    db.chapter_snapshots.where('project_id').equals(projectId).toArray(),
+    db.item_state_current.where('project_id').equals(projectId).toArray(),
+    db.relationship_state_current.where('project_id').equals(projectId).toArray(),
   ]);
 
   if (!project) throw new Error('Không tìm thấy dự án');
@@ -49,7 +140,7 @@ export async function exportProject(projectId) {
     : [];
 
   const data = {
-    _storyforge_version: 4,
+    _storyforge_version: 6,
     _exported_at: new Date().toISOString(),
     project,
     chapters,
@@ -69,6 +160,16 @@ export async function exportProject(projectId) {
     entityTimeline,
     macro_arcs: macroArcs,
     arcs,
+    story_events: storyEvents,
+    entity_state_current: entityStateCurrent,
+    plot_thread_state: plotThreadState,
+    validator_reports: validatorReports,
+    memory_evidence: memoryEvidence,
+    chapter_revisions: chapterRevisions,
+    chapter_commits: chapterCommits,
+    chapter_snapshots: chapterSnapshots,
+    item_state_current: itemStateCurrent,
+    relationship_state_current: relationshipStateCurrent,
   };
 
   return JSON.stringify(data, null, 2);
@@ -229,14 +330,18 @@ export async function importProject(jsonString) {
   // 9. Remaining tables — uses accumulated ID maps
   // ═══════════════════════════════════════════
 
+  const canonFactIdMap = {};
+  const objectIdMap = {};
+
   // Objects (uses characterIdMap for owner)
   for (const o of (data.objects || [])) {
     const { id: _, project_id: __, ...oData } = o;
-    await db.objects.add({
+    const newId = await db.objects.add({
       ...oData,
       project_id: newProjectId,
       owner_character_id: characterIdMap[o.owner_character_id] || o.owner_character_id,
     });
+    objectIdMap[o.id] = newId;
   }
 
   // World terms
@@ -268,14 +373,15 @@ export async function importProject(jsonString) {
 
   // Canon facts (uses characterIdMap, locationIdMap)
   for (const f of (data.canonFacts || [])) {
-    const { id: _, project_id: __, ...fData } = f;
-    await db.canonFacts.add({
+    const { id: oldId, project_id: __, ...fData } = f;
+    const newId = await db.canonFacts.add({
       ...fData,
       project_id: newProjectId,
       subject_id: f.subject_type === 'character' ? (characterIdMap[f.subject_id] || f.subject_id) :
                   f.subject_type === 'location' ? (locationIdMap[f.subject_id] || f.subject_id) :
                   f.subject_id,
     });
+    canonFactIdMap[oldId] = newId;
   }
 
   // Chapter meta (uses chapterIdMap)
@@ -329,6 +435,151 @@ export async function importProject(jsonString) {
       project_id: newProjectId,
       entity_id: mappedEntityId,
       chapter_id: chapterIdMap[et.chapter_id] || et.chapter_id,
+    });
+  }
+
+  const revisionIdMap = {};
+  for (const revision of (data.chapter_revisions || [])) {
+    const { id: oldId, project_id: __, ...revisionData } = revision;
+    const newId = await db.chapter_revisions.add({
+      ...revisionData,
+      project_id: newProjectId,
+      chapter_id: chapterIdMap[revision.chapter_id] || revision.chapter_id,
+    });
+    revisionIdMap[oldId] = newId;
+  }
+
+  const eventIdMap = {};
+  for (const event of (data.story_events || [])) {
+    const { id: oldId, project_id: __, ...eventData } = event;
+    const newId = await db.story_events.add({
+      ...eventData,
+      project_id: newProjectId,
+      chapter_id: chapterIdMap[event.chapter_id] || event.chapter_id,
+      revision_id: revisionIdMap[event.revision_id] || event.revision_id || null,
+      scene_id: sceneIdMap[event.scene_id] || event.scene_id || null,
+      subject_id: characterIdMap[event.subject_id] || event.subject_id || null,
+      target_id: characterIdMap[event.target_id] || event.target_id || null,
+      location_id: locationIdMap[event.location_id] || event.location_id || null,
+      thread_id: plotThreadIdMap[event.thread_id] || event.thread_id || null,
+      fact_id: canonFactIdMap[event.fact_id] || event.fact_id || null,
+    });
+    eventIdMap[oldId] = newId;
+  }
+
+  for (const state of (data.entity_state_current || [])) {
+    const { id: _, project_id: __, ...stateData } = state;
+    await db.entity_state_current.add({
+      ...stateData,
+      project_id: newProjectId,
+      entity_id: state.entity_type === 'character'
+        ? (characterIdMap[state.entity_id] || state.entity_id)
+        : state.entity_id,
+      last_event_id: eventIdMap[state.last_event_id] || state.last_event_id || null,
+      source_revision_id: revisionIdMap[state.source_revision_id] || state.source_revision_id || null,
+    });
+  }
+
+  for (const state of (data.plot_thread_state || [])) {
+    const { id: _, project_id: __, ...stateData } = state;
+    await db.plot_thread_state.add({
+      ...stateData,
+      project_id: newProjectId,
+      thread_id: plotThreadIdMap[state.thread_id] || state.thread_id,
+      focus_entity_ids: remapIdList(state.focus_entity_ids, characterIdMap),
+      last_event_id: eventIdMap[state.last_event_id] || state.last_event_id || null,
+      source_revision_id: revisionIdMap[state.source_revision_id] || state.source_revision_id || null,
+    });
+  }
+
+  for (const state of (data.item_state_current || [])) {
+    const { id: _, project_id: __, ...stateData } = state;
+    await db.item_state_current.add({
+      ...stateData,
+      project_id: newProjectId,
+      object_id: objectIdMap[state.object_id] || state.object_id,
+      owner_character_id: characterIdMap[state.owner_character_id] || state.owner_character_id || null,
+      current_location_id: locationIdMap[state.current_location_id] || state.current_location_id || null,
+      last_event_id: eventIdMap[state.last_event_id] || state.last_event_id || null,
+      source_revision_id: revisionIdMap[state.source_revision_id] || state.source_revision_id || null,
+    });
+  }
+
+  for (const state of (data.relationship_state_current || [])) {
+    const { id: _, project_id: __, ...stateData } = state;
+    const mappedA = characterIdMap[state.character_a_id] || state.character_a_id;
+    const mappedB = characterIdMap[state.character_b_id] || state.character_b_id;
+    await db.relationship_state_current.add({
+      ...stateData,
+      project_id: newProjectId,
+      character_a_id: mappedA,
+      character_b_id: mappedB,
+      pair_key: mappedA && mappedB ? [mappedA, mappedB].sort((a, b) => Number(a) - Number(b)).join(':') : state.pair_key,
+      last_event_id: eventIdMap[state.last_event_id] || state.last_event_id || null,
+      source_revision_id: revisionIdMap[state.source_revision_id] || state.source_revision_id || null,
+    });
+  }
+
+  for (const report of (data.validator_reports || [])) {
+    const { id: _, project_id: __, ...reportData } = report;
+    await db.validator_reports.add({
+      ...reportData,
+      project_id: newProjectId,
+      chapter_id: chapterIdMap[report.chapter_id] || report.chapter_id,
+      revision_id: revisionIdMap[report.revision_id] || report.revision_id || null,
+      scene_id: sceneIdMap[report.scene_id] || report.scene_id || null,
+      related_entity_ids: remapIdList(report.related_entity_ids, characterIdMap),
+      related_thread_ids: remapIdList(report.related_thread_ids, plotThreadIdMap),
+      related_event_ids: remapIdList(report.related_event_ids, eventIdMap),
+    });
+  }
+
+  for (const evidence of (data.memory_evidence || [])) {
+    const { id: _, project_id: __, ...evidenceData } = evidence;
+    let mappedTargetId = evidence.target_id;
+    if (evidence.target_type === 'story_event') mappedTargetId = eventIdMap[evidence.target_id] || evidence.target_id;
+    if (evidence.target_type === 'chapter_revision') mappedTargetId = revisionIdMap[evidence.target_id] || evidence.target_id;
+    if (evidence.target_type === 'character') mappedTargetId = characterIdMap[evidence.target_id] || evidence.target_id;
+    if (evidence.target_type === 'plot_thread') mappedTargetId = plotThreadIdMap[evidence.target_id] || evidence.target_id;
+    if (evidence.target_type === 'canon_fact') mappedTargetId = canonFactIdMap[evidence.target_id] || evidence.target_id;
+
+    await db.memory_evidence.add({
+      ...evidenceData,
+      project_id: newProjectId,
+      chapter_id: chapterIdMap[evidence.chapter_id] || evidence.chapter_id,
+      revision_id: revisionIdMap[evidence.revision_id] || evidence.revision_id || null,
+      scene_id: sceneIdMap[evidence.scene_id] || evidence.scene_id || null,
+      target_id: mappedTargetId,
+    });
+  }
+
+  for (const commit of (data.chapter_commits || [])) {
+    const { id: _, project_id: __, ...commitData } = commit;
+    await db.chapter_commits.add({
+      ...commitData,
+      project_id: newProjectId,
+      chapter_id: chapterIdMap[commit.chapter_id] || commit.chapter_id,
+      current_revision_id: revisionIdMap[commit.current_revision_id] || commit.current_revision_id || null,
+      canonical_revision_id: revisionIdMap[commit.canonical_revision_id] || commit.canonical_revision_id || null,
+    });
+  }
+
+  for (const snapshot of (data.chapter_snapshots || [])) {
+    const { id: _, project_id: __, ...snapshotData } = snapshot;
+    await db.chapter_snapshots.add({
+      ...snapshotData,
+      project_id: newProjectId,
+      chapter_id: chapterIdMap[snapshot.chapter_id] || snapshot.chapter_id,
+      revision_id: revisionIdMap[snapshot.revision_id] || snapshot.revision_id || null,
+      snapshot_json: remapCanonSnapshot(snapshot.snapshot_json, {
+        characterIdMap,
+        locationIdMap,
+        plotThreadIdMap,
+        canonFactIdMap,
+        objectIdMap,
+        revisionIdMap,
+        eventIdMap,
+      }),
     });
   }
 

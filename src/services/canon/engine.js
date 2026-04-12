@@ -53,6 +53,14 @@ function normalizePayload(payload) {
   return payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
 }
 
+function clampConfidence(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  if (numeric < 0) return 0;
+  if (numeric > 1) return 1;
+  return numeric;
+}
+
 function normalizeOpType(value) {
   const normalized = String(value || '').trim().toUpperCase();
   return CANON_EXTRACTABLE_OPS.has(normalized) ? normalized : null;
@@ -205,32 +213,78 @@ function toThreadStateRecords(projectId, threadMap) {
 function findCharacterByName(characters, name) {
   const target = normalizeKey(name);
   if (!target) return null;
-  return characters.find((character) => {
+  const exact = characters.find((character) => {
     const aliases = Array.isArray(character.aliases) ? character.aliases : [];
     return [character.name, ...aliases].some((value) => normalizeKey(value) === target);
+  }) || null;
+  if (exact) return exact;
+
+  const targetTokens = target.split(' ').filter(Boolean);
+  return characters.find((character) => {
+    const aliases = Array.isArray(character.aliases) ? character.aliases : [];
+    return [character.name, ...aliases].some((value) => {
+      const normalized = normalizeKey(value);
+      if (!normalized) return false;
+      if (normalized.includes(target) || target.includes(normalized)) return true;
+      const normalizedTokens = normalized.split(' ').filter(Boolean);
+      const overlap = targetTokens.filter((token) => normalizedTokens.includes(token)).length;
+      return overlap >= Math.min(2, targetTokens.length, normalizedTokens.length);
+    });
   }) || null;
 }
 
 function findLocationByName(locations, name) {
   const target = normalizeKey(name);
   if (!target) return null;
-  return locations.find((location) => normalizeKey(location.name) === target) || null;
+  return locations.find((location) => {
+    const normalized = normalizeKey(location.name);
+    return normalized === target || normalized.includes(target) || target.includes(normalized);
+  }) || null;
 }
 
 function findThreadByTitle(threads, title) {
   const target = normalizeKey(title);
   if (!target) return null;
-  return threads.find((thread) => normalizeKey(thread.title) === target) || null;
+  return threads.find((thread) => {
+    const normalized = normalizeKey(thread.title);
+    return normalized === target || normalized.includes(target) || target.includes(normalized);
+  }) || null;
 }
 
 function findFactByDescription(facts, description) {
   const target = normalizeKey(description);
   if (!target) return null;
-  return facts.find((fact) => normalizeKey(fact.description) === target) || null;
+  return facts.find((fact) => {
+    const normalized = normalizeKey(fact.description);
+    return normalized === target || normalized.includes(target) || target.includes(normalized);
+  }) || null;
+}
+
+function findObjectByName(objects, name) {
+  const target = normalizeKey(name);
+  if (!target) return null;
+  return objects.find((object) => {
+    const normalized = normalizeKey(object.name);
+    return normalized === target || normalized.includes(target) || target.includes(normalized);
+  }) || null;
+}
+
+function buildOpFingerprint(op) {
+  return [
+    op.op_type,
+    op.scene_id || '',
+    op.subject_id || normalizeKey(op.subject_name),
+    op.target_id || normalizeKey(op.target_name),
+    op.location_id || normalizeKey(op.location_name),
+    op.thread_id || normalizeKey(op.thread_title),
+    op.fact_id || normalizeKey(op.fact_description),
+    normalizeKey(op.summary),
+  ].join('|');
 }
 
 function mapAiOpsToCandidateOps(rawOps, refs) {
   const sceneMap = new Map(refs.scenes.map((scene, index) => [index + 1, scene]));
+  const seen = new Set();
   return rawOps
     .map((rawOp) => {
       const opType = normalizeOpType(rawOp?.op_type);
@@ -242,6 +296,7 @@ function mapAiOpsToCandidateOps(rawOps, refs) {
       const location = findLocationByName(refs.locations, rawOp.location_name);
       const thread = findThreadByTitle(refs.plotThreads, rawOp.thread_title);
       const fact = findFactByDescription(refs.canonFacts, rawOp.fact_description);
+      const object = findObjectByName(refs.objects || [], rawOp.object_name);
 
       return {
         op_type: opType,
@@ -258,13 +313,21 @@ function mapAiOpsToCandidateOps(rawOps, refs) {
         thread_title: cleanText(rawOp.thread_title || thread?.title || ''),
         fact_id: fact?.id || null,
         fact_description: cleanText(rawOp.fact_description || fact?.description || ''),
+        object_id: object?.id || null,
+        object_name: cleanText(rawOp.object_name || object?.name || ''),
         summary: cleanText(rawOp.summary || ''),
-        confidence: Number(rawOp.confidence) || 0,
+        confidence: clampConfidence(rawOp.confidence),
         evidence: cleanText(rawOp.evidence || ''),
         payload: normalizePayload(rawOp.payload),
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((op) => {
+      const fingerprint = buildOpFingerprint(op);
+      if (seen.has(fingerprint)) return false;
+      seen.add(fingerprint);
+      return true;
+    });
 }
 
 export function applyEventToEntityState(prevState, event) {
@@ -351,6 +414,76 @@ export function applyEventToThreadState(prevState, event) {
       next.state = 'resolved';
       next.summary = cleanText(payload.summary || event.summary || next.summary || '');
       next.focus_entity_ids = uniqueList([...next.focus_entity_ids, event.subject_id, event.target_id]);
+      break;
+    default:
+      break;
+  }
+
+  return next;
+}
+
+export function applyEventToItemState(prevState, event) {
+  const next = {
+    ...(prevState || {}),
+    updated_at: Date.now(),
+    last_event_id: event.id || prevState?.last_event_id || null,
+    source_revision_id: event.revision_id || prevState?.source_revision_id || null,
+  };
+  const payload = normalizePayload(event.payload);
+
+  switch (event.op_type) {
+    case CANON_OP_TYPES.OBJECT_STATUS_CHANGED:
+      next.availability = cleanText(payload.availability || next.availability || 'available') || 'available';
+      next.is_damaged = Boolean(payload.is_damaged ?? next.is_damaged);
+      next.is_consumed = Boolean(payload.is_consumed ?? next.is_consumed);
+      next.current_location_id = payload.location_id || next.current_location_id || null;
+      next.current_location_name = cleanText(payload.location_name || next.current_location_name || '');
+      next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
+      next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
+      break;
+    case CANON_OP_TYPES.OBJECT_TRANSFERRED:
+      next.owner_character_id = event.target_id || payload.owner_character_id || next.owner_character_id || null;
+      next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
+      break;
+    case CANON_OP_TYPES.OBJECT_CONSUMED:
+      next.availability = cleanText(payload.availability || 'consumed') || 'consumed';
+      next.is_consumed = true;
+      next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc su dung het');
+      next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
+      break;
+    default:
+      break;
+  }
+
+  return next;
+}
+
+export function applyEventToRelationshipState(prevState, event) {
+  const next = {
+    ...(prevState || {}),
+    updated_at: Date.now(),
+    last_event_id: event.id || prevState?.last_event_id || null,
+    source_revision_id: event.revision_id || prevState?.source_revision_id || null,
+  };
+  const payload = normalizePayload(event.payload);
+
+  switch (event.op_type) {
+    case CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED:
+      next.relationship_type = cleanText(payload.relationship_type || payload.status || next.relationship_type || 'other') || 'other';
+      next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
+      next.emotional_aftermath = cleanText(payload.emotional_aftermath || next.emotional_aftermath || '');
+      if (payload.secrecy_state) next.secrecy_state = cleanText(payload.secrecy_state) || next.secrecy_state;
+      break;
+    case CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED:
+      next.secrecy_state = cleanText(payload.secrecy_state || payload.secret_state || next.secrecy_state || 'public') || 'public';
+      next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
+      break;
+    case CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED:
+      next.intimacy_level = cleanText(payload.intimacy_level || payload.level || next.intimacy_level || 'none') || 'none';
+      next.consent_state = cleanText(payload.consent_state || next.consent_state || 'unknown') || 'unknown';
+      next.emotional_aftermath = cleanText(payload.emotional_aftermath || next.emotional_aftermath || '');
+      next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
+      if (payload.secrecy_state) next.secrecy_state = cleanText(payload.secrecy_state) || next.secrecy_state;
       break;
     default:
       break;
@@ -505,12 +638,14 @@ async function replaceValidatorReports(projectId, revisionId, reports) {
 }
 
 async function loadPreChapterTruth(projectId, chapterId) {
-  const [characters, locations, plotThreads, canonFacts, chapters] = await Promise.all([
+  const [characters, locations, plotThreads, canonFacts, chapters, objects, relationships] = await Promise.all([
     db.characters.where('project_id').equals(projectId).toArray(),
     db.locations.where('project_id').equals(projectId).toArray(),
     db.plotThreads.where('project_id').equals(projectId).toArray(),
     db.canonFacts.where('project_id').equals(projectId).toArray(),
     db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
+    db.objects.where('project_id').equals(projectId).toArray(),
+    db.relationships.where('project_id').equals(projectId).toArray(),
   ]);
 
   const chapter = chapters.find((item) => item.id === chapterId) || null;
@@ -534,6 +669,12 @@ async function loadPreChapterTruth(projectId, chapterId) {
     ? loadSnapshotValue(snapshot, 'threadStates', []).map((state) => ({ ...state }))
     : plotThreads.map((thread) => createInitialThreadState(thread));
   const factStates = collectFactStatesFromSnapshot(snapshot, canonFacts);
+  const itemStates = snapshot
+    ? loadSnapshotValue(snapshot, 'itemStates', []).map((state) => ({ ...state }))
+    : objects.map((object) => createInitialItemState(object));
+  const relationshipStates = snapshot
+    ? loadSnapshotValue(snapshot, 'relationshipStates', []).map((state) => ({ ...state }))
+    : relationships.map((relationship) => createInitialRelationshipState(relationship));
 
   return {
     chapter,
@@ -542,10 +683,14 @@ async function loadPreChapterTruth(projectId, chapterId) {
     characters,
     locations,
     plotThreads,
+    objects,
+    relationships,
     canonFacts,
     entityStates,
     threadStates,
     factStates,
+    itemStates,
+    relationshipStates,
   };
 }
 
@@ -557,13 +702,19 @@ export function validateCandidateOps({
   entityStates = [],
   threadStates = [],
   factStates = [],
+  itemStates = [],
+  relationshipStates = [],
 }) {
   const reports = [];
   const entityMap = new Map(entityStates.map((state) => [state.entity_id, state]));
   const threadMap = new Map(threadStates.map((state) => [state.thread_id, state]));
   const factMap = new Map(factStates.map((fact) => [fact.id, fact]));
+  const itemMap = new Map(itemStates.map((state) => [state.object_id, state]));
+  const relationshipMap = new Map(relationshipStates.map((state) => [state.pair_key, state]));
+  const seenFingerprints = new Set();
 
   candidateOps.forEach((op) => {
+    const fingerprint = buildOpFingerprint(op);
     if (!normalizeOpType(op.op_type)) {
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
@@ -578,6 +729,23 @@ export function validateCandidateOps({
       return;
     }
 
+    if (seenFingerprints.has(fingerprint)) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'DUPLICATE_CANON_OP',
+        message: `Op ${op.op_type} bi lap trong cung mot revision.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id, op.target_id],
+        relatedThreadIds: [op.thread_id],
+        evidence: op.evidence,
+      }));
+      return;
+    }
+    seenFingerprints.add(fingerprint);
+
     if (!op.scene_id) {
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
@@ -588,6 +756,226 @@ export function validateCandidateOps({
         revisionId,
         evidence: op.evidence,
       }));
+    }
+
+    if (op.confidence > 0 && op.confidence < 0.55) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'LOW_CONFIDENCE_CANON_OP',
+        message: `Op ${op.op_type} co do tin cay thap (${op.confidence.toFixed(2)}).`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id, op.target_id],
+        relatedThreadIds: [op.thread_id],
+        evidence: op.evidence,
+      }));
+    }
+
+    if (
+      [
+        CANON_OP_TYPES.CHARACTER_STATUS_CHANGED,
+        CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED,
+        CANON_OP_TYPES.CHARACTER_RESCUED,
+        CANON_OP_TYPES.CHARACTER_DIED,
+        CANON_OP_TYPES.GOAL_CHANGED,
+        CANON_OP_TYPES.ALLEGIANCE_CHANGED,
+      ].includes(op.op_type)
+      && !op.subject_id
+    ) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.ERROR,
+        ruleCode: 'MISSING_SUBJECT_REFERENCE',
+        message: `Op ${op.op_type} khong map duoc nhan vat chinh.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        evidence: op.evidence,
+      }));
+    }
+
+    if (op.op_type === CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED && !op.location_id) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.ERROR,
+        ruleCode: 'MISSING_LOCATION_REFERENCE',
+        message: 'Op doi vi tri nhan vat khong map duoc dia diem cu the.',
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id],
+        evidence: op.evidence,
+      }));
+    }
+
+    if (
+      [
+        CANON_OP_TYPES.THREAD_OPENED,
+        CANON_OP_TYPES.THREAD_PROGRESS,
+        CANON_OP_TYPES.THREAD_RESOLVED,
+      ].includes(op.op_type)
+      && !op.thread_id
+    ) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.ERROR,
+        ruleCode: 'MISSING_THREAD_REFERENCE',
+        message: `Op ${op.op_type} khong map duoc tuyen truyện cu the.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id, op.target_id],
+        evidence: op.evidence,
+      }));
+    }
+
+    if (op.op_type === CANON_OP_TYPES.SECRET_REVEALED && !op.fact_id) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.ERROR,
+        ruleCode: 'MISSING_FACT_REFERENCE',
+        message: 'Op tiet lo bi mat khong map duoc bi mat canon cu the.',
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id, op.target_id],
+        evidence: op.evidence,
+      }));
+    }
+
+    if (op.op_type === CANON_OP_TYPES.FACT_REGISTERED && !cleanText(op.fact_description || op.payload?.description || op.summary)) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.ERROR,
+        ruleCode: 'EMPTY_FACT_DESCRIPTION',
+        message: 'Op ghi nhan su that moi nhung khong co mo ta ro rang.',
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        evidence: op.evidence,
+      }));
+    }
+
+    if (
+      [
+        CANON_OP_TYPES.OBJECT_STATUS_CHANGED,
+        CANON_OP_TYPES.OBJECT_TRANSFERRED,
+        CANON_OP_TYPES.OBJECT_CONSUMED,
+      ].includes(op.op_type)
+      && !op.object_id
+    ) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.ERROR,
+        ruleCode: 'MISSING_OBJECT_REFERENCE',
+        message: `Op ${op.op_type} khong map duoc vat pham cu the.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id, op.target_id],
+        evidence: op.evidence,
+      }));
+    }
+
+    if (op.object_id) {
+      const itemState = itemMap.get(op.object_id);
+      if (
+        itemState
+        && ['consumed', 'destroyed'].includes(cleanText(itemState.availability))
+        && [CANON_OP_TYPES.OBJECT_TRANSFERRED, CANON_OP_TYPES.OBJECT_CONSUMED].includes(op.op_type)
+      ) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.ERROR,
+          ruleCode: 'ITEM_UNAVAILABLE_REUSED',
+          message: `${op.object_name || 'Vat pham'} da het hieu luc hoac da bi dung het nhung van bi dung tiep.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          evidence: op.evidence,
+        }));
+      }
+      if (
+        itemState
+        && op.op_type === CANON_OP_TYPES.OBJECT_CONSUMED
+        && (itemState.is_consumed || cleanText(itemState.availability) === 'consumed')
+      ) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.ERROR,
+          ruleCode: 'ITEM_ALREADY_CONSUMED',
+          message: `${op.object_name || 'Vat pham'} da duoc danh dau la da dung het truoc do.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          evidence: op.evidence,
+        }));
+      }
+    }
+
+    if (
+      [
+        CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED,
+        CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED,
+        CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED,
+      ].includes(op.op_type)
+      && (!op.subject_id || !op.target_id)
+    ) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.ERROR,
+        ruleCode: 'MISSING_RELATIONSHIP_REFERENCE',
+        message: `Op ${op.op_type} phai map duoc ca hai nhan vat trong cap quan he.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id, op.target_id],
+        evidence: op.evidence,
+      }));
+    }
+
+    if (op.subject_id && op.target_id) {
+      const pairKey = buildRelationshipPairKey(op.subject_id, op.target_id);
+      const relationshipState = relationshipMap.get(pairKey);
+      if (op.op_type === CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED) {
+        const payload = normalizePayload(op.payload);
+        if (!cleanText(payload.consent_state || '')) {
+          reports.push(createReport({
+            severity: CANON_SEVERITY.WARNING,
+            ruleCode: 'INTIMACY_CONSENT_UNSPECIFIED',
+            message: 'Thay doi muc do than mat nhung chua co consent_state ro rang.',
+            projectId,
+            chapterId,
+            revisionId,
+            sceneId: op.scene_id || null,
+            relatedEntityIds: [op.subject_id, op.target_id],
+            evidence: op.evidence,
+          }));
+        }
+      }
+      if (
+        relationshipState
+        && op.op_type === CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED
+        && relationshipState.secrecy_state === 'secret_exposed'
+      ) {
+        const payload = normalizePayload(op.payload);
+        const nextSecrecy = cleanText(payload.secrecy_state || payload.secret_state || '');
+        if (nextSecrecy === 'secret' && !cleanText(payload.reason || op.summary)) {
+          reports.push(createReport({
+            severity: CANON_SEVERITY.WARNING,
+            ruleCode: 'RELATIONSHIP_SECRET_RESET',
+            message: 'Quan he da lo nhung draft lai dua ve bi mat ma khong co ly do ro rang.',
+            projectId,
+            chapterId,
+            revisionId,
+            sceneId: op.scene_id || null,
+            relatedEntityIds: [op.subject_id, op.target_id],
+            evidence: op.evidence,
+          }));
+        }
+      }
     }
 
     if (op.subject_id) {
@@ -662,6 +1050,25 @@ export function validateCandidateOps({
         }));
       }
     }
+
+    if (op.op_type === CANON_OP_TYPES.ALLEGIANCE_CHANGED && op.subject_id) {
+      const state = entityMap.get(op.subject_id);
+      const payload = normalizePayload(op.payload);
+      const nextAllegiance = cleanText(payload.allegiance || payload.new_allegiance || op.summary || '');
+      if (state?.allegiance && nextAllegiance && normalizeKey(state.allegiance) !== normalizeKey(nextAllegiance) && !cleanText(payload.reason || payload.status_summary)) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.WARNING,
+          ruleCode: 'ALLEGIANCE_CHANGE_WITHOUT_REASON',
+          message: `${op.subject_name || 'Nhan vat'} doi phe nhung chua co ly do ro rang trong payload.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          relatedEntityIds: [op.subject_id],
+          evidence: op.evidence,
+        }));
+      }
+    }
   });
 
   return reports;
@@ -680,6 +1087,8 @@ function validateDraftTextAgainstTruth({
   threadStates = [],
   factStates = [],
   characters = [],
+  objects = [],
+  itemStates = [],
 }) {
   const reports = [];
   const normalizedText = normalizeKey(sceneText);
@@ -736,6 +1145,23 @@ function validateDraftTextAgainstTruth({
     }
   });
 
+  itemStates.forEach((state) => {
+    if (!(state.is_consumed || ['consumed', 'destroyed', 'lost'].includes(cleanText(state.availability)))) return;
+    const object = objects.find((item) => item.id === state.object_id);
+    if (!object?.name) return;
+    const target = normalizeKey(object.name);
+    if (target && normalizedText.includes(target)) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'DRAFT_REFERENCES_SPENT_ITEM',
+        message: `Draft dang goi lai vat pham ${object.name}, trong khi canon hien tai ghi nhan vat pham nay khong con dung duoc.`,
+        projectId,
+        chapterId,
+        revisionId,
+      }));
+    }
+  });
+
   return reports;
 }
 
@@ -747,11 +1173,13 @@ export async function extractCandidateOps({
   scenes = [],
 }) {
   const { project } = await getChapterAndProject(projectId, chapterId);
-  const [characters, locations, plotThreads, canonFacts] = await Promise.all([
+  const [characters, locations, plotThreads, canonFacts, objects, relationships] = await Promise.all([
     db.characters.where('project_id').equals(projectId).toArray(),
     db.locations.where('project_id').equals(projectId).toArray(),
     db.plotThreads.where('project_id').equals(projectId).toArray(),
     db.canonFacts.where('project_id').equals(projectId).toArray(),
+    db.objects.where('project_id').equals(projectId).toArray(),
+    db.relationships.where('project_id').equals(projectId).toArray(),
   ]);
 
   let promptTemplates = {};
@@ -776,6 +1204,8 @@ export async function extractCandidateOps({
     locations,
     plotThreads,
     canonFacts,
+    objects,
+    relationships,
     genre: project?.genre_primary || '',
     projectTitle: project?.title || '',
     promptTemplates,
@@ -795,6 +1225,7 @@ export async function extractCandidateOps({
     locations,
     plotThreads,
     canonFacts,
+    objects,
   });
 
   if (revisionId) {
@@ -835,6 +1266,8 @@ export async function validateRevision(chapterRevisionId, mode = 'draft') {
     entityStates: preTruth.entityStates,
     threadStates: preTruth.threadStates,
     factStates: preTruth.factStates,
+    itemStates: preTruth.itemStates,
+    relationshipStates: preTruth.relationshipStates,
   });
 
   const heuristicReports = validateDraftTextAgainstTruth({
@@ -846,6 +1279,8 @@ export async function validateRevision(chapterRevisionId, mode = 'draft') {
     threadStates: preTruth.threadStates,
     factStates: preTruth.factStates,
     characters: preTruth.characters,
+    objects: preTruth.objects,
+    itemStates: preTruth.itemStates,
   });
 
   const reports = [...schemaReports, ...heuristicReports];
@@ -894,12 +1329,14 @@ function buildStoryEventsFromOps(projectId, revisionId, candidateOps) {
     thread_id: op.thread_id,
     location_id: op.location_id,
     fact_id: op.fact_id,
+    object_id: op.object_id || null,
     status: 'committed',
     subject_name: op.subject_name,
     target_name: op.target_name,
     thread_title: op.thread_title,
     location_name: op.location_name,
     fact_description: op.fact_description,
+    object_name: op.object_name,
     summary: op.summary,
     payload: op.payload,
     confidence: op.confidence,
@@ -942,8 +1379,11 @@ async function writeSnapshot(projectId, chapterId, revisionId, snapshot) {
   return db.chapter_snapshots.add(record);
 }
 
-async function syncCompatibilityProjection(projectId, entityStates, threadStates) {
-  const characters = await db.characters.where('project_id').equals(projectId).toArray();
+async function syncCompatibilityProjection(projectId, entityStates, threadStates, factStates = [], itemStates = [], relationshipStates = []) {
+  const [characters, relationships] = await Promise.all([
+    db.characters.where('project_id').equals(projectId).toArray(),
+    db.relationships.where('project_id').equals(projectId).toArray(),
+  ]);
   await Promise.all(entityStates.map((state) => {
     const character = characters.find((item) => item.id === state.entity_id);
     if (!character) return Promise.resolve();
@@ -955,12 +1395,56 @@ async function syncCompatibilityProjection(projectId, entityStates, threadStates
   await Promise.all(threadStates.map((threadState) => (
     db.plotThreads.update(threadState.thread_id, { state: threadState.state })
   )));
+
+  await Promise.all(itemStates.map((itemState) => (
+    db.objects.update(itemState.object_id, {
+      owner_character_id: itemState.owner_character_id || null,
+    })
+  )));
+
+  await Promise.all(relationshipStates.map((relationshipState) => {
+    const match = relationships.find((relationship) => (
+      buildRelationshipPairKey(relationship.character_a_id, relationship.character_b_id) === relationshipState.pair_key
+    ));
+    if (!match) return Promise.resolve();
+    return db.relationships.update(match.id, {
+      relation_type: relationshipState.relationship_type || match.relation_type || 'other',
+      description: cleanText(relationshipState.summary || match.description || ''),
+    });
+  }));
+
+  const existingFacts = await db.canonFacts.where('project_id').equals(projectId).toArray();
+  for (const factState of factStates) {
+    const match = existingFacts.find((fact) => fact.id === factState.id)
+      || existingFacts.find((fact) => normalizeKey(fact.description) === normalizeKey(factState.description));
+
+    const payload = {
+      project_id: projectId,
+      description: cleanText(factState.description || ''),
+      fact_type: cleanText(factState.fact_type || 'fact') || 'fact',
+      status: factState.status || 'active',
+      revealed_at_chapter: factState.revealed_at_chapter || null,
+      updated_at: Date.now(),
+    };
+
+    if (match) {
+      await db.canonFacts.update(match.id, payload);
+    } else if (payload.description) {
+      const newId = await db.canonFacts.add({
+        ...payload,
+        created_at: Date.now(),
+      });
+      existingFacts.push({ id: newId, ...payload });
+    }
+  }
 }
 
 async function clearCanonProjection(projectId) {
-  const [entityRows, threadRows, timelineRows, snapshotRows] = await Promise.all([
+  const [entityRows, threadRows, itemRows, relationshipRows, timelineRows, snapshotRows] = await Promise.all([
     db.entity_state_current.where('project_id').equals(projectId).toArray(),
     db.plot_thread_state.where('project_id').equals(projectId).toArray(),
+    db.item_state_current.where('project_id').equals(projectId).toArray(),
+    db.relationship_state_current.where('project_id').equals(projectId).toArray(),
     db.entityTimeline.where('project_id').equals(projectId).toArray(),
     db.chapter_snapshots.where('project_id').equals(projectId).toArray(),
   ]);
@@ -968,6 +1452,8 @@ async function clearCanonProjection(projectId) {
   await Promise.all([
     entityRows.length > 0 ? db.entity_state_current.bulkDelete(entityRows.map((row) => row.id)) : Promise.resolve(),
     threadRows.length > 0 ? db.plot_thread_state.bulkDelete(threadRows.map((row) => row.id)) : Promise.resolve(),
+    itemRows.length > 0 ? db.item_state_current.bulkDelete(itemRows.map((row) => row.id)) : Promise.resolve(),
+    relationshipRows.length > 0 ? db.relationship_state_current.bulkDelete(relationshipRows.map((row) => row.id)) : Promise.resolve(),
     timelineRows.length > 0 ? db.entityTimeline.bulkDelete(timelineRows.map((row) => row.id)) : Promise.resolve(),
     snapshotRows.length > 0 ? db.chapter_snapshots.bulkDelete(snapshotRows.map((row) => row.id)) : Promise.resolve(),
   ]);
@@ -1028,9 +1514,18 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null) {
   const baseCharacters = await db.characters.where('project_id').equals(projectId).toArray();
   const baseThreads = await db.plotThreads.where('project_id').equals(projectId).toArray();
   const baseFacts = await db.canonFacts.where('project_id').equals(projectId).toArray();
+  const baseObjects = await db.objects.where('project_id').equals(projectId).toArray();
+  const baseRelationships = await db.relationships.where('project_id').equals(projectId).toArray();
   const { entityMap, threadMap } = buildStateMaps(
     baseCharacters.map((character) => createInitialEntityState(character)),
     baseThreads.map((thread) => createInitialThreadState(thread))
+  );
+  const itemMap = new Map(baseObjects.map((object) => [object.id, createInitialItemState(object)]));
+  const relationshipMap = new Map(
+    baseRelationships.map((relationship) => [
+      buildRelationshipPairKey(relationship.character_a_id, relationship.character_b_id),
+      createInitialRelationshipState(relationship),
+    ])
   );
   let factStates = buildFactStates(baseFacts);
   const timelineEvents = [];
@@ -1067,6 +1562,25 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null) {
             || createInitialThreadState({ id: event.thread_id, project_id: projectId });
           threadMap.set(event.thread_id, applyEventToThreadState(currentThread, event));
         }
+        if (event.object_id) {
+          const currentItem = itemMap.get(event.object_id)
+            || createInitialItemState({ id: event.object_id, project_id: projectId });
+          itemMap.set(event.object_id, applyEventToItemState(currentItem, event));
+        }
+        if (event.subject_id && event.target_id && [
+          CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED,
+          CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED,
+          CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED,
+        ].includes(event.op_type)) {
+          const pairKey = buildRelationshipPairKey(event.subject_id, event.target_id);
+          const currentRelationship = relationshipMap.get(pairKey)
+            || createInitialRelationshipState({
+              project_id: projectId,
+              character_a_id: Math.min(event.subject_id, event.target_id),
+              character_b_id: Math.max(event.subject_id, event.target_id),
+            });
+          relationshipMap.set(pairKey, applyEventToRelationshipState(currentRelationship, event));
+        }
         factStates = applyEventToFactStates(factStates, event, chapter.order_index);
         appendCompatibilityTimeline(timelineEvents, event);
       });
@@ -1075,26 +1589,38 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null) {
       entityStates: toEntityStateRecords(projectId, entityMap),
       threadStates: toThreadStateRecords(projectId, threadMap),
       factStates,
+      itemStates: Array.from(itemMap.values()).map((state) => ({ ...state, project_id: projectId, updated_at: Date.now() })),
+      relationshipStates: Array.from(relationshipMap.values()).map((state) => ({ ...state, project_id: projectId, updated_at: Date.now() })),
     });
   }
 
   const finalEntityStates = toEntityStateRecords(projectId, entityMap);
   const finalThreadStates = toThreadStateRecords(projectId, threadMap);
+  const finalItemStates = Array.from(itemMap.values()).map((state) => ({ ...state, project_id: projectId, updated_at: Date.now() }));
+  const finalRelationshipStates = Array.from(relationshipMap.values()).map((state) => ({ ...state, project_id: projectId, updated_at: Date.now() }));
   if (finalEntityStates.length > 0) {
     await db.entity_state_current.bulkPut(finalEntityStates);
   }
   if (finalThreadStates.length > 0) {
     await db.plot_thread_state.bulkPut(finalThreadStates);
   }
+  if (finalItemStates.length > 0) {
+    await db.item_state_current.bulkPut(finalItemStates);
+  }
+  if (finalRelationshipStates.length > 0) {
+    await db.relationship_state_current.bulkPut(finalRelationshipStates);
+  }
   if (timelineEvents.length > 0) {
     await db.entityTimeline.bulkAdd(timelineEvents);
   }
-  await syncCompatibilityProjection(projectId, finalEntityStates, finalThreadStates);
+  await syncCompatibilityProjection(projectId, finalEntityStates, finalThreadStates, factStates, finalItemStates, finalRelationshipStates);
 
   return {
     entityStates: finalEntityStates,
     threadStates: finalThreadStates,
     factStates,
+    itemStates: finalItemStates,
+    relationshipStates: finalRelationshipStates,
   };
 }
 
@@ -1180,13 +1706,185 @@ export async function canonicalizeChapter(projectId, chapterId) {
   };
 }
 
+function buildRelationshipPairKey(characterAId, characterBId) {
+  const a = Number(characterAId) || characterAId;
+  const b = Number(characterBId) || characterBId;
+  return [a, b].sort((left, right) => Number(left) - Number(right)).join(':');
+}
+
+export function createInitialItemState(object = {}) {
+  return {
+    project_id: object.project_id,
+    object_id: object.id,
+    availability: 'available',
+    owner_character_id: object.owner_character_id || null,
+    current_location_id: null,
+    current_location_name: '',
+    is_consumed: false,
+    is_damaged: false,
+    usage_notes: '',
+    summary: cleanText(object.description || ''),
+    last_event_id: null,
+    source_revision_id: null,
+    updated_at: Date.now(),
+  };
+}
+
+export function createInitialRelationshipState(relationship = {}) {
+  return {
+    project_id: relationship.project_id,
+    pair_key: buildRelationshipPairKey(relationship.character_a_id, relationship.character_b_id),
+    character_a_id: relationship.character_a_id,
+    character_b_id: relationship.character_b_id,
+    relationship_type: cleanText(relationship.relation_type || 'other') || 'other',
+    trust_level: 'unknown',
+    intimacy_level: 'none',
+    secrecy_state: 'public',
+    consent_state: 'unknown',
+    emotional_aftermath: '',
+    summary: cleanText(relationship.description || ''),
+    last_event_id: null,
+    source_revision_id: null,
+    updated_at: Date.now(),
+  };
+}
+
+export async function canonicalizeCandidateOps({
+  projectId,
+  chapterId,
+  candidateOps = [],
+  chapterText = '',
+  sourceType = 'manual_review',
+}) {
+  const commit = await getOrCreateChapterCommit(projectId, chapterId);
+  const currentCanonicalRevision = commit.canonical_revision_id
+    ? await db.chapter_revisions.get(commit.canonical_revision_id)
+    : null;
+  const baseOps = loadRevisionOps(currentCanonicalRevision);
+  const mergedOps = [...baseOps, ...candidateOps].filter(Boolean);
+  const fallbackText = chapterText || chapterTextFromScenes(await getChapterScenes(chapterId));
+  const revision = await createChapterRevision({
+    projectId,
+    chapterId,
+    chapterText: fallbackText,
+    status: CHAPTER_REVISION_STATUS.DRAFT,
+  });
+
+  const preTruth = await loadPreChapterTruth(projectId, chapterId);
+  const reports = validateCandidateOps({
+    projectId,
+    chapterId,
+    revisionId: revision.id,
+    candidateOps: mergedOps,
+    entityStates: preTruth.entityStates,
+    threadStates: preTruth.threadStates,
+    factStates: preTruth.factStates,
+    itemStates: preTruth.itemStates,
+    relationshipStates: preTruth.relationshipStates,
+  });
+
+  await replaceValidatorReports(projectId, revision.id, reports);
+
+  if (reportsHaveErrors(reports)) {
+    await db.chapter_revisions.update(revision.id, {
+      status: CHAPTER_REVISION_STATUS.BLOCKED,
+      candidate_ops: JSON.stringify(mergedOps),
+      updated_at: Date.now(),
+    });
+    await updateChapterCommitSummary(projectId, chapterId, CHAPTER_COMMIT_STATUS.BLOCKED, reports, revision.id);
+    return {
+      ok: false,
+      revisionId: revision.id,
+      reports,
+    };
+  }
+
+  const storyEvents = buildStoryEventsFromOps(projectId, revision.id, mergedOps);
+  const memoryEvidence = buildEvidenceFromOps(projectId, revision.id, mergedOps).map((item) => ({
+    ...item,
+    source_type: sourceType,
+  }));
+
+  if (commit.canonical_revision_id) {
+    await db.chapter_revisions.update(commit.canonical_revision_id, {
+      status: CHAPTER_REVISION_STATUS.SUPERSEDED,
+      updated_at: Date.now(),
+    });
+    const previousEvents = await db.story_events
+      .where('[project_id+revision_id]')
+      .equals([projectId, commit.canonical_revision_id])
+      .toArray();
+    await Promise.all(previousEvents.map((event) => db.story_events.update(event.id, { status: 'superseded' })));
+  }
+
+  const invalidatedChapterIds = await invalidateFromChapter(projectId, chapterId);
+
+  await db.transaction('rw',
+    db.chapter_revisions,
+    db.chapter_commits,
+    db.story_events,
+    db.memory_evidence,
+    async () => {
+      await db.chapter_revisions.update(revision.id, {
+        status: CHAPTER_REVISION_STATUS.CANONICAL,
+        candidate_ops: JSON.stringify(mergedOps),
+        updated_at: Date.now(),
+      });
+
+      if (storyEvents.length > 0) {
+        await db.story_events.bulkAdd(storyEvents);
+      }
+      if (memoryEvidence.length > 0) {
+        await db.memory_evidence.bulkAdd(memoryEvidence);
+      }
+
+      await db.chapter_commits.update(commit.id, {
+        current_revision_id: revision.id,
+        canonical_revision_id: revision.id,
+        status: reports.length > 0 ? CHAPTER_COMMIT_STATUS.HAS_WARNINGS : CHAPTER_COMMIT_STATUS.CANONICAL,
+        warning_count: reports.filter((report) => report.severity === CANON_SEVERITY.WARNING).length,
+        error_count: 0,
+        updated_at: Date.now(),
+      });
+    });
+
+  await rebuildCanonFromChapter(projectId, chapterId);
+  await db.chapter_commits.update(commit.id, {
+    status: CHAPTER_COMMIT_STATUS.CANONICAL,
+    updated_at: Date.now(),
+  });
+
+  return {
+    ok: true,
+    revisionId: revision.id,
+    reports,
+    invalidatedChapterIds,
+  };
+}
+
 export async function buildRetrievalPacket({
   projectId,
   chapterId,
   sceneId = null,
   detectedCharacterIds = [],
+  detectedObjectIds = [],
 }) {
-  const [project, chapters, chapterCommits, entityStates, threadStates, canonFacts, scenes, plotThreads] = await Promise.all([
+  const [
+    project,
+    chapters,
+    chapterCommits,
+    entityStates,
+    threadStates,
+    canonFacts,
+    scenes,
+    plotThreads,
+    objects,
+    itemStates,
+    relationshipStates,
+    chapterMetas,
+    memoryEvidence,
+    storyEvents,
+  ] = await Promise.all([
     db.projects.get(projectId),
     db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
     db.chapter_commits.where('project_id').equals(projectId).toArray(),
@@ -1195,6 +1893,12 @@ export async function buildRetrievalPacket({
     db.canonFacts.where('project_id').equals(projectId).toArray(),
     chapterId ? db.scenes.where('chapter_id').equals(chapterId).toArray() : Promise.resolve([]),
     db.plotThreads.where('project_id').equals(projectId).toArray(),
+    db.objects.where('project_id').equals(projectId).toArray(),
+    db.item_state_current.where('project_id').equals(projectId).toArray(),
+    db.relationship_state_current.where('project_id').equals(projectId).toArray(),
+    db.chapterMeta.where('project_id').equals(projectId).toArray(),
+    db.memory_evidence.where('project_id').equals(projectId).toArray(),
+    db.story_events.where('project_id').equals(projectId).toArray(),
   ]);
 
   const chapter = chapters.find((item) => item.id === chapterId) || null;
@@ -1213,9 +1917,18 @@ export async function buildRetrievalPacket({
     scene?.pov_character_id,
     ...sceneCharacters,
   ]);
+  const relevantObjectIds = uniqueList([
+    ...detectedObjectIds,
+  ]);
   const relevantEntityStates = relevantCharacterIds.length > 0
     ? entityStates.filter((state) => relevantCharacterIds.includes(state.entity_id))
     : entityStates.slice(0, 8);
+  const relevantItemStates = relevantObjectIds.length > 0
+    ? itemStates.filter((state) => relevantObjectIds.includes(state.object_id))
+    : itemStates.slice(0, 8);
+  const relevantRelationshipStates = relevantCharacterIds.length > 0
+    ? relationshipStates.filter((state) => relevantCharacterIds.includes(state.character_a_id) || relevantCharacterIds.includes(state.character_b_id))
+    : relationshipStates.slice(0, 8);
 
   const activeThreadStates = threadStates.filter((threadState) => threadState.state !== 'resolved');
   const commit = chapterCommits.find((row) => row.chapter_id === chapterId) || null;
@@ -1239,14 +1952,86 @@ export async function buildRetrievalPacket({
       return fact;
     });
 
+  const previousChapters = chapter
+    ? chapters.filter((item) => item.order_index < chapter.order_index).slice(-5)
+    : chapters.slice(-5);
+  const recentChapterMemory = await Promise.all(previousChapters.map(async (memoryChapter) => {
+    const [chapterScenes, chapterMeta] = await Promise.all([
+      db.scenes.where('chapter_id').equals(memoryChapter.id).sortBy('order_index'),
+      Promise.resolve(chapterMetas.find((meta) => meta.chapter_id === memoryChapter.id) || null),
+    ]);
+    const prose = chapterScenes
+      .map((chapterScene) => cleanText(chapterScene.draft_text || chapterScene.final_text || ''))
+      .filter(Boolean)
+      .join('\n\n');
+    const chapterEvents = storyEvents
+      .filter((event) => event.chapter_id === memoryChapter.id && event.status !== 'superseded')
+      .sort((a, b) => (a.scene_id || 0) - (b.scene_id || 0) || (a.id || 0) - (b.id || 0))
+      .slice(0, 16);
+    const chapterEvidence = memoryEvidence
+      .filter((item) => item.chapter_id === memoryChapter.id)
+      .slice(0, 8);
+    return {
+      chapter_id: memoryChapter.id,
+      chapter_title: memoryChapter.title || `Chuong ${memoryChapter.order_index + 1}`,
+      chapter_order: memoryChapter.order_index,
+      summary: chapterMeta?.summary || memoryChapter.summary || '',
+      bridge_buffer: chapterMeta?.last_prose_buffer || '',
+      emotional_state: chapterMeta?.emotional_state || null,
+      prose,
+      events: chapterEvents,
+      evidence: chapterEvidence,
+    };
+  }));
+
+  const criticalConstraints = {
+    deadCharacters: relevantEntityStates
+      .filter((state) => state.alive_status === 'dead')
+      .map((state) => state.entity_id),
+    locationAnchors: relevantEntityStates
+      .filter((state) => state.current_location_name)
+      .map((state) => ({
+        entity_id: state.entity_id,
+        location_name: state.current_location_name,
+      })),
+    unavailableItems: relevantItemStates
+      .filter((state) => state.is_consumed || ['consumed', 'destroyed', 'lost'].includes(cleanText(state.availability)))
+      .map((state) => ({
+        object_id: state.object_id,
+        object_name: objects.find((object) => object.id === state.object_id)?.name || '',
+        availability: state.availability,
+      })),
+    resolvedThreads: threadStates
+      .filter((state) => state.state === 'resolved')
+      .map((state) => state.thread_id),
+    revealedFacts: factStates
+      .filter((fact) => fact.fact_type === 'fact')
+      .map((fact) => ({
+        id: fact.id,
+        description: fact.description,
+      })),
+    relationshipConstraints: relevantRelationshipStates.map((state) => ({
+      pair_key: state.pair_key,
+      intimacy_level: state.intimacy_level,
+      secrecy_state: state.secrecy_state,
+      consent_state: state.consent_state,
+      emotional_aftermath: state.emotional_aftermath,
+      summary: state.summary,
+    })),
+  };
+
   return {
     project,
     chapter,
     chapterCommit: commit,
     relevantEntityStates,
+    relevantItemStates,
+    relevantRelationshipStates,
     activeThreadStates,
     factStates,
     plotThreads,
+    recentChapterMemory,
+    criticalConstraints,
   };
 }
 
@@ -1265,6 +2050,8 @@ export async function validateSceneDraft({
     threadStates: preTruth.threadStates,
     factStates: preTruth.factStates,
     characters: preTruth.characters,
+    objects: preTruth.objects,
+    itemStates: preTruth.itemStates,
   });
 
   const commit = await getOrCreateChapterCommit(projectId, chapterId);
@@ -1315,6 +2102,245 @@ export async function getChapterCanonState(projectId, chapterId) {
     reports,
     revision,
     commit,
+  };
+}
+
+export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
+  const [
+    chapters,
+    plotThreads,
+    objects,
+    commits,
+    revisions,
+    events,
+    reports,
+    evidence,
+    entityStates,
+    threadStates,
+    itemStates,
+    relationshipStates,
+  ] = await Promise.all([
+    db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
+    db.plotThreads.where('project_id').equals(projectId).toArray(),
+    db.objects.where('project_id').equals(projectId).toArray(),
+    db.chapter_commits.where('project_id').equals(projectId).toArray(),
+    db.chapter_revisions.where('project_id').equals(projectId).toArray(),
+    db.story_events.where('project_id').equals(projectId).toArray(),
+    db.validator_reports.where('project_id').equals(projectId).toArray(),
+    db.memory_evidence.where('project_id').equals(projectId).toArray(),
+    db.entity_state_current.where('project_id').equals(projectId).toArray(),
+    db.plot_thread_state.where('project_id').equals(projectId).toArray(),
+    db.item_state_current.where('project_id').equals(projectId).toArray(),
+    db.relationship_state_current.where('project_id').equals(projectId).toArray(),
+  ]);
+
+  const chapterMap = new Map(chapters.map((chapter) => [chapter.id, chapter]));
+  const threadMap = new Map(plotThreads.map((thread) => [thread.id, thread]));
+  const revisionMap = new Map(revisions.map((revision) => [revision.id, revision]));
+  const objectMap = new Map(objects.map((object) => [object.id, object]));
+
+  const chapterCommits = commits
+    .map((commit) => {
+      const chapter = chapterMap.get(commit.chapter_id) || null;
+      return {
+        ...commit,
+        chapter_title: chapter?.title || `Chuong ${chapter?.order_index || commit.chapter_id}`,
+        chapter_order: chapter?.order_index || 0,
+        current_revision: revisionMap.get(commit.current_revision_id) || null,
+        canonical_revision: revisionMap.get(commit.canonical_revision_id) || null,
+      };
+    })
+    .sort((a, b) => a.chapter_order - b.chapter_order);
+
+  const recentEvents = events
+    .slice()
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+    .slice(0, limit)
+    .map((event) => {
+      const chapter = chapterMap.get(event.chapter_id) || null;
+      return {
+        ...event,
+        chapter_title: chapter?.title || '',
+        chapter_order: chapter?.order_index || 0,
+        thread_title: threadMap.get(event.thread_id)?.title || event.thread_title || '',
+      };
+    });
+
+  const recentReports = reports
+    .slice()
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+    .slice(0, limit)
+    .map((report) => {
+      const chapter = chapterMap.get(report.chapter_id) || null;
+      return {
+        ...report,
+        chapter_title: chapter?.title || '',
+        chapter_order: chapter?.order_index || 0,
+      };
+    });
+
+  const recentEvidence = evidence
+    .slice()
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+    .slice(0, limit)
+    .map((item) => {
+      const chapter = chapterMap.get(item.chapter_id) || null;
+      return {
+        ...item,
+        chapter_title: chapter?.title || '',
+        chapter_order: chapter?.order_index || 0,
+      };
+    });
+
+  const recentRevisions = revisions
+    .slice()
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+    .slice(0, limit)
+    .map((revision) => {
+      const chapter = chapterMap.get(revision.chapter_id) || null;
+      return {
+        ...revision,
+        chapter_title: chapter?.title || '',
+        chapter_order: chapter?.order_index || 0,
+      };
+    });
+
+  const decoratedThreadStates = threadStates
+    .map((threadState) => ({
+      ...threadState,
+      thread_title: threadMap.get(threadState.thread_id)?.title || threadState.summary || `Thread ${threadState.thread_id}`,
+    }))
+    .sort((a, b) => String(a.thread_title || '').localeCompare(String(b.thread_title || '')));
+
+  const decoratedItemStates = itemStates
+    .map((itemState) => ({
+      ...itemState,
+      object_name: objectMap.get(itemState.object_id)?.name || `Vat pham ${itemState.object_id}`,
+    }))
+    .sort((a, b) => String(a.object_name || '').localeCompare(String(b.object_name || '')));
+
+  const decoratedRelationshipStates = relationshipStates
+    .slice()
+    .sort((a, b) => String(a.pair_key || '').localeCompare(String(b.pair_key || '')));
+
+  const criticalConstraints = {
+    deadCharacters: entityStates.filter((state) => state.alive_status === 'dead'),
+    blockedItems: decoratedItemStates.filter((state) => state.is_consumed || ['consumed', 'destroyed', 'lost'].includes(cleanText(state.availability))),
+    sensitiveRelationships: decoratedRelationshipStates.filter((state) => (
+      (state.intimacy_level && state.intimacy_level !== 'none')
+      || (state.secrecy_state && state.secrecy_state !== 'public')
+      || (state.emotional_aftermath && cleanText(state.emotional_aftermath))
+    )),
+    activeWarnings: reports.filter((report) => report.severity === CANON_SEVERITY.WARNING || report.severity === CANON_SEVERITY.ERROR)
+      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+      .slice(0, limit),
+  };
+
+  const stats = {
+    chapter_count: chapters.length,
+    canonical_count: chapterCommits.filter((commit) => commit.status === CHAPTER_COMMIT_STATUS.CANONICAL).length,
+    blocked_count: chapterCommits.filter((commit) => commit.status === CHAPTER_COMMIT_STATUS.BLOCKED).length,
+    invalidated_count: chapterCommits.filter((commit) => commit.status === CHAPTER_COMMIT_STATUS.INVALIDATED).length,
+    warning_count: reports.filter((report) => report.severity === CANON_SEVERITY.WARNING).length,
+    error_count: reports.filter((report) => report.severity === CANON_SEVERITY.ERROR).length,
+    event_count: events.length,
+    evidence_count: evidence.length,
+    revision_count: revisions.length,
+    item_count: decoratedItemStates.length,
+    relationship_count: decoratedRelationshipStates.length,
+  };
+
+  return {
+    stats,
+    chapterCommits,
+    entityStates: entityStates.slice().sort((a, b) => String(a.entity_id).localeCompare(String(b.entity_id))),
+    threadStates: decoratedThreadStates,
+    itemStates: decoratedItemStates,
+    relationshipStates: decoratedRelationshipStates,
+    recentEvents,
+    recentReports,
+    recentEvidence,
+    recentRevisions,
+    plotThreads,
+    criticalConstraints,
+  };
+}
+
+export async function getChapterRevisionHistory(projectId, chapterId) {
+  const [chapter, commit, revisions, reports, events, evidence, snapshots] = await Promise.all([
+    db.chapters.get(chapterId),
+    db.chapter_commits.where('[project_id+chapter_id]').equals([projectId, chapterId]).first(),
+    db.chapter_revisions.where('[project_id+chapter_id]').equals([projectId, chapterId]).toArray(),
+    db.validator_reports.where('[project_id+chapter_id]').equals([projectId, chapterId]).toArray(),
+    db.story_events.where('[project_id+chapter_id]').equals([projectId, chapterId]).toArray(),
+    db.memory_evidence.where('project_id').equals(projectId).filter((item) => item.chapter_id === chapterId).toArray(),
+    db.chapter_snapshots.where('[project_id+chapter_id]').equals([projectId, chapterId]).toArray(),
+  ]);
+
+  const history = revisions
+    .map((revision) => ({
+      ...revision,
+      report_count: reports.filter((report) => report.revision_id === revision.id).length,
+      event_count: events.filter((event) => event.revision_id === revision.id).length,
+      evidence_count: evidence.filter((item) => item.revision_id === revision.id).length,
+      has_snapshot: snapshots.some((snapshot) => snapshot.revision_id === revision.id),
+      is_current: commit?.current_revision_id === revision.id,
+      is_canonical: commit?.canonical_revision_id === revision.id,
+    }))
+    .sort((a, b) => (b.revision_number || 0) - (a.revision_number || 0) || (b.created_at || 0) - (a.created_at || 0));
+
+  return {
+    chapter,
+    commit,
+    revisions: history,
+  };
+}
+
+export async function getChapterRevisionDetail(projectId, revisionId) {
+  const revision = await db.chapter_revisions.get(revisionId);
+  if (!revision || revision.project_id !== projectId) return null;
+
+  const [chapter, commit, reports, events, evidence, snapshot] = await Promise.all([
+    db.chapters.get(revision.chapter_id),
+    db.chapter_commits.where('[project_id+chapter_id]').equals([projectId, revision.chapter_id]).first(),
+    db.validator_reports.where('[project_id+revision_id]').equals([projectId, revisionId]).toArray(),
+    db.story_events.where('[project_id+revision_id]').equals([projectId, revisionId]).toArray(),
+    db.memory_evidence.where('[project_id+revision_id]').equals([projectId, revisionId]).toArray(),
+    db.chapter_snapshots.where('[project_id+revision_id]').equals([projectId, revisionId]).first(),
+  ]);
+
+  let snapshotData = null;
+  if (snapshot?.snapshot_json) {
+    try {
+      snapshotData = typeof snapshot.snapshot_json === 'string'
+        ? JSON.parse(snapshot.snapshot_json)
+        : snapshot.snapshot_json;
+    } catch {
+      snapshotData = null;
+    }
+  }
+
+  const sortedEvents = events
+    .slice()
+    .sort((a, b) => (a.scene_id || 0) - (b.scene_id || 0) || (a.id || 0) - (b.id || 0));
+
+  const sortedEvidence = evidence
+    .slice()
+    .sort((a, b) => (a.scene_id || 0) - (b.scene_id || 0) || (a.id || 0) - (b.id || 0));
+
+  return {
+    chapter,
+    commit,
+    revision: {
+      ...revision,
+      is_current: commit?.current_revision_id === revision.id,
+      is_canonical: commit?.canonical_revision_id === revision.id,
+    },
+    reports: reports.slice().sort((a, b) => (b.created_at || 0) - (a.created_at || 0)),
+    events: sortedEvents,
+    evidence: sortedEvidence,
+    snapshot,
+    snapshotData,
   };
 }
 

@@ -250,6 +250,10 @@ export const TASK_INSTRUCTIONS = {
   [TASK_TYPES.CANON_EXTRACT_OPS]: [
     'Phan tich noi dung chuong va trich xuat CAC THAY DOI CANON co bang chung ro rang duoi dang JSON typed operations.',
     'Chi trich xuat khi su kien thuc su xay ra trong van ban. KHONG doan, KHONG suy dien xa.',
+    'Neu khong map chac chan duoc vao nhan vat, dia diem, tuyen truyen hoac bi mat da co san, THI BO QUA op do.',
+    'Chi tra ve op khi confidence toi thieu 0.55. Neu mo ho, KHONG tra ve.',
+    'Khong lap lai cung mot thay doi canon bang nhieu op giong nhau trong cung mot chapter.',
+    'Voi canh nguoi lon / noi dung truong thanh, CHI trich xuat HE QUA canon ro rang: thay doi quan he, bi mat bi lo, doi muc tieu, doi trang thai, vat/luat/su that moi. KHONG suy dien them tinh tiet neu van ban khong noi ro.',
     'Chi dung cac op_type sau:',
     '- CHARACTER_STATUS_CHANGED',
     '- CHARACTER_LOCATION_CHANGED',
@@ -262,6 +266,12 @@ export const TASK_INSTRUCTIONS = {
     '- THREAD_PROGRESS',
     '- THREAD_RESOLVED',
     '- FACT_REGISTERED',
+    '- OBJECT_STATUS_CHANGED',
+    '- OBJECT_TRANSFERRED',
+    '- OBJECT_CONSUMED',
+    '- RELATIONSHIP_STATUS_CHANGED',
+    '- RELATIONSHIP_SECRET_CHANGED',
+    '- INTIMACY_LEVEL_CHANGED',
     '',
     'Tra ve CHINH XAC JSON format:',
     '{',
@@ -274,6 +284,7 @@ export const TASK_INSTRUCTIONS = {
     '      "location_name": "",',
     '      "thread_title": "",',
     '      "fact_description": "",',
+    '      "object_name": "",',
     '      "summary": "Tom tat thay doi canon trong 1 cau ngan",',
     '      "confidence": 0.0,',
     '      "evidence": "Trich dan ngan tu van ban lam bang chung",',
@@ -285,6 +296,12 @@ export const TASK_INSTRUCTIONS = {
     'Quy tac:',
     '- scene_index la so thu tu canh trong danh sach canh duoc cung cap.',
     '- confidence trong khoang 0 den 1.',
+    '- Op doi vi tri phai co location_name ro rang.',
+    '- Op thread phai dung dung thread_title da co san.',
+    '- Op SECRET_REVEALED phai chi vao mot secret da co trong canonFacts.',
+    '- Op FACT_REGISTERED chi dung cho su that/quy tac/bi mat MOI, mo ta ngan gon, cu the.',
+    '- Op vat pham phai co object_name ro rang.',
+    '- Op quan he/than mat phai map duoc ca subject_name va target_name.',
     '- KHONG tao op neu bang chung yeu.',
     '- KHONG tra ve bat ky text nao ngoai JSON.',
   ].join('\n'),
@@ -1270,9 +1287,79 @@ export function buildPrompt(taskType, context = {}) {
         return '- Thread #' + threadState.thread_id + ' [' + (threadState.state || 'active') + ']: ' + (threadState.summary || '');
       }).join('\n'));
     }
+    if (retrievalPacket.relevantItemStates?.length > 0) {
+      canonBits.push('Vat pham / tai nguyen lien quan:\n' + retrievalPacket.relevantItemStates.map(function (state) {
+        const itemBits = [];
+        itemBits.push('trang thai: ' + (state.availability || 'available'));
+        if (state.owner_character_id) itemBits.push('chu so huu #' + state.owner_character_id);
+        if (state.current_location_name) itemBits.push('o ' + state.current_location_name);
+        if (state.is_consumed) itemBits.push('da dung het');
+        if (state.is_damaged) itemBits.push('da hu hong');
+        if (state.summary) itemBits.push(state.summary);
+        return '- Vat pham #' + state.object_id + ': ' + itemBits.join(' | ');
+      }).join('\n'));
+    }
+    if (retrievalPacket.relevantRelationshipStates?.length > 0) {
+      canonBits.push('Quan he / do than mat lien quan:\n' + retrievalPacket.relevantRelationshipStates.map(function (state) {
+        const relBits = [];
+        if (state.relationship_type) relBits.push('quan he: ' + state.relationship_type);
+        if (state.intimacy_level && state.intimacy_level !== 'none') relBits.push('than mat: ' + state.intimacy_level);
+        if (state.secrecy_state) relBits.push('bi mat: ' + state.secrecy_state);
+        if (state.consent_state && state.consent_state !== 'unknown') relBits.push('dong thuan: ' + state.consent_state);
+        if (state.emotional_aftermath) relBits.push('du am cam xuc: ' + state.emotional_aftermath);
+        if (state.summary) relBits.push(state.summary);
+        return '- Cap #' + state.character_a_id + ' & #' + state.character_b_id + ': ' + relBits.join(' | ');
+      }).join('\n'));
+    }
+    if (retrievalPacket.criticalConstraints) {
+      const constraints = [];
+      if (retrievalPacket.criticalConstraints.deadCharacters?.length > 0) {
+        constraints.push('Nhan vat da chet: ' + retrievalPacket.criticalConstraints.deadCharacters.map(function (id) { return '#' + id; }).join(', '));
+      }
+      if (retrievalPacket.criticalConstraints.unavailableItems?.length > 0) {
+        constraints.push('Vat pham khong con dung duoc: ' + retrievalPacket.criticalConstraints.unavailableItems.map(function (item) {
+          return (item.object_name || ('#' + item.object_id)) + ' (' + item.availability + ')';
+        }).join(', '));
+      }
+      if (retrievalPacket.criticalConstraints.relationshipConstraints?.length > 0) {
+        constraints.push('Rang buoc quan he gan day:\n' + retrievalPacket.criticalConstraints.relationshipConstraints.map(function (item) {
+          const bits = [];
+          if (item.intimacy_level && item.intimacy_level !== 'none') bits.push('than mat=' + item.intimacy_level);
+          if (item.secrecy_state) bits.push('bi mat=' + item.secrecy_state);
+          if (item.consent_state && item.consent_state !== 'unknown') bits.push('dong thuan=' + item.consent_state);
+          if (item.emotional_aftermath) bits.push('du am=' + item.emotional_aftermath);
+          return '- ' + item.pair_key + ': ' + bits.join(' | ');
+        }).join('\n'));
+      }
+      if (constraints.length > 0) {
+        canonBits.push('Rang buoc cung:\n' + constraints.join('\n'));
+      }
+    }
     if (canonBits.length > 0) {
       systemParts.push('\n[CANON ENGINE]\n' + canonBits.join('\n\n'));
     }
+  }
+
+  if (retrievalPacket?.recentChapterMemory?.length > 0 && WRITING_TASKS_FOR_BRIDGE.has(taskType) && !skipWritingLayers) {
+    const memoryBlock = retrievalPacket.recentChapterMemory
+      .map(function (item) {
+        const parts = [];
+        parts.push('[' + (item.chapter_title || ('Chuong ' + (item.chapter_order + 1))) + ']');
+        if (item.summary) parts.push('Tom tat: ' + item.summary);
+        if (item.bridge_buffer) parts.push('Nhip van noi tiep: ' + item.bridge_buffer);
+        if (item.emotional_state?.mood || item.emotional_state?.activeConflict || item.emotional_state?.lastAction) {
+          parts.push('Du am cam xuc: ' + JSON.stringify(item.emotional_state));
+        }
+        if (item.events?.length > 0) {
+          parts.push('Su kien then chot:\n' + item.events.map(function (event) {
+            return '- ' + (event.summary || event.op_type || 'Su kien');
+          }).join('\n'));
+        }
+        if (item.prose) parts.push('Van ban chuong:\n' + item.prose);
+        return parts.join('\n');
+      })
+      .join('\n\n-----\n\n');
+    systemParts.push('\n[BO NHO 5 CHUONG GAN NHAT]\n' + memoryBlock);
   }
 
   // -- Layer 6.5: Plot Threads --

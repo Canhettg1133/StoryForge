@@ -86,4 +86,116 @@ describe('phase10 canon engine', () => {
 
     expect(reports.some((report) => report.rule_code === 'THREAD_ALREADY_RESOLVED')).toBe(true);
   });
+
+  it('marks secret reveal on an already revealed fact as contradiction', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 3,
+      candidateOps: [{
+        op_type: CANON_OP_TYPES.SECRET_REVEALED,
+        scene_id: 12,
+        fact_id: 7,
+        fact_description: 'Than phan that cua Lan',
+        evidence: 'Lan thua nhan than phan that.',
+      }],
+      entityStates: [],
+      threadStates: [],
+      factStates: [{
+        id: 7,
+        fact_type: 'secret',
+        revealed_at_chapter: 2,
+        description: 'Than phan that cua Lan',
+      }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'SECRET_ALREADY_REVEALED')).toBe(true);
+  });
+
+  it('requires strong references for important canon ops', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 3,
+      candidateOps: [
+        {
+          op_type: CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED,
+          scene_id: 10,
+          subject_name: 'Lan',
+          evidence: 'Lan roi khoi thanh co.',
+          confidence: 0.42,
+          payload: {},
+        },
+        {
+          op_type: CANON_OP_TYPES.SECRET_REVEALED,
+          scene_id: 11,
+          subject_id: 7,
+          subject_name: 'Lan',
+          fact_description: '',
+          evidence: 'Lan tiet lo bi mat.',
+          payload: {},
+        },
+      ],
+      entityStates: [{
+        entity_id: 7,
+        alive_status: 'alive',
+        goals_abandoned: [],
+        allegiance: 'trieu dinh',
+      }],
+      threadStates: [],
+      factStates: [],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'MISSING_SUBJECT_REFERENCE')).toBe(true);
+    expect(reports.some((report) => report.rule_code === 'MISSING_LOCATION_REFERENCE')).toBe(true);
+    expect(reports.some((report) => report.rule_code === 'MISSING_FACT_REFERENCE')).toBe(true);
+    expect(reports.some((report) => report.rule_code === 'LOW_CONFIDENCE_CANON_OP')).toBe(true);
+  });
+
+  it('updates thread projection when resolved', () => {
+    const start = engine.createInitialThreadState({ id: 4, project_id: 99, state: 'active', description: 'Bi mat hoang toc' });
+    const next = engine.applyEventToThreadState(start, {
+      op_type: CANON_OP_TYPES.THREAD_RESOLVED,
+      subject_id: 1,
+      target_id: 2,
+      payload: { summary: 'Da giai quyet than phan that cua hoang hau' },
+    });
+
+    expect(next.state).toBe('resolved');
+    expect(next.summary).toContain('Da giai quyet');
+    expect(next.focus_entity_ids).toEqual(expect.arrayContaining([1, 2]));
+  });
+
+  it('tracks item consumption in item state', () => {
+    const start = engine.createInitialItemState({ id: 4, project_id: 9, description: 'Ngoc Hoa An' });
+    const next = engine.applyEventToItemState(start, {
+      op_type: CANON_OP_TYPES.OBJECT_CONSUMED,
+      payload: { availability: 'consumed', status_summary: 'Da dung het trong mot lan kich hoat' },
+    });
+
+    expect(next.is_consumed).toBe(true);
+    expect(next.availability).toBe('consumed');
+    expect(next.summary).toContain('Da dung het');
+  });
+
+  it('tracks relationship intimacy and consent continuity', () => {
+    const start = engine.createInitialRelationshipState({
+      project_id: 1,
+      character_a_id: 5,
+      character_b_id: 7,
+      relation_type: 'lover',
+      description: 'Da co tinh cam',
+    });
+    const next = engine.applyEventToRelationshipState(start, {
+      op_type: CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED,
+      payload: {
+        intimacy_level: 'high',
+        consent_state: 'mutual',
+        emotional_aftermath: 'gan gui hon nhung van co chut ngai ngung',
+        status_summary: 'Quan he than mat hon sau canh cao trao',
+      },
+    });
+
+    expect(next.intimacy_level).toBe('high');
+    expect(next.consent_state).toBe('mutual');
+    expect(next.emotional_aftermath).toContain('gan gui hon');
+  });
 });

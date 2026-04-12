@@ -22,6 +22,10 @@ import { SCENE_STATUSES } from '../../utils/constants';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
+import {
+  getStoryCreationSettings,
+  renderStoryCreationTemplate,
+} from '../../services/ai/storyCreationSettings';
 import './OutlineBoard.css';
 
 const ACTS = [
@@ -141,42 +145,38 @@ export default function OutlineBoard() {
     setIsGenerating(true);
     setGenError(null);
 
-    const charList = characters.map(c => `${c.name} (${c.role})`).join(', ');
-    const locList = locations.map(l => l.name).join(', ');
-
+    const charList = characters.map((c) => `${c.name} (${c.role})`).join(', ');
+    const locList = locations.map((l) => l.name).join(', ');
     const existingOutline = chapters.length > 0
-      ? chapters.map((ch, i) => `${i + 1}. ${ch.title}${ch.purpose ? ' — ' + ch.purpose : ''}`).join('\n')
-      : 'Chưa có outline';
+      ? chapters.map((ch, i) => `${i + 1}. ${ch.title}${ch.purpose ? ' - ' + ch.purpose : ''}`).join('\n')
+      : 'Chua co outline';
 
-    const systemPrompt = `Bạn là trợ lý lập kế hoạch truyện cho thể loại ${currentProject.genre_primary || 'fantasy'}.
-
-Thông tin truyện:
-- Tên: ${currentProject.title}
-- Mô tả: ${currentProject.description || 'Chưa có'}
-- Nhân vật: ${charList || 'Chưa có'}
-- Địa điểm: ${locList || 'Chưa có'}
-- Outline hiện tại: ${existingOutline}
-
-${chapters.length > 0
-        ? 'Phân tích outline hiện tại và GỢI Ý purpose (mục tiêu) + summary (tóm tắt) cho từng chương. Gán mỗi chương vào act (1, 2, hoặc 3).'
-        : 'Tạo outline 10 chương theo cấu trúc 3 hồi. Mỗi chương phải có mục tiêu rõ ràng.'}
-
-Ngoài ra, dựa trên toàn bộ outline, hãy phân tích và trích xuất 2-4 Tuyến truyện (Plot Threads) lớn, vĩ mô, xuyên suốt nhiều chương. Chỉ trích xuất các tuyến thực sự quan trọng, có tính bước ngoặt — KHÔNG tạo tuyến truyện nhỏ lặt vặt.
-
-Trả về CHÍNH XÁC JSON:
-{
-  "chapters": [{"title":"...","purpose":"mục tiêu chương 1-2 câu","summary":"tóm tắt nội dung 2-3 câu","act":1}],
-  "plot_threads": [{"title":"...","type":"main|subplot|character_arc|mystery|romance","description":"mô tả tuyến truyện 1-2 câu","state":"active"}]
-}`;
+    const storyCreationSettings = getStoryCreationSettings();
+    const outlinePrompts = storyCreationSettings.outlineGeneration;
+    const outlineTaskInstruction = chapters.length > 0
+      ? 'Phan tich outline hien tai va GOI Y purpose (muc tieu) + summary (tom tat) cho tung chuong. Gan moi chuong vao act (1, 2, hoac 3).'
+      : 'Tao outline 10 chuong theo cau truc 3 hoi. Moi chuong phai co muc tieu ro rang.';
+    const outlineUserRequest = chapters.length > 0
+      ? 'Phan tich va bo sung outline cho cac chuong hien co.'
+      : `Tao outline 10 chuong cho truyen "${currentProject.title}".`;
+    const outlineTemplateVariables = {
+      genre: currentProject.genre_primary || 'fantasy',
+      project_title: currentProject.title,
+      project_description: currentProject.description || 'Chua co',
+      character_list: charList || 'Chua co',
+      location_list: locList || 'Chua co',
+      existing_outline: existingOutline,
+      outline_task_instruction: outlineTaskInstruction,
+      outline_user_request: outlineUserRequest,
+    };
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      {
-        role: 'user', content: chapters.length > 0
-          ? 'Phân tích và bổ sung outline cho các chương hiện có.'
-          : `Tạo outline 10 chương cho truyện "${currentProject.title}".`
-      },
+      { role: 'system', content: '' },
+      { role: 'user', content: '' },
     ];
+
+    messages[0].content = renderStoryCreationTemplate(outlinePrompts.systemPrompt, outlineTemplateVariables);
+    messages[1].content = renderStoryCreationTemplate(outlinePrompts.userPromptTemplate, outlineTemplateVariables);
 
     aiService.send({
       taskType: TASK_TYPES.PROJECT_WIZARD,
@@ -230,63 +230,61 @@ Trả về CHÍNH XÁC JSON:
           return;
         } catch (e) {
           console.error('[OutlineBoard] AI parse error:', e);
-          setGenError('Không parse được. Thử lại?');
+          setGenError('Khong parse duoc. Thu lai?');
         }
       },
       onError: (err) => {
         setIsGenerating(false);
-        setGenError(err.message || 'Lỗi AI');
+        setGenError(err.message || 'Loi AI');
       },
     });
   };
 
-  // AI Suggest Threads — nhận hint tùy chọn từ tác giả
+  // AI Suggest Threads - nhan hint tuy chon tu tac gia
   const handleSuggestThreads = async () => {
     if (!currentProject || isSuggesting) return;
     setIsSuggesting(true);
-    setShowSuggestInput(false); // đóng input sau khi gửi
+    setShowSuggestInput(false);
 
-    const synopsisText = currentProject.synopsis || currentProject.description || 'Chưa có';
-    const charList = characters.map(c => `${c.name} (${c.role})`).join(', ') || 'Chưa có';
+    const synopsisText = currentProject.synopsis || currentProject.description || 'Chua co';
+    const charList = characters.map((c) => `${c.name} (${c.role})`).join(', ') || 'Chua co';
     const chapterList = chapters.length > 0
       ? chapters.map((ch, i) =>
-        `${i + 1}. ${ch.title}${ch.purpose ? ' — ' + ch.purpose : ''}${ch.summary ? ': ' + ch.summary : ''}`
+        `${i + 1}. ${ch.title}${ch.purpose ? ' - ' + ch.purpose : ''}${ch.summary ? ': ' + ch.summary : ''}`
       ).join('\n')
-      : 'Chưa có';
+      : 'Chua co';
     const existingThreads = plotThreads.length > 0
-      ? plotThreads.map(pt => `- [${pt.type}] ${pt.title}: ${pt.description || ''}`).join('\n')
-      : 'Chưa có';
+      ? plotThreads.map((pt) => `- [${pt.type}] ${pt.title}: ${pt.description || ''}`).join('\n')
+      : 'Chua co';
 
-    // [MỚI] Inject hint của tác giả vào prompt nếu có
     const hintSection = suggestHint.trim()
-      ? `\nHướng đi tác giả muốn khai thác: ${suggestHint.trim()}\nƯu tiên gợi ý theo hướng này nếu phù hợp với câu chuyện.\n`
+      ? `
+Huong di tac gia muon khai thac: ${suggestHint.trim()}
+Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
+`
       : '';
 
-    const systemPrompt = `Bạn là trợ lý phân tích cốt truyện cho ứng dụng StoryForge.
-
-Thông tin truyện:
-- Tên: ${currentProject.title}
-- Thể loại: ${currentProject.genre_primary || 'Chưa có'}
-- Cốt truyện: ${synopsisText}
-- Nhân vật: ${charList}
-- Outline chương:
-${chapterList}
-
-Các tuyến truyện ĐÃ CÓ (không được lặp lại):
-${existingThreads}
-${hintSection}
-Nhiệm vụ: Đọc toàn bộ thông tin trên, phân tích các khoảng trống chưa được khai thác, và đề xuất thêm 2-3 Tuyến Truyện MỚI để câu chuyện thêm chiều sâu.
-- KHÔNG lặp lại bất kỳ tuyến truyện đã có.
-- CHỈ gợi ý các tuyến có tính bước ngoặt, ảnh hưởng vĩ mô đến nhiều chương.
-- KHÔNG tạo tuyến truyện nhỏ lặt vặt.
-
-Trả về CHÍNH XÁC JSON:
-{"plot_threads": [{"title":"...","type":"main|subplot|character_arc|mystery|romance","description":"mô tả 1-2 câu"}]}`;
+    const storyCreationSettings = getStoryCreationSettings();
+    const threadPrompts = storyCreationSettings.threadSuggestion;
+    const threadUserRequest = 'Hay phan tich va goi y tuyen truyen moi cho toi.';
+    const threadTemplateVariables = {
+      project_title: currentProject.title,
+      genre: currentProject.genre_primary || 'Chua co',
+      synopsis: synopsisText,
+      character_list: charList,
+      chapter_list: chapterList,
+      existing_threads: existingThreads,
+      hint_section: hintSection,
+      thread_user_request: threadUserRequest,
+    };
 
     const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: 'Hãy phân tích và gợi ý tuyến truyện mới cho tôi.' },
+      { role: 'system', content: '' },
+      { role: 'user', content: '' },
     ];
+
+    messages[0].content = renderStoryCreationTemplate(threadPrompts.systemPrompt, threadTemplateVariables);
+    messages[1].content = renderStoryCreationTemplate(threadPrompts.userPromptTemplate, threadTemplateVariables);
 
     aiService.send({
       taskType: TASK_TYPES.PROJECT_WIZARD,
@@ -294,14 +292,14 @@ Trả về CHÍNH XÁC JSON:
       stream: false,
       onComplete: (text) => {
         setIsSuggesting(false);
-        setSuggestHint(''); // reset hint sau khi gửi
+        setSuggestHint('');
         try {
           const parsedValue = parseAIJsonValue(text);
           const normalized = isPlainObject(parsedValue) ? parsedValue : null;
           if (!normalized) throw new Error('Unexpected JSON format');
 
           const suggestions = Array.isArray(normalized.plot_threads)
-            ? normalized.plot_threads.filter(pt => isPlainObject(pt) && pt.title?.trim())
+            ? normalized.plot_threads.filter((pt) => isPlainObject(pt) && pt.title?.trim())
             : [];
 
           setSuggestedThreads(suggestions);
@@ -316,7 +314,6 @@ Trả về CHÍNH XÁC JSON:
     });
   };
 
-  // [MỚI] Toggle suggest input — click Sparkles lần 2 để đóng
   const handleToggleSuggestInput = () => {
     if (isSuggesting) return;
     setShowSuggestInput(prev => !prev);

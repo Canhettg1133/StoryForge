@@ -9,6 +9,19 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 2200,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return null
+          if (id.includes('tiptap') || id.includes('prosemirror')) return 'vendor-editor'
+          if (id.includes('dexie')) return 'vendor-db'
+          return null
+        },
+      },
+    },
+  },
   server: {
     port: 3000,
     open: true,

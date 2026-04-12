@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import AppLayout from './components/common/AppLayout';
 import Dashboard from './pages/Dashboard/Dashboard';
 import StoryBible from './pages/StoryBible/StoryBible';
+import CanonTruth from './pages/CanonTruth/CanonTruth';
 import OutlineBoard from './pages/OutlineBoard/OutlineBoard';
 import CharacterHub from './pages/CharacterHub/CharacterHub';
 import WorldLore from './pages/WorldLore/WorldLore';
@@ -14,6 +15,7 @@ import NarrativeLab from './pages/Lab/NarrativeLab';
 import CorpusLab from './pages/Lab/CorpusLab/CorpusLab';
 import AnalysisViewer from './pages/Lab/CorpusLab/AnalysisViewer';
 import Settings from './pages/Settings/Settings';
+import StoryCreationSettings from './pages/StoryCreationSettings/StoryCreationSettings';
 import ProjectLayout from './components/common/ProjectLayout';
 
 export default function App() {
@@ -23,10 +25,12 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/story-creation-settings" element={<StoryCreationSettings />} />
 
           {/* Project-specific routes */}
           <Route path="/project/:projectId" element={<ProjectLayout />}>
             <Route path="story-bible" element={<StoryBible />} />
+            <Route path="su-that" element={<CanonTruth />} />
             <Route path="outline" element={<OutlineBoard />} />
             <Route path="characters" element={<CharacterHub />} />
             <Route path="world" element={<WorldLore />} />

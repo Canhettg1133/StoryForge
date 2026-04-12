@@ -1,24 +1,94 @@
-/**
- * StoryForge — Suggestion Store (Phase A: Suggestion Inbox)
- * 
- * Manages AI-generated suggestions for:
- *   - Character current_status updates
- *   - New Canon Facts
- * 
- * Suggestions go through: pending → accepted/rejected
- */
-
 import { create } from 'zustand';
 import db from '../services/db/database';
+import { CANON_OP_TYPES } from '../services/canon/constants';
+import { canonicalizeCandidateOps } from '../services/canon/engine';
+
+function cleanText(value) {
+  return String(value || '').trim();
+}
+
+function buildSuggestionCandidateOp(suggestion) {
+  if (!suggestion) return null;
+
+  if (suggestion.candidate_op) {
+    try {
+      const parsed = typeof suggestion.candidate_op === 'string'
+        ? JSON.parse(suggestion.candidate_op)
+        : suggestion.candidate_op;
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  if (suggestion.type === 'character_status') {
+    return {
+      op_type: CANON_OP_TYPES.CHARACTER_STATUS_CHANGED,
+      chapter_id: suggestion.source_chapter_id || null,
+      scene_id: suggestion.source_scene_id || null,
+      subject_id: suggestion.target_id || null,
+      subject_name: cleanText(suggestion.target_name),
+      summary: cleanText(suggestion.suggested_value),
+      evidence: cleanText(suggestion.reasoning || suggestion.suggested_value),
+      confidence: 0.6,
+      payload: {
+        status_summary: cleanText(suggestion.suggested_value),
+      },
+    };
+  }
+
+  if (suggestion.type === 'canon_fact') {
+    return {
+      op_type: CANON_OP_TYPES.FACT_REGISTERED,
+      chapter_id: suggestion.source_chapter_id || null,
+      scene_id: suggestion.source_scene_id || null,
+      fact_description: cleanText(suggestion.suggested_value),
+      summary: cleanText(suggestion.suggested_value),
+      evidence: cleanText(suggestion.reasoning || suggestion.suggested_value),
+      confidence: 0.6,
+      payload: {
+        description: cleanText(suggestion.suggested_value),
+        fact_type: cleanText(suggestion.fact_type || 'fact') || 'fact',
+      },
+    };
+  }
+
+  return null;
+}
+
+async function commitSuggestionBatch(projectId, suggestions) {
+  const sourceChapterId = suggestions[0]?.source_chapter_id;
+  const candidateOps = suggestions
+    .map(buildSuggestionCandidateOp)
+    .filter(Boolean)
+    .map((op) => ({
+      ...op,
+      chapter_id: op.chapter_id || sourceChapterId || null,
+    }));
+
+  if (!sourceChapterId || candidateOps.length === 0) {
+    throw new Error('De xuat nay chua co canon op hop le de ap dung.');
+  }
+
+  const result = await canonicalizeCandidateOps({
+    projectId,
+    chapterId: sourceChapterId,
+    candidateOps,
+    sourceType: 'suggestion_inbox',
+  });
+
+  if (!result.ok) {
+    const firstError = (result.reports || []).find((report) => report.severity === 'error');
+    throw new Error(firstError?.message || 'Validator chan de xuat nay truoc khi canon hoa.');
+  }
+
+  return result;
+}
 
 const useSuggestionStore = create((set, get) => ({
-  // --- State ---
   suggestions: [],
   loading: false,
 
-  // =============================================
-  // LOAD suggestions for a project
-  // =============================================
   loadSuggestions: async (projectId) => {
     if (!projectId) return;
     set({ loading: true });
@@ -29,22 +99,21 @@ const useSuggestionStore = create((set, get) => ({
     set({ suggestions, loading: false });
   },
 
-  // =============================================
-  // CREATE suggestions (batch from AI response)
-  // =============================================
   createSuggestions: async (projectId, items) => {
     const now = Date.now();
-    const records = items.map(item => ({
+    const records = items.map((item) => ({
       project_id: projectId,
-      type: item.type,               // 'character_status' | 'canon_fact'
+      type: item.type,
       status: 'pending',
       source_chapter_id: item.source_chapter_id || null,
-      target_id: item.target_id || null,       // character_id for status updates
-      target_name: item.target_name || '',      // character name or fact subject
-      current_value: item.current_value || '',  // old status
-      suggested_value: item.suggested_value || '', // new status or fact description
-      fact_type: item.fact_type || null,         // 'fact' | 'secret' | 'rule' (for canon facts)
+      source_scene_id: item.source_scene_id || null,
+      target_id: item.target_id || null,
+      target_name: item.target_name || '',
+      current_value: item.current_value || '',
+      suggested_value: item.suggested_value || '',
+      fact_type: item.fact_type || null,
       reasoning: item.reasoning || '',
+      candidate_op: item.candidate_op ? JSON.stringify(item.candidate_op) : null,
       created_at: now,
     }));
 
@@ -52,95 +121,69 @@ const useSuggestionStore = create((set, get) => ({
     await get().loadSuggestions(projectId);
   },
 
-  // =============================================
-  // ACCEPT a suggestion → apply the change
-  // =============================================
   acceptSuggestion: async (id, projectId) => {
     const suggestion = await db.suggestions.get(id);
-    if (!suggestion || suggestion.status !== 'pending') return;
+    if (!suggestion || suggestion.status !== 'pending') return null;
 
-    if (suggestion.type === 'character_status' && suggestion.target_id) {
-      // Update character's current_status
-      await db.characters.update(suggestion.target_id, {
-        current_status: suggestion.suggested_value,
-      });
+    const result = await commitSuggestionBatch(projectId, [suggestion]);
 
-      // Phase 4.5: Auto-record Timeline Event
-      await db.entityTimeline.add({
-        project_id: projectId,
-        entity_id: suggestion.target_id,
-        entity_type: 'character',
-        chapter_id: suggestion.source_chapter_id,
-        type: 'STATUS_CHANGE',
-        description: suggestion.reasoning || `Trạng thái đổi từ "${suggestion.current_value}" thành "${suggestion.suggested_value}"`,
-        oldValue: suggestion.current_value,
-        newValue: suggestion.suggested_value,
-        timestamp: Date.now(),
-      });
-    } else if (suggestion.type === 'canon_fact') {
-      // Create new Canon Fact
-      await db.canonFacts.add({
-        project_id: projectId,
-        description: suggestion.suggested_value,
-        fact_type: suggestion.fact_type || 'fact',
-        status: 'active',
-        source_chapter_id: suggestion.source_chapter_id || null,
-        created_at: Date.now(),
-      });
-    }
-
-    // Mark as accepted
-    await db.suggestions.update(id, { status: 'accepted' });
+    await db.suggestions.update(id, {
+      status: 'accepted',
+      applied_revision_id: result.revisionId || null,
+      applied_at: Date.now(),
+      last_error: '',
+    });
     await get().loadSuggestions(projectId);
+    return result;
   },
 
-  // =============================================
-  // REJECT a suggestion
-  // =============================================
   rejectSuggestion: async (id, projectId) => {
-    await db.suggestions.update(id, { status: 'rejected' });
+    await db.suggestions.update(id, { status: 'rejected', last_error: '' });
     await get().loadSuggestions(projectId);
   },
 
-  // =============================================
-  // ACCEPT ALL pending suggestions
-  // =============================================
   acceptAll: async (projectId) => {
-    const pending = get().suggestions.filter(s => s.status === 'pending');
-    for (const s of pending) {
-      await get().acceptSuggestion(s.id, projectId);
+    const pending = get().suggestions.filter((suggestion) => suggestion.status === 'pending');
+    const grouped = pending.reduce((map, suggestion) => {
+      const key = suggestion.source_chapter_id || `no-chapter:${suggestion.id}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(suggestion);
+      return map;
+    }, new Map());
+
+    for (const suggestions of grouped.values()) {
+      const result = await commitSuggestionBatch(projectId, suggestions);
+      await Promise.all(suggestions.map((suggestion) => db.suggestions.update(suggestion.id, {
+        status: 'accepted',
+        applied_revision_id: result.revisionId || null,
+        applied_at: Date.now(),
+        last_error: '',
+      })));
     }
+
+    await get().loadSuggestions(projectId);
   },
 
-  // =============================================
-  // REJECT ALL pending suggestions
-  // =============================================
   rejectAll: async (projectId) => {
-    const pending = get().suggestions.filter(s => s.status === 'pending');
-    for (const s of pending) {
-      await db.suggestions.update(s.id, { status: 'rejected' });
+    const pending = get().suggestions.filter((suggestion) => suggestion.status === 'pending');
+    for (const suggestion of pending) {
+      await db.suggestions.update(suggestion.id, { status: 'rejected', last_error: '' });
     }
     await get().loadSuggestions(projectId);
   },
 
-  // =============================================
-  // DELETE old suggestions (cleanup)
-  // =============================================
   clearResolved: async (projectId) => {
     await db.suggestions
       .where('project_id').equals(projectId)
-      .filter(s => s.status !== 'pending')
+      .filter((suggestion) => suggestion.status !== 'pending')
       .delete();
     await get().loadSuggestions(projectId);
   },
 
-  // =============================================
-  // HELPERS
-  // =============================================
-  getPending: () => get().suggestions.filter(s => s.status === 'pending'),
-  getAccepted: () => get().suggestions.filter(s => s.status === 'accepted'),
-  getRejected: () => get().suggestions.filter(s => s.status === 'rejected'),
-  getPendingCount: () => get().suggestions.filter(s => s.status === 'pending').length,
+  getPending: () => get().suggestions.filter((suggestion) => suggestion.status === 'pending'),
+  getAccepted: () => get().suggestions.filter((suggestion) => suggestion.status === 'accepted'),
+  getRejected: () => get().suggestions.filter((suggestion) => suggestion.status === 'rejected'),
+  getPendingCount: () => get().suggestions.filter((suggestion) => suggestion.status === 'pending').length,
 }));
 
 export default useSuggestionStore;
