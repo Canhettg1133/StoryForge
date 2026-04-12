@@ -152,18 +152,6 @@ export default function StoryCreationSettings() {
                 <strong>Mục tiêu sử dụng</strong>
                 <p>{GLOBAL_PROMPT_META[group.key]?.purpose}</p>
               </div>
-              <div className="story-creation-info-box">
-                <strong>Khi nào nên sửa</strong>
-                <p>{GLOBAL_PROMPT_META[group.key]?.whenToEdit}</p>
-              </div>
-              <div className="story-creation-info-box">
-                <strong>Đầu vào thường gặp</strong>
-                <p>{GLOBAL_PROMPT_META[group.key]?.commonInputs}</p>
-              </div>
-              <div className="story-creation-info-box">
-                <strong>Ảnh hưởng đến đâu</strong>
-                <p>{GLOBAL_PROMPT_META[group.key]?.impactArea}</p>
-              </div>
             </div>
 
             <div className="story-creation-meta">

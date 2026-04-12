@@ -55,8 +55,12 @@ function buildDefaultValue(item, genreKey) {
     return stringifyList(template.anti_ai_blacklist || []);
   }
 
-  if (item.key === 'nsfw_system_prompt' || item.key === 'nsfw_rules') {
+  if (item.key === 'nsfw_system_prompt') {
     return DEFAULT_NSFW_RULES;
+  }
+
+  if (item.key === 'nsfw_rules') {
+    return '';
   }
 
   if (item.key === 'nsfw_intimate_prompt') {
@@ -118,18 +122,6 @@ function PromptInfoGrid({ item }) {
         <strong>Dùng để làm gì</strong>
         <p>{item.purpose}</p>
       </div>
-      <div className="prompt-card__info-box">
-        <strong>Khi nào nên sửa</strong>
-        <p>{item.whenToEdit}</p>
-      </div>
-      <div className="prompt-card__info-box">
-        <strong>Đầu vào thường gặp</strong>
-        <p>{item.commonInputs}</p>
-      </div>
-      <div className="prompt-card__info-box">
-        <strong>Kết quả mong muốn</strong>
-        <p>{item.expectedOutput}</p>
-      </div>
     </div>
   );
 }
@@ -150,6 +142,21 @@ function PromptEditorCard({
     : String(overrideDraft || '').trim().length > 0;
 
   const effectiveLabel = hasOverride ? 'Đang dùng Override của truyện' : 'Đang dùng prompt mặc định';
+  const coreHelp = item.key === 'nsfw_system_prompt'
+    ? 'Đây là prompt gốc của khối NSFW. Nếu không có override, hệ thống dùng prompt gốc này.'
+    : item.key === 'nsfw_rules'
+      ? 'Đây là vùng soạn rule bổ sung để tham chiếu. Rule bổ sung không thay thế prompt gốc NSFW.'
+      : 'Bản mẫu gốc để tham chiếu và chỉnh thử tại chỗ. Không lưu riêng vào project.';
+  const overrideHelp = item.key === 'nsfw_system_prompt'
+    ? 'Nếu nhập ở đây, bạn đang thay thế prompt gốc NSFW của project này.'
+    : item.key === 'nsfw_rules'
+      ? 'Nếu nhập ở đây, rule sẽ được nối vào sau prompt gốc NSFW của project này.'
+      : 'Phần ghi đè thật sự của riêng truyện này. Đây là phần sẽ được lưu vào project.';
+  const overridePlaceholder = item.key === 'nsfw_rules'
+    ? 'Để trống = không thêm rule bổ sung. Nếu có nội dung, hệ thống sẽ nối vào sau prompt gốc NSFW.'
+    : item.type === 'list'
+      ? 'Mỗi dòng là một mục. Để trống = dùng Core Defaults.'
+      : 'Để trống = dùng Core Defaults.';
 
   return (
     <article className="prompt-card">
@@ -170,7 +177,7 @@ function PromptEditorCard({
           <div className="prompt-editor-block__header">
             <div>
               <strong>Core Defaults</strong>
-              <p>Bản mẫu gốc để tham chiếu và chỉnh thử tại chỗ. Không lưu riêng vào project.</p>
+              <p>{coreHelp}</p>
             </div>
             <div className="prompt-editor-block__actions">
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => onResetCore(item)}>
@@ -194,7 +201,7 @@ function PromptEditorCard({
           <div className="prompt-editor-block__header">
             <div>
               <strong>Project Override</strong>
-              <p>Phần ghi đè thật sự của riêng truyện này. Đây là phần sẽ được lưu vào project.</p>
+              <p>{overrideHelp}</p>
             </div>
             <div className="prompt-editor-block__actions">
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => onClearOverride(item)} disabled={!hasOverride}>
@@ -208,9 +215,7 @@ function PromptEditorCard({
             rows={item.type === 'list' ? 8 : 12}
             value={overrideDraft}
             onChange={(event) => onOverrideChange(item, event.target.value)}
-            placeholder={item.type === 'list'
-              ? 'Mỗi dòng là một mục. Để trống = dùng Core Defaults.'
-              : 'Để trống = dùng Core Defaults.'}
+            placeholder={overridePlaceholder}
           />
         </section>
       </div>
@@ -379,18 +384,6 @@ export default function ProjectPromptManager() {
           <div className="prompt-manager-intro__box">
             <strong>Dùng để làm gì</strong>
             <p>Giúp bạn gom toàn bộ prompt liên quan đến viết truyện, canon và ghi nhớ về đúng một nơi quản lý.</p>
-          </div>
-          <div className="prompt-manager-intro__box">
-            <strong>Khi nào nên sửa</strong>
-            <p>Sửa khi bạn thấy AI viết sai nhịp, sai giọng, tóm tắt yếu, kiểm canon chưa chặt hoặc chưa bám outline như mong muốn.</p>
-          </div>
-          <div className="prompt-manager-intro__box">
-            <strong>Đầu vào thường gặp</strong>
-            <p>Chapter hiện tại, scene text, canon facts, character states, outline, bridge memory và yêu cầu trực tiếp từ tác giả.</p>
-          </div>
-          <div className="prompt-manager-intro__box">
-            <strong>Kết quả mong muốn</strong>
-            <p>AI viết đúng hơn, nhớ tốt hơn, ít lệch canon hơn và giữ được giọng văn của dự án một cách ổn định.</p>
           </div>
         </div>
 
