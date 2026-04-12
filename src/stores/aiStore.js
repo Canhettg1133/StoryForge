@@ -214,6 +214,8 @@ const useAIStore = create((set, get) => ({
           sceneId: context.sceneId || null,
           sceneText: context.sceneText || '',
           genre: context.genre || '',
+          taskType,
+          retrievalMode: context.retrievalMode || '',
         });
         // Keep full contextEngine output, then let explicit caller context override.
         enrichedContext = {

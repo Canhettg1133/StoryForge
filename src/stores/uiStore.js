@@ -1,8 +1,20 @@
 import { create } from 'zustand';
 
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'sf-sidebar-collapsed';
+
+function readSidebarCollapsedPreference() {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === 'true';
+}
+
+function persistSidebarCollapsedPreference(value) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, value ? 'true' : 'false');
+}
+
 const useUIStore = create((set, get) => ({
   theme: localStorage.getItem('sf-theme') || 'dark',
-  sidebarCollapsed: false,
+  sidebarCollapsed: readSidebarCollapsedPreference(),
   rightPanelOpen: false,
   activePage: 'dashboard',
 
@@ -17,8 +29,15 @@ const useUIStore = create((set, get) => ({
     get().setTheme(next);
   },
 
-  toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-  setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
+  toggleSidebar: () => set((s) => {
+    const next = !s.sidebarCollapsed;
+    persistSidebarCollapsedPreference(next);
+    return { sidebarCollapsed: next };
+  }),
+  setSidebarCollapsed: (v) => {
+    persistSidebarCollapsedPreference(v);
+    set({ sidebarCollapsed: v });
+  },
 
   toggleRightPanel: () => set(s => ({ rightPanelOpen: !s.rightPanelOpen })),
   setRightPanelOpen: (v) => set({ rightPanelOpen: v }),

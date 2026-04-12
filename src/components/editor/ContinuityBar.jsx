@@ -61,11 +61,11 @@ export default function ContinuityBar({ isMobileLayout = false }) {
 
   const canonStatusLabel = useMemo(() => {
     const status = chapterCanon?.status || 'draft';
-    if (status === 'canonical') return 'Canonical';
-    if (status === 'blocked') return 'Blocked';
-    if (status === 'invalidated') return 'Invalidated';
-    if (status === 'has_warnings') return 'Warnings';
-    return 'Draft';
+    if (status === 'canonical') return 'Chinh thuc';
+    if (status === 'blocked') return 'Bi chan';
+    if (status === 'invalidated') return 'Vo hieu';
+    if (status === 'has_warnings') return 'Co canh bao';
+    return 'Chua phan tich';
   }, [chapterCanon?.status]);
 
   const canonStatusClass = `continuity-bar-status continuity-bar-status--${chapterCanon?.status || 'draft'}`;
@@ -97,7 +97,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
             </>
           ) : (
             <>
-              <span className="continuity-bar-label">Canon:</span>
+              <span className="continuity-bar-label">Su that:</span>
               <span className="continuity-bar-title">{currentChapterTitle || 'Chuong hien tai'}</span>
             </>
           )}
@@ -106,17 +106,17 @@ export default function ContinuityBar({ isMobileLayout = false }) {
             {canonStatusLabel}
           </span>
           {(chapterCanon?.warningCount || 0) > 0 && (
-            <span className="continuity-bar-count">{chapterCanon.warningCount} warning</span>
+            <span className="continuity-bar-count">{chapterCanon.warningCount} canh bao</span>
           )}
           {(chapterCanon?.errorCount || 0) > 0 && (
-            <span className="continuity-bar-count continuity-bar-count--error">{chapterCanon.errorCount} error</span>
+            <span className="continuity-bar-count continuity-bar-count--error">{chapterCanon.errorCount} loi</span>
           )}
         </div>
 
         <div className="continuity-bar-actions" onClick={(event) => event.stopPropagation()}>
           <button type="button" className="continuity-bar-btn" onClick={handleCanonicalize} disabled={canonicalizing || rebuilding || !activeChapterId}>
             {canonicalizing ? <Loader2 size={12} className="spin" /> : <ShieldCheck size={12} />}
-            Canonize
+            Phan tich su that
           </button>
           <button type="button" className="continuity-bar-btn continuity-bar-btn--ghost" onClick={handleRebuild} disabled={canonicalizing || rebuilding || !activeChapterId}>
             {rebuilding ? <Loader2 size={12} className="spin" /> : <RotateCcw size={12} />}

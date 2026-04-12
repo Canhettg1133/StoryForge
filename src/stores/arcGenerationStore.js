@@ -728,43 +728,20 @@ const useArcGenStore = create((set, get) => ({
             const project = await db.projects.get(projectId);
             const targetLength = project?.target_length || 0;
             const ultimateGoal = project?.ultimate_goal || '';
+            let promptTemplates = {};
+            if (project?.prompt_templates) {
+                try { promptTemplates = JSON.parse(project.prompt_templates); } catch { }
+            }
 
-            // Build prompt trực tiếp — task này chưa có entry trong promptBuilder
-            // nên dùng messages array thủ công theo đúng format Gemini
-            const systemInstruction = [
-                'Ban la nha hoach dinh co cau truyen chuyen nghiep cho tieu thuyet dai ky (500-1000 chuong).',
-                'Nhiem vu: Tao 5-8 cot moc lon (Macro Milestones) de tac gia dung lam "ban do" cho toan bo tac pham.',
-                'Moi cot moc la mot diem ngoat lon trong hanh trinh nhan vat — khong phai tiet tiet nho.',
-                'Phan bo cot moc phai dam bao truyen co CAO TRAO, KHUNG HOANG va GIAI QUYET ro rang.',
-                'Tra ve CHINH XAC JSON format sau, KHONG them gi khac:',
-                '{',
-                '  "milestones": [',
-                '    {',
-                '      "order": 1,',
-                '      "title": "Ten cot moc ngan gon",',
-                '      "description": "Mo ta 2-3 cau ve nhung gi xay ra o cot moc nay",',
-                '      "chapter_from": 1,',
-                '      "chapter_to": 80,',
-                '      "emotional_peak": "Doc gia can cam thay gi khi ket thuc cot moc nay"',
-                '    }',
-                '  ]',
-                '}',
-            ].join('\n');
-
-            const userContent = [
-                'Y tuong truyen: ' + (authorIdea || '(Chua co y tuong cu the)'),
-                'The loai: ' + (genre || 'Chua xac dinh'),
-                targetLength > 0 ? 'Do dai du kien: ' + targetLength + ' chuong' : '',
-                ultimateGoal ? 'Muc tieu cuoi cung cua truyen: ' + ultimateGoal : '',
-                '',
-                'Hay phan tich y tuong tren va de xuat 5-8 cot moc phu hop.',
-                'Dam bao chuong ket thuc moi cot moc khop voi do dai truyen.',
-            ].filter(Boolean).join('\n');
-
-            const messages = [
-                { role: 'system', content: systemInstruction },
-                { role: 'user', content: userContent },
-            ];
+            const messages = buildPrompt(TASK_TYPES.GENERATE_MACRO_MILESTONES, {
+                projectTitle: project?.title || '',
+                genre,
+                authorIdea,
+                userPrompt: authorIdea,
+                targetLength,
+                ultimateGoal,
+                promptTemplates,
+            });
 
             await new Promise((resolve) => {
                 aiService.send({
@@ -875,47 +852,22 @@ const useArcGenStore = create((set, get) => ({
                 try { currentArcInfo = await db.arcs.get(currentArcId); } catch { }
             }
 
-            // Build prompt kiểm tra độ lệch
-            const systemInstruction = [
-                'Ban la bien tap vien kiem soat chat luong tieu thuyet dai ky.',
-                'Nhiem vu: Phan tich xem noi dung cac chuong gan day co dang di dung huong so voi dai cuc khong.',
-                'Chi ra DO LECH cu the neu co, dung noi chung chung.',
-                '',
-                'Tra ve CHINH XAC JSON format sau:',
-                '{',
-                '  "aligned": true/false,',
-                '  "drift_score": 0-10,',
-                '  "issues": ["Van de 1", "Van de 2"],',
-                '  "suggestions": ["De xuat sua 1", "De xuat sua 2"],',
-                '  "current_position": "Mo ta vi tri hien tai cua truyen trong 1 cau"',
-                '}',
-                'drift_score: 0 = hoan toan dung huong, 10 = lac qua xa.',
-                'Chi tra ve JSON, KHONG them gi khac.',
-            ].join('\n');
+            let promptTemplates = {};
+            if (project?.prompt_templates) {
+                try { promptTemplates = JSON.parse(project.prompt_templates); } catch { }
+            }
 
-            const summaryText = recentSummaries.length > 0
-                ? recentSummaries.map((s, i) => (i + 1) + '. ' + s.title + ': ' + (s.summary || '(chua co tom tat)')).join('\n')
-                : '(Chua co chuong nao hoan thanh)';
-
-            const userContent = [
-                '[10 CHUONG GAN NHAT]',
-                summaryText,
-                '',
-                '[DAI CUC / MUC TIEU TONG THE]',
-                ultimateGoal ? 'Muc tieu: ' + ultimateGoal : '(Chua dinh nghia)',
-                targetLength > 0 ? 'Do dai: ' + targetLength + ' chuong, hien tai o chuong ' + (currentChapterIndex + 1) : '',
-                macroArcInfo ? 'Cot moc dang o: ' + macroArcInfo.title + (macroArcInfo.description ? ' — ' + macroArcInfo.description : '') : '',
-                '',
-                '[ARC HIEN TAI]',
-                currentArcInfo ? 'Muc tieu arc: ' + (currentArcInfo.goal || currentArcInfo.title || '(chua dinh nghia)') : '(Chua co arc)',
-                '',
-                'Hay phan tich va tra ve ket qua kiem tra do lech.',
-            ].filter(Boolean).join('\n');
-
-            const messages = [
-                { role: 'system', content: systemInstruction },
-                { role: 'user', content: userContent },
-            ];
+            const messages = buildPrompt(TASK_TYPES.AUDIT_ARC_ALIGNMENT, {
+                projectTitle: project?.title || '',
+                genre,
+                targetLength,
+                ultimateGoal,
+                currentChapterIndex,
+                currentArc: currentArcInfo,
+                currentMacroArc: macroArcInfo,
+                recentChapterSummaries: recentSummaries,
+                promptTemplates,
+            });
 
             await new Promise((resolve) => {
                 aiService.send({

@@ -15,6 +15,30 @@ import db from '../db/database';
 import { detectWritingStyle } from '../../utils/constants';
 import { buildProseBuffer } from '../../utils/proseBuffer';
 import { buildRetrievalPacket, buildCharacterStateSummary } from '../canon/engine';
+import { TASK_TYPES } from './router';
+
+function resolveRetrievalMode(taskType, explicitMode) {
+  if (explicitMode) return explicitMode;
+  if (!taskType) return 'standard';
+  if ([
+    TASK_TYPES.CONTINUE,
+    TASK_TYPES.SCENE_DRAFT,
+    TASK_TYPES.ARC_CHAPTER_DRAFT,
+    TASK_TYPES.REWRITE,
+    TASK_TYPES.EXPAND,
+    TASK_TYPES.FREE_PROMPT,
+  ].includes(taskType)) {
+    return 'near_memory_3';
+  }
+  if ([
+    TASK_TYPES.CHAPTER_SUMMARY,
+    TASK_TYPES.FEEDBACK_EXTRACT,
+    TASK_TYPES.EXTRACT_TERMS,
+  ].includes(taskType)) {
+    return 'compact';
+  }
+  return 'standard';
+}
 
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -27,6 +51,8 @@ export async function gatherContext({
   sceneId,
   sceneText = '',
   genre = '',
+  taskType = null,
+  retrievalMode = '',
 }) {
   if (!projectId) {
     return {
@@ -348,6 +374,7 @@ export async function gatherContext({
       sceneId,
       detectedCharacterIds: detectedCharacters.map((character) => character.id),
       detectedObjectIds: detectedObjects.map((object) => object.id),
+      mode: resolveRetrievalMode(taskType, retrievalMode),
     });
   } catch (e) {
     console.warn('[Context] Failed to build retrieval packet (non-fatal):', e);

@@ -17,59 +17,22 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, X, Loader2, Check, RotateCcw } from 'lucide-react';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
+import { buildPrompt } from '../../services/ai/promptBuilder';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import './AIGenerateButton.css';
 
 const ENTITY_PROMPTS = {
   character: {
     placeholder: 'Vi du: Nu sat thu lanh lung, 20 tuoi, co bi mat den toi...',
-    systemPrompt: (genre) => `Ban la tro ly tao nhan vat cho truyen the loai ${genre || 'fantasy'}.
-Dua tren mo ta cua tac gia, tao 1 nhan vat chi tiet.
-Tra ve CHINH XAC JSON (khong them gi khac):
-{
-  "name": "Ten nhan vat",
-  "role": "protagonist|antagonist|supporting|mentor|minor",
-  "appearance": "Mo ta ngoai hinh 2-3 cau",
-  "personality": "Mo ta tinh cach 2-3 cau",
-  "personality_tags": "tag1, tag2",
-  "flaws": "Diem yeu / khuyet diem ro rang",
-  "goals": "Muc tieu chinh",
-  "secrets": "Bi mat (neu co)",
-  "notes": "Ghi chu them"
-}`,
   },
   location: {
     placeholder: 'Vi du: Toa thanh co tren dinh nui, bao quanh boi suong mu...',
-    systemPrompt: (genre) => `Ban la tro ly xay dung the gioi cho truyen the loai ${genre || 'fantasy'}.
-Dua tren mo ta, tao 1 dia diem chi tiet.
-Tra ve CHINH XAC JSON:
-{
-  "name": "Ten dia diem",
-  "description": "Mo ta tong quan 2-3 cau",
-  "details": "Chi tiet bo sung: kien truc, dac diem noi bat, bi mat..."
-}`,
   },
   object: {
     placeholder: 'Vi du: Thanh kiem co phat sang trong bong toi, co y chi rieng...',
-    systemPrompt: (genre) => `Ban la tro ly xay dung the gioi cho truyen the loai ${genre || 'fantasy'}.
-Dua tren mo ta, tao 1 vat pham chi tiet.
-Tra ve CHINH XAC JSON:
-{
-  "name": "Ten vat pham",
-  "description": "Mo ta ngoai hinh va lich su 2-3 cau",
-  "properties": "Thuoc tinh dac biet, cong dung, han che..."
-}`,
   },
   term: {
     placeholder: 'Vi du: Nang luong phep thuat, he thong cap bac tu luyen...',
-    systemPrompt: (genre) => `Ban la tro ly xay dung the gioi cho truyen the loai ${genre || 'fantasy'}.
-Dua tren mo ta, tao 1 thuat ngu/khai niem chi tiet.
-Tra ve CHINH XAC JSON:
-{
-  "name": "Ten thuat ngu",
-  "definition": "Dinh nghia chi tiet 3-5 cau",
-  "category": "magic|organization|race|technology|other"
-}`,
   },
 };
 
@@ -91,6 +54,14 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
   const config = ENTITY_PROMPTS[entityType] || ENTITY_PROMPTS.character;
   const label = ENTITY_LABELS[entityType] || 'muc';
 
+  const resolvePromptTemplates = () => {
+    if (!projectContext?.promptTemplates) return {};
+    if (typeof projectContext.promptTemplates === 'string') {
+      try { return JSON.parse(projectContext.promptTemplates); } catch { return {}; }
+    }
+    return typeof projectContext.promptTemplates === 'object' ? projectContext.promptTemplates : {};
+  };
+
   useEffect(() => {
     if (!isOpen) return undefined;
 
@@ -111,10 +82,15 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
     setError(null);
     setResult(null);
 
-    const messages = [
-      { role: 'system', content: config.systemPrompt(projectContext.genre) },
-      { role: 'user', content: `Truyen: ${projectContext.projectTitle || 'Chua dat ten'}\n\nYeu cau: ${prompt}` },
-    ];
+    const messages = buildPrompt(TASK_TYPES.AI_GENERATE_ENTITY, {
+      projectTitle: projectContext.projectTitle || '',
+      genre: projectContext.genre || '',
+      promptTemplates: resolvePromptTemplates(),
+      userPrompt: prompt,
+      entityType,
+      batchCount: 1,
+      entityContextText: projectContext.description || projectContext.worldName || '',
+    });
 
     aiService.send({
       taskType: TASK_TYPES.AI_GENERATE_ENTITY,

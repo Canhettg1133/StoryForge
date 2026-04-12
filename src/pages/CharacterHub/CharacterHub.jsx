@@ -209,7 +209,7 @@ export default function CharacterHub() {
               </button>
               <AIGenerateButton
                 entityType="character"
-                projectContext={{ projectTitle: currentProject?.title, genre: currentProject?.genre_primary }}
+                projectContext={{ projectTitle: currentProject?.title, genre: currentProject?.genre_primary, promptTemplates: currentProject?.prompt_templates }}
                 onApprove={(data) => {
                   setEditingChar(null);
                   setForm({
@@ -637,6 +637,7 @@ export default function CharacterHub() {
                 description: currentProject?.description,
                 worldName: currentProject?.world_name,
                 worldType: currentProject?.world_type,
+                promptTemplates: currentProject?.prompt_templates,
               }}
               existingEntities={{
                 characters,

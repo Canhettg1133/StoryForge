@@ -23,7 +23,7 @@ import {
 } from '../../utils/constants';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import { TASK_TYPES } from '../../services/ai/router';
-import { DEFAULT_NSFW_RULES, TASK_INSTRUCTIONS } from '../../services/ai/promptBuilder';
+import { DEFAULT_NSFW_RULES, DEFAULT_NSFW_INTIMATE_PROMPT, TASK_INSTRUCTIONS } from '../../services/ai/promptBuilder';
 import {
   BookMarked, BookOpen, Users, MapPin, Package, Shield,
   Star, Sword, UserCheck, Heart, ChevronRight, ChevronDown,
@@ -73,6 +73,13 @@ const TASK_TYPE_META = {
   [TASK_TYPES.ARC_CHAPTER_DRAFT]: { label: 'Nháp chương theo arc', description: 'Viết bản nháp cho một chương trong arc.' },
   [TASK_TYPES.GENERATE_MACRO_MILESTONES]: { label: 'Gợi ý cột mốc đại cục', description: 'Đề xuất các cột mốc lớn cho toàn bộ truyện.' },
   [TASK_TYPES.AUDIT_ARC_ALIGNMENT]: { label: 'Kiểm tra độ lệch arc', description: 'Đánh giá arc hiện tại có còn đúng hướng đại cục hay không.' },
+};
+
+const PROMPT_DISPLAY_KEYS = {
+  ARC_OUTLINE: 'DÀN_Ý_ARC',
+  ARC_CHAPTER_DRAFT: 'NHÁP_CHƯƠNG_ARC',
+  GENERATE_MACRO_MILESTONES: 'CỘT_MỐC_ĐẠI_CỤC',
+  AUDIT_ARC_ALIGNMENT: 'KIỂM_TRA_LỆCH_ARC',
 };
 
 // Debounced auto-save hook
@@ -333,7 +340,15 @@ export default function StoryBible() {
   const customNsfwRules = typeof promptTemplates.nsfw_rules === 'string'
     ? promptTemplates.nsfw_rules
     : '';
+  const customNsfwSystemPrompt = typeof promptTemplates.nsfw_system_prompt === 'string'
+    ? promptTemplates.nsfw_system_prompt
+    : '';
+  const customNsfwIntimatePrompt = typeof promptTemplates.nsfw_intimate_prompt === 'string'
+    ? promptTemplates.nsfw_intimate_prompt
+    : '';
   const hasCustomNsfwRules = !!customNsfwRules.trim();
+  const hasCustomNsfwSystemPrompt = !!customNsfwSystemPrompt.trim();
+  const hasCustomNsfwIntimatePrompt = !!customNsfwIntimatePrompt.trim();
   const nsfwRulesActive = nsfwMode || superNsfwMode;
 
   const hasDNA = currentDNA.constitution.length > 0
@@ -971,7 +986,7 @@ export default function StoryBible() {
         {openSections.prompts && (
           <div className="bible-edit-card">
             <p className="bible-subtitle" style={{ marginBottom: 'var(--space-3)' }}>
-              Tùy chỉnh prompt hệ thống cho từng tính năng. Sửa để ghi đè mặc định. {promptsSaved && <span className="save-indicator">Đã lưu</span>}
+              Tùy chỉnh prompt hệ thống cho từng tính năng. Mọi thay đổi ở đây tự động lưu sau khoảng 1-2 giây, không cần bấm nút lưu. {promptsSaved && <span className="save-indicator">Đã lưu</span>}
             </p>
 
             {/* ─── [NEW] DNA Văn phong subsection ─── */}
@@ -1100,13 +1115,49 @@ export default function StoryBible() {
 
             <div className="form-group">
               <label className="form-label">
+                System prompt NSFW gốc
+                {hasCustomNsfwSystemPrompt && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
+                {nsfwRulesActive && <span style={{ color: 'var(--color-success, #10b981)', fontSize: '11px', marginLeft: 6 }}>Đang áp dụng</span>}
+              </label>
+              <div className="form-hint" style={{ marginBottom: '4px' }}>
+                Ô này thay thế toàn bộ block NSFW gốc khi bật NSFW. Để trống = dùng system prompt NSFW mặc định của app.
+              </div>
+              <div className="prompt-default-preview">
+                <div className="prompt-default-preview__header">
+                  <span>System prompt NSFW mặc định</span>
+                  <code>nsfw_system_prompt</code>
+                </div>
+                <pre className="prompt-default-preview__body">{DEFAULT_NSFW_RULES}</pre>
+              </div>
+              <div className="prompt-editor-header">System prompt NSFW tùy chỉnh</div>
+              <textarea
+                className="textarea"
+                value={customNsfwSystemPrompt}
+                onChange={(e) => handlePromptChange('nsfw_system_prompt', e.target.value)}
+                rows={12}
+                placeholder="Để trống = dùng system prompt NSFW mặc định ở trên"
+              />
+              {hasCustomNsfwSystemPrompt && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ alignSelf: 'flex-start', fontSize: '11px' }}
+                  onClick={() => handlePromptChange('nsfw_system_prompt', '')}
+                >
+                  Xóa system prompt NSFW tùy chỉnh
+                </button>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
                 Luật khi bật NSFW
                 {hasCustomNsfwRules && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
                 {nsfwRulesActive && <span style={{ color: 'var(--color-success, #10b981)', fontSize: '11px', marginLeft: 6 }}>Đang áp dụng</span>}
               </label>
               <div className="form-hint" style={{ marginBottom: '4px' }}>
-                Rule gốc mặc định luôn được giữ nguyên. Ô bên dưới chỉ thêm luật bổ sung khi bật Chế độ Trưởng thành, và AI sẽ đọc
-                theo thứ tự: rule gốc trước, luật bổ sung sau.
+                Ô này thêm luật bổ sung sau system prompt NSFW gốc. Nếu bạn cũng có nhập `System prompt NSFW tùy chỉnh` ở trên thì thứ tự sẽ là:
+                system prompt tùy chỉnh trước, luật bổ sung sau.
               </div>
               <div className="prompt-default-preview">
                 <div className="prompt-default-preview__header">
@@ -1136,14 +1187,52 @@ export default function StoryBible() {
             </div>
 
             {/* ─── Task-type overrides (unchanged) ─── */}
+            <div className="form-group">
+              <label className="form-label">
+                Prompt tăng cường cho cảnh thân mật
+                {hasCustomNsfwIntimatePrompt && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
+                {nsfwRulesActive && <span style={{ color: 'var(--color-success, #10b981)', fontSize: '11px', marginLeft: 6 }}>Đang áp dụng khi viết cảnh phù hợp</span>}
+              </label>
+              <div className="form-hint" style={{ marginBottom: '4px' }}>
+                Ô này là lớp tăng cường riêng cho cảnh thân mật/18+. Để trống = dùng prompt tăng cường mặc định của app. App vẫn tự nối thêm continuity động về quan hệ, đồng thuận, bí mật và dư âm cảm xúc khi có dữ liệu.
+              </div>
+              <div className="prompt-default-preview">
+                <div className="prompt-default-preview__header">
+                  <span>Prompt tăng cường mặc định cho cảnh thân mật</span>
+                  <code>nsfw_intimate_prompt</code>
+                </div>
+                <pre className="prompt-default-preview__body">{DEFAULT_NSFW_INTIMATE_PROMPT}</pre>
+              </div>
+              <div className="prompt-editor-header">Prompt tăng cường tùy chỉnh</div>
+              <textarea
+                className="textarea"
+                value={customNsfwIntimatePrompt}
+                onChange={(e) => handlePromptChange('nsfw_intimate_prompt', e.target.value)}
+                rows={12}
+                placeholder="Để trống = dùng prompt tăng cường mặc định ở trên"
+              />
+              {hasCustomNsfwIntimatePrompt && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ alignSelf: 'flex-start', fontSize: '11px' }}
+                  onClick={() => handlePromptChange('nsfw_intimate_prompt', '')}
+                >
+                  Xóa prompt tăng cường tùy chỉnh
+                </button>
+              )}
+            </div>
+
             {Object.entries(TASK_TYPES).map(([key, taskType]) => {
               const taskMeta = TASK_TYPE_META[taskType] || { label: key, description: '' };
               const defaultPrompt = TASK_INSTRUCTIONS[taskType] || '';
               const hasCustom = !!(promptTemplates[taskType]);
+              const displayKey = PROMPT_DISPLAY_KEYS[key] || key;
+              const displayTaskType = PROMPT_DISPLAY_KEYS[key] || taskType;
               return (
                 <div key={key} className="form-group">
                   <label className="form-label">
-                    {taskMeta.label} <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal', fontSize: '11px' }}>({taskType})</span>
+                    {taskMeta.label} <span style={{ color: 'var(--color-text-muted)', fontWeight: 'normal', fontSize: '11px' }}>({displayTaskType})</span>
                     {hasCustom && <span style={{ color: 'var(--color-warning, #f59e0b)', fontSize: '11px', marginLeft: 6 }}>Tùy chỉnh</span>}
                   </label>
                   {taskMeta.description && (
@@ -1155,7 +1244,7 @@ export default function StoryBible() {
                     <div className="prompt-default-preview">
                       <div className="prompt-default-preview__header">
                         <span>Prompt gốc mặc định</span>
-                        <code>{key}</code>
+                        <code>{displayKey}</code>
                       </div>
                       <pre className="prompt-default-preview__body">{defaultPrompt}</pre>
                     </div>

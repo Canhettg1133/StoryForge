@@ -609,17 +609,21 @@ const useProjectStore = create((set, get) => ({
         console.warn('[AutoComplete] Extract failed (non-fatal):', e);
       }
 
-      // Step 3: Canonicalize chapter before marking done
+      // Step 3: Run canon analysis before marking the chapter done.
+      // A blocked/warning canon result still counts as a completed post-process;
+      // only unexpected runtime failures keep the chapter in draft.
       let canonResult = null;
+      let canonProcessed = false;
       try {
         canonResult = await canonicalizeChapterEngine(currentProject.id, chapterId);
+        canonProcessed = true;
       } catch (e) {
         console.warn('[AutoComplete] Canonicalize failed:', e);
       }
 
-      if (canonResult?.ok) {
+      if (canonProcessed) {
         await get().updateChapter(chapterId, { status: 'done' });
-      } else if (canonResult && !canonResult.ok) {
+      } else {
         await get().updateChapter(chapterId, { status: 'draft' });
       }
     } catch (e) {

@@ -510,4 +510,60 @@ describe('phase10 canon integration', () => {
     expect(packet.relevantRelationshipStates[0].intimacy_level).toBe('high');
     expect(packet.criticalConstraints.unavailableItems).toHaveLength(1);
   });
+
+  it('supports retrieval modes with deeper near-memory and evidence caps', async () => {
+    const { engine } = await loadModules({
+      projects: [{ id: 1, title: 'Retrieval Modes Test' }],
+      chapters: [
+        { id: 1, project_id: 1, order_index: 0, title: 'Chuong 1', summary: 'Khoi dau' },
+        { id: 2, project_id: 1, order_index: 1, title: 'Chuong 2', summary: 'Bien co 1' },
+        { id: 3, project_id: 1, order_index: 2, title: 'Chuong 3', summary: 'Bien co 2' },
+        { id: 4, project_id: 1, order_index: 3, title: 'Chuong 4', summary: 'Bien co 3' },
+        { id: 5, project_id: 1, order_index: 4, title: 'Chuong 5', summary: 'Canh hien tai' },
+      ],
+      scenes: [
+        { id: 21, chapter_id: 1, order_index: 0, final_text: 'Chuong mot.' },
+        { id: 22, chapter_id: 2, order_index: 0, final_text: 'Chuong hai.' },
+        { id: 23, chapter_id: 3, order_index: 0, final_text: 'Chuong ba.' },
+        { id: 24, chapter_id: 4, order_index: 0, final_text: 'Chuong bon.' },
+        { id: 25, project_id: 1, chapter_id: 5, order_index: 0, pov_character_id: 31, characters_present: '[31]' },
+      ],
+      characters: [{ id: 31, project_id: 1, name: 'Lan' }],
+      chapterMeta: [
+        { id: 51, project_id: 1, chapter_id: 2, summary: 'Tom tat 2', last_prose_buffer: 'Du am 2.' },
+        { id: 52, project_id: 1, chapter_id: 3, summary: 'Tom tat 3', last_prose_buffer: 'Du am 3.' },
+        { id: 53, project_id: 1, chapter_id: 4, summary: 'Tom tat 4', last_prose_buffer: 'Du am 4.' },
+      ],
+      entity_state_current: [{ id: 61, project_id: 1, entity_id: 31, entity_type: 'character', alive_status: 'alive' }],
+      plot_thread_state: [],
+      canonFacts: [],
+      plotThreads: [],
+      chapter_commits: [],
+      item_state_current: [],
+      relationship_state_current: [],
+      memory_evidence: [
+        { id: 91, project_id: 1, chapter_id: 2, revision_id: 1, target_type: 'story_event', target_id: 1, evidence_text: 'Bang chung 2', created_at: 2 },
+        { id: 92, project_id: 1, chapter_id: 3, revision_id: 1, target_type: 'story_event', target_id: 2, evidence_text: 'Bang chung 3', created_at: 3 },
+        { id: 93, project_id: 1, chapter_id: 4, revision_id: 1, target_type: 'story_event', target_id: 3, evidence_text: 'Bang chung 4', created_at: 4 },
+      ],
+      story_events: [
+        { id: 101, project_id: 1, chapter_id: 2, revision_id: 1, scene_id: 22, op_type: 'GOAL_CHANGED', summary: 'Su kien 2', status: 'committed' },
+        { id: 102, project_id: 1, chapter_id: 3, revision_id: 1, scene_id: 23, op_type: 'GOAL_CHANGED', summary: 'Su kien 3', status: 'committed' },
+        { id: 103, project_id: 1, chapter_id: 4, revision_id: 1, scene_id: 24, op_type: 'GOAL_CHANGED', summary: 'Su kien 4', status: 'committed' },
+      ],
+    });
+
+    const packet = await engine.buildRetrievalPacket({
+      projectId: 1,
+      chapterId: 5,
+      sceneId: 25,
+      detectedCharacterIds: [31],
+      mode: 'near_memory_3',
+    });
+
+    expect(packet.retrievalMode).toBe('near_memory_3');
+    expect(packet.recentChapterMemory).toHaveLength(3);
+    expect(packet.relevantEvidence).toHaveLength(3);
+    expect(packet.recentChapterMemory[0].prose).toBeTruthy();
+  });
 });

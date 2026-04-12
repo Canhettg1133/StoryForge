@@ -87,6 +87,25 @@ describe('phase10 canon engine', () => {
     expect(reports.some((report) => report.rule_code === 'THREAD_ALREADY_RESOLVED')).toBe(true);
   });
 
+  it('warns when opening an already active thread again', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 2,
+      candidateOps: [{
+        op_type: CANON_OP_TYPES.THREAD_OPENED,
+        scene_id: 11,
+        thread_id: 9,
+        thread_title: 'Bi mat hoang toc',
+        evidence: 'Thread nay duoc mo lai.',
+      }],
+      entityStates: [],
+      threadStates: [{ thread_id: 9, state: 'active' }],
+      factStates: [],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'THREAD_ALREADY_ACTIVE')).toBe(true);
+  });
+
   it('marks secret reveal on an already revealed fact as contradiction', () => {
     const reports = engine.validateCandidateOps({
       projectId: 1,
@@ -197,5 +216,43 @@ describe('phase10 canon engine', () => {
     expect(next.intimacy_level).toBe('high');
     expect(next.consent_state).toBe('mutual');
     expect(next.emotional_aftermath).toContain('gan gui hon');
+  });
+
+  it('deduplicates repeated character summary fragments', () => {
+    const summary = engine.buildCharacterStateSummary({
+      alive_status: 'alive',
+      goals_active: ['Tim cho dua vung chac'],
+      summary: 'Con song | Muc tieu: Tim cho dua vung chac',
+    });
+
+    expect(summary).toBe('Con song | Muc tieu: Tim cho dua vung chac');
+  });
+
+  it('warns on sharp relationship reversal without reason', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 5,
+      candidateOps: [{
+        op_type: CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED,
+        scene_id: 12,
+        subject_id: 1,
+        target_id: 2,
+        subject_name: 'Lan',
+        target_name: 'Kha',
+        payload: { relationship_type: 'enemy' },
+        evidence: 'Lan bat ngo coi Kha la ke thu.',
+      }],
+      entityStates: [],
+      threadStates: [],
+      factStates: [],
+      relationshipStates: [{
+        pair_key: '1:2',
+        character_a_id: 1,
+        character_b_id: 2,
+        relationship_type: 'lover',
+      }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'RELATIONSHIP_REVERSAL_WITHOUT_REASON')).toBe(true);
   });
 });

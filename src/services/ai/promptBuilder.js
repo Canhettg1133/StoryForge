@@ -47,16 +47,21 @@ function resolveNsfwRules(promptTemplates) {
     return DEFAULT_NSFW_RULES;
   }
 
+  const baseRules = typeof promptTemplates.nsfw_system_prompt === 'string'
+    && promptTemplates.nsfw_system_prompt.trim()
+    ? promptTemplates.nsfw_system_prompt.trim()
+    : DEFAULT_NSFW_RULES;
+
   const customRules = typeof promptTemplates.nsfw_rules === 'string'
     ? promptTemplates.nsfw_rules.trim()
     : '';
 
   if (!customRules) {
-    return DEFAULT_NSFW_RULES;
+    return baseRules;
   }
 
   return [
-    DEFAULT_NSFW_RULES,
+    baseRules,
     '[LUAT NSFW BO SUNG CUA DU AN]',
     'Cac luat duoi day la phan bo sung, duoc doc SAU rule goc mac dinh va khong duoc lam mat hieu luc cua rule goc.',
     customRules,
@@ -69,6 +74,105 @@ function buildNsfwUserAnchor() {
     'Che do Truong thanh dang BAT. Hay tuan thu tuyet doi block luat NSFW trong system prompt cho toan bo cau tra loi nay.',
     'Khong tu y lam nhe, ne tranh, lam sach, hay dao duc hoa noi dung neu tac gia khong yeu cau ro rang.',
   ].join('\n');
+}
+
+export const DEFAULT_NSFW_INTIMATE_PROMPT = [
+  '[BO SUNG CHO CANH THAN MAT / NOI DUNG 18+]',
+  'Neu yeu cau hien tai dang viet canh than mat, hay xem day la mot canh trong tam co nhip rieng, KHONG duoc luot nhanh hay tom tat cho xong viec.',
+  '1. Nhip canh phai CHAM va lien tuc: trien khai theo tung beat nho, tung chuyen bien nho, tung thay doi trong cam xuc va quyen luc giua cac nhan vat.',
+  '2. KHONG nhay coc trong canh. Moi chuyen bien than mat phai co buildup, co phan ung, co he qua ngay sau do.',
+  '3. KHONG viet kieu tong ket nhu "roi ho quan he voi nhau" hoac luoc canh bang vai cau ngan. Neu canh da bat dau, phai day no den het nhiep xuc cam cua canh.',
+  '4. Luon uu tien 4 lop cung luc: cam xuc, quyen luc / the chu dong, cang thang, va du am sau moi beat.',
+  '5. Sau moi doan than mat, phai cho thay su doi chuyen trong tam ly, nhip tho, thai do, im lang, noi chuyen, hoac khoang cach giua hai ben. KHONG cat ngang khi chua co aftermath.',
+  '6. Neu canh co tinh chat bi mat, hay duy tri ap luc lo bi phat hien, dau vet de lai, he qua xa hoi, va nguy co bi lo.',
+  '7. Consent, boundary, intimacy progression, emotional aftermath va secrecy risk la continuity cung. KHONG duoc viet mau thuan voi cac rang buoc dang co.',
+  '8. Body/clothing/mark continuity phai nhat quan trong chinh canh va voi prose gan day. Neu trang thai chua du du lieu thi viet than trong, KHONG tu nhay coc phi ly.',
+  '9. Trong canh 18+, uu tien "trai nghiem dang dien ra" hon "ke lai su viec". Doc gia phai cam thay canh dang mo ra theo thoi gian thuc.',
+].join('\n');
+
+const NSFW_WRITING_TASKS = new Set([
+  TASK_TYPES.CONTINUE,
+  TASK_TYPES.SCENE_DRAFT,
+  TASK_TYPES.ARC_CHAPTER_DRAFT,
+  TASK_TYPES.FREE_PROMPT,
+  TASK_TYPES.REWRITE,
+  TASK_TYPES.EXPAND,
+]);
+
+function isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, retrievalPacket) {
+  if (!NSFW_WRITING_TASKS.has(taskType)) return false;
+
+  const promptText = [userPrompt, selectedText, sceneText]
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase();
+
+  const intimateHints = [
+    '18+', 'nsfw', 'canh nong', 'cảnh nóng', 'than mat', 'thân mật',
+    'quan he', 'quan hệ', 'xac thit', 'xác thịt', 'ân ái', 'an ai',
+    'lam tinh', 'làm tình', 'kieu dam', 'khiêu dâm', 'tinh duc', 'tình dục',
+  ];
+
+  if (intimateHints.some((hint) => promptText.includes(hint))) {
+    return true;
+  }
+
+  const relationshipStates = Array.isArray(retrievalPacket?.relevantRelationshipStates)
+    ? retrievalPacket.relevantRelationshipStates
+    : [];
+
+  return relationshipStates.some((state) =>
+    ['medium', 'high'].includes(String(state.intimacy_level || '').toLowerCase())
+    || String(state.secrecy_state || '').toLowerCase() !== 'public'
+    || !!String(state.emotional_aftermath || '').trim()
+  );
+}
+
+function buildNsfwIntimateSystemLayer(taskType, {
+  userPrompt = '',
+  sceneText = '',
+  selectedText = '',
+  retrievalPacket = null,
+  promptTemplates = {},
+}) {
+  if (!isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, retrievalPacket)) {
+    return '';
+  }
+
+  const basePrompt = typeof promptTemplates?.nsfw_intimate_prompt === 'string'
+    && promptTemplates.nsfw_intimate_prompt.trim()
+    ? promptTemplates.nsfw_intimate_prompt.trim()
+    : DEFAULT_NSFW_INTIMATE_PROMPT;
+  const lines = [basePrompt];
+
+  const relationshipStates = Array.isArray(retrievalPacket?.relevantRelationshipStates)
+    ? retrievalPacket.relevantRelationshipStates
+    : [];
+
+  const sensitiveStates = relationshipStates
+    .filter((state) =>
+      ['medium', 'high'].includes(String(state.intimacy_level || '').toLowerCase())
+      || String(state.secrecy_state || '').toLowerCase() !== 'public'
+      || !!String(state.emotional_aftermath || '').trim()
+      || String(state.consent_state || '').toLowerCase() !== 'unknown'
+    )
+    .slice(0, 5);
+
+  if (sensitiveStates.length > 0) {
+    lines.push('');
+    lines.push('[CONTINUITY THAN MAT DANG CO HIEU LUC]');
+    sensitiveStates.forEach((state) => {
+      const bits = [];
+      bits.push('cap #' + state.character_a_id + ' & #' + state.character_b_id);
+      if (state.intimacy_level && state.intimacy_level !== 'none') bits.push('than_mat=' + state.intimacy_level);
+      if (state.consent_state && state.consent_state !== 'unknown') bits.push('dong_thuan=' + state.consent_state);
+      if (state.secrecy_state) bits.push('bi_mat=' + state.secrecy_state);
+      if (state.emotional_aftermath) bits.push('du_am=' + state.emotional_aftermath);
+      lines.push('- ' + bits.join(' | '));
+    });
+  }
+
+  return lines.join('\n');
 }
 
 // =============================================
@@ -189,6 +293,21 @@ export const TASK_INSTRUCTIONS = {
     'Neu khong phat hien mau thuan nao, tra ve: {"conflicts": []}',
     'Chi tra ve JSON, KHONG tra ve bat ky ki tu la nao khac, KHONG dung markdown code blocks.',
   ].join('\n'),
+  [TASK_TYPES.CONTINUITY_CHECK]: [
+    'Kiem tra tinh nhat quan cua noi dung voi canon, logic nhan vat, trinh tu su kien va rang buoc the gioi.',
+    'Tra ve CHINH XAC JSON format sau:',
+    '{',
+    '  "issues": [',
+    '    {',
+    '      "type": "canon|character|timeline|item|relationship|world_rule",',
+    '      "severity": "high|medium|low",',
+    '      "description": "Mo ta van de bang tieng Viet",',
+    '      "suggestion": "Neu co, de xuat cach sua ngan gon"',
+    '    }',
+    '  ]',
+    '}',
+    'Neu khong co van de, tra ve {"issues":[]}. Chi tra ve JSON.',
+  ].join('\n'),
   [TASK_TYPES.FREE_PROMPT]: 'Thuc hien yeu cau cua tac gia. Neu duoc yeu cau viet noi dung truyen, hay viet CUC KY CHI TIET: mieu ta hanh dong, tam ly, doi thoai, canh vat. Muc tieu toi thieu 5000-7000 tu cho ca chuong. Moi phan tra ve phai dai it nhat 3000-4000 tu.',
   [TASK_TYPES.CHAPTER_SUMMARY]: 'Tom tat chuong nay trong khoang 150-200 tu. Bao gom: su kien chinh, thay doi quan trong, nhan vat xuat hien, va trang thai ket thuc. Chi tra ve tom tat, khong them tieu de hay ghi chu.',
   [TASK_TYPES.FEEDBACK_EXTRACT]: [
@@ -201,7 +320,46 @@ export const TASK_INSTRUCTIONS = {
     '}',
     'Chi liet ke thong tin MOI xuat hien. Neu khong co gi moi, tra ve mang rong. Chi tra ve JSON, khong them gi khac.',
   ].join('\n'),
-  [TASK_TYPES.AI_GENERATE_ENTITY]: '',
+  [TASK_TYPES.STYLE_ANALYZE]: [
+    'Phan tich van phong cua doan van duoc cung cap.',
+    'Tra ve CHINH XAC JSON format sau:',
+    '{',
+    '  "tone": "giong dieu chinh",',
+    '  "pacing": "slow|medium|fast",',
+    '  "voice": "dac diem giong ke chuyen",',
+    '  "strengths": ["diem manh 1", "diem manh 2"],',
+    '  "watchouts": ["diem can de y 1", "diem can de y 2"],',
+    '  "style_notes": ["ghi chu van phong 1", "ghi chu van phong 2"]',
+    '}',
+    'Chi tra ve JSON.',
+  ].join('\n'),
+  [TASK_TYPES.STYLE_WRITE]: [
+    'Viet noi dung moi theo van phong mau duoc cung cap.',
+    'Giu nhat quan ve giong ke, nhac cau, muc do mieu ta va sac thai cam xuc.',
+    'Neu co yeu cau cua tac gia, uu tien yeu cau do nhung van bam sat van phong mau.',
+    'Chi tra ve noi dung can viet, khong them giai thich.',
+  ].join('\n'),
+  [TASK_TYPES.QA_CHECK]: [
+    'Ra soat chat luong doan van/chuong ve logic, dien dat, pacing, lap y, va loi de doc.',
+    'Tra ve CHINH XAC JSON format sau:',
+    '{',
+    '  "issues": [',
+    '    {',
+    '      "type": "logic|canon|clarity|style|pacing|grammar",',
+    '      "severity": "high|medium|low",',
+    '      "description": "Van de cu the",',
+    '      "suggestion": "Cach sua ngan gon"',
+    '    }',
+    '  ]',
+    '}',
+    'Neu on, tra ve {"issues":[]}. Chi tra ve JSON.',
+  ].join('\n'),
+  [TASK_TYPES.AI_GENERATE_ENTITY]: [
+    'Tao thuc the moi cho du an dua tren yeu cau cua tac gia va boi canh hien co.',
+    'Chi tao nhung gi PHU HOP voi the loai, canon, va muc dich cot truyen.',
+    'Tra ve CHINH XAC JSON theo schema duoc chi ro trong user prompt. Khong them bat ky text nao ngoai JSON.',
+    'Khong duoc tao trung ten, trung vai tro, hay mot thuc the "dep de co" nhung khong dong gop gi cho truyen.',
+  ].join('\n'),
   [TASK_TYPES.PROJECT_WIZARD]: [
     'Dua tren the loai va y tuong, tao blueprint cho du an truyen. Tra ve CHINH XAC JSON format:',
     '{',
@@ -351,6 +509,37 @@ export const TASK_INSTRUCTIONS = {
     'KHONG duoc viet lai thanh canh chinh nhung gi da xay ra o cac chuong truoc; chi duoc nhac lai rat ngan neu can.',
     'Moi canh phai la he qua tiep noi tu chuong truoc va day tinh hinh sang trang thai moi.',
     'Chi tra ve noi dung chuong, KHONG them tieu de hay ghi chu.',
+  ].join('\n'),
+  [TASK_TYPES.GENERATE_MACRO_MILESTONES]: [
+    'Hoach dinh 5-8 cot moc dai cuc cho toan bo truyen, moi cot moc la mot diem ngoat LON cua hanh trinh.',
+    'Can phan bo hop ly theo tong do dai du kien, co leo thang, khung hoang, dao chieu va tra gia ro rang.',
+    'Tra ve CHINH XAC JSON format sau:',
+    '{',
+    '  "milestones": [',
+    '    {',
+    '      "order": 1,',
+    '      "title": "Ten cot moc",',
+    '      "description": "Mo ta 2-3 cau",',
+    '      "chapter_from": 1,',
+    '      "chapter_to": 80,',
+    '      "emotional_peak": "Cam xuc can dat"',
+    '    }',
+    '  ]',
+    '}',
+    'Chi tra ve JSON.',
+  ].join('\n'),
+  [TASK_TYPES.AUDIT_ARC_ALIGNMENT]: [
+    'Kiem tra do lech giua nhung chuong gan day va dai cuc/arc hien tai.',
+    'Chi ra do lech cu the, khong noi chung chung.',
+    'Tra ve CHINH XAC JSON format sau:',
+    '{',
+    '  "aligned": true,',
+    '  "drift_score": 0,',
+    '  "issues": ["Van de 1"],',
+    '  "suggestions": ["De xuat 1"],',
+    '  "current_position": "Tom ta vi tri hien tai cua truyen trong 1 cau"',
+    '}',
+    'Chi tra ve JSON.',
   ].join('\n'),
 };
 
@@ -954,6 +1143,8 @@ export const GENRE_CONSTRAINTS = {
 // =============================================
 export function buildPrompt(taskType, context = {}) {
   const {
+    projectId = null,
+    chapterId = null,
     selectedText,
     sceneText,
     sceneTitle,
@@ -1008,6 +1199,11 @@ export function buildPrompt(taskType, context = {}) {
     sceneList = [],
     validatorReports = [],
     retrievalPacket = null,
+    entityType = '',
+    batchCount = 0,
+    entityContextText = '',
+    recentChapterSummaries = [],
+    authorIdea = '',
   } = context;
 
   // Resolve writing style: context > auto-detect từ genre
@@ -1016,7 +1212,8 @@ export function buildPrompt(taskType, context = {}) {
   const systemParts = [];
 
   // FREE_PROMPT: skip heavy writing layers for questions/chat
-  const skipWritingLayers = taskType === TASK_TYPES.FREE_PROMPT && !isWritingIntent(userPrompt);
+  const freePromptInProject = taskType === TASK_TYPES.FREE_PROMPT && !!(projectId || chapterId);
+  const skipWritingLayers = taskType === TASK_TYPES.FREE_PROMPT && !freePromptInProject && !isWritingIntent(userPrompt);
 
   // -- Layer 0: Grand Strategy & Pacing (merged) --
   // Đặt trước Layer 1 để AI luôn thấy đại cục đầu tiên
@@ -1051,6 +1248,16 @@ export function buildPrompt(taskType, context = {}) {
   // Inject NSFW rules at high priority when mature mode is enabled.
   if (nsfwMode || superNsfwMode) {
     systemParts.push(resolveNsfwRules(promptTemplates));
+    const nsfwIntimateLayer = buildNsfwIntimateSystemLayer(taskType, {
+      userPrompt,
+      sceneText,
+      selectedText,
+      retrievalPacket,
+      promptTemplates,
+    });
+    if (nsfwIntimateLayer) {
+      systemParts.push(nsfwIntimateLayer);
+    }
   }
 
   // -- Layer 1: System Identity --
@@ -1335,6 +1542,11 @@ export function buildPrompt(taskType, context = {}) {
         canonBits.push('Rang buoc cung:\n' + constraints.join('\n'));
       }
     }
+    if (retrievalPacket.relevantEvidence?.length > 0) {
+      canonBits.push('Bang chung lien quan:\n' + retrievalPacket.relevantEvidence.map(function (item) {
+        return '- ' + (item.summary || item.evidence_text || item.target_type || 'Bang chung');
+      }).join('\n'));
+    }
     if (canonBits.length > 0) {
       systemParts.push('\n[CANON ENGINE]\n' + canonBits.join('\n\n'));
     }
@@ -1359,7 +1571,7 @@ export function buildPrompt(taskType, context = {}) {
         return parts.join('\n');
       })
       .join('\n\n-----\n\n');
-    systemParts.push('\n[BO NHO 5 CHUONG GAN NHAT]\n' + memoryBlock);
+    systemParts.push(`\n[BO NHO ${retrievalPacket.recentChapterMemory.length} CHUONG GAN NHAT]\n${memoryBlock}`);
   }
 
   // -- Layer 6.5: Plot Threads --
@@ -1454,6 +1666,55 @@ export function buildPrompt(taskType, context = {}) {
     case TASK_TYPES.FEEDBACK_EXTRACT:
       userContent = '---\n' + (sceneText || selectedText || '') + '\n---';
       break;
+
+    case TASK_TYPES.CONTINUITY_CHECK:
+    case TASK_TYPES.QA_CHECK:
+      userContent = '[NOI DUNG CAN RA SOAT]\n---\n' + (sceneText || selectedText || '') + '\n---';
+      if (userPrompt) userContent += '\n\n[UU TIEN CUA TAC GIA]\n' + userPrompt;
+      break;
+
+    case TASK_TYPES.STYLE_ANALYZE:
+      userContent = '[VAN BAN MAU CAN PHAN TICH]\n---\n' + (sceneText || selectedText || '') + '\n---';
+      if (userPrompt) userContent += '\n\n[LUU Y CUA TAC GIA]\n' + userPrompt;
+      break;
+
+    case TASK_TYPES.STYLE_WRITE:
+      userContent = '';
+      if (selectedText || sceneText) {
+        userContent += '[VAN PHONG MAU]\n---\n' + (selectedText || sceneText || '') + '\n---\n\n';
+      }
+      userContent += '[YEU CAU NOI DUNG MOI]\n' + (userPrompt || 'Hay viet mot doan moi theo van phong mau.');
+      break;
+
+    case TASK_TYPES.AI_GENERATE_ENTITY: {
+      const targetType = entityType || 'character';
+      const isBatchMode = Number(batchCount) > 1;
+      const count = Math.max(1, Number(batchCount) || 1);
+      const labelMap = {
+        character: 'nhan vat',
+        location: 'dia diem',
+        object: 'vat pham',
+        term: 'thuat ngu',
+      };
+      const schemaMap = {
+        character: '{"name":"Ten nhan vat","role":"protagonist|antagonist|supporting|mentor|minor","appearance":"Mo ta 2-3 cau","personality":"Mo ta 2-3 cau","personality_tags":"tag1, tag2","flaws":"Diem yeu/khuyet diem","goals":"Muc tieu","secrets":"Bi mat neu co","notes":"Vai tro trong cot truyen"}',
+        location: '{"name":"Ten dia diem","description":"Mo ta 2-3 cau","details":"Chi tiet bo sung, kien truc, bi mat..."}',
+        object: '{"name":"Ten vat pham","description":"Mo ta 2-3 cau","properties":"Cong dung, thuoc tinh, han che","owner":"Ten chu so huu neu co"}',
+        term: '{"name":"Ten thuat ngu","definition":"Dinh nghia 3-5 cau","category":"magic|organization|race|technology|concept|culture|other"}',
+      };
+      const singularSchema = schemaMap[targetType] || schemaMap.character;
+      const outputSchema = isBatchMode
+        ? '{ "items": [' + singularSchema + '] }'
+        : singularSchema;
+
+      userContent = '[LOAI THUC THE]\n' + (labelMap[targetType] || targetType);
+      userContent += '\n\n[SO LUONG]\n' + (isBatchMode ? count + ' muc' : '1 muc');
+      if (projectTitle) userContent += '\n\n[TEN TRUYEN]\n' + projectTitle;
+      if (entityContextText) userContent += '\n\n[BOI CANH HIEN CO]\n' + entityContextText;
+      userContent += '\n\n[YEU CAU CUA TAC GIA]\n' + (userPrompt || 'Hay tao mot muc phu hop voi du an nay.');
+      userContent += '\n\n[OUTPUT JSON BAT BUOC]\n' + outputSchema;
+      break;
+    }
 
     case TASK_TYPES.SCENE_DRAFT:
       userContent = userPrompt
@@ -1567,6 +1828,38 @@ export function buildPrompt(taskType, context = {}) {
       }).join('\n');
       userContent = '[LOI CONTINUITY CAN SUA]\n' + (reportLines || '(khong co)');
       userContent += '\n\n[NOI DUNG CHUONG HIEN TAI]\n---\n' + (sceneText || '') + '\n---';
+      break;
+    }
+
+    case TASK_TYPES.GENERATE_MACRO_MILESTONES: {
+      userContent = '[Y TUONG TAC GIA]\n' + (authorIdea || userPrompt || '(Chua co y tuong cu the)');
+      if (projectTitle) userContent += '\n\n[TEN TRUYEN]\n' + projectTitle;
+      if (genre) userContent += '\n\n[THE LOAI]\n' + genre;
+      if (targetLength > 0) userContent += '\n\n[DO DAI DU KIEN]\n' + targetLength + ' chuong';
+      if (ultimateGoal) userContent += '\n\n[MUC TIEU CUOI CUNG]\n' + ultimateGoal;
+      break;
+    }
+
+    case TASK_TYPES.AUDIT_ARC_ALIGNMENT: {
+      const summaryText = Array.isArray(recentChapterSummaries) && recentChapterSummaries.length > 0
+        ? recentChapterSummaries.map(function (item, index) {
+          return (index + 1) + '. ' + (item.title || ('Chuong ' + (index + 1))) + ': ' + (item.summary || '(chua co tom tat)');
+        }).join('\n')
+        : '(Chua co chuong gan day)';
+      userContent = '[CAC CHUONG GAN DAY]\n' + summaryText;
+      if (ultimateGoal) userContent += '\n\n[DAI CUC]\n' + ultimateGoal;
+      if (currentMacroArc?.title) {
+        userContent += '\n\n[COT MOC DAI CUC HIEN TAI]\n' + currentMacroArc.title;
+        if (currentMacroArc.description) userContent += '\n' + currentMacroArc.description;
+      }
+      if (currentArc?.title || currentArc?.goal) {
+        userContent += '\n\n[ARC HIEN TAI]\n';
+        if (currentArc.title) userContent += 'Ten arc: ' + currentArc.title;
+        if (currentArc.goal) userContent += (currentArc.title ? '\n' : '') + 'Muc tieu arc: ' + currentArc.goal;
+      }
+      if (Number.isFinite(Number(currentChapterIndex))) {
+        userContent += '\n\n[VI TRI HIEN TAI]\nChuong ' + (Number(currentChapterIndex) + 1);
+      }
       break;
     }
 

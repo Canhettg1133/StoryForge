@@ -33,6 +33,74 @@ function uniqueList(items) {
   return Array.from(new Set((items || []).filter(Boolean)));
 }
 
+function uniqueSummaryParts(items) {
+  const seen = new Set();
+  const result = [];
+
+  (items || []).forEach((item) => {
+    const chunks = String(item || '')
+      .split('|')
+      .map((part) => cleanText(part))
+      .filter(Boolean);
+
+    chunks.forEach((chunk) => {
+      const key = normalizeKey(chunk);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      result.push(chunk);
+    });
+  });
+
+  return result;
+}
+
+const RETRIEVAL_MODE_CONFIG = {
+  compact: {
+    chapterMemoryCount: 1,
+    entityCap: 6,
+    itemCap: 6,
+    relationshipCap: 4,
+    chapterEventCount: 6,
+    chapterEvidenceCount: 3,
+    relevantEvidenceCount: 4,
+    includeFullProse: false,
+  },
+  standard: {
+    chapterMemoryCount: 2,
+    entityCap: 8,
+    itemCap: 8,
+    relationshipCap: 6,
+    chapterEventCount: 10,
+    chapterEvidenceCount: 4,
+    relevantEvidenceCount: 6,
+    includeFullProse: true,
+  },
+  near_memory_3: {
+    chapterMemoryCount: 3,
+    entityCap: 12,
+    itemCap: 10,
+    relationshipCap: 8,
+    chapterEventCount: 16,
+    chapterEvidenceCount: 8,
+    relevantEvidenceCount: 10,
+    includeFullProse: true,
+  },
+  audit_long: {
+    chapterMemoryCount: 5,
+    entityCap: 20,
+    itemCap: 16,
+    relationshipCap: 12,
+    chapterEventCount: 28,
+    chapterEvidenceCount: 14,
+    relevantEvidenceCount: 20,
+    includeFullProse: true,
+  },
+};
+
+function resolveRetrievalModeConfig(mode) {
+  return RETRIEVAL_MODE_CONFIG[mode] || RETRIEVAL_MODE_CONFIG.standard;
+}
+
 function splitGoals(value) {
   if (Array.isArray(value)) {
     return uniqueList(value.map((item) => cleanText(item)).filter(Boolean));
@@ -142,7 +210,7 @@ export function buildCharacterStateSummary(state, fallbackSummary = '') {
   }
   if (state?.summary) parts.push(state.summary);
   if (parts.length === 0 && fallbackSummary) parts.push(fallbackSummary);
-  return uniqueList(parts).join(' | ');
+  return uniqueSummaryParts(parts).join(' | ');
 }
 
 export function createInitialEntityState(character = {}) {
@@ -998,6 +1066,20 @@ export function validateCandidateOps({
 
     if (op.thread_id) {
       const threadState = threadMap.get(op.thread_id);
+      if (threadState?.state === 'active'
+        && op.op_type === CANON_OP_TYPES.THREAD_OPENED) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.WARNING,
+          ruleCode: 'THREAD_ALREADY_ACTIVE',
+          message: `Thread "${op.thread_title || 'khong ro'}" dang mo, khong nen mo lai ma khong co ly do ro rang.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          relatedThreadIds: [op.thread_id],
+          evidence: op.evidence,
+        }));
+      }
       if (threadState?.state === 'resolved'
         && [CANON_OP_TYPES.THREAD_OPENED, CANON_OP_TYPES.THREAD_PROGRESS].includes(op.op_type)) {
         reports.push(createReport({
@@ -1009,6 +1091,30 @@ export function validateCandidateOps({
           revisionId,
           sceneId: op.scene_id || null,
           relatedThreadIds: [op.thread_id],
+          evidence: op.evidence,
+        }));
+      }
+    }
+
+    if (op.op_type === CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED && op.subject_id) {
+      const state = entityMap.get(op.subject_id);
+      const payload = normalizePayload(op.payload);
+      const nextLocationName = cleanText(payload.location_name || op.location_name || '');
+      if (
+        state?.current_location_name
+        && nextLocationName
+        && normalizeKey(state.current_location_name) !== normalizeKey(nextLocationName)
+        && !cleanText(payload.reason || payload.status_summary || op.summary)
+      ) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.WARNING,
+          ruleCode: 'LOCATION_CHANGE_WITHOUT_REASON',
+          message: `${op.subject_name || 'Nhan vat'} doi dia diem tu "${state.current_location_name}" sang "${nextLocationName}" nhung chua co ly do ro rang.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          relatedEntityIds: [op.subject_id],
           evidence: op.evidence,
         }));
       }
@@ -1065,6 +1171,51 @@ export function validateCandidateOps({
           revisionId,
           sceneId: op.scene_id || null,
           relatedEntityIds: [op.subject_id],
+          evidence: op.evidence,
+        }));
+      }
+    }
+
+    if (op.subject_id && op.target_id && op.op_type === CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED) {
+      const relationshipState = relationshipMap.get(buildRelationshipPairKey(op.subject_id, op.target_id));
+      const payload = normalizePayload(op.payload);
+      const nextRelationshipType = cleanText(payload.relationship_type || payload.status || '');
+      const currentRelationshipType = cleanText(relationshipState?.relationship_type || '');
+      const hostileTypes = new Set(['enemy', 'rival']);
+      const alliedTypes = new Set(['ally', 'friend', 'lover', 'family', 'mentor', 'subordinate']);
+      const isSharpReversal = (
+        (alliedTypes.has(currentRelationshipType) && hostileTypes.has(nextRelationshipType))
+        || (hostileTypes.has(currentRelationshipType) && alliedTypes.has(nextRelationshipType))
+      );
+
+      if (relationshipState && isSharpReversal && !cleanText(payload.reason || payload.status_summary || op.summary)) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.WARNING,
+          ruleCode: 'RELATIONSHIP_REVERSAL_WITHOUT_REASON',
+          message: `Cap quan he ${op.subject_name || op.subject_id}/${op.target_name || op.target_id} dao chieu manh nhung chua co ly do ro rang.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          relatedEntityIds: [op.subject_id, op.target_id],
+          evidence: op.evidence,
+        }));
+      }
+    }
+
+    if (op.subject_id && op.target_id && op.op_type === CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED) {
+      const payload = normalizePayload(op.payload);
+      const intimacyLevel = cleanText(payload.intimacy_level || '');
+      if (['medium', 'high'].includes(intimacyLevel) && !cleanText(payload.emotional_aftermath || payload.status_summary || op.summary)) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.WARNING,
+          ruleCode: 'INTIMACY_AFTERMATH_MISSING',
+          message: 'Canh thay doi do than mat thieu du am cam xuc/hau qua, de gay dut continuity NSFW.',
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          relatedEntityIds: [op.subject_id, op.target_id],
           evidence: op.evidence,
         }));
       }
@@ -1868,7 +2019,9 @@ export async function buildRetrievalPacket({
   sceneId = null,
   detectedCharacterIds = [],
   detectedObjectIds = [],
+  mode = 'standard',
 }) {
+  const modeConfig = resolveRetrievalModeConfig(mode);
   const [
     project,
     chapters,
@@ -1922,13 +2075,13 @@ export async function buildRetrievalPacket({
   ]);
   const relevantEntityStates = relevantCharacterIds.length > 0
     ? entityStates.filter((state) => relevantCharacterIds.includes(state.entity_id))
-    : entityStates.slice(0, 8);
+    : entityStates.slice(0, modeConfig.entityCap);
   const relevantItemStates = relevantObjectIds.length > 0
     ? itemStates.filter((state) => relevantObjectIds.includes(state.object_id))
-    : itemStates.slice(0, 8);
+    : itemStates.slice(0, modeConfig.itemCap);
   const relevantRelationshipStates = relevantCharacterIds.length > 0
     ? relationshipStates.filter((state) => relevantCharacterIds.includes(state.character_a_id) || relevantCharacterIds.includes(state.character_b_id))
-    : relationshipStates.slice(0, 8);
+    : relationshipStates.slice(0, modeConfig.relationshipCap);
 
   const activeThreadStates = threadStates.filter((threadState) => threadState.state !== 'resolved');
   const commit = chapterCommits.find((row) => row.chapter_id === chapterId) || null;
@@ -1953,8 +2106,8 @@ export async function buildRetrievalPacket({
     });
 
   const previousChapters = chapter
-    ? chapters.filter((item) => item.order_index < chapter.order_index).slice(-5)
-    : chapters.slice(-5);
+    ? chapters.filter((item) => item.order_index < chapter.order_index).slice(-modeConfig.chapterMemoryCount)
+    : chapters.slice(-modeConfig.chapterMemoryCount);
   const recentChapterMemory = await Promise.all(previousChapters.map(async (memoryChapter) => {
     const [chapterScenes, chapterMeta] = await Promise.all([
       db.scenes.where('chapter_id').equals(memoryChapter.id).sortBy('order_index'),
@@ -1967,10 +2120,10 @@ export async function buildRetrievalPacket({
     const chapterEvents = storyEvents
       .filter((event) => event.chapter_id === memoryChapter.id && event.status !== 'superseded')
       .sort((a, b) => (a.scene_id || 0) - (b.scene_id || 0) || (a.id || 0) - (b.id || 0))
-      .slice(0, 16);
+      .slice(0, modeConfig.chapterEventCount);
     const chapterEvidence = memoryEvidence
       .filter((item) => item.chapter_id === memoryChapter.id)
-      .slice(0, 8);
+      .slice(0, modeConfig.chapterEvidenceCount);
     return {
       chapter_id: memoryChapter.id,
       chapter_title: memoryChapter.title || `Chuong ${memoryChapter.order_index + 1}`,
@@ -1978,11 +2131,17 @@ export async function buildRetrievalPacket({
       summary: chapterMeta?.summary || memoryChapter.summary || '',
       bridge_buffer: chapterMeta?.last_prose_buffer || '',
       emotional_state: chapterMeta?.emotional_state || null,
-      prose,
+      prose: modeConfig.includeFullProse ? prose : '',
       events: chapterEvents,
       evidence: chapterEvidence,
     };
   }));
+
+  const recentChapterIds = new Set(previousChapters.map((item) => item.id));
+  const relevantEvidence = memoryEvidence
+    .filter((item) => recentChapterIds.has(item.chapter_id))
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+    .slice(0, modeConfig.relevantEvidenceCount);
 
   const criticalConstraints = {
     deadCharacters: relevantEntityStates
@@ -2021,6 +2180,7 @@ export async function buildRetrievalPacket({
   };
 
   return {
+    retrievalMode: mode,
     project,
     chapter,
     chapterCommit: commit,
@@ -2031,6 +2191,7 @@ export async function buildRetrievalPacket({
     factStates,
     plotThreads,
     recentChapterMemory,
+    relevantEvidence,
     criticalConstraints,
   };
 }

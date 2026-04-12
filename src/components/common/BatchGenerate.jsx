@@ -16,6 +16,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, X, Loader2, Check, RotateCcw, Trash2, Plus } from 'lucide-react';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
+import { buildPrompt } from '../../services/ai/promptBuilder';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import './BatchGenerate.css';
 
@@ -102,6 +103,14 @@ export default function BatchGenerate({
 
   const config = ENTITY_CONFIG[entityType];
 
+  const resolvePromptTemplates = () => {
+    if (!projectContext?.promptTemplates) return {};
+    if (typeof projectContext.promptTemplates === 'string') {
+      try { return JSON.parse(projectContext.promptTemplates); } catch { return {}; }
+    }
+    return typeof projectContext.promptTemplates === 'object' ? projectContext.promptTemplates : {};
+  };
+
   // Build context string from existing story data
   const buildContext = () => {
     const parts = [];
@@ -171,7 +180,17 @@ export default function BatchGenerate({
 
     aiService.send({
       taskType: TASK_TYPES.AI_GENERATE_ENTITY,
-      messages,
+      messages: buildPrompt(TASK_TYPES.AI_GENERATE_ENTITY, {
+        projectTitle: projectContext.projectTitle || '',
+        genre: projectContext.genre || '',
+        promptTemplates: resolvePromptTemplates(),
+        userPrompt: customHint.trim()
+          ? `${customHint}\n\nTao chinh xac ${count} ${config.plural}.`
+          : `Tao chinh xac ${count} ${config.plural} phu hop voi cot truyen tren.`,
+        entityType,
+        batchCount: count,
+        entityContextText: contextStr,
+      }),
       stream: false,
       onComplete: (text) => {
         setIsGenerating(false);

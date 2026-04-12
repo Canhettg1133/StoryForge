@@ -264,7 +264,7 @@ export default function WorldLore() {
           </button>
           <AIGenerateButton
             entityType={activeTab === 'locations' ? 'location' : activeTab === 'objects' ? 'object' : 'term'}
-            projectContext={{ projectTitle: currentProject?.title, genre: currentProject?.genre_primary }}
+            projectContext={{ projectTitle: currentProject?.title, genre: currentProject?.genre_primary, promptTemplates: currentProject?.prompt_templates, worldName: currentProject?.world_name }}
             onApprove={(data) => {
               setEditingItem(null);
               if (activeTab === 'locations') {
@@ -517,6 +517,7 @@ export default function WorldLore() {
                 description: currentProject?.description,
                 worldName: currentProject?.world_name,
                 worldType: currentProject?.world_type,
+                promptTemplates: currentProject?.prompt_templates,
               }}
               existingEntities={{
                 characters,
