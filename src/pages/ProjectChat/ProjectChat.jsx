@@ -1192,25 +1192,16 @@ export default function ProjectChat() {
           </div>
 
           <div className="project-chat-composer">
-            <div className="project-chat-composer__actions">
-              {editingMessageId ? (
+            {editingMessageId ? (
+              <div className="project-chat-composer__actions">
                 <div className="project-chat-composer__edit-state">
                   Đang sửa một tin nhắn cũ. Gửi lại sẽ xóa các phản hồi phía sau và chat lại từ điểm đó.
                   <button type="button" className="btn btn-ghost btn-sm" onClick={handleCancelEditing}>
                     Hủy sửa
                   </button>
                 </div>
-              ) : null}
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={handleClearMessages}
-                disabled={!activeThread || isStreaming}
-              >
-                <Trash2 size={16} />
-                Xóa tin nhắn
-              </button>
-            </div>
+              </div>
+            ) : null}
 
             <div className="project-chat-composer__input">
               <textarea
@@ -1236,19 +1227,23 @@ export default function ProjectChat() {
 
               <div className="project-chat-composer__submit">
                 {isStreaming ? (
-                  <button type="button" className="btn btn-secondary" onClick={handleStopStreaming}>
-                    <Square size={16} />
-                    Dừng
+                  <button
+                    type="button"
+                    className="project-chat-composer__submit-button project-chat-composer__submit-button--stop"
+                    onClick={handleStopStreaming}
+                    title="Dừng"
+                  >
+                    <Square size={18} />
                   </button>
                 ) : (
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="project-chat-composer__submit-button"
                     onClick={handleComposerSubmit}
                     disabled={!draft.trim()}
+                    title="Gửi"
                   >
-                    <Send size={16} />
-                    Gửi
+                    <Send size={18} />
                   </button>
                 )}
               </div>
