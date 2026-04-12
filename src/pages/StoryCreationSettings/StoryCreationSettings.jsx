@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import {
   Sparkles,
   Shield,
@@ -36,6 +36,8 @@ export default function StoryCreationSettings() {
   const [draft, setDraft] = useState(() => getStoryCreationSettings());
   const [savedMessage, setSavedMessage] = useState('');
   const [activeGroupKey, setActiveGroupKey] = useState('all');
+  const isHydratingRef = useRef(true);
+  const lastSavedSignatureRef = useRef(JSON.stringify(getStoryCreationSettings()));
 
   const previewDefaults = useMemo(() => DEFAULT_STORY_CREATION_SETTINGS, []);
   const visibleGroups = useMemo(
@@ -62,20 +64,43 @@ export default function StoryCreationSettings() {
   const handleSave = () => {
     const saved = saveStoryCreationSettings(draft);
     setDraft(saved);
+    lastSavedSignatureRef.current = JSON.stringify(saved);
     showSavedMessage('Đã lưu cài đặt tạo truyện.');
   };
 
   const handleResetAll = () => {
     const reset = resetStoryCreationSettings();
     setDraft(reset);
+    lastSavedSignatureRef.current = JSON.stringify(reset);
     showSavedMessage('Đã khôi phục toàn bộ prompt mặc định.');
   };
 
   const handleResetGroup = (groupKey) => {
     const reset = resetStoryCreationGroup(groupKey);
     setDraft(reset);
+    lastSavedSignatureRef.current = JSON.stringify(reset);
     showSavedMessage('Đã khôi phục nhóm prompt này về mặc định.');
   };
+
+  useEffect(() => {
+    window.setTimeout(() => {
+      isHydratingRef.current = false;
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    if (isHydratingRef.current) return undefined;
+    if (JSON.stringify(draft) === lastSavedSignatureRef.current) return undefined;
+
+    setSavedMessage('Đang tự lưu...');
+    const timer = window.setTimeout(() => {
+      saveStoryCreationSettings(draft);
+      lastSavedSignatureRef.current = JSON.stringify(draft);
+      showSavedMessage('Đã tự lưu Global Prompts.');
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [draft]);
 
   return (
     <div className="settings-page" id="global-prompt-manager-top">
@@ -163,7 +188,10 @@ export default function StoryCreationSettings() {
             </button>
             {savedMessage && (
               <span className="story-creation-save-note">
-                <CheckCircle2 size={14} /> {savedMessage}
+                {savedMessage.includes('Đang')
+                  ? <Save size={14} />
+                  : <CheckCircle2 size={14} />}
+                {savedMessage}
               </span>
             )}
           </div>

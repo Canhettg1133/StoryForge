@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -123,6 +123,13 @@ function cleanPromptTemplates(definitions, draft) {
   return cleaned;
 }
 
+function getProjectPromptSignature(draft) {
+  return JSON.stringify({
+    prompt_templates: draft || {},
+    ai_guidelines: draft?.ai_guidelines || '',
+  });
+}
+
 function PromptInfoGrid({ item }) {
   return (
     <div className="prompt-card__info-grid">
@@ -139,11 +146,13 @@ function PromptEditorCard({
   genreKey,
   coreDraft,
   overrideDraft,
+  coreEditable,
   onCoreChange,
   onOverrideChange,
   onResetCore,
   onApplyCore,
   onClearOverride,
+  onToggleCoreEditable,
 }) {
   const hasOverride = item.type === 'list'
     ? parseListText(overrideDraft).length > 0
@@ -190,10 +199,16 @@ function PromptEditorCard({
         <section className="prompt-editor-block">
           <div className="prompt-editor-block__header">
             <div>
-              <strong>Core Defaults</strong>
+              <div className="prompt-editor-block__title-row">
+                <strong>Core Defaults</strong>
+                <span className="prompt-editor-block__badge is-reference">Chỉ tham chiếu, chưa có hiệu lực</span>
+              </div>
               <p>{coreHelp}</p>
             </div>
             <div className="prompt-editor-block__actions">
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onToggleCoreEditable(item)}>
+                {coreEditable ? 'Tắt chỉnh thử' : 'Bật chỉnh thử'}
+              </button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => onResetCore(item)}>
                 <RefreshCw size={13} /> Khôi phục mặc định
               </button>
@@ -204,17 +219,23 @@ function PromptEditorCard({
           </div>
 
           <textarea
-            className="textarea prompt-editor-block__textarea"
+            className={`textarea prompt-editor-block__textarea ${coreEditable ? '' : 'is-readonly'}`}
             rows={item.type === 'list' ? 8 : 12}
             value={coreDraft}
             onChange={(event) => onCoreChange(item, event.target.value)}
+            readOnly={!coreEditable}
           />
         </section>
 
         <section className="prompt-editor-block">
           <div className="prompt-editor-block__header">
             <div>
-              <strong>Project Override</strong>
+              <div className="prompt-editor-block__title-row">
+                <strong>Project Override</strong>
+                <span className={`prompt-editor-block__badge ${hasOverride ? 'is-live' : 'is-idle'}`}>
+                  {hasOverride ? 'Đang có hiệu lực' : 'Để trống = dùng mặc định'}
+                </span>
+              </div>
               <p>{overrideHelp}</p>
             </div>
             <div className="prompt-editor-block__actions">
@@ -262,6 +283,9 @@ export default function ProjectPromptManager() {
   const [saveMessage, setSaveMessage] = useState(null);
   const [activeGroupKey, setActiveGroupKey] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [editableCoreKeys, setEditableCoreKeys] = useState({});
+  const isHydratingRef = useRef(true);
+  const lastSavedSignatureRef = useRef('');
 
   useEffect(() => {
     if (!projectId) return;
@@ -280,6 +304,7 @@ export default function ProjectPromptManager() {
       parsedTemplates.ai_guidelines = currentProject.ai_guidelines;
     }
     setOverrideDraft(parsedTemplates);
+    lastSavedSignatureRef.current = getProjectPromptSignature(parsedTemplates);
 
     const nextCoreDrafts = {};
     PROJECT_PROMPT_GROUPS.forEach((group) => {
@@ -288,7 +313,12 @@ export default function ProjectPromptManager() {
       });
     });
     setCoreDrafts(nextCoreDrafts);
+    setEditableCoreKeys({});
     setSaveMessage(null);
+    isHydratingRef.current = true;
+    window.setTimeout(() => {
+      isHydratingRef.current = false;
+    }, 0);
   }, [currentProject, genreKey]);
 
   const filteredGroups = useMemo(() => {
@@ -372,7 +402,7 @@ export default function ProjectPromptManager() {
     setSaveMessage(null);
   };
 
-  const handleSave = async () => {
+  const persistOverrideDraft = async (mode = 'manual') => {
     if (!currentProject) return;
 
     const cleaned = cleanPromptTemplates(PROJECT_PROMPT_GROUPS, overrideDraft);
@@ -387,9 +417,13 @@ export default function ProjectPromptManager() {
         ...cleaned,
         ai_guidelines: aiGuidelines,
       });
+      lastSavedSignatureRef.current = getProjectPromptSignature({
+        ...cleaned,
+        ai_guidelines: aiGuidelines,
+      });
       setSaveMessage({
         type: 'success',
-        text: 'Đã lưu Prompt truyện.',
+        text: mode === 'auto' ? 'Đã tự lưu Prompt truyện.' : 'Đã lưu Prompt truyện.',
       });
     } catch (error) {
       setSaveMessage({
@@ -399,6 +433,33 @@ export default function ProjectPromptManager() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSave = async () => {
+    await persistOverrideDraft('manual');
+  };
+
+  useEffect(() => {
+    if (!currentProject || isHydratingRef.current) return undefined;
+    if (getProjectPromptSignature(overrideDraft) === lastSavedSignatureRef.current) return undefined;
+
+    setSaveMessage({
+      type: 'pending',
+      text: 'Đang tự lưu Prompt truyện...',
+    });
+
+    const timer = window.setTimeout(() => {
+      persistOverrideDraft('auto');
+    }, 900);
+
+    return () => window.clearTimeout(timer);
+  }, [overrideDraft, currentProject]);
+
+  const handleToggleCoreEditable = (item) => {
+    setEditableCoreKeys((prev) => ({
+      ...prev,
+      [item.key]: !prev[item.key],
+    }));
   };
 
   if (!currentProject) {
@@ -491,8 +552,18 @@ export default function ProjectPromptManager() {
         </div>
 
         {saveMessage && (
-          <div className={`prompt-manager-status ${saveMessage.type === 'success' ? 'is-success' : 'is-error'}`}>
-            {saveMessage.type === 'success' ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
+          <div className={`prompt-manager-status ${
+            saveMessage.type === 'success'
+              ? 'is-success'
+              : saveMessage.type === 'pending'
+                ? 'is-pending'
+                : 'is-error'
+          }`}>
+            {saveMessage.type === 'success'
+              ? <CheckCircle2 size={14} />
+              : saveMessage.type === 'pending'
+                ? <RefreshCw size={14} className="animate-spin" />
+                : <AlertCircle size={14} />}
             {saveMessage.text}
           </div>
         )}
@@ -522,11 +593,13 @@ export default function ProjectPromptManager() {
                   genreKey={genreKey}
                   coreDraft={toCoreEditorValue(item, coreDrafts[item.key], genreKey)}
                   overrideDraft={toOverrideEditorValue(item, overrideDraft[item.key])}
+                  coreEditable={!!editableCoreKeys[item.key]}
                   onCoreChange={handleCoreChange}
                   onOverrideChange={handleOverrideChange}
                   onResetCore={handleResetCore}
                   onApplyCore={handleApplyCore}
                   onClearOverride={handleClearOverride}
+                  onToggleCoreEditable={handleToggleCoreEditable}
                 />
               ))}
             </div>
