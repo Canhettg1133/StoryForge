@@ -200,8 +200,8 @@
 }
 
 .project-chat-main {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   padding: 18px 18px 14px;
 }
@@ -326,6 +326,7 @@
 }
 
 .project-chat-messages {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   display: flex;
