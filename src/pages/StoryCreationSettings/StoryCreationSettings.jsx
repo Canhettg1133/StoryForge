@@ -79,13 +79,6 @@ export default function StoryCreationSettings() {
 
   return (
     <div className="settings-page" id="global-prompt-manager-top">
-      <header className="settings-header animate-fade-in">
-        <h1 className="settings-title">Quản lý Prompt</h1>
-        <p className="settings-subtitle">
-          Đây là khu vực quản lý <strong>Global Prompts</strong> — các prompt dùng chung cho toàn bộ app, không gắn với riêng một truyện nào.
-        </p>
-      </header>
-
       <section className="settings-section card animate-slide-up story-creation-toolbar-card">
         <div className="story-creation-shortcuts">
           <span className="story-creation-shortcuts__label">Đi tới nhóm prompt</span>
@@ -116,6 +109,13 @@ export default function StoryCreationSettings() {
           </div>
         </div>
       </section>
+
+      <header className="settings-header animate-fade-in">
+        <h1 className="settings-title">Quản lý Prompt</h1>
+        <p className="settings-subtitle">
+          Đây là khu vực quản lý <strong>Global Prompts</strong> — các prompt dùng chung cho toàn bộ app, không gắn với riêng một truyện nào.
+        </p>
+      </header>
 
       <div className="settings-sections">
         <section className="settings-section card animate-slide-up story-creation-hero">
@@ -222,26 +222,28 @@ export default function StoryCreationSettings() {
               </details>
             </div>
 
-            <div className="form-group">
-              <label className="form-label">Prompt đầu vào</label>
-              <div className="story-creation-field-help">
-                {group.userHelp}
-                <br />
-                <strong>Dùng để làm gì:</strong> điều chỉnh dữ liệu và câu lệnh được bơm vào từng lần gọi AI.
+            {group.showUserPrompt !== false && (
+              <div className="form-group">
+                <label className="form-label">Prompt đầu vào</label>
+                <div className="story-creation-field-help">
+                  {group.userHelp}
+                  <br />
+                  <strong>Dùng để làm gì:</strong> điều chỉnh dữ liệu và câu lệnh được bơm vào từng lần gọi AI.
+                </div>
+                <textarea
+                  className="textarea story-creation-textarea"
+                  rows={10}
+                  value={draft[group.key]?.userPromptTemplate || ''}
+                  onChange={(e) => setField(group.key, 'userPromptTemplate', e.target.value)}
+                />
+                <details className="story-creation-default">
+                  <summary>Xem bản mặc định</summary>
+                  <pre className="prompt-default-preview__body">
+                    {previewDefaults[group.key].userPromptTemplate}
+                  </pre>
+                </details>
               </div>
-              <textarea
-                className="textarea story-creation-textarea"
-                rows={10}
-                value={draft[group.key]?.userPromptTemplate || ''}
-                onChange={(e) => setField(group.key, 'userPromptTemplate', e.target.value)}
-              />
-              <details className="story-creation-default">
-                <summary>Xem bản mặc định</summary>
-                <pre className="prompt-default-preview__body">
-                  {previewDefaults[group.key].userPromptTemplate}
-                </pre>
-              </details>
-            </div>
+            )}
           </section>
         ))}
       </div>

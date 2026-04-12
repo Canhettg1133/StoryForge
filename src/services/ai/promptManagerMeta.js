@@ -1,6 +1,15 @@
 import { TASK_TYPES } from './router';
 
 export const GLOBAL_PROMPT_META = {
+  writingSystemIdentity: {
+    title: 'System Identity cho viết truyện',
+    summary: 'Prompt hệ thống nền mà engine viết truyện đọc trước mọi tác vụ viết, dùng chung cho toàn bộ app.',
+    purpose: 'Prompt này xác định AI là ai, phải giữ nguyên tắc gì, được phép hay không được phép tự bịa thêm điều gì khi xử lý các tác vụ viết truyện.',
+    whenToEdit: 'Sửa khi bạn muốn đổi vai trò mặc định của AI, siết mạnh hơn về tính nhất quán, hoặc nới/siết cách AI được phép sáng tạo ngoài canon.',
+    commonInputs: 'Không có biến đầu vào. Đây là lớp system prompt nền dùng chung cho toàn bộ engine viết truyện.',
+    expectedOutput: 'AI giữ đúng vai trò và nguyên tắc nền nhất quán hơn trên mọi project, thay vì mỗi tác vụ có một tính cách khác nhau.',
+    impactArea: 'Ảnh hưởng đến toàn bộ luồng viết truyện dùng promptBuilder trong app.',
+  },
   projectWizard: {
     title: 'Khởi tạo dự án bằng AI',
     summary: 'Dùng khi bạn đưa ý tưởng ban đầu để AI dựng blueprint truyện, nhân vật, thế giới và outline khởi đầu.',
@@ -245,6 +254,16 @@ export const PROJECT_PROMPT_GROUPS = [
     summary: 'Nhóm prompt nền điều khiển luật viết, giọng văn và các ràng buộc đặc biệt của truyện.',
     items: [
       {
+        key: 'ai_guidelines',
+        label: 'Chỉ dẫn AI của truyện',
+        type: 'text',
+        persistAs: 'projectField',
+        purpose: 'Đây là lớp chỉ dẫn riêng của từng truyện, dùng để bơm thêm định hướng mềm cho AI ngoài prompt hệ thống và canon.',
+        whenToEdit: 'Sửa khi bạn muốn AI nghiêng rõ hơn về tone, cách khai thác cảm xúc, mức độ bạo lực, độ tàn nhẫn, nhịp kể hoặc nguyên tắc xử lý riêng của truyện này.',
+        commonInputs: 'Những lưu ý riêng của tác giả cho đúng project hiện tại.',
+        expectedOutput: 'AI giữ được chất riêng của truyện này tốt hơn mà không phải lặp lại cùng một dặn dò ở mỗi lần viết.',
+      },
+      {
         key: 'constitution',
         label: 'Luật cốt lõi',
         type: 'list',
@@ -301,4 +320,3 @@ export const PROJECT_PROMPT_GROUPS = [
     ],
   },
 ];
-

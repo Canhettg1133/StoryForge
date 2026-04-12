@@ -20,6 +20,7 @@
  */
 
 import { TASK_TYPES } from './router';
+import { getStoryCreationSettings } from './storyCreationSettings';
 import {
   PRONOUN_PRESETS,
   GENRE_PRONOUN_MAP,
@@ -178,7 +179,7 @@ function buildNsfwIntimateSystemLayer(taskType, {
 // =============================================
 // Layer 1: System Identity
 // =============================================
-const LAYER_1_IDENTITY = [
+export const DEFAULT_LAYER_1_IDENTITY = [
   'Ban la dong bien tap vien truyen chu chuyen nghiep trong ung dung StoryForge.',
   'Ban luon uu tien tinh nhat quan (consistency), giong van rieng cua tac pham, va tuan theo moi quy tac the gioi truyen.',
   'Ban viet bang tieng Viet tru khi duoc yeu cau khac.',
@@ -186,6 +187,20 @@ const LAYER_1_IDENTITY = [
   'Ban PHAI tuan thu tuyet doi moi cam ky (taboo) duoc liet ke.',
   'Ban KHONG duoc tu y tao ra nhan vat, dia danh, ky nang, he thong suc manh, hay bat ky thuc the nao CHUA DUOC liet ke trong Canon hoac The Gioi truyen — tru khi tac gia yeu cau ro rang hoac task la brainstorm/outline/project_wizard.',
 ].join('\n');
+
+function resolveSystemIdentityPrompt() {
+  try {
+    const settings = getStoryCreationSettings();
+    const customPrompt = settings?.writingSystemIdentity?.systemPrompt;
+    if (typeof customPrompt === 'string' && customPrompt.trim()) {
+      return customPrompt.trim();
+    }
+  } catch {
+    // Fall back to built-in identity when local settings are unavailable.
+  }
+
+  return DEFAULT_LAYER_1_IDENTITY;
+}
 
 // =============================================
 // Writing tasks — 3 mức injection
@@ -1261,7 +1276,7 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 1: System Identity --
-  systemParts.push(LAYER_1_IDENTITY);
+  systemParts.push(resolveSystemIdentityPrompt());
 
   // Project info with POV
   const povLabel = { first: 'Ngoi 1', third_limited: 'Ngoi 3 han che', third_omni: 'Ngoi 3 toan tri', multi_pov: 'Da goc nhin' };

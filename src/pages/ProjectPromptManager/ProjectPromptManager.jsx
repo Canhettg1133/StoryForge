@@ -43,6 +43,10 @@ function parseListText(value) {
 function buildDefaultValue(item, genreKey) {
   const template = GENRE_TEMPLATES[genreKey] || {};
 
+  if (item.key === 'ai_guidelines') {
+    return '';
+  }
+
   if (item.key === 'constitution') {
     return stringifyList(template.constitution || []);
   }
@@ -95,6 +99,10 @@ function cleanPromptTemplates(definitions, draft) {
 
   definitions.forEach((definition) => {
     definition.items.forEach((item) => {
+      if (item.persistAs === 'projectField') {
+        return;
+      }
+
       const rawValue = draft[item.key];
 
       if (item.type === 'list') {
@@ -142,17 +150,23 @@ function PromptEditorCard({
     : String(overrideDraft || '').trim().length > 0;
 
   const effectiveLabel = hasOverride ? 'Đang dùng Override của truyện' : 'Đang dùng prompt mặc định';
-  const coreHelp = item.key === 'nsfw_system_prompt'
+  const coreHelp = item.key === 'ai_guidelines'
+    ? 'Đây là chỉ dẫn nền riêng của truyện này. Mặc định để trống và chỉ cần điền khi bạn muốn thêm định hướng mềm cho AI.'
+    : item.key === 'nsfw_system_prompt'
     ? 'Đây là prompt gốc của khối NSFW. Nếu không có override, hệ thống dùng prompt gốc này.'
     : item.key === 'nsfw_rules'
       ? 'Đây là vùng soạn rule bổ sung để tham chiếu. Rule bổ sung không thay thế prompt gốc NSFW.'
       : 'Bản mẫu gốc để tham chiếu và chỉnh thử tại chỗ. Không lưu riêng vào project.';
-  const overrideHelp = item.key === 'nsfw_system_prompt'
+  const overrideHelp = item.key === 'ai_guidelines'
+    ? 'Nếu nhập ở đây, chỉ dẫn này sẽ được lưu trực tiếp vào trường ai_guidelines của project hiện tại.'
+    : item.key === 'nsfw_system_prompt'
     ? 'Nếu nhập ở đây, bạn đang thay thế prompt gốc NSFW của project này.'
     : item.key === 'nsfw_rules'
       ? 'Nếu nhập ở đây, rule sẽ được nối vào sau prompt gốc NSFW của project này.'
       : 'Phần ghi đè thật sự của riêng truyện này. Đây là phần sẽ được lưu vào project.';
-  const overridePlaceholder = item.key === 'nsfw_rules'
+  const overridePlaceholder = item.key === 'ai_guidelines'
+    ? 'Ví dụ: ưu tiên bi kịch chậm, tránh giảng giải đạo lý, đẩy nặng cảm giác mất mát.'
+    : item.key === 'nsfw_rules'
     ? 'Để trống = không thêm rule bổ sung. Nếu có nội dung, hệ thống sẽ nối vào sau prompt gốc NSFW.'
     : item.type === 'list'
       ? 'Mỗi dòng là một mục. Để trống = dùng Core Defaults.'
@@ -262,6 +276,9 @@ export default function ProjectPromptManager() {
     if (!currentProject) return;
 
     const parsedTemplates = parsePromptTemplates(currentProject.prompt_templates);
+    if (typeof currentProject.ai_guidelines === 'string') {
+      parsedTemplates.ai_guidelines = currentProject.ai_guidelines;
+    }
     setOverrideDraft(parsedTemplates);
 
     const nextCoreDrafts = {};
@@ -359,12 +376,17 @@ export default function ProjectPromptManager() {
     if (!currentProject) return;
 
     const cleaned = cleanPromptTemplates(PROJECT_PROMPT_GROUPS, overrideDraft);
+    const aiGuidelines = String(overrideDraft.ai_guidelines || '').trim();
     setIsSaving(true);
     try {
       await updateProjectSettings({
         prompt_templates: JSON.stringify(cleaned),
+        ai_guidelines: aiGuidelines,
       });
-      setOverrideDraft(cleaned);
+      setOverrideDraft({
+        ...cleaned,
+        ai_guidelines: aiGuidelines,
+      });
       setSaveMessage({
         type: 'success',
         text: 'Đã lưu Prompt truyện.',
@@ -395,23 +417,6 @@ export default function ProjectPromptManager() {
 
   return (
     <div className="settings-page prompt-manager-page" id="prompt-manager-top">
-      <header className="settings-header animate-fade-in">
-        <div className="prompt-manager-page__heading">
-          <div>
-            <h1 className="settings-title">Prompt truyện</h1>
-            <p className="settings-subtitle">
-              Quản lý toàn bộ prompt gắn với truyện <strong>{currentProject.title}</strong>. Chỉ phần Override mới được lưu vào project.
-            </p>
-          </div>
-          <div className="prompt-manager-page__toolbar">
-            <button className="btn btn-primary" onClick={handleSave} disabled={isSaving}>
-              {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-              Lưu Prompt truyện
-            </button>
-          </div>
-        </div>
-      </header>
-
       <section className="settings-section card animate-slide-up prompt-manager-toolbar-card">
         <div className="prompt-toolbar">
           <div className="prompt-toolbar__search">
@@ -449,6 +454,23 @@ export default function ProjectPromptManager() {
           </div>
         </div>
       </section>
+
+      <header className="settings-header animate-fade-in">
+        <div className="prompt-manager-page__heading">
+          <div>
+            <h1 className="settings-title">Prompt truyện</h1>
+            <p className="settings-subtitle">
+              Quản lý toàn bộ prompt gắn với truyện <strong>{currentProject.title}</strong>. Chỉ phần Override mới được lưu vào project.
+            </p>
+          </div>
+          <div className="prompt-manager-page__toolbar">
+            <button className="btn btn-primary" onClick={handleSave} disabled={isSaving}>
+              {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+              Lưu Prompt truyện
+            </button>
+          </div>
+        </div>
+      </header>
 
       <section className="settings-section card animate-slide-up prompt-manager-intro">
         <div className="settings-section-header">

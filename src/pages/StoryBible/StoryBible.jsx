@@ -82,7 +82,6 @@ export default function StoryBible() {
   const [pronounStyle, setPronounStyle] = useState('hien_dai');
   const [synopsis, setSynopsis] = useState('');
   const [storyStructure, setStoryStructure] = useState('');
-  const [aiGuidelines, setAiGuidelines] = useState('');
   const [aiStrictness, setAiStrictness] = useState('balanced');
   const [nsfwMode, setNsfwMode] = useState(false);
   const [superNsfwMode, setSuperNsfwMode] = useState(false);
@@ -138,7 +137,6 @@ export default function StoryBible() {
       setPronounStyle(currentProject.pronoun_style || GENRE_TO_PRONOUN_STYLE[currentProject.genre_primary] || 'hien_dai');
       setSynopsis(currentProject.synopsis || '');
       setStoryStructure(currentProject.story_structure || '');
-      setAiGuidelines(currentProject.ai_guidelines || '');
       setAiStrictness(currentProject.ai_strictness || 'balanced');
       setNsfwMode(currentProject.nsfw_mode || false);
       setSuperNsfwMode(currentProject.super_nsfw_mode || false);
@@ -166,7 +164,6 @@ export default function StoryBible() {
   const titleSaved = useAutoSave(title, (v) => save({ title: v }));
   const descSaved = useAutoSave(description, (v) => save({ description: v }));
   const synopsisSaved = useAutoSave(synopsis, (v) => save({ synopsis: v }));
-  const guidelinesSaved = useAutoSave(aiGuidelines, (v) => save({ ai_guidelines: v }));
   const ultimateGoalSaved = useAutoSave(ultimateGoal, (v) => save({ ultimate_goal: v }));
   const targetLengthSaved = useAutoSave(targetLength, (v) => save({ target_length: Number(v) || 0 }));
   const milestonesSaved = useAutoSave(milestonesInfo, (v) => save({ milestones: JSON.stringify(v) }), 1500);
@@ -598,18 +595,6 @@ export default function StoryBible() {
               </div>
             )}
 
-            {/* Guidelines */}
-            <div className="form-group">
-              <label className="form-label">Chỉ dẫn cho AI {guidelinesSaved && <span className="save-indicator">Đã lưu</span>}</label>
-              <textarea
-                className="textarea"
-                value={aiGuidelines}
-                onChange={(e) => setAiGuidelines(e.target.value)}
-                rows={4}
-                placeholder="Nhập chỉ dẫn riêng cho AI khi viết truyện này..."
-              />
-            </div>
-
             <div className="form-group" style={{ marginTop: '16px' }}>
               <label className="form-label">Prompt truyện</label>
               <div
@@ -627,7 +612,7 @@ export default function StoryBible() {
                 <div>
                   <div style={{ fontWeight: 600, marginBottom: '4px' }}>Prompt đã được chuyển sang trang riêng</div>
                   <div className="form-hint" style={{ margin: 0 }}>
-                    Vào trang Prompt truyện để chỉnh prompt viết truyện, canon, ghi nhớ và DNA của riêng dự án này.
+                    Vào trang Prompt truyện để chỉnh chỉ dẫn AI, prompt viết truyện, canon, ghi nhớ và DNA của riêng dự án này.
                   </div>
                 </div>
                 <button
@@ -904,7 +889,6 @@ export default function StoryBible() {
         )}
       </div>
 
-      {/* ═══ SECTION: Cấu hình prompt AI (đã chuyển sang Prompt truyện) ═══ */}
       <div className="bible-section">
         <SectionHeader icon={Sparkles} title="Hộp đề xuất" sectionKey="suggestions" />
         {openSections.suggestions && currentProject && (
