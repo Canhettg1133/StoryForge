@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   Copy,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Plus,
   Save,
@@ -142,7 +144,7 @@ function normalizeThread(thread, projectScopeEnabled, project) {
   };
 }
 
-function MessageBubble({ message, onCopy }) {
+function MessageBubble({ message, onCopy, onEdit, onContinue }) {
   const roleClass =
     message.role === 'user'
       ? 'is-user'
@@ -190,6 +192,27 @@ function MessageBubble({ message, onCopy }) {
           >
             <Copy size={14} />
           </button>
+          {message.role === 'user' ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon btn-sm"
+              onClick={() => onEdit?.(message)}
+              title="Sửa và chat lại"
+            >
+              <Pencil size={14} />
+            </button>
+          ) : null}
+          {message.role === 'assistant' && message.is_partial ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => onContinue?.(message)}
+              title="Viết tiếp"
+            >
+              <Sparkles size={14} />
+              Viết tiếp
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="project-chat-message__content">
@@ -216,11 +239,14 @@ export default function ProjectChat() {
   const [errorMessage, setErrorMessage] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
   const [showSystemPromptDrawer, setShowSystemPromptDrawer] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState(null);
   const [providerSnapshot, setProviderSnapshot] = useState(modelRouter.getPreferredProvider());
   const [qualitySnapshot, setQualitySnapshot] = useState(modelRouter.getQualityMode());
   const [liveRouteInfo, setLiveRouteInfo] = useState(null);
 
   const inputRef = useRef(null);
+  const composerTextareaRef = useRef(null);
   const threadEndRef = useRef(null);
   const isHydratingThreadRef = useRef(false);
   const activeRunRef = useRef(null);
@@ -268,6 +294,14 @@ export default function ProjectChat() {
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    if (!composerTextareaRef.current) return;
+    const textarea = composerTextareaRef.current;
+    textarea.style.height = '0px';
+    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 58), 220);
+    textarea.style.height = `${nextHeight}px`;
+  }, [draft, editingMessageId]);
 
   useEffect(() => {
     if (projectScopeEnabled && (!currentProject || currentProject.id !== scopedProjectId)) return;
@@ -501,17 +535,152 @@ export default function ProjectChat() {
     });
   }
 
-  function buildConversationMessages(nextUserMessage, thread) {
+  function buildConversationMessages(nextUserMessage, thread, sourceMessages = messages) {
     const systemPrompt =
       String(thread.system_prompt || '').trim() ||
       buildDefaultSystemPrompt(thread.chat_mode || activeThreadMode, projectScopeEnabled ? currentProject : null);
 
     const apiMessages = [{ role: 'system', content: systemPrompt }];
-    messages
+    sourceMessages
       .filter((item) => item.role === 'user' || item.role === 'assistant')
       .forEach((item) => apiMessages.push({ role: item.role, content: item.content }));
     apiMessages.push({ role: 'user', content: nextUserMessage });
     return apiMessages;
+  }
+
+  async function sendChatTurn({
+    userContent,
+    thread = activeThread,
+    historyMessages = messages,
+    existingUserMessage = null,
+  }) {
+    if (!thread || !String(userContent || '').trim() || isStreaming) return;
+    if ((thread.chat_mode || activeThreadMode) === CHAT_MODES.STORY && !projectScopeEnabled) return;
+
+    const normalizedUserContent = String(userContent || '').trim();
+    const routeOptions = thread.model_override
+      ? { providerOverride: providerSnapshot, modelOverride: thread.model_override }
+      : { providerOverride: providerSnapshot };
+    const currentRoute = getRoutePreview(providerSnapshot, thread.model_override || '');
+    const tempAssistantId = `temp-assistant-${Date.now()}`;
+    const provisionalTitle =
+      !thread.title || thread.title === CHAT_THREAD_TITLE_FALLBACK
+        ? trimThreadTitle(normalizedUserContent)
+        : thread.title;
+    const userMessage =
+      existingUserMessage ||
+      (await appendMessage(thread.id, {
+        role: 'user',
+        content: normalizedUserContent,
+      }));
+
+    setMessages((prev) => {
+      const baseWithoutTemp = prev.filter(
+        (message) =>
+          !String(message.id).startsWith('temp-assistant-') &&
+          !String(message.id).startsWith('temp-continuation-'),
+      );
+      const base = existingUserMessage
+        ? baseWithoutTemp.map((message) =>
+            String(message.id) === String(existingUserMessage.id) ? userMessage : message,
+          )
+        : [...baseWithoutTemp, userMessage];
+      return [
+        ...base,
+        {
+          id: tempAssistantId,
+          project_id: scopedProjectId,
+          thread_id: thread.id,
+          role: 'assistant',
+          content: '',
+          provider: currentRoute.provider,
+          model: currentRoute.model,
+          is_streaming: true,
+          created_at: Date.now(),
+        },
+      ];
+    });
+
+    setDraft('');
+    setEditingMessageId(null);
+    setErrorMessage('');
+    setIsStreaming(true);
+    setLiveRouteInfo(currentRoute);
+    activeRunRef.current = { threadId: thread.id, tempAssistantId, route: currentRoute };
+
+    await db.ai_chat_threads.update(thread.id, {
+      title: provisionalTitle,
+      updated_at: Date.now(),
+    });
+    updateThreadLocally(thread.id, {
+      title: provisionalTitle,
+      updated_at: Date.now(),
+    });
+
+    void aiService
+      .send({
+        taskType: TASK_TYPES.FREE_PROMPT,
+        messages: buildConversationMessages(normalizedUserContent, thread, historyMessages),
+        stream: true,
+        routeOptions,
+        onToken: (_chunk, full) => {
+          replaceTempMessage(tempAssistantId, {
+            id: tempAssistantId,
+            project_id: scopedProjectId,
+            thread_id: thread.id,
+            role: 'assistant',
+            content: full,
+            provider: currentRoute.provider,
+            model: currentRoute.model,
+            is_streaming: true,
+            created_at: Date.now(),
+          });
+        },
+        onComplete: async (text, meta) => {
+          const assistantMessage = await appendMessage(thread.id, {
+            role: 'assistant',
+            content: text,
+            provider: meta?.provider || currentRoute.provider,
+            model: meta?.model || currentRoute.model,
+            elapsed_ms: meta?.elapsed || null,
+            is_partial: false,
+          });
+
+          replaceTempMessage(tempAssistantId, assistantMessage);
+          setIsStreaming(false);
+          setLiveRouteInfo(null);
+          activeRunRef.current = null;
+
+          await persistThreadUpdate(thread.id, {
+            title: provisionalTitle,
+            updated_at: Date.now(),
+            last_provider: meta?.provider || currentRoute.provider,
+            last_model: meta?.model || currentRoute.model,
+          });
+        },
+        onError: async (error) => {
+          const systemMessage = await appendMessage(thread.id, {
+            role: 'system',
+            content:
+              error?.userMessage ||
+              error?.message ||
+              'AI không trả lời được cho yêu cầu này.',
+          });
+
+          replaceTempMessage(tempAssistantId, systemMessage);
+          setErrorMessage(
+            error?.userMessage || error?.message || 'AI không trả lời được cho yêu cầu này.',
+          );
+          setIsStreaming(false);
+          setLiveRouteInfo(null);
+          activeRunRef.current = null;
+        },
+      })
+      .catch((error) => {
+        if (error?.name !== 'AbortError') {
+          console.error('AI chat send failed:', error);
+        }
+      });
   }
 
   async function handleSendMessage() {
@@ -632,6 +801,44 @@ export default function ProjectChat() {
       });
   }
 
+  async function handleComposerSubmit() {
+    if (!activeThread || !draft.trim() || isStreaming) return;
+    if (activeThreadMode === CHAT_MODES.STORY && !projectScopeEnabled) return;
+
+    if (editingMessageId) {
+      const targetIndex = messages.findIndex(
+        (message) => String(message.id) === String(editingMessageId),
+      );
+      if (targetIndex === -1) {
+        setEditingMessageId(null);
+        await sendChatTurn({ userContent: draft.trim() });
+        return;
+      }
+
+      const targetMessage = messages[targetIndex];
+      const trimmedDraft = draft.trim();
+      const staleMessages = messages.slice(targetIndex + 1);
+
+      if (staleMessages.length > 0) {
+        await db.ai_chat_messages.bulkDelete(staleMessages.map((message) => message.id));
+      }
+      await db.ai_chat_messages.update(targetMessage.id, { content: trimmedDraft });
+
+      const updatedUserMessage = { ...targetMessage, content: trimmedDraft };
+      const historyMessages = messages.slice(0, targetIndex);
+      setMessages([...historyMessages, updatedUserMessage]);
+
+      await sendChatTurn({
+        userContent: trimmedDraft,
+        historyMessages,
+        existingUserMessage: updatedUserMessage,
+      });
+      return;
+    }
+
+    await sendChatTurn({ userContent: draft.trim() });
+  }
+
   async function handleStopStreaming() {
     if (!isStreaming || !activeRunRef.current) return;
 
@@ -675,6 +882,29 @@ export default function ProjectChat() {
       .catch(() => setErrorMessage('Không thể sao chép vào clipboard.'));
   }
 
+  function handleEditMessage(message) {
+    if (isStreaming || message.role !== 'user') return;
+    setEditingMessageId(message.id);
+    setDraft(message.content || '');
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  async function handleContinueFromMessage(message) {
+    if (!activeThread || isStreaming || message.role !== 'assistant') return;
+    const targetIndex = messages.findIndex((item) => String(item.id) === String(message.id));
+    if (targetIndex === -1) return;
+
+    await sendChatTurn({
+      userContent: 'Viết tiếp câu trả lời trước từ đúng đoạn đang dở, không lặp lại phần đã viết.',
+      historyMessages: messages.slice(0, targetIndex + 1),
+    });
+  }
+
+  function handleCancelEditing() {
+    setEditingMessageId(null);
+    setDraft('');
+  }
+
   async function handleChangeMode(mode) {
     if (!activeThread || isStreaming) return;
     if (mode === CHAT_MODES.STORY && !projectScopeEnabled) return;
@@ -702,6 +932,8 @@ export default function ProjectChat() {
     if (isStreaming) return;
     isHydratingThreadRef.current = true;
     setActiveThreadId(threadId);
+    setEditingMessageId(null);
+    setDraft('');
     window.setTimeout(() => {
       isHydratingThreadRef.current = false;
     }, 0);
@@ -721,13 +953,22 @@ export default function ProjectChat() {
 
   return (
     <>
-      <div className="project-chat-page">
-        <aside className="project-chat-sidebar card">
+      <div className={`project-chat-page ${sidebarCollapsed ? 'has-collapsed-sidebar' : ''}`}>
+        <aside className={`project-chat-sidebar card ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
           <div className="project-chat-sidebar__header">
             <div>
               <div className="project-chat-sidebar__kicker">{pageKicker}</div>
               <h1>{pageTitle}</h1>
             </div>
+            <div className="project-chat-sidebar__header-actions">
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon"
+              onClick={() => setSidebarCollapsed((value) => !value)}
+              title={sidebarCollapsed ? 'Mở danh sách chat' : 'Thu gọn danh sách chat'}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            </button>
             <button
               type="button"
               className="btn btn-primary btn-icon"
@@ -741,13 +982,16 @@ export default function ProjectChat() {
             >
               <Plus size={16} />
             </button>
+            </div>
           </div>
 
+          {!sidebarCollapsed ? (
           <div className="project-chat-sidebar__hint">
             {projectScopeEnabled
               ? 'Chat này dùng chung model và API key của dự án. Bạn có thể chuyển giữa AI của truyện và chế độ hỏi đáp tự do ngay trong từng cuộc trò chuyện.'
               : 'Chat tự do dùng đúng model và API key mà hệ thống hiện đang dùng. Không bám theo truyện nào cả.'}
           </div>
+          ) : null}
 
           <div className="project-chat-thread-list">
             {isLoadingThreads ? (
@@ -935,7 +1179,13 @@ export default function ProjectChat() {
               </div>
             ) : (
               messages.map((message) => (
-                <MessageBubble key={message.id} message={message} onCopy={handleCopy} />
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  onCopy={handleCopy}
+                  onEdit={handleEditMessage}
+                  onContinue={handleContinueFromMessage}
+                />
               ))
             )}
             <div ref={threadEndRef} />
@@ -943,6 +1193,14 @@ export default function ProjectChat() {
 
           <div className="project-chat-composer">
             <div className="project-chat-composer__actions">
+              {editingMessageId ? (
+                <div className="project-chat-composer__edit-state">
+                  Đang sửa một tin nhắn cũ. Gửi lại sẽ xóa các phản hồi phía sau và chat lại từ điểm đó.
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={handleCancelEditing}>
+                    Hủy sửa
+                  </button>
+                </div>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-ghost"
@@ -956,7 +1214,10 @@ export default function ProjectChat() {
 
             <div className="project-chat-composer__input">
               <textarea
-                ref={inputRef}
+                ref={(node) => {
+                  inputRef.current = node;
+                  composerTextareaRef.current = node;
+                }}
                 className="textarea"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
@@ -968,7 +1229,7 @@ export default function ProjectChat() {
                 onKeyDown={(event) => {
                   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
                     event.preventDefault();
-                    handleSendMessage();
+                    handleComposerSubmit();
                   }
                 }}
               />
@@ -983,7 +1244,7 @@ export default function ProjectChat() {
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={handleSendMessage}
+                    onClick={handleComposerSubmit}
                     disabled={!draft.trim()}
                   >
                     <Send size={16} />
