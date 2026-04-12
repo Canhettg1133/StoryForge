@@ -1,5 +1,6 @@
 import React from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { PRODUCT_SURFACE } from '../../config/productSurface';
 import Sidebar from './Sidebar';
 import JobNotificationToast from '../jobs/JobNotificationToast';
 import JobQueuePanel from '../jobs/JobQueuePanel';
@@ -17,8 +18,8 @@ export default function AppLayout() {
         <Outlet />
       </main>
       <StorageWarning />
-      <JobQueuePanel />
-      <JobNotificationToast />
+      {PRODUCT_SURFACE.showJobUi ? <JobQueuePanel /> : null}
+      {PRODUCT_SURFACE.showJobUi ? <JobNotificationToast /> : null}
     </div>
   );
 }

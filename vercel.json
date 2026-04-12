@@ -5,7 +5,7 @@
             "destination": "https://ag.beijixingxing.com/:match*"
         },
         {
-            "source": "/(.*)",
+            "source": "/((?!api/).*)",
             "destination": "/index.html"
         }
     ]

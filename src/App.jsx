@@ -1,6 +1,7 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from './components/common/AppLayout';
+import { PRODUCT_SURFACE } from './config/productSurface';
 import Dashboard from './pages/Dashboard/Dashboard';
 import StoryBible from './pages/StoryBible/StoryBible';
 import CanonTruth from './pages/CanonTruth/CanonTruth';
@@ -19,6 +20,9 @@ import StoryCreationSettings from './pages/StoryCreationSettings/StoryCreationSe
 import ProjectLayout from './components/common/ProjectLayout';
 
 export default function App() {
+  const labFallback = <Navigate to="../editor" replace />;
+  const roadmapFallback = <Navigate to="../story-bible" replace />;
+
   return (
     <BrowserRouter>
       <Routes>
@@ -35,12 +39,12 @@ export default function App() {
             <Route path="characters" element={<CharacterHub />} />
             <Route path="world" element={<WorldLore />} />
             <Route path="editor" element={<SceneEditor />} />
-            <Route path="timeline" element={<TimelineThread />} />
-            <Route path="revision" element={<RevisionQA />} />
-            <Route path="style-lab" element={<StyleLab />} />
-            <Route path="lab" element={<NarrativeLab />} />
-            <Route path="corpus-lab" element={<CorpusLab />} />
-            <Route path="corpus-lab/viewer" element={<AnalysisViewer />} />
+            <Route path="timeline" element={PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback} />
+            <Route path="revision" element={PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback} />
+            <Route path="style-lab" element={PRODUCT_SURFACE.showRoadmapPages ? <StyleLab /> : roadmapFallback} />
+            <Route path="lab" element={PRODUCT_SURFACE.showLabs ? <NarrativeLab /> : labFallback} />
+            <Route path="corpus-lab" element={PRODUCT_SURFACE.showLabs ? <CorpusLab /> : labFallback} />
+            <Route path="corpus-lab/viewer" element={PRODUCT_SURFACE.showLabs ? <AnalysisViewer /> : labFallback} />
           </Route>
         </Route>
       </Routes>

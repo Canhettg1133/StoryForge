@@ -12,6 +12,7 @@ import {
   Zap, Gauge, Crown, RefreshCw, TestTube, Download, Upload, Copy, Check,
   Plus, X,
 } from 'lucide-react';
+import CloudSyncSection from './CloudSyncSection';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
@@ -422,6 +423,7 @@ export default function Settings() {
             )}
           </div>
         </section>
+        <CloudSyncSection />
 
       </div>
     </div>

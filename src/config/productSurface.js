@@ -1,6 +1,8 @@
 export const PRODUCT_SURFACE = {
-  showLabs: false,
-  showRoadmapPages: false,
+  showLabs: import.meta.env.VITE_SHOW_LABS === 'true',
+  showRoadmapPages: import.meta.env.VITE_SHOW_ROADMAP_PAGES === 'true',
+  showJobUi: import.meta.env.VITE_SHOW_JOB_UI === 'true',
+  enableCloudSync: import.meta.env.VITE_ENABLE_CLOUD_SYNC !== 'false',
 };
 
 export function shouldShowNavItem(item) {
