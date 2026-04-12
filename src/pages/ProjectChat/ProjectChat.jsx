@@ -1107,7 +1107,7 @@ export default function ProjectChat() {
                   onClick={() => setShowTopbarControls((prev) => !prev)}
                 >
                   {showTopbarControls ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  {showTopbarControls ? 'Thu gon' : 'Mo tuy chon'}
+                  {showTopbarControls ? 'Thu gọn' : 'Mở tùy chọn'}
                 </button>
               </div>
             </div>
