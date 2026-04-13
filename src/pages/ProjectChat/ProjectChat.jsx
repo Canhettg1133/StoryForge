@@ -707,8 +707,7 @@ export default function ProjectChat() {
       updated_at: Date.now(),
     });
 
-    void aiService
-      .send({
+    aiService.send({
         taskType: TASK_TYPES.FREE_PROMPT,
         messages: buildConversationMessages(normalizedUserContent, thread, historyMessages),
         stream: true,
@@ -778,11 +777,6 @@ export default function ProjectChat() {
           setLiveRouteInfo(null);
           activeRunRef.current = null;
         },
-      })
-      .catch((error) => {
-        if (error?.name !== 'AbortError') {
-          console.error('AI chat send failed:', error);
-        }
       });
   }
 
@@ -836,8 +830,7 @@ export default function ProjectChat() {
       updated_at: Date.now(),
     });
 
-    void aiService
-      .send({
+    aiService.send({
         taskType: TASK_TYPES.FREE_PROMPT,
         messages: buildConversationMessages(userContent, currentThread),
         stream: true,
@@ -907,11 +900,6 @@ export default function ProjectChat() {
           setLiveRouteInfo(null);
           activeRunRef.current = null;
         },
-      })
-      .catch((error) => {
-        if (error?.name !== 'AbortError') {
-          console.error('AI chat send failed:', error);
-        }
       });
   }
 

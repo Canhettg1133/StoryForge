@@ -40,22 +40,34 @@ function getDefaultProxyUrl() {
         return 'https://ag.beijixingxing.com';
     }
 
-    const hostname = String(window.location?.hostname || '').toLowerCase();
     const protocol = String(window.location?.protocol || '').toLowerCase();
-    const isLocalhost =
-        hostname === 'localhost'
-        || hostname === '127.0.0.1'
-        || hostname === '::1';
+    const isHttpOrigin = protocol === 'http:' || protocol === 'https:';
 
-    if (isLocalhost && (protocol === 'http:' || protocol === 'https:')) {
+    if (isHttpOrigin) {
         return '/api/proxy';
     }
 
     return 'https://ag.beijixingxing.com';
 }
 
+function normalizeConfiguredProxyUrl(rawValue) {
+    const trimmed = String(rawValue || '').trim();
+    if (!trimmed) return '';
+    if (typeof window === 'undefined') return trimmed;
+
+    const protocol = String(window.location?.protocol || '').toLowerCase();
+    const isHttpOrigin = protocol === 'http:' || protocol === 'https:';
+    if (!isHttpOrigin) return trimmed;
+
+    if (trimmed === 'https://ag.beijixingxing.com' || trimmed === 'https://ag.beijixingxing.com/') {
+        return '/api/proxy';
+    }
+
+    return trimmed;
+}
+
 export function getProxyUrl() {
-    return getSettings().proxyUrl || getDefaultProxyUrl();
+    return normalizeConfiguredProxyUrl(getSettings().proxyUrl) || getDefaultProxyUrl();
 }
 
 export function getOllamaUrl() {
