@@ -74,8 +74,27 @@ export function saveSettings(settings) {
   return merged;
 }
 
+function getDefaultProxyUrl() {
+  if (typeof window === 'undefined') {
+    return 'https://ag.beijixingxing.com';
+  }
+
+  const hostname = String(window.location?.hostname || '').toLowerCase();
+  const protocol = String(window.location?.protocol || '').toLowerCase();
+  const isLocalhost =
+    hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === '::1';
+
+  if (isLocalhost && (protocol === 'http:' || protocol === 'https:')) {
+    return '/api/proxy';
+  }
+
+  return 'https://ag.beijixingxing.com';
+}
+
 export function getProxyUrl() {
-  return getSettings().proxyUrl || '/api/proxy';
+  return getSettings().proxyUrl || getDefaultProxyUrl();
 }
 
 export function getGeminiDirectBaseUrl() {
@@ -482,7 +501,7 @@ class AIService {
     return refusalPhrases.some(phrase => startOfProse.includes(phrase));
   }
 
-  send({ taskType, messages, stream = true, onToken, onComplete, onError, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false }) {
+  send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false }) {
     this.abort();
     const controller = new AbortController();
     this.activeController = controller;
@@ -603,6 +622,7 @@ class AIService {
           const fallbackRoute = { ...route, model: fallbackModel, tier: fallbackModel.includes('pro') ? 'pro' : 'flash' };
           try {
             console.warn('[AI] EMPTY_STREAM on proxy best model. Retrying with fallback model:', fallbackModel);
+            onRouteChange?.(fallbackRoute);
             await getCallFn(PROVIDERS.GEMINI_PROXY)({
               model: fallbackModel,
               messages,
@@ -624,6 +644,7 @@ class AIService {
         const fallbacks = this._router.getFallbacks(route);
         for (const fb of fallbacks) {
           try {
+            onRouteChange?.(fb);
             await getCallFn(fb.provider)({
               model: fb.model, messages, stream, signal: controller.signal,
               onToken, onComplete: (text) => wrappedOnComplete(text, fb),

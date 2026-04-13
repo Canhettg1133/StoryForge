@@ -11,6 +11,7 @@ import {
   PanelLeftOpen,
   Pencil,
   Plus,
+  RotateCcw,
   Save,
   Send,
   Settings2,
@@ -111,6 +112,28 @@ function getRoutePreview(provider, selectedModel) {
   );
 }
 
+function getThreadRouting(thread, providerSnapshot) {
+  if (thread?.model_override) {
+    return {
+      routeOptions: { providerOverride: providerSnapshot, modelOverride: thread.model_override },
+      route: getRoutePreview(providerSnapshot, thread.model_override),
+    };
+  }
+
+  if (thread?.sticky_model_override) {
+    const stickyProvider = thread.sticky_provider_override || providerSnapshot;
+    return {
+      routeOptions: { providerOverride: stickyProvider, modelOverride: thread.sticky_model_override },
+      route: getRoutePreview(stickyProvider, thread.sticky_model_override),
+    };
+  }
+
+  return {
+    routeOptions: { providerOverride: providerSnapshot },
+    route: getRoutePreview(providerSnapshot, ''),
+  };
+}
+
 function getAvailableModelOptions(provider) {
   if (provider === PROVIDERS.GEMINI_DIRECT) {
     const activeIds = new Set(modelRouter.getActiveDirectModels().map((item) => item.id));
@@ -143,10 +166,14 @@ function normalizeThread(thread, projectScopeEnabled, project) {
     system_prompt:
       String(thread?.system_prompt || '').trim() || buildDefaultSystemPrompt(chatMode, project),
     model_override: thread?.model_override || '',
+    sticky_provider_override: thread?.sticky_provider_override || '',
+    sticky_model_override: thread?.sticky_model_override || '',
+    last_provider: thread?.last_provider || '',
+    last_model: thread?.last_model || '',
   };
 }
 
-function MessageBubble({ message, onCopy, onEdit, onContinue }) {
+function MessageBubble({ message, onCopy, onEdit, onContinue, onRetry }) {
   const roleClass =
     message.role === 'user'
       ? 'is-user'
@@ -215,6 +242,17 @@ function MessageBubble({ message, onCopy, onEdit, onContinue }) {
               Viết tiếp
             </button>
           ) : null}
+          {message.role === 'system' ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => onRetry?.(message)}
+              title="Gửi lại yêu cầu gần nhất"
+            >
+              <RotateCcw size={14} />
+              Gửi lại
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="project-chat-message__content">
@@ -269,9 +307,21 @@ export default function ProjectChat() {
   }
 
   const routePreview = useMemo(
-    () => getRoutePreview(providerSnapshot, activeThread?.model_override || ''),
-    [providerSnapshot, activeThread?.model_override],
+    () => getThreadRouting(activeThread, providerSnapshot).route,
+    [
+      providerSnapshot,
+      activeThread?.model_override,
+      activeThread?.sticky_provider_override,
+      activeThread?.sticky_model_override,
+    ],
   );
+  const effectiveModelLabel =
+    liveRouteInfo?.model
+    || activeThread?.sticky_model_override
+    || activeThread?.model_override
+    || routePreview.model;
+  const hasManualModelOverride = Boolean(activeThread?.model_override);
+  const hasStickyFallback = Boolean(!hasManualModelOverride && activeThread?.sticky_model_override);
 
   const providerOptions = useMemo(
     () => getAvailableModelOptions(providerSnapshot),
@@ -447,6 +497,8 @@ export default function ProjectChat() {
       chat_mode: mode,
       system_prompt: buildDefaultSystemPrompt(mode, projectScopeEnabled ? currentProject : null),
       model_override: '',
+      sticky_provider_override: '',
+      sticky_model_override: '',
       last_provider: '',
       last_model: '',
       created_at: now,
@@ -550,13 +602,28 @@ export default function ProjectChat() {
     const confirmed = window.confirm('Xóa toàn bộ tin nhắn trong cuộc trò chuyện hiện tại?');
     if (!confirmed) return;
 
+    const resetMode = activeThread.chat_mode || activeThreadMode;
+
     await db.ai_chat_messages.where('thread_id').equals(Number(activeThread.id)).delete();
     setMessages([]);
+    setDraft('');
+    setEditingMessageId(null);
+    setErrorMessage('');
+    resetComposerHeight();
     await persistThreadUpdate(activeThread.id, {
+      title: CHAT_THREAD_TITLE_FALLBACK,
+      system_prompt: buildDefaultSystemPrompt(
+        resetMode,
+        projectScopeEnabled ? currentProject : null,
+      ),
+      model_override: '',
+      sticky_provider_override: '',
+      sticky_model_override: '',
       updated_at: Date.now(),
       last_provider: '',
       last_model: '',
     });
+    setSaveStatus('ÄĂ£ lĂ m má»›i cuá»™c trĂ² chuyá»‡n');
   }
 
   function buildConversationMessages(nextUserMessage, thread, sourceMessages = messages) {
@@ -582,10 +649,7 @@ export default function ProjectChat() {
     if ((thread.chat_mode || activeThreadMode) === CHAT_MODES.STORY && !projectScopeEnabled) return;
 
     const normalizedUserContent = String(userContent || '').trim();
-    const routeOptions = thread.model_override
-      ? { providerOverride: providerSnapshot, modelOverride: thread.model_override }
-      : { providerOverride: providerSnapshot };
-    const currentRoute = getRoutePreview(providerSnapshot, thread.model_override || '');
+    const { routeOptions, route: currentRoute } = getThreadRouting(thread, providerSnapshot);
     const tempAssistantId = `temp-assistant-${Date.now()}`;
     const provisionalTitle =
       !thread.title || thread.title === CHAT_THREAD_TITLE_FALLBACK
@@ -662,11 +726,16 @@ export default function ProjectChat() {
           });
         },
         onComplete: async (text, meta) => {
+          const actualProvider = meta?.provider || currentRoute.provider;
+          const actualModel = meta?.model || currentRoute.model;
+          const didFallback =
+            !thread.model_override &&
+            (actualProvider !== currentRoute.provider || actualModel !== currentRoute.model);
           const assistantMessage = await appendMessage(thread.id, {
             role: 'assistant',
             content: text,
-            provider: meta?.provider || currentRoute.provider,
-            model: meta?.model || currentRoute.model,
+            provider: actualProvider,
+            model: actualModel,
             elapsed_ms: meta?.elapsed || null,
             is_partial: false,
           });
@@ -679,9 +748,17 @@ export default function ProjectChat() {
           await persistThreadUpdate(thread.id, {
             title: provisionalTitle,
             updated_at: Date.now(),
-            last_provider: meta?.provider || currentRoute.provider,
-            last_model: meta?.model || currentRoute.model,
+            last_provider: actualProvider,
+            last_model: actualModel,
+            sticky_provider_override: didFallback ? actualProvider : thread.sticky_provider_override || '',
+            sticky_model_override: didFallback ? actualModel : thread.sticky_model_override || '',
           });
+        },
+        onRouteChange: (nextRoute) => {
+          setLiveRouteInfo(nextRoute);
+          if (activeRunRef.current) {
+            activeRunRef.current = { ...activeRunRef.current, route: nextRoute };
+          }
         },
         onError: async (error) => {
           const systemMessage = await appendMessage(thread.id, {
@@ -714,10 +791,7 @@ export default function ProjectChat() {
 
     const userContent = draft.trim();
     const currentThread = activeThread;
-    const routeOptions = currentThread.model_override
-      ? { providerOverride: providerSnapshot, modelOverride: currentThread.model_override }
-      : { providerOverride: providerSnapshot };
-    const currentRoute = getRoutePreview(providerSnapshot, currentThread.model_override || '');
+    const { routeOptions, route: currentRoute } = getThreadRouting(currentThread, providerSnapshot);
     const tempAssistantId = `temp-assistant-${Date.now()}`;
     const provisionalTitle =
       !currentThread.title || currentThread.title === CHAT_THREAD_TITLE_FALLBACK
@@ -781,11 +855,16 @@ export default function ProjectChat() {
           });
         },
         onComplete: async (text, meta) => {
+          const actualProvider = meta?.provider || currentRoute.provider;
+          const actualModel = meta?.model || currentRoute.model;
+          const didFallback =
+            !currentThread.model_override &&
+            (actualProvider !== currentRoute.provider || actualModel !== currentRoute.model);
           const assistantMessage = await appendMessage(currentThread.id, {
             role: 'assistant',
             content: text,
-            provider: meta?.provider || currentRoute.provider,
-            model: meta?.model || currentRoute.model,
+            provider: actualProvider,
+            model: actualModel,
             elapsed_ms: meta?.elapsed || null,
             is_partial: false,
           });
@@ -798,9 +877,17 @@ export default function ProjectChat() {
           await persistThreadUpdate(currentThread.id, {
             title: provisionalTitle,
             updated_at: Date.now(),
-            last_provider: meta?.provider || currentRoute.provider,
-            last_model: meta?.model || currentRoute.model,
+            last_provider: actualProvider,
+            last_model: actualModel,
+            sticky_provider_override: didFallback ? actualProvider : currentThread.sticky_provider_override || '',
+            sticky_model_override: didFallback ? actualModel : currentThread.sticky_model_override || '',
           });
+        },
+        onRouteChange: (nextRoute) => {
+          setLiveRouteInfo(nextRoute);
+          if (activeRunRef.current) {
+            activeRunRef.current = { ...activeRunRef.current, route: nextRoute };
+          }
         },
         onError: async (error) => {
           const systemMessage = await appendMessage(currentThread.id, {
@@ -923,6 +1010,43 @@ export default function ProjectChat() {
     await sendChatTurn({
       userContent: 'Viết tiếp câu trả lời trước từ đúng đoạn đang dở, không lặp lại phần đã viết.',
       historyMessages: messages.slice(0, targetIndex + 1),
+    });
+  }
+
+  async function handleRetryFromSystemMessage(message) {
+    if (!activeThread || isStreaming || message.role !== 'system') return;
+
+    const systemIndex = messages.findIndex((item) => String(item.id) === String(message.id));
+    if (systemIndex === -1) return;
+
+    let userIndex = -1;
+    for (let index = systemIndex - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === 'user') {
+        userIndex = index;
+        break;
+      }
+    }
+
+    if (userIndex === -1) {
+      setErrorMessage('Không tìm thấy yêu cầu người dùng để gửi lại.');
+      return;
+    }
+
+    const targetUserMessage = messages[userIndex];
+    const staleMessages = messages.slice(userIndex + 1);
+    if (staleMessages.length > 0) {
+      await db.ai_chat_messages.bulkDelete(staleMessages.map((item) => item.id));
+    }
+
+    const historyMessages = messages.slice(0, userIndex);
+    setMessages([...historyMessages, targetUserMessage]);
+    setErrorMessage('');
+
+    await sendChatTurn({
+      userContent: targetUserMessage.content,
+      thread: activeThread,
+      historyMessages,
+      existingUserMessage: targetUserMessage,
     });
   }
 
@@ -1187,6 +1311,8 @@ export default function ProjectChat() {
                   onChange={(event) =>
                     persistThreadUpdate(activeThread.id, {
                       model_override: event.target.value,
+                      sticky_provider_override: '',
+                      sticky_model_override: '',
                       updated_at: Date.now(),
                     })
                   }
@@ -1211,12 +1337,18 @@ export default function ProjectChat() {
             </div>
             <div className="project-chat-statusbar__item">
               <Sparkles size={14} />
-              Model hiệu lực: {routePreview.model}
+              {hasManualModelOverride ? 'Model khóa cho thread' : hasStickyFallback ? 'Model fallback đang bám' : 'Model mục tiêu'}: {effectiveModelLabel}
             </div>
             <div className="project-chat-statusbar__item">
               <MessageSquare size={14} />
               API key và provider dùng chung với phần AI của dự án
             </div>
+            {hasStickyFallback ? (
+              <div className="project-chat-statusbar__item">
+                <RotateCcw size={14} />
+                Thread này đang bám model fallback cho các lượt sau.
+              </div>
+            ) : null}
             {liveRouteInfo ? (
               <div className="project-chat-statusbar__item project-chat-statusbar__item--live">
                 <Zap size={14} />
@@ -1254,6 +1386,7 @@ export default function ProjectChat() {
                   onCopy={handleCopy}
                   onEdit={handleEditMessage}
                   onContinue={handleContinueFromMessage}
+                  onRetry={handleRetryFromSystemMessage}
                 />
               ))
             )}

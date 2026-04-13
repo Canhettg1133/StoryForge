@@ -35,8 +35,27 @@ function getSettings() {
     } catch { return {}; }
 }
 
+function getDefaultProxyUrl() {
+    if (typeof window === 'undefined') {
+        return 'https://ag.beijixingxing.com';
+    }
+
+    const hostname = String(window.location?.hostname || '').toLowerCase();
+    const protocol = String(window.location?.protocol || '').toLowerCase();
+    const isLocalhost =
+        hostname === 'localhost'
+        || hostname === '127.0.0.1'
+        || hostname === '::1';
+
+    if (isLocalhost && (protocol === 'http:' || protocol === 'https:')) {
+        return '/api/proxy';
+    }
+
+    return 'https://ag.beijixingxing.com';
+}
+
 export function getProxyUrl() {
-    return getSettings().proxyUrl || '/api/proxy';
+    return getSettings().proxyUrl || getDefaultProxyUrl();
 }
 
 export function getOllamaUrl() {

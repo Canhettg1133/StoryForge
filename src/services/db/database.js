@@ -631,6 +631,64 @@ db.version(16).stores({
   });
 });
 
+db.version(17).stores({
+  projects: '++id, title, genre_primary, status, created_at, updated_at',
+  chapters: '++id, project_id, arc_id, order_index, title, status',
+  scenes: '++id, project_id, chapter_id, order_index, title, pov_character_id, status',
+  characters: '++id, project_id, name, role',
+  characterStates: '++id, project_id, character_id, scene_id',
+  relationships: '++id, project_id, character_a_id, character_b_id, relation_type',
+  locations: '++id, project_id, name',
+  objects: '++id, project_id, name, owner_character_id',
+  canonFacts: '++id, project_id, fact_type, subject_type, subject_id, status',
+  plotThreads: '++id, project_id, title, type, state',
+  threadBeats: '++id, plot_thread_id, scene_id, beat_type',
+  timelineEvents: '++id, project_id, scene_id, date_marker',
+  stylePacks: '++id, project_id, name, type, source_kind',
+  voicePacks: '++id, project_id, character_id',
+  styleJobs: '++id, project_id, style_pack_id, parsing_status',
+  genrePacks: '++id, name',
+  aiJobs: '++id, project_id, scene_id, chapter_id, job_type, status',
+  revisions: '++id, scene_id, objective, created_at',
+  qaReports: '++id, project_id, chapter_id, scene_id, report_type, severity',
+  worldTerms: '++id, project_id, name, category',
+  taboos: '++id, project_id, character_id, effective_before_chapter',
+  chapterMeta: '++id, chapter_id, project_id',
+  suggestions: '++id, project_id, type, status, source_chapter_id, target_id, created_at',
+  entityTimeline: '++id, project_id, entity_id, entity_type, chapter_id, type, timestamp',
+  factions: '++id, project_id, name, faction_type',
+  macro_arcs: '++id, project_id, order_index',
+  arcs: '++id, project_id, macro_arc_id, order_index',
+  event_annotations: '++id, corpus_id, event_id, [corpus_id+event_id]',
+  saved_searches: '++id, corpus_id, name, created_at',
+  export_history: '++id, corpus_id, format, created_at',
+  event_usage: '++id, corpus_id, event_id, [corpus_id+event_id]',
+  linked_events: '++id, event_id, corpus_id, project_id, [event_id+project_id]',
+  project_analysis_snapshots: '++id, project_id, corpus_id, analysis_id, [project_id+analysis_id], updated_at, created_at',
+  story_events: '++id, project_id, chapter_id, revision_id, scene_id, op_type, subject_id, target_id, thread_id, status, created_at, [project_id+chapter_id], [project_id+revision_id]',
+  entity_state_current: '++id, project_id, entity_id, entity_type, updated_at, [project_id+entity_id]',
+  plot_thread_state: '++id, project_id, thread_id, updated_at, [project_id+thread_id]',
+  validator_reports: '++id, project_id, chapter_id, revision_id, scene_id, severity, status, created_at, [project_id+chapter_id], [project_id+revision_id]',
+  memory_evidence: '++id, project_id, chapter_id, revision_id, scene_id, target_type, target_id, created_at, [project_id+revision_id]',
+  chapter_revisions: '++id, project_id, chapter_id, revision_number, status, created_at, [project_id+chapter_id], [chapter_id+revision_number]',
+  chapter_commits: '++id, project_id, chapter_id, status, updated_at, [project_id+chapter_id]',
+  chapter_snapshots: '++id, project_id, chapter_id, revision_id, created_at, [project_id+chapter_id], [project_id+revision_id]',
+  item_state_current: '++id, project_id, object_id, updated_at, [project_id+object_id]',
+  relationship_state_current: '++id, project_id, pair_key, updated_at, [project_id+pair_key]',
+
+  ai_chat_threads: '++id, project_id, updated_at, created_at',
+  ai_chat_messages: '++id, project_id, thread_id, created_at, [thread_id+created_at]',
+}).upgrade((tx) => {
+  return tx.table('ai_chat_threads').toCollection().modify((thread) => {
+    if (thread.system_prompt === undefined) thread.system_prompt = '';
+    if (thread.model_override === undefined) thread.model_override = '';
+    if (thread.last_provider === undefined) thread.last_provider = '';
+    if (thread.last_model === undefined) thread.last_model = '';
+    if (thread.sticky_provider_override === undefined) thread.sticky_provider_override = '';
+    if (thread.sticky_model_override === undefined) thread.sticky_model_override = '';
+  });
+});
+
 // ─── Plot Suggestions helpers ────────────────────────────────────────────────
 
 db.getPlotSuggestions = (chapterId) =>

@@ -90,7 +90,8 @@ export default function Sidebar() {
     return () => mediaQuery.removeListener(handleChange);
   }, []);
 
-  const activeProjectId = currentProject?.id || projectId;
+  const routeProjectId = projectId || null;
+  const activeProjectId = routeProjectId;
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.divider) return true;
     if (item.id === 'global-chat') return !activeProjectId;
@@ -130,7 +131,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      {currentProject && !isCollapsed && (
+      {routeProjectId && currentProject && !isCollapsed && (
         <div className="sidebar-project-container">
           <div
             className="sidebar-project"
