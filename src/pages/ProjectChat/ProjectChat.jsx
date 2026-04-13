@@ -623,6 +623,7 @@ export default function ProjectChat() {
       last_provider: '',
       last_model: '',
     });
+    setLiveRouteInfo(null);
     setSaveStatus('ÄĂ£ lĂ m má»›i cuá»™c trĂ² chuyá»‡n');
   }
 
@@ -1050,6 +1051,17 @@ export default function ProjectChat() {
     });
   }
 
+  async function handleResetStickyFallback() {
+    if (!activeThread || isStreaming || !hasStickyFallback) return;
+
+    await persistThreadUpdate(activeThread.id, {
+      sticky_provider_override: '',
+      sticky_model_override: '',
+      updated_at: Date.now(),
+    });
+    setSaveStatus('ÄĂ£ tráº£ thread vá» model máº·c Ä‘á»‹nh');
+  }
+
   function handleCancelEditing() {
     setEditingMessageId(null);
     setDraft('');
@@ -1347,6 +1359,14 @@ export default function ProjectChat() {
               <div className="project-chat-statusbar__item">
                 <RotateCcw size={14} />
                 Thread này đang bám model fallback cho các lượt sau.
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleResetStickyFallback}
+                  disabled={isStreaming}
+                >
+                  Quay về model gốc
+                </button>
               </div>
             ) : null}
             {liveRouteInfo ? (
