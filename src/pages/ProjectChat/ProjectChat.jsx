@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Bot,
@@ -40,6 +40,8 @@ const CHAT_MODES = {
   STORY: 'story',
   FREE: 'free',
 };
+const COMPOSER_MIN_HEIGHT = 58;
+const COMPOSER_MAX_HEIGHT = 220;
 
 const sortThreadsDesc = (threads) =>
   [...threads].sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0));
@@ -120,14 +122,6 @@ function getThreadRouting(thread, providerSnapshot) {
     };
   }
 
-  if (thread?.sticky_model_override) {
-    const stickyProvider = thread.sticky_provider_override || providerSnapshot;
-    return {
-      routeOptions: { providerOverride: stickyProvider, modelOverride: thread.sticky_model_override },
-      route: getRoutePreview(stickyProvider, thread.sticky_model_override),
-    };
-  }
-
   return {
     routeOptions: { providerOverride: providerSnapshot },
     route: getRoutePreview(providerSnapshot, ''),
@@ -166,8 +160,6 @@ function normalizeThread(thread, projectScopeEnabled, project) {
     system_prompt:
       String(thread?.system_prompt || '').trim() || buildDefaultSystemPrompt(chatMode, project),
     model_override: thread?.model_override || '',
-    sticky_provider_override: thread?.sticky_provider_override || '',
-    sticky_model_override: thread?.sticky_model_override || '',
     last_provider: thread?.last_provider || '',
     last_model: thread?.last_model || '',
   };
@@ -301,27 +293,32 @@ export default function ProjectChat() {
   const activeThreadMode =
     activeThread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
 
-  function resetComposerHeight(minHeight = 58) {
+  function resizeComposer(textarea) {
+    if (!textarea) return;
+    textarea.style.height = `${COMPOSER_MIN_HEIGHT}px`;
+    const nextHeight = Math.min(
+      Math.max(textarea.scrollHeight, COMPOSER_MIN_HEIGHT),
+      COMPOSER_MAX_HEIGHT,
+    );
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = nextHeight >= COMPOSER_MAX_HEIGHT ? 'auto' : 'hidden';
+  }
+
+  function resetComposerHeight(minHeight = COMPOSER_MIN_HEIGHT) {
     if (!composerTextareaRef.current) return;
     composerTextareaRef.current.style.height = `${minHeight}px`;
+    composerTextareaRef.current.style.overflowY = 'hidden';
   }
 
   const routePreview = useMemo(
     () => getThreadRouting(activeThread, providerSnapshot).route,
-    [
-      providerSnapshot,
-      activeThread?.model_override,
-      activeThread?.sticky_provider_override,
-      activeThread?.sticky_model_override,
-    ],
+    [providerSnapshot, activeThread?.model_override],
   );
   const effectiveModelLabel =
     liveRouteInfo?.model
-    || activeThread?.sticky_model_override
     || activeThread?.model_override
     || routePreview.model;
   const hasManualModelOverride = Boolean(activeThread?.model_override);
-  const hasStickyFallback = Boolean(!hasManualModelOverride && activeThread?.sticky_model_override);
 
   const providerOptions = useMemo(
     () => getAvailableModelOptions(providerSnapshot),
@@ -361,20 +358,9 @@ export default function ProjectChat() {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  useEffect(() => {
-    if (!composerTextareaRef.current) return;
-    const textarea = composerTextareaRef.current;
-    textarea.style.height = '0px';
-    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 58), 220);
-    textarea.style.height = `${nextHeight}px`;
+  useLayoutEffect(() => {
+    resizeComposer(composerTextareaRef.current);
   }, [draft, editingMessageId]);
-
-  useEffect(() => {
-    if (!composerTextareaRef.current) return;
-    if (composerTextareaRef.current.value !== draft) {
-      composerTextareaRef.current.value = draft;
-    }
-  }, [draft]);
 
   useEffect(() => {
     if (projectScopeEnabled && (!currentProject || currentProject.id !== scopedProjectId)) return;
@@ -385,7 +371,31 @@ export default function ProjectChat() {
       const rawThreads = await db.ai_chat_threads.where('project_id').equals(scopedProjectId).toArray();
       if (cancelled) return;
 
-      const normalizedThreads = rawThreads.map((thread) =>
+      const threadsWithLegacySticky = rawThreads.filter(
+        (thread) =>
+          String(thread?.sticky_provider_override || '').trim() ||
+          String(thread?.sticky_model_override || '').trim(),
+      );
+
+      if (threadsWithLegacySticky.length > 0) {
+        await Promise.all(
+          threadsWithLegacySticky.map((thread) =>
+            db.ai_chat_threads.update(thread.id, {
+              sticky_provider_override: '',
+              sticky_model_override: '',
+            }),
+          ),
+        );
+      }
+      if (cancelled) return;
+
+      const sanitizedThreads = rawThreads.map((thread) => ({
+        ...thread,
+        sticky_provider_override: '',
+        sticky_model_override: '',
+      }));
+
+      const normalizedThreads = sanitizedThreads.map((thread) =>
         normalizeThread(thread, projectScopeEnabled, currentProject),
       );
 
@@ -711,6 +721,7 @@ export default function ProjectChat() {
         taskType: TASK_TYPES.FREE_PROMPT,
         messages: buildConversationMessages(normalizedUserContent, thread, historyMessages),
         stream: true,
+        chatSafetyOff: true,
         routeOptions,
         onToken: (_chunk, full) => {
           replaceTempMessage(tempAssistantId, {
@@ -728,9 +739,6 @@ export default function ProjectChat() {
         onComplete: async (text, meta) => {
           const actualProvider = meta?.provider || currentRoute.provider;
           const actualModel = meta?.model || currentRoute.model;
-          const didFallback =
-            !thread.model_override &&
-            (actualProvider !== currentRoute.provider || actualModel !== currentRoute.model);
           const assistantMessage = await appendMessage(thread.id, {
             role: 'assistant',
             content: text,
@@ -750,8 +758,8 @@ export default function ProjectChat() {
             updated_at: Date.now(),
             last_provider: actualProvider,
             last_model: actualModel,
-            sticky_provider_override: didFallback ? actualProvider : thread.sticky_provider_override || '',
-            sticky_model_override: didFallback ? actualModel : thread.sticky_model_override || '',
+            sticky_provider_override: '',
+            sticky_model_override: '',
           });
         },
         onRouteChange: (nextRoute) => {
@@ -834,6 +842,7 @@ export default function ProjectChat() {
         taskType: TASK_TYPES.FREE_PROMPT,
         messages: buildConversationMessages(userContent, currentThread),
         stream: true,
+        chatSafetyOff: true,
         routeOptions,
         onToken: (_chunk, full) => {
           replaceTempMessage(tempAssistantId, {
@@ -851,9 +860,6 @@ export default function ProjectChat() {
         onComplete: async (text, meta) => {
           const actualProvider = meta?.provider || currentRoute.provider;
           const actualModel = meta?.model || currentRoute.model;
-          const didFallback =
-            !currentThread.model_override &&
-            (actualProvider !== currentRoute.provider || actualModel !== currentRoute.model);
           const assistantMessage = await appendMessage(currentThread.id, {
             role: 'assistant',
             content: text,
@@ -873,8 +879,8 @@ export default function ProjectChat() {
             updated_at: Date.now(),
             last_provider: actualProvider,
             last_model: actualModel,
-            sticky_provider_override: didFallback ? actualProvider : currentThread.sticky_provider_override || '',
-            sticky_model_override: didFallback ? actualModel : currentThread.sticky_model_override || '',
+            sticky_provider_override: '',
+            sticky_model_override: '',
           });
         },
         onRouteChange: (nextRoute) => {
@@ -1039,21 +1045,15 @@ export default function ProjectChat() {
     });
   }
 
-  async function handleResetStickyFallback() {
-    if (!activeThread || isStreaming || !hasStickyFallback) return;
-
-    await persistThreadUpdate(activeThread.id, {
-      sticky_provider_override: '',
-      sticky_model_override: '',
-      updated_at: Date.now(),
-    });
-    setSaveStatus('ÄĂ£ tráº£ thread vá» model máº·c Ä‘á»‹nh');
-  }
-
   function handleCancelEditing() {
     setEditingMessageId(null);
     setDraft('');
     resetComposerHeight();
+  }
+
+  function handleDraftChange(event) {
+    setDraft(event.target.value);
+    resizeComposer(event.target);
   }
 
   async function handleChangeMode(mode, options = {}) {
@@ -1337,26 +1337,12 @@ export default function ProjectChat() {
             </div>
             <div className="project-chat-statusbar__item">
               <Sparkles size={14} />
-              {hasManualModelOverride ? 'Model khóa cho thread' : hasStickyFallback ? 'Model fallback đang bám' : 'Model mục tiêu'}: {effectiveModelLabel}
+              {hasManualModelOverride ? 'Model khóa cho thread' : 'Model mục tiêu'}: {effectiveModelLabel}
             </div>
             <div className="project-chat-statusbar__item">
               <MessageSquare size={14} />
               API key và provider dùng chung với phần AI của dự án
             </div>
-            {hasStickyFallback ? (
-              <div className="project-chat-statusbar__item">
-                <RotateCcw size={14} />
-                Thread này đang bám model fallback cho các lượt sau.
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={handleResetStickyFallback}
-                  disabled={isStreaming}
-                >
-                  Quay về model gốc
-                </button>
-              </div>
-            ) : null}
             {liveRouteInfo ? (
               <div className="project-chat-statusbar__item project-chat-statusbar__item--live">
                 <Zap size={14} />
@@ -1420,7 +1406,8 @@ export default function ProjectChat() {
                   composerTextareaRef.current = node;
                 }}
                 className="textarea"
-                onChange={(event) => setDraft(event.target.value)}
+                value={draft}
+                onChange={handleDraftChange}
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"

@@ -26,7 +26,8 @@ function isRefusal(text) {
 }
 
 const SETTINGS_KEY = 'sf-ai-settings';
-const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 50000;
+const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 65000;
+const PROXY_MAX_OUTPUT_TOKENS = 65000;
 
 function getSettings() {
     try {
@@ -91,7 +92,7 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`,
             },
-            body: JSON.stringify({ model, messages, stream }),
+            body: JSON.stringify({ model, messages, stream, max_tokens: PROXY_MAX_OUTPUT_TOKENS }),
             signal,
         });
 
