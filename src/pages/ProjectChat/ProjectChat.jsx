@@ -295,6 +295,11 @@ export default function ProjectChat() {
 
   function resizeComposer(textarea) {
     if (!textarea) return;
+    if (!textarea.value) {
+      textarea.style.height = `${COMPOSER_MIN_HEIGHT}px`;
+      textarea.style.overflowY = 'hidden';
+      return;
+    }
     textarea.style.height = `${COMPOSER_MIN_HEIGHT}px`;
     const nextHeight = Math.min(
       Math.max(textarea.scrollHeight, COMPOSER_MIN_HEIGHT),

@@ -658,6 +658,7 @@ export async function createChapterRevision({
   chapterId,
   chapterText,
   status = CHAPTER_REVISION_STATUS.DRAFT,
+  metadata = {},
 }) {
   const existing = await db.chapter_revisions
     .where('[project_id+chapter_id]')
@@ -673,6 +674,7 @@ export async function createChapterRevision({
     chapter_text: chapterText,
     candidate_ops: '[]',
     validator_summary: null,
+    ...metadata,
     created_at: now,
     updated_at: now,
   });
@@ -1651,6 +1653,131 @@ export async function invalidateFromChapter(projectId, chapterId) {
   return invalidatedIds;
 }
 
+async function bulkDeleteByIds(table, rows = []) {
+  if (!rows.length) return;
+  await table.bulkDelete(rows.map((row) => row.id));
+}
+
+function buildPurgeArchivePayload(payload = {}) {
+  return JSON.stringify(payload);
+}
+
+export async function purgeChapterCanonState(projectId, chapterId) {
+  const chapter = await db.chapters.get(chapterId);
+  if (!chapter || chapter.project_id !== projectId) {
+    return null;
+  }
+
+  const [
+    commit,
+    revisions,
+    events,
+    reports,
+    evidence,
+    snapshots,
+    sourceFacts,
+    sourceCharacters,
+    sourceLocations,
+    sourceTerms,
+    sourceObjects,
+  ] = await Promise.all([
+    db.chapter_commits.where('[project_id+chapter_id]').equals([projectId, chapterId]).first(),
+    db.chapter_revisions.where('[project_id+chapter_id]').equals([projectId, chapterId]).toArray(),
+    db.story_events.where('[project_id+chapter_id]').equals([projectId, chapterId]).toArray(),
+    db.validator_reports.where('[project_id+chapter_id]').equals([projectId, chapterId]).toArray(),
+    db.memory_evidence.where('project_id').equals(projectId).filter((item) => item.chapter_id === chapterId).toArray(),
+    db.chapter_snapshots.where('[project_id+chapter_id]').equals([projectId, chapterId]).toArray(),
+    db.canonFacts.where('project_id').equals(projectId).filter((fact) => fact.source_chapter_id === chapterId).toArray(),
+    db.characters.where('project_id').equals(projectId).filter((item) => item.source_chapter_id === chapterId && item.source_kind === 'chapter_extract').toArray(),
+    db.locations.where('project_id').equals(projectId).filter((item) => item.source_chapter_id === chapterId && item.source_kind === 'chapter_extract').toArray(),
+    db.worldTerms.where('project_id').equals(projectId).filter((item) => item.source_chapter_id === chapterId && item.source_kind === 'chapter_extract').toArray(),
+    db.objects.where('project_id').equals(projectId).filter((item) => item.source_chapter_id === chapterId && item.source_kind === 'chapter_extract').toArray(),
+  ]);
+
+  const warnings = [
+    'Manual or legacy codex entries without source provenance were preserved for review.',
+  ];
+
+  const archivePayload = {
+    chapter: {
+      id: chapter.id,
+      title: chapter.title || '',
+      order_index: chapter.order_index ?? null,
+    },
+    removed: {
+      chapter_commit: commit ? cloneValue(commit) : null,
+      chapter_revisions: revisions.map((item) => cloneValue(item)),
+      story_events: events.map((item) => cloneValue(item)),
+      validator_reports: reports.map((item) => cloneValue(item)),
+      memory_evidence: evidence.map((item) => cloneValue(item)),
+      chapter_snapshots: snapshots.map((item) => cloneValue(item)),
+      canon_facts: sourceFacts.map((item) => cloneValue(item)),
+      characters: sourceCharacters.map((item) => cloneValue(item)),
+      locations: sourceLocations.map((item) => cloneValue(item)),
+      world_terms: sourceTerms.map((item) => cloneValue(item)),
+      objects: sourceObjects.map((item) => cloneValue(item)),
+    },
+    warnings,
+  };
+
+  await db.transaction(
+    'rw',
+    db.chapter_commits,
+    db.chapter_revisions,
+    db.story_events,
+    db.validator_reports,
+    db.memory_evidence,
+    db.chapter_snapshots,
+    db.canonFacts,
+    db.characters,
+    db.locations,
+    db.worldTerms,
+    db.objects,
+    db.canon_purge_archives,
+    async () => {
+      if (commit?.id) {
+        await db.chapter_commits.delete(commit.id);
+      }
+      await Promise.all([
+        bulkDeleteByIds(db.chapter_revisions, revisions),
+        bulkDeleteByIds(db.story_events, events),
+        bulkDeleteByIds(db.validator_reports, reports),
+        bulkDeleteByIds(db.memory_evidence, evidence),
+        bulkDeleteByIds(db.chapter_snapshots, snapshots),
+        bulkDeleteByIds(db.canonFacts, sourceFacts),
+        bulkDeleteByIds(db.characters, sourceCharacters),
+        bulkDeleteByIds(db.locations, sourceLocations),
+        bulkDeleteByIds(db.worldTerms, sourceTerms),
+        bulkDeleteByIds(db.objects, sourceObjects),
+      ]);
+
+      await db.canon_purge_archives.add({
+        project_id: projectId,
+        chapter_id: chapterId,
+        chapter_title: chapter.title || '',
+        chapter_order_index: chapter.order_index ?? null,
+        warnings,
+        removed_counts: {
+          revisions: revisions.length,
+          events: events.length,
+          reports: reports.length,
+          evidence: evidence.length,
+          snapshots: snapshots.length,
+          facts: sourceFacts.length,
+          characters: sourceCharacters.length,
+          locations: sourceLocations.length,
+          world_terms: sourceTerms.length,
+          objects: sourceObjects.length,
+        },
+        payload_json: buildPurgeArchivePayload(archivePayload),
+        created_at: Date.now(),
+      });
+    },
+  );
+
+  return archivePayload;
+}
+
 export async function rebuildCanonFromChapter(projectId, chapterId = null) {
   const chapters = await db.chapters.where('project_id').equals(projectId).sortBy('order_index');
   const commits = await db.chapter_commits.where('project_id').equals(projectId).toArray();
@@ -2280,6 +2407,7 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     threadStates,
     itemStates,
     relationshipStates,
+    purgeArchives,
   ] = await Promise.all([
     db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
     db.plotThreads.where('project_id').equals(projectId).toArray(),
@@ -2293,6 +2421,7 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     db.plot_thread_state.where('project_id').equals(projectId).toArray(),
     db.item_state_current.where('project_id').equals(projectId).toArray(),
     db.relationship_state_current.where('project_id').equals(projectId).toArray(),
+    db.canon_purge_archives.where('project_id').equals(projectId).toArray(),
   ]);
 
   const chapterMap = new Map(chapters.map((chapter) => [chapter.id, chapter]));
@@ -2409,7 +2538,25 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     revision_count: revisions.length,
     item_count: decoratedItemStates.length,
     relationship_count: decoratedRelationshipStates.length,
+    purge_archive_count: purgeArchives.length,
   };
+
+  const recentPurgeArchives = purgeArchives
+    .slice()
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+    .slice(0, Math.max(3, Math.min(limit, 8)))
+    .map((item) => {
+      let payload = null;
+      try {
+        payload = typeof item.payload_json === 'string' ? JSON.parse(item.payload_json) : item.payload_json;
+      } catch {
+        payload = null;
+      }
+      return {
+        ...item,
+        payload,
+      };
+    });
 
   return {
     stats,
@@ -2422,6 +2569,7 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     recentReports,
     recentEvidence,
     recentRevisions,
+    recentPurgeArchives,
     plotThreads,
     criticalConstraints,
   };
@@ -2505,7 +2653,7 @@ export async function getChapterRevisionDetail(projectId, revisionId) {
   };
 }
 
-export async function repairChapterRevision({ projectId, chapterId, revisionId }) {
+export async function repairChapterRevision({ projectId, chapterId, revisionId, reportId = null }) {
   const revision = await db.chapter_revisions.get(revisionId);
   if (!revision) {
     throw new Error('Khong tim thay revision can repair.');
@@ -2514,17 +2662,56 @@ export async function repairChapterRevision({ projectId, chapterId, revisionId }
     .where('[project_id+revision_id]')
     .equals([projectId, revisionId])
     .toArray();
+  const scopedReports = reportId
+    ? reports.filter((report) => String(report.id) === String(reportId))
+    : reports;
+  if (reportId && scopedReports.length === 0) {
+    throw new Error('Khong tim thay report can sua.');
+  }
   const { project, chapter } = await getChapterAndProject(projectId, chapterId);
   const messages = buildPrompt(TASK_TYPES.CANON_REPAIR, {
     projectId,
     chapterTitle: chapter?.title || '',
     projectTitle: project?.title || '',
     sceneText: revision.chapter_text || '',
-    validatorReports: reports,
+    validatorReports: scopedReports,
     genre: project?.genre_primary || '',
   });
-  return sendAiTask(TASK_TYPES.CANON_REPAIR, messages, {
+  const text = await sendAiTask(TASK_TYPES.CANON_REPAIR, messages, {
     nsfwMode: !!project?.nsfw_mode,
     superNsfwMode: !!project?.super_nsfw_mode,
   });
+  return {
+    text,
+    report: scopedReports[0] || null,
+    reports: scopedReports,
+    revision,
+  };
+}
+
+export async function saveRepairDraftRevision({
+  projectId,
+  chapterId,
+  revisionId,
+  reportId = null,
+  chapterText,
+}) {
+  const trimmedText = String(chapterText || '').trim();
+  if (!trimmedText) {
+    throw new Error('Khong co noi dung de luu thanh draft.');
+  }
+
+  const draftRevision = await createChapterRevision({
+    projectId,
+    chapterId,
+    chapterText: trimmedText,
+    status: CHAPTER_REVISION_STATUS.DRAFT,
+    metadata: {
+      source_revision_id: revisionId || null,
+      source_report_id: reportId || null,
+      repair_source: 'validator_report',
+    },
+  });
+
+  return draftRevision;
 }

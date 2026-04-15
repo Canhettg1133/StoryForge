@@ -181,10 +181,10 @@ function buildNsfwIntimateSystemLayer(taskType, {
 // =============================================
 export const DEFAULT_LAYER_1_IDENTITY = [
   'Ban la dong bien tap vien truyen chu chuyen nghiep trong ung dung StoryForge.',
-  'Ban luon uu tien tinh nhat quan (consistency), giong van rieng cua tac pham, va tuan theo moi quy tac the gioi truyen.',
+  'Ban uu tien so 1 la tinh nhat quan (consistency), giong van rieng cua tac pham, va logic noi tai cua the gioi truyen.',
   'Ban viet bang tieng Viet tru khi duoc yeu cau khac.',
-  'Ban KHONG tu y them phan giai thich, ghi chu, hay meta-commentary - chi tra ve ket qua yeu cau.',
-  'Ban PHAI tuan thu tuyet doi moi cam ky (taboo) duoc liet ke.',
+  'Ban KHONG tu y them meta-commentary, ghi chu, hay giai thich du thua - chi tra ve dung noi dung task can.',
+  'Ban PHAI tuan thu tuyet doi moi taboo, blacklist, va quy tac an toan duoc cung cap.',
   'Ban KHONG duoc tu y tao ra nhan vat, dia danh, ky nang, he thong suc manh, hay bat ky thuc the nao CHUA DUOC liet ke trong Canon hoac The Gioi truyen — tru khi tac gia yeu cau ro rang hoac task la brainstorm/outline/project_wizard.',
 ].join('\n');
 
@@ -237,6 +237,26 @@ const STYLE_ONLY_TASKS = new Set([
   TASK_TYPES.EXPAND,
   TASK_TYPES.REWRITE,
 ]);
+
+const WRITING_DISCIPLINE_TASKS = new Set([
+  TASK_TYPES.CONTINUE,
+  TASK_TYPES.SCENE_DRAFT,
+  TASK_TYPES.ARC_CHAPTER_DRAFT,
+  TASK_TYPES.FREE_PROMPT,
+  TASK_TYPES.EXPAND,
+  TASK_TYPES.REWRITE,
+  TASK_TYPES.STYLE_WRITE,
+]);
+
+const DEFAULT_WRITING_DISCIPLINE_LAYER = [
+  '[KY LUAT VIET TRUYEN]',
+  '- Nhat quan quan trong hon cau chu hoa my.',
+  '- Ton trong POV hien tai va gioi han thong tin cua tung nhan vat.',
+  '- Ton trong logic cam xuc: khong duoc lam nhan vat out-of-character chi de tao hieu ung.',
+  '- Khong retcon, khong tu y doi quan he, luat the gioi, moc thoi gian, hay muc suc manh neu task khong yeu cau ro rang.',
+  '- Khong AI-sounding: tranh triet ly rong, tong ket dao ly, len lop, lap y, hoac van qua pho neu khong co can cu.',
+  '- Moi doan viet ra phai co tac dung ro: day tinh tiet, dao sau cam xuc, khac hoa nhan vat, tang xung dot, hoac giai phong thong tin.',
+].join('\n');
 
 // =============================================
 // FREE_PROMPT intent detection
@@ -1289,6 +1309,10 @@ export function buildPrompt(taskType, context = {}) {
 
   // -- Layer 1: System Identity --
   systemParts.push(resolveSystemIdentityPrompt());
+
+  if (WRITING_DISCIPLINE_TASKS.has(taskType) && !skipWritingLayers) {
+    systemParts.push(DEFAULT_WRITING_DISCIPLINE_LAYER);
+  }
 
   // Project info with POV
   const povLabel = { first: 'Ngoi 1', third_limited: 'Ngoi 3 han che', third_omni: 'Ngoi 3 toan tri', multi_pov: 'Da goc nhin' };

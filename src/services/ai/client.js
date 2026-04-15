@@ -9,12 +9,18 @@
 
 import keyManager from './keyManager';
 import { AI_ERROR_CODES, normalizeAIError, shouldFallbackForError } from './errorUtils';
-import { PROXY_MODELS, PROVIDERS, TASK_TYPES } from './router';
+import { PROVIDERS, TASK_TYPES } from './router';
 import { NSFW_REBUKE_PROMPT } from '../../utils/constants';
 
 const SETTINGS_KEY = 'sf-ai-settings';
-const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 40000;
-const PROXY_MAX_OUTPUT_TOKENS = 40000;
+const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 65000;
+const PROXY_MAX_OUTPUT_TOKENS = 65000;
+const GOOGLE_SAFETY_CATEGORIES = [
+  'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+  'HARM_CATEGORY_HATE_SPEECH',
+  'HARM_CATEGORY_HARASSMENT',
+  'HARM_CATEGORY_DANGEROUS_CONTENT',
+];
 
 function extractSSEDataValue(rawLine) {
   const trimmed = (rawLine || '').trim();
@@ -45,19 +51,6 @@ function extractPayloadError(payload) {
   }
 
   return null;
-}
-
-function getProxyBestFreePromptFallbackModels(taskType, route) {
-  if (taskType !== TASK_TYPES.FREE_PROMPT) return [];
-  if (route?.provider !== PROVIDERS.GEMINI_PROXY) return [];
-  if (!route?.model || !route.model.includes('pro')) return [];
-
-  const stableModels = [
-    PROXY_MODELS.find((m) => m.id.includes('gemini-3-flash-high'))?.id,
-    PROXY_MODELS.find((m) => m.id.includes('gemini-2.5-flash'))?.id,
-  ].filter(Boolean);
-
-  return stableModels.filter((id, index, arr) => id !== route.model && arr.indexOf(id) === index);
 }
 
 function getSettings() {
@@ -127,10 +120,21 @@ function buildGeminiDirectEndpoint(baseUrl, pathWithQuery = '') {
   return `${versionBase}${pathWithQuery}`;
 }
 
+function buildGoogleSafetySettings(threshold) {
+  if (!threshold) return null;
+  return GOOGLE_SAFETY_CATEGORIES.map((category) => ({ category, threshold }));
+}
+
+function getSafetyThreshold({ nsfwMode, safetyMode }) {
+  if (safetyMode === 'off') return 'OFF';
+  if (nsfwMode) return 'BLOCK_NONE';
+  return null;
+}
+
 // ================================
 // Gemini Proxy (OpenAI-compatible)
 // ================================
-async function callGeminiProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode }) {
+async function callGeminiProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode }) {
   const proxyUrl = getProxyUrl();
   if (!proxyUrl) throw new Error('Chưa cấu hình Proxy URL.');
 
@@ -143,6 +147,18 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
   }
 
   const url = `${proxyUrl}/v1/chat/completions`;
+  const safetyThreshold = getSafetyThreshold({ nsfwMode, safetyMode });
+  const safetySettings = buildGoogleSafetySettings(safetyThreshold);
+  const payload = {
+    model,
+    messages,
+    stream,
+    max_tokens: PROXY_MAX_OUTPUT_TOKENS,
+    ...(safetySettings && {
+      safetySettings,
+      safety_settings: safetySettings,
+    }),
+  };
 
   try {
     const response = await fetch(url, {
@@ -151,7 +167,7 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ model, messages, stream, max_tokens: PROXY_MAX_OUTPUT_TOKENS }),
+      body: JSON.stringify(payload),
       signal,
     });
 
@@ -198,7 +214,7 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
 // ================================
 // Gemini Direct (Google AI Studio)
 // ================================
-async function callGeminiDirect({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode }) {
+async function callGeminiDirect({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode }) {
   const apiKey = keyManager.getNextKey('gemini_direct');
   if (!apiKey) {
     throw normalizeAIError(
@@ -221,6 +237,8 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
     }));
 
   const systemInstruction = messages.find(m => m.role === 'system');
+  const safetyThreshold = getSafetyThreshold({ nsfwMode, safetyMode });
+  const safetySettings = buildGoogleSafetySettings(safetyThreshold);
   const body = {
     contents,
     ...(systemInstruction && {
@@ -229,14 +247,7 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
     generationConfig: {
       maxOutputTokens: GEMINI_DIRECT_MAX_OUTPUT_TOKENS,
     },
-    ...(nsfwMode && {
-      safetySettings: [
-        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-      ]
-    })
+    ...(safetySettings && { safetySettings }),
   };
 
   try {
@@ -515,7 +526,7 @@ class AIService {
     return refusalPhrases.some(phrase => startOfProse.includes(phrase));
   }
 
-  send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false }) {
+  send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false, chatSafetyOff = false }) {
     this.abort();
     const controller = new AbortController();
     this.activeController = controller;
@@ -630,30 +641,6 @@ class AIService {
         }
       }
 
-      if (err.code === AI_ERROR_CODES.EMPTY_STREAM && route.provider === PROVIDERS.GEMINI_PROXY && taskType === TASK_TYPES.FREE_PROMPT) {
-        const stableFallbackModels = getProxyBestFreePromptFallbackModels(taskType, route);
-        for (const fallbackModel of stableFallbackModels) {
-          const fallbackRoute = { ...route, model: fallbackModel, tier: fallbackModel.includes('pro') ? 'pro' : 'flash' };
-          try {
-            console.warn('[AI] EMPTY_STREAM on proxy best model. Retrying with fallback model:', fallbackModel);
-            onRouteChange?.(fallbackRoute);
-            await getCallFn(PROVIDERS.GEMINI_PROXY)({
-              model: fallbackModel,
-              messages,
-              stream,
-              signal: controller.signal,
-              onToken,
-              onComplete: (text) => wrappedOnComplete(text, fallbackRoute),
-              onError: () => { },
-              nsfwMode,
-            });
-            return;
-          } catch (retryErr) {
-            err = retryErr;
-          }
-        }
-      }
-
       if (shouldFallbackForError(err) && this._router) {
         const fallbacks = this._router.getFallbacks(route);
         for (const fb of fallbacks) {
@@ -663,7 +650,8 @@ class AIService {
               model: fb.model, messages, stream, signal: controller.signal,
               onToken, onComplete: (text) => wrappedOnComplete(text, fb),
               onError: (e) => { this.activeController = null; onError?.(normalizeAIError(e, fb)); },
-              nsfwMode
+              nsfwMode,
+              safetyMode: chatSafetyOff ? 'off' : undefined,
             });
             return;
           } catch { continue; }
@@ -676,7 +664,8 @@ class AIService {
     getCallFn(route.provider)({
       model: route.model, messages, stream, signal: controller.signal,
       onToken, onComplete: wrappedOnComplete, onError: wrappedOnError,
-      nsfwMode: nsfwMode || superNsfwMode
+      nsfwMode: nsfwMode || superNsfwMode,
+      safetyMode: chatSafetyOff ? 'off' : undefined,
     }).catch(wrappedOnError);
 
     return { abort: () => this.abort(), routeInfo: route };

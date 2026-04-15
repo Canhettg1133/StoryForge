@@ -3,8 +3,13 @@ import db from '../services/db/database';
 import { countWords } from '../utils/constants';
 import { GENRE_TEMPLATES } from '../utils/genreTemplates';
 import { buildProseBuffer } from '../utils/proseBuffer';
-import { canonicalizeChapter as canonicalizeChapterEngine } from '../services/canon/engine';
+import {
+  canonicalizeChapter as canonicalizeChapterEngine,
+  purgeChapterCanonState,
+  rebuildCanonFromChapter as rebuildCanonFromChapterEngine,
+} from '../services/canon/engine';
 import useAIStore from './aiStore';
+import useCodexStore from './codexStore';
 
 function getNextOrderIndex(items) {
   return items.reduce((max, item) => {
@@ -148,6 +153,148 @@ function buildInitialPromptTemplates(genreKey, existingTemplates) {
   return JSON.stringify(merged);
 }
 
+function sanitizeChapterText(scenes = []) {
+  return scenes
+    .map((scene) => scene.draft_text || '')
+    .join('\n')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+function yieldToUi() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+async function persistChapterSummary({ projectId, chapterId, summary, chapterText }) {
+  const existingMeta = await db.chapterMeta.where('chapter_id').equals(chapterId).first();
+  const lastProseBuffer = buildProseBuffer(chapterText);
+
+  if (existingMeta) {
+    const updates = {
+      updated_at: Date.now(),
+    };
+    if (summary?.trim()) updates.summary = summary.trim();
+    if (lastProseBuffer) updates.last_prose_buffer = lastProseBuffer;
+    if (Object.keys(updates).length > 1) {
+      await db.chapterMeta.update(existingMeta.id, updates);
+    }
+    return;
+  }
+
+  await db.chapterMeta.add({
+    chapter_id: chapterId,
+    project_id: projectId,
+    summary: summary?.trim() || '',
+    last_prose_buffer: lastProseBuffer,
+    created_at: Date.now(),
+    updated_at: Date.now(),
+  });
+}
+
+async function createExtractedCodexEntries({
+  projectId,
+  chapterId,
+  extracted,
+}) {
+  if (!extracted || typeof extracted !== 'object') {
+    return { createdCount: 0 };
+  }
+
+  const [existingCharacters, existingLocations, existingTerms, existingObjects] = await Promise.all([
+    db.characters.where('project_id').equals(projectId).toArray(),
+    db.locations.where('project_id').equals(projectId).toArray(),
+    db.worldTerms.where('project_id').equals(projectId).toArray(),
+    db.objects.where('project_id').equals(projectId).toArray(),
+  ]);
+
+  const normalizeName = (value) => String(value || '').trim().toLowerCase();
+  const created = {
+    characters: 0,
+    locations: 0,
+    terms: 0,
+    objects: 0,
+  };
+
+  const characterNames = new Set(existingCharacters.map((item) => normalizeName(item.name)));
+  for (const character of extracted.characters || []) {
+    const name = normalizeName(character?.name);
+    if (!name || characterNames.has(name)) continue;
+    characterNames.add(name);
+    created.characters += 1;
+    await db.characters.add({
+      project_id: projectId,
+      name: character.name || '',
+      role: character.role || 'minor',
+      appearance: character.appearance || '',
+      personality: character.personality || '',
+      flaws: character.flaws || '',
+      personality_tags: character.personality_tags || '',
+      source_chapter_id: chapterId,
+      source_kind: 'chapter_extract',
+      created_at: Date.now(),
+    });
+  }
+
+  const locationNames = new Set(existingLocations.map((item) => normalizeName(item.name)));
+  for (const location of extracted.locations || []) {
+    const name = normalizeName(location?.name);
+    if (!name || locationNames.has(name)) continue;
+    locationNames.add(name);
+    created.locations += 1;
+    await db.locations.add({
+      project_id: projectId,
+      name: location.name || '',
+      description: location.description || '',
+      details: location.details || '',
+      source_chapter_id: chapterId,
+      source_kind: 'chapter_extract',
+      created_at: Date.now(),
+    });
+  }
+
+  const termNames = new Set(existingTerms.map((item) => normalizeName(item.name)));
+  for (const term of extracted.terms || []) {
+    const name = normalizeName(term?.name);
+    if (!name || termNames.has(name)) continue;
+    termNames.add(name);
+    created.terms += 1;
+    await db.worldTerms.add({
+      project_id: projectId,
+      name: term.name || '',
+      definition: term.definition || '',
+      category: term.category || 'other',
+      source_chapter_id: chapterId,
+      source_kind: 'chapter_extract',
+      created_at: Date.now(),
+    });
+  }
+
+  const objectNames = new Set(existingObjects.map((item) => normalizeName(item.name)));
+  for (const objectItem of extracted.objects || []) {
+    const name = normalizeName(objectItem?.name);
+    if (!name || objectNames.has(name)) continue;
+    objectNames.add(name);
+    created.objects += 1;
+    await db.objects.add({
+      project_id: projectId,
+      name: objectItem.name || '',
+      description: objectItem.description || '',
+      owner_character_id: null,
+      source_chapter_id: chapterId,
+      source_kind: 'chapter_extract',
+      created_at: Date.now(),
+    });
+  }
+
+  return {
+    createdCount: Object.values(created).reduce((sum, value) => sum + value, 0),
+    created,
+  };
+}
+
 const useProjectStore = create((set, get) => ({
   projects: [],
   currentProject: null,
@@ -159,6 +306,7 @@ const useProjectStore = create((set, get) => ({
 
   // Tracks chapters currently running auto-complete to prevent double-trigger
   completingChapterId: null,
+  chapterCompletionById: {},
 
   loadProjects: async () => {
     const projects = await db.projects.orderBy('updated_at').reverse().toArray();
@@ -287,6 +435,7 @@ const useProjectStore = create((set, get) => ({
       db.chapter_revisions.where('project_id').equals(id).delete(),
       db.chapter_commits.where('project_id').equals(id).delete(),
       db.chapter_snapshots.where('project_id').equals(id).delete(),
+      db.canon_purge_archives.where('project_id').equals(id).delete(),
       db.ai_chat_threads.where('project_id').equals(id).delete(),
       db.ai_chat_messages.where('project_id').equals(id).delete(),
       // threadBeats: no project_id index, delete via plotThread IDs
@@ -417,7 +566,11 @@ const useProjectStore = create((set, get) => ({
     await db.chapters.update(id, data);
     const { currentProject } = get();
     if (currentProject?.id === chapter.project_id) {
-      await get().loadProject(currentProject.id);
+      set((state) => ({
+        chapters: state.chapters.map((item) => (
+          item.id === id ? { ...item, ...data } : item
+        )),
+      }));
     }
   },
 
@@ -425,12 +578,20 @@ const useProjectStore = create((set, get) => ({
     const chapter = get().chapters.find((item) => item.id === id) || await db.chapters.get(id);
     if (!chapter) return;
 
+    await purgeChapterCanonState(chapter.project_id, id);
     await db.chapters.delete(id);
     await db.scenes.where('chapter_id').equals(id).delete();
+    await db.chapterMeta.where('chapter_id').equals(id).delete();
+    const relatedSuggestions = await db.suggestions.where('source_chapter_id').equals(id).toArray();
+    if (relatedSuggestions.length > 0) {
+      await db.suggestions.bulkDelete(relatedSuggestions.map((item) => item.id));
+    }
     await reindexProjectChapters(chapter.project_id);
+    await rebuildCanonFromChapterEngine(chapter.project_id);
     const { currentProject } = get();
     if (currentProject?.id === chapter.project_id) {
       await get().loadProject(currentProject.id);
+      await useCodexStore.getState().loadCodex(currentProject.id);
     }
   },
 
@@ -500,6 +661,32 @@ const useProjectStore = create((set, get) => ({
   setActiveChapter: (id) => set({ activeChapterId: id }),
   setActiveScene: (id) => set({ activeSceneId: id }),
   setCompletingChapterId: (id) => set({ completingChapterId: id }),
+  setChapterCompletionState: (chapterId, payload = {}) => {
+    if (!chapterId) return;
+    set((state) => ({
+      chapterCompletionById: {
+        ...state.chapterCompletionById,
+        [chapterId]: {
+          ...(state.chapterCompletionById[chapterId] || {}),
+          ...payload,
+        },
+      },
+      completingChapterId: payload.running ? chapterId : (
+        state.completingChapterId === chapterId ? null : state.completingChapterId
+      ),
+    }));
+  },
+  clearChapterCompletionState: (chapterId) => {
+    if (!chapterId) return;
+    set((state) => {
+      const next = { ...state.chapterCompletionById };
+      delete next[chapterId];
+      return {
+        chapterCompletionById: next,
+        completingChapterId: state.completingChapterId === chapterId ? null : state.completingChapterId,
+      };
+    });
+  },
 
   getActiveScene: () => {
     const { scenes, activeSceneId } = get();
@@ -536,28 +723,41 @@ const useProjectStore = create((set, get) => ({
    * Called automatically when chapter reaches 100% word target.
    * Non-blocking — errors are silently handled.
    */
-  autoCompleteChapter: async (chapterId) => {
-    const { completingChapterId, currentProject, chapters, scenes } = get();
-    if (completingChapterId === chapterId) return;
-    if (!currentProject || !chapterId) return;
+  runChapterCompletion: async (chapterId, options = {}) => {
+    const { currentProject, chapters, scenes } = get();
+    if (!currentProject || !chapterId) return null;
 
-    const chapter = chapters.find(c => c.id === chapterId);
-    if (!chapter || chapter.status === 'done') return;
+    const chapter = chapters.find((item) => item.id === chapterId) || await db.chapters.get(chapterId);
+    if (!chapter) return null;
 
-    set({ completingChapterId: chapterId });
+    get().setChapterCompletionState(chapterId, {
+      running: true,
+      phase: 'prepare',
+      progress: 5,
+      message: 'Dang chuan bi hoan thanh chuong...',
+      error: '',
+      result: null,
+      mode: options.mode || 'manual',
+    });
 
     try {
-      const chapterScenes = scenes.filter(s => s.chapter_id === chapterId);
-      const chapterText = chapterScenes
-        .map(s => s.draft_text || '')
-        .join('\n')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/&nbsp;/g, ' ')
-        .trim();
-
+      const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapterId);
+      const chapterText = sanitizeChapterText(chapterScenes);
       if (!chapterText) {
-        set({ completingChapterId: null });
-        return;
+        const emptyResult = {
+          ok: false,
+          kind: 'empty',
+          message: 'Chuong chua co noi dung de hoan thanh.',
+        };
+        get().setChapterCompletionState(chapterId, {
+          running: false,
+          phase: 'idle',
+          progress: 0,
+          message: emptyResult.message,
+          error: emptyResult.message,
+          result: emptyResult,
+        });
+        return emptyResult;
       }
 
       const context = {
@@ -568,70 +768,126 @@ const useProjectStore = create((set, get) => ({
         projectId: currentProject.id,
       };
 
-      // Step 1: Summarize chapter + persist prose tail for continuity
-      const lastProseBuffer = buildProseBuffer(chapterText);
-      const existingMeta = await db.chapterMeta
-        .where('chapter_id').equals(chapterId)
-        .first();
       let summary = '';
-      try {
-        const { summarizeChapter } = useAIStore.getState();
-        summary = await summarizeChapter(context);
-      } catch (e) {
-        console.warn('[AutoComplete] Summarize failed (non-fatal):', e);
-      }
-
-      const metaData = {
-        chapter_id: chapterId,
-        project_id: currentProject.id,
-        last_prose_buffer: lastProseBuffer,
-        emotional_state: existingMeta?.emotional_state || null,
-        tension_level: existingMeta?.tension_level || null,
-      };
-
-      if (existingMeta) {
-        const updates = {};
-        if (summary?.trim()) updates.summary = summary;
-        if (lastProseBuffer) updates.last_prose_buffer = lastProseBuffer;
-        if (Object.keys(updates).length > 0) {
-          await db.chapterMeta.update(existingMeta.id, updates);
-        }
-      } else {
-        await db.chapterMeta.add({
-          ...metaData,
-          summary: summary?.trim() || '',
-        });
-      }
-
-      // Step 2: Extract Codex entries
-      try {
-        const { extractFromChapter } = useAIStore.getState();
-        await extractFromChapter(context);
-      } catch (e) {
-        console.warn('[AutoComplete] Extract failed (non-fatal):', e);
-      }
-
-      // Step 3: Run canon analysis before marking the chapter done.
-      // A blocked/warning canon result still counts as a completed post-process;
-      // only unexpected runtime failures keep the chapter in draft.
+      let extracted = null;
+      let extractionStats = { createdCount: 0, created: {} };
       let canonResult = null;
       let canonProcessed = false;
+      let canonSucceeded = false;
+      const { summarizeChapter, extractFromChapter } = useAIStore.getState();
+
+      get().setChapterCompletionState(chapterId, {
+        phase: 'summarize',
+        progress: 20,
+        message: 'Dang tom tat chuong...',
+      });
+      await yieldToUi();
+      try {
+        summary = await summarizeChapter(context);
+        await persistChapterSummary({
+          projectId: currentProject.id,
+          chapterId,
+          summary,
+          chapterText,
+        });
+      } catch (error) {
+        console.warn('[ChapterCompletion] Summarize failed (non-fatal):', error);
+      }
+
+      get().setChapterCompletionState(chapterId, {
+        phase: 'extract',
+        progress: 45,
+        message: 'Dang trich xuat du lieu codex...',
+      });
+      await yieldToUi();
+      try {
+        extracted = await extractFromChapter(context);
+        extractionStats = await createExtractedCodexEntries({
+          projectId: currentProject.id,
+          chapterId,
+          extracted,
+        });
+      } catch (error) {
+        console.warn('[ChapterCompletion] Extraction failed (non-fatal):', error);
+      }
+
+      get().setChapterCompletionState(chapterId, {
+        phase: 'canon',
+        progress: 72,
+        message: 'Dang phan tich su that va canon hoa...',
+      });
+      await yieldToUi();
       try {
         canonResult = await canonicalizeChapterEngine(currentProject.id, chapterId);
         canonProcessed = true;
-      } catch (e) {
-        console.warn('[AutoComplete] Canonicalize failed:', e);
+        canonSucceeded = canonResult?.ok !== false;
+      } catch (error) {
+        console.warn('[ChapterCompletion] Canonicalize failed:', error);
       }
 
-      if (canonProcessed) {
+      get().setChapterCompletionState(chapterId, {
+        phase: 'finalize',
+        progress: 90,
+        message: 'Dang dong bo du lieu chuong...',
+      });
+      if (canonSucceeded) {
         await get().updateChapter(chapterId, { status: 'done' });
       } else {
         await get().updateChapter(chapterId, { status: 'draft' });
       }
-    } catch (e) {
-      console.warn('[AutoComplete] Failed:', e);
-    } finally {
-      set({ completingChapterId: null });
+      await useCodexStore.getState().loadCodex(currentProject.id);
+      await yieldToUi();
+
+      const result = {
+        ok: canonSucceeded,
+        kind: canonProcessed
+          ? (canonSucceeded ? 'success' : 'blocked')
+          : 'runtime',
+        message: canonSucceeded
+          ? 'Da hoan thanh chuong.'
+          : canonProcessed
+            ? 'Phan tich su that phat hien mau thuan, chuong chua duoc danh dau hoan thanh.'
+            : 'Khong the hoan thanh chuong vi loi runtime khi canon hoa.',
+        summary,
+        extracted,
+        extractionStats,
+        canonResult,
+      };
+
+      get().setChapterCompletionState(chapterId, {
+        running: false,
+        phase: result.ok ? 'done' : 'error',
+        progress: result.ok ? 100 : 0,
+        message: result.message,
+        error: result.ok ? '' : result.message,
+        result,
+      });
+      return result;
+    } catch (error) {
+      const message = error?.message || 'Khong the hoan thanh chuong.';
+      const result = {
+        ok: false,
+        kind: 'runtime',
+        message,
+      };
+      get().setChapterCompletionState(chapterId, {
+        running: false,
+        phase: 'error',
+        progress: 0,
+        message,
+        error: message,
+        result,
+      });
+      throw error;
+    }
+  },
+
+  autoCompleteChapter: async (chapterId) => {
+    try {
+      return await get().runChapterCompletion(chapterId, { mode: 'auto' });
+    } catch (error) {
+      console.warn('[AutoComplete] Failed:', error);
+      return null;
     }
   },
 

@@ -65,6 +65,178 @@ const FACTION_TYPE_LABELS = {
   sect: 'Tông môn', kingdom: 'Vương quốc', organization: 'Tổ chức', other: 'Thế lực',
 };
 
+function clampInitialChapterCount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 10;
+  return Math.max(1, Math.min(100, Math.round(numeric)));
+}
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function dedupeTextList(items, fallbackValue = '') {
+  const seen = new Set();
+  const values = [];
+
+  const pushValue = (rawValue) => {
+    const value = String(rawValue || '').trim();
+    const key = normalizeSearchText(value);
+    if (!value || !key || seen.has(key)) return;
+    seen.add(key);
+    values.push(value);
+  };
+
+  pushValue(fallbackValue);
+  (Array.isArray(items) ? items : []).forEach(pushValue);
+  return values.slice(0, 5);
+}
+
+function normalizeWizardResult(rawValue, fallbackTitle = '') {
+  const nextResult = isPlainObject(rawValue) ? { ...rawValue } : {};
+  nextResult.title = String(nextResult.title || '').trim();
+  nextResult.title_options = dedupeTextList(nextResult.title_options, nextResult.title || fallbackTitle);
+  nextResult.factions = Array.isArray(nextResult.factions) ? nextResult.factions.filter(isPlainObject) : [];
+  nextResult.characters = Array.isArray(nextResult.characters) ? nextResult.characters.filter(isPlainObject) : [];
+  nextResult.locations = Array.isArray(nextResult.locations) ? nextResult.locations.filter(isPlainObject) : [];
+  nextResult.terms = Array.isArray(nextResult.terms) ? nextResult.terms.filter(isPlainObject) : [];
+  nextResult.chapters = Array.isArray(nextResult.chapters) ? nextResult.chapters.filter(isPlainObject) : [];
+  nextResult.plot_threads = Array.isArray(nextResult.plot_threads) ? nextResult.plot_threads.filter(isPlainObject) : [];
+
+  if (!nextResult.title && nextResult.title_options[0]) {
+    nextResult.title = nextResult.title_options[0];
+  }
+
+  return nextResult;
+}
+
+function buildCoverageWarnings(result, excluded) {
+  if (!result?.chapters?.length) return [];
+
+  const includedChapters = result.chapters.filter((_, index) => !excluded.has(`chapter-${index}`));
+  if (!includedChapters.length) return [];
+  const includedCharacters = (result.characters || []).filter((_, index) => !excluded.has(`char-${index}`));
+  const includedLocations = (result.locations || []).filter((_, index) => !excluded.has(`loc-${index}`));
+  const includedThreads = (result.plot_threads || []).filter((_, index) => !excluded.has(`thread-${index}`));
+  const warnings = [];
+  const chapterSignals = includedChapters.map((chapter, index) => {
+    const summary = String(chapter.summary || '').trim();
+    const purpose = String(chapter.purpose || '').trim();
+    const featuredCharacters = Array.isArray(chapter.featured_characters)
+      ? chapter.featured_characters.map((item) => normalizeSearchText(item)).filter(Boolean)
+      : [];
+    const threadTitles = Array.isArray(chapter.thread_titles)
+      ? chapter.thread_titles.map((item) => normalizeSearchText(item)).filter(Boolean)
+      : [];
+    const primaryLocation = normalizeSearchText(chapter.primary_location);
+    const searchableText = normalizeSearchText([
+      chapter.title || '',
+      purpose,
+      summary,
+      ...(Array.isArray(chapter.featured_characters) ? chapter.featured_characters : []),
+      ...(Array.isArray(chapter.thread_titles) ? chapter.thread_titles : []),
+      chapter.primary_location || '',
+    ].join(' \n '));
+
+    return {
+      title: chapter.title || `Chuong ${index + 1}`,
+      summaryLength: summary.length,
+      purposeLength: purpose.length,
+      threadCount: threadTitles.length,
+      featuredCharacterCount: featuredCharacters.length,
+      featuredCharacters: new Set(featuredCharacters),
+      threadTitles: new Set(threadTitles),
+      primaryLocation,
+      searchableText,
+    };
+  });
+  const hasCharacterAssignments = chapterSignals.some((chapter) => chapter.featuredCharacters.size > 0);
+  const hasLocationAssignments = chapterSignals.some((chapter) => chapter.primaryLocation);
+  const hasThreadAssignments = chapterSignals.some((chapter) => chapter.threadTitles.size > 0);
+
+  const missingCharacters = includedCharacters
+    .filter((item) => item?.name)
+    .filter((item) => item.role !== 'minor')
+    .filter((item) => {
+      const normalizedName = normalizeSearchText(item.name);
+      if (!normalizedName) return false;
+      return !chapterSignals.some((chapter) => (
+        chapter.featuredCharacters.has(normalizedName)
+        || chapter.searchableText.includes(normalizedName)
+      ));
+    })
+    .map((item) => item.name);
+  if (hasCharacterAssignments && missingCharacters.length) {
+    warnings.push(`Nhân vật chưa bám vào chapter outline: ${missingCharacters.slice(0, 4).join(', ')}${missingCharacters.length > 4 ? '...' : ''}`);
+  }
+
+  const missingLocations = includedLocations
+    .filter((item) => item?.name)
+    .filter((item) => {
+      const normalizedName = normalizeSearchText(item.name);
+      if (!normalizedName) return false;
+      return !chapterSignals.some((chapter) => (
+        chapter.primaryLocation === normalizedName
+        || chapter.searchableText.includes(normalizedName)
+      ));
+    })
+    .map((item) => item.name);
+  if (hasLocationAssignments && missingLocations.length) {
+    warnings.push(`Địa điểm chưa xuất hiện trong tóm tắt chương: ${missingLocations.slice(0, 4).join(', ')}${missingLocations.length > 4 ? '...' : ''}`);
+  }
+
+  const looseThreads = includedThreads
+    .filter((item) => item?.title)
+    .filter((item) => {
+      const normalizedTitle = normalizeSearchText(item.title);
+      if (!normalizedTitle) return false;
+      if (hasThreadAssignments) {
+        return !chapterSignals.some((chapter) => chapter.threadTitles.has(normalizedTitle));
+      }
+      return !chapterSignals.some((chapter) => chapter.searchableText.includes(normalizedTitle));
+    })
+    .map((item) => item.title);
+  if (looseThreads.length) {
+    warnings.push(`Một số tuyến truyện chưa có điểm neo rõ ở chapter summary: ${looseThreads.slice(0, 4).join(', ')}${looseThreads.length > 4 ? '...' : ''}`);
+  }
+
+  const denseChapters = includedChapters
+    .map((chapter, index) => ({
+      title: chapter.title || `Chương ${index + 1}`,
+      summaryLength: String(chapter.summary || '').trim().length,
+    }))
+    .filter((chapter) => chapter.summaryLength > 9999)
+    .map((chapter) => chapter.title);
+  if (denseChapters.length) {
+    warnings.push(`Một số chapter đang tóm tắt quá dày, dễ làm nhịp truyện nhanh: ${denseChapters.slice(0, 3).join(', ')}${denseChapters.length > 3 ? '...' : ''}`);
+  }
+
+  const strictDenseChapters = chapterSignals
+    .filter((chapter) => {
+      let overloadScore = 0;
+      if (chapter.summaryLength > 620) overloadScore += 2;
+      else if (chapter.summaryLength > 500) overloadScore += 1;
+      if (chapter.threadCount >= 3) overloadScore += 1;
+      if (chapter.featuredCharacterCount >= 4) overloadScore += 1;
+      if (chapter.purposeLength > 140) overloadScore += 1;
+      return chapter.summaryLength > 420 && overloadScore >= 3;
+    })
+    .map((chapter) => chapter.title);
+
+  const refinedWarnings = [...warnings];
+  if (strictDenseChapters.length) {
+    refinedWarnings.push(`Mot so chapter co dau hieu nhoi qua nhieu tuyen hoac su kien cung luc: ${strictDenseChapters.slice(0, 3).join(', ')}${strictDenseChapters.length > 3 ? '...' : ''}`);
+  }
+
+  return refinedWarnings;
+}
+
 export default function ProjectWizard({ onClose, onCreated }) {
   const { createProject, createChapter, updateChapter } = useProjectStore();
   const {
@@ -89,6 +261,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [targetLengthType, setTargetLengthType] = useState('unset');
   const [ultimateGoal, setUltimateGoal] = useState('');
   const [milestonesInfo, setMilestonesInfo] = useState([]);
+  const [initialChapterCount, setInitialChapterCount] = useState(10);
 
   // Phase 9: Macro Arcs (Đại Cục) — optional, tác giả nhập thủ công
   const [macroArcsInput, setMacroArcsInput] = useState([]);
@@ -166,6 +339,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
       return { ...prev, [section]: arr };
     });
   };
+  const coverageWarnings = buildCoverageWarnings(result, excluded);
 
   // ── Mini-form renderers ──
 
@@ -324,6 +498,12 @@ export default function ProjectWizard({ onClose, onCreated }) {
     const genreLabel = GENRES.find(g => g.value === genre)?.label || genre;
     const storyCreationSettings = getStoryCreationSettings();
     const wizardPrompts = storyCreationSettings.projectWizard;
+    const chapterCount = clampInitialChapterCount(initialChapterCount);
+    let pacingGuidance = '';
+    if (Number(targetLength) > 100 && chapterCount < Number(targetLength)) {
+      const percent = Math.round((chapterCount / Number(targetLength)) * 100);
+      pacingGuidance = `\n\nHƯỚNG DẪN PACING:\n- Đây là ${chapterCount} chương đầu trong truyện dài ${targetLength} chương, mới chiếm khoảng ${percent}% tổng chiều dài.\n- Nhịp phải chậm và ổn định, ưu tiên nền tảng thế giới, nhân vật và mâu thuẫn mở đầu.\n- Không đốt quá nhiều biến cố lớn trong mỗi chương.`;
+    }
     const templateVariables = {
       genre: genreLabel,
       tone: tone || 'mặc định',
@@ -335,6 +515,8 @@ export default function ProjectWizard({ onClose, onCreated }) {
       story_structure_line: storyStructure ? 'Cấu trúc: ' + STORY_STRUCTURES.find(s => s.value === storyStructure)?.label + '\n' : '',
       idea,
       template_hint: templateHint,
+      initial_chapter_count: chapterCount,
+      pacing_guidance: pacingGuidance,
     };
 
     const messages = [
@@ -391,14 +573,12 @@ Chỉ trả về JSON, không thêm gì khác.`,
             ? (parsedValue.length === 1 && isPlainObject(parsedValue[0])
               ? parsedValue[0]
               : (parsedValue.every(isPlainObject)
-                ? { premise: '', characters: [], locations: [], factions: [], terms: [], chapters: parsedValue }
+                ? { title: '', title_options: [], premise: '', characters: [], locations: [], factions: [], terms: [], chapters: parsedValue, plot_threads: [] }
                 : null))
             : (isPlainObject(parsedValue) ? parsedValue : null);
 
           if (!nextResult) throw new Error('Unexpected JSON format');
-          if (!Array.isArray(nextResult.factions)) nextResult.factions = [];
-
-          setResult(nextResult);
+          setResult(normalizeWizardResult(nextResult, idea));
           setStep(2);
         } catch (e) {
           console.error('[Wizard] Parse error:', e, '\nRaw:', text);
@@ -445,6 +625,10 @@ Chỉ trả về JSON, không thêm gì khác.`,
         milestones: JSON.stringify(milestonesInfo),
         skipFirstChapter: true,
       });
+
+      if (result.title?.trim()) {
+        await db.projects.update(projectId, { title: result.title.trim() });
+      }
 
       // 2. Create chapters
       if (result.chapters?.length > 0) {
@@ -677,9 +861,9 @@ Chỉ trả về JSON, không thêm gì khác.`,
               </select>
             </div>
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
               <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Độ dài dự kiến</label>
+                <label className="form-label" style={{ minHeight: '2.5rem', display: 'flex', alignItems: 'flex-end' }}>Độ dài dự kiến</label>
                 <select className="select" value={targetLengthType} onChange={(e) => handleTargetLengthTypeChange(e.target.value)}>
                   <option value="unset">Chưa xác định</option>
                   <option value="short">Truyện ngắn (30-50 chương)</option>
@@ -689,13 +873,25 @@ Chỉ trả về JSON, không thêm gì khác.`,
                 </select>
               </div>
               <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Số chương mục tiêu</label>
+                <label className="form-label" style={{ minHeight: '2.5rem', display: 'flex', alignItems: 'flex-end' }}>Số chương mục tiêu</label>
                 <input
                   type="number"
                   className="input"
                   value={targetLength}
                   onChange={(e) => setTargetLength(e.target.value)}
                 />
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label" style={{ minHeight: '2.5rem', display: 'flex', alignItems: 'flex-end' }}>Số chương khởi đầu</label>
+                <input
+                  type="number"
+                  className="input"
+                  value={initialChapterCount}
+                  min={1}
+                  max={100}
+                  onChange={(e) => setInitialChapterCount(clampInitialChapterCount(e.target.value))}
+                />
+                <span className="form-hint">Bạn tự chọn số chapter muốn tạo ban đầu, từ 1 đến 100. Mode dưới 20 chapter đang tối ưu nhất.</span>
               </div>
             </div>
 
@@ -909,8 +1105,46 @@ Chỉ trả về JSON, không thêm gì khác.`,
             {/* Premise */}
             <div className="wizard-section">
               <h4>📖 Premise</h4>
+              <h4>✨ Tên truyện</h4>
+              <input
+                className="input"
+                value={result.title || ''}
+                onChange={(e) => setResult(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Nhập tên truyện..."
+                style={{ fontWeight: 700, fontSize: '16px', marginBottom: '8px' }}
+              />
+              {result.title_options?.length > 0 && (
+                <div className="wizard-title-options">
+                  {result.title_options.map((option, index) => (
+                    <button
+                      key={`${option}-${index}`}
+                      className={`wizard-title-chip ${normalizeSearchText(option) === normalizeSearchText(result.title) ? 'wizard-title-chip--active' : ''}`}
+                      onClick={() => setResult(prev => ({ ...prev, title: option }))}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <h4>Premise</h4>
               <p className="wizard-premise">{result.premise}</p>
             </div>
+
+            {coverageWarnings.length > 0 && (
+              <div className="wizard-section">
+                <h4>
+                  <AlertCircle size={16} /> Cảnh báo khớp nội dung
+                </h4>
+                <div className="wizard-warning-list">
+                  {coverageWarnings.map((warning) => (
+                    <div key={warning} className="wizard-warning-item">
+                      <AlertCircle size={14} />
+                      <span>{warning}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* World Profile */}
             {result.world_profile && (

@@ -5,7 +5,28 @@ import {
   getChapterCanonState,
   rebuildCanonFromChapter as rebuildCanonFromChapterEngine,
   repairChapterRevision as repairChapterRevisionEngine,
+  saveRepairDraftRevision as saveRepairDraftRevisionEngine,
 } from '../services/canon/engine';
+
+function normalizeCanonFailure(error) {
+  const message = error?.message || 'Khong the xu ly yeu cau canon.';
+  if (error?.code === 'API_UNREACHABLE') {
+    return {
+      ok: false,
+      kind: 'api_unavailable',
+      message,
+      reports: [],
+      revisionId: null,
+    };
+  }
+  return {
+    ok: false,
+    kind: 'runtime',
+    message,
+    reports: [],
+    revisionId: null,
+  };
+}
 
 const useCanonStore = create((set, get) => ({
   chapterCanon: null,
@@ -13,7 +34,9 @@ const useCanonStore = create((set, get) => ({
   loading: false,
   canonicalizing: false,
   rebuilding: false,
-  repairText: '',
+  repairPreview: null,
+  savingRepairDraft: false,
+  lastActionOutcome: null,
 
   loadChapterCanon: async (projectId, chapterId, sceneId = null) => {
     if (!projectId || !chapterId) {
@@ -37,38 +60,139 @@ const useCanonStore = create((set, get) => ({
   },
 
   canonicalizeChapter: async (projectId, chapterId) => {
-    set({ canonicalizing: true });
+    set({ canonicalizing: true, lastActionOutcome: null });
     try {
       const result = await canonicalizeChapterEngine(projectId, chapterId);
       await get().loadChapterCanon(projectId, chapterId);
-      set({ canonicalizing: false });
-      return result;
+      if (result?.ok === false) {
+        const outcome = {
+          ok: false,
+          kind: 'blocked',
+          message: 'Phan tich su that phat hien mau thuan can sua truoc khi chot canon.',
+          reports: result.reports || [],
+          revisionId: result.revisionId || null,
+        };
+        set({ canonicalizing: false, lastActionOutcome: outcome });
+        return outcome;
+      }
+      const outcome = {
+        ok: true,
+        kind: 'success',
+        message: 'Da phan tich su that thanh cong.',
+        reports: result?.reports || [],
+        revisionId: result?.revisionId || null,
+      };
+      set({ canonicalizing: false, lastActionOutcome: outcome });
+      return outcome;
     } catch (error) {
-      set({ canonicalizing: false });
-      throw error;
+      const outcome = normalizeCanonFailure(error);
+      set({ canonicalizing: false, lastActionOutcome: outcome });
+      return outcome;
     }
   },
 
   rebuildCanonFromChapter: async (projectId, chapterId) => {
-    set({ rebuilding: true });
+    set({ rebuilding: true, lastActionOutcome: null });
     try {
       const result = await rebuildCanonFromChapterEngine(projectId, chapterId);
       await get().loadChapterCanon(projectId, chapterId);
-      set({ rebuilding: false });
-      return result;
+      const outcome = {
+        ok: true,
+        kind: 'success',
+        message: 'Da rebuild canon thanh cong.',
+        reports: [],
+        revisionId: null,
+        result,
+      };
+      set({ rebuilding: false, lastActionOutcome: outcome });
+      return outcome;
     } catch (error) {
-      set({ rebuilding: false });
+      const outcome = normalizeCanonFailure(error);
+      set({ rebuilding: false, lastActionOutcome: outcome });
+      return outcome;
+    }
+  },
+
+  repairChapterRevision: async ({ projectId, chapterId, revisionId, reportId = null }) => {
+    set({
+      repairPreview: {
+        projectId,
+        chapterId,
+        revisionId,
+        reportId,
+        text: '',
+        report: null,
+        loading: true,
+        error: '',
+        savedRevisionId: null,
+      },
+      lastActionOutcome: null,
+    });
+    try {
+      const result = await repairChapterRevisionEngine({ projectId, chapterId, revisionId, reportId });
+      const preview = {
+        projectId,
+        chapterId,
+        revisionId,
+        reportId,
+        text: result?.text || '',
+        report: result?.report || null,
+        loading: false,
+        error: '',
+        savedRevisionId: null,
+      };
+      set({ repairPreview: preview });
+      return preview;
+    } catch (error) {
+      const preview = {
+        projectId,
+        chapterId,
+        revisionId,
+        reportId,
+        text: '',
+        report: null,
+        loading: false,
+        error: error?.message || 'Khong the tao goi y sua.',
+        savedRevisionId: null,
+      };
+      set({ repairPreview: preview });
       throw error;
     }
   },
 
-  repairChapterRevision: async ({ projectId, chapterId, revisionId }) => {
-    const text = await repairChapterRevisionEngine({ projectId, chapterId, revisionId });
-    set({ repairText: text || '' });
-    return text;
+  saveRepairDraftRevision: async ({ projectId, chapterId, revisionId, reportId = null, chapterText }) => {
+    set({ savingRepairDraft: true });
+    try {
+      const saved = await saveRepairDraftRevisionEngine({
+        projectId,
+        chapterId,
+        revisionId,
+        reportId,
+        chapterText,
+      });
+      set((state) => ({
+        savingRepairDraft: false,
+        repairPreview: state.repairPreview
+          ? { ...state.repairPreview, savedRevisionId: saved?.id || null }
+          : state.repairPreview,
+        lastActionOutcome: {
+          ok: true,
+          kind: 'success',
+          message: 'Da luu goi y sua thanh ban draft moi.',
+          reports: [],
+          revisionId: saved?.id || null,
+        },
+      }));
+      return saved;
+    } catch (error) {
+      const outcome = normalizeCanonFailure(error);
+      set({ savingRepairDraft: false, lastActionOutcome: outcome });
+      throw error;
+    }
   },
 
-  clearRepairText: () => set({ repairText: '' }),
+  clearRepairText: () => set({ repairPreview: null }),
+  clearActionOutcome: () => set({ lastActionOutcome: null }),
 }));
 
 export default useCanonStore;

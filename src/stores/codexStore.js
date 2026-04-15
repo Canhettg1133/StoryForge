@@ -121,6 +121,8 @@ const useCodexStore = create((set, get) => ({
       goals: data.goals || '',
       secrets: data.secrets || '',
       notes: data.notes || '',
+      source_chapter_id: data.source_chapter_id || null,
+      source_kind: data.source_kind || '',
       created_at: now,
     });
     await get().loadCodex(data.project_id);
@@ -153,6 +155,8 @@ const useCodexStore = create((set, get) => ({
       description: data.description || '',
       details: data.details || '',
       parent_location_id: data.parent_location_id || null,
+      source_chapter_id: data.source_chapter_id || null,
+      source_kind: data.source_kind || '',
       created_at: Date.now(),
     });
     await get().loadCodex(data.project_id);
@@ -183,6 +187,8 @@ const useCodexStore = create((set, get) => ({
       description: data.description || '',
       owner_character_id: data.owner_character_id || null,
       properties: data.properties || '',
+      source_chapter_id: data.source_chapter_id || null,
+      source_kind: data.source_kind || '',
       created_at: Date.now(),
     });
     await get().loadCodex(data.project_id);
@@ -213,6 +219,8 @@ const useCodexStore = create((set, get) => ({
       aliases: data.aliases || [],          // [MỚI]
       definition: data.definition || '',
       category: data.category || 'other',
+      source_chapter_id: data.source_chapter_id || null,
+      source_kind: data.source_kind || '',
       created_at: Date.now(),
     });
     await get().loadCodex(data.project_id);

@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   BookKey,
   HeartHandshake,
+  Loader2,
   Package,
   Plus,
   RotateCcw,
@@ -11,6 +12,8 @@ import {
 } from 'lucide-react';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
+import useCanonStore from '../../stores/canonStore';
+import CanonRepairDialog from '../../components/canon/CanonRepairDialog';
 import {
   buildCharacterStateSummary,
   getChapterRevisionDetail,
@@ -167,6 +170,15 @@ export default function CanonTruth() {
     updateCanonFact,
     deleteCanonFact,
   } = useCodexStore();
+  const {
+    repairPreview,
+    repairChapterRevision,
+    saveRepairDraftRevision,
+    savingRepairDraft,
+    lastActionOutcome,
+    clearRepairText,
+    clearActionOutcome,
+  } = useCanonStore();
 
   const [overview, setOverview] = useState(null);
   const [loadingOverview, setLoadingOverview] = useState(false);
@@ -195,6 +207,10 @@ export default function CanonTruth() {
       || null,
     [revisionDetail?.evidence, selectedEvidenceId]
   );
+  const scopedRepairPreview = useMemo(() => {
+    if (!selectedChapterId) return null;
+    return repairPreview?.chapterId === selectedChapterId ? repairPreview : null;
+  }, [repairPreview, selectedChapterId]);
   const entityCards = useMemo(
     () => (overview?.entityStates || []).map((state) => ({
       ...state,
@@ -337,6 +353,11 @@ export default function CanonTruth() {
   }, [currentProject?.id, loadCodex, loadOverview]);
 
   useEffect(() => {
+    clearActionOutcome();
+    clearRepairText();
+  }, [selectedChapterId, selectedRevisionId, clearActionOutcome, clearRepairText]);
+
+  useEffect(() => {
     if (!overview?.chapterCommits?.length) {
       setSelectedChapterId(null);
       setRevisionHistory(null);
@@ -361,6 +382,54 @@ export default function CanonTruth() {
       status: 'active',
     });
   }, [createCanonFact, currentProject?.id]);
+
+  const handleGenerateRepair = useCallback(async (reportId) => {
+    if (!currentProject?.id || !selectedChapterId || !selectedRevisionId) return;
+    try {
+      await repairChapterRevision({
+        projectId: currentProject.id,
+        chapterId: selectedChapterId,
+        revisionId: selectedRevisionId,
+        reportId,
+      });
+    } catch {
+      // Store keeps the detailed failure state for the dialog and action banner.
+    }
+  }, [currentProject?.id, repairChapterRevision, selectedChapterId, selectedRevisionId]);
+
+  const handleSaveRepairDraft = useCallback(async () => {
+    if (!currentProject?.id || !selectedChapterId || !selectedRevisionId || !scopedRepairPreview?.text) return;
+    try {
+      const saved = await saveRepairDraftRevision({
+        projectId: currentProject.id,
+        chapterId: selectedChapterId,
+        revisionId: selectedRevisionId,
+        reportId: scopedRepairPreview.reportId || null,
+        chapterText: scopedRepairPreview.text,
+      });
+      await loadOverview();
+      await loadRevisionInspector(selectedChapterId, saved?.id || null);
+    } catch {
+      // Outcome is stored centrally.
+    }
+  }, [
+    currentProject?.id,
+    loadOverview,
+    loadRevisionInspector,
+    saveRepairDraftRevision,
+    scopedRepairPreview,
+    selectedChapterId,
+    selectedRevisionId,
+  ]);
+
+  const handleCopyRepair = useCallback(async () => {
+    if (!scopedRepairPreview?.text) return;
+    try {
+      await navigator.clipboard.writeText(scopedRepairPreview.text);
+    } catch (error) {
+      console.warn('[CanonTruth] Failed to copy repair preview:', error);
+    }
+  }, [scopedRepairPreview?.text]);
 
   return (
     <div className="story-bible su-that-page">
@@ -414,6 +483,55 @@ export default function CanonTruth() {
           <strong>{overview?.stats?.relationship_count || 0}</strong>
         </div>
       </div>
+
+      {lastActionOutcome?.message && (
+        <div className={`su-that-page__feedback su-that-page__feedback--${lastActionOutcome.ok ? 'success' : lastActionOutcome.kind === 'blocked' ? 'warning' : 'error'}`}>
+          {lastActionOutcome.message}
+        </div>
+      )}
+
+      {(overview?.recentPurgeArchives || []).length > 0 && (
+        <section className="bible-canon-panel">
+          <div className="bible-canon-panel-header">
+            <strong>Da purge gan day</strong>
+            <span>{overview.recentPurgeArchives.length}</span>
+          </div>
+          <div className="bible-canon-list">
+            {overview.recentPurgeArchives.map((archive) => {
+              const removedCounts = archive.removed_counts || {};
+              const warningText = Array.isArray(archive.warnings) && archive.warnings.length > 0
+                ? archive.warnings.join(' ')
+                : archive.payload?.warnings?.join(' ') || '';
+              return (
+                <div key={archive.id} className="bible-canon-list-item su-that-page__archive-card">
+                  <div className="su-that-page__archive-row">
+                    <div>
+                      <strong>{archive.chapter_title || `Chuong ${archive.chapter_id}`}</strong>
+                      <p>
+                        Purge {new Date(archive.created_at || Date.now()).toLocaleString()}
+                        {archive.chapter_order_index != null ? ` | Thu tu cu: ${archive.chapter_order_index + 1}` : ''}
+                      </p>
+                      <p>
+                        {[
+                          removedCounts.revisions ? `${removedCounts.revisions} revision` : null,
+                          removedCounts.events ? `${removedCounts.events} su kien` : null,
+                          removedCounts.reports ? `${removedCounts.reports} report` : null,
+                          removedCounts.facts ? `${removedCounts.facts} fact` : null,
+                          removedCounts.characters ? `${removedCounts.characters} nhan vat` : null,
+                          removedCounts.locations ? `${removedCounts.locations} dia diem` : null,
+                          removedCounts.world_terms ? `${removedCounts.world_terms} world term` : null,
+                          removedCounts.objects ? `${removedCounts.objects} vat pham` : null,
+                        ].filter(Boolean).join(' | ') || 'Khong co artifact nao duoc luu.'}
+                      </p>
+                      {warningText && <p>{warningText}</p>}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="su-that-page__priority-grid">
         {criticalPanels.map((panel) => {
@@ -767,9 +885,22 @@ export default function CanonTruth() {
                 <div className="bible-canon-list">
                   {revisionDetail.reports.map((report) => (
                     <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--${report.severity}`}>
-                      <div>
-                        <strong>{translateSeverity(report.severity)}</strong>
-                        <p>{report.message}</p>
+                      <div className="su-that-page__report-row">
+                        <div>
+                          <strong>{translateSeverity(report.severity)}</strong>
+                          <p>{report.message}</p>
+                        </div>
+                        <div className="su-that-page__report-actions">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleGenerateRepair(report.id)}
+                            disabled={scopedRepairPreview?.loading}
+                          >
+                            {scopedRepairPreview?.loading && scopedRepairPreview?.reportId === report.id ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+                            Gợi ý sửa
+                          </button>
+                        </div>
                       </div>
                       <span className="bible-canon-meta">{buildSceneLabel(report.scene_id)}</span>
                     </div>
@@ -829,6 +960,18 @@ export default function CanonTruth() {
                     <p className="text-muted bible-canon-empty">Phiên bản này chưa có ảnh chụp trạng thái.</p>
                   )}
                 </div>
+              </div>
+            </div>
+
+            <div className="bible-canon-panel">
+              <div className="bible-canon-panel-header">
+                <strong>Van ban revision</strong>
+                <span>{revisionDetail.revision.revision_number || 0}</span>
+              </div>
+              <div className="bible-canon-snapshot">
+                <pre className="su-that-page__revision-text">
+                  {revisionDetail.revision.chapter_text || 'Revision nay chua co chapter_text.'}
+                </pre>
               </div>
             </div>
           </>
@@ -915,6 +1058,15 @@ export default function CanonTruth() {
           </div>
         </div>
       )}
+
+      <CanonRepairDialog
+        open={Boolean(scopedRepairPreview)}
+        preview={scopedRepairPreview}
+        saving={savingRepairDraft}
+        onClose={clearRepairText}
+        onCopy={handleCopyRepair}
+        onSaveDraft={handleSaveRepairDraft}
+      />
     </div>
   );
 }

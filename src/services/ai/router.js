@@ -279,9 +279,6 @@ class ModelRouter {
     const fallbacks = [];
     const p = primaryRoute.provider;
 
-    if (p === PROVIDERS.GEMINI_PROXY && primaryRoute.tier === 'pro') {
-      fallbacks.push({ provider: PROVIDERS.GEMINI_PROXY, model: PROXY_MODELS[1].id, tier: 'flash' });
-    }
     if (p === PROVIDERS.GEMINI_DIRECT) {
       fallbacks.push({ provider: PROVIDERS.GEMINI_DIRECT, model: 'gemini-3.1-flash-lite-preview', tier: 'free' });
     }

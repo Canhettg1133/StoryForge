@@ -92,7 +92,7 @@ export default function Dashboard() {
                 )}
               </div>
 
-              <h3 className="project-card-title truncate">{project.title}</h3>
+              <h3 className="project-card-title">{project.title}</h3>
 
               <div className="project-card-meta">
                 <span className="badge badge-accent">{getGenreLabel(project.genre_primary)}</span>

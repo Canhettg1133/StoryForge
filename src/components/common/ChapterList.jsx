@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import useProjectStore from '../../stores/projectStore';
-import useAIStore from '../../stores/aiStore';
-import useCodexStore from '../../stores/codexStore';
 import {
   Plus,
   ChevronDown,
@@ -41,11 +39,9 @@ export default function ChapterList({
     setActiveScene,
     refreshChapterWordCount,
     completingChapterId,
-    setCompletingChapterId,
+    chapterCompletionById,
+    runChapterCompletion,
   } = useProjectStore();
-
-  const { summarizeChapter, extractFromChapter } = useAIStore();
-  const { saveChapterSummary, createCharacter, createLocation, createWorldTerm, createObject, loadCodex } = useCodexStore();
 
   const [expandedChapters, setExpandedChapters] = useState(() => new Set());
   const [editingId, setEditingId] = useState(null);
@@ -222,6 +218,22 @@ export default function ChapterList({
   const handleCompleteChapter = async (chapterId) => {
     setContextMenu(null);
     setMobileActionMenu(null);
+    try {
+      const result = await runChapterCompletion(chapterId, { mode: 'manual' });
+      if (!result) return;
+      if (result.kind === 'empty') {
+        alert('Chuong chua co noi dung de hoan thanh.');
+        return;
+      }
+      if (!result.ok) {
+        alert(result.message || 'Khong the hoan thanh chuong.');
+      }
+      return;
+    } catch (error) {
+      console.error('[ChapterList] Chapter completion failed:', error);
+      alert(error?.message || 'Khong the hoan thanh chuong.');
+      return;
+    }
     setCompletingChapterId(chapterId);
 
     const chapter = chapters.find((item) => item.id === chapterId);
@@ -336,6 +348,7 @@ export default function ChapterList({
   };
 
   const isCompleting = completingChapterId !== null;
+  const getCompletionState = (chapterId) => chapterCompletionById[chapterId] || {};
 
   const renderDesktopTree = () => (
     <>
@@ -402,7 +415,8 @@ export default function ChapterList({
             const isExpanded = expandedChapters.has(chapter.id);
             const isEditingChapter = editingId === `chapter-${chapter.id}`;
             const isDone = chapter.status === 'done';
-            const isThisCompleting = completingChapterId === chapter.id;
+            const completionState = getCompletionState(chapter.id);
+            const isThisCompleting = completionState.running || completingChapterId === chapter.id;
 
             return (
               <div key={chapter.id} className="chapter-node">
@@ -499,7 +513,8 @@ export default function ChapterList({
         const isExpanded = expandedChapters.has(chapter.id);
         const isEditingChapter = editingId === `chapter-${chapter.id}`;
         const isDone = chapter.status === 'done';
-        const isThisCompleting = completingChapterId === chapter.id;
+        const completionState = getCompletionState(chapter.id);
+        const isThisCompleting = completionState.running || completingChapterId === chapter.id;
 
         return (
           <div key={chapter.id} className="chapter-mobile-group">
@@ -661,9 +676,9 @@ export default function ChapterList({
               <button
                 className="context-menu-item context-menu-item--success"
                 onClick={() => handleCompleteChapter(contextMenu.id)}
-                disabled={isCompleting}
+                disabled={Boolean(getCompletionState(contextMenu.id).running)}
               >
-                {isCompleting ? <Loader2 size={14} className="chapter-loading-icon" /> : <CheckCircle2 size={14} />}
+                {getCompletionState(contextMenu.id).running ? <Loader2 size={14} className="chapter-loading-icon" /> : <CheckCircle2 size={14} />}
                 Hoàn thành chương
               </button>
             );
@@ -693,9 +708,9 @@ export default function ChapterList({
                 <button
                   className="chapter-mobile-sheet-btn chapter-mobile-sheet-btn--success"
                   onClick={() => handleCompleteChapter(mobileActionMenu.id)}
-                  disabled={isCompleting}
+                  disabled={Boolean(getCompletionState(mobileActionMenu.id).running)}
                 >
-                  {isCompleting ? <Loader2 size={16} className="chapter-loading-icon" /> : <CheckCircle2 size={16} />}
+                  {getCompletionState(mobileActionMenu.id).running ? <Loader2 size={16} className="chapter-loading-icon" /> : <CheckCircle2 size={16} />}
                   Hoàn thành chương
                 </button>
               )}
