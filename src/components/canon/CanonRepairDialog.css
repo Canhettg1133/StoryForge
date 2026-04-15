@@ -1,0 +1,97 @@
+.canon-repair-dialog {
+  max-width: 960px;
+  padding: var(--space-6);
+}
+
+.canon-repair-dialog__header {
+  margin-bottom: var(--space-4);
+}
+
+.canon-repair-dialog__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-accent);
+}
+
+.canon-repair-dialog__title {
+  margin: 6px 0 0;
+  font-size: var(--text-lg);
+}
+
+.canon-repair-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.canon-repair-dialog__report {
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary);
+}
+
+.canon-repair-dialog__report strong {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.canon-repair-dialog__report p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.canon-repair-dialog__report--error {
+  border-color: color-mix(in srgb, var(--color-danger) 45%, var(--color-border));
+}
+
+.canon-repair-dialog__report--warning {
+  border-color: color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+}
+
+.canon-repair-dialog__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.canon-repair-dialog__state--error {
+  color: var(--color-danger);
+}
+
+.canon-repair-dialog__textarea {
+  width: 100%;
+  min-height: 420px;
+  resize: vertical;
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg-tertiary) 88%, black);
+  color: var(--color-text-primary);
+  font: inherit;
+  line-height: 1.7;
+}
+
+.canon-repair-dialog__actions {
+  margin-top: 0;
+}
+
+@media (max-width: 720px) {
+  .canon-repair-dialog {
+    width: calc(100% - 20px);
+    padding: var(--space-4);
+  }
+
+  .canon-repair-dialog__textarea {
+    min-height: 300px;
+  }
+}
