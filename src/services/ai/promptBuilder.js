@@ -2,18 +2,18 @@
  * StoryForge - Prompt Builder v3 (Phase 4)
  *
  * Layer architecture:
- *   0.   Grand Strategy (Phase 9) — đại cục + hồi truyện hiện tại
- *        CHỈ inject cho writing tasks khi có dữ liệu macro arc / arc
+ *   0.   Grand Strategy (Phase 9) - macro arc + current arc
+ *        Only injected for writing tasks when arc data exists
  *   1.   System Identity
  *   2.   Task Instruction
  *   3.   Genre / AI Guidelines (editable, pre-filled from genre)
  *   4.   Canon Context (world profile, terms, locations, objects, canon facts)
- *   4.2  Chapter Outline (Phase 8) — nhiệm vụ chương hiện tại + fence chương sau
- *        CHỈ inject cho writing tasks
+ *   4.2  Chapter Outline (Phase 8) - current chapter brief + next chapter fence
+ *        Only injected for writing tasks
  *   4.5  Pacing Control
  *   5.   Character State (characters + pronouns + relationships + taboos)
- *   5.5  Bridge Memory (Phase 7) — prose buffer + emotional state từ chương trước
- *        CHỈ inject cho writing tasks: CONTINUE, EXPAND, REWRITE, SCENE_DRAFT, ARC_CHAPTER_DRAFT
+ *   5.5  Bridge Memory (Phase 7) - prose buffer + previous emotional state
+ *        Only injected for writing tasks: CONTINUE, EXPAND, REWRITE, SCENE_DRAFT, ARC_CHAPTER_DRAFT
  *   6.   Scene Contract (goal, conflict, must/must-not, pacing)
  *   7.   Style Pack (placeholder - Phase 5)
  *   8.   Output Format
@@ -109,9 +109,9 @@ function isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, 
     .toLowerCase();
 
   const intimateHints = [
-    '18+', 'nsfw', 'canh nong', 'cảnh nóng', 'than mat', 'thân mật',
-    'quan he', 'quan hệ', 'xac thit', 'xác thịt', 'ân ái', 'an ai',
-    'lam tinh', 'làm tình', 'kieu dam', 'khiêu dâm', 'tinh duc', 'tình dục',
+    '18+', 'nsfw', 'canh nong', 'than mat',
+    'quan he', 'xac thit', 'an ai',
+    'lam tinh', 'kieu dam', 'tinh duc',
   ];
 
   if (intimateHints.some((hint) => promptText.includes(hint))) {
@@ -185,7 +185,7 @@ export const DEFAULT_LAYER_1_IDENTITY = [
   'Ban viet bang tieng Viet tru khi duoc yeu cau khac.',
   'Ban KHONG tu y them meta-commentary, ghi chu, hay giai thich du thua - chi tra ve dung noi dung task can.',
   'Ban PHAI tuan thu tuyet doi moi taboo, blacklist, va quy tac an toan duoc cung cap.',
-  'Ban KHONG duoc tu y tao ra nhan vat, dia danh, ky nang, he thong suc manh, hay bat ky thuc the nao CHUA DUOC liet ke trong Canon hoac The Gioi truyen — tru khi tac gia yeu cau ro rang hoac task la brainstorm/outline/project_wizard.',
+  'Ban KHONG duoc tu y tao ra nhan vat, dia danh, ky nang, he thong suc manh, hay bat ky thuc the nao CHUA DUOC liet ke trong Canon hoac The Gioi truyen - tru khi tac gia yeu cau ro rang hoac task la brainstorm/outline/project_wizard.',
 ].join('\n');
 
 function resolveSystemIdentityPrompt() {
@@ -203,17 +203,11 @@ function resolveSystemIdentityPrompt() {
 }
 
 // =============================================
-// Writing tasks — 3 mức injection
+// Writing tasks use 3 injection modes:
 //
-// FULL_WRITING: Author DNA đầy đủ + Style DNA + Mood Board + Priority Anchor
-//   → AI tự do sáng tác, cần định hướng cảm xúc và vai trò đầy đủ
-//
-// STYLE_ONLY: Chỉ Style DNA + Mood Board + Priority Anchor nhẹ
-//   → AI làm việc với text đã có, không được "kéo" cảm xúc theo hướng mới
-//   → EXPAND: giữ nguyên hướng, chỉ làm phong phú
-//   → REWRITE: giữ nguyên nội dung, chỉ nâng câu chữ
-//
-// Dùng chung cho Layer 0, 4.2, 5.5:
+// FULL_WRITING: full Author DNA + Style DNA + Mood Board + Priority Anchor.
+// STYLE_ONLY: style guidance only, without changing story direction.
+// Shared by Layer 0, 4.2, and 5.5.
 // =============================================
 const WRITING_TASKS_FOR_BRIDGE = new Set([
   TASK_TYPES.CONTINUE,
@@ -224,7 +218,7 @@ const WRITING_TASKS_FOR_BRIDGE = new Set([
   TASK_TYPES.FREE_PROMPT,
 ]);
 
-// Full injection: AI tự do sáng tác từ đầu
+// Full injection: AI is drafting fresh prose.
 const FULL_WRITING_TASKS = new Set([
   TASK_TYPES.CONTINUE,
   TASK_TYPES.SCENE_DRAFT,
@@ -232,7 +226,7 @@ const FULL_WRITING_TASKS = new Set([
   TASK_TYPES.FREE_PROMPT, // Re-enabled for high quality chat
 ]);
 
-// Style-only injection: AI làm việc với text đã có
+// Style-only injection: AI is revising existing prose.
 const STYLE_ONLY_TASKS = new Set([
   TASK_TYPES.EXPAND,
   TASK_TYPES.REWRITE,
@@ -260,13 +254,13 @@ const DEFAULT_WRITING_DISCIPLINE_LAYER = [
 
 // =============================================
 // FREE_PROMPT intent detection
-// Writing requests → full Author DNA + Style DNA injection
-// Questions/chat → lightweight (Canon + Characters only)
+// Writing requests -> full Author DNA + Style DNA injection
+// Questions/chat -> lightweight (Canon + Characters only)
 // =============================================
 function isWritingIntent(userPrompt) {
   if (!userPrompt) return true; // No prompt = likely continuation
   const lower = userPrompt.toLowerCase();
-  // Question patterns → NOT writing
+  // Question patterns -> not writing
   if (lower.includes('?')) return false;
   const chatPatterns = ['la gi', 'giai thich', 'tai sao', 'the nao', 'bao nhieu',
     'dat ten', 'goi y ten', 'liet ke', 'so sanh', 'phan tich', 'cho toi biet',
@@ -292,13 +286,13 @@ function withPlanningAndCanonPrefix(instruction) {
 }
 
 export const TASK_INSTRUCTIONS = {
-  [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Hay mieu ta that chi tiet tung hanh dong, tam ly, canh vat, doi thoai. Viet DAI va CHI TIET, muc tieu 2000-4000 tu de dong gop vao muc tieu chuong truyen 7000 tu. KHONG viet ngan, KHONG luoc bo, KHONG tom tat. KHONG duoc nhay thoi gian (time skip) — moi su kien phai dien ra LIEN TUC tu vi tri cuoi cung, cam viet kieu "Ba ngay sau...", "Mot thoi gian troi qua...", "Khong lau sau...". Neu can chuyen canh, hay ket thuc canh hien tai bang cliffhanger roi mo canh moi tu nhien.',
-  [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung GIU NGUYEN noi dung, cot truyen va y nghia. Lam cho no tu nhien hon, giau cam xuc hon, nhip dieu tot hon. GIU do dai TUONG DUONG doan goc (cho phep dai hon 20-50% de them mieu ta cam xuc va chi tiet ngu giac). TUYET DOI KHONG tu y them su kien moi, nhan vat moi, dia danh moi, hay thay doi dien bien — chi nang cap cau van, nhip dieu, va chieu sau cam xuc.',
-  [TASK_TYPES.EXPAND]: 'Mo rong doan van GAP 3-5 LAN do dai goc. Giu nguyen giong van va mach truyen. Them vao: mieu ta ngu giac (nhin/nghe/ngui/cham/vi), noi tam nhan vat, doi thoai tu nhien, va hanh dong cham (slow motion). KHONG duoc them su kien moi hay thay doi cot truyen — chi lam PHONG PHU nhung gi da co. Dao sau vao tam ly nhan vat (ho nghi gi, so gi, muon gi trong khoang khac do), boi canh (am thanh, mui, anh sang, nhiet do), va tung cu dong nho.',
+  [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Hay mieu ta that chi tiet tung hanh dong, tam ly, canh vat, doi thoai. Viet DAI va CHI TIET, muc tieu 2000-4000 tu de dong gop vao muc tieu chuong truyen 7000 tu. KHONG viet ngan, KHONG luoc bo, KHONG tom tat. KHONG duoc nhay thoi gian (time skip) - moi su kien phai dien ra LIEN TUC tu vi tri cuoi cung, cam viet kieu "Ba ngay sau...", "Mot thoi gian troi qua...", "Khong lau sau...". Neu can chuyen canh, hay ket thuc canh hien tai bang cliffhanger roi mo canh moi tu nhien.',
+  [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung GIU NGUYEN noi dung, cot truyen va y nghia. Lam cho no tu nhien hon, giau cam xuc hon, nhip dieu tot hon. GIU do dai TUONG DUONG doan goc (cho phep dai hon 20-50% de them mieu ta cam xuc va chi tiet ngu giac). TUYET DOI KHONG tu y them su kien moi, nhan vat moi, dia danh moi, hay thay doi dien bien - chi nang cap cau van, nhip dieu, va chieu sau cam xuc.',
+  [TASK_TYPES.EXPAND]: 'Mo rong doan van GAP 3-5 LAN do dai goc. Giu nguyen giong van va mach truyen. Them vao: mieu ta ngu giac (nhin/nghe/ngui/cham/vi), noi tam nhan vat, doi thoai tu nhien, va hanh dong cham (slow motion). KHONG duoc them su kien moi hay thay doi cot truyen - chi lam PHONG PHU nhung gi da co. Dao sau vao tam ly nhan vat (ho nghi gi, so gi, muon gi trong khoang khac do), boi canh (am thanh, mui, anh sang, nhiet do), va tung cu dong nho.',
   [TASK_TYPES.BRAINSTORM]: withPlanningAndCanonPrefix([
     'Brainstorm 5 y tuong KHAC BIET cho tinh huong dang xet. Moi y tuong gom:',
     '1. Tom tat huong di (2-3 cau)',
-    '2. Xung dot chinh se la gi — nhan vat doi mat voi thach thuc/mat mat gi',
+    '2. Xung dot chinh se la gi - nhan vat doi mat voi thach thuc/mat mat gi',
     '3. Nhan vat nao bi anh huong nhieu nhat va thay doi nhu the nao',
     '4. Diem hay: tai sao huong nay hap dan doc gia',
     '5. Rui ro: diem nao co the bi nhat/chen ep neu khong xu ly tot',
@@ -308,12 +302,12 @@ export const TASK_INSTRUCTIONS = {
   ].join('\n')),
   [TASK_TYPES.OUTLINE]: withPlanningAndCanonPrefix([
     'Tao outline CHI TIET 5-8 diem chinh cho chuong/phan tiep theo. Moi diem bao gom:',
-    '- Su kien/hanh dong CU THE (khong chung chung kieu "nhan vat chien dau" — ma phai la "nhan vat bi don vao the ket, phai chon giua mat mang hoac phan boi...")',
+    '- Su kien/hanh dong CU THE (khong chung chung kieu "nhan vat chien dau" - ma phai la "nhan vat bi don vao the ket, phai chon giua mat mang hoac phan boi...")',
     '- Cam xuc nhan vat chuyen bien nhu the nao qua su kien do',
     '- Lien ket voi tuyen truyen nao dang mo (neu co)',
     '',
     'Outline phai co 3 phan:',
-    '- HOOK: diem cuon hut o dau — doc gia doc dong dau tien phai muon doc tiep',
+    '- HOOK: diem cuon hut o dau - doc gia doc dong dau tien phai muon doc tiep',
     '- ESCALATION: tang dan cang thang va do phuc tap qua tung diem',
     '- CLIFFHANGER: ket mo bang cau hoi/tinh huong khien doc gia khong the ngu duoc',
   ].join('\n')),
@@ -419,7 +413,7 @@ export const TASK_INSTRUCTIONS = {
     'Tao 3-5 nhan vat, 3-5 dia diem, 3-5 thuat ngu, va 8-12 chuong. Chi tra ve JSON.',
   ].join('\n'),
 
-  // Phase A — Suggestion Inbox
+  // Phase A - Suggestion Inbox
   [TASK_TYPES.SUGGEST_UPDATES]: withPlanningAndCanonPrefix([
     'Phan tich noi dung chuong va so sanh voi trang thai hien tai cua cac nhan vat + su that canon hien co.',
     'De xuat nhung THAY DOI MOI xay ra trong chuong nay. Chi de xuat khi co bang chung ro rang trong van ban.',
@@ -593,20 +587,19 @@ export const TASK_INSTRUCTIONS = {
 
 // =============================================
 // Layer 0: Grand Strategy (Phase 9)
-// Inject trước tất cả các layer khác để AI luôn
-// "nhìn thấy bản đồ" trước khi bắt đầu viết.
+// Inject before every other layer so the AI sees the story map first.
 //
-// Lý do đặt Layer 0 (trước Layer 1):
-//   LLM chú ý nhiều nhất vào đầu và cuối prompt.
-//   Grand Strategy ở đầu = AI không bao giờ "quên" đại cục dù context dài.
+// Why Layer 0 comes first:
+// - LLM attention is strongest near the start and end of the prompt.
+// - Grand Strategy at the top reduces drift on long contexts.
 //
-// Chỉ inject khi:
-//   1. Là writing task
-//   2. Có ít nhất một trong: currentArc hoặc currentMacroArc
+// Only inject when:
+// 1. This is a writing task.
+// 2. currentArc or currentMacroArc exists.
 // =============================================
 
 /**
- * Build Layer 0 — Grand Strategy & Pacing (merged).
+ * Build Layer 0 - Grand Strategy & Pacing (merged).
  * Combines old Layer 0 (Grand Strategy) + old Layer 4.5 (Pacing Control)
  * into a single unified layer. Deduplicates "don't resolve early" constraints.
  *
@@ -684,7 +677,7 @@ function buildGrandStrategyLayer(
     parts.push('[HOI TRUYEN HIEN TAI]\n' + arcLines.join('\n'));
   }
 
-  // Unified constraints (single source of truth — NO duplication)
+  // Unified constraints (single source of truth - no duplication)
   var constraints = [];
   if (currentMacroArc && currentMacroArc.chapter_to && targetLength > 0) {
     var remainingInMacro = currentMacroArc.chapter_to - (currentChapterIndex + 1);
@@ -716,19 +709,40 @@ function buildGrandStrategyLayer(
 // =============================================
 
 /**
- * Build Layer 4.2 — Chapter Outline Context.
- * Chỉ inject cho writing tasks.
+ * Build Layer 4.2 - Chapter Outline Context.
+ * Only inject for writing tasks.
  */
-function buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapters) {
+function buildChapterOutlineLayer(taskType, currentChapterOutline, chapterBlueprintContext, upcomingChapters) {
   if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
   if (!currentChapterOutline && (!upcomingChapters || upcomingChapters.length === 0)) return '';
 
   const parts = [];
 
-  if (currentChapterOutline && (currentChapterOutline.title || currentChapterOutline.summary)) {
+  if (currentChapterOutline && (
+    currentChapterOutline.title
+    || currentChapterOutline.summary
+    || currentChapterOutline.purpose
+    || currentChapterOutline.primaryLocation
+  )) {
     const cur = [];
     if (currentChapterOutline.title) cur.push('Tieu de: ' + currentChapterOutline.title);
     if (currentChapterOutline.summary) cur.push('Noi dung can viet: ' + currentChapterOutline.summary);
+    if (currentChapterOutline.purpose) cur.push('Purpose: ' + currentChapterOutline.purpose);
+    if (currentChapterOutline.featuredCharacters && currentChapterOutline.featuredCharacters.length > 0) {
+      cur.push('Nhan vat bat buoc bam sat: ' + currentChapterOutline.featuredCharacters.join(', '));
+    }
+    if (currentChapterOutline.primaryLocation) {
+      cur.push('Dia diem chinh: ' + currentChapterOutline.primaryLocation);
+    }
+    if (currentChapterOutline.threadTitles && currentChapterOutline.threadTitles.length > 0) {
+      cur.push('Tuyen truyen phai day: ' + currentChapterOutline.threadTitles.join(', '));
+    }
+    if (currentChapterOutline.requiredFactions && currentChapterOutline.requiredFactions.length > 0) {
+      cur.push('The luc can xuat hien: ' + currentChapterOutline.requiredFactions.join(', '));
+    }
+    if (currentChapterOutline.requiredObjects && currentChapterOutline.requiredObjects.length > 0) {
+      cur.push('Vat pham can xuat hien: ' + currentChapterOutline.requiredObjects.join(', '));
+    }
     if (currentChapterOutline.keyEvents && currentChapterOutline.keyEvents.length > 0) {
       cur.push(
         'Su kien bat buoc xay ra:\n' +
@@ -738,10 +752,37 @@ function buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapt
     parts.push('[NHIEM VU CHUONG NAY - BAM SAT, KHONG LAC SANG CHUONG KHAC]\n' + cur.join('\n'));
   }
 
+  if (chapterBlueprintContext) {
+    const whitelistLines = [];
+    const blueprintCharacters = Array.isArray(chapterBlueprintContext.featured_characters)
+      ? chapterBlueprintContext.featured_characters
+      : [];
+    if (blueprintCharacters.length > 0) {
+      whitelistLines.push('Nhan vat uu tien: ' + blueprintCharacters.join(', '));
+    }
+    if (chapterBlueprintContext.primary_location) {
+      whitelistLines.push('Dia diem uu tien: ' + chapterBlueprintContext.primary_location);
+    }
+    if (Array.isArray(chapterBlueprintContext.required_factions) && chapterBlueprintContext.required_factions.length > 0) {
+      whitelistLines.push('The luc duoc phep/nen su dung: ' + chapterBlueprintContext.required_factions.join(', '));
+    }
+    if (Array.isArray(chapterBlueprintContext.required_objects) && chapterBlueprintContext.required_objects.length > 0) {
+      whitelistLines.push('Vat pham duoc phep/nen su dung: ' + chapterBlueprintContext.required_objects.join(', '));
+    }
+    if (Array.isArray(chapterBlueprintContext.required_terms) && chapterBlueprintContext.required_terms.length > 0) {
+      whitelistLines.push('Thuat ngu nen bam sat: ' + chapterBlueprintContext.required_terms.join(', '));
+    }
+    if (whitelistLines.length > 0) {
+      whitelistLines.push('Chi duoc dung entity ngoai danh sach neu summary chuong hoac canon dang co bat buoc phai goi toi.');
+      whitelistLines.push('Khong tu y them nhan vat, dia diem, vat pham, the luc, hay thuat ngu moi neu chapter blueprint va canon chua cho phep ro rang.');
+      parts.push('[WHITELIST CHO CHUONG NAY - UU TIEN DUNG DUNG ENTITY DA DUOC CHI DINH]\n' + whitelistLines.join('\n'));
+    }
+  }
+
   if (upcomingChapters && upcomingChapters.length > 0) {
     const fence = upcomingChapters
       .map(function (c, i) {
-        return '- Chuong tiep theo ' + (i + 1) + ': "' + c.title + '"' + (c.summary ? ' — ' + c.summary : '');
+        return '- Chuong tiep theo ' + (i + 1) + ': "' + c.title + '"' + (c.summary ? ' - ' + c.summary : '');
       })
       .join('\n');
     parts.push('[CAC CHUONG TIEP THEO - TUYET DOI KHONG VIET TRUOC NOI DUNG NAY]\n' + fence);
@@ -749,6 +790,36 @@ function buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapt
 
   if (parts.length === 0) return '';
   return '\n[DAN Y TRUYEN]\n' + parts.join('\n\n');
+}
+
+function buildPreWriteValidationLayer(taskType, preWriteValidation) {
+  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
+  if (!preWriteValidation || typeof preWriteValidation !== 'object') return '';
+
+  const blockingIssues = Array.isArray(preWriteValidation.blockingIssues)
+    ? preWriteValidation.blockingIssues.filter(Boolean)
+    : [];
+  const warnings = Array.isArray(preWriteValidation.warnings)
+    ? preWriteValidation.warnings.filter(Boolean)
+    : [];
+
+  if (blockingIssues.length === 0 && warnings.length === 0) {
+    return '';
+  }
+
+  const parts = [];
+  if (blockingIssues.length > 0) {
+    parts.push('Loi chan truoc khi viet:\n' + blockingIssues.map(function (issue) {
+      return '- ' + issue.message;
+    }).join('\n'));
+  }
+  if (warnings.length > 0) {
+    parts.push('Canh bao anti-hallucination:\n' + warnings.map(function (issue) {
+      return '- ' + issue.message;
+    }).join('\n'));
+  }
+
+  return '\n[KIEM TRA TRUOC KHI VIET]\n' + parts.join('\n\n');
 }
 
 function formatChapterBriefList(briefs, options) {
@@ -818,7 +889,7 @@ function formatMacroMilestoneList(milestones) {
 
 /**
  * Build Layer 5.5 Bridge Memory block.
- * Trả về string rỗng nếu không có dữ liệu hoặc task không phải writing task.
+ * Return an empty string when there is no data or the task is not a writing task.
  */
 function buildBridgeMemoryLayer(taskType, bridgeBuffer, emotionalState, tensionLevel) {
   if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
@@ -853,16 +924,14 @@ function buildBridgeMemoryLayer(taskType, bridgeBuffer, emotionalState, tensionL
 // =============================================
 // Layer 0.5: Author DNA
 //
-// Inject TRƯỚC System Identity để AI internalize role
-// trước khi đọc bất kỳ instruction nào.
+// Inject before System Identity so the AI internalizes author role first.
 //
-// - FULL_WRITING tasks: đầy đủ (role + triết lý + mục tiêu cảm xúc)
-// - STYLE_ONLY tasks: chỉ role + triết lý (không có emotional goals vì
-//   AI đang làm việc với text có sẵn, không được thay đổi hướng cảm xúc)
+// - FULL_WRITING tasks: full role + philosophy + emotional goals.
+// - STYLE_ONLY tasks: role + philosophy only, without changing story direction.
 // =============================================
 
 /**
- * Lấy role theo giai đoạn chương.
+ * Pick the author role by chapter stage.
  */
 function getAuthorRole(writingStyle, chapterIndex, targetLength) {
   const roles = AUTHOR_ROLE_TABLE[writingStyle] || AUTHOR_ROLE_TABLE['thuan_viet'];
@@ -874,7 +943,7 @@ function getAuthorRole(writingStyle, chapterIndex, targetLength) {
 }
 
 /**
- * Build Layer 0.5 — Author DNA.
+ * Build Layer 0.5 - Author DNA.
  * @param {string} taskType
  * @param {string} writingStyle - 'han_viet' | 'thuan_viet'
  * @param {number} chapterIndex
@@ -898,29 +967,29 @@ function buildAuthorDNALayer(taskType, writingStyle, chapterIndex, targetLength,
   lines.push('TRIET LY VIET (BAT BUOC INTERNALIZE):');
   lines.push('1. Viet bang cam xuc, khong phai thong tin.');
   lines.push('   SAI: "Canh gioi han dot pha len Truc Co ky."');
-  lines.push('   DUNG: "Linh hai trong nguoi han bot nhien vo vun — roi tai sinh, manh liet hon gap boi."');
+  lines.push('   DUNG: "Linh hai trong nguoi han bot nhien vo vun - roi tai sinh, manh liet hon gap boi."');
   lines.push('2. Moi canh PHAI thay doi trang thai nhan vat. Truoc canh: nhan vat muon/so/nghi gi? Sau canh: con nguyen ven khong?');
   lines.push('3. Doc gia CAM truoc, HIEU sau. Khong bao gio giai thich truoc khi de doc gia trai nghiem.');
-  lines.push('4. Moi cau phai "lam mot viec": mo ta, day chuyen, tiet lo, HOAC gay cam xuc. Cau khong lam duoc gi → cat.');
+  lines.push('4. Moi cau phai "lam mot viec": mo ta, day chuyen, tiet lo, HOAC gay cam xuc. Cau khong lam duoc gi thi cat.');
 
-  // Chỉ thêm emotional goals cho FULL_WRITING tasks
+    // Only add emotional goals for FULL_WRITING tasks.
   if (isFullWriting) {
     lines.push('');
     lines.push('MUC TIEU CAM XUC CHUONG NAY:');
 
     const hookEmotion = currentChapterOutline?.summary
       ? 'Cuon hut doc gia ngay lap tuc qua: ' + currentChapterOutline.summary.substring(0, 80)
-      : 'Tao hook manh me ngay dong dau tien — doc gia phai muon doc tiep';
+      : 'Tao hook manh me ngay dong dau tien - doc gia phai muon doc tiep';
     const peakEmotion = currentMacroArc?.emotional_peak
       ? currentMacroArc.emotional_peak
       : 'Day len muc cam xuc cao nhat co the trong canh nay';
-    const cliffhanger = 'De lai it nhat mot cau hoi chua duoc tra loi — doc gia phai muon sang chuong sau';
+    const cliffhanger = 'De lai it nhat mot cau hoi chua duoc tra loi - doc gia phai muon sang chuong sau';
 
     lines.push('- DAU CHUONG (hook): ' + hookEmotion);
     lines.push('- DINH DIEM (peak): ' + peakEmotion);
     lines.push('- CUOI CHUONG (cliffhanger): ' + cliffhanger);
   } else {
-    // STYLE_ONLY: nhắc nhở không thay đổi hướng
+    // STYLE_ONLY: remind the model not to alter story direction.
     lines.push('');
     lines.push('LUU Y QUAN TRONG (STYLE_ONLY MODE):');
     lines.push('Ban dang lam viec voi text DA CO SAN. KHONG duoc thay doi huong cam xuc hay cot truyen.');
@@ -933,13 +1002,13 @@ function buildAuthorDNALayer(taskType, writingStyle, chapterIndex, targetLength,
 // =============================================
 // Layer 7: Style DNA
 //
-// Thay thế placeholder "Style Pack" cũ.
-// Hai bộ hoàn toàn khác nhau: Hán Việt và Thuần Việt.
-// Inject cho tất cả writing tasks (FULL + STYLE_ONLY).
+// Replaces the old "Style Pack" placeholder.
+// Han-Viet and Thuan-Viet are intentionally different styles.
+// Inject for all writing tasks (FULL + STYLE_ONLY).
 // =============================================
 
 /**
- * Build Layer 7 — Style DNA.
+ * Build Layer 7 - Style DNA.
  * @param {string} taskType
  * @param {string} writingStyle - 'han_viet' | 'thuan_viet'
  * @returns {string}
@@ -951,7 +1020,7 @@ function buildStyleDNALayer(taskType, writingStyle) {
     return `
 [VAN PHONG DNA - HAN VIET / SANGTACVIET STYLE]
 
-1. TU DIEN BAT BUOC DUNG — KHONG DUOC THUAN VIET HOA:
+1. TU DIEN BAT BUOC DUNG - KHONG DUOC THUAN VIET HOA:
 Xung ho: nguoi, han, nang, lao, tieu tu, dao huu, huynh, de, ty, muoi, lao phu
 Trang thai: bang bac, lanh mang, tham thuy, u am, hung hon, kinh nguoi, uy ap
 Hanh dong: thi trien, van chuyen, dot pha, ngung ket, tan loan, thu liem, tung hoanh
@@ -972,19 +1041,19 @@ Hanh dong nhanh: cau 5-8 chu, lien tiep, moi cau = 1 hanh dong ro rang.
   VD: "Han xuat thu. Kiem quang loe len. Dich nhan chua kip phan ung."
 Cam xuc / noi tam: cau dai, nhieu menh de, cham rai suy tu.
   VD: "Han dung do, nhin vao hu khong ma trong long lai day len mot cam giac ky la..."
-Cao trao CONG THUC: 3 cau ngan → 1 cau dai bung no.
-  VD: "Linh khi rung chuyen. Dai dia run ray. Khong gian meo mo. Va roi — trong tieng gao thet kinh thien cua thien dia, canh gioi han vo toang!"
+Cao trao CONG THUC: 3 cau ngan + 1 cau dai bung no.
+  VD: "Linh khi rung chuyen. Dai dia run ray. Khong gian meo mo. Va roi - trong tieng gao thet kinh thien cua thien dia, canh gioi han vo toang!"
 
 4. CONG THUC SANG DIEM (BAT BUOC NAM VUNG):
-Va mat (humiliation → reversal):
+Va mat (humiliation -> reversal):
   Setup: ke dich kieu ngao + cong khai si nhuc truoc dong nguoi.
   Twist: nhan vat chinh tiet lo bi an / suc manh that su.
   Payoff: 1 cau thoai ngan, lanh, chinh xac den tan nhan.
-  Phan ung: dam dong kinh ngac → im lang → xon xao.
+  Phan ung: dam dong kinh ngac -> im lang -> xon xao.
 Dot pha canh gioi:
   Giai doan 1: co the dau don / linh hai sap vo.
-  Giai doan 2: diem bung vo — mo ta vat ly cuc ky chi tiet.
-  Giai doan 3: su yen tinh sau bao — nhan vat nhan ra minh da khac.
+  Giai doan 2: diem bung vo - mo ta vat ly cuc ky chi tiet.
+  Giai doan 3: su yen tinh sau bao - nhan vat nhan ra minh da khac.
 Tiet lo bi mat: de doc gia nhan ra TRUOC nhan vat (dramatic irony) HOAC cung luc (shock).
 
 5. CAM KY TUYET DOI:
@@ -992,25 +1061,25 @@ Tiet lo bi mat: de doc gia nhan ra TRUOC nhan vat (dramatic irony) HOAC cung luc
 - KHONG de nhan vat binh than truoc dieu phi thuong
 - KHONG ket thuc canh ma khong co he qua cam xuc
 - KHONG dung ngoac don () tru mau sac pham cap: (luc), (lam), (tu), (hoang), (xich), (chanh), (hac), (bach), (thai sac)
-- KHONG viet "Han nghi:" — thay bang gian tiep noi tam`;
+- KHONG viet "Han nghi:" - thay bang gian tiep noi tam`;
   }
 
-  // Thuần Việt
+  // Thuan Viet
   return `
 [VAN PHONG DNA - THUAN VIET]
 
 1. NGUYEN TAC GOC:
 Moi thu phai nghe nhu nguoi Viet thuc su nghi va cam.
 Khong cung nhac, khong dich may, khong Han hoa.
-Tu nao nguoi binh thuong khong noi → thay bang tu tu nhien hon.
+Tu nao nguoi binh thuong khong noi thi thay bang tu tu nhien hon.
 
 2. NHIP DIEU VA CAU TRUC:
 Hanh dong: cau ngan, dong tu manh, KHONG trang tu thua.
   DUNG: "Anh chay. Tim dap loan. Hoi tho can."
   SAI:  "Anh vo cung voi va chay rat nhanh."
 Noi tam: cau dai hon, chay tu nhien nhu dong y thuc.
-  DUNG: "Co khong hieu tai sao minh lai dung lai o day — chi biet rang neu buoc them mot buoc nua, co dieu gi do se vinh vien thay doi."
-Doi thoai: ngan, that, co tinh cach tung nguoi — khong ai noi dai hon 2 cau neu khong can.
+  DUNG: "Co khong hieu tai sao minh lai dung lai o day - chi biet rang neu buoc them mot buoc nua, co dieu gi do se vinh vien thay doi."
+Doi thoai: ngan, that, co tinh cach tung nguoi - khong ai noi dai hon 2 cau neu khong can.
 
 3. MOI TRUONG VA GIAC QUAN:
 Mo ta = 5 giac quan, KHONG phai buc tranh.
@@ -1028,15 +1097,15 @@ THAY BANG hanh dong the hien cam xuc:
 Cung bac cam xuc = thay doi vat ly: nhip tho, nhiet do, trong luong co the.
 
 5. CAM KY:
-- KHONG dung: nguoi, han (→ anh ay, ong ta, y, ga...), nang (→ co ay, chi ay)
+- KHONG dung: nguoi, han (? anh ay, ong ta, y, ga...), nang (? co ay, chi ay)
 - KHONG cau truc dao ngu kieu Trung Quoc
 - KHONG ket thuc canh bang tong ket nhu nguoi ke chuyen
-- KHONG mieu ta cam xuc bang tinh tu: "buon", "vui", "so" — chi hanh dong`;
+- KHONG mieu ta cam xuc bang tinh tu: "buon", "vui", "so" - chi hanh dong`;
 }
 
 /**
- * Pick random N entries từ array (Fisher-Yates partial shuffle).
- * Không mutate array gốc.
+ * Pick random N entries from an array (partial Fisher-Yates shuffle).
+ * Does not mutate the source array.
  */
 function pickRandom(arr, n) {
   if (!arr || arr.length === 0) return [];
@@ -1051,8 +1120,8 @@ function pickRandom(arr, n) {
 
 /**
  * Build Anti-AI Blacklist block.
- * Random pick 12 entries mỗi lần từ pool (style-specific + common).
- * Giữ prompt fresh, AI không "nhờn".
+ * Randomly pick 12 entries from the pool (style-specific + common).
+ * Keeps the prompt fresh so the model does not overfit one fixed list.
  */
 function buildAntiAIBlock(writingStyle) {
   const styleEntries = ANTI_AI_BLACKLIST[writingStyle] || ANTI_AI_BLACKLIST.thuan_viet;
@@ -1061,31 +1130,29 @@ function buildAntiAIBlock(writingStyle) {
   const picked = pickRandom(pool, 12);
   if (picked.length === 0) return '';
 
-  const lines = ['\n[CHONG VAN PHONG AI — TU/CUM CAM DUNG]'];
-  lines.push('Cac cum tu sau la DAU HIEU AI — KHONG DUOC DUNG:');
-  picked.forEach(e => lines.push('  X "' + e.bad + '"  →  V ' + e.good));
-  lines.push('Neu thay minh sap viet bat ky cum nao o tren → dung lai, viet cach khac.');
+  const lines = ['\n[CHONG VAN PHONG AI - TU/CUM CAM DUNG]'];
+  lines.push('Cac cum tu sau la DAU HIEU AI - KHONG DUOC DUNG:');
+  picked.forEach(e => lines.push('  X "' + e.bad + '"  ->  V ' + e.good));
+  lines.push('Neu thay minh sap viet bat ky cum nao o tren thi dung lai, viet cach khac.');
   return lines.join('\n');
 }
 
 // =============================================
 // Layer 7.5: Mood Board
 //
-// Inject 2-3 câu mẫu thể hiện đúng giọng văn cần đạt.
-// Ưu tiên: câu hay nhất từ bridgeBuffer của tác giả (họ đã viết gì thì tiếp tục đúng tone đó).
-// Fallback: MOOD_BOARD_DEFAULTS theo genre.
+// Inject 2-3 sample sentences that capture the target voice.
+// Priority: best sentences from the author's bridgeBuffer, then genre defaults.
 // =============================================
 
 /**
- * Trích câu có nhịp điệu tốt nhất từ buffer làm mood sample.
- * Scoring: độ phức tạp dấu câu (rhythm) > độ dài thô.
- * Câu dài nhất KHÔNG nhất thiết là câu hay nhất.
+ * Extract the best rhythm samples from the buffer.
+ * Scoring favors punctuation rhythm over raw sentence length.
  */
 function extractMoodSamples(text, maxSamples) {
   if (!text || text.length < 30) return [];
   var sentences = text
     .replace(/<[^>]*>/g, ' ')
-    .split(/(?<=[.!?…])\s+|(?<=—)\s*/)
+    .split(/(?<=[.!?…])\s+/)
     .map(function(s) { return s.trim(); })
     .filter(function(s) { return s.length > 30 && s.length < 300; });
 
@@ -1101,7 +1168,7 @@ function extractMoodSamples(text, maxSamples) {
     if (s.length >= 80 && s.length <= 200) score += 20;
     else if (s.length > 200) score += 5;
     else score += 2;
-    // Penalize dialogue (starts with quote marks) — dialogue is not a good mood sample
+    // Penalize dialogue starts; dialogue is usually a weak mood sample.
     if (/^[\u201C\u201D"'\u2018\u2019\u00AB\u00BB\u2015\u2014\u2013-]/.test(s)) score -= 30;
     // Penalize very short sentences (likely stage directions)
     if (s.length < 50) score -= 10;
@@ -1118,11 +1185,11 @@ function extractMoodSamples(text, maxSamples) {
 }
 
 /**
- * Build Layer 7.5 — Mood Board.
+ * Build Layer 7.5 - Mood Board.
  * @param {string} taskType
  * @param {string} genreKey
- * @param {string} bridgeBuffer - văn bản chương trước
- * @param {string} selectedText - text được chọn (cho EXPAND/REWRITE)
+ * @param {string} bridgeBuffer - prose carried from the previous chapter
+ * @param {string} selectedText - selected text for EXPAND/REWRITE
  * @returns {string}
  */
 function buildMoodBoardLayer(taskType, genreKey, bridgeBuffer, selectedText) {
@@ -1130,14 +1197,13 @@ function buildMoodBoardLayer(taskType, genreKey, bridgeBuffer, selectedText) {
 
   const sourceText = FULL_WRITING_TASKS.has(taskType)
     ? bridgeBuffer
-    : (selectedText || bridgeBuffer); // EXPAND/REWRITE dùng text đang xử lý
+    : (selectedText || bridgeBuffer); // EXPAND/REWRITE uses the active text block.
 
   const authorSamples = extractMoodSamples(sourceText, 2);
   const defaultSamples = (MOOD_BOARD_DEFAULTS[genreKey] || MOOD_BOARD_DEFAULTS['do_thi'] || []).slice(0, 2);
 
-  // Ưu tiên câu của tác giả, fallback sang defaults
-  // [FIX] Nếu sourceText có nội dung nhưng không đạt chuẩn (VD < 30 ký tự),
-  // KHÔNG ĐƯỢC ép dùng defaults vì sẽ kéo lệch tone. Chỉ dùng defaults khi text trắng tinh.
+  // Prefer author-written sentences first, then fallback defaults.
+  // If sourceText exists but is too weak, do not inject defaults and skew the tone.
   const samples = authorSamples.length >= 1
     ? authorSamples.slice(0, 2)
     : ((!sourceText || sourceText.trim() === '') ? defaultSamples : []);
@@ -1145,9 +1211,9 @@ function buildMoodBoardLayer(taskType, genreKey, bridgeBuffer, selectedText) {
   if (samples.length === 0) return '';
 
   const lines = ['[MAU VAN PHONG - DOC VA CAM NHAN TRUOC KHI VIET]'];
-  lines.push('Day la giong van va nhip dieu can dat — hoc phong cach, KHONG copy tu ngu:');
+  lines.push('Day la giong van va nhip dieu can dat - hoc phong cach, KHONG copy tu ngu:');
   lines.push('');
-  samples.forEach(s => lines.push('• "' + s.replace(/"/g, '\"') + '"'));
+  samples.forEach(s => lines.push('- "' + s.replace(/"/g, '\"') + '"'));
   lines.push('');
   lines.push('Viet theo CAM GIAC nay. Khong copy tu ngu, chi can nhip dieu tuong tu.');
   return lines.join('\n');
@@ -1156,17 +1222,16 @@ function buildMoodBoardLayer(taskType, genreKey, bridgeBuffer, selectedText) {
 // =============================================
 // Layer 9: Priority Anchor (Double Sandwich)
 //
-// Đặt ở CUỐI userContent — LLM chú ý đầu và cuối nhất.
-// Grand Strategy ở đầu + Priority Anchor ở cuối = double anchor.
+// Put this at the end of userContent so the prompt is anchored at both ends.
+// Grand Strategy at the top + Priority Anchor at the end = double anchor.
 //
-// Khác nhau giữa FULL và STYLE:
-// - FULL: checklist 3 câu hỏi tự kiểm để định hướng generation
-// - STYLE: nhắc nhở không thay đổi nội dung
+// FULL uses a self-check checklist.
+// STYLE reminds the model not to alter content.
 // =============================================
 
 /**
- * Build Layer 9 — Priority Anchor.
- * Append vào cuối userContent, không phải systemParts.
+ * Build Layer 9 - Priority Anchor.
+ * Appends to the end of userContent, not systemParts.
  * @param {string} taskType
  * @param {string} userPrompt
  * @returns {string}
@@ -1195,11 +1260,11 @@ function buildPriorityAnchorLayer(taskType, userPrompt) {
     lines.push('- Nhan vat chinh phai THAY DOI qua canh nay (cam xuc, nhan thuc, hoac vi the).');
     lines.push('- Cuoi canh de lai tinh huong mo hoac cau hoi khien doc gia muon sang chuong tiep.');
     lines.push('');
-    lines.push('CU THE HOA — KHONG VIET TRUU TUONG:');
-    lines.push('- Thoi gian: KHONG "gan day", "lau lam" → viet "3 ngay truoc", "nua thang", "tu sang den gio"');
-    lines.push('- So luong: KHONG "nhieu nguoi" → viet "nam ba nguoi", "ca tram ke", "vai chuc ten"');
-    lines.push('- Cam giac: KHONG "rat dau", "vo cung lo lang" → viet hanh dong: "han cong nguoi lai", "tay nam chat den trang bech"');
-    lines.push('- Canh vat: KHONG "can phong rat lon" → viet 1 chi tiet: "tran nha cao gap 3 lan nguoi dung", "vach da am am nuoc"');
+    lines.push('CU THE HOA - KHONG VIET TRUU TUONG:');
+    lines.push('- Thoi gian: KHONG "gan day", "lau lam" -> viet "3 ngay truoc", "nua thang", "tu sang den gio"');
+    lines.push('- So luong: KHONG "nhieu nguoi" -> viet "nam ba nguoi", "ca tram ke", "vai chuc ten"');
+    lines.push('- Cam giac: KHONG "rat dau", "vo cung lo lang" -> viet hanh dong: "han cong nguoi lai", "tay nam chat den trang bech"');
+    lines.push('- Canh vat: KHONG "can phong rat lon" -> viet 1 chi tiet: "tran nha cao gap 3 lan nguoi dung", "vach da am am nuoc"');
   } else {
     // EXPAND / REWRITE
     lines.push('');
@@ -1249,6 +1314,7 @@ export function buildPrompt(taskType, context = {}) {
     // Phase 3
     characters = [],
     locations = [],
+    factions = [],
     worldTerms = [],
     objects = [],
     taboos = [],
@@ -1276,6 +1342,8 @@ export function buildPrompt(taskType, context = {}) {
     tensionLevel = null,
     // Phase 8: Chapter Outline Context
     currentChapterOutline = null,
+    chapterBlueprintContext = null,
+    preWriteValidation = null,
     upcomingChapters = [],
     startChapterNumber = 1,
     existingChapterBriefs = [],
@@ -1306,7 +1374,7 @@ export function buildPrompt(taskType, context = {}) {
     macroMilestoneRequirements = '',
   } = context;
 
-  // Resolve writing style: context > auto-detect từ genre
+  // Resolve writing style: context > auto-detect t? genre
   const genreKey = genre ? genre.toLowerCase().replace(/\s+/g, '_') : '';
   const resolvedWritingStyle = writingStyle || detectWritingStyle(genreKey || '');
   const systemParts = [];
@@ -1316,7 +1384,7 @@ export function buildPrompt(taskType, context = {}) {
   const skipWritingLayers = taskType === TASK_TYPES.FREE_PROMPT && !freePromptInProject && !isWritingIntent(userPrompt);
 
   // -- Layer 0: Grand Strategy & Pacing (merged) --
-  // Đặt trước Layer 1 để AI luôn thấy đại cục đầu tiên
+  // Keep this before Layer 1 so arc constraints stay highly visible.
   const grandStrategyLayer = buildGrandStrategyLayer(
     taskType,
     currentMacroArc,
@@ -1331,8 +1399,7 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 0.5: Author DNA --
-  // Inject trước Layer 1 để AI internalize role và triết lý viết
-  // TRƯỚC KHI đọc bất kỳ instruction hay context nào
+  // Inject before Layer 1 so the AI internalizes role and writing philosophy first.
   const authorDNALayer = buildAuthorDNALayer(
     taskType,
     resolvedWritingStyle,
@@ -1389,11 +1456,11 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 1.5: Writing Constitution (nguyen tac sang tac) --
-  // Di chuyen tu Layer 3 len day — LLM chu y dau prompt nhat.
+  // Moved upward because the model pays more attention near the top of the prompt.
   // Dung strictness de frame: strict = khong the vi pham, relaxed = goi y.
   if (aiGuidelines) {
     const principleHeader = aiStrictness === 'strict'
-      ? 'NGUYEN TAC SANG TAC — TUYET DOI TUAN THU'
+      ? 'NGUYEN TAC SANG TAC - TUYET DOI TUAN THU'
       : aiStrictness === 'relaxed'
         ? 'GOI Y SANG TAC'
         : 'NGUYEN TAC SANG TAC';
@@ -1407,7 +1474,7 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 3: Genre Constraints --
-  // LUON inject genre constraint khi co — khong bi if/else voi aiGuidelines nua.
+  // Always inject genre constraints when available; do not gate them behind aiGuidelines.
   // aiGuidelines (Constitution) la nguyen tac CUA TAC GIA.
   // Genre constraint la quy tac CUA THE LOAI. Hai thu khac nhau, can ca hai.
   {
@@ -1469,21 +1536,40 @@ export function buildPrompt(taskType, context = {}) {
 
   if (locations.length > 0) {
     const locInfo = locations.map(function (l) {
-      return '- ' + l.name + (l.description ? ': ' + l.description : '');
+      const extras = [];
+      if (l.description) extras.push(l.description);
+      if (l.story_function) extras.push('vai tro: ' + l.story_function);
+      return '- ' + l.name + (extras.length > 0 ? ': ' + extras.join(' | ') : '');
     }).join('\n');
     canonContextParts.push('Dia danh xuat hien:\n' + locInfo);
   }
 
   if (objects.length > 0) {
     const objInfo = objects.map(function (o) {
-      return '- ' + o.name + (o.description ? ': ' + o.description : '');
+      const extras = [];
+      if (o.description) extras.push(o.description);
+      if (o.story_function) extras.push('vai tro: ' + o.story_function);
+      return '- ' + o.name + (extras.length > 0 ? ': ' + extras.join(' | ') : '');
     }).join('\n');
     canonContextParts.push('Vat pham:\n' + objInfo);
   }
 
+  if (factions.length > 0) {
+    const factionInfo = factions.map(function (f) {
+      const extras = [];
+      if (f.description) extras.push(f.description);
+      if (f.story_function) extras.push('vai tro: ' + f.story_function);
+      return '- ' + f.name + (extras.length > 0 ? ': ' + extras.join(' | ') : '');
+    }).join('\n');
+    canonContextParts.push('The luc lien quan:\n' + factionInfo);
+  }
+
   if (worldTerms.length > 0) {
     const termInfo = worldTerms.map(function (t) {
-      return '- ' + t.name + (t.definition ? ': ' + t.definition : '');
+      const extras = [];
+      if (t.definition) extras.push(t.definition);
+      if (t.story_function) extras.push('vai tro: ' + t.story_function);
+      return '- ' + t.name + (extras.length > 0 ? ': ' + extras.join(' | ') : '');
     }).join('\n');
     canonContextParts.push('Thuat ngu the gioi:\n' + termInfo);
   }
@@ -1493,12 +1579,22 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 4.2: Chapter Outline Context (Phase 8) --
-  const chapterOutlineLayer = buildChapterOutlineLayer(taskType, currentChapterOutline, upcomingChapters);
+  const chapterOutlineLayer = buildChapterOutlineLayer(
+    taskType,
+    currentChapterOutline,
+    chapterBlueprintContext,
+    upcomingChapters
+  );
   if (chapterOutlineLayer && !skipWritingLayers) {
     systemParts.push(chapterOutlineLayer);
   }
 
-  // [Layer 4.5 removed — merged into Grand Strategy (Layer 0)]
+  const preWriteValidationLayer = buildPreWriteValidationLayer(taskType, preWriteValidation);
+  if (preWriteValidationLayer && !skipWritingLayers) {
+    systemParts.push(preWriteValidationLayer);
+  }
+
+  // [Layer 4.5 removed - merged into Grand Strategy (Layer 0)]
 
   // -- Layer 5: Character State (token budget: max 15) --
   var cappedCharacters = characters.slice(0, 15);
@@ -1694,7 +1790,7 @@ export function buildPrompt(taskType, context = {}) {
   const styleDNALayer = buildStyleDNALayer(taskType, resolvedWritingStyle);
   if (styleDNALayer && !skipWritingLayers) {
     systemParts.push(styleDNALayer);
-    // Anti-AI Blacklist — append vào cùng block với Style DNA
+    // Append the Anti-AI Blacklist right after Style DNA.
     const antiAIBlock = buildAntiAIBlock(resolvedWritingStyle);
     if (antiAIBlock) systemParts.push(antiAIBlock);
   }
@@ -1713,14 +1809,14 @@ export function buildPrompt(taskType, context = {}) {
   // -- Layer 10: Length & Rhythm Anchor (reframed: positive > negative) --
   if (WRITING_TASKS_FOR_BRIDGE.has(taskType) && !skipWritingLayers) {
     systemParts.push('\n[DO DAI VA NHIP DO]\n' + [
-      '1. Phat trien day du moi canh truoc khi chuyen tiep — moi hanh dong nho duoc mieu ta 3-5 cau, tao hinh anh song dong.',
+      '1. Phat trien day du moi canh truoc khi chuyen tiep - moi hanh dong nho duoc mieu ta 3-5 cau, tao hinh anh song dong.',
       '2. Suy nghi noi tam duoc dao sau it nhat 1 doan van day du.',
       '3. Huong toi 2000-4000 tu moi lan sinh, dong gop vao muc tieu 7000 tu cho CA CHUONG (khong phai 1 lan).',
-      '4. Duy tri nhip ke lien tuc — moi cau day chuyen tiep sang cau sau tu nhien.',
+      '4. Duy tri nhip ke lien tuc - moi cau day chuyen tiep sang cau sau tu nhien.',
       '5. Neu gan het do dai output: dung lai o diem kich tinh, de ngo cho phan tiep. Tot hon la de doc gia them muon doc tiep hon la cuong ket thuc.',
       '6. CAU TRUC DOAN VAN: 30-50% doan nen la doan 1-2 cau. Thong tin quan trong tach rieng thanh doan ngan. KHONG viet khoi van dai 5-6 cau lien tuc.',
-      '7. MOI DOAN toi da 80-100 tu. Doan dai hon → tach thanh 2. Doc gia Viet doc nhanh, doan ngan de theo doi.',
-      '8. NHIP THO: Xen ke doan ngan (1-2 cau) va doan dai (3-4 cau) — nhu nhip tho van xuoi. Tranh viet deu deu cung nhip.',
+      '7. MOI DOAN toi da 80-100 tu. Doan dai hon thi tach thanh 2. Doc gia Viet doc nhanh, doan ngan de theo doi.',
+      '8. NHIP THO: Xen ke doan ngan (1-2 cau) va doan dai (3-4 cau) - nhu nhip tho van xuoi. Tranh viet deu deu cung nhip.',
     ].join('\n'));
   }
 
@@ -2025,8 +2121,8 @@ export function buildPrompt(taskType, context = {}) {
   }
 
   // -- Layer 9: Priority Anchor --
-  // Append vào CUỐI userContent (không phải systemParts)
-  // Double sandwich: Grand Strategy ở đầu + Priority Anchor ở cuối
+  // Append at the end of userContent, not systemParts.
+  // Double sandwich: Grand Strategy first, Priority Anchor last.
   const priorityAnchor = buildPriorityAnchorLayer(taskType, userPrompt);
   if (priorityAnchor && !skipWritingLayers) {
     userContent += priorityAnchor;

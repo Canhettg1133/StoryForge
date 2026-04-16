@@ -1,30 +1,30 @@
 /**
- * StoryForge — Codex Store (Phase 3 + Patch: Factions & Aliases)
+ * StoryForge - Codex Store (Phase 3 + Patch: Factions & Aliases)
  *
  * Zustand store for Characters, Locations, Objects, World Terms,
  * Factions, Taboos, ChapterMeta, CanonFacts.
  *
- * Thay đổi so với bản cũ:
- *  - Thêm `factions` state + CRUD (Thế lực / Tông môn)
- *  - Thêm field `aliases` vào Character, Location, WorldTerm, Faction
- *  - Nâng cấp find*InText: hỗ trợ aliases + auto-split tên dạng "A - B"
+ * Changes from the older version:
+ *  - Add `factions` state + CRUD support
+ *  - Add `aliases` to Character, Location, WorldTerm, and Faction
+ *  - Upgrade find*InText to support aliases + split names like "A - B"
  */
 
 import { create } from 'zustand';
 import db from '../services/db/database';
 import { buildProseBuffer } from '../utils/proseBuffer';
 
-// ─────────────────────────────────────────────
-// Helper: kiểm tra 1 entry có xuất hiện trong text không
-// Kiểm tra: name chính + aliases + auto-split "A - B"
-// ─────────────────────────────────────────────
+// ---------------------------------------------
+// Helper: check whether one entry appears in a block of text.
+// Match primary name + aliases + auto-split names like "A - B".
+// ---------------------------------------------
 function matchesText(entry, cleanText) {
   if (!entry?.name) return false;
 
   const candidates = [
     entry.name,
     ...(Array.isArray(entry.aliases) ? entry.aliases : []),
-    // auto-split "Thanh Vân Tông - Tạp Vật Viện" → ["Thanh Vân Tông", "Tạp Vật Viện"]
+    // auto-split "Thanh Van Tong - Tap Vat Vien" -> ["Thanh Van Tong", "Tap Vat Vien"]
     ...entry.name
       .split(' - ')
       .map(s => s.trim())
@@ -38,7 +38,7 @@ function cleanHtml(text) {
   return (text || '').replace(/<[^>]*>/g, ' ').toLowerCase();
 }
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 
 const useCodexStore = create((set, get) => ({
   // --- State ---
@@ -46,7 +46,7 @@ const useCodexStore = create((set, get) => ({
   locations: [],
   objects: [],
   worldTerms: [],
-  factions: [],       // [MỚI] Thế lực / Tông môn
+  factions: [],       // New: factions / organizations
   taboos: [],
   canonFacts: [],
   chapterMetas: [],
@@ -63,7 +63,7 @@ const useCodexStore = create((set, get) => ({
       locations,
       objects,
       worldTerms,
-      factions,      // [MỚI]
+      factions,      // new
       taboos,
       canonFacts,
       chapterMetas,
@@ -72,7 +72,7 @@ const useCodexStore = create((set, get) => ({
       db.locations.where('project_id').equals(projectId).toArray(),
       db.objects.where('project_id').equals(projectId).toArray(),
       db.worldTerms.where('project_id').equals(projectId).toArray(),
-      db.factions.where('project_id').equals(projectId).toArray(), // [MỚI]
+      db.factions.where('project_id').equals(projectId).toArray(), // new
       db.taboos.where('project_id').equals(projectId).toArray(),
       db.canonFacts.where('project_id').equals(projectId).toArray(),
       db.chapterMeta.where('project_id').equals(projectId).toArray(),
@@ -82,7 +82,7 @@ const useCodexStore = create((set, get) => ({
       locations,
       objects,
       worldTerms,
-      factions,      // [MỚI]
+      factions,      // new
       taboos,
       canonFacts,
       chapterMetas,
@@ -90,13 +90,13 @@ const useCodexStore = create((set, get) => ({
     });
   },
 
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
   // CHARACTERS
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
   createCharacter: async (data) => {
     const now = Date.now();
     const flawSuffixes = data.flaws
-      ? [`\nĐiểm yếu: ${data.flaws}`]
+      ? [`\nDiem yeu: ${data.flaws}`]
       : [];
     let personality = data.personality || '';
     for (const suffix of flawSuffixes) {
@@ -108,7 +108,7 @@ const useCodexStore = create((set, get) => ({
     const id = await db.characters.add({
       project_id: data.project_id,
       name: data.name || '',
-      aliases: data.aliases || [],          // [MỚI]
+      aliases: data.aliases || [],          // new
       role: data.role || 'supporting',
       appearance: data.appearance || '',
       personality,
@@ -121,6 +121,7 @@ const useCodexStore = create((set, get) => ({
       goals: data.goals || '',
       secrets: data.secrets || '',
       notes: data.notes || '',
+      story_function: data.story_function || '',
       source_chapter_id: data.source_chapter_id || null,
       source_kind: data.source_kind || '',
       created_at: now,
@@ -144,16 +145,17 @@ const useCodexStore = create((set, get) => ({
     if (projectId) await get().loadCodex(projectId);
   },
 
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
   // LOCATIONS
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
   createLocation: async (data) => {
     const id = await db.locations.add({
       project_id: data.project_id,
       name: data.name || '',
-      aliases: data.aliases || [],          // [MỚI]
+      aliases: data.aliases || [],          // new
       description: data.description || '',
       details: data.details || '',
+      story_function: data.story_function || '',
       parent_location_id: data.parent_location_id || null,
       source_chapter_id: data.source_chapter_id || null,
       source_kind: data.source_kind || '',
@@ -177,9 +179,9 @@ const useCodexStore = create((set, get) => ({
     if (projectId) await get().loadCodex(projectId);
   },
 
-  // ═══════════════════════════════════════════
-  // OBJECTS (Vật phẩm)
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
+  // OBJECTS
+  // ---------------------------------------------
   createObject: async (data) => {
     const id = await db.objects.add({
       project_id: data.project_id,
@@ -187,6 +189,7 @@ const useCodexStore = create((set, get) => ({
       description: data.description || '',
       owner_character_id: data.owner_character_id || null,
       properties: data.properties || '',
+      story_function: data.story_function || '',
       source_chapter_id: data.source_chapter_id || null,
       source_kind: data.source_kind || '',
       created_at: Date.now(),
@@ -209,16 +212,17 @@ const useCodexStore = create((set, get) => ({
     if (projectId) await get().loadCodex(projectId);
   },
 
-  // ═══════════════════════════════════════════
-  // WORLD TERMS (Thuật ngữ)
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
+  // WORLD TERMS
+  // ---------------------------------------------
   createWorldTerm: async (data) => {
     const id = await db.worldTerms.add({
       project_id: data.project_id,
       name: data.name || '',
-      aliases: data.aliases || [],          // [MỚI]
+      aliases: data.aliases || [],          // new
       definition: data.definition || '',
       category: data.category || 'other',
+      story_function: data.story_function || '',
       source_chapter_id: data.source_chapter_id || null,
       source_kind: data.source_kind || '',
       created_at: Date.now(),
@@ -241,9 +245,9 @@ const useCodexStore = create((set, get) => ({
     if (projectId) await get().loadCodex(projectId);
   },
 
-  // ═══════════════════════════════════════════
-  // FACTIONS (Thế lực / Tông môn) — [MỚI]
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
+  // FACTIONS - new in this store revision
+  // ---------------------------------------------
   createFaction: async (data) => {
     const id = await db.factions.add({
       project_id: data.project_id,
@@ -253,6 +257,7 @@ const useCodexStore = create((set, get) => ({
       // sect | kingdom | organization | other
       faction_type: data.faction_type || 'sect',
       notes: data.notes || '',
+      story_function: data.story_function || '',
       created_at: Date.now(),
     });
     await get().loadCodex(data.project_id);
@@ -273,9 +278,9 @@ const useCodexStore = create((set, get) => ({
     if (projectId) await get().loadCodex(projectId);
   },
 
-  // ═══════════════════════════════════════════
-  // TABOOS (Cấm kỵ theo chương)
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
+  // TABOOS
+  // ---------------------------------------------
   createTaboo: async (data) => {
     const id = await db.taboos.add({
       project_id: data.project_id,
@@ -313,7 +318,7 @@ const useCodexStore = create((set, get) => ({
       .map(t => ({
         ...t,
         characterName:
-          characters.find(c => c.id === t.character_id)?.name || 'Không xác định',
+          characters.find(c => c.id === t.character_id)?.name || 'Khong xac dinh',
       }));
   },
 
@@ -397,17 +402,17 @@ const useCodexStore = create((set, get) => ({
     }
   },
 
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
   // HELPERS for Context Engine
   //
-  // Tất cả đều dùng matchesText() — hỗ trợ:
-  //   1. Khớp tên chính xác
-  //   2. Khớp aliases (biệt danh / cách gọi khác)
-  //   3. Auto-split "A - B" → khớp "A" hoặc "B" riêng lẻ
-  // ═══════════════════════════════════════════
+  // All helpers below use matchesText(), which supports:
+  //   1. Primary-name matching
+  //   2. Alias matching
+  //   3. Split-name matching for "A - B"
+  // ---------------------------------------------
 
   /**
-   * Tìm nhân vật xuất hiện trong văn bản.
+   * Find characters mentioned in text.
    */
   findCharactersInText: (text) => {
     if (!text) return [];
@@ -417,7 +422,7 @@ const useCodexStore = create((set, get) => ({
   },
 
   /**
-   * Tìm địa điểm xuất hiện trong văn bản.
+   * Find locations mentioned in text.
    */
   findLocationsInText: (text) => {
     if (!text) return [];
@@ -427,8 +432,8 @@ const useCodexStore = create((set, get) => ({
   },
 
   /**
-   * Tìm thuật ngữ VÀ thế lực xuất hiện trong văn bản.
-   * Factions được gộp vào đây để CodexPanel không cần gọi thêm hàm mới.
+   * Find world terms and factions mentioned in text.
+   * Factions are merged here so CodexPanel does not need another helper.
    */
   findTermsInText: (text) => {
     if (!text) return [];
@@ -441,7 +446,7 @@ const useCodexStore = create((set, get) => ({
   },
 
   /**
-   * Tìm thế lực xuất hiện trong văn bản (nếu cần tách riêng).
+   * Find factions mentioned in text when a separate query is needed.
    */
   findFactionsInText: (text) => {
     if (!text) return [];

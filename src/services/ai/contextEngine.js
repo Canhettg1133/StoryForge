@@ -1,14 +1,14 @@
 /**
- * StoryForge — Context Engine v2 (Phase 4)
+ * StoryForge - Context Engine v2 (Phase 4)
  * 
  * Phase 4:  Word boundary detection, relationships, scene contract, canon facts
  * Phase 7:  bridgeBuffer, previousEmotionalState
  * Phase 8:  currentChapterOutline, upcomingChapters
- *           → AI biết nhiệm vụ chương đang viết
- *           → AI biết KHÔNG được viết trước nội dung 3 chương tiếp theo
+ *           - AI knows the current chapter objective
+ *           - AI must not write ahead into the next 3 chapters
  * Phase 9:  currentArc, currentMacroArc
- *           → AI biết đang ở hồi nào, cột mốc lớn nào của đại cục
- *           → Ngăn AI cho nhân vật "lên cấp" vượt ngoài kế hoạch tổng thể
+ *           - AI knows the current arc and macro arc
+ *           - Prevents premature power jumps outside the overall plan
  */
 
 import db from '../db/database';
@@ -16,6 +16,11 @@ import { detectWritingStyle } from '../../utils/constants';
 import { buildProseBuffer } from '../../utils/proseBuffer';
 import { buildRetrievalPacket, buildCharacterStateSummary } from '../canon/engine';
 import { TASK_TYPES } from './router';
+import {
+  buildChapterBlueprintContext,
+  normalizeChapterListField,
+  validateChapterWritingReadiness,
+} from './blueprintGuardrails';
 
 function resolveRetrievalMode(taskType, explicitMode) {
   if (explicitMode) return explicitMode;
@@ -58,12 +63,15 @@ export async function gatherContext({
     return {
       characters: [],
       locations: [],
+      factions: [],
       worldTerms: [],
       taboos: [],
       previousSummary: '',
       bridgeBuffer: '',
       previousEmotionalState: null,
       currentChapterOutline: null,
+      chapterBlueprintContext: null,
+      preWriteValidation: { blockingIssues: [], warnings: [] },
       upcomingChapters: [],
       currentArc: null,
       currentMacroArc: null,
@@ -77,22 +85,35 @@ export async function gatherContext({
     };
   }
 
-  // Tất cả data load song song — chapters đã có sẵn, dùng lại cho outline, không tốn query thêm
+  // Load all context in parallel and reuse chapter data for outline/context work.
   const [
-    project, allCharacters, allLocations, allObjects, allTerms,
-    allTaboos, chapterMetas, chapters, allRelationships, allCanonFacts,
+    project, allCharacters, allLocations, allObjects, allTerms, allFactions,
+    allTaboos, chapterMetas, chapters, allRelationships, allCanonFacts, allThreads,
   ] = await Promise.all([
     db.projects.get(projectId),
     db.characters.where('project_id').equals(projectId).toArray(),
     db.locations.where('project_id').equals(projectId).toArray(),
     db.objects.where('project_id').equals(projectId).toArray(),
     db.worldTerms.where('project_id').equals(projectId).toArray(),
+    db.factions.where('project_id').equals(projectId).toArray(),
     db.taboos.where('project_id').equals(projectId).toArray(),
     db.chapterMeta.where('project_id').equals(projectId).toArray(),
     db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
     db.relationships.where('project_id').equals(projectId).toArray(),
     db.canonFacts.where('project_id').equals(projectId).toArray(),
+    db.plotThreads.where('project_id').equals(projectId).toArray(),
   ]);
+
+  const requestedChapter = chapterId
+    ? chapters.find((chapter) => chapter.id === chapterId) || null
+    : null;
+  const resolvedChapter = requestedChapter
+    || chapters.find((chapter) => chapter.order_index === chapterIndex)
+    || chapters[0]
+    || null;
+  const resolvedChapterIndex = Number.isFinite(resolvedChapter?.order_index)
+    ? resolvedChapter.order_index
+    : (Number.isFinite(chapterIndex) ? chapterIndex : 0);
 
   // World Profile
   let worldRules = [];
@@ -143,10 +164,20 @@ export async function gatherContext({
     });
   }
 
+  function mergeById(primary = [], secondary = []) {
+    const seen = new Set();
+    return [...primary, ...secondary].filter((item) => {
+      const key = item?.id ?? item?.name;
+      if (key == null || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   const detectedCharacters = detectByName(allCharacters);
 
-  // [FIX] Bootstrap nhân vật khi scene mới rỗng:
-  // Nếu chưa có kí tự nào (chương/scene mới), tự động add POV char và characters_present
+  // [FIX] Bootstrap character context for an empty new scene.
+  // If the scene is blank, seed POV/characters_present from stored chapter data.
   if (sceneId && detectedCharacters.length === 0) {
     try {
       // Find scene manually since we only have ID at this point, but actually we do load it below.
@@ -172,10 +203,11 @@ export async function gatherContext({
   const detectedLocations = detectByName(allLocations);
   const detectedObjects = detectByName(allObjects);
   const detectedTerms = detectByName(allTerms);
+  const detectedFactions = detectByName(allFactions);
 
   // --- Active taboos ---
   const activeTaboos = allTaboos
-    .filter(t => (chapterIndex + 1) < t.effective_before_chapter)
+    .filter(t => (resolvedChapterIndex + 1) < t.effective_before_chapter)
     .map(t => ({
       ...t,
       characterName: allCharacters.find(c => c.id === t.character_id)?.name || null,
@@ -186,8 +218,8 @@ export async function gatherContext({
   let bridgeBuffer = '';
   let previousEmotionalState = null;
 
-  if (chapterIndex > 0) {
-    const prevChapter = chapters.find(c => c.order_index === chapterIndex - 1);
+  if (resolvedChapterIndex > 0) {
+    const prevChapter = chapters.find(c => c.order_index === resolvedChapterIndex - 1);
     if (prevChapter) {
       const prevMeta = chapterMetas.find(m => m.chapter_id === prevChapter.id);
       if (prevMeta) {
@@ -223,55 +255,65 @@ export async function gatherContext({
 
   // --- Phase 8: Chapter Outline Context ---
   //
-  // Vấn đề cần giải quyết:
-  //   Khi AI viết Chương N, nó không biết outline chương đó yêu cầu gì.
-  //   Kết quả: AI tự bịa nội dung, hoặc "xài trước" nội dung của chương sau.
-  //
-  // Giải pháp:
-  //   1. currentChapterOutline — outline của chương đang viết
-  //      AI biết phạm vi nhiệm vụ: viết CÁI GÌ, không được vượt ra ngoài.
-  //
-  //   2. upcomingChapters — outline 3 chương tiếp theo (chỉ title + summary)
-  //      AI biết những gì SẼ xảy ra ở chương sau → không viết trước.
-  //      Giới hạn 3 chương để không tốn token thừa.
-  //
-  // Zero DB query thêm — chapters đã load ở Promise.all trên.
+  // Phase 8 rationale:
+  // 1. currentChapterOutline defines what this chapter is allowed to do.
+  // 2. upcomingChapters fences off near-future beats so the AI does not write ahead.
+  // Reuses the chapter list already loaded above, so no extra DB query is needed.
 
-  const currentRaw = chapters.find(c => c.order_index === chapterIndex);
+  const currentRaw = resolvedChapter;
+  const chapterBlueprintContext = buildChapterBlueprintContext({
+    chapter: currentRaw,
+    allCharacters,
+    allLocations,
+    allObjects,
+    allFactions,
+    allTerms,
+    plotThreads: allThreads,
+  });
   const currentChapterOutline = currentRaw
     ? {
       title: currentRaw.title || '',
       summary: currentRaw.summary || '',
+      purpose: currentRaw.purpose || '',
+      featuredCharacters: normalizeChapterListField(currentRaw.featured_characters),
+      primaryLocation: currentRaw.primary_location || '',
+      threadTitles: normalizeChapterListField(currentRaw.thread_titles),
+      requiredFactions: normalizeChapterListField(currentRaw.required_factions),
+      requiredObjects: normalizeChapterListField(currentRaw.required_objects),
       keyEvents: (() => {
         try {
-          const raw = currentRaw.purpose || currentRaw.key_events || '[]';
+          const raw = currentRaw.key_events || '[]';
           const parsed = JSON.parse(raw);
           return Array.isArray(parsed) ? parsed : [];
         } catch {
-          return [];
+          return normalizeChapterListField(currentRaw.key_events);
         }
       })(),
     }
     : null;
 
   const upcomingChapters = chapters
-    .filter(c => c.order_index > chapterIndex && c.order_index <= chapterIndex + 3)
+    .filter(c => c.order_index > resolvedChapterIndex && c.order_index <= resolvedChapterIndex + 3)
     .map(c => ({ title: c.title || '', summary: c.summary || '' }))
-    .filter(c => c.title || c.summary); // bỏ chương trống hoàn toàn
+    .filter(c => c.title || c.summary); // Skip completely empty chapter stubs.
+
+  const blueprintCharacters = chapterBlueprintContext?.relatedCharacters || [];
+  const blueprintLocations = chapterBlueprintContext?.relatedLocations || [];
+  const blueprintObjects = chapterBlueprintContext?.relatedObjects || [];
+  const blueprintTerms = chapterBlueprintContext?.relatedTerms || [];
+  const blueprintFactions = chapterBlueprintContext?.relatedFactions || [];
+
+  const effectiveCharacters = mergeById(detectedCharacters, blueprintCharacters);
+  const effectiveLocations = mergeById(detectedLocations, blueprintLocations);
+  const effectiveObjects = mergeById(detectedObjects, blueprintObjects);
+  const effectiveTerms = mergeById(detectedTerms, blueprintTerms);
+  const effectiveFactions = mergeById(detectedFactions, blueprintFactions);
 
   // --- Phase 9: Arc & Macro Arc Context ---
   //
-  // Mục đích:
-  //   Từ chương hiện tại → tìm arc_id → load arc → tìm macro_arc_id → load macro arc.
-  //   Chuỗi: chapter.arc_id → arcs → macro_arc_id → macro_arcs.
-  //
-  // Kết quả được inject vào Layer 0 của promptBuilder (Grand Strategy).
-  // AI sẽ biết:
-  //   - Đang ở hồi nào (currentArc.title, currentArc.goal)
-  //   - Cột mốc lớn nào của đại cục (currentMacroArc.title, emotional_peak)
-  //   - Không được vượt qua ranh giới power level của arc này
-  //
-  // 2 query nhỏ (get by id), non-blocking nếu bảng chưa có dữ liệu.
+  // Phase 9 rationale:
+  // Resolve chapter -> arc -> macro arc and inject that into Grand Strategy.
+  // This gives the prompt the current arc boundary without blocking if tables are empty.
 
   let currentArc = null;
   let currentMacroArc = null;
@@ -283,16 +325,16 @@ export async function gatherContext({
         currentMacroArc = await db.macro_arcs.get(currentArc.macro_arc_id);
       }
     } catch (e) {
-      // Non-fatal: tables có thể chưa có data nếu tác giả chưa tạo đại cục
+      // Non-fatal: these tables may still be empty in older projects.
       console.warn('[Context] Failed to load arc/macro arc (non-fatal):', e);
     }
   }
 
   // --- Relationships for detected characters ---
-  const detectedCharIds = new Set(detectedCharacters.map(c => c.id));
+  const detectedCharIds = new Set(effectiveCharacters.map(c => c.id));
   const RELATION_LABELS = {
     ally: 'Đồng minh', enemy: 'Kẻ thù', lover: 'Người yêu',
-    family: 'Gia đình', mentor: 'Sư phụ/Đồ đệ', rival: 'Đối thủ',
+    family: 'Gia đình', mentor: 'Sư phụ/Cố vấn', rival: 'Đối thủ',
     friend: 'Bạn bè', subordinate: 'Cấp dưới/Cấp trên', other: 'Khác',
   };
   const relationships = allRelationships
@@ -341,7 +383,7 @@ export async function gatherContext({
 
       // Once a secret has been revealed by the current chapter, treat it as an
       // established fact in the prompt instead of hiding it completely.
-      if (fact.revealed_at_chapter <= chapterIndex + 1) {
+      if (fact.revealed_at_chapter <= resolvedChapterIndex + 1) {
         return { ...fact, fact_type: 'fact' };
       }
 
@@ -350,20 +392,19 @@ export async function gatherContext({
 
   // --- Plot Threads ---
   let activePlotThreads = [];
-  try {
-    const allThreads = await db.plotThreads.where('project_id').equals(projectId).toArray();
-    activePlotThreads = allThreads.filter(pt => pt.state === 'active');
+  activePlotThreads = allThreads.filter(pt => pt.state === 'active');
 
-    if (sceneId) {
+  if (sceneId) {
+    try {
       const beats = await db.threadBeats.where('scene_id').equals(sceneId).toArray();
       const beatThreadIds = beats.map(b => b.plot_thread_id);
       activePlotThreads = activePlotThreads.map(pt => ({
         ...pt,
         is_focus_in_scene: beatThreadIds.includes(pt.id),
       }));
+    } catch (e) {
+      console.error('Error loading plot thread beats in context engine:', e);
     }
-  } catch (e) {
-    console.error('Error loading plot threads in context engine:', e);
   }
 
   let retrievalPacket = null;
@@ -372,8 +413,8 @@ export async function gatherContext({
       projectId,
       chapterId,
       sceneId,
-      detectedCharacterIds: detectedCharacters.map((character) => character.id),
-      detectedObjectIds: detectedObjects.map((object) => object.id),
+      detectedCharacterIds: effectiveCharacters.map((character) => character.id),
+      detectedObjectIds: effectiveObjects.map((object) => object.id),
       mode: resolveRetrievalMode(taskType, retrievalMode),
     });
   } catch (e) {
@@ -383,7 +424,7 @@ export async function gatherContext({
   const canonStateByCharacterId = new Map(
     (retrievalPacket?.relevantEntityStates || []).map((state) => [state.entity_id, state])
   );
-  const hydratedCharacters = detectedCharacters.map((character) => {
+  const hydratedCharacters = effectiveCharacters.map((character) => {
     const canonState = canonStateByCharacterId.get(character.id);
     if (!canonState) return character;
     return {
@@ -416,11 +457,18 @@ export async function gatherContext({
     ? retrievalPacket.factStates
     : canonFacts;
 
+  const preWriteValidation = validateChapterWritingReadiness({
+    chapterBlueprintContext,
+    sceneContract,
+    sceneText,
+  });
+
   return {
     characters: hydratedCharacters,
-    locations: detectedLocations,
-    objects: detectedObjects,
-    worldTerms: detectedTerms,
+    locations: effectiveLocations,
+    objects: effectiveObjects,
+    factions: effectiveFactions,
+    worldTerms: effectiveTerms,
     taboos: activeTaboos,
     previousSummary,
     // Phase 7
@@ -428,11 +476,13 @@ export async function gatherContext({
     previousEmotionalState,
     // Phase 8
     currentChapterOutline,
+    chapterBlueprintContext,
+    preWriteValidation,
     upcomingChapters,
     // Phase 9
     currentArc,
     currentMacroArc,
-    // Soul Injection — writing style tự động detect từ genre
+    // Soul injection: auto-detect writing style from genre.
     writingStyle: detectWritingStyle(genreKey || genre?.toLowerCase().replace(/\s+/g, '_') || ''),
     worldProfile,
     genre,
@@ -450,7 +500,7 @@ export async function gatherContext({
     promptTemplates,
     nsfwMode,
     superNsfwMode,
-    currentChapterIndex: chapterIndex,
+    currentChapterIndex: resolvedChapterIndex,
     retrievalPacket,
   };
 }

@@ -37,6 +37,11 @@ import {
   renderStoryCreationTemplate,
 } from '../../services/ai/storyCreationSettings';
 import {
+  buildWizardValidation,
+  normalizeChapterListField,
+  normalizeWizardBlueprintResult,
+} from '../../services/ai/blueprintGuardrails';
+import {
   Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
   RotateCcw, Users, MapPin, BookOpen, List, AlertCircle,
   Trash2, Globe, Eye, MessageSquare, Plus, GitPullRequest,
@@ -96,6 +101,10 @@ function dedupeTextList(items, fallbackValue = '') {
   pushValue(fallbackValue);
   (Array.isArray(items) ? items : []).forEach(pushValue);
   return values.slice(0, 5);
+}
+
+function formatListField(value) {
+  return normalizeChapterListField(value).join('\n');
 }
 
 function normalizeWizardResult(rawValue, fallbackTitle = '') {
@@ -238,9 +247,9 @@ function buildCoverageWarnings(result, excluded) {
 }
 
 export default function ProjectWizard({ onClose, onCreated }) {
-  const { createProject, createChapter, updateChapter } = useProjectStore();
+  const { createProject, createChapter } = useProjectStore();
   const {
-    createCharacter, createLocation, createWorldTerm,
+    createCharacter, createLocation, createObject, createWorldTerm,
     createFaction,
     saveChapterSummary,
   } = useCodexStore();
@@ -339,7 +348,12 @@ export default function ProjectWizard({ onClose, onCreated }) {
       return { ...prev, [section]: arr };
     });
   };
-  const coverageWarnings = buildCoverageWarnings(result, excluded);
+  const updateResultListField = (section, index, field, value) => {
+    updateResultItem(section, index, field, normalizeChapterListField(value));
+  };
+  const validationSummary = buildWizardValidation(result, excluded);
+  const blockingIssues = validationSummary.blockingIssues;
+  const coverageWarnings = validationSummary.warnings;
 
   // ── Mini-form renderers ──
 
@@ -373,6 +387,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
         <label>Ngoại hình</label>
         <input className="input input-sm" value={c.appearance || ''} onChange={e => updateResultItem('characters', i, 'appearance', e.target.value)} />
       </div>
+      <div className="wizard-edit-field">
+        <label>Vai tro trong chapter dau</label>
+        <textarea className="textarea textarea-sm" rows={2} value={c.story_function || ''} onChange={e => updateResultItem('characters', i, 'story_function', e.target.value)} />
+      </div>
     </div>
   );
 
@@ -385,6 +403,31 @@ export default function ProjectWizard({ onClose, onCreated }) {
       <div className="wizard-edit-field">
         <label>Mô tả</label>
         <textarea className="textarea textarea-sm" rows={2} value={l.description || ''} onChange={e => updateResultItem('locations', i, 'description', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Vai tro trong chapter dau</label>
+        <textarea className="textarea textarea-sm" rows={2} value={l.story_function || ''} onChange={e => updateResultItem('locations', i, 'story_function', e.target.value)} />
+      </div>
+    </div>
+  );
+
+  const renderObjectEdit = (o, i) => (
+    <div className="wizard-item-edit">
+      <div className="wizard-edit-field">
+        <label>Ten vat pham</label>
+        <input className="input input-sm" value={o.name || ''} onChange={e => updateResultItem('objects', i, 'name', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Mo ta</label>
+        <textarea className="textarea textarea-sm" rows={2} value={o.description || ''} onChange={e => updateResultItem('objects', i, 'description', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Chu so huu / nguoi gan lien</label>
+        <input className="input input-sm" value={o.owner || ''} onChange={e => updateResultItem('objects', i, 'owner', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Vai tro trong chapter dau</label>
+        <textarea className="textarea textarea-sm" rows={2} value={o.story_function || ''} onChange={e => updateResultItem('objects', i, 'story_function', e.target.value)} />
       </div>
     </div>
   );
@@ -406,6 +449,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
       <div className="wizard-edit-field">
         <label>Định nghĩa</label>
         <textarea className="textarea textarea-sm" rows={2} value={t.definition || ''} onChange={e => updateResultItem('terms', i, 'definition', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Vai trò trong chapter đầu</label>
+        <textarea className="textarea textarea-sm" rows={2} value={t.story_function || ''} onChange={e => updateResultItem('terms', i, 'story_function', e.target.value)} />
       </div>
     </div>
   );
@@ -432,6 +479,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
         <label>Ghi chú</label>
         <input className="input input-sm" value={f.notes || ''} onChange={e => updateResultItem('factions', i, 'notes', e.target.value)} />
       </div>
+      <div className="wizard-edit-field">
+        <label>Vai trò trong chapter đầu</label>
+        <textarea className="textarea textarea-sm" rows={2} value={f.story_function || ''} onChange={e => updateResultItem('factions', i, 'story_function', e.target.value)} />
+      </div>
     </div>
   );
 
@@ -442,8 +493,42 @@ export default function ProjectWizard({ onClose, onCreated }) {
         <input className="input input-sm" value={ch.title || ''} onChange={e => updateResultItem('chapters', i, 'title', e.target.value)} />
       </div>
       <div className="wizard-edit-field">
+        <label>Purpose</label>
+        <textarea className="textarea textarea-sm" rows={2} value={ch.purpose || ''} onChange={e => updateResultItem('chapters', i, 'purpose', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
         <label>Tóm tắt</label>
         <textarea className="textarea textarea-sm" rows={3} value={ch.summary || ''} onChange={e => updateResultItem('chapters', i, 'summary', e.target.value)} />
+      </div>
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Featured characters</label>
+          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.featured_characters)} onChange={e => updateResultListField('chapters', i, 'featured_characters', e.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Primary location</label>
+          <input className="input input-sm" value={ch.primary_location || ''} onChange={e => updateResultItem('chapters', i, 'primary_location', e.target.value)} />
+        </div>
+      </div>
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Thread titles</label>
+          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.thread_titles)} onChange={e => updateResultListField('chapters', i, 'thread_titles', e.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Key events</label>
+          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.key_events)} onChange={e => updateResultListField('chapters', i, 'key_events', e.target.value)} />
+        </div>
+      </div>
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Required factions</label>
+          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.required_factions)} onChange={e => updateResultListField('chapters', i, 'required_factions', e.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Required objects</label>
+          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.required_objects)} onChange={e => updateResultListField('chapters', i, 'required_objects', e.target.value)} />
+        </div>
       </div>
     </div>
   );
@@ -465,6 +550,14 @@ export default function ProjectWizard({ onClose, onCreated }) {
       <div className="wizard-edit-field">
         <label>Mô tả</label>
         <textarea className="textarea textarea-sm" rows={2} value={pt.description || ''} onChange={e => updateResultItem('plot_threads', i, 'description', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Opening window</label>
+        <input className="input input-sm" value={pt.opening_window || ''} onChange={e => updateResultItem('plot_threads', i, 'opening_window', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Anchor chapters</label>
+        <textarea className="textarea textarea-sm" rows={2} value={formatListField(pt.anchor_chapters)} onChange={e => updateResultListField('plot_threads', i, 'anchor_chapters', e.target.value)} />
       </div>
     </div>
   );
@@ -573,12 +666,12 @@ Chỉ trả về JSON, không thêm gì khác.`,
             ? (parsedValue.length === 1 && isPlainObject(parsedValue[0])
               ? parsedValue[0]
               : (parsedValue.every(isPlainObject)
-                ? { title: '', title_options: [], premise: '', characters: [], locations: [], factions: [], terms: [], chapters: parsedValue, plot_threads: [] }
+                ? { title: '', title_options: [], premise: '', characters: [], locations: [], objects: [], factions: [], terms: [], chapters: parsedValue, plot_threads: [] }
                 : null))
             : (isPlainObject(parsedValue) ? parsedValue : null);
 
           if (!nextResult) throw new Error('Unexpected JSON format');
-          setResult(normalizeWizardResult(nextResult, idea));
+          setResult(normalizeWizardBlueprintResult(nextResult, idea));
           setStep(2);
         } catch (e) {
           console.error('[Wizard] Parse error:', e, '\nRaw:', text);
@@ -597,15 +690,19 @@ Chỉ trả về JSON, không thêm gì khác.`,
   // ── Step 3: Create everything ──
   const handleApprove = async () => {
     if (!result) return;
+    if (blockingIssues.length > 0) {
+      setError('Blueprint hien tai con loi chan. Sua cac muc do truoc khi tao du an.');
+      return;
+    }
     setIsGenerating(true);
 
     try {
       // 1. Create project
-      // DNA Văn phong (constitution, style_dna, anti_ai_blacklist) sẽ được
-      // tự động bơm vào prompt_templates bởi buildInitialPromptTemplates() trong projectStore
+      // DNA van phong (constitution, style_dna, anti_ai_blacklist) se duoc
+      // tu dong bom vao prompt_templates boi buildInitialPromptTemplates() trong projectStore
       const wp = result.world_profile || {};
       const projectId = await createProject({
-        title: result.premise?.substring(0, 50) || idea.substring(0, 50) || 'Dự án mới',
+        title: result.title?.trim() || result.premise?.substring(0, 50) || idea.substring(0, 50) || 'Du an moi',
         genre_primary: genre,
         tone: tone,
         description: result.premise || idea,
@@ -630,31 +727,28 @@ Chỉ trả về JSON, không thêm gì khác.`,
         await db.projects.update(projectId, { title: result.title.trim() });
       }
 
-      // 2. Create chapters
+      // 2. Create chapters with full blueprint payload
       if (result.chapters?.length > 0) {
         for (let i = 0; i < result.chapters.length; i++) {
           const ch = result.chapters[i];
-          if (!excluded.has(`chapter-${i}`)) {
-            await createChapter(projectId, ch.title || `Chương ${i + 1}`);
-          }
-        }
-      }
-
-      if (result.chapters?.length > 0) {
-        const createdChapters = await db.chapters
-          .where('project_id').equals(projectId)
-          .sortBy('order_index');
-        let createdIndex = 0;
-
-        for (let i = 0; i < result.chapters.length; i++) {
           if (excluded.has(`chapter-${i}`)) continue;
-          const createdChapter = createdChapters[createdIndex];
-          if (createdChapter) {
-            const summary = result.chapters[i]?.summary || '';
-            if (summary) await saveChapterSummary(createdChapter.id, projectId, summary);
-            await updateChapter(createdChapter.id, { summary });
+
+          const chapterData = {
+            title: ch.title || `Chuong ${i + 1}`,
+            summary: ch.summary || '',
+            purpose: ch.purpose || '',
+            featured_characters: normalizeChapterListField(ch.featured_characters),
+            primary_location: ch.primary_location || '',
+            thread_titles: normalizeChapterListField(ch.thread_titles),
+            key_events: normalizeChapterListField(ch.key_events),
+            required_factions: normalizeChapterListField(ch.required_factions),
+            required_objects: normalizeChapterListField(ch.required_objects),
+          };
+
+          const createdChapter = await createChapter(projectId, chapterData.title, chapterData);
+          if (createdChapter?.chapterId && chapterData.summary) {
+            await saveChapterSummary(createdChapter.chapterId, projectId, chapterData.summary);
           }
-          createdIndex++;
         }
       }
 
@@ -668,10 +762,12 @@ Chỉ trả về JSON, không thêm gì khác.`,
               name: c.name,
               role: c.role || 'supporting',
               appearance: c.appearance || '',
-              personality: (c.personality || '') + (c.flaws ? `\nĐiểm yếu: ${c.flaws}` : ''),
+              personality: (c.personality || '') + (c.flaws ? `\nDiem yeu: ${c.flaws}` : ''),
               flaws: c.flaws || '',
               personality_tags: c.personality_tags || '',
               goals: c.goals || '',
+              notes: c.story_function || '',
+              story_function: c.story_function || '',
             });
           }
         }
@@ -686,6 +782,23 @@ Chỉ trả về JSON, không thêm gì khác.`,
               project_id: projectId,
               name: l.name,
               description: l.description || '',
+              details: l.story_function || '',
+              story_function: l.story_function || '',
+            });
+          }
+        }
+      }
+
+      if (result.objects?.length > 0) {
+        for (let i = 0; i < result.objects.length; i++) {
+          const o = result.objects[i];
+          if (!excluded.has(`object-${i}`) && o.name?.trim()) {
+            await createObject({
+              project_id: projectId,
+              name: o.name.trim(),
+              description: o.description || '',
+              properties: o.story_function || '',
+              story_function: o.story_function || '',
             });
           }
         }
@@ -702,6 +815,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
               faction_type: FACTION_TYPES.includes(f.faction_type) ? f.faction_type : 'other',
               description: f.description || '',
               notes: f.notes || '',
+              story_function: f.story_function || '',
               aliases: [],
             });
           }
@@ -718,6 +832,8 @@ Chỉ trả về JSON, không thêm gì khác.`,
               name: t.name,
               definition: t.definition || '',
               category: t.category || 'other',
+              source_kind: t.story_function ? `wizard:${t.story_function}` : '',
+              story_function: t.story_function || '',
             });
           }
         }
@@ -737,10 +853,12 @@ Chỉ trả về JSON, không thêm gì khác.`,
           type: VALID_THREAD_TYPES.includes(pt.type) ? pt.type : 'subplot',
           description: pt.description || '',
           state: pt.state === 'resolved' ? 'resolved' : 'active',
+          opening_window: pt.opening_window || '',
+          anchor_chapters: normalizeChapterListField(pt.anchor_chapters),
         });
       }
 
-      // 8. Phase 9: Save macro arcs (Đại Cục) nếu tác giả đã nhập
+      // 8. Phase 9: Save macro arcs (Dai Cuc) neu tac gia da nhap
       const validMacroArcs = macroArcsInput.filter(m => m.title?.trim());
       for (let i = 0; i < validMacroArcs.length; i++) {
         const m = validMacroArcs[i];
@@ -758,7 +876,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
       onCreated(projectId);
     } catch (err) {
       console.error('[Wizard] Create error:', err);
-      setError('Lỗi khi tạo dự án: ' + err.message);
+      setError('Loi khi tao du an: ' + err.message);
       setIsGenerating(false);
     }
   };
@@ -1030,7 +1148,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
             </div>
 
             <div className="form-group">
-              <label className="form-label">📖 Cốt truyện chính (Synopsis)</label>
+              <label className="form-label">Cốt truyện chính (Synopsis)</label>
               <textarea
                 className="textarea"
                 placeholder="Tóm tắt mạch truyện chính... (không bắt buộc)"
@@ -1064,7 +1182,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
                   fontSize: '11px',
                   color: 'var(--color-text-muted)',
                 }}>
-                  <span style={{ fontSize: '13px', flexShrink: 0 }}>🧬</span>
+                  <span style={{ fontSize: '13px', flexShrink: 0 }}>✨</span>
                   <span>
                     <strong style={{ color: 'var(--color-accent)' }}>DNA Văn phong sẽ tự động nạp</strong>
                     {hasDNA
@@ -1104,7 +1222,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
 
             {/* Premise */}
             <div className="wizard-section">
-              <h4>📖 Premise</h4>
+              <h4>✨ Premise</h4>
               <h4>✨ Tên truyện</h4>
               <input
                 className="input"
@@ -1130,16 +1248,32 @@ Chỉ trả về JSON, không thêm gì khác.`,
               <p className="wizard-premise">{result.premise}</p>
             </div>
 
+            {blockingIssues.length > 0 && (
+              <div className="wizard-section">
+                <h4>
+                  <AlertCircle size={16} /> Lỗi chặn blueprint
+                </h4>
+                <div className="wizard-warning-list">
+                  {blockingIssues.map((issue, index) => (
+                    <div key={`${issue.code}-${index}`} className="wizard-warning-item" style={{ borderColor: 'var(--color-danger, #ef4444)' }}>
+                      <AlertCircle size={14} />
+                      <span>{issue.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {coverageWarnings.length > 0 && (
               <div className="wizard-section">
                 <h4>
                   <AlertCircle size={16} /> Cảnh báo khớp nội dung
                 </h4>
                 <div className="wizard-warning-list">
-                  {coverageWarnings.map((warning) => (
-                    <div key={warning} className="wizard-warning-item">
+                  {coverageWarnings.map((warning, index) => (
+                    <div key={`${warning.code || 'warning'}-${index}`} className="wizard-warning-item">
                       <AlertCircle size={14} />
-                      <span>{warning}</span>
+                      <span>{warning.message || warning}</span>
                     </div>
                   ))}
                 </div>
@@ -1230,6 +1364,30 @@ Chỉ trả về JSON, không thêm gì khác.`,
               </div>
             )}
 
+            {result.objects?.length > 0 && (
+              <div className="wizard-section">
+                <h4>
+                  <Flag size={16} /> Vat pham ({result.objects.filter((_, i) => !excluded.has(`object-${i}`)).length})
+                </h4>
+                <div className="wizard-items">
+                  {result.objects.map((o, i) => {
+                    const key = `object-${i}`;
+                    return (
+                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
+                        <div className="wizard-item-content">
+                          <strong>{o.name}</strong>
+                          {o.description && <p>{o.description}</p>}
+                          {o.story_function && <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{o.story_function}</p>}
+                        </div>
+                        {renderItemActions(key)}
+                        {editingKey === key && renderObjectEdit(o, i)}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Factions */}
             {result.factions?.length > 0 && (
               <div className="wizard-section">
@@ -1247,6 +1405,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
                             {FACTION_TYPE_LABELS[f.faction_type] || f.faction_type || 'Thế lực'}
                           </span>
                           {f.description && <p>{f.description}</p>}
+                          {f.story_function && <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{f.story_function}</p>}
                         </div>
                         {renderItemActions(key)}
                         {editingKey === key && renderFactionEdit(f, i)}
@@ -1295,6 +1454,25 @@ Chỉ trả về JSON, không thêm gì khác.`,
                         <div className="wizard-item-content">
                           <strong>{ch.title}</strong>
                           {ch.summary && <p>{ch.summary}</p>}
+                          {ch.purpose && (
+                            <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                              <strong>Purpose:</strong> {ch.purpose}
+                            </p>
+                          )}
+                          {(normalizeChapterListField(ch.featured_characters).length > 0 || ch.primary_location) && (
+                            <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                              {normalizeChapterListField(ch.featured_characters).length > 0 ? `Nhan vat: ${normalizeChapterListField(ch.featured_characters).join(', ')}` : ''}
+                              {normalizeChapterListField(ch.featured_characters).length > 0 && ch.primary_location ? ' | ' : ''}
+                              {ch.primary_location ? `Dia diem: ${ch.primary_location}` : ''}
+                            </p>
+                          )}
+                          {(normalizeChapterListField(ch.thread_titles).length > 0 || normalizeChapterListField(ch.key_events).length > 0) && (
+                            <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                              {normalizeChapterListField(ch.thread_titles).length > 0 ? `Threads: ${normalizeChapterListField(ch.thread_titles).join(', ')}` : ''}
+                              {normalizeChapterListField(ch.thread_titles).length > 0 && normalizeChapterListField(ch.key_events).length > 0 ? ' | ' : ''}
+                              {normalizeChapterListField(ch.key_events).length > 0 ? `Anchors: ${normalizeChapterListField(ch.key_events).join(', ')}` : ''}
+                            </p>
+                          )}
                         </div>
                         {renderItemActions(key)}
                         {editingKey === key && renderChapterEdit(ch, i)}
@@ -1363,7 +1541,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
               <button className="btn btn-ghost" onClick={() => { setResult(null); setStep(0); setEditingKey(null); }}>
                 <RotateCcw size={16} /> Tạo lại
               </button>
-              <button className="btn btn-primary" onClick={handleApprove} disabled={isGenerating}>
+              <button className="btn btn-primary" onClick={handleApprove} disabled={isGenerating || blockingIssues.length > 0}>
                 {isGenerating ? (
                   <><Loader2 size={16} className="spin" /> Đang tạo...</>
                 ) : (

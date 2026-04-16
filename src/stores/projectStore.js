@@ -316,17 +316,16 @@ const useProjectStore = create((set, get) => ({
   createProject: async (data) => {
     const now = Date.now();
 
-    // ─── Tự động nạp DNA Văn phong từ template thể loại ───
-    // Lấy genre_primary người dùng vừa chọn, tra GENRE_TEMPLATES,
-    // bơm constitution + style_dna + anti_ai_blacklist vào prompt_templates.
+    // Auto-load writing DNA from the selected genre template.
+    // Merge constitution + style_dna + anti_ai_blacklist into prompt_templates.
     const genreKey = data.genre_primary || 'fantasy';
     const initialPromptTemplates = buildInitialPromptTemplates(
       genreKey,
-      data.prompt_templates, // nếu caller đã truyền vào thì merge thay vì ghi đè
+      data.prompt_templates, // Merge caller-provided templates instead of overwriting.
     );
 
     const id = await db.projects.add({
-      title: data.title || 'Truyện chưa đặt tên',
+      title: data.title || 'Truyen chua dat ten',
       description: data.description || '',
       genre_primary: data.genre_primary || 'fantasy',
       genre_secondary: data.genre_secondary || '',
@@ -351,7 +350,7 @@ const useProjectStore = create((set, get) => ({
       target_length_type: data.target_length_type || 'unset',
       ultimate_goal: data.ultimate_goal || '',
       milestones: data.milestones || '[]',
-      prompt_templates: initialPromptTemplates, // ← DNA văn phong đã được bơm vào đây
+      prompt_templates: initialPromptTemplates, // Writing DNA is injected here at project creation.
       created_at: now,
       updated_at: now,
     });
@@ -361,7 +360,7 @@ const useProjectStore = create((set, get) => ({
         project_id: id,
         arc_id: null,
         order_index: 0,
-        title: 'Chương 1',
+        title: 'Chuong 1',
         summary: '',
         purpose: '',
         status: 'draft',
@@ -373,7 +372,7 @@ const useProjectStore = create((set, get) => ({
         project_id: id,
         chapter_id: chapterId,
         order_index: 0,
-        title: 'Cảnh 1',
+        title: 'Canh 1',
         summary: '',
         pov_character_id: null,
         location_id: null,
@@ -518,23 +517,40 @@ const useProjectStore = create((set, get) => ({
       ? await db.chapters.where('project_id').equals(pid).sortBy('order_index')
       : chapters;
     const order = getNextOrderIndex(existingChapters);
+    const {
+      featured_characters = [],
+      primary_location = '',
+      thread_titles = [],
+      key_events = [],
+      required_factions = [],
+      required_objects = [],
+      required_terms = [],
+      ...chapterCore
+    } = chapterData || {};
     const chapterId = await db.chapters.add({
       project_id: pid,
-      arc_id: chapterData.arc_id ?? null,
+      arc_id: chapterCore.arc_id ?? null,
       order_index: order,
-      title: title || chapterData.title || `Chương ${order + 1}`,
-      summary: chapterData.summary || '',
-      purpose: chapterData.purpose || '',
-      status: chapterData.status || 'draft',
-      word_count_target: chapterData.word_count_target ?? 3000,
-      actual_word_count: chapterData.actual_word_count ?? 0,
+      title: title || chapterData.title || `Chuong ${order + 1}`,
+      summary: chapterCore.summary || '',
+      purpose: chapterCore.purpose || '',
+      status: chapterCore.status || 'draft',
+      word_count_target: chapterCore.word_count_target ?? 3000,
+      actual_word_count: chapterCore.actual_word_count ?? 0,
+      featured_characters,
+      primary_location,
+      thread_titles,
+      key_events,
+      required_factions,
+      required_objects,
+      required_terms,
     });
 
     const sceneId = await db.scenes.add({
       project_id: pid,
       chapter_id: chapterId,
       order_index: 0,
-      title: 'Cảnh 1',
+      title: 'Canh 1',
       summary: '',
       pov_character_id: null,
       location_id: null,
@@ -605,7 +621,7 @@ const useProjectStore = create((set, get) => ({
       project_id: currentProject.id,
       chapter_id: chapterId,
       order_index: order,
-      title: `Cảnh ${order + 1}`,
+      title: `Canh ${order + 1}`,
       summary: '',
       pov_character_id: null,
       location_id: null,
@@ -721,7 +737,7 @@ const useProjectStore = create((set, get) => ({
   /**
    * Auto-complete a chapter: summarize + extract Codex entries + mark done.
    * Called automatically when chapter reaches 100% word target.
-   * Non-blocking — errors are silently handled.
+   * Non-blocking - errors are silently handled.
    */
   runChapterCompletion: async (chapterId, options = {}) => {
     const { currentProject, chapters, scenes } = get();
@@ -774,6 +790,7 @@ const useProjectStore = create((set, get) => ({
       let canonResult = null;
       let canonProcessed = false;
       let canonSucceeded = false;
+      let canonRuntimeError = '';
       const { summarizeChapter, extractFromChapter } = useAIStore.getState();
 
       get().setChapterCompletionState(chapterId, {
@@ -823,6 +840,11 @@ const useProjectStore = create((set, get) => ({
         canonSucceeded = canonResult?.ok !== false;
       } catch (error) {
         console.warn('[ChapterCompletion] Canonicalize failed:', error);
+        canonRuntimeError = error?.message || '';
+        canonResult = {
+          ok: false,
+          runtime_error: canonRuntimeError,
+        };
       }
 
       get().setChapterCompletionState(chapterId, {
@@ -847,7 +869,9 @@ const useProjectStore = create((set, get) => ({
           ? 'Da hoan thanh chuong.'
           : canonProcessed
             ? 'Phan tich su that phat hien mau thuan, chuong chua duoc danh dau hoan thanh.'
-            : 'Khong the hoan thanh chuong vi loi runtime khi canon hoa.',
+            : (canonRuntimeError
+              ? `Khong the hoan thanh chuong vi loi canon hoa: ${canonRuntimeError}`
+              : 'Khong the hoan thanh chuong vi loi runtime khi canon hoa.'),
         summary,
         extracted,
         extractionStats,

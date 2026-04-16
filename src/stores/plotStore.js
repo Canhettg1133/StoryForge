@@ -23,11 +23,13 @@ const usePlotStore = create((set, get) => ({
         try {
             const id = await db.plotThreads.add({
                 project_id: data.project_id,
-                title: data.title || 'Tuyến truyện mới',
+                title: data.title || 'Tuyen truyen moi',
                 type: data.type || 'main', // main, subplot, character_arc, mystery, romance
                 state: data.state || 'active', // active, resolved, dropped
                 description: data.description || '', // New dynamic field
                 resolution: data.resolution || '',   // New dynamic field
+                opening_window: data.opening_window || '',
+                anchor_chapters: Array.isArray(data.anchor_chapters) ? data.anchor_chapters : [],
             });
             await get().loadPlotThreads(data.project_id);
             return id;

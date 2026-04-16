@@ -1,9 +1,9 @@
 /**
- * StoryForge — AI Store (Phase 3)
+ * StoryForge - AI Store (Phase 3)
  * 
  * Zustand store for AI interactions.
  * Phase 3: Context Engine integration, chapter summary, feedback loop.
- * Phase 7: Bridge Memory — auto-save last_prose_buffer after writing tasks.
+ * Phase 7: Bridge Memory - auto-save last_prose_buffer after writing tasks.
  */
 
 import { create } from 'zustand';
@@ -33,6 +33,13 @@ aiService.setRouter(modelRouter);
 const WRITING_TASK_TYPES = new Set([
   TASK_TYPES.CONTINUE,
   TASK_TYPES.SCENE_DRAFT,
+  TASK_TYPES.ARC_CHAPTER_DRAFT,
+]);
+
+const PRE_WRITE_GUARD_TASKS = new Set([
+  TASK_TYPES.CONTINUE,
+  TASK_TYPES.SCENE_DRAFT,
+  TASK_TYPES.ARC_CHAPTER_DRAFT,
 ]);
 
 function extractTextTail(rawText, wordLimit = 150) {
@@ -43,21 +50,21 @@ function extractTextTail(rawText, wordLimit = 150) {
 }
 
 /**
- * Lưu ~150 từ cuối của văn bản vừa generate vào chapterMeta.last_prose_buffer.
- * Upsert: tạo mới nếu chưa có record, update nếu đã có.
- * Non-blocking: lỗi chỉ warn, không throw.
+ * Save the last ~150 words of generated prose into chapterMeta.last_prose_buffer.
+ * Upsert behavior: create when missing, update when present.
+ * Non-blocking: warn only, never throw.
  *
  * @param {number} chapterId
  * @param {number} projectId
- * @param {string} rawText - full text vừa AI trả về
+ * @param {string} rawText - full text returned by the AI
  */
 async function saveProseBuffer(chapterId, projectId, rawText) {
   try {
-    // Strip HTML tags trước khi đếm từ
+    // Strip HTML before counting words.
     const plainText = rawText.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
     const words = plainText.split(' ').filter(Boolean);
 
-    // ~150 từ ≈ 500-600 ký tự tiếng Việt — đủ để AI bắt nhịp mà không tốn quá nhiều token
+    // ~150 words is enough continuity without spending too many tokens.
     const buffer = words.slice(-150).join(' ');
 
     const existing = await db.chapterMeta
@@ -76,7 +83,7 @@ async function saveProseBuffer(chapterId, projectId, rawText) {
       });
     }
   } catch (err) {
-    // Non-fatal: bridge buffer là "nice to have", không block luồng chính
+    // Non-fatal: bridge buffer is nice to have and should not block the main flow.
     console.warn('[AI] saveProseBuffer failed (non-fatal):', err);
   }
 }
@@ -179,7 +186,7 @@ const useAIStore = create((set, get) => ({
   eniPrimed: false,
   eniSessionHistory: [], // Stores [{role, content}] for the priming turn
 
-  // Phase 3 — Feedback loop state
+  // Phase 3 - Feedback loop state
   isSummarizing: false,
   isExtracting: false,
   isCheckingConflict: false,
@@ -227,7 +234,7 @@ const useAIStore = create((set, get) => ({
       }
     }
 
-    // CONTINUE: ưu tiên tail của scene hiện tại làm bridge/mood source.
+    // CONTINUE prefers the live tail of the current scene as bridge/mood source.
     if (taskType === TASK_TYPES.CONTINUE) {
       const liveSceneTail = extractTextTail(context.sceneText || '', 150);
       if (liveSceneTail) {
@@ -244,10 +251,10 @@ const useAIStore = create((set, get) => ({
       }
     }
 
-    // Super NSFW: One-time Priming (Lần 1)
+    // Super NSFW: one-time priming (first run only).
     if (enrichedContext.superNsfwMode && !get().eniPrimed && taskType !== TASK_TYPES.CHAPTER_SUMMARY) {
       console.log('[AI] Super NSFW ON: Performing one-time priming (ENI Persona)...');
-      set({ isStreaming: true, streamingText: '[Đang mồi ENI Persona lần đầu...]' });
+      set({ isStreaming: true, streamingText: '[Dang moi ENI Persona lan dau...]' });
       try {
         await new Promise((resolve) => {
           console.log('[AI] Starting priming call...');
@@ -288,6 +295,22 @@ const useAIStore = create((set, get) => ({
 
     let messages = buildPrompt(taskType, enrichedContext);
 
+    if (PRE_WRITE_GUARD_TASKS.has(taskType)) {
+      const blockingIssues = Array.isArray(enrichedContext?.preWriteValidation?.blockingIssues)
+        ? enrichedContext.preWriteValidation.blockingIssues.filter(Boolean)
+        : [];
+      if (blockingIssues.length > 0) {
+        const message = blockingIssues.map((issue) => issue.message).join(' ');
+        set({
+          isStreaming: false,
+          streamingText: '',
+          completedText: '',
+          error: message || 'Chapter blueprint chua du dieu kien de bat dau viet.',
+        });
+        return () => {};
+      }
+    }
+
     // Inject Priming History if needed
     if (enrichedContext.superNsfwMode && get().eniSessionHistory.length > 0) {
       const history = get().eniSessionHistory;
@@ -299,7 +322,7 @@ const useAIStore = create((set, get) => ({
       }
     }
 
-    // Snapshot các giá trị cần dùng trong callback (closure-safe)
+    // Snapshot values needed inside callbacks (closure-safe).
     const isWritingTask = WRITING_TASK_TYPES.has(taskType);
     const chapterId = enrichedContext.chapterId;
     const projectId = enrichedContext.projectId;
@@ -327,7 +350,7 @@ const useAIStore = create((set, get) => ({
             isStreaming: false,
             streamingText: '',
             completedText: '',
-            error: 'AI không trả nội dung (EMPTY_STREAM). Thử lại hoặc đổi chất lượng trong Settings.',
+            error: 'AI khong tra noi dung (EMPTY_STREAM). Thu lai hoac doi chat luong trong Settings.',
             lastRouteInfo: meta || routeInfo,
             lastElapsed: meta?.elapsed || null,
           });
@@ -345,7 +368,7 @@ const useAIStore = create((set, get) => ({
         set({ keyCount: keyManager.getTotalKeys() });
 
         // Phase 7: Auto-save bridge buffer for writing tasks
-        // Lưu ~150 từ cuối để AI bắt nhịp khi viết chương tiếp theo
+        // Save the tail so the next writing pass can continue smoothly.
         if (isWritingTask && chapterId && projectId) {
           saveProseBuffer(chapterId, projectId, safeText);
           try {
@@ -364,7 +387,7 @@ const useAIStore = create((set, get) => ({
       onError: (err) => {
         set({
           isStreaming: false,
-          error: err.message || 'Lỗi không xác định',
+          error: err.message || 'Loi khong xac dinh',
         });
         set({ keyCount: keyManager.getTotalKeys() });
       },
@@ -387,7 +410,7 @@ const useAIStore = create((set, get) => ({
   extractTerms: (context) => get().runTask({ taskType: TASK_TYPES.EXTRACT_TERMS, context }),
   freePrompt: (context) => get().runTask({ taskType: TASK_TYPES.FREE_PROMPT, context }),
 
-  // Reset priming when toggling modes — also clears from IndexedDB
+  // Reset priming when toggling modes; also clears persisted state in IndexedDB.
   resetEniPriming: async () => {
     set({ eniPrimed: false, eniSessionHistory: [] });
     // Try to clear persisted state from chapterMeta
@@ -396,12 +419,12 @@ const useAIStore = create((set, get) => ({
       if (activeChapterId && currentProject?.id) {
         await saveEniState(activeChapterId, currentProject.id, false, []);
       }
-    } catch (_) { /* ignore — reset is best-effort */ }
+    } catch (_) { /* ignore: reset is best-effort */ }
   },
 
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
   // Phase 3: Chapter Summary & Feedback Loop
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
 
   /**
    * Summarize a chapter using Flash model.
@@ -555,9 +578,9 @@ const useAIStore = create((set, get) => ({
     set({ keyCount: keyManager.getTotalKeys() });
   },
 
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
   // Phase A: Suggestion Inbox
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
   isSuggesting: false,
 
   /**
@@ -729,18 +752,18 @@ const useAIStore = create((set, get) => ({
     });
   },
 
-  // ═══════════════════════════════════════════
-  // Phase 7: Bridge Memory — Manual emotional state update
-  // ═══════════════════════════════════════════
+  // ---------------------------------------------
+  // Phase 7 - Bridge Memory: manual emotional state update
+  // ---------------------------------------------
 
   /**
-   * Cập nhật emotional_state và tension_level cho một chương.
-   * Được gọi từ UI khi tác giả điền form sau khi hoàn thành chương.
+   * Update emotional_state and tension_level for a chapter.
+   * Triggered by UI after the author finishes a chapter.
    *
    * @param {number} chapterId
    * @param {number} projectId
    * @param {{ mood: string, activeConflict: string, lastAction: string }} emotionalState
-   * @param {number} tensionLevel - 1 đến 10
+   * @param {number} tensionLevel - 1 to 10
    */
   updateEmotionalState: async ({ chapterId, projectId, emotionalState, tensionLevel }) => {
     try {

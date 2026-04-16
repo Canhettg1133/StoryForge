@@ -103,9 +103,10 @@ Tra ve CHINH XAC JSON format:
   },
   "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem luc dau", "goals": "...", "story_function": "vai tro trong cac chapter dau"}],
   "locations": [{"name": "...", "description": "...", "story_function": "dia diem nay dung de lam gi trong chapter dau"}],
+  "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chi them neu chapter dau that su can vat pham nay"}],
   "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "..."}],
   "terms": [{"name": "...", "definition": "...", "category": "magic|race|technology|other", "story_function": "thuat ngu nay anh huong gi toi chapter dau"}],
-  "chapters": [{"title": "Chuong 1: ...", "purpose": "muc tieu ke chuyen cua chuong", "summary": "Tom tat noi dung chuong", "featured_characters": ["..."], "primary_location": "...", "thread_titles": ["..."]}],
+  "chapters": [{"title": "Chuong 1: ...", "purpose": "muc tieu ke chuyen cua chuong", "summary": "Tom tat noi dung chuong", "featured_characters": ["..."], "primary_location": "...", "thread_titles": ["..."], "key_events": ["neo noi bo neu can"], "required_factions": ["..."], "required_objects": ["..."]}],
   "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mo ta tuyen truyen 1-2 cau", "state": "active", "opening_window": "xuat hien tu chuong nao", "anchor_chapters": ["Chuong 1", "Chuong 3"]}]
 }
 
@@ -119,8 +120,9 @@ QUY TAC TEN TRUYEN:
 - "title_options" phai co 3-5 phuong an du khac nhau, bam sat the loai va y tuong.
 
 QUY TAC CHUONG VA ENTITY:
-- "featured_characters", "primary_location", "thread_titles" trong tung chapter phai tham chieu toi entity/tuyen da tao o tren.
+- "featured_characters", "primary_location", "thread_titles", "required_factions", "required_objects" trong tung chapter phai tham chieu toi entity/tuyen da tao o tren.
 - Khong tao character/location/term chi duoc neu o codex ma khong lien he voi chapter.
+- "objects" la field tuy chon, chi them neu chapter dau that su can va chapter outline co nhac den.
 - Moi chapter phai co tien trien ro, nhung khong duoc nhoi qua nhieu bien co neu day moi la mo dau truyen.
 
 Chi tra ve JSON, khong them gi khac.`,

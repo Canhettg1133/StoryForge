@@ -1400,15 +1400,30 @@ export async function validateRevision(chapterRevisionId, mode = 'draft') {
   const scenes = await getChapterScenes(revision.chapter_id);
   const preTruth = await loadPreChapterTruth(revision.project_id, revision.chapter_id);
   let candidateOps = loadRevisionOps(revision);
+  const extractionFallbackReports = [];
 
   if (candidateOps.length === 0 && cleanText(revision.chapter_text)) {
-    candidateOps = await extractCandidateOps({
-      projectId: revision.project_id,
-      chapterId: revision.chapter_id,
-      revisionId: revision.id,
-      chapterText: revision.chapter_text,
-      scenes,
-    });
+    try {
+      candidateOps = await extractCandidateOps({
+        projectId: revision.project_id,
+        chapterId: revision.chapter_id,
+        revisionId: revision.id,
+        chapterText: revision.chapter_text,
+        scenes,
+      });
+    } catch (error) {
+      console.warn('[Canon] extractCandidateOps failed, falling back to heuristic-only validation:', error);
+      candidateOps = [];
+      extractionFallbackReports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'CANON_EXTRACT_FALLBACK',
+        message: 'Khong trich xuat duoc canon ops tu AI, he thong tiep tuc bang heuristic validator de tranh vo luong canon hoa.',
+        projectId: revision.project_id,
+        chapterId: revision.chapter_id,
+        revisionId: revision.id,
+        evidence: error?.message || '',
+      }));
+    }
   }
 
   const schemaReports = validateCandidateOps({
@@ -1436,7 +1451,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft') {
     itemStates: preTruth.itemStates,
   });
 
-  const reports = [...schemaReports, ...heuristicReports];
+  const reports = [...schemaReports, ...heuristicReports, ...extractionFallbackReports];
   await replaceValidatorReports(revision.project_id, revision.id, reports);
 
   const hasErrors = reportsHaveErrors(reports);
