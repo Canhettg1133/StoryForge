@@ -198,15 +198,17 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
       {/* Scene title */}
       <div className="story-editor-header">
         <div className="story-editor-header-main">
-          <div className="story-editor-heading">
-            <div className="story-editor-scene-meta">Chi tiết của cảnh đang viết</div>
-            <input
-              className="story-editor-scene-title"
-              value={activeScene.title}
-              onChange={(e) => updateScene(activeSceneId, { title: e.target.value })}
-              placeholder="Tên cảnh..."
-            />
-          </div>
+          {!isMobileLayout && (
+            <div className="story-editor-heading">
+              <div className="story-editor-scene-meta">Chi tiết của cảnh đang viết</div>
+              <input
+                className="story-editor-scene-title"
+                value={activeScene.title}
+                onChange={(e) => updateScene(activeSceneId, { title: e.target.value })}
+                placeholder="Tên cảnh..."
+              />
+            </div>
+          )}
           <button
             className="story-editor-detail-trigger"
             onClick={() => setSceneDetailOpen(true)}
@@ -241,7 +243,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
             >
               {outlinePanelOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               <BookOpen size={14} />
-              <span>Dàn Ý Chương</span>
+              <span>Dàn ý chương</span>
             </button>
 
             {/* [MỚI] Nút bút chì — chỉ hiện khi panel mở */}

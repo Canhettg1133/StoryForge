@@ -632,10 +632,12 @@
   min-height: 32px;
   padding: 7px 9px;
   border-radius: 8px;
+  width: 100%;
+  justify-content: center;
 }
 
 .story-editor--mobile .story-editor-detail-trigger span {
-  display: none;
+  display: inline;
 }
 
 .story-editor--mobile .story-editor-header-main {
