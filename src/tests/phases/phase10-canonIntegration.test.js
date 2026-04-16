@@ -151,6 +151,10 @@ class MemoryTable {
     const idSet = new Set(ids);
     this.rows = this.rows.filter((row) => !idSet.has(row.id));
   }
+
+  async delete(id) {
+    this.rows = this.rows.filter((row) => row.id !== id);
+  }
 }
 
 function createMockDb(seed = {}) {
@@ -192,6 +196,7 @@ function createMockDb(seed = {}) {
     'chapter_snapshots',
     'item_state_current',
     'relationship_state_current',
+    'canon_purge_archives',
   ];
 
   const db = {};
@@ -296,6 +301,116 @@ describe('phase10 canon integration', () => {
     const snapshots = await db.chapter_snapshots.toArray();
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0].chapter_id).toBe(1);
+  });
+
+  it('purges canon artifacts and archives deleted chapter payload without removing legacy codex rows', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Purge Test' }],
+      chapters: [
+        { id: 1, project_id: 1, order_index: 0, title: 'Chuong 1' },
+      ],
+      chapter_revisions: [
+        { id: 101, project_id: 1, chapter_id: 1, revision_number: 1, status: 'canonical' },
+      ],
+      chapter_commits: [
+        { id: 201, project_id: 1, chapter_id: 1, current_revision_id: 101, canonical_revision_id: 101, status: 'canonical' },
+      ],
+      story_events: [
+        { id: 301, project_id: 1, chapter_id: 1, revision_id: 101, op_type: 'FACT_REGISTERED', created_at: 1 },
+      ],
+      validator_reports: [
+        { id: 401, project_id: 1, chapter_id: 1, revision_id: 101, severity: 'warning', message: 'Can review' },
+      ],
+      memory_evidence: [
+        { id: 501, project_id: 1, chapter_id: 1, revision_id: 101, target_type: 'chapter_revision', evidence_text: 'proof' },
+      ],
+      chapter_snapshots: [
+        { id: 601, project_id: 1, chapter_id: 1, revision_id: 101, snapshot_json: '{}' },
+      ],
+      canonFacts: [
+        { id: 701, project_id: 1, description: 'Auto fact', source_chapter_id: 1, status: 'active', fact_type: 'fact' },
+      ],
+      characters: [
+        { id: 801, project_id: 1, name: 'Auto Character', source_chapter_id: 1, source_kind: 'chapter_extract' },
+        { id: 802, project_id: 1, name: 'Legacy Character' },
+      ],
+      locations: [
+        { id: 901, project_id: 1, name: 'Auto Place', source_chapter_id: 1, source_kind: 'chapter_extract' },
+      ],
+      worldTerms: [
+        { id: 1001, project_id: 1, name: 'Auto Term', source_chapter_id: 1, source_kind: 'chapter_extract' },
+      ],
+      objects: [
+        { id: 1101, project_id: 1, name: 'Auto Relic', source_chapter_id: 1, source_kind: 'chapter_extract' },
+        { id: 1102, project_id: 1, name: 'Manual Relic' },
+      ],
+    });
+
+    const archivePayload = await engine.purgeChapterCanonState(1, 1);
+
+    expect(archivePayload.chapter.title).toBe('Chuong 1');
+    expect((await db.chapter_commits.toArray())).toHaveLength(0);
+    expect((await db.chapter_revisions.toArray())).toHaveLength(0);
+    expect((await db.story_events.toArray())).toHaveLength(0);
+    expect((await db.validator_reports.toArray())).toHaveLength(0);
+    expect((await db.memory_evidence.toArray())).toHaveLength(0);
+    expect((await db.chapter_snapshots.toArray())).toHaveLength(0);
+    expect((await db.canonFacts.toArray())).toHaveLength(0);
+    expect((await db.characters.toArray()).map((item) => item.id)).toEqual([802]);
+    expect((await db.objects.toArray()).map((item) => item.id)).toEqual([1102]);
+
+    const archives = await db.canon_purge_archives.toArray();
+    expect(archives).toHaveLength(1);
+    expect(archives[0].removed_counts.revisions).toBe(1);
+    expect(archives[0].removed_counts.characters).toBe(1);
+    expect(archives[0].warnings[0]).toContain('Manual or legacy codex entries');
+  });
+
+  it('saves repair suggestions as draft revisions with source metadata', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Repair Test' }],
+      chapters: [{ id: 1, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      chapter_revisions: [
+        {
+          id: 101,
+          project_id: 1,
+          chapter_id: 1,
+          revision_number: 1,
+          status: 'blocked',
+          chapter_text: 'Ban cu',
+          created_at: 1,
+        },
+      ],
+      validator_reports: [
+        {
+          id: 401,
+          project_id: 1,
+          chapter_id: 1,
+          revision_id: 101,
+          severity: 'error',
+          message: 'Mau thuan',
+          created_at: 2,
+        },
+      ],
+    });
+
+    const saved = await engine.saveRepairDraftRevision({
+      projectId: 1,
+      chapterId: 1,
+      revisionId: 101,
+      reportId: 401,
+      chapterText: 'Ban da sua',
+    });
+
+    expect(saved.id).toBeTruthy();
+    expect(saved.revision_number).toBe(2);
+    expect(saved.status).toBe('draft');
+    expect(saved.chapter_text).toBe('Ban da sua');
+    expect(saved.source_revision_id).toBe(101);
+    expect(saved.source_report_id).toBe(401);
+
+    const revisions = await db.chapter_revisions.where('[project_id+chapter_id]').equals([1, 1]).toArray();
+    expect(revisions).toHaveLength(2);
   });
 
   it('exports and imports canon tables with remapped references', async () => {

@@ -1771,7 +1771,7 @@ export async function runIncidentOnly1MJob({
   chunks = [],
   options = {},
   signal,
-  onProgress = () => {},
+  onProgress = () => { },
 } = {}) {
   if (!corpusId) {
     const error = new Error('Missing corpusId for incident_only_1m job');

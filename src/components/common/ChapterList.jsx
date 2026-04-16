@@ -49,6 +49,7 @@ export default function ChapterList({
   const [contextMenu, setContextMenu] = useState(null);
   const [mobileActionMenu, setMobileActionMenu] = useState(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const previousChapterIdsRef = useRef([]);
   const contextMenuRef = useRef(null);
   const mobileActionMenuRef = useRef(null);
 
@@ -60,8 +61,14 @@ export default function ChapterList({
 
   useEffect(() => {
     setExpandedChapters((previous) => {
-      const next = new Set(previous);
-      chapters.forEach((chapter) => next.add(chapter.id));
+      const previousIds = previousChapterIdsRef.current;
+      const nextIds = chapters.map((chapter) => chapter.id);
+      const next = new Set(
+        [...previous].filter((chapterId) => nextIds.includes(chapterId))
+      );
+      const newChapterIds = nextIds.filter((chapterId) => !previousIds.includes(chapterId));
+      newChapterIds.forEach((chapterId) => next.add(chapterId));
+      previousChapterIdsRef.current = nextIds;
       return next;
     });
   }, [chapters]);

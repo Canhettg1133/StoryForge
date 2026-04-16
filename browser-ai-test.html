@@ -1,0 +1,968 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Công Cụ Test AI Trên Trình Duyệt</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f1e8;
+      --panel: #fffaf0;
+      --ink: #1d1b18;
+      --muted: #6b6256;
+      --line: #d8ccb8;
+      --accent: #8b3a2f;
+      --accent-2: #124559;
+      --ok: #1f7a4d;
+      --warn: #b26a00;
+      --err: #a12626;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.5 Georgia, "Times New Roman", serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(139, 58, 47, 0.10), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(18, 69, 89, 0.10), transparent 28%),
+        var(--bg);
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    h1, h2 {
+      margin: 0 0 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .hero {
+      margin-bottom: 18px;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(135deg, rgba(255, 250, 240, 0.94), rgba(246, 239, 227, 0.92));
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.05);
+    }
+
+    .hero p {
+      margin: 6px 0 0;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.04);
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-weight: 600;
+    }
+
+    input, select, textarea, button {
+      font: inherit;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    textarea {
+      min-height: 112px;
+      resize: vertical;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .row-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button.secondary {
+      background: var(--accent-2);
+      border-color: var(--accent-2);
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .hint, .meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .results {
+      display: grid;
+      gap: 14px;
+    }
+
+    .result-card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .result-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      background: rgba(139, 58, 47, 0.06);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .status {
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid currentColor;
+    }
+
+    .status.ok { color: var(--ok); }
+    .status.warn { color: var(--warn); }
+    .status.err { color: var(--err); }
+
+    .result-body {
+      padding: 12px 14px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .summary-box {
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .summary-box strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f3eee5;
+      font-weight: 700;
+    }
+
+    pre {
+      margin: 0;
+      padding: 12px;
+      border-radius: 12px;
+      background: #f3eee5;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.45 Consolas, monospace;
+    }
+
+    .log {
+      min-height: 180px;
+      max-height: 360px;
+    }
+
+    @media (max-width: 920px) {
+      .grid { grid-template-columns: 1fr; }
+      .row, .row-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>Công Cụ Test AI Trên Trình Duyệt</h1>
+      <p>File HTML độc lập để kiểm tra trực tiếp trên trình duyệt: gửi một yêu cầu, thử nhiều model cùng lúc, so sánh chế độ lọc nội dung <code>mặc định / BLOCK_NONE / OFF</code>, và thử gửi dồn để quan sát giới hạn <code>429 / RPM</code>.</p>
+    </section>
+
+    <div class="grid">
+      <section class="panel stack">
+        <h2>Cấu hình</h2>
+
+        <label>
+          Nhà cung cấp AI
+          <select id="provider">
+            <option value="gemini_proxy">Gemini Proxy</option>
+            <option value="gemini_direct">Gemini Direct</option>
+          </select>
+        </label>
+
+        <label>
+          Địa chỉ API
+          <input id="baseUrl" value="https://story-forge-virid.vercel.app/api/proxy">
+        </label>
+
+        <label>
+          Khóa API
+          <input id="apiKey" type="password" placeholder="Nhập key ở đây">
+        </label>
+
+        <label>
+          Model đang chọn
+          <input id="model" value="gemini-2.5-flash-真流-[星星公益站-CLI渠道]">
+        </label>
+
+        <label>
+          Danh sách model để test hàng loạt
+          <textarea id="modelList">gemini-2.5-flash-真流-[星星公益站-CLI渠道]
+gemini-3-flash-high-真流-[星星公益站-CLI渠道]
+gemini-3-flash-medium-真流-[星星公益站-CLI渠道]
+gemini-2.5-pro-真流-[星星公益站-CLI渠道]</textarea>
+        </label>
+
+        <div class="row">
+          <label>
+            Số token đầu ra tối đa
+            <input id="maxOutput" type="number" value="65000" min="1">
+          </label>
+          <label>
+            Trả lời dạng stream
+            <select id="stream">
+              <option value="false" selected>false</option>
+              <option value="true">true</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row">
+          <label>
+            Chế độ lọc nội dung
+            <select id="safetyMode">
+              <option value="default">mặc định</option>
+              <option value="block_none">BLOCK_NONE</option>
+              <option value="off">OFF</option>
+            </select>
+          </label>
+          <label>
+            Số lần gửi liên tiếp
+            <input id="burstCount" type="number" value="6" min="1" max="30">
+          </label>
+        </div>
+
+        <label>
+          Nội dung cần thử
+          <textarea id="prompt">Reply with exactly OK.</textarea>
+        </label>
+
+        <div class="actions">
+          <button class="primary" id="runOnce">Gửi một lần</button>
+          <button class="secondary" id="runAllModels">Thử toàn bộ model</button>
+          <button class="secondary" id="compareSafety">So sánh lọc nội dung</button>
+          <button id="compareAllModels">So sánh lọc cho mọi model</button>
+          <button id="burstTest">Thử gửi dồn liên tiếp</button>
+          <button id="singleModelRpmTest">Test 1 model vượt 5 lần/phút</button>
+          <button id="multiModelRpmTest">Test nhiều model luân phiên vượt 5 lần/phút</button>
+          <button id="loadModels">Tải danh sách model từ API</button>
+          <button id="clearLog">Xóa log</button>
+        </div>
+
+        <div class="hint">
+          Với <code>Gemini Proxy</code>, trang sẽ gửi cả <code>safetySettings</code> và <code>safety_settings</code> để dễ kiểm tra proxy có nhận tham số lọc nội dung hay không.
+        </div>
+        <div class="hint">
+          URL <code>https://story-forge-virid.vercel.app/api/proxy</code> là đúng nếu bạn muốn kiểm tra đúng proxy web của app. Nếu mở file HTML bằng <code>file://</code>, trình duyệt vẫn có thể chặn vì CORS tùy vào header từ server.
+        </div>
+        <div class="hint">
+          Hai nút test RPM mới sẽ giúp bạn đo xem giới hạn có vẻ tính theo <code>key chung</code> hay theo <code>từng model</code>.
+        </div>
+      </section>
+
+      <section class="panel results">
+        <div>
+          <h2>Kết quả</h2>
+          <div class="meta">Phần này ưu tiên dễ hiểu cho người mới: nhìn kết luận trước, rồi xem bảng tóm tắt, cuối cùng mới đến dữ liệu chi tiết.</div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-head">
+            <strong>Kết luận nhanh</strong>
+            <span class="status ok">Dễ đọc</span>
+          </div>
+          <div class="result-body">
+            <div id="quickSummary" class="summary-box">
+              <strong>Chưa có kết quả</strong>
+              Chạy một nút test ở bên trái để xem kết luận ngắn gọn.
+            </div>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-head">
+            <strong>Bảng tóm tắt</strong>
+            <span class="status warn">Nhìn nhanh</span>
+          </div>
+          <div class="result-body">
+            <div id="tableWrap" class="meta">Chưa có bảng tóm tắt.</div>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-head">
+            <strong>Nhật ký chạy</strong>
+            <span class="status ok">Theo thời gian</span>
+          </div>
+          <div class="result-body">
+            <pre id="log" class="log"></pre>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-head">
+            <strong>Dữ liệu gửi đi</strong>
+            <span class="status warn">Yêu cầu</span>
+          </div>
+          <div class="result-body">
+            <pre id="payloadView">Chưa có dữ liệu gửi đi.</pre>
+          </div>
+        </div>
+
+        <div class="result-card">
+          <div class="result-head">
+            <strong>Phản hồi chi tiết</strong>
+            <span class="status err">Dữ liệu thô</span>
+          </div>
+          <div class="result-body">
+            <pre id="responseView">Chưa có phản hồi.</pre>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const logView = $('log');
+    const payloadView = $('payloadView');
+    const responseView = $('responseView');
+    const quickSummary = $('quickSummary');
+    const tableWrap = $('tableWrap');
+
+    function log(message, data) {
+      const time = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+      const line = `[${time}] ${message}`;
+      logView.textContent += data === undefined
+        ? `${line}\n`
+        : `${line}\n${typeof data === 'string' ? data : JSON.stringify(data, null, 2)}\n`;
+      logView.scrollTop = logView.scrollHeight;
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function statusText(status, ok) {
+      if (status === 429) return 'Bị giới hạn';
+      if (ok) return 'Thành công';
+      if (status >= 400) return 'Lỗi';
+      return 'Chưa rõ';
+    }
+
+    function setQuickSummary(title, description) {
+      quickSummary.innerHTML = `<strong>${escapeHtml(title)}</strong>${escapeHtml(description)}`;
+    }
+
+    function renderTable(rows) {
+      if (!rows || rows.length === 0) {
+        tableWrap.textContent = 'Chưa có bảng tóm tắt.';
+        return;
+      }
+
+      const headers = Object.keys(rows[0]);
+      const html = `
+        <table>
+          <thead>
+            <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                ${headers.map((header) => `<td>${escapeHtml(row[header] ?? '')}</td>`).join('')}
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+      tableWrap.innerHTML = html;
+    }
+
+    function currentConfig() {
+      return {
+        provider: $('provider').value,
+        baseUrl: $('baseUrl').value.trim().replace(/\/+$/u, ''),
+        apiKey: $('apiKey').value.trim(),
+        model: $('model').value.trim(),
+        maxOutput: Number($('maxOutput').value || 0),
+        stream: $('stream').value === 'true',
+        safetyMode: $('safetyMode').value,
+        prompt: $('prompt').value,
+        burstCount: Number($('burstCount').value || 1),
+      };
+    }
+
+    function getModelList() {
+      return $('modelList').value
+        .split(/\r?\n/u)
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+
+    function safetySettings(mode) {
+      if (mode === 'default') return null;
+      const threshold = mode === 'off' ? 'OFF' : 'BLOCK_NONE';
+      return [
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold },
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold },
+      ];
+    }
+
+    function buildProxyPayload(cfg, overrideMode) {
+      const mode = overrideMode || cfg.safetyMode;
+      const settings = safetySettings(mode);
+      return {
+        model: cfg.model,
+        stream: cfg.stream,
+        max_tokens: cfg.maxOutput,
+        messages: [{ role: 'user', content: cfg.prompt }],
+        ...(settings && {
+          safetySettings: settings,
+          safety_settings: settings,
+        }),
+      };
+    }
+
+    function buildDirectPayload(cfg, overrideMode) {
+      const mode = overrideMode || cfg.safetyMode;
+      const settings = safetySettings(mode);
+      return {
+        contents: [{ role: 'user', parts: [{ text: cfg.prompt }] }],
+        generationConfig: { maxOutputTokens: cfg.maxOutput },
+        ...(settings && { safetySettings: settings }),
+      };
+    }
+
+    function directUrl(cfg) {
+      const base = cfg.baseUrl || 'https://generativelanguage.googleapis.com';
+      const normalizedBase = base.endsWith('/v1beta') ? base : `${base}/v1beta`;
+      const model = cfg.model.replace(/^models\//u, '');
+      const action = cfg.stream ? 'streamGenerateContent' : 'generateContent';
+      return `${normalizedBase}/models/${model}:${action}?key=${encodeURIComponent(cfg.apiKey)}${cfg.stream ? '&alt=sse' : ''}`;
+    }
+
+    function proxyUrl(cfg) {
+      return `${cfg.baseUrl}/v1/chat/completions`;
+    }
+
+    async function sendRequest(overrideMode) {
+      const cfg = currentConfig();
+      if (!cfg.baseUrl || !cfg.model || !cfg.apiKey) {
+        throw new Error('Thiếu Base URL, model hoặc API key.');
+      }
+
+      const isProxy = cfg.provider === 'gemini_proxy';
+      const url = isProxy ? proxyUrl(cfg) : directUrl(cfg);
+      const payload = isProxy ? buildProxyPayload(cfg, overrideMode) : buildDirectPayload(cfg, overrideMode);
+      payloadView.textContent = JSON.stringify(payload, null, 2);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: isProxy
+          ? {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${cfg.apiKey}`,
+            }
+          : {
+              'Content-Type': 'application/json',
+            },
+        body: JSON.stringify(payload),
+      });
+
+      const text = await response.text();
+      let parsed;
+      try { parsed = JSON.parse(text); } catch { parsed = null; }
+
+      const pretty = {
+        status: response.status,
+        ok: response.ok,
+        body: parsed || text,
+      };
+      responseView.textContent = JSON.stringify(pretty, null, 2);
+      setQuickSummary(
+        `${statusText(response.status, response.ok)}${response.ok ? '' : ` (HTTP ${response.status})`}`,
+        response.ok
+          ? 'Request đã đi qua server và có phản hồi.'
+          : 'Request không thành công. Xem phần phản hồi chi tiết bên dưới.',
+      );
+      renderTable([
+        {
+          'Model': cfg.model,
+          'Chế độ lọc': overrideMode || cfg.safetyMode,
+          'HTTP': response.status,
+          'Kết quả': statusText(response.status, response.ok),
+        },
+      ]);
+
+      log(`Request ${overrideMode || cfg.safetyMode} -> HTTP ${response.status}`);
+      return {
+        status: response.status,
+        ok: response.ok,
+        body: parsed || text,
+        rawText: text,
+        mode: overrideMode || cfg.safetyMode,
+        model: cfg.model,
+      };
+    }
+
+    async function loadModels() {
+      const cfg = currentConfig();
+      if (!cfg.baseUrl || !cfg.apiKey) throw new Error('Thiếu Base URL hoặc API key.');
+
+      if (cfg.provider === 'gemini_proxy') {
+        const res = await fetch(`${cfg.baseUrl}/v1/models`, {
+          headers: { Authorization: `Bearer ${cfg.apiKey}` },
+        });
+        const text = await res.text();
+        responseView.textContent = text;
+        setQuickSummary('Đã tải danh sách model', 'Server proxy trả về danh sách model thành công.');
+        log(`Model list proxy -> HTTP ${res.status}`);
+        return;
+      }
+
+      const base = cfg.baseUrl.endsWith('/v1beta') ? cfg.baseUrl : `${cfg.baseUrl}/v1beta`;
+      const res = await fetch(`${base}/models?key=${encodeURIComponent(cfg.apiKey)}`);
+      const text = await res.text();
+      responseView.textContent = text;
+      setQuickSummary('Đã tải danh sách model', 'Gemini Direct trả về danh sách model thành công.');
+      log(`Model list direct -> HTTP ${res.status}`);
+    }
+
+    async function compareSafety() {
+      const modes = ['default', 'block_none', 'off'];
+      const summary = [];
+      for (const mode of modes) {
+        try {
+          const result = await sendRequest(mode);
+          summary.push({
+            mode,
+            status: result.status,
+            preview: typeof result.body === 'string'
+              ? result.body.slice(0, 120)
+              : JSON.stringify(result.body).slice(0, 120),
+          });
+        } catch (error) {
+          summary.push({ mode, error: error.message });
+        }
+      }
+      responseView.textContent = JSON.stringify(summary, null, 2);
+      renderTable(summary.map((item) => ({
+        'Chế độ lọc': item.mode,
+        'HTTP': item.status ?? '-',
+        'Kết quả': item.error ? 'Lỗi' : statusText(item.status, item.status >= 200 && item.status < 300),
+        'Ghi chú': item.error || item.preview || '',
+      })));
+      setQuickSummary('Đã so sánh 3 chế độ lọc nội dung', 'Hãy nhìn bảng tóm tắt để xem chế độ nào thành công, chế độ nào bị chặn hoặc báo lỗi.');
+      log('So safety xong', summary);
+    }
+
+    async function runAllModels() {
+      const cfg = currentConfig();
+      const models = getModelList();
+      if (models.length === 0) throw new Error('Danh sách model đang trống.');
+
+      const summary = [];
+      for (const model of models) {
+        $('model').value = model;
+        try {
+          const result = await sendRequest();
+          summary.push({
+            model,
+            status: result.status,
+            ok: result.ok,
+            preview: typeof result.body === 'string'
+              ? result.body.slice(0, 100)
+              : JSON.stringify(result.body).slice(0, 100),
+          });
+        } catch (error) {
+          summary.push({ model, error: error.message });
+        }
+      }
+      $('model').value = cfg.model;
+      responseView.textContent = JSON.stringify(summary, null, 2);
+      renderTable(summary.map((item) => ({
+        'Model': item.model,
+        'HTTP': item.status ?? '-',
+        'Kết quả': item.error ? 'Lỗi' : statusText(item.status, item.ok),
+        'Ghi chú': item.error || item.preview || '',
+      })));
+      setQuickSummary('Đã thử nhiều model', 'Nhìn bảng để biết model nào trả lời được, model nào báo lỗi hoặc bị giới hạn.');
+      log('Chạy tất cả model xong', summary);
+    }
+
+    async function compareAllModels() {
+      const cfg = currentConfig();
+      const models = getModelList();
+      const modes = ['default', 'block_none', 'off'];
+      if (models.length === 0) throw new Error('Danh sách model đang trống.');
+
+      const summary = [];
+      for (const model of models) {
+        $('model').value = model;
+        for (const mode of modes) {
+          try {
+            const result = await sendRequest(mode);
+            summary.push({
+              model,
+              mode,
+              status: result.status,
+              preview: typeof result.body === 'string'
+                ? result.body.slice(0, 80)
+                : JSON.stringify(result.body).slice(0, 80),
+            });
+          } catch (error) {
+            summary.push({ model, mode, error: error.message });
+          }
+        }
+      }
+      $('model').value = cfg.model;
+      responseView.textContent = JSON.stringify(summary, null, 2);
+      renderTable(summary.map((item) => ({
+        'Model': item.model,
+        'Chế độ lọc': item.mode,
+        'HTTP': item.status ?? '-',
+        'Kết quả': item.error ? 'Lỗi' : statusText(item.status, item.status >= 200 && item.status < 300),
+        'Ghi chú': item.error || item.preview || '',
+      })));
+      setQuickSummary('Đã so sánh lọc nội dung trên toàn bộ model', 'Đây là chế độ phù hợp nhất nếu bạn muốn xem model nào thật sự khác nhau giữa mặc định, BLOCK_NONE và OFF.');
+      log('So safety toàn bộ model xong', summary);
+    }
+
+    async function burstTest() {
+      const cfg = currentConfig();
+      const results = [];
+      for (let index = 0; index < cfg.burstCount; index += 1) {
+        try {
+          const result = await sendRequest();
+          results.push({ request: index + 1, status: result.status, ok: result.ok });
+        } catch (error) {
+          results.push({ request: index + 1, error: error.message });
+        }
+      }
+      responseView.textContent = JSON.stringify(results, null, 2);
+      renderTable(results.map((item) => ({
+        'Lần gửi': item.request,
+        'HTTP': item.status ?? '-',
+        'Kết quả': item.error ? 'Lỗi' : statusText(item.status, item.ok),
+        'Ghi chú': item.error || '',
+      })));
+      setQuickSummary('Đã thử gửi liên tiếp', 'Nếu trong bảng xuất hiện HTTP 429 thì bạn đã chạm giới hạn ở provider hoặc key hiện tại.');
+      log('Burst test xong', results);
+    }
+
+    function summarizeRateLimitBehavior(singleResults, multiResults) {
+      const single429Index = singleResults.findIndex((item) => item.status === 429);
+      const multi429Index = multiResults.findIndex((item) => item.status === 429);
+      const multi429Models = [...new Set(multiResults.filter((item) => item.status === 429).map((item) => item.model))];
+
+      if (single429Index === -1 && multi429Index === -1) {
+        return {
+          title: 'Chưa thấy chạm giới hạn rõ ràng',
+          description: 'Trong số request vừa chạy chưa xuất hiện HTTP 429, nên chưa đủ dữ liệu để kết luận giới hạn theo key hay theo model.',
+        };
+      }
+
+      if (single429Index !== -1 && multi429Index !== -1) {
+        if (multi429Models.length > 1) {
+          return {
+            title: 'Có vẻ giới hạn theo key chung',
+            description: 'Khi luân phiên nhiều model, nhiều model cùng bắt đầu dính 429. Điều này giống giới hạn dùng chung cho key hoặc provider pool hơn là giới hạn riêng từng model.',
+          };
+        }
+        return {
+          title: 'Có dấu hiệu giới hạn hỗn hợp hoặc chưa đủ rõ',
+          description: 'Đã có 429 ở cả test một model và test nhiều model, nhưng mẫu lỗi chưa đủ sạch để khẳng định tuyệt đối theo key chung hay theo model.',
+        };
+      }
+
+      if (single429Index !== -1 && multi429Index === -1) {
+        return {
+          title: 'Có vẻ giới hạn theo model hoặc theo tuyến riêng',
+          description: 'Một model đơn lẻ vượt ngưỡng thì dính 429, nhưng luân phiên nhiều model lại chưa dính 429 trong cùng cửa sổ đo. Mẫu này giống giới hạn riêng theo model hơn.',
+        };
+      }
+
+      return {
+        title: 'Có vẻ giới hạn theo key chung',
+        description: 'Test luân phiên nhiều model đã xuất hiện 429 dù tải được rải qua nhiều model. Mẫu này thường giống giới hạn cộng dồn theo key chung hơn.',
+      };
+    }
+
+    async function runSingleModelRpmTest() {
+      const cfg = currentConfig();
+      const total = Math.max(6, cfg.burstCount);
+      const results = [];
+      log(`Bắt đầu test 1 model vượt 5 lần/phút: ${cfg.model}, tổng ${total} lần gửi`);
+
+      for (let index = 0; index < total; index += 1) {
+        try {
+          const result = await sendRequest();
+          results.push({
+            request: index + 1,
+            model: cfg.model,
+            status: result.status,
+            ok: result.ok,
+          });
+        } catch (error) {
+          results.push({
+            request: index + 1,
+            model: cfg.model,
+            error: error.message,
+          });
+        }
+      }
+
+      responseView.textContent = JSON.stringify(results, null, 2);
+      renderTable(results.map((item) => ({
+        'Lần gửi': item.request,
+        'Model': item.model,
+        'HTTP': item.status ?? '-',
+        'Kết quả': item.error ? 'Lỗi' : statusText(item.status, item.ok),
+        'Ghi chú': item.error || '',
+      })));
+
+      const first429 = results.find((item) => item.status === 429);
+      setQuickSummary(
+        first429
+          ? 'Đã thấy giới hạn khi dồn 1 model'
+          : 'Chưa thấy giới hạn khi dồn 1 model',
+        first429
+          ? `Model này bắt đầu dính 429 ở lần gửi số ${first429.request}.`
+          : 'Trong số lượt gửi vừa chạy, model này chưa bị 429.',
+      );
+      log('Test 1 model vượt 5 lần/phút xong', results);
+      return results;
+    }
+
+    async function runMultiModelRpmTest() {
+      const cfg = currentConfig();
+      const models = getModelList();
+      const total = Math.max(6, cfg.burstCount);
+      if (models.length === 0) throw new Error('Danh sách model đang trống.');
+
+      const results = [];
+      log(`Bắt đầu test nhiều model luân phiên vượt 5 lần/phút, tổng ${total} lượt`);
+
+      for (let index = 0; index < total; index += 1) {
+        const model = models[index % models.length];
+        $('model').value = model;
+        try {
+          const result = await sendRequest();
+          results.push({
+            request: index + 1,
+            model,
+            status: result.status,
+            ok: result.ok,
+          });
+        } catch (error) {
+          results.push({
+            request: index + 1,
+            model,
+            error: error.message,
+          });
+        }
+      }
+
+      $('model').value = cfg.model;
+      responseView.textContent = JSON.stringify(results, null, 2);
+      renderTable(results.map((item) => ({
+        'Lần gửi': item.request,
+        'Model': item.model,
+        'HTTP': item.status ?? '-',
+        'Kết quả': item.error ? 'Lỗi' : statusText(item.status, item.ok),
+        'Ghi chú': item.error || '',
+      })));
+
+      const first429 = results.find((item) => item.status === 429);
+      setQuickSummary(
+        first429
+          ? 'Đã thấy giới hạn khi luân phiên nhiều model'
+          : 'Chưa thấy giới hạn khi luân phiên nhiều model',
+        first429
+          ? `Lần đầu xuất hiện 429 ở lượt ${first429.request}, model ${first429.model}.`
+          : 'Trong số lượt gửi vừa chạy, chưa có model nào bị 429.',
+      );
+      log('Test nhiều model luân phiên vượt 5 lần/phút xong', results);
+      return results;
+    }
+
+    async function runCombinedRpmConclusion() {
+      const singleResults = await runSingleModelRpmTest();
+      const multiResults = await runMultiModelRpmTest();
+      const conclusion = summarizeRateLimitBehavior(singleResults, multiResults);
+
+      responseView.textContent = JSON.stringify({ singleResults, multiResults, conclusion }, null, 2);
+      renderTable([
+        {
+          'Kịch bản': '1 model vượt 5 lần/phút',
+          '429 đầu tiên': singleResults.find((item) => item.status === 429)?.request ?? 'Chưa có',
+          'Ghi chú': singleResults.find((item) => item.status === 429)
+            ? 'Đã chạm giới hạn khi dồn một model'
+            : 'Chưa chạm 429',
+        },
+        {
+          'Kịch bản': 'Nhiều model luân phiên vượt 5 lần/phút',
+          '429 đầu tiên': multiResults.find((item) => item.status === 429)?.request ?? 'Chưa có',
+          'Ghi chú': multiResults.find((item) => item.status === 429)
+            ? 'Đã chạm giới hạn khi rải nhiều model'
+            : 'Chưa chạm 429',
+        },
+      ]);
+      setQuickSummary(conclusion.title, conclusion.description);
+      log('Kết luận RPM', conclusion);
+    }
+
+    $('runOnce').addEventListener('click', async () => {
+      try { await sendRequest(); } catch (error) { log(`Lỗi: ${error.message}`); }
+    });
+
+    $('compareSafety').addEventListener('click', async () => {
+      try { await compareSafety(); } catch (error) { log(`Lỗi: ${error.message}`); }
+    });
+
+    $('runAllModels').addEventListener('click', async () => {
+      try { await runAllModels(); } catch (error) { log(`Lỗi: ${error.message}`); }
+    });
+
+    $('compareAllModels').addEventListener('click', async () => {
+      try { await compareAllModels(); } catch (error) { log(`Lỗi: ${error.message}`); }
+    });
+
+    $('burstTest').addEventListener('click', async () => {
+      try { await burstTest(); } catch (error) { log(`Lỗi: ${error.message}`); }
+    });
+
+    $('singleModelRpmTest').addEventListener('click', async () => {
+      try { await runSingleModelRpmTest(); } catch (error) { log(`Lỗi: ${error.message}`); }
+    });
+
+    $('multiModelRpmTest').addEventListener('click', async () => {
+      try { await runCombinedRpmConclusion(); } catch (error) { log(`Lỗi: ${error.message}`); }
+    });
+
+    $('loadModels').addEventListener('click', async () => {
+      try { await loadModels(); } catch (error) { log(`Lỗi: ${error.message}`); }
+    });
+
+    $('clearLog').addEventListener('click', () => {
+      logView.textContent = '';
+      payloadView.textContent = 'Chưa có dữ liệu gửi đi.';
+      responseView.textContent = 'Chưa có phản hồi.';
+      tableWrap.textContent = 'Chưa có bảng tóm tắt.';
+      setQuickSummary('Chưa có kết quả', 'Chạy một nút test ở bên trái để xem kết luận ngắn gọn.');
+    });
+
+    $('provider').addEventListener('change', () => {
+      const provider = $('provider').value;
+      if (provider === 'gemini_proxy') {
+        $('baseUrl').value = 'https://story-forge-virid.vercel.app/api/proxy';
+        $('model').value = 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]';
+        $('modelList').value = [
+          'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+          'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+          'gemini-3-flash-medium-真流-[星星公益站-CLI渠道]',
+          'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+        ].join('\n');
+      } else {
+        $('baseUrl').value = 'https://generativelanguage.googleapis.com';
+        $('model').value = 'gemini-2.5-flash';
+        $('modelList').value = [
+          'gemini-2.5-flash',
+          'gemini-3-flash-preview',
+          'gemini-3.1-flash-lite-preview',
+        ].join('\n');
+      }
+    });
+
+    log('Sẵn sàng. Nhập khóa API rồi chọn kiểu test.');
+  </script>
+</body>
+</html>

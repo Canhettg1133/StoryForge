@@ -12,7 +12,7 @@
  */
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import db from '../../services/db/database';
@@ -45,6 +45,24 @@ const ROLE_ICONS = {
   supporting: Users, mentor: Shield, love_interest: Heart, minor: Users,
 };
 
+const MACRO_AI_PRESETS = [
+  { id: 'slow', label: 'Cham', text: 'Nhip truyen cham, uu tien xay dung va buildup.' },
+  { id: 'twist', label: 'Be lai manh', text: 'Co be lai manh o mot vai cot moc lon, nhung van hop ly.' },
+  { id: 'romance', label: 'Tinh cam phu', text: 'Co mot tuyen tinh cam phu, nhung khong lan at tuyen chinh.' },
+  { id: 'mystery', label: 'It lo bi mat', text: 'It lo bi mat, chi mo dan tung phan va giu lai bat ngo lon cho sau nay.' },
+  { id: 'target_length', label: 'Bam do dai du kien', text: 'Phan bo cot moc bam sat do dai du kien, khong day nhanh qua som.' },
+];
+
+function getSuggestedMacroMilestoneCount(targetLength) {
+  const length = Number(targetLength) || 0;
+  if (length >= 1200) return 10;
+  if (length >= 800) return 8;
+  if (length >= 400) return 6;
+  if (length >= 150) return 5;
+  if (length >= 60) return 4;
+  return 3;
+}
+
 // Debounced auto-save hook
 function useAutoSave(value, saveFn, delay = 800) {
   const [saved, setSaved] = useState(false);
@@ -64,6 +82,7 @@ function useAutoSave(value, saveFn, delay = 800) {
 
 export default function StoryBible() {
   const navigate = useNavigate();
+  const { projectId: routeProjectId } = useParams();
   const { currentProject, chapters, updateProjectSettings } = useProjectStore();
   const {
     characters, locations, objects, worldTerms, taboos, canonFacts,
@@ -98,12 +117,19 @@ export default function StoryBible() {
 
   // Phase 9: AI Suggest milestones
   const [aiIdeaInput, setAiIdeaInput] = useState('');
+  const [aiMilestoneCount, setAiMilestoneCount] = useState(5);
+  const [aiMilestoneRequirements, setAiMilestoneRequirements] = useState('');
   const [showAiSuggest, setShowAiSuggest] = useState(false);
+  const [aiMilestoneRevisionPrompt, setAiMilestoneRevisionPrompt] = useState('');
+  const [editableMilestoneSuggestions, setEditableMilestoneSuggestions] = useState([]);
   const [selectedMilestoneIdxs, setSelectedMilestoneIdxs] = useState(new Set());
+  const [selectedMilestonePresets, setSelectedMilestonePresets] = useState(() => new Set());
   const {
     isSuggestingMilestones,
+    isRevisingMilestones,
     macroMilestoneSuggestions,
     generateMacroMilestones,
+    reviseMacroMilestones,
     saveMacroMilestones,
   } = useArcGenStore();
 
@@ -141,6 +167,7 @@ export default function StoryBible() {
       setNsfwMode(currentProject.nsfw_mode || false);
       setSuperNsfwMode(currentProject.super_nsfw_mode || false);
       setTargetLength(currentProject.target_length || 0);
+      setAiMilestoneCount(getSuggestedMacroMilestoneCount(currentProject.target_length || 0));
       setTargetLengthType(currentProject.target_length_type || 'unset');
       setUltimateGoal(currentProject.ultimate_goal || '');
       try {
@@ -197,6 +224,10 @@ export default function StoryBible() {
 
   const currentPronoun = useMemo(() =>
     PRONOUN_STYLE_PRESETS.find(p => p.value === pronounStyle), [pronounStyle]);
+  const suggestedMilestoneCount = useMemo(
+    () => getSuggestedMacroMilestoneCount(targetLength),
+    [targetLength]
+  );
 
   const activeCanonFacts = useMemo(() => canonFacts.filter(f => f.status === 'active'), [canonFacts]);
   const deprecatedCanonFacts = useMemo(() => canonFacts.filter(f => f.status === 'deprecated'), [canonFacts]);
@@ -285,9 +316,30 @@ export default function StoryBible() {
       || null
   ), [selectedRevisionDetail?.evidence, selectedEvidenceId]);
 
+  const buildMilestoneRequirements = useCallback(() => {
+    const presetLines = MACRO_AI_PRESETS
+      .filter((preset) => selectedMilestonePresets.has(preset.id))
+      .map((preset) => preset.text);
+    return [...presetLines, aiMilestoneRequirements.trim()]
+      .filter(Boolean)
+      .join('\n');
+  }, [aiMilestoneRequirements, selectedMilestonePresets]);
+
+  const resetAiSuggestPanel = useCallback(() => {
+    setShowAiSuggest(false);
+    setAiIdeaInput('');
+    setAiMilestoneCount(suggestedMilestoneCount);
+    setAiMilestoneRequirements('');
+    setAiMilestoneRevisionPrompt('');
+    setEditableMilestoneSuggestions([]);
+    setSelectedMilestoneIdxs(new Set());
+    setSelectedMilestonePresets(new Set());
+  }, [suggestedMilestoneCount]);
+
   // Phase 9: AI generate milestones handler
   const handleGenerateMilestones = async () => {
     if (!currentProject) return;
+    const combinedRequirements = buildMilestoneRequirements();
     const contextIdea = [
       aiIdeaInput,
       title ? 'Tên truyện: ' + title : '',
@@ -298,27 +350,111 @@ export default function StoryBible() {
       projectId: currentProject.id,
       authorIdea: contextIdea,
       genre: genrePrimary,
+      milestoneCount: aiMilestoneCount,
+      requirements: combinedRequirements,
     });
     setSelectedMilestoneIdxs(new Set());
   };
 
   useEffect(() => {
     if (macroMilestoneSuggestions?.milestones?.length > 0) {
+      setEditableMilestoneSuggestions(macroMilestoneSuggestions.milestones.map((item, index) => ({
+        order: item.order || index + 1,
+        title: item.title || '',
+        description: item.description || '',
+        chapter_from: item.chapter_from || 0,
+        chapter_to: item.chapter_to || 0,
+        emotional_peak: item.emotional_peak || '',
+      })));
       setSelectedMilestoneIdxs(new Set(macroMilestoneSuggestions.milestones.map((_, i) => i)));
+    } else {
+      setEditableMilestoneSuggestions([]);
     }
   }, [macroMilestoneSuggestions]);
 
   const handleSaveMilestones = async () => {
-    if (!macroMilestoneSuggestions?.milestones) return;
-    const selected = macroMilestoneSuggestions.milestones.filter((_, i) => selectedMilestoneIdxs.has(i));
+    if (!editableMilestoneSuggestions?.length) return;
+    const selected = editableMilestoneSuggestions
+      .filter((_, i) => selectedMilestoneIdxs.has(i))
+      .map((item, index) => ({
+        ...item,
+        order: index + 1,
+      }));
     if (selected.length === 0) return;
-    const ids = await saveMacroMilestones(currentProject.id, selected);
+    await saveMacroMilestones(currentProject.id, selected);
     const updated = await db.macro_arcs
       .where('project_id').equals(currentProject.id)
       .sortBy('order_index');
     setMacroArcs(updated);
-    setShowAiSuggest(false);
-    setAiIdeaInput('');
+    resetAiSuggestPanel();
+  };
+
+  const handleUpdateEditableMilestone = (index, field, value) => {
+    setEditableMilestoneSuggestions(prev => prev.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, [field]: value } : item
+    )));
+  };
+
+  const handleRemoveEditableMilestone = (index) => {
+    setEditableMilestoneSuggestions(prev => prev.filter((_, itemIndex) => itemIndex !== index));
+    setSelectedMilestoneIdxs(prev => {
+      const next = new Set();
+      [...prev].forEach((value) => {
+        if (value === index) return;
+        next.add(value > index ? value - 1 : value);
+      });
+      return next;
+    });
+  };
+
+  const handleAddEditableMilestone = () => {
+    setEditableMilestoneSuggestions(prev => ([
+      ...prev,
+      {
+        order: prev.length + 1,
+        title: `Cot moc ${prev.length + 1}`,
+        description: '',
+        chapter_from: 0,
+        chapter_to: 0,
+        emotional_peak: '',
+      },
+    ]));
+  };
+
+  const handleReviseMilestones = async () => {
+    if (!currentProject) return;
+    const sourceMilestones = editableMilestoneSuggestions.length > 0
+      ? editableMilestoneSuggestions
+      : (macroMilestoneSuggestions?.milestones || []);
+    if (sourceMilestones.length === 0) return;
+    const combinedRequirements = buildMilestoneRequirements();
+
+    const contextIdea = [
+      aiIdeaInput,
+      combinedRequirements,
+      aiMilestoneRevisionPrompt,
+      title ? 'Ten truyen: ' + title : '',
+      synopsis ? 'Cot truyen: ' + synopsis : '',
+      ultimateGoal ? 'Dich den: ' + ultimateGoal : '',
+    ].filter(Boolean).join('\n');
+
+    await reviseMacroMilestones({
+      projectId: currentProject.id,
+      authorIdea: contextIdea,
+      genre: genrePrimary,
+      existingMilestones: sourceMilestones,
+      milestoneCount: aiMilestoneCount,
+      requirements: combinedRequirements,
+    });
+  };
+
+  const toggleMilestonePreset = (presetId) => {
+    setSelectedMilestonePresets(prev => {
+      const next = new Set(prev);
+      if (next.has(presetId)) next.delete(presetId);
+      else next.add(presetId);
+      return next;
+    });
   };
 
   // Xử lý sự thật canon
@@ -382,6 +518,14 @@ export default function StoryBible() {
   }
 
   const totalItems = characters.length + locations.length + objects.length + worldTerms.length;
+  const activeProjectId = currentProject?.id || Number(routeProjectId) || null;
+  const buildProjectPath = useCallback((path = '') => {
+    if (!path) return activeProjectId ? `/project/${activeProjectId}` : '/';
+    if (!activeProjectId) return path;
+    if (path.startsWith(`/project/${activeProjectId}`)) return path;
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `/project/${activeProjectId}${normalizedPath}`;
+  }, [activeProjectId]);
 
   const SectionHeader = ({ icon: Icon, title, count, sectionKey, navTo }) => (
     <div className="bible-section-header" onClick={() => toggleSection(sectionKey)} style={{ cursor: 'pointer' }}>
@@ -390,7 +534,7 @@ export default function StoryBible() {
         {Icon && <Icon size={18} />} {title} {count !== undefined && `(${count})`}
       </h3>
       {navTo && (
-        <button className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); navigate(navTo); }}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); navigate(buildProjectPath(navTo)); }}>
           Quản lý <ChevronRight size={14} />
         </button>
       )}
@@ -618,7 +762,7 @@ export default function StoryBible() {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => navigate(`/project/${currentProject.id}/prompts`)}
+                  onClick={() => navigate(buildProjectPath('/prompts'))}
                 >
                   <Sparkles size={14} /> Mở Prompt truyện
                 </button>
@@ -637,13 +781,15 @@ export default function StoryBible() {
           </h3>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }} onClick={(e) => e.stopPropagation()}>
             <button
+              type="button"
               className="btn btn-ghost btn-sm"
-              onClick={() => setShowAiSuggest(v => !v)}
+              onClick={(e) => { e.stopPropagation(); setShowAiSuggest(v => !v); }}
               title="Gợi ý cột mốc bằng AI"
             >
               <Wand2 size={14} /> Gợi ý AI
             </button>
             <button
+              type="button"
               className="btn btn-primary btn-sm"
               onClick={(e) => { e.stopPropagation(); handleAddMacroArc(); }}
             >
@@ -679,7 +825,62 @@ export default function StoryBible() {
                   placeholder="Mô tả ngắn về truyện (để trống = AI tự đọc từ Tóm tắt truyện + Đích đến)..."
                   style={{ marginBottom: 'var(--space-2)' }}
                 />
-                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
+                  <div className="form-group" style={{ marginBottom: 0, width: '180px' }}>
+                    <label className="form-label">So luong cot moc muon tao</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      className="input"
+                      value={aiMilestoneCount}
+                      onChange={(e) => setAiMilestoneCount(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    />
+                    <div className="form-hint" style={{ marginTop: '6px' }}>
+                      De xuat theo do dai du kien: {suggestedMilestoneCount} cot moc
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ marginBottom: '6px' }}
+                    onClick={() => setAiMilestoneCount(suggestedMilestoneCount)}
+                  >
+                    Dung de xuat
+                  </button>
+                  <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '240px' }}>
+                    <label className="form-label">Yeu cau rieng</label>
+                    <textarea
+                      className="textarea"
+                      rows={2}
+                      value={aiMilestoneRequirements}
+                      onChange={(e) => setAiMilestoneRequirements(e.target.value)}
+                      placeholder="VD: mo dau cham, co mot tuyen tinh cam phu, giu bi mat lon den sau..."
+                    />
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-1)', flexWrap: 'wrap' }}>
+                  {MACRO_AI_PRESETS.map((preset) => {
+                    const active = selectedMilestonePresets.has(preset.id);
+                    return (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className={`btn btn-sm ${active ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => toggleMilestonePreset(preset.id)}
+                        aria-pressed={active}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedMilestonePresets.size > 0 && (
+                  <div className="form-hint" style={{ marginBottom: 'var(--space-2)' }}>
+                    Dang bat {selectedMilestonePresets.size} tuy chon de ket hop cung yeu cau rieng.
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
                   <button
                     className="btn btn-primary btn-sm"
                     onClick={handleGenerateMilestones}
@@ -691,33 +892,43 @@ export default function StoryBible() {
                   </button>
                   <button
                     className="btn btn-ghost btn-sm"
-                    onClick={() => { setShowAiSuggest(false); setAiIdeaInput(''); }}
+                    onClick={resetAiSuggestPanel}
                   >
                     <X size={14} /> Hủy
                   </button>
                 </div>
 
-                {macroMilestoneSuggestions?.milestones?.length > 0 && (
+                {editableMilestoneSuggestions.length > 0 && (
                   <div style={{ marginTop: 'var(--space-3)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
                       <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                        AI gợi ý {macroMilestoneSuggestions.milestones.length} cột mốc — chọn những cái muốn lưu:
+                        AI đã tạo {editableMilestoneSuggestions.length} cột mốc — có thể sửa tay hoặc nhờ AI chỉnh lại batch này:
                       </span>
                       <button
                         className="btn btn-ghost btn-xs"
                         style={{ fontSize: '11px' }}
                         onClick={() => {
-                          if (selectedMilestoneIdxs.size === macroMilestoneSuggestions.milestones.length) {
+                          if (selectedMilestoneIdxs.size === editableMilestoneSuggestions.length) {
                             setSelectedMilestoneIdxs(new Set());
                           } else {
-                            setSelectedMilestoneIdxs(new Set(macroMilestoneSuggestions.milestones.map((_, i) => i)));
+                            setSelectedMilestoneIdxs(new Set(editableMilestoneSuggestions.map((_, i) => i)));
                           }
                         }}
                       >
-                        {selectedMilestoneIdxs.size === macroMilestoneSuggestions.milestones.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                        {selectedMilestoneIdxs.size === editableMilestoneSuggestions.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
                       </button>
                     </div>
-                    {macroMilestoneSuggestions.milestones.map((m, i) => (
+                    <div className="form-group" style={{ marginBottom: 'var(--space-2)' }}>
+                      <label className="form-label">AI chỉnh lại đại cục theo ý tôi</label>
+                      <textarea
+                        className="textarea"
+                        rows={2}
+                        value={aiMilestoneRevisionPrompt}
+                        onChange={(e) => setAiMilestoneRevisionPrompt(e.target.value)}
+                        placeholder="VD: kéo dài buildup đầu truyện, chia rõ midpoint, giữ bí mật lớn tới 60%, tăng trả giá ở cột mốc 3..."
+                      />
+                    </div>
+                    {editableMilestoneSuggestions.map((m, i) => (
                       <div
                         key={i}
                         onClick={() => setSelectedMilestoneIdxs(prev => {
@@ -748,24 +959,67 @@ export default function StoryBible() {
                           style={{ marginTop: '2px', flexShrink: 0, accentColor: 'var(--color-accent)' }}
                         />
                         <div style={{ flex: 1 }}>
-                          <strong>{i + 1}. {m.title}</strong>
-                          {(m.chapter_from || m.chapter_to) && (
-                            <span style={{ color: 'var(--color-text-muted)', marginLeft: '6px' }}>
-                              Ch.{m.chapter_from}–{m.chapter_to}
-                            </span>
-                          )}
-                          {m.description && (
-                            <div style={{ color: 'var(--color-text-muted)', marginTop: '2px' }}>{m.description}</div>
-                          )}
-                          {m.emotional_peak && (
-                            <div style={{ color: 'var(--color-text-muted)', fontStyle: 'italic', marginTop: '2px' }}>
-                              🎭 {m.emotional_peak}
-                            </div>
-                          )}
+                          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                            <strong style={{ minWidth: '28px' }}>{i + 1}.</strong>
+                            <input
+                              className="input"
+                              value={m.title || ''}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => handleUpdateEditableMilestone(i, 'title', e.target.value)}
+                              placeholder="Tên cột mốc"
+                              style={{ flex: 1 }}
+                            />
+                            <button
+                              className="btn btn-ghost btn-icon btn-sm"
+                              onClick={(e) => { e.stopPropagation(); handleRemoveEditableMilestone(i); }}
+                              title="Xóa khỏi batch AI"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', alignItems: 'center' }}>
+                            <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>Chương</span>
+                            <input
+                              type="number"
+                              className="input"
+                              value={m.chapter_from || ''}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => handleUpdateEditableMilestone(i, 'chapter_from', Number(e.target.value) || 0)}
+                              style={{ width: '88px' }}
+                            />
+                            <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>→</span>
+                            <input
+                              type="number"
+                              className="input"
+                              value={m.chapter_to || ''}
+                              onClick={(e) => e.stopPropagation()}
+                              onChange={(e) => handleUpdateEditableMilestone(i, 'chapter_to', Number(e.target.value) || 0)}
+                              style={{ width: '88px' }}
+                            />
+                          </div>
+                          <textarea
+                            className="textarea"
+                            rows={2}
+                            value={m.description || ''}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => handleUpdateEditableMilestone(i, 'description', e.target.value)}
+                            placeholder="Mô tả cột mốc"
+                            style={{ marginBottom: 'var(--space-2)' }}
+                          />
+                          <input
+                            className="input"
+                            value={m.emotional_peak || ''}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => handleUpdateEditableMilestone(i, 'emotional_peak', e.target.value)}
+                            placeholder="Cảm xúc đích của độc giả"
+                          />
                         </div>
                       </div>
                     ))}
                     <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                      <button className="btn btn-ghost btn-sm" onClick={handleAddEditableMilestone}>
+                        <Plus size={14} /> Thêm mốc
+                      </button>
                       <button
                         className="btn btn-primary btn-sm"
                         onClick={handleSaveMilestones}
@@ -773,13 +1027,29 @@ export default function StoryBible() {
                       >
                         <Check size={14} /> Lưu {selectedMilestoneIdxs.size > 0 ? `(${selectedMilestoneIdxs.size})` : ''}
                       </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={handleReviseMilestones}
+                        disabled={isRevisingMilestones || editableMilestoneSuggestions.length === 0}
+                      >
+                        {isRevisingMilestones
+                          ? <><Loader2 size={14} className="spin" /> AI đang chỉnh...</>
+                          : <><Sparkles size={14} /> AI chỉnh lại</>}
+                      </button>
                       <button className="btn btn-ghost btn-sm" onClick={handleGenerateMilestones} disabled={isSuggestingMilestones}>
-                        <RotateCcw size={14} /> Tạo lại
+                        <RotateCcw size={14} /> Tạo batch mới
                       </button>
                       <button
                         className="btn btn-ghost btn-sm"
                         style={{ marginLeft: 'auto' }}
-                        onClick={() => { setShowAiSuggest(false); setAiIdeaInput(''); }}
+                        onClick={() => {
+                          setShowAiSuggest(false);
+                          setAiIdeaInput('');
+                          setAiMilestoneCount(5);
+                          setAiMilestoneRequirements('');
+                          setAiMilestoneRevisionPrompt('');
+                          setEditableMilestoneSuggestions([]);
+                        }}
                       >
                         <X size={14} /> Hủy
                       </button>
@@ -1450,10 +1720,10 @@ export default function StoryBible() {
           <h3>Sổ tay truyện trống</h3>
           <p>Thêm nhân vật, địa điểm, thuật ngữ qua trang Nhân vật & Thế giới.</p>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <button className="btn btn-primary" onClick={() => navigate(`/project/${currentProject?.id}/characters`)}>
+            <button type="button" className="btn btn-primary" onClick={() => navigate(buildProjectPath('/characters'))}>
               <Users size={16} /> Nhân vật
             </button>
-            <button className="btn btn-ghost" onClick={() => navigate(`/project/${currentProject?.id}/world`)}>
+            <button type="button" className="btn btn-ghost" onClick={() => navigate(buildProjectPath('/world'))}>
               <MapPin size={16} /> Thế giới
             </button>
           </div>

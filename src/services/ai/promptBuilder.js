@@ -558,8 +558,9 @@ export const TASK_INSTRUCTIONS = {
     'Chi tra ve noi dung chuong, KHONG them tieu de hay ghi chu.',
   ].join('\n'),
   [TASK_TYPES.GENERATE_MACRO_MILESTONES]: withPlanningAndCanonPrefix([
-    'Hoach dinh 5-8 cot moc dai cuc cho toan bo truyen, moi cot moc la mot diem ngoat LON cua hanh trinh.',
+    'Hoach dinh DUNG so luong cot moc dai cuc duoc yeu cau cho toan bo truyen, moi cot moc la mot diem ngoat LON cua hanh trinh.',
     'Can phan bo hop ly theo tong do dai du kien, co leo thang, khung hoang, dao chieu va tra gia ro rang.',
+    'Neu tac gia co yeu cau rieng, uu tien toi da theo yeu cau do.',
     'Tra ve CHINH XAC JSON format sau:',
     '{',
     '  "milestones": [',
@@ -764,6 +765,51 @@ function formatChapterBriefList(briefs, options) {
     return chapterNumber + '. ' + title + ' - ' + summary;
   });
   return header ? header + '\n' + lines.join('\n') : lines.join('\n');
+}
+
+function formatStoryProgressBudget(storyProgressBudget) {
+  if (!storyProgressBudget) return '';
+  const parts = [];
+  if (Number.isFinite(Number(storyProgressBudget.fromPercent)) && Number.isFinite(Number(storyProgressBudget.toPercent))) {
+    parts.push('Pham vi tien do batch nay: ' + storyProgressBudget.fromPercent + '% -> ' + storyProgressBudget.toPercent + '%');
+  }
+  if (storyProgressBudget.mainPlotMaxStep != null) {
+    parts.push('Main plot progress toi da: +' + storyProgressBudget.mainPlotMaxStep + ' nac');
+  }
+  if (storyProgressBudget.romanceMaxStep != null) {
+    parts.push('Romance progress toi da: +' + storyProgressBudget.romanceMaxStep + ' nac');
+  }
+  if (storyProgressBudget.mysteryRevealAllowance) {
+    parts.push('Muc do reveal bi an: ' + storyProgressBudget.mysteryRevealAllowance);
+  }
+  if (storyProgressBudget.powerProgressionCap) {
+    parts.push('Gioi han power progression: ' + storyProgressBudget.powerProgressionCap);
+  }
+  if (storyProgressBudget.requiredBeatMix) {
+    parts.push('Beat mix bat buoc: ' + storyProgressBudget.requiredBeatMix);
+  }
+  if (storyProgressBudget.remainingInMacro != null) {
+    parts.push('So chuong con lai truoc khi ket thuc macro arc: ' + storyProgressBudget.remainingInMacro);
+  }
+  if (storyProgressBudget.nextMilestone?.label || storyProgressBudget.nextMilestone?.title) {
+    const label = storyProgressBudget.nextMilestone.label || storyProgressBudget.nextMilestone.title;
+    const percent = storyProgressBudget.nextMilestone.percent != null ? ' (' + storyProgressBudget.nextMilestone.percent + '%)' : '';
+    parts.push('Cot moc tiep theo: ' + label + percent);
+  }
+  return parts.join('\n');
+}
+
+function formatMacroMilestoneList(milestones) {
+  const list = Array.isArray(milestones) ? milestones.filter(Boolean) : [];
+  if (list.length === 0) return '';
+  return list.map(function (item, index) {
+    const number = Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1;
+    const chapterRange = item?.chapter_from || item?.chapter_to
+      ? ' [Ch.' + (item?.chapter_from || '?') + '-' + (item?.chapter_to || '?') + ']'
+      : '';
+    const emotional = item?.emotional_peak ? '\nCam xuc dich: ' + item.emotional_peak : '';
+    return number + '. ' + (item?.title || 'Cot moc') + chapterRange + '\nMo ta: ' + (item?.description || '') + emotional;
+  }).join('\n\n');
 }
 
 // =============================================
@@ -1234,6 +1280,9 @@ export function buildPrompt(taskType, context = {}) {
     startChapterNumber = 1,
     existingChapterBriefs = [],
     priorGeneratedChapterBriefs = [],
+    generatedOutline = null,
+    outlineRevisionInstruction = '',
+    storyProgressBudget = null,
     // Phase 9: Grand Strategy
     currentArc = null,
     currentMacroArc = null,
@@ -1251,6 +1300,10 @@ export function buildPrompt(taskType, context = {}) {
     entityContextText = '',
     recentChapterSummaries = [],
     authorIdea = '',
+    existingMacroMilestones = [],
+    macroRevisionInstruction = '',
+    macroMilestoneCount = 0,
+    macroMilestoneRequirements = '',
   } = context;
 
   // Resolve writing style: context > auto-detect từ genre
@@ -1782,7 +1835,41 @@ export function buildPrompt(taskType, context = {}) {
         const pacingDesc = { slow: 'Cham - xay dung, kham pha', medium: 'Trung binh', fast: 'Nhanh - hanh dong, cao trao' };
         arcParts.push('Nhip do: ' + (pacingDesc[context.arcPacing] || context.arcPacing));
       }
+      if (currentMacroArc?.title) {
+        const macroParts = ['[MACRO ARC HIEN TAI]'];
+        macroParts.push('Tieu de: ' + currentMacroArc.title);
+        if (currentMacroArc.description) macroParts.push('Mo ta: ' + currentMacroArc.description);
+        if (currentMacroArc.chapter_from && currentMacroArc.chapter_to) {
+          macroParts.push('Pham vi: Chuong ' + currentMacroArc.chapter_from + ' den Chuong ' + currentMacroArc.chapter_to);
+        }
+        arcParts.push(macroParts.join('\n'));
+      }
       if (previousSummary) arcParts.push('\nTom tat chuong truoc:\n' + previousSummary);
+      const budgetText = formatStoryProgressBudget(storyProgressBudget);
+      if (budgetText) {
+        arcParts.push('[STORY PROGRESS BUDGET]\n' + budgetText);
+        arcParts.push([
+          'Quy tac bat buoc:',
+          '- Khong giai quyet tuyen chinh neu budget hien tai chua cho phep.',
+          '- Khong lo dai bi mat neu chua toi milestone/macro arc phu hop.',
+          '- It nhat 1 chuong trong batch phai la buildup/setup/consequence.',
+          '- Moi chuong phai co purpose rieng va neo it nhat 1 plot thread, su kien, hoac rang buoc canon.',
+        ].join('\n'));
+      }
+      if (generatedOutline?.chapters?.length) {
+        const currentOutlineText = generatedOutline.chapters.map(function (chapter, index) {
+          const number = startChapterNumber + index;
+          const beats = Array.isArray(chapter?.key_events) && chapter.key_events.length > 0
+            ? '\n  Beats: ' + chapter.key_events.join(' | ')
+            : '';
+          return '- Chuong ' + number + ': ' + (chapter?.title || '') + '\n  Tom tat: ' + (chapter?.summary || '') + beats;
+        }).join('\n');
+        arcParts.push('[DAN Y HIEN TAI CAN CHINH SUA]\n' + currentOutlineText);
+      }
+      if (outlineRevisionInstruction) {
+        arcParts.push('[YEU CAU CHINH SUA DAN Y]\n' + outlineRevisionInstruction);
+        arcParts.push('Hay chinh sua IN-PLACE tren dan y hien tai. Giu nguyen pham vi batch, so chuong, va budget tien do. Output van phai la FULL JSON outline.');
+      }
       const existingBriefText = formatChapterBriefList(existingChapterBriefs, {
         header: '[CAC CHUONG DA CO - KHONG DUOC LAP LAI]',
         limit: 12,
@@ -1810,6 +1897,11 @@ export function buildPrompt(taskType, context = {}) {
         limit: 6,
       });
       if (priorGeneratedText) userContent += '\n' + priorGeneratedText;
+      const budgetText = formatStoryProgressBudget(storyProgressBudget);
+      if (budgetText) {
+        userContent += '\n\n[STORY PROGRESS BUDGET]\n' + budgetText;
+        userContent += '\nQuy tac: khong resolve tuyen chinh, khong lo dai bi mat, khong nhay cap suc manh neu budget khong cho phep.';
+      }
       break;
     }
 
@@ -1888,6 +1980,20 @@ export function buildPrompt(taskType, context = {}) {
       if (genre) userContent += '\n\n[THE LOAI]\n' + genre;
       if (targetLength > 0) userContent += '\n\n[DO DAI DU KIEN]\n' + targetLength + ' chuong';
       if (ultimateGoal) userContent += '\n\n[MUC TIEU CUOI CUNG]\n' + ultimateGoal;
+      if (macroMilestoneCount > 0) {
+        userContent += '\n\n[SO LUONG COT MOC CAN TAO]\n' + macroMilestoneCount;
+      }
+      if (macroMilestoneRequirements) {
+        userContent += '\n\n[YEU CAU RIENG]\n' + macroMilestoneRequirements;
+      }
+      const milestoneText = formatMacroMilestoneList(existingMacroMilestones);
+      if (milestoneText) {
+        userContent += '\n\n[DAI CUC HIEN TAI / BAN NHAP CAN CHINH SUA]\n' + milestoneText;
+        userContent += '\n\n[YEU CAU]\nChinh sua va toi uu hoa batch cot moc hien tai. Giu logic leo thang, chapter range hop ly, va output lai FULL JSON.';
+      }
+      if (macroRevisionInstruction) {
+        userContent += '\n\n[HUONG DAN CHINH SUA]\n' + macroRevisionInstruction;
+      }
       break;
     }
 
