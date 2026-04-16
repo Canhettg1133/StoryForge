@@ -1,12 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   BookMarked,
+  BookOpen,
   FileSearch,
   FlaskConical,
   LayoutDashboard,
   Map,
+  PenTool,
   Palette,
+  Sparkles,
   Settings,
   Users,
   Globe,
@@ -15,13 +18,16 @@ import {
 import { PRODUCT_SURFACE } from '../../config/productSurface';
 import useProjectStore from '../../stores/projectStore';
 import MobileSheet from './MobileSheet';
-import MobileBottomNav from './MobileBottomNav';
 import MobileProjectTopBar from './MobileProjectTopBar';
 import './MobileProjectShell.css';
 
 const EDITOR_PANEL_EVENT = 'storyforge:open-mobile-editor-panel';
 
 const MORE_ITEMS = [
+  { id: 'editor', label: 'Viet', icon: PenTool, path: (id) => `/project/${id}/editor` },
+  { id: 'outline', label: 'Dan y', icon: Map, path: (id) => `/project/${id}/outline` },
+  { id: 'story-bible', label: 'Bible', icon: BookOpen, path: (id) => `/project/${id}/story-bible` },
+  { id: 'chat', label: 'AI', icon: Sparkles, path: (id) => `/project/${id}/chat` },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: () => '/' },
   { id: 'characters', label: 'Nhan vat', icon: Users, path: (id) => `/project/${id}/characters` },
   { id: 'world', label: 'The gioi', icon: Globe, path: (id) => `/project/${id}/world` },
@@ -49,13 +55,6 @@ function getPageTitle(pathname) {
   return 'Du an';
 }
 
-function getActiveBottomId(pathname) {
-  if (pathname.includes('/outline')) return 'outline';
-  if (pathname.includes('/story-bible') || pathname.includes('/characters') || pathname.includes('/world') || pathname.includes('/su-that')) return 'bible';
-  if (pathname.includes('/chat')) return 'ai';
-  return 'write';
-}
-
 function canShowItem(item) {
   if (item.surface === 'lab') return PRODUCT_SURFACE.showLabs;
   if (item.surface === 'roadmap') return PRODUCT_SURFACE.showRoadmapPages;
@@ -68,37 +67,18 @@ export default function MobileProjectShell({ children }) {
   const navigate = useNavigate();
   const { currentProject, chapters, scenes, activeChapterId, activeSceneId } = useProjectStore();
   const [moreOpen, setMoreOpen] = useState(false);
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   const numericProjectId = Number(projectId || currentProject?.id);
   const isEditorRoute = location.pathname.includes('/editor');
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
   const activeScene = scenes.find((scene) => scene.id === activeSceneId) || null;
   const pageTitle = getPageTitle(location.pathname);
-  const activeBottomId = getActiveBottomId(location.pathname);
   const mobileTitle = isEditorRoute
     ? (activeScene?.title || activeChapter?.title || currentProject?.title || 'StoryForge')
     : (currentProject?.title || 'StoryForge');
+  const backLabel = isEditorRoute ? 'Ve Dashboard' : 'Ve man viet';
 
   const visibleMoreItems = useMemo(() => MORE_ITEMS.filter(canShowItem), []);
-
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    if (!viewport) return undefined;
-
-    const syncViewport = () => {
-      const availableHeight = Math.min(window.innerHeight, viewport.height);
-      setKeyboardOpen(window.innerHeight - availableHeight > 140);
-    };
-
-    syncViewport();
-    viewport.addEventListener('resize', syncViewport);
-    viewport.addEventListener('scroll', syncViewport);
-    return () => {
-      viewport.removeEventListener('resize', syncViewport);
-      viewport.removeEventListener('scroll', syncViewport);
-    };
-  }, []);
 
   const openEditorPanel = (panel) => {
     window.dispatchEvent(new CustomEvent(EDITOR_PANEL_EVENT, { detail: { panel } }));
@@ -108,26 +88,19 @@ export default function MobileProjectShell({ children }) {
     if (isEditorRoute) openEditorPanel('chapters');
   };
 
-  const handleBottomClick = (item) => {
-    if (item.id === 'ai' && isEditorRoute) {
-      openEditorPanel('ai');
-      return;
-    }
-    navigate(item.path(numericProjectId));
-  };
-
   const handleMoreNavigate = (item) => {
     navigate(item.path(numericProjectId));
     setMoreOpen(false);
   };
 
   return (
-    <div className={`project-mobile-shell ${keyboardOpen ? 'project-mobile-shell--keyboard' : ''}`}>
+    <div className="project-mobile-shell">
       <MobileProjectTopBar
         pageTitle={pageTitle}
         title={mobileTitle}
         titleIsAction={isEditorRoute}
-        onBack={() => navigate('/')}
+        onBack={() => navigate(isEditorRoute ? '/' : `/project/${numericProjectId}/editor`)}
+        backLabel={backLabel}
         onTitleClick={handleTitleClick}
         onMore={() => setMoreOpen(true)}
       />
@@ -135,8 +108,6 @@ export default function MobileProjectShell({ children }) {
       <main className="project-mobile-content">
         {children}
       </main>
-
-      <MobileBottomNav activeId={activeBottomId} onItemClick={handleBottomClick} />
 
       <MobileSheet
         open={moreOpen}

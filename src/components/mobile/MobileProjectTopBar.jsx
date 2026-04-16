@@ -6,6 +6,7 @@ export default function MobileProjectTopBar({
   title,
   titleIsAction = false,
   onBack,
+  backLabel = 'Ve Dashboard',
   onTitleClick,
   onMore,
 }) {
@@ -18,7 +19,7 @@ export default function MobileProjectTopBar({
 
   return (
     <header className="project-mobile-topbar">
-      <button className="project-mobile-icon-btn" type="button" onClick={onBack} aria-label="Ve Dashboard">
+      <button className="project-mobile-icon-btn" type="button" onClick={onBack} aria-label={backLabel}>
         <ChevronLeft size={20} />
       </button>
       {titleIsAction ? (

@@ -224,14 +224,6 @@ export default function SceneEditor() {
               <Sparkles size={16} />
               <span>AI viet</span>
             </button>
-            <button
-              className="scene-editor-mobile-action"
-              type="button"
-              onClick={() => activeProjectId && navigate(`/project/${activeProjectId}/outline`)}
-            >
-              <Map size={16} />
-              <span>Dan y</span>
-            </button>
           </div>
         )}
         <StoryEditor onEditorReady={handleEditorReady} isMobileLayout={isMobileLayout} />

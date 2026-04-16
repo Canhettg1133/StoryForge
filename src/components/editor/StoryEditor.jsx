@@ -232,7 +232,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
       )}
 
       {/* Chapter Outline Panel — Dàn Ý Chương */}
-      {chapterOutline !== null && (
+      {!isMobileLayout && chapterOutline !== null && (
         <div className={`chapter-outline-panel ${outlinePanelOpen ? 'chapter-outline-panel--open' : ''}`}>
           <div className="chapter-outline-toggle-row">
             <button
@@ -351,7 +351,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
       )}
 
       {/* Continuity Bar */}
-      <ContinuityBar isMobileLayout={isMobileLayout} />
+      {!isMobileLayout && <ContinuityBar isMobileLayout={isMobileLayout} />}
 
       {/* Editor */}
       <div className="story-editor-wrapper" ref={editorWrapperRef}>
