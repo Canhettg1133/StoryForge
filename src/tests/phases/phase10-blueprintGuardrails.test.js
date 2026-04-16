@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeWizardBlueprintResult,
+  resolveWizardProjectTitle,
   buildWizardValidation,
   buildChapterBlueprintContext,
   validateChapterWritingReadiness,
@@ -43,6 +44,66 @@ describe('phase10 blueprint guardrails', () => {
     expect(normalized.locations[0].story_function).toBe('san khau mo dau');
     expect(normalized.terms[0].story_function).toBe('giai thich he thong');
     expect(normalized.plot_threads[0].anchor_chapters).toEqual(['Chuong 1']);
+  });
+
+  it('does not turn prompt-like ideas into story titles', () => {
+    const normalized = normalizeWizardBlueprintResult({
+      title: '',
+      title_options: [],
+      premise: 'Mac Van bi cuon vao con duong tranh doat tai mot tong mon suy tan.',
+      chapters: [],
+    }, 'tao truyen tu tien bat ky');
+
+    expect(normalized.title).toBe('');
+    expect(normalized.title_options).toEqual([]);
+    expect(resolveWizardProjectTitle(normalized, 'tao truyen tu tien bat ky'))
+      .toBe('Mac Van bi cuon vao con duong tranh doat tai mot tong mon suy tan');
+  });
+
+  it('hydrates minimal wizard outlines so review page does not hard-block on missing schema fields', () => {
+    const normalized = normalizeWizardBlueprintResult({
+      title: 'Tan Thu Vo Cuc',
+      characters: [
+        { name: 'Mac Van', role: 'protagonist' },
+        { name: 'Lam Thanh Ha', role: 'supporting' },
+      ],
+      locations: [
+        { name: 'Thanh Van Phong', story_function: 'mo dau o chuong 1' },
+        { name: 'Vo Cuc Son Mach', story_function: 'xuat hien o chuong 2' },
+      ],
+      factions: [
+        { name: 'Thanh Van Tong', story_function: 'xuat hien som trong mo dau' },
+      ],
+      terms: [
+        { name: 'Tan Thu Co', story_function: 'neo som o chuong 1' },
+      ],
+      plot_threads: [
+        { title: 'Con Duong Phuc Hung Tong Mon', type: 'main', opening_window: 'Chuong 1' },
+        { title: 'Bi Mat Tan Thu Co', type: 'mystery', opening_window: 'Chuong 2' },
+      ],
+      chapters: [
+        {
+          title: 'Chuong 1: De tu ngoai mon',
+          summary: 'Mac Van tinh co nhat duoc Tan Thu Co tai Thanh Van Phong.',
+        },
+        {
+          title: 'Chuong 2: Roi mon tim co duyen',
+          summary: 'Mac Van roi tong mon, tien vao Vo Cuc Son Mach de truy tim co duyên.',
+        },
+      ],
+    });
+
+    expect(normalized.chapters[0].purpose).toBeTruthy();
+    expect(normalized.chapters[0].featured_characters).toContain('Mac Van');
+    expect(normalized.chapters[0].primary_location).toBe('Thanh Van Phong');
+    expect(normalized.chapters[0].thread_titles).toContain('Con Duong Phuc Hung Tong Mon');
+    expect(normalized.chapters[0].key_events.length).toBeGreaterThan(0);
+    expect(normalized.chapters[0].required_factions).toContain('Thanh Van Tong');
+    expect(normalized.chapters[1].primary_location).toBe('Vo Cuc Son Mach');
+    expect(normalized.chapters[1].thread_titles).toContain('Bi Mat Tan Thu Co');
+
+    const validation = buildWizardValidation(normalized);
+    expect(validation.blockingIssues).toHaveLength(0);
   });
 
   it('blocks missing anchors and only blocks unused early-critical factions/terms', () => {

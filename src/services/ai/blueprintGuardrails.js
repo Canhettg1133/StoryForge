@@ -47,6 +47,416 @@ function dedupeNormalized(values = []) {
   return deduped;
 }
 
+const TITLE_COMMAND_PREFIXES = [
+  'tao',
+  'viet',
+  'hay tao',
+  'hay viet',
+  'giup toi',
+  'cho toi',
+  'goi y',
+  'dat ten',
+  'sinh',
+  'lap',
+  'create',
+  'generate',
+  'write',
+  'suggest',
+  'name',
+];
+
+const TITLE_REQUEST_MARKERS = [
+  'truyen',
+  'cau chuyen',
+  'story',
+  'idea',
+  'the loai',
+  'genre',
+  'bat ky',
+  'cho toi',
+  'giup toi',
+];
+
+function looksLikePromptInstruction(value) {
+  const normalized = normalizeBlueprintText(value);
+  if (!normalized) return false;
+
+  const startsWithCommand = TITLE_COMMAND_PREFIXES.some((prefix) => (
+    normalized === prefix || normalized.startsWith(prefix + ' ')
+  ));
+  if (!startsWithCommand) return false;
+
+  return TITLE_REQUEST_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+function sanitizeWizardTitleCandidate(value) {
+  const trimmed = String(value || '')
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, '');
+
+  if (!trimmed) return '';
+  if (looksLikePromptInstruction(trimmed)) return '';
+
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+  if (wordCount > 12 && /[.!?]/.test(trimmed)) return '';
+
+  return trimmed;
+}
+
+function getChapterLabel(index) {
+  return `Chuong ${index + 1}`;
+}
+
+function splitTextIntoBeats(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return [];
+
+  const sentenceParts = trimmed
+    .split(/[.!?]+/g)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 4);
+  if (sentenceParts.length > 1) {
+    return sentenceParts.slice(0, 3);
+  }
+
+  return trimmed
+    .split(/[,;:\-]\s+/g)
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 4)
+    .slice(0, 3);
+}
+
+function extractChapterNumbers(value) {
+  const text = String(value || '');
+  const numbers = new Set();
+
+  const rangeMatches = text.matchAll(/(\d+)\s*[-–]\s*(\d+)/g);
+  for (const match of rangeMatches) {
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    const min = Math.min(start, end);
+    const max = Math.max(start, end);
+    if (max - min > 20) continue;
+    for (let current = min; current <= max; current += 1) {
+      numbers.add(current);
+    }
+  }
+
+  const singleMatches = text.matchAll(/(?:chuong|chapter|chap)\s*(\d+)/gi);
+  for (const match of singleMatches) {
+    const numeric = Number(match[1]);
+    if (Number.isFinite(numeric)) {
+      numbers.add(numeric);
+    }
+  }
+
+  return numbers;
+}
+
+function chapterReferenceMatches(reference, chapterTitle, index) {
+  const normalizedReference = normalizeBlueprintText(reference);
+  if (!normalizedReference) return false;
+
+  const chapterNumber = index + 1;
+  const normalizedChapterTitle = normalizeBlueprintText(chapterTitle);
+  if (normalizedChapterTitle && normalizedReference.includes(normalizedChapterTitle)) {
+    return true;
+  }
+
+  if (
+    normalizedReference.includes(`chuong ${chapterNumber}`)
+    || normalizedReference.includes(`chapter ${chapterNumber}`)
+    || normalizedReference.includes(`chap ${chapterNumber}`)
+  ) {
+    return true;
+  }
+
+  return extractChapterNumbers(reference).has(chapterNumber);
+}
+
+function findMentionedEntityNames(textParts, entities = []) {
+  const searchableText = normalizeBlueprintText(textParts.filter(Boolean).join(' \n '));
+  if (!searchableText) return [];
+
+  return entities
+    .map((entity) => getBlueprintEntityName(entity))
+    .filter(Boolean)
+    .filter((name) => searchableText.includes(normalizeBlueprintText(name)));
+}
+
+function buildEntityNamePool(entities = [], filterFn = null) {
+  return dedupeNormalized(
+    entities
+      .filter((item) => !filterFn || filterFn(item))
+      .map((item) => getBlueprintEntityName(item)),
+  );
+}
+
+function pickFallbackNames(pool = [], index = 0, maxItems = 1) {
+  if (!Array.isArray(pool) || pool.length === 0) return [];
+  const safeMax = Math.max(1, maxItems);
+  const start = Math.abs(index) % pool.length;
+  const picks = [];
+  for (let offset = 0; offset < pool.length && picks.length < safeMax; offset += 1) {
+    picks.push(pool[(start + offset) % pool.length]);
+  }
+  return dedupeNormalized(picks);
+}
+
+function inferChapterTargetIndexes(references = [], chapters = [], fallbackIndex = 0) {
+  if (!Array.isArray(chapters) || chapters.length === 0) return [];
+
+  const matchedIndexes = [];
+  references
+    .filter(Boolean)
+    .forEach((reference) => {
+      chapters.forEach((chapter, chapterIndex) => {
+        const chapterTitle = chapter?.title || getChapterLabel(chapterIndex);
+        if (chapterReferenceMatches(reference, chapterTitle, chapterIndex)) {
+          matchedIndexes.push(chapterIndex);
+        }
+      });
+    });
+
+  if (matchedIndexes.length > 0) {
+    return [...new Set(matchedIndexes)];
+  }
+
+  if (references.some((reference) => hasEarlyStorySignal(reference))) {
+    return [0];
+  }
+
+  return [Math.min(Math.max(fallbackIndex, 0), chapters.length - 1)];
+}
+
+function buildPurposeFallback(chapter = {}, keyEvents = [], threadTitles = []) {
+  const summaryBeats = splitTextIntoBeats(chapter.summary);
+  if (summaryBeats[0]) {
+    return summaryBeats[0];
+  }
+  if (keyEvents[0]) {
+    return `Day beat "${keyEvents[0]}".`;
+  }
+  if (threadTitles[0]) {
+    return `Day tiep tuyen "${threadTitles[0]}".`;
+  }
+  if (chapter.title) {
+    return `Day tien trinh cua ${chapter.title}.`;
+  }
+  return 'Dat them mot neo cot truyen ro rang cho chuong nay.';
+}
+
+function buildKeyEventFallback(chapter = {}, primaryLocation = '', threadTitles = []) {
+  const beats = splitTextIntoBeats(chapter.summary);
+  if (beats.length > 0) {
+    return beats.slice(0, 2);
+  }
+
+  const fallbackEvents = [];
+  if (chapter.title) fallbackEvents.push(chapter.title);
+  if (threadTitles[0]) fallbackEvents.push(`Day tuyen ${threadTitles[0]}`);
+  if (primaryLocation) fallbackEvents.push(`Canh chinh tai ${primaryLocation}`);
+  return dedupeNormalized(fallbackEvents).slice(0, 2);
+}
+
+function hydrateWizardBlueprintResult(result = {}) {
+  const chapters = Array.isArray(result.chapters)
+    ? result.chapters.map((chapter, index) => ({ ...chapter, title: chapter.title || getChapterLabel(index) }))
+    : [];
+  const characters = Array.isArray(result.characters) ? result.characters : [];
+  const locations = Array.isArray(result.locations) ? result.locations : [];
+  const objects = Array.isArray(result.objects) ? result.objects : [];
+  const factions = Array.isArray(result.factions) ? result.factions : [];
+  const terms = Array.isArray(result.terms) ? result.terms : [];
+  const plotThreads = Array.isArray(result.plot_threads)
+    ? result.plot_threads.map((thread) => ({ ...thread }))
+    : [];
+
+  const protagonistNames = buildEntityNamePool(characters, (item) => String(item?.role || '').toLowerCase() === 'protagonist');
+  const supportingNames = buildEntityNamePool(characters, (item) => String(item?.role || '').toLowerCase() !== 'minor');
+  const characterPool = protagonistNames.length > 0 ? protagonistNames : supportingNames;
+  const locationPool = buildEntityNamePool(locations);
+  const factionPool = buildEntityNamePool(factions);
+  const termPool = buildEntityNamePool(terms);
+  const objectPool = buildEntityNamePool(objects);
+  const threadPool = dedupeNormalized(
+    plotThreads
+      .map((thread) => String(thread?.title || '').trim())
+      .filter(Boolean),
+  );
+
+  chapters.forEach((chapter, index) => {
+    const textParts = [chapter.title, chapter.summary, chapter.purpose];
+    const explicitFeatured = normalizeChapterListField(chapter.featured_characters);
+    const explicitThreads = normalizeChapterListField(chapter.thread_titles);
+    const explicitKeyEvents = normalizeChapterListField(chapter.key_events);
+    const explicitRequiredFactions = normalizeChapterListField(chapter.required_factions);
+    const explicitRequiredTerms = normalizeChapterListField(chapter.required_terms);
+    const explicitRequiredObjects = normalizeChapterListField(chapter.required_objects);
+    const explicitPrimaryLocation = normalizeOptionalText(chapter.primary_location);
+
+    const mentionedCharacters = findMentionedEntityNames(textParts, characters);
+    const mentionedLocations = findMentionedEntityNames(textParts, locations);
+    const mentionedFactions = findMentionedEntityNames(textParts, factions);
+    const mentionedTerms = findMentionedEntityNames(textParts, terms);
+    const mentionedObjects = findMentionedEntityNames(textParts, objects);
+    const referencedThreads = plotThreads
+      .filter((thread) => {
+        const title = String(thread?.title || '').trim();
+        if (!title) return false;
+        const searchableText = normalizeBlueprintText(textParts.join(' \n '));
+        if (searchableText.includes(normalizeBlueprintText(title))) return true;
+        return inferChapterTargetIndexes(
+          [thread.opening_window, ...(normalizeChapterListField(thread.anchor_chapters))],
+          chapters,
+          index,
+        ).includes(index);
+      })
+      .map((thread) => thread.title);
+
+    const featuredCharacters = dedupeNormalized([
+      ...explicitFeatured,
+      ...mentionedCharacters,
+      ...(explicitFeatured.length === 0 ? pickFallbackNames(characterPool, index, protagonistNames.length > 0 ? Math.min(2, protagonistNames.length) : 1) : []),
+    ]);
+
+    const primaryLocation = explicitPrimaryLocation
+      || mentionedLocations[0]
+      || pickFallbackNames(locationPool, index, 1)[0]
+      || '';
+
+    const threadTitles = dedupeNormalized([
+      ...explicitThreads,
+      ...referencedThreads,
+      ...(explicitThreads.length === 0 ? pickFallbackNames(threadPool, index, 1) : []),
+    ]);
+
+    const keyEvents = dedupeNormalized([
+      ...explicitKeyEvents,
+      ...(explicitKeyEvents.length === 0 ? buildKeyEventFallback(chapter, primaryLocation, threadTitles) : []),
+    ]);
+
+    const requiredFactions = dedupeNormalized([
+      ...explicitRequiredFactions,
+      ...mentionedFactions,
+      ...(index < 2 ? pickFallbackNames(factionPool, index, 1) : []),
+    ]);
+    const requiredTerms = dedupeNormalized([
+      ...explicitRequiredTerms,
+      ...mentionedTerms,
+      ...(index < 2 ? pickFallbackNames(termPool, index, 1) : []),
+    ]);
+    const requiredObjects = dedupeNormalized([
+      ...explicitRequiredObjects,
+      ...mentionedObjects,
+      ...(index === 0 ? pickFallbackNames(objectPool, index, 1) : []),
+    ]);
+
+    const purpose = normalizeOptionalText(chapter.purpose)
+      || buildPurposeFallback(chapter, keyEvents, threadTitles);
+
+    chapters[index] = {
+      ...chapter,
+      purpose,
+      featured_characters: featuredCharacters,
+      primary_location: primaryLocation,
+      thread_titles: threadTitles,
+      key_events: keyEvents,
+      required_factions: requiredFactions,
+      required_terms: requiredTerms,
+      required_objects: requiredObjects,
+    };
+  });
+
+  plotThreads.forEach((thread, threadIndex) => {
+    const title = String(thread?.title || '').trim();
+    if (!title || chapters.length === 0) return;
+
+    const targetIndexes = inferChapterTargetIndexes(
+      [thread.opening_window, ...(normalizeChapterListField(thread.anchor_chapters))],
+      chapters,
+      threadIndex,
+    );
+
+    const alreadyAnchored = chapters.some((chapter) => (
+      normalizeChapterListField(chapter.thread_titles).some((item) => normalizeBlueprintText(item) === normalizeBlueprintText(title))
+      || buildChapterSearchText(chapter).includes(normalizeBlueprintText(title))
+    ));
+
+    if (!alreadyAnchored) {
+      targetIndexes.forEach((chapterIndex) => {
+        chapters[chapterIndex].thread_titles = dedupeNormalized([
+          ...normalizeChapterListField(chapters[chapterIndex].thread_titles),
+          title,
+        ]);
+      });
+    }
+
+    thread.anchor_chapters = dedupeNormalized([
+      ...normalizeChapterListField(thread.anchor_chapters),
+      ...targetIndexes.map((chapterIndex) => chapters[chapterIndex]?.title || getChapterLabel(chapterIndex)),
+    ]);
+  });
+
+  locations.forEach((location, locationIndex) => {
+    const locationName = getBlueprintEntityName(location);
+    if (!locationName || chapters.length === 0) return;
+
+    const normalizedName = normalizeBlueprintText(locationName);
+    const isUsed = chapters.some((chapter) => buildChapterSearchText(chapter).includes(normalizedName));
+    if (isUsed) return;
+
+    const targetIndexes = inferChapterTargetIndexes([location.story_function], chapters, locationIndex);
+    targetIndexes.forEach((chapterIndex) => {
+      chapters[chapterIndex].key_events = dedupeNormalized([
+        ...normalizeChapterListField(chapters[chapterIndex].key_events),
+        `Canh co lien quan den ${locationName}`,
+      ]);
+    });
+  });
+
+  factions.forEach((faction, factionIndex) => {
+    const factionName = getBlueprintEntityName(faction);
+    if (!factionName || chapters.length === 0) return;
+
+    const normalizedName = normalizeBlueprintText(factionName);
+    const isUsed = chapters.some((chapter) => buildChapterSearchText(chapter).includes(normalizedName));
+    if (isUsed) return;
+
+    const targetIndexes = inferChapterTargetIndexes([faction.story_function], chapters, factionIndex);
+    targetIndexes.forEach((chapterIndex) => {
+      chapters[chapterIndex].required_factions = dedupeNormalized([
+        ...normalizeChapterListField(chapters[chapterIndex].required_factions),
+        factionName,
+      ]);
+    });
+  });
+
+  terms.forEach((term, termIndex) => {
+    const termName = getBlueprintEntityName(term);
+    if (!termName || chapters.length === 0) return;
+
+    const normalizedName = normalizeBlueprintText(termName);
+    const isUsed = chapters.some((chapter) => buildChapterSearchText(chapter).includes(normalizedName));
+    if (isUsed) return;
+
+    const targetIndexes = inferChapterTargetIndexes([term.story_function], chapters, termIndex);
+    targetIndexes.forEach((chapterIndex) => {
+      chapters[chapterIndex].required_terms = dedupeNormalized([
+        ...normalizeChapterListField(chapters[chapterIndex].required_terms),
+        termName,
+      ]);
+    });
+  });
+
+  return {
+    ...result,
+    chapters,
+    plot_threads: plotThreads,
+  };
+}
+
 export function normalizeChapterListField(value) {
   return dedupeNormalized(parseLooseList(value));
 }
@@ -144,11 +554,12 @@ function getBlueprintEntityName(item = {}) {
 
 export function normalizeWizardBlueprintResult(rawValue, fallbackTitle = '') {
   const nextResult = rawValue && typeof rawValue === 'object' ? { ...rawValue } : {};
-  nextResult.title = String(nextResult.title || '').trim();
+  nextResult.title = sanitizeWizardTitleCandidate(nextResult.title);
   nextResult.title_options = dedupeNormalized([
     ...(Array.isArray(nextResult.title_options) ? nextResult.title_options : []),
-    nextResult.title || fallbackTitle,
-  ]);
+    nextResult.title,
+    sanitizeWizardTitleCandidate(fallbackTitle),
+  ].map(sanitizeWizardTitleCandidate).filter(Boolean));
   nextResult.characters = Array.isArray(nextResult.characters)
     ? nextResult.characters
       .filter((item) => item && typeof item === 'object')
@@ -238,7 +649,26 @@ export function normalizeWizardBlueprintResult(rawValue, fallbackTitle = '') {
     nextResult.title = nextResult.title_options[0];
   }
 
-  return nextResult;
+  return hydrateWizardBlueprintResult(nextResult);
+}
+
+export function resolveWizardProjectTitle(result = {}, fallbackTitle = '') {
+  const normalizedResult = normalizeWizardBlueprintResult(result, fallbackTitle);
+  const safeTitle = sanitizeWizardTitleCandidate(normalizedResult.title)
+    || normalizedResult.title_options.find(Boolean)
+    || sanitizeWizardTitleCandidate(fallbackTitle);
+
+  if (safeTitle) {
+    return safeTitle;
+  }
+
+  const premiseFallback = String(normalizedResult.premise || '')
+    .trim()
+    .split(/[.!?]/)[0]
+    .slice(0, 80)
+    .trim();
+
+  return premiseFallback || 'Du an moi';
 }
 
 export function buildWizardValidation(result, excluded = new Set()) {
@@ -631,6 +1061,7 @@ export function validateChapterWritingReadiness({
 export default {
   normalizeBlueprintText,
   normalizeWizardBlueprintResult,
+  resolveWizardProjectTitle,
   buildWizardValidation,
   buildChapterBlueprintContext,
   validateChapterWritingReadiness,

@@ -40,6 +40,7 @@ import {
   buildWizardValidation,
   normalizeChapterListField,
   normalizeWizardBlueprintResult,
+  resolveWizardProjectTitle,
 } from '../../services/ai/blueprintGuardrails';
 import {
   Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
@@ -86,43 +87,8 @@ function normalizeSearchText(value) {
     .trim();
 }
 
-function dedupeTextList(items, fallbackValue = '') {
-  const seen = new Set();
-  const values = [];
-
-  const pushValue = (rawValue) => {
-    const value = String(rawValue || '').trim();
-    const key = normalizeSearchText(value);
-    if (!value || !key || seen.has(key)) return;
-    seen.add(key);
-    values.push(value);
-  };
-
-  pushValue(fallbackValue);
-  (Array.isArray(items) ? items : []).forEach(pushValue);
-  return values.slice(0, 5);
-}
-
 function formatListField(value) {
   return normalizeChapterListField(value).join('\n');
-}
-
-function normalizeWizardResult(rawValue, fallbackTitle = '') {
-  const nextResult = isPlainObject(rawValue) ? { ...rawValue } : {};
-  nextResult.title = String(nextResult.title || '').trim();
-  nextResult.title_options = dedupeTextList(nextResult.title_options, nextResult.title || fallbackTitle);
-  nextResult.factions = Array.isArray(nextResult.factions) ? nextResult.factions.filter(isPlainObject) : [];
-  nextResult.characters = Array.isArray(nextResult.characters) ? nextResult.characters.filter(isPlainObject) : [];
-  nextResult.locations = Array.isArray(nextResult.locations) ? nextResult.locations.filter(isPlainObject) : [];
-  nextResult.terms = Array.isArray(nextResult.terms) ? nextResult.terms.filter(isPlainObject) : [];
-  nextResult.chapters = Array.isArray(nextResult.chapters) ? nextResult.chapters.filter(isPlainObject) : [];
-  nextResult.plot_threads = Array.isArray(nextResult.plot_threads) ? nextResult.plot_threads.filter(isPlainObject) : [];
-
-  if (!nextResult.title && nextResult.title_options[0]) {
-    nextResult.title = nextResult.title_options[0];
-  }
-
-  return nextResult;
 }
 
 function buildCoverageWarnings(result, excluded) {
@@ -701,8 +667,9 @@ Chỉ trả về JSON, không thêm gì khác.`,
       // DNA van phong (constitution, style_dna, anti_ai_blacklist) se duoc
       // tu dong bom vao prompt_templates boi buildInitialPromptTemplates() trong projectStore
       const wp = result.world_profile || {};
+      const projectTitle = resolveWizardProjectTitle(result, idea);
       const projectId = await createProject({
-        title: result.title?.trim() || result.premise?.substring(0, 50) || idea.substring(0, 50) || 'Du an moi',
+        title: projectTitle,
         genre_primary: genre,
         tone: tone,
         description: result.premise || idea,
@@ -723,7 +690,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
         skipFirstChapter: true,
       });
 
-      if (result.title?.trim()) {
+      if (result.title?.trim() && result.title.trim() !== projectTitle) {
         await db.projects.update(projectId, { title: result.title.trim() });
       }
 
