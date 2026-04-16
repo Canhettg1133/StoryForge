@@ -616,21 +616,22 @@
 }
 
 .story-editor--mobile .story-editor-header {
-  padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 14px;
+  padding: 10px 14px;
 }
 
 .story-editor--mobile .story-editor-scene-meta {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   font-size: 10px;
 }
 
 .story-editor--mobile .story-editor-scene-title {
-  font-size: 1.35rem;
+  font-size: 1.12rem;
 }
 
 .story-editor--mobile .story-editor-detail-trigger {
-  min-height: 40px;
-  padding: 9px 12px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border-radius: 8px;
 }
 
 .story-editor--mobile .chapter-outline-toggle {
@@ -643,7 +644,7 @@
 }
 
 .story-editor--mobile .story-editor-wrapper {
-  padding: 18px 16px 24px;
+  padding: 16px 16px 22px;
 }
 
 .story-editor--mobile .story-editor-content {
@@ -654,7 +655,7 @@
 }
 
 .story-editor--mobile .story-editor-footer {
-  padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 16px;
   gap: 10px;
 }
 

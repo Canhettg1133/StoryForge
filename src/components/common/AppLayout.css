@@ -14,9 +14,17 @@
 
 .app-layout--mobile {
   display: block;
+  height: 100svh;
+  min-height: 100svh;
 }
 
 .app-layout--mobile .app-main {
-  height: 100dvh;
+  height: 100svh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-layout--mobile.app-layout--project-route .app-main {
   overflow: hidden;
 }

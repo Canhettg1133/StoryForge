@@ -192,6 +192,12 @@ body {
   overflow: hidden;
 }
 
+@media (max-width: 900px) {
+  #root {
+    height: 100svh;
+  }
+}
+
 a {
   color: var(--color-accent);
   text-decoration: none;

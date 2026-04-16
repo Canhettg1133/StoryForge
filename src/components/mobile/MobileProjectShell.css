@@ -1,8 +1,9 @@
 .project-mobile-shell {
   display: flex;
   flex-direction: column;
-  height: 100dvh;
-  min-height: 0;
+  height: 100%;
+  min-height: 100%;
+  max-height: 100%;
   background: var(--color-bg-primary);
   overflow: hidden;
 }
@@ -12,7 +13,7 @@
   grid-template-columns: 44px minmax(0, 1fr) 44px;
   align-items: center;
   gap: 8px;
-  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-bg-secondary) 94%, transparent);
   backdrop-filter: blur(14px);
@@ -75,6 +76,7 @@
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .project-mobile-content .scene-editor-layout--mobile {
@@ -95,14 +97,14 @@
 }
 
 .project-mobile-content .project-chat-page {
-  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 0;
 }
 
 .mobile-bottom-nav {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  padding: 8px 10px;
   border-top: 1px solid var(--color-border);
   background: color-mix(in srgb, var(--color-bg-secondary) 94%, transparent);
   backdrop-filter: blur(14px);
@@ -141,7 +143,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 14px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  padding: 14px 16px 18px;
 }
 
 .project-mobile-more-item {

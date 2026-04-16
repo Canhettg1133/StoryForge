@@ -203,22 +203,41 @@
 }
 
 .continuity-bar--mobile .continuity-bar-header {
-  padding: 10px 16px;
-  gap: 10px;
+  padding: 8px 12px;
+  gap: 8px;
 }
 
 .continuity-bar--mobile .continuity-bar-left {
   min-width: 0;
+  flex: 1;
+  flex-wrap: nowrap;
 }
 
 .continuity-bar--mobile .continuity-bar-actions {
   gap: 6px;
   margin-right: 0;
+  overflow-x: auto;
+  max-width: 52vw;
 }
 
 .continuity-bar--mobile .continuity-bar-btn {
   padding: 4px 6px;
   font-size: 10px;
+  flex: 0 0 auto;
+}
+
+.continuity-bar--mobile .continuity-bar-btn span {
+  display: none;
+}
+
+.continuity-bar--mobile .continuity-bar-label {
+  display: none;
+}
+
+.continuity-bar--mobile .continuity-bar-status {
+  flex: 0 0 auto;
+  border-radius: 8px;
+  padding: 3px 7px;
 }
 
 .continuity-bar--mobile .continuity-bar-report__content {

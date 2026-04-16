@@ -57,14 +57,17 @@
 }
 
 .scene-editor-overlay,
-.scene-editor-sheet-header {
+.scene-editor-sheet-header,
+.scene-editor-mobile-actions {
   display: none;
 }
 
 @media (max-width: 900px) {
   .scene-editor-layout--mobile {
     position: relative;
-    display: block;
+    display: flex;
+    height: 100%;
+    min-height: 0;
   }
 
   .scene-editor-layout--mobile .scene-editor-overlay {
@@ -79,7 +82,40 @@
 
   .scene-editor-layout--mobile .scene-editor-main {
     min-width: 0;
-    height: 100vh;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .scene-editor-layout--mobile .scene-editor-mobile-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+    flex-shrink: 0;
+  }
+
+  .scene-editor-mobile-action {
+    min-width: 0;
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .scene-editor-mobile-action:active {
+    color: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+    background: var(--color-accent-muted);
   }
 
   .scene-editor-layout--mobile .scene-editor-side--nav {
