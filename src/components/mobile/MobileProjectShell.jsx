@@ -24,16 +24,16 @@ import './MobileProjectShell.css';
 const EDITOR_PANEL_EVENT = 'storyforge:open-mobile-editor-panel';
 
 const MORE_ITEMS = [
-  { id: 'editor', label: 'Viet', icon: PenTool, path: (id) => `/project/${id}/editor` },
-  { id: 'outline', label: 'Dan y', icon: Map, path: (id) => `/project/${id}/outline` },
-  { id: 'story-bible', label: 'Bible', icon: BookOpen, path: (id) => `/project/${id}/story-bible` },
+  { id: 'editor', label: 'Vi\u1ebft', icon: PenTool, path: (id) => `/project/${id}/editor` },
+  { id: 'outline', label: 'D\u00e0n \u00fd', icon: Map, path: (id) => `/project/${id}/outline` },
   { id: 'chat', label: 'AI', icon: Sparkles, path: (id) => `/project/${id}/chat` },
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: () => '/' },
-  { id: 'characters', label: 'Nhan vat', icon: Users, path: (id) => `/project/${id}/characters` },
-  { id: 'world', label: 'The gioi', icon: Globe, path: (id) => `/project/${id}/world` },
+  { id: 'story-bible', label: 'S\u1ed5 tay truy\u1ec7n', icon: BookOpen, path: (id) => `/project/${id}/story-bible` },
+  { id: 'characters', label: 'Nh\u00e2n v\u1eadt', icon: Users, path: (id) => `/project/${id}/characters` },
+  { id: 'world', label: 'Th\u1ebf gi\u1edbi', icon: Globe, path: (id) => `/project/${id}/world` },
   { id: 'canon', label: 'Canon', icon: ShieldCheck, path: (id) => `/project/${id}/su-that` },
-  { id: 'settings', label: 'Cai dat', icon: Settings, path: (id) => `/project/${id}/settings` },
   { id: 'prompts', label: 'Prompt AI', icon: BookMarked, path: (id) => `/project/${id}/prompts` },
+  { id: 'settings', label: 'C\u00e0i \u0111\u1eb7t', icon: Settings, path: (id) => `/project/${id}/settings` },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: () => '/' },
   { id: 'lab', label: 'Narrative Lab', icon: FlaskConical, path: (id) => `/project/${id}/lab`, surface: 'lab' },
   { id: 'corpus-lab', label: 'Corpus Lab', icon: FlaskConical, path: (id) => `/project/${id}/corpus-lab`, surface: 'lab' },
   { id: 'timeline', label: 'Timeline', icon: Map, path: (id) => `/project/${id}/timeline`, surface: 'roadmap' },
@@ -42,17 +42,17 @@ const MORE_ITEMS = [
 ];
 
 function getPageTitle(pathname) {
-  if (pathname.includes('/editor')) return 'Viet truyen';
-  if (pathname.includes('/outline')) return 'Dan y';
-  if (pathname.includes('/story-bible')) return 'Bible';
-  if (pathname.includes('/characters')) return 'Nhan vat';
-  if (pathname.includes('/world')) return 'The gioi';
+  if (pathname.includes('/editor')) return 'Vi\u1ebft truy\u1ec7n';
+  if (pathname.includes('/outline')) return 'D\u00e0n \u00fd';
+  if (pathname.includes('/story-bible')) return 'S\u1ed5 tay truy\u1ec7n';
+  if (pathname.includes('/characters')) return 'Nh\u00e2n v\u1eadt';
+  if (pathname.includes('/world')) return 'Th\u1ebf gi\u1edbi';
   if (pathname.includes('/su-that')) return 'Canon';
   if (pathname.includes('/chat')) return 'AI';
-  if (pathname.includes('/settings')) return 'Cai dat';
+  if (pathname.includes('/settings')) return 'C\u00e0i \u0111\u1eb7t';
   if (pathname.includes('/prompts')) return 'Prompt AI';
   if (pathname.includes('/lab')) return 'Lab';
-  return 'Du an';
+  return 'D\u1ef1 \u00e1n';
 }
 
 function canShowItem(item) {
@@ -76,7 +76,7 @@ export default function MobileProjectShell({ children }) {
   const mobileTitle = isEditorRoute
     ? (activeScene?.title || activeChapter?.title || currentProject?.title || 'StoryForge')
     : (currentProject?.title || 'StoryForge');
-  const backLabel = isEditorRoute ? 'Ve Dashboard' : 'Ve man viet';
+  const backLabel = isEditorRoute ? 'V\u1ec1 Dashboard' : 'V\u1ec1 m\u00e0n vi\u1ebft';
 
   const visibleMoreItems = useMemo(() => MORE_ITEMS.filter(canShowItem), []);
 
@@ -111,7 +111,7 @@ export default function MobileProjectShell({ children }) {
 
       <MobileSheet
         open={moreOpen}
-        title="Menu"
+        title="\u0110i\u1ec1u h\u01b0\u1edbng"
         kicker={currentProject?.title || 'StoryForge'}
         onClose={() => setMoreOpen(false)}
       >

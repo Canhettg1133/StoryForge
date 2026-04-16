@@ -215,14 +215,14 @@ export default function SceneEditor() {
 
       <div className="scene-editor-main">
         {isMobileLayout && (
-          <div className="scene-editor-mobile-actions" aria-label="Cong cu viet truyen">
+          <div className="scene-editor-mobile-actions" aria-label="C\u00f4ng c\u1ee5 vi\u1ebft truy\u1ec7n">
             <button className="scene-editor-mobile-action" type="button" onClick={() => openMobilePanel('chapters')}>
               <PanelLeft size={16} />
-              <span>Chuong</span>
+              <span>{'Ch\u01b0\u01a1ng'}</span>
             </button>
             <button className="scene-editor-mobile-action" type="button" onClick={() => openMobilePanel('ai')}>
               <Sparkles size={16} />
-              <span>AI viet</span>
+              <span>{'AI vi\u1ebft'}</span>
             </button>
           </div>
         )}

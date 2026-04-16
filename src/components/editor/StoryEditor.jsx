@@ -232,7 +232,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
       )}
 
       {/* Chapter Outline Panel — Dàn Ý Chương */}
-      {!isMobileLayout && chapterOutline !== null && (
+      {chapterOutline !== null && (
         <div className={`chapter-outline-panel ${outlinePanelOpen ? 'chapter-outline-panel--open' : ''}`}>
           <div className="chapter-outline-toggle-row">
             <button

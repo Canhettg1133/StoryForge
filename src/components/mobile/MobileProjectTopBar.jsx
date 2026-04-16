@@ -6,7 +6,7 @@ export default function MobileProjectTopBar({
   title,
   titleIsAction = false,
   onBack,
-  backLabel = 'Ve Dashboard',
+  backLabel = 'V\u1ec1 Dashboard',
   onTitleClick,
   onMore,
 }) {
@@ -27,7 +27,7 @@ export default function MobileProjectTopBar({
           className="project-mobile-title project-mobile-title--button"
           type="button"
           onClick={onTitleClick}
-          aria-label="Mo danh sach chuong"
+          aria-label="M\u1edf danh s\u00e1ch ch\u01b0\u01a1ng"
         >
           {titleContent}
         </button>
@@ -36,7 +36,7 @@ export default function MobileProjectTopBar({
           {titleContent}
         </div>
       )}
-      <button className="project-mobile-icon-btn" type="button" onClick={onMore} aria-label="Mo menu khac">
+      <button className="project-mobile-icon-btn" type="button" onClick={onMore} aria-label="M\u1edf menu \u0111i\u1ec1u h\u01b0\u1edbng">
         <MoreHorizontal size={20} />
       </button>
     </header>
