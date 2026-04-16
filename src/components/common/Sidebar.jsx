@@ -91,7 +91,8 @@ export default function Sidebar() {
   }, []);
 
   const routeProjectId = projectId || null;
-  const activeProjectId = routeProjectId;
+  const settingsScopedProjectId = location.pathname === '/settings' ? currentProject?.id || null : null;
+  const activeProjectId = routeProjectId || settingsScopedProjectId;
   const visibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.divider) return true;
     if (item.id === 'global-chat') return !activeProjectId;
@@ -115,7 +116,11 @@ export default function Sidebar() {
 
   const handleNav = (item) => {
     if (item.needsProject && !activeProjectId) return;
-    const path = item.needsProject ? `/project/${activeProjectId}${item.path}` : item.path;
+    const path = item.id === 'settings' && activeProjectId
+      ? `/project/${activeProjectId}/settings`
+      : item.needsProject
+        ? `/project/${activeProjectId}${item.path}`
+        : item.path;
     navigate(path);
   };
 
@@ -163,8 +168,13 @@ export default function Sidebar() {
             return <div key={`div-${index}`} className="sidebar-divider" />;
           }
 
-          const expectedPath = item.needsProject && activeProjectId ? `/project/${activeProjectId}${item.path}` : item.path;
-          const isActive = location.pathname === expectedPath || (item.path !== '/' && item.path !== '/settings' && location.pathname.startsWith(expectedPath));
+          const expectedPath = item.id === 'settings' && activeProjectId
+            ? `/project/${activeProjectId}/settings`
+            : item.needsProject && activeProjectId
+              ? `/project/${activeProjectId}${item.path}`
+              : item.path;
+          const isActive = location.pathname === expectedPath
+            || (item.path !== '/' && item.path !== '/settings' && location.pathname.startsWith(expectedPath));
           const isDisabled = item.needsProject && !activeProjectId;
           const isComingSoon = item.comingSoon && !isActive;
           const Icon = item.icon;

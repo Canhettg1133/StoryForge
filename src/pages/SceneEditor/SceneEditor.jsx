@@ -158,7 +158,10 @@ export default function SceneEditor() {
 
   const handleMobileNavigate = (item) => {
     if (item.comingSoon || (item.needsProject && !activeProjectId)) return;
-    navigate(item.getPath(activeProjectId));
+    const targetPath = item.id === 'settings' && activeProjectId
+      ? `/project/${activeProjectId}/settings`
+      : item.getPath(activeProjectId);
+    navigate(targetPath);
     closeMobilePanel();
   };
 

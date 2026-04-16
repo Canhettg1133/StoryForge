@@ -28,7 +28,6 @@ export default function ChapterList({
     scenes,
     activeChapterId,
     activeSceneId,
-    currentProject,
     createChapter,
     createScene,
     deleteChapter,
@@ -241,16 +240,9 @@ export default function ChapterList({
       alert(error?.message || 'Khong the hoan thanh chuong.');
       return;
     }
-    setCompletingChapterId(chapterId);
+  };
 
-    const chapter = chapters.find((item) => item.id === chapterId);
-    const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapterId);
-    const chapterText = chapterScenes
-      .map((scene) => scene.draft_text || '')
-      .join('\n')
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .trim();
+  /*
 
     if (!chapterText) {
       alert('Chương chưa có nội dung để tóm tắt.');
@@ -353,6 +345,8 @@ export default function ChapterList({
 
     setCompletingChapterId(null);
   };
+
+  */
 
   const isCompleting = completingChapterId !== null;
   const getCompletionState = (chapterId) => chapterCompletionById[chapterId] || {};

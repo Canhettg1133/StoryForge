@@ -1324,6 +1324,7 @@ export async function extractCandidateOps({
   revisionId = null,
   chapterText = '',
   scenes = [],
+  routeOptions = null,
 }) {
   const { project } = await getChapterAndProject(projectId, chapterId);
   const [characters, locations, plotThreads, canonFacts, objects, relationships] = await Promise.all([
@@ -1367,6 +1368,7 @@ export async function extractCandidateOps({
   });
 
   const rawText = await sendAiTask(TASK_TYPES.CANON_EXTRACT_OPS, messages, {
+    routeOptions: routeOptions || undefined,
     nsfwMode: !!project?.nsfw_mode,
     superNsfwMode: !!project?.super_nsfw_mode,
   });
@@ -1391,7 +1393,7 @@ export async function extractCandidateOps({
   return candidateOps;
 }
 
-export async function validateRevision(chapterRevisionId, mode = 'draft') {
+export async function validateRevision(chapterRevisionId, mode = 'draft', options = {}) {
   const revision = await db.chapter_revisions.get(chapterRevisionId);
   if (!revision) {
     throw new Error('Khong tim thay chapter revision de validate.');
@@ -1410,6 +1412,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft') {
         revisionId: revision.id,
         chapterText: revision.chapter_text,
         scenes,
+        routeOptions: options.routeOptions || null,
       });
     } catch (error) {
       console.warn('[Canon] extractCandidateOps failed, falling back to heuristic-only validation:', error);
@@ -1917,7 +1920,7 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null) {
   };
 }
 
-export async function canonicalizeChapter(projectId, chapterId) {
+export async function canonicalizeChapter(projectId, chapterId, options = {}) {
   const scenes = await getChapterScenes(chapterId);
   const chapterText = chapterTextFromScenes(scenes);
   const commit = await getOrCreateChapterCommit(projectId, chapterId);
@@ -1928,7 +1931,9 @@ export async function canonicalizeChapter(projectId, chapterId) {
     status: CHAPTER_REVISION_STATUS.DRAFT,
   });
 
-  const validation = await validateRevision(revision.id, 'canonicalize');
+  const validation = await validateRevision(revision.id, 'canonicalize', {
+    routeOptions: options.routeOptions || null,
+  });
   if (validation.hasErrors) {
     await updateChapterCommitSummary(projectId, chapterId, CHAPTER_COMMIT_STATUS.BLOCKED, validation.reports, revision.id);
     return {

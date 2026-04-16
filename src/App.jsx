@@ -43,6 +43,7 @@ export default function App() {
             <Route path="characters" element={<CharacterHub />} />
             <Route path="world" element={<WorldLore />} />
             <Route path="editor" element={<SceneEditor />} />
+            <Route path="settings" element={<Settings />} />
             <Route path="chat" element={<ProjectChat />} />
             <Route path="prompts" element={<ProjectPromptManager />} />
             <Route path="timeline" element={PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback} />

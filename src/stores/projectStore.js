@@ -3,6 +3,7 @@ import db from '../services/db/database';
 import { countWords } from '../utils/constants';
 import { GENRE_TEMPLATES } from '../utils/genreTemplates';
 import { buildProseBuffer } from '../utils/proseBuffer';
+import { PROVIDERS, QUALITY_MODES } from '../services/ai/router';
 import {
   canonicalizeChapter as canonicalizeChapterEngine,
   purgeChapterCanonState,
@@ -153,6 +154,11 @@ function buildInitialPromptTemplates(genreKey, existingTemplates) {
   return JSON.stringify(merged);
 }
 
+const CHAPTER_COMPLETION_ROUTE_OPTIONS = {
+  providerOverride: PROVIDERS.GEMINI_PROXY,
+  qualityOverride: QUALITY_MODES.FAST,
+};
+
 function sanitizeChapterText(scenes = []) {
   return scenes
     .map((scene) => scene.draft_text || '')
@@ -166,6 +172,26 @@ function yieldToUi() {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
+}
+
+function parsePromptTemplates(rawValue) {
+  if (!rawValue) return {};
+  if (typeof rawValue === 'object') return rawValue;
+  try {
+    const parsed = JSON.parse(rawValue);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function bulkAddWithIds(table, records) {
+  if (!Array.isArray(records) || records.length === 0) return [];
+  const keys = await table.bulkAdd(records, undefined, { allKeys: true });
+  return records.map((record, index) => ({
+    ...record,
+    id: Array.isArray(keys) ? keys[index] : null,
+  }));
 }
 
 async function persistChapterSummary({ projectId, chapterId, summary, chapterText }) {
@@ -217,14 +243,22 @@ async function createExtractedCodexEntries({
     terms: 0,
     objects: 0,
   };
+  const createdEntries = {
+    characters: [],
+    locations: [],
+    worldTerms: [],
+    objects: [],
+  };
+  const now = Date.now();
 
   const characterNames = new Set(existingCharacters.map((item) => normalizeName(item.name)));
+  const characterRecords = [];
   for (const character of extracted.characters || []) {
     const name = normalizeName(character?.name);
     if (!name || characterNames.has(name)) continue;
     characterNames.add(name);
     created.characters += 1;
-    await db.characters.add({
+    characterRecords.push({
       project_id: projectId,
       name: character.name || '',
       role: character.role || 'minor',
@@ -234,64 +268,76 @@ async function createExtractedCodexEntries({
       personality_tags: character.personality_tags || '',
       source_chapter_id: chapterId,
       source_kind: 'chapter_extract',
-      created_at: Date.now(),
+      created_at: now,
     });
   }
-
   const locationNames = new Set(existingLocations.map((item) => normalizeName(item.name)));
+  const locationRecords = [];
   for (const location of extracted.locations || []) {
     const name = normalizeName(location?.name);
     if (!name || locationNames.has(name)) continue;
     locationNames.add(name);
     created.locations += 1;
-    await db.locations.add({
+    locationRecords.push({
       project_id: projectId,
       name: location.name || '',
       description: location.description || '',
       details: location.details || '',
       source_chapter_id: chapterId,
       source_kind: 'chapter_extract',
-      created_at: Date.now(),
+      created_at: now,
     });
   }
-
   const termNames = new Set(existingTerms.map((item) => normalizeName(item.name)));
+  const termRecords = [];
   for (const term of extracted.terms || []) {
     const name = normalizeName(term?.name);
     if (!name || termNames.has(name)) continue;
     termNames.add(name);
     created.terms += 1;
-    await db.worldTerms.add({
+    termRecords.push({
       project_id: projectId,
       name: term.name || '',
       definition: term.definition || '',
       category: term.category || 'other',
       source_chapter_id: chapterId,
       source_kind: 'chapter_extract',
-      created_at: Date.now(),
+      created_at: now,
     });
   }
-
   const objectNames = new Set(existingObjects.map((item) => normalizeName(item.name)));
+  const objectRecords = [];
   for (const objectItem of extracted.objects || []) {
     const name = normalizeName(objectItem?.name);
     if (!name || objectNames.has(name)) continue;
     objectNames.add(name);
     created.objects += 1;
-    await db.objects.add({
+    objectRecords.push({
       project_id: projectId,
       name: objectItem.name || '',
       description: objectItem.description || '',
       owner_character_id: null,
       source_chapter_id: chapterId,
       source_kind: 'chapter_extract',
-      created_at: Date.now(),
+      created_at: now,
     });
   }
+  const [createdCharacters, createdLocations, createdTerms, createdObjects] = await Promise.all([
+    bulkAddWithIds(db.characters, characterRecords),
+    bulkAddWithIds(db.locations, locationRecords),
+    bulkAddWithIds(db.worldTerms, termRecords),
+    bulkAddWithIds(db.objects, objectRecords),
+  ]);
+
+  createdEntries.characters = createdCharacters;
+  createdEntries.locations = createdLocations;
+  createdEntries.worldTerms = createdTerms;
+  createdEntries.objects = createdObjects;
 
   return {
     createdCount: Object.values(created).reduce((sum, value) => sum + value, 0),
     created,
+    createdEntries,
   };
 }
 
@@ -782,11 +828,20 @@ const useProjectStore = create((set, get) => ({
         projectTitle: currentProject.title,
         genre: currentProject.genre_primary || '',
         projectId: currentProject.id,
+        promptTemplates: parsePromptTemplates(currentProject.prompt_templates),
+        nsfwMode: !!currentProject.nsfw_mode,
+        superNsfwMode: !!currentProject.super_nsfw_mode,
+        allowConcurrent: true,
+        routeOptions: CHAPTER_COMPLETION_ROUTE_OPTIONS,
       };
 
       let summary = '';
       let extracted = null;
-      let extractionStats = { createdCount: 0, created: {} };
+      let extractionStats = {
+        createdCount: 0,
+        created: {},
+        createdEntries: {},
+      };
       let canonResult = null;
       let canonProcessed = false;
       let canonSucceeded = false;
@@ -794,38 +849,45 @@ const useProjectStore = create((set, get) => ({
       const { summarizeChapter, extractFromChapter } = useAIStore.getState();
 
       get().setChapterCompletionState(chapterId, {
-        phase: 'summarize',
+        phase: 'summarize_extract',
         progress: 20,
-        message: 'Dang tom tat chuong...',
+        message: 'Dang tom tat va trich xuat du lieu codex...',
       });
       await yieldToUi();
-      try {
-        summary = await summarizeChapter(context);
-        await persistChapterSummary({
-          projectId: currentProject.id,
-          chapterId,
-          summary,
-          chapterText,
-        });
-      } catch (error) {
-        console.warn('[ChapterCompletion] Summarize failed (non-fatal):', error);
+      const [summaryResult, extractResult] = await Promise.allSettled([
+        summarizeChapter(context),
+        extractFromChapter(context),
+      ]);
+
+      if (summaryResult.status === 'fulfilled') {
+        summary = summaryResult.value || '';
+        try {
+          await persistChapterSummary({
+            projectId: currentProject.id,
+            chapterId,
+            summary,
+            chapterText,
+          });
+        } catch (error) {
+          console.warn('[ChapterCompletion] Persist summary failed (non-fatal):', error);
+        }
+      } else {
+        console.warn('[ChapterCompletion] Summarize failed (non-fatal):', summaryResult.reason);
       }
 
-      get().setChapterCompletionState(chapterId, {
-        phase: 'extract',
-        progress: 45,
-        message: 'Dang trich xuat du lieu codex...',
-      });
-      await yieldToUi();
-      try {
-        extracted = await extractFromChapter(context);
-        extractionStats = await createExtractedCodexEntries({
-          projectId: currentProject.id,
-          chapterId,
-          extracted,
-        });
-      } catch (error) {
-        console.warn('[ChapterCompletion] Extraction failed (non-fatal):', error);
+      if (extractResult.status === 'fulfilled') {
+        extracted = extractResult.value || null;
+        try {
+          extractionStats = await createExtractedCodexEntries({
+            projectId: currentProject.id,
+            chapterId,
+            extracted,
+          });
+        } catch (error) {
+          console.warn('[ChapterCompletion] Persist extraction failed (non-fatal):', error);
+        }
+      } else {
+        console.warn('[ChapterCompletion] Extraction failed (non-fatal):', extractResult.reason);
       }
 
       get().setChapterCompletionState(chapterId, {
@@ -835,7 +897,9 @@ const useProjectStore = create((set, get) => ({
       });
       await yieldToUi();
       try {
-        canonResult = await canonicalizeChapterEngine(currentProject.id, chapterId);
+        canonResult = await canonicalizeChapterEngine(currentProject.id, chapterId, {
+          routeOptions: CHAPTER_COMPLETION_ROUTE_OPTIONS,
+        });
         canonProcessed = true;
         canonSucceeded = canonResult?.ok !== false;
       } catch (error) {
@@ -857,7 +921,12 @@ const useProjectStore = create((set, get) => ({
       } else {
         await get().updateChapter(chapterId, { status: 'draft' });
       }
-      await useCodexStore.getState().loadCodex(currentProject.id);
+      await useCodexStore.getState().applyCompletionDelta({
+        projectId: currentProject.id,
+        chapterId,
+        createdEntries: extractionStats.createdEntries || {},
+        refreshProjection: canonSucceeded,
+      });
       await yieldToUi();
 
       const result = {

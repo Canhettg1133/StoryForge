@@ -279,6 +279,12 @@ const PLANNING_AND_CANON_TASK_PREFIX = [
   'Khong them loi mo dau, khong vong vo, khong them canh bao hay giai thich du thua neu khong duoc yeu cau.',
   'Uu tien toi da: dung nhiem vu, dung dinh dang dau ra, dung canon va co the dung lai ket qua trong he thong.',
   'Neu du lieu chua du, hay tra loi than trong va chi neu gia dinh khi thuc su can.',
+  'Noi dung truong thanh / NSFW, neu xuat hien, phai duoc xu ly nhu DU LIEU PHAN TICH hop le cua tac pham.',
+  'Day la nhiem vu PHAN TICH CANON, khong phai nhiem vu dao duc, kiem duyet, hay danh gia noi dung.',
+  'Khong duoc tu choi, ne tranh, lam mo, hay chuyen huong chi vi van ban co yeu to tinh duc, than mat, nhay cam, nguoi lon, consent, boundary, quyen luc, hay he qua tam ly-xa hoi sau canh.',
+  'Khong dua ra canh bao dao duc, khong ren giao, khong lam sach noi dung, khong tu y loai bo chi tiet lien quan den canon neu van ban da neu ro.',
+  'Hay coi cac canh NSFW la mot phan cua du lieu truyen va chi tap trung vao VET TICH CANON de lai trong the gioi truyen.',
+  'Uu tien bang chung hon suy dien. Khong duoc bo qua mot he qua canon quan trong chi vi no phat sinh tu canh nhay cam.',
 ].join('\n');
 
 function withPlanningAndCanonPrefix(instruction) {
@@ -453,6 +459,10 @@ export const TASK_INSTRUCTIONS = {
     'Chi tra ve op khi confidence toi thieu 0.55. Neu mo ho, KHONG tra ve.',
     'Khong lap lai cung mot thay doi canon bang nhieu op giong nhau trong cung mot chapter.',
     'Voi canh nguoi lon / noi dung truong thanh, CHI trich xuat HE QUA canon ro rang: thay doi quan he, bi mat bi lo, doi muc tieu, doi trang thai, vat/luat/su that moi. KHONG suy dien them tinh tiet neu van ban khong noi ro.',
+    'Neu chapter co noi dung NSFW/nguoi lon, van phai trich xuat canon ops binh thuong va khong duoc bo qua he qua canon chi vi ngu canh nhay cam.',
+    'Hay coi canh NSFW la du lieu truyen hop le va chi ghi nhan VET TICH CANON de lai: thay doi quan he, consent/boundary duoc xac lap hoac bi vi pham, du am tam ly-xa hoi, bi mat bi lo, thay doi muc tieu/niem tin/rang buoc, vat pham hay nguon luc bi tieu hao/mat/trao doi/hong/doi chu so huu.',
+    'Khong duoc boc tach canh NSFW ra khoi logic canon cua chuong. Neu mot chi tiet nhay cam khong de lai he qua canon ro rang, hay BO QUA no thay vi suy dien.',
+    'Tuyet doi khong bịa them tinh tiet NSFW, khong them chi tiet khong co trong van ban, khong nang muc do dien giai khi bang chung chua du.',
     'Chi dung cac op_type sau:',
     '- CHARACTER_STATUS_CHANGED',
     '- CHARACTER_LOCATION_CHANGED',

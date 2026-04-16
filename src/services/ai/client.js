@@ -496,7 +496,26 @@ function getCallFn(provider) {
 class AIService {
   constructor() {
     this.activeController = null;
+    this.concurrentControllers = new Set();
     this._router = null;
+  }
+
+  trackController(controller, allowConcurrent = false) {
+    if (allowConcurrent) {
+      this.concurrentControllers.add(controller);
+      return;
+    }
+    this.activeController = controller;
+  }
+
+  releaseController(controller, allowConcurrent = false) {
+    if (allowConcurrent) {
+      this.concurrentControllers.delete(controller);
+      return;
+    }
+    if (this.activeController === controller) {
+      this.activeController = null;
+    }
   }
 
   setRouter(router) { this._router = router; }
@@ -526,10 +545,12 @@ class AIService {
     return refusalPhrases.some(phrase => startOfProse.includes(phrase));
   }
 
-  send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false, chatSafetyOff = false }) {
-    this.abort();
+  send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false, chatSafetyOff = false, allowConcurrent = false }) {
+    if (!allowConcurrent) {
+      this.abort();
+    }
     const controller = new AbortController();
-    this.activeController = controller;
+    this.trackController(controller, allowConcurrent);
 
     const route = this._router.route(taskType, routeOptions);
     const startTime = Date.now();
@@ -550,7 +571,7 @@ class AIService {
         // Ensure we don't loop infinitely
         if (messages.some(m => m.content === NSFW_REBUKE_PROMPT)) {
           console.warn('[AI] Already rebuked in this chain. Aborting to avoid loop.');
-          this.activeController = null;
+          this.releaseController(controller, allowConcurrent);
           onComplete?.(processedText, { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
           return;
         }
@@ -590,11 +611,11 @@ class AIService {
               onToken?.(chunk, clean);
             },
             onComplete: (finalText) => {
-              this.activeController = null;
+              this.releaseController(controller, allowConcurrent);
               // Clean final text
               onComplete?.(cleanMetadata(cleanThoughts(finalText)), { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
             },
-            onError: (e) => { this.activeController = null; onError?.(e); },
+            onError: (e) => { this.releaseController(controller, allowConcurrent); onError?.(e); },
             nsfwMode: true
           });
           return;
@@ -604,7 +625,7 @@ class AIService {
         }
       }
 
-      this.activeController = null;
+      this.releaseController(controller, allowConcurrent);
       onComplete?.(processedText, { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
     };
 
@@ -632,7 +653,7 @@ class AIService {
               const cleanFinal = superNsfwMode ? finalText.replace(/^\[.*?\]\n*/gm, '').trim() : finalText;
               wrappedOnComplete(cleanFinal);
             },
-            onError: (e) => { this.activeController = null; onError?.(e); },
+            onError: (e) => { this.releaseController(controller, allowConcurrent); onError?.(e); },
             nsfwMode: true
           });
           return;
@@ -649,7 +670,7 @@ class AIService {
             await getCallFn(fb.provider)({
               model: fb.model, messages, stream, signal: controller.signal,
               onToken, onComplete: (text) => wrappedOnComplete(text, fb),
-              onError: (e) => { this.activeController = null; onError?.(normalizeAIError(e, fb)); },
+              onError: (e) => { this.releaseController(controller, allowConcurrent); onError?.(normalizeAIError(e, fb)); },
               nsfwMode,
               safetyMode: chatSafetyOff ? 'off' : undefined,
             });
@@ -657,7 +678,7 @@ class AIService {
           } catch { continue; }
         }
       }
-      this.activeController = null;
+      this.releaseController(controller, allowConcurrent);
       onError?.(normalizeAIError(err, route));
     };
 
@@ -672,10 +693,15 @@ class AIService {
   }
 
   abort() {
-    if (this.activeController) { this.activeController.abort(); this.activeController = null; }
+    if (this.activeController) {
+      this.activeController.abort();
+      this.activeController = null;
+    }
+    this.concurrentControllers.forEach((controller) => controller.abort());
+    this.concurrentControllers.clear();
   }
 
-  isActive() { return this.activeController !== null; }
+  isActive() { return this.activeController !== null || this.concurrentControllers.size > 0; }
 
   async testConnection(provider) {
     try {

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import keyManager from '../../services/ai/keyManager';
 import modelRouter, { PROVIDERS, DIRECT_MODELS } from '../../services/ai/router';
 import aiService, {
@@ -221,6 +222,9 @@ function DirectModelManager() {
 
 // ─── Main Settings Page ───
 export default function Settings() {
+  const navigate = useNavigate();
+  const { projectId } = useParams();
+  const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
   const [proxyUrl, setProxyUrl] = useState(getProxyUrl());
   const [directUrl, setDirectUrl] = useState(getGeminiDirectBaseUrl());
   const [ollamaUrl, setOllamaUrl] = useState(getOllamaUrl());
@@ -244,6 +248,16 @@ export default function Settings() {
   return (
     <div className="settings-page">
       <header className="settings-header animate-fade-in">
+        {scopedProjectId ? (
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => navigate(`/project/${scopedProjectId}/editor`)}
+            style={{ marginBottom: '12px' }}
+          >
+            Quay lai du an
+          </button>
+        ) : null}
         <h1 className="settings-title">⚙️ Cài đặt</h1>
         <p className="settings-subtitle">Cấu hình providers, API keys, models</p>
       </header>

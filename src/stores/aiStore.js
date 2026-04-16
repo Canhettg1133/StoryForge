@@ -175,6 +175,42 @@ function normalizeSuggestionResult(parsed) {
   return isPlainObject(parsed) ? parsed : null;
 }
 
+async function hydrateProjectAiContext(context = {}) {
+  const enrichedContext = { ...context };
+  const hasPromptTemplates = Object.prototype.hasOwnProperty.call(enrichedContext, 'promptTemplates');
+  const hasNsfwMode = Object.prototype.hasOwnProperty.call(enrichedContext, 'nsfwMode');
+  const hasSuperNsfwMode = Object.prototype.hasOwnProperty.call(enrichedContext, 'superNsfwMode');
+
+  if (!context.projectId || (hasPromptTemplates && hasNsfwMode && hasSuperNsfwMode)) {
+    return enrichedContext;
+  }
+
+  try {
+    const project = await db.projects.get(context.projectId);
+    if (!hasPromptTemplates) {
+      if (project?.prompt_templates) {
+        try {
+          enrichedContext.promptTemplates = JSON.parse(project.prompt_templates);
+        } catch {
+          enrichedContext.promptTemplates = {};
+        }
+      } else {
+        enrichedContext.promptTemplates = {};
+      }
+    }
+    if (!hasNsfwMode) {
+      enrichedContext.nsfwMode = !!project?.nsfw_mode;
+    }
+    if (!hasSuperNsfwMode) {
+      enrichedContext.superNsfwMode = !!project?.super_nsfw_mode;
+    }
+  } catch (e) {
+    console.warn('[AI] Failed to load project settings', e);
+  }
+
+  return enrichedContext;
+}
+
 const useAIStore = create((set, get) => ({
   // --- State ---
   isStreaming: false,
@@ -433,18 +469,7 @@ const useAIStore = create((set, get) => ({
   summarizeChapter: (context) => {
     return new Promise(async (resolve, reject) => {
       set({ isSummarizing: true });
-
-      let enrichedContext = { ...context };
-      if (context.projectId) {
-        try {
-          const project = await db.projects.get(context.projectId);
-          if (project?.prompt_templates) enrichedContext.promptTemplates = JSON.parse(project.prompt_templates);
-          if (project?.nsfw_mode) enrichedContext.nsfwMode = true;
-          if (project?.super_nsfw_mode) enrichedContext.superNsfwMode = true;
-        } catch (e) {
-          console.warn('[AI] Failed to load project settings', e);
-        }
-      }
+      const enrichedContext = await hydrateProjectAiContext(context);
 
       const messages = buildPrompt(TASK_TYPES.CHAPTER_SUMMARY, enrichedContext);
 
@@ -452,6 +477,8 @@ const useAIStore = create((set, get) => ({
         taskType: TASK_TYPES.CHAPTER_SUMMARY,
         messages,
         stream: false,
+        allowConcurrent: !!enrichedContext.allowConcurrent,
+        routeOptions: enrichedContext.routeOptions || {},
         nsfwMode: enrichedContext.nsfwMode,
         superNsfwMode: enrichedContext.superNsfwMode,
         onComplete: (text) => {
@@ -473,16 +500,7 @@ const useAIStore = create((set, get) => ({
   extractFromChapter: (context) => {
     return new Promise(async (resolve, reject) => {
       set({ isExtracting: true, lastExtractResult: null });
-
-      let enrichedContext = { ...context };
-      if (context.projectId) {
-        try {
-          const project = await db.projects.get(context.projectId);
-          if (project?.prompt_templates) enrichedContext.promptTemplates = JSON.parse(project.prompt_templates);
-          if (project?.nsfw_mode) enrichedContext.nsfwMode = true;
-          if (project?.super_nsfw_mode) enrichedContext.superNsfwMode = true;
-        } catch (e) { console.warn('[AI] Failed to load project settings', e); }
-      }
+      const enrichedContext = await hydrateProjectAiContext(context);
 
       const messages = buildPrompt(TASK_TYPES.FEEDBACK_EXTRACT, enrichedContext);
 
@@ -490,6 +508,8 @@ const useAIStore = create((set, get) => ({
         taskType: TASK_TYPES.FEEDBACK_EXTRACT,
         messages,
         stream: false,
+        allowConcurrent: !!enrichedContext.allowConcurrent,
+        routeOptions: enrichedContext.routeOptions || {},
         nsfwMode: enrichedContext.nsfwMode,
         superNsfwMode: enrichedContext.superNsfwMode,
         onComplete: (text) => {

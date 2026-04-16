@@ -38,6 +38,30 @@ function cleanHtml(text) {
   return (text || '').replace(/<[^>]*>/g, ' ').toLowerCase();
 }
 
+function mergeByIdAndName(existingItems = [], nextItems = []) {
+  if (!Array.isArray(nextItems) || nextItems.length === 0) return existingItems;
+
+  const merged = [...existingItems];
+  const seenIds = new Set(existingItems.map((item) => item?.id).filter((id) => id != null));
+  const seenNames = new Set(
+    existingItems
+      .map((item) => String(item?.name || '').trim().toLowerCase())
+      .filter(Boolean)
+  );
+
+  for (const item of nextItems) {
+    const normalizedName = String(item?.name || '').trim().toLowerCase();
+    if ((item?.id != null && seenIds.has(item.id)) || (normalizedName && seenNames.has(normalizedName))) {
+      continue;
+    }
+    if (item?.id != null) seenIds.add(item.id);
+    if (normalizedName) seenNames.add(normalizedName);
+    merged.push(item);
+  }
+
+  return merged;
+}
+
 // ---------------------------------------------
 
 const useCodexStore = create((set, get) => ({
@@ -87,6 +111,57 @@ const useCodexStore = create((set, get) => ({
       canonFacts,
       chapterMetas,
       loading: false,
+    });
+  },
+
+  applyCompletionDelta: async ({
+    projectId,
+    chapterId = null,
+    createdEntries = {},
+    refreshProjection = false,
+  }) => {
+    if (!projectId) return;
+
+    const updates = {};
+    if (refreshProjection) {
+      const [characters, objects, canonFacts] = await Promise.all([
+        db.characters.where('project_id').equals(projectId).toArray(),
+        db.objects.where('project_id').equals(projectId).toArray(),
+        db.canonFacts.where('project_id').equals(projectId).toArray(),
+      ]);
+      updates.characters = characters;
+      updates.objects = objects;
+      updates.canonFacts = canonFacts;
+    }
+
+    if (chapterId) {
+      const chapterMeta = await db.chapterMeta.where('chapter_id').equals(chapterId).first();
+      updates.chapterMeta = chapterMeta || null;
+    }
+
+    set((state) => {
+      const nextState = {
+        locations: mergeByIdAndName(state.locations, createdEntries.locations || []),
+        worldTerms: mergeByIdAndName(state.worldTerms, createdEntries.worldTerms || []),
+      };
+
+      nextState.characters = updates.characters
+        || mergeByIdAndName(state.characters, createdEntries.characters || []);
+      nextState.objects = updates.objects
+        || mergeByIdAndName(state.objects, createdEntries.objects || []);
+
+      if (updates.canonFacts) {
+        nextState.canonFacts = updates.canonFacts;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(updates, 'chapterMeta')) {
+        const remaining = state.chapterMetas.filter((item) => item.chapter_id !== chapterId);
+        nextState.chapterMetas = updates.chapterMeta
+          ? [...remaining, updates.chapterMeta]
+          : remaining;
+      }
+
+      return nextState;
     });
   },
 
