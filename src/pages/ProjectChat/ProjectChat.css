@@ -635,6 +635,12 @@
   padding: 24px;
 }
 
+.project-chat-mobile-backdrop,
+.project-chat-sidebar__mobile-close,
+.project-chat-mobile-threads-btn {
+  display: none;
+}
+
 @media (max-width: 1180px) {
   .project-chat-page {
     grid-template-columns: 1fr;
@@ -659,14 +665,111 @@
   }
 }
 
-@media (max-width: 820px) {
+@media (max-width: 900px) {
   .project-chat-page {
-    padding: 12px;
-    gap: 12px;
+    display: flex;
+    min-height: 100%;
+    height: 100%;
+    padding: 0;
+    gap: 0;
+  }
+
+  .project-chat-page .card,
+  .project-chat-empty.card {
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .project-chat-mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-modal-overlay) - 1);
+    border: 0;
+    background: rgba(6, 10, 18, 0.62);
+    backdrop-filter: blur(3px);
+  }
+
+  .project-chat-sidebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    z-index: var(--z-modal-overlay);
+    height: min(76dvh, 680px);
+    max-height: none;
+    display: none;
+    padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    border-radius: 8px 8px 0 0;
+  }
+
+  .project-chat-sidebar.is-mobile-open {
+    display: flex;
+  }
+
+  .project-chat-sidebar.is-collapsed {
+    padding-inline: 14px;
+  }
+
+  .project-chat-sidebar.is-collapsed .project-chat-sidebar__header h1,
+  .project-chat-sidebar.is-collapsed .project-chat-sidebar__kicker,
+  .project-chat-sidebar.is-collapsed .project-chat-thread__meta,
+  .project-chat-sidebar.is-collapsed .project-chat-thread__title {
+    display: block;
+  }
+
+  .project-chat-sidebar.is-collapsed .project-chat-sidebar__header-actions,
+  .project-chat-sidebar.is-collapsed .project-chat-thread {
+    flex-direction: row;
+  }
+
+  .project-chat-sidebar.is-collapsed .project-chat-thread__main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .project-chat-sidebar.is-collapsed .project-chat-thread__actions {
+    display: flex;
+  }
+
+  .project-chat-sidebar__mobile-close,
+  .project-chat-mobile-threads-btn {
+    display: inline-flex;
+  }
+
+  .project-chat-sidebar__collapse-toggle {
+    display: none;
+  }
+
+  .project-chat-sidebar__hint {
+    display: none;
+  }
+
+  .project-chat-thread-list {
+    padding-right: 0;
+  }
+
+  .project-chat-thread {
+    border-radius: 8px;
+  }
+
+  .project-chat-main {
+    position: static;
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+    border: 0;
+  }
+
+  .project-chat-topbar {
+    padding: 10px 12px;
   }
 
   .project-chat-topbar__compact {
     flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
   }
 
   .project-chat-topbar__header-actions {
@@ -676,10 +779,13 @@
 
   .project-chat-topbar__header-actions .btn {
     flex: 1;
+    min-width: 0;
   }
 
   .project-chat-topbar__controls {
     grid-template-columns: 1fr;
+    max-height: 42dvh;
+    overflow: auto;
   }
 
   .project-chat-topbar__control,
@@ -697,12 +803,53 @@
     flex: 1;
   }
 
+  .project-chat-statusbar {
+    gap: 6px;
+    padding: 8px 12px;
+    overflow-x: auto;
+  }
+
+  .project-chat-statusbar__item {
+    flex: 0 0 auto;
+    max-width: min(78vw, 360px);
+    border-radius: 8px;
+  }
+
+  .project-chat-messages {
+    padding: 12px;
+  }
+
+  .project-chat-message {
+    max-width: 94%;
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .project-chat-message__meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .project-chat-message__tools {
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding-bottom: 2px;
+  }
+
+  .project-chat-composer {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
   .project-chat-composer__input {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
   }
 
   .project-chat-composer__submit {
-    justify-content: flex-end;
+    align-self: end;
+    justify-content: center;
     padding-bottom: 0;
   }
 
@@ -713,5 +860,6 @@
 
   .project-chat-drawer {
     width: 100vw;
+    border-radius: 0;
   }
 }

@@ -286,3 +286,106 @@
     flex-direction: column;
   }
 }
+
+@media (max-width: 900px) {
+  .project-mobile-shell .story-bible.su-that-page {
+    padding: 14px;
+  }
+
+  .project-mobile-shell .su-that-page {
+    gap: 14px;
+  }
+
+  .project-mobile-shell .su-that-page__header {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .project-mobile-shell .su-that-page__title {
+    font-size: 20px;
+  }
+
+  .project-mobile-shell .su-that-page__subtitle {
+    font-size: 13px;
+  }
+
+  .project-mobile-shell .su-that-page__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .project-mobile-shell .su-that-page__summary {
+    display: flex;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 2px;
+  }
+
+  .project-mobile-shell .su-that-page__summary .bible-canon-stat {
+    flex: 0 0 132px;
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .su-that-page__priority-grid,
+  .project-mobile-shell .su-that-page__state-grid,
+  .project-mobile-shell .su-that-page__log-grid,
+  .project-mobile-shell .bible-canon-detail-grid,
+  .project-mobile-shell .bible-canon-evidence-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .project-mobile-shell .su-that-page__state-panel,
+  .project-mobile-shell .su-that-page__state-panel--wide {
+    grid-column: auto;
+  }
+
+  .project-mobile-shell .su-that-page__priority-panel,
+  .project-mobile-shell .su-that-page__state-panel,
+  .project-mobile-shell .bible-canon-panel,
+  .project-mobile-shell .bible-canon-detail,
+  .project-mobile-shell .bible-edit-card {
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .su-that-page__panel-title,
+  .project-mobile-shell .su-that-page__compact-item,
+  .project-mobile-shell .bible-canon-panel-header,
+  .project-mobile-shell .bible-canon-detail-header,
+  .project-mobile-shell .su-that-page__report-row,
+  .project-mobile-shell .su-that-page__archive-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project-mobile-shell .su-that-page__panel-title {
+    gap: 10px;
+  }
+
+  .project-mobile-shell .bible-canon-detail-actions,
+  .project-mobile-shell .su-that-page__report-actions,
+  .project-mobile-shell .su-that-page__archive-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .project-mobile-shell .bible-canon-detail-meta,
+  .project-mobile-shell .bible-canon-snapshot-stats {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .project-mobile-shell .bible-canon-list-item {
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .su-that-page__revision-text {
+    max-height: 52dvh;
+    overflow: auto;
+  }
+}

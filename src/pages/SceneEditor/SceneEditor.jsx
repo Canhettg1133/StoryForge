@@ -8,10 +8,8 @@ import {
   Globe,
   LayoutDashboard,
   Map,
-  Menu,
   MessageSquare,
   Palette,
-  PanelLeft,
   PenTool,
   Settings,
   Sparkles,
@@ -21,12 +19,12 @@ import {
 import ChapterList from '../../components/common/ChapterList';
 import StoryEditor from '../../components/editor/StoryEditor';
 import AISidebar from '../../components/ai/AISidebar';
+import useMobileLayout from '../../hooks/useMobileLayout';
+import { EDITOR_PANEL_EVENT } from '../../components/mobile/MobileProjectShell';
 import { shouldShowNavItem } from '../../config/productSurface';
 import useProjectStore from '../../stores/projectStore';
 import './SceneEditor.css';
 
-const MOBILE_EDITOR_QUERY = '(max-width: 820px)';
-const MOBILE_KEYBOARD_OFFSET = 140;
 const MOBILE_NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, needsProject: false, getPath: () => '/' },
   { id: 'story-bible', label: 'Sổ tay truyện', icon: BookOpen, needsProject: true, getPath: (projectId) => `/project/${projectId}/story-bible` },
@@ -48,58 +46,25 @@ const MOBILE_NAV_ITEMS = [
 const VISIBLE_MOBILE_NAV_ITEMS = MOBILE_NAV_ITEMS.filter((item) => shouldShowNavItem(item));
 
 export default function SceneEditor() {
-  const { currentProject, chapters, scenes, activeChapterId, activeSceneId } = useProjectStore();
+  const { currentProject } = useProjectStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
-  const [isMobileLayout, setIsMobileLayout] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return window.matchMedia(MOBILE_EDITOR_QUERY).matches;
-  });
+  const isMobileLayout = useMobileLayout(900);
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileAITab, setMobileAITab] = useState('ai');
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
-  const [mobileInputFocused, setMobileInputFocused] = useState(false);
-  useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
 
-    const mediaQuery = window.matchMedia(MOBILE_EDITOR_QUERY);
-    const handleChange = (event) => setIsMobileLayout(event.matches);
-
-    setIsMobileLayout(mediaQuery.matches);
-    if (mediaQuery.addEventListener) {
-      mediaQuery.addEventListener('change', handleChange);
-      return () => mediaQuery.removeEventListener('change', handleChange);
+  const openMobilePanel = useCallback((panel) => {
+    setMobilePanel(panel);
+    if (panel === 'ai') {
+      setMobileAITab((current) => current || 'ai');
     }
-
-    mediaQuery.addListener(handleChange);
-    return () => mediaQuery.removeListener(handleChange);
   }, []);
 
   useEffect(() => {
     if (!isMobileLayout) {
       setMobilePanel(null);
-      setKeyboardOpen(false);
-      setMobileInputFocused(false);
-      return undefined;
     }
-
-    const viewport = window.visualViewport;
-    if (!viewport) return undefined;
-
-    const syncViewport = () => {
-      const availableHeight = Math.min(window.innerHeight, viewport.height);
-      setKeyboardOpen(window.innerHeight - availableHeight > MOBILE_KEYBOARD_OFFSET);
-    };
-
-    syncViewport();
-    viewport.addEventListener('resize', syncViewport);
-    viewport.addEventListener('scroll', syncViewport);
-
-    return () => {
-      viewport.removeEventListener('resize', syncViewport);
-      viewport.removeEventListener('scroll', syncViewport);
-    };
   }, [isMobileLayout]);
 
   useEffect(() => {
@@ -115,21 +80,23 @@ export default function SceneEditor() {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isMobileLayout]);
 
+  useEffect(() => {
+    if (!isMobileLayout) return undefined;
+    const handleOpenPanel = (event) => {
+      const panel = event.detail?.panel;
+      if (panel === 'chapters' || panel === 'ai' || panel === 'nav') {
+        openMobilePanel(panel);
+      }
+    };
+
+    window.addEventListener(EDITOR_PANEL_EVENT, handleOpenPanel);
+    return () => window.removeEventListener(EDITOR_PANEL_EVENT, handleOpenPanel);
+  }, [isMobileLayout, openMobilePanel]);
+
   const handleEditorReady = useCallback((editor) => {
     setEditorInstance(editor);
   }, []);
 
-  const activeChapter = useMemo(
-    () => chapters.find((chapter) => chapter.id === activeChapterId) || null,
-    [chapters, activeChapterId],
-  );
-
-  const activeScene = useMemo(
-    () => scenes.find((scene) => scene.id === activeSceneId) || null,
-    [scenes, activeSceneId],
-  );
-
-  const toolbarMode = keyboardOpen || mobileInputFocused ? 'compact' : 'default';
   const activeProjectId = currentProject?.id || null;
   const visibleMobileNavItems = useMemo(
     () =>
@@ -140,17 +107,6 @@ export default function SceneEditor() {
       }),
     [activeProjectId],
   );
-
-  const openMobilePanel = (panel) => {
-    setMobilePanel(panel);
-    if (panel === 'ai') {
-      setMobileAITab((current) => current || 'ai');
-    }
-  };
-
-  const toggleMobilePanel = (panel) => {
-    setMobilePanel((current) => (current === panel ? null : panel));
-  };
 
   const closeMobilePanel = () => {
     setMobilePanel(null);
@@ -257,39 +213,6 @@ export default function SceneEditor() {
       </aside>
 
       <div className="scene-editor-main">
-        {isMobileLayout && mobilePanel === null && (
-          <div className={`scene-editor-mobile-toolbar scene-editor-mobile-toolbar--${toolbarMode}`}>
-            <button
-              className="scene-editor-mobile-btn"
-              onClick={() => openMobilePanel('nav')}
-            >
-              <Menu size={16} />
-              <span>Menu</span>
-            </button>
-
-            <button
-              className="scene-editor-mobile-btn"
-              onClick={() => openMobilePanel('chapters')}
-            >
-              <PanelLeft size={16} />
-              <span>{toolbarMode === 'compact' ? 'Chương' : 'Chương & Cảnh'}</span>
-            </button>
-
-            <div className="scene-editor-mobile-context">
-              <span className="scene-editor-mobile-context-kicker">{activeChapter?.title || 'Chưa chọn chương'}</span>
-              <span className="scene-editor-mobile-context-title">{activeScene?.title || 'Chưa chọn cảnh'}</span>
-            </div>
-
-            <button
-              className="scene-editor-mobile-btn scene-editor-mobile-btn--primary"
-              onClick={() => openMobilePanel('ai')}
-            >
-              <Sparkles size={16} />
-              <span>AI</span>
-            </button>
-          </div>
-        )}
-
         <StoryEditor onEditorReady={handleEditorReady} isMobileLayout={isMobileLayout} />
       </div>
 
@@ -313,7 +236,6 @@ export default function SceneEditor() {
             isMobileLayout={isMobileLayout}
             mobileTab={mobileAITab}
             onMobileTabChange={setMobileAITab}
-            onMobileInputFocusChange={setMobileInputFocused}
           />
         </div>
       </aside>

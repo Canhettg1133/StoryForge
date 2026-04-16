@@ -545,6 +545,12 @@ export default function StoryBible() {
     <div className="story-bible">
       {/* Header */}
       <div className="bible-header">
+        <div className="bible-mobile-tabs" aria-label="Dieu huong Bible">
+          <button className="bible-mobile-tab bible-mobile-tab--active" type="button">Tong quan</button>
+          <button className="bible-mobile-tab" type="button" onClick={() => navigate(buildProjectPath('/characters'))}>Nhan vat</button>
+          <button className="bible-mobile-tab" type="button" onClick={() => navigate(buildProjectPath('/world'))}>The gioi</button>
+          <button className="bible-mobile-tab" type="button" onClick={() => navigate(buildProjectPath('/su-that'))}>Canon</button>
+        </div>
         <h2><BookMarked size={22} /> Sổ tay truyện</h2>
         <p className="bible-subtitle">Trung tâm quản lý truyện - {totalItems} mục</p>
       </div>

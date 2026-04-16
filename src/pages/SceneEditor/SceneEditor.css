@@ -57,12 +57,11 @@
 }
 
 .scene-editor-overlay,
-.scene-editor-sheet-header,
-.scene-editor-mobile-toolbar {
+.scene-editor-sheet-header {
   display: none;
 }
 
-@media (max-width: 820px) {
+@media (max-width: 900px) {
   .scene-editor-layout--mobile {
     position: relative;
     display: block;
@@ -81,99 +80,6 @@
   .scene-editor-layout--mobile .scene-editor-main {
     min-width: 0;
     height: 100vh;
-  }
-
-  .scene-editor-layout--mobile .scene-editor-mobile-toolbar {
-    position: sticky;
-    top: 0;
-    z-index: 5;
-    display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 10px;
-    padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
-    border-bottom: 1px solid var(--color-border);
-    background:
-      linear-gradient(180deg, rgba(10, 14, 26, 0.98) 0%, rgba(17, 24, 39, 0.92) 100%);
-    backdrop-filter: blur(16px);
-    transition:
-      transform var(--transition-fast),
-      padding var(--transition-fast),
-      border-color var(--transition-fast),
-      border-radius var(--transition-fast),
-      box-shadow var(--transition-fast);
-  }
-
-  .scene-editor-layout--mobile .scene-editor-mobile-toolbar--compact {
-    position: fixed;
-    top: auto;
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    left: 12px;
-    right: 12px;
-    padding: 8px 10px;
-    border-radius: 18px;
-    border-color: rgba(255, 255, 255, 0.06);
-    box-shadow: var(--shadow-xl);
-  }
-
-  .scene-editor-layout--mobile .scene-editor-mobile-toolbar--compact .scene-editor-mobile-btn {
-    min-width: 0;
-    padding-inline: 12px;
-  }
-
-  .scene-editor-layout--mobile .scene-editor-mobile-toolbar--compact .scene-editor-mobile-btn span {
-    font-size: 12px;
-  }
-
-  .scene-editor-mobile-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-height: 40px;
-    padding: 10px 14px;
-    border: 1px solid var(--color-border);
-    border-radius: 999px;
-    background: var(--color-bg-secondary);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    font: inherit;
-    transition: all var(--transition-fast);
-  }
-
-  .scene-editor-mobile-btn:hover,
-  .scene-editor-mobile-btn--primary {
-    color: var(--color-accent);
-    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
-    background: var(--color-accent-muted);
-  }
-
-  .scene-editor-mobile-context {
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding-inline: 4px;
-  }
-
-  .scene-editor-mobile-context-kicker,
-  .scene-editor-mobile-context-title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .scene-editor-mobile-context-kicker {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-  }
-
-  .scene-editor-mobile-context-title {
-    font-size: 13px;
-    color: var(--color-text-primary);
   }
 
   .scene-editor-layout--mobile .scene-editor-side--nav {

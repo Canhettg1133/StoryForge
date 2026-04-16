@@ -32,6 +32,10 @@
   margin: 0;
 }
 
+.bible-mobile-tabs {
+  display: none;
+}
+
 /* Sections */
 .bible-section {
   margin-bottom: var(--space-6);
@@ -714,4 +718,58 @@
   border-color: var(--color-accent);
   background: var(--color-accent);
   color: white;
+}
+
+@media (max-width: 900px) {
+  .story-bible {
+    max-width: none;
+    padding: 16px;
+  }
+
+  .bible-header {
+    margin-bottom: 16px;
+  }
+
+  .bible-mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .bible-mobile-tab {
+    min-height: 38px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .bible-mobile-tab--active {
+    color: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+    background: var(--color-accent-muted);
+  }
+
+  .bible-grid,
+  .bible-grid--terms,
+  .bible-edit-row {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bible-section {
+    margin-bottom: 16px;
+  }
+
+  .bible-section-header {
+    gap: 10px;
+  }
+
+  .bible-inline-actions {
+    flex-wrap: wrap;
+  }
 }

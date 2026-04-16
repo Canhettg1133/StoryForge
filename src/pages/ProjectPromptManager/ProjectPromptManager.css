@@ -352,3 +352,36 @@
     width: 100%;
   }
 }
+
+@media (max-width: 900px) {
+  .prompt-manager-page {
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .prompt-manager-toolbar-card,
+  .prompt-manager-intro,
+  .prompt-card,
+  .prompt-editor-block {
+    border-radius: 8px;
+  }
+
+  .prompt-toolbar__chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .prompt-toolbar__chip {
+    flex: 0 0 auto;
+    border-radius: 8px;
+  }
+
+  .prompt-editor-block__textarea {
+    min-height: 52dvh;
+  }
+
+  .prompt-card__footer {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

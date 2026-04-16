@@ -729,6 +729,62 @@
   }
 }
 
+@media (max-width: 900px) {
+  .project-mobile-shell .corpus-lab-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .project-mobile-shell .corpus-lab-left,
+  .project-mobile-shell .corpus-lab-right {
+    overflow: visible;
+  }
+
+  .project-mobile-shell .corpus-card,
+  .project-mobile-shell .corpus-dropzone,
+  .project-mobile-shell .analysis-last-result,
+  .project-mobile-shell .chapter-modal-content {
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .corpus-dropzone {
+    padding: 16px;
+  }
+
+  .project-mobile-shell .corpus-lab-page .corpus-chapter-list {
+    min-height: 360px;
+  }
+
+  .project-mobile-shell .corpus-lab-page .corpus-chapter-list-header,
+  .project-mobile-shell .corpus-lab-page .corpus-list-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project-mobile-shell .corpus-lab-page .corpus-chapter-item {
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .chapter-modal-backdrop {
+    padding: 0;
+  }
+
+  .project-mobile-shell .chapter-modal {
+    width: 100vw;
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+    padding: 12px;
+  }
+
+  .project-mobile-shell .chapter-modal-header {
+    align-items: flex-start;
+  }
+}
+
 .chapter-modal-backdrop {
   position: fixed;
   inset: 0;

@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [showModal, setShowModal] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [exportingProject, setExportingProject] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadProjects();
@@ -37,6 +38,16 @@ export default function Dashboard() {
     navigate(`/project/${id}/editor`);
   };
 
+  const filteredProjects = projects.filter((project) => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [
+      project.title,
+      project.description,
+      getGenreLabel(project.genre_primary),
+    ].filter(Boolean).join(' ').toLowerCase().includes(query);
+  });
+
   return (
     <div className="dashboard">
       {/* Header */}
@@ -50,6 +61,15 @@ export default function Dashboard() {
         </div>
       </header>
 
+      <div className="dashboard-mobile-search">
+        <input
+          className="input"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Tim truyen..."
+        />
+      </div>
+
       {/* Content */}
       <div className="dashboard-content">
         {/* New Project Card */}
@@ -62,7 +82,7 @@ export default function Dashboard() {
           </button>
 
           {/* Project Cards */}
-          {projects.map((project, index) => (
+          {filteredProjects.map((project, index) => (
             <div
               key={project.id}
               className="project-card card-glass animate-slide-up"
@@ -121,6 +141,10 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <button className="dashboard-mobile-cta btn btn-primary" onClick={() => setShowModal(true)}>
+        <Plus size={18} /> Tao truyen
+      </button>
 
       {showModal && (
         <NewProjectModal

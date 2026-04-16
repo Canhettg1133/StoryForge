@@ -273,6 +273,7 @@ export default function ProjectChat() {
   const [showSystemPromptDrawer, setShowSystemPromptDrawer] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showTopbarControls, setShowTopbarControls] = useState(false);
+  const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [providerSnapshot, setProviderSnapshot] = useState(modelRouter.getPreferredProvider());
   const [qualitySnapshot, setQualitySnapshot] = useState(modelRouter.getQualityMode());
@@ -1103,6 +1104,7 @@ export default function ProjectChat() {
     setActiveThreadId(threadId);
     setEditingMessageId(null);
     setDraft('');
+    setMobileThreadsOpen(false);
     resetComposerHeight();
     window.setTimeout(() => {
       isHydratingThreadRef.current = false;
@@ -1124,7 +1126,16 @@ export default function ProjectChat() {
   return (
     <>
       <div className={`project-chat-page ${sidebarCollapsed ? 'has-collapsed-sidebar' : ''}`}>
-        <aside className={`project-chat-sidebar card ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
+        {mobileThreadsOpen ? (
+          <button
+            type="button"
+            className="project-chat-mobile-backdrop"
+            onClick={() => setMobileThreadsOpen(false)}
+            aria-label="Dong danh sach chat"
+          />
+        ) : null}
+
+        <aside className={`project-chat-sidebar card ${sidebarCollapsed ? 'is-collapsed' : ''} ${mobileThreadsOpen ? 'is-mobile-open' : ''}`}>
           <div className="project-chat-sidebar__header">
             <div>
               <div className="project-chat-sidebar__kicker">{pageKicker}</div>
@@ -1133,7 +1144,15 @@ export default function ProjectChat() {
             <div className="project-chat-sidebar__header-actions">
               <button
                 type="button"
-                className="btn btn-ghost btn-icon"
+                className="btn btn-ghost btn-icon project-chat-sidebar__mobile-close"
+                onClick={() => setMobileThreadsOpen(false)}
+                title="Dong danh sach chat"
+              >
+                <X size={16} />
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon project-chat-sidebar__collapse-toggle"
                 onClick={() => setSidebarCollapsed((value) => !value)}
                 title={sidebarCollapsed ? 'Mở danh sách chat' : 'Thu gọn danh sách chat'}
               >
@@ -1236,6 +1255,14 @@ export default function ProjectChat() {
                 </div>
               </div>
               <div className="project-chat-topbar__header-actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost project-chat-mobile-threads-btn"
+                  onClick={() => setMobileThreadsOpen(true)}
+                >
+                  <MessageSquare size={16} />
+                  Threads
+                </button>
                 <button
                   type="button"
                   className={`btn btn-secondary project-chat-settings-toggle ${showSystemPromptDrawer ? 'is-open' : ''}`}

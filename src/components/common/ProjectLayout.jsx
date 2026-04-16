@@ -2,12 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { Outlet, useParams, useNavigate } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
 import { Loader2 } from 'lucide-react';
+import useMobileLayout from '../../hooks/useMobileLayout';
+import MobileProjectShell from '../mobile/MobileProjectShell';
 
 export default function ProjectLayout() {
     const { projectId } = useParams();
     const navigate = useNavigate();
     const { currentProject, loadProject, loading } = useProjectStore();
     const [init, setInit] = useState(false);
+    const isMobileLayout = useMobileLayout(900);
 
     useEffect(() => {
         const initProject = async () => {
@@ -40,6 +43,14 @@ export default function ProjectLayout() {
                 <Loader2 size={32} className="spin" />
                 <p>Đang tải dữ liệu truyện...</p>
             </div>
+        );
+    }
+
+    if (isMobileLayout) {
+        return (
+            <MobileProjectShell>
+                <Outlet />
+            </MobileProjectShell>
         );
     }
 

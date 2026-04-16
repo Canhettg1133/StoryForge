@@ -1,0 +1,30 @@
+.mobile-bible-tabs {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .project-mobile-shell .mobile-bible-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .project-mobile-shell .mobile-bible-tab {
+    min-height: 38px;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg-secondary);
+    color: var(--color-text-secondary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .project-mobile-shell .mobile-bible-tab--active {
+    color: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+    background: var(--color-accent-muted);
+  }
+}

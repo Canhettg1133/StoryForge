@@ -26,6 +26,7 @@ import {
   getStoryCreationSettings,
   renderStoryCreationTemplate,
 } from '../../services/ai/storyCreationSettings';
+import useMobileLayout from '../../hooks/useMobileLayout';
 import './OutlineBoard.css';
 
 const ACTS = [
@@ -48,6 +49,8 @@ export default function OutlineBoard() {
 
   const [selectedChapter, setSelectedChapter] = useState(null);
   const [viewMode, setViewMode] = useState('board');
+  const isMobileLayout = useMobileLayout(900);
+  const [mobileTab, setMobileTab] = useState('chapters');
   const [isGenerating, setIsGenerating] = useState(false);
   const [genError, setGenError] = useState(null);
 
@@ -81,6 +84,12 @@ export default function OutlineBoard() {
       suggestTextareaRef.current.focus();
     }
   }, [showSuggestInput]);
+
+  useEffect(() => {
+    if (isMobileLayout) {
+      setViewMode('list');
+    }
+  }, [isMobileLayout]);
 
   // Group chapters by act (arc_id)
   const chaptersByAct = useMemo(() => {
@@ -437,7 +446,7 @@ Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
   };
 
   return (
-    <div className="outline-board">
+    <div className={`outline-board ${isMobileLayout ? 'outline-board--mobile' : ''}`}>
       {/* Header */}
       <div className="outline-header">
         <div className="outline-header-left">
@@ -484,7 +493,58 @@ Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
         </div>
       </div>
 
-      <div className="outline-layout">
+      {isMobileLayout && (
+        <div className="outline-mobile-tabs">
+          <button
+            className={`outline-mobile-tab ${mobileTab === 'chapters' ? 'outline-mobile-tab--active' : ''}`}
+            onClick={() => setMobileTab('chapters')}
+          >
+            Chuong
+          </button>
+          <button
+            className={`outline-mobile-tab ${mobileTab === 'threads' ? 'outline-mobile-tab--active' : ''}`}
+            onClick={() => setMobileTab('threads')}
+          >
+            Threads
+          </button>
+          <button
+            className={`outline-mobile-tab ${mobileTab === 'auto' ? 'outline-mobile-tab--active' : ''}`}
+            onClick={() => setMobileTab('auto')}
+          >
+            Auto
+          </button>
+        </div>
+      )}
+
+      <div className={`outline-layout ${isMobileLayout ? `outline-layout--mobile-${mobileTab}` : ''}`}>
+        {isMobileLayout && mobileTab === 'auto' && (
+          <div className="outline-mobile-auto">
+            <div className="outline-mobile-auto-card">
+              <Sparkles size={22} />
+              <div>
+                <h3>Tao chuong tu dong</h3>
+                <p>Sinh batch outline, review validator, draft chuong mau neu can.</p>
+              </div>
+              <button className="btn btn-accent" onClick={() => setShowArcGen(true)}>
+                Mo Auto
+              </button>
+            </div>
+            <div className="outline-mobile-auto-card">
+              <Map size={22} />
+              <div>
+                <h3>AI phan tich outline</h3>
+                <p>Bo sung purpose, summary va hoi cho cac chuong hien tai.</p>
+              </div>
+              <button className="btn btn-secondary" onClick={handleAIOutline} disabled={isGenerating}>
+                {isGenerating ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+                Chay AI
+              </button>
+            </div>
+            <div className="outline-mobile-validator-note">
+              Validator se hien canh bao gon. Neu draft bi chan, ban van co the luu outline de sua tiep.
+            </div>
+          </div>
+        )}
         <div className="outline-main">
           {genError && (
             <div className="outline-error">{genError}</div>

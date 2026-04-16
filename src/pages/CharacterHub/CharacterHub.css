@@ -416,3 +416,97 @@
     transform: translateY(0);
   }
 }
+
+@media (max-width: 900px) {
+  .project-mobile-shell .character-hub {
+    max-width: none;
+    padding: 14px;
+  }
+
+  .project-mobile-shell .character-hub .codex-header {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .project-mobile-shell .character-hub .codex-header-left {
+    min-width: 0;
+    justify-content: space-between;
+  }
+
+  .project-mobile-shell .character-hub .codex-tabs {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .character-hub .codex-tab {
+    flex: 0 0 auto;
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .character-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .project-mobile-shell .character-card,
+  .project-mobile-shell .taboo-card {
+    border-radius: 8px;
+    padding: 14px;
+  }
+
+  .project-mobile-shell .character-card:hover,
+  .project-mobile-shell .taboo-card:hover {
+    transform: none;
+  }
+
+  .project-mobile-shell .character-card-actions {
+    opacity: 1;
+  }
+
+  .project-mobile-shell .character-avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .project-mobile-shell .taboo-card {
+    flex-direction: column;
+  }
+
+  .project-mobile-shell .taboo-card-actions,
+  .project-mobile-shell .character-delete-confirm {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .project-mobile-shell .character-hub .codex-modal {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .project-mobile-shell .character-hub .codex-modal-header,
+  .project-mobile-shell .character-hub .codex-modal-body,
+  .project-mobile-shell .character-hub .codex-modal-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .project-mobile-shell .character-hub .codex-modal-body {
+    min-height: 0;
+  }
+
+  .project-mobile-shell .character-hub .codex-modal-footer {
+    flex-direction: column-reverse;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .project-mobile-shell .character-hub .form-row {
+    grid-template-columns: 1fr;
+  }
+}

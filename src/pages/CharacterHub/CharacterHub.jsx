@@ -17,6 +17,7 @@ import AIGenerateButton from '../../components/common/AIGenerateButton';
 import BatchGenerate from '../../components/common/BatchGenerate';
 import RelationshipMap from '../../components/common/RelationshipMap';
 import EntityTimeline from '../../components/common/EntityTimeline';
+import MobileBibleTabs from '../../components/mobile/MobileBibleTabs';
 import './CharacterHub.css';
 
 const EMPTY_CHARACTER = {
@@ -172,6 +173,8 @@ export default function CharacterHub() {
 
   return (
     <div className="character-hub">
+      <MobileBibleTabs />
+
       {/* Header */}
       <div className="codex-header">
         <div className="codex-header-left">

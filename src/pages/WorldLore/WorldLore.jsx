@@ -14,6 +14,7 @@ import { WORLD_TERM_CATEGORIES } from '../../utils/constants';
 import AIGenerateButton from '../../components/common/AIGenerateButton';
 import BatchGenerate from '../../components/common/BatchGenerate';
 import EntityTimeline from '../../components/common/EntityTimeline';
+import MobileBibleTabs from '../../components/mobile/MobileBibleTabs';
 import './WorldLore.css';
 
 const TABS = [
@@ -169,6 +170,8 @@ export default function WorldLore() {
 
   return (
     <div className="world-lore">
+      <MobileBibleTabs />
+
       {/* World Profile */}
       <div className="world-profile-section">
         <div className="world-profile-header" onClick={() => setWorldExpanded(!worldExpanded)}>

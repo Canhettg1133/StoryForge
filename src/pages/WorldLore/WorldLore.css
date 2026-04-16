@@ -253,3 +253,95 @@
   font-size: 13px;
   color: var(--color-text-muted);
 }
+
+@media (max-width: 900px) {
+  .project-mobile-shell .world-lore {
+    max-width: none;
+    padding: 14px;
+  }
+
+  .project-mobile-shell .world-lore .codex-header {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .project-mobile-shell .world-lore .codex-header-left {
+    min-width: 0;
+    justify-content: space-between;
+  }
+
+  .project-mobile-shell .world-lore .codex-tabs {
+    width: 100%;
+    overflow-x: auto;
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .world-lore .codex-tab {
+    flex: 0 0 auto;
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .world-search,
+  .project-mobile-shell .world-card,
+  .project-mobile-shell .world-profile-section,
+  .project-mobile-shell .world-profile-card,
+  .project-mobile-shell .world-profile-empty {
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .world-list {
+    gap: 10px;
+  }
+
+  .project-mobile-shell .world-card {
+    padding: 12px;
+  }
+
+  .project-mobile-shell .world-card:hover {
+    transform: none;
+  }
+
+  .project-mobile-shell .world-card-actions {
+    opacity: 1;
+  }
+
+  .project-mobile-shell .world-profile-card,
+  .project-mobile-shell .world-profile-empty {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project-mobile-shell .world-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-mobile-shell .world-lore .codex-modal {
+    width: 100vw;
+    height: 100dvh;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .project-mobile-shell .world-lore .codex-modal-header,
+  .project-mobile-shell .world-lore .codex-modal-body,
+  .project-mobile-shell .world-lore .codex-modal-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .project-mobile-shell .world-lore .codex-modal-body {
+    min-height: 0;
+  }
+
+  .project-mobile-shell .world-lore .codex-modal-footer {
+    flex-direction: column-reverse;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .project-mobile-shell .world-lore .form-row {
+    grid-template-columns: 1fr;
+  }
+}

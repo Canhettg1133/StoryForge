@@ -185,3 +185,27 @@
     flex-direction: column;
   }
 }
+
+@media (max-width: 900px) {
+  .story-creation-toolbar-card,
+  .story-creation-guide,
+  .story-creation-info-box {
+    border-radius: 8px;
+  }
+
+  .story-creation-shortcuts__chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .story-creation-shortcuts__chip,
+  .story-creation-var-chip {
+    flex: 0 0 auto;
+    border-radius: 8px;
+  }
+
+  .story-creation-textarea {
+    min-height: 52dvh;
+  }
+}

@@ -14,6 +14,7 @@ import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import useCanonStore from '../../stores/canonStore';
 import CanonRepairDialog from '../../components/canon/CanonRepairDialog';
+import MobileBibleTabs from '../../components/mobile/MobileBibleTabs';
 import {
   buildCharacterStateSummary,
   getChapterRevisionDetail,
@@ -433,6 +434,8 @@ export default function CanonTruth() {
 
   return (
     <div className="story-bible su-that-page">
+      <MobileBibleTabs />
+
       <div className="su-that-page__header">
         <div>
           <h2 className="su-that-page__title">
