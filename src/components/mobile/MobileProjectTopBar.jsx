@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, MoreHorizontal } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 
 export default function MobileProjectTopBar({
   pageTitle,
@@ -36,8 +36,8 @@ export default function MobileProjectTopBar({
           {titleContent}
         </div>
       )}
-      <button className="project-mobile-icon-btn" type="button" onClick={onMore} aria-label="M\u1edf menu \u0111i\u1ec1u h\u01b0\u1edbng">
-        <MoreHorizontal size={20} />
+      <button className="project-mobile-icon-btn project-mobile-menu-btn" type="button" onClick={onMore} aria-label="M\u1edf menu \u0111i\u1ec1u h\u01b0\u1edbng">
+        <span>Menu</span>
       </button>
     </header>
   );

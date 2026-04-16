@@ -10,7 +10,7 @@
 
 .project-mobile-topbar {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
@@ -32,6 +32,14 @@
   background: var(--color-bg-secondary);
   color: var(--color-text-primary);
   cursor: pointer;
+}
+
+.project-mobile-menu-btn {
+  width: auto;
+  min-width: 56px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .project-mobile-title {

@@ -61,6 +61,14 @@ function canShowItem(item) {
   return true;
 }
 
+function formatStoryLabel(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text
+    .replace(/^Canh(?=(\s|:|-))/i, 'Cảnh')
+    .replace(/^Chuong(?=(\s|:|-))/i, 'Chương');
+}
+
 export default function MobileProjectShell({ children }) {
   const { projectId } = useParams();
   const location = useLocation();
@@ -73,8 +81,10 @@ export default function MobileProjectShell({ children }) {
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
   const activeScene = scenes.find((scene) => scene.id === activeSceneId) || null;
   const pageTitle = getPageTitle(location.pathname);
+  const displaySceneTitle = formatStoryLabel(activeScene?.title);
+  const displayChapterTitle = formatStoryLabel(activeChapter?.title);
   const mobileTitle = isEditorRoute
-    ? (activeScene?.title || activeChapter?.title || currentProject?.title || 'StoryForge')
+    ? (displaySceneTitle || displayChapterTitle || currentProject?.title || 'StoryForge')
     : (currentProject?.title || 'StoryForge');
   const backLabel = isEditorRoute ? 'V\u1ec1 Dashboard' : 'V\u1ec1 m\u00e0n vi\u1ebft';
 
@@ -111,8 +121,7 @@ export default function MobileProjectShell({ children }) {
 
       <MobileSheet
         open={moreOpen}
-        title="\u0110i\u1ec1u h\u01b0\u1edbng"
-        kicker={currentProject?.title || 'StoryForge'}
+        title="Menu"
         onClose={() => setMoreOpen(false)}
       >
         <div className="project-mobile-more-list">

@@ -18,6 +18,14 @@ import './ChapterList.css';
 const CONTEXT_MENU_WIDTH = 220;
 const CONTEXT_MENU_PADDING = 12;
 
+function formatStoryLabel(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text
+    .replace(/^Canh(?=(\s|:|-))/i, 'Cảnh')
+    .replace(/^Chuong(?=(\s|:|-))/i, 'Chương');
+}
+
 export default function ChapterList({
   allowCollapse = true,
   onItemSelect,
@@ -80,7 +88,7 @@ export default function ChapterList({
   }, [activeSceneId, activeChapterId, scenes, refreshChapterWordCount]);
 
   useEffect(() => {
-    if (!contextMenu && !mobileActionMenu) return undefined;
+    if (!contextMenu && !(mobileActionMenu && !isMobileLayout)) return undefined;
 
     const handleDismiss = (event) => {
       if (contextMenuRef.current?.contains(event.target)) return;
@@ -114,7 +122,7 @@ export default function ChapterList({
       window.removeEventListener('resize', handleViewportChange);
       window.removeEventListener('scroll', handleViewportChange, true);
     };
-  }, [contextMenu, mobileActionMenu]);
+  }, [contextMenu, mobileActionMenu, isMobileLayout]);
 
   const toggleChapter = (id) => {
     setExpandedChapters((previous) => {
@@ -371,7 +379,7 @@ export default function ChapterList({
                     className={`chapter-list-collapsed-item ${isActiveChapter ? 'chapter-list-collapsed-item--active' : ''} ${isDone ? 'chapter-list-collapsed-item--done' : ''}`}
                     onClick={() => handleSelectChapter(chapter.id)}
                     onContextMenu={(event) => handleContextMenu(event, 'chapter', chapter.id)}
-                    title={chapter.title}
+                    title={formatStoryLabel(chapter.title)}
                   >
                     {`Ch${index + 1}`}
                   </button>
@@ -384,7 +392,7 @@ export default function ChapterList({
                           className={`chapter-list-collapsed-scene ${activeSceneId === scene.id ? 'chapter-list-collapsed-scene--active' : ''}`}
                           onClick={() => handleSelectScene(chapter.id, scene.id)}
                           onContextMenu={(event) => handleContextMenu(event, 'scene', scene.id)}
-                          title={scene.title}
+                          title={formatStoryLabel(scene.title)}
                         >
                           {`C${sceneIndex + 1}`}
                         </button>
@@ -448,7 +456,7 @@ export default function ChapterList({
                   ) : (
                     <span className="chapter-item-title truncate" onClick={() => handleSelectChapter(chapter.id)}>
                       {isDone && <CheckCircle2 size={12} className="chapter-done-icon" />}
-                      {chapter.title}
+                      {formatStoryLabel(chapter.title)}
                     </span>
                   )}
 
@@ -482,7 +490,7 @@ export default function ChapterList({
                               autoFocus
                             />
                           ) : (
-                            <span className="scene-item-title truncate">{scene.title}</span>
+                            <span className="scene-item-title truncate">{formatStoryLabel(scene.title)}</span>
                           )}
                         </div>
                       );
@@ -541,7 +549,7 @@ export default function ChapterList({
                 ) : (
                   <>
                     <div className="chapter-mobile-title-row">
-                      <span className="chapter-mobile-title">{chapter.title}</span>
+                      <span className="chapter-mobile-title">{formatStoryLabel(chapter.title)}</span>
                       {isThisCompleting && <Loader2 size={14} className="chapter-loading-icon" />}
                     </div>
                     <div className="chapter-mobile-meta">
@@ -586,7 +594,7 @@ export default function ChapterList({
                           />
                         ) : (
                           <>
-                            <span className="chapter-mobile-scene-title">{scene.title}</span>
+                            <span className="chapter-mobile-scene-title">{formatStoryLabel(scene.title)}</span>
                             <span className="chapter-mobile-scene-label">Cảnh {sceneIndex + 1}</span>
                           </>
                         )}
@@ -693,10 +701,10 @@ export default function ChapterList({
       )}
 
       {mobileActionMenu && isMobileLayout && mobileActionItem && (
-        <div className="chapter-mobile-sheet-backdrop">
-          <div ref={mobileActionMenuRef} className="chapter-mobile-sheet">
+        <div className="chapter-mobile-sheet-backdrop" onClick={() => setMobileActionMenu(null)} aria-hidden="true">
+          <div ref={mobileActionMenuRef} className="chapter-mobile-sheet" onClick={(event) => event.stopPropagation()}>
             <div className="chapter-mobile-sheet-handle" />
-            <div className="chapter-mobile-sheet-title">{mobileActionItem.title}</div>
+            <div className="chapter-mobile-sheet-title">{formatStoryLabel(mobileActionItem.title)}</div>
             <div className="chapter-mobile-sheet-actions">
               <button
                 className="chapter-mobile-sheet-btn"
