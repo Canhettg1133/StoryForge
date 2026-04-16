@@ -676,6 +676,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
     return { blockingIssues: [], warnings: [], chapterSignals: [] };
   }
 
+  const hasExcludedChapters = Array.from(excluded || []).some((key) => String(key).startsWith('chapter-'));
   const includedChapters = result.chapters.filter((_, index) => !excluded.has(`chapter-${index}`));
   if (!includedChapters.length) {
     return { blockingIssues: [], warnings: [], chapterSignals: [] };
@@ -837,7 +838,24 @@ export function buildWizardValidation(result, excluded = new Set()) {
     });
 
   const remappedBlockingIssues = [];
+  const downgradeAfterChapterRemoval = new Set([
+    'protagonist-unused',
+    'thread-without-anchor',
+    'location-unused',
+    'faction-unused',
+    'term-unused',
+  ]);
   blockingIssues.forEach((issue) => {
+    if (hasExcludedChapters && downgradeAfterChapterRemoval.has(issue.code)) {
+      warnings.push({
+        ...issue,
+        type: 'warning',
+        severity: 'warning',
+        message: `${issue.message} Kiem tra lai neu ban vua bo chapter co chua neo nay.`,
+      });
+      return;
+    }
+
     if (issue.code === 'faction-unused') {
       const faction = includedFactions.find((item) => item?.name === issue.entityName);
       if (faction && !isEarlyRelevantEntity(faction, 'requiredFactions', chapterSignals)) {

@@ -165,6 +165,49 @@ describe('phase10 blueprint guardrails', () => {
     expect(validation.blockingIssues.map((item) => item.code)).not.toContain('term-unused');
   });
 
+  it('downgrades unused entity blockers after a chapter is excluded', () => {
+    const validation = buildWizardValidation({
+      characters: [
+        { name: 'Lan', role: 'protagonist' },
+        { name: 'Kha', role: 'supporting' },
+      ],
+      locations: [{ name: 'Thanh Co' }, { name: 'Rung Sau' }],
+      factions: [],
+      terms: [],
+      plot_threads: [
+        { title: 'Bi mat dau truyen', anchor_chapters: [] },
+        { title: 'Truy tim dau vet', anchor_chapters: ['Chuong 2'] },
+      ],
+      chapters: [
+        {
+          title: 'Chuong 1',
+          summary: 'Lan xuat hien tai Thanh Co va cham vao bi mat dau tien.',
+          purpose: 'Gioi thieu Lan va bi mat dau truyen.',
+          featured_characters: ['Lan'],
+          primary_location: 'Thanh Co',
+          thread_titles: ['Bi mat dau truyen'],
+          key_events: ['Lan tim thay dau vet'],
+        },
+        {
+          title: 'Chuong 2',
+          summary: 'Kha vao Rung Sau de truy tim dau vet moi.',
+          purpose: 'Mo tiep huong truy tim dau vet.',
+          featured_characters: ['Kha'],
+          primary_location: 'Rung Sau',
+          thread_titles: ['Truy tim dau vet'],
+          key_events: ['Kha tim thay dau vet moi'],
+        },
+      ],
+    }, new Set(['chapter-0']));
+
+    expect(validation.blockingIssues).toHaveLength(0);
+    expect(validation.warnings.map((item) => item.code)).toEqual(expect.arrayContaining([
+      'protagonist-unused',
+      'location-unused',
+      'thread-without-anchor',
+    ]));
+  });
+
   it('keeps dense or high-entity blueprints as warnings instead of blockers', () => {
     const chapters = [
       {

@@ -544,6 +544,7 @@ export const TASK_INSTRUCTIONS = {
     '  "chapters": [',
     '    {',
     '      "title": "Chuong X: Tieu de",',
+    '      "purpose": "Muc tieu ke chuyen cua chuong nay trong 1 cau ro rang",',
     '      "summary": "Tom tat 2-3 cau ve noi dung chuong",',
     '      "key_events": ["Su kien 1", "Su kien 2"],',
     '      "pacing": "slow|medium|fast"',
@@ -1970,7 +1971,7 @@ export function buildPrompt(taskType, context = {}) {
           const beats = Array.isArray(chapter?.key_events) && chapter.key_events.length > 0
             ? '\n  Beats: ' + chapter.key_events.join(' | ')
             : '';
-          return '- Chuong ' + number + ': ' + (chapter?.title || '') + '\n  Tom tat: ' + (chapter?.summary || '') + beats;
+          return '- Chuong ' + number + ': ' + (chapter?.title || '') + '\n  Purpose: ' + (chapter?.purpose || '') + '\n  Tom tat: ' + (chapter?.summary || '') + beats;
         }).join('\n');
         arcParts.push('[DAN Y HIEN TAI CAN CHINH SUA]\n' + currentOutlineText);
       }
@@ -1991,6 +1992,9 @@ export function buildPrompt(taskType, context = {}) {
       userContent = '[DAN Y CHUONG]\n';
       userContent += 'So chuong thuc te: ' + startChapterNumber + '\n';
       userContent += 'Tieu de: ' + (context.chapterOutlineTitle || '') + '\n';
+      if (context.chapterOutlinePurpose) {
+        userContent += 'Purpose: ' + context.chapterOutlinePurpose + '\n';
+      }
       userContent += 'Tom tat: ' + (context.chapterOutlineSummary || '') + '\n';
       if (context.chapterOutlineEvents) {
         userContent += 'Su kien chinh:\n' + context.chapterOutlineEvents.map(e => '- ' + e).join('\n');

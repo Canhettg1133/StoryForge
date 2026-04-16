@@ -13,6 +13,7 @@ const QUICK_ACTIONS = [
     { label: 'Giu bi mat chua lo', prompt: 'Giu cac bi mat lon chua lo, chi cho phep toi da 1 reveal nho neu can.' },
     { label: 'Tang dat dien nhan vat', prompt: 'Tang dat dien cho nhan vat [ten nhan vat], nhung khong day nhanh main plot.' },
     { label: 'Them 1 chuong dem', prompt: 'Chen it nhat 1 chuong dem co setup/build-up/consequence de tranh dot plot qua nhanh.' },
+    { label: 'Doi reveal thanh manh moi', prompt: 'Doi cac reveal lon/giai quyet som thanh manh moi nho, he qua nho, hoac nghi van chua ket luan.' },
 ];
 
 function formatProgressBudget(storyProgressBudget) {
@@ -200,13 +201,35 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                     <h4>Outline Validator</h4>
                     <p>
                         `padding` va `repetitive` la canh bao.
-                        `too-fast` va `premature-resolution` se chan draft va save outline.
+                        `too-fast` va `premature-resolution` se chan draft, nhung van co the luu outline de sua tiep.
                     </p>
                 </div>
                 {hasBlockingIssues && (
                     <span className="arc-validator-badge arc-validator-badge--error">Dang bi chan</span>
                 )}
             </div>
+            {hasBlockingIssues && (
+                <div className="arc-warning-box">
+                    Draft dang bi chan de tranh outline day plot qua nhanh. Ban van co the luu outline de sua tiep trong truyen.
+                    <div className="arc-quick-actions mt-2">
+                        <button
+                            className="arc-quick-action"
+                            onClick={() => appendRevisionPrompt('Chen it nhat 1 chuong dem co setup/build-up/consequence de tranh dot plot qua nhanh.')}
+                        >
+                            Them chapter dem
+                        </button>
+                        <button
+                            className="arc-quick-action"
+                            onClick={() => appendRevisionPrompt('Doi cac reveal lon/giai quyet som thanh manh moi nho, he qua nho, hoac nghi van chua ket luan.')}
+                        >
+                            Doi reveal thanh manh moi
+                        </button>
+                        <button className="btn btn-secondary btn-sm" onClick={handleCommitOutlineOnly}>
+                            Luu outline bat chap
+                        </button>
+                    </div>
+                </div>
+            )}
             {validatorIssues.length === 0 ? (
                 <div className="arc-validator-empty">Chua thay van de dang ke trong batch outline nay.</div>
             ) : (
@@ -365,7 +388,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         if (!arcStore.generatedOutline) return null;
 
         const primaryLabel = arcStore.outputMode === 'outline_only'
-            ? 'Luu outline'
+            ? (hasBlockingIssues ? 'Luu outline bat chap' : 'Luu outline')
             : arcStore.outputMode === 'outline_review'
                 ? 'Draft de review'
                 : 'Draft cac chuong da chon';
@@ -459,6 +482,14 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
 
                                 <textarea
                                     className="textarea mt-2"
+                                    rows={2}
+                                    placeholder="Purpose cua chuong..."
+                                    value={chapter.purpose || ''}
+                                    onChange={(e) => arcStore.updateOutlineChapter(index, { purpose: e.target.value })}
+                                />
+
+                                <textarea
+                                    className="textarea mt-2"
                                     rows={3}
                                     value={chapter.summary}
                                     onChange={(e) => arcStore.updateOutlineChapter(index, { summary: e.target.value })}
@@ -484,8 +515,8 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                         {primaryLabel}
                     </button>
                     {arcStore.outputMode !== 'outline_only' && (
-                        <button className="btn btn-secondary" onClick={handleCommitOutlineOnly} disabled={hasBlockingIssues}>
-                            <BookmarkPlus size={16} /> Luu outline truoc
+                        <button className="btn btn-secondary" onClick={handleCommitOutlineOnly}>
+                            <BookmarkPlus size={16} /> {hasBlockingIssues ? 'Luu outline bat chap' : 'Luu outline truoc'}
                         </button>
                     )}
                 </div>

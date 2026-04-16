@@ -87,6 +87,36 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(validation.issues.some((issue) => issue.code === 'premature-resolution')).toBe(true);
   });
 
+  it('keeps missing setup beat mix as a warning instead of a draft blocker', () => {
+    const validation = validateGeneratedOutline({
+      chapters: [
+        {
+          title: 'Chuong 11: Dau vet moi',
+          purpose: 'Cho nhan vat nhan ra mot nguy co gan hon.',
+          summary: 'Nhan vat chinh theo dau vet va gap mot nhan chung dang so hai.',
+          key_events: ['gap nhan chung', 'tim thay dau vet'],
+        },
+        {
+          title: 'Chuong 12: Loi moi',
+          purpose: 'Day nhan vat vao mot lua chon kho hon.',
+          summary: 'Nhan vat chinh bi ep lua chon giua bao ve dong doi va giu bi mat.',
+          key_events: ['doi mat lua chon', 'giu bi mat'],
+        },
+      ],
+    }, {
+      storyProgressBudget: {
+        fromPercent: 1.1,
+        toPercent: 1.4,
+        currentChapterCount: 10,
+        batchCount: 2,
+      },
+    });
+
+    const beatMixIssue = validation.issues.find((issue) => issue.code === 'too-fast' && issue.chapterIndex == null);
+    expect(beatMixIssue?.severity).toBe('warning');
+    expect(validation.hasBlockingIssues).toBe(false);
+  });
+
   it('injects progress budget and revision context into ARC_OUTLINE prompts', () => {
     const messages = buildPrompt(TASK_TYPES.ARC_OUTLINE, {
       userPrompt: 'Mo rong hanh trinh vao tong mon.',
@@ -118,11 +148,13 @@ describe('phase10 auto-gen planning upgrade', () => {
       outlineRevisionInstruction: 'Lam cham nhip, tang buildup va giu bi mat lon chua lo.',
     });
 
+    expect(messages[0].content).toContain('"purpose"');
     expect(messages[1].content).toContain('[MACRO ARC HIEN TAI]');
     expect(messages[1].content).toContain('Khoi dong tong mon');
     expect(messages[1].content).toContain('[STORY PROGRESS BUDGET]');
     expect(messages[1].content).toContain('Pham vi tien do batch nay: 1.1% -> 1.4%');
     expect(messages[1].content).toContain('[DAN Y HIEN TAI CAN CHINH SUA]');
+    expect(messages[1].content).toContain('Purpose:');
     expect(messages[1].content).toContain('[YEU CAU CHINH SUA DAN Y]');
   });
 
@@ -130,6 +162,7 @@ describe('phase10 auto-gen planning upgrade', () => {
     const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
       startChapterNumber: 12,
       chapterOutlineTitle: 'Chuong 12: Thu nghiem dau tien',
+      chapterOutlinePurpose: 'Cho main hieu mot quy tac nho cua tong mon.',
       chapterOutlineSummary: 'Main chi thu nghiem va va cham nho.',
       chapterOutlineEvents: ['gap doi thu nho', 'thay quy tac tong mon'],
       storyProgressBudget: {
@@ -144,6 +177,7 @@ describe('phase10 auto-gen planning upgrade', () => {
     });
 
     expect(messages[1].content).toContain('[STORY PROGRESS BUDGET]');
+    expect(messages[1].content).toContain('Purpose: Cho main hieu mot quy tac nho cua tong mon.');
     expect(messages[1].content).toContain('Pham vi tien do batch nay: 1.2% -> 1.4%');
     expect(messages[1].content).toContain('khong resolve tuyen chinh');
   });

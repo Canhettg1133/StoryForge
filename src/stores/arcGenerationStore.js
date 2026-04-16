@@ -373,7 +373,7 @@ export function validateGeneratedOutline(generatedOutline, {
             chapterIndex: null,
             chapterTitle: '',
             code: 'too-fast',
-            severity: 'error',
+            severity: 'warning',
             message: 'Batch chua co chapter buildup/setup/consequence ro rang.',
         });
     }
@@ -965,6 +965,7 @@ const useArcGenStore = create((set, get) => ({
                     previousSummary: previousGeneratedSummary || ctx.previousSummary,
                     bridgeBuffer: generatedBridgeBuffer || ctx.bridgeBuffer,
                     chapterOutlineTitle: chapter.title,
+                    chapterOutlinePurpose: chapter.purpose || '',
                     chapterOutlineSummary: chapter.summary,
                     chapterOutlineEvents: chapter.key_events || [],
                     startChapterNumber: draftItem.chapterIndex + 1,
@@ -1037,7 +1038,6 @@ const useArcGenStore = create((set, get) => ({
     commitOutlineOnly: async (projectId) => {
         const state = get();
         if (!state.generatedOutline?.chapters?.length) return false;
-        if (state.outlineValidation?.hasBlockingIssues) return false;
 
         const { chapters } = useProjectStore.getState();
         const baseIndex = getNextOrderIndex(chapters);
@@ -1064,7 +1064,7 @@ const useArcGenStore = create((set, get) => ({
                 order_index: baseIndex + i,
                 title: ch.title,
                 summary: ch.summary || '',
-                purpose: JSON.stringify(ch.key_events || []),
+                purpose: ch.purpose || JSON.stringify(ch.key_events || []),
                 status: 'outline',
                 word_count_target: 7000,
                 actual_word_count: 0,
@@ -1136,7 +1136,7 @@ const useArcGenStore = create((set, get) => ({
                 order_index: baseIndex + createdCount,
                 title: draft.title,
                 summary: outlineChapter?.summary || '',
-                purpose: '',
+                purpose: outlineChapter?.purpose || '',
                 status: 'draft',
                 word_count_target: 7000,
                 actual_word_count: draft.wordCount,
@@ -1245,6 +1245,7 @@ const useArcGenStore = create((set, get) => ({
                     previousSummary: previousGeneratedSummary || ctx.previousSummary,
                     bridgeBuffer: previousBridgeBuffer,
                     chapterOutlineTitle: ch.title,
+                    chapterOutlinePurpose: ch.purpose || '',
                     chapterOutlineSummary: ch.summary + (flagNote ? '. GHI CHU SUA DOI: ' + flagNote : ''),
                     chapterOutlineEvents: ch.key_events || [],
                     startChapterNumber: (draftItem.chapterIndex ?? (startingChapterIndex + outlineIndex)) + 1,
