@@ -14,7 +14,7 @@ function normalizeCanonFailure(error) {
     return {
       ok: false,
       kind: 'api_unavailable',
-      message,
+      message: `Phan tich su that chua hoan tat.\nKet qua: loi runtime.\nChi tiet: ${message}`,
       reports: [],
       revisionId: null,
     };
@@ -22,10 +22,38 @@ function normalizeCanonFailure(error) {
   return {
     ok: false,
     kind: 'runtime',
-    message,
+    message: `Phan tich su that chua hoan tat.\nKet qua: loi runtime.\nChi tiet: ${message}`,
     reports: [],
     revisionId: null,
   };
+}
+
+function summarizeCanonReports(reports = []) {
+  const errorCount = reports.filter((report) => report?.severity === 'error').length;
+  const warningCount = reports.filter((report) => report?.severity === 'warning').length;
+  return { errorCount, warningCount };
+}
+
+function buildBlockedCanonMessage(reports = []) {
+  const { errorCount, warningCount } = summarizeCanonReports(reports);
+  const lines = [
+    'Da phan tich su that xong.',
+    'Ket qua: bi chan.',
+    `Phat hien ${errorCount} loi canon${warningCount > 0 ? ` va ${warningCount} canh bao` : ''}.`,
+  ];
+  return lines.join('\n');
+}
+
+function buildSuccessCanonMessage(reports = []) {
+  const { warningCount } = summarizeCanonReports(reports);
+  const lines = [
+    'Da phan tich su that xong.',
+    `Ket qua: ${warningCount > 0 ? 'hop le, co canh bao.' : 'hop le.'}`,
+  ];
+  if (warningCount > 0) {
+    lines.push(`Co ${warningCount} canh bao canon can xem lai.`);
+  }
+  return lines.join('\n');
 }
 
 const useCanonStore = create((set, get) => ({
@@ -68,7 +96,7 @@ const useCanonStore = create((set, get) => ({
         const outcome = {
           ok: false,
           kind: 'blocked',
-          message: 'Phan tich su that phat hien mau thuan can sua truoc khi chot canon.',
+          message: buildBlockedCanonMessage(result.reports || []),
           reports: result.reports || [],
           revisionId: result.revisionId || null,
         };
@@ -78,7 +106,7 @@ const useCanonStore = create((set, get) => ({
       const outcome = {
         ok: true,
         kind: 'success',
-        message: 'Da phan tich su that thanh cong.',
+        message: buildSuccessCanonMessage(result?.reports || []),
         reports: result?.reports || [],
         revisionId: result?.revisionId || null,
       };

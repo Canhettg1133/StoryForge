@@ -192,6 +192,7 @@
   background: var(--color-bg-tertiary);
   font-size: 13px;
   line-height: 1.5;
+  white-space: pre-line;
 }
 
 .su-that-page__feedback--success {

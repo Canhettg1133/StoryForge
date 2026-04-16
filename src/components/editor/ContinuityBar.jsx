@@ -90,10 +90,10 @@ export default function ContinuityBar({ isMobileLayout = false }) {
 
   const canonStatusLabel = useMemo(() => {
     const status = chapterCanon?.status || 'draft';
-    if (status === 'canonical') return 'Chinh thuc';
+    if (status === 'canonical') return 'Da phan tich';
     if (status === 'blocked') return 'Bi chan';
     if (status === 'invalidated') return 'Vo hieu';
-    if (status === 'has_warnings') return 'Co canh bao';
+    if (status === 'has_warnings') return 'Da phan tich';
     return 'Chua phan tich';
   }, [chapterCanon?.status]);
 
