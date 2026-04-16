@@ -131,6 +131,42 @@ function getSafetyThreshold({ nsfwMode, safetyMode }) {
   return null;
 }
 
+function extractProxyResponseText(data, errorContext = {}) {
+  const choice = data?.choices?.[0] || null;
+  const finishReason = String(choice?.finish_reason || '').toLowerCase();
+  if (finishReason === 'content_filter') {
+    throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
+  }
+
+  const text = String(choice?.message?.content || '').trim();
+  if (!text) {
+    throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
+  }
+
+  return text;
+}
+
+function extractGeminiDirectResponseText(data, errorContext = {}) {
+  const candidate = data?.candidates?.[0] || null;
+  const finishReason = String(candidate?.finishReason || '').toUpperCase();
+  const promptBlockReason = String(data?.promptFeedback?.blockReason || '').toUpperCase();
+
+  if (finishReason === 'SAFETY' || promptBlockReason === 'SAFETY') {
+    throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
+  }
+
+  const text = (candidate?.content?.parts || [])
+    .map((part) => String(part?.text || ''))
+    .join('')
+    .trim();
+
+  if (!text) {
+    throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
+  }
+
+  return text;
+}
+
 // ================================
 // Gemini Proxy (OpenAI-compatible)
 // ================================
@@ -192,7 +228,7 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
 
     if (!stream) {
       const data = await response.json();
-      const text = data.choices?.[0]?.message?.content || '';
+      const text = extractProxyResponseText(data, { provider: PROVIDERS.GEMINI_PROXY, model });
       onComplete?.(text);
       return text;
     }
@@ -279,7 +315,7 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
 
     if (!stream) {
       const data = await response.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const text = extractGeminiDirectResponseText(data, { provider: PROVIDERS.GEMINI_DIRECT, model });
       onComplete?.(text);
       return text;
     }

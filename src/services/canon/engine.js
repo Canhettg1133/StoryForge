@@ -621,6 +621,15 @@ function sendAiTask(taskType, messages, options = {}) {
   });
 }
 
+function buildCanonExtractError(error, rawText = '') {
+  const baseMessage = cleanText(error?.message || 'Canon extract failed');
+  const rawSnippet = cleanText(rawText).slice(0, 240);
+  if (rawSnippet) {
+    return new Error(`${baseMessage} | Raw: ${rawSnippet}`);
+  }
+  return new Error(baseMessage);
+}
+
 async function getChapterScenes(chapterId) {
   return db.scenes.where('chapter_id').equals(chapterId).sortBy('order_index');
 }
@@ -1372,7 +1381,17 @@ export async function extractCandidateOps({
     nsfwMode: !!project?.nsfw_mode,
     superNsfwMode: !!project?.super_nsfw_mode,
   });
-  const parsed = parseAIJsonValue(rawText);
+  if (!cleanText(rawText)) {
+    throw buildCanonExtractError(new Error('AI canon extract returned empty response'), rawText);
+  }
+
+  let parsed;
+  try {
+    parsed = parseAIJsonValue(rawText);
+  } catch (error) {
+    throw buildCanonExtractError(error, rawText);
+  }
+
   const candidateOps = mapAiOpsToCandidateOps(normalizeAiOpsResponse(parsed), {
     chapterId,
     scenes,

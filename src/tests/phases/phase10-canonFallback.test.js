@@ -133,10 +133,12 @@ function createMockDb(seed = {}) {
   return db;
 }
 
-async function loadCanonEngine(seed) {
+async function loadCanonEngine(seed, sendImpl = null) {
   vi.resetModules();
   const db = createMockDb(seed);
-  const sendMock = vi.fn(({ onError }) => onError(new Error('model offline')));
+  const sendMock = sendImpl
+    ? vi.fn(sendImpl)
+    : vi.fn(({ onError }) => onError(new Error('model offline')));
   vi.doMock('../../services/db/database', () => ({ default: db }));
   vi.doMock('../../services/ai/client', () => ({
     default: { send: sendMock },
@@ -192,6 +194,44 @@ describe('phase10 canon extraction fallback', () => {
 
     const persistedReports = await db.validator_reports.toArray();
     expect(persistedReports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK')).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it('records clearer evidence when AI returns empty canon extract response', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { engine } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Canon fallback', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', draft_text: 'Lan buoc vao thanh.' }],
+      chapter_revisions: [{
+        id: 31,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'draft',
+        chapter_text: 'Lan buoc vao thanh.',
+        candidate_ops: '[]',
+        created_at: 1,
+        updated_at: 1,
+      }],
+      characters: [],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+    }, ({ onComplete }) => onComplete(''));
+
+    const validation = await engine.validateRevision(31, 'canonicalize');
+    const fallbackReport = validation.reports.find((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK');
+
+    expect(fallbackReport).toBeTruthy();
+    expect(fallbackReport.evidence).toContain('AI canon extract returned empty response');
     warnSpy.mockRestore();
   });
 });
