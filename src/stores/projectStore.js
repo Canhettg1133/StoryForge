@@ -156,7 +156,7 @@ function buildInitialPromptTemplates(genreKey, existingTemplates) {
 
 const CHAPTER_COMPLETION_ROUTE_OPTIONS = {
   providerOverride: PROVIDERS.GEMINI_PROXY,
-  qualityOverride: QUALITY_MODES.FAST,
+  qualityOverride: QUALITY_MODES.BALANCED,
 };
 
 function sanitizeChapterText(scenes = []) {
