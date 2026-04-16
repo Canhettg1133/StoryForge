@@ -106,6 +106,42 @@ describe('phase10 canon engine', () => {
     expect(reports.some((report) => report.rule_code === 'THREAD_ALREADY_ACTIVE')).toBe(true);
   });
 
+  it('maps extracted thread ops by id and drops ungrounded AI thread ops', () => {
+    const refs = {
+      chapterId: 2,
+      scenes: [{ id: 11, title: 'Canh 1' }],
+      characters: [],
+      locations: [],
+      plotThreads: [{ id: 9, title: 'Bi mat hoang toc', state: 'active' }],
+      canonFacts: [],
+      objects: [],
+    };
+
+    const ops = engine.mapAiOpsToCandidateOps([
+      {
+        op_type: CANON_OP_TYPES.THREAD_PROGRESS,
+        scene_index: 1,
+        thread_id: 9,
+        thread_title: 'mot cach dien dat khac',
+        summary: 'Thread co tien trien moi.',
+        evidence: 'Bang chung trong van ban.',
+        confidence: 0.8,
+      },
+      {
+        op_type: CANON_OP_TYPES.THREAD_OPENED,
+        scene_index: 1,
+        thread_title: 'Tuyen truyen tu che cua model',
+        summary: 'Mo mot thread moi khong co trong database.',
+        evidence: 'Bang chung mo ho.',
+        confidence: 0.8,
+      },
+    ], refs);
+
+    expect(ops).toHaveLength(1);
+    expect(ops[0].thread_id).toBe(9);
+    expect(ops[0].thread_title).toBe('Bi mat hoang toc');
+  });
+
   it('marks secret reveal on an already revealed fact as contradiction', () => {
     const reports = engine.validateCandidateOps({
       projectId: 1,

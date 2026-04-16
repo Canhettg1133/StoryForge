@@ -319,6 +319,17 @@ function findThreadByTitle(threads, title) {
   }) || null;
 }
 
+function findThreadById(threads, id) {
+  const target = Number(id);
+  if (!Number.isFinite(target)) return null;
+  return threads.find((thread) => Number(thread.id) === target) || null;
+}
+
+function findThreadByReference(threads, rawOp = {}) {
+  return findThreadById(threads, rawOp.thread_id)
+    || findThreadByTitle(threads, rawOp.thread_title);
+}
+
 function findFactByDescription(facts, description) {
   const target = normalizeKey(description);
   if (!target) return null;
@@ -350,7 +361,68 @@ function buildOpFingerprint(op) {
   ].join('|');
 }
 
-function mapAiOpsToCandidateOps(rawOps, refs) {
+function hasRequiredAiOpReferences(op) {
+  if (
+    [
+      CANON_OP_TYPES.CHARACTER_STATUS_CHANGED,
+      CANON_OP_TYPES.CHARACTER_RESCUED,
+      CANON_OP_TYPES.CHARACTER_DIED,
+      CANON_OP_TYPES.GOAL_CHANGED,
+      CANON_OP_TYPES.ALLEGIANCE_CHANGED,
+    ].includes(op.op_type)
+    && !op.subject_id
+  ) {
+    return false;
+  }
+
+  if (
+    op.op_type === CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED
+    && (!op.subject_id || !op.location_id)
+  ) {
+    return false;
+  }
+
+  if (
+    [
+      CANON_OP_TYPES.THREAD_OPENED,
+      CANON_OP_TYPES.THREAD_PROGRESS,
+      CANON_OP_TYPES.THREAD_RESOLVED,
+    ].includes(op.op_type)
+    && !op.thread_id
+  ) {
+    return false;
+  }
+
+  if (op.op_type === CANON_OP_TYPES.SECRET_REVEALED && !op.fact_id) {
+    return false;
+  }
+
+  if (
+    [
+      CANON_OP_TYPES.OBJECT_STATUS_CHANGED,
+      CANON_OP_TYPES.OBJECT_TRANSFERRED,
+      CANON_OP_TYPES.OBJECT_CONSUMED,
+    ].includes(op.op_type)
+    && !op.object_id
+  ) {
+    return false;
+  }
+
+  if (
+    [
+      CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED,
+      CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED,
+      CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED,
+    ].includes(op.op_type)
+    && (!op.subject_id || !op.target_id)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export function mapAiOpsToCandidateOps(rawOps, refs) {
   const sceneMap = new Map(refs.scenes.map((scene, index) => [index + 1, scene]));
   const seen = new Set();
   return rawOps
@@ -362,7 +434,7 @@ function mapAiOpsToCandidateOps(rawOps, refs) {
       const subject = findCharacterByName(refs.characters, rawOp.subject_name);
       const target = findCharacterByName(refs.characters, rawOp.target_name);
       const location = findLocationByName(refs.locations, rawOp.location_name);
-      const thread = findThreadByTitle(refs.plotThreads, rawOp.thread_title);
+      const thread = findThreadByReference(refs.plotThreads, rawOp);
       const fact = findFactByDescription(refs.canonFacts, rawOp.fact_description);
       const object = findObjectByName(refs.objects || [], rawOp.object_name);
 
@@ -378,7 +450,7 @@ function mapAiOpsToCandidateOps(rawOps, refs) {
         location_id: location?.id || null,
         location_name: cleanText(rawOp.location_name || location?.name || ''),
         thread_id: thread?.id || null,
-        thread_title: cleanText(rawOp.thread_title || thread?.title || ''),
+        thread_title: cleanText(thread?.title || rawOp.thread_title || ''),
         fact_id: fact?.id || null,
         fact_description: cleanText(rawOp.fact_description || fact?.description || ''),
         object_id: object?.id || null,
@@ -390,6 +462,7 @@ function mapAiOpsToCandidateOps(rawOps, refs) {
       };
     })
     .filter(Boolean)
+    .filter(hasRequiredAiOpReferences)
     .filter((op) => {
       const fingerprint = buildOpFingerprint(op);
       if (seen.has(fingerprint)) return false;

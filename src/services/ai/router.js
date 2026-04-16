@@ -159,9 +159,9 @@ const PROXY_TASK_MAP = {
     best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
   },
   canon_extract_ops: {
-    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
-    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
-    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
   },
   canon_repair: {
     fast: 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',

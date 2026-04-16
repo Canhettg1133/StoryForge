@@ -491,6 +491,7 @@ export const TASK_INSTRUCTIONS = {
     '      "subject_name": "Ten nhan vat",',
     '      "target_name": "",',
     '      "location_name": "",',
+    '      "thread_id": null,',
     '      "thread_title": "",',
     '      "fact_description": "",',
     '      "object_name": "",',
@@ -506,7 +507,8 @@ export const TASK_INSTRUCTIONS = {
     '- scene_index la so thu tu canh trong danh sach canh duoc cung cap.',
     '- confidence trong khoang 0 den 1.',
     '- Op doi vi tri phai co location_name ro rang.',
-    '- Op thread phai dung dung thread_title da co san.',
+    '- Op thread phai dung thread_id va thread_title trong [THREAD DA BIET]. Khong duoc tu tao thread moi.',
+    '- Neu su kien co ve mo ra tuyen moi nhung khong nam trong [THREAD DA BIET], BO QUA op thread do.',
     '- Op SECRET_REVEALED phai chi vao mot secret da co trong canonFacts.',
     '- Op FACT_REGISTERED chi dung cho su that/quy tac/bi mat MOI, mo ta ngan gon, cu the.',
     '- Op vat pham phai co object_name ro rang.',
@@ -2053,7 +2055,7 @@ export function buildPrompt(taskType, context = {}) {
         return '- ' + c.name + (c.current_status ? ': ' + c.current_status : '');
       }).join('\n');
       const knownThreads = plotThreads.map(function (pt) {
-        return '- ' + pt.title + ' [' + (pt.state || 'active') + ']';
+        return '- #' + pt.id + ' | ' + pt.title + ' [' + (pt.state || 'active') + ']';
       }).join('\n');
       const knownFacts = canonFacts
         .filter(function (f) { return f.status === 'active'; })
