@@ -188,13 +188,22 @@ function toggleHistoryPanel(forceOpen) {
 }
 
 function saveSettings() {
+    const promptInput = document.getElementById('customPrompt');
+    const normalizedPrompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
+        ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '')
+        : (promptInput?.value || '');
+
+    if (promptInput && promptInput.value !== normalizedPrompt) {
+        promptInput.value = normalizedPrompt;
+    }
+
     const settings = {
         apiKeys: apiKeys,
         sourceLang: document.getElementById('sourceLang').value,
         parallelCount: document.getElementById('parallelCount').value,
         chunkSize: document.getElementById('chunkSize').value,
         delayMs: document.getElementById('delayMs').value,
-        customPrompt: document.getElementById('customPrompt').value,
+        customPrompt: normalizedPrompt,
         useProxy: useProxy,
         proxyBaseUrl: proxyBaseUrl,
         proxyApiKey: proxyApiKey,
@@ -243,6 +252,8 @@ function loadSettings() {
             console.error('Error loading settings:', e);
         }
     }
+
+    saveSettings();
 
     updateWorkspaceToolbar();
 }

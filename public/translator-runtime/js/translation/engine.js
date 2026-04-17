@@ -45,7 +45,13 @@ async function startTranslation() {
     const chunkSize = parseInt(document.getElementById('chunkSize').value) || 4500;
     let parallelCount = parseInt(document.getElementById('parallelCount').value) || 5;
     let delayMs = parseInt(document.getElementById('delayMs').value) || 100;
-    const customPrompt = document.getElementById('customPrompt').value;
+    const promptInput = document.getElementById('customPrompt');
+    const customPrompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
+        ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '')
+        : (promptInput?.value || '');
+    if (promptInput && promptInput.value !== customPrompt) {
+        promptInput.value = customPrompt;
+    }
 
     // ========== OLLAMA MODE ==========
     if (useOllama) {

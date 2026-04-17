@@ -33,15 +33,89 @@ let keyHealthMap = {};
 
 // Active network requests for instant cancel (Gemini/Proxy/Ollama)
 const activeRequestControllers = new Set();
-const CHARACTER_NAME_CONSISTENCY_RULE = '\n\n[YEU CAU BAT BUOC VE TEN NHAN VAT]\n- KHONG duoc tu y doi ten nhan vat.\n- Phai giu cach goi, phien am, va xung ho cua ten nhan vat nhat quan trong toan bo ban dich.\n';
+const TRANSLATOR_PROMPT_SUPPLEMENTS = [
+    {
+        key: 'editing-boundary',
+        pattern: /uu tien trung thanh truoc|khong tu them y nghia|chi lam muot o muc cau chu/i,
+        block: '\n\n[YEU CAU BAT BUOC VE MUC DO BIEN TAP]\n- Chi lam muot o muc cau chu, ngu phap, va do tu nhien cua tieng Viet.\n- KHONG tu them y nghia moi, cam xuc ngam, subtext, hoac sac thai ma ban convert khong co ro rang.\n- KHONG tu y nang giong van len qua hoa my neu doan goc dang ngan, lanh, truc tiep, hoac thien ve thong tin.\n- Uu tien trung thanh truoc, muot sau.\n',
+    },
+    {
+        key: 'character-name-consistency',
+        pattern: /khong tu y doi ten nhan vat|giu xuyen suot cach goi|ten nhan vat va xung ho/i,
+        block: '\n\n[YEU CAU BAT BUOC VE TEN NHAN VAT VA XUNG HO]\n- Neu da chon mot cach goi, phien am, ten rieng, hoac xung ho cho nhan vat thi phai giu xuyen suot.\n- KHONG tu y doi ten kieu Lam Phong -> Lin Feng, han -> cau -> y chi de cau van nghe muot hon.\n- Chi duoc doi xung ho khi van canh that su thay doi vai ve, quan he, hoac diem nhin.\n- Neu ten hoac cach goi con mo ho, uu tien giu theo lan xuat hien dau tien trong doan/chapter hien tai.\n',
+    },
+    {
+        key: 'han-viet-consistency',
+        pattern: /han-viet|pinyin|viet hoa nua mua|mon phai, cong phap, canh gioi/i,
+        block: '\n\n[YEU CAU BAT BUOC VE HAN-VIET VA THUAT NGU]\n- KHONG tron Han-Viet va pinyin trong cung mot truyen/doan neu prompt hien tai khong chu dong yeu cau nhu vay.\n- Ten nguoi, dia danh, mon phai, cong phap, canh gioi, phap bao phai duoc giu nhat quan.\n- Neu khong chac cach dich nao tot hon, hay giu cach goi dang dung thay vi tu y doi sang kieu khac.\n- KHONG Viet hoa nua mua va khong doi he quy chieu ten rieng giua cac doan.\n',
+    },
+    {
+        key: 'structure-preservation',
+        pattern: /giu nhip hoi thoai|giu thu tu y|khong tu y gop\/tach/i,
+        block: '\n\n[YEU CAU BAT BUOC VE CAU TRUC VA NHIP VAN]\n- Giu thu tu y, thu tu doan, va cau truc hoi thoai neu ban goc khong bi loi ro rang.\n- KHONG tu y gop nhieu cau thoai thanh mot doan dai, khong bien cau ngan gat thanh cau dai mem.\n- Giu nhip nhanh/cham phu hop voi canh danh nhau, doi thoai, noi tam, va giai thich thong tin.\n- KHONG tu y gop/tach canh, gop/tach hoi thoai, hoac dao vi tri thong tin quan trong.\n',
+    },
+    {
+        key: 'negative-rules',
+        pattern: /lap cum tu may dich|khong dich sat chu kieu han van|khong lam van ai/i,
+        block: '\n\n[LOI CAN TRANH KHI LAM MUOT CONVERT]\n- Tranh lap lai mot cum tu dep qua nhieu lan neu ban goc khong lap nhu vay.\n- KHONG dich sat chu kieu Han van neu cach viet do khien cau tieng Viet bi cung, kho doc, hoac sai nhip.\n- Han che lam dung cac tu dem nhu: lap tuc, bong, khong khoi, trong long, sac mat thay doi... khi khong that su can.\n- Khong de cau nao cung mot nhip van, mot khuon cau, hoac mot kieu nhan nhe giong van AI.\n- Tranh dung qua nhieu tu Han-Viet nang neu co cach dien dat tieng Viet tu nhien hon, nhung cung khong Viet hoa mem qua muc lam mat chat the loai.\n',
+    },
+];
+
+const PROMPT_SUPPLEMENT_SECTION_HEADERS = [
+    'YEU CAU BAT BUOC VE MUC DO BIEN TAP',
+    'YEU CAU BAT BUOC VE TEN NHAN VAT',
+    'YEU CAU BAT BUOC VE TEN NHAN VAT VA XUNG HO',
+    'YEU CAU BAT BUOC VE THUAT NGU',
+    'YEU CAU BAT BUOC VE HAN-VIET VA THUAT NGU',
+    'YEU CAU BAT BUOC VE CAU TRUC',
+    'YEU CAU BAT BUOC VE CAU TRUC VA NHIP VAN',
+    'LOI CAN TRANH KHI LAM MUOT CONVERT',
+];
+
+function stripExistingPromptSupplements(promptText) {
+    let text = String(promptText || '');
+
+    PROMPT_SUPPLEMENT_SECTION_HEADERS.forEach((header) => {
+        const escapedHeader = header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const blockRegex = new RegExp(
+            `\\n*\\[${escapedHeader}\\]\\n(?:- .*\\n?)+`,
+            'gi'
+        );
+        text = text.replace(blockRegex, '\n');
+    });
+
+    return text.replace(/\n{3,}/g, '\n\n').trimEnd();
+}
 
 function ensureCharacterNameConsistencyPrompt(promptText) {
-    const text = String(promptText || '').trimEnd();
-    if (!text) return CHARACTER_NAME_CONSISTENCY_RULE.trim();
-    if (/KHONG duoc tu y doi ten nhan vat/i.test(text) || /ten nhan vat nhat quan/i.test(text)) {
-        return text;
+    const originalText = String(promptText || '');
+    let text = stripExistingPromptSupplements(originalText);
+    const supplementBlock = TRANSLATOR_PROMPT_SUPPLEMENTS
+        .map((supplement) => supplement.block.trim())
+        .join('\n');
+
+    if (!text) {
+        return `${supplementBlock}\n`;
     }
-    return `${text}${CHARACTER_NAME_CONSISTENCY_RULE}`;
+
+    const trailingLineMatch = text.match(/([^\n]+)\s*$/);
+    const trailingLine = trailingLineMatch ? trailingLineMatch[1].trim() : '';
+    const isContentMarker = trailingLine.startsWith('[BEGIN ') || trailingLine.endsWith(':');
+
+    if (isContentMarker && trailingLineMatch) {
+        const insertionIndex = trailingLineMatch.index;
+        const prefix = text.slice(0, insertionIndex).replace(/\s*$/, '');
+        const suffix = text.slice(insertionIndex).replace(/^\s*/, '');
+        return `${prefix}\n${supplementBlock}\n\n${suffix}\n`;
+    }
+
+    return text ? `${text}\n${supplementBlock}\n` : `${supplementBlock}\n`;
+}
+
+function applyPromptSupplements(promptMap) {
+    Object.keys(promptMap || {}).forEach((key) => {
+        promptMap[key] = ensureCharacterNameConsistencyPrompt(promptMap[key]);
+    });
 }
 
 function registerActiveRequestController(controller) {
@@ -314,6 +388,9 @@ BINDING CONTRACT (violation = immediate termination):
 [BEGIN MANUSCRIPT]
 `
 };
+
+applyPromptSupplements(PROMPT_TEMPLATES);
+applyPromptSupplements(PROMPT_ENHANCERS);
 
 
 
