@@ -12,6 +12,10 @@
   position: relative;
 }
 
+.app-main--translator-active {
+  overflow: hidden;
+}
+
 .app-layout--mobile {
   display: block;
   height: 100svh;

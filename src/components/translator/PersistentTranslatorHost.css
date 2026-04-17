@@ -1,0 +1,38 @@
+.persistent-translator-host {
+  position: relative;
+}
+
+.persistent-translator-host.is-active {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: var(--bg-primary, #050912);
+}
+
+.persistent-translator-host.is-background {
+  position: fixed;
+  top: -10000px;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.persistent-translator-host__frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #050912;
+}
+
+.persistent-translator-host.is-active .persistent-translator-host__frame {
+  min-height: 100%;
+}
+
+.persistent-translator-host.is-background .persistent-translator-host__frame {
+  width: 1px;
+  height: 1px;
+}
