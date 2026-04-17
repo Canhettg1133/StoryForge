@@ -733,9 +733,21 @@
   .project-mobile-shell .corpus-lab-page {
     display: flex;
     flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     min-height: 100%;
     padding: 12px;
     gap: 12px;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .project-mobile-shell .corpus-lab-page *,
+  .project-mobile-shell .corpus-lab-page *::before,
+  .project-mobile-shell .corpus-lab-page *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .project-mobile-shell .corpus-lab-left,

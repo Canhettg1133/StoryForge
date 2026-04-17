@@ -722,8 +722,19 @@
 
 @media (max-width: 900px) {
   .story-bible {
+    width: 100%;
     max-width: none;
+    min-width: 0;
     padding: 16px;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .project-mobile-shell .story-bible *,
+  .project-mobile-shell .story-bible *::before,
+  .project-mobile-shell .story-bible *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .bible-header {
@@ -771,5 +782,21 @@
 
   .bible-inline-actions {
     flex-wrap: wrap;
+  }
+
+  .strictness-options,
+  .prompt-default-preview__header {
+    flex-wrap: wrap;
+  }
+
+  .strictness-btn {
+    flex: 1 1 calc(50% - 4px);
+    white-space: normal;
+  }
+
+  .prompt-default-preview__header code {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }

@@ -282,10 +282,21 @@
 
 @media (max-width: 900px) {
   .project-mobile-shell .narrative-lab {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  .project-mobile-shell .narrative-lab *,
+  .project-mobile-shell .narrative-lab *::before,
+  .project-mobile-shell .narrative-lab *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .project-mobile-shell .lab-sidebar {
@@ -327,6 +338,7 @@
   .project-mobile-shell .message-bubble {
     border-radius: 8px;
     padding: 12px 14px;
+    overflow-wrap: anywhere;
   }
 
   .project-mobile-shell .chat-input-bar {

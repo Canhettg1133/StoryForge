@@ -82,9 +82,18 @@
 .project-mobile-content {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  width: 100%;
+  max-width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+}
+
+.project-mobile-content > * {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .project-mobile-content .scene-editor-layout--mobile {

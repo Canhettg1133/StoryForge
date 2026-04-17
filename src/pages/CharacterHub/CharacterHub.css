@@ -419,8 +419,19 @@
 
 @media (max-width: 900px) {
   .project-mobile-shell .character-hub {
+    width: 100%;
     max-width: none;
+    min-width: 0;
     padding: 14px;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .project-mobile-shell .character-hub *,
+  .project-mobile-shell .character-hub *::before,
+  .project-mobile-shell .character-hub *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .project-mobile-shell .character-hub .codex-header {
@@ -437,13 +448,15 @@
 
   .project-mobile-shell .character-hub .codex-tabs {
     width: 100%;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    overflow-x: visible;
     border-radius: 8px;
   }
 
   .project-mobile-shell .character-hub .codex-tab {
-    flex: 0 0 auto;
+    flex: 1 1 calc(50% - 4px);
     border-radius: 8px;
+    white-space: normal;
   }
 
   .project-mobile-shell .character-grid {
@@ -480,6 +493,12 @@
   .project-mobile-shell .character-delete-confirm {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  .project-mobile-shell .character-snippet,
+  .project-mobile-shell .character-name,
+  .project-mobile-shell .character-pronoun {
+    overflow-wrap: anywhere;
   }
 
   .project-mobile-shell .character-hub .codex-modal {

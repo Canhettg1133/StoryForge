@@ -272,8 +272,19 @@
 
 @media (max-width: 900px) {
   .settings-page {
+    width: 100%;
     max-width: none;
+    min-width: 0;
     padding: 16px;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .settings-page *,
+  .settings-page *::before,
+  .settings-page *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .settings-header {
@@ -295,9 +306,30 @@
 
   .settings-section-header,
   .settings-input-row,
-  .settings-radio-group.horizontal {
+  .settings-radio-group.horizontal,
+  .key-single-input,
+  .key-toolbar,
+  .bulk-import-footer,
+  .cloud-sync-panel__header,
+  .cloud-sync-item__actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .key-toolbar .btn,
+  .bulk-import-footer .btn,
+  .cloud-sync-item__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .key-value,
+  .model-name,
+  .model-meta,
+  .cloud-sync-item__body strong,
+  .cloud-sync-item__body small {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .settings-radio-card {

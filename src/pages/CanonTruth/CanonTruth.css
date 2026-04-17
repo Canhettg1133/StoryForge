@@ -289,7 +289,19 @@
 
 @media (max-width: 900px) {
   .project-mobile-shell .story-bible.su-that-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     padding: 14px;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .project-mobile-shell .story-bible.su-that-page *,
+  .project-mobile-shell .story-bible.su-that-page *::before,
+  .project-mobile-shell .story-bible.su-that-page *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .project-mobile-shell .su-that-page {
@@ -316,14 +328,14 @@
   }
 
   .project-mobile-shell .su-that-page__summary {
-    display: flex;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-x: visible;
     gap: 8px;
     padding-bottom: 2px;
   }
 
   .project-mobile-shell .su-that-page__summary .bible-canon-stat {
-    flex: 0 0 132px;
     border-radius: 8px;
   }
 
@@ -375,8 +387,8 @@
 
   .project-mobile-shell .bible-canon-detail-meta,
   .project-mobile-shell .bible-canon-snapshot-stats {
-    overflow-x: auto;
-    flex-wrap: nowrap;
+    overflow-x: visible;
+    flex-wrap: wrap;
     padding-bottom: 2px;
   }
 
@@ -387,5 +399,12 @@
   .project-mobile-shell .su-that-page__revision-text {
     max-height: 52dvh;
     overflow: auto;
+    overflow-wrap: anywhere;
+  }
+
+  .project-mobile-shell .su-that-page__compact-item,
+  .project-mobile-shell .bible-canon-list-item,
+  .project-mobile-shell .su-that-page__feedback {
+    overflow-wrap: anywhere;
   }
 }

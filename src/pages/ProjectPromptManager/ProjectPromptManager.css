@@ -354,8 +354,49 @@
 }
 
 @media (max-width: 900px) {
+  .project-mobile-shell .prompt-manager-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 12px;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .project-mobile-shell .prompt-manager-page *,
+  .project-mobile-shell .prompt-manager-page *::before,
+  .project-mobile-shell .prompt-manager-page *::after {
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
   .prompt-manager-page {
     padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .project-mobile-shell .prompt-manager-page .settings-header,
+  .project-mobile-shell .prompt-manager-page__heading,
+  .project-mobile-shell .prompt-manager-intro,
+  .project-mobile-shell .prompt-manager-toolbar-card,
+  .project-mobile-shell .prompt-group-list,
+  .project-mobile-shell .prompt-card,
+  .project-mobile-shell .prompt-editor-block {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .project-mobile-shell .prompt-manager-page__heading {
+    gap: 12px;
+  }
+
+  .project-mobile-shell .prompt-manager-page__toolbar {
+    flex-wrap: wrap;
+    align-items: stretch;
+  }
+
+  .project-mobile-shell .prompt-manager-page__toolbar .btn {
+    flex: 1 1 100%;
+    justify-content: center;
   }
 
   .prompt-manager-toolbar-card,
@@ -366,22 +407,77 @@
   }
 
   .prompt-toolbar__chips {
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    overflow-x: visible;
     padding-bottom: 4px;
   }
 
   .prompt-toolbar__chip {
-    flex: 0 0 auto;
+    flex: 1 1 calc(50% - 5px);
+    min-height: 38px;
     border-radius: 8px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .project-mobile-shell .prompt-card {
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .project-mobile-shell .prompt-card__header,
+  .project-mobile-shell .prompt-editor-block__header {
+    gap: 10px;
+  }
+
+  .project-mobile-shell .prompt-editor-block {
+    padding: 12px;
+  }
+
+  .project-mobile-shell .prompt-editor-block__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project-mobile-shell .prompt-editor-block__actions .btn {
+    width: 100%;
+    justify-content: center;
+    white-space: normal;
   }
 
   .prompt-editor-block__textarea {
+    width: 100%;
+    max-width: 100%;
     min-height: 52dvh;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .prompt-card__footer {
     flex-direction: column;
     gap: 8px;
+  }
+
+  .project-mobile-shell .prompt-card__footer-item {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .project-mobile-shell .prompt-card__footer-item code {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .project-mobile-shell .prompt-manager-status,
+  .project-mobile-shell .prompt-card__header h3,
+  .project-mobile-shell .prompt-card__header p,
+  .project-mobile-shell .prompt-card__info-box p,
+  .project-mobile-shell .prompt-editor-block__header p,
+  .project-mobile-shell .settings-title,
+  .project-mobile-shell .settings-subtitle {
+    overflow-wrap: anywhere;
   }
 }

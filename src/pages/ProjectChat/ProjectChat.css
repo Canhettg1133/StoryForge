@@ -668,10 +668,22 @@
 @media (max-width: 900px) {
   .project-chat-page {
     display: flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     min-height: 100%;
     height: 100%;
     padding: 0;
     gap: 0;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .project-mobile-shell .project-chat-page *,
+  .project-mobile-shell .project-chat-page *::before,
+  .project-mobile-shell .project-chat-page *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .project-chat-page .card,

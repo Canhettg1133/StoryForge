@@ -790,8 +790,20 @@
 
 @media (max-width: 900px) {
   .outline-board--mobile {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     min-height: 100%;
     padding: 14px;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .outline-board--mobile *,
+  .outline-board--mobile *::before,
+  .outline-board--mobile *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .outline-board--mobile .outline-header {
@@ -804,6 +816,11 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
+  }
+
+  .outline-board--mobile .outline-header-actions .btn {
+    justify-content: center;
+    white-space: normal;
   }
 
   .outline-board--mobile .outline-view-toggle {
@@ -908,6 +925,7 @@
     color: var(--color-text-secondary);
     font-size: var(--text-sm);
     line-height: 1.5;
+    overflow-wrap: anywhere;
   }
 
   .outline-board--mobile .codex-modal.codex-modal--lg {

@@ -256,8 +256,19 @@
 
 @media (max-width: 900px) {
   .project-mobile-shell .world-lore {
+    width: 100%;
     max-width: none;
+    min-width: 0;
     padding: 14px;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .project-mobile-shell .world-lore *,
+  .project-mobile-shell .world-lore *::before,
+  .project-mobile-shell .world-lore *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .project-mobile-shell .world-lore .codex-header {
@@ -274,13 +285,15 @@
 
   .project-mobile-shell .world-lore .codex-tabs {
     width: 100%;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    overflow-x: visible;
     border-radius: 8px;
   }
 
   .project-mobile-shell .world-lore .codex-tab {
-    flex: 0 0 auto;
+    flex: 1 1 calc(50% - 4px);
     border-radius: 8px;
+    white-space: normal;
   }
 
   .project-mobile-shell .world-search,
@@ -315,6 +328,13 @@
 
   .project-mobile-shell .world-profile-grid {
     grid-template-columns: 1fr;
+  }
+
+  .project-mobile-shell .world-card,
+  .project-mobile-shell .world-profile-info,
+  .project-mobile-shell .world-desc,
+  .project-mobile-shell .world-rules-list {
+    overflow-wrap: anywhere;
   }
 
   .project-mobile-shell .world-lore .codex-modal {

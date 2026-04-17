@@ -215,9 +215,20 @@
 
 @media (max-width: 900px) {
   .dashboard {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     min-height: 100dvh;
     padding: calc(18px + env(safe-area-inset-top, 0px)) 16px calc(84px + env(safe-area-inset-bottom, 0px));
-    max-width: none;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .dashboard *,
+  .dashboard *::before,
+  .dashboard *::after {
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .dashboard-header {
@@ -268,6 +279,13 @@
 
   .project-card-desc {
     -webkit-line-clamp: 3;
+    overflow-wrap: anywhere;
+  }
+
+  .project-card-title,
+  .project-card-date,
+  .wizard-choice-text {
+    overflow-wrap: anywhere;
   }
 
   .dashboard-mobile-cta {
