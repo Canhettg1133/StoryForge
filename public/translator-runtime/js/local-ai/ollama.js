@@ -406,6 +406,36 @@ function loadOllamaSettings() {
         } catch (e) {
             console.error('[Ollama] Error loading settings:', e);
         }
+    } else {
+        try {
+            const appSettings = JSON.parse(localStorage.getItem('sf-ai-settings') || '{}');
+            const preferredProvider = String(localStorage.getItem('sf-preferred-provider') || '').trim();
+            const appModel = String(localStorage.getItem('sf-ollama-model') || '').trim();
+
+            useOllama = preferredProvider === 'ollama';
+            ollamaUrl = String(appSettings.ollamaUrl || ollamaUrl).trim() || ollamaUrl;
+            ollamaModel = appModel || ollamaModel;
+
+            const toggle = document.getElementById('useOllamaToggle');
+            const settingsDiv = document.getElementById('ollamaSettings');
+            const badge = document.getElementById('ollamaStatus');
+            const urlInput = document.getElementById('ollamaUrl');
+            const modelInput = document.getElementById('ollamaModel');
+
+            if (toggle) toggle.checked = useOllama;
+            if (urlInput) urlInput.value = ollamaUrl;
+            if (modelInput) modelInput.value = ollamaModel;
+
+            if (useOllama) {
+                if (settingsDiv) settingsDiv.style.display = 'block';
+                if (badge) {
+                    badge.textContent = 'Báº­t';
+                    badge.classList.add('active');
+                }
+            }
+        } catch (error) {
+            console.warn('[Ollama] Failed to import StoryForge settings:', error);
+        }
     }
 }
 

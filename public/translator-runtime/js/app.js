@@ -426,6 +426,31 @@ const PRESET_GEMINI_MODELS = [
 // Dynamic model list - loaded from localStorage
 let GEMINI_MODELS = [];
 
+function loadStoryForgeDirectModels() {
+    try {
+        const raw = localStorage.getItem('sf-active-direct-models');
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+
+        return parsed
+            .map((entry) => {
+                const name = String(entry?.id || entry?.name || '').trim();
+                const quota = Number(entry?.rpm || entry?.quota || 15);
+                if (!name) return null;
+                return {
+                    name,
+                    quota: Number.isFinite(quota) && quota > 0 ? quota : 15,
+                    enabled: true,
+                };
+            })
+            .filter(Boolean);
+    } catch (error) {
+        console.warn('[Models] Failed to import StoryForge direct models:', error);
+        return [];
+    }
+}
+
 function loadGeminiModels() {
     const saved = localStorage.getItem('novelTranslatorModels');
     if (saved) {
@@ -439,6 +464,13 @@ function loadGeminiModels() {
         } catch (e) {
             console.error('Error loading models:', e);
         }
+    }
+    const imported = loadStoryForgeDirectModels();
+    if (imported.length > 0) {
+        GEMINI_MODELS = imported;
+        saveGeminiModels();
+        console.log(`[Models] Imported ${GEMINI_MODELS.length} models from StoryForge settings`);
+        return;
     }
     // Fallback to defaults
     GEMINI_MODELS = JSON.parse(JSON.stringify(DEFAULT_GEMINI_MODELS));

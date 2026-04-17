@@ -7,6 +7,70 @@
 // SETTINGS MANAGEMENT
 // ============================================
 const SETTINGS_GROUPS = ['gemini', 'proxy', 'ollama', 'general', 'prompt'];
+const STORYFORGE_KEYS_STORAGE = 'sf-api-keys-v2';
+const STORYFORGE_SETTINGS_STORAGE = 'sf-ai-settings';
+const STORYFORGE_PROVIDER_STORAGE = 'sf-preferred-provider';
+
+function readStoryForgeJson(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+        console.warn('[Translator] Failed to read StoryForge storage:', key, error);
+        return null;
+    }
+}
+
+function getStoryForgeKeys(provider) {
+    const pools = readStoryForgeJson(STORYFORGE_KEYS_STORAGE);
+    if (!pools || !Array.isArray(pools[provider])) return [];
+    return pools[provider]
+        .map((entry) => String(entry?.key || '').trim())
+        .filter(Boolean);
+}
+
+function normalizeStoryForgeProxyUrl(rawValue) {
+    const trimmed = String(rawValue || '').trim().replace(/\/+$/g, '');
+    if (!trimmed) return '';
+    if (/\/v1\/chat\/completions$/i.test(trimmed)) return trimmed;
+    if (trimmed === '/api/proxy') return '/api/proxy/v1/chat/completions';
+    if (trimmed === 'https://ag.beijixingxing.com') return 'https://ag.beijixingxing.com/v1/chat/completions';
+    return `${trimmed}/v1/chat/completions`;
+}
+
+function importStoryForgeFallbackSettings() {
+    const appSettings = readStoryForgeJson(STORYFORGE_SETTINGS_STORAGE) || {};
+    const preferredProvider = String(localStorage.getItem(STORYFORGE_PROVIDER_STORAGE) || '').trim();
+    const directKeys = getStoryForgeKeys('gemini_direct');
+    const proxyKeys = getStoryForgeKeys('gemini_proxy');
+    const hasTranslatorAiConfig = apiKeys.length > 0 || proxyApiKeys.length > 0 || Boolean(proxyApiKey);
+    let imported = false;
+
+    if (!apiKeys.length && directKeys.length) {
+        apiKeys = directKeys;
+        imported = true;
+    }
+
+    if (!proxyApiKeys.length && proxyKeys.length) {
+        proxyApiKeys = proxyKeys;
+        proxyApiKey = proxyKeys[0] || '';
+        imported = true;
+    }
+
+    if ((!proxyBaseUrl || proxyBaseUrl === 'https://ag.beijixingxing.com/v1/chat/completions') && appSettings.proxyUrl) {
+        proxyBaseUrl = normalizeStoryForgeProxyUrl(appSettings.proxyUrl);
+        imported = Boolean(proxyBaseUrl) || imported;
+    }
+
+    if (!hasTranslatorAiConfig
+        && (preferredProvider === 'gemini_proxy' || preferredProvider === 'gemini_direct')
+        && proxyKeys.length + directKeys.length > 0) {
+        useProxy = preferredProvider === 'gemini_proxy' && proxyKeys.length > 0;
+        imported = true;
+    }
+
+    return imported;
+}
 
 function getActiveProviderLabel() {
     if (typeof useOllama !== 'undefined' && useOllama) return 'Ollama';
@@ -235,22 +299,24 @@ function loadSettings() {
                 proxyApiKeys = [proxyApiKey];
             }
             if (settings.proxyModel) proxyModel = settings.proxyModel;
-
-            if (document.getElementById('useProxyToggle')) {
-                document.getElementById('useProxyToggle').checked = useProxy;
-                document.getElementById('proxySettings').style.display = useProxy ? 'block' : 'none';
-                document.getElementById('proxyStatus').textContent = useProxy ? 'Bat' : 'Tat';
-                document.getElementById('proxyStatus').style.background = useProxy ? '#10b981' : '';
-            }
-            if (document.getElementById('proxyBaseUrlInput')) {
-                document.getElementById('proxyBaseUrlInput').value = proxyBaseUrl;
-            }
-            if (document.getElementById('proxyModelSelect')) {
-                document.getElementById('proxyModelSelect').value = proxyModel;
-            }
         } catch (e) {
             console.error('Error loading settings:', e);
         }
+    }
+
+    importStoryForgeFallbackSettings();
+
+    if (document.getElementById('useProxyToggle')) {
+        document.getElementById('useProxyToggle').checked = useProxy;
+        document.getElementById('proxySettings').style.display = useProxy ? 'block' : 'none';
+        document.getElementById('proxyStatus').textContent = useProxy ? 'Bat' : 'Tat';
+        document.getElementById('proxyStatus').style.background = useProxy ? '#10b981' : '';
+    }
+    if (document.getElementById('proxyBaseUrlInput')) {
+        document.getElementById('proxyBaseUrlInput').value = proxyBaseUrl;
+    }
+    if (document.getElementById('proxyModelSelect')) {
+        document.getElementById('proxyModelSelect').value = proxyModel;
     }
 
     saveSettings();

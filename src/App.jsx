@@ -22,6 +22,7 @@ import ProjectChat from './pages/ProjectChat/ProjectChat';
 import Translator from './pages/Translator/Translator';
 import GeminiSetupGuide from './pages/Guide/GeminiSetupGuide';
 import GeminiProxyGuide from './pages/Guide/GeminiProxyGuide';
+import TranslatorSetupGuide from './pages/Guide/TranslatorSetupGuide';
 import ProjectLayout from './components/common/ProjectLayout';
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/guide" element={<GeminiSetupGuide />} />
           <Route path="/guide/proxy" element={<GeminiProxyGuide />} />
+          <Route path="/guide/translator" element={<TranslatorSetupGuide />} />
           <Route path="/ai-chat" element={<ProjectChat />} />
           <Route path="/translator" element={<Translator />} />
           <Route path="/prompt-manager" element={<StoryCreationSettings />} />

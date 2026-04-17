@@ -300,6 +300,9 @@ export default function Settings() {
             <button className="btn btn-secondary" onClick={() => navigate('/guide/proxy')}>
               <BookOpen size={14} /> Hướng dẫn Gemini Proxy
             </button>
+            <button className="btn btn-secondary" onClick={() => navigate('/guide/translator')}>
+              <BookOpen size={14} /> Hướng dẫn Dịch truyện
+            </button>
             <button className="btn btn-secondary" onClick={handleOpenAiStudio}>
               <ExternalLink size={14} /> Mở Google AI Studio
             </button>
