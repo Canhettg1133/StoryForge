@@ -169,6 +169,35 @@
   margin-top: var(--space-3);
 }
 
+.story-creation-locked-block {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 30%), var(--color-bg-tertiary);
+}
+
+.story-creation-locked-block__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.story-creation-locked-block__header span {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.story-creation-locked-block p {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-tertiary);
+}
+
 .story-creation-default summary {
   cursor: pointer;
   color: var(--color-text-secondary);

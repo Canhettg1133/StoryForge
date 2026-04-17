@@ -1,11 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
-import { getGenreEmoji, getGenreLabel, formatDate, countWords } from '../../utils/constants';
-import { Plus, BookOpen, Trash2, MoreVertical, Download, Languages } from 'lucide-react';
+import { getGenreEmoji, getGenreLabel, formatDate } from '../../utils/constants';
+import {
+  Plus,
+  BookOpen,
+  Trash2,
+  MoreVertical,
+  Download,
+  Languages,
+  MessageSquare,
+} from 'lucide-react';
 import NewProjectModal from './NewProjectModal';
 import ExportModal from '../../components/common/ExportModal';
 import './Dashboard.css';
+
+const UTILITY_ITEMS = [
+  {
+    id: 'global-chat',
+    title: 'Chat tu do',
+    description: 'Hoi AI, brainstorm, hoac thao tac nhanh ma khong can mo project.',
+    icon: MessageSquare,
+    path: '/ai-chat',
+  },
+  {
+    id: 'translator',
+    title: 'Dich truyen',
+    description: 'Cong cu dich doc lap. Khong tao project moi va khong chen vao danh sach truyen.',
+    icon: Languages,
+    path: '/translator',
+  },
+];
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -17,16 +42,16 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadProjects();
-  }, []);
+  }, [loadProjects]);
 
   const handleOpenProject = async (id) => {
     await loadProject(id);
     navigate(`/project/${id}/editor`);
   };
 
-  const handleDeleteProject = async (id, e) => {
-    e.stopPropagation();
-    if (window.confirm('Bạn chắc chắn muốn xoá dự án này? Tất cả dữ liệu sẽ bị mất.')) {
+  const handleDeleteProject = async (id, event) => {
+    event.stopPropagation();
+    if (window.confirm('Ban chac chan muon xoa du an nay? Tat ca du lieu se bi mat.')) {
       await deleteProject(id);
     }
     setContextMenu(null);
@@ -50,14 +75,15 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
-      {/* Header */}
       <header className="dashboard-header animate-fade-in">
         <div>
           <h1 className="dashboard-title">
-            <span className="dashboard-title-icon">📖</span>
+            <span className="dashboard-title-icon">SF</span>
             StoryForge
           </h1>
-          <p className="dashboard-subtitle">Story OS for Novelists — Chọn dự án hoặc bắt đầu truyện mới</p>
+          <p className="dashboard-subtitle">
+            Story OS for Novelists. Mo project de viet, hoac dung nhanh cac cong cu AI va dich truyen.
+          </p>
         </div>
       </header>
 
@@ -70,83 +96,128 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Content */}
       <div className="dashboard-content">
-        {/* New Project Card */}
-        <div className="project-grid">
-          <button className="new-project-card animate-slide-up" onClick={() => setShowModal(true)}>
-            <div className="new-project-icon">
-              <Plus size={32} />
+        <section className="dashboard-tools card animate-slide-up">
+          <div className="dashboard-tools__header">
+            <div>
+              <h2>Cong cu nhanh</h2>
+              <p>Khong tao project moi. Day la cac tinh nang dung doc lap, rat hop cho mobile.</p>
             </div>
-            <span className="new-project-label">Truyện mới</span>
-          </button>
-
-          <button className="new-project-card new-project-card--utility animate-slide-up" onClick={() => navigate('/translator')}>
-            <div className="new-project-icon">
-              <Languages size={30} />
-            </div>
-            <span className="new-project-label">Dá»‹ch truyá»‡n</span>
-          </button>
-
-          {/* Project Cards */}
-          {filteredProjects.map((project, index) => (
-            <div
-              key={project.id}
-              className="project-card card-glass animate-slide-up"
-              style={{ animationDelay: `${(index + 1) * 60}ms` }}
-              onClick={() => handleOpenProject(project.id)}
-            >
-              <div className="project-card-header">
-                <span className="project-genre-emoji">{getGenreEmoji(project.genre_primary)}</span>
-                <button
-                  className="btn btn-ghost btn-icon btn-sm project-card-menu"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setContextMenu(contextMenu === project.id ? null : project.id);
-                  }}
-                >
-                  <MoreVertical size={14} />
-                </button>
-                {contextMenu === project.id && (
-                  <div className="context-menu project-context-menu">
-                    <button className="context-menu-item" onClick={(e) => { e.stopPropagation(); setContextMenu(null); setExportingProject(project); }}>
-                      <Download size={14} /> Xuất bản truyện
-                    </button>
-                    <button className="context-menu-item danger" onClick={(e) => handleDeleteProject(project.id, e)}>
-                      <Trash2 size={14} /> Xoá dự án
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <h3 className="project-card-title">{project.title}</h3>
-
-              <div className="project-card-meta">
-                <span className="badge badge-accent">{getGenreLabel(project.genre_primary)}</span>
-              </div>
-
-              {project.description && (
-                <p className="project-card-desc">{project.description}</p>
-              )}
-
-              <div className="project-card-footer">
-                <span className="project-card-date">{formatDate(project.updated_at)}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Empty state */}
-        {projects.length === 0 && (
-          <div className="empty-state animate-fade-in">
-            <BookOpen size={48} />
-            <h3>Chưa có dự án nào</h3>
-            <p>Bắt đầu hành trình sáng tác bằng cách tạo truyện mới!</p>
-            <button className="btn btn-primary btn-lg" onClick={() => setShowModal(true)}>
-              <Plus size={18} /> Tạo truyện mới
-            </button>
           </div>
-        )}
+
+          <div className="dashboard-tools__grid">
+            {UTILITY_ITEMS.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="dashboard-tool-card"
+                  onClick={() => navigate(item.path)}
+                >
+                  <div className="dashboard-tool-card__icon">
+                    <Icon size={22} />
+                  </div>
+                  <div className="dashboard-tool-card__content">
+                    <div className="dashboard-tool-card__title-row">
+                      <strong>{item.title}</strong>
+                      <span className="dashboard-tool-card__badge">Tien ich</span>
+                    </div>
+                    <p>{item.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="dashboard-projects">
+          <div className="dashboard-projects__header">
+            <div>
+              <h2>Du an truyen</h2>
+              <p>Tao truyen moi hoac mo truyen dang viet.</p>
+            </div>
+          </div>
+
+          <div className="project-grid">
+            <button className="new-project-card animate-slide-up" onClick={() => setShowModal(true)}>
+              <div className="new-project-icon">
+                <Plus size={32} />
+              </div>
+              <div className="new-project-card__content">
+                <span className="new-project-label">Truyen moi</span>
+                <span className="new-project-hint">Tao mot project moi de viet truyen, outline va quan ly canon.</span>
+              </div>
+            </button>
+
+            {filteredProjects.map((project, index) => (
+              <div
+                key={project.id}
+                className="project-card card-glass animate-slide-up"
+                style={{ animationDelay: `${(index + 1) * 60}ms` }}
+                onClick={() => handleOpenProject(project.id)}
+              >
+                <div className="project-card-header">
+                  <span className="project-genre-emoji">{getGenreEmoji(project.genre_primary)}</span>
+                  <button
+                    className="btn btn-ghost btn-icon btn-sm project-card-menu"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setContextMenu(contextMenu === project.id ? null : project.id);
+                    }}
+                  >
+                    <MoreVertical size={14} />
+                  </button>
+                  {contextMenu === project.id && (
+                    <div className="context-menu project-context-menu">
+                      <button
+                        className="context-menu-item"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setContextMenu(null);
+                          setExportingProject(project);
+                        }}
+                      >
+                        <Download size={14} /> Xuat ban truyen
+                      </button>
+                      <button
+                        className="context-menu-item danger"
+                        onClick={(event) => handleDeleteProject(project.id, event)}
+                      >
+                        <Trash2 size={14} /> Xoa du an
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <h3 className="project-card-title">{project.title}</h3>
+
+                <div className="project-card-meta">
+                  <span className="badge badge-accent">{getGenreLabel(project.genre_primary)}</span>
+                </div>
+
+                {project.description && (
+                  <p className="project-card-desc">{project.description}</p>
+                )}
+
+                <div className="project-card-footer">
+                  <span className="project-card-date">{formatDate(project.updated_at)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {projects.length === 0 && (
+            <div className="empty-state animate-fade-in">
+              <BookOpen size={48} />
+              <h3>Chua co du an nao</h3>
+              <p>Bat dau hanh trinh sang tac bang cach tao truyen moi hoac thu cac cong cu nhanh o tren.</p>
+              <button className="btn btn-primary btn-lg" onClick={() => setShowModal(true)}>
+                <Plus size={18} /> Tao truyen moi
+              </button>
+            </div>
+          )}
+        </section>
       </div>
 
       <button className="dashboard-mobile-cta btn btn-primary" onClick={() => setShowModal(true)}>

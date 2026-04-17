@@ -33,6 +33,7 @@ import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import {
+  composeStoryCreationSystemPrompt,
   getStoryCreationSettings,
   renderStoryCreationTemplate,
 } from '../../services/ai/storyCreationSettings';
@@ -617,7 +618,10 @@ Chỉ trả về JSON, không thêm gì khác.`,
       },
     ];
 
-    messages[0].content = renderStoryCreationTemplate(wizardPrompts.systemPrompt, templateVariables);
+    messages[0].content = renderStoryCreationTemplate(
+      composeStoryCreationSystemPrompt('projectWizard', wizardPrompts.systemPrompt),
+      templateVariables,
+    );
     messages[1].content = renderStoryCreationTemplate(wizardPrompts.userPromptTemplate, templateVariables);
 
     aiService.send({

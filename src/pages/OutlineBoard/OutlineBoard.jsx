@@ -23,6 +23,7 @@ import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import {
+  composeStoryCreationSystemPrompt,
   getStoryCreationSettings,
   renderStoryCreationTemplate,
 } from '../../services/ai/storyCreationSettings';
@@ -184,7 +185,10 @@ export default function OutlineBoard() {
       { role: 'user', content: '' },
     ];
 
-    messages[0].content = renderStoryCreationTemplate(outlinePrompts.systemPrompt, outlineTemplateVariables);
+    messages[0].content = renderStoryCreationTemplate(
+      composeStoryCreationSystemPrompt('outlineGeneration', outlinePrompts.systemPrompt),
+      outlineTemplateVariables,
+    );
     messages[1].content = renderStoryCreationTemplate(outlinePrompts.userPromptTemplate, outlineTemplateVariables);
 
     aiService.send({
@@ -292,7 +296,10 @@ Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
       { role: 'user', content: '' },
     ];
 
-    messages[0].content = renderStoryCreationTemplate(threadPrompts.systemPrompt, threadTemplateVariables);
+    messages[0].content = renderStoryCreationTemplate(
+      composeStoryCreationSystemPrompt('threadSuggestion', threadPrompts.systemPrompt),
+      threadTemplateVariables,
+    );
     messages[1].content = renderStoryCreationTemplate(threadPrompts.userPromptTemplate, threadTemplateVariables);
 
     aiService.send({

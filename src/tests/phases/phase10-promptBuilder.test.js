@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildPrompt, TASK_INSTRUCTIONS } from '../../services/ai/promptBuilder';
+import {
+  buildPrompt,
+  TASK_INSTRUCTIONS,
+  composeTaskInstruction,
+  getTaskInstructionProtection,
+  stripProtectedTaskInstruction,
+} from '../../services/ai/promptBuilder';
 import { TASK_TYPES } from '../../services/ai/router';
 
 describe('phase10 prompt builder coverage', () => {
@@ -56,6 +62,36 @@ describe('phase10 prompt builder coverage', () => {
     expect(auditMessages[1].content).toContain('[CAC CHUONG GAN DAY]');
     expect(auditMessages[1].content).toContain('Arc 2');
     expect(auditMessages[1].content).toContain('Khoi dong dai cuc');
+  });
+
+  it('locks JSON contracts for protected task instructions', () => {
+    const protection = getTaskInstructionProtection(TASK_TYPES.CONTINUITY_CHECK);
+
+    expect(protection).toBeTruthy();
+    expect(protection.lockedPrompt).toContain('"issues"');
+
+    const editable = stripProtectedTaskInstruction(
+      TASK_TYPES.CONTINUITY_CHECK,
+      TASK_INSTRUCTIONS[TASK_TYPES.CONTINUITY_CHECK],
+    );
+    expect(editable).not.toContain('"issues"');
+
+    const recomposed = composeTaskInstruction(TASK_TYPES.CONTINUITY_CHECK, editable);
+    expect(recomposed).toContain('"issues"');
+    expect(recomposed).toContain('Chi tra ve JSON.');
+  });
+
+  it('re-appends locked JSON output blocks even when project overrides omit them', () => {
+    const messages = buildPrompt(TASK_TYPES.SUGGEST_UPDATES, {
+      promptTemplates: {
+        [TASK_TYPES.SUGGEST_UPDATES]: 'Phan tich noi dung chuong that ky. Chi de xuat thay doi khi co bang chung ro rang.',
+      },
+      sceneText: 'Nhan vat A bi thuong nang sau tran chien.',
+    });
+
+    expect(messages[0].content).toContain('[NHIEM VU]');
+    expect(messages[0].content).toContain('"character_updates"');
+    expect(messages[0].content).toContain('"new_canon_facts"');
   });
 
   it('appends intimate nsfw writing guidance without removing existing nsfw rules', () => {

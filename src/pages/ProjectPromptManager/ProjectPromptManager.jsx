@@ -13,7 +13,14 @@ import {
 import '../Settings/Settings.css';
 import './ProjectPromptManager.css';
 import useProjectStore from '../../stores/projectStore';
-import { TASK_INSTRUCTIONS, DEFAULT_NSFW_RULES, DEFAULT_NSFW_INTIMATE_PROMPT } from '../../services/ai/promptBuilder';
+import {
+  TASK_INSTRUCTIONS,
+  DEFAULT_NSFW_RULES,
+  DEFAULT_NSFW_INTIMATE_PROMPT,
+  composeTaskInstruction,
+  getTaskInstructionProtection,
+  stripProtectedTaskInstruction,
+} from '../../services/ai/promptBuilder';
 import { PROJECT_PROMPT_GROUPS } from '../../services/ai/promptManagerMeta';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 
@@ -71,7 +78,7 @@ function buildDefaultValue(item, genreKey) {
     return DEFAULT_NSFW_INTIMATE_PROMPT;
   }
 
-  return TASK_INSTRUCTIONS[item.key] || '';
+  return stripProtectedTaskInstruction(item.key, TASK_INSTRUCTIONS[item.key] || '');
 }
 
 function toCoreEditorValue(item, sourceValue, genreKey) {
@@ -90,7 +97,7 @@ function toOverrideEditorValue(item, sourceValue) {
     return '';
   }
 
-  if (typeof sourceValue === 'string') return sourceValue;
+  if (typeof sourceValue === 'string') return stripProtectedTaskInstruction(item.key, sourceValue);
   return '';
 }
 
@@ -115,7 +122,7 @@ function cleanPromptTemplates(definitions, draft) {
 
       const normalized = String(rawValue || '').trim();
       if (normalized) {
-        cleaned[item.key] = normalized;
+        cleaned[item.key] = stripProtectedTaskInstruction(item.key, normalized);
       }
     });
   });
@@ -154,6 +161,7 @@ function PromptEditorCard({
   onClearOverride,
   onToggleCoreEditable,
 }) {
+  const protection = getTaskInstructionProtection(item.key);
   const hasOverride = item.type === 'list'
     ? parseListText(overrideDraft).length > 0
     : String(overrideDraft || '').trim().length > 0;
@@ -225,6 +233,17 @@ function PromptEditorCard({
             onChange={(event) => onCoreChange(item, event.target.value)}
             readOnly={!coreEditable}
           />
+
+          {protection && (
+            <div className="prompt-editor-block__locked">
+              <div className="prompt-editor-block__locked-header">
+                <strong>{protection.label}</strong>
+                <span>Read-only</span>
+              </div>
+              <p>{protection.description}</p>
+              <pre className="prompt-editor-block__locked-body">{protection.lockedPrompt}</pre>
+            </div>
+          )}
         </section>
 
         <section className="prompt-editor-block">
@@ -252,6 +271,15 @@ function PromptEditorCard({
             onChange={(event) => onOverrideChange(item, event.target.value)}
             placeholder={overridePlaceholder}
           />
+
+          {protection && (
+            <details className="prompt-editor-block__preview">
+              <summary>Xem prompt cuoi cung</summary>
+              <pre className="prompt-editor-block__locked-body">
+                {composeTaskInstruction(item.key, overrideDraft || coreDraft)}
+              </pre>
+            </details>
+          )}
         </section>
       </div>
 
@@ -300,6 +328,13 @@ export default function ProjectPromptManager() {
     if (!currentProject) return;
 
     const parsedTemplates = parsePromptTemplates(currentProject.prompt_templates);
+    PROJECT_PROMPT_GROUPS.forEach((group) => {
+      group.items.forEach((item) => {
+        if (typeof parsedTemplates[item.key] === 'string') {
+          parsedTemplates[item.key] = stripProtectedTaskInstruction(item.key, parsedTemplates[item.key]);
+        }
+      });
+    });
     if (typeof currentProject.ai_guidelines === 'string') {
       parsedTemplates.ai_guidelines = currentProject.ai_guidelines;
     }
