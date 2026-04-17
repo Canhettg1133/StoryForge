@@ -204,15 +204,60 @@ export function buildDraftQueue(generatedOutline, selectedDraftIndexes = [], sta
     }));
 }
 
-function getBeatMixStatus(chapters = []) {
-    const markers = chapters.map((chapter) => normalizePlanText([
+const SETUP_MARKER_REGEX = /(build up|setup|hau qua|consequence|chuan bi|tham do|mo man|do tham|dan duong|dieu tra|tim hieu|thu thap|quan sat|tap luyen|thu nghiem|len ke hoach|thuong luong|hoi phuc|xu ly du am|giai nen|thich nghi|giai doan chuyen tiep)/;
+const HARD_RESOLUTION_REGEX = /(ket thuc|chung ket|giai quyet thread chinh|giai quyet dut diem|hoa giai dut diem|lat mat than phan|lo than phan|he lo bi mat lon|tiet lo bi mat lon|pha vo am muu|ha man)/;
+const SOFT_RESOLUTION_REGEX = /(giai quyet|hoa giai|pha vo|he lo|tiet lo|midpoint|dot pha canh gioi|thang cap|phi thang|dao chieu|quyet dinh lon|lo manh moi lon|su that dan lo ra)/;
+
+function getNormalizedChapterText(chapter = {}) {
+    return normalizePlanText([
         chapter?.title,
         chapter?.summary,
-        Array.isArray(chapter?.key_events) ? chapter.key_events.join(' ') : '',
         chapter?.purpose,
-    ].filter(Boolean).join(' ')));
-    const hasSetupLike = markers.some((text) => /(build up|setup|hau qua|consequence|chuan bi|tham do|mo man|do tham|dan duong)/.test(text));
-    return hasSetupLike;
+        Array.isArray(chapter?.key_events) ? chapter.key_events.join(' ') : '',
+    ].filter(Boolean).join(' '));
+}
+
+function getResolutionSignal(chapter = {}) {
+    const combinedText = getNormalizedChapterText(chapter);
+    const hardMatches = combinedText.match(new RegExp(HARD_RESOLUTION_REGEX.source, 'g')) || [];
+    const softMatches = combinedText.match(new RegExp(SOFT_RESOLUTION_REGEX.source, 'g')) || [];
+    const hardCount = hardMatches.length;
+    const softCount = softMatches.length;
+    const score = (hardCount * 2) + softCount;
+
+    return {
+        combinedText,
+        hardCount,
+        softCount,
+        score,
+        isHard: hardCount > 0,
+        isSoft: softCount > 0,
+    };
+}
+
+function getSetupSignal(chapter = {}) {
+    const combinedText = getNormalizedChapterText(chapter);
+    const keyEventCount = Array.isArray(chapter?.key_events) ? chapter.key_events.length : 0;
+    let score = 0;
+
+    if (chapter?.pacing === 'slow') score += 2;
+    if (SETUP_MARKER_REGEX.test(combinedText)) score += 2;
+    if (String(chapter?.purpose || '').trim()) score += 1;
+    if (keyEventCount > 0 && keyEventCount <= 2) score += 1;
+
+    const resolutionSignal = getResolutionSignal(chapter);
+    if (resolutionSignal.isHard) score -= 2;
+    else if (resolutionSignal.isSoft) score -= 1;
+
+    return {
+        combinedText,
+        score,
+        isSetupLike: score >= 2,
+    };
+}
+
+function getBeatMixStatus(chapters = []) {
+    return chapters.some((chapter) => getSetupSignal(chapter).isSetupLike);
 }
 
 export function buildStoryProgressBudget({
@@ -268,10 +313,6 @@ function hasThreadAnchor(chapter = {}) {
     return false;
 }
 
-function isResolutionLike(text) {
-    return /(ket thuc|giai quyet|hoa giai|pha vo|lat mat than phan|lo than phan|he lo bi mat|tiet lo bi mat|finale|chung ket|midpoint|dot pha canh gioi|thang cap|phi thang)/.test(text);
-}
-
 export function validateGeneratedOutline(generatedOutline, {
     storyProgressBudget = null,
     selectedMacroArc = null,
@@ -283,21 +324,29 @@ export function validateGeneratedOutline(generatedOutline, {
     const nextMilestone = storyProgressBudget?.nextMilestone
         || (Array.isArray(milestones) ? milestones.find((item) => Number(item?.percent) > Number(storyProgressBudget?.fromPercent || 0)) : null)
         || null;
-    const macroRemaining = selectedMacroArc?.chapter_to && storyProgressBudget
-        ? Math.max(0, Number(selectedMacroArc.chapter_to) - Number(storyProgressBudget.currentChapterCount || 0))
-        : null;
+    const chapterStepPercent = storyProgressBudget && chapters.length > 0
+        ? (Number(storyProgressBudget.toPercent || 0) - Number(storyProgressBudget.fromPercent || 0)) / chapters.length
+        : 0;
 
     for (let index = 0; index < chapters.length; index++) {
         const current = chapters[index] || {};
         const previous = chapters[index - 1] || null;
         const summaryText = normalizePlanText(current.summary || '');
         const purposeText = normalizePlanText(current.purpose || '');
-        const combinedText = normalizePlanText([
-            current.title,
-            current.summary,
-            current.purpose,
-            Array.isArray(current.key_events) ? current.key_events.join(' ') : '',
-        ].filter(Boolean).join(' '));
+        const combinedText = getNormalizedChapterText(current);
+        const resolutionSignal = getResolutionSignal(current);
+        const chapterAbsoluteNumber = Number(storyProgressBudget?.currentChapterCount || 0) + index + 1;
+        const chapterToPercent = Number(storyProgressBudget?.fromPercent || 0) + (chapterStepPercent * (index + 1));
+        const remainingMacroAfterChapter = selectedMacroArc?.chapter_to
+            ? Math.max(0, Number(selectedMacroArc.chapter_to) - chapterAbsoluteNumber)
+            : null;
+        const chapterPositionRatio = chapters.length > 1 ? index / (chapters.length - 1) : 1;
+        const isNearMacroEnding = remainingMacroAfterChapter != null
+            ? remainingMacroAfterChapter <= Math.max(1, chapters.length - index - 1)
+            : false;
+        const milestoneGap = nextMilestone ? Number(nextMilestone.percent) - chapterToPercent : null;
+        const isNearMilestone = milestoneGap != null ? milestoneGap <= 2 : false;
+        const isFarFromPlannedResolution = !isNearMacroEnding && !isNearMilestone;
 
         if (!purposeText || summaryText.split(' ').length < 8 || !hasThreadAnchor(current)) {
             issues.push({
@@ -336,33 +385,36 @@ export function validateGeneratedOutline(generatedOutline, {
             }
         }
 
-        if (storyProgressBudget && isResolutionLike(combinedText)) {
-            const isNearMacroEnding = macroRemaining != null
-                ? macroRemaining <= Math.max(1, Number(storyProgressBudget.batchCount) || 1)
-                : false;
-            const isNearMilestone = nextMilestone
-                ? (Number(nextMilestone.percent) - Number(storyProgressBudget.toPercent || 0)) <= 2
-                : false;
-            if (!isNearMacroEnding && !isNearMilestone) {
+        if (storyProgressBudget && resolutionSignal.score > 0 && isFarFromPlannedResolution) {
+            const severity = (resolutionSignal.isHard && chapterPositionRatio < 0.7)
+                ? 'error'
+                : 'warning';
+            if (severity) {
                 issues.push({
                     chapterIndex: index,
                     chapterTitle: current.title || `Chuong ${index + 1}`,
                     code: 'too-fast',
-                    severity: 'error',
-                    message: 'Chapter co dau hieu day plot/reveal qua nhanh so voi budget tien do hien tai.',
+                    severity,
+                    message: severity === 'error'
+                        ? 'Chapter co dau hieu day plot/reveal qua nhanh so voi budget tien do hien tai.'
+                        : 'Chapter co tin hieu day plot/reveal nhanh hon muc an toan, nen giam toc hoac doi mot phan ket qua thanh buildup/manh moi.',
                 });
             }
         }
 
-        if (selectedMacroArc && isResolutionLike(combinedText) && selectedMacroArc.chapter_to) {
-            const remaining = Number(selectedMacroArc.chapter_to) - Number(storyProgressBudget?.currentChapterCount || 0);
-            if (remaining > Math.max(1, Number(storyProgressBudget?.batchCount) || 1)) {
+        if (selectedMacroArc && selectedMacroArc.chapter_to && resolutionSignal.score > 0 && remainingMacroAfterChapter != null) {
+            const severity = (resolutionSignal.isHard && remainingMacroAfterChapter > Math.max(2, chapters.length - index - 1))
+                ? 'error'
+                : (remainingMacroAfterChapter > Math.max(1, chapters.length - index - 1) ? 'warning' : null);
+            if (severity) {
                 issues.push({
                     chapterIndex: index,
                     chapterTitle: current.title || `Chuong ${index + 1}`,
                     code: 'premature-resolution',
-                    severity: 'error',
-                    message: `Chapter co dau hieu resolve som truoc khi ket thuc cot moc "${selectedMacroArc.title}".`,
+                    severity,
+                    message: severity === 'error'
+                        ? `Chapter co dau hieu resolve som truoc khi ket thuc cot moc "${selectedMacroArc.title}".`
+                        : `Chapter co tin hieu cham vao phan resolve cua cot moc "${selectedMacroArc.title}" hoi som; nen chuyen bot thanh buildup/manh moi.`,
                 });
             }
         }
@@ -830,6 +882,7 @@ const useArcGenStore = create((set, get) => ({
                 storyProgressBudget,
                 generatedOutline: state.generatedOutline,
                 outlineRevisionInstruction: revisionInstruction,
+                validatorReports: state.outlineValidation?.issues || [],
             });
 
             await new Promise((resolve) => {

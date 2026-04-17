@@ -215,7 +215,9 @@ function loadSettings() {
             if (settings.parallelCount) document.getElementById('parallelCount').value = settings.parallelCount;
             if (settings.chunkSize) document.getElementById('chunkSize').value = settings.chunkSize;
             if (settings.delayMs) document.getElementById('delayMs').value = settings.delayMs;
-            if (settings.customPrompt) document.getElementById('customPrompt').value = settings.customPrompt;
+            if (settings.customPrompt) document.getElementById('customPrompt').value = typeof ensureCharacterNameConsistencyPrompt === 'function'
+                ? ensureCharacterNameConsistencyPrompt(settings.customPrompt)
+                : settings.customPrompt;
             if (settings.useProxy !== undefined) useProxy = settings.useProxy;
             if (settings.proxyBaseUrl) proxyBaseUrl = settings.proxyBaseUrl;
             if (settings.proxyApiKey) proxyApiKey = settings.proxyApiKey;
@@ -268,7 +270,9 @@ function updateStats() {
 // ============================================
 function setPromptTemplate(templateName) {
     if (PROMPT_TEMPLATES[templateName]) {
-        document.getElementById('customPrompt').value = PROMPT_TEMPLATES[templateName];
+        document.getElementById('customPrompt').value = typeof ensureCharacterNameConsistencyPrompt === 'function'
+            ? ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES[templateName])
+            : PROMPT_TEMPLATES[templateName];
         saveSettings();
 
         document.querySelectorAll('.template-btn').forEach((btn) => {

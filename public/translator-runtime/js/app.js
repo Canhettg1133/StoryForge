@@ -33,6 +33,16 @@ let keyHealthMap = {};
 
 // Active network requests for instant cancel (Gemini/Proxy/Ollama)
 const activeRequestControllers = new Set();
+const CHARACTER_NAME_CONSISTENCY_RULE = '\n\n[YEU CAU BAT BUOC VE TEN NHAN VAT]\n- KHONG duoc tu y doi ten nhan vat.\n- Phai giu cach goi, phien am, va xung ho cua ten nhan vat nhat quan trong toan bo ban dich.\n';
+
+function ensureCharacterNameConsistencyPrompt(promptText) {
+    const text = String(promptText || '').trimEnd();
+    if (!text) return CHARACTER_NAME_CONSISTENCY_RULE.trim();
+    if (/KHONG duoc tu y doi ten nhan vat/i.test(text) || /ten nhan vat nhat quan/i.test(text)) {
+        return text;
+    }
+    return `${text}${CHARACTER_NAME_CONSISTENCY_RULE}`;
+}
 
 function registerActiveRequestController(controller) {
     if (controller && typeof controller.abort === 'function') {
@@ -515,7 +525,7 @@ async function initializeApp() {
     // Set default prompt
     const promptEl = document.getElementById('customPrompt');
     if (!promptEl.value.trim()) {
-        promptEl.value = PROMPT_TEMPLATES.convert;
+        promptEl.value = ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES.sacHiep);
     }
 
     // Render RPD dashboard (after a small delay to ensure DOM is ready)

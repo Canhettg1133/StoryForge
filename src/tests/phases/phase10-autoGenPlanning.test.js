@@ -87,7 +87,7 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(validation.issues.some((issue) => issue.code === 'premature-resolution')).toBe(true);
   });
 
-  it('keeps missing setup beat mix as a warning instead of a draft blocker', () => {
+  it('treats beat-mix heuristics as non-blocking even when setup signals are weak', () => {
     const validation = validateGeneratedOutline({
       chapters: [
         {
@@ -112,8 +112,78 @@ describe('phase10 auto-gen planning upgrade', () => {
       },
     });
 
+    expect(validation.hasBlockingIssues).toBe(false);
     const beatMixIssue = validation.issues.find((issue) => issue.code === 'too-fast' && issue.chapterIndex == null);
-    expect(beatMixIssue?.severity).toBe('warning');
+    if (beatMixIssue) {
+      expect(beatMixIssue.severity).toBe('warning');
+    }
+  });
+
+  it('downgrades late-batch reveal risks to warnings instead of hard blockers', () => {
+    const validation = validateGeneratedOutline({
+      chapters: [
+        {
+          title: 'Chuong 11: Truy dau',
+          purpose: 'Day nhan vat vao mot huong dieu tra moi.',
+          summary: 'Nhan vat chinh theo duoi dau vet va mat them mot manh moi nho.',
+          key_events: ['theo dau vet', 'mat manh moi'],
+        },
+        {
+          title: 'Chuong 12: Len nui',
+          purpose: 'Day nhan vat den sat cua vao bi mat.',
+          summary: 'Nhan vat chinh vuot mot cua ai va nhan ra co nguoi dang che giau su that.',
+          key_events: ['vuot cua ai', 'nghi co su that'],
+        },
+        {
+          title: 'Chuong 13: Lo manh moi lon',
+          purpose: 'Cho nhan vat thay mot goc nhin moi nhung chua ket luan.',
+          summary: 'Nhan vat chinh lo ra mot manh moi lon ve than phan ke dung sau, nhung moi thu van chua nga ngu.',
+          key_events: ['lo manh moi lon', 'nghi van tang cao'],
+        },
+      ],
+    }, {
+      storyProgressBudget: {
+        fromPercent: 1.1,
+        toPercent: 1.4,
+        currentChapterCount: 10,
+        batchCount: 3,
+        nextMilestone: { label: 'Midpoint', percent: 50 },
+      },
+    });
+
+    const tooFastIssue = validation.issues.find((issue) => issue.code === 'too-fast' && issue.chapterIndex === 2);
+    expect(tooFastIssue?.severity).toBe('warning');
+    expect(validation.hasBlockingIssues).toBe(false);
+  });
+
+  it('accepts setup beat mix from slow pacing even without explicit setup keywords', () => {
+    const validation = validateGeneratedOutline({
+      chapters: [
+        {
+          title: 'Chuong 11: Khoang lang',
+          purpose: 'Cho nhan vat lang lai va can nhac buoc di tiep theo.',
+          summary: 'Nhan vat chinh ngoi voi dong doi, can nhac su doi doi vua xay ra va quyet dinh se tiep can nhu the nao.',
+          key_events: ['ngoi lai trao doi', 'can nhac buoc di'],
+          pacing: 'slow',
+        },
+        {
+          title: 'Chuong 12: Dau vet moi',
+          purpose: 'Mo mot huong di tiep theo.',
+          summary: 'Nhan vat chinh tim thay dau vet moi va quyet dinh lan theo tung dau hieu nho.',
+          key_events: ['tim thay dau vet', 'quyet dinh lan theo'],
+        },
+      ],
+    }, {
+      storyProgressBudget: {
+        fromPercent: 1.1,
+        toPercent: 1.4,
+        currentChapterCount: 10,
+        batchCount: 2,
+      },
+    });
+
+    const beatMixIssue = validation.issues.find((issue) => issue.code === 'too-fast' && issue.chapterIndex == null);
+    expect(beatMixIssue).toBeUndefined();
     expect(validation.hasBlockingIssues).toBe(false);
   });
 

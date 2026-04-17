@@ -1937,6 +1937,14 @@ export function buildPrompt(taskType, context = {}) {
 
     case TASK_TYPES.ARC_OUTLINE: {
       const arcParts = [];
+      const outlineReportLines = (validatorReports || []).map(function (report, index) {
+        const scope = report?.chapterIndex == null
+          ? 'Toan bo dot'
+          : 'Chuong ' + (startChapterNumber + Number(report.chapterIndex));
+        const severity = report?.severity || 'warning';
+        const code = report?.code || 'issue';
+        return (index + 1) + '. [' + severity.toUpperCase() + ' | ' + code + ' | ' + scope + '] ' + (report?.message || '');
+      }).join('\n');
       if (userPrompt) arcParts.push('Muc tieu Arc: ' + userPrompt);
       arcParts.push('Chuong moi phai bat dau tu: Chuong ' + startChapterNumber);
       arcParts.push('So luong chuong can tao: ' + (context.chapterCount || 10));
@@ -1970,10 +1978,20 @@ export function buildPrompt(taskType, context = {}) {
           const number = startChapterNumber + index;
           const beats = Array.isArray(chapter?.key_events) && chapter.key_events.length > 0
             ? '\n  Beats: ' + chapter.key_events.join(' | ')
-            : '';
+          : '';
           return '- Chuong ' + number + ': ' + (chapter?.title || '') + '\n  Purpose: ' + (chapter?.purpose || '') + '\n  Tom tat: ' + (chapter?.summary || '') + beats;
         }).join('\n');
         arcParts.push('[DAN Y HIEN TAI CAN CHINH SUA]\n' + currentOutlineText);
+      }
+      if (outlineReportLines) {
+        arcParts.push('[LOI VALIDATOR CAN XU LY]\n' + outlineReportLines);
+        arcParts.push([
+          'Yeu cau sua loi validator:',
+          '- Uu tien xu ly het cac loi severity=error truoc.',
+          '- Neu co loi too-fast hoac premature-resolution, hay lam cham nhip, chen buildup/setup/consequence, va doi tiet lo/ket qua lon thanh manh moi nho hoac he qua nho.',
+          '- Giu nguyen batch, so chuong, budget tien do, va cac thread dang mo neu khong bat buoc phai doi.',
+          '- Sau khi sua, muc tieu la dan y moi phai pass validator hien tai.',
+        ].join('\n'));
       }
       if (outlineRevisionInstruction) {
         arcParts.push('[YEU CAU CHINH SUA DAN Y]\n' + outlineRevisionInstruction);

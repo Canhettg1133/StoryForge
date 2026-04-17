@@ -544,8 +544,8 @@
                             Ngôn ngữ gốc
                         </label>
                         <select id="sourceLang">
-                            <option value="auto">🔍 Tự động phát hiện</option>
-                            <option value="zh-CN" selected>🇨🇳 Tiếng Trung (Giản thể)</option>
+                            <option value="auto" selected>🔍 Tự động phát hiện</option>
+                            <option value="zh-CN">🇨🇳 Tiếng Trung (Giản thể)</option>
                             <option value="zh-TW">🇹🇼 Tiếng Trung (Phồn thể)</option>
                             <option value="en">🇬🇧 Tiếng Anh</option>
                             <option value="ja">🇯🇵 Tiếng Nhật</option>
@@ -574,7 +574,7 @@
                             <span class="icon">📦</span>
                             Kích thước chunk (ký tự)
                         </label>
-                        <input type="number" id="chunkSize" value="2000" min="500" max="8000">
+                        <input type="number" id="chunkSize" value="6000" min="500" max="8000">
                         <small class="hint">Gemini: 3000-4000 | Ollama: 1500-2500 ký tự</small>
                     </div>
 
@@ -584,7 +584,7 @@
                             <span class="icon">⏱️</span>
                             Delay giữa các batch (ms)
                         </label>
-                        <input type="number" id="delayMs" value="1000" min="100" max="10000">
+                        <input type="number" id="delayMs" value="5000" min="100" max="10000">
                         <small class="hint">Gemini: 4000-5000ms | Ollama: 500-1000ms</small>
                     </div>
                 </div>
@@ -608,11 +608,11 @@
 
                 <div class="prompt-templates">
                     <span class="template-label">Mẫu có sẵn:</span>
-                    <button class="template-btn active-template" onclick="setPromptTemplate('convert')">🔄 Convert (Làm
+                    <button class="template-btn" onclick="setPromptTemplate('convert')">🔄 Convert (Làm
                         mượt)</button>
                     <button class="template-btn" onclick="setPromptTemplate('novel')">📖 Tiểu thuyết</button>
                     <button class="template-btn" onclick="setPromptTemplate('adult')">🔞 Truyện 18+</button>
-                    <button class="template-btn" onclick="setPromptTemplate('sacHiep')">🔥 Sắc Hiệp</button>
+                    <button class="template-btn active-template" onclick="setPromptTemplate('sacHiep')">🔥 Sắc Hiệp</button>
                     <button class="template-btn" onclick="setPromptTemplate('sacHiepPro')">💎 SH Pro</button>
                     <button class="template-btn" onclick="setPromptTemplate('sacHiepENI')">⭐ SH ENI</button>
                     <button class="template-btn" onclick="setPromptTemplate('wuxia')">⚔️ Tu tiên/Kiếm hiệp</button>
