@@ -66,9 +66,7 @@
 
 /* ── Board View: 3-Act Lanes ── */
 .outline-lanes {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(300px, 1fr);
+  display: flex;
   gap: var(--space-4);
   flex: 1;
   min-width: 0;
@@ -79,7 +77,9 @@
 }
 
 .outline-lane {
-  min-width: 300px;
+  flex: 1 1 240px;
+  min-width: 240px;
+  max-width: 360px;
   display: flex;
   flex-direction: column;
   background: var(--color-surface-1);
@@ -120,57 +120,6 @@
   background: var(--color-surface-2);
   padding: 2px 8px;
   border-radius: var(--radius-full);
-}
-
-.outline-lane-gap-state {
-  padding: var(--space-3);
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  background:
-    linear-gradient(135deg, rgba(139, 92, 246, 0.08), transparent 58%),
-    rgba(255, 255, 255, 0.02);
-  color: var(--color-text-muted);
-}
-
-.outline-lane-gap-state--warning {
-  background:
-    linear-gradient(135deg, rgba(245, 158, 11, 0.09), transparent 58%),
-    rgba(255, 255, 255, 0.02);
-  border-color: rgba(245, 158, 11, 0.28);
-}
-
-.outline-lane-gap-state--complete {
-  background:
-    linear-gradient(135deg, rgba(16, 185, 129, 0.08), transparent 58%),
-    rgba(255, 255, 255, 0.02);
-  border-color: rgba(16, 185, 129, 0.24);
-}
-
-.outline-lane-gap-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--color-text-secondary);
-  font-size: 12px;
-}
-
-.outline-lane-gap-title svg {
-  color: var(--color-accent);
-  flex-shrink: 0;
-}
-
-.outline-lane-gap-state--warning .outline-lane-gap-title svg {
-  color: var(--color-warning);
-}
-
-.outline-lane-gap-state--complete .outline-lane-gap-title svg {
-  color: var(--color-success);
-}
-
-.outline-lane-gap-state p {
-  margin: var(--space-1) 0 0;
-  font-size: 11px;
-  line-height: 1.45;
 }
 
 .outline-lane-body {

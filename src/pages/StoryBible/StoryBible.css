@@ -4,9 +4,7 @@
 
 .story-bible {
   padding: var(--space-6) var(--space-8);
-  width: 100%;
-  max-width: 1480px;
-  margin: 0 auto;
+  max-width: 1000px;
   animation: fadeIn 0.3s ease;
 }
 
@@ -106,12 +104,12 @@
 /* Grid */
 .bible-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--space-3);
 }
 
 .bible-grid--terms {
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
 }
 
 /* Cards */
@@ -576,69 +574,6 @@
 .bible-edit-row {
   display: flex;
   gap: var(--space-3);
-}
-
-@media (min-width: 1280px) {
-  .story-bible {
-    padding-left: var(--space-10);
-    padding-right: var(--space-10);
-  }
-
-  .bible-edit-card {
-    gap: var(--space-4);
-  }
-
-  .bible-edit-card--overview {
-    display: grid;
-    grid-template-columns: minmax(0, 0.95fr) minmax(320px, 0.75fr);
-    align-items: start;
-    column-gap: var(--space-5);
-  }
-
-  .bible-edit-card--overview > * {
-    grid-column: 1;
-  }
-
-  .bible-edit-card--overview > :nth-child(6),
-  .bible-edit-card--overview > :nth-child(7),
-  .bible-edit-card--overview > :nth-child(8),
-  .bible-edit-card--overview > :nth-child(10) {
-    grid-column: 2;
-  }
-
-  .bible-edit-card--overview > :nth-child(6),
-  .bible-edit-card--overview > :nth-child(7),
-  .bible-edit-card--overview > :nth-child(8) {
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background: rgba(255, 255, 255, 0.025);
-  }
-
-  .bible-stats--overview {
-    align-self: start;
-    padding: var(--space-3);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    background:
-      linear-gradient(135deg, rgba(139, 92, 246, 0.08), transparent 58%),
-      rgba(255, 255, 255, 0.025);
-  }
-
-  .bible-edit-card--overview .textarea {
-    max-width: 92ch;
-  }
-
-  .bible-section:has(.bible-canon-dashboard),
-  .bible-section:has(.bible-grid),
-  .bible-section:has(.bible-summaries) {
-    width: 100%;
-  }
-
-  .bible-canon-columns,
-  .bible-canon-detail-grid {
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  }
 }
 
 .save-indicator {

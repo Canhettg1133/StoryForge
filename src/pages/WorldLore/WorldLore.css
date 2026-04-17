@@ -4,9 +4,7 @@
 
 .world-lore {
   padding: var(--space-6) var(--space-8);
-  width: 100%;
-  max-width: 1520px;
-  margin: 0 auto;
+  max-width: 1200px;
   animation: fadeIn 0.3s ease;
 }
 
@@ -43,8 +41,8 @@
 
 /* List */
 .world-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
 }
 
@@ -62,7 +60,7 @@
 
 .world-card:hover {
   border-color: var(--color-accent);
-  transform: translateY(-2px);
+  transform: translateX(4px);
 }
 
 .world-card-icon {
@@ -294,8 +292,6 @@
   }
 
   .project-mobile-shell .world-list {
-    display: flex;
-    flex-direction: column;
     gap: 10px;
   }
 

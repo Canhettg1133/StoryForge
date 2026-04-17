@@ -1,7 +1,5 @@
 .prompt-manager-page {
-  width: 100%;
-  max-width: 1520px;
-  margin: 0 auto;
+  max-width: 1220px;
 }
 
 .prompt-manager-toolbar-card {
@@ -116,7 +114,6 @@
   margin: 0;
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
-  max-width: 82ch;
 }
 
 .prompt-manager-status {
@@ -179,7 +176,6 @@
   margin: 0;
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
-  max-width: 82ch;
 }
 
 .prompt-card__badge {
@@ -203,7 +199,7 @@
 
 .prompt-card__info-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-3);
 }
 
@@ -223,7 +219,6 @@
   margin: 0;
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
-  max-width: 82ch;
 }
 
 .prompt-card__columns {
@@ -292,7 +287,6 @@
   margin: 0;
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
-  max-width: 78ch;
 }
 
 .prompt-editor-block__actions {
