@@ -49,7 +49,7 @@ const RAW_NAV_ITEMS = [
   { divider: true },
   { path: '/ai-chat', icon: MessageSquare, label: 'Chat tự do', id: 'global-chat', surface: 'core' },
   { path: '/translator', icon: Languages, label: 'Dịch truyện', id: 'translator', surface: 'core' },
-  { path: '/prompt-manager', icon: Sparkles, label: 'Quản lý Prompt', id: 'prompt-manager', surface: 'core' },
+  { path: '/prompt-manager', icon: Sparkles, label: 'Prompt tổng quát', id: 'prompt-manager', surface: 'core' },
   { path: '/settings', icon: Settings, label: 'Cài đặt', id: 'settings', surface: 'core' },
 ];
 
@@ -64,6 +64,22 @@ const NAV_ITEMS = RAW_NAV_ITEMS.filter((item, index, items) => {
 });
 
 const SIDEBAR_COLLAPSE_QUERY = '(max-width: 1100px)';
+
+function getNavPath(item, activeProjectId) {
+  if (item.id === 'settings' && activeProjectId) {
+    return `/project/${activeProjectId}/settings`;
+  }
+
+  if (item.id === 'prompt-manager' && activeProjectId) {
+    return `/project/${activeProjectId}/prompt-manager`;
+  }
+
+  if (item.needsProject && activeProjectId) {
+    return `/project/${activeProjectId}${item.path}`;
+  }
+
+  return item.path;
+}
 
 export default function Sidebar() {
   const location = useLocation();
@@ -95,7 +111,7 @@ export default function Sidebar() {
   const routeProjectId = projectId || null;
   const settingsScopedProjectId = location.pathname === '/settings' ? currentProject?.id || null : null;
   const activeProjectId = routeProjectId || settingsScopedProjectId;
-  const visibleNavItems = NAV_ITEMS.filter((item) => {
+  const baseVisibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.divider) return true;
     if (item.id === 'global-chat') return !activeProjectId;
     if (item.id === 'project-chat') return !!activeProjectId;
@@ -106,6 +122,21 @@ export default function Sidebar() {
     const next = items[index + 1];
     return !!prev && !!next && !prev.divider && !next.divider;
   });
+  const visibleNavItems = (() => {
+    if (!activeProjectId) return baseVisibleNavItems;
+
+    const items = [...baseVisibleNavItems];
+    const globalPromptIndex = items.findIndex((item) => item.id === 'prompt-manager');
+    const projectPromptIndex = items.findIndex((item) => item.id === 'project-prompts');
+
+    if (globalPromptIndex === -1 || projectPromptIndex === -1 || globalPromptIndex === projectPromptIndex + 1) {
+      return items;
+    }
+
+    const [globalPromptItem] = items.splice(globalPromptIndex, 1);
+    items.splice(projectPromptIndex + 1, 0, globalPromptItem);
+    return items;
+  })();
   const isEditorRoute = location.pathname.includes('/editor');
   const isAutoCollapsed = isEditorRoute || isNarrowViewport;
   const isCollapsed = isAutoCollapsed || sidebarCollapsed;
@@ -118,11 +149,7 @@ export default function Sidebar() {
 
   const handleNav = (item) => {
     if (item.needsProject && !activeProjectId) return;
-    const path = item.id === 'settings' && activeProjectId
-      ? `/project/${activeProjectId}/settings`
-      : item.needsProject
-        ? `/project/${activeProjectId}${item.path}`
-        : item.path;
+    const path = getNavPath(item, activeProjectId);
     navigate(path);
   };
 
@@ -170,11 +197,7 @@ export default function Sidebar() {
             return <div key={`div-${index}`} className="sidebar-divider" />;
           }
 
-          const expectedPath = item.id === 'settings' && activeProjectId
-            ? `/project/${activeProjectId}/settings`
-            : item.needsProject && activeProjectId
-              ? `/project/${activeProjectId}${item.path}`
-              : item.path;
+          const expectedPath = getNavPath(item, activeProjectId);
           const isActive = location.pathname === expectedPath
             || (item.path !== '/' && item.path !== '/settings' && location.pathname.startsWith(expectedPath));
           const isDisabled = item.needsProject && !activeProjectId;

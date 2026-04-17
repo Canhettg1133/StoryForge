@@ -112,7 +112,7 @@
   text-align: justify;
   width: min(100%, 920px);
   max-width: 920px;
-  margin: 0;
+  margin: 0 auto;
 }
 
 .story-editor-content p {
@@ -654,6 +654,8 @@
 }
 
 .story-editor--mobile .story-editor-wrapper {
+  display: flex;
+  justify-content: center;
   padding: 12px 16px 18px;
 }
 
@@ -661,7 +663,9 @@
   font-size: 1rem;
   line-height: 1.8;
   text-align: left;
+  width: 100%;
   max-width: 100%;
+  margin-inline: auto;
 }
 
 .story-editor--mobile .story-editor-footer {

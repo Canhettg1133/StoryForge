@@ -50,6 +50,7 @@ export default function App() {
             <Route path="settings" element={<Settings />} />
             <Route path="chat" element={<ProjectChat />} />
             <Route path="prompts" element={<ProjectPromptManager />} />
+            <Route path="prompt-manager" element={<StoryCreationSettings />} />
             <Route path="timeline" element={PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback} />
             <Route path="revision" element={PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback} />
             <Route path="style-lab" element={PRODUCT_SURFACE.showRoadmapPages ? <StyleLab /> : roadmapFallback} />

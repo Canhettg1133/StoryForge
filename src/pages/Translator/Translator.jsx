@@ -1,5 +1,6 @@
 import React from 'react';
+import PersistentTranslatorHost from '../../components/translator/PersistentTranslatorHost';
 
 export default function Translator() {
-  return null;
+  return <PersistentTranslatorHost active={true} />;
 }

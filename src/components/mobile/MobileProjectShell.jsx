@@ -31,7 +31,8 @@ const MORE_ITEMS = [
   { id: 'characters', label: 'Nh\u00e2n v\u1eadt', icon: Users, path: (id) => `/project/${id}/characters` },
   { id: 'world', label: 'Th\u1ebf gi\u1edbi', icon: Globe, path: (id) => `/project/${id}/world` },
   { id: 'canon', label: 'Canon', icon: ShieldCheck, path: (id) => `/project/${id}/su-that` },
-  { id: 'prompts', label: 'Prompt AI', icon: BookMarked, path: (id) => `/project/${id}/prompts` },
+  { id: 'prompts', label: 'Prompt truy\u1ec7n', icon: BookMarked, path: (id) => `/project/${id}/prompts` },
+  { id: 'prompt-manager', label: 'Prompt t\u1ed5ng qu\u00e1t', icon: Sparkles, path: (id) => `/project/${id}/prompt-manager` },
   { id: 'settings', label: 'C\u00e0i \u0111\u1eb7t', icon: Settings, path: (id) => `/project/${id}/settings` },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: () => '/' },
   { id: 'lab', label: 'Narrative Lab', icon: FlaskConical, path: (id) => `/project/${id}/lab`, surface: 'lab' },
@@ -49,8 +50,9 @@ function getPageTitle(pathname) {
   if (pathname.includes('/world')) return 'Th\u1ebf gi\u1edbi';
   if (pathname.includes('/su-that')) return 'Canon';
   if (pathname.includes('/chat')) return 'AI';
+  if (pathname.includes('/prompt-manager')) return 'Prompt t\u1ed5ng qu\u00e1t';
   if (pathname.includes('/settings')) return 'C\u00e0i \u0111\u1eb7t';
-  if (pathname.includes('/prompts')) return 'Prompt AI';
+  if (pathname.includes('/prompts')) return 'Prompt truy\u1ec7n';
   if (pathname.includes('/lab')) return 'Lab';
   return 'D\u1ef1 \u00e1n';
 }

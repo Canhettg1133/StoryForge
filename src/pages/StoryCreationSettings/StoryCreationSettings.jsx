@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
+  ArrowLeft,
+  BookMarked,
   Sparkles,
   Shield,
   MessageSquare,
@@ -35,11 +38,14 @@ function VariableChips({ variables }) {
 }
 
 export default function StoryCreationSettings() {
+  const navigate = useNavigate();
+  const { projectId } = useParams();
   const [draft, setDraft] = useState(() => getStoryCreationSettings());
   const [savedMessage, setSavedMessage] = useState('');
   const [activeGroupKey, setActiveGroupKey] = useState('all');
   const isHydratingRef = useRef(true);
   const lastSavedSignatureRef = useRef(JSON.stringify(getStoryCreationSettings()));
+  const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
 
   const previewDefaults = useMemo(() => DEFAULT_STORY_CREATION_SETTINGS, []);
   const visibleGroups = useMemo(
@@ -104,8 +110,39 @@ export default function StoryCreationSettings() {
     return () => window.clearTimeout(timer);
   }, [draft]);
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/');
+  };
+
   return (
     <div className="settings-page" id="global-prompt-manager-top">
+      {!scopedProjectId && (
+        <div className="story-creation-page-actions">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={handleBack}>
+            <ArrowLeft size={14} /> Quay lại
+          </button>
+        </div>
+      )}
+
+      {scopedProjectId && (
+        <section className="settings-section card animate-slide-up story-creation-switcher">
+          <div className="story-creation-switcher__copy">
+            <strong>Đang ở trong dự án</strong>
+            <span>Bạn có thể chuyển nhanh giữa Prompt tổng quát và Prompt truyện mà không rời khỏi project.</span>
+          </div>
+          <div className="story-creation-switcher__actions">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(`/project/${scopedProjectId}/prompts`)}>
+              <BookMarked size={14} /> Mở Prompt truyện
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="settings-section card animate-slide-up story-creation-toolbar-card">
         <div className="story-creation-shortcuts">
           <span className="story-creation-shortcuts__label">Di toi nhom prompt</span>
