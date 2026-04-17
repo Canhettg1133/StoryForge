@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import keyManager from '../../services/ai/keyManager';
 import modelRouter, { PROVIDERS, DIRECT_MODELS } from '../../services/ai/router';
 import aiService, {
@@ -222,6 +222,7 @@ function DirectModelManager() {
 
 // ─── Main Settings Page ───
 export default function Settings() {
+  const location = useLocation();
   const navigate = useNavigate();
   const { projectId } = useParams();
   const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
@@ -234,6 +235,23 @@ export default function Settings() {
   const [testing, setTesting] = useState({});
   const [quality, setQuality] = useState(modelRouter.getQualityMode());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
+
+  useEffect(() => {
+    if (!location.hash) return;
+
+    const id = location.hash.replace('#', '');
+    const scrollToTarget = () => {
+      const element = document.getElementById(id);
+      if (!element) return false;
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return true;
+    };
+
+    if (scrollToTarget()) return;
+
+    const timeoutId = window.setTimeout(scrollToTarget, 120);
+    return () => window.clearTimeout(timeoutId);
+  }, [location.hash]);
 
   const handleSaveUrls = () => saveSettings({ proxyUrl, geminiDirectUrl: directUrl, ollamaUrl });
   const handleOpenAiStudio = () => {
@@ -266,7 +284,7 @@ export default function Settings() {
       </header>
 
       <div className="settings-sections">
-        <section className="settings-section card animate-slide-up">
+        <section className="settings-section card animate-slide-up" id="gemini-guides">
           <div className="settings-section-header">
             <BookOpen size={20} />
             <div>

@@ -32,11 +32,11 @@ const UTILITY_ITEMS = [
     path: '/translator',
   },
   {
-    id: 'guide',
-    title: 'Hướng dẫn Gemini',
-    description: 'Xem từng bước lấy API key Gemini và setup StoryForge cho người mới.',
+    id: 'settings',
+    title: 'Thiết lập API',
+    description: 'Vào Cài đặt để xem hướng dẫn Gemini, dán API key và test ngay trong cùng một chỗ.',
     icon: BookKey,
-    path: '/guide',
+    path: '/settings#gemini-guides',
   },
 ];
 
@@ -74,11 +74,11 @@ export default function Dashboard() {
   const filteredProjects = projects.filter((project) => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
-    return [
-      project.title,
-      project.description,
-      getGenreLabel(project.genre_primary),
-    ].filter(Boolean).join(' ').toLowerCase().includes(query);
+    return [project.title, project.description, getGenreLabel(project.genre_primary)]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(query);
   });
 
   return (
@@ -90,7 +90,7 @@ export default function Dashboard() {
             StoryForge
           </h1>
           <p className="dashboard-subtitle">
-            Tạo dự án để bắt đầu viết truyện, hoặc dùng nhanh Chat AI và Dịch truyện khi chưa cần mở project.
+            Tạo dự án để bắt đầu viết truyện, hoặc dùng nhanh Chat AI, Dịch truyện và phần thiết lập API khi chưa cần mở project.
           </p>
         </div>
       </header>
@@ -195,9 +195,7 @@ export default function Dashboard() {
                   <span className="badge badge-accent">{getGenreLabel(project.genre_primary)}</span>
                 </div>
 
-                {project.description && (
-                  <p className="project-card-desc">{project.description}</p>
-                )}
+                {project.description && <p className="project-card-desc">{project.description}</p>}
 
                 <div className="project-card-footer">
                   <span className="project-card-date">{formatDate(project.updated_at)}</span>
