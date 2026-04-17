@@ -836,7 +836,7 @@
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->
 
-    <!-- Clear old translator PWA caches from previous embedded builds -->
+    <!-- Clear translator PWA caches from previous embedded builds -->
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', async () => {
@@ -844,10 +844,7 @@
                     const registrations = await navigator.serviceWorker.getRegistrations();
                     await Promise.all(
                         registrations
-                            .filter((registration) =>
-                                registration.scope.includes('/translator-legacy/') ||
-                                registration.scope.includes('/translator-runtime/')
-                            )
+                            .filter((registration) => registration.scope.includes('/translator-runtime/'))
                             .map((registration) => registration.unregister())
                     );
 
