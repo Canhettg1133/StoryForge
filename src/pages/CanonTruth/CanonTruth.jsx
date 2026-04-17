@@ -176,6 +176,8 @@ export default function CanonTruth() {
     repairChapterRevision,
     saveRepairDraftRevision,
     savingRepairDraft,
+    rebuildCanonFromChapter,
+    rebuilding,
     lastActionOutcome,
     clearRepairText,
     clearActionOutcome,
@@ -432,6 +434,12 @@ export default function CanonTruth() {
     }
   }, [scopedRepairPreview?.text]);
 
+  const handleRebuildCanon = useCallback(async () => {
+    if (!currentProject?.id) return;
+    await rebuildCanonFromChapter(currentProject.id, null, { cleanLegacyProjection: true });
+    await loadOverview();
+  }, [currentProject?.id, loadOverview, rebuildCanonFromChapter]);
+
   return (
     <div className="story-bible su-that-page">
       <MobileBibleTabs />
@@ -452,6 +460,10 @@ export default function CanonTruth() {
           <button className="btn btn-ghost" type="button" onClick={loadOverview} disabled={loadingOverview}>
             <RotateCcw size={16} className={loadingOverview ? 'spin' : ''} />
             Tải lại
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={handleRebuildCanon} disabled={!currentProject?.id || rebuilding}>
+            {rebuilding ? <Loader2 size={16} className="spin" /> : <RotateCcw size={16} />}
+            Dựng lại canon
           </button>
           <button className="btn btn-primary" type="button" onClick={handleAddFact} disabled={!currentProject?.id}>
             <Plus size={16} />

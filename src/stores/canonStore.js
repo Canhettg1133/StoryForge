@@ -119,10 +119,10 @@ const useCanonStore = create((set, get) => ({
     }
   },
 
-  rebuildCanonFromChapter: async (projectId, chapterId) => {
+  rebuildCanonFromChapter: async (projectId, chapterId, options = {}) => {
     set({ rebuilding: true, lastActionOutcome: null });
     try {
-      const result = await rebuildCanonFromChapterEngine(projectId, chapterId);
+      const result = await rebuildCanonFromChapterEngine(projectId, chapterId, options);
       await get().loadChapterCanon(projectId, chapterId);
       const outcome = {
         ok: true,

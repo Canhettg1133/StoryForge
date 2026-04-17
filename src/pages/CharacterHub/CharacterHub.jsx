@@ -306,6 +306,12 @@ export default function CharacterHub() {
                       </p>
                     )}
 
+                    {char.canon_status_summary && char.canon_status_summary !== char.current_status && (
+                      <p className="character-snippet" style={{ color: 'var(--color-accent)', fontWeight: 500 }}>
+                        Canon: {char.canon_status_summary}
+                      </p>
+                    )}
+
                     {char.flaws && (
                       <p className="character-snippet" style={{ color: 'var(--color-warning)', fontWeight: 500 }}>
                         Diem yeu: {char.flaws}

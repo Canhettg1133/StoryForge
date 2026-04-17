@@ -303,6 +303,144 @@ describe('phase10 canon integration', () => {
     expect(snapshots[0].chapter_id).toBe(1);
   });
 
+  it('rebuilds canon projection without mutating legacy codex tables', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Projection Isolation' }],
+      chapters: [{ id: 1, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      characters: [
+        { id: 10, project_id: 1, name: 'Lam', current_status: 'Con song' },
+        { id: 11, project_id: 1, name: 'Ha', current_status: 'Con song' },
+      ],
+      plotThreads: [{ id: 20, project_id: 1, title: 'Bi mat', state: 'active', description: 'Dang mo' }],
+      objects: [{ id: 30, project_id: 1, name: 'La thu', owner_character_id: null, description: 'Cu' }],
+      relationships: [{ id: 40, project_id: 1, character_a_id: 10, character_b_id: 11, relation_type: 'friend', description: 'Ban cu' }],
+      canonFacts: [],
+      chapter_revisions: [{ id: 101, project_id: 1, chapter_id: 1, revision_number: 1, status: 'canonical' }],
+      chapter_commits: [{ id: 201, project_id: 1, chapter_id: 1, current_revision_id: 101, canonical_revision_id: 101, status: 'canonical' }],
+      story_events: [
+        { id: 301, project_id: 1, chapter_id: 1, revision_id: 101, op_type: 'CHARACTER_DIED', subject_id: 10, payload: { status_summary: 'Da chet trong ham' }, summary: 'Lam chet', status: 'committed', created_at: 1 },
+        { id: 302, project_id: 1, chapter_id: 1, revision_id: 101, op_type: 'THREAD_RESOLVED', thread_id: 20, payload: { summary: 'Bi mat da giai' }, summary: 'Thread dong', status: 'committed', created_at: 2 },
+        { id: 303, project_id: 1, chapter_id: 1, revision_id: 101, op_type: 'OBJECT_TRANSFERRED', object_id: 30, target_id: 10, payload: { status_summary: 'La thu ve tay Lam' }, summary: 'Chuyen vat', status: 'committed', created_at: 3 },
+        { id: 304, project_id: 1, chapter_id: 1, revision_id: 101, op_type: 'RELATIONSHIP_STATUS_CHANGED', subject_id: 10, target_id: 11, payload: { relationship_type: 'enemy', status_summary: 'Tro thanh ke thu' }, summary: 'Doi quan he', status: 'committed', created_at: 4 },
+        { id: 305, project_id: 1, chapter_id: 1, revision_id: 101, op_type: 'FACT_REGISTERED', fact_description: 'Lang co loi nguyen', payload: { description: 'Lang co loi nguyen', fact_type: 'fact' }, summary: 'Fact moi', status: 'committed', created_at: 5 },
+      ],
+    });
+
+    const rebuild = await engine.rebuildCanonFromChapter(1);
+
+    expect(rebuild.entityStates.find((state) => state.entity_id === 10).alive_status).toBe('dead');
+    expect(rebuild.threadStates.find((state) => state.thread_id === 20).state).toBe('resolved');
+    expect(rebuild.itemStates.find((state) => state.object_id === 30).owner_character_id).toBe(10);
+    expect(rebuild.relationshipStates.find((state) => state.pair_key === '10:11').relationship_type).toBe('enemy');
+    expect(rebuild.factStates.some((fact) => fact.description === 'Lang co loi nguyen')).toBe(true);
+
+    expect((await db.characters.get(10)).current_status).toBe('Con song');
+    expect((await db.plotThreads.get(20)).state).toBe('active');
+    expect((await db.objects.get(30)).owner_character_id).toBe(null);
+    expect((await db.relationships.get(40)).relation_type).toBe('friend');
+    expect(await db.canonFacts.toArray()).toEqual([]);
+  });
+
+  it('cleans only conflicting legacy character projection summaries when requested', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Legacy cleanup' }],
+      chapters: [],
+      characters: [
+        { id: 10, project_id: 1, name: 'Ngoc Anh', current_status: 'Da chet | Muc tieu: Giai ma cai chet cua ba | Con song' },
+        { id: 11, project_id: 1, name: 'Ba', current_status: 'Da chet' },
+      ],
+      plotThreads: [],
+      canonFacts: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      story_events: [],
+    });
+
+    await engine.rebuildCanonFromChapter(1, null, { cleanLegacyProjection: true });
+
+    const ngocAnh = await db.characters.get(10);
+    const ba = await db.characters.get(11);
+    expect(ngocAnh.current_status).toContain('Con song');
+    expect(ngocAnh.current_status).toContain('Giai ma cai chet cua ba');
+    expect(ngocAnh.current_status).not.toContain('Da chet');
+    expect(ba.current_status).toBe('Da chet');
+  });
+
+  it('filters low-confidence suggestion ops without creating story events', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Low confidence' }],
+      chapters: [{ id: 1, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      characters: [{ id: 10, project_id: 1, name: 'Lam', current_status: 'Con song' }],
+      plotThreads: [],
+      canonFacts: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      story_events: [],
+    });
+
+    const result = await engine.canonicalizeCandidateOps({
+      projectId: 1,
+      chapterId: 1,
+      candidateOps: [{
+        op_type: 'GOAL_CHANGED',
+        chapter_id: 1,
+        subject_id: 10,
+        subject_name: 'Lam',
+        confidence: 0.3,
+        payload: { new_goal: 'Bao ve em gai' },
+        evidence: 'Mo ho',
+      }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.reports.some((report) => report.rule_code === 'LOW_CONFIDENCE_CANON_OP_FILTERED')).toBe(true);
+    expect(result.reports.some((report) => report.rule_code === 'NO_COMMITTABLE_CANON_OPS')).toBe(true);
+    expect(await db.story_events.toArray()).toEqual([]);
+  });
+
+  it('deduplicates appended candidate ops by semantic fingerprint', async () => {
+    const baseOp = {
+      op_type: 'GOAL_CHANGED',
+      chapter_id: 1,
+      scene_id: 9,
+      subject_id: 10,
+      subject_name: 'Lam',
+      confidence: 0.6,
+      summary: 'Muc tieu cu',
+      payload: { new_goal: 'Bao ve em gai' },
+      evidence: 'Bang chung cu',
+    };
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Dedupe' }],
+      chapters: [{ id: 1, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      characters: [{ id: 10, project_id: 1, name: 'Lam', current_status: 'Con song' }],
+      plotThreads: [],
+      canonFacts: [],
+      chapter_revisions: [{ id: 101, project_id: 1, chapter_id: 1, revision_number: 1, status: 'canonical', candidate_ops: JSON.stringify([baseOp]) }],
+      chapter_commits: [{ id: 201, project_id: 1, chapter_id: 1, current_revision_id: 101, canonical_revision_id: 101, status: 'canonical' }],
+      story_events: [{ id: 301, project_id: 1, chapter_id: 1, revision_id: 101, op_type: 'GOAL_CHANGED', subject_id: 10, status: 'committed', created_at: 1 }],
+    });
+
+    const result = await engine.canonicalizeCandidateOps({
+      projectId: 1,
+      chapterId: 1,
+      candidateOps: [{
+        ...baseOp,
+        confidence: 0.8,
+        summary: 'Muc tieu moi ro hon',
+        evidence: 'Bang chung moi',
+      }],
+    });
+
+    expect(result.ok).toBe(true);
+    const currentRevision = (await db.chapter_revisions.toArray()).find((revision) => revision.id === result.revisionId);
+    const persistedOps = JSON.parse(currentRevision.candidate_ops);
+    const committedEvents = (await db.story_events.toArray()).filter((event) => event.revision_id === result.revisionId);
+    expect(persistedOps).toHaveLength(1);
+    expect(persistedOps[0].summary).toBe('Muc tieu moi ro hon');
+    expect(committedEvents).toHaveLength(1);
+  });
+
   it('purges canon artifacts and archives deleted chapter payload without removing legacy codex rows', async () => {
     const { db, engine } = await loadModules({
       projects: [{ id: 1, title: 'Purge Test' }],
@@ -595,13 +733,17 @@ describe('phase10 canon integration', () => {
       characters: [
         { id: 31, project_id: 1, name: 'Lan' },
         { id: 32, project_id: 1, name: 'Kha' },
+        { id: 33, project_id: 1, name: 'Minh' },
       ],
       objects: [{ id: 41, project_id: 1, name: 'Ngoc Hoa An', owner_character_id: 31 }],
       chapterMeta: [
         { id: 51, project_id: 1, chapter_id: 1, summary: 'Lan gap Kha lan dau', last_prose_buffer: 'Anh mat giao nhau.', emotional_state: { mood: 'hoi hop' } },
         { id: 52, project_id: 1, chapter_id: 2, summary: 'Lan da dung Ngoc Hoa An', last_prose_buffer: 'Du am nang ne.', emotional_state: { mood: 'cang thang' } },
       ],
-      entity_state_current: [{ id: 61, project_id: 1, entity_id: 31, entity_type: 'character', alive_status: 'alive' }],
+      entity_state_current: [
+        { id: 61, project_id: 1, entity_id: 31, entity_type: 'character', alive_status: 'alive' },
+        { id: 62, project_id: 1, entity_id: 33, entity_type: 'character', alive_status: 'dead' },
+      ],
       plot_thread_state: [],
       canonFacts: [],
       plotThreads: [],
@@ -624,6 +766,7 @@ describe('phase10 canon integration', () => {
     expect(packet.relevantItemStates[0].availability).toBe('consumed');
     expect(packet.relevantRelationshipStates[0].intimacy_level).toBe('high');
     expect(packet.criticalConstraints.unavailableItems).toHaveLength(1);
+    expect(packet.criticalConstraints.deadCharacters).toContain(33);
   });
 
   it('supports retrieval modes with deeper near-memory and evidence caps', async () => {

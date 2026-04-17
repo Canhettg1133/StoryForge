@@ -129,6 +129,8 @@ function clampConfidence(value) {
   return numeric;
 }
 
+const CANON_MIN_CONFIDENCE = 0.55;
+
 function normalizeOpType(value) {
   const normalized = String(value || '').trim().toUpperCase();
   return CANON_EXTRACTABLE_OPS.has(normalized) ? normalized : null;
@@ -192,9 +194,38 @@ function createReport({
 export function inferAliveStatus(summary = '') {
   const normalized = normalizeKey(summary);
   if (!normalized) return 'alive';
-  if (/(da chet|tu tran|hy sinh|chet|mat mang)/.test(normalized)) return 'dead';
-  if (/(song sot|duoc cuu|binh an|con song)/.test(normalized)) return 'alive';
+  const deadMatch = normalized.match(/(da chet|tu vong|tu tran|hy sinh|mat mang|qua doi|khong con song|bi giet chet|chet tai|chet o|chet trong|chet vi|chet do|chet sau|chet roi)/);
+  const rawAliveMatch = normalized.match(/(song sot|duoc cuu song|duoc cuu|binh an|con song|van song|thoat chet)/);
+  const aliveMatch = rawAliveMatch
+    && !(rawAliveMatch[0] === 'con song' && normalized.slice(Math.max(0, rawAliveMatch.index - 6), rawAliveMatch.index) === 'khong ')
+    ? rawAliveMatch
+    : null;
+  if (deadMatch && aliveMatch) {
+    return aliveMatch.index > deadMatch.index ? 'alive' : 'dead';
+  }
+  if (deadMatch) return 'dead';
+  if (aliveMatch) return 'alive';
   return 'alive';
+}
+
+function isLivenessSummaryChunk(value, aliveStatus) {
+  const normalized = normalizeKey(value);
+  if (!normalized) return false;
+  if (aliveStatus === 'alive') {
+    return /^(da chet|tu vong|tu tran|hy sinh|mat mang|qua doi|khong con song)$/.test(normalized);
+  }
+  if (aliveStatus === 'dead') {
+    return /^(con song|van song|song sot|binh an|duoc cuu|duoc cuu song|thoat chet)$/.test(normalized);
+  }
+  return false;
+}
+
+function appendStateSummaryChunks(parts, summary, aliveStatus) {
+  uniqueSummaryParts([summary]).forEach((chunk) => {
+    if (!isLivenessSummaryChunk(chunk, aliveStatus)) {
+      parts.push(chunk);
+    }
+  });
 }
 
 export function buildCharacterStateSummary(state, fallbackSummary = '') {
@@ -208,8 +239,8 @@ export function buildCharacterStateSummary(state, fallbackSummary = '') {
   if (Array.isArray(state?.goals_active) && state.goals_active.length > 0) {
     parts.push(`Muc tieu: ${state.goals_active.join(', ')}`);
   }
-  if (state?.summary) parts.push(state.summary);
-  if (parts.length === 0 && fallbackSummary) parts.push(fallbackSummary);
+  if (state?.summary) appendStateSummaryChunks(parts, state.summary, state?.alive_status);
+  if (parts.length === 0 && fallbackSummary) appendStateSummaryChunks(parts, fallbackSummary, state?.alive_status);
   return uniqueSummaryParts(parts).join(' | ');
 }
 
@@ -278,27 +309,47 @@ function toThreadStateRecords(projectId, threadMap) {
   }));
 }
 
+function exactReferenceMatches(items, target, getValues) {
+  if (!target) return [];
+  return (items || []).filter((item) => (
+    getValues(item)
+      .map((value) => normalizeKey(value))
+      .filter(Boolean)
+      .some((value) => value === target)
+  ));
+}
+
+function resolveReference(items, rawValue, getValues, kind) {
+  const target = normalizeKey(rawValue);
+  if (!target) {
+    return { match: null, error: null };
+  }
+  const matches = exactReferenceMatches(items, target, getValues);
+  if (matches.length === 1) {
+    return { match: matches[0], error: null };
+  }
+  if (matches.length > 1) {
+    return {
+      match: null,
+      error: {
+        kind,
+        ruleCode: `AMBIGUOUS_${kind}_REFERENCE`,
+        rawValue: cleanText(rawValue),
+        candidateIds: matches.map((item) => item.id),
+      },
+    };
+  }
+  return { match: null, error: null };
+}
+
 function findCharacterByName(characters, name) {
   const target = normalizeKey(name);
   if (!target) return null;
-  const exact = characters.find((character) => {
+  const matches = exactReferenceMatches(characters, target, (character) => {
     const aliases = Array.isArray(character.aliases) ? character.aliases : [];
-    return [character.name, ...aliases].some((value) => normalizeKey(value) === target);
-  }) || null;
-  if (exact) return exact;
-
-  const targetTokens = target.split(' ').filter(Boolean);
-  return characters.find((character) => {
-    const aliases = Array.isArray(character.aliases) ? character.aliases : [];
-    return [character.name, ...aliases].some((value) => {
-      const normalized = normalizeKey(value);
-      if (!normalized) return false;
-      if (normalized.includes(target) || target.includes(normalized)) return true;
-      const normalizedTokens = normalized.split(' ').filter(Boolean);
-      const overlap = targetTokens.filter((token) => normalizedTokens.includes(token)).length;
-      return overlap >= Math.min(2, targetTokens.length, normalizedTokens.length);
-    });
-  }) || null;
+    return [character.name, ...aliases];
+  });
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function findLocationByName(locations, name) {
@@ -333,19 +384,18 @@ function findThreadByReference(threads, rawOp = {}) {
 function findFactByDescription(facts, description) {
   const target = normalizeKey(description);
   if (!target) return null;
-  return facts.find((fact) => {
-    const normalized = normalizeKey(fact.description);
-    return normalized === target || normalized.includes(target) || target.includes(normalized);
-  }) || null;
+  const matches = exactReferenceMatches(facts, target, (fact) => [fact.description]);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function findObjectByName(objects, name) {
   const target = normalizeKey(name);
   if (!target) return null;
-  return objects.find((object) => {
-    const normalized = normalizeKey(object.name);
-    return normalized === target || normalized.includes(target) || target.includes(normalized);
-  }) || null;
+  const matches = exactReferenceMatches(objects, target, (object) => {
+    const aliases = Array.isArray(object.aliases) ? object.aliases : [];
+    return [object.name, ...aliases];
+  });
+  return matches.length === 1 ? matches[0] : null;
 }
 
 function buildOpFingerprint(op) {
@@ -361,7 +411,55 @@ function buildOpFingerprint(op) {
   ].join('|');
 }
 
+function buildSemanticOpFingerprint(op) {
+  const payload = normalizePayload(op.payload);
+  const semanticPayload = {
+    status_summary: normalizeKey(payload.status_summary),
+    summary: normalizeKey(payload.status_summary || payload.description || payload.new_goal || payload.relationship_type || payload.status || payload.availability ? '' : op.summary),
+    new_goal: normalizeKey(payload.new_goal),
+    old_goal: normalizeKey(payload.old_goal),
+    goals_active: splitGoals(payload.goals_active).map(normalizeKey).sort(),
+    goals_abandoned: splitGoals(payload.goals_abandoned).map(normalizeKey).sort(),
+    allegiance: normalizeKey(payload.allegiance || payload.new_allegiance),
+    relationship_type: normalizeKey(payload.relationship_type || payload.status),
+    secrecy_state: normalizeKey(payload.secrecy_state || payload.secret_state),
+    intimacy_level: normalizeKey(payload.intimacy_level || payload.level),
+    consent_state: normalizeKey(payload.consent_state),
+    availability: normalizeKey(payload.availability),
+    usage_notes: normalizeKey(payload.usage_notes),
+    fact_type: normalizeKey(payload.fact_type),
+    description: normalizeKey(payload.description),
+  };
+  return [
+    op.op_type,
+    op.chapter_id || '',
+    op.scene_id || '',
+    op.subject_id || normalizeKey(op.subject_name),
+    op.target_id || normalizeKey(op.target_name),
+    op.location_id || normalizeKey(op.location_name),
+    op.thread_id || normalizeKey(op.thread_title),
+    op.fact_id || normalizeKey(op.fact_description || payload.description),
+    op.object_id || normalizeKey(op.object_name),
+    JSON.stringify(semanticPayload),
+  ].join('|');
+}
+
+function dedupeCandidateOps(candidateOps = []) {
+  const byFingerprint = new Map();
+  candidateOps.filter(Boolean).forEach((op) => {
+    const fingerprint = buildSemanticOpFingerprint(op);
+    const existing = byFingerprint.get(fingerprint);
+    if (!existing || clampConfidence(op.confidence) >= clampConfidence(existing.confidence)) {
+      byFingerprint.set(fingerprint, op);
+    }
+  });
+  return Array.from(byFingerprint.values());
+}
+
 function hasRequiredAiOpReferences(op) {
+  if (Array.isArray(op.mapping_errors) && op.mapping_errors.length > 0) {
+    return true;
+  }
   if (
     [
       CANON_OP_TYPES.CHARACTER_STATUS_CHANGED,
@@ -431,40 +529,56 @@ export function mapAiOpsToCandidateOps(rawOps, refs) {
       if (!opType) return null;
 
       const scene = sceneMap.get(Number(rawOp.scene_index) || 1) || refs.scenes[0] || null;
-      const subject = findCharacterByName(refs.characters, rawOp.subject_name);
-      const target = findCharacterByName(refs.characters, rawOp.target_name);
+      const subjectRef = resolveReference(refs.characters, rawOp.subject_name, (character) => {
+        const aliases = Array.isArray(character.aliases) ? character.aliases : [];
+        return [character.name, ...aliases];
+      }, 'CHARACTER');
+      const targetRef = resolveReference(refs.characters, rawOp.target_name, (character) => {
+        const aliases = Array.isArray(character.aliases) ? character.aliases : [];
+        return [character.name, ...aliases];
+      }, 'CHARACTER');
       const location = findLocationByName(refs.locations, rawOp.location_name);
       const thread = findThreadByReference(refs.plotThreads, rawOp);
-      const fact = findFactByDescription(refs.canonFacts, rawOp.fact_description);
-      const object = findObjectByName(refs.objects || [], rawOp.object_name);
+      const factRef = resolveReference(refs.canonFacts, rawOp.fact_description, (fact) => [fact.description], 'FACT');
+      const objectRef = resolveReference(refs.objects || [], rawOp.object_name, (object) => {
+        const aliases = Array.isArray(object.aliases) ? object.aliases : [];
+        return [object.name, ...aliases];
+      }, 'OBJECT');
+      const mappingErrors = [
+        subjectRef.error,
+        targetRef.error,
+        factRef.error,
+        objectRef.error,
+      ].filter(Boolean);
 
       return {
         op_type: opType,
         chapter_id: refs.chapterId,
         scene_id: scene?.id || null,
         scene_label: scene?.title || '',
-        subject_id: subject?.id || null,
-        subject_name: cleanText(rawOp.subject_name || subject?.name || ''),
-        target_id: target?.id || null,
-        target_name: cleanText(rawOp.target_name || target?.name || ''),
+        subject_id: subjectRef.match?.id || null,
+        subject_name: cleanText(rawOp.subject_name || subjectRef.match?.name || ''),
+        target_id: targetRef.match?.id || null,
+        target_name: cleanText(rawOp.target_name || targetRef.match?.name || ''),
         location_id: location?.id || null,
         location_name: cleanText(rawOp.location_name || location?.name || ''),
         thread_id: thread?.id || null,
         thread_title: cleanText(thread?.title || rawOp.thread_title || ''),
-        fact_id: fact?.id || null,
-        fact_description: cleanText(rawOp.fact_description || fact?.description || ''),
-        object_id: object?.id || null,
-        object_name: cleanText(rawOp.object_name || object?.name || ''),
+        fact_id: factRef.match?.id || null,
+        fact_description: cleanText(rawOp.fact_description || factRef.match?.description || ''),
+        object_id: objectRef.match?.id || null,
+        object_name: cleanText(rawOp.object_name || objectRef.match?.name || ''),
         summary: cleanText(rawOp.summary || ''),
         confidence: clampConfidence(rawOp.confidence),
         evidence: cleanText(rawOp.evidence || ''),
         payload: normalizePayload(rawOp.payload),
+        mapping_errors: mappingErrors,
       };
     })
     .filter(Boolean)
     .filter(hasRequiredAiOpReferences)
     .filter((op) => {
-      const fingerprint = buildOpFingerprint(op);
+      const fingerprint = buildSemanticOpFingerprint(op);
       if (seen.has(fingerprint)) return false;
       seen.add(fingerprint);
       return true;
@@ -866,7 +980,7 @@ export function validateCandidateOps({
   const seenFingerprints = new Set();
 
   candidateOps.forEach((op) => {
-    const fingerprint = buildOpFingerprint(op);
+    const fingerprint = buildSemanticOpFingerprint(op);
     if (!normalizeOpType(op.op_type)) {
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
@@ -880,6 +994,20 @@ export function validateCandidateOps({
       }));
       return;
     }
+
+    (op.mapping_errors || []).forEach((mappingError) => {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.ERROR,
+        ruleCode: mappingError.ruleCode || 'AMBIGUOUS_REFERENCE',
+        message: `Khong the map ro rang "${mappingError.rawValue}" vao ${mappingError.kind || 'reference'}; co ${mappingError.candidateIds?.length || 0} ket qua trung ten.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: mappingError.kind === 'CHARACTER' ? mappingError.candidateIds : [],
+        evidence: op.evidence || mappingError.rawValue,
+      }));
+    });
 
     if (seenFingerprints.has(fingerprint)) {
       reports.push(createReport({
@@ -910,11 +1038,11 @@ export function validateCandidateOps({
       }));
     }
 
-    if (op.confidence > 0 && op.confidence < 0.55) {
+    if (op.confidence > 0 && op.confidence < CANON_MIN_CONFIDENCE) {
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
-        ruleCode: 'LOW_CONFIDENCE_CANON_OP',
-        message: `Op ${op.op_type} co do tin cay thap (${op.confidence.toFixed(2)}).`,
+        ruleCode: 'LOW_CONFIDENCE_CANON_OP_FILTERED',
+        message: `Op ${op.op_type} co do tin cay thap (${op.confidence.toFixed(2)}) va se khong duoc commit.`,
         projectId,
         chapterId,
         revisionId,
@@ -1313,6 +1441,44 @@ export function reportsHaveErrors(reports = []) {
   return reports.some((report) => report.severity === CANON_SEVERITY.ERROR);
 }
 
+function filterCommitReadyOps(candidateOps = [], {
+  projectId,
+  chapterId,
+  revisionId = null,
+  requireConfidence = false,
+} = {}) {
+  const reports = [];
+  const ops = [];
+
+  candidateOps.forEach((op) => {
+    const confidence = clampConfidence(op.confidence);
+    const hasConfidence = Number.isFinite(Number(op.confidence)) && Number(op.confidence) > 0;
+    const shouldFilter = requireConfidence
+      ? confidence < CANON_MIN_CONFIDENCE
+      : (hasConfidence && confidence < CANON_MIN_CONFIDENCE);
+
+    if (shouldFilter) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'LOW_CONFIDENCE_CANON_OP_FILTERED',
+        message: `Op ${op.op_type} co do tin cay thap (${confidence.toFixed(2)}) va da bi loai khoi commit.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id, op.target_id],
+        relatedThreadIds: [op.thread_id],
+        evidence: op.evidence,
+      }));
+      return;
+    }
+
+    ops.push(op);
+  });
+
+  return { ops, reports };
+}
+
 function validateDraftTextAgainstTruth({
   projectId,
   chapterId,
@@ -1328,24 +1494,6 @@ function validateDraftTextAgainstTruth({
   const reports = [];
   const normalizedText = normalizeKey(sceneText);
   if (!normalizedText) return reports;
-
-  entityStates.forEach((state) => {
-    if (state.alive_status !== 'dead') return;
-    const character = characters.find((item) => item.id === state.entity_id);
-    if (!character?.name) return;
-    const target = normalizeKey(character.name);
-    if (target && normalizedText.includes(target)) {
-      reports.push(createReport({
-        severity: CANON_SEVERITY.WARNING,
-        ruleCode: 'DRAFT_MENTIONS_DEAD_CHARACTER',
-        message: `Draft dang nhac toi ${character.name}, trong khi canon hien tai ghi nhan nhan vat nay da chet.`,
-        projectId,
-        chapterId,
-        revisionId,
-        relatedEntityIds: [character.id],
-      }));
-    }
-  });
 
   threadStates.forEach((threadState) => {
     if (threadState.state !== 'resolved') return;
@@ -1495,8 +1643,12 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
   const preTruth = await loadPreChapterTruth(revision.project_id, revision.chapter_id);
   let candidateOps = loadRevisionOps(revision);
   const extractionFallbackReports = [];
+  const commitReadinessReports = [];
+  const shouldFailClosed = mode === 'canonicalize';
+  let extractionAttempted = false;
 
   if (candidateOps.length === 0 && cleanText(revision.chapter_text)) {
+    extractionAttempted = true;
     try {
       candidateOps = await extractCandidateOps({
         projectId: revision.project_id,
@@ -1510,13 +1662,38 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
       console.warn('[Canon] extractCandidateOps failed, falling back to heuristic-only validation:', error);
       candidateOps = [];
       extractionFallbackReports.push(createReport({
-        severity: CANON_SEVERITY.WARNING,
+        severity: shouldFailClosed ? CANON_SEVERITY.ERROR : CANON_SEVERITY.WARNING,
         ruleCode: 'CANON_EXTRACT_FALLBACK',
-        message: 'Khong trich xuat duoc canon ops tu AI, he thong tiep tuc bang heuristic validator de tranh vo luong canon hoa.',
+        message: shouldFailClosed
+          ? 'Khong trich xuat duoc canon ops tu AI nen khong canon hoa chuong nay.'
+          : 'Khong trich xuat duoc canon ops tu AI, he thong tiep tuc bang heuristic validator de tranh vo luong canon hoa.',
         projectId: revision.project_id,
         chapterId: revision.chapter_id,
         revisionId: revision.id,
         evidence: error?.message || '',
+      }));
+    }
+  }
+
+  if (shouldFailClosed) {
+    const filtered = filterCommitReadyOps(candidateOps, {
+      projectId: revision.project_id,
+      chapterId: revision.chapter_id,
+      revisionId: revision.id,
+      requireConfidence: extractionAttempted,
+    });
+    candidateOps = filtered.ops;
+    commitReadinessReports.push(...filtered.reports);
+
+    if (cleanText(revision.chapter_text) && extractionAttempted && candidateOps.length === 0) {
+      commitReadinessReports.push(createReport({
+        severity: CANON_SEVERITY.ERROR,
+        ruleCode: 'NO_COMMITTABLE_CANON_OPS',
+        message: 'AI khong tra ve canon op hop le de commit cho chuong co noi dung. Can xem lai extraction hoac canon hoa thu cong.',
+        projectId: revision.project_id,
+        chapterId: revision.chapter_id,
+        revisionId: revision.id,
+        evidence: cleanText(revision.chapter_text).slice(0, 240),
       }));
     }
   }
@@ -1546,7 +1723,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
     itemStates: preTruth.itemStates,
   });
 
-  const reports = [...schemaReports, ...heuristicReports, ...extractionFallbackReports];
+  const reports = [...schemaReports, ...heuristicReports, ...commitReadinessReports, ...extractionFallbackReports];
   await replaceValidatorReports(revision.project_id, revision.id, reports);
 
   const hasErrors = reportsHaveErrors(reports);
@@ -1556,6 +1733,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
 
   await db.chapter_revisions.update(revision.id, {
     status,
+    candidate_ops: JSON.stringify(candidateOps),
     validator_summary: JSON.stringify({
       warning_count: reports.filter((report) => report.severity === CANON_SEVERITY.WARNING).length,
       error_count: reports.filter((report) => report.severity === CANON_SEVERITY.ERROR).length,
@@ -1642,64 +1820,30 @@ async function writeSnapshot(projectId, chapterId, revisionId, snapshot) {
   return db.chapter_snapshots.add(record);
 }
 
-async function syncCompatibilityProjection(projectId, entityStates, threadStates, factStates = [], itemStates = [], relationshipStates = []) {
-  const [characters, relationships] = await Promise.all([
-    db.characters.where('project_id').equals(projectId).toArray(),
-    db.relationships.where('project_id').equals(projectId).toArray(),
-  ]);
-  await Promise.all(entityStates.map((state) => {
-    const character = characters.find((item) => item.id === state.entity_id);
-    if (!character) return Promise.resolve();
-    return db.characters.update(character.id, {
-      current_status: buildCharacterStateSummary(state, character.current_status || ''),
-    });
-  }));
-
-  await Promise.all(threadStates.map((threadState) => (
-    db.plotThreads.update(threadState.thread_id, { state: threadState.state })
-  )));
-
-  await Promise.all(itemStates.map((itemState) => (
-    db.objects.update(itemState.object_id, {
-      owner_character_id: itemState.owner_character_id || null,
-    })
-  )));
-
-  await Promise.all(relationshipStates.map((relationshipState) => {
-    const match = relationships.find((relationship) => (
-      buildRelationshipPairKey(relationship.character_a_id, relationship.character_b_id) === relationshipState.pair_key
-    ));
-    if (!match) return Promise.resolve();
-    return db.relationships.update(match.id, {
-      relation_type: relationshipState.relationship_type || match.relation_type || 'other',
-      description: cleanText(relationshipState.summary || match.description || ''),
-    });
-  }));
-
-  const existingFacts = await db.canonFacts.where('project_id').equals(projectId).toArray();
-  for (const factState of factStates) {
-    const match = existingFacts.find((fact) => fact.id === factState.id)
-      || existingFacts.find((fact) => normalizeKey(fact.description) === normalizeKey(factState.description));
-
-    const payload = {
-      project_id: projectId,
-      description: cleanText(factState.description || ''),
-      fact_type: cleanText(factState.fact_type || 'fact') || 'fact',
-      status: factState.status || 'active',
-      revealed_at_chapter: factState.revealed_at_chapter || null,
-      updated_at: Date.now(),
-    };
-
-    if (match) {
-      await db.canonFacts.update(match.id, payload);
-    } else if (payload.description) {
-      const newId = await db.canonFacts.add({
-        ...payload,
-        created_at: Date.now(),
-      });
-      existingFacts.push({ id: newId, ...payload });
-    }
+function cleanLegacyProjectionStatus(value) {
+  const parts = uniqueSummaryParts([value]);
+  if (parts.length === 0) return cleanText(value);
+  const hasAliveLabel = parts.some((part) => isLivenessSummaryChunk(part, 'dead'));
+  const hasDeadLabel = parts.some((part) => isLivenessSummaryChunk(part, 'alive'));
+  if (!hasAliveLabel || !hasDeadLabel) {
+    return cleanText(value);
   }
+  const aliveStatus = inferAliveStatus(value);
+  return uniqueSummaryParts(parts.filter((part) => !isLivenessSummaryChunk(part, aliveStatus))).join(' | ');
+}
+
+async function cleanLegacyCharacterProjection(projectId) {
+  const characters = await db.characters.where('project_id').equals(projectId).toArray();
+  await Promise.all(characters.map((character) => {
+    const currentStatus = cleanText(character.current_status || '');
+    if (!currentStatus) return Promise.resolve();
+    const cleanedStatus = cleanLegacyProjectionStatus(currentStatus);
+    if (!cleanedStatus || cleanedStatus === currentStatus) return Promise.resolve();
+    return db.characters.update(character.id, {
+      current_status: cleanedStatus,
+      updated_at: Date.now(),
+    });
+  }));
 }
 
 async function clearCanonProjection(projectId) {
@@ -1888,7 +2032,7 @@ export async function purgeChapterCanonState(projectId, chapterId) {
   return archivePayload;
 }
 
-export async function rebuildCanonFromChapter(projectId, chapterId = null) {
+export async function rebuildCanonFromChapter(projectId, chapterId = null, options = {}) {
   const chapters = await db.chapters.where('project_id').equals(projectId).sortBy('order_index');
   const commits = await db.chapter_commits.where('project_id').equals(projectId).toArray();
   const canonicalCommits = commits
@@ -2001,7 +2145,9 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null) {
   if (timelineEvents.length > 0) {
     await db.entityTimeline.bulkAdd(timelineEvents);
   }
-  await syncCompatibilityProjection(projectId, finalEntityStates, finalThreadStates, factStates, finalItemStates, finalRelationshipStates);
+  if (options.cleanLegacyProjection) {
+    await cleanLegacyCharacterProjection(projectId);
+  }
 
   return {
     entityStates: finalEntityStates,
@@ -2151,7 +2297,7 @@ export async function canonicalizeCandidateOps({
     ? await db.chapter_revisions.get(commit.canonical_revision_id)
     : null;
   const baseOps = loadRevisionOps(currentCanonicalRevision);
-  const mergedOps = [...baseOps, ...candidateOps].filter(Boolean);
+  const mergedOps = dedupeCandidateOps([...baseOps, ...candidateOps]);
   const fallbackText = chapterText || chapterTextFromScenes(await getChapterScenes(chapterId));
   const revision = await createChapterRevision({
     projectId,
@@ -2160,25 +2306,46 @@ export async function canonicalizeCandidateOps({
     status: CHAPTER_REVISION_STATUS.DRAFT,
   });
 
-  const preTruth = await loadPreChapterTruth(projectId, chapterId);
-  const reports = validateCandidateOps({
+  const filtered = filterCommitReadyOps(mergedOps, {
     projectId,
     chapterId,
     revisionId: revision.id,
-    candidateOps: mergedOps,
-    entityStates: preTruth.entityStates,
-    threadStates: preTruth.threadStates,
-    factStates: preTruth.factStates,
-    itemStates: preTruth.itemStates,
-    relationshipStates: preTruth.relationshipStates,
+    requireConfidence: false,
   });
+  const commitReadyOps = filtered.ops;
+  const preTruth = await loadPreChapterTruth(projectId, chapterId);
+  const reports = [
+    ...validateCandidateOps({
+      projectId,
+      chapterId,
+      revisionId: revision.id,
+      candidateOps: commitReadyOps,
+      entityStates: preTruth.entityStates,
+      threadStates: preTruth.threadStates,
+      factStates: preTruth.factStates,
+      itemStates: preTruth.itemStates,
+      relationshipStates: preTruth.relationshipStates,
+    }),
+    ...filtered.reports,
+  ];
+  if (mergedOps.length > 0 && commitReadyOps.length === 0) {
+    reports.push(createReport({
+      severity: CANON_SEVERITY.ERROR,
+      ruleCode: 'NO_COMMITTABLE_CANON_OPS',
+      message: 'Tat ca canon ops de xuat deu bi loai, khong co op hop le de commit.',
+      projectId,
+      chapterId,
+      revisionId: revision.id,
+      evidence: cleanText(fallbackText).slice(0, 240),
+    }));
+  }
 
   await replaceValidatorReports(projectId, revision.id, reports);
 
   if (reportsHaveErrors(reports)) {
     await db.chapter_revisions.update(revision.id, {
       status: CHAPTER_REVISION_STATUS.BLOCKED,
-      candidate_ops: JSON.stringify(mergedOps),
+      candidate_ops: JSON.stringify(commitReadyOps),
       updated_at: Date.now(),
     });
     await updateChapterCommitSummary(projectId, chapterId, CHAPTER_COMMIT_STATUS.BLOCKED, reports, revision.id);
@@ -2189,8 +2356,8 @@ export async function canonicalizeCandidateOps({
     };
   }
 
-  const storyEvents = buildStoryEventsFromOps(projectId, revision.id, mergedOps);
-  const memoryEvidence = buildEvidenceFromOps(projectId, revision.id, mergedOps).map((item) => ({
+  const storyEvents = buildStoryEventsFromOps(projectId, revision.id, commitReadyOps);
+  const memoryEvidence = buildEvidenceFromOps(projectId, revision.id, commitReadyOps).map((item) => ({
     ...item,
     source_type: sourceType,
   }));
@@ -2217,7 +2384,7 @@ export async function canonicalizeCandidateOps({
     async () => {
       await db.chapter_revisions.update(revision.id, {
         status: CHAPTER_REVISION_STATUS.CANONICAL,
-        candidate_ops: JSON.stringify(mergedOps),
+        candidate_ops: JSON.stringify(commitReadyOps),
         updated_at: Date.now(),
       });
 
@@ -2383,7 +2550,7 @@ export async function buildRetrievalPacket({
     .slice(0, modeConfig.relevantEvidenceCount);
 
   const criticalConstraints = {
-    deadCharacters: relevantEntityStates
+    deadCharacters: entityStates
       .filter((state) => state.alive_status === 'dead')
       .map((state) => state.entity_id),
     locationAnchors: relevantEntityStates

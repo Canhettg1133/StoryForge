@@ -12,6 +12,7 @@
 
 import { create } from 'zustand';
 import db from '../services/db/database';
+import { buildCharacterStateSummary } from '../services/canon/engine';
 import { buildProseBuffer } from '../utils/proseBuffer';
 
 // ---------------------------------------------
@@ -91,6 +92,7 @@ const useCodexStore = create((set, get) => ({
       taboos,
       canonFacts,
       chapterMetas,
+      entityStates,
     ] = await Promise.all([
       db.characters.where('project_id').equals(projectId).toArray(),
       db.locations.where('project_id').equals(projectId).toArray(),
@@ -100,9 +102,20 @@ const useCodexStore = create((set, get) => ({
       db.taboos.where('project_id').equals(projectId).toArray(),
       db.canonFacts.where('project_id').equals(projectId).toArray(),
       db.chapterMeta.where('project_id').equals(projectId).toArray(),
+      db.entity_state_current.where('project_id').equals(projectId).toArray(),
     ]);
+    const canonStateByCharacterId = new Map(entityStates.map((state) => [state.entity_id, state]));
+    const hydratedCharacters = characters.map((character) => {
+      const canonState = canonStateByCharacterId.get(character.id);
+      if (!canonState) return character;
+      return {
+        ...character,
+        canon_state: canonState,
+        canon_status_summary: buildCharacterStateSummary(canonState, ''),
+      };
+    });
     set({
-      characters,
+      characters: hydratedCharacters,
       locations,
       objects,
       worldTerms,

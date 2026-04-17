@@ -40,6 +40,33 @@ describe('phase10 canon engine', () => {
     expect(rescued.rescued).toBe(true);
   });
 
+  it('does not mark a character dead from goals about another death', () => {
+    const status = 'Con song | Muc tieu: Giai ma cai chet bi an cua ba va loi nguyen cua lang';
+    const state = engine.createInitialEntityState({
+      id: 1,
+      project_id: 99,
+      current_status: status,
+      goals: 'Giai ma cai chet bi an cua ba',
+    });
+
+    expect(engine.inferAliveStatus(status)).toBe('alive');
+    expect(state.alive_status).toBe('alive');
+  });
+
+  it('cleans conflicting liveness labels from projected character summaries', () => {
+    const summary = engine.buildCharacterStateSummary({
+      alive_status: 'alive',
+      goals_active: ['Giai ma cai chet bi an cua ba'],
+      summary: 'Da chet | Muc tieu: Giai ma cai chet bi an cua ba | Con song',
+    });
+
+    expect(engine.inferAliveStatus('Da chet | Muc tieu: Giai ma cai chet bi an cua ba | Con song')).toBe('alive');
+    expect(engine.inferAliveStatus('Khong con song')).toBe('dead');
+    expect(summary).toContain('Con song');
+    expect(summary).toContain('Muc tieu: Giai ma cai chet bi an cua ba');
+    expect(summary).not.toContain('Da chet');
+  });
+
   it('validates dead character acting again as hard error', () => {
     const reports = engine.validateCandidateOps({
       projectId: 1,
@@ -202,7 +229,45 @@ describe('phase10 canon engine', () => {
     expect(reports.some((report) => report.rule_code === 'MISSING_SUBJECT_REFERENCE')).toBe(true);
     expect(reports.some((report) => report.rule_code === 'MISSING_LOCATION_REFERENCE')).toBe(true);
     expect(reports.some((report) => report.rule_code === 'MISSING_FACT_REFERENCE')).toBe(true);
-    expect(reports.some((report) => report.rule_code === 'LOW_CONFIDENCE_CANON_OP')).toBe(true);
+    expect(reports.some((report) => report.rule_code === 'LOW_CONFIDENCE_CANON_OP_FILTERED')).toBe(true);
+  });
+
+  it('reports ambiguous exact character references instead of fuzzy mapping', () => {
+    const refs = {
+      chapterId: 2,
+      scenes: [{ id: 11, title: 'Canh 1' }],
+      characters: [
+        { id: 1, name: 'Ngoc Anh', aliases: ['Anh'] },
+        { id: 2, name: 'Lan Anh', aliases: ['Anh'] },
+      ],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+    };
+
+    const ops = engine.mapAiOpsToCandidateOps([{
+      op_type: CANON_OP_TYPES.CHARACTER_STATUS_CHANGED,
+      scene_index: 1,
+      subject_name: 'Anh',
+      summary: 'Anh thay doi trang thai.',
+      evidence: 'Anh im lang.',
+      confidence: 0.8,
+      payload: { status_summary: 'Lo lang' },
+    }], refs);
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 2,
+      candidateOps: ops,
+      entityStates: [],
+      threadStates: [],
+      factStates: [],
+    });
+
+    expect(ops).toHaveLength(1);
+    expect(ops[0].subject_id).toBe(null);
+    expect(reports.some((report) => report.rule_code === 'AMBIGUOUS_CHARACTER_REFERENCE')).toBe(true);
+    expect(engine.reportsHaveErrors(reports)).toBe(true);
   });
 
   it('updates thread projection when resolved', () => {

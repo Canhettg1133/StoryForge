@@ -155,7 +155,7 @@ describe('phase10 canon extraction fallback', () => {
     vi.clearAllMocks();
   });
 
-  it('falls back to heuristic validation when canon extraction runtime fails', async () => {
+  it('keeps extraction runtime fallback as warning in draft mode', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { db, engine, sendMock } = await loadCanonEngine({
       projects: [{ id: 1, title: 'Canon fallback', genre_primary: 'fantasy' }],
@@ -185,7 +185,7 @@ describe('phase10 canon extraction fallback', () => {
       validator_reports: [],
     });
 
-    const validation = await engine.validateRevision(31, 'canonicalize');
+    const validation = await engine.validateRevision(31, 'draft');
 
     expect(sendMock).toHaveBeenCalled();
     expect(validation.hasErrors).toBe(false);
@@ -194,6 +194,47 @@ describe('phase10 canon extraction fallback', () => {
 
     const persistedReports = await db.validator_reports.toArray();
     expect(persistedReports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK')).toBe(true);
+    warnSpy.mockRestore();
+  });
+
+  it('blocks canonicalize when canon extraction runtime fails', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { db, engine } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Canon fallback', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', draft_text: 'Lan buoc vao thanh.' }],
+      chapter_revisions: [{
+        id: 31,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'draft',
+        chapter_text: 'Lan buoc vao thanh.',
+        candidate_ops: '[]',
+        created_at: 1,
+        updated_at: 1,
+      }],
+      characters: [],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+    });
+
+    const validation = await engine.validateRevision(31, 'canonicalize');
+
+    expect(validation.hasErrors).toBe(true);
+    expect(validation.reports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'error')).toBe(true);
+    expect(validation.reports.some((item) => item.rule_code === 'NO_COMMITTABLE_CANON_OPS')).toBe(true);
+
+    const persistedReports = await db.validator_reports.toArray();
+    expect(persistedReports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'error')).toBe(true);
     warnSpy.mockRestore();
   });
 
@@ -231,7 +272,42 @@ describe('phase10 canon extraction fallback', () => {
     const fallbackReport = validation.reports.find((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK');
 
     expect(fallbackReport).toBeTruthy();
+    expect(fallbackReport.severity).toBe('error');
     expect(fallbackReport.evidence).toContain('AI canon extract returned empty response');
     warnSpy.mockRestore();
+  });
+
+  it('does not warn for plain text mentions of dead characters in draft validation', async () => {
+    const { engine } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Dead mention', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', draft_text: 'Lan nho ve Minh trong giac mo.' }],
+      chapter_revisions: [{
+        id: 31,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'draft',
+        chapter_text: 'Lan nho ve Minh trong giac mo.',
+        candidate_ops: '[]',
+        created_at: 1,
+        updated_at: 1,
+      }],
+      characters: [{ id: 7, project_id: 1, name: 'Minh', current_status: 'Da chet' }],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+    }, ({ onComplete }) => onComplete('{"ops":[]}'));
+
+    const validation = await engine.validateRevision(31, 'draft');
+
+    expect(validation.reports.some((item) => item.rule_code === 'DRAFT_MENTIONS_DEAD_CHARACTER')).toBe(false);
   });
 });
