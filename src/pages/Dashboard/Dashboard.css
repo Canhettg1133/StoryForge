@@ -81,6 +81,20 @@
   box-shadow: var(--shadow-glow);
 }
 
+.new-project-card--utility {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--color-accent) 26%, var(--color-border-strong));
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent 58%),
+    var(--color-bg-elevated);
+  color: var(--color-text);
+}
+
+.new-project-card--utility .new-project-icon {
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-bg-elevated));
+  color: var(--color-accent);
+}
+
 .new-project-label {
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);

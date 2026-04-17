@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
 import { getGenreEmoji, getGenreLabel, formatDate, countWords } from '../../utils/constants';
-import { Plus, BookOpen, Trash2, MoreVertical, Download } from 'lucide-react';
+import { Plus, BookOpen, Trash2, MoreVertical, Download, Languages } from 'lucide-react';
 import NewProjectModal from './NewProjectModal';
 import ExportModal from '../../components/common/ExportModal';
 import './Dashboard.css';
@@ -79,6 +79,13 @@ export default function Dashboard() {
               <Plus size={32} />
             </div>
             <span className="new-project-label">Truyện mới</span>
+          </button>
+
+          <button className="new-project-card new-project-card--utility animate-slide-up" onClick={() => navigate('/translator')}>
+            <div className="new-project-icon">
+              <Languages size={30} />
+            </div>
+            <span className="new-project-label">Dá»‹ch truyá»‡n</span>
           </button>
 
           {/* Project Cards */}

@@ -19,6 +19,7 @@ import Settings from './pages/Settings/Settings';
 import StoryCreationSettings from './pages/StoryCreationSettings/StoryCreationSettings';
 import ProjectPromptManager from './pages/ProjectPromptManager/ProjectPromptManager';
 import ProjectChat from './pages/ProjectChat/ProjectChat';
+import Translator from './pages/Translator/Translator';
 import ProjectLayout from './components/common/ProjectLayout';
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/ai-chat" element={<ProjectChat />} />
+          <Route path="/translator" element={<Translator />} />
           <Route path="/prompt-manager" element={<StoryCreationSettings />} />
           <Route path="/story-creation-settings" element={<Navigate to="/prompt-manager" replace />} />
 

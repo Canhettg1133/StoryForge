@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Web dịch truyện chữ sang tiếng Việt - Hỗ trợ nhiều ngôn ngữ, dịch siêu nhanh">
+    <title>📚 Dịch Truyện Convert - Novel Translator Pro</title>
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#8b5cf6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TranslatorPro">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">📚</span>
+                <h1>Novel Translator Pro</h1>
+            </div>
+            <p class="tagline">Dịch truyện chữ siêu nhanh với Google Translate API</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <section class="workspace-toolbar glass-card">
+                <div class="workspace-toolbar-header">
+                    <div>
+                        <h2 class="section-title">
+                            <span class="icon">⚙️</span>
+                            Điều khiển nhanh
+                        </h2>
+                    </div>
+                    <div class="workspace-toolbar-pills">
+                        <span class="toolbar-pill" id="activeProviderPill">Gemini Direct</span>
+                        <span class="toolbar-pill" id="activeConfigPill">chưa có model</span>
+                    </div>
+                </div>
+                <div class="workspace-toolbar-actions">
+                    <button class="btn btn-secondary" id="toggleSettingsBtn" onclick="toggleSettingsPanels()">
+                        ⚙️ Cài đặt dịch
+                    </button>
+                    <button class="btn btn-secondary" id="toggleHistoryBtn" onclick="toggleHistoryPanel()">
+                        📜 Lịch sử dịch
+                    </button>
+                </div>
+            </section>
+
+            <section class="settings-hub glass-card config-panel" id="settingsHub" style="display: none;">
+                <div class="settings-hub-header">
+                    <div>
+                        <h2 class="section-title">
+                            <span class="icon">⚙️</span>
+                            Cài đặt dịch
+                        </h2>
+                        <p class="settings-hub-subtitle">Chỉ mở đúng mục cần dùng. Gemini, Proxy và Ollama đều hiển thị provider/model hiện tại ngay khi đang đóng.</p>
+                    </div>
+                </div>
+
+                <div class="settings-accordion-list">
+                    <button type="button" class="settings-accordion" data-config-toggle="gemini"
+                        onclick="toggleConfigGroup('gemini')">
+                        <span class="settings-accordion-main">
+                            <span class="settings-accordion-title">Gemini Direct</span>
+                            <span class="settings-accordion-status" id="geminiAccordionStatus">Đang dùng</span>
+                        </span>
+                        <span class="settings-accordion-meta">
+                            <span class="settings-accordion-summary" id="geminiAccordionSummary">0 key • chưa có model</span>
+                            <span class="settings-accordion-caret">▾</span>
+                        </span>
+                    </button>
+
+                    <button type="button" class="settings-accordion" data-config-toggle="proxy"
+                        onclick="toggleConfigGroup('proxy')">
+                        <span class="settings-accordion-main">
+                            <span class="settings-accordion-title">Gemini Proxy</span>
+                            <span class="settings-accordion-status" id="proxyAccordionStatus">Tắt</span>
+                        </span>
+                        <span class="settings-accordion-meta">
+                            <span class="settings-accordion-summary" id="proxyAccordionSummary">Chưa có proxy key</span>
+                            <span class="settings-accordion-caret">▾</span>
+                        </span>
+                    </button>
+
+                    <button type="button" class="settings-accordion" data-config-toggle="ollama"
+                        onclick="toggleConfigGroup('ollama')">
+                        <span class="settings-accordion-main">
+                            <span class="settings-accordion-title">Ollama Local</span>
+                            <span class="settings-accordion-status" id="ollamaAccordionStatus">Tắt</span>
+                        </span>
+                        <span class="settings-accordion-meta">
+                            <span class="settings-accordion-summary" id="ollamaAccordionSummary">Chưa chọn model local</span>
+                            <span class="settings-accordion-caret">▾</span>
+                        </span>
+                    </button>
+
+                    <button type="button" class="settings-accordion" data-config-toggle="general"
+                        onclick="toggleConfigGroup('general')">
+                        <span class="settings-accordion-main">
+                            <span class="settings-accordion-title">Cài đặt chung</span>
+                            <span class="settings-accordion-status" id="generalAccordionStatus">Cấu hình</span>
+                        </span>
+                        <span class="settings-accordion-meta">
+                            <span class="settings-accordion-summary" id="generalAccordionSummary">Auto • 2 luồng • 2000 ký tự</span>
+                            <span class="settings-accordion-caret">▾</span>
+                        </span>
+                    </button>
+
+                    <button type="button" class="settings-accordion" data-config-toggle="prompt"
+                        onclick="toggleConfigGroup('prompt')">
+                        <span class="settings-accordion-main">
+                            <span class="settings-accordion-title">Prompt dịch</span>
+                            <span class="settings-accordion-status" id="promptAccordionStatus">Tùy chọn</span>
+                        </span>
+                        <span class="settings-accordion-meta">
+                            <span class="settings-accordion-summary" id="promptAccordionSummary">Template mặc định</span>
+                            <span class="settings-accordion-caret">▾</span>
+                        </span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- API Keys Panel -->
+            <section class="api-panel glass-card settings-subpanel" data-settings-group="gemini" style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">🔑</span>
+                    Gemini Direct • API Keys
+                    <span class="badge" id="apiCount">0 keys</span>
+                </h2>
+
+                <div class="api-info-box">
+                    <p>⚠️ <strong>Quan trọng:</strong> Rate limit tính theo <strong>MODEL</strong> trong mỗi project.
+                        Mỗi model có RPM + RPD riêng (vd: flash=5RPM/20RPD, flash-lite=10RPM/20RPD).</p>
+                    <p>✅ <strong>Cách tối ưu:</strong> Dùng nhiều tài khoản Google → mỗi tài khoản = quota riêng!</p>
+                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="link">
+                        👉 Lấy Gemini API Key (đăng nhập từng tài khoản)
+                    </a>
+                </div>
+
+                <!-- Add API Key Form -->
+                <div class="add-api-form">
+                    <div class="input-group">
+                        <input type="text" id="newApiKey" placeholder="Nhập API Key mới..." autocomplete="off">
+                        <button class="btn btn-primary" onclick="addApiKey()">
+                            ➕ Thêm
+                        </button>
+                        <button class="btn btn-success btn-small" onclick="openImportApiKeysModal()"
+                            title="Nhập nhiều API Keys cùng lúc">
+                            📥 Nhập nhiều
+                        </button>
+                        <button class="btn btn-secondary btn-small" onclick="resetRotationAndRefresh()"
+                            title="Reset rotation system (model + key)">
+                            🔄
+                        </button>
+                        <button class="btn btn-info btn-small" onclick="exportApiKeys()"
+                            title="Xuất danh sách API Keys">
+                            📋 Xuất
+                        </button>
+                    </div>
+                </div>
+
+                <!-- API Keys List -->
+                <div class="api-keys-list" id="apiKeysList">
+                    <p class="empty-message">Chưa có API key nào. Thêm ít nhất 1 key để bắt đầu dịch.</p>
+                </div>
+            </section>
+
+            <!-- Gemini Models Management Panel -->
+            <section class="models-panel glass-card settings-subpanel" data-settings-group="gemini" style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">📦</span>
+                    Gemini Direct • Models
+                    <span class="badge" id="modelCount">0 models</span>
+                </h2>
+
+                <div class="models-info-box">
+                    <p>✅ <strong>Models ổn định (hoạt động với mọi key):</strong> gemini-2.5-flash,
+                        gemini-2.5-flash-lite, gemini-3-flash-preview</p>
+                    <p>⚠️ <strong>Models quota cao (cần key hỗ trợ):</strong> gemini-2.5-pro, gemini-2.0-flash,
+                        gemini-2.0-flash-lite (15 RPM, 1,500 RPD)</p>
+                </div>
+
+                <!-- Models List -->
+                <div class="models-list" id="modelsList">
+                    <p class="empty-message">Đang tải models...</p>
+                </div>
+
+                <!-- Add Model -->
+                <div class="add-model-section">
+                    <h4>➕ Thêm model</h4>
+
+                    <!-- Preset Selection -->
+                    <div class="add-model-row">
+                        <select id="presetModelSelect" class="model-select">
+                            <option value="">-- Chọn model --</option>
+                        </select>
+                        <button class="btn btn-primary btn-small" onclick="addPresetModel()">
+                            ➕ Thêm
+                        </button>
+                    </div>
+
+                    <!-- Custom Model -->
+                    <div class="add-model-row">
+                        <input type="text" id="customModelName" placeholder="Tên model (vd: gemini-2.0-flash)"
+                            class="model-name-input">
+                        <input type="number" id="customModelQuota" value="15" min="1" max="100"
+                            class="model-quota-input" title="RPM">
+                        <button class="btn btn-secondary btn-small" onclick="addCustomModel()">
+                            ✏️ Thêm thủ công
+                        </button>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="model-actions">
+                        <button class="btn btn-warning btn-small" onclick="resetGeminiModels()">
+                            🔄 Reset mặc định
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RPD Dashboard Panel -->
+            <section class="rpd-panel glass-card settings-subpanel" data-settings-group="gemini" style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">📊</span>
+                    Gemini Direct • RPM / RPD
+                    <span class="badge" id="rpdBadge" style="background:#10b981;">-- còn lại</span>
+                </h2>
+
+                <div class="rpd-info-box">
+                    <p>📅 <strong>RPD (Requests Per Day)</strong> = Số request mỗi ngày cho từng model.
+                        Free tier: 20 RPD/model/key. Reset lúc 2PM giờ VN (midnight Pacific).</p>
+                </div>
+
+                <div class="rpd-dashboard" id="rpdDashboard">
+                    <p class="empty-message">Đang tải RPD data...</p>
+                </div>
+
+                <div class="rpd-actions">
+                    <button class="btn btn-secondary btn-small" onclick="renderRPDDashboard()" title="Refresh RPD">
+                        🔄 Refresh
+                    </button>
+                    <button class="btn btn-warning btn-small" onclick="resetRPDData()" title="Reset bộ đếm RPD">
+                        🗑️ Reset RPD
+                    </button>
+                </div>
+            </section>
+
+            <!-- Proxy API Panel -->
+            <section class="proxy-panel glass-card settings-subpanel" id="proxyPanel" data-settings-group="proxy"
+                style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">🌐</span>
+                    Proxy API (BeiJiXingXing)
+                    <span class="badge ollama-badge" id="proxyStatus">Tắt</span>
+                </h2>
+
+                <div class="ollama-info-box">
+                    <p>🔄 <strong>Proxy API:</strong> Dùng API proxy bên thứ 3 để gọi Gemini, GPT, Claude...
+                        Không cần key Google trực tiếp.</p>
+                    <p>⚠️ <strong>Lưu ý:</strong> Tốc độ phụ thuộc server proxy. RPM thường là 5/phút.</p>
+                </div>
+
+                <!-- Toggle Switch -->
+                <div class="ollama-toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="useProxyToggle" onchange="toggleProxyMode()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">Sử dụng Proxy API (thay vì Gemini Direct)</span>
+                </div>
+
+                <!-- Proxy Settings -->
+                <div class="proxy-settings" id="proxySettings" style="display: none;">
+                    <div class="form-group">
+                        <label for="proxyBaseUrlInput">
+                            <span class="icon">🔗</span>
+                            Base URL
+                        </label>
+                        <input type="text" id="proxyBaseUrlInput"
+                            value="https://ag.beijixingxing.com/v1/chat/completions"
+                            placeholder="https://proxy.example.com/v1/chat/completions" onchange="updateProxyConfig()">
+                        <small class="hint">Endpoint OpenAI-compatible (kết thúc /chat/completions)</small>
+                    </div>
+
+                    <!-- Multi Proxy Keys -->
+                    <div class="form-group">
+                        <label>
+                            <span class="icon">🔑</span>
+                            Proxy API Keys
+                            <span class="badge" id="proxyKeyCount" style="font-size:0.75rem;">0 keys</span>
+                        </label>
+                        <div id="proxyKeysList"></div>
+                        <div class="input-group" style="display:flex;gap:8px;margin-top:8px;">
+                            <input type="password" id="newProxyKeyInput" placeholder="sk-..." style="flex:1;"
+                                onkeypress="if(event.key==='Enter')addProxyKey()">
+                            <button class="btn btn-primary btn-small" onclick="addProxyKey()">➕ Thêm</button>
+                        </div>
+                        <small class="hint">Mỗi key thêm ~5 RPM. 2 keys = dịch nhanh gấp đôi (parallel x2)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="proxyModelSelect">
+                            <span class="icon">🤖</span>
+                            Model
+                        </label>
+                        <select id="proxyModelSelect" onchange="selectProxyModel()">
+                        </select>
+                    </div>
+
+                    <!-- Custom model input -->
+                    <div class="form-group">
+                        <label>
+                            <span class="icon">✏️</span>
+                            Hoặc nhập model ID thủ công:
+                        </label>
+                        <div class="input-group" style="display:flex;gap:8px;">
+                            <input type="text" id="proxyCustomModel" placeholder="model-name-here" style="flex:1;">
+                            <button class="btn btn-secondary btn-small"
+                                onclick="proxyModel=document.getElementById('proxyCustomModel').value;saveSettings();showToast('Đã set model: '+proxyModel,'success')">
+                                ✅ Dùng
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="ollama-actions">
+                        <button class="btn btn-primary btn-small" onclick="testProxyConnection()">
+                            🧪 Test kết nối
+                        </button>
+                    </div>
+
+                    <!-- Test Result -->
+                    <div class="ollama-test-result" id="proxyTestResult"></div>
+
+                    <!-- Tips -->
+                    <div class="ollama-tips">
+                        <p>💡 <strong>Mẹo dùng Proxy:</strong></p>
+                        <ul>
+                            <li>1 key = parallel 1 (~7 RPM) | 2 keys = parallel 2 (~14 RPM)</li>
+                            <li>Delay: <strong>5000ms</strong> tự động (tránh rate limit 5 RPM/key)</li>
+                            <li>Chunk size: <strong>2000-3000</strong> ký tự</li>
+                            <li>Khi bật Proxy, hệ thống sẽ <strong>bỏ qua</strong> Gemini Direct</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Ollama Local API Panel -->
+            <section class="ollama-panel glass-card settings-subpanel" id="ollamaPanel" data-settings-group="ollama"
+                style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">🦙</span>
+                    Ollama Local AI
+                    <span class="badge ollama-badge" id="ollamaStatus">Tắt</span>
+                </h2>
+
+                <div class="ollama-info-box">
+                    <p>🚀 <strong>Ollama Local:</strong> Dùng AI chạy trên máy tính của bạn, miễn phí và không giới hạn!
+                    </p>
+                    <a href="https://ollama.com/download" target="_blank" class="link">
+                        👉 Tải Ollama tại đây
+                    </a>
+                </div>
+
+                <!-- Toggle Switch -->
+                <div class="ollama-toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="useOllamaToggle" onchange="toggleOllamaMode()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">Sử dụng Ollama Local (thay vì Gemini Cloud)</span>
+                </div>
+
+                <!-- Ollama Settings -->
+                <div class="ollama-settings" id="ollamaSettings" style="display: none;">
+
+                    <!-- Server Control -->
+                    <div class="ollama-server-control">
+                        <h4>🖥️ Server Control</h4>
+                        <div class="server-buttons">
+                            <button class="btn btn-success btn-small" onclick="showStartServerGuide()">
+                                ▶️ Hướng dẫn chạy Server
+                            </button>
+                            <button class="btn btn-secondary btn-small" onclick="testOllamaConnection()">
+                                🔍 Test kết nối
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ollamaUrl">
+                            <span class="icon">🌐</span>
+                            Ollama Server URL
+                        </label>
+                        <input type="text" id="ollamaUrl" value="http://localhost:11434"
+                            placeholder="http://localhost:11434">
+                        <small class="hint">Mặc định: http://localhost:11434</small>
+                    </div>
+
+                    <!-- Model Selection -->
+                    <div class="ollama-model-section">
+                        <h4>🤖 Chọn Model AI</h4>
+
+                        <div class="form-group">
+                            <label for="ollamaModelSelect">
+                                Models đã cài trên server:
+                            </label>
+                            <div class="model-select-row">
+                                <select id="ollamaModelSelect" onchange="selectOllamaModel()">
+                                    <option value="">-- Click "Tải models" để xem --</option>
+                                </select>
+                                <button class="btn btn-info btn-small" onclick="loadOllamaModelsDropdown()">
+                                    📋 Tải models
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="ollamaModel">
+                                <span class="icon">✏️</span>
+                                Hoặc nhập tên model thủ công:
+                            </label>
+                            <input type="text" id="ollamaModel" value="huihui_ai/qwen3-abliterated:4b"
+                                placeholder="model:tag">
+                        </div>
+                    </div>
+
+                    <!-- Model Presets -->
+                    <div class="ollama-presets">
+                        <h4>⚡ Model Presets (Models phổ biến)</h4>
+                        <div class="preset-buttons">
+                            <button class="btn btn-preset" onclick="applyModelPreset('qwen3')">
+                                🧠 Qwen3 (Tốt nhất)
+                            </button>
+                            <button class="btn btn-preset" onclick="applyModelPreset('llama3')">
+                                🦙 Llama3
+                            </button>
+                            <button class="btn btn-preset" onclick="applyModelPreset('gemma2')">
+                                💎 Gemma2
+                            </button>
+                            <button class="btn btn-preset" onclick="applyModelPreset('mistral')">
+                                🌬️ Mistral
+                            </button>
+                            <button class="btn btn-preset" onclick="applyModelPreset('phi3')">
+                                Φ Phi3
+                            </button>
+                        </div>
+                        <small class="hint">Click để tự động cài đặt tối ưu cho từng model</small>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="ollama-actions">
+                        <button class="btn btn-primary btn-small" onclick="testOllamaTranslation()">
+                            🧪 Test dịch thử
+                        </button>
+                    </div>
+
+                    <!-- Speed Info -->
+                    <div class="ollama-speed-info" id="ollamaSpeedInfo" style="display: none;">
+                        <div class="speed-stat">
+                            <span class="speed-label">⚡ Tốc độ:</span>
+                            <span class="speed-value" id="ollamaSpeedValue">--</span>
+                            <span class="speed-unit">giây/chunk</span>
+                        </div>
+                        <div class="speed-stat">
+                            <span class="speed-label">📊 Đã xử lý:</span>
+                            <span class="speed-value" id="ollamaChunksProcessed">0</span>
+                            <span class="speed-unit">chunks</span>
+                        </div>
+                    </div>
+
+                    <!-- Tips -->
+                    <div class="ollama-tips">
+                        <p>💡 <strong>Mẹo tối ưu Ollama:</strong></p>
+                        <ul>
+                            <li>Request song song: <strong>1</strong> (GPU chỉ xử lý 1 lúc)</li>
+                            <li>Delay: <strong>500-1000ms</strong> (không cần 4-5s như Gemini)</li>
+                            <li>Chunk size: <strong>2000-3000</strong> ký tự</li>
+                            <li>Model 7B+ cho chất lượng tốt, 4B cho tốc độ</li>
+                        </ul>
+                    </div>
+
+                    <!-- Test Result -->
+                    <div class="ollama-test-result" id="ollamaTestResult"></div>
+                </div>
+            </section>
+
+            <!-- History Panel -->
+            <section class="history-panel glass-card history-panel-collapsible" style="display: none;">
+                <div class="history-header">
+                    <h2 class="section-title">
+                        <span class="icon">📜</span>
+                        Lịch sử dịch
+                        <span class="badge" id="historyCount">0 bản</span>
+                    </h2>
+                    <div class="history-actions">
+                        <button class="btn btn-small btn-secondary" onclick="exportHistory()" title="Xuất lịch sử">
+                            📤 Export
+                        </button>
+                        <label class="btn btn-small btn-secondary" title="Nhập lịch sử">
+                            📥 Import
+                            <input type="file" id="importHistoryInput" accept=".json" hidden
+                                onchange="importHistory(event)">
+                        </label>
+                        <button class="btn btn-small btn-danger" onclick="clearAllHistory()" title="Xóa tất cả">
+                            🗑️ Xóa hết
+                        </button>
+                    </div>
+                </div>
+
+                <div class="history-list" id="historyList">
+                    <p class="empty-message">Chưa có lịch sử dịch nào.</p>
+                </div>
+            </section>
+
+            <!-- Settings Panel -->
+            <section class="settings-panel glass-card settings-subpanel" data-settings-group="general"
+                style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">⚙️</span>
+                    Cài đặt dịch
+                </h2>
+
+                <div class="settings-grid">
+                    <!-- Source Language -->
+                    <div class="form-group">
+                        <label for="sourceLang">
+                            <span class="icon">🌍</span>
+                            Ngôn ngữ gốc
+                        </label>
+                        <select id="sourceLang">
+                            <option value="auto">🔍 Tự động phát hiện</option>
+                            <option value="zh-CN" selected>🇨🇳 Tiếng Trung (Giản thể)</option>
+                            <option value="zh-TW">🇹🇼 Tiếng Trung (Phồn thể)</option>
+                            <option value="en">🇬🇧 Tiếng Anh</option>
+                            <option value="ja">🇯🇵 Tiếng Nhật</option>
+                            <option value="ko">🇰🇷 Tiếng Hàn</option>
+                            <option value="th">🇹🇭 Tiếng Thái</option>
+                            <option value="id">🇮🇩 Tiếng Indonesia</option>
+                            <option value="ru">🇷🇺 Tiếng Nga</option>
+                            <option value="fr">🇫🇷 Tiếng Pháp</option>
+                            <option value="es">🇪🇸 Tiếng Tây Ban Nha</option>
+                        </select>
+                    </div>
+
+                    <!-- Parallel Requests -->
+                    <div class="form-group">
+                        <label for="parallelCount">
+                            <span class="icon">🚀</span>
+                            Số request song song
+                        </label>
+                        <input type="number" id="parallelCount" value="2" min="1" max="10">
+                        <small class="hint">Gemini miễn phí: 15 req/phút. Khuyến nghị: 1-3</small>
+                    </div>
+
+                    <!-- Chunk Size -->
+                    <div class="form-group">
+                        <label for="chunkSize">
+                            <span class="icon">📦</span>
+                            Kích thước chunk (ký tự)
+                        </label>
+                        <input type="number" id="chunkSize" value="2000" min="500" max="8000">
+                        <small class="hint">Gemini: 3000-4000 | Ollama: 1500-2500 ký tự</small>
+                    </div>
+
+                    <!-- Delay -->
+                    <div class="form-group">
+                        <label for="delayMs">
+                            <span class="icon">⏱️</span>
+                            Delay giữa các batch (ms)
+                        </label>
+                        <input type="number" id="delayMs" value="1000" min="100" max="10000">
+                        <small class="hint">Gemini: 4000-5000ms | Ollama: 500-1000ms</small>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Custom Prompt Panel -->
+            <section class="prompt-panel glass-card settings-subpanel" data-settings-group="prompt"
+                style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">✍️</span>
+                    Prompt dịch (Tùy chọn)
+                </h2>
+
+                <div class="prompt-info">
+                    <p>💡 Thêm hướng dẫn dịch để cải thiện chất lượng. Prompt sẽ được thêm vào đầu mỗi đoạn văn.</p>
+                </div>
+
+                <textarea id="customPrompt"
+                    placeholder="Ví dụ:&#10;[Dịch văn phong tiểu thuyết, giữ nguyên từ ngữ 18+, không censor]&#10;&#10;Hoặc để trống nếu không cần..."
+                    rows="3"></textarea>
+
+                <div class="prompt-templates">
+                    <span class="template-label">Mẫu có sẵn:</span>
+                    <button class="template-btn active-template" onclick="setPromptTemplate('convert')">🔄 Convert (Làm
+                        mượt)</button>
+                    <button class="template-btn" onclick="setPromptTemplate('novel')">📖 Tiểu thuyết</button>
+                    <button class="template-btn" onclick="setPromptTemplate('adult')">🔞 Truyện 18+</button>
+                    <button class="template-btn" onclick="setPromptTemplate('sacHiep')">🔥 Sắc Hiệp</button>
+                    <button class="template-btn" onclick="setPromptTemplate('sacHiepPro')">💎 SH Pro</button>
+                    <button class="template-btn" onclick="setPromptTemplate('sacHiepENI')">⭐ SH ENI</button>
+                    <button class="template-btn" onclick="setPromptTemplate('wuxia')">⚔️ Tu tiên/Kiếm hiệp</button>
+                    <button class="template-btn" onclick="setPromptTemplate('romance')">💕 Ngôn tình</button>
+                </div>
+            </section>
+
+            <!-- Upload Section -->
+            <section class="upload-section glass-card">
+                <h2 class="section-title">
+                    <span class="icon">📄</span>
+                    Tải lên file truyện
+                </h2>
+
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <span class="upload-icon">📁</span>
+                        <p class="upload-text">Kéo thả file .txt vào đây</p>
+                        <p class="upload-subtext">hoặc click để chọn file</p>
+                    </div>
+                    <input type="file" id="fileInput" accept=".txt" hidden>
+                </div>
+
+                <div class="file-info" id="fileInfo" style="display: none;">
+                    <div class="file-details">
+                        <span class="file-icon">📝</span>
+                        <div class="file-meta">
+                            <span class="file-name" id="fileName"></span>
+                            <span class="file-size" id="fileSize"></span>
+                        </div>
+                    </div>
+                    <button class="btn btn-danger btn-small" onclick="clearFile()">✕</button>
+                </div>
+            </section>
+
+            <!-- Text Preview -->
+            <section class="preview-section glass-card">
+                <div class="preview-header">
+                    <h2 class="section-title">
+                        <span class="icon">👁️</span>
+                        Nội dung gốc
+                    </h2>
+                    <div class="preview-stats">
+                        <span id="charCount">0 ký tự</span>
+                        <span id="chunkCount">0 chunks</span>
+                        <span id="estimatedTime">~0 giây</span>
+                    </div>
+                </div>
+                <textarea id="originalText"
+                    placeholder="Nội dung truyện sẽ hiển thị ở đây...&#10;&#10;Bạn cũng có thể paste trực tiếp nội dung vào đây."
+                    rows="10"></textarea>
+            </section>
+
+            <!-- Translate Button -->
+            <div class="translate-actions">
+                <button class="btn btn-translate" id="translateBtn" onclick="startTranslation()">
+                    <span class="btn-icon">🚀</span>
+                    <span class="btn-text">Bắt đầu dịch</span>
+                </button>
+            </div>
+
+            <!-- Progress Section -->
+            <section class="progress-section glass-card" id="progressSection" style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">⏳</span>
+                    Tiến trình dịch
+                </h2>
+
+                <div class="progress-stats">
+                    <div class="stat-box">
+                        <span class="stat-value" id="speedStat">0</span>
+                        <span class="stat-label">chunks/giây</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value" id="activeKeysStat">0</span>
+                        <span class="stat-label">API keys đang dùng</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-value" id="etaStat">--:--</span>
+                        <span class="stat-label">thời gian còn lại</span>
+                    </div>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-info">
+                        <span id="progressText">0%</span>
+                        <span id="progressDetails">0 / 0 chunks</span>
+                    </div>
+                </div>
+                <div class="progress-status" id="progressStatus">Đang chuẩn bị...</div>
+                <div class="progress-actions">
+                    <button class="btn btn-success" id="downloadPartialBtn" onclick="downloadPartial()">
+                        📥 Tải phần đã dịch
+                    </button>
+                    <button class="btn btn-warning" id="pauseBtn" onclick="togglePause()">
+                        <span class="btn-icon">⏸️</span>
+                        <span class="btn-text">Tạm dừng</span>
+                    </button>
+                    <button class="btn btn-danger" id="cancelBtn" onclick="confirmCancel()">
+                        <span class="btn-icon">⏹️</span>
+                        <span class="btn-text">Hủy dịch</span>
+                    </button>
+                </div>
+
+                <!-- Cancel Confirmation Modal -->
+                <div class="cancel-modal" id="cancelModal" style="display: none;">
+                    <div class="cancel-modal-content glass-card">
+                        <h3>⚠️ Xác nhận hủy dịch</h3>
+                        <p id="cancelModalStats">Đã dịch được 0/0 chunks</p>
+                        <p class="cancel-warning">Tiến trình sẽ được lưu vào lịch sử để bạn có thể tiếp tục sau.</p>
+                        <div class="cancel-modal-actions">
+                            <button class="btn btn-secondary" onclick="closeCancelModal()">
+                                ← Tiếp tục dịch
+                            </button>
+                            <button class="btn btn-danger" onclick="executeCancel()">
+                                🗑️ Xác nhận hủy
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Chunk Tracker Panel -->
+            <section class="chunk-tracker-panel glass-card" id="chunkTrackerPanel" style="display: none;">
+                <div class="chunk-tracker-header" onclick="toggleChunkTracker()">
+                    <h2 class="section-title">
+                        <span class="icon">📊</span>
+                        Chi tiết Chunks
+                        <span class="ct-badge" id="chunkTrackerBadge"></span>
+                    </h2>
+                    <span class="ct-toggle" id="chunkTrackerToggle">▼</span>
+                </div>
+                <div id="chunkTrackerBody">
+                    <div class="ct-list" id="chunkTrackerList"></div>
+                    <div class="ct-summary" id="chunkTrackerSummary"></div>
+                </div>
+            </section>
+
+            <!-- Chunk Detail Modal -->
+            <div class="chunk-detail-modal" id="chunkDetailModal" style="display: none;">
+                <div class="chunk-detail-modal-content glass-card" id="chunkDetailContent">
+                </div>
+            </div>
+
+            <!-- Result Section -->
+            <section class="result-section glass-card" id="resultSection" style="display: none;">
+                <div class="result-header">
+                    <h2 class="section-title">
+                        <span class="icon">✅</span>
+                        Kết quả dịch
+                    </h2>
+                    <div class="result-actions">
+                        <button class="btn btn-secondary" onclick="copyResult()">
+                            📋 Copy
+                        </button>
+                        <button class="btn btn-primary" onclick="downloadResult()">
+                            💾 Tải xuống
+                        </button>
+                    </div>
+                </div>
+                <textarea id="translatedText" placeholder="Nội dung đã dịch sẽ hiển thị ở đây..." rows="15"
+                    readonly></textarea>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Made with ❤️ for Novel Lovers</p>
+            <p class="footer-note">Sử dụng Gemini AI | Làm mượt truyện convert siêu nhanh</p>
+        </footer>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- 
+    ============================================== 
+    Novel Translator Pro - Modular JavaScript
+    Thứ tự load quan trọng: app.js (globals) → gemini → translation → ui → history → local-ai
+    ============================================== -->
+
+    <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
+    <script src="js/app.js"></script>
+
+    <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
+    <script src="js/worker-timer.js"></script>
+
+    <!-- 2. Gemini API -->
+    <script src="js/gemini/model-rotation.js"></script>
+    <script src="js/gemini/rpd-tracker.js"></script>
+    <script src="js/gemini/api.js"></script>
+
+    <!-- 3. Translation Engine -->
+    <script src="js/translation/chunker.js"></script>
+    <script src="js/translation/retry.js"></script>
+    <script src="js/translation/engine.js"></script>
+
+
+    <!-- 4. UI Components -->
+    <script src="js/ui/progress.js"></script>
+    <script src="js/ui/file-handler.js"></script>
+    <script src="js/ui/settings.js"></script>
+    <script src="js/ui/controls.js"></script>
+    <script src="js/ui/chunk-tracker.js"></script>
+
+    <!-- 5. History -->
+    <script src="js/history/history.js"></script>
+
+    <!-- 6. Local AI (Ollama) -->
+    <script src="js/local-ai/ollama.js"></script>
+
+    <!-- 6b. Proxy API -->
+    <script src="js/proxy/proxy-api.js"></script>
+
+    <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
+    <script src="js/init.js"></script>
+
+    <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
+    <!-- <script src="script.js.backup"></script> -->
+
+    <!-- Clear old translator PWA caches from previous embedded builds -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', async () => {
+                try {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    await Promise.all(
+                        registrations
+                            .filter((registration) =>
+                                registration.scope.includes('/translator-legacy/') ||
+                                registration.scope.includes('/translator-runtime/')
+                            )
+                            .map((registration) => registration.unregister())
+                    );
+
+                    if ('caches' in window) {
+                        const cacheKeys = await caches.keys();
+                        await Promise.all(
+                            cacheKeys
+                                .filter((key) => key.startsWith('novel-translator-'))
+                                .map((key) => caches.delete(key))
+                        );
+                    }
+
+                    console.log('🧹 Translator cache cleared');
+                } catch (error) {
+                    console.warn('⚠️ Failed to clear translator cache:', error);
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>
