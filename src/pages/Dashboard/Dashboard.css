@@ -7,7 +7,7 @@
 
 /* Header */
 .dashboard-header {
-  margin-bottom: var(--space-10);
+  margin-bottom: var(--space-8);
 }
 
 .dashboard-title {
@@ -36,41 +36,44 @@
 .dashboard-content {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-5);
 }
 
 .dashboard-tools,
 .dashboard-projects {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
-.dashboard-tools__header h2,
+.dashboard-tools {
+  padding: 12px;
+}
+
+.dashboard-tools__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .dashboard-projects__header h2 {
   margin: 0 0 6px;
 }
 
-.dashboard-tools__header p,
 .dashboard-projects__header p {
   margin: 0;
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
 }
 
-.dashboard-tools__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-4);
-}
-
 .dashboard-tool-card {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-4);
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 55%),
     var(--color-bg-elevated);
@@ -81,19 +84,19 @@
 }
 
 .dashboard-tool-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   border-color: var(--color-accent);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.14);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
 }
 
 .dashboard-tool-card__icon {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 14px;
+  border-radius: 10px;
   background: color-mix(in srgb, var(--color-accent) 14%, var(--color-bg-secondary));
   color: var(--color-accent);
 }
@@ -101,33 +104,15 @@
 .dashboard-tool-card__content {
   display: flex;
   flex-direction: column;
-  gap: 6px;
   min-width: 0;
+  flex: 1;
 }
 
 .dashboard-tool-card__title-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-}
-
-.dashboard-tool-card__badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--color-accent-muted);
-  color: var(--color-accent);
-  font-size: 11px;
-  font-weight: var(--weight-semibold);
-}
-
-.dashboard-tool-card p {
-  margin: 0;
-  color: var(--color-text-tertiary);
-  font-size: var(--text-sm);
-  line-height: 1.55;
+  gap: 6px;
 }
 
 /* Grid */
@@ -381,8 +366,7 @@
   }
 
   .dashboard-tools__grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
+    gap: 8px;
   }
 
   .new-project-card {
@@ -404,7 +388,8 @@
 
   .dashboard-tool-card {
     border-radius: 8px;
-    padding: 16px;
+    min-width: 0;
+    padding: 10px 12px;
   }
 
   .new-project-icon {

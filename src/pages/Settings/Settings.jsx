@@ -11,7 +11,7 @@ import aiService, {
 import {
   Key, Server, Cpu, Cloud, Trash2, Eye, EyeOff, CheckCircle, XCircle,
   Zap, Gauge, Crown, RefreshCw, TestTube, Download, Upload, Copy, Check,
-  Plus, X,
+  Plus, X, BookOpen, ExternalLink,
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
 import './Settings.css';
@@ -236,6 +236,9 @@ export default function Settings() {
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
 
   const handleSaveUrls = () => saveSettings({ proxyUrl, geminiDirectUrl: directUrl, ollamaUrl });
+  const handleOpenAiStudio = () => {
+    window.open('https://aistudio.google.com/app/apikey', '_blank', 'noopener,noreferrer');
+  };
 
   const handleTest = async (prov) => {
     setTesting(p => ({ ...p, [prov]: true }));
@@ -263,9 +266,27 @@ export default function Settings() {
       </header>
 
       <div className="settings-sections">
+        <section className="settings-section card animate-slide-up">
+          <div className="settings-section-header">
+            <BookOpen size={20} />
+            <div>
+              <h2>Can lay API key Gemini?</h2>
+              <p>Neu ban chua co key, mo guide tung buoc roi quay lai trang nay de dan key va test.</p>
+            </div>
+          </div>
+
+          <div className="settings-action-row">
+            <button className="btn btn-primary" onClick={() => navigate('/guide')}>
+              <BookOpen size={14} /> Mo huong dan
+            </button>
+            <button className="btn btn-secondary" onClick={handleOpenAiStudio}>
+              <ExternalLink size={14} /> Mo Google AI Studio
+            </button>
+          </div>
+        </section>
 
         {/* === PROVIDER PREFERENCE === */}
-        <section className="settings-section card animate-slide-up">
+        <section className="settings-section card animate-slide-up" style={{ animationDelay: '30ms' }}>
           <div className="settings-section-header">
             <Gauge size={20} />
             <div>

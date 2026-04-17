@@ -1,0 +1,214 @@
+.gemini-guide-page {
+  max-width: 980px;
+}
+
+.gemini-guide-back {
+  margin-bottom: var(--space-4);
+}
+
+.gemini-guide-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.gemini-guide-hero__copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.gemini-guide-hero__kicker {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.gemini-guide-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.gemini-guide-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.gemini-guide-status-card {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent 30%), var(--color-bg-tertiary);
+}
+
+.gemini-guide-status-card.is-success {
+  border-color: color-mix(in srgb, var(--color-success, #22c55e) 36%, var(--color-border));
+}
+
+.gemini-guide-status-card.is-warning {
+  border-color: color-mix(in srgb, #f59e0b 40%, var(--color-border));
+}
+
+.gemini-guide-status-card__icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--color-bg-secondary);
+  color: var(--color-accent);
+}
+
+.gemini-guide-status-card__label {
+  margin-bottom: 4px;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gemini-guide-status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.gemini-guide-step__badge {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  font-weight: var(--weight-bold);
+}
+
+.gemini-guide-step__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.gemini-guide-step__content p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.65;
+}
+
+.gemini-guide-link {
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.gemini-guide-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--color-text-secondary);
+}
+
+.gemini-guide-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.gemini-guide-note.is-warning {
+  border-color: color-mix(in srgb, #f59e0b 40%, var(--color-border));
+}
+
+.gemini-guide-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  min-height: 160px;
+  border-radius: var(--radius-lg);
+  border: 1px dashed color-mix(in srgb, var(--color-accent) 32%, var(--color-border));
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 58%),
+    var(--color-bg-secondary);
+}
+
+.gemini-guide-placeholder p {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.gemini-guide-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.gemini-guide-faq-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.gemini-guide-faq-list article {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-tertiary);
+}
+
+.gemini-guide-faq-list article strong {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.gemini-guide-faq-list article p {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .gemini-guide-hero,
+  .gemini-guide-status-actions {
+    flex-direction: column;
+  }
+
+  .gemini-guide-status-grid,
+  .gemini-guide-faq-list {
+    grid-template-columns: 1fr;
+  }
+
+  .gemini-guide-hero__actions .btn,
+  .gemini-guide-action-row .btn,
+  .gemini-guide-status-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .gemini-guide-placeholder {
+    min-height: 132px;
+    border-radius: 8px;
+  }
+}

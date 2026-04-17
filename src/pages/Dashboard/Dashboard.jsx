@@ -10,6 +10,7 @@ import {
   Download,
   Languages,
   MessageSquare,
+  BookKey,
 } from 'lucide-react';
 import NewProjectModal from './NewProjectModal';
 import ExportModal from '../../components/common/ExportModal';
@@ -18,17 +19,24 @@ import './Dashboard.css';
 const UTILITY_ITEMS = [
   {
     id: 'global-chat',
-    title: 'Chat tu do',
-    description: 'Hoi AI, brainstorm, hoac thao tac nhanh ma khong can mo project.',
+    title: 'Chat tự do',
+    description: 'Hỏi AI, brainstorm hoặc làm nhanh mà không cần mở dự án.',
     icon: MessageSquare,
     path: '/ai-chat',
   },
   {
     id: 'translator',
-    title: 'Dich truyen',
-    description: 'Cong cu dich doc lap. Khong tao project moi va khong chen vao danh sach truyen.',
+    title: 'Dịch truyện',
+    description: 'Công cụ dịch độc lập, không tạo project mới và không chen vào danh sách truyện.',
     icon: Languages,
     path: '/translator',
+  },
+  {
+    id: 'guide',
+    title: 'Hướng dẫn Gemini',
+    description: 'Xem từng bước lấy API key Gemini và setup StoryForge cho người mới.',
+    icon: BookKey,
+    path: '/guide',
   },
 ];
 
@@ -51,7 +59,7 @@ export default function Dashboard() {
 
   const handleDeleteProject = async (id, event) => {
     event.stopPropagation();
-    if (window.confirm('Ban chac chan muon xoa du an nay? Tat ca du lieu se bi mat.')) {
+    if (window.confirm('Bạn chắc chắn muốn xóa dự án này? Tất cả dữ liệu sẽ bị mất.')) {
       await deleteProject(id);
     }
     setContextMenu(null);
@@ -82,7 +90,7 @@ export default function Dashboard() {
             StoryForge
           </h1>
           <p className="dashboard-subtitle">
-            Story OS for Novelists. Mo project de viet, hoac dung nhanh cac cong cu AI va dich truyen.
+            Tạo dự án để bắt đầu viết truyện, hoặc dùng nhanh Chat AI và Dịch truyện khi chưa cần mở project.
           </p>
         </div>
       </header>
@@ -92,19 +100,12 @@ export default function Dashboard() {
           className="input"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Tim truyen..."
+          placeholder="Tìm truyện..."
         />
       </div>
 
       <div className="dashboard-content">
         <section className="dashboard-tools card animate-slide-up">
-          <div className="dashboard-tools__header">
-            <div>
-              <h2>Cong cu nhanh</h2>
-              <p>Khong tao project moi. Day la cac tinh nang dung doc lap, rat hop cho mobile.</p>
-            </div>
-          </div>
-
           <div className="dashboard-tools__grid">
             {UTILITY_ITEMS.map((item) => {
               const Icon = item.icon;
@@ -121,9 +122,7 @@ export default function Dashboard() {
                   <div className="dashboard-tool-card__content">
                     <div className="dashboard-tool-card__title-row">
                       <strong>{item.title}</strong>
-                      <span className="dashboard-tool-card__badge">Tien ich</span>
                     </div>
-                    <p>{item.description}</p>
                   </div>
                 </button>
               );
@@ -134,8 +133,8 @@ export default function Dashboard() {
         <section className="dashboard-projects">
           <div className="dashboard-projects__header">
             <div>
-              <h2>Du an truyen</h2>
-              <p>Tao truyen moi hoac mo truyen dang viet.</p>
+              <h2>Dự án truyện</h2>
+              <p>Nhấn tạo truyện mới ở thẻ đầu tiên bên dưới để bắt đầu viết, hoặc mở một dự án đang viết để tiếp tục.</p>
             </div>
           </div>
 
@@ -145,8 +144,8 @@ export default function Dashboard() {
                 <Plus size={32} />
               </div>
               <div className="new-project-card__content">
-                <span className="new-project-label">Truyen moi</span>
-                <span className="new-project-hint">Tao mot project moi de viet truyen, outline va quan ly canon.</span>
+                <span className="new-project-label">Tạo truyện mới</span>
+                <span className="new-project-hint">Tạo một dự án mới để vào editor, viết truyện, lên dàn ý và quản lý canon.</span>
               </div>
             </button>
 
@@ -178,13 +177,13 @@ export default function Dashboard() {
                           setExportingProject(project);
                         }}
                       >
-                        <Download size={14} /> Xuat ban truyen
+                        <Download size={14} /> Xuất bản truyện
                       </button>
                       <button
                         className="context-menu-item danger"
                         onClick={(event) => handleDeleteProject(project.id, event)}
                       >
-                        <Trash2 size={14} /> Xoa du an
+                        <Trash2 size={14} /> Xóa dự án
                       </button>
                     </div>
                   )}
@@ -210,10 +209,10 @@ export default function Dashboard() {
           {projects.length === 0 && (
             <div className="empty-state animate-fade-in">
               <BookOpen size={48} />
-              <h3>Chua co du an nao</h3>
-              <p>Bat dau hanh trinh sang tac bang cach tao truyen moi hoac thu cac cong cu nhanh o tren.</p>
+              <h3>Chưa có dự án nào</h3>
+              <p>Bắt đầu hành trình sáng tác bằng cách tạo truyện mới bên dưới, hoặc thử các công cụ nhanh ở phía trên.</p>
               <button className="btn btn-primary btn-lg" onClick={() => setShowModal(true)}>
-                <Plus size={18} /> Tao truyen moi
+                <Plus size={18} /> Tạo truyện mới
               </button>
             </div>
           )}
@@ -221,7 +220,7 @@ export default function Dashboard() {
       </div>
 
       <button className="dashboard-mobile-cta btn btn-primary" onClick={() => setShowModal(true)}>
-        <Plus size={18} /> Tao truyen
+        <Plus size={18} /> Tạo truyện
       </button>
 
       {showModal && (
