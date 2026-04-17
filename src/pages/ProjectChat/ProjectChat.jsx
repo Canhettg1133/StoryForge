@@ -1113,6 +1113,21 @@ export default function ProjectChat() {
 
   const pageTitle = projectScopeEnabled ? currentProject?.title || 'Chat AI' : 'Chat tự do';
   const pageKicker = projectScopeEnabled ? 'Dự án hiện tại' : 'Không gắn với truyện';
+  const isStoryChatMode = activeThreadMode === CHAT_MODES.STORY;
+  const chatSpaceLabel =
+    isStoryChatMode && projectScopeEnabled
+      ? 'Không gian chat của truyện'
+      : projectScopeEnabled
+        ? 'Chat tự do - không dùng ngữ cảnh truyện'
+        : 'Chat tự do toàn cục';
+  const sidebarHint =
+    isStoryChatMode && projectScopeEnabled
+      ? 'Chat này dùng chung model và API key của dự án, đồng thời bám theo ngữ cảnh truyện hiện tại.'
+      : 'Chat tự do chỉ dùng model và API key hiện tại. Không bơm ngữ cảnh truyện vào câu trả lời.';
+  const providerScopeLabel =
+    isStoryChatMode && projectScopeEnabled
+      ? 'API key và provider dùng chung với phần AI của dự án'
+      : 'Chat tự do: không dùng ngữ cảnh truyện';
 
   if (projectScopeEnabled && !currentProject) {
     return (
@@ -1176,9 +1191,7 @@ export default function ProjectChat() {
 
           {!sidebarCollapsed ? (
             <div className="project-chat-sidebar__hint">
-              {projectScopeEnabled
-                ? 'Chat này dùng chung model và API key của dự án. Bạn có thể chuyển giữa AI của truyện và chế độ hỏi đáp tự do ngay trong từng cuộc trò chuyện.'
-                : 'Chat tự do dùng đúng model và API key mà hệ thống hiện đang dùng. Không bám theo truyện nào cả.'}
+              {sidebarHint}
             </div>
           ) : null}
 
@@ -1251,7 +1264,7 @@ export default function ProjectChat() {
             <div className="project-chat-topbar__compact">
               <div className="project-chat-topbar__meta">
                 <div className="project-chat-topbar__kicker">
-                  {projectScopeEnabled ? 'Không gian chat của truyện' : 'Không gian chat toàn cục'}
+                  {chatSpaceLabel}
                 </div>
               </div>
               <div className="project-chat-topbar__header-actions">
@@ -1261,7 +1274,7 @@ export default function ProjectChat() {
                   onClick={() => setMobileThreadsOpen(true)}
                 >
                   <MessageSquare size={16} />
-                  Threads
+                  Lịch sử
                 </button>
                 <button
                   type="button"
@@ -1373,7 +1386,7 @@ export default function ProjectChat() {
             </div>
             <div className="project-chat-statusbar__item">
               <MessageSquare size={14} />
-              API key và provider dùng chung với phần AI của dự án
+              {providerScopeLabel}
             </div>
             {liveRouteInfo ? (
               <div className="project-chat-statusbar__item project-chat-statusbar__item--live">
