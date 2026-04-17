@@ -4,7 +4,9 @@
 
 .character-hub {
   padding: var(--space-6) var(--space-8);
-  max-width: 1200px;
+  width: 100%;
+  max-width: 1520px;
+  margin: 0 auto;
   animation: fadeIn 0.3s ease;
 }
 
@@ -88,7 +90,7 @@
 /* Character Grid */
 .character-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: var(--space-4);
 }
 
@@ -189,8 +191,8 @@
 
 /* Taboo List */
 .taboo-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
   gap: var(--space-3);
 }
 
@@ -447,6 +449,12 @@
   }
 
   .project-mobile-shell .character-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .project-mobile-shell .taboo-list {
     display: flex;
     flex-direction: column;
     gap: 10px;

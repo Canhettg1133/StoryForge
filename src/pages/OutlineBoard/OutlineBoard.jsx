@@ -36,6 +36,37 @@ const ACTS = [
 ];
 
 const VALID_THREAD_TYPES = ['main', 'subplot', 'character_arc', 'mystery', 'romance'];
+const ACT_TARGET_WEIGHTS = { 1: 0.25, 2: 0.5, 3: 0.25 };
+
+function distributeActTargets(totalChapters) {
+  if (totalChapters <= 0) return { 1: 0, 2: 0, 3: 0 };
+
+  const rawTargets = ACTS.map((act) => {
+    const raw = totalChapters * ACT_TARGET_WEIGHTS[act.id];
+    return {
+      id: act.id,
+      base: Math.floor(raw),
+      fraction: raw - Math.floor(raw),
+    };
+  });
+
+  let allocated = rawTargets.reduce((sum, item) => sum + item.base, 0);
+  const targets = rawTargets.reduce((acc, item) => {
+    acc[item.id] = item.base;
+    return acc;
+  }, {});
+
+  rawTargets
+    .slice()
+    .sort((a, b) => b.fraction - a.fraction || a.id - b.id)
+    .forEach((item) => {
+      if (allocated >= totalChapters) return;
+      targets[item.id] += 1;
+      allocated += 1;
+    });
+
+  return targets;
+}
 
 export default function OutlineBoard() {
   const navigate = useNavigate();
@@ -104,6 +135,11 @@ export default function OutlineBoard() {
     });
     return groups;
   }, [chapters]);
+
+  const actTargetCounts = useMemo(
+    () => distributeActTargets(chapters.length),
+    [chapters.length]
+  );
 
   const sceneCountMap = useMemo(() => {
     const map = {};
@@ -567,24 +603,65 @@ Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
             </div>
           ) : viewMode === 'board' ? (
             <div className="outline-lanes">
-              {ACTS.map(act => (
-                <div key={act.id} className="outline-lane">
-                  <div className="outline-lane-header" style={{ borderColor: act.color }}>
-                    <div>
-                      <h3 className="outline-lane-title" style={{ color: act.color }}>{act.label}</h3>
-                      <span className="outline-lane-desc">{act.desc}</span>
-                    </div>
-                    <span className="outline-lane-percent">{act.percent}</span>
-                  </div>
+              {ACTS.map(act => {
+                const assignedCount = chaptersByAct[act.id].length;
+                const targetCount = actTargetCounts[act.id] || 0;
+                const missingCount = Math.max(targetCount - assignedCount, 0);
+                const overflowCount = Math.max(assignedCount - targetCount, 0);
+                const laneCounter = assignedCount > 0 || targetCount > 0
+                  ? `${assignedCount}/${targetCount}`
+                  : act.percent;
 
-                  <div className="outline-lane-body">
-                    {chaptersByAct[act.id].map(renderChapterCard)}
-                    <button className="outline-add-card" onClick={() => addChapterToAct(act.id)}>
-                      <Plus size={14} /> Thêm vào {act.label.split('—')[0].trim()}
-                    </button>
+                return (
+                  <div key={act.id} className="outline-lane">
+                    <div className="outline-lane-header" style={{ borderColor: act.color }}>
+                      <div>
+                        <h3 className="outline-lane-title" style={{ color: act.color }}>{act.label}</h3>
+                        <span className="outline-lane-desc">{act.desc}</span>
+                      </div>
+                      <span className="outline-lane-percent">{laneCounter}</span>
+                    </div>
+
+                    <div className="outline-lane-body">
+                      {chaptersByAct[act.id].map(renderChapterCard)}
+
+                      {missingCount > 0 && (
+                        <div className="outline-lane-gap-state">
+                          <div className="outline-lane-gap-title">
+                            <Search size={13} />
+                            <strong>Còn {missingCount} vị trí theo nhịp {act.percent}</strong>
+                          </div>
+                          <p>Khoảng trống này dành cho chương chưa được gán/phân tích vào hồi này.</p>
+                        </div>
+                      )}
+
+                      {overflowCount > 0 && (
+                        <div className="outline-lane-gap-state outline-lane-gap-state--warning">
+                          <div className="outline-lane-gap-title">
+                            <Target size={13} />
+                            <strong>Dư {overflowCount} chương so với nhịp {act.percent}</strong>
+                          </div>
+                          <p>Có thể giữ nguyên nếu cấu trúc truyện cần lệch nhịp, hoặc chuyển chương sang hồi khác.</p>
+                        </div>
+                      )}
+
+                      {assignedCount > 0 && missingCount === 0 && overflowCount === 0 && (
+                        <div className="outline-lane-gap-state outline-lane-gap-state--complete">
+                          <div className="outline-lane-gap-title">
+                            <CheckCircle2 size={13} />
+                            <strong>Đã phủ đủ nhịp {act.percent}</strong>
+                          </div>
+                          <p>Không còn chương thiếu theo phân bổ hiện tại.</p>
+                        </div>
+                      )}
+
+                      <button className="outline-add-card" onClick={() => addChapterToAct(act.id)}>
+                        <Plus size={14} /> Thêm vào {act.label.split('—')[0].trim()}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {chaptersByAct.unassigned.length > 0 && (
                 <div className="outline-lane outline-lane--unassigned">

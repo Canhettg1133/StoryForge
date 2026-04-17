@@ -556,10 +556,10 @@ export default function StoryBible() {
       </div>
 
       {/* ═══ SECTION: Overview (editable) ═══ */}
-      <div className="bible-section">
+      <div className="bible-section bible-section--overview">
         <SectionHeader icon={Edit3} title="Tổng quan" sectionKey="overview" />
         {openSections.overview && (
-          <div className="bible-edit-card">
+          <div className="bible-edit-card bible-edit-card--overview">
             {/* Title */}
             <div className="form-group">
               <label className="form-label">Tên truyện {titleSaved && <span className="save-indicator">Đã lưu</span>}</label>
@@ -669,7 +669,7 @@ export default function StoryBible() {
             </div>
 
             {/* Stats */}
-            <div className="bible-stats">
+            <div className="bible-stats bible-stats--overview">
               <span>{chapters.length} chương</span>
               <span>{characters.length} nhân vật</span>
               <span>{locations.length} địa điểm</span>
