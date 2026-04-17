@@ -258,7 +258,7 @@ export default function Settings() {
             onClick={() => navigate(`/project/${scopedProjectId}/editor`)}
             style={{ marginBottom: '12px' }}
           >
-            Quay lai du an
+            Quay lại dự án
           </button>
         ) : null}
         <h1 className="settings-title">⚙️ Cài đặt</h1>
@@ -270,17 +270,20 @@ export default function Settings() {
           <div className="settings-section-header">
             <BookOpen size={20} />
             <div>
-              <h2>Can lay API key Gemini?</h2>
-              <p>Neu ban chua co key, mo guide tung buoc roi quay lai trang nay de dan key va test.</p>
+              <h2>Cần lấy API key Gemini?</h2>
+              <p>Nếu bạn chưa có key, mở guide từng bước rồi quay lại trang này để dán key và test.</p>
             </div>
           </div>
 
           <div className="settings-action-row">
             <button className="btn btn-primary" onClick={() => navigate('/guide')}>
-              <BookOpen size={14} /> Mo huong dan
+              <BookOpen size={14} /> Hướng dẫn Gemini Direct
+            </button>
+            <button className="btn btn-secondary" onClick={() => navigate('/guide/proxy')}>
+              <BookOpen size={14} /> Hướng dẫn Gemini Proxy
             </button>
             <button className="btn btn-secondary" onClick={handleOpenAiStudio}>
-              <ExternalLink size={14} /> Mo Google AI Studio
+              <ExternalLink size={14} /> Mở Google AI Studio
             </button>
           </div>
         </section>

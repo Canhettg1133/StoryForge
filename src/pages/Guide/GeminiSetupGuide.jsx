@@ -81,8 +81,8 @@ export default function GeminiSetupGuide() {
     };
   }, []);
 
-  const recommendedModel = DIRECT_MODELS.find((model) => model.id === 'gemini-3.1-flash-lite-preview')
-    || DIRECT_MODELS[0];
+  const recommendedModel =
+    DIRECT_MODELS.find((model) => model.id === 'gemini-3.1-flash-lite-preview') || DIRECT_MODELS[0];
 
   const handleOpenAiStudio = () => {
     window.open(AI_STUDIO_URL, '_blank', 'noopener,noreferrer');
@@ -118,19 +118,22 @@ export default function GeminiSetupGuide() {
 
         <div className="gemini-guide-hero">
           <div className="gemini-guide-hero__copy">
-            <span className="gemini-guide-hero__kicker">Huong dan setup</span>
-            <h1 className="settings-title">Lay API key Gemini va ket noi StoryForge</h1>
+            <span className="gemini-guide-hero__kicker">Hướng dẫn setup</span>
+            <h1 className="settings-title">Lấy API key Gemini và kết nối StoryForge</h1>
             <p className="settings-subtitle">
-              Day la guide nhanh de nguoi dung moi co the lay key tu Google AI Studio,
-              dan vao StoryForge, chon dung provider va bat dau chat hoac viet ngay.
+              Đây là guide nhanh để người dùng mới có thể lấy key từ Google AI Studio, dán vào StoryForge,
+              chọn đúng provider và bắt đầu chat hoặc viết ngay.
             </p>
           </div>
           <div className="gemini-guide-hero__actions">
             <button className="btn btn-primary" onClick={handleOpenAiStudio}>
-              <ExternalLink size={14} /> Mo Google AI Studio
+              <ExternalLink size={14} /> Mở Google AI Studio
             </button>
             <button className="btn btn-secondary" onClick={() => navigate('/settings')}>
-              <Settings size={14} /> Mo Settings
+              <Settings size={14} /> Mở Settings
+            </button>
+            <button className="btn btn-ghost" onClick={() => navigate('/guide/proxy')}>
+              <Sparkles size={14} /> Xem guide Proxy
             </button>
           </div>
         </div>
@@ -140,8 +143,8 @@ export default function GeminiSetupGuide() {
         <div className="settings-section-header">
           <Sparkles size={20} />
           <div>
-            <h2>Trang thai setup hien tai</h2>
-            <p>Guide nay doc theo tung buoc, nhung ban co the nhin o day de biet da setup den dau.</p>
+            <h2>Trạng thái setup hiện tại</h2>
+            <p>Guide này đọc theo từng bước, nhưng bạn có thể nhìn ở đây để biết đã setup đến đâu.</p>
           </div>
         </div>
 
@@ -149,19 +152,19 @@ export default function GeminiSetupGuide() {
           <StatusCard
             icon={Key}
             label="Gemini Direct keys"
-            value={setupState.keyCount > 0 ? `${setupState.keyCount} key` : 'Chua co key'}
+            value={setupState.keyCount > 0 ? `${setupState.keyCount} key` : 'Chưa có key'}
             tone={setupState.keyCount > 0 ? 'success' : 'warning'}
           />
           <StatusCard
             icon={Cloud}
-            label="Provider uu tien"
-            value={setupState.usingGeminiDirect ? 'Gemini Direct' : 'Chua chon Gemini Direct'}
+            label="Provider ưu tiên"
+            value={setupState.usingGeminiDirect ? 'Gemini Direct' : 'Chưa chọn Gemini Direct'}
             tone={setupState.usingGeminiDirect ? 'success' : 'neutral'}
           />
           <StatusCard
             icon={Sparkles}
-            label="Models dang bat"
-            value={setupState.activeModels.length > 0 ? `${setupState.activeModels.length} model` : 'Chua bat model nao'}
+            label="Models đang bật"
+            value={setupState.activeModels.length > 0 ? `${setupState.activeModels.length} model` : 'Chưa bật model nào'}
             tone={setupState.activeModels.length > 0 ? 'success' : 'warning'}
           />
           <StatusCard
@@ -174,113 +177,112 @@ export default function GeminiSetupGuide() {
 
         <div className="gemini-guide-status-actions">
           <button className="btn btn-ghost btn-sm" onClick={handleCopyEndpoint}>
-            <Copy size={13} /> {copied ? 'Da copy endpoint' : 'Copy endpoint'}
+            <Copy size={13} /> {copied ? 'Đã copy endpoint' : 'Copy endpoint'}
           </button>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('/ai-chat')}>
-            <MessageSquare size={13} /> Mo Chat tu do
+            <MessageSquare size={13} /> Mở Chat tự do
           </button>
         </div>
       </section>
 
       <div className="settings-sections">
-        <StepCard index="1" title="Mo Google AI Studio va dang nhap" icon={Cloud}>
+        <StepCard index="1" title="Mở Google AI Studio và đăng nhập" icon={Cloud}>
           <p>
-            StoryForge dung <strong>Gemini Direct</strong> qua Google AI Studio. Day la cach de nhat cho nguoi moi vi
-            khong can proxy, cung de hieu va de kiem tra loi. Ban co the mo truc tiep
-            {' '}
+            StoryForge dùng <strong>Gemini Direct</strong> qua Google AI Studio. Đây là cách dễ nhất cho người mới vì
+            không cần proxy, cũng dễ hiểu và dễ kiểm tra lỗi. Bạn có thể mở trực tiếp{' '}
             <a className="gemini-guide-link" href={AI_STUDIO_URL} target="_blank" rel="noreferrer">
               Google AI Studio
-            </a>
-            {' '}
-            ngay trong buoc nay.
+            </a>{' '}
+            ngay trong bước này.
           </p>
           <ol className="gemini-guide-list">
             <li>
-              Mo Google AI Studio bang nut o tren hoac bam truc tiep vao
-              {' '}
+              Mở Google AI Studio bằng nút ở trên hoặc bấm trực tiếp vào{' '}
               <a className="gemini-guide-link" href={AI_STUDIO_URL} target="_blank" rel="noreferrer">
                 aistudio.google.com/app/apikey
-              </a>.
+              </a>
+              .
             </li>
-            <li>Dang nhap tai khoan Google cua ban.</li>
-            <li>Neu giao dien hoi workspace hay project, chon workspace phu hop roi vao khu tao API key.</li>
+            <li>Đăng nhập tài khoản Google của bạn.</li>
+            <li>Nếu giao diện hỏi workspace hay project, chọn workspace phù hợp rồi vào khu tạo API key.</li>
           </ol>
           <ImagePlaceholder
-            title="Cho anh minh hoa buoc 1"
-            note="Se bo sung screenshot sau. Hien tai ban co the dua nguoi dung den dung link Google AI Studio."
+            title="Chỗ ảnh minh họa bước 1"
+            note="Sẽ bổ sung screenshot sau. Hiện tại bạn có thể đưa người dùng đến đúng link Google AI Studio."
           />
         </StepCard>
 
-        <StepCard index="2" title="Tao API key Gemini" icon={Key}>
+        <StepCard index="2" title="Tạo API key Gemini" icon={Key}>
           <p>
-            Trong Google AI Studio, tim khu <strong>API Keys</strong> va tao mot key moi.
-            Khong can tao nhieu key ngay tu dau. Mot key la du de test.
+            Trong Google AI Studio, tìm khu <strong>API Keys</strong> và tạo một key mới. Không cần tạo nhiều key ngay từ
+            đầu. Một key là đủ để test.
           </p>
           <ol className="gemini-guide-list">
-            <li>Bam <strong>Create API key</strong>.</li>
-            <li>Neu he thong hoi project, chon project ban muon su dung.</li>
-            <li>Sao chep key ngay sau khi tao.</li>
-            <li>Khong chia se key cong khai va khong dan key vao noi co nguoi khac nhin thay.</li>
+            <li>Bấm <strong>Create API key</strong>.</li>
+            <li>Nếu hệ thống hỏi project, chọn project bạn muốn sử dụng.</li>
+            <li>Sao chép key ngay sau khi tạo.</li>
+            <li>Không chia sẻ key công khai và không dán key vào nơi có người khác nhìn thấy.</li>
           </ol>
           <div className="gemini-guide-note is-warning">
             <AlertCircle size={16} />
-            <span>Neu dong tab ma chua luu key, ban co the phai tao lai hoac vao lai khu API Keys de copy.</span>
+            <span>Nếu đóng tab mà chưa lưu key, bạn có thể phải tạo lại hoặc vào lại khu API Keys để copy.</span>
           </div>
           <ImagePlaceholder
-            title="Cho anh minh hoa buoc 2"
-            note="Sau nay ban co the thay bang screenshot vi tri nut Create API key va man hinh copy key."
+            title="Chỗ ảnh minh họa bước 2"
+            note="Sau này bạn có thể thay bằng screenshot vị trí nút Create API key và màn hình copy key."
           />
         </StepCard>
 
-        <StepCard index="3" title="Dan key vao StoryForge" icon={Settings}>
+        <StepCard index="3" title="Dán key vào StoryForge" icon={Settings}>
           <p>
-            Quay lai StoryForge va vao <strong>Settings</strong>. O phan <strong>API Keys</strong>,
-            dung dung khu <strong>Gemini Direct (AI Studio)</strong>.
+            Quay lại StoryForge và vào <strong>Settings</strong>. Ở phần <strong>API Keys</strong>, dùng đúng khu{' '}
+            <strong>Gemini Direct (AI Studio)</strong>.
           </p>
           <ol className="gemini-guide-list">
-            <li>Mo `Settings`.</li>
-            <li>Tim section <strong>API Keys</strong>.</li>
-            <li>O o nhap mot key, dan key vua copy vao.</li>
-            <li>Bam <strong>Them</strong>.</li>
+            <li>Mở Settings.</li>
+            <li>Tìm section <strong>API Keys</strong>.</li>
+            <li>Ở ô nhập một key, dán key vừa copy vào.</li>
+            <li>Bấm <strong>Thêm</strong>.</li>
           </ol>
           <div className="gemini-guide-note">
             <CheckCircle2 size={16} />
-            <span>Neu ban co nhieu key, co the dung nut `Nhap nhieu` de dan moi key mot dong. Chua can lam ngay luc dau.</span>
+            <span>Nếu bạn có nhiều key, có thể dùng nút Nhập nhiều để dán mỗi key một dòng. Chưa cần làm ngay lúc đầu.</span>
           </div>
         </StepCard>
 
-        <StepCard index="4" title="Chon dung provider va model" icon={Sparkles}>
+        <StepCard index="4" title="Chọn đúng provider và model" icon={Sparkles}>
           <p>
-            Sau khi da co key, ban can chon <strong>Gemini Direct</strong> la provider dang dung.
-            Voi nguoi moi, model de bat dau nen la <strong>{recommendedModel?.label || 'Gemini 3.1 Flash Lite Preview'}</strong>.
+            Sau khi đã có key, bạn cần chọn <strong>Gemini Direct</strong> là provider đang dùng. Với người mới, model để
+            bắt đầu nên là <strong>{recommendedModel?.label || 'Gemini 3.1 Flash Lite Preview'}</strong>.
           </p>
           <ol className="gemini-guide-list">
-            <li>Trong section <strong>Provider dang dung</strong>, chon <strong>Gemini Direct</strong>.</li>
-            <li>Neu can, giu nguyenn endpoint: <code>{setupState.endpoint}</code>.</li>
-            <li>Trong phan models, giu bat model <strong>{recommendedModel?.label || 'Gemini 3.1 Flash Lite Preview'}</strong>.</li>
-            <li>Co the giu them cac model khac, nhung khong can qua nhieu luc moi setup.</li>
+            <li>Trong section <strong>Provider đang dùng</strong>, chọn <strong>Gemini Direct</strong>.</li>
+            <li>Nếu cần, giữ nguyên endpoint: <code>{setupState.endpoint}</code>.</li>
+            <li>
+              Trong phần models, giữ bật model{' '}
+              <strong>{recommendedModel?.label || 'Gemini 3.1 Flash Lite Preview'}</strong>.
+            </li>
+            <li>Có thể giữ thêm các model khác, nhưng không cần quá nhiều lúc mới setup.</li>
           </ol>
           <div className="gemini-guide-note">
             <Sparkles size={16} />
-            <span>Model 3.1 Flash Lite thuong de bat dau hon vi quota rong hon. Hop de test chat, translation va cac thao tac nhe.</span>
+            <span>Model 3.1 Flash Lite thường dễ bắt đầu hơn vì quota rộng hơn. Hợp để test chat, translation và các thao tác nhẹ.</span>
           </div>
         </StepCard>
 
-        <StepCard index="5" title="Test ket noi va thu su dung" icon={TestTube}>
-          <p>
-            Buoc nay dung de chac chan key hoat dong truoc khi ban vao viet truyyen hoac dich truyyen.
-          </p>
+        <StepCard index="5" title="Test kết nối và thử sử dụng" icon={TestTube}>
+          <p>Bước này dùng để chắc chắn key hoạt động trước khi bạn vào viết truyện hoặc dịch truyện.</p>
           <ol className="gemini-guide-list">
-            <li>Bam nut <strong>Test</strong> o khu Gemini Direct trong Settings.</li>
-            <li>Neu bao ket noi OK, vao <strong>Chat tu do</strong> va gui mot cau don gian de thu.</li>
-            <li>Sau do ban co the vao <strong>Dich truyen</strong> hoac mo project de bat dau viet.</li>
+            <li>Bấm nút <strong>Test</strong> ở khu Gemini Direct trong Settings.</li>
+            <li>Nếu báo kết nối OK, vào <strong>Chat tự do</strong> và gửi một câu đơn giản để thử.</li>
+            <li>Sau đó bạn có thể vào <strong>Dịch truyện</strong> hoặc mở project để bắt đầu viết.</li>
           </ol>
           <div className="gemini-guide-action-row">
             <button className="btn btn-secondary" onClick={() => navigate('/settings')}>
-              <Settings size={14} /> Mo Settings de test
+              <Settings size={14} /> Mở Settings để test
             </button>
             <button className="btn btn-ghost" onClick={() => navigate('/ai-chat')}>
-              <MessageSquare size={14} /> Thu Chat tu do
+              <MessageSquare size={14} /> Thử Chat tự do
             </button>
           </div>
         </StepCard>
@@ -289,27 +291,27 @@ export default function GeminiSetupGuide() {
           <div className="settings-section-header">
             <BookOpen size={20} />
             <div>
-              <h2>Loi thuong gap</h2>
-              <p>Neu nguoi dung bao khong chay, day la cac truong hop nen kiem tra truoc.</p>
+              <h2>Lỗi thường gặp</h2>
+              <p>Nếu người dùng báo không chạy, đây là các trường hợp nên kiểm tra trước.</p>
             </div>
           </div>
 
           <div className="gemini-guide-faq-list">
             <article>
-              <strong>Da dan key nhung van loi</strong>
-              <p>Kiem tra xem key da duoc them vao dung khu Gemini Direct chua, va provider dang chon co phai Gemini Direct khong.</p>
+              <strong>Đã dán key nhưng vẫn lỗi</strong>
+              <p>Kiểm tra xem key đã được thêm vào đúng khu Gemini Direct chưa, và provider đang chọn có phải Gemini Direct không.</p>
             </article>
             <article>
-              <strong>Test ket noi loi 401/403</strong>
-              <p>Thu tao key moi trong Google AI Studio. Loi nay thuong la key sai, key het quyen, hoac copy thieu ky tu.</p>
+              <strong>Test kết nối lỗi 401 hoặc 403</strong>
+              <p>Thử tạo key mới trong Google AI Studio. Lỗi này thường là key sai, key hết quyền, hoặc copy thiếu ký tự.</p>
             </article>
             <article>
-              <strong>Goi duoc mot luc roi dung</strong>
-              <p>Day thuong la quota hoac rate limit. Thu dung model Lite, giam tan suat goi, hoac them them key de xoay vong sau.</p>
+              <strong>Gọi được một lúc rồi dừng</strong>
+              <p>Đây thường là quota hoặc rate limit. Thử dùng model Lite, giảm tần suất gọi, hoặc thêm key để xoay vòng sau.</p>
             </article>
             <article>
-              <strong>Khong thay anh huong dan</strong>
-              <p>Trang nay dang dung placeholder de code xong truoc. Sau nay chi can dat screenshot vao la co the noi them ngay.</p>
+              <strong>Không thấy ảnh hướng dẫn</strong>
+              <p>Trang này đang dùng placeholder để code xong trước. Sau này chỉ cần đặt screenshot vào là có thể nối thêm ngay.</p>
             </article>
           </div>
         </section>

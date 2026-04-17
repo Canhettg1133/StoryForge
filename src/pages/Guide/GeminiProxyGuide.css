@@ -1,0 +1,8 @@
+.gemini-proxy-guide-page .gemini-guide-status-card strong {
+  display: block;
+  word-break: break-word;
+}
+
+.gemini-proxy-guide-page .gemini-guide-note strong {
+  color: var(--color-text-primary);
+}
