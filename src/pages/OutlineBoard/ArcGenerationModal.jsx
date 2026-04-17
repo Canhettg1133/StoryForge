@@ -7,49 +7,112 @@ import {
 import './ArcGenerationModal.css';
 
 const QUICK_ACTIONS = [
-    { label: 'Lam cham nhip', prompt: 'Lam cham nhip, tang buildup va he qua thay vi day cao trao lien tuc.' },
-    { label: 'Tang build-up', prompt: 'Tang build-up, them setup va consequence ro hon cho batch nay.' },
-    { label: 'Giam drama', prompt: 'Giam drama va xung dot lon, uu tien dien bien tu nhien hon.' },
-    { label: 'Giu bi mat chua lo', prompt: 'Giu cac bi mat lon chua lo, chi cho phep toi da 1 reveal nho neu can.' },
-    { label: 'Tang dat dien nhan vat', prompt: 'Tang dat dien cho nhan vat [ten nhan vat], nhung khong day nhanh main plot.' },
-    { label: 'Them 1 chuong dem', prompt: 'Chen it nhat 1 chuong dem co setup/build-up/consequence de tranh dot plot qua nhanh.' },
-    { label: 'Doi reveal thanh manh moi', prompt: 'Doi cac reveal lon/giai quyet som thanh manh moi nho, he qua nho, hoac nghi van chua ket luan.' },
+    { label: 'Làm chậm nhịp', prompt: 'Làm chậm nhịp, tăng phần xây dựng và hệ quả thay vì đẩy cao trào liên tục.' },
+    { label: 'Tăng xây dựng', prompt: 'Tăng phần xây dựng, thêm chuẩn bị và hệ quả rõ hơn cho đợt chương này.' },
+    { label: 'Giảm drama', prompt: 'Giảm drama và xung đột lớn, ưu tiên diễn biến tự nhiên hơn.' },
+    { label: 'Giữ bí mật chưa lộ', prompt: 'Giữ các bí mật lớn chưa lộ, chỉ cho phép tối đa 1 tiết lộ nhỏ nếu cần.' },
+    { label: 'Tăng đất diễn nhân vật', prompt: 'Tăng đất diễn cho nhân vật [tên nhân vật], nhưng không đẩy nhanh tuyến chính.' },
+    { label: 'Thêm 1 chương đệm', prompt: 'Chèn ít nhất 1 chương đệm có phần chuẩn bị, xây dựng hoặc hệ quả để tránh dồn cốt truyện quá nhanh.' },
+    { label: 'Đổi tiết lộ thành manh mối', prompt: 'Đổi các tiết lộ lớn hoặc phần giải quyết sớm thành manh mối nhỏ, hệ quả nhỏ, hoặc nghi vấn chưa kết luận.' },
 ];
+
+const OUTPUT_MODES = [
+    {
+        id: 'outline_only',
+        title: 'Chỉ tạo dàn ý',
+        description: 'Sinh dàn ý, rà soát và lưu vào truyện. Không tạo bản nháp.',
+    },
+    {
+        id: 'outline_review',
+        title: 'Dàn ý + bản nháp mẫu',
+        description: 'Sinh dàn ý và chỉ tạo thử vài chương mẫu để xem lại.',
+    },
+    {
+        id: 'draft_selected',
+        title: 'Chỉ tạo các chương đã chọn',
+        description: 'Chỉ tạo bản nháp cho các chương được tick ở bước 2.',
+    },
+];
+
+const PACING_LABELS = {
+    slow: 'Chậm',
+    medium: 'Vừa',
+    fast: 'Nhanh',
+};
+
+const ISSUE_CODE_LABELS = {
+    padding: 'Thiếu chất liệu',
+    repetitive: 'Lặp ý',
+    'too-fast': 'Quá nhanh',
+    'premature-resolution': 'Giải quyết sớm',
+};
+
+const RESULT_STATUS_LABELS = {
+    pending: 'Đang chờ...',
+    error: 'Lỗi',
+};
+
+function localizeBudgetText(value) {
+    return String(value || '')
+        .replace(/at least one setup\/build-up\/consequence chapter/gi, 'ít nhất một chương làm nhiệm vụ chuẩn bị, xây dựng hoặc để lại hệ quả')
+        .replace(/0-1 minor reveal/gi, '0-1 tiết lộ nhỏ')
+        .replace(/1 minor reveal/gi, '1 tiết lộ nhỏ')
+        .replace(/co the tang cap neu day la cuoi cot moc/gi, 'có thể tăng cấp nếu đây là cuối cột mốc')
+        .replace(/khong vuot tier lon trong batch nay/gi, 'không vượt bậc sức mạnh lớn trong đợt này');
+}
 
 function formatProgressBudget(storyProgressBudget) {
     if (!storyProgressBudget) return [];
     const lines = [];
     if (storyProgressBudget.fromPercent != null && storyProgressBudget.toPercent != null) {
-        lines.push(`Tien do batch: ${storyProgressBudget.fromPercent}% -> ${storyProgressBudget.toPercent}%`);
+        lines.push(`Tiến độ đợt này: ${storyProgressBudget.fromPercent}% -> ${storyProgressBudget.toPercent}%`);
     }
     if (storyProgressBudget.mainPlotMaxStep != null) {
-        lines.push(`Main plot toi da +${storyProgressBudget.mainPlotMaxStep} nac`);
+        lines.push(`Tuyến chính tối đa +${storyProgressBudget.mainPlotMaxStep} nấc`);
     }
     if (storyProgressBudget.romanceMaxStep != null) {
-        lines.push(`Romance toi da +${storyProgressBudget.romanceMaxStep} nac`);
+        lines.push(`Tuyến tình cảm tối đa +${storyProgressBudget.romanceMaxStep} nấc`);
     }
     if (storyProgressBudget.mysteryRevealAllowance) {
-        lines.push(`Reveal bi an: ${storyProgressBudget.mysteryRevealAllowance}`);
+        lines.push(`Mức lộ bí ẩn: ${localizeBudgetText(storyProgressBudget.mysteryRevealAllowance)}`);
     }
     if (storyProgressBudget.powerProgressionCap) {
-        lines.push(`Power progression: ${storyProgressBudget.powerProgressionCap}`);
+        lines.push(`Giới hạn tiến triển sức mạnh: ${localizeBudgetText(storyProgressBudget.powerProgressionCap)}`);
     }
     if (storyProgressBudget.requiredBeatMix) {
-        lines.push(`Beat mix: ${storyProgressBudget.requiredBeatMix}`);
+        lines.push(`Nhịp bắt buộc: ${localizeBudgetText(storyProgressBudget.requiredBeatMix)}`);
     }
     if (storyProgressBudget.nextMilestone?.label || storyProgressBudget.nextMilestone?.title) {
         const label = storyProgressBudget.nextMilestone.label || storyProgressBudget.nextMilestone.title;
         const percent = storyProgressBudget.nextMilestone.percent != null
             ? ` (${storyProgressBudget.nextMilestone.percent}%)`
             : '';
-        lines.push(`Milestone tiep theo: ${label}${percent}`);
+        lines.push(`Cột mốc tiếp theo: ${label}${percent}`);
     }
     return lines;
 }
 
 function getIssueLabel(issue, currentChapterCount) {
-    if (issue?.chapterIndex == null) return 'Toan batch';
-    return `Chuong ${currentChapterCount + issue.chapterIndex + 1}`;
+    if (issue?.chapterIndex == null) return 'Toàn bộ đợt';
+    return `Chương ${currentChapterCount + issue.chapterIndex + 1}`;
+}
+
+function formatIssueCode(code) {
+    return ISSUE_CODE_LABELS[code] || code;
+}
+
+function formatIssueMessage(message) {
+    return String(message || '')
+        .replace(/Chuong/gi, 'Chương')
+        .replace(/summary/gi, 'tóm tắt')
+        .replace(/thread/gi, 'tuyến truyện')
+        .replace(/su kien/gi, 'sự kiện')
+        .replace(/Chapter/gi, 'Chương')
+        .replace(/purpose/gi, 'mục tiêu')
+        .replace(/plot\/reveal/gi, 'cốt truyện hoặc tiết lộ')
+        .replace(/budget tien do hien tai/gi, 'nhịp tiến độ hiện tại')
+        .replace(/resolve som/gi, 'giải quyết sớm')
+        .replace(/buildup\/setup\/consequence/gi, 'chuẩn bị, xây dựng hoặc hệ quả');
 }
 
 export default function ArcGenerationModal({ projectId, genre, currentChapterCount, onClose }) {
@@ -149,23 +212,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
 
     const renderOutputModes = () => (
         <div className="arc-mode-grid">
-            {[
-                {
-                    id: 'outline_only',
-                    title: 'Outline only',
-                    description: 'Sinh outline, review, luu vao truyyen. Khong draft.',
-                },
-                {
-                    id: 'outline_review',
-                    title: 'Outline + review',
-                    description: 'Sinh outline va chi draft mot vai chuong mau de review.',
-                },
-                {
-                    id: 'draft_selected',
-                    title: 'Draft selected chapters only',
-                    description: 'Chi draft cac chuong duoc tick o step 2.',
-                },
-            ].map((mode) => (
+            {OUTPUT_MODES.map((mode) => (
                 <button
                     key={mode.id}
                     className={`arc-mode-card ${arcStore.outputMode === mode.id ? 'arc-mode-card--active' : ''}`}
@@ -181,14 +228,14 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
     const renderBudgetBox = () => (
         <div className="arc-budget-box">
             <div className="arc-budget-box__header">
-                <strong>Story Progress Budget</strong>
+                <strong>Ngân sách tiến độ truyện</strong>
                 {selectedMacroArc && <span>{selectedMacroArc.title}</span>}
             </div>
             <div className="arc-budget-list">
                 {progressBudgetLines.length > 0 ? progressBudgetLines.map((line) => (
                     <div key={line} className="arc-budget-line">{line}</div>
                 )) : (
-                    <div className="arc-budget-line">Chua co budget. He thong se tinh sau khi chon batch va macro arc.</div>
+                    <div className="arc-budget-line">Chưa có dữ liệu tiến độ. Hệ thống sẽ tính sau khi chọn đợt chương và macro arc.</div>
                 )}
             </div>
         </div>
@@ -198,40 +245,40 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         <div className="arc-validator-panel">
             <div className="arc-validator-header">
                 <div>
-                    <h4>Outline Validator</h4>
+                    <h4>Kiểm tra dàn ý</h4>
                     <p>
-                        `padding` va `repetitive` la canh bao.
-                        `too-fast` va `premature-resolution` se chan draft, nhung van co the luu outline de sua tiep.
+                        Các lỗi `Thiếu chất liệu` và `Lặp ý` là cảnh báo.
+                        Các lỗi `Quá nhanh` và `Giải quyết sớm` sẽ chặn tạo bản nháp, nhưng bạn vẫn có thể lưu dàn ý để sửa tiếp.
                     </p>
                 </div>
                 {hasBlockingIssues && (
-                    <span className="arc-validator-badge arc-validator-badge--error">Dang bi chan</span>
+                    <span className="arc-validator-badge arc-validator-badge--error">Đang bị chặn</span>
                 )}
             </div>
             {hasBlockingIssues && (
                 <div className="arc-warning-box">
-                    Draft dang bi chan de tranh outline day plot qua nhanh. Ban van co the luu outline de sua tiep trong truyen.
+                    Việc tạo bản nháp đang bị chặn để tránh dàn ý dồn cốt truyện quá nhanh. Bạn vẫn có thể lưu dàn ý để sửa tiếp trong truyện.
                     <div className="arc-quick-actions mt-2">
                         <button
                             className="arc-quick-action"
-                            onClick={() => appendRevisionPrompt('Chen it nhat 1 chuong dem co setup/build-up/consequence de tranh dot plot qua nhanh.')}
+                            onClick={() => appendRevisionPrompt('Chèn ít nhất 1 chương đệm có phần chuẩn bị, xây dựng hoặc hệ quả để tránh dồn cốt truyện quá nhanh.')}
                         >
-                            Them chapter dem
+                            Thêm chương đệm
                         </button>
                         <button
                             className="arc-quick-action"
-                            onClick={() => appendRevisionPrompt('Doi cac reveal lon/giai quyet som thanh manh moi nho, he qua nho, hoac nghi van chua ket luan.')}
+                            onClick={() => appendRevisionPrompt('Đổi các tiết lộ lớn hoặc phần giải quyết sớm thành manh mối nhỏ, hệ quả nhỏ, hoặc nghi vấn chưa kết luận.')}
                         >
-                            Doi reveal thanh manh moi
+                            Đổi tiết lộ thành manh mối
                         </button>
                         <button className="btn btn-secondary btn-sm" onClick={handleCommitOutlineOnly}>
-                            Luu outline bat chap
+                            Lưu dàn ý bất chấp
                         </button>
                     </div>
                 </div>
             )}
             {validatorIssues.length === 0 ? (
-                <div className="arc-validator-empty">Chua thay van de dang ke trong batch outline nay.</div>
+                <div className="arc-validator-empty">Chưa thấy vấn đề đáng kể trong đợt dàn ý này.</div>
             ) : (
                 <div className="arc-validator-list">
                     {validatorIssues.map((issue, index) => (
@@ -240,10 +287,10 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                             className={`arc-validator-item arc-validator-item--${issue.severity}`}
                         >
                             <div className="arc-validator-item__top">
-                                <span className="arc-validator-chip">{issue.code}</span>
+                                <span className="arc-validator-chip">{formatIssueCode(issue.code)}</span>
                                 <span className="arc-validator-scope">{getIssueLabel(issue, currentChapterCount)}</span>
                             </div>
-                            <div className="arc-validator-message">{issue.message}</div>
+                            <div className="arc-validator-message">{formatIssueMessage(issue.message)}</div>
                         </div>
                     ))}
                 </div>
@@ -258,13 +305,13 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                     className={`arc-tab ${activeTab === 'guided' ? 'arc-tab--active' : ''}`}
                     onClick={() => setActiveTab('guided')}
                 >
-                    <Bot size={16} /> Guided
+                    <Bot size={16} /> Có định hướng
                 </button>
                 <button
                     className={`arc-tab ${activeTab === 'auto' ? 'arc-tab--active' : ''}`}
                     onClick={() => setActiveTab('auto')}
                 >
-                    <Sparkles size={16} /> Auto Brainstorm
+                    <Sparkles size={16} /> Tự động gợi ý
                 </button>
             </div>
 
@@ -273,25 +320,25 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
             <div className="arc-tab-content">
                 {activeTab === 'guided' ? (
                     <div className="form-group">
-                        <label className="form-label">Muc tieu batch outline nay</label>
+                        <label className="form-label">Mục tiêu của đợt dàn ý này</label>
                         <textarea
                             className="textarea"
                             rows={3}
-                            placeholder="VD: Main di vao bi canh, mo mot thread moi, tang buildup, khong lo dai bi mat..."
+                            placeholder="VD: Nhân vật chính đi vào bế cảnh, mở một tuyến truyện mới, tăng phần xây dựng, chưa lộ bí mật lớn..."
                             value={arcStore.arcGoal}
                             onChange={(e) => arcStore.setArcConfig({ arcGoal: e.target.value })}
                         />
                     </div>
                 ) : (
                     <div className="arc-auto-desc">
-                        Auto mode se tu lay plot thread + canon fact de brainstorm batch tiep theo.
-                        Prompt van bi rang buoc boi progress budget va macro arc.
+                        Chế độ tự động sẽ tự lấy các tuyến truyện và dữ kiện canon để gợi ý đợt chương tiếp theo.
+                        Kết quả vẫn bị ràng buộc bởi nhịp tiến độ và macro arc.
                     </div>
                 )}
 
                 <div className="arc-config-grid">
                     <div className="form-group">
-                        <label className="form-label">So chuong muon tao</label>
+                        <label className="form-label">Số chương muốn tạo</label>
                         <input
                             type="number"
                             className="input"
@@ -301,25 +348,25 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                             onChange={(e) => arcStore.setArcConfig({ arcChapterCount: Math.max(1, parseInt(e.target.value, 10) || 1) })}
                         />
                         <div className="arc-help-text">
-                            De xuat hien tai: {arcStore.recommendedBatchCount} chuong cho target_length {arcStore.projectTargetLength || 'chua set'}.
+                            Đề xuất hiện tại: {arcStore.recommendedBatchCount} chương cho tổng độ dài {arcStore.projectTargetLength || 'chưa đặt'}.
                         </div>
                     </div>
 
                     <div className="form-group">
-                        <label className="form-label">Nhip do</label>
+                        <label className="form-label">Nhịp độ</label>
                         <select
                             className="select"
                             value={arcStore.arcPacing}
                             onChange={(e) => arcStore.setArcConfig({ arcPacing: e.target.value })}
                         >
-                            <option value="slow">Slow</option>
-                            <option value="medium">Medium</option>
-                            <option value="fast">Fast</option>
+                            <option value="slow">Chậm</option>
+                            <option value="medium">Vừa</option>
+                            <option value="fast">Nhanh</option>
                         </select>
                     </div>
 
                     <div className="form-group">
-                        <label className="form-label">Macro arc</label>
+                        <label className="form-label">Đại cục hiện hành</label>
                         <select
                             className="select"
                             value={arcStore.selectedMacroArcId || ''}
@@ -328,7 +375,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                 arcStore.setArcConfig({ selectedMacroArcId: value });
                             }}
                         >
-                            <option value="">Khong khoa macro arc</option>
+                            <option value="">Không khóa theo macro arc</option>
                             {arcStore.availableMacroArcs.map((macroArc) => (
                                 <option key={macroArc.id} value={macroArc.id}>
                                     {macroArc.title}
@@ -343,8 +390,8 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
 
                 {batchWarning && (
                     <div className="arc-warning-box">
-                        Batch hien tai vuot muc de xuat cho truyyen dai. He thong se van sinh,
-                        nhung nguy co day nhanh plot va tao chuong rac se tang.
+                        Đợt chương hiện tại vượt mức đề xuất cho truyện dài. Hệ thống vẫn có thể tạo,
+                        nhưng nguy cơ dồn cốt truyện quá nhanh và sinh chương rời rạc sẽ tăng.
                     </div>
                 )}
 
@@ -358,7 +405,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                     disabled={arcStore.outlineStatus === 'generating'}
                 >
                     {arcStore.outlineStatus === 'generating' ? <Loader2 className="spin" /> : <Wand2 size={16} />}
-                    Tao dan y
+                    Tạo dàn ý
                 </button>
             </div>
         </div>
@@ -369,8 +416,8 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
             return (
                 <div className="arc-loading-state">
                     <Loader2 size={48} className="spin" style={{ color: 'var(--color-primary)' }} />
-                    <h3>Dang xu ly dan y...</h3>
-                    <p>He thong dang rebuild outline theo macro arc, budget va note sua.</p>
+                    <h3>Đang xử lý dàn ý...</h3>
+                    <p>Hệ thống đang dựng lại dàn ý theo macro arc, nhịp tiến độ và ghi chú chỉnh sửa.</p>
                 </div>
             );
         }
@@ -379,8 +426,8 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
             return (
                 <div className="arc-loading-state">
                     <AlertTriangle size={48} style={{ color: 'var(--color-danger)' }} />
-                    <h3>Khong tao duoc dan y</h3>
-                    <button className="btn btn-primary mt-4" onClick={handleGenerateOutline}>Thu lai</button>
+                    <h3>Không tạo được dàn ý</h3>
+                    <button className="btn btn-primary mt-4" onClick={handleGenerateOutline}>Thử lại</button>
                 </div>
             );
         }
@@ -388,10 +435,10 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         if (!arcStore.generatedOutline) return null;
 
         const primaryLabel = arcStore.outputMode === 'outline_only'
-            ? (hasBlockingIssues ? 'Luu outline bat chap' : 'Luu outline')
+            ? (hasBlockingIssues ? 'Lưu dàn ý bất chấp' : 'Lưu dàn ý')
             : arcStore.outputMode === 'outline_review'
-                ? 'Draft de review'
-                : 'Draft cac chuong da chon';
+                ? 'Tạo bản nháp để xem'
+                : 'Tạo các chương đã chọn';
         const primaryAction = arcStore.outputMode === 'outline_only'
             ? handleCommitOutlineOnly
             : handleStartDrafting;
@@ -400,14 +447,14 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
             <div className="arc-step-content">
                 <div className="arc-outline-head">
                     <div>
-                        <h3 className="arc-outline-title">{arcStore.generatedOutline.arc_title || 'Dan y moi'}</h3>
+                        <h3 className="arc-outline-title">{arcStore.generatedOutline.arc_title || 'Dàn ý mới'}</h3>
                         <p className="arc-subtitle">
-                            Sua tay, khoa macro arc, chon chuong can draft, hoac dua note de AI revise dan y hien tai.
+                            Bạn có thể sửa tay, khóa theo macro arc, chọn chương cần tạo bản nháp, hoặc đưa ghi chú để AI chỉnh lại dàn ý hiện tại.
                         </p>
                     </div>
                     <div className="arc-outline-head__meta">
-                        <span className="badge">{arcStore.generatedOutline.chapters.length} chuong</span>
-                        <span className="badge border">{selectedDraftCount} chuong duoc chon de draft</span>
+                        <span className="badge">{arcStore.generatedOutline.chapters.length} chương</span>
+                        <span className="badge border">{selectedDraftCount} chương được chọn để tạo bản nháp</span>
                     </div>
                 </div>
 
@@ -416,11 +463,11 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
 
                 <div className="arc-revise-box">
                     <div className="form-group">
-                        <label className="form-label">Sua dan y theo y toi</label>
+                        <label className="form-label">Sửa dàn ý theo ý tôi</label>
                         <textarea
                             className="textarea"
                             rows={3}
-                            placeholder="VD: Giu bi mat lon chua lo, them 1 chuong buildup, tang dat dien cho nhan vat X..."
+                            placeholder="VD: Giữ bí mật lớn chưa lộ, thêm 1 chương đệm, tăng đất diễn cho nhân vật X..."
                             value={arcStore.outlineRevisionPrompt}
                             onChange={(e) => arcStore.setArcConfig({ outlineRevisionPrompt: e.target.value })}
                         />
@@ -443,7 +490,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                             disabled={arcStore.outlineStatus === 'generating' || !(arcStore.outlineRevisionPrompt || '').trim()}
                         >
                             {arcStore.outlineStatus === 'generating' ? <Loader2 className="spin" /> : <Sparkles size={16} />}
-                            AI chinh lai dan y
+                            AI chỉnh lại dàn ý
                         </button>
                     </div>
                 </div>
@@ -461,10 +508,10 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                             checked={checked}
                                             onChange={() => arcStore.toggleDraftIndex(index)}
                                         />
-                                        <span>Draft chuong nay</span>
+                                        <span>Tạo bản nháp chương này</span>
                                     </label>
                                     <div className="arc-outline-card-header__actions">
-                                        {issueCount > 0 && <span className="badge border">{issueCount} flag</span>}
+                                        {issueCount > 0 && <span className="badge border">{issueCount} cảnh báo</span>}
                                         <button
                                             className="btn btn-icon btn-ghost btn-sm text-danger"
                                             onClick={() => arcStore.removeOutlineChapter(index)}
@@ -483,7 +530,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                 <textarea
                                     className="textarea mt-2"
                                     rows={2}
-                                    placeholder="Purpose cua chuong..."
+                                    placeholder="Mục tiêu của chương..."
                                     value={chapter.purpose || ''}
                                     onChange={(e) => arcStore.updateOutlineChapter(index, { purpose: e.target.value })}
                                 />
@@ -496,8 +543,8 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                 />
 
                                 <div className="arc-outline-card-meta mt-2">
-                                    <span className="badge">Nhip: {chapter.pacing || 'medium'}</span>
-                                    <span className="badge border">{chapter.key_events?.length || 0} su kien</span>
+                                    <span className="badge">Nhịp: {PACING_LABELS[chapter.pacing] || PACING_LABELS.medium}</span>
+                                    <span className="badge border">{chapter.key_events?.length || 0} sự kiện</span>
                                 </div>
                             </div>
                         );
@@ -505,7 +552,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                 </div>
 
                 <div className="arc-actions">
-                    <button className="btn btn-ghost" onClick={() => setStep(1)}>Quay lai</button>
+                    <button className="btn btn-ghost" onClick={() => setStep(1)}>Quay lại</button>
                     <button
                         className="btn btn-primary"
                         onClick={primaryAction}
@@ -516,7 +563,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                     </button>
                     {arcStore.outputMode !== 'outline_only' && (
                         <button className="btn btn-secondary" onClick={handleCommitOutlineOnly}>
-                            <BookmarkPlus size={16} /> {hasBlockingIssues ? 'Luu outline bat chap' : 'Luu outline truoc'}
+                            <BookmarkPlus size={16} /> {hasBlockingIssues ? 'Lưu dàn ý bất chấp' : 'Lưu dàn ý trước'}
                         </button>
                     )}
                 </div>
@@ -530,7 +577,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         return (
             <div className="arc-step-content">
                 <div className="arc-progress-header">
-                    <h3>Dang draft ({arcStore.draftProgress.current} / {arcStore.draftProgress.total})</h3>
+                    <h3>Đang tạo bản nháp ({arcStore.draftProgress.current} / {arcStore.draftProgress.total})</h3>
                     <div className="arc-progress-bar">
                         <div className="arc-progress-fill" style={{ width: `${progress}%` }} />
                     </div>
@@ -543,9 +590,9 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                 C. {result.chapterIndex + 1}: {result.title}
                             </span>
                             <div className="arc-draft-status">
-                                {result.status === 'pending' && <span className="text-muted">Dang cho...</span>}
-                                {result.status === 'done' && <><CheckCircle2 size={14} className="text-success" /> {result.wordCount} tu</>}
-                                {result.status === 'error' && <><AlertTriangle size={14} className="text-danger" /> Loi</>}
+                                {result.status === 'pending' && <span className="text-muted">{RESULT_STATUS_LABELS.pending}</span>}
+                                {result.status === 'done' && <><CheckCircle2 size={14} className="text-success" /> {result.wordCount} từ</>}
+                                {result.status === 'error' && <><AlertTriangle size={14} className="text-danger" /> {RESULT_STATUS_LABELS.error}</>}
                             </div>
                         </div>
                     ))}
@@ -559,7 +606,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                             setStep(4);
                         }}
                     >
-                        Dung lai
+                        Dừng lại
                     </button>
                 </div>
             </div>
@@ -569,27 +616,27 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
     const renderStep4 = () => (
         <div className="arc-step-content">
             <div className="arc-results-header">
-                <h3>Draft xong cac chuong da chon</h3>
-                <p>Review cac draft mau, cam co neu sai logic, va co the regenerate tu bat ky draft nao tro di.</p>
+                <h3>Đã tạo xong các chương đã chọn</h3>
+                <p>Xem lại các bản nháp mẫu, đánh cờ nếu sai logic, và có thể tạo lại từ bất kỳ bản nháp nào trở đi.</p>
             </div>
 
             <div className="arc-results-list">
                 {arcStore.draftResults.map((result, index) => (
                     <div key={`${result.chapterIndex}-${index}`} className={`arc-result-card ${result.status === 'flagged' ? 'arc-result-card--flagged' : ''}`}>
                         <div className="arc-result-header">
-                            <strong className="arc-result-title">Chuong {result.chapterIndex + 1}: {result.title}</strong>
-                            <span className="arc-result-meta">{result.wordCount} tu</span>
+                            <strong className="arc-result-title">Chương {result.chapterIndex + 1}: {result.title}</strong>
+                            <span className="arc-result-meta">{result.wordCount} từ</span>
                         </div>
 
                         <div className="arc-result-preview">
-                            {result.content ? `${result.content.substring(0, 180)}...` : '(Chua viet xong)'}
+                            {result.content ? `${result.content.substring(0, 180)}...` : '(Chưa viết xong)'}
                         </div>
 
                         {result.status === 'flagged' && (
                             <div className="arc-result-flag-input mt-2">
                                 <input
                                     className="input input-sm"
-                                    placeholder="Ghi chu can sua..."
+                                    placeholder="Ghi chú cần sửa..."
                                     value={result.flagNote || ''}
                                     onChange={(e) => arcStore.flagChapter(index, e.target.value)}
                                 />
@@ -601,15 +648,15 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                 className={`btn btn-sm ${result.status === 'flagged' ? 'btn-danger' : 'btn-ghost'}`}
                                 onClick={() => arcStore.flagChapter(index, result.status === 'flagged' ? '' : 'Sai logic / lech huong')}
                             >
-                                <Flag size={12} /> {result.status === 'flagged' ? 'Bo co' : 'Cam co loi'}
+                                <Flag size={12} /> {result.status === 'flagged' ? 'Bỏ cờ' : 'Cắm cờ lỗi'}
                             </button>
 
                             <button
                                 className="btn btn-sm btn-ghost text-warning"
                                 onClick={() => handleRegenerateFrom(index)}
-                                title="Se tao lai draft nay va cac draft duoc chon sau no"
+                                title="Sẽ tạo lại bản nháp này và các bản nháp được chọn sau nó"
                             >
-                                <RotateCcw size={12} /> Tao lai tu day
+                                <RotateCcw size={12} /> Tạo lại từ đây
                             </button>
                         </div>
                     </div>
@@ -617,12 +664,12 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
             </div>
 
             <div className="arc-actions border-top pt-4">
-                <button className="btn btn-ghost text-danger" onClick={onClose}>Dong</button>
+                <button className="btn btn-ghost text-danger" onClick={onClose}>Đóng</button>
                 <button className="btn btn-secondary" onClick={handleCommitOutlineOnly} disabled={hasBlockingIssues}>
-                    <BookmarkPlus size={16} /> Luu outline
+                    <BookmarkPlus size={16} /> Lưu dàn ý
                 </button>
                 <button className="btn btn-primary" onClick={handleCommit}>
-                    <Save size={16} /> Luu draft vao truyen
+                    <Save size={16} /> Lưu bản nháp vào truyện
                 </button>
             </div>
         </div>
@@ -632,7 +679,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         <div className="arc-modal-overlay">
             <div className="arc-modal">
                 <div className="arc-modal-header">
-                    <h2><Sparkles size={20} style={{ color: 'var(--color-primary)' }} /> Tao chuong tu dong</h2>
+                    <h2><Sparkles size={20} style={{ color: 'var(--color-primary)' }} /> Tạo chương tự động</h2>
                     <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={20} /></button>
                 </div>
 
@@ -641,10 +688,10 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                         <div key={item} className={`arc-step ${step >= item ? 'arc-step--active' : ''}`}>
                             <div className="arc-step-num">{item}</div>
                             <div className="arc-step-label">
-                                {item === 1 && 'Thiet lap'}
-                                {item === 2 && 'Dan y'}
-                                {item === 3 && 'Draft'}
-                                {item === 4 && 'Ket qua'}
+                                {item === 1 && 'Thiết lập'}
+                                {item === 2 && 'Dàn ý'}
+                                {item === 3 && 'Bản nháp'}
+                                {item === 4 && 'Kết quả'}
                             </div>
                         </div>
                     ))}

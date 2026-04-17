@@ -450,7 +450,7 @@ Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
       {/* Header */}
       <div className="outline-header">
         <div className="outline-header-left">
-          <h2><Map size={22} /> Outline Board</h2>
+          <h2><Map size={22} /> Bảng dàn ý</h2>
           <span className="codex-count">{chapters.length} chương</span>
         </div>
 
@@ -460,13 +460,13 @@ Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
               className={`btn btn-ghost btn-sm ${viewMode === 'board' ? 'btn--active' : ''}`}
               onClick={() => setViewMode('board')}
             >
-              <LayoutGrid size={14} /> Board
+              <LayoutGrid size={14} /> Dạng bảng
             </button>
             <button
               className={`btn btn-ghost btn-sm ${viewMode === 'list' ? 'btn--active' : ''}`}
               onClick={() => setViewMode('list')}
             >
-              <List size={14} /> List
+              <List size={14} /> Dạng danh sách
             </button>
           </div>
 
@@ -499,19 +499,19 @@ Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
             className={`outline-mobile-tab ${mobileTab === 'chapters' ? 'outline-mobile-tab--active' : ''}`}
             onClick={() => setMobileTab('chapters')}
           >
-            Chuong
+            Chương
           </button>
           <button
             className={`outline-mobile-tab ${mobileTab === 'threads' ? 'outline-mobile-tab--active' : ''}`}
             onClick={() => setMobileTab('threads')}
           >
-            Threads
+            Tuyến truyện
           </button>
           <button
             className={`outline-mobile-tab ${mobileTab === 'auto' ? 'outline-mobile-tab--active' : ''}`}
             onClick={() => setMobileTab('auto')}
           >
-            Auto
+            Tự động
           </button>
         </div>
       )}
@@ -522,26 +522,26 @@ Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
             <div className="outline-mobile-auto-card">
               <Sparkles size={22} />
               <div>
-                <h3>Tao chuong tu dong</h3>
-                <p>Sinh batch outline, review validator, draft chuong mau neu can.</p>
+                <h3>Tạo chương tự động</h3>
+                <p>Sinh dàn ý theo đợt, kiểm tra cảnh báo và tạo bản nháp mẫu khi cần.</p>
               </div>
               <button className="btn btn-accent" onClick={() => setShowArcGen(true)}>
-                Mo Auto
+                Mở công cụ
               </button>
             </div>
             <div className="outline-mobile-auto-card">
               <Map size={22} />
               <div>
-                <h3>AI phan tich outline</h3>
-                <p>Bo sung purpose, summary va hoi cho cac chuong hien tai.</p>
+                <h3>AI phân tích dàn ý</h3>
+                <p>Bổ sung mục tiêu, tóm tắt và hồi cho các chương hiện tại.</p>
               </div>
               <button className="btn btn-secondary" onClick={handleAIOutline} disabled={isGenerating}>
                 {isGenerating ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-                Chay AI
+                Chạy AI
               </button>
             </div>
             <div className="outline-mobile-validator-note">
-              Validator se hien canh bao gon. Neu draft bi chan, ban van co the luu outline de sua tiep.
+              Trình kiểm tra sẽ hiện cảnh báo ngắn. Nếu bản nháp bị chặn, bạn vẫn có thể lưu dàn ý để sửa tiếp.
             </div>
           </div>
         )}

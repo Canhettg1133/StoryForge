@@ -31,7 +31,7 @@ const RAW_NAV_ITEMS = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard', surface: 'core' },
   { path: '/story-bible', icon: BookOpen, label: 'Sổ tay truyện', id: 'story-bible', needsProject: true, surface: 'core' },
   { path: '/su-that', icon: BookKey, label: 'Sự thật', id: 'su-that', needsProject: true, surface: 'core' },
-  { path: '/outline', icon: Map, label: 'Outline Board', id: 'outline', needsProject: true, surface: 'core' },
+  { path: '/outline', icon: Map, label: 'Bảng dàn ý', id: 'outline', needsProject: true, surface: 'core' },
   { path: '/characters', icon: Users, label: 'Nhân vật', id: 'characters', needsProject: true, surface: 'core' },
   { path: '/world', icon: Globe, label: 'Thế giới', id: 'world', needsProject: true, surface: 'core' },
   { divider: true },
