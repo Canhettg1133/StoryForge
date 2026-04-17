@@ -5,7 +5,7 @@
 .character-hub {
   padding: var(--space-6) var(--space-8);
   width: 100%;
-  max-width: 1520px;
+  max-width: 1280px;
   margin: 0 auto;
   animation: fadeIn 0.3s ease;
 }
@@ -90,8 +90,9 @@
 /* Character Grid */
 .character-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 360px));
   gap: var(--space-4);
+  justify-content: start;
 }
 
 .character-card {
@@ -192,8 +193,9 @@
 /* Taboo List */
 .taboo-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(420px, 560px));
   gap: var(--space-3);
+  justify-content: start;
 }
 
 .taboo-card {
