@@ -120,6 +120,23 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
         ? chapterOutline.keyEvents.join('\n')
         : chapterOutline.purposeRaw || '';
     }
+    if (field === 'all') {
+      const sections = [];
+      const summary = chapterOutline.summary || '';
+      const purpose = chapterOutline.keyEvents.length > 0
+        ? chapterOutline.keyEvents.join('\n')
+        : chapterOutline.purposeRaw || '';
+
+      if (summary.trim()) {
+        sections.push(`Tóm tắt\n${summary.trim()}`);
+      }
+
+      if (purpose.trim()) {
+        sections.push(`Mục tiêu\n${purpose.trim()}`);
+      }
+
+      return sections.join('\n\n');
+    }
     return '';
   };
 
@@ -137,21 +154,17 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
   useEffect(() => {
     setIsEditingOutline(false);
     setCopiedOutlineField('');
-    if (isMobileLayout) {
-      setOutlinePanelOpen(false);
-      return;
-    }
     setOutlinePanelOpen(isContentEmpty(activeScene?.draft_text || ''));
   }, [activeChapterId, activeSceneId, isMobileLayout]);
 
   useEffect(() => {
-    if (isMobileLayout || isEditingOutline) return;
+    if (isEditingOutline) return;
     if (aiDraft || !isContentEmpty(activeScene?.draft_text || '')) {
       setOutlinePanelOpen(false);
     } else {
       setOutlinePanelOpen(true);
     }
-  }, [activeScene?.draft_text, aiDraft, isEditingOutline, isMobileLayout]);
+  }, [activeScene?.draft_text, aiDraft, isEditingOutline]);
 
   const editor = useEditor({
     extensions: [
@@ -406,6 +419,20 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
               {/* ── Chế độ xem ── */}
               {!isEditingOutline && (
                 <>
+                  {(chapterOutline.summary || chapterOutline.purposeRaw || chapterOutline.keyEvents.length > 0) && (
+                    <div className="chapter-outline-copy-row">
+                      <button
+                        type="button"
+                        className="chapter-outline-copy-btn chapter-outline-copy-btn--all"
+                        onClick={() => handleCopyOutline('all')}
+                        title="Copy toàn bộ dàn ý chương"
+                      >
+                        <Copy size={12} />
+                        {copiedOutlineField === 'all' ? 'Đã copy' : 'Copy tất cả'}
+                      </button>
+                    </div>
+                  )}
+
                   {chapterOutline.summary ? (
                     <div className="chapter-outline-section">
                       <div className="chapter-outline-label">Tóm tắt</div>

@@ -445,6 +445,17 @@
   background: var(--color-accent-muted);
 }
 
+.chapter-outline-copy-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 var(--space-2);
+}
+
+.chapter-outline-copy-btn--all {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
 .chapter-outline-text {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);
