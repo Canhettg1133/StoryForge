@@ -731,6 +731,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
             await createCharacter({
               project_id: projectId,
               name: c.name,
+              aliases: c.aliases || [],
               role: c.role || 'supporting',
               appearance: c.appearance || '',
               personality: (c.personality || '') + (c.flaws ? `\nDiem yeu: ${c.flaws}` : ''),

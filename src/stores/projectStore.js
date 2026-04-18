@@ -3,6 +3,7 @@ import db from '../services/db/database';
 import { countWords } from '../utils/constants';
 import { GENRE_TEMPLATES } from '../utils/genreTemplates';
 import { buildProseBuffer } from '../utils/proseBuffer';
+import { findCharacterIdentityMatch, mergeCharacterPatch, normalizeCharacterIdentityKey } from '../utils/characterIdentity';
 import { PROVIDERS, QUALITY_MODES } from '../services/ai/router';
 import {
   canonicalizeChapter as canonicalizeChapterEngine,
@@ -283,16 +284,36 @@ async function createExtractedCodexEntries({
   };
   const now = Date.now();
 
-  const characterNames = new Set(existingCharacters.map((item) => normalizeName(item.name)));
+  const characterNames = new Set(existingCharacters.map((item) => normalizeCharacterIdentityKey(item.name)));
   const characterRecords = [];
   for (const character of extracted.characters || []) {
-    const name = normalizeName(character?.name);
-    if (!name || characterNames.has(name)) continue;
+    const name = normalizeCharacterIdentityKey(character?.name);
+    if (!name) continue;
+    const identityMatch = findCharacterIdentityMatch(
+      [...existingCharacters, ...characterRecords],
+      character,
+    );
+    if (identityMatch?.character) {
+      const patch = mergeCharacterPatch(identityMatch.character, {
+        ...character,
+        source_chapter_id: chapterId,
+        source_kind: 'chapter_extract',
+      });
+      if (identityMatch.character.id && Object.keys(patch).length > 0) {
+        await db.characters.update(identityMatch.character.id, patch);
+      }
+      if (Object.keys(patch).length > 0) {
+        Object.assign(identityMatch.character, patch);
+      }
+      continue;
+    }
+    if (characterNames.has(name)) continue;
     characterNames.add(name);
     created.characters += 1;
     characterRecords.push({
       project_id: projectId,
       name: character.name || '',
+      aliases: character.aliases || [],
       role: character.role || 'minor',
       appearance: character.appearance || '',
       personality: character.personality || '',

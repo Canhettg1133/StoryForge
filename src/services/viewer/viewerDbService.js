@@ -7,6 +7,11 @@
  */
 
 import db from '../db/database.js';
+import {
+  findCharacterIdentityMatch,
+  mergeCharacterPatch,
+  normalizeCharacterIdentityKey,
+} from '../../utils/characterIdentity.js';
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -776,17 +781,22 @@ async function materializeSnapshotIntoProject(projectId, result) {
       }
 
       const existingCharacters = await db.characters.where('project_id').equals(projectId).toArray();
+      const knownCharacters = [...existingCharacters];
       const charMap = new Map(
-        existingCharacters.map((item) => [toComparableName(item.name), item]),
+        existingCharacters.map((item) => [normalizeCharacterIdentityKey(item.name), item]),
       );
 
       for (const incoming of characters) {
-        const key = toComparableName(incoming.name);
+        const key = normalizeCharacterIdentityKey(incoming.name);
         if (!key) continue;
-        const existing = charMap.get(key);
         const personalityTagsText = Array.isArray(incoming.personalityTags)
           ? incoming.personalityTags.join(', ')
           : normalizeText(incoming.personalityTags || '');
+        const normalizedIncoming = {
+          ...incoming,
+          personality_tags: personalityTagsText,
+        };
+        const existing = findCharacterIdentityMatch(knownCharacters, normalizedIncoming)?.character || charMap.get(key);
 
         if (!existing) {
           const createdId = await db.characters.add({
@@ -812,56 +822,32 @@ async function materializeSnapshotIntoProject(projectId, result) {
             id: createdId,
             ...incoming,
             name: incoming.name,
+            personality_tags: personalityTagsText,
+          });
+          knownCharacters.push({
+            id: createdId,
+            ...incoming,
+            name: incoming.name,
+            personality_tags: personalityTagsText,
           });
           continue;
         }
 
-        const patch = {};
-        const nextAliases = mergeUniqueText(existing.aliases, incoming.aliases);
-        if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
-          patch.aliases = nextAliases;
-        }
-        if (!normalizeText(existing.appearance) && incoming.appearance) {
-          patch.appearance = incoming.appearance;
-        }
-        if (!normalizeText(existing.personality) && incoming.personality) {
-          patch.personality = incoming.personality;
-        }
-        if (!normalizeText(existing.flaws) && incoming.flaws) {
-          patch.flaws = incoming.flaws;
-        }
-        if (!normalizeText(existing.personality_tags) && personalityTagsText) {
-          patch.personality_tags = personalityTagsText;
-        }
-        if (!normalizeText(existing.goals) && incoming.goals) {
-          patch.goals = incoming.goals;
-        }
-        if (!normalizeText(existing.secrets) && incoming.secrets) {
-          patch.secrets = incoming.secrets;
-        }
-        if (!normalizeText(existing.notes) && incoming.notes) {
-          patch.notes = incoming.notes;
-        }
-        const existingRole = normalizeText(existing.role || 'supporting').toLowerCase();
-        const incomingRole = normalizeText(incoming.role || '').toLowerCase();
-        if (
-          incomingRole
-          && incomingRole !== existingRole
-          && (existingRole === 'supporting' || !existingRole)
-        ) {
-          patch.role = incomingRole;
-        }
+        const patch = mergeCharacterPatch(existing, normalizedIncoming);
 
         if (Object.keys(patch).length > 0) {
           await db.characters.update(existing.id, patch);
+          Object.assign(existing, patch);
           stats.charactersUpdated += 1;
         }
       }
 
       const ownerIdForName = (ownerName) => {
-        const key = toComparableName(ownerName);
+        const key = normalizeCharacterIdentityKey(ownerName);
         if (!key) return null;
-        return charMap.get(key)?.id || null;
+        return findCharacterIdentityMatch(knownCharacters, { name: ownerName })?.character?.id
+          || charMap.get(key)?.id
+          || null;
       };
 
       const mergeTimelineText = (baseText, timelineText) => {

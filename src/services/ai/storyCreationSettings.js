@@ -14,7 +14,7 @@ const PROJECT_WIZARD_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON format:
     "world_rules": ["Quy tac 1", "Quy tac 2", "Quy tac 3"],
     "world_description": "Mo ta tong quan the gioi 2-3 cau"
   },
-  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem luc dau", "goals": "...", "story_function": "vai tro trong cac chapter dau"}],
+  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem luc dau", "goals": "...", "story_function": "vai tro trong cac chapter dau"}],
   "locations": [{"name": "...", "description": "...", "story_function": "dia diem nay dung de lam gi trong chapter dau"}],
   "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chi them neu chapter dau that su can vat pham nay"}],
   "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "..."}],
@@ -37,6 +37,8 @@ QUY TAC CHUONG VA ENTITY:
 - Khong tao character/location/term chi duoc neu o codex ma khong lien he voi chapter.
 - "objects" la field tuy chon, chi them neu chapter dau that su can va chapter outline co nhac den.
 - Moi chapter phai co tien trien ro, nhung khong duoc nhoi qua nhieu bien co neu day moi la mo dau truyen.
+- Moi nhan vat chi duoc co MOT record chinh thuc trong "characters". Neu cung mot nguoi co ten ngan, ho, biet danh, danh xung, hoac cach goi khac, dua vao "aliases" cua record do; TUYET DOI khong tao thanh nhan vat moi.
+- Khong tao 2 protagonist/main character cho cung mot nguoi chi vi ten hoi khac nhau. "featured_characters" phai dung ten chinh thuc trong "characters".
 
 Chi tra ve JSON, khong them gi khac.`;
 
@@ -182,6 +184,8 @@ NGUYEN TAC BAT BUOC:
 - So chapter trong "chapters" PHAI dung bang {{initial_chapter_count}}.
 - Moi entity duoc tao ra phai co chuc nang ro trong phan chapter dau; neu khong can cho {{initial_chapter_count}} chapter dau thi KHONG tao.
 - Nhan vat, dia diem, thuat ngu, va plot thread phai bam sat premise va phai duoc nhac den trong chapter outline.
+- Moi nhan vat chi co 1 record chinh thuc. Ten ngan, biet danh, danh xung, ho/ten dem, hoac bien the chinh ta phai nam trong aliases cua record do, KHONG tao thanh nhan vat moi.
+- Neu mot nhan vat da co trong danh sach, moi chi tiet moi lien quan den nguoi do phai cap nhat vao chinh nhan vat do.
 - Nhac lai it nhung huu dung tot hon nhieu nhung roi rac.
 - Nhip truyen phai phu hop voi do dai muc tieu va khong duoc tang toc qua tay trong giai doan mo dau.{{pacing_guidance}}`,
     userPromptTemplate: `The loai: {{genre}}
@@ -201,6 +205,7 @@ NGUYEN TAC BAT BUOC:
 - Moi chapter phai co "purpose" ro rang, khong duoc la chapter de day so.
 - Moi plot thread phai co diem neo cu the trong it nhat mot chapter.
 - Character usage va location usage phai ro, khong duoc mo ho.
+- Khi nhac nhan vat trong outline, chi dung ten chinh thuc da co trong danh sach Nhan vat; khong bien ten ngan/biet danh thanh mot nhan vat moi.
 - Khong duoc tang toc nhip qua tay o giai doan mo dau; khong nhoi qua nhieu bien co vao mot chapter.
 - Khong duoc tao thread lon nhung khong co chapter nao gan vao.
 

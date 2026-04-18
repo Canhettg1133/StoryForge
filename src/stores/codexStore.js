@@ -14,6 +14,7 @@ import { create } from 'zustand';
 import db from '../services/db/database';
 import { buildCharacterStateSummary } from '../services/canon/engine';
 import { buildProseBuffer } from '../utils/proseBuffer';
+import { findCharacterIdentityMatch, mergeCharacterPatch } from '../utils/characterIdentity';
 
 // ---------------------------------------------
 // Helper: check whether one entry appears in a block of text.
@@ -193,7 +194,7 @@ const useCodexStore = create((set, get) => ({
         break;
       }
     }
-    const id = await db.characters.add({
+    const payload = {
       project_id: data.project_id,
       name: data.name || '',
       aliases: data.aliases || [],          // new
@@ -213,7 +214,20 @@ const useCodexStore = create((set, get) => ({
       source_chapter_id: data.source_chapter_id || null,
       source_kind: data.source_kind || '',
       created_at: now,
-    });
+    };
+
+    const existingCharacters = await db.characters.where('project_id').equals(data.project_id).toArray();
+    const identityMatch = findCharacterIdentityMatch(existingCharacters, payload);
+    if (identityMatch?.character) {
+      const patch = mergeCharacterPatch(identityMatch.character, payload);
+      if (Object.keys(patch).length > 0) {
+        await db.characters.update(identityMatch.character.id, patch);
+      }
+      await get().loadCodex(data.project_id);
+      return identityMatch.character.id;
+    }
+
+    const id = await db.characters.add(payload);
     await get().loadCodex(data.project_id);
     return id;
   },

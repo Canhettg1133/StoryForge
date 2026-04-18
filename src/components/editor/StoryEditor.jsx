@@ -8,7 +8,7 @@ import { countWords } from '../../utils/constants';
 import ContinuityBar from './ContinuityBar';
 import SceneDetailPanel from './SceneDetailPanel';
 import db from '../../services/db/database';
-import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings } from 'lucide-react';
+import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings, Copy } from 'lucide-react';
 import './StoryEditor.css';
 
 function isContentEmpty(html = '') {
@@ -58,6 +58,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
   const [editPurpose, setEditPurpose] = useState('');
   const [aiDraft, setAiDraft] = useState(null);
   const [dismissedDraftKey, setDismissedDraftKey] = useState('');
+  const [copiedOutlineField, setCopiedOutlineField] = useState('');
 
   // Parse chapter outline data (summary + key_events from purpose)
   const chapterOutline = useMemo(() => {
@@ -111,11 +112,46 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
     setEditPurpose('');
   };
 
+  const getOutlineCopyText = (field) => {
+    if (!chapterOutline) return '';
+    if (field === 'summary') return chapterOutline.summary || '';
+    if (field === 'purpose') {
+      return chapterOutline.keyEvents.length > 0
+        ? chapterOutline.keyEvents.join('\n')
+        : chapterOutline.purposeRaw || '';
+    }
+    return '';
+  };
+
+  const handleCopyOutline = async (field) => {
+    const text = getOutlineCopyText(field).trim();
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    setCopiedOutlineField(field);
+    setTimeout(() => {
+      setCopiedOutlineField((current) => (current === field ? '' : current));
+    }, 1600);
+  };
+
   // [MỚI] Reset edit state khi đổi chương
   useEffect(() => {
     setIsEditingOutline(false);
-    setOutlinePanelOpen(!isMobileLayout);
-  }, [activeChapterId, isMobileLayout]);
+    setCopiedOutlineField('');
+    if (isMobileLayout) {
+      setOutlinePanelOpen(false);
+      return;
+    }
+    setOutlinePanelOpen(isContentEmpty(activeScene?.draft_text || ''));
+  }, [activeChapterId, activeSceneId, isMobileLayout]);
+
+  useEffect(() => {
+    if (isMobileLayout || isEditingOutline) return;
+    if (aiDraft || !isContentEmpty(activeScene?.draft_text || '')) {
+      setOutlinePanelOpen(false);
+    } else {
+      setOutlinePanelOpen(true);
+    }
+  }, [activeScene?.draft_text, aiDraft, isEditingOutline, isMobileLayout]);
 
   const editor = useEditor({
     extensions: [
@@ -373,6 +409,15 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
                   {chapterOutline.summary ? (
                     <div className="chapter-outline-section">
                       <div className="chapter-outline-label">Tóm tắt</div>
+                      <button
+                        type="button"
+                        className="chapter-outline-copy-btn"
+                        onClick={() => handleCopyOutline('summary')}
+                        title="Copy tóm tắt chương"
+                      >
+                        <Copy size={12} />
+                        {copiedOutlineField === 'summary' ? 'Đã copy' : 'Copy tóm tắt'}
+                      </button>
                       <p className="chapter-outline-text">{chapterOutline.summary}</p>
                     </div>
                   ) : (
@@ -388,6 +433,15 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
                       <div className="chapter-outline-label">
                         <ListChecks size={13} /> Sự kiện chính
                       </div>
+                      <button
+                        type="button"
+                        className="chapter-outline-copy-btn"
+                        onClick={() => handleCopyOutline('purpose')}
+                        title="Copy mục tiêu chương"
+                      >
+                        <Copy size={12} />
+                        {copiedOutlineField === 'purpose' ? 'Đã copy' : 'Copy mục tiêu'}
+                      </button>
                       <ul className="chapter-outline-events">
                         {chapterOutline.keyEvents.map((evt, i) => (
                           <li key={i}>{evt}</li>
@@ -399,6 +453,15 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
                   {chapterOutline.purposeRaw && chapterOutline.keyEvents.length === 0 && (
                     <div className="chapter-outline-section">
                       <div className="chapter-outline-label">Mục tiêu chương</div>
+                      <button
+                        type="button"
+                        className="chapter-outline-copy-btn"
+                        onClick={() => handleCopyOutline('purpose')}
+                        title="Copy mục tiêu chương"
+                      >
+                        <Copy size={12} />
+                        {copiedOutlineField === 'purpose' ? 'Đã copy' : 'Copy mục tiêu'}
+                      </button>
                       <p className="chapter-outline-text">{chapterOutline.purposeRaw}</p>
                     </div>
                   )}

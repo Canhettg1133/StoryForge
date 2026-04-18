@@ -423,6 +423,28 @@
   gap: var(--space-1);
 }
 
+.chapter-outline-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  margin: 0 0 var(--space-1);
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chapter-outline-copy-btn:hover {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+  background: var(--color-accent-muted);
+}
+
 .chapter-outline-text {
   font-size: var(--text-sm);
   color: var(--color-text-secondary);

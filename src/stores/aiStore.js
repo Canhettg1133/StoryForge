@@ -18,6 +18,7 @@ import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 import { NSFW_SUPER_PROMPT_1 } from '../utils/constants';
 import useSuggestionStore from './suggestionStore';
 import useProjectStore from './projectStore';
+import { findCharacterIdentityMatch } from '../utils/characterIdentity';
 import {
   validateSceneDraft,
   createChapterRevision,
@@ -686,9 +687,9 @@ const useAIStore = create((set, get) => ({
               if (result.character_updates && Array.isArray(result.character_updates)) {
                 for (const update of result.character_updates) {
                   // Match character name to ID
-                  const char = allCharacters.find(c =>
-                    c.name && c.name.toLowerCase() === (update.character_name || '').toLowerCase()
-                  );
+                  const char = findCharacterIdentityMatch(allCharacters, {
+                    name: update.character_name || '',
+                  })?.character || null;
                   suggestionItems.push({
                     type: 'character_status',
                     source_chapter_id: chapterId,
