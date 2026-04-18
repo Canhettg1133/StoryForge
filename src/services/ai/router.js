@@ -67,6 +67,7 @@ export const TASK_TYPES = {
   // Phase A — Suggestion Inbox
   SUGGEST_UPDATES: 'suggest_updates',
   CANON_EXTRACT_OPS: 'canon_extract_ops',
+  CANON_ADJUDICATE_WARNINGS: 'canon_adjudicate_warnings',
   CANON_REPAIR: 'canon_repair',
   // Phase 5 — AI Auto Generation
   ARC_OUTLINE: 'arc_outline',

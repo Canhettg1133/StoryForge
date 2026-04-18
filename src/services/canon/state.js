@@ -106,14 +106,51 @@ export function buildRelationshipPairKey(characterAId, characterBId) {
   return [a, b].sort((left, right) => Number(left) - Number(right)).join(':');
 }
 
+export const ITEM_CATEGORIES = {
+  UNIQUE: 'unique',
+  STACK: 'stack',
+  CONSUMABLE: 'consumable',
+  CURRENCY: 'currency',
+  RESOURCE: 'resource',
+  EQUIPMENT: 'equipment',
+  CONTAINER: 'container',
+  QUEST_ITEM: 'quest_item',
+};
+
+const ITEM_CATEGORY_SET = new Set(Object.values(ITEM_CATEGORIES));
+
+export function normalizeItemCategory(value = '') {
+  const normalized = normalizeKey(value).replace(/\s+/g, '_');
+  return ITEM_CATEGORY_SET.has(normalized) ? normalized : '';
+}
+
+function toOptionalNumber(value) {
+  if (value == null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function resolveItemQuantity(payload, key, fallback = null) {
+  return toOptionalNumber(payload[key] ?? payload[key.replace('quantity_', '')] ?? fallback);
+}
+
 export function createInitialItemState(object = {}) {
+  const category = normalizeItemCategory(object.item_category || object.item_type || object.object_type);
+  const quantityRemaining = toOptionalNumber(object.quantity_remaining ?? object.quantity);
+  const quantityTotal = toOptionalNumber(object.quantity_total ?? object.quantity);
+  const ownerId = object.owner_character_id || null;
   return {
     project_id: object.project_id,
     object_id: object.id,
+    item_category: category || '',
     availability: 'available',
-    owner_character_id: object.owner_character_id || null,
+    owner_character_id: ownerId,
+    holder_character_id: object.holder_character_id || ownerId,
     current_location_id: null,
     current_location_name: '',
+    quantity_remaining: quantityRemaining,
+    quantity_total: quantityTotal,
+    quantity_unit: cleanText(object.quantity_unit || object.unit || ''),
     is_consumed: false,
     is_damaged: false,
     usage_notes: '',
@@ -243,26 +280,140 @@ export function applyEventToItemState(prevState, event) {
     source_revision_id: event.revision_id || prevState?.source_revision_id || null,
   };
   const payload = normalizePayload(event.payload);
+  const itemCategory = normalizeItemCategory(payload.item_category || payload.item_type || payload.object_type);
+  const quantityDelta = resolveItemQuantity(payload, 'quantity_delta', payload.quantity ?? payload.amount);
+  const quantityRemaining = resolveItemQuantity(payload, 'quantity_remaining');
+  const quantityTotal = resolveItemQuantity(payload, 'quantity_total');
+  const quantityUnit = cleanText(payload.quantity_unit || payload.unit || '');
+  const transferKind = normalizeKey(payload.transfer_kind || payload.transfer_mode || payload.transfer_type || '');
+
+  if (itemCategory) next.item_category = itemCategory;
+  if (quantityUnit) next.quantity_unit = quantityUnit;
+  if (quantityTotal != null) next.quantity_total = quantityTotal;
+
+  const setAvailable = () => {
+    next.availability = cleanText(payload.availability || 'available') || 'available';
+    next.is_consumed = Boolean(payload.is_consumed ?? false);
+  };
+
+  const applyQuantityGain = () => {
+    if (quantityRemaining != null) {
+      next.quantity_remaining = quantityRemaining;
+    } else if (quantityDelta != null && next.quantity_remaining != null) {
+      next.quantity_remaining = Math.max(0, Number(next.quantity_remaining) + quantityDelta);
+    } else if (quantityDelta != null) {
+      next.quantity_remaining = quantityDelta;
+    }
+  };
+
+  const applyQuantityLoss = (consumeAll = false) => {
+    if (quantityRemaining != null) {
+      next.quantity_remaining = quantityRemaining;
+    } else if (consumeAll) {
+      next.quantity_remaining = 0;
+    } else if (quantityDelta != null && next.quantity_remaining != null) {
+      next.quantity_remaining = Math.max(0, Number(next.quantity_remaining) - Math.abs(quantityDelta));
+    }
+
+    if (next.quantity_remaining != null) {
+      next.is_consumed = Number(next.quantity_remaining) <= 0;
+      next.availability = next.is_consumed ? 'consumed' : 'available';
+    }
+  };
+
+  const resolveRecipientCharacterId = () => (
+    payload.target_character_id
+    || payload.receiver_character_id
+    || payload.recipient_character_id
+    || payload.owner_character_id
+    || payload.holder_character_id
+    || event.target_id
+    || event.subject_id
+    || null
+  );
+
+  const isTemporaryTransfer = () => [
+    'lend',
+    'loan',
+    'borrow',
+    'temporary',
+    'custody',
+    'store',
+    'stored',
+    'entrust',
+  ].includes(transferKind);
 
   switch (event.op_type) {
+    case CANON_OP_TYPES.OBJECT_ACQUIRED:
+      setAvailable();
+      applyQuantityGain();
+      next.owner_character_id = resolveRecipientCharacterId() || next.owner_character_id || null;
+      next.holder_character_id = payload.holder_character_id || resolveRecipientCharacterId() || next.owner_character_id || null;
+      next.summary = cleanText(payload.status_summary || event.summary || next.summary || 'Da co duoc vat pham');
+      next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
+      break;
     case CANON_OP_TYPES.OBJECT_STATUS_CHANGED:
       next.availability = cleanText(payload.availability || next.availability || 'available') || 'available';
       next.is_damaged = Boolean(payload.is_damaged ?? next.is_damaged);
       next.is_consumed = Boolean(payload.is_consumed ?? next.is_consumed);
+      if (quantityRemaining != null) next.quantity_remaining = quantityRemaining;
       next.current_location_id = payload.location_id || next.current_location_id || null;
       next.current_location_name = cleanText(payload.location_name || next.current_location_name || '');
       next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
       next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
       break;
     case CANON_OP_TYPES.OBJECT_TRANSFERRED:
-      next.owner_character_id = event.target_id || payload.owner_character_id || next.owner_character_id || null;
+      if (!isTemporaryTransfer()) {
+        next.owner_character_id = resolveRecipientCharacterId() || next.owner_character_id || null;
+      } else if (payload.owner_character_id) {
+        next.owner_character_id = payload.owner_character_id;
+      }
+      next.holder_character_id = payload.holder_character_id || resolveRecipientCharacterId() || next.holder_character_id || null;
+      next.availability = cleanText(payload.availability || next.availability || 'available') || 'available';
       next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
       break;
     case CANON_OP_TYPES.OBJECT_CONSUMED:
-      next.availability = cleanText(payload.availability || 'consumed') || 'consumed';
+      applyQuantityLoss(true);
+      next.availability = cleanText(payload.availability || next.availability || 'consumed') || 'consumed';
       next.is_consumed = true;
       next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc su dung het');
       next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
+      break;
+    case CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED:
+    case CANON_OP_TYPES.OBJECT_SPENT:
+      applyQuantityLoss(false);
+      next.summary = cleanText(payload.status_summary || event.summary || next.summary || 'Da duoc su dung mot phan');
+      next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
+      break;
+    case CANON_OP_TYPES.OBJECT_LOST:
+      next.availability = cleanText(payload.availability || 'lost') || 'lost';
+      next.holder_character_id = null;
+      next.current_location_id = payload.location_id || null;
+      next.current_location_name = cleanText(payload.location_name || '');
+      next.summary = cleanText(payload.status_summary || event.summary || 'Da bi mat');
+      break;
+    case CANON_OP_TYPES.OBJECT_FOUND:
+      setAvailable();
+      applyQuantityGain();
+      next.holder_character_id = event.subject_id || event.target_id || payload.holder_character_id || next.holder_character_id || null;
+      next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc tim thay');
+      break;
+    case CANON_OP_TYPES.OBJECT_RESTORED:
+      setAvailable();
+      next.is_damaged = Boolean(payload.is_damaged ?? false);
+      applyQuantityGain();
+      next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc khoi phuc');
+      next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
+      break;
+    case CANON_OP_TYPES.OBJECT_RETURNED:
+      setAvailable();
+      next.holder_character_id = payload.return_to_character_id || payload.holder_character_id || event.target_id || next.owner_character_id || null;
+      if (payload.owner_character_id) {
+        next.owner_character_id = payload.owner_character_id;
+      } else if (!next.owner_character_id) {
+        next.owner_character_id = payload.return_to_character_id || event.target_id || null;
+      }
+      next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc tra lai');
       break;
     default:
       break;

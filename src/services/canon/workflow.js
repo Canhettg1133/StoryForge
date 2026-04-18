@@ -32,6 +32,7 @@ import {
   buildCanonChapterTextFromScenes,
   buildCanonContentSignature,
   cleanText,
+  normalizeKey,
 } from './utils';
 
 function normalizeAiOpsResponse(parsed) {
@@ -62,6 +63,285 @@ function buildCanonExtractError(error, rawText = '') {
     return new Error(`${baseMessage} | Raw: ${rawSnippet}`);
   }
   return new Error(baseMessage);
+}
+
+function normalizeAdjudicationResponse(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray(parsed.decisions)) return parsed.decisions;
+  if (parsed && Array.isArray(parsed.reports)) return parsed.reports;
+  return [];
+}
+
+function clampAdjudicationConfidence(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  if (numeric < 0) return 0;
+  if (numeric > 1) return 1;
+  return numeric;
+}
+
+const AI_ADJUDICATABLE_WARNING_RULES = new Set([
+  'DRAFT_TOUCHES_HIDDEN_SECRET',
+  'DRAFT_REFERENCES_SPENT_ITEM',
+  'ITEM_REUSE_NEEDS_REVIEW',
+  'ITEM_QUANTITY_NEEDS_REVIEW',
+]);
+
+const ITEM_ADJUDICATION_RULES = new Set([
+  'DRAFT_REFERENCES_SPENT_ITEM',
+  'ITEM_REUSE_NEEDS_REVIEW',
+  'ITEM_QUANTITY_NEEDS_REVIEW',
+]);
+
+const SECRET_ADJUDICATION_RULES = new Set([
+  'DRAFT_TOUCHES_HIDDEN_SECRET',
+]);
+
+function shouldAdjudicateWarning(report) {
+  return report?.severity === CANON_SEVERITY.WARNING
+    && AI_ADJUDICATABLE_WARNING_RULES.has(report.rule_code);
+}
+
+function buildSceneOrderMap(scenes = []) {
+  return new Map((scenes || []).map((scene, index) => [scene.id, scene.order_index ?? index]));
+}
+
+function extractLocalContext(chapterText = '', evidence = '') {
+  const text = String(chapterText || '');
+  const cleanEvidence = cleanText(evidence);
+  if (!text) return '';
+  if (!cleanEvidence) return cleanText(text.slice(0, 1200));
+
+  const exactIndex = text.toLowerCase().indexOf(cleanEvidence.toLowerCase());
+  if (exactIndex >= 0) {
+    return cleanText(text.slice(Math.max(0, exactIndex - 500), exactIndex + cleanEvidence.length + 500));
+  }
+
+  const normalizedText = normalizeKey(text);
+  const normalizedEvidence = normalizeKey(cleanEvidence);
+  const normalizedIndex = normalizedEvidence ? normalizedText.indexOf(normalizedEvidence.slice(0, 80)) : -1;
+  if (normalizedIndex >= 0) {
+    const ratio = text.length / Math.max(1, normalizedText.length);
+    const approxIndex = Math.floor(normalizedIndex * ratio);
+    return cleanText(text.slice(Math.max(0, approxIndex - 500), approxIndex + 700));
+  }
+
+  return cleanText(text.slice(0, 1200));
+}
+
+function pickRelevantItemsForReport(report, preTruth) {
+  const haystack = normalizeKey(`${report.message || ''} ${report.evidence || ''}`);
+  return (preTruth.objects || [])
+    .filter((object) => normalizeKey(object.name) && haystack.includes(normalizeKey(object.name)))
+    .slice(0, 8)
+    .map((object) => {
+      const state = (preTruth.itemStates || []).find((itemState) => itemState.object_id === object.id) || null;
+      return {
+        id: object.id,
+        name: object.name || '',
+        aliases: object.aliases || [],
+        description: object.description || '',
+        state: state ? {
+          availability: state.availability || '',
+          item_category: state.item_category || '',
+          quantity_remaining: state.quantity_remaining ?? null,
+          quantity_total: state.quantity_total ?? null,
+          quantity_unit: state.quantity_unit || '',
+          is_consumed: !!state.is_consumed,
+          is_damaged: !!state.is_damaged,
+          owner_character_id: state.owner_character_id || null,
+          holder_character_id: state.holder_character_id || null,
+          summary: state.summary || '',
+        } : null,
+      };
+    });
+}
+
+function pickRelevantFactsForReport(report, preTruth) {
+  const haystack = normalizeKey(`${report.message || ''} ${report.evidence || ''}`);
+  return (preTruth.canonFacts || [])
+    .filter((fact) => {
+      const normalizedDescription = normalizeKey(fact.description || '');
+      return normalizedDescription && haystack.includes(normalizedDescription);
+    })
+    .slice(0, 6)
+    .map((fact) => ({
+      id: fact.id,
+      description: fact.description || '',
+      fact_type: fact.fact_type || '',
+      revealed_at_chapter: fact.revealed_at_chapter ?? null,
+    }));
+}
+
+function pickRelevantCandidateOpsForReport(report, candidateOps, relatedItems, relatedFacts) {
+  const itemIds = new Set(relatedItems.map((item) => item.id));
+  const factIds = new Set(relatedFacts.map((fact) => fact.id));
+  const reportText = normalizeKey(`${report.message || ''} ${report.evidence || ''}`);
+
+  return (candidateOps || [])
+    .filter((op) => {
+      if (ITEM_ADJUDICATION_RULES.has(report.rule_code)) {
+        if (itemIds.size > 0 && itemIds.has(op.object_id)) return true;
+        if (normalizeKey(op.object_name || '') && reportText.includes(normalizeKey(op.object_name || ''))) return true;
+        return false;
+      }
+      if (SECRET_ADJUDICATION_RULES.has(report.rule_code)) {
+        if (factIds.size > 0 && factIds.has(op.fact_id)) return true;
+        return [
+          'SECRET_REVEALED',
+          'FACT_REGISTERED',
+        ].includes(String(op.op_type || ''));
+      }
+      return false;
+    })
+    .slice(0, 12)
+    .map((op) => ({
+      op_type: op.op_type,
+      scene_id: op.scene_id || null,
+      subject_name: op.subject_name || '',
+      target_name: op.target_name || '',
+      object_name: op.object_name || '',
+      fact_description: op.fact_description || '',
+      summary: op.summary || '',
+      evidence: op.evidence || '',
+      payload: op.payload || {},
+    }));
+}
+
+function buildWarningAdjudicationMessages({
+  project,
+  chapter,
+  revision,
+  reports,
+  candidateOps,
+  preTruth,
+}) {
+  const warningPayload = reports.map((report, index) => {
+    const relatedItems = pickRelevantItemsForReport(report, preTruth);
+    const relatedFacts = pickRelevantFactsForReport(report, preTruth);
+    return {
+      warning_index: index,
+      rule_code: report.rule_code || '',
+      severity: report.severity || '',
+      message: report.message || '',
+      evidence: report.evidence || '',
+      local_context: extractLocalContext(revision.chapter_text || '', report.evidence || report.message || ''),
+      related_items: relatedItems,
+      related_facts: relatedFacts,
+      candidate_ops: pickRelevantCandidateOpsForReport(report, candidateOps, relatedItems, relatedFacts),
+    };
+  });
+
+  return [
+    {
+      role: 'system',
+      content: [
+        'Ban la bo phan adjudication cho canh bao continuity/canon cua StoryForge.',
+        'Nhiem vu: xem tung WARNING co phai loi continuity that hay false-positive cua validator.',
+        'Chi dua ket luan dua tren evidence/local_context/canon_state duoc cung cap. Khong bia them.',
+        'Neu doan van chi nho lai, dat cau hoi, so sanh, hoi tuong, nhac den vat pham/su kien thi khong xem la dung lai.',
+        'Neu warning noi ve bi mat, hay phan biet giua viec nhac/ban/rumor/hoai nghi ve bi mat voi viec thuc su tiet lo hay xac nhan bi mat do.',
+        'Neu co hanh dong ro rang dung lai/tieu hao/chuyen giao trong khi canon cam va khong co su kien mua lai/tim lai/khoi phuc/tra lai thi giu warning.',
+        'Neu thieu du lieu so luong/phan loai/chuoi su kien thi verdict needs_review, khong khang dinh loi.',
+        'Tra ve JSON hop le duy nhat.',
+      ].join('\n'),
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        output_schema: {
+          decisions: [{
+            warning_index: 0,
+            verdict: 'false_positive | true_issue | needs_review',
+            confidence: 0.0,
+            reason: 'ngan gon',
+            suggested_action: 'dismiss_report | keep_warning | needs_review',
+            suggested_ops: [],
+          }],
+        },
+        project: {
+          id: project?.id || null,
+          title: project?.title || '',
+          genre: project?.genre_primary || '',
+        },
+        chapter: {
+          id: chapter?.id || null,
+          title: chapter?.title || '',
+          order_index: chapter?.order_index ?? null,
+        },
+        warnings: warningPayload,
+      }),
+    },
+  ];
+}
+
+async function adjudicateWarningReports({
+  project,
+  chapter,
+  revision,
+  reports,
+  candidateOps,
+  preTruth,
+  routeOptions = null,
+}) {
+  const warningReports = reports.filter((report) => shouldAdjudicateWarning(report));
+  if (warningReports.length === 0) return reports;
+  if (!TASK_TYPES.CANON_ADJUDICATE_WARNINGS) return reports;
+
+  try {
+    const messages = buildWarningAdjudicationMessages({
+      project,
+      chapter,
+      revision,
+      reports: warningReports,
+      candidateOps,
+      preTruth,
+    });
+    const rawText = await sendAiTask(TASK_TYPES.CANON_ADJUDICATE_WARNINGS, messages, {
+      routeOptions: routeOptions || undefined,
+      nsfwMode: !!project?.nsfw_mode,
+      superNsfwMode: !!project?.super_nsfw_mode,
+    });
+    const decisions = normalizeAdjudicationResponse(parseAIJsonValue(rawText));
+    const decisionByIndex = new Map();
+    decisions.forEach((decision) => {
+      const index = Number(decision?.warning_index ?? decision?.index);
+      if (Number.isInteger(index)) {
+        decisionByIndex.set(index, {
+          verdict: cleanText(decision.verdict || ''),
+          confidence: clampAdjudicationConfidence(decision.confidence),
+          reason: cleanText(decision.reason || ''),
+          suggested_action: cleanText(decision.suggested_action || ''),
+          suggested_ops: Array.isArray(decision.suggested_ops) ? decision.suggested_ops : [],
+        });
+      }
+    });
+
+    let warningCursor = -1;
+    return reports
+      .map((report) => {
+        if (!shouldAdjudicateWarning(report)) return report;
+        warningCursor += 1;
+        const decision = decisionByIndex.get(warningCursor);
+        if (!decision) return report;
+        return {
+          ...report,
+          ai_adjudication: decision,
+        };
+      })
+      .filter((report) => {
+        const decision = report.ai_adjudication;
+        if (!decision) return true;
+        return !(
+          decision.verdict === 'false_positive'
+          && decision.suggested_action === 'dismiss_report'
+          && decision.confidence >= 0.8
+        );
+      });
+  } catch (error) {
+    console.warn('[Canon] warning adjudication failed, keeping validator warnings:', error);
+    return reports;
+  }
 }
 
 export async function createChapterRevision({
@@ -185,7 +465,9 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
   }
 
   const scenes = await getChapterScenes(revision.chapter_id);
+  const sceneOrderMap = buildSceneOrderMap(scenes);
   const preTruth = await loadPreChapterTruth(revision.project_id, revision.chapter_id);
+  const project = await db.projects.get(revision.project_id);
   let candidateOps = loadRevisionOps(revision);
   const extractionFallbackReports = [];
   const commitReadinessReports = [];
@@ -234,6 +516,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
     chapterId: revision.chapter_id,
     revisionId: revision.id,
     candidateOps,
+    sceneOrderMap,
     entityStates: preTruth.entityStates,
     threadStates: preTruth.threadStates,
     factStates: preTruth.factStates,
@@ -254,7 +537,16 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
     itemStates: preTruth.itemStates,
   });
 
-  const reports = [...schemaReports, ...heuristicReports, ...commitReadinessReports, ...extractionFallbackReports];
+  let reports = [...schemaReports, ...heuristicReports, ...commitReadinessReports, ...extractionFallbackReports];
+  reports = await adjudicateWarningReports({
+    project,
+    chapter: preTruth.chapter,
+    revision,
+    reports,
+    candidateOps,
+    preTruth,
+    routeOptions: options.routeOptions || null,
+  });
   await replaceValidatorReports(revision.project_id, revision.id, reports);
 
   const hasErrors = reportsHaveErrors(reports);
@@ -450,13 +742,15 @@ export async function canonicalizeCandidateOps({
   chapterText = '',
   sourceType = 'manual_review',
 }) {
+  const scenes = await getChapterScenes(chapterId);
   const commit = await getOrCreateChapterCommit(projectId, chapterId);
   const currentCanonicalRevision = commit.canonical_revision_id
     ? await db.chapter_revisions.get(commit.canonical_revision_id)
     : null;
   const baseOps = loadRevisionOps(currentCanonicalRevision);
   const mergedOps = dedupeCandidateOps([...baseOps, ...candidateOps]);
-  const fallbackText = chapterText || buildCanonChapterTextFromScenes(await getChapterScenes(chapterId));
+  const fallbackText = chapterText || buildCanonChapterTextFromScenes(scenes);
+  const sceneOrderMap = buildSceneOrderMap(scenes);
   const revision = await createChapterRevision({
     projectId,
     chapterId,
@@ -471,14 +765,18 @@ export async function canonicalizeCandidateOps({
     requireConfidence: false,
   });
   const commitReadyOps = filtered.ops;
-  const preTruth = await loadPreChapterTruth(projectId, chapterId);
+  const [preTruth, project] = await Promise.all([
+    loadPreChapterTruth(projectId, chapterId),
+    db.projects.get(projectId),
+  ]);
   const resolvedCommitReadyOps = resolveFactRegistrations(commitReadyOps, preTruth.factStates);
-  const reports = [
+  let reports = [
     ...validateCandidateOps({
       projectId,
       chapterId,
       revisionId: revision.id,
       candidateOps: resolvedCommitReadyOps,
+      sceneOrderMap,
       entityStates: preTruth.entityStates,
       threadStates: preTruth.threadStates,
       factStates: preTruth.factStates,
@@ -498,6 +796,14 @@ export async function canonicalizeCandidateOps({
       evidence: cleanText(fallbackText).slice(0, 240),
     }));
   }
+  reports = await adjudicateWarningReports({
+    project,
+    chapter: preTruth.chapter,
+    revision,
+    reports,
+    candidateOps: resolvedCommitReadyOps,
+    preTruth,
+  });
 
   await replaceValidatorReports(projectId, revision.id, reports);
 
@@ -584,8 +890,11 @@ export async function validateSceneDraft({
   sceneId = null,
   sceneText = '',
 }) {
-  const preTruth = await loadPreChapterTruth(projectId, chapterId);
-  const reports = validateDraftTextAgainstTruth({
+  const [preTruth, project] = await Promise.all([
+    loadPreChapterTruth(projectId, chapterId),
+    db.projects.get(projectId),
+  ]);
+  let reports = validateDraftTextAgainstTruth({
     projectId,
     chapterId,
     sceneText,
@@ -603,6 +912,14 @@ export async function validateSceneDraft({
     chapterId,
     chapterText: sceneText,
     status: CHAPTER_REVISION_STATUS.DRAFT,
+  });
+  reports = await adjudicateWarningReports({
+    project,
+    chapter: preTruth.chapter,
+    revision,
+    reports,
+    candidateOps: [],
+    preTruth,
   });
   const scopedReports = reports.map((report) => ({ ...report, scene_id: sceneId || report.scene_id }));
   await replaceValidatorReports(projectId, revision.id, scopedReports);

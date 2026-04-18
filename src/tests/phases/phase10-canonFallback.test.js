@@ -311,4 +311,152 @@ describe('phase10 canon extraction fallback', () => {
 
     expect(validation.reports.some((item) => item.rule_code === 'DRAFT_MENTIONS_DEAD_CHARACTER')).toBe(false);
   });
+
+  it('uses AI adjudication to dismiss validator warning false positives', async () => {
+    const { db, engine, sendMock } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Warning adjudication', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', draft_text: 'Lan nghe loi don ve than phan that cua hoang toc.' }],
+      chapter_revisions: [{
+        id: 31,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'draft',
+        chapter_text: 'Lan nghe loi don ve than phan that cua hoang toc.',
+        candidate_ops: '[]',
+        created_at: 1,
+        updated_at: 1,
+      }],
+      characters: [],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [{ id: 7, project_id: 1, description: 'than phan that cua hoang toc', fact_type: 'secret' }],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+    }, ({ taskType, onComplete }) => {
+      if (taskType === 'canon_adjudicate_warnings') {
+        onComplete(JSON.stringify({
+          decisions: [{
+            warning_index: 0,
+            verdict: 'false_positive',
+            confidence: 0.92,
+            reason: 'Doan nay chi noi ve loi don, khong xac nhan bi mat bi lo.',
+            suggested_action: 'dismiss_report',
+          }],
+        }));
+        return;
+      }
+      onComplete('{"ops":[]}');
+    });
+
+    const validation = await engine.validateRevision(31, 'draft');
+    const persistedReports = await db.validator_reports.toArray();
+
+    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({ taskType: 'canon_adjudicate_warnings' }));
+    expect(validation.reports.some((item) => item.rule_code === 'DRAFT_TOUCHES_HIDDEN_SECRET')).toBe(false);
+    expect(persistedReports.some((item) => item.rule_code === 'DRAFT_TOUCHES_HIDDEN_SECRET')).toBe(false);
+  });
+
+  it('downgrades seeded legacy item states without classification to review warnings', async () => {
+    const { engine } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Legacy items', genre_primary: 'fantasy' }],
+      chapters: [
+        { id: 10, project_id: 1, order_index: 0, title: 'Chuong 1' },
+        { id: 11, project_id: 1, order_index: 1, title: 'Chuong 2' },
+      ],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', draft_text: 'Lam Phong lai nuot Huyet Lien Dan.' }],
+      chapter_revisions: [{
+        id: 31,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'draft',
+        chapter_text: 'Lam Phong lai nuot Huyet Lien Dan.',
+        candidate_ops: JSON.stringify([{
+          op_type: 'OBJECT_CONSUMED',
+          chapter_id: 11,
+          scene_id: 21,
+          object_id: 8,
+          object_name: 'Huyet Lien Dan',
+          evidence: 'Lam Phong lai nuot Huyet Lien Dan.',
+          payload: {},
+        }]),
+        created_at: 1,
+        updated_at: 1,
+      }],
+      objects: [{ id: 8, project_id: 1, name: 'Huyet Lien Dan' }],
+      chapter_snapshots: [{
+        id: 41,
+        project_id: 1,
+        chapter_id: 10,
+        revision_id: 20,
+        snapshot_json: JSON.stringify({
+          itemStates: [{ object_id: 8, availability: 'consumed', is_consumed: true }],
+        }),
+      }],
+      characters: [],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      relationships: [],
+      chapter_commits: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+    }, ({ onComplete }) => onComplete('{"ops":[]}'));
+
+    const validation = await engine.validateRevision(31, 'draft');
+
+    expect(validation.reports.some((item) => item.rule_code === 'ITEM_UNAVAILABLE_REUSED')).toBe(false);
+    expect(validation.reports.some((item) => item.rule_code === 'ITEM_REUSE_NEEDS_REVIEW')).toBe(true);
+  });
+
+  it('does not send system warnings like missing scene links to AI adjudication', async () => {
+    const { engine, sendMock } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'System warnings', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', draft_text: 'Lan lap muc tieu moi.' }],
+      chapter_revisions: [{
+        id: 31,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'draft',
+        chapter_text: 'Lan lap muc tieu moi.',
+        candidate_ops: JSON.stringify([{
+          op_type: 'GOAL_CHANGED',
+          chapter_id: 11,
+          scene_id: null,
+          subject_id: 5,
+          subject_name: 'Lan',
+          payload: { new_goal: 'Bao ve gia toc' },
+          evidence: 'Lan lap muc tieu moi.',
+        }]),
+        created_at: 1,
+        updated_at: 1,
+      }],
+      characters: [{ id: 5, project_id: 1, name: 'Lan' }],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+    }, ({ onComplete }) => onComplete('{"ops":[]}'));
+
+    const validation = await engine.validateRevision(31, 'draft');
+
+    expect(validation.reports.some((item) => item.rule_code === 'MISSING_SCENE_LINK')).toBe(true);
+    expect(sendMock).not.toHaveBeenCalledWith(expect.objectContaining({ taskType: 'canon_adjudicate_warnings' }));
+  });
 });

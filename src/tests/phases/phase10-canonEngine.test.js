@@ -296,11 +296,203 @@ describe('phase10 canon engine', () => {
     expect(next.summary).toContain('Da dung het');
   });
 
+  it('does not force legacy items without classification into unique category', () => {
+    const start = engine.createInitialItemState({ id: 4, project_id: 9, description: 'Vat pham cu' });
+
+    expect(start.item_category).toBe('');
+  });
+
+  it('tracks stack item quantity for partial consumption', () => {
+    const start = engine.createInitialItemState({
+      id: 4,
+      project_id: 9,
+      item_category: 'consumable',
+      quantity: 5,
+      quantity_unit: 'vien',
+      description: 'Binh dan duoc',
+    });
+    const next = engine.applyEventToItemState(start, {
+      op_type: CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
+      payload: { quantity_delta: 2, quantity_unit: 'vien', status_summary: 'Da dung hai vien' },
+    });
+
+    expect(next.item_category).toBe('consumable');
+    expect(next.quantity_remaining).toBe(3);
+    expect(next.quantity_unit).toBe('vien');
+    expect(next.is_consumed).toBe(false);
+    expect(next.availability).toBe('available');
+  });
+
+  it('allows acquired item timeline before consuming an item that was previously depleted', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 9,
+      candidateOps: [
+        {
+          op_type: CANON_OP_TYPES.OBJECT_ACQUIRED,
+          scene_id: 1,
+          object_id: 8,
+          object_name: 'Huyet Lien Dan',
+          target_id: 2,
+          payload: { item_category: 'consumable', quantity_delta: 3, quantity_unit: 'vien' },
+          evidence: 'Lam Phong mua them ba vien Huyet Lien Dan.',
+        },
+        {
+          op_type: CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
+          scene_id: 2,
+          object_id: 8,
+          object_name: 'Huyet Lien Dan',
+          payload: { item_category: 'consumable', quantity_delta: 1, quantity_unit: 'vien' },
+          evidence: 'Hắn nuot mot vien.',
+        },
+      ],
+      itemStates: [{ object_id: 8, availability: 'consumed', is_consumed: true, item_category: 'consumable', quantity_remaining: 0, quantity_unit: 'vien' }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'ITEM_UNAVAILABLE_REUSED')).toBe(false);
+    expect(reports.some((report) => report.rule_code === 'ITEM_QUANTITY_DEPLETED')).toBe(false);
+  });
+
+  it('sorts item timeline by scene order instead of raw candidate op array order', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 9,
+      sceneOrderMap: new Map([[101, 0], [102, 1]]),
+      candidateOps: [
+        {
+          op_type: CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
+          scene_id: 102,
+          object_id: 8,
+          object_name: 'Huyet Lien Dan',
+          payload: { item_category: 'consumable', quantity_delta: 1, quantity_unit: 'vien' },
+          evidence: 'Hắn nuot mot vien.',
+        },
+        {
+          op_type: CANON_OP_TYPES.OBJECT_ACQUIRED,
+          scene_id: 101,
+          object_id: 8,
+          object_name: 'Huyet Lien Dan',
+          target_id: 2,
+          payload: { item_category: 'consumable', quantity_delta: 3, quantity_unit: 'vien' },
+          evidence: 'Lam Phong mua them ba vien Huyet Lien Dan.',
+        },
+      ],
+      itemStates: [{ object_id: 8, availability: 'consumed', is_consumed: true, item_category: 'consumable', quantity_remaining: 0, quantity_unit: 'vien' }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'ITEM_REUSE_NEEDS_REVIEW')).toBe(false);
+    expect(reports.some((report) => report.rule_code === 'ITEM_QUANTITY_DEPLETED')).toBe(false);
+  });
+
+  it('allows found item timeline before transferring a lost unique item', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 9,
+      candidateOps: [
+        {
+          op_type: CANON_OP_TYPES.OBJECT_FOUND,
+          scene_id: 1,
+          object_id: 12,
+          object_name: 'Kiem Vo Anh',
+          subject_id: 2,
+          payload: { item_category: 'equipment' },
+          evidence: 'Lam Phong tim lai Kiem Vo Anh.',
+        },
+        {
+          op_type: CANON_OP_TYPES.OBJECT_TRANSFERRED,
+          scene_id: 2,
+          object_id: 12,
+          object_name: 'Kiem Vo Anh',
+          target_id: 3,
+          payload: { item_category: 'equipment' },
+          evidence: 'Hắn giao kiếm cho A Dao.',
+        },
+      ],
+      itemStates: [{ object_id: 12, availability: 'lost', item_category: 'equipment' }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'ITEM_UNAVAILABLE_REUSED')).toBe(false);
+  });
+
+  it('downgrades unavailable item reuse to review when classification and quantity are missing', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 9,
+      candidateOps: [{
+        op_type: CANON_OP_TYPES.OBJECT_CONSUMED,
+        scene_id: 1,
+        object_id: 8,
+        object_name: 'Huyet Lien Dan',
+        evidence: 'Hắn lại nuot Huyet Lien Dan.',
+      }],
+      itemStates: [{ object_id: 8, availability: 'consumed', is_consumed: true }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'ITEM_UNAVAILABLE_REUSED')).toBe(false);
+    expect(reports.some((report) => report.rule_code === 'ITEM_REUSE_NEEDS_REVIEW' && report.severity === 'warning')).toBe(true);
+  });
+
+  it('blocks overspending known currency quantity', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 9,
+      candidateOps: [{
+        op_type: CANON_OP_TYPES.OBJECT_SPENT,
+        scene_id: 1,
+        object_id: 21,
+        object_name: 'Tien mat',
+        payload: { item_category: 'currency', quantity_delta: 700000, quantity_unit: 'VND' },
+        evidence: 'Hắn tiêu 700 nghin.',
+      }],
+      itemStates: [{ object_id: 21, availability: 'available', item_category: 'currency', quantity_remaining: 500000, quantity_unit: 'VND' }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'ITEM_QUANTITY_OVERSPENT')).toBe(true);
+  });
+
+  it('keeps ownership stable for lent items and only restores holder on return', () => {
+    const start = engine.createInitialItemState({
+      id: 41,
+      project_id: 9,
+      item_category: 'equipment',
+      owner_character_id: 7,
+      holder_character_id: 7,
+      description: 'Thanh kiem gia toc',
+    });
+    const lent = engine.applyEventToItemState(start, {
+      op_type: CANON_OP_TYPES.OBJECT_TRANSFERRED,
+      target_id: 9,
+      payload: { transfer_kind: 'lend', status_summary: 'Cho muon tam thoi' },
+    });
+    const returned = engine.applyEventToItemState(lent, {
+      op_type: CANON_OP_TYPES.OBJECT_RETURNED,
+      target_id: 7,
+      payload: { status_summary: 'Duoc tra lai' },
+    });
+
+    expect(lent.owner_character_id).toBe(7);
+    expect(lent.holder_character_id).toBe(9);
+    expect(returned.owner_character_id).toBe(7);
+    expect(returned.holder_character_id).toBe(7);
+  });
+
   it('does not warn when draft only remembers or questions a spent item', () => {
     const reports = engine.validateDraftTextAgainstTruth({
       projectId: 1,
       chapterId: 9,
       sceneText: 'Tai sao, ngay ca Huyet Lien Dan cung mang mot khi tuc tuong dong voi han? Huyet Lien Dan da dung het roi.',
+      objects: [{ id: 8, name: 'Huyet Lien Dan' }],
+      itemStates: [{ object_id: 8, availability: 'consumed', is_consumed: true }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'DRAFT_REFERENCES_SPENT_ITEM')).toBe(false);
+  });
+
+  it('does not confuse dan duoc names with an eat/use marker', () => {
+    const reports = engine.validateDraftTextAgainstTruth({
+      projectId: 1,
+      chapterId: 9,
+      sceneText: 'Tai sao vi tien boi than bi kia lai biet ro ve han nhu vay va tai sao ngay ca Huyet Lien Dan cung mang mot khi tuc tuong dong voi han? Ta la ai?',
       objects: [{ id: 8, name: 'Huyet Lien Dan' }],
       itemStates: [{ object_id: 8, availability: 'consumed', is_consumed: true }],
     });
@@ -373,6 +565,37 @@ describe('phase10 canon engine', () => {
     expect(next.intimacy_level).toBe('high');
     expect(next.consent_state).toBe('mutual');
     expect(next.emotional_aftermath).toContain('gan gui hon');
+  });
+
+  it('does not require consent metadata for non-intimate emotional beats', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 2,
+      candidateOps: [{
+        op_type: CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED,
+        scene_id: 12,
+        subject_id: 5,
+        target_id: 6,
+        subject_name: 'Lieu Uyen',
+        target_name: 'Lam Phong',
+        payload: {
+          intimacy_level: 'low',
+          emotional_aftermath: 'Dau don va bat luc',
+        },
+        evidence: 'Phong nhi...',
+      }],
+      relationshipStates: [{
+        pair_key: '5:6',
+        character_a_id: 5,
+        character_b_id: 6,
+        relationship_type: 'mentor',
+        intimacy_level: 'none',
+        secrecy_state: 'public',
+        consent_state: 'unknown',
+      }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'INTIMACY_CONSENT_UNSPECIFIED')).toBe(false);
   });
 
   it('deduplicates registered facts by fingerprint in fact state projection', () => {

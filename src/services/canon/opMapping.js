@@ -68,8 +68,15 @@ function findThreadByReference(threads, rawOp = {}) {
     || findThreadByTitle(threads, rawOp.thread_title);
 }
 
+function normalizeOptionalNumber(value) {
+  if (value == null || value === '') return '';
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : '';
+}
+
 export function buildSemanticOpFingerprint(op) {
   const payload = normalizePayload(op.payload);
+  const quantityDelta = payload.quantity_delta ?? payload.quantity ?? payload.amount ?? payload.count;
   const semanticPayload = {
     status_summary: normalizeKey(payload.status_summary),
     summary: normalizeKey(payload.status_summary || payload.description || payload.new_goal || payload.relationship_type || payload.status || payload.availability ? '' : op.summary),
@@ -84,6 +91,10 @@ export function buildSemanticOpFingerprint(op) {
     consent_state: normalizeKey(payload.consent_state),
     availability: normalizeKey(payload.availability),
     usage_notes: normalizeKey(payload.usage_notes),
+    item_category: normalizeKey(payload.item_category || payload.item_type || payload.object_type),
+    quantity_delta: normalizeOptionalNumber(quantityDelta),
+    quantity_remaining: normalizeOptionalNumber(payload.quantity_remaining),
+    quantity_unit: normalizeKey(payload.quantity_unit || payload.unit),
     fact_type: normalizeKey(payload.fact_type),
     description: normalizeKey(payload.description),
   };
@@ -153,11 +164,18 @@ function hasRequiredAiOpReferences(op) {
   }
 
   if (
-    [
-      CANON_OP_TYPES.OBJECT_STATUS_CHANGED,
-      CANON_OP_TYPES.OBJECT_TRANSFERRED,
-      CANON_OP_TYPES.OBJECT_CONSUMED,
-    ].includes(op.op_type)
+      [
+        CANON_OP_TYPES.OBJECT_ACQUIRED,
+        CANON_OP_TYPES.OBJECT_STATUS_CHANGED,
+        CANON_OP_TYPES.OBJECT_TRANSFERRED,
+        CANON_OP_TYPES.OBJECT_CONSUMED,
+        CANON_OP_TYPES.OBJECT_LOST,
+        CANON_OP_TYPES.OBJECT_FOUND,
+        CANON_OP_TYPES.OBJECT_RESTORED,
+        CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
+        CANON_OP_TYPES.OBJECT_SPENT,
+        CANON_OP_TYPES.OBJECT_RETURNED,
+      ].includes(op.op_type)
     && !op.object_id
   ) {
     return false;

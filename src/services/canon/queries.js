@@ -268,6 +268,15 @@ async function filterObsoleteSpentItemReports(projectId, chapterId, revision, re
   ));
 }
 
+async function pruneObsoleteRevisionReports(projectId, revisionId, originalReports, filteredReports) {
+  const filteredIdSet = new Set(filteredReports.map((report) => report.id).filter(Boolean));
+  const obsoleteIds = originalReports
+    .map((report) => report.id)
+    .filter((id) => id && !filteredIdSet.has(id));
+  if (obsoleteIds.length === 0) return;
+  await db.validator_reports.bulkDelete(obsoleteIds);
+}
+
 export async function getChapterCanonState(projectId, chapterId) {
   const scenes = chapterId && db.scenes?.where
     ? await db.scenes.where('chapter_id').equals(chapterId).sortBy('order_index')
@@ -310,6 +319,9 @@ export async function getChapterCanonState(projectId, chapterId) {
     storedReports,
     currentChapterText
   );
+  if (reports.length !== storedReports.length && commit.current_revision_id) {
+    await pruneObsoleteRevisionReports(projectId, commit.current_revision_id, storedReports, reports);
+  }
   const warningCount = reports.filter((report) => report.severity === CANON_SEVERITY.WARNING).length;
   const errorCount = reports.filter((report) => report.severity === CANON_SEVERITY.ERROR).length;
   const effectiveStatus = commit.status === CHAPTER_COMMIT_STATUS.HAS_WARNINGS && warningCount === 0 && errorCount === 0
@@ -381,6 +393,48 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     })
     .sort((a, b) => a.chapter_order - b.chapter_order);
 
+  const activeReportsByRevision = await Promise.all(chapterCommits
+    .filter((commit) => commit.current_revision_id)
+    .map(async (commit) => {
+      const revision = revisionMap.get(commit.current_revision_id) || null;
+      const revisionReports = reports.filter((report) => report.revision_id === commit.current_revision_id);
+      const filteredReports = await filterObsoleteSpentItemReports(
+        projectId,
+        commit.chapter_id,
+        revision,
+        revisionReports,
+        revision?.chapter_text || ''
+      );
+      if (filteredReports.length !== revisionReports.length) {
+        await pruneObsoleteRevisionReports(projectId, commit.current_revision_id, revisionReports, filteredReports);
+      }
+      return filteredReports;
+    }));
+  const activeReports = activeReportsByRevision.flat();
+  const activeReportCountByRevision = new Map(chapterCommits
+    .filter((commit) => commit.current_revision_id)
+    .map((commit, index) => [
+      commit.current_revision_id,
+      {
+        warningCount: activeReportsByRevision[index].filter((report) => report.severity === CANON_SEVERITY.WARNING).length,
+        errorCount: activeReportsByRevision[index].filter((report) => report.severity === CANON_SEVERITY.ERROR).length,
+      },
+    ]));
+  const effectiveChapterCommits = chapterCommits.map((commit) => {
+    const counts = activeReportCountByRevision.get(commit.current_revision_id) || { warningCount: 0, errorCount: 0 };
+    const status = commit.status === CHAPTER_COMMIT_STATUS.HAS_WARNINGS && counts.warningCount === 0 && counts.errorCount === 0
+      ? CHAPTER_COMMIT_STATUS.CANONICAL
+      : (commit.status === CHAPTER_COMMIT_STATUS.BLOCKED && counts.errorCount === 0
+        ? (counts.warningCount > 0 ? CHAPTER_COMMIT_STATUS.HAS_WARNINGS : CHAPTER_COMMIT_STATUS.CANONICAL)
+        : commit.status);
+    return {
+      ...commit,
+      status,
+      warning_count: counts.warningCount,
+      error_count: counts.errorCount,
+    };
+  });
+
   const recentEvents = events
     .slice()
     .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
@@ -395,7 +449,7 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
       };
     });
 
-  const recentReports = reports
+  const recentReports = activeReports
     .slice()
     .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
     .slice(0, limit)
@@ -449,7 +503,13 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     .sort((a, b) => String(a.object_name || '').localeCompare(String(b.object_name || '')));
 
   const decoratedRelationshipStates = relationshipStates
-    .slice()
+    .map((state) => ({
+      ...state,
+      intimacy_level: state.intimacy_level === 'none' ? '' : state.intimacy_level,
+      consent_state: (!state.intimacy_level || state.intimacy_level === 'none' || ['unknown', 'unclear'].includes(state.consent_state))
+        ? ''
+        : state.consent_state,
+    }))
     .sort((a, b) => String(a.pair_key || '').localeCompare(String(b.pair_key || '')));
 
   const criticalConstraints = {
@@ -460,18 +520,18 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
       || (state.secrecy_state && state.secrecy_state !== 'public')
       || (state.emotional_aftermath && cleanText(state.emotional_aftermath))
     )),
-    activeWarnings: reports.filter((report) => report.severity === CANON_SEVERITY.WARNING || report.severity === CANON_SEVERITY.ERROR)
+    activeWarnings: activeReports.filter((report) => report.severity === CANON_SEVERITY.WARNING || report.severity === CANON_SEVERITY.ERROR)
       .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
       .slice(0, limit),
   };
 
   const stats = {
     chapter_count: chapters.length,
-    canonical_count: chapterCommits.filter((commit) => commit.status === CHAPTER_COMMIT_STATUS.CANONICAL).length,
-    blocked_count: chapterCommits.filter((commit) => commit.status === CHAPTER_COMMIT_STATUS.BLOCKED).length,
-    invalidated_count: chapterCommits.filter((commit) => commit.status === CHAPTER_COMMIT_STATUS.INVALIDATED).length,
-    warning_count: reports.filter((report) => report.severity === CANON_SEVERITY.WARNING).length,
-    error_count: reports.filter((report) => report.severity === CANON_SEVERITY.ERROR).length,
+    canonical_count: effectiveChapterCommits.filter((commit) => commit.status === CHAPTER_COMMIT_STATUS.CANONICAL).length,
+    blocked_count: effectiveChapterCommits.filter((commit) => commit.status === CHAPTER_COMMIT_STATUS.BLOCKED).length,
+    invalidated_count: effectiveChapterCommits.filter((commit) => commit.status === CHAPTER_COMMIT_STATUS.INVALIDATED).length,
+    warning_count: activeReports.filter((report) => report.severity === CANON_SEVERITY.WARNING).length,
+    error_count: activeReports.filter((report) => report.severity === CANON_SEVERITY.ERROR).length,
     event_count: events.length,
     evidence_count: evidence.length,
     revision_count: revisions.length,
@@ -499,7 +559,7 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
 
   return {
     stats,
-    chapterCommits,
+    chapterCommits: effectiveChapterCommits,
     entityStates: entityStates.slice().sort((a, b) => String(a.entity_id).localeCompare(String(b.entity_id))),
     threadStates: decoratedThreadStates,
     itemStates: decoratedItemStates,

@@ -900,4 +900,106 @@ describe('phase10 canon integration', () => {
     expect(canonState.warningCount).toBe(0);
     expect(canonState.status).toBe('canonical');
   });
+
+  it('uses only active current-revision reports in canon overview stats and recent warnings', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Overview active reports only' }],
+      chapters: [
+        { id: 10, project_id: 1, order_index: 0, title: 'Chuong 1' },
+        { id: 11, project_id: 1, order_index: 1, title: 'Chuong 2' },
+      ],
+      scenes: [{
+        id: 21,
+        project_id: 1,
+        chapter_id: 11,
+        order_index: 0,
+        draft_text: 'Tai sao, ngay ca Huyet Lien Dan cung mang mot khi tuc tuong dong voi han?',
+      }],
+      objects: [{ id: 41, project_id: 1, name: 'Huyet Lien Dan' }],
+      chapter_snapshots: [{
+        id: 51,
+        project_id: 1,
+        chapter_id: 10,
+        revision_id: 50,
+        snapshot_json: {
+          itemStates: [{ object_id: 41, availability: 'consumed', is_consumed: true }],
+          entityStates: [],
+          threadStates: [],
+          factStates: [],
+        },
+      }],
+      chapter_revisions: [
+        {
+          id: 61,
+          project_id: 1,
+          chapter_id: 11,
+          revision_number: 1,
+          status: 'validated',
+          chapter_text: 'Tai sao, ngay ca Huyet Lien Dan cung mang mot khi tuc tuong dong voi han?',
+        },
+        {
+          id: 62,
+          project_id: 1,
+          chapter_id: 11,
+          revision_number: 2,
+          status: 'superseded',
+          chapter_text: 'Ban cu co warning',
+        },
+      ],
+      chapter_commits: [{
+        id: 63,
+        project_id: 1,
+        chapter_id: 11,
+        current_revision_id: 61,
+        canonical_revision_id: 61,
+        status: 'has_warnings',
+        warning_count: 2,
+        error_count: 0,
+      }],
+      validator_reports: [
+        {
+          id: 71,
+          project_id: 1,
+          chapter_id: 11,
+          revision_id: 61,
+          severity: 'warning',
+          rule_code: 'DRAFT_REFERENCES_SPENT_ITEM',
+          message: 'Draft dang goi lai vat pham Huyet Lien Dan, trong khi canon hien tai ghi nhan vat pham nay khong con dung duoc.',
+          status: 'active',
+          created_at: 2,
+        },
+        {
+          id: 72,
+          project_id: 1,
+          chapter_id: 11,
+          revision_id: 62,
+          severity: 'warning',
+          rule_code: 'INTIMACY_CONSENT_UNSPECIFIED',
+          message: 'Thay doi muc do than mat nhung chua co consent_state ro rang.',
+          status: 'active',
+          created_at: 1,
+        },
+      ],
+      characters: [],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      relationships: [],
+      story_events: [],
+      memory_evidence: [],
+      entity_state_current: [],
+      plot_thread_state: [],
+      item_state_current: [],
+      relationship_state_current: [],
+    });
+
+    const overview = await engine.getProjectCanonOverview(1);
+    const storedReports = await db.validator_reports.toArray();
+
+    expect(overview.stats.warning_count).toBe(0);
+    expect(overview.recentReports).toHaveLength(0);
+    expect(overview.chapterCommits[0].status).toBe('canonical');
+    expect(storedReports.some((report) => report.id === 71)).toBe(false);
+    expect(storedReports.some((report) => report.id === 72)).toBe(true);
+  });
 });

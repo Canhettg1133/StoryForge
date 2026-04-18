@@ -114,9 +114,12 @@
 .continuity-bar-actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
   margin-left: auto;
   margin-right: var(--space-2);
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
 .continuity-bar-btn {
@@ -127,8 +130,15 @@
   background: var(--color-bg-tertiary);
   color: var(--color-text-secondary);
   border-radius: var(--radius-sm);
-  padding: 4px 8px;
-  font-size: 11px;
+  padding: 4px clamp(8px, 0.8vw, 12px);
+  font-size: clamp(10px, 0.72vw, 11px);
+  line-height: 1.2;
+  min-height: 28px;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 
@@ -165,10 +175,11 @@
   gap: 6px;
   border-radius: 999px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: clamp(10px, 0.72vw, 11px);
   border: 1px solid var(--color-border);
   color: var(--color-text-secondary);
   background: var(--color-bg-tertiary);
+  white-space: nowrap;
 }
 
 .continuity-bar-status--button {
@@ -212,9 +223,25 @@
   color: var(--color-warning);
   padding: 3px 9px;
   font: inherit;
-  font-size: 11px;
+  font-size: clamp(10px, 0.72vw, 11px);
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+@media (max-width: 1440px) {
+  .continuity-bar-header {
+    gap: 8px;
+  }
+
+  .continuity-bar-actions {
+    margin-right: 0;
+  }
+
+  .continuity-bar-btn {
+    max-width: 118px;
+    padding-inline: 8px;
+  }
 }
 
 .continuity-bar-issue-trigger--error {

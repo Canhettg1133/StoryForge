@@ -2,14 +2,233 @@ import { CANON_OP_TYPES, CANON_SEVERITY } from './constants';
 import { resolveCanonFactRegistration } from '../entityIdentity/factIdentity.js';
 import { CANON_MIN_CONFIDENCE, createReport } from './core';
 import { buildSemanticOpFingerprint, normalizeOpType } from './opMapping';
-import { buildRelationshipPairKey } from './state';
+import {
+  ITEM_CATEGORIES,
+  applyEventToItemState,
+  buildRelationshipPairKey,
+  normalizeItemCategory,
+} from './state';
 import { cleanText, clampConfidence, normalizeKey, normalizePayload, splitGoals } from './utils';
+
+const ITEM_OP_TYPES = new Set([
+  CANON_OP_TYPES.OBJECT_ACQUIRED,
+  CANON_OP_TYPES.OBJECT_STATUS_CHANGED,
+  CANON_OP_TYPES.OBJECT_TRANSFERRED,
+  CANON_OP_TYPES.OBJECT_CONSUMED,
+  CANON_OP_TYPES.OBJECT_LOST,
+  CANON_OP_TYPES.OBJECT_FOUND,
+  CANON_OP_TYPES.OBJECT_RESTORED,
+  CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
+  CANON_OP_TYPES.OBJECT_SPENT,
+  CANON_OP_TYPES.OBJECT_RETURNED,
+]);
+
+const ITEM_USE_OP_TYPES = new Set([
+  CANON_OP_TYPES.OBJECT_TRANSFERRED,
+  CANON_OP_TYPES.OBJECT_CONSUMED,
+  CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
+  CANON_OP_TYPES.OBJECT_SPENT,
+]);
+
+const ITEM_RECOVERY_OP_TYPES = new Set([
+  CANON_OP_TYPES.OBJECT_ACQUIRED,
+  CANON_OP_TYPES.OBJECT_FOUND,
+  CANON_OP_TYPES.OBJECT_RESTORED,
+  CANON_OP_TYPES.OBJECT_RETURNED,
+]);
+
+const STACK_LIKE_ITEM_CATEGORIES = new Set([
+  ITEM_CATEGORIES.STACK,
+  ITEM_CATEGORIES.CONSUMABLE,
+  ITEM_CATEGORIES.CURRENCY,
+  ITEM_CATEGORIES.RESOURCE,
+]);
+
+const STRICT_UNIQUE_ITEM_CATEGORIES = new Set([
+  ITEM_CATEGORIES.UNIQUE,
+  ITEM_CATEGORIES.EQUIPMENT,
+  ITEM_CATEGORIES.CONTAINER,
+  ITEM_CATEGORIES.QUEST_ITEM,
+]);
+
+function toOptionalNumber(value) {
+  if (value == null || value === '') return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function getPayloadQuantity(payload) {
+  return toOptionalNumber(payload.quantity_delta ?? payload.quantity ?? payload.amount ?? payload.count);
+}
+
+function getStateQuantity(state) {
+  return toOptionalNumber(state?.quantity_remaining);
+}
+
+function hasQuantitySignal(state, payload) {
+  return getStateQuantity(state) != null
+    || getPayloadQuantity(payload) != null
+    || toOptionalNumber(payload.quantity_remaining) != null;
+}
+
+function getSceneTimelineOrder(op, index, sceneOrderMap = new Map()) {
+  if (op.scene_id != null && sceneOrderMap.has(op.scene_id)) {
+    return Number(sceneOrderMap.get(op.scene_id));
+  }
+  const payload = normalizePayload(op.payload);
+  const explicitOrder = toOptionalNumber(
+    op.scene_order_index
+    ?? op.scene_index
+    ?? payload.scene_order_index
+    ?? payload.scene_index
+  );
+  return explicitOrder != null ? explicitOrder : index;
+}
+
+function getEffectiveItemCategory(state, payload = {}) {
+  return normalizeItemCategory(
+    payload.item_category
+    || payload.item_type
+    || payload.object_type
+    || state?.item_category
+  );
+}
+
+function isUnavailableItemState(state) {
+  const availability = normalizeKey(state?.availability || '');
+  return Boolean(state?.is_consumed)
+    || ['consumed', 'destroyed', 'lost', 'unavailable'].includes(availability);
+}
+
+function hasRecoverySemantics(op) {
+  const payload = normalizePayload(op.payload);
+  const availability = normalizeKey(payload.availability || '');
+  return ITEM_RECOVERY_OP_TYPES.has(op.op_type)
+    || (op.op_type === CANON_OP_TYPES.OBJECT_STATUS_CHANGED
+      && ['available', 'found', 'restored', 'recovered', 'acquired'].includes(availability));
+}
+
+function isConsumptiveItemOp(op) {
+  return [
+    CANON_OP_TYPES.OBJECT_CONSUMED,
+    CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
+    CANON_OP_TYPES.OBJECT_SPENT,
+  ].includes(op.op_type);
+}
+
+function validateItemTimeline({
+  projectId,
+  chapterId,
+  revisionId,
+  candidateOps,
+  itemMap,
+  sceneOrderMap = new Map(),
+}) {
+  const reports = [];
+  const timelineStates = new Map();
+  const itemOps = candidateOps
+    .map((op, index) => ({
+      op,
+      index,
+      sceneOrder: getSceneTimelineOrder(op, index, sceneOrderMap),
+    }))
+    .filter(({ op }) => ITEM_OP_TYPES.has(op.op_type) && op.object_id)
+    .sort((left, right) => (
+      left.sceneOrder - right.sceneOrder
+      || (Number(left.op.scene_id) || 0) - (Number(right.op.scene_id) || 0)
+      || left.index - right.index
+    ));
+
+  itemOps.forEach(({ op }) => {
+    const previousState = timelineStates.get(op.object_id)
+      || itemMap.get(op.object_id)
+      || {
+        project_id: projectId,
+        object_id: op.object_id,
+        availability: 'available',
+        item_category: '',
+        quantity_remaining: null,
+        is_consumed: false,
+      };
+    const payload = normalizePayload(op.payload);
+    const category = getEffectiveItemCategory(previousState, payload);
+    const knownQuantity = getStateQuantity(previousState);
+    const requestedQuantity = getPayloadQuantity(payload);
+    const hasQuantity = hasQuantitySignal(previousState, payload);
+    const stackLike = STACK_LIKE_ITEM_CATEGORIES.has(category);
+    const strictUnique = STRICT_UNIQUE_ITEM_CATEGORIES.has(category);
+    const missingClassification = !category;
+
+    if (ITEM_USE_OP_TYPES.has(op.op_type) && isUnavailableItemState(previousState) && !hasRecoverySemantics(op)) {
+      const availability = cleanText(previousState.availability || 'khong kha dung');
+      const severity = strictUnique ? CANON_SEVERITY.ERROR : CANON_SEVERITY.WARNING;
+      reports.push(createReport({
+        severity,
+        ruleCode: strictUnique ? 'ITEM_UNAVAILABLE_REUSED' : 'ITEM_REUSE_NEEDS_REVIEW',
+        message: strictUnique
+          ? `${op.object_name || 'Vat pham'} dang o trang thai ${availability} nhung bi dung lai ma chua co su kien tim lai/mua lai/khoi phuc/tra lai truoc do.`
+          : `${op.object_name || 'Vat pham'} dang o trang thai ${availability}, nhung thieu phan loai/so luong hoac timeline ro rang nen can review thay vi ket luan dung sai.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        evidence: op.evidence,
+      }));
+    }
+
+    if (isConsumptiveItemOp(op)) {
+      if (knownQuantity != null && knownQuantity <= 0 && !hasRecoverySemantics(op)) {
+        reports.push(createReport({
+          severity: missingClassification ? CANON_SEVERITY.WARNING : CANON_SEVERITY.ERROR,
+          ruleCode: missingClassification ? 'ITEM_REUSE_NEEDS_REVIEW' : 'ITEM_QUANTITY_DEPLETED',
+          message: missingClassification
+            ? `${op.object_name || 'Vat pham'} dang o trang thai da can va so luong bang 0, nhung thieu phan loai nen can review truoc khi ket luan dung sai.`
+            : `${op.object_name || 'Vat pham'} da het so luong trong canon nhung draft van tieu hao/dung tiep.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          evidence: op.evidence,
+        }));
+      } else if (knownQuantity != null && requestedQuantity != null && Math.abs(requestedQuantity) > knownQuantity) {
+        reports.push(createReport({
+          severity: missingClassification ? CANON_SEVERITY.WARNING : CANON_SEVERITY.ERROR,
+          ruleCode: missingClassification ? 'ITEM_QUANTITY_NEEDS_REVIEW' : 'ITEM_QUANTITY_OVERSPENT',
+          message: missingClassification
+            ? `${op.object_name || 'Vat pham'} co dau hieu vuot qua so luong dang co, nhung thieu phan loai nen can review truoc khi ket luan overspend.`
+            : `${op.object_name || 'Vat pham'} chi con ${knownQuantity}${previousState.quantity_unit ? ` ${previousState.quantity_unit}` : ''} nhung draft tieu hao ${Math.abs(requestedQuantity)}.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          evidence: op.evidence,
+        }));
+      } else if (stackLike && !hasQuantity) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.WARNING,
+          ruleCode: 'ITEM_QUANTITY_NEEDS_REVIEW',
+          message: `${op.object_name || 'Vat pham'} la vat pham dang stack/tai nguyen nhung op tieu hao chua ghi ro so luong va don vi.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          evidence: op.evidence,
+        }));
+      }
+    }
+
+    timelineStates.set(op.object_id, applyEventToItemState(previousState, op));
+  });
+
+  return reports;
+}
 
 export function validateCandidateOps({
   projectId,
   chapterId,
   revisionId = null,
   candidateOps = [],
+  sceneOrderMap = new Map(),
   entityStates = [],
   threadStates = [],
   factStates = [],
@@ -206,11 +425,7 @@ export function validateCandidateOps({
     }
 
     if (
-      [
-        CANON_OP_TYPES.OBJECT_STATUS_CHANGED,
-        CANON_OP_TYPES.OBJECT_TRANSFERRED,
-        CANON_OP_TYPES.OBJECT_CONSUMED,
-      ].includes(op.op_type)
+      ITEM_OP_TYPES.has(op.op_type)
       && !op.object_id
     ) {
       reports.push(createReport({
@@ -224,42 +439,6 @@ export function validateCandidateOps({
         relatedEntityIds: [op.subject_id, op.target_id],
         evidence: op.evidence,
       }));
-    }
-
-    if (op.object_id) {
-      const itemState = itemMap.get(op.object_id);
-      if (
-        itemState
-        && ['consumed', 'destroyed'].includes(cleanText(itemState.availability))
-        && [CANON_OP_TYPES.OBJECT_TRANSFERRED, CANON_OP_TYPES.OBJECT_CONSUMED].includes(op.op_type)
-      ) {
-        reports.push(createReport({
-          severity: CANON_SEVERITY.ERROR,
-          ruleCode: 'ITEM_UNAVAILABLE_REUSED',
-          message: `${op.object_name || 'Vat pham'} da het hieu luc hoac da bi dung het nhung van bi dung tiep.`,
-          projectId,
-          chapterId,
-          revisionId,
-          sceneId: op.scene_id || null,
-          evidence: op.evidence,
-        }));
-      }
-      if (
-        itemState
-        && op.op_type === CANON_OP_TYPES.OBJECT_CONSUMED
-        && (itemState.is_consumed || cleanText(itemState.availability) === 'consumed')
-      ) {
-        reports.push(createReport({
-          severity: CANON_SEVERITY.ERROR,
-          ruleCode: 'ITEM_ALREADY_CONSUMED',
-          message: `${op.object_name || 'Vat pham'} da duoc danh dau la da dung het truoc do.`,
-          projectId,
-          chapterId,
-          revisionId,
-          sceneId: op.scene_id || null,
-          evidence: op.evidence,
-        }));
-      }
     }
 
     if (
@@ -288,7 +467,12 @@ export function validateCandidateOps({
       const relationshipState = relationshipMap.get(pairKey);
       if (op.op_type === CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED) {
         const payload = normalizePayload(op.payload);
-        if (!cleanText(payload.consent_state || '')) {
+        const intimacyLevel = cleanText(payload.intimacy_level || payload.level || '');
+        const relationshipType = cleanText(payload.relationship_type || relationshipState?.relationship_type || '');
+        const requiresConsent = ['medium', 'high'].includes(intimacyLevel)
+          || ['lover'].includes(relationshipType)
+          || Boolean(payload.is_physical_intimacy || payload.requires_consent);
+        if (requiresConsent && !cleanText(payload.consent_state || '')) {
           reports.push(createReport({
             severity: CANON_SEVERITY.WARNING,
             ruleCode: 'INTIMACY_CONSENT_UNSPECIFIED',
@@ -501,6 +685,15 @@ export function validateCandidateOps({
     }
   });
 
+  reports.push(...validateItemTimeline({
+    projectId,
+    chapterId,
+    revisionId,
+    candidateOps,
+    itemMap,
+    sceneOrderMap,
+  }));
+
   return reports;
 }
 
@@ -656,7 +849,6 @@ const SPENT_ITEM_REUSE_MARKERS = [
   'lap rap',
   'dieu khien',
   'dieu dong',
-  'lai',
   'cuoi',
   'dung nhu vu khi',
   'dung lam vu khi',
@@ -752,6 +944,26 @@ function removeTokenPhrase(words, phrase) {
   return result.filter(Boolean);
 }
 
+function hasNearbyActionMarker(contextWords, targetWords, marker, maxDistance = 4) {
+  const markerWords = marker.split(' ').filter(Boolean);
+  if (markerWords.length === 0 || targetWords.length === 0) return false;
+  const targetPositions = findTokenSequence(contextWords, targetWords);
+  const markerPositions = findTokenSequence(contextWords, markerWords);
+
+  return markerPositions.some((markerStart) => {
+    const markerEnd = markerStart + markerWords.length - 1;
+    return targetPositions.some((targetStart) => {
+      const targetEnd = targetStart + targetWords.length - 1;
+      const overlapsTarget = markerStart <= targetEnd && markerEnd >= targetStart;
+      if (overlapsTarget) return false;
+      const distance = markerEnd < targetStart
+        ? targetStart - markerEnd
+        : markerStart - targetEnd;
+      return distance <= maxDistance;
+    });
+  });
+}
+
 function findSpentItemReuseContext(normalizedText, target) {
   const words = normalizedText.split(' ').filter(Boolean);
   const targetWords = target.split(' ').filter(Boolean);
@@ -766,7 +978,7 @@ function findSpentItemReuseContext(normalizedText, target) {
       contextWords
     );
 
-    if (SPENT_ITEM_REUSE_MARKERS.some((marker) => hasTokenPhrase(actionContextWords, marker))) {
+    if (SPENT_ITEM_REUSE_MARKERS.some((marker) => hasNearbyActionMarker(actionContextWords, targetWords, marker))) {
       return contextWords.join(' ');
     }
   }
