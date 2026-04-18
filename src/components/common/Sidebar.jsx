@@ -66,6 +66,10 @@ const NAV_ITEMS = RAW_NAV_ITEMS.filter((item, index, items) => {
 const SIDEBAR_COLLAPSE_QUERY = '(max-width: 1100px)';
 
 function getNavPath(item, activeProjectId) {
+  if (item.id === 'translator') {
+    return '/translator';
+  }
+
   if (item.id === 'settings' && activeProjectId) {
     return `/project/${activeProjectId}/settings`;
   }
@@ -150,6 +154,10 @@ export default function Sidebar() {
   const handleNav = (item) => {
     if (item.needsProject && !activeProjectId) return;
     const path = getNavPath(item, activeProjectId);
+    if (item.id === 'translator') {
+      window.location.assign(new URL(path, window.location.origin).href);
+      return;
+    }
     navigate(path);
   };
 
