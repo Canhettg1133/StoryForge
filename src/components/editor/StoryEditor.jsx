@@ -274,6 +274,8 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
 
   const wordCount = editor ? countWords(editor.getHTML()) : 0;
   const charCount = editor ? editor.storage.characterCount.characters() : 0;
+  const isEmptySceneForAiDraft = !activeScene?.draft_text || isContentEmpty(activeScene.draft_text || '');
+  const useDesktopAiDraftFocus = !isMobileLayout && !!aiDraft && isEmptySceneForAiDraft;
 
   const chapterProgress = useMemo(() => {
     const chapter = chapters.find(c => c.id === activeChapterId);
@@ -533,7 +535,10 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
       {!isMobileLayout && <ContinuityBar isMobileLayout={isMobileLayout} />}
 
       {/* Editor */}
-      <div className="story-editor-wrapper" ref={editorWrapperRef}>
+      <div
+        className={`story-editor-wrapper ${useDesktopAiDraftFocus ? 'story-editor-wrapper--desktop-draft' : ''}`}
+        ref={editorWrapperRef}
+      >
         {aiDraft && (
           <div
             className={`story-editor-ai-draft ${aiDraft.isStreaming ? 'story-editor-ai-draft--streaming' : ''}`}
