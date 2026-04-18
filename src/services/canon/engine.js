@@ -27,6 +27,7 @@ export {
 
 export {
   validateCandidateOps,
+  validateDraftTextAgainstTruth,
   reportsHaveErrors,
 } from './validation';
 

@@ -1,11 +1,13 @@
 import db from '../db/database';
 import { CANON_SEVERITY, CHAPTER_COMMIT_STATUS } from './constants';
-import { collectFactStatesFromSnapshot } from './core';
+import { collectFactStatesFromSnapshot, loadPreChapterTruth } from './core';
+import { validateDraftTextAgainstTruth } from './validation';
 import {
   buildCanonChapterTextFromScenes,
   buildCanonContentSignature,
   cleanText,
   isRevisionFreshForCanonText,
+  normalizeKey,
   uniqueList,
 } from './utils';
 
@@ -239,6 +241,33 @@ export async function buildRetrievalPacket({
   };
 }
 
+const SPENT_ITEM_REPORT_RULE = 'DRAFT_REFERENCES_SPENT_ITEM';
+
+async function filterObsoleteSpentItemReports(projectId, chapterId, revision, reports, fallbackText) {
+  if (!reports.some((report) => report.rule_code === SPENT_ITEM_REPORT_RULE)) {
+    return reports;
+  }
+
+  const preTruth = await loadPreChapterTruth(projectId, chapterId);
+  const currentSpentItemReports = validateDraftTextAgainstTruth({
+    projectId,
+    chapterId,
+    revisionId: revision?.id || null,
+    sceneText: revision?.chapter_text || fallbackText || '',
+    threadStates: [],
+    factStates: [],
+    characters: [],
+    objects: preTruth.objects,
+    itemStates: preTruth.itemStates,
+  }).filter((report) => report.rule_code === SPENT_ITEM_REPORT_RULE);
+  const activeMessages = new Set(currentSpentItemReports.map((report) => normalizeKey(report.message)));
+
+  return reports.filter((report) => (
+    report.rule_code !== SPENT_ITEM_REPORT_RULE
+    || activeMessages.has(normalizeKey(report.message))
+  ));
+}
+
 export async function getChapterCanonState(projectId, chapterId) {
   const scenes = chapterId && db.scenes?.where
     ? await db.scenes.where('chapter_id').equals(chapterId).sortBy('order_index')
@@ -271,13 +300,27 @@ export async function getChapterCanonState(projectId, chapterId) {
   const revisionContentSignature = freshnessRevision?.content_signature
     || buildCanonContentSignature(freshnessRevision?.chapter_text || '');
   const isFresh = isRevisionFreshForCanonText(freshnessRevision, currentChapterText);
-  const reports = commit.current_revision_id
+  const storedReports = commit.current_revision_id
     ? await db.validator_reports.where('[project_id+revision_id]').equals([projectId, commit.current_revision_id]).toArray()
     : [];
+  const reports = await filterObsoleteSpentItemReports(
+    projectId,
+    chapterId,
+    revision,
+    storedReports,
+    currentChapterText
+  );
+  const warningCount = reports.filter((report) => report.severity === CANON_SEVERITY.WARNING).length;
+  const errorCount = reports.filter((report) => report.severity === CANON_SEVERITY.ERROR).length;
+  const effectiveStatus = commit.status === CHAPTER_COMMIT_STATUS.HAS_WARNINGS && warningCount === 0 && errorCount === 0
+    ? CHAPTER_COMMIT_STATUS.CANONICAL
+    : (commit.status === CHAPTER_COMMIT_STATUS.BLOCKED && errorCount === 0
+      ? (warningCount > 0 ? CHAPTER_COMMIT_STATUS.HAS_WARNINGS : CHAPTER_COMMIT_STATUS.CANONICAL)
+      : commit.status);
   return {
-    status: commit.status,
-    warningCount: commit.warning_count || 0,
-    errorCount: commit.error_count || 0,
+    status: effectiveStatus,
+    warningCount,
+    errorCount,
     reports,
     revision,
     canonicalRevision,

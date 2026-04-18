@@ -552,6 +552,228 @@ function tokenizeFactDescription(description) {
     .filter((token) => token.length > 3);
 }
 
+const SPENT_ITEM_REUSE_MARKERS = [
+  // Generic usage across genres.
+  'su dung',
+  'su dung lai',
+  'dung',
+  'dung lai',
+  'dung tiep',
+  'tiep tuc dung',
+  'dung de',
+  'dem dung',
+  'dem ra dung',
+  'lay ra dung',
+  'dua vao su dung',
+  'dua ra su dung',
+  'tan dung',
+  'van dung',
+  'phat huy tac dung',
+  'phat huy cong dung',
+  'phat huy hieu luc',
+  'co tac dung',
+  'co hieu luc',
+
+  // Consumables: pills, medicine, food, potions, blood, fuel, mana.
+  'uong',
+  'nuot',
+  'an',
+  'nhai',
+  'ngam',
+  'phuc dung',
+  'dung thuoc',
+  'thoa',
+  'boi',
+  'tiem',
+  'hut',
+  'hap thu',
+  'hap thau',
+  'luyen hoa',
+  'tieu hoa',
+  'hoa giai',
+  'tri thuong',
+  'chua thuong',
+  'hoi phuc',
+  'hoi mau',
+  'hoi mana',
+  'hoi linh luc',
+  'giai doc',
+  'bo sung',
+  'nap vao',
+
+  // Magical, cultivation, sci-fi, tech, key, device activation.
+  'kich hoat',
+  'phat dong',
+  'khoi dong',
+  'khoi phat',
+  'mo khoa',
+  'giai phong',
+  'van chuyen',
+  'truyen linh luc vao',
+  'truyen chan khi vao',
+  'truyen ma luc vao',
+  'truyen nang luong vao',
+  'nap linh luc',
+  'nap chan khi',
+  'nap ma luc',
+  'nap nang luong',
+  'bom nang luong',
+  'ket noi',
+  'dong bo',
+  'quet',
+  'giai ma',
+  'trieu hoi',
+  'trien khai',
+  'mo cong',
+  'mo tran',
+  'dung lam phap khi',
+  'dung lam tran nhan',
+
+  // Weapons, armor, tools, vehicles, artifacts.
+  'cam',
+  'cam len',
+  'nam',
+  'nam lay',
+  'rut',
+  'rut ra',
+  'vung',
+  'chem',
+  'dam',
+  'ban',
+  'ban ra',
+  'khai hoa',
+  'len dan',
+  'nem',
+  'phong',
+  'deo',
+  'mac',
+  'khoac',
+  'doi',
+  'mang vao',
+  'trang bi',
+  'lap vao',
+  'gan vao',
+  'lap rap',
+  'dieu khien',
+  'dieu dong',
+  'lai',
+  'cuoi',
+  'dung nhu vu khi',
+  'dung lam vu khi',
+  'dung nhu cong cu',
+  'dung lam cong cu',
+
+  // Retrieval, possession, ownership, transfer. These matter for lost/destroyed items.
+  'lay',
+  'lay ra',
+  'lay lai',
+  'nhat',
+  'nhat len',
+  'tim thay',
+  'tim lai',
+  'thu hoi',
+  'nhan lai',
+  'doat lai',
+  'trao',
+  'dua cho',
+  'chuyen cho',
+  'giao cho',
+  'ban cho',
+  'mua lai',
+  'cat vao',
+  'bo vao tui',
+  'bo vao nhan',
+  'mang theo',
+  'cam theo',
+  'giu',
+
+  // Repair/revival/restoration of destroyed or spent artifacts.
+  'sua',
+  'sua lai',
+  'khoi phuc',
+  'phuc hoi',
+  'tai tao',
+  'tao lai',
+  'ren lai',
+  'han lai',
+  'chua lanh',
+  'lam moi',
+  'nap lai',
+  'hoi sinh',
+  'trung sinh',
+];
+
+const SPENT_ITEM_REFERENCE_ONLY_MARKERS = [
+  'da dung het',
+  'dung het',
+  'het roi',
+  'da het',
+  'khong con',
+  'khong the dung',
+  'khong the su dung',
+  'khong con dung duoc',
+  'da bi pha huy',
+  'bi pha huy',
+  'da mat',
+  'bi mat',
+  'khong con ton tai',
+  'chi con la ky uc',
+  'nho ve',
+  'nghi ve',
+  'nhac den',
+  'tung dung',
+  'da tung dung',
+];
+
+function findTokenSequence(words, targetWords) {
+  const positions = [];
+  if (targetWords.length === 0 || words.length < targetWords.length) return positions;
+
+  for (let index = 0; index <= words.length - targetWords.length; index += 1) {
+    const matches = targetWords.every((word, offset) => words[index + offset] === word);
+    if (matches) positions.push(index);
+  }
+  return positions;
+}
+
+function hasTokenPhrase(words, phrase) {
+  return findTokenSequence(words, phrase.split(' ').filter(Boolean)).length > 0;
+}
+
+function removeTokenPhrase(words, phrase) {
+  const targetWords = phrase.split(' ').filter(Boolean);
+  if (targetWords.length === 0) return words;
+  const result = [...words];
+  findTokenSequence(words, targetWords).forEach((position) => {
+    for (let offset = 0; offset < targetWords.length; offset += 1) {
+      result[position + offset] = '';
+    }
+  });
+  return result.filter(Boolean);
+}
+
+function findSpentItemReuseContext(normalizedText, target) {
+  const words = normalizedText.split(' ').filter(Boolean);
+  const targetWords = target.split(' ').filter(Boolean);
+  const positions = findTokenSequence(words, targetWords);
+
+  for (const position of positions) {
+    const start = Math.max(0, position - 12);
+    const end = Math.min(words.length, position + targetWords.length + 12);
+    const contextWords = words.slice(start, end);
+    const actionContextWords = SPENT_ITEM_REFERENCE_ONLY_MARKERS.reduce(
+      (currentWords, marker) => removeTokenPhrase(currentWords, marker),
+      contextWords
+    );
+
+    if (SPENT_ITEM_REUSE_MARKERS.some((marker) => hasTokenPhrase(actionContextWords, marker))) {
+      return contextWords.join(' ');
+    }
+  }
+
+  return '';
+}
+
 export function validateDraftTextAgainstTruth({
   projectId,
   chapterId,
@@ -606,7 +828,8 @@ export function validateDraftTextAgainstTruth({
     const object = objects.find((item) => item.id === state.object_id);
     if (!object?.name) return;
     const target = normalizeKey(object.name);
-    if (target && normalizedText.includes(target)) {
+    const reuseContext = target ? findSpentItemReuseContext(normalizedText, target) : '';
+    if (reuseContext) {
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'DRAFT_REFERENCES_SPENT_ITEM',
@@ -614,6 +837,7 @@ export function validateDraftTextAgainstTruth({
         projectId,
         chapterId,
         revisionId,
+        evidence: reuseContext,
       }));
     }
   });

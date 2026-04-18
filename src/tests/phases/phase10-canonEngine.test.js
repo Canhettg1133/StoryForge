@@ -296,6 +296,62 @@ describe('phase10 canon engine', () => {
     expect(next.summary).toContain('Da dung het');
   });
 
+  it('does not warn when draft only remembers or questions a spent item', () => {
+    const reports = engine.validateDraftTextAgainstTruth({
+      projectId: 1,
+      chapterId: 9,
+      sceneText: 'Tai sao, ngay ca Huyet Lien Dan cung mang mot khi tuc tuong dong voi han? Huyet Lien Dan da dung het roi.',
+      objects: [{ id: 8, name: 'Huyet Lien Dan' }],
+      itemStates: [{ object_id: 8, availability: 'consumed', is_consumed: true }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'DRAFT_REFERENCES_SPENT_ITEM')).toBe(false);
+  });
+
+  it('warns when draft actually uses a spent item again', () => {
+    const reports = engine.validateDraftTextAgainstTruth({
+      projectId: 1,
+      chapterId: 9,
+      sceneText: 'Lam Phong lay Huyet Lien Dan ra, nuot xuong de kich hoat linh luc.',
+      objects: [{ id: 8, name: 'Huyet Lien Dan' }],
+      itemStates: [{ object_id: 8, availability: 'consumed', is_consumed: true }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'DRAFT_REFERENCES_SPENT_ITEM')).toBe(true);
+  });
+
+  it('warns across broad item reuse contexts for different genres', () => {
+    const cases = [
+      {
+        sceneText: 'Nang rut Kiem Vo Anh da bi pha huy ra va chem xuong.',
+        objectName: 'Kiem Vo Anh',
+        availability: 'destroyed',
+      },
+      {
+        sceneText: 'Phi hanh gia tim thay The Truy Cap da mat, lap vao bang dieu khien de mo khoa cua.',
+        objectName: 'The Truy Cap',
+        availability: 'lost',
+      },
+      {
+        sceneText: 'Phap su nap ma luc vao Tran Ban Co de trieu hoi cong dich chuyen.',
+        objectName: 'Tran Ban Co',
+        availability: 'consumed',
+      },
+    ];
+
+    cases.forEach((item, index) => {
+      const reports = engine.validateDraftTextAgainstTruth({
+        projectId: 1,
+        chapterId: 9,
+        sceneText: item.sceneText,
+        objects: [{ id: index + 20, name: item.objectName }],
+        itemStates: [{ object_id: index + 20, availability: item.availability, is_consumed: item.availability === 'consumed' }],
+      });
+
+      expect(reports.some((report) => report.rule_code === 'DRAFT_REFERENCES_SPENT_ITEM')).toBe(true);
+    });
+  });
+
   it('tracks relationship intimacy and consent continuity', () => {
     const start = engine.createInitialRelationshipState({
       project_id: 1,
