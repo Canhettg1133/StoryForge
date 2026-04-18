@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -10,11 +10,13 @@ import {
   Image,
   Key,
   Link2,
+  Maximize2,
   MessageSquare,
   Server,
   Settings,
   ShieldCheck,
   Sparkles,
+  X,
 } from 'lucide-react';
 import keyManager from '../../services/ai/keyManager';
 import modelRouter, { PROVIDERS, TASK_TYPES } from '../../services/ai/router';
@@ -26,9 +28,45 @@ import './GeminiProxyGuide.css';
 const PROXY_DASHBOARD_URL = 'https://ag.beijixingxing.com/dashboard';
 const GOOGLE_PERMISSIONS_URL = 'https://myaccount.google.com/permissions';
 const GOOGLE_ACCOUNT_HELP_URL = 'https://support.google.com/accounts/answer/12379384';
-const ACTIVATE_PROJECT_URL = 'https://developers.google.com/profile/help/benefit-gemini-code-assist-standard';
-const ENABLE_GEMINI_API_URL = 'https://console.cloud.google.com/marketplace/product/google/cloudaicompanion.googleapis.com';
-const AUTH_SUCCESS_URL = 'https://developers.google.com/gemini-code-assist/auth/auth_success_gemini';
+const GUIDE_IMAGE_BASE = '/guide/gemini-proxy';
+const GUIDE_IMAGE_SLOTS = [
+  {
+    id: 'cli-get-credential',
+    src: `${GUIDE_IMAGE_BASE}/01-cli-get-credential.png`,
+    title: 'Anh 1 - Nut Get Credential trong muc CLI',
+    note: 'Dat file vao public/guide/gemini-proxy/01-cli-get-credential.png',
+  },
+  {
+    id: 'cli-google-login',
+    src: `${GUIDE_IMAGE_BASE}/02-cli-google-login.png`,
+    title: 'Anh 2 - Buoc 1 Login to Google Account',
+    note: 'Dat file vao public/guide/gemini-proxy/02-cli-google-login.png',
+  },
+  {
+    id: 'cli-callback',
+    src: `${GUIDE_IMAGE_BASE}/03-cli-callback-url.png`,
+    title: 'Anh 3 - Paste Callback URL',
+    note: 'Dat file vao public/guide/gemini-proxy/03-cli-callback-url.png',
+  },
+  {
+    id: 'dashboard-quota',
+    src: `${GUIDE_IMAGE_BASE}/04-dashboard-quota.png`,
+    title: 'Anh 4 - Dashboard co quota/lượt dung',
+    note: 'Dat file vao public/guide/gemini-proxy/04-dashboard-quota.png',
+  },
+  {
+    id: 'key-management',
+    src: `${GUIDE_IMAGE_BASE}/05-key-management.png`,
+    title: 'Anh 5 - Muc Key Management',
+    note: 'Dat file vao public/guide/gemini-proxy/05-key-management.png',
+  },
+  {
+    id: 'create-api-key',
+    src: `${GUIDE_IMAGE_BASE}/06-create-api-key.png`,
+    title: 'Anh 6 - Nut Create API Key',
+    note: 'Dat file vao public/guide/gemini-proxy/06-create-api-key.png',
+  },
+];
 
 function StatusCard({ icon: Icon, label, value, tone = 'neutral' }) {
   return (
@@ -59,19 +97,51 @@ function StepCard({ index, title, icon: Icon, children }) {
   );
 }
 
-function ImagePlaceholder({ title, note }) {
+function GuideScreenshot({ src, title, note, onOpen }) {
+  const [failed, setFailed] = useState(false);
+
+  if (failed) {
+    return (
+      <div className="gemini-guide-placeholder">
+        <Image size={18} />
+        <strong>{title}</strong>
+        <p>{note}</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="gemini-guide-placeholder">
-      <Image size={18} />
-      <strong>{title}</strong>
-      <p>{note}</p>
-    </div>
+    <figure className="gemini-guide-shot">
+      <div className="gemini-guide-shot__frame">
+        <img
+          className="gemini-guide-shot__image"
+          src={src}
+          alt={title}
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+        />
+      </div>
+      <div className="gemini-guide-shot__toolbar">
+        <button className="btn btn-ghost btn-sm" type="button" onClick={() => onOpen({ src, title })}>
+          <Maximize2 size={14} /> Xem ro hon
+        </button>
+        <a className="btn btn-ghost btn-sm" href={src} target="_blank" rel="noreferrer">
+          <ExternalLink size={14} /> Mo anh goc
+        </a>
+      </div>
+      <figcaption className="gemini-guide-shot__caption">
+        <strong>{title}</strong>
+        <span>{note}</span>
+      </figcaption>
+    </figure>
   );
 }
 
 export default function GeminiProxyGuide() {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
+  const [activeShot, setActiveShot] = useState(null);
 
   const setupState = useMemo(() => {
     const keyCount = keyManager.getKeyCount('gemini_proxy');
@@ -109,23 +179,37 @@ export default function GeminiProxyGuide() {
     }
   };
 
+  useEffect(() => {
+    if (!activeShot) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setActiveShot(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeShot]);
+
   return (
     <div className="settings-page gemini-guide-page gemini-proxy-guide-page">
       <header className="settings-header animate-fade-in">
         <div className="gemini-guide-back">
           <button className="btn btn-ghost btn-sm" onClick={handleGoBack}>
-            <ArrowLeft size={14} /> Quay lại
+            <ArrowLeft size={14} /> Quay lai
           </button>
         </div>
 
         <div className="gemini-guide-hero">
           <div className="gemini-guide-hero__copy">
-            <span className="gemini-guide-hero__kicker">Hướng dẫn Gemini Proxy</span>
-            <h1 className="settings-title">Đăng ký Proxy, kích hoạt lượt và thêm API key</h1>
+            <span className="gemini-guide-hero__kicker">Huong dan Gemini Proxy</span>
+            <h1 className="settings-title">Add CLI, lay quota, tao 3 API key va dan vao StoryForge</h1>
             <p className="settings-subtitle">
-              Trang này dành cho luồng <strong>Gemini Proxy</strong> qua BeiJiXingXing. Nó tập trung
-              vào đăng ký tài khoản, kích hoạt lượt bằng CLI hoặc Antigravity, tạo nhiều API key và
-              dán vào StoryForge để xoay vòng ổn định.
+              Guide nay di dung theo flow ban dang dung: vao dashboard Proxy, add duoc CLI hoac Antigravity,
+              thay quota xuat hien, vao Key Management, tao 3 API key, roi quay lai Cai dat cua StoryForge de dan key.
             </p>
           </div>
           <div className="gemini-guide-hero__actions">
@@ -133,10 +217,10 @@ export default function GeminiProxyGuide() {
               className="btn btn-primary"
               onClick={() => window.open(PROXY_DASHBOARD_URL, '_blank', 'noopener,noreferrer')}
             >
-              <ExternalLink size={14} /> Mở dashboard Proxy
+              <ExternalLink size={14} /> Mo dashboard Proxy
             </button>
             <button className="btn btn-secondary" onClick={() => navigate('/settings')}>
-              <Settings size={14} /> Mở Settings
+              <Settings size={14} /> Mo Cai dat
             </button>
             <button className="btn btn-ghost" onClick={() => navigate('/guide')}>
               <Sparkles size={14} /> Xem guide Gemini Direct
@@ -149,8 +233,8 @@ export default function GeminiProxyGuide() {
         <div className="settings-section-header">
           <Sparkles size={20} />
           <div>
-            <h2>Trạng thái Proxy hiện tại</h2>
-            <p>Có thể dùng khu này để biết app đã sẵn sàng chạy Gemini Proxy hay chưa.</p>
+            <h2>Trang thai Proxy hien tai</h2>
+            <p>Khu nay giup nguoi dung biet app da co key Proxy va dang uu tien Gemini Proxy hay chua.</p>
           </div>
         </div>
 
@@ -158,19 +242,19 @@ export default function GeminiProxyGuide() {
           <StatusCard
             icon={Key}
             label="Proxy keys"
-            value={setupState.keyCount > 0 ? `${setupState.keyCount} key` : 'Chưa có key'}
+            value={setupState.keyCount > 0 ? `${setupState.keyCount} key` : 'Chua co key'}
             tone={setupState.keyCount >= 3 ? 'success' : setupState.keyCount > 0 ? 'warning' : 'warning'}
           />
           <StatusCard
             icon={Server}
-            label="Provider ưu tiên"
-            value={setupState.usingProxy ? 'Gemini Proxy' : 'Chưa chọn Gemini Proxy'}
+            label="Provider uu tien"
+            value={setupState.usingProxy ? 'Gemini Proxy' : 'Chua chon Gemini Proxy'}
             tone={setupState.usingProxy ? 'success' : 'neutral'}
           />
           <StatusCard
             icon={Sparkles}
-            label="Model gợi ý hiện tại"
-            value={setupState.route?.model || 'Chưa có'}
+            label="Model goi y hien tai"
+            value={setupState.route?.model || 'Chua co'}
             tone="neutral"
           />
           <StatusCard
@@ -183,234 +267,241 @@ export default function GeminiProxyGuide() {
 
         <div className="gemini-guide-status-actions">
           <button className="btn btn-ghost btn-sm" onClick={handleCopyEndpoint}>
-            <Copy size={13} /> {copied ? 'Đã copy Proxy URL' : 'Copy Proxy URL'}
+            <Copy size={13} /> {copied ? 'Da copy Proxy URL' : 'Copy Proxy URL'}
           </button>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate('/settings')}>
-            <Settings size={13} /> Mở Settings để dán key
+            <Settings size={13} /> Mo Cai dat de dan key
           </button>
         </div>
       </section>
 
       <div className="settings-sections">
-        <StepCard index="1" title="Đăng ký tài khoản trên dashboard Proxy" icon={Server}>
+        <StepCard index="1" title="Dang nhap dashboard Proxy" icon={Server}>
           <p>
-            Mở{' '}
+            Mo{' '}
             <a className="gemini-guide-link" href={PROXY_DASHBOARD_URL} target="_blank" rel="noreferrer">
               ag.beijixingxing.com/dashboard
             </a>{' '}
-            và đăng ký hoặc đăng nhập tài khoản. Sau khi vào dashboard, thường bạn <strong>chưa có lượt dùng ngay</strong>.
-            Bạn cần làm thêm bước xác thực bằng CLI hoặc Antigravity để được cộng lượt.
+            va dang nhap tai khoan. Luc moi vao, tai khoan thuong chua co quota ngay. Day la binh thuong.
           </p>
           <ol className="gemini-guide-list">
-            <li>Đăng ký tài khoản trên dashboard Proxy.</li>
-            <li>Đăng nhập và vào khu dashboard chính.</li>
-            <li>Kiểm tra xem tài khoản đã có quota hay chưa trước khi tạo key.</li>
+            <li>Dang nhap dashboard Proxy.</li>
+            <li>Khong tao API key voi vang khi quota van la 0.</li>
+            <li>Ban can add thanh cong CLI hoac Antigravity truoc de dashboard nhan luot.</li>
           </ol>
-          <ImagePlaceholder
-            title="Chỗ ảnh dashboard Proxy"
-            note="Nên chụp màn hình dashboard sau khi đăng nhập và khu hiển thị lượt dùng hoặc API key."
+          <GuideScreenshot
+            src={GUIDE_IMAGE_SLOTS[3].src}
+            title={GUIDE_IMAGE_SLOTS[3].title}
+            note={GUIDE_IMAGE_SLOTS[3].note}
+            onOpen={setActiveShot}
           />
         </StepCard>
 
-        <StepCard index="2" title="Kích hoạt lượt bằng CLI hoặc Antigravity" icon={Sparkles}>
+        <StepCard index="2" title="Vao muc CLI va bam Get Credential" icon={Sparkles}>
           <p>
-            Theo quy trình thực tế bạn cung cấp, dashboard sẽ chỉ cộng lượt sau khi tài khoản Google được add
-            qua <strong>CLI</strong> hoặc <strong>Antigravity</strong>.
+            Flow ban mo ta bat dau tu muc <strong>CLI</strong>. Trong muc nay, bam nut <strong>Get Credential</strong>,
+            sau do chon luong <strong>Obtain via Google OAuth authorization</strong>.
           </p>
-          <div className="gemini-guide-note">
-            <CheckCircle2 size={16} />
-            <span>
-              <strong>CLI</strong> thường được nhiều lượt hơn, nhưng tỷ lệ lỗi cũng cao hơn.
-            </span>
-          </div>
-          <div className="gemini-guide-note">
-            <ShieldCheck size={16} />
-            <span>
-              <strong>Antigravity</strong> thường add dễ thành công hơn. Nếu add được rồi, sau đó quay lại add CLI
-              thì dễ thành công hơn nữa.
-            </span>
-          </div>
           <ol className="gemini-guide-list">
-            <li>Nếu ưu tiên thành công, thử add Antigravity trước.</li>
-            <li>Nếu muốn thêm lượt, thử add CLI sau khi Antigravity đã thành công.</li>
-            <li>Với CLI, nên ưu tiên tài khoản Google lâu năm hơn. Tài khoản mới hay bị lỗi hơn.</li>
+            <li>Mo muc <strong>CLI</strong>.</li>
+            <li>Bam <strong>Get Credential</strong>.</li>
+            <li>Chon luong lay credential bang Google OAuth.</li>
           </ol>
+          <GuideScreenshot
+            src={GUIDE_IMAGE_SLOTS[0].src}
+            title={GUIDE_IMAGE_SLOTS[0].title}
+            note={GUIDE_IMAGE_SLOTS[0].note}
+            onOpen={setActiveShot}
+          />
         </StepCard>
 
-        <StepCard
-          index="3"
-          title="Nếu kích hoạt trên web không thành công"
-          icon={AlertTriangle}
-        >
+        <StepCard index="3" title="Dang nhap dung tai khoan Google" icon={Link2}>
           <p>
-            Đây là nhóm link nên mở khi bấm add <strong>CLI</strong> hoặc <strong>Antigravity</strong> trên web
-            mà không đi tiếp được, không cộng lượt, hoặc bị vòng lặp xác thực.
+            Trong popup Get Credential, o buoc so 1, bam vao phan dang nhap Google. Sau khi dang nhap xong,
+            trinh duyet se hien mot duong link callback day du.
           </p>
-          <div className="gemini-guide-note">
-            <CheckCircle2 size={16} />
-            <span>
-              Khi mở các link bên dưới, hãy <strong>đăng nhập bằng đúng tài khoản Google bạn muốn add vào Proxy</strong>.
-              Nếu trình duyệt đang dùng tài khoản khác, nên đổi đúng tài khoản trước rồi mới làm tiếp.
-            </span>
-          </div>
           <ol className="gemini-guide-list">
-            <li>
-              Mở{' '}
-              <a className="gemini-guide-link" href={ACTIVATE_PROJECT_URL} target="_blank" rel="noreferrer">
-                trang kích hoạt project lần đầu
-              </a>{' '}
-              để kiểm tra tài khoản đã link vào Google Cloud project chưa.
-            </li>
-            <li>
-              Mở{' '}
-              <a className="gemini-guide-link" href={ENABLE_GEMINI_API_URL} target="_blank" rel="noreferrer">
-                trang bật Gemini for Google Cloud API
-              </a>{' '}
-              rồi chọn project đúng và bấm Enable nếu API chưa bật.
-            </li>
-            <li>
-              Mở{' '}
-              <a className="gemini-guide-link" href={GOOGLE_PERMISSIONS_URL} target="_blank" rel="noreferrer">
-                trang quyền ứng dụng Google Account
-              </a>{' '}
-              để kiểm tra và thu hồi lại các quyền cũ của <strong>Gemini Code Assist and Gemini CLI</strong> hoặc{' '}
-              <strong>Google Antigravity</strong>.
-            </li>
-            <li>
-              Sau khi thu hồi quyền, quay lại dashboard Proxy và chạy lại flow add CLI hoặc add Antigravity để Google
-              hiện lại màn hình cấp quyền.
-            </li>
-            <li>
-              Khi flow thành công, bạn thường sẽ đi tới hoặc nhìn thấy nội dung tương tự trang{' '}
-              <a className="gemini-guide-link" href={AUTH_SUCCESS_URL} target="_blank" rel="noreferrer">
-                Authentication successful
-              </a>
-              .
-            </li>
+            <li>Bam vao buoc <strong>1. Login to Google Account</strong>.</li>
+            <li>An nut authorize va dang nhap dung tai khoan Google can add.</li>
+            <li>Sau khi xong, copy <strong>toan bo URL</strong> dang hien tren thanh dia chi.</li>
           </ol>
           <div className="gemini-guide-note is-warning">
             <AlertTriangle size={16} />
             <span>
-              Không có một link grant công khai cố định riêng cho CLI hoặc Antigravity. Google thường chỉ hiện màn hình
-              cấp quyền khi bạn khởi động lại flow từ chính CLI hoặc Antigravity sau khi đã dọn quyền cũ.
+              Hay copy nguyen duong link callback. Khong chi copy code le. Neu dang nhap sai tai khoan Google,
+              flow sau do rat de bao loi hoac add sai.
             </span>
           </div>
+          <GuideScreenshot
+            src={GUIDE_IMAGE_SLOTS[1].src}
+            title={GUIDE_IMAGE_SLOTS[1].title}
+            note={GUIDE_IMAGE_SLOTS[1].note}
+            onOpen={setActiveShot}
+          />
         </StepCard>
 
-        <StepCard index="4" title="Add CLI: copy localhost URL rồi dán lại vào dashboard" icon={Link2}>
+        <StepCard index="4" title="Dan callback URL va bam submit" icon={Link2}>
           <p>
-            Khi add CLI, hệ thống thường đưa ra một link <strong>localhost</strong> để đăng nhập Google. Luồng bạn mô
-            tả là copy link localhost đó, mở nó, đăng nhập xác thực Google, rồi quay lại dashboard Proxy để dán vào và
-            hoàn tất.
+            Quay lai card <strong>Paste Callback URL</strong>, dan duong link vua copy vao, roi bam nut submit.
+            Neu khong co loi gi thi credential se duoc add thanh cong.
           </p>
           <ol className="gemini-guide-list">
-            <li>Bắt đầu bước add CLI trong dashboard.</li>
-            <li>Copy link localhost mà dashboard đưa ra.</li>
-            <li>Mở link localhost, đăng nhập Google, hoàn tất xác thực.</li>
-            <li>Quay lại web gốc và dán hoặc hoàn tất theo hướng dẫn trên dashboard để add tài khoản thành công.</li>
+            <li>Quay lai phan <strong>2. Paste Callback URL</strong>.</li>
+            <li>Dan nguyen duong link callback vao o nhap.</li>
+            <li>Bam <strong>Submit to Get Credential</strong>.</li>
+            <li>Neu add thanh cong, quay lai dashboard de kiem tra quota.</li>
           </ol>
           <div className="gemini-guide-note">
             <CheckCircle2 size={16} />
             <span>
-              Nếu CLI lỗi liên tục, thử add Antigravity trước, sau đó quay lại add cùng tài khoản đó vào CLI.
+              Chi can add thanh cong <strong>1 trong 2</strong> la CLI hoac Antigravity. Khong bat buoc phai co ca hai
+              roi moi di tiep.
             </span>
           </div>
-          <ImagePlaceholder
-            title="Chỗ ảnh localhost login"
-            note="Nên chụp màn hình khu dashboard đưa localhost link và màn hình dán kết quả xác thực trở lại."
+          <GuideScreenshot
+            src={GUIDE_IMAGE_SLOTS[2].src}
+            title={GUIDE_IMAGE_SLOTS[2].title}
+            note={GUIDE_IMAGE_SLOTS[2].note}
+            onOpen={setActiveShot}
           />
         </StepCard>
 
-        <StepCard index="5" title="Nếu add Antigravity lỗi, kiểm tra lại quyền Google" icon={ShieldCheck}>
+        <StepCard index="5" title="Thay quota roi moi vao Key Management" icon={ShieldCheck}>
           <p>
-            Nếu Antigravity đăng nhập không được, hãy coi đây là bước kiểm tra nhanh trước khi thử lại.
+            Sau khi add duoc CLI hoac Antigravity, quay lai dashboard de xem luot dung model cua tai khoan.
+            Chi khi quota da xuat hien, luc do moi sang phan <strong>Key Management</strong>.
           </p>
           <ol className="gemini-guide-list">
-            <li>Vào trang quyền ứng dụng Google Account.</li>
-            <li>Tìm các mục liên quan tới Antigravity hoặc Gemini CLI.</li>
-            <li>Nếu thấy quyền cũ đang kẹt, thu hồi rồi quay lại dashboard để add lại.</li>
-            <li>
-              Nếu cần trang trợ giúp chính thức của Google, mở{' '}
-              <a className="gemini-guide-link" href={GOOGLE_ACCOUNT_HELP_URL} target="_blank" rel="noreferrer">
-                Google Account Help về third-party access
-              </a>
-              .
-            </li>
+            <li>Quay lai dashboard va kiem tra quota.</li>
+            <li>Neu quota van la 0, quay lai kiem tra flow add CLI hoac Antigravity.</li>
+            <li>Khi da co quota, vao <strong>Key Management</strong>.</li>
           </ol>
+          <GuideScreenshot
+            src={GUIDE_IMAGE_SLOTS[4].src}
+            title={GUIDE_IMAGE_SLOTS[4].title}
+            note={GUIDE_IMAGE_SLOTS[4].note}
+            onOpen={setActiveShot}
+          />
         </StepCard>
 
-        <StepCard index="6" title="Tạo API key trên dashboard Proxy" icon={Key}>
+        <StepCard index="6" title="Tao 3 API key" icon={Key}>
           <p>
-            Sau khi tài khoản đã có lượt dùng, mới tạo API key. Với StoryForge, nếu bạn muốn <strong>Dịch truyện</strong>{' '}
-            ổn định thì nên tạo <strong>3 API key</strong> để app xoay vòng.
+            Sau khi tai khoan da co quota, bam <strong>Create API Key</strong> va tao lien tiep <strong>3 API key</strong>.
+            Day la cach hop ly de StoryForge xoay vong key on dinh hon.
           </p>
           <ol className="gemini-guide-list">
-            <li>Vào khu API key trong dashboard Proxy.</li>
-            <li>Tạo ít nhất 1 key để test.</li>
-            <li>Nếu ưu tiên translation, tạo 3 key để StoryForge có thể luân chuyển key tốt hơn.</li>
-            <li>Lưu key ở nơi an toàn và không chia sẻ công khai.</li>
+            <li>Trong Key Management, bam <strong>Create API Key</strong>.</li>
+            <li>Tao du <strong>3 key</strong>.</li>
+            <li>Copy tung key ngay sau khi tao.</li>
+            <li>Khong chia se cong khai va nen luu lai o noi an toan.</li>
           </ol>
           <div className="gemini-guide-note">
             <Sparkles size={16} />
             <span>
-              3 key là mốc bắt đầu hợp lý cho luồng Dịch truyện, vì app sẽ có đủ key để xoay vòng khi một key chậm hoặc
-              gặp giới hạn.
+              1 key du de test. Nhung 3 key la moc nen dung cho StoryForge, nhat la khi dung nhieu,
+              de giam nguy co dung vi 1 key cham hoac vuong gioi han.
             </span>
           </div>
+          <GuideScreenshot
+            src={GUIDE_IMAGE_SLOTS[5].src}
+            title={GUIDE_IMAGE_SLOTS[5].title}
+            note={GUIDE_IMAGE_SLOTS[5].note}
+            onOpen={setActiveShot}
+          />
         </StepCard>
 
-        <StepCard index="7" title="Dán key vào StoryForge và test" icon={Settings}>
+        <StepCard index="7" title="Dan 3 key vao Cai dat cua StoryForge" icon={Settings}>
           <p>
-            Trong StoryForge, vào <strong>Settings</strong> và dán key vào khu <strong>Gemini Proxy</strong>. Chốt xong
-            thì đổi provider sang Gemini Proxy và test kết nối.
+            Quay lai StoryForge va vao <strong>Cai dat</strong>. Neu ban dang o trong project, vao Cai dat cua project
+            cung duoc, vi no van tro ve man hinh cai dat dung de dan key.
           </p>
           <ol className="gemini-guide-list">
-            <li>Mở Settings.</li>
-            <li>Tìm section <strong>API Keys</strong> và chọn khu <strong>Gemini Proxy</strong>.</li>
-            <li>Dán từng key vào, hoặc dùng nút nhập nhiều nếu bạn tạo 3 key.</li>
-            <li>Trong section <strong>Provider đang dùng</strong>, chọn <strong>Gemini Proxy</strong>.</li>
-            <li>Giữ Proxy URL mặc định nếu app đang dùng <code>/api/proxy</code>.</li>
-            <li>Bấm <strong>Test</strong> để kiểm tra.</li>
+            <li>Mo <strong>Settings</strong> hoac Cai dat trong project.</li>
+            <li>Tim section <strong>API Keys</strong>.</li>
+            <li>Vao khu <strong>Gemini Proxy</strong>.</li>
+            <li>Dan du 3 key, moi key mot dong hoac them tung key.</li>
+            <li>Chon provider la <strong>Gemini Proxy</strong>.</li>
+            <li>Giu Proxy URL mac dinh <code>/api/proxy</code> neu dang dung proxy chuan cua app.</li>
+            <li>Bam <strong>Test</strong> de kiem tra.</li>
           </ol>
           <div className="gemini-guide-action-row">
             <button className="btn btn-secondary" onClick={() => navigate('/settings')}>
-              <Settings size={14} /> Mở Settings
+              <Settings size={14} /> Mo Settings
             </button>
             <button className="btn btn-ghost" onClick={() => navigate('/translator')}>
-              <MessageSquare size={14} /> Thử Dịch truyện
+              <MessageSquare size={14} /> Thu Dich truyen
             </button>
           </div>
+        </StepCard>
+
+        <StepCard index="8" title="Neu flow add bi loi" icon={AlertTriangle}>
+          <p>
+            Neu CLI hoac Antigravity khong add duoc, uu tien kiem tra lai quyen Google truoc khi thu lai.
+          </p>
+          <ol className="gemini-guide-list">
+            <li>
+              Mo{' '}
+              <a className="gemini-guide-link" href={GOOGLE_PERMISSIONS_URL} target="_blank" rel="noreferrer">
+                trang quyen ung dung Google Account
+              </a>
+              .
+            </li>
+            <li>Neu thay quyen cu cua Gemini CLI hoac Antigravity, thu go bo roi chay lai flow add.</li>
+            <li>
+              Neu can, mo them{' '}
+              <a className="gemini-guide-link" href={GOOGLE_ACCOUNT_HELP_URL} target="_blank" rel="noreferrer">
+                Google Account Help
+              </a>
+              .
+            </li>
+          </ol>
         </StepCard>
 
         <section className="settings-section card animate-slide-up gemini-guide-faq">
           <div className="settings-section-header">
             <BookOpen size={20} />
             <div>
-              <h2>Lưu ý và lỗi thường gặp</h2>
-              <p>Phần này tổng hợp từ thông tin bạn cung cấp và flow OAuth chính thức của Google.</p>
+              <h2>Luu y va ghi chu quan trong</h2>
+              <p>Phan nay tong hop dung y ban vua nho de tranh nguoi dung hieu nham.</p>
             </div>
           </div>
 
           <div className="gemini-guide-faq-list">
             <article>
-              <strong>Đăng ký xong nhưng vẫn không có lượt</strong>
-              <p>Đây là hành vi bình thường. Tài khoản thường phải add CLI hoặc Antigravity thành công thì dashboard mới cộng lượt.</p>
+              <strong>Co the lay thang anh tu chat khong?</strong>
+              <p>Khong nen. Anh dinh kem trong chat khong tu dong thanh file trong repo. Cach dung nhat la dat anh that vao public/guide/gemini-proxy/ theo dung ten file da quy uoc.</p>
             </article>
             <article>
-              <strong>CLI hay lỗi</strong>
-              <p>Thử dùng tài khoản Google lâu năm hơn, hoặc add Antigravity trước rồi quay lại add CLI.</p>
+              <strong>Trang co tu can anh cho dep va ro khong?</strong>
+              <p>Co. Khu anh da dung img card co caption va bo cuc responsive. Khi ban dat anh goc du net vao dung thu muc, trang se tu fit lai theo khung guide.</p>
             </article>
             <article>
-              <strong>Antigravity không xác thực được</strong>
-              <p>Thử kiểm tra trang quyền Google Account, thu hồi quyền cũ rồi chạy lại flow add trên dashboard.</p>
+              <strong>Can add ca CLI va Antigravity khong?</strong>
+              <p>Khong bat buoc. Add duoc 1 trong 2 de dashboard co quota la co the tao key va dung StoryForge.</p>
             </article>
             <article>
-              <strong>Chỉ tạo 1 key có đủ không</strong>
-              <p>Đủ để test. Nhưng nếu dùng Dịch truyện thì 3 key sẽ hợp lý hơn để app xoay vòng và giảm nguy cơ dừng vì một key.</p>
+              <strong>Vi sao guide nhan manh 3 API key?</strong>
+              <p>Vi StoryForge se on dinh hon khi co nhieu key de xoay vong, nhat la voi luong dich hoac cac tac vu goi AI lien tuc.</p>
             </article>
           </div>
         </section>
       </div>
+
+      {activeShot ? (
+        <div className="gemini-guide-lightbox" role="dialog" aria-modal="true" onClick={() => setActiveShot(null)}>
+          <div className="gemini-guide-lightbox__dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="gemini-guide-lightbox__header">
+              <strong>{activeShot.title}</strong>
+              <button className="btn btn-ghost btn-sm" type="button" onClick={() => setActiveShot(null)}>
+                <X size={15} /> Dong
+              </button>
+            </div>
+            <div className="gemini-guide-lightbox__frame">
+              <img className="gemini-guide-lightbox__image" src={activeShot.src} alt={activeShot.title} />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
