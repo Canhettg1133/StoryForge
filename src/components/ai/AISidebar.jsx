@@ -26,6 +26,7 @@ import './AISidebar.css';
 
 const PROSE_INSERT_TASKS = ['continue', 'free_prompt'];
 const PROSE_REPLACE_TASKS = ['rewrite', 'expand'];
+const NON_DRAFT_PREVIEW_TASKS = new Set(['plot', 'outline', 'extract', 'conflict']);
 const MOBILE_AI_TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'codex', label: 'Codex' },
@@ -110,13 +111,6 @@ export default function AISidebar({
   const displayText = streamingText || completedText;
   const hasOutput = !!displayText || !!error || isStreaming || isCheckingConflict;
 
-  const isSceneEmpty = (html = '') => (
-    !String(html || '')
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .trim()
-  );
-
   useEffect(() => {
     if (!isMobileLayout || !hasOutput || !onMobileTabChange) return;
     onMobileTabChange('results');
@@ -125,13 +119,12 @@ export default function AISidebar({
   useEffect(() => {
     if (!onDraftPreviewChange) return;
 
-    if (!displayText || !PROSE_INSERT_TASKS.includes(lastTaskId) || !activeSceneId) {
+    if (!displayText || !activeSceneId || isCheckingConflict || error) {
       onDraftPreviewChange(null);
       return;
     }
 
-    const scene = scenes.find((item) => item.id === activeSceneId);
-    if (!isSceneEmpty(scene?.draft_text || '')) {
+    if (lastTaskId && NON_DRAFT_PREVIEW_TASKS.has(lastTaskId)) {
       onDraftPreviewChange(null);
       return;
     }
@@ -143,7 +136,7 @@ export default function AISidebar({
       text: displayText,
       isStreaming,
     });
-  }, [onDraftPreviewChange, displayText, isStreaming, lastTaskId, activeSceneId, activeChapterId, scenes]);
+  }, [onDraftPreviewChange, displayText, isStreaming, isCheckingConflict, error, lastTaskId, activeSceneId, activeChapterId]);
 
   const getContext = () => {
     const scene = scenes.find((item) => item.id === activeSceneId);

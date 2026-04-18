@@ -18,6 +18,11 @@ function isContentEmpty(html = '') {
     .trim();
 }
 
+function isEditorEmpty(editor, fallbackHtml = '') {
+  if (!editor) return isContentEmpty(fallbackHtml);
+  return !editor.getText().replace(/\s+/g, ' ').trim();
+}
+
 function textToHtml(text = '') {
   return String(text || '')
     .split(/\n\n+/)
@@ -165,9 +170,9 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
   }, [activeSceneId]);
 
   useEffect(() => {
-    if (!activeScene || isContentEmpty(activeScene.draft_text || '')) return;
+    if (!activeScene || isEditorEmpty(editor, activeScene.draft_text || '')) return;
     setAiDraft(null);
-  }, [activeScene?.draft_text, activeScene?.id]);
+  }, [editor, activeScene?.draft_text, activeScene?.id, activeScene]);
 
   useEffect(() => {
     if (!aiDraftPreview || !activeScene || aiDraftPreview.sceneId !== activeScene.id) {
@@ -175,7 +180,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
       return;
     }
 
-    if (!isContentEmpty(activeScene.draft_text || '')) {
+    if (!isEditorEmpty(editor, activeScene.draft_text || '')) {
       setAiDraft(null);
       return;
     }
@@ -197,7 +202,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
       wordCount: countWords(text),
       isStreaming: !!aiDraftPreview.isStreaming,
     });
-  }, [aiDraftPreview, dismissedDraftKey, activeScene?.id, activeScene?.draft_text, activeScene]);
+  }, [aiDraftPreview, dismissedDraftKey, editor, activeScene?.id, activeScene?.draft_text, activeScene]);
 
   // [MỚI] Reset thanh cuộn khi đổi cảnh/chương
   useEffect(() => {
@@ -205,6 +210,12 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
       editorWrapperRef.current.scrollTop = 0;
     }
   }, [activeSceneId]);
+
+  useEffect(() => {
+    if (aiDraft && editorWrapperRef.current) {
+      editorWrapperRef.current.scrollTop = 0;
+    }
+  }, [aiDraft?.sceneId, aiDraft?.taskId]);
 
   useEffect(() => {
     if (editor && onEditorReady) {
@@ -239,7 +250,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
 
   const handleSaveAiDraft = async () => {
     if (!aiDraft || !editor || !activeSceneId) return;
-    if (!isContentEmpty(activeScene?.draft_text || '')) {
+    if (!isEditorEmpty(editor, activeScene?.draft_text || '')) {
       setAiDraft(null);
       return;
     }
@@ -433,7 +444,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
 
       {/* Editor */}
       <div className="story-editor-wrapper" ref={editorWrapperRef}>
-        {aiDraft && isContentEmpty(activeScene?.draft_text || '') && (
+        {aiDraft && (
           <div className="story-editor-ai-draft">
             <div className="story-editor-ai-draft__header">
               <div>
