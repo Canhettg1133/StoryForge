@@ -91,8 +91,9 @@ export default function MobileProjectShell({ children }) {
   const pageTitle = getPageTitle(location.pathname);
   const displaySceneTitle = formatStoryLabel(activeScene?.title);
   const displayChapterTitle = formatStoryLabel(activeChapter?.title);
+  const editorTitle = [displayChapterTitle, displaySceneTitle].filter(Boolean).join(' · ');
   const mobileTitle = isEditorRoute
-    ? (displaySceneTitle || displayChapterTitle || currentProject?.title || 'StoryForge')
+    ? (editorTitle || displaySceneTitle || displayChapterTitle || currentProject?.title || 'StoryForge')
     : (currentProject?.title || 'StoryForge');
   const backLabel = isEditorRoute ? 'V\u1ec1 Dashboard' : 'V\u1ec1 m\u00e0n vi\u1ebft';
 

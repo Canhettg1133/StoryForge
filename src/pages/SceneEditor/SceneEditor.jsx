@@ -59,7 +59,7 @@ function isHtmlBlank(html = '') {
 }
 
 export default function SceneEditor() {
-  const { currentProject, scenes, activeSceneId } = useProjectStore();
+  const { currentProject, scenes, activeSceneId, activeChapterId } = useProjectStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
@@ -121,7 +121,14 @@ export default function SceneEditor() {
     () => scenes.find((scene) => scene.id === activeSceneId) || null,
     [scenes, activeSceneId],
   );
-  const hasAiDraftPreview = !!aiDraftPreview?.text && isHtmlBlank(activeScene?.draft_text || '');
+  const scopedAiDraftPreview = useMemo(() => {
+    if (!aiDraftPreview?.text) return null;
+    if (!activeSceneId || !activeChapterId) return null;
+    if (aiDraftPreview.sceneId !== activeSceneId) return null;
+    if (aiDraftPreview.chapterId !== activeChapterId) return null;
+    return aiDraftPreview;
+  }, [aiDraftPreview, activeSceneId, activeChapterId]);
+  const hasAiDraftPreview = !!scopedAiDraftPreview?.text && isHtmlBlank(activeScene?.draft_text || '');
   const mobileAIButtonLabel = aiIsStreaming
     ? 'AI \u0111ang vi\u1ebft'
     : hasAiDraftPreview
@@ -268,7 +275,7 @@ export default function SceneEditor() {
         <StoryEditor
           onEditorReady={handleEditorReady}
           isMobileLayout={isMobileLayout}
-          aiDraftPreview={aiDraftPreview}
+          aiDraftPreview={scopedAiDraftPreview}
         />
       </div>
 

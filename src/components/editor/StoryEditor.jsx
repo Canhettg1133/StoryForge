@@ -45,6 +45,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
   } = useProjectStore();
 
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
+  const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
   const saveTimerRef = useRef(null);
   const lastSavedRef = useRef('');
   const editorWrapperRef = useRef(null);
@@ -62,19 +63,18 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
 
   // Parse chapter outline data (summary + key_events from purpose)
   const chapterOutline = useMemo(() => {
-    const chapter = chapters.find(c => c.id === activeChapterId);
-    if (!chapter) return null;
-    const summary = chapter.summary || '';
+    if (!activeChapter) return null;
+    const summary = activeChapter.summary || '';
     let keyEvents = [];
-    if (chapter.purpose) {
+    if (activeChapter.purpose) {
       try {
-        const parsed = JSON.parse(chapter.purpose);
+        const parsed = JSON.parse(activeChapter.purpose);
         if (Array.isArray(parsed)) keyEvents = parsed;
       } catch { /* purpose is plain text, not JSON */ }
     }
     // Hiện panel ngay cả khi chưa có nội dung để tác giả có thể thêm
-    return { summary, keyEvents, purposeRaw: chapter.purpose || '' };
-  }, [activeChapterId, chapters]);
+    return { summary, keyEvents, purposeRaw: activeChapter.purpose || '' };
+  }, [activeChapter]);
 
   // [MỚI] Mở form chỉnh sửa — prefill từ data hiện tại
   const handleStartEdit = () => {
@@ -216,7 +216,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
   useEffect(() => {
     setAiDraft(null);
     setDismissedDraftKey('');
-  }, [activeSceneId]);
+  }, [activeSceneId, activeChapterId]);
 
   useEffect(() => {
     if (!activeScene || isEditorEmpty(editor, activeScene.draft_text || '')) return;
@@ -224,7 +224,12 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
   }, [editor, activeScene?.draft_text, activeScene?.id, activeScene]);
 
   useEffect(() => {
-    if (!aiDraftPreview || !activeScene || aiDraftPreview.sceneId !== activeScene.id) {
+    if (
+      !aiDraftPreview
+      || !activeScene
+      || aiDraftPreview.sceneId !== activeScene.id
+      || aiDraftPreview.chapterId !== activeChapterId
+    ) {
       setAiDraft(null);
       return;
     }
@@ -251,7 +256,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
       wordCount: countWords(text),
       isStreaming: !!aiDraftPreview.isStreaming,
     });
-  }, [aiDraftPreview, dismissedDraftKey, editor, activeScene?.id, activeScene?.draft_text, activeScene]);
+  }, [aiDraftPreview, dismissedDraftKey, editor, activeScene?.id, activeScene?.draft_text, activeScene, activeChapterId]);
 
   // [MỚI] Reset thanh cuộn khi đổi cảnh/chương
   useEffect(() => {
@@ -275,7 +280,8 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
   const wordCount = editor ? countWords(editor.getHTML()) : 0;
   const charCount = editor ? editor.storage.characterCount.characters() : 0;
   const isEmptySceneForAiDraft = !activeScene?.draft_text || isContentEmpty(activeScene.draft_text || '');
-  const useDesktopAiDraftFocus = !isMobileLayout && !!aiDraft && isEmptySceneForAiDraft;
+  const useAiDraftFocus = !!aiDraft && isEmptySceneForAiDraft;
+  const aiDraftTitle = aiDraft?.isStreaming ? 'AI đang viết cảnh trống này' : 'AI đã viết cảnh trống này';
 
   const chapterProgress = useMemo(() => {
     const chapter = chapters.find(c => c.id === activeChapterId);
@@ -339,6 +345,9 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
         <div className="story-editor-header-main">
           {!isMobileLayout && (
             <div className="story-editor-heading">
+              <div className="story-editor-scene-meta">
+                {activeChapter?.title || `Chương ${chapters.findIndex((chapter) => chapter.id === activeChapterId) + 1}`}
+              </div>
               <input
                 className="story-editor-scene-title"
                 value={activeScene.title}
@@ -536,7 +545,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
 
       {/* Editor */}
       <div
-        className={`story-editor-wrapper ${useDesktopAiDraftFocus ? 'story-editor-wrapper--desktop-draft' : ''}`}
+        className={`story-editor-wrapper ${useAiDraftFocus ? 'story-editor-wrapper--ai-draft-focus' : ''}`}
         ref={editorWrapperRef}
       >
         {aiDraft && (
@@ -547,7 +556,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
             <div className="story-editor-ai-draft__header">
               <div>
                 <div className="story-editor-ai-draft__kicker">Bản nháp AI</div>
-                <strong>{aiDraft.isStreaming ? 'AI đang viết cho cảnh trống này' : 'AI đã viết cho cảnh trống này'}</strong>
+                <strong>{aiDraftTitle}</strong>
                 <span>{aiDraft.wordCount.toLocaleString()} từ</span>
               </div>
               <div className="story-editor-ai-draft__actions">
