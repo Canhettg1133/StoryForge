@@ -1148,6 +1148,10 @@ const useArcGenStore = create((set, get) => ({
             });
         }
 
+        await db.projects.update(projectId, {
+            updated_at: Date.now(),
+            cloud_pending_local_fork_until_change: 0,
+        });
         await useProjectStore.getState().loadProject(projectId);
         return true;
     },
@@ -1222,6 +1226,10 @@ const useArcGenStore = create((set, get) => ({
             });
         }
 
+        await db.projects.update(projectId, {
+            updated_at: Date.now(),
+            cloud_pending_local_fork_until_change: 0,
+        });
         await useProjectStore.getState().loadProject(projectId);
         return true;
     },

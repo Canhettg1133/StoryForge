@@ -9,6 +9,66 @@
  */
 
 import db from '../db/database';
+import {
+  getStoryCreationSettings,
+  saveStoryCreationSettings,
+} from '../ai/storyCreationSettings';
+
+function parseProjectBackup(jsonString) {
+  const data = JSON.parse(jsonString);
+
+  if (!data._storyforge_version || !data.project) {
+    throw new Error('File khong hop le - khong phai backup StoryForge');
+  }
+
+  return data;
+}
+
+function resolveImportedProjectTitle(title, titleMode = 'imported') {
+  const normalizedTitle = String(title || 'Project').trim() || 'Project';
+  if (titleMode === 'original') {
+    return normalizedTitle;
+  }
+
+  if (/\(Imported\)$/i.test(normalizedTitle)) {
+    return normalizedTitle;
+  }
+
+  return `${normalizedTitle} (Imported)`;
+}
+
+function resolveImportedChatTitle(title, titleMode = 'imported') {
+  const normalizedTitle = String(title || 'Cuoc tro chuyen moi').trim() || 'Cuoc tro chuyen moi';
+  if (titleMode === 'original') {
+    return normalizedTitle;
+  }
+
+  if (/\(Imported\)$/i.test(normalizedTitle)) {
+    return normalizedTitle;
+  }
+
+  return `${normalizedTitle} (Imported)`;
+}
+
+function parseChatBackup(jsonString) {
+  const data = JSON.parse(jsonString);
+
+  if (!data?._storyforge_version || data?._cloud_scope !== 'chat' || !data?.thread || !Array.isArray(data?.messages)) {
+    throw new Error('File khong hop le - khong phai backup chat StoryForge');
+  }
+
+  return data;
+}
+
+function parsePromptBundleBackup(jsonString) {
+  const data = JSON.parse(jsonString);
+
+  if (!data?._storyforge_version || data?._cloud_scope !== 'prompt_bundle' || !data?.story_creation_settings) {
+    throw new Error('File khong hop le - khong phai backup prompt StoryForge');
+  }
+
+  return data;
+}
 
 function remapIdList(items, idMap) {
   if (!Array.isArray(items)) return [];
@@ -175,6 +235,56 @@ export async function exportProject(projectId) {
   return JSON.stringify(data, null, 2);
 }
 
+export async function exportChatThread(threadId) {
+  const normalizedThreadId = Number(threadId);
+  if (!Number.isFinite(normalizedThreadId) || normalizedThreadId <= 0) {
+    throw new Error('Khong tim thay thread chat de backup.');
+  }
+
+  const [thread, messages] = await Promise.all([
+    db.ai_chat_threads.get(normalizedThreadId),
+    db.ai_chat_messages.where('thread_id').equals(normalizedThreadId).sortBy('created_at'),
+  ]);
+
+  if (!thread) {
+    throw new Error('Khong tim thay thread chat local.');
+  }
+
+  let projectTitle = '';
+  let projectCloudSlug = '';
+  if (Number(thread.project_id) > 0) {
+    const project = await db.projects.get(Number(thread.project_id));
+    projectTitle = String(project?.title || '').trim();
+    projectCloudSlug = String(project?.cloud_project_slug || '').trim();
+  }
+
+  const data = {
+    _storyforge_version: 1,
+    _cloud_scope: 'chat',
+    _exported_at: new Date().toISOString(),
+    thread,
+    messages,
+    metadata: {
+      project_title: projectTitle,
+      project_cloud_slug: projectCloudSlug,
+      message_count: messages.length,
+    },
+  };
+
+  return JSON.stringify(data, null, 2);
+}
+
+export async function exportPromptBundle() {
+  const data = {
+    _storyforge_version: 1,
+    _cloud_scope: 'prompt_bundle',
+    _exported_at: new Date().toISOString(),
+    story_creation_settings: getStoryCreationSettings(),
+  };
+
+  return JSON.stringify(data, null, 2);
+}
+
 /**
  * Download project as JSON file.
  * @param {number} projectId
@@ -210,10 +320,13 @@ export async function downloadProjectJSON(projectId) {
  *   9. Everything else — uses accumulated ID maps
  *
  * @param {string} jsonString
+ * @param {{ titleMode?: 'imported' | 'original', preserveCloudMetadata?: boolean }} [options]
  * @returns {Promise<number>} new project ID
  */
-export async function importProject(jsonString) {
-  const data = JSON.parse(jsonString);
+export async function importProject(jsonString, options = {}) {
+  const data = parseProjectBackup(jsonString);
+  const titleMode = options.titleMode === 'original' ? 'original' : 'imported';
+  const preserveCloudMetadata = options.preserveCloudMetadata === true;
 
   if (!data._storyforge_version || !data.project) {
     throw new Error('File không hợp lệ — không phải backup StoryForge');
@@ -223,10 +336,17 @@ export async function importProject(jsonString) {
   // 1. Create new project (strip old ID)
   // ═══════════════════════════════════════════
   const { id: _oldProjectId, ...projectData } = data.project;
+  const normalizedProjectData = { ...projectData };
+  if (!preserveCloudMetadata) {
+    delete normalizedProjectData.cloud_project_slug;
+    delete normalizedProjectData.cloud_last_synced_at;
+    delete normalizedProjectData.cloud_last_server_updated_at;
+    delete normalizedProjectData.cloud_owner_user_id;
+  }
   const now = Date.now();
   const newProjectId = await db.projects.add({
-    ...projectData,
-    title: `${projectData.title} (Imported)`,
+    ...normalizedProjectData,
+    title: resolveImportedProjectTitle(projectData.title, titleMode),
     created_at: now,
     updated_at: now,
   });
@@ -591,7 +711,74 @@ export async function importProject(jsonString) {
  * @param {File} file
  * @returns {Promise<number>} new project ID
  */
-export async function importProjectFromFile(file) {
+export async function importProjectFromFile(file, options = {}) {
   const text = await file.text();
-  return importProject(text);
+  return importProject(text, options);
+}
+
+export async function importChatThread(jsonString, options = {}) {
+  const data = parseChatBackup(jsonString);
+  const titleMode = options.titleMode === 'original' ? 'original' : 'imported';
+  const preserveCloudMetadata = options.preserveCloudMetadata !== false;
+  const originalThread = data.thread || {};
+  const originalMessages = Array.isArray(data.messages) ? data.messages : [];
+  const requestedProjectCloudSlug = String(data?.metadata?.project_cloud_slug || '').trim();
+
+  let targetProjectId = 0;
+  let nextChatMode = 'free';
+  let nextSystemPrompt = '';
+
+  if (requestedProjectCloudSlug) {
+    const allProjects = await db.projects.toArray();
+    const targetProject = allProjects.find(
+      (project) => String(project?.cloud_project_slug || '').trim() === requestedProjectCloudSlug,
+    ) || null;
+    if (targetProject) {
+      targetProjectId = Number(targetProject.id);
+      nextChatMode = originalThread.chat_mode || 'story';
+      nextSystemPrompt = String(originalThread.system_prompt || '').trim();
+    }
+  }
+
+  const now = Date.now();
+  const { id: _oldThreadId, ...threadData } = originalThread;
+  const normalizedThreadData = { ...threadData };
+  if (!preserveCloudMetadata) {
+    delete normalizedThreadData.cloud_chat_slug;
+    delete normalizedThreadData.cloud_last_synced_at;
+    delete normalizedThreadData.cloud_last_server_updated_at;
+    delete normalizedThreadData.cloud_owner_user_id;
+  }
+  const newThreadId = await db.ai_chat_threads.add({
+    ...normalizedThreadData,
+    project_id: targetProjectId,
+    chat_mode: nextChatMode,
+    system_prompt: nextSystemPrompt,
+    title: resolveImportedChatTitle(normalizedThreadData.title, titleMode),
+    created_at: now,
+    updated_at: now,
+  });
+
+  const baseCreatedAt = now;
+  for (let index = 0; index < originalMessages.length; index += 1) {
+    const message = originalMessages[index];
+    const { id: _oldMessageId, thread_id: _oldMessageThreadId, ...messageData } = message;
+    await db.ai_chat_messages.add({
+      ...messageData,
+      project_id: targetProjectId,
+      thread_id: newThreadId,
+      created_at: baseCreatedAt + index,
+    });
+  }
+
+  return {
+    newThreadId,
+    projectId: targetProjectId,
+    messageCount: originalMessages.length,
+  };
+}
+
+export function importPromptBundle(jsonString) {
+  const data = parsePromptBundleBackup(jsonString);
+  return saveStoryCreationSettings(data.story_creation_settings);
 }

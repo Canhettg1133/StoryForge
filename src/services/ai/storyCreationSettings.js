@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'sf-story-creation-settings';
+const META_KEY = 'sf-story-creation-settings-meta';
 
 const PROJECT_WIZARD_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON format:
 {
@@ -238,6 +239,54 @@ function cloneDefaults() {
   return JSON.parse(JSON.stringify(DEFAULT_STORY_CREATION_SETTINGS));
 }
 
+function readMeta() {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return {
+      lastModifiedAt: 0,
+      lastSyncedAt: 0,
+    };
+  }
+
+  try {
+    const saved = localStorage.getItem(META_KEY);
+    const parsed = saved ? JSON.parse(saved) : {};
+    return {
+      lastModifiedAt: Number(parsed?.lastModifiedAt || 0),
+      lastSyncedAt: Number(parsed?.lastSyncedAt || 0),
+      lastServerUpdatedAt: String(parsed?.lastServerUpdatedAt || '').trim(),
+      ownerUserId: String(parsed?.ownerUserId || '').trim(),
+    };
+  } catch {
+    return {
+      lastModifiedAt: 0,
+      lastSyncedAt: 0,
+      lastServerUpdatedAt: '',
+      ownerUserId: '',
+    };
+  }
+}
+
+function writeMeta(nextMeta = {}) {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return {
+      lastModifiedAt: Number(nextMeta?.lastModifiedAt || 0),
+      lastSyncedAt: Number(nextMeta?.lastSyncedAt || 0),
+      lastServerUpdatedAt: String(nextMeta?.lastServerUpdatedAt || ''),
+      ownerUserId: String(nextMeta?.ownerUserId || ''),
+    };
+  }
+
+  const current = readMeta();
+  const merged = {
+    lastModifiedAt: Number(nextMeta?.lastModifiedAt ?? current.lastModifiedAt ?? 0),
+    lastSyncedAt: Number(nextMeta?.lastSyncedAt ?? current.lastSyncedAt ?? 0),
+    lastServerUpdatedAt: String(nextMeta?.lastServerUpdatedAt ?? current.lastServerUpdatedAt ?? '').trim(),
+    ownerUserId: String(nextMeta?.ownerUserId ?? current.ownerUserId ?? '').trim(),
+  };
+  localStorage.setItem(META_KEY, JSON.stringify(merged));
+  return merged;
+}
+
 function stripProtectedSystemPrompt(groupKey, value) {
   const protection = STORY_CREATION_SYSTEM_PROMPT_PROTECTIONS[groupKey];
   const raw = String(value || '').trim();
@@ -310,6 +359,7 @@ export function saveStoryCreationSettings(nextSettings) {
   if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
   }
+  writeMeta({ lastModifiedAt: Date.now() });
   return merged;
 }
 
@@ -317,6 +367,7 @@ export function resetStoryCreationSettings() {
   if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
     localStorage.removeItem(STORAGE_KEY);
   }
+  writeMeta({ lastModifiedAt: Date.now() });
   return cloneDefaults();
 }
 
@@ -332,5 +383,19 @@ export function renderStoryCreationTemplate(template, variables = {}) {
   return String(template || '').replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key) => {
     const value = variables[key];
     return value === null || value === undefined ? '' : String(value);
+  });
+}
+
+export function getStoryCreationSettingsMeta() {
+  return readMeta();
+}
+
+export function markStoryCreationSettingsSynced(timestamp = Date.now(), options = {}) {
+  const normalizedTimestamp = Number(timestamp || Date.now());
+  return writeMeta({
+    lastModifiedAt: normalizedTimestamp,
+    lastSyncedAt: normalizedTimestamp,
+    lastServerUpdatedAt: String(options.serverUpdatedAt || '').trim(),
+    ownerUserId: String(options.ownerUserId || '').trim(),
   });
 }

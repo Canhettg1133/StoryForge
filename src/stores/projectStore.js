@@ -9,6 +9,7 @@ import {
   purgeChapterCanonState,
   rebuildCanonFromChapter as rebuildCanonFromChapterEngine,
 } from '../services/canon/engine';
+import { deleteProjectCascade } from '../services/db/projectDataService.js';
 import useAIStore from './aiStore';
 import useCodexStore from './codexStore';
 
@@ -172,6 +173,37 @@ function yieldToUi() {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
+}
+
+async function touchProjectUpdatedAt(projectId, setState) {
+  const normalizedProjectId = Number(projectId);
+  if (!Number.isFinite(normalizedProjectId) || normalizedProjectId <= 0) {
+    return 0;
+  }
+
+  const nextUpdatedAt = Date.now();
+  await db.projects.update(normalizedProjectId, {
+    updated_at: nextUpdatedAt,
+    cloud_pending_local_fork_until_change: 0,
+  });
+
+  if (typeof setState === 'function') {
+    setState((state) => {
+      if (state.currentProject?.id !== normalizedProjectId) {
+        return {};
+      }
+
+      return {
+        currentProject: {
+          ...state.currentProject,
+          updated_at: nextUpdatedAt,
+          cloud_pending_local_fork_until_change: 0,
+        },
+      };
+    });
+  }
+
+  return nextUpdatedAt;
 }
 
 function parsePromptTemplates(rawValue) {
@@ -442,52 +474,7 @@ const useProjectStore = create((set, get) => ({
   },
 
   deleteProject: async (id) => {
-    // First: get plotThread IDs for indirect threadBeats deletion
-    const projectPlotThreads = await db.plotThreads.where('project_id').equals(id).toArray();
-    const plotThreadIds = projectPlotThreads.map(pt => pt.id);
-
-    await Promise.all([
-      db.projects.delete(id),
-      db.chapters.where('project_id').equals(id).delete(),
-      db.scenes.where('project_id').equals(id).delete(),
-      db.characters.where('project_id').equals(id).delete(),
-      db.characterStates.where('project_id').equals(id).delete(),
-      db.relationships.where('project_id').equals(id).delete(),
-      db.locations.where('project_id').equals(id).delete(),
-      db.objects.where('project_id').equals(id).delete(),
-      db.canonFacts.where('project_id').equals(id).delete(),
-      db.plotThreads.where('project_id').equals(id).delete(),
-      db.timelineEvents.where('project_id').equals(id).delete(),
-      db.stylePacks.where('project_id').equals(id).delete(),
-      db.voicePacks.where('project_id').equals(id).delete(),
-      db.aiJobs.where('project_id').equals(id).delete(),
-      db.qaReports.where('project_id').equals(id).delete(),
-      db.suggestions.where('project_id').equals(id).delete(),
-      db.project_analysis_snapshots.where('project_id').equals(id).delete(),
-      // Phase 3+: tables added in later versions
-      db.worldTerms.where('project_id').equals(id).delete(),
-      db.taboos.where('project_id').equals(id).delete(),
-      db.chapterMeta.where('project_id').equals(id).delete(),
-      db.entityTimeline.where('project_id').equals(id).delete(),
-      db.factions.where('project_id').equals(id).delete(),
-      db.macro_arcs.where('project_id').equals(id).delete(),
-      db.arcs.where('project_id').equals(id).delete(),
-      db.story_events.where('project_id').equals(id).delete(),
-      db.entity_state_current.where('project_id').equals(id).delete(),
-      db.plot_thread_state.where('project_id').equals(id).delete(),
-      db.validator_reports.where('project_id').equals(id).delete(),
-      db.memory_evidence.where('project_id').equals(id).delete(),
-      db.chapter_revisions.where('project_id').equals(id).delete(),
-      db.chapter_commits.where('project_id').equals(id).delete(),
-      db.chapter_snapshots.where('project_id').equals(id).delete(),
-      db.canon_purge_archives.where('project_id').equals(id).delete(),
-      db.ai_chat_threads.where('project_id').equals(id).delete(),
-      db.ai_chat_messages.where('project_id').equals(id).delete(),
-      // threadBeats: no project_id index, delete via plotThread IDs
-      ...(plotThreadIds.length > 0
-        ? [db.threadBeats.where('plot_thread_id').anyOf(plotThreadIds).delete()]
-        : []),
-    ]);
+    await deleteProjectCascade(id);
     set({
       currentProject: null,
       chapters: [],
@@ -614,6 +601,8 @@ const useProjectStore = create((set, get) => ({
       characters_present: '[]',
     });
 
+    await touchProjectUpdatedAt(pid, set);
+
     if (currentProject?.id === pid) {
       await get().loadProject(pid, { activeChapterId: chapterId, activeSceneId: sceneId });
     }
@@ -626,6 +615,7 @@ const useProjectStore = create((set, get) => ({
     if (!chapter) return;
 
     await db.chapters.update(id, data);
+    await touchProjectUpdatedAt(chapter.project_id, set);
     const { currentProject } = get();
     if (currentProject?.id === chapter.project_id) {
       set((state) => ({
@@ -650,6 +640,7 @@ const useProjectStore = create((set, get) => ({
     }
     await reindexProjectChapters(chapter.project_id);
     await rebuildCanonFromChapterEngine(chapter.project_id);
+    await touchProjectUpdatedAt(chapter.project_id, set);
     const { currentProject } = get();
     if (currentProject?.id === chapter.project_id) {
       await get().loadProject(currentProject.id);
@@ -685,6 +676,7 @@ const useProjectStore = create((set, get) => ({
       characters_present: '[]',
     });
 
+    await touchProjectUpdatedAt(currentProject.id, set);
     await get().loadProject(currentProject.id, { activeChapterId: chapterId, activeSceneId: sceneId });
     return sceneId;
   },
@@ -694,6 +686,7 @@ const useProjectStore = create((set, get) => ({
     if (!scene) return;
 
     await db.scenes.update(id, data);
+    await touchProjectUpdatedAt(scene.project_id, set);
 
     const { currentProject } = get();
     if (currentProject?.id === scene.project_id) {
@@ -714,6 +707,7 @@ const useProjectStore = create((set, get) => ({
     await db.scenes.delete(id);
     await reindexChapterScenes(scene.chapter_id);
     await get().refreshChapterWordCount(scene.chapter_id);
+    await touchProjectUpdatedAt(scene.project_id, set);
     const { currentProject } = get();
     if (currentProject?.id === scene.project_id) {
       await get().loadProject(currentProject.id);
@@ -987,7 +981,7 @@ const useProjectStore = create((set, get) => ({
   updateProjectTimestamp: async () => {
     const { currentProject } = get();
     if (currentProject) {
-      await db.projects.update(currentProject.id, { updated_at: Date.now() });
+      await touchProjectUpdatedAt(currentProject.id, set);
     }
   },
 }));

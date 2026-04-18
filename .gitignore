@@ -31,3 +31,4 @@ _reference/
 external/
 data/*.sqlite*
 dist/
+.vercel

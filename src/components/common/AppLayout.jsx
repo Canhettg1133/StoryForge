@@ -7,6 +7,7 @@ import JobNotificationToast from '../jobs/JobNotificationToast';
 import JobQueuePanel from '../jobs/JobQueuePanel';
 import StorageWarning from './StorageWarning';
 import useMobileLayout from '../../hooks/useMobileLayout';
+import CloudAutoSyncAgent from '../cloud/CloudAutoSyncAgent';
 import PersistentTranslatorHost from '../translator/PersistentTranslatorHost';
 import './AppLayout.css';
 
@@ -49,6 +50,7 @@ export default function AppLayout() {
         </div>
       </main>
       <StorageWarning />
+      <CloudAutoSyncAgent />
       {PRODUCT_SURFACE.showJobUi ? <JobQueuePanel /> : null}
       {PRODUCT_SURFACE.showJobUi ? <JobNotificationToast /> : null}
     </div>
