@@ -15,6 +15,9 @@ import {
   purgeChapterCanonState,
   rebuildCanonFromChapter as rebuildCanonFromChapterEngine,
 } from '../services/canon/projection';
+import { getChapterCanonState } from '../services/canon/queries';
+import { CHAPTER_COMMIT_STATUS } from '../services/canon/constants';
+import { isRevisionFreshForCanonText } from '../services/canon/utils';
 import { deleteProjectCascade } from '../services/db/projectDataService.js';
 import useAIStore from './aiStore';
 import useCodexStore from './codexStore';
@@ -175,6 +178,11 @@ const CHAPTER_COMPLETION_ROUTE_OPTIONS = {
   providerOverride: PROVIDERS.GEMINI_PROXY,
   qualityOverride: QUALITY_MODES.BALANCED,
 };
+
+const COMPLETION_SUCCESS_CANON_STATUSES = new Set([
+  CHAPTER_COMMIT_STATUS.CANONICAL,
+  CHAPTER_COMMIT_STATUS.HAS_WARNINGS,
+]);
 
 function sanitizeChapterText(scenes = []) {
   return scenes
@@ -798,6 +806,7 @@ const useProjectStore = create((set, get) => ({
       let canonResult = null;
       let canonProcessed = false;
       let canonSucceeded = false;
+      let canonReused = false;
       let canonRuntimeError = '';
       const { summarizeChapter, extractFromChapter } = useAIStore.getState();
 
@@ -861,15 +870,51 @@ const useProjectStore = create((set, get) => ({
       get().setChapterCompletionState(chapterId, {
         phase: 'canon',
         progress: 72,
-        message: 'Dang phan tich su that va canon hoa...',
+        message: 'Dang kiem tra trang thai phan tich su that...',
       });
       await yieldToUi();
+      let existingCanonState = null;
       try {
-        canonResult = await canonicalizeChapterEngine(currentProject.id, chapterId, {
-          routeOptions: CHAPTER_COMPLETION_ROUTE_OPTIONS,
-        });
-        canonProcessed = true;
-        canonSucceeded = canonResult?.ok !== false;
+        existingCanonState = await getChapterCanonState(currentProject.id, chapterId);
+      } catch (error) {
+        console.warn('[ChapterCompletion] Read canon state failed, falling back to canonicalize:', error);
+      }
+
+      const reusableRevision = existingCanonState?.canonicalRevision || existingCanonState?.revision || null;
+      const canonFreshForCurrentText = isRevisionFreshForCanonText(reusableRevision, chapterText);
+      const canonStatus = existingCanonState?.status || CHAPTER_COMMIT_STATUS.DRAFT;
+      const canonHasBlockingErrors = canonStatus === CHAPTER_COMMIT_STATUS.BLOCKED
+        || (existingCanonState?.errorCount || 0) > 0;
+      const canonCanCompleteFromCache = canonFreshForCurrentText
+        && COMPLETION_SUCCESS_CANON_STATUSES.has(canonStatus)
+        && !canonHasBlockingErrors;
+      const canonStillBlockedFromCache = canonFreshForCurrentText && canonHasBlockingErrors;
+
+      try {
+        if (canonCanCompleteFromCache || canonStillBlockedFromCache) {
+          canonProcessed = true;
+          canonReused = true;
+          canonSucceeded = canonCanCompleteFromCache;
+          canonResult = {
+            ok: canonCanCompleteFromCache,
+            reused: true,
+            status: canonStatus,
+            revisionId: reusableRevision?.id || existingCanonState?.commit?.current_revision_id || null,
+            reports: existingCanonState?.reports || [],
+          };
+        } else {
+          get().setChapterCompletionState(chapterId, {
+            phase: 'canon',
+            progress: 76,
+            message: 'Dang phan tich su that va canon hoa...',
+          });
+          await yieldToUi();
+          canonResult = await canonicalizeChapterEngine(currentProject.id, chapterId, {
+            routeOptions: CHAPTER_COMPLETION_ROUTE_OPTIONS,
+          });
+          canonProcessed = true;
+          canonSucceeded = canonResult?.ok !== false;
+        }
       } catch (error) {
         console.warn('[ChapterCompletion] Canonicalize failed:', error);
         canonRuntimeError = error?.message || '';
@@ -915,9 +960,13 @@ const useProjectStore = create((set, get) => ({
           ? (canonSucceeded ? 'success' : 'blocked')
           : 'runtime',
         message: canonSucceeded
-          ? 'Da hoan thanh chuong.'
+          ? (canonReused
+            ? 'Da hoan thanh chuong. Phan tich su that da co san va van khop noi dung.'
+            : 'Da hoan thanh chuong.')
           : canonProcessed
-            ? 'Phan tich su that phat hien mau thuan, chuong chua duoc danh dau hoan thanh.'
+            ? (canonReused
+              ? 'Phan tich su that hien tai van dang co loi chan, chuong chua duoc danh dau hoan thanh.'
+              : 'Phan tich su that phat hien mau thuan, chuong chua duoc danh dau hoan thanh.')
             : (canonRuntimeError
               ? `Khong the hoan thanh chuong vi loi canon hoa: ${canonRuntimeError}`
               : 'Khong the hoan thanh chuong vi loi runtime khi canon hoa.'),

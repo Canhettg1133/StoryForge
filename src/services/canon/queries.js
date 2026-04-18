@@ -1,7 +1,13 @@
 import db from '../db/database';
 import { CANON_SEVERITY, CHAPTER_COMMIT_STATUS } from './constants';
 import { collectFactStatesFromSnapshot } from './core';
-import { cleanText, uniqueList } from './utils';
+import {
+  buildCanonChapterTextFromScenes,
+  buildCanonContentSignature,
+  cleanText,
+  isRevisionFreshForCanonText,
+  uniqueList,
+} from './utils';
 
 const RETRIEVAL_MODE_CONFIG = {
   compact: {
@@ -234,6 +240,11 @@ export async function buildRetrievalPacket({
 }
 
 export async function getChapterCanonState(projectId, chapterId) {
+  const scenes = chapterId && db.scenes?.where
+    ? await db.scenes.where('chapter_id').equals(chapterId).sortBy('order_index')
+    : [];
+  const currentChapterText = buildCanonChapterTextFromScenes(scenes);
+  const currentContentSignature = buildCanonContentSignature(currentChapterText);
   const commit = await db.chapter_commits
     .where('[project_id+chapter_id]')
     .equals([projectId, chapterId])
@@ -245,9 +256,21 @@ export async function getChapterCanonState(projectId, chapterId) {
       errorCount: 0,
       reports: [],
       revision: null,
+      canonicalRevision: null,
+      currentContentSignature,
+      revisionContentSignature: '',
+      isFresh: false,
+      isStale: false,
     };
   }
   const revision = commit.current_revision_id ? await db.chapter_revisions.get(commit.current_revision_id) : null;
+  const canonicalRevision = commit.canonical_revision_id && commit.canonical_revision_id !== commit.current_revision_id
+    ? await db.chapter_revisions.get(commit.canonical_revision_id)
+    : (commit.canonical_revision_id ? revision : null);
+  const freshnessRevision = canonicalRevision || revision;
+  const revisionContentSignature = freshnessRevision?.content_signature
+    || buildCanonContentSignature(freshnessRevision?.chapter_text || '');
+  const isFresh = isRevisionFreshForCanonText(freshnessRevision, currentChapterText);
   const reports = commit.current_revision_id
     ? await db.validator_reports.where('[project_id+revision_id]').equals([projectId, commit.current_revision_id]).toArray()
     : [];
@@ -257,7 +280,12 @@ export async function getChapterCanonState(projectId, chapterId) {
     errorCount: commit.error_count || 0,
     reports,
     revision,
+    canonicalRevision,
     commit,
+    currentContentSignature,
+    revisionContentSignature,
+    isFresh,
+    isStale: Boolean(freshnessRevision && !isFresh),
   };
 }
 

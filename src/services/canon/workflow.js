@@ -28,19 +28,16 @@ import {
   validateDraftTextAgainstTruth,
 } from './validation';
 import { resolveCanonFactRegistration } from '../entityIdentity/factIdentity.js';
-import { cleanText } from './utils';
+import {
+  buildCanonChapterTextFromScenes,
+  buildCanonContentSignature,
+  cleanText,
+} from './utils';
 
 function normalizeAiOpsResponse(parsed) {
   if (Array.isArray(parsed)) return parsed;
   if (parsed && Array.isArray(parsed.ops)) return parsed.ops;
   return [];
-}
-
-function chapterTextFromScenes(scenes) {
-  return (scenes || [])
-    .map((scene) => cleanText(scene.draft_text || scene.final_text || ''))
-    .filter(Boolean)
-    .join('\n\n');
 }
 
 function sendAiTask(taskType, messages, options = {}) {
@@ -86,6 +83,7 @@ export async function createChapterRevision({
     revision_number: revisionNumber,
     status,
     chapter_text: chapterText,
+    content_signature: buildCanonContentSignature(chapterText),
     candidate_ops: '[]',
     validator_summary: null,
     ...metadata,
@@ -362,7 +360,7 @@ function resolveFactRegistrations(candidateOps, factStates) {
 
 export async function canonicalizeChapter(projectId, chapterId, options = {}) {
   const scenes = await getChapterScenes(chapterId);
-  const chapterText = chapterTextFromScenes(scenes);
+  const chapterText = buildCanonChapterTextFromScenes(scenes);
   const commit = await getOrCreateChapterCommit(projectId, chapterId);
   const revision = await createChapterRevision({
     projectId,
@@ -458,7 +456,7 @@ export async function canonicalizeCandidateOps({
     : null;
   const baseOps = loadRevisionOps(currentCanonicalRevision);
   const mergedOps = dedupeCandidateOps([...baseOps, ...candidateOps]);
-  const fallbackText = chapterText || chapterTextFromScenes(await getChapterScenes(chapterId));
+  const fallbackText = chapterText || buildCanonChapterTextFromScenes(await getChapterScenes(chapterId));
   const revision = await createChapterRevision({
     projectId,
     chapterId,

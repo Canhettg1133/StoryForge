@@ -177,6 +177,9 @@ function createMockDb(seed = {}) {
     'worldTerms',
     'suggestions',
     'entity_resolution_candidates',
+    'chapter_commits',
+    'chapter_revisions',
+    'validator_reports',
     'canonFacts',
     'project_analysis_snapshots',
     'relationships',
@@ -322,6 +325,54 @@ describe('phase10 entity materialization flows', () => {
     expect(suggestions.some((item) => item.type === 'entity_resolution')).toBe(true);
     const candidates = await db.entity_resolution_candidates.toArray();
     expect(candidates[0].resolution_status).toBe('ambiguous_review');
+  });
+
+  it('skips chapter canonization when existing canon is fresh for current chapter text', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh nhin ve phia xa.', final_text: '', order_index: 0 }],
+      chapter_revisions: [{
+        id: 501,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'canonical',
+        chapter_text: 'Anh nhin ve phia xa.',
+      }],
+      chapter_commits: [{
+        id: 601,
+        project_id: 1,
+        chapter_id: 11,
+        current_revision_id: 501,
+        canonical_revision_id: 501,
+        status: 'canonical',
+        warning_count: 0,
+        error_count: 0,
+      }],
+      validator_reports: [],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: {
+        characters: [],
+      },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh nhin ve phia xa.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(result.canonResult.reused).toBe(true);
+    expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
+    expect((await db.chapters.get(11)).status).toBe('done');
   });
 
   it('saves analysis snapshot without auto-creating ambiguous character duplicates', async () => {

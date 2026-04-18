@@ -6,6 +6,30 @@ export function cleanText(value) {
     .trim();
 }
 
+export function buildCanonChapterTextFromScenes(scenes = []) {
+  return (scenes || [])
+    .map((scene) => cleanText(scene.draft_text || scene.final_text || ''))
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+export function buildCanonContentSignature(value = '') {
+  const normalized = cleanText(value);
+  let hash = 2166136261;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${normalized.length}:${(hash >>> 0).toString(36)}`;
+}
+
+export function isRevisionFreshForCanonText(revision, chapterText = '') {
+  if (!revision) return false;
+  const currentSignature = buildCanonContentSignature(chapterText);
+  const revisionSignature = revision.content_signature || buildCanonContentSignature(revision.chapter_text || '');
+  return currentSignature === revisionSignature;
+}
+
 export function normalizeKey(value) {
   return cleanText(value)
     .toLowerCase()
