@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { Analytics } from '@vercel/analytics/react';
 import AppLayout from './components/common/AppLayout';
 import { PRODUCT_SURFACE } from './config/productSurface';
 import Dashboard from './pages/Dashboard/Dashboard';
@@ -30,40 +31,43 @@ export default function App() {
   const roadmapFallback = <Navigate to="../story-bible" replace />;
 
   return (
-    <BrowserRouter>
-      <Routes>
-          <Route element={<AppLayout />}>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/guide" element={<GeminiSetupGuide />} />
-          <Route path="/guide/proxy" element={<GeminiProxyGuide />} />
-          <Route path="/guide/translator" element={<TranslatorSetupGuide />} />
-          <Route path="/ai-chat" element={<ProjectChat />} />
-          <Route path="/translator" element={<Translator />} />
-          <Route path="/prompt-manager" element={<StoryCreationSettings />} />
-          <Route path="/story-creation-settings" element={<Navigate to="/prompt-manager" replace />} />
+    <>
+      <BrowserRouter>
+        <Routes>
+            <Route element={<AppLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/guide" element={<GeminiSetupGuide />} />
+            <Route path="/guide/proxy" element={<GeminiProxyGuide />} />
+            <Route path="/guide/translator" element={<TranslatorSetupGuide />} />
+            <Route path="/ai-chat" element={<ProjectChat />} />
+            <Route path="/translator" element={<Translator />} />
+            <Route path="/prompt-manager" element={<StoryCreationSettings />} />
+            <Route path="/story-creation-settings" element={<Navigate to="/prompt-manager" replace />} />
 
-          {/* Project-specific routes */}
-          <Route path="/project/:projectId" element={<ProjectLayout />}>
-            <Route path="story-bible" element={<StoryBible />} />
-            <Route path="su-that" element={<CanonTruth />} />
-            <Route path="outline" element={<OutlineBoard />} />
-            <Route path="characters" element={<CharacterHub />} />
-            <Route path="world" element={<WorldLore />} />
-            <Route path="editor" element={<SceneEditor />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="chat" element={<ProjectChat />} />
-            <Route path="prompts" element={<ProjectPromptManager />} />
-            <Route path="prompt-manager" element={<StoryCreationSettings />} />
-            <Route path="timeline" element={PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback} />
-            <Route path="revision" element={PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback} />
-            <Route path="style-lab" element={PRODUCT_SURFACE.showRoadmapPages ? <StyleLab /> : roadmapFallback} />
-            <Route path="lab" element={PRODUCT_SURFACE.showLabs ? <NarrativeLab /> : labFallback} />
-            <Route path="corpus-lab" element={PRODUCT_SURFACE.showLabs ? <CorpusLab /> : labFallback} />
-            <Route path="corpus-lab/viewer" element={PRODUCT_SURFACE.showLabs ? <AnalysisViewer /> : labFallback} />
+            {/* Project-specific routes */}
+            <Route path="/project/:projectId" element={<ProjectLayout />}>
+              <Route path="story-bible" element={<StoryBible />} />
+              <Route path="su-that" element={<CanonTruth />} />
+              <Route path="outline" element={<OutlineBoard />} />
+              <Route path="characters" element={<CharacterHub />} />
+              <Route path="world" element={<WorldLore />} />
+              <Route path="editor" element={<SceneEditor />} />
+              <Route path="settings" element={<Settings />} />
+              <Route path="chat" element={<ProjectChat />} />
+              <Route path="prompts" element={<ProjectPromptManager />} />
+              <Route path="prompt-manager" element={<StoryCreationSettings />} />
+              <Route path="timeline" element={PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback} />
+              <Route path="revision" element={PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback} />
+              <Route path="style-lab" element={PRODUCT_SURFACE.showRoadmapPages ? <StyleLab /> : roadmapFallback} />
+              <Route path="lab" element={PRODUCT_SURFACE.showLabs ? <NarrativeLab /> : labFallback} />
+              <Route path="corpus-lab" element={PRODUCT_SURFACE.showLabs ? <CorpusLab /> : labFallback} />
+              <Route path="corpus-lab/viewer" element={PRODUCT_SURFACE.showLabs ? <AnalysisViewer /> : labFallback} />
+            </Route>
           </Route>
-        </Route>
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+      <Analytics />
+    </>
   );
 }
