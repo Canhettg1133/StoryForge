@@ -24,7 +24,7 @@ import {
   createChapterRevision,
   validateRevision,
   repairChapterRevision as repairChapterRevisionEngine,
-} from '../services/canon/engine';
+} from '../services/canon/workflow';
 import { CANON_OP_TYPES } from '../services/canon/constants';
 
 // Inject router into aiService (avoid circular import)

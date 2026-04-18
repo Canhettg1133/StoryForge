@@ -94,8 +94,10 @@ async function loadContextEngine(seed) {
   vi.resetModules();
   const db = createMockDb(seed);
   vi.doMock('../../services/db/database', () => ({ default: db }));
-  vi.doMock('../../services/canon/engine', () => ({
+  vi.doMock('../../services/canon/queries', () => ({
     buildRetrievalPacket: vi.fn(async () => null),
+  }));
+  vi.doMock('../../services/canon/state', () => ({
     buildCharacterStateSummary: vi.fn((_state, fallback) => fallback || ''),
   }));
   return {

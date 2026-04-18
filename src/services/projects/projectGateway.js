@@ -1,4 +1,5 @@
 import { corpusApi } from '../api/corpusApi.js';
+import { saveAnalysisSnapshotToProject as saveLocalAnalysisSnapshotToProject } from '../viewer/viewerDbService.js';
 
 function dedupeSnapshots(items = []) {
   const map = new Map();
@@ -28,7 +29,7 @@ export async function getProjectAnalysisSnapshots(projectId, limit = 30) {
 }
 
 export async function saveAnalysisSnapshotToProject(payload) {
-  return corpusApi.saveProjectAnalysisSnapshot(payload.projectId, {
+  const remote = await corpusApi.saveProjectAnalysisSnapshot(payload.projectId, {
     corpusId: payload.corpusId,
     analysisId: payload.analysisId,
     status: payload.status,
@@ -36,6 +37,16 @@ export async function saveAnalysisSnapshotToProject(payload) {
     result: payload.result,
     artifactVersion: payload.result?.artifact_version || payload.result?.artifactVersion || 'v2',
   });
+  const local = await saveLocalAnalysisSnapshotToProject({
+    ...payload,
+    materializeProjectEntities: payload.materializeProjectEntities !== false,
+  });
+  return {
+    ...remote,
+    localSnapshotId: local?.snapshotId || null,
+    materialized: local?.materialized ?? remote?.materialized ?? null,
+    localSummary: local?.summary || null,
+  };
 }
 
 export default {

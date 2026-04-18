@@ -12,6 +12,14 @@ import {
   mergeCharacterPatch,
   normalizeCharacterIdentityKey,
 } from '../../utils/characterIdentity.js';
+import {
+  normalizeEntityIdentity,
+  resolveAndMaterializeEntityCandidates,
+  stageExtractedEntityCandidates,
+} from '../entityIdentity/index.js';
+import {
+  normalizeCanonFactRecord,
+} from '../entityIdentity/factIdentity.js';
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -70,11 +78,12 @@ async function upsertProjectLocationFromEvent(projectId, eventPayload) {
     return null;
   }
 
-  const normalized = toComparableName(locationName);
+  const identity = normalizeEntityIdentity('location', { name: locationName });
+  const normalized = identity.normalized_name;
   const existing = await db.locations
     .where('project_id')
     .equals(projectId)
-    .filter((item) => toComparableName(item?.name) === normalized)
+    .filter((item) => (item?.normalized_name || toComparableName(item?.name)) === normalized)
     .first();
 
   const detailParts = [
@@ -100,6 +109,9 @@ async function upsertProjectLocationFromEvent(projectId, eventPayload) {
   return db.locations.add({
     project_id: projectId,
     name: locationName,
+    normalized_name: identity.normalized_name,
+    alias_keys: identity.alias_keys,
+    identity_key: identity.identity_key,
     aliases: [],
     description: `Nhap tu Corpus Analysis (${locationName})`,
     details: details || '',
@@ -166,11 +178,16 @@ async function upsertCanonFactFromEvent({
     notes: normalizeText(notes),
     auto_generated: true,
   };
+  const normalizedFact = normalizeCanonFactRecord({
+    ...patch,
+    description,
+  });
 
   if (existing) {
     await db.canonFacts.update(existing.id, {
       ...patch,
       description: normalizeText(existing.description) || description,
+      ...normalizedFact,
     });
     return existing.id;
   }
@@ -179,6 +196,7 @@ async function upsertCanonFactFromEvent({
     project_id: projectId,
     description,
     ...patch,
+    ...normalizedFact,
     created_at: Date.now(),
   });
 }
@@ -717,9 +735,7 @@ async function materializeSnapshotIntoProject(projectId, result) {
   const objects = extractObjects(raw);
   const locations = extractLocations(raw);
   const worldTerms = extractWorldTerms(raw);
-  const timelineEvents = flattenEventsForTimeline(raw);
-
-  const now = Date.now();
+  const sessionKey = `analysis_snapshot:${projectId}:${Date.now()}`;
   const stats = {
     worldUpdated: false,
     charactersAdded: 0,
@@ -741,10 +757,7 @@ async function materializeSnapshotIntoProject(projectId, result) {
   await db.transaction(
     'rw',
     db.projects,
-    db.characters,
-    db.locations,
-    db.objects,
-    db.worldTerms,
+    db.entity_resolution_candidates,
     async () => {
       const project = await db.projects.get(projectId);
       if (project) {
@@ -774,251 +787,42 @@ async function materializeSnapshotIntoProject(projectId, result) {
         }
 
         if (Object.keys(patch).length > 0) {
-          patch.updated_at = now;
+          patch.updated_at = Date.now();
           await db.projects.update(projectId, patch);
           stats.worldUpdated = true;
         }
       }
-
-      const existingCharacters = await db.characters.where('project_id').equals(projectId).toArray();
-      const knownCharacters = [...existingCharacters];
-      const charMap = new Map(
-        existingCharacters.map((item) => [normalizeCharacterIdentityKey(item.name), item]),
-      );
-
-      for (const incoming of characters) {
-        const key = normalizeCharacterIdentityKey(incoming.name);
-        if (!key) continue;
-        const personalityTagsText = Array.isArray(incoming.personalityTags)
-          ? incoming.personalityTags.join(', ')
-          : normalizeText(incoming.personalityTags || '');
-        const normalizedIncoming = {
-          ...incoming,
-          personality_tags: personalityTagsText,
-        };
-        const existing = findCharacterIdentityMatch(knownCharacters, normalizedIncoming)?.character || charMap.get(key);
-
-        if (!existing) {
-          const createdId = await db.characters.add({
-            project_id: projectId,
-            name: incoming.name,
-            aliases: incoming.aliases || [],
-            role: incoming.role || 'supporting',
-            appearance: incoming.appearance || '',
-            personality: incoming.personality || '',
-            flaws: incoming.flaws || '',
-            personality_tags: personalityTagsText,
-            pronouns_self: '',
-            pronouns_other: '',
-            speech_pattern: '',
-            current_status: '',
-            goals: incoming.goals || '',
-            secrets: incoming.secrets || '',
-            notes: incoming.notes || '',
-            created_at: now,
-          });
-          stats.charactersAdded += 1;
-          charMap.set(key, {
-            id: createdId,
+      await stageExtractedEntityCandidates({
+        projectId,
+        sessionKey,
+        sourceType: 'analysis_snapshot',
+        sourceRef: 'analysis_snapshot',
+        resolutionStatus: 'pending_resolution',
+        extracted: {
+          characters: characters.map((incoming) => ({
             ...incoming,
-            name: incoming.name,
-            personality_tags: personalityTagsText,
-          });
-          knownCharacters.push({
-            id: createdId,
-            ...incoming,
-            name: incoming.name,
-            personality_tags: personalityTagsText,
-          });
-          continue;
-        }
-
-        const patch = mergeCharacterPatch(existing, normalizedIncoming);
-
-        if (Object.keys(patch).length > 0) {
-          await db.characters.update(existing.id, patch);
-          Object.assign(existing, patch);
-          stats.charactersUpdated += 1;
-        }
-      }
-
-      const ownerIdForName = (ownerName) => {
-        const key = normalizeCharacterIdentityKey(ownerName);
-        if (!key) return null;
-        return findCharacterIdentityMatch(knownCharacters, { name: ownerName })?.character?.id
-          || charMap.get(key)?.id
-          || null;
-      };
-
-      const mergeTimelineText = (baseText, timelineText) => {
-        const base = normalizeText(baseText);
-        if (!timelineText) return base;
-        if (base.toLowerCase().includes('timeline:')) return base;
-        if (!base) return `Timeline:\n${timelineText}`;
-        return `${base}\n\nTimeline:\n${timelineText}`;
-      };
-
-      const resolveEntityTimeline = (incoming, type = 'generic') => {
-        const explicit = normalizeEntityTimeline(incoming?.timeline || []);
-        if (explicit.length > 0) {
-          return explicit;
-        }
-        return findTimelineForEntity(incoming?.name, timelineEvents, type);
-      };
-
-      const existingObjects = await db.objects.where('project_id').equals(projectId).toArray();
-      const objectMap = new Map(
-        existingObjects.map((item) => [toComparableName(item.name), item]),
-      );
-
-      for (const incoming of objects) {
-        const key = toComparableName(incoming.name);
-        if (!key) continue;
-        const existing = objectMap.get(key);
-        const timeline = resolveEntityTimeline(incoming, 'generic');
-        const timelineText = timelineToText(timeline);
-        const resolvedOwnerId = ownerIdForName(incoming.owner);
-        const mergedProperties = mergeTimelineText(incoming.properties, timelineText);
-
-        if (!existing) {
-          const createdId = await db.objects.add({
-            project_id: projectId,
-            name: incoming.name,
-            description: incoming.description || '',
-            owner_character_id: resolvedOwnerId,
-            properties: mergedProperties || '',
-            created_at: now,
-          });
-          stats.objectsAdded += 1;
-          objectMap.set(key, {
-            id: createdId,
-            ...incoming,
-          });
-          continue;
-        }
-
-        const patch = {};
-        if (!normalizeText(existing.description) && incoming.description) {
-          patch.description = incoming.description;
-        }
-        if (!existing.owner_character_id && resolvedOwnerId) {
-          patch.owner_character_id = resolvedOwnerId;
-        }
-        if (timelineText) {
-          patch.properties = mergeTimelineText(existing.properties || incoming.properties || '', timelineText);
-        } else if (!normalizeText(existing.properties) && mergedProperties) {
-          patch.properties = mergedProperties;
-        }
-
-        if (Object.keys(patch).length > 0) {
-          await db.objects.update(existing.id, patch);
-          stats.objectsUpdated += 1;
-        }
-      }
-
-      const existingLocations = await db.locations.where('project_id').equals(projectId).toArray();
-      const locationMap = new Map(
-        existingLocations.map((item) => [toComparableName(item.name), item]),
-      );
-
-      for (const incoming of locations) {
-        const key = toComparableName(incoming.name);
-        if (!key) continue;
-        const existing = locationMap.get(key);
-        const timeline = resolveEntityTimeline(incoming, 'location');
-        const timelineText = timelineToText(timeline);
-        const mergedDetails = mergeTimelineText(incoming.details, timelineText);
-
-        if (!existing) {
-          const createdId = await db.locations.add({
-            project_id: projectId,
-            name: incoming.name,
-            aliases: incoming.aliases || [],
-            description: incoming.description || '',
-            details: mergedDetails || '',
-            parent_location_id: null,
-            created_at: now,
-            source_type: 'analysis_snapshot',
-          });
-          stats.locationsAdded += 1;
-          locationMap.set(key, {
-            id: createdId,
-            ...incoming,
-          });
-          continue;
-        }
-
-        const patch = {};
-        const nextAliases = mergeUniqueText(existing.aliases, incoming.aliases);
-        if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
-          patch.aliases = nextAliases;
-        }
-        if (!normalizeText(existing.description) && incoming.description) {
-          patch.description = incoming.description;
-        }
-        if (timelineText) {
-          patch.details = mergeTimelineText(existing.details || incoming.details || '', timelineText);
-        } else if (!normalizeText(existing.details) && incoming.details) {
-          patch.details = incoming.details;
-        }
-
-        if (Object.keys(patch).length > 0) {
-          await db.locations.update(existing.id, patch);
-          stats.locationsUpdated += 1;
-        }
-      }
-
-      const existingWorldTerms = await db.worldTerms.where('project_id').equals(projectId).toArray();
-      const termMap = new Map(
-        existingWorldTerms.map((item) => [toComparableName(item.name), item]),
-      );
-
-      for (const incoming of worldTerms) {
-        const key = toComparableName(incoming.name);
-        if (!key) continue;
-        const existing = termMap.get(key);
-        const timeline = resolveEntityTimeline(incoming, 'generic');
-        const timelineText = timelineToText(timeline);
-        const mergedDefinition = mergeTimelineText(incoming.definition, timelineText);
-
-        if (!existing) {
-          const createdId = await db.worldTerms.add({
-            project_id: projectId,
-            name: incoming.name,
-            aliases: incoming.aliases || [],
-            definition: mergedDefinition || '',
-            category: incoming.category || 'other',
-            created_at: now,
-          });
-          stats.worldTermsAdded += 1;
-          termMap.set(key, {
-            id: createdId,
-            ...incoming,
-          });
-          continue;
-        }
-
-        const patch = {};
-        const nextAliases = mergeUniqueText(existing.aliases, incoming.aliases);
-        if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
-          patch.aliases = nextAliases;
-        }
-        if (timelineText) {
-          patch.definition = mergeTimelineText(existing.definition || incoming.definition || '', timelineText);
-        } else if (!normalizeText(existing.definition) && incoming.definition) {
-          patch.definition = incoming.definition;
-        }
-        if (!normalizeText(existing.category) && incoming.category) {
-          patch.category = incoming.category;
-        }
-
-        if (Object.keys(patch).length > 0) {
-          await db.worldTerms.update(existing.id, patch);
-          stats.worldTermsUpdated += 1;
-        }
-      }
+            personality_tags: Array.isArray(incoming.personalityTags)
+              ? incoming.personalityTags.join(', ')
+              : normalizeText(incoming.personalityTags || ''),
+          })),
+          locations,
+          objects,
+          terms: worldTerms,
+        },
+      });
     },
   );
+
+  const materialized = await resolveAndMaterializeEntityCandidates({
+    projectId,
+    sessionKey,
+  });
+
+  stats.charactersAdded = materialized.createdEntries.characters.length;
+  stats.locationsAdded = materialized.createdEntries.locations.length;
+  stats.objectsAdded = materialized.createdEntries.objects.length;
+  stats.worldTermsAdded = materialized.createdEntries.worldTerms.length;
+  stats.ambiguousReview = materialized.stats.ambiguous_review || 0;
 
   return stats;
 }

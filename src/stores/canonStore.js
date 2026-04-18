@@ -1,12 +1,11 @@
 import { create } from 'zustand';
+import { buildRetrievalPacket, getChapterCanonState } from '../services/canon/queries';
 import {
-  buildRetrievalPacket,
   canonicalizeChapter as canonicalizeChapterEngine,
-  getChapterCanonState,
-  rebuildCanonFromChapter as rebuildCanonFromChapterEngine,
   repairChapterRevision as repairChapterRevisionEngine,
   saveRepairDraftRevision as saveRepairDraftRevisionEngine,
-} from '../services/canon/engine';
+} from '../services/canon/workflow';
+import { rebuildCanonFromChapter as rebuildCanonFromChapterEngine } from '../services/canon/projection';
 
 function normalizeCanonFailure(error) {
   const message = error?.message || 'Khong the xu ly yeu cau canon.';

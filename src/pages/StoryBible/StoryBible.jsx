@@ -33,11 +33,11 @@ import ArcNavigator from '../../components/common/ArcNavigator';
 import useArcGenStore from '../../stores/arcGenerationStore';
 import useAIStore from '../../stores/aiStore';
 import {
-  buildCharacterStateSummary,
   getChapterRevisionDetail,
   getChapterRevisionHistory,
   getProjectCanonOverview,
-} from '../../services/canon/engine';
+} from '../../services/canon/queries';
+import { buildCharacterStateSummary } from '../../services/canon/state';
 import './StoryBible.css';
 
 const ROLE_ICONS = {

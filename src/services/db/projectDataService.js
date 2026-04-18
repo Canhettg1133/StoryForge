@@ -26,6 +26,7 @@ export async function deleteProjectCascade(projectId) {
     db.aiJobs.where('project_id').equals(normalizedProjectId).delete(),
     db.qaReports.where('project_id').equals(normalizedProjectId).delete(),
     db.suggestions.where('project_id').equals(normalizedProjectId).delete(),
+    db.entity_resolution_candidates.where('project_id').equals(normalizedProjectId).delete(),
     db.project_analysis_snapshots.where('project_id').equals(normalizedProjectId).delete(),
     db.worldTerms.where('project_id').equals(normalizedProjectId).delete(),
     db.taboos.where('project_id').equals(normalizedProjectId).delete(),

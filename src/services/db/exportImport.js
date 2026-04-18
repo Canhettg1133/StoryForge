@@ -9,6 +9,8 @@
  */
 
 import db from '../db/database';
+import { normalizeEntityIdentity } from '../entityIdentity/index.js';
+import { normalizeCanonFactRecord } from '../entityIdentity/factIdentity.js';
 import {
   getStoryCreationSettings,
   saveStoryCreationSettings,
@@ -381,7 +383,14 @@ export async function importProject(jsonString, options = {}) {
   const characterIdMap = {};
   for (const c of (data.characters || [])) {
     const { id: oldId, project_id: _, ...cData } = c;
-    const newId = await db.characters.add({ ...cData, project_id: newProjectId });
+    const identity = normalizeEntityIdentity('character', cData);
+    const newId = await db.characters.add({
+      ...cData,
+      project_id: newProjectId,
+      normalized_name: identity.normalized_name,
+      alias_keys: identity.alias_keys,
+      identity_key: identity.identity_key,
+    });
     characterIdMap[oldId] = newId;
   }
 
@@ -391,7 +400,14 @@ export async function importProject(jsonString, options = {}) {
   const locationIdMap = {};
   for (const l of (data.locations || [])) {
     const { id: oldId, project_id: _, ...lData } = l;
-    const newId = await db.locations.add({ ...lData, project_id: newProjectId });
+    const identity = normalizeEntityIdentity('location', lData);
+    const newId = await db.locations.add({
+      ...lData,
+      project_id: newProjectId,
+      normalized_name: identity.normalized_name,
+      alias_keys: identity.alias_keys,
+      identity_key: identity.identity_key,
+    });
     locationIdMap[oldId] = newId;
   }
 
@@ -456,9 +472,13 @@ export async function importProject(jsonString, options = {}) {
   // Objects (uses characterIdMap for owner)
   for (const o of (data.objects || [])) {
     const { id: _, project_id: __, ...oData } = o;
+    const identity = normalizeEntityIdentity('object', oData);
     const newId = await db.objects.add({
       ...oData,
       project_id: newProjectId,
+      normalized_name: identity.normalized_name,
+      alias_keys: identity.alias_keys,
+      identity_key: identity.identity_key,
       owner_character_id: characterIdMap[o.owner_character_id] || o.owner_character_id,
     });
     objectIdMap[o.id] = newId;
@@ -467,7 +487,14 @@ export async function importProject(jsonString, options = {}) {
   // World terms
   for (const t of (data.worldTerms || [])) {
     const { id: _, project_id: __, ...tData } = t;
-    await db.worldTerms.add({ ...tData, project_id: newProjectId });
+    const identity = normalizeEntityIdentity('world_term', tData);
+    await db.worldTerms.add({
+      ...tData,
+      project_id: newProjectId,
+      normalized_name: identity.normalized_name,
+      alias_keys: identity.alias_keys,
+      identity_key: identity.identity_key,
+    });
   }
 
   // Taboos (uses characterIdMap)
@@ -494,9 +521,11 @@ export async function importProject(jsonString, options = {}) {
   // Canon facts (uses characterIdMap, locationIdMap)
   for (const f of (data.canonFacts || [])) {
     const { id: oldId, project_id: __, ...fData } = f;
+    const normalizedFact = normalizeCanonFactRecord(fData);
     const newId = await db.canonFacts.add({
       ...fData,
       project_id: newProjectId,
+      ...normalizedFact,
       subject_id: f.subject_type === 'character' ? (characterIdMap[f.subject_id] || f.subject_id) :
                   f.subject_type === 'location' ? (locationIdMap[f.subject_id] || f.subject_id) :
                   f.subject_id,

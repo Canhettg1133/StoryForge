@@ -12,7 +12,9 @@
 
 import { create } from 'zustand';
 import db from '../services/db/database';
-import { buildCharacterStateSummary } from '../services/canon/engine';
+import { buildCharacterStateSummary } from '../services/canon/state';
+import { normalizeEntityIdentity } from '../services/entityIdentity/index.js';
+import { normalizeCanonFactRecord } from '../services/entityIdentity/factIdentity.js';
 import { buildProseBuffer } from '../utils/proseBuffer';
 import { findCharacterIdentityMatch, mergeCharacterPatch } from '../utils/characterIdentity';
 
@@ -194,9 +196,13 @@ const useCodexStore = create((set, get) => ({
         break;
       }
     }
+    const identity = normalizeEntityIdentity('character', data);
     const payload = {
       project_id: data.project_id,
       name: data.name || '',
+      normalized_name: identity.normalized_name,
+      alias_keys: identity.alias_keys,
+      identity_key: identity.identity_key,
       aliases: data.aliases || [],          // new
       role: data.role || 'supporting',
       appearance: data.appearance || '',
@@ -219,7 +225,12 @@ const useCodexStore = create((set, get) => ({
     const existingCharacters = await db.characters.where('project_id').equals(data.project_id).toArray();
     const identityMatch = findCharacterIdentityMatch(existingCharacters, payload);
     if (identityMatch?.character) {
-      const patch = mergeCharacterPatch(identityMatch.character, payload);
+      const patch = {
+        ...mergeCharacterPatch(identityMatch.character, payload),
+        normalized_name: identity.normalized_name,
+        alias_keys: identity.alias_keys,
+        identity_key: identity.identity_key,
+      };
       if (Object.keys(patch).length > 0) {
         await db.characters.update(identityMatch.character.id, patch);
       }
@@ -251,9 +262,32 @@ const useCodexStore = create((set, get) => ({
   // LOCATIONS
   // ---------------------------------------------
   createLocation: async (data) => {
+    const identity = normalizeEntityIdentity('location', data);
+    const existing = await db.locations
+      .where('project_id')
+      .equals(data.project_id)
+      .filter((item) => item.normalized_name === identity.normalized_name)
+      .first();
+    if (existing) {
+      const patch = {};
+      const nextAliases = [...new Set([...(existing.aliases || []), ...(data.aliases || [])])];
+      if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) patch.aliases = nextAliases;
+      if (!existing.description && data.description) patch.description = data.description;
+      if (!existing.details && data.details) patch.details = data.details;
+      if (Object.keys(patch).length > 0) {
+        patch.updated_at = Date.now();
+        patch.alias_keys = normalizeEntityIdentity('location', { ...existing, ...patch }).alias_keys;
+        await db.locations.update(existing.id, patch);
+      }
+      await get().loadCodex(data.project_id);
+      return existing.id;
+    }
     const id = await db.locations.add({
       project_id: data.project_id,
       name: data.name || '',
+      normalized_name: identity.normalized_name,
+      alias_keys: identity.alias_keys,
+      identity_key: identity.identity_key,
       aliases: data.aliases || [],          // new
       description: data.description || '',
       details: data.details || '',
@@ -285,9 +319,30 @@ const useCodexStore = create((set, get) => ({
   // OBJECTS
   // ---------------------------------------------
   createObject: async (data) => {
+    const identity = normalizeEntityIdentity('object', data);
+    const existing = await db.objects
+      .where('project_id')
+      .equals(data.project_id)
+      .filter((item) => item.normalized_name === identity.normalized_name)
+      .first();
+    if (existing) {
+      const patch = {};
+      if (!existing.description && data.description) patch.description = data.description;
+      if (!existing.owner_character_id && data.owner_character_id) patch.owner_character_id = data.owner_character_id;
+      if (!existing.properties && data.properties) patch.properties = data.properties;
+      if (Object.keys(patch).length > 0) {
+        patch.updated_at = Date.now();
+        await db.objects.update(existing.id, patch);
+      }
+      await get().loadCodex(data.project_id);
+      return existing.id;
+    }
     const id = await db.objects.add({
       project_id: data.project_id,
       name: data.name || '',
+      normalized_name: identity.normalized_name,
+      alias_keys: identity.alias_keys,
+      identity_key: identity.identity_key,
       description: data.description || '',
       owner_character_id: data.owner_character_id || null,
       properties: data.properties || '',
@@ -318,9 +373,32 @@ const useCodexStore = create((set, get) => ({
   // WORLD TERMS
   // ---------------------------------------------
   createWorldTerm: async (data) => {
+    const identity = normalizeEntityIdentity('world_term', data);
+    const existing = await db.worldTerms
+      .where('project_id')
+      .equals(data.project_id)
+      .filter((item) => item.normalized_name === identity.normalized_name)
+      .first();
+    if (existing) {
+      const patch = {};
+      const nextAliases = [...new Set([...(existing.aliases || []), ...(data.aliases || [])])];
+      if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) patch.aliases = nextAliases;
+      if (!existing.definition && data.definition) patch.definition = data.definition;
+      if (!existing.category && data.category) patch.category = data.category;
+      if (Object.keys(patch).length > 0) {
+        patch.updated_at = Date.now();
+        patch.alias_keys = normalizeEntityIdentity('world_term', { ...existing, ...patch }).alias_keys;
+        await db.worldTerms.update(existing.id, patch);
+      }
+      await get().loadCodex(data.project_id);
+      return existing.id;
+    }
     const id = await db.worldTerms.add({
       project_id: data.project_id,
       name: data.name || '',
+      normalized_name: identity.normalized_name,
+      alias_keys: identity.alias_keys,
+      identity_key: identity.identity_key,
       aliases: data.aliases || [],          // new
       definition: data.definition || '',
       category: data.category || 'other',
@@ -428,11 +506,32 @@ const useCodexStore = create((set, get) => ({
   // CANON FACTS
   // =============================================
   createCanonFact: async (data) => {
+    const normalizedFact = normalizeCanonFactRecord(data);
+    const existing = await db.canonFacts
+      .where('project_id')
+      .equals(data.project_id)
+      .filter((item) => item.fact_fingerprint === normalizedFact.fact_fingerprint)
+      .first();
+    if (existing) {
+      const patch = {};
+      if (!existing.description && data.description) patch.description = data.description;
+      if (!existing.subject_type && data.subject_type) patch.subject_type = data.subject_type;
+      if (existing.subject_id == null && data.subject_id != null) patch.subject_id = data.subject_id;
+      if (Object.keys(patch).length > 0) {
+        patch.updated_at = Date.now();
+        await db.canonFacts.update(existing.id, { ...patch, ...normalizedFact });
+      }
+      await get().loadCodex(data.project_id);
+      return existing.id;
+    }
     const id = await db.canonFacts.add({
       project_id: data.project_id,
       description: data.description || '',
       fact_type: data.fact_type || 'fact',   // fact | secret | rule
       status: data.status || 'active',       // active | deprecated
+      subject_type: data.subject_type || '',
+      subject_id: data.subject_id ?? null,
+      ...normalizedFact,
       source_chapter_id: data.source_chapter_id || null,
       created_at: Date.now(),
     });

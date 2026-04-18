@@ -3,13 +3,18 @@ import db from '../services/db/database';
 import { countWords } from '../utils/constants';
 import { GENRE_TEMPLATES } from '../utils/genreTemplates';
 import { buildProseBuffer } from '../utils/proseBuffer';
-import { findCharacterIdentityMatch, mergeCharacterPatch, normalizeCharacterIdentityKey } from '../utils/characterIdentity';
 import { PROVIDERS, QUALITY_MODES } from '../services/ai/router';
 import {
+  resolveAndMaterializeEntityCandidates,
+  stageExtractedEntityCandidates,
+} from '../services/entityIdentity/index.js';
+import {
   canonicalizeChapter as canonicalizeChapterEngine,
+} from '../services/canon/workflow';
+import {
   purgeChapterCanonState,
   rebuildCanonFromChapter as rebuildCanonFromChapterEngine,
-} from '../services/canon/engine';
+} from '../services/canon/projection';
 import { deleteProjectCascade } from '../services/db/projectDataService.js';
 import useAIStore from './aiStore';
 import useCodexStore from './codexStore';
@@ -68,7 +73,8 @@ function resolveActiveSelection(chapters, scenes, requestedChapterId, requestedS
   };
 }
 
-async function syncChapterWordCounts(chapters, scenes) {
+async function syncChapterWordCounts(chapters, scenes, options = {}) {
+  const { persist = true, awaitPersist = false } = options;
   const totals = new Map();
 
   for (const chapter of chapters) {
@@ -92,8 +98,17 @@ async function syncChapterWordCounts(chapters, scenes) {
     return { ...chapter, actual_word_count: actualWordCount };
   });
 
-  if (updates.length > 0) {
-    await Promise.all(updates);
+  if (persist && updates.length > 0) {
+    const persistPromise = Promise.allSettled(updates).then((results) => {
+      const failures = results.filter((result) => result.status === 'rejected');
+      if (failures.length > 0) {
+        console.warn('[ProjectStore] Failed to persist some chapter word counts:', failures.map((item) => item.reason));
+      }
+    });
+
+    if (awaitPersist) {
+      await persistPromise;
+    }
   }
 
   return nextChapters;
@@ -218,15 +233,6 @@ function parsePromptTemplates(rawValue) {
   }
 }
 
-async function bulkAddWithIds(table, records) {
-  if (!Array.isArray(records) || records.length === 0) return [];
-  const keys = await table.bulkAdd(records, undefined, { allKeys: true });
-  return records.map((record, index) => ({
-    ...record,
-    id: Array.isArray(keys) ? keys[index] : null,
-  }));
-}
-
 async function persistChapterSummary({ projectId, chapterId, summary, chapterText }) {
   const existingMeta = await db.chapterMeta.where('chapter_id').equals(chapterId).first();
   const lastProseBuffer = buildProseBuffer(chapterText);
@@ -253,145 +259,8 @@ async function persistChapterSummary({ projectId, chapterId, summary, chapterTex
   });
 }
 
-async function createExtractedCodexEntries({
-  projectId,
-  chapterId,
-  extracted,
-}) {
-  if (!extracted || typeof extracted !== 'object') {
-    return { createdCount: 0 };
-  }
-
-  const [existingCharacters, existingLocations, existingTerms, existingObjects] = await Promise.all([
-    db.characters.where('project_id').equals(projectId).toArray(),
-    db.locations.where('project_id').equals(projectId).toArray(),
-    db.worldTerms.where('project_id').equals(projectId).toArray(),
-    db.objects.where('project_id').equals(projectId).toArray(),
-  ]);
-
-  const normalizeName = (value) => String(value || '').trim().toLowerCase();
-  const created = {
-    characters: 0,
-    locations: 0,
-    terms: 0,
-    objects: 0,
-  };
-  const createdEntries = {
-    characters: [],
-    locations: [],
-    worldTerms: [],
-    objects: [],
-  };
-  const now = Date.now();
-
-  const characterNames = new Set(existingCharacters.map((item) => normalizeCharacterIdentityKey(item.name)));
-  const characterRecords = [];
-  for (const character of extracted.characters || []) {
-    const name = normalizeCharacterIdentityKey(character?.name);
-    if (!name) continue;
-    const identityMatch = findCharacterIdentityMatch(
-      [...existingCharacters, ...characterRecords],
-      character,
-    );
-    if (identityMatch?.character) {
-      const patch = mergeCharacterPatch(identityMatch.character, {
-        ...character,
-        source_chapter_id: chapterId,
-        source_kind: 'chapter_extract',
-      });
-      if (identityMatch.character.id && Object.keys(patch).length > 0) {
-        await db.characters.update(identityMatch.character.id, patch);
-      }
-      if (Object.keys(patch).length > 0) {
-        Object.assign(identityMatch.character, patch);
-      }
-      continue;
-    }
-    if (characterNames.has(name)) continue;
-    characterNames.add(name);
-    created.characters += 1;
-    characterRecords.push({
-      project_id: projectId,
-      name: character.name || '',
-      aliases: character.aliases || [],
-      role: character.role || 'minor',
-      appearance: character.appearance || '',
-      personality: character.personality || '',
-      flaws: character.flaws || '',
-      personality_tags: character.personality_tags || '',
-      source_chapter_id: chapterId,
-      source_kind: 'chapter_extract',
-      created_at: now,
-    });
-  }
-  const locationNames = new Set(existingLocations.map((item) => normalizeName(item.name)));
-  const locationRecords = [];
-  for (const location of extracted.locations || []) {
-    const name = normalizeName(location?.name);
-    if (!name || locationNames.has(name)) continue;
-    locationNames.add(name);
-    created.locations += 1;
-    locationRecords.push({
-      project_id: projectId,
-      name: location.name || '',
-      description: location.description || '',
-      details: location.details || '',
-      source_chapter_id: chapterId,
-      source_kind: 'chapter_extract',
-      created_at: now,
-    });
-  }
-  const termNames = new Set(existingTerms.map((item) => normalizeName(item.name)));
-  const termRecords = [];
-  for (const term of extracted.terms || []) {
-    const name = normalizeName(term?.name);
-    if (!name || termNames.has(name)) continue;
-    termNames.add(name);
-    created.terms += 1;
-    termRecords.push({
-      project_id: projectId,
-      name: term.name || '',
-      definition: term.definition || '',
-      category: term.category || 'other',
-      source_chapter_id: chapterId,
-      source_kind: 'chapter_extract',
-      created_at: now,
-    });
-  }
-  const objectNames = new Set(existingObjects.map((item) => normalizeName(item.name)));
-  const objectRecords = [];
-  for (const objectItem of extracted.objects || []) {
-    const name = normalizeName(objectItem?.name);
-    if (!name || objectNames.has(name)) continue;
-    objectNames.add(name);
-    created.objects += 1;
-    objectRecords.push({
-      project_id: projectId,
-      name: objectItem.name || '',
-      description: objectItem.description || '',
-      owner_character_id: null,
-      source_chapter_id: chapterId,
-      source_kind: 'chapter_extract',
-      created_at: now,
-    });
-  }
-  const [createdCharacters, createdLocations, createdTerms, createdObjects] = await Promise.all([
-    bulkAddWithIds(db.characters, characterRecords),
-    bulkAddWithIds(db.locations, locationRecords),
-    bulkAddWithIds(db.worldTerms, termRecords),
-    bulkAddWithIds(db.objects, objectRecords),
-  ]);
-
-  createdEntries.characters = createdCharacters;
-  createdEntries.locations = createdLocations;
-  createdEntries.worldTerms = createdTerms;
-  createdEntries.objects = createdObjects;
-
-  return {
-    createdCount: Object.values(created).reduce((sum, value) => sum + value, 0),
-    created,
-    createdEntries,
-  };
+function buildCompletionSessionKey(projectId, chapterId) {
+  return `complete:${projectId}:${chapterId}:${Date.now()}`;
 }
 
 const useProjectStore = create((set, get) => ({
@@ -408,8 +277,24 @@ const useProjectStore = create((set, get) => ({
   chapterCompletionById: {},
 
   loadProjects: async () => {
-    const projects = await db.projects.orderBy('updated_at').reverse().toArray();
+    let projects = [];
+    try {
+      projects = await db.projects.orderBy('updated_at').reverse().toArray();
+    } catch (error) {
+      console.warn('[ProjectStore] Indexed loadProjects failed, falling back to raw table scan:', error);
+    }
+
+    if (!Array.isArray(projects) || projects.length === 0) {
+      const rawProjects = await db.projects.toArray();
+      projects = [...rawProjects].sort((left, right) => {
+        const updatedDiff = Number(right?.updated_at || 0) - Number(left?.updated_at || 0);
+        if (updatedDiff !== 0) return updatedDiff;
+        return Number(right?.id || 0) - Number(left?.id || 0);
+      });
+    }
+
     set({ projects });
+    return projects;
   },
 
   createProject: async (data) => {
@@ -535,28 +420,76 @@ const useProjectStore = create((set, get) => ({
 
   loadProject: async (id, options = {}) => {
     set({ loading: true });
-    const { currentProject, activeChapterId, activeSceneId } = get();
-    const project = await db.projects.get(id);
-    const chapters = await db.chapters.where('project_id').equals(id).sortBy('order_index');
-    const scenes = await db.scenes.where('project_id').equals(id).sortBy('order_index');
-    const syncedChapters = await syncChapterWordCounts(chapters, scenes);
-    const shouldPreserveSelection = options.preserveSelection !== false && currentProject?.id === id;
-    const requestedChapterId = options.activeChapterId ?? (shouldPreserveSelection ? activeChapterId : null);
-    const requestedSceneId = options.activeSceneId ?? (shouldPreserveSelection ? activeSceneId : null);
-    const selection = resolveActiveSelection(
-      syncedChapters,
-      scenes,
-      requestedChapterId,
-      requestedSceneId,
-    );
+    try {
+      const numericId = Number(id);
+      const { currentProject, activeChapterId, activeSceneId } = get();
+      const project = await db.projects.get(numericId);
+      if (!project) {
+        set({
+          currentProject: null,
+          chapters: [],
+          scenes: [],
+          activeChapterId: null,
+          activeSceneId: null,
+        });
+        return null;
+      }
 
-    set({
-      currentProject: project,
-      chapters: syncedChapters,
-      scenes,
-      ...selection,
-      loading: false,
-    });
+      let chapters = [];
+      let scenes = [];
+
+      try {
+        chapters = await db.chapters.where('project_id').equals(numericId).sortBy('order_index');
+      } catch (error) {
+        console.warn('[ProjectStore] Indexed chapter load failed, falling back to raw scan:', error);
+        chapters = (await db.chapters.toArray())
+          .filter((chapter) => Number(chapter?.project_id) === numericId)
+          .sort((left, right) => Number(left?.order_index || 0) - Number(right?.order_index || 0));
+      }
+
+      try {
+        scenes = await db.scenes.where('project_id').equals(numericId).sortBy('order_index');
+      } catch (error) {
+        console.warn('[ProjectStore] Indexed scene load failed, falling back to raw scan:', error);
+        scenes = (await db.scenes.toArray())
+          .filter((scene) => Number(scene?.project_id) === numericId)
+          .sort((left, right) => Number(left?.order_index || 0) - Number(right?.order_index || 0));
+      }
+
+      const syncedChapters = await syncChapterWordCounts(chapters, scenes, {
+        persist: true,
+        awaitPersist: false,
+      });
+      const shouldPreserveSelection = options.preserveSelection !== false && currentProject?.id === numericId;
+      const requestedChapterId = options.activeChapterId ?? (shouldPreserveSelection ? activeChapterId : null);
+      const requestedSceneId = options.activeSceneId ?? (shouldPreserveSelection ? activeSceneId : null);
+      const selection = resolveActiveSelection(
+        syncedChapters,
+        scenes,
+        requestedChapterId,
+        requestedSceneId,
+      );
+
+      set({
+        currentProject: project,
+        chapters: syncedChapters,
+        scenes,
+        ...selection,
+      });
+      return project;
+    } catch (error) {
+      console.error('[ProjectStore] loadProject failed:', error);
+      set({
+        currentProject: null,
+        chapters: [],
+        scenes: [],
+        activeChapterId: null,
+        activeSceneId: null,
+      });
+      throw error;
+    } finally {
+      set({ loading: false });
+    }
   },
 
   createChapter: async (projectId, title, chapterData = {}) => {
@@ -658,6 +591,10 @@ const useProjectStore = create((set, get) => ({
     const relatedSuggestions = await db.suggestions.where('source_chapter_id').equals(id).toArray();
     if (relatedSuggestions.length > 0) {
       await db.suggestions.bulkDelete(relatedSuggestions.map((item) => item.id));
+    }
+    const stagedCandidates = await db.entity_resolution_candidates.where('chapter_id').equals(id).toArray();
+    if (stagedCandidates.length > 0) {
+      await db.entity_resolution_candidates.bulkDelete(stagedCandidates.map((item) => item.id));
     }
     await reindexProjectChapters(chapter.project_id);
     await rebuildCanonFromChapterEngine(chapter.project_id);
@@ -857,6 +794,7 @@ const useProjectStore = create((set, get) => ({
         created: {},
         createdEntries: {},
       };
+      const completionSessionKey = buildCompletionSessionKey(currentProject.id, chapterId);
       let canonResult = null;
       let canonProcessed = false;
       let canonSucceeded = false;
@@ -893,13 +831,28 @@ const useProjectStore = create((set, get) => ({
       if (extractResult.status === 'fulfilled') {
         extracted = extractResult.value || null;
         try {
-          extractionStats = await createExtractedCodexEntries({
+          const staged = await stageExtractedEntityCandidates({
             projectId: currentProject.id,
             chapterId,
+            sessionKey: completionSessionKey,
+            sourceType: 'chapter_extract',
+            sourceRef: `chapter:${chapterId}`,
             extracted,
           });
+          extractionStats = {
+            createdCount: 0,
+            created: {
+              staged: staged.stagedCount || 0,
+            },
+            createdEntries: {
+              characters: [],
+              locations: [],
+              worldTerms: [],
+              objects: [],
+            },
+          };
         } catch (error) {
-          console.warn('[ChapterCompletion] Persist extraction failed (non-fatal):', error);
+          console.warn('[ChapterCompletion] Stage extraction failed (non-fatal):', error);
         }
       } else {
         console.warn('[ChapterCompletion] Extraction failed (non-fatal):', extractResult.reason);
@@ -935,6 +888,18 @@ const useProjectStore = create((set, get) => ({
         await get().updateChapter(chapterId, { status: 'done' });
       } else {
         await get().updateChapter(chapterId, { status: 'draft' });
+      }
+      if (canonSucceeded) {
+        try {
+          extractionStats = await resolveAndMaterializeEntityCandidates({
+            projectId: currentProject.id,
+            chapterId,
+            revisionId: canonResult?.revisionId || null,
+            sessionKey: completionSessionKey,
+          });
+        } catch (error) {
+          console.warn('[ChapterCompletion] Entity materialization failed after canon pass:', error);
+        }
       }
       await useCodexStore.getState().applyCompletionDelta({
         projectId: currentProject.id,

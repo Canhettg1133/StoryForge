@@ -749,6 +749,419 @@ db.version(18).stores({
   });
 });
 
+function dbNormalizeText(value = '') {
+  return String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function dbStripDiacritics(value = '') {
+  return dbNormalizeText(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function dbNormalizeName(value = '') {
+  return dbStripDiacritics(value)
+    .replace(/[\u2018\u2019\u201c\u201d"'`()\[\]{}]/g, ' ')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function dbMergeUniqueText(existing = [], incoming = []) {
+  const seen = new Set();
+  const result = [];
+  for (const value of [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+    const text = dbNormalizeText(value);
+    const key = dbNormalizeName(text);
+    if (!text || !key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+  }
+  return result;
+}
+
+function dbBuildEntityIdentityKey(kind, name = '') {
+  return `${kind}:${dbNormalizeName(name)}`;
+}
+
+function dbBuildFactSubjectScope(fact = {}) {
+  const subjectType = dbNormalizeText(fact.subject_type || '');
+  const subjectId = fact.subject_id ?? null;
+  if (subjectType && subjectId != null) {
+    return `${subjectType}:${subjectId}`;
+  }
+  const subjectText = dbNormalizeName(
+    fact.subject_name
+    || fact.subjectName
+    || fact.subject_text
+    || fact.subjectText
+    || '',
+  );
+  return subjectText ? `text:${subjectText}` : 'global';
+}
+
+function dbBuildFactFingerprint(fact = {}) {
+  const factType = dbNormalizeText(fact.fact_type || 'fact') || 'fact';
+  const normalizedDescription = dbNormalizeName(
+    fact.normalized_description
+    || fact.description
+    || fact.fact_description
+    || '',
+  );
+  const subjectScope = dbNormalizeText(fact.subject_scope || dbBuildFactSubjectScope(fact)) || 'global';
+  return `${factType}|${normalizedDescription}|${subjectScope}`;
+}
+
+function dbValueRichness(value) {
+  if (Array.isArray(value)) return value.length;
+  if (value && typeof value === 'object') return Object.keys(value).length;
+  return dbNormalizeText(value) ? 1 : 0;
+}
+
+function dbScoreRecord(record = {}, ignoredKeys = []) {
+  const ignored = new Set(['id', 'project_id', 'created_at', 'updated_at', ...ignoredKeys]);
+  return Object.entries(record).reduce((score, [key, value]) => {
+    if (ignored.has(key)) return score;
+    return score + dbValueRichness(value);
+  }, 0);
+}
+
+function dbChooseSurvivor(records = [], ignoredKeys = []) {
+  return [...records].sort((left, right) => {
+    const scoreDiff = dbScoreRecord(right, ignoredKeys) - dbScoreRecord(left, ignoredKeys);
+    if (scoreDiff !== 0) return scoreDiff;
+    const createdDiff = Number(left.created_at || 0) - Number(right.created_at || 0);
+    if (createdDiff !== 0) return createdDiff;
+    return Number(left.id || 0) - Number(right.id || 0);
+  })[0] || null;
+}
+
+async function dbRewriteCharacterRefs(tx, projectId, fromId, toId) {
+  await tx.table('relationships').where('project_id').equals(projectId).modify((row) => {
+    if (row.character_a_id === fromId) row.character_a_id = toId;
+    if (row.character_b_id === fromId) row.character_b_id = toId;
+  });
+  await tx.table('objects').where('project_id').equals(projectId).modify((row) => {
+    if (row.owner_character_id === fromId) row.owner_character_id = toId;
+  });
+  await tx.table('taboos').where('project_id').equals(projectId).modify((row) => {
+    if (row.character_id === fromId) row.character_id = toId;
+  });
+  await tx.table('voicePacks').where('project_id').equals(projectId).modify((row) => {
+    if (row.character_id === fromId) row.character_id = toId;
+  });
+  await tx.table('scenes').where('project_id').equals(projectId).modify((row) => {
+    if (row.pov_character_id === fromId) row.pov_character_id = toId;
+    try {
+      const present = JSON.parse(row.characters_present || '[]');
+      if (Array.isArray(present)) {
+        row.characters_present = JSON.stringify(present.map((value) => (value === fromId ? toId : value)));
+      }
+    } catch {}
+  });
+  await tx.table('story_events').where('project_id').equals(projectId).modify((row) => {
+    if (row.subject_id === fromId) row.subject_id = toId;
+    if (row.target_id === fromId) row.target_id = toId;
+  });
+  await tx.table('entity_state_current').where('project_id').equals(projectId).modify((row) => {
+    if (row.entity_type === 'character' && row.entity_id === fromId) row.entity_id = toId;
+  });
+}
+
+async function dbRewriteFactRefs(tx, projectId, fromId, toId) {
+  await tx.table('story_events').where('project_id').equals(projectId).modify((row) => {
+    if (row.fact_id === fromId) row.fact_id = toId;
+  });
+}
+
+export async function repairEntityTableDuplicates(tx, tableName, kind) {
+  const rows = await tx.table(tableName).toArray();
+  const grouped = rows.reduce((map, row) => {
+    const key = `${row.project_id}:${row.normalized_name || dbNormalizeName(row.name || '')}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+    return map;
+  }, new Map());
+  const affectedProjects = new Set();
+
+  for (const duplicates of grouped.values()) {
+    if (duplicates.length < 2) continue;
+    const survivor = dbChooseSurvivor(duplicates, ['normalized_name', 'alias_keys', 'identity_key']);
+    if (!survivor) continue;
+    affectedProjects.add(Number(survivor.project_id));
+    for (const duplicate of duplicates) {
+      if (duplicate.id === survivor.id) continue;
+      if (kind === 'character') {
+        await dbRewriteCharacterRefs(tx, survivor.project_id, duplicate.id, survivor.id);
+      }
+      await tx.table(tableName).delete(duplicate.id);
+    }
+  }
+
+  return [...affectedProjects];
+}
+
+export async function repairCanonFactDuplicates(tx) {
+  const facts = await tx.table('canonFacts').toArray();
+  const factGroups = facts.reduce((map, row) => {
+    const key = `${row.project_id}:${row.fact_fingerprint || dbBuildFactFingerprint(row)}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+    return map;
+  }, new Map());
+  const affectedProjects = new Set();
+
+  for (const duplicates of factGroups.values()) {
+    if (duplicates.length < 2) continue;
+    const survivor = dbChooseSurvivor(duplicates, ['normalized_description', 'subject_scope', 'fact_fingerprint']);
+    if (!survivor) continue;
+    affectedProjects.add(Number(survivor.project_id));
+    for (const duplicate of duplicates) {
+      if (duplicate.id === survivor.id) continue;
+      await dbRewriteFactRefs(tx, survivor.project_id, duplicate.id, survivor.id);
+      await tx.table('canonFacts').delete(duplicate.id);
+    }
+  }
+
+  return [...affectedProjects];
+}
+
+export async function flagProjectsForCanonRebuild(tx, projectIds = []) {
+  const normalizedIds = [...new Set((projectIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  for (const projectId of normalizedIds) {
+    await tx.table('projects').where('id').equals(projectId).modify((project) => {
+      project.canon_rebuild_required = true;
+    });
+  }
+  return normalizedIds;
+}
+
+export async function rebuildFlaggedCanonProjects(database = db) {
+  const projects = await database.projects
+    .filter((project) => Boolean(project?.canon_rebuild_required))
+    .toArray();
+  if (projects.length === 0) return [];
+
+  const { rebuildCanonFromChapter } = await import('../canon/projection.js');
+  const rebuiltIds = [];
+  for (const project of projects) {
+    await rebuildCanonFromChapter(project.id, null, { cleanLegacyProjection: true });
+    await database.projects.update(project.id, {
+      canon_rebuild_required: false,
+      updated_at: Date.now(),
+    });
+    rebuiltIds.push(project.id);
+  }
+  return rebuiltIds;
+}
+
+let backgroundCanonRebuildPromise = null;
+let backgroundCanonRebuildQueued = false;
+
+async function runBackgroundCanonRebuild(database = db) {
+  if (backgroundCanonRebuildPromise) {
+    return backgroundCanonRebuildPromise;
+  }
+
+  backgroundCanonRebuildPromise = (async () => {
+    try {
+      const rebuiltIds = await rebuildFlaggedCanonProjects(database);
+      if (rebuiltIds.length > 0) {
+        console.info('[DB] Background canon rebuild completed for projects:', rebuiltIds);
+      }
+      return rebuiltIds;
+    } catch (error) {
+      console.error('[DB] Background canon rebuild failed:', error);
+      return [];
+    } finally {
+      backgroundCanonRebuildPromise = null;
+    }
+  })();
+
+  return backgroundCanonRebuildPromise;
+}
+
+export function scheduleBackgroundCanonRebuild(database = db, options = {}) {
+  if (backgroundCanonRebuildQueued) {
+    return;
+  }
+
+  backgroundCanonRebuildQueued = true;
+  const delayMs = Number.isFinite(options.delayMs) ? options.delayMs : 600;
+  const idleTimeoutMs = Number.isFinite(options.idleTimeoutMs) ? options.idleTimeoutMs : 2000;
+
+  const start = () => {
+    backgroundCanonRebuildQueued = false;
+    void runBackgroundCanonRebuild(database);
+  };
+
+  if (typeof globalThis.requestIdleCallback === 'function') {
+    globalThis.requestIdleCallback(() => {
+      globalThis.setTimeout(start, delayMs);
+    }, { timeout: idleTimeoutMs });
+    return;
+  }
+
+  globalThis.setTimeout(start, delayMs);
+}
+
+// Phase 19 was originally introduced with unique compound indexes for
+// normalized entity names and canon fact fingerprints. That is unsafe for
+// live IndexedDB upgrades because legacy duplicate rows can trigger
+// ConstraintError during the same upgrade transaction, aborting DB open and
+// making the app appear empty. Keep the normalized fields and compound
+// indexes, but do not enforce uniqueness at the storage layer here.
+db.version(19).stores({
+  projects: '++id, title, genre_primary, status, created_at, updated_at',
+  chapters: '++id, project_id, arc_id, order_index, title, status',
+  scenes: '++id, project_id, chapter_id, order_index, title, pov_character_id, status',
+  characters: '++id, project_id, name, role, normalized_name, [project_id+normalized_name]',
+  characterStates: '++id, project_id, character_id, scene_id',
+  relationships: '++id, project_id, character_a_id, character_b_id, relation_type',
+  locations: '++id, project_id, name, normalized_name, [project_id+normalized_name]',
+  objects: '++id, project_id, name, owner_character_id, normalized_name, [project_id+normalized_name]',
+  canonFacts: '++id, project_id, fact_type, subject_type, subject_id, status, fact_fingerprint, [project_id+fact_fingerprint]',
+  plotThreads: '++id, project_id, title, type, state',
+  threadBeats: '++id, plot_thread_id, scene_id, beat_type',
+  timelineEvents: '++id, project_id, scene_id, date_marker',
+  stylePacks: '++id, project_id, name, type, source_kind',
+  voicePacks: '++id, project_id, character_id',
+  styleJobs: '++id, project_id, style_pack_id, parsing_status',
+  genrePacks: '++id, name',
+  aiJobs: '++id, project_id, scene_id, chapter_id, job_type, status',
+  revisions: '++id, scene_id, objective, created_at',
+  qaReports: '++id, project_id, chapter_id, scene_id, report_type, severity',
+  worldTerms: '++id, project_id, name, category, normalized_name, [project_id+normalized_name]',
+  taboos: '++id, project_id, character_id, effective_before_chapter',
+  chapterMeta: '++id, chapter_id, project_id',
+  suggestions: '++id, project_id, type, status, source_chapter_id, target_id, created_at',
+  entityTimeline: '++id, project_id, entity_id, entity_type, chapter_id, type, timestamp',
+  factions: '++id, project_id, name, faction_type',
+  macro_arcs: '++id, project_id, order_index',
+  arcs: '++id, project_id, macro_arc_id, order_index',
+  event_annotations: '++id, corpus_id, event_id, [corpus_id+event_id]',
+  saved_searches: '++id, corpus_id, name, created_at',
+  export_history: '++id, corpus_id, format, created_at',
+  event_usage: '++id, corpus_id, event_id, [corpus_id+event_id]',
+  linked_events: '++id, event_id, corpus_id, project_id, [event_id+project_id]',
+  project_analysis_snapshots: '++id, project_id, corpus_id, analysis_id, [project_id+analysis_id], updated_at, created_at',
+  story_events: '++id, project_id, chapter_id, revision_id, scene_id, op_type, subject_id, target_id, thread_id, status, created_at, [project_id+chapter_id], [project_id+revision_id]',
+  entity_state_current: '++id, project_id, entity_id, entity_type, updated_at, [project_id+entity_id]',
+  plot_thread_state: '++id, project_id, thread_id, updated_at, [project_id+thread_id]',
+  validator_reports: '++id, project_id, chapter_id, revision_id, scene_id, severity, status, created_at, [project_id+chapter_id], [project_id+revision_id]',
+  memory_evidence: '++id, project_id, chapter_id, revision_id, scene_id, target_type, target_id, created_at, [project_id+revision_id]',
+  chapter_revisions: '++id, project_id, chapter_id, revision_number, status, created_at, [project_id+chapter_id], [chapter_id+revision_number]',
+  chapter_commits: '++id, project_id, chapter_id, status, updated_at, [project_id+chapter_id]',
+  chapter_snapshots: '++id, project_id, chapter_id, revision_id, created_at, [project_id+chapter_id], [project_id+revision_id]',
+  item_state_current: '++id, project_id, object_id, updated_at, [project_id+object_id]',
+  relationship_state_current: '++id, project_id, pair_key, updated_at, [project_id+pair_key]',
+  canon_purge_archives: '++id, project_id, chapter_id, created_at',
+  ai_chat_threads: '++id, project_id, updated_at, created_at',
+  ai_chat_messages: '++id, project_id, thread_id, created_at, [thread_id+created_at]',
+  entity_resolution_candidates: '++id, project_id, chapter_id, revision_id, session_key, entity_kind, resolution_status, normalized_name, identity_key, matched_entity_id, created_at, updated_at',
+}).upgrade(async (tx) => {
+  await tx.table('characters').toCollection().modify((row) => {
+    row.normalized_name = dbNormalizeName(row.name || '');
+    row.alias_keys = dbMergeUniqueText([], row.aliases || []).map((alias) => dbNormalizeName(alias));
+    row.identity_key = dbBuildEntityIdentityKey('character', row.name || '');
+  });
+  await tx.table('locations').toCollection().modify((row) => {
+    row.normalized_name = dbNormalizeName(row.name || '');
+    row.alias_keys = dbMergeUniqueText([], row.aliases || []).map((alias) => dbNormalizeName(alias));
+    row.identity_key = dbBuildEntityIdentityKey('location', row.name || '');
+  });
+  await tx.table('objects').toCollection().modify((row) => {
+    row.normalized_name = dbNormalizeName(row.name || '');
+    row.alias_keys = [];
+    row.identity_key = dbBuildEntityIdentityKey('object', row.name || '');
+  });
+  await tx.table('worldTerms').toCollection().modify((row) => {
+    row.normalized_name = dbNormalizeName(row.name || '');
+    row.alias_keys = dbMergeUniqueText([], row.aliases || []).map((alias) => dbNormalizeName(alias));
+    row.identity_key = dbBuildEntityIdentityKey('world_term', row.name || '');
+  });
+  await tx.table('canonFacts').toCollection().modify((row) => {
+    row.normalized_description = dbNormalizeName(row.description || row.fact_description || '');
+    row.subject_scope = dbBuildFactSubjectScope(row);
+    row.fact_fingerprint = dbBuildFactFingerprint(row);
+  });
+
+  const affectedProjects = new Set();
+  const entityTables = [
+    ['characters', 'character'],
+    ['locations', 'location'],
+    ['objects', 'object'],
+    ['worldTerms', 'world_term'],
+  ];
+
+  for (const [tableName, kind] of entityTables) {
+    const repaired = await repairEntityTableDuplicates(tx, tableName, kind);
+    repaired.forEach((id) => affectedProjects.add(id));
+  }
+  const repairedFacts = await repairCanonFactDuplicates(tx);
+  repairedFacts.forEach((id) => affectedProjects.add(id));
+  await flagProjectsForCanonRebuild(tx, [...affectedProjects]);
+});
+
+// Force a schema reconciliation for installations that already reached the
+// original v19 unique-index layout successfully. This downgrades those
+// storage-level constraints back to non-unique compound indexes so old
+// projects remain openable even with legacy duplicate data.
+db.version(20).stores({
+  projects: '++id, title, genre_primary, status, created_at, updated_at',
+  chapters: '++id, project_id, arc_id, order_index, title, status',
+  scenes: '++id, project_id, chapter_id, order_index, title, pov_character_id, status',
+  characters: '++id, project_id, name, role, normalized_name, [project_id+normalized_name]',
+  characterStates: '++id, project_id, character_id, scene_id',
+  relationships: '++id, project_id, character_a_id, character_b_id, relation_type',
+  locations: '++id, project_id, name, normalized_name, [project_id+normalized_name]',
+  objects: '++id, project_id, name, owner_character_id, normalized_name, [project_id+normalized_name]',
+  canonFacts: '++id, project_id, fact_type, subject_type, subject_id, status, fact_fingerprint, [project_id+fact_fingerprint]',
+  plotThreads: '++id, project_id, title, type, state',
+  threadBeats: '++id, plot_thread_id, scene_id, beat_type',
+  timelineEvents: '++id, project_id, scene_id, date_marker',
+  stylePacks: '++id, project_id, name, type, source_kind',
+  voicePacks: '++id, project_id, character_id',
+  styleJobs: '++id, project_id, style_pack_id, parsing_status',
+  genrePacks: '++id, name',
+  aiJobs: '++id, project_id, scene_id, chapter_id, job_type, status',
+  revisions: '++id, scene_id, objective, created_at',
+  qaReports: '++id, project_id, chapter_id, scene_id, report_type, severity',
+  worldTerms: '++id, project_id, name, category, normalized_name, [project_id+normalized_name]',
+  taboos: '++id, project_id, character_id, effective_before_chapter',
+  chapterMeta: '++id, chapter_id, project_id',
+  suggestions: '++id, project_id, type, status, source_chapter_id, target_id, created_at',
+  entityTimeline: '++id, project_id, entity_id, entity_type, chapter_id, type, timestamp',
+  factions: '++id, project_id, name, faction_type',
+  macro_arcs: '++id, project_id, order_index',
+  arcs: '++id, project_id, macro_arc_id, order_index',
+  event_annotations: '++id, corpus_id, event_id, [corpus_id+event_id]',
+  saved_searches: '++id, corpus_id, name, created_at',
+  export_history: '++id, corpus_id, format, created_at',
+  event_usage: '++id, corpus_id, event_id, [corpus_id+event_id]',
+  linked_events: '++id, event_id, corpus_id, project_id, [event_id+project_id]',
+  project_analysis_snapshots: '++id, project_id, corpus_id, analysis_id, [project_id+analysis_id], updated_at, created_at',
+  story_events: '++id, project_id, chapter_id, revision_id, scene_id, op_type, subject_id, target_id, thread_id, status, created_at, [project_id+chapter_id], [project_id+revision_id]',
+  entity_state_current: '++id, project_id, entity_id, entity_type, updated_at, [project_id+entity_id]',
+  plot_thread_state: '++id, project_id, thread_id, updated_at, [project_id+thread_id]',
+  validator_reports: '++id, project_id, chapter_id, revision_id, scene_id, severity, status, created_at, [project_id+chapter_id], [project_id+revision_id]',
+  memory_evidence: '++id, project_id, chapter_id, revision_id, scene_id, target_type, target_id, created_at, [project_id+revision_id]',
+  chapter_revisions: '++id, project_id, chapter_id, revision_number, status, created_at, [project_id+chapter_id], [chapter_id+revision_number]',
+  chapter_commits: '++id, project_id, chapter_id, status, updated_at, [project_id+chapter_id]',
+  chapter_snapshots: '++id, project_id, chapter_id, revision_id, created_at, [project_id+chapter_id], [project_id+revision_id]',
+  item_state_current: '++id, project_id, object_id, updated_at, [project_id+object_id]',
+  relationship_state_current: '++id, project_id, pair_key, updated_at, [project_id+pair_key]',
+  canon_purge_archives: '++id, project_id, chapter_id, created_at',
+  ai_chat_threads: '++id, project_id, updated_at, created_at',
+  ai_chat_messages: '++id, project_id, thread_id, created_at, [thread_id+created_at]',
+  entity_resolution_candidates: '++id, project_id, chapter_id, revision_id, session_key, entity_kind, resolution_status, normalized_name, identity_key, matched_entity_id, created_at, updated_at',
+});
+
 db.getPlotSuggestions = (chapterId) =>
   db.suggestions
     .where('source_chapter_id').equals(chapterId)
@@ -780,5 +1193,11 @@ db.savePlotSuggestions = async (chapterId, projectId, suggestions) => {
     created_at: Date.now(),
   })));
 };
+
+db.on('ready', () => {
+  // Do not block Dexie open on expensive canon rebuild work.
+  // Schedule it after startup so project/dashboard loads remain responsive.
+  scheduleBackgroundCanonRebuild(db);
+});
 
 export default db;

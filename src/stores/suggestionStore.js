@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import db from '../services/db/database';
 import { CANON_OP_TYPES } from '../services/canon/constants';
-import { canonicalizeCandidateOps } from '../services/canon/engine';
+import { canonicalizeCandidateOps } from '../services/canon/workflow';
+import { applyEntityResolutionSuggestion } from '../services/entityIdentity/index.js';
 
 function cleanText(value) {
   return String(value || '').trim();
@@ -51,6 +52,10 @@ function buildSuggestionCandidateOp(suggestion) {
         fact_type: cleanText(suggestion.fact_type || 'fact') || 'fact',
       },
     };
+  }
+
+  if (suggestion.type === 'entity_resolution') {
+    return null;
   }
 
   return null;
@@ -121,11 +126,17 @@ const useSuggestionStore = create((set, get) => ({
     await get().loadSuggestions(projectId);
   },
 
-  acceptSuggestion: async (id, projectId) => {
+  acceptSuggestion: async (id, projectId, options = {}) => {
     const suggestion = await db.suggestions.get(id);
     if (!suggestion || suggestion.status !== 'pending') return null;
 
-    const result = await commitSuggestionBatch(projectId, [suggestion]);
+    const result = suggestion.type === 'entity_resolution'
+      ? await applyEntityResolutionSuggestion({
+        suggestionId: id,
+        resolutionAction: options.resolutionAction || 'auto',
+        targetEntityId: options.targetEntityId || null,
+      })
+      : await commitSuggestionBatch(projectId, [suggestion]);
 
     await db.suggestions.update(id, {
       status: 'accepted',
@@ -138,6 +149,20 @@ const useSuggestionStore = create((set, get) => ({
   },
 
   rejectSuggestion: async (id, projectId) => {
+    const suggestion = await db.suggestions.get(id);
+    if (suggestion?.type === 'entity_resolution' && suggestion.candidate_op) {
+      try {
+        const payload = JSON.parse(suggestion.candidate_op);
+        const candidateIds = Array.isArray(payload.candidate_ids) ? payload.candidate_ids : [];
+        const candidates = await db.entity_resolution_candidates.where('id').anyOf(candidateIds).toArray();
+        await Promise.all(candidates.map((candidate) => (
+          db.entity_resolution_candidates.update(candidate.id, {
+            resolution_status: 'rejected',
+            updated_at: Date.now(),
+          })
+        )));
+      } catch {}
+    }
     await db.suggestions.update(id, { status: 'rejected', last_error: '' });
     await get().loadSuggestions(projectId);
   },
@@ -152,7 +177,19 @@ const useSuggestionStore = create((set, get) => ({
     }, new Map());
 
     for (const suggestions of grouped.values()) {
-      const result = await commitSuggestionBatch(projectId, suggestions);
+      if (suggestions.some((suggestion) => suggestion.type === 'entity_resolution')) {
+        for (const suggestion of suggestions) {
+          if (suggestion.type !== 'entity_resolution') continue;
+          await applyEntityResolutionSuggestion({
+            suggestionId: suggestion.id,
+            resolutionAction: 'auto',
+          });
+        }
+      }
+      const canonSuggestions = suggestions.filter((suggestion) => suggestion.type !== 'entity_resolution');
+      const result = canonSuggestions.length > 0
+        ? await commitSuggestionBatch(projectId, canonSuggestions)
+        : { revisionId: null };
       await Promise.all(suggestions.map((suggestion) => db.suggestions.update(suggestion.id, {
         status: 'accepted',
         applied_revision_id: result.revisionId || null,
@@ -167,7 +204,7 @@ const useSuggestionStore = create((set, get) => ({
   rejectAll: async (projectId) => {
     const pending = get().suggestions.filter((suggestion) => suggestion.status === 'pending');
     for (const suggestion of pending) {
-      await db.suggestions.update(suggestion.id, { status: 'rejected', last_error: '' });
+      await get().rejectSuggestion(suggestion.id, projectId);
     }
     await get().loadSuggestions(projectId);
   },

@@ -16,11 +16,11 @@ import useCanonStore from '../../stores/canonStore';
 import CanonRepairDialog from '../../components/canon/CanonRepairDialog';
 import MobileBibleTabs from '../../components/mobile/MobileBibleTabs';
 import {
-  buildCharacterStateSummary,
   getChapterRevisionDetail,
   getChapterRevisionHistory,
   getProjectCanonOverview,
-} from '../../services/canon/engine';
+} from '../../services/canon/queries';
+import { buildCharacterStateSummary } from '../../services/canon/state';
 import '../StoryBible/StoryBible.css';
 import './CanonTruth.css';
 

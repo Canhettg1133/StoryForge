@@ -14,7 +14,8 @@
 import db from '../db/database';
 import { detectWritingStyle } from '../../utils/constants';
 import { buildProseBuffer } from '../../utils/proseBuffer';
-import { buildRetrievalPacket, buildCharacterStateSummary } from '../canon/engine';
+import { buildRetrievalPacket } from '../canon/queries';
+import { buildCharacterStateSummary } from '../canon/state';
 import { TASK_TYPES } from './router';
 import {
   buildChapterBlueprintContext,

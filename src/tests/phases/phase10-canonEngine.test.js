@@ -319,6 +319,30 @@ describe('phase10 canon engine', () => {
     expect(next.emotional_aftermath).toContain('gan gui hon');
   });
 
+  it('deduplicates registered facts by fingerprint in fact state projection', () => {
+    const start = [{
+      id: 41,
+      description: 'Lang co loi nguyen',
+      fact_type: 'fact',
+      subject_scope: 'global',
+      normalized_description: 'lang co loi nguyen',
+      fact_fingerprint: 'fact|lang co loi nguyen|global',
+    }];
+    const next = engine.applyEventToFactStates(start, {
+      id: 501,
+      chapter_id: 3,
+      op_type: CANON_OP_TYPES.FACT_REGISTERED,
+      fact_description: 'Lang co loi nguyen.',
+      payload: {
+        description: 'Lang co loi nguyen.',
+        fact_type: 'fact',
+      },
+    }, 2);
+
+    expect(next).toHaveLength(1);
+    expect(next[0].fact_fingerprint).toBe('fact|lang co loi nguyen|global');
+  });
+
   it('deduplicates repeated character summary fragments', () => {
     const summary = engine.buildCharacterStateSummary({
       alive_status: 'alive',

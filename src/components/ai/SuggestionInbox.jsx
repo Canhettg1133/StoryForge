@@ -18,6 +18,15 @@ import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import './SuggestionInbox.css';
 
+function parseCandidateOp(value) {
+  if (!value) return null;
+  try {
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  } catch {
+    return null;
+  }
+}
+
 export default function SuggestionInbox({ projectId, onAccepted }) {
   const {
     suggestions,
@@ -37,6 +46,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
   const [selectedChapter, setSelectedChapter] = useState('');
   const [notice, setNotice] = useState(null);
   const [showResolved, setShowResolved] = useState(false);
+  const [entityResolutionChoices, setEntityResolutionChoices] = useState({});
 
   useEffect(() => {
     if (projectId) {
@@ -89,8 +99,17 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
   };
 
   const handleAccept = async (id) => {
+    const suggestion = suggestions.find((item) => item.id === id) || null;
+    const parsed = parseCandidateOp(suggestion?.candidate_op);
+    const resolutionValue = entityResolutionChoices[id]
+      || (parsed?.recommended_target_id ? String(parsed.recommended_target_id) : '__create_new__');
     try {
-      await acceptSuggestion(id, projectId);
+      await acceptSuggestion(id, projectId, suggestion?.type === 'entity_resolution'
+        ? {
+          resolutionAction: resolutionValue === '__create_new__' ? 'create_new' : 'match_existing',
+          targetEntityId: resolutionValue === '__create_new__' ? null : Number(resolutionValue),
+        }
+        : undefined);
       if (projectId) {
         loadCodex(projectId);
       }
@@ -132,11 +151,13 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
 
   const typeIcon = (type) => {
     if (type === 'character_status') return <UserCheck size={14} />;
+    if (type === 'entity_resolution') return <UserCheck size={14} />;
     return <BookKey size={14} />;
   };
 
   const typeLabel = (type) => {
     if (type === 'character_status') return 'Trạng thái';
+    if (type === 'entity_resolution') return 'Resolve entity';
     return 'Sự thật canon';
   };
 
@@ -237,7 +258,35 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                       </div>
                     </div>
                   </div>
-                ) : (
+                ) : item.type === 'entity_resolution' ? (() => {
+                  const resolution = parseCandidateOp(item.candidate_op);
+                  const options = Array.isArray(resolution?.resolution_options) ? resolution.resolution_options : [];
+                  const selectedValue = entityResolutionChoices[item.id]
+                    || (resolution?.recommended_target_id ? String(resolution.recommended_target_id) : '__create_new__');
+                  return (
+                    <div className="si-card-body">
+                      <div className="si-char-name">{item.target_name || resolution?.raw_name || '(Khong ro ten)'}</div>
+                      <div className="si-fact-content">
+                        {item.reasoning || 'Entity nay mo ho, can chon gop vao entity co san hoac tao moi.'}
+                      </div>
+                      <select
+                        className="select"
+                        value={selectedValue}
+                        onChange={(event) => setEntityResolutionChoices((current) => ({
+                          ...current,
+                          [item.id]: event.target.value,
+                        }))}
+                      >
+                        {options.map((option) => (
+                          <option key={`${item.id}:${option.entity_id}`} value={String(option.entity_id)}>
+                            {`Gop vao ${option.name} (${(option.score || 0).toFixed(2)})`}
+                          </option>
+                        ))}
+                        <option value="__create_new__">Tao entity moi</option>
+                      </select>
+                    </div>
+                  );
+                })() : (
                   <div className="si-card-body">
                     <div className="si-fact-content">{item.suggested_value}</div>
                   </div>
@@ -305,6 +354,8 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                   <span className="si-resolved-text">
                     {item.type === 'character_status'
                       ? `${item.target_name}: ${item.suggested_value}`
+                      : item.type === 'entity_resolution'
+                        ? `${item.target_name || 'Entity'}: ${item.suggested_value || item.reasoning}`
                       : item.suggested_value}
                   </span>
                 </div>
