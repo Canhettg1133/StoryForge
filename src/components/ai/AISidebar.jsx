@@ -26,6 +26,7 @@ import './AISidebar.css';
 
 const PROSE_INSERT_TASKS = ['continue', 'free_prompt'];
 const PROSE_REPLACE_TASKS = ['rewrite', 'expand'];
+const AI_DRAFT_READY_EVENT = 'storyforge:ai-draft-ready';
 const MOBILE_AI_TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'codex', label: 'Codex' },
@@ -81,6 +82,7 @@ export default function AISidebar({
   const [showPlotManager, setShowPlotManager] = useState(false);
   const outputRef = useRef(null);
   const guidanceRef = useRef(null);
+  const lastPublishedDraftRef = useRef('');
 
   useEffect(() => {
     if (activeChapterId) {
@@ -109,10 +111,37 @@ export default function AISidebar({
   const displayText = streamingText || completedText;
   const hasOutput = !!displayText || !!error || isStreaming || isCheckingConflict;
 
+  const isSceneEmpty = (html = '') => (
+    !String(html || '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .trim()
+  );
+
   useEffect(() => {
     if (!isMobileLayout || !hasOutput || !onMobileTabChange) return;
     onMobileTabChange('results');
   }, [isMobileLayout, hasOutput, onMobileTabChange]);
+
+  useEffect(() => {
+    if (!completedText || !PROSE_INSERT_TASKS.includes(lastTaskId) || !activeSceneId) return;
+
+    const scene = scenes.find((item) => item.id === activeSceneId);
+    if (!isSceneEmpty(scene?.draft_text || '')) return;
+
+    const draftKey = `${activeSceneId}:${lastTaskId}:${completedText}`;
+    if (lastPublishedDraftRef.current === draftKey) return;
+    lastPublishedDraftRef.current = draftKey;
+
+    window.dispatchEvent(new CustomEvent(AI_DRAFT_READY_EVENT, {
+      detail: {
+        sceneId: activeSceneId,
+        chapterId: activeChapterId || null,
+        taskId: lastTaskId,
+        text: completedText,
+      },
+    }));
+  }, [completedText, lastTaskId, activeSceneId, activeChapterId, scenes]);
 
   const getContext = () => {
     const scene = scenes.find((item) => item.id === activeSceneId);

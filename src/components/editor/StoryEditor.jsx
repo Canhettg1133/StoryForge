@@ -11,6 +11,30 @@ import db from '../../services/db/database';
 import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings } from 'lucide-react';
 import './StoryEditor.css';
 
+const AI_DRAFT_READY_EVENT = 'storyforge:ai-draft-ready';
+
+function isContentEmpty(html = '') {
+  return !String(html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+function textToHtml(text = '') {
+  return String(text || '')
+    .split(/\n\n+/)
+    .filter((paragraph) => paragraph.trim())
+    .map((paragraph) => {
+      const escaped = paragraph
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>');
+      return `<p>${escaped}</p>`;
+    })
+    .join('');
+}
+
 export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
   const {
     activeSceneId, activeChapterId, scenes, chapters,
@@ -29,6 +53,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
   const [isEditingOutline, setIsEditingOutline] = useState(false);
   const [editSummary, setEditSummary] = useState('');
   const [editPurpose, setEditPurpose] = useState('');
+  const [aiDraft, setAiDraft] = useState(null);
 
   // Parse chapter outline data (summary + key_events from purpose)
   const chapterOutline = useMemo(() => {
@@ -135,6 +160,37 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
     }
   }, [activeSceneId, activeScene?.draft_text, editor]);
 
+  useEffect(() => {
+    setAiDraft(null);
+  }, [activeSceneId]);
+
+  useEffect(() => {
+    if (!activeScene || isContentEmpty(activeScene.draft_text || '')) return;
+    setAiDraft(null);
+  }, [activeScene?.draft_text, activeScene?.id]);
+
+  useEffect(() => {
+    const handleAiDraftReady = (event) => {
+      const detail = event.detail || {};
+      if (!activeScene || detail.sceneId !== activeScene.id) return;
+      if (!isContentEmpty(activeScene.draft_text || '')) return;
+
+      const text = String(detail.text || '').trim();
+      if (!text) return;
+
+      setAiDraft({
+        sceneId: detail.sceneId,
+        taskId: detail.taskId || 'ai',
+        text,
+        html: textToHtml(text),
+        wordCount: countWords(text),
+      });
+    };
+
+    window.addEventListener(AI_DRAFT_READY_EVENT, handleAiDraftReady);
+    return () => window.removeEventListener(AI_DRAFT_READY_EVENT, handleAiDraftReady);
+  }, [activeScene?.id, activeScene?.draft_text, activeScene]);
+
   // [MỚI] Reset thanh cuộn khi đổi cảnh/chương
   useEffect(() => {
     if (editorWrapperRef.current) {
@@ -172,6 +228,18 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
     await updateProjectTimestamp();
 
   }, [activeSceneId, activeScene, updateScene, updateProjectTimestamp, chapterProgress, chapters]);
+
+  const handleSaveAiDraft = async () => {
+    if (!aiDraft || !editor || !activeSceneId) return;
+    if (!isContentEmpty(activeScene?.draft_text || '')) {
+      setAiDraft(null);
+      return;
+    }
+
+    editor.commands.setContent(aiDraft.html, false);
+    await handleSave(aiDraft.html);
+    setAiDraft(null);
+  };
 
   useEffect(() => {
     return () => {
@@ -357,6 +425,28 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
 
       {/* Editor */}
       <div className="story-editor-wrapper" ref={editorWrapperRef}>
+        {aiDraft && isContentEmpty(activeScene?.draft_text || '') && (
+          <div className="story-editor-ai-draft">
+            <div className="story-editor-ai-draft__header">
+              <div>
+                <div className="story-editor-ai-draft__kicker">Bản nháp AI</div>
+                <strong>AI đã viết cho cảnh trống này</strong>
+                <span>{aiDraft.wordCount.toLocaleString()} từ</span>
+              </div>
+              <div className="story-editor-ai-draft__actions">
+                <button type="button" className="btn btn-primary btn-sm" onClick={handleSaveAiDraft}>
+                  <Check size={13} /> Lưu vào cảnh
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAiDraft(null)}>
+                  <X size={13} /> Bỏ
+                </button>
+              </div>
+            </div>
+            <div className="story-editor-ai-draft__body">
+              {aiDraft.text}
+            </div>
+          </div>
+        )}
         <EditorContent editor={editor} />
       </div>
 
@@ -390,6 +480,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
           {chapterProgress && (
             <span className="story-editor-progress-pct">{chapterProgress.percent}%</span>
           )}
+          <span className="story-editor-mobile-word-count">{wordCount.toLocaleString()} từ</span>
           <span className="story-editor-autosave">Tự động lưu</span>
         </div>
       </div>

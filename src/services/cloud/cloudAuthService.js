@@ -15,7 +15,9 @@ function getSafeCloudRedirectPath() {
     return undefined;
   }
 
-  return `${window.location.origin}/settings#cloud-sync`;
+  const pathname = String(window.location.pathname || '').trim();
+  const cloudPath = pathname.endsWith('/cloud-sync') ? pathname : '/cloud-sync';
+  return `${window.location.origin}${cloudPath}`;
 }
 
 export async function getSession() {

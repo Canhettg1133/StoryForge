@@ -16,6 +16,7 @@ import NarrativeLab from './pages/Lab/NarrativeLab';
 import CorpusLab from './pages/Lab/CorpusLab/CorpusLab';
 import AnalysisViewer from './pages/Lab/CorpusLab/AnalysisViewer';
 import Settings from './pages/Settings/Settings';
+import CloudSyncPage from './pages/CloudSync/CloudSyncPage';
 import StoryCreationSettings from './pages/StoryCreationSettings/StoryCreationSettings';
 import ProjectPromptManager from './pages/ProjectPromptManager/ProjectPromptManager';
 import ProjectChat from './pages/ProjectChat/ProjectChat';
@@ -35,6 +36,7 @@ export default function App() {
           <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/cloud-sync" element={<CloudSyncPage />} />
           <Route path="/guide" element={<GeminiSetupGuide />} />
           <Route path="/guide/proxy" element={<GeminiProxyGuide />} />
           <Route path="/guide/translator" element={<TranslatorSetupGuide />} />
@@ -52,6 +54,7 @@ export default function App() {
             <Route path="world" element={<WorldLore />} />
             <Route path="editor" element={<SceneEditor />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="cloud-sync" element={<CloudSyncPage />} />
             <Route path="chat" element={<ProjectChat />} />
             <Route path="prompts" element={<ProjectPromptManager />} />
             <Route path="prompt-manager" element={<StoryCreationSettings />} />

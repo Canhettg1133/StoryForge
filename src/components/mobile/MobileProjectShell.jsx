@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   BookMarked,
   BookOpen,
+  Cloud,
   FileSearch,
   FlaskConical,
   Languages,
@@ -16,7 +17,7 @@ import {
   Globe,
   ShieldCheck,
 } from 'lucide-react';
-import { PRODUCT_SURFACE } from '../../config/productSurface';
+import { PRODUCT_SURFACE, shouldShowNavItem } from '../../config/productSurface';
 import useProjectStore from '../../stores/projectStore';
 import MobileSheet from './MobileSheet';
 import MobileProjectTopBar from './MobileProjectTopBar';
@@ -34,6 +35,7 @@ const MORE_ITEMS = [
   { id: 'canon', label: 'Canon', icon: ShieldCheck, path: (id) => `/project/${id}/su-that` },
   { id: 'prompts', label: 'Prompt truy\u1ec7n', icon: BookMarked, path: (id) => `/project/${id}/prompts` },
   { id: 'prompt-manager', label: 'Prompt t\u1ed5ng qu\u00e1t', icon: Sparkles, path: (id) => `/project/${id}/prompt-manager` },
+  { id: 'cloud-sync', label: 'Cloud Sync', icon: Cloud, path: (id) => `/project/${id}/cloud-sync` },
   { id: 'settings', label: 'C\u00e0i \u0111\u1eb7t', icon: Settings, path: (id) => `/project/${id}/settings` },
   { id: 'translator', label: 'D\u1ecbch truy\u1ec7n', icon: Languages, path: () => '/translator' },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: () => '/' },
@@ -53,6 +55,7 @@ function getPageTitle(pathname) {
   if (pathname.includes('/su-that')) return 'Canon';
   if (pathname.includes('/chat')) return 'Chat v\u1edbi AI';
   if (pathname.includes('/prompt-manager')) return 'Prompt t\u1ed5ng qu\u00e1t';
+  if (pathname.includes('/cloud-sync')) return 'Cloud Sync';
   if (pathname.includes('/settings')) return 'C\u00e0i \u0111\u1eb7t';
   if (pathname.includes('/prompts')) return 'Prompt truy\u1ec7n';
   if (pathname.includes('/lab')) return 'Lab';
@@ -60,6 +63,7 @@ function getPageTitle(pathname) {
 }
 
 function canShowItem(item) {
+  if (!shouldShowNavItem(item)) return false;
   if (item.surface === 'lab') return PRODUCT_SURFACE.showLabs;
   if (item.surface === 'roadmap') return PRODUCT_SURFACE.showRoadmapPages;
   return true;
@@ -131,6 +135,8 @@ export default function MobileProjectShell({ children }) {
       <MobileSheet
         open={moreOpen}
         title="Menu"
+        kicker={currentProject?.title || 'StoryForge'}
+        size="full"
         onClose={() => setMoreOpen(false)}
       >
         <div className="project-mobile-more-list">

@@ -53,12 +53,18 @@
 
 .app-layout--mobile {
   display: block;
+  height: 100vh;
+  min-height: 100vh;
   height: 100svh;
   min-height: 100svh;
+  height: 100dvh;
+  min-height: 100dvh;
 }
 
 .app-layout--mobile .app-main {
+  height: 100vh;
   height: 100svh;
+  height: 100dvh;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
@@ -69,8 +75,12 @@
 }
 
 .app-layout--mobile .translator-shell.is-active {
+  height: 100vh;
+  min-height: 100vh;
   height: 100svh;
   min-height: 100svh;
+  height: 100dvh;
+  min-height: 100dvh;
 }
 
 .app-layout--mobile .translator-shell__mobile-back {

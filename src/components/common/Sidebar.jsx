@@ -5,6 +5,7 @@ import {
   BookOpen,
   ChevronLeft,
   Clock,
+  Cloud,
   FileSearch,
   FlaskConical,
   Globe,
@@ -53,6 +54,17 @@ const RAW_NAV_ITEMS = [
   { path: '/settings', icon: Settings, label: 'Cài đặt', id: 'settings', surface: 'core' },
 ];
 
+const cloudSyncInsertIndex = RAW_NAV_ITEMS.findIndex((item) => item.id === 'settings');
+if (cloudSyncInsertIndex >= 0) {
+  RAW_NAV_ITEMS.splice(cloudSyncInsertIndex, 0, {
+    path: '/cloud-sync',
+    icon: Cloud,
+    label: 'Cloud Sync',
+    id: 'cloud-sync',
+    surface: 'core',
+  });
+}
+
 const NAV_ITEMS = RAW_NAV_ITEMS.filter((item, index, items) => {
   if (item.divider) {
     const prev = items[index - 1];
@@ -76,6 +88,10 @@ function getNavPath(item, activeProjectId) {
 
   if (item.id === 'prompt-manager' && activeProjectId) {
     return `/project/${activeProjectId}/prompt-manager`;
+  }
+
+  if (item.id === 'cloud-sync' && activeProjectId) {
+    return `/project/${activeProjectId}/cloud-sync`;
   }
 
   if (item.needsProject && activeProjectId) {

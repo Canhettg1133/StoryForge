@@ -6,6 +6,10 @@ export const PRODUCT_SURFACE = {
 };
 
 export function shouldShowNavItem(item) {
+  if (item.id === 'cloud-sync' && !PRODUCT_SURFACE.enableCloudSync) {
+    return false;
+  }
+
   if (item.surface === 'lab' && !PRODUCT_SURFACE.showLabs) {
     return false;
   }

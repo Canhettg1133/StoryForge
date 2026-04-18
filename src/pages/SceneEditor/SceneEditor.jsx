@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BookOpen,
   Clock,
+  Cloud,
   FileSearch,
   FlaskConical,
   Globe,
@@ -37,6 +38,7 @@ const MOBILE_NAV_ITEMS = [
   { id: 'project-chat', label: 'Chat với AI', icon: MessageSquare, needsProject: true, getPath: (projectId) => `/project/${projectId}/chat` },
   { id: 'project-prompts', label: 'Prompt truyện', icon: Sparkles, needsProject: true, getPath: (projectId) => `/project/${projectId}/prompts` },
   { id: 'prompt-manager', label: 'Prompt tổng quát', icon: Sparkles, needsProject: true, getPath: (projectId) => `/project/${projectId}/prompt-manager` },
+  { id: 'cloud-sync', label: 'Cloud Sync', icon: Cloud, needsProject: true, getPath: (projectId) => `/project/${projectId}/cloud-sync` },
   { id: 'lab', label: 'Narrative Lab', icon: FlaskConical, needsProject: true, getPath: (projectId) => `/project/${projectId}/lab` },
   { id: 'corpus-lab', label: 'Corpus Lab', icon: FlaskConical, needsProject: true, getPath: (projectId) => `/project/${projectId}/corpus-lab` },
   { id: 'timeline', label: 'Timeline', icon: Clock, needsProject: true, getPath: (projectId) => `/project/${projectId}/timeline`, comingSoon: true },

@@ -1,19 +1,35 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
+import useMobileLayout from '../../hooks/useMobileLayout';
+import { shouldShowNavItem } from '../../config/productSurface';
 import { getGenreEmoji, getGenreLabel, formatDate } from '../../utils/constants';
 import {
   Plus,
+  BookKey,
   BookOpen,
   Trash2,
   MoreVertical,
   Download,
+  Clock,
+  Cloud,
+  FileSearch,
+  FlaskConical,
+  Globe,
+  LayoutDashboard,
   Languages,
+  Map,
   MessageSquare,
-  BookKey,
+  Menu,
+  Palette,
+  PenTool,
+  Sparkles,
+  Settings,
+  Users,
 } from 'lucide-react';
 import NewProjectModal from './NewProjectModal';
 import ExportModal from '../../components/common/ExportModal';
+import MobileSheet from '../../components/mobile/MobileSheet';
 import './Dashboard.css';
 
 const UTILITY_ITEMS = [
@@ -40,13 +56,76 @@ const UTILITY_ITEMS = [
   },
 ];
 
+UTILITY_ITEMS.splice(2, 0, {
+  id: 'cloud-sync',
+  title: 'Cloud Sync',
+  description: 'Sao lưu dự án, chat và prompt lên cloud trên một trang riêng.',
+  icon: Cloud,
+  path: '/cloud-sync',
+});
+
+const VISIBLE_UTILITY_ITEMS = UTILITY_ITEMS.filter(shouldShowNavItem);
+const FULL_MOBILE_DRAWER_ITEMS = [
+  { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, path: '/', surface: 'core' },
+  { id: 'story-bible', title: 'Sổ tay truyện', icon: BookOpen, path: '/story-bible', needsProject: true, surface: 'core' },
+  { id: 'su-that', title: 'Sự thật', icon: BookKey, path: '/su-that', needsProject: true, surface: 'core' },
+  { id: 'outline', title: 'Bảng dàn ý', icon: Map, path: '/outline', needsProject: true, surface: 'core' },
+  { id: 'characters', title: 'Nhân vật', icon: Users, path: '/characters', needsProject: true, surface: 'core' },
+  { id: 'world', title: 'Thế giới', icon: Globe, path: '/world', needsProject: true, surface: 'core' },
+  { divider: true },
+  { id: 'editor', title: 'Viết truyện', icon: PenTool, path: '/editor', needsProject: true, surface: 'core' },
+  { id: 'project-chat', title: 'Chat AI', icon: MessageSquare, path: '/chat', needsProject: true, surface: 'core' },
+  { id: 'project-prompts', title: 'Prompt truyện', icon: Sparkles, path: '/prompts', needsProject: true, surface: 'core' },
+  { divider: true },
+  { id: 'lab', title: 'Narrative Lab', icon: FlaskConical, path: '/lab', needsProject: true, surface: 'lab' },
+  { id: 'corpus-lab', title: 'Corpus Lab', icon: FlaskConical, path: '/corpus-lab', needsProject: true, surface: 'lab' },
+  { divider: true },
+  { id: 'timeline', title: 'Timeline', icon: Clock, path: '/timeline', needsProject: true, comingSoon: true, surface: 'roadmap' },
+  { id: 'revision', title: 'Revision & QA', icon: FileSearch, path: '/revision', needsProject: true, comingSoon: true, surface: 'roadmap' },
+  { id: 'style-lab', title: 'Style Lab', icon: Palette, path: '/style-lab', needsProject: true, comingSoon: true, surface: 'roadmap' },
+  { divider: true },
+  { id: 'global-chat', title: 'Chat tự do', icon: MessageSquare, path: '/ai-chat', surface: 'core' },
+  { id: 'translator', title: 'Dịch truyện', icon: Languages, path: '/translator', surface: 'core' },
+  { id: 'prompt-manager', title: 'Prompt tổng quát', icon: Sparkles, path: '/prompt-manager', surface: 'core' },
+  { id: 'cloud-sync', title: 'Cloud Sync', icon: Cloud, path: '/cloud-sync', surface: 'core' },
+  { id: 'settings', title: 'Cài đặt', icon: Settings, path: '/settings', surface: 'core' },
+];
+
+const VISIBLE_MOBILE_DRAWER_ITEMS = FULL_MOBILE_DRAWER_ITEMS.filter((item, index, items) => {
+  if (item.divider) {
+    const prev = items[index - 1];
+    const next = items[index + 1];
+    return shouldShowNavItem(prev || {}) && shouldShowNavItem(next || {});
+  }
+
+  return shouldShowNavItem(item);
+}).filter((item, index, items) => {
+  if (!item.divider) return true;
+  const prev = items[index - 1];
+  const next = items[index + 1];
+  return !!prev && !!next && !prev.divider && !next.divider;
+});
+
+function getMobileDrawerPath(item, activeProjectId) {
+  if (item.id === 'translator') return '/translator';
+  if (item.id === 'settings' && activeProjectId) return `/project/${activeProjectId}/settings`;
+  if (item.id === 'prompt-manager' && activeProjectId) return `/project/${activeProjectId}/prompt-manager`;
+  if (item.id === 'cloud-sync' && activeProjectId) return `/project/${activeProjectId}/cloud-sync`;
+  if (item.needsProject && activeProjectId) return `/project/${activeProjectId}${item.path}`;
+  return item.path;
+}
+
 export default function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { projects, loadProjects, loadProject, deleteProject } = useProjectStore();
+  const isMobileLayout = useMobileLayout(900);
   const [showModal, setShowModal] = useState(false);
   const [contextMenu, setContextMenu] = useState(null);
   const [exportingProject, setExportingProject] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const activeProjectId = null;
 
   useEffect(() => {
     loadProjects();
@@ -81,14 +160,44 @@ export default function Dashboard() {
       .includes(query);
   });
 
+  const handleUtilityNavigate = (path, options = {}) => {
+    if (options.fullReload) {
+      window.location.assign(new URL(path, window.location.origin).href);
+      return;
+    }
+
+    navigate(path);
+  };
+
+  const handleMobileDrawerNavigate = (item) => {
+    if (item.needsProject && !activeProjectId) return;
+
+    handleUtilityNavigate(getMobileDrawerPath(item, activeProjectId));
+    setMobileMenuOpen(false);
+  };
+
   return (
     <div className="dashboard">
       <header className="dashboard-header animate-fade-in">
-        <div>
+        <div className="dashboard-header__top">
           <h1 className="dashboard-title">
             <span className="dashboard-title-icon">SF</span>
             StoryForge
           </h1>
+          {isMobileLayout ? (
+            <button
+              type="button"
+              className="dashboard-mobile-menu-button btn btn-ghost"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-expanded={mobileMenuOpen}
+              aria-label="Mở menu điều hướng"
+            >
+              <Menu size={18} />
+              <span>Menu</span>
+            </button>
+          ) : null}
+        </div>
+        <div>
           <p className="dashboard-subtitle">
             Tạo dự án để bắt đầu viết truyện, hoặc dùng nhanh Chat AI, Dịch truyện và phần thiết lập API khi chưa cần mở project.
           </p>
@@ -107,14 +216,14 @@ export default function Dashboard() {
       <div className="dashboard-content">
         <section className="dashboard-tools card animate-slide-up">
           <div className="dashboard-tools__grid">
-            {UTILITY_ITEMS.map((item) => {
+            {VISIBLE_UTILITY_ITEMS.map((item) => {
               const Icon = item.icon;
               return (
                 <button
                   key={item.id}
                   type="button"
                   className="dashboard-tool-card"
-                  onClick={() => navigate(item.path)}
+                  onClick={() => handleUtilityNavigate(item.path)}
                 >
                   <div className="dashboard-tool-card__icon">
                     <Icon size={22} />
@@ -220,6 +329,41 @@ export default function Dashboard() {
       <button className="dashboard-mobile-cta btn btn-primary" onClick={() => setShowModal(true)}>
         <Plus size={18} /> Tạo truyện
       </button>
+
+      <MobileSheet
+        open={mobileMenuOpen}
+        title="Menu"
+        kicker="StoryForge"
+        size="full"
+        onClose={() => setMobileMenuOpen(false)}
+      >
+        <div className="dashboard-mobile-menu-list">
+          {VISIBLE_MOBILE_DRAWER_ITEMS.map((item, index) => {
+            if (item.divider) {
+              return <div key={`divider-${index}`} className="dashboard-mobile-menu-divider" />;
+            }
+
+            const Icon = item.icon;
+            const targetPath = getMobileDrawerPath(item, activeProjectId);
+            const active = location.pathname === targetPath;
+            const disabled = item.needsProject && !activeProjectId;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`dashboard-mobile-menu-item ${active ? 'dashboard-mobile-menu-item--active' : ''} ${disabled ? 'dashboard-mobile-menu-item--disabled' : ''}`}
+                onClick={() => handleMobileDrawerNavigate(item)}
+                disabled={disabled}
+                title={disabled ? 'Cần mở một project trước' : undefined}
+              >
+                <Icon size={18} />
+                <span>{item.title}</span>
+                {item.comingSoon ? <span className="dashboard-mobile-menu-badge">Soon</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      </MobileSheet>
 
       {showModal && (
         <NewProjectModal

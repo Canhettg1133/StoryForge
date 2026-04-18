@@ -194,7 +194,9 @@ body {
 
 @media (max-width: 900px) {
   #root {
+    height: 100vh;
     height: 100svh;
+    height: 100dvh;
   }
 }
 

@@ -49,11 +49,11 @@ import {
 } from '../../services/cloud/cloudSyncService.js';
 
 function formatTimestamp(value) {
-  if (!value) return 'chua sync';
+  if (!value) return 'chưa đồng bộ';
   try {
     return new Date(value).toLocaleString('vi-VN');
   } catch {
-    return 'chua sync';
+    return 'chưa đồng bộ';
   }
 }
 
@@ -93,6 +93,57 @@ const EMPTY_RESTORE_STATE = {
 };
 
 export default function CloudSyncSection() {
+  const navigate = useNavigate();
+  const { projectId } = useParams();
+  const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
+  const targetPath = scopedProjectId ? `/project/${scopedProjectId}/cloud-sync` : '/cloud-sync';
+
+  if (!PRODUCT_SURFACE.enableCloudSync) {
+    return null;
+  }
+
+  return (
+    <section className="settings-section card animate-slide-up cloud-sync-teaser" id="cloud-sync" style={{ animationDelay: '300ms' }}>
+      <div className="settings-section-header">
+        <Cloud size={20} />
+        <div>
+          <h2>Cloud Sync</h2>
+          <p>
+            Mở trang riêng để đăng nhập Google, sao lưu dự án, khôi phục chat, quản lý prompt và theo dõi trạng thái đồng bộ trên cả PC lẫn điện thoại.
+          </p>
+        </div>
+      </div>
+
+      <div className="cloud-sync-teaser__body">
+        <div className="cloud-sync-teaser__copy">
+          <strong>Trang độc lập, tối ưu cho cả desktop và mobile</strong>
+          <p>
+            Toàn bộ thao tác sao lưu, khôi phục, tự đồng bộ, xung đột dữ liệu và xuất/nhập snapshot đã được chuyển sang một màn hình riêng để dễ dùng hơn.
+          </p>
+        </div>
+
+        <div className="cloud-sync-teaser__actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => navigate(targetPath)}
+          >
+            <Cloud size={14} /> Mở Cloud Sync
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => navigate(targetPath)}
+          >
+            <Database size={14} /> Xem trang sao lưu
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function CloudSyncWorkspace({ standalone = false, compact = false }) {
   const navigate = useNavigate();
   const { projectId } = useParams();
   const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
@@ -628,17 +679,19 @@ export default function CloudSyncSection() {
   const promptMeta = getStoryCreationSettingsMeta();
   const promptOwnedByOtherUser = isOwnedByDifferentUser(promptMeta?.ownerUserId, currentUserId);
 
-  return (
-    <section className="settings-section card animate-slide-up" id="cloud-sync" style={{ animationDelay: '300ms' }}>
-      <div className="settings-section-header">
-        <Cloud size={20} />
-        <div>
-          <h2>Cloud Sync</h2>
-          <p>
-            Dang nhap Google de backup/restore project, chat va prompt len Supabase. App van local-first; cloud chi la noi luu du lieu.
-          </p>
+  const workspaceContent = (
+    <>
+      {!standalone ? (
+        <div className="settings-section-header">
+          <Cloud size={20} />
+          <div>
+            <h2>Cloud Sync</h2>
+            <p>
+              Đăng nhập Google để sao lưu và khôi phục dự án, chat và prompt trên Supabase. Ứng dụng vẫn local-first; cloud chỉ là nơi lưu và đồng bộ dữ liệu.
+            </p>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {message && (
         <div className={`settings-test-result ${message.type === 'success' ? 'success' : 'error'}`}>
@@ -651,8 +704,8 @@ export default function CloudSyncSection() {
           <div className="cloud-sync-auth-card__copy">
             <AlertTriangle size={16} />
             <div>
-              <strong>Cloud Sync chua duoc cau hinh</strong>
-              <p>Can them `VITE_SUPABASE_URL` va `VITE_SUPABASE_ANON_KEY` vao env truoc khi dang nhap.</p>
+            <strong>Cloud Sync chưa được cấu hình</strong>
+              <p>Cần thêm `VITE_SUPABASE_URL` và `VITE_SUPABASE_ANON_KEY` vào biến môi trường trước khi đăng nhập.</p>
             </div>
           </div>
         </div>
@@ -661,13 +714,13 @@ export default function CloudSyncSection() {
           <div className="cloud-sync-auth-card__copy">
             <UserRound size={16} />
             <div>
-              <strong>{isSignedIn ? 'Dang ket noi cloud' : 'Chua dang nhap cloud'}</strong>
+              <strong>{isSignedIn ? 'Đang kết nối cloud' : 'Chưa đăng nhập cloud'}</strong>
               <p>
                 {authLoading
-                  ? 'Dang kiem tra phien dang nhap...'
+                  ? 'Đang kiểm tra phiên đăng nhập...'
                   : isSignedIn
-                    ? `${session.user.email || session.user.user_metadata?.email || 'Tai khoan Google da ket noi'}`
-                    : 'Dang nhap Google de backup va restore du lieu local.'}
+                    ? `${session.user.email || session.user.user_metadata?.email || 'Tài khoản Google đã kết nối'}`
+                    : 'Đăng nhập Google để sao lưu và khôi phục dữ liệu local.'}
               </p>
             </div>
           </div>
@@ -680,18 +733,18 @@ export default function CloudSyncSection() {
                   className="btn btn-ghost btn-icon"
                   onClick={() => refreshCloud()}
                   disabled={loadingCloud}
-                  title="Tai lai danh sach snapshot"
+                  title="Tải lại danh sách snapshot"
                 >
                   {loadingCloud ? <RefreshCw size={16} className="animate-spin" /> : <Database size={16} />}
                 </button>
                 <button type="button" className="btn btn-secondary" onClick={handleSignOut}>
-                  <LogOut size={14} /> Dang xuat
+                  <LogOut size={14} /> Đăng xuất
                 </button>
               </>
             ) : (
               <button type="button" className="btn btn-primary" onClick={handleSignIn} disabled={authLoading}>
                 {authLoading ? <RefreshCw size={14} className="animate-spin" /> : <LogIn size={14} />}
-                Dang nhap Google
+                Đăng nhập Google
               </button>
             )}
           </div>
@@ -708,12 +761,12 @@ export default function CloudSyncSection() {
 
       <div className="cloud-sync-ops">
         <div className="cloud-sync-ops__summary">
-          <strong>{autoSyncPrefs.autoSyncEnabled ? 'Auto sync dang bat' : 'Auto sync dang tat'}</strong>
+          <strong>{autoSyncPrefs.autoSyncEnabled ? 'Tự đồng bộ đang bật' : 'Tự đồng bộ đang tắt'}</strong>
           <p>
-            Pending: {syncStatus.pendingUploads.length} | Conflict: {syncStatus.conflicts.length} | Lan chay cuoi: {formatTimestamp(syncStatus.lastRunAt)}
+            Chờ tải lên: {syncStatus.pendingUploads.length} | Xung đột: {syncStatus.conflicts.length} | Lần chạy cuối: {formatTimestamp(syncStatus.lastRunAt)}
           </p>
           {syncStatus.accountMismatch ? (
-            <p>Tai khoan Google hien tai khac voi account da bat auto sync truoc do. Bat lai auto sync neu muon doi account sync.</p>
+            <p>Tài khoản Google hiện tại khác với tài khoản đã bật tự đồng bộ trước đó. Hãy bật lại tự đồng bộ nếu muốn đổi tài khoản.</p>
           ) : null}
         </div>
         <div className="cloud-sync-ops__actions">
@@ -723,22 +776,22 @@ export default function CloudSyncSection() {
             onClick={handleToggleAutoSync}
             disabled={!isSignedIn}
           >
-            {autoSyncPrefs.autoSyncEnabled ? 'Tat auto sync' : 'Bat auto sync'}
+            {autoSyncPrefs.autoSyncEnabled ? 'Tắt tự đồng bộ' : 'Bật tự đồng bộ'}
           </button>
           <button type="button" className="btn btn-secondary" onClick={handleRunSyncNow} disabled={!isSignedIn || loadingCloud}>
-            <RefreshCw size={14} /> Chay sync ngay
+            <RefreshCw size={14} /> Chạy đồng bộ ngay
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => handleExportCloud('zip')} disabled={!isSignedIn || exportingFormat === 'zip' || importingCloud}>
             {exportingFormat === 'zip' ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-            Xuat .zip
+            Xuất .zip
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => handleExportCloud('json')} disabled={!isSignedIn || exportingFormat === 'json' || importingCloud}>
             {exportingFormat === 'json' ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-            Xuat .json
+            Xuất .json
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => importInputRef.current?.click()} disabled={!isSignedIn || importingCloud}>
             {importingCloud ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
-            Nhap cloud
+            Nhập từ cloud
           </button>
         </div>
       </div>
@@ -746,7 +799,7 @@ export default function CloudSyncSection() {
       {syncStatus.conflicts.length > 0 ? (
         <div className="cloud-sync-conflicts">
           <div className="cloud-sync-conflicts__header">
-            <strong>Conflict can xu ly tay</strong>
+            <strong>Xung đột cần xử lý thủ công</strong>
             <span>{syncStatus.conflicts.length}</span>
           </div>
           <div className="cloud-sync-list">
@@ -770,11 +823,11 @@ export default function CloudSyncSection() {
       <div className="cloud-sync-grid">
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Local projects</strong>
+            <strong>Project local</strong>
             <span>{sortedProjects.length}</span>
           </div>
           {sortedProjects.length === 0 ? (
-            <p className="settings-hint">Chua co project local nao de backup.</p>
+            <p className="settings-hint">Chưa có project local nào để sao lưu.</p>
           ) : (
             <div className="cloud-sync-list">
               {sortedProjects.map((project) => {
@@ -788,7 +841,7 @@ export default function CloudSyncSection() {
                         slug: {project.cloud_project_slug || '(se tao luc backup)'} | sync: {formatTimestamp(project.cloud_last_synced_at)}
                       </small>
                       {ownedByOtherUser ? (
-                        <small>Dang gan voi tai khoan cloud khac. Hay restore/import dung account truoc khi backup.</small>
+                        <small>Dữ liệu này đang gắn với một tài khoản cloud khác. Hãy khôi phục hoặc nhập đúng tài khoản trước khi sao lưu.</small>
                       ) : null}
                     </div>
                     <button
@@ -798,7 +851,7 @@ export default function CloudSyncSection() {
                       disabled={!isSignedIn || savingKey === actionKey || ownedByOtherUser}
                     >
                       {savingKey === actionKey ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
-                      Luu len cloud
+                      Lưu lên cloud
                     </button>
                   </div>
                 );
@@ -809,13 +862,13 @@ export default function CloudSyncSection() {
 
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Cloud project snapshots</strong>
+            <strong>Snapshot project trên cloud</strong>
             <span>{projectItems.length}</span>
           </div>
           {!isSignedIn ? (
-            <p className="settings-hint">Dang nhap Google de xem snapshot cloud.</p>
+            <p className="settings-hint">Đăng nhập Google để xem snapshot trên cloud.</p>
           ) : projectItems.length === 0 ? (
-            <p className="settings-hint">Chua co snapshot project nao cho tai khoan nay.</p>
+            <p className="settings-hint">Tài khoản này chưa có snapshot project nào.</p>
           ) : (
             <div className="cloud-sync-list">
               {projectItems.map((item) => {
@@ -837,14 +890,14 @@ export default function CloudSyncSection() {
                         disabled={!isSignedIn || restoringKey === restoreActionKey}
                       >
                         {restoringKey === restoreActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                        Khoi phuc
+                        Khôi phục
                       </button>
                       <button
                         type="button"
                         className="btn btn-ghost btn-icon btn-sm"
                         onClick={() => handleDelete('project', item.itemSlug)}
                         disabled={!isSignedIn || deletingKey === deleteActionKey}
-                        title="Xoa snapshot cloud"
+                        title="Xóa snapshot cloud"
                       >
                         {deletingKey === deleteActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                       </button>
@@ -860,11 +913,11 @@ export default function CloudSyncSection() {
       <div className="cloud-sync-grid">
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Local chat threads</strong>
+            <strong>Đoạn chat local</strong>
             <span>{localChatThreads.length}</span>
           </div>
           {localChatThreads.length === 0 ? (
-            <p className="settings-hint">Chua co thread chat local nao de backup.</p>
+            <p className="settings-hint">Chưa có đoạn chat local nào để sao lưu.</p>
           ) : (
             <div className="cloud-sync-list">
               {localChatThreads.map((thread) => {
@@ -878,7 +931,7 @@ export default function CloudSyncSection() {
                         {thread.projectTitle} | {thread.messageCount} tin nhan | cap nhat: {formatTimestamp(thread.updated_at)}
                       </small>
                       {ownedByOtherUser ? (
-                        <small>Thread nay dang gan voi tai khoan cloud khac.</small>
+                        <small>Đoạn chat này đang gắn với một tài khoản cloud khác.</small>
                       ) : null}
                     </div>
                     <button
@@ -888,7 +941,7 @@ export default function CloudSyncSection() {
                       disabled={!isSignedIn || savingKey === actionKey || ownedByOtherUser}
                     >
                       {savingKey === actionKey ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
-                      Luu len cloud
+                      Lưu lên cloud
                     </button>
                   </div>
                 );
@@ -899,13 +952,13 @@ export default function CloudSyncSection() {
 
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Cloud chat snapshots</strong>
+            <strong>Snapshot chat trên cloud</strong>
             <span>{chatItems.length}</span>
           </div>
           {!isSignedIn ? (
-            <p className="settings-hint">Dang nhap Google de xem snapshot chat.</p>
+            <p className="settings-hint">Đăng nhập Google để xem snapshot chat.</p>
           ) : chatItems.length === 0 ? (
-            <p className="settings-hint">Chua co snapshot chat nao cho tai khoan nay.</p>
+            <p className="settings-hint">Tài khoản này chưa có snapshot chat nào.</p>
           ) : (
             <div className="cloud-sync-list">
               {chatItems.map((item) => {
@@ -927,14 +980,14 @@ export default function CloudSyncSection() {
                         disabled={!isSignedIn || restoringKey === restoreActionKey}
                       >
                         {restoringKey === restoreActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                        Khoi phuc
+                        Khôi phục
                       </button>
                       <button
                         type="button"
                         className="btn btn-ghost btn-icon btn-sm"
                         onClick={() => handleDelete('chat', item.itemSlug)}
                         disabled={!isSignedIn || deletingKey === deleteActionKey}
-                        title="Xoa snapshot cloud"
+                        title="Xóa snapshot cloud"
                       >
                         {deletingKey === deleteActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                       </button>
@@ -950,7 +1003,7 @@ export default function CloudSyncSection() {
       <div className="cloud-sync-grid">
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Local prompt bundle</strong>
+            <strong>Bộ prompt local</strong>
             <span>1</span>
           </div>
           <div className="cloud-sync-list">
@@ -958,10 +1011,10 @@ export default function CloudSyncSection() {
               <div className="cloud-sync-item__body">
                 <strong>Global prompt bundle</strong>
                 <small>
-                  {promptSummary.customizedGroupCount}/{promptSummary.groupCount} nhom dang co tuy chinh local
+                  {promptSummary.customizedGroupCount}/{promptSummary.groupCount} nhóm đang có tùy chỉnh local
                 </small>
                 {promptOwnedByOtherUser ? (
-                  <small>Prompt local nay dang gan voi tai khoan cloud khac.</small>
+                  <small>Bộ prompt local này đang gắn với một tài khoản cloud khác.</small>
                 ) : null}
               </div>
               <button
@@ -971,7 +1024,7 @@ export default function CloudSyncSection() {
                 disabled={!isSignedIn || savingKey === 'prompt' || promptOwnedByOtherUser}
               >
                 {savingKey === 'prompt' ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
-                Luu len cloud
+                Lưu lên cloud
               </button>
             </div>
           </div>
@@ -979,13 +1032,13 @@ export default function CloudSyncSection() {
 
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Cloud prompt snapshots</strong>
+            <strong>Snapshot prompt trên cloud</strong>
             <span>{promptItems.length}</span>
           </div>
           {!isSignedIn ? (
-            <p className="settings-hint">Dang nhap Google de xem snapshot prompt.</p>
+            <p className="settings-hint">Đăng nhập Google để xem snapshot prompt.</p>
           ) : promptItems.length === 0 ? (
-            <p className="settings-hint">Chua co snapshot prompt nao cho tai khoan nay.</p>
+            <p className="settings-hint">Tài khoản này chưa có snapshot prompt nào.</p>
           ) : (
             <div className="cloud-sync-list">
               {promptItems.map((item) => {
@@ -1007,14 +1060,14 @@ export default function CloudSyncSection() {
                         disabled={!isSignedIn || restoringKey === restoreActionKey}
                       >
                         {restoringKey === restoreActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                        Khoi phuc
+                        Khôi phục
                       </button>
                       <button
                         type="button"
                         className="btn btn-ghost btn-icon btn-sm"
                         onClick={() => handleDelete('prompt', item.itemSlug)}
                         disabled={!isSignedIn || deletingKey === deleteActionKey}
-                        title="Xoa snapshot cloud"
+                        title="Xóa snapshot cloud"
                       >
                         {deletingKey === deleteActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                       </button>
@@ -1102,6 +1155,20 @@ export default function CloudSyncSection() {
           </div>
         </div>
       ) : null}
+    </>
+  );
+
+  if (standalone) {
+    return (
+      <div className={`cloud-sync-workspace ${compact ? 'cloud-sync-workspace--compact' : ''}`}>
+        {workspaceContent}
+      </div>
+    );
+  }
+
+  return (
+    <section className="settings-section card animate-slide-up" id="cloud-sync" style={{ animationDelay: '300ms' }}>
+      {workspaceContent}
     </section>
   );
 }
