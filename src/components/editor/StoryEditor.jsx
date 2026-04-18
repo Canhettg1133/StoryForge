@@ -11,8 +11,6 @@ import db from '../../services/db/database';
 import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings } from 'lucide-react';
 import './StoryEditor.css';
 
-const AI_DRAFT_READY_EVENT = 'storyforge:ai-draft-ready';
-
 function isContentEmpty(html = '') {
   return !String(html || '')
     .replace(/<[^>]*>/g, ' ')
@@ -35,7 +33,7 @@ function textToHtml(text = '') {
     .join('');
 }
 
-export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
+export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiDraftPreview = null }) {
   const {
     activeSceneId, activeChapterId, scenes, chapters,
     updateScene, updateChapter, updateProjectTimestamp,
@@ -54,6 +52,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
   const [editSummary, setEditSummary] = useState('');
   const [editPurpose, setEditPurpose] = useState('');
   const [aiDraft, setAiDraft] = useState(null);
+  const [dismissedDraftKey, setDismissedDraftKey] = useState('');
 
   // Parse chapter outline data (summary + key_events from purpose)
   const chapterOutline = useMemo(() => {
@@ -162,6 +161,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
 
   useEffect(() => {
     setAiDraft(null);
+    setDismissedDraftKey('');
   }, [activeSceneId]);
 
   useEffect(() => {
@@ -170,32 +170,34 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
   }, [activeScene?.draft_text, activeScene?.id]);
 
   useEffect(() => {
-    if (!isMobileLayout) {
+    if (!aiDraftPreview || !activeScene || aiDraftPreview.sceneId !== activeScene.id) {
       setAiDraft(null);
-      return undefined;
+      return;
     }
 
-    const handleAiDraftReady = (event) => {
-      const detail = event.detail || {};
-      if (!activeScene || detail.sceneId !== activeScene.id) return;
-      if (!isContentEmpty(activeScene.draft_text || '')) return;
+    if (!isContentEmpty(activeScene.draft_text || '')) {
+      setAiDraft(null);
+      return;
+    }
 
-      const text = String(detail.text || '').trim();
-      if (!text) return;
+    const text = String(aiDraftPreview.text || '').trim();
+    if (!text) {
+      setAiDraft(null);
+      return;
+    }
 
-      setAiDraft({
-        sceneId: detail.sceneId,
-        taskId: detail.taskId || 'ai',
-        text,
-        html: textToHtml(text),
-        wordCount: countWords(text),
-        isStreaming: !!detail.isStreaming,
-      });
-    };
+    const draftKey = `${aiDraftPreview.sceneId}:${aiDraftPreview.taskId || 'ai'}`;
+    if (dismissedDraftKey === draftKey) return;
 
-    window.addEventListener(AI_DRAFT_READY_EVENT, handleAiDraftReady);
-    return () => window.removeEventListener(AI_DRAFT_READY_EVENT, handleAiDraftReady);
-  }, [isMobileLayout, activeScene?.id, activeScene?.draft_text, activeScene]);
+    setAiDraft({
+      sceneId: aiDraftPreview.sceneId,
+      taskId: aiDraftPreview.taskId || 'ai',
+      text,
+      html: textToHtml(text),
+      wordCount: countWords(text),
+      isStreaming: !!aiDraftPreview.isStreaming,
+    });
+  }, [aiDraftPreview, dismissedDraftKey, activeScene?.id, activeScene?.draft_text, activeScene]);
 
   // [MỚI] Reset thanh cuộn khi đổi cảnh/chương
   useEffect(() => {
@@ -431,7 +433,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
 
       {/* Editor */}
       <div className="story-editor-wrapper" ref={editorWrapperRef}>
-        {isMobileLayout && aiDraft && isContentEmpty(activeScene?.draft_text || '') && (
+        {aiDraft && isContentEmpty(activeScene?.draft_text || '') && (
           <div className="story-editor-ai-draft">
             <div className="story-editor-ai-draft__header">
               <div>
@@ -443,7 +445,14 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
                 <button type="button" className="btn btn-primary btn-sm" onClick={handleSaveAiDraft}>
                   <Check size={13} /> Lưu vào cảnh
                 </button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAiDraft(null)}>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setDismissedDraftKey(`${aiDraft.sceneId}:${aiDraft.taskId || 'ai'}`);
+                    setAiDraft(null);
+                  }}
+                >
                   <X size={13} /> Bỏ
                 </button>
               </div>

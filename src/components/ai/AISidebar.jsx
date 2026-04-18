@@ -26,7 +26,6 @@ import './AISidebar.css';
 
 const PROSE_INSERT_TASKS = ['continue', 'free_prompt'];
 const PROSE_REPLACE_TASKS = ['rewrite', 'expand'];
-const AI_DRAFT_READY_EVENT = 'storyforge:ai-draft-ready';
 const MOBILE_AI_TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'codex', label: 'Codex' },
@@ -49,6 +48,7 @@ export default function AISidebar({
   mobileTab = 'ai',
   onMobileTabChange,
   onMobileInputFocusChange,
+  onDraftPreviewChange,
 }) {
   const {
     isStreaming,
@@ -82,7 +82,6 @@ export default function AISidebar({
   const [showPlotManager, setShowPlotManager] = useState(false);
   const outputRef = useRef(null);
   const guidanceRef = useRef(null);
-  const lastPublishedDraftRef = useRef('');
 
   useEffect(() => {
     if (activeChapterId) {
@@ -124,26 +123,27 @@ export default function AISidebar({
   }, [isMobileLayout, hasOutput, onMobileTabChange]);
 
   useEffect(() => {
-    if (!isMobileLayout) return;
-    if (!displayText || !PROSE_INSERT_TASKS.includes(lastTaskId) || !activeSceneId) return;
+    if (!onDraftPreviewChange) return;
+
+    if (!displayText || !PROSE_INSERT_TASKS.includes(lastTaskId) || !activeSceneId) {
+      onDraftPreviewChange(null);
+      return;
+    }
 
     const scene = scenes.find((item) => item.id === activeSceneId);
-    if (!isSceneEmpty(scene?.draft_text || '')) return;
+    if (!isSceneEmpty(scene?.draft_text || '')) {
+      onDraftPreviewChange(null);
+      return;
+    }
 
-    const draftKey = `${activeSceneId}:${lastTaskId}:${isStreaming ? 'streaming' : 'done'}:${displayText}`;
-    if (lastPublishedDraftRef.current === draftKey) return;
-    lastPublishedDraftRef.current = draftKey;
-
-    window.dispatchEvent(new CustomEvent(AI_DRAFT_READY_EVENT, {
-      detail: {
-        sceneId: activeSceneId,
-        chapterId: activeChapterId || null,
-        taskId: lastTaskId,
-        text: displayText,
-        isStreaming,
-      },
-    }));
-  }, [isMobileLayout, displayText, isStreaming, lastTaskId, activeSceneId, activeChapterId, scenes]);
+    onDraftPreviewChange({
+      sceneId: activeSceneId,
+      chapterId: activeChapterId || null,
+      taskId: lastTaskId,
+      text: displayText,
+      isStreaming,
+    });
+  }, [onDraftPreviewChange, displayText, isStreaming, lastTaskId, activeSceneId, activeChapterId, scenes]);
 
   const getContext = () => {
     const scene = scenes.find((item) => item.id === activeSceneId);

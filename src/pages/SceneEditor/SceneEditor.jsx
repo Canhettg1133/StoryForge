@@ -58,6 +58,7 @@ export default function SceneEditor() {
   const isMobileLayout = useMobileLayout(900);
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileAITab, setMobileAITab] = useState('ai');
+  const [aiDraftPreview, setAiDraftPreview] = useState(null);
 
   const openMobilePanel = useCallback((panel) => {
     setMobilePanel(panel);
@@ -100,6 +101,10 @@ export default function SceneEditor() {
 
   const handleEditorReady = useCallback((editor) => {
     setEditorInstance(editor);
+  }, []);
+
+  const handleDraftPreviewChange = useCallback((preview) => {
+    setAiDraftPreview(preview);
   }, []);
 
   const activeProjectId = currentProject?.id || null;
@@ -234,7 +239,11 @@ export default function SceneEditor() {
             </button>
           </div>
         )}
-        <StoryEditor onEditorReady={handleEditorReady} isMobileLayout={isMobileLayout} />
+        <StoryEditor
+          onEditorReady={handleEditorReady}
+          isMobileLayout={isMobileLayout}
+          aiDraftPreview={aiDraftPreview}
+        />
       </div>
 
       <aside
@@ -257,6 +266,7 @@ export default function SceneEditor() {
             isMobileLayout={isMobileLayout}
             mobileTab={mobileAITab}
             onMobileTabChange={setMobileAITab}
+            onDraftPreviewChange={handleDraftPreviewChange}
           />
         </div>
       </aside>
