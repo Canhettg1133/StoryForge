@@ -26,6 +26,7 @@ import useMobileLayout from '../../hooks/useMobileLayout';
 import { EDITOR_PANEL_EVENT } from '../../components/mobile/MobileProjectShell';
 import { shouldShowNavItem } from '../../config/productSurface';
 import useProjectStore from '../../stores/projectStore';
+import useAIStore from '../../stores/aiStore';
 import './SceneEditor.css';
 
 const MOBILE_NAV_ITEMS = [
@@ -50,8 +51,15 @@ const MOBILE_NAV_ITEMS = [
 ];
 const VISIBLE_MOBILE_NAV_ITEMS = MOBILE_NAV_ITEMS.filter((item) => shouldShowNavItem(item));
 
+function isHtmlBlank(html = '') {
+  return !String(html || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
 export default function SceneEditor() {
-  const { currentProject } = useProjectStore();
+  const { currentProject, scenes, activeSceneId } = useProjectStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
@@ -59,6 +67,7 @@ export default function SceneEditor() {
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileAITab, setMobileAITab] = useState('ai');
   const [aiDraftPreview, setAiDraftPreview] = useState(null);
+  const aiIsStreaming = useAIStore((state) => state.isStreaming);
 
   const openMobilePanel = useCallback((panel) => {
     setMobilePanel(panel);
@@ -108,6 +117,16 @@ export default function SceneEditor() {
   }, []);
 
   const activeProjectId = currentProject?.id || null;
+  const activeScene = useMemo(
+    () => scenes.find((scene) => scene.id === activeSceneId) || null,
+    [scenes, activeSceneId],
+  );
+  const hasAiDraftPreview = !!aiDraftPreview?.text && isHtmlBlank(activeScene?.draft_text || '');
+  const mobileAIButtonLabel = aiIsStreaming
+    ? 'AI \u0111ang vi\u1ebft'
+    : hasAiDraftPreview
+      ? 'B\u1ea3n nh\u00e1p AI'
+      : 'AI vi\u1ebft';
   const visibleMobileNavItems = useMemo(
     () =>
       VISIBLE_MOBILE_NAV_ITEMS.filter((item) => {
@@ -233,9 +252,16 @@ export default function SceneEditor() {
               <PanelLeft size={16} />
               <span>{'Ch\u01b0\u01a1ng'}</span>
             </button>
-            <button className="scene-editor-mobile-action" type="button" onClick={() => openMobilePanel('ai')}>
+            <button
+              className={`scene-editor-mobile-action ${mobilePanel === 'ai' ? 'scene-editor-mobile-action--open' : ''} ${aiIsStreaming ? 'scene-editor-mobile-action--working' : ''} ${hasAiDraftPreview ? 'scene-editor-mobile-action--has-draft' : ''}`}
+              type="button"
+              onClick={() => openMobilePanel('ai')}
+            >
               <Sparkles size={16} />
-              <span>{'AI vi\u1ebft'}</span>
+              {(aiIsStreaming || hasAiDraftPreview) && (
+                <span className="scene-editor-mobile-action-status" aria-hidden="true" />
+              )}
+              <span>{mobileAIButtonLabel}</span>
             </button>
           </div>
         )}

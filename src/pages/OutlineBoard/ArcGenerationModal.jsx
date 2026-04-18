@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import useArcGenStore from '../../stores/arcGenerationStore';
+import useArcGenStore, { validateGeneratedOutline as validateArcOutline } from '../../stores/arcGenerationStore';
 import {
     Bot, Sparkles, Wand2, X, Play, Loader2, CheckCircle2,
     AlertTriangle, Flag, RotateCcw, Save, Trash2, BookmarkPlus
@@ -146,8 +146,18 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         () => formatProgressBudget(arcStore.storyProgressBudget),
         [arcStore.storyProgressBudget],
     );
-    const validatorIssues = arcStore.outlineValidation?.issues || [];
-    const hasBlockingIssues = !!arcStore.outlineValidation?.hasBlockingIssues;
+    const liveOutlineValidation = useMemo(() => {
+        if (!arcStore.generatedOutline) {
+            return arcStore.outlineValidation || { issues: [], hasBlockingIssues: false };
+        }
+        return validateArcOutline(arcStore.generatedOutline, {
+            storyProgressBudget: arcStore.storyProgressBudget,
+            selectedMacroArc,
+            milestones: arcStore.projectMilestones,
+        });
+    }, [arcStore.generatedOutline, arcStore.outlineValidation, arcStore.storyProgressBudget, selectedMacroArc, arcStore.projectMilestones]);
+    const validatorIssues = liveOutlineValidation?.issues || [];
+    const hasBlockingIssues = !!liveOutlineValidation?.hasBlockingIssues;
     const selectedDraftCount = arcStore.selectedDraftIndexes?.length || 0;
     const batchWarning = arcStore.projectTargetLength >= 300
         && arcStore.arcChapterCount > arcStore.recommendedBatchCount;

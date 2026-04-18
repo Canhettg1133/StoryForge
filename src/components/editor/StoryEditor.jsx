@@ -250,6 +250,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
 
   const handleSaveAiDraft = async () => {
     if (!aiDraft || !editor || !activeSceneId) return;
+    if (aiDraft.isStreaming) return;
     if (!isEditorEmpty(editor, activeScene?.draft_text || '')) {
       setAiDraft(null);
       return;
@@ -287,7 +288,6 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
         <div className="story-editor-header-main">
           {!isMobileLayout && (
             <div className="story-editor-heading">
-              <div className="story-editor-scene-meta">Chi tiết của cảnh đang viết</div>
               <input
                 className="story-editor-scene-title"
                 value={activeScene.title}
@@ -445,7 +445,10 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
       {/* Editor */}
       <div className="story-editor-wrapper" ref={editorWrapperRef}>
         {aiDraft && (
-          <div className="story-editor-ai-draft">
+          <div
+            className={`story-editor-ai-draft ${aiDraft.isStreaming ? 'story-editor-ai-draft--streaming' : ''}`}
+            aria-live="polite"
+          >
             <div className="story-editor-ai-draft__header">
               <div>
                 <div className="story-editor-ai-draft__kicker">Bản nháp AI</div>
@@ -453,8 +456,14 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
                 <span>{aiDraft.wordCount.toLocaleString()} từ</span>
               </div>
               <div className="story-editor-ai-draft__actions">
-                <button type="button" className="btn btn-primary btn-sm" onClick={handleSaveAiDraft}>
-                  <Check size={13} /> Lưu vào cảnh
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleSaveAiDraft}
+                  disabled={aiDraft.isStreaming}
+                  title={aiDraft.isStreaming ? 'Đợi AI viết xong rồi hãy lưu vào cảnh' : 'Lưu bản nháp vào cảnh'}
+                >
+                  <Check size={13} /> {aiDraft.isStreaming ? 'Đợi xong' : 'Lưu'}
                 </button>
                 <button
                   type="button"

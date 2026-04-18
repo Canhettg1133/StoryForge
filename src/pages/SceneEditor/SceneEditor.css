@@ -126,6 +126,27 @@
     background: var(--color-accent-muted);
   }
 
+  .scene-editor-mobile-action--open,
+  .scene-editor-mobile-action--has-draft,
+  .scene-editor-mobile-action--working {
+    color: var(--color-accent);
+    border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border));
+    background: color-mix(in srgb, var(--color-accent) 18%, var(--color-bg-elevated));
+  }
+
+  .scene-editor-mobile-action--working {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+
+  .scene-editor-mobile-action-status {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+    animation: pulse 1s ease infinite;
+  }
+
   .scene-editor-layout--mobile .scene-editor-side--sheet.is-open {
     display: flex;
   }

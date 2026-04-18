@@ -18,14 +18,14 @@
 
 /* Header */
 .story-editor-header {
-  padding: var(--space-4) var(--space-8);
+  padding: 10px var(--space-8);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
 .story-editor-header-main {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
 }
@@ -47,7 +47,8 @@
 .story-editor-scene-title {
   width: 100%;
   font-family: var(--font-prose);
-  font-size: var(--text-2xl);
+  font-size: clamp(1.25rem, 1.6vw, 1.65rem);
+  line-height: 1.25;
   font-weight: var(--weight-bold);
   color: var(--color-text-primary);
   background: none;
@@ -64,9 +65,9 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border: 1px solid color-mix(in srgb, var(--color-border) 78%, var(--color-accent) 22%);
-  border-radius: 999px;
+  border-radius: 8px;
   background: color-mix(in srgb, var(--color-bg-secondary) 88%, var(--color-accent) 12%);
   color: var(--color-text-primary);
   font-size: var(--text-sm);
@@ -270,9 +271,9 @@
 
 .story-editor-ai-draft {
   width: min(100%, 1120px);
-  margin: 0 auto var(--space-4);
+  margin: 0 auto 10px;
   border: 1px solid color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
-  border-radius: 16px;
+  border-radius: 8px;
   background:
     radial-gradient(circle at top right, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 42%),
     var(--color-bg-secondary);
@@ -282,10 +283,10 @@
 
 .story-editor-ai-draft__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: 12px 14px;
+  gap: 10px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -302,6 +303,26 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-accent);
+}
+
+.story-editor-ai-draft--streaming {
+  border-color: color-mix(in srgb, var(--color-accent) 64%, var(--color-border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.story-editor-ai-draft--streaming .story-editor-ai-draft__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.story-editor-ai-draft--streaming .story-editor-ai-draft__kicker::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: pulse 1s ease infinite;
 }
 
 .story-editor-ai-draft__header strong {
@@ -322,10 +343,10 @@
 }
 
 .story-editor-ai-draft__body {
-  max-height: min(72dvh, 760px);
-  min-height: min(50dvh, 480px);
+  max-height: min(48dvh, 520px);
+  min-height: 0;
   overflow: auto;
-  padding: clamp(18px, 3vw, 32px);
+  padding: clamp(14px, 2.4vw, 24px);
   white-space: pre-wrap;
   font-family: var(--font-prose);
   font-size: clamp(1.05rem, 1.4vw, 1.22rem);
@@ -613,7 +634,7 @@
 
 @media (max-width: 1024px) {
   .story-editor-header {
-    padding: var(--space-4) var(--space-5);
+    padding: 10px var(--space-5);
   }
 
   .story-editor-wrapper {
@@ -724,16 +745,12 @@
 }
 
 .story-editor--mobile .story-editor-wrapper {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
+  display: block;
   padding: 12px 16px 18px;
 }
 
-.story-editor--mobile .story-editor-wrapper > div {
+.story-editor--mobile .story-editor-wrapper > div:not(.story-editor-ai-draft) {
   width: 100%;
-  display: flex;
-  justify-content: center;
 }
 
 .story-editor--mobile .story-editor-content {
@@ -772,30 +789,33 @@
 
 .story-editor--mobile .story-editor-ai-draft {
   width: 100%;
-  margin-bottom: 12px;
-  border-radius: 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
 }
 
 .story-editor--mobile .story-editor-ai-draft__header {
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
 }
 
 .story-editor--mobile .story-editor-ai-draft__actions {
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  width: auto;
+  display: flex;
+  gap: 6px;
 }
 
 .story-editor--mobile .story-editor-ai-draft__actions .btn {
   justify-content: center;
+  min-height: 32px;
+  padding-inline: 10px;
+  white-space: nowrap;
 }
 
 .story-editor--mobile .story-editor-ai-draft__body {
-  max-height: 66dvh;
-  min-height: 42dvh;
-  padding: 14px;
+  max-height: 42dvh;
+  min-height: 0;
+  padding: 12px;
   font-size: 1rem;
   line-height: 1.75;
   text-align: left;

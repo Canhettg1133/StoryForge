@@ -104,7 +104,7 @@ function buildPriorGeneratedBriefs(generatedOutline, upToIndex, startingChapterI
         chapterNumber: startingChapterIndex + index + 1,
         title: chapter?.title || `Chuong ${startingChapterIndex + index + 1}`,
         summary: chapter?.summary || '',
-        purpose: Array.isArray(chapter?.key_events) ? chapter.key_events.join('; ') : '',
+        purpose: chapter?.purpose || (Array.isArray(chapter?.key_events) ? chapter.key_events.join('; ') : ''),
         status: 'planned',
     }));
 }
@@ -217,6 +217,18 @@ function getNormalizedChapterText(chapter = {}) {
     ].filter(Boolean).join(' '));
 }
 
+function countPlanWords(value = '') {
+    const text = normalizePlanText(value);
+    return text ? text.split(' ').filter(Boolean).length : 0;
+}
+
+function hasReadablePlanBody(chapter = {}) {
+    const purposeWords = countPlanWords(chapter?.purpose || '');
+    const summaryWords = countPlanWords(chapter?.summary || '');
+    const keyEventCount = Array.isArray(chapter?.key_events) ? chapter.key_events.length : 0;
+    return purposeWords >= 4 && (summaryWords >= 8 || keyEventCount > 0);
+}
+
 function getResolutionSignal(chapter = {}) {
     const combinedText = getNormalizedChapterText(chapter);
     const hardMatches = combinedText.match(new RegExp(HARD_RESOLUTION_REGEX.source, 'g')) || [];
@@ -310,6 +322,7 @@ function detectMacroArcForChapter(macroArcs = [], nextChapterNumber = 1) {
 function hasThreadAnchor(chapter = {}) {
     if (Array.isArray(chapter?.thread_titles) && chapter.thread_titles.length > 0) return true;
     if (Array.isArray(chapter?.key_events) && chapter.key_events.length > 0) return true;
+    if (hasReadablePlanBody(chapter)) return true;
     return false;
 }
 
@@ -348,7 +361,7 @@ export function validateGeneratedOutline(generatedOutline, {
         const isNearMilestone = milestoneGap != null ? milestoneGap <= 2 : false;
         const isFarFromPlannedResolution = !isNearMacroEnding && !isNearMilestone;
 
-        if (!purposeText || summaryText.split(' ').length < 8 || !hasThreadAnchor(current)) {
+        if (!hasReadablePlanBody(current) || !hasThreadAnchor(current)) {
             issues.push({
                 chapterIndex: index,
                 chapterTitle: current.title || `Chuong ${index + 1}`,
@@ -712,7 +725,7 @@ const useArcGenStore = create((set, get) => ({
     // BƯỚC 2: Sinh Dàn Ý (Outline)
     // ═══════════════════════════════════════════
     generateOutline: async ({ projectId, chapterId, chapterIndex, genre }) => {
-        set({ outlineStatus: 'generating' });
+        set({ outlineStatus: 'generating', outlineValidation: { issues: [], hasBlockingIssues: false } });
         try {
             const state = get();
             const existingChapterBriefs = await loadExistingChapterBriefs(projectId);
@@ -847,7 +860,11 @@ const useArcGenStore = create((set, get) => ({
         const revisionInstruction = String(instruction ?? state.outlineRevisionPrompt ?? '').trim();
         if (!revisionInstruction) return false;
 
-        set({ outlineStatus: 'generating', outlineRevisionPrompt: revisionInstruction });
+        set({
+            outlineStatus: 'generating',
+            outlineRevisionPrompt: revisionInstruction,
+            outlineValidation: { issues: [], hasBlockingIssues: false },
+        });
         try {
             const existingChapterBriefs = await loadExistingChapterBriefs(projectId);
             const startingChapterIndex = Math.max(
@@ -909,6 +926,7 @@ const useArcGenStore = create((set, get) => ({
                                 currentChapterCount: startingChapterIndex,
                                 generatedOutline: outline,
                                 outlineStatus: 'ready',
+                                outlineRevisionPrompt: '',
                                 storyProgressBudget: derived.storyProgressBudget,
                                 outlineValidation: derived.outlineValidation,
                                 selectedDraftIndexes: derived.selectedDraftIndexes,
