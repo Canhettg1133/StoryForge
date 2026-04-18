@@ -552,7 +552,7 @@ export default function StoryEditor({
       )}
 
       {/* Continuity Bar */}
-      {!isMobileLayout && <ContinuityBar isMobileLayout={isMobileLayout} />}
+      <ContinuityBar isMobileLayout={isMobileLayout} />
 
       {/* Editor */}
       <div

@@ -543,7 +543,10 @@ export default function AISidebar({
         value={actionGuidance}
         onFocus={() => onMobileInputFocusChange?.(true)}
         onBlur={() => onMobileInputFocusChange?.(false)}
-        onChange={(event) => setActionGuidance(event.target.value)}
+        onChange={(event) => {
+          setActionGuidance(event.target.value);
+          autosizeTextarea(event.currentTarget);
+        }}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
@@ -633,7 +636,10 @@ export default function AISidebar({
         value={customPrompt}
         onFocus={() => onMobileInputFocusChange?.(true)}
         onBlur={() => onMobileInputFocusChange?.(false)}
-        onChange={(event) => setCustomPrompt(event.target.value)}
+        onChange={(event) => {
+          setCustomPrompt(event.target.value);
+          autosizeTextarea(event.currentTarget);
+        }}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();

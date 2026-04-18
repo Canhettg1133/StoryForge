@@ -105,6 +105,7 @@ const VISIBLE_MOBILE_DRAWER_ITEMS = FULL_MOBILE_DRAWER_ITEMS.filter((item, index
   const next = items[index + 1];
   return !!prev && !!next && !prev.divider && !next.divider;
 });
+const COMPACT_MOBILE_DRAWER_ITEMS = VISIBLE_MOBILE_DRAWER_ITEMS.filter((item) => !item.divider);
 
 function getMobileDrawerPath(item, activeProjectId) {
   if (item.id === 'translator') return '/translator';
@@ -338,11 +339,7 @@ export default function Dashboard() {
         onClose={() => setMobileMenuOpen(false)}
       >
         <div className="dashboard-mobile-menu-list">
-          {VISIBLE_MOBILE_DRAWER_ITEMS.map((item, index) => {
-            if (item.divider) {
-              return <div key={`divider-${index}`} className="dashboard-mobile-menu-divider" />;
-            }
-
+          {COMPACT_MOBILE_DRAWER_ITEMS.map((item) => {
             const Icon = item.icon;
             const targetPath = getMobileDrawerPath(item, activeProjectId);
             const active = location.pathname === targetPath;

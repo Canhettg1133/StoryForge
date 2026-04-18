@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Palette,
   PanelLeft,
+  PanelLeftOpen,
   PenTool,
   Settings,
   Sparkles,
@@ -27,6 +28,7 @@ import { EDITOR_PANEL_EVENT } from '../../components/mobile/MobileProjectShell';
 import { shouldShowNavItem } from '../../config/productSurface';
 import useProjectStore from '../../stores/projectStore';
 import useAIStore from '../../stores/aiStore';
+import useUIStore from '../../stores/uiStore';
 import './SceneEditor.css';
 
 const MOBILE_NAV_ITEMS = [
@@ -69,6 +71,8 @@ export default function SceneEditor() {
   const [aiDraftPreview, setAiDraftPreview] = useState(null);
   const [aiActivity, setAiActivity] = useState(null);
   const clearAIOutput = useAIStore((state) => state.clearOutput);
+  const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed);
+  const toggleSidebar = useUIStore((state) => state.toggleSidebar);
 
   const openMobilePanel = useCallback((panel) => {
     setMobilePanel(panel);
@@ -274,6 +278,18 @@ export default function SceneEditor() {
       </aside>
 
       <div className="scene-editor-main">
+        {!isMobileLayout && sidebarCollapsed && (
+          <button
+            type="button"
+            className="scene-editor-desktop-menu-trigger btn btn-ghost"
+            onClick={toggleSidebar}
+            aria-label="Mở menu điều hướng"
+            title="Mở menu điều hướng"
+          >
+            <PanelLeftOpen size={16} />
+            <span>Menu</span>
+          </button>
+        )}
         {isMobileLayout && (
           <div className="scene-editor-mobile-actions" aria-label="C\u00f4ng c\u1ee5 vi\u1ebft truy\u1ec7n">
             <button className="scene-editor-mobile-action" type="button" onClick={() => openMobilePanel('chapters')}>

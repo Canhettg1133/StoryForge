@@ -105,7 +105,7 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { projectId } = useParams();
-  const { sidebarCollapsed, toggleSidebar, setSidebarCollapsed, theme, toggleTheme } = useUIStore();
+  const { sidebarCollapsed, toggleSidebar, theme, toggleTheme } = useUIStore();
   const { currentProject, chapters, activeChapterId } = useProjectStore();
   const [isNarrowViewport, setIsNarrowViewport] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -157,15 +157,8 @@ export default function Sidebar() {
     items.splice(projectPromptIndex + 1, 0, globalPromptItem);
     return items;
   })();
-  const isEditorRoute = location.pathname.includes('/editor');
-  const isAutoCollapsed = isEditorRoute || isNarrowViewport;
+  const isAutoCollapsed = isNarrowViewport;
   const isCollapsed = isAutoCollapsed || sidebarCollapsed;
-
-  useEffect(() => {
-    if (isEditorRoute && !sidebarCollapsed) {
-      setSidebarCollapsed(true);
-    }
-  }, [isEditorRoute, setSidebarCollapsed, sidebarCollapsed]);
 
   const handleNav = (item) => {
     if (item.needsProject && !activeProjectId) return;

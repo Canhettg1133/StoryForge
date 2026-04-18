@@ -415,20 +415,28 @@
 }
 
 .continuity-bar--mobile .continuity-bar-header {
-  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "main toggle"
+    "actions actions";
+  align-items: start;
+  padding: 8px 10px 10px;
   gap: 8px;
 }
 
 .continuity-bar--mobile .continuity-bar-left {
+  grid-area: main;
   min-width: 0;
-  flex: 1;
-  flex-wrap: wrap;
-  gap: 5px 8px;
+  display: grid;
+  gap: 6px;
 }
 
 .continuity-bar--mobile .continuity-bar-current,
 .continuity-bar--mobile .continuity-bar-previous {
   max-width: 100%;
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 
 .continuity-bar--mobile .continuity-bar-current {
@@ -436,36 +444,52 @@
 }
 
 .continuity-bar--mobile .continuity-bar-previous {
-  display: none;
+  display: inline-flex;
+  color: var(--color-text-muted);
 }
 
 .continuity-bar--mobile .continuity-bar-actions {
+  grid-area: actions;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
   margin-right: 0;
-  overflow-x: auto;
-  max-width: 62vw;
+  width: 100%;
+  max-width: none;
+  overflow: visible;
 }
 
 .continuity-bar--mobile .continuity-bar-btn {
-  min-height: 32px;
-  padding: 5px 8px;
-  font-size: 11px;
-  flex: 0 0 auto;
+  width: 100%;
+  min-height: 34px;
+  justify-content: center;
+  padding: 6px 8px;
+  font-size: 10px;
+  max-width: none;
   white-space: nowrap;
 }
 
-.continuity-bar--mobile .continuity-bar-btn span {
-  display: none;
-}
-
 .continuity-bar--mobile .continuity-bar-label {
-  display: none;
+  display: inline;
+  font-size: 10px;
 }
 
 .continuity-bar--mobile .continuity-bar-status {
   flex: 0 0 auto;
   border-radius: 8px;
   padding: 3px 7px;
+  font-size: 10px;
+}
+
+.continuity-bar--mobile .continuity-bar-status--mobile-pill {
+  width: 100%;
+  min-height: 34px;
+  justify-content: center;
+  padding: 6px 8px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .continuity-bar--mobile .continuity-bar-report__content {
@@ -475,6 +499,50 @@
 
 .continuity-bar--mobile .continuity-bar-title {
   max-width: 100%;
+  white-space: nowrap;
+}
+
+.continuity-bar--mobile .continuity-bar-header > svg:last-child {
+  grid-area: toggle;
+  align-self: start;
+}
+
+.continuity-bar--mobile .continuity-bar-issue-trigger {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+.continuity-bar--mobile .continuity-bar-btn svg,
+.continuity-bar--mobile .continuity-bar-status--mobile-pill svg {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .continuity-issues-dialog {
+    width: 100vw;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+    padding: 14px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .continuity-issues-dialog__header {
+    margin-bottom: 12px;
+  }
+
+  .continuity-issues-dialog__header h3 {
+    font-size: 16px;
+    line-height: 1.3;
+  }
+
+  .continuity-issues-dialog__actions {
+    margin-top: 12px;
+  }
+
+  .continuity-issues-dialog__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .spin {
