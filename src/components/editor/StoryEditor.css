@@ -343,7 +343,7 @@
 }
 
 .story-editor-ai-draft__body {
-  max-height: min(48dvh, 520px);
+  max-height: min(56dvh, 620px);
   min-height: 0;
   overflow: auto;
   padding: clamp(14px, 2.4vw, 24px);
