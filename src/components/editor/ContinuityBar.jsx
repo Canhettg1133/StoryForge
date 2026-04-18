@@ -8,6 +8,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  X,
 } from 'lucide-react';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
@@ -41,6 +42,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     clearActionOutcome,
   } = useCanonStore();
   const [expanded, setExpanded] = useState(false);
+  const [issuesOpen, setIssuesOpen] = useState(false);
 
   useEffect(() => {
     if (isMobileLayout) {
@@ -51,6 +53,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   useEffect(() => {
     clearActionOutcome();
     clearRepairText();
+    setIssuesOpen(false);
   }, [activeChapterId, activeSceneId, clearActionOutcome, clearRepairText]);
 
   useEffect(() => {
@@ -105,6 +108,19 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   const reports = chapterCanon?.reports || [];
   const activeRevisionId = chapterCanon?.revision?.id || chapterCanon?.commit?.current_revision_id || null;
   const scopedRepairPreview = repairPreview?.chapterId === activeChapterId ? repairPreview : null;
+  const hasCanonIssues = reports.length > 0;
+  const canonIssueLabel = (chapterCanon?.errorCount || 0) > 0
+    ? `${chapterCanon.errorCount} loi canon`
+    : (chapterCanon?.warningCount || 0) > 0
+      ? `${chapterCanon.warningCount} canh bao`
+      : `${reports.length} thong bao`;
+
+  const openIssuesDialog = (event) => {
+    event.stopPropagation();
+    if (hasCanonIssues) {
+      setIssuesOpen(true);
+    }
+  };
 
   const handleCanonicalize = async (event) => {
     event.stopPropagation();
@@ -118,7 +134,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     await rebuildCanonFromChapter(currentProject.id, activeChapterId);
   };
 
-  const handleRepair = async (reportId) => {
+  const handleRepair = async (reportId = null) => {
     if (!currentProject?.id || !activeChapterId || !activeRevisionId) return;
     try {
       await repairChapterRevision({
@@ -142,6 +158,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
         reportId: scopedRepairPreview.reportId || null,
         chapterText: scopedRepairPreview.text,
       });
+      setIssuesOpen(false);
     } catch {
       // Surface handled via store outcome.
     }
@@ -167,10 +184,32 @@ export default function ContinuityBar({ isMobileLayout = false }) {
               {chapterCanon?.status === 'canonical' ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
               <span className="continuity-bar-label">Chuong hien tai:</span>
               <span className="continuity-bar-title">{currentChapterInfo?.title || 'Chuong hien tai'}</span>
-              <span className={canonStatusClass}>
-                {chapterCanon?.status === 'canonical' ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
-                {canonStatusLabel}
-              </span>
+              {hasCanonIssues ? (
+                <button
+                  type="button"
+                  className={`${canonStatusClass} continuity-bar-status--button`}
+                  onClick={openIssuesDialog}
+                  title="Mo chi tiet loi canon"
+                >
+                  {chapterCanon?.status === 'canonical' ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+                  {canonStatusLabel}
+                </button>
+              ) : (
+                <span className={canonStatusClass}>
+                  {chapterCanon?.status === 'canonical' ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+                  {canonStatusLabel}
+                </span>
+              )}
+              {hasCanonIssues && (
+                <button
+                  type="button"
+                  className={`continuity-bar-issue-trigger ${(chapterCanon?.errorCount || 0) > 0 ? 'continuity-bar-issue-trigger--error' : ''}`}
+                  onClick={openIssuesDialog}
+                  title="Mo chi tiet loi canon"
+                >
+                  {canonIssueLabel}
+                </button>
+              )}
             </div>
             {prevChapterInfo && (
               <div className="continuity-bar-previous">
@@ -178,12 +217,6 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                 <span className="continuity-bar-label">Tom tat chuong truoc:</span>
                 <span className="continuity-bar-title continuity-bar-title--previous">{prevChapterInfo.title}</span>
               </div>
-            )}
-            {(chapterCanon?.warningCount || 0) > 0 && (
-              <span className="continuity-bar-count">{chapterCanon.warningCount} canh bao</span>
-            )}
-            {(chapterCanon?.errorCount || 0) > 0 && (
-              <span className="continuity-bar-count continuity-bar-count--error">{chapterCanon.errorCount} loi</span>
             )}
           </div>
 
@@ -216,31 +249,69 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                 <p className="continuity-bar-summary">{prevChapterInfo.summary}</p>
               </div>
             )}
-            {reports.length > 0 && (
-              <div className="continuity-bar-reports">
-                {reports.slice(0, 4).map((report) => (
-                  <div key={report.id || `${report.rule_code}-${report.message}`} className={`continuity-bar-report continuity-bar-report--${report.severity}`}>
-                    <div className="continuity-bar-report__content">
-                      <div>
-                        <strong>{report.rule_code || report.severity}</strong>: {report.message}
-                      </div>
-                      <button
-                        type="button"
-                        className="continuity-bar-btn continuity-bar-btn--ghost"
-                        onClick={() => handleRepair(report.id)}
-                        disabled={!activeRevisionId || scopedRepairPreview?.loading}
-                      >
-                        {scopedRepairPreview?.loading && scopedRepairPreview?.reportId === report.id ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
-                        Goi y sua
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
       </div>
+
+      {issuesOpen && (
+        <div className="modal-overlay" onClick={() => setIssuesOpen(false)}>
+          <div className="modal continuity-issues-dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="continuity-issues-dialog__header">
+              <div>
+                <div className="continuity-issues-dialog__eyebrow">
+                  <ShieldAlert size={14} />
+                  Kiem tra canon
+                </div>
+                <h3>Loi va canh bao cua {currentChapterInfo?.title || 'chuong hien tai'}</h3>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => setIssuesOpen(false)}
+                aria-label="Dong loi canon"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="continuity-issues-dialog__body">
+              {lastActionOutcome?.message && (
+                <div className={`continuity-bar-feedback ${getOutcomeClass(lastActionOutcome)}`}>
+                  {lastActionOutcome.message}
+                </div>
+              )}
+
+              {reports.length > 0 ? (
+                <div className="continuity-issues-list">
+                  {reports.map((report) => (
+                    <div key={report.id || `${report.rule_code}-${report.message}`} className={`continuity-issue continuity-issue--${report.severity || 'info'}`}>
+                      <div className="continuity-issue__rule">{report.rule_code || report.severity || 'CANON_REPORT'}</div>
+                      <div className="continuity-issue__message">{report.message}</div>
+                      {report.evidence && <div className="continuity-issue__evidence">{report.evidence}</div>}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="continuity-issues-empty">
+                  Khong con loi canon cho chuong nay.
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions continuity-issues-dialog__actions">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => handleRepair(null)}
+                disabled={!activeRevisionId || reports.length === 0 || scopedRepairPreview?.loading}
+              >
+                {scopedRepairPreview?.loading ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+                Goi y sua tat ca loi canon
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <CanonRepairDialog
         open={Boolean(scopedRepairPreview)}

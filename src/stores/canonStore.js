@@ -149,6 +149,7 @@ const useCanonStore = create((set, get) => ({
         reportId,
         text: '',
         report: null,
+        reports: [],
         loading: true,
         error: '',
         savedRevisionId: null,
@@ -164,6 +165,7 @@ const useCanonStore = create((set, get) => ({
         reportId,
         text: result?.text || '',
         report: result?.report || null,
+        reports: result?.reports || [],
         loading: false,
         error: '',
         savedRevisionId: null,
@@ -178,6 +180,7 @@ const useCanonStore = create((set, get) => ({
         reportId,
         text: '',
         report: null,
+        reports: [],
         loading: false,
         error: error?.message || 'Khong the tao goi y sua.',
         savedRevisionId: null,
@@ -197,16 +200,25 @@ const useCanonStore = create((set, get) => ({
         reportId,
         chapterText,
       });
+      await get().loadChapterCanon(projectId, chapterId);
+      const remainingReports = saved?.validation?.reports || [];
+      const remainingErrors = remainingReports.filter((report) => report?.severity === 'error').length;
+      const remainingWarnings = remainingReports.filter((report) => report?.severity === 'warning').length;
+      const message = remainingErrors > 0
+        ? `Da luu ban sua thanh draft moi, nhung van con ${remainingErrors} loi canon${remainingWarnings > 0 ? ` va ${remainingWarnings} canh bao` : ''}.`
+        : remainingWarnings > 0
+          ? `Da luu ban sua thanh draft moi. Khong con loi canon, con ${remainingWarnings} canh bao can xem lai.`
+          : 'Da luu ban sua thanh draft moi. Khong con loi canon.';
       set((state) => ({
         savingRepairDraft: false,
         repairPreview: state.repairPreview
           ? { ...state.repairPreview, savedRevisionId: saved?.id || null }
           : state.repairPreview,
         lastActionOutcome: {
-          ok: true,
-          kind: 'success',
-          message: 'Da luu goi y sua thanh ban draft moi.',
-          reports: [],
+          ok: remainingErrors === 0,
+          kind: remainingErrors > 0 ? 'blocked' : 'success',
+          message,
+          reports: remainingReports,
           revisionId: saved?.id || null,
         },
       }));

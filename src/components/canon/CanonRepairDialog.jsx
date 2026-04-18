@@ -11,6 +11,10 @@ export default function CanonRepairDialog({
   onSaveDraft,
 }) {
   if (!open || !preview) return null;
+  const reports = Array.isArray(preview.reports) && preview.reports.length > 0
+    ? preview.reports
+    : (preview.report ? [preview.report] : []);
+  const isBulkRepair = !preview.reportId && reports.length > 1;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -21,7 +25,9 @@ export default function CanonRepairDialog({
               <Sparkles size={14} />
               Goi y sua
             </div>
-            <h3 className="canon-repair-dialog__title">Ban sua de xuat cho report da chon</h3>
+            <h3 className="canon-repair-dialog__title">
+              {isBulkRepair ? 'Ban sua de xuat cho tat ca loi canon' : 'Ban sua de xuat cho report da chon'}
+            </h3>
           </div>
           <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label="Dong goi y sua">
             <X size={16} />
@@ -29,10 +35,17 @@ export default function CanonRepairDialog({
         </div>
 
         <div className="canon-repair-dialog__body">
-          {preview.report && (
-            <div className={`canon-repair-dialog__report canon-repair-dialog__report--${preview.report.severity || 'warning'}`}>
-              <strong>{preview.report.rule_code || preview.report.severity || 'Bao cao'}</strong>
-              <p>{preview.report.message}</p>
+          {reports.length > 0 && (
+            <div className="canon-repair-dialog__reports">
+              {reports.map((report) => (
+                <div
+                  key={report.id || `${report.rule_code}-${report.message}`}
+                  className={`canon-repair-dialog__report canon-repair-dialog__report--${report.severity || 'warning'}`}
+                >
+                  <strong>{report.rule_code || report.severity || 'Bao cao'}</strong>
+                  <p>{report.message}</p>
+                </div>
+              ))}
             </div>
           )}
 

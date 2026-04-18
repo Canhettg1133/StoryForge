@@ -194,7 +194,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
   const shouldFailClosed = mode === 'canonicalize';
   let extractionAttempted = false;
 
-  if (candidateOps.length === 0 && cleanText(revision.chapter_text)) {
+  if (!options.skipExtraction && candidateOps.length === 0 && cleanText(revision.chapter_text)) {
     extractionAttempted = true;
     try {
       candidateOps = await extractCandidateOps({
@@ -209,11 +209,9 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
       console.warn('[Canon] extractCandidateOps failed, falling back to heuristic-only validation:', error);
       candidateOps = [];
       extractionFallbackReports.push(createReport({
-        severity: shouldFailClosed ? CANON_SEVERITY.ERROR : CANON_SEVERITY.WARNING,
+        severity: CANON_SEVERITY.INFO,
         ruleCode: 'CANON_EXTRACT_FALLBACK',
-        message: shouldFailClosed
-          ? 'Khong trich xuat duoc canon ops tu AI nen khong canon hoa chuong nay.'
-          : 'Khong trich xuat duoc canon ops tu AI, he thong tiep tuc bang heuristic validator de tranh vo luong canon hoa.',
+        message: 'AI khong trich xuat duoc canon ops, he thong da tiep tuc kiem tra heuristic va khong xem day la loi chan chuong.',
         projectId: revision.project_id,
         chapterId: revision.chapter_id,
         revisionId: revision.id,
@@ -231,18 +229,6 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
     });
     candidateOps = filtered.ops;
     commitReadinessReports.push(...filtered.reports);
-
-    if (cleanText(revision.chapter_text) && extractionAttempted && candidateOps.length === 0) {
-      commitReadinessReports.push(createReport({
-        severity: CANON_SEVERITY.ERROR,
-        ruleCode: 'NO_COMMITTABLE_CANON_OPS',
-        message: 'AI khong tra ve canon op hop le de commit cho chuong co noi dung. Can xem lai extraction hoac canon hoa thu cong.',
-        projectId: revision.project_id,
-        chapterId: revision.chapter_id,
-        revisionId: revision.id,
-        evidence: cleanText(revision.chapter_text).slice(0, 240),
-      }));
-    }
   }
 
   const schemaReports = validateCandidateOps({
@@ -696,5 +682,12 @@ export async function saveRepairDraftRevision({
     },
   });
 
-  return draftRevision;
+  const validation = await validateRevision(draftRevision.id, 'draft', {
+    skipExtraction: true,
+  });
+
+  return {
+    ...draftRevision,
+    validation,
+  };
 }

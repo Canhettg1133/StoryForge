@@ -28,6 +28,13 @@
   gap: var(--space-3);
 }
 
+.canon-repair-dialog__reports {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
 .canon-repair-dialog__report {
   padding: var(--space-3);
   border-radius: var(--radius-lg);

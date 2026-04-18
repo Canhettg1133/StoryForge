@@ -197,7 +197,7 @@ describe('phase10 canon extraction fallback', () => {
     warnSpy.mockRestore();
   });
 
-  it('blocks canonicalize when canon extraction runtime fails', async () => {
+  it('does not block canonicalize when canon extraction runtime fails without real canon conflicts', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { db, engine } = await loadCanonEngine({
       projects: [{ id: 1, title: 'Canon fallback', genre_primary: 'fantasy' }],
@@ -229,12 +229,13 @@ describe('phase10 canon extraction fallback', () => {
 
     const validation = await engine.validateRevision(31, 'canonicalize');
 
-    expect(validation.hasErrors).toBe(true);
-    expect(validation.reports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'error')).toBe(true);
-    expect(validation.reports.some((item) => item.rule_code === 'NO_COMMITTABLE_CANON_OPS')).toBe(true);
+    expect(validation.hasErrors).toBe(false);
+    expect(validation.candidateOps).toEqual([]);
+    expect(validation.reports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'info')).toBe(true);
+    expect(validation.reports.some((item) => item.rule_code === 'NO_COMMITTABLE_CANON_OPS')).toBe(false);
 
     const persistedReports = await db.validator_reports.toArray();
-    expect(persistedReports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'error')).toBe(true);
+    expect(persistedReports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'info')).toBe(true);
     warnSpy.mockRestore();
   });
 
@@ -272,7 +273,7 @@ describe('phase10 canon extraction fallback', () => {
     const fallbackReport = validation.reports.find((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK');
 
     expect(fallbackReport).toBeTruthy();
-    expect(fallbackReport.severity).toBe('error');
+    expect(fallbackReport.severity).toBe('info');
     expect(fallbackReport.evidence).toContain('AI canon extract returned empty response');
     warnSpy.mockRestore();
   });
