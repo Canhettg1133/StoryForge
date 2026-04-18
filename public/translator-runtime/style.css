@@ -264,11 +264,14 @@ body::before {
     gap: var(--spacing-sm);
     flex-wrap: wrap;
     justify-content: flex-end;
+    min-width: 0;
 }
 
 .toolbar-pill {
     display: inline-flex;
     align-items: center;
+    min-width: 0;
+    max-width: 100%;
     padding: 0.45rem 0.8rem;
     border-radius: var(--radius-full);
     border: 1px solid var(--border-color);
@@ -277,6 +280,8 @@ body::before {
     font-size: 0.85rem;
     font-weight: 600;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .workspace-toolbar-actions {
@@ -1256,6 +1261,19 @@ select option {
         width: 100%;
     }
 
+    .workspace-toolbar-pills {
+        align-items: stretch;
+    }
+
+    .toolbar-pill {
+        justify-content: center;
+    }
+
+    #activeConfigPill {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
     .workspace-toolbar-actions .btn {
         width: 100%;
         justify-content: center;
@@ -1303,6 +1321,11 @@ select option {
 
     .settings-accordion-title {
         font-size: 0.92rem;
+    }
+
+    .toolbar-pill {
+        font-size: 0.78rem;
+        padding: 0.4rem 0.7rem;
     }
 
     .settings-accordion-summary {
