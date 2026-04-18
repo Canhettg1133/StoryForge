@@ -12,6 +12,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   MoreHorizontal,
+  Sparkles,
 } from 'lucide-react';
 import './ChapterList.css';
 
@@ -30,6 +31,8 @@ export default function ChapterList({
   allowCollapse = true,
   onItemSelect,
   isMobileLayout = false,
+  aiWritingChapterId = null,
+  aiWritingSceneId = null,
 }) {
   const {
     chapters,
@@ -361,16 +364,17 @@ export default function ChapterList({
               const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapter.id);
               const isActiveChapter = activeChapterId === chapter.id;
               const isDone = chapter.status === 'done';
+              const isAiWritingChapter = aiWritingChapterId === chapter.id;
 
               return (
                 <div key={chapter.id} className="chapter-list-collapsed-group">
                   <button
-                    className={`chapter-list-collapsed-item ${isActiveChapter ? 'chapter-list-collapsed-item--active' : ''} ${isDone ? 'chapter-list-collapsed-item--done' : ''}`}
+                    className={`chapter-list-collapsed-item ${isActiveChapter ? 'chapter-list-collapsed-item--active' : ''} ${isDone ? 'chapter-list-collapsed-item--done' : ''} ${isAiWritingChapter ? 'chapter-list-collapsed-item--ai-writing' : ''}`}
                     onClick={() => handleSelectChapter(chapter.id)}
                     onContextMenu={(event) => handleContextMenu(event, 'chapter', chapter.id)}
-                    title={formatStoryLabel(chapter.title)}
+                    title={isAiWritingChapter ? `${formatStoryLabel(chapter.title)} - AI dang viet` : formatStoryLabel(chapter.title)}
                   >
-                    {`Ch${index + 1}`}
+                    {isAiWritingChapter ? <Sparkles size={11} /> : `Ch${index + 1}`}
                   </button>
 
                   {isActiveChapter && (
@@ -415,11 +419,12 @@ export default function ChapterList({
             const isDone = chapter.status === 'done';
             const completionState = getCompletionState(chapter.id);
             const isThisCompleting = completionState.running || completingChapterId === chapter.id;
+            const isAiWritingChapter = aiWritingChapterId === chapter.id;
 
             return (
               <div key={chapter.id} className="chapter-node">
                 <div
-                  className={`chapter-item ${activeChapterId === chapter.id ? 'chapter-item--active' : ''} ${isDone ? 'chapter-item--done' : ''}`}
+                  className={`chapter-item ${activeChapterId === chapter.id ? 'chapter-item--active' : ''} ${isDone ? 'chapter-item--done' : ''} ${isAiWritingChapter ? 'chapter-item--ai-writing' : ''}`}
                   onContextMenu={(event) => handleContextMenu(event, 'chapter', chapter.id)}
                 >
                   <span
@@ -450,6 +455,11 @@ export default function ChapterList({
                   )}
 
                   {isThisCompleting && <Loader2 size={14} className="chapter-loading-icon" />}
+                  {isAiWritingChapter && (
+                    <span className="chapter-ai-writing-badge">
+                      <Sparkles size={11} /> AI dang viet
+                    </span>
+                  )}
                   <span className="chapter-scene-count">{chapterScenes.length}</span>
                   {chapter.actual_word_count > 0 && (
                     <span className="chapter-word-count">{chapter.actual_word_count.toLocaleString()} từ</span>
@@ -460,10 +470,11 @@ export default function ChapterList({
                   <div className="scene-list">
                     {chapterScenes.map((scene) => {
                       const isEditingScene = editingId === `scene-${scene.id}`;
+                      const isAiWritingScene = aiWritingSceneId === scene.id;
                       return (
                         <div
                           key={scene.id}
-                          className={`scene-item ${activeSceneId === scene.id ? 'scene-item--active' : ''}`}
+                          className={`scene-item ${activeSceneId === scene.id ? 'scene-item--active' : ''} ${isAiWritingScene ? 'scene-item--ai-writing' : ''}`}
                           onClick={() => handleSelectScene(chapter.id, scene.id)}
                           onContextMenu={(event) => handleContextMenu(event, 'scene', scene.id)}
                         >
@@ -481,6 +492,7 @@ export default function ChapterList({
                           ) : (
                             <span className="scene-item-title truncate">{formatStoryLabel(scene.title)}</span>
                           )}
+                          {isAiWritingScene && <Sparkles size={12} className="scene-ai-writing-icon" />}
                         </div>
                       );
                     })}
@@ -513,10 +525,11 @@ export default function ChapterList({
         const isDone = chapter.status === 'done';
         const completionState = getCompletionState(chapter.id);
         const isThisCompleting = completionState.running || completingChapterId === chapter.id;
+        const isAiWritingChapter = aiWritingChapterId === chapter.id;
 
         return (
           <div key={chapter.id} className="chapter-mobile-group">
-            <div className={`chapter-mobile-item ${activeChapterId === chapter.id ? 'chapter-mobile-item--active' : ''} ${isDone ? 'chapter-mobile-item--done' : ''}`}>
+            <div className={`chapter-mobile-item ${activeChapterId === chapter.id ? 'chapter-mobile-item--active' : ''} ${isDone ? 'chapter-mobile-item--done' : ''} ${isAiWritingChapter ? 'chapter-mobile-item--ai-writing' : ''}`}>
               <button
                 className="chapter-mobile-expand"
                 onClick={() => toggleChapter(chapter.id)}
@@ -540,10 +553,12 @@ export default function ChapterList({
                     <div className="chapter-mobile-title-row">
                       <span className="chapter-mobile-title">{formatStoryLabel(chapter.title)}</span>
                       {isThisCompleting && <Loader2 size={14} className="chapter-loading-icon" />}
+                      {isAiWritingChapter && <Sparkles size={14} className="chapter-ai-writing-icon" />}
                     </div>
                     <div className="chapter-mobile-meta">
                       <span>{chapterScenes.length} cảnh</span>
                       {chapter.actual_word_count > 0 && <span>{chapter.actual_word_count.toLocaleString()} từ</span>}
+                      {isAiWritingChapter && <span className="chapter-mobile-ai-writing">AI dang viet</span>}
                     </div>
                   </>
                 )}
@@ -562,10 +577,11 @@ export default function ChapterList({
               <div className="chapter-mobile-scenes">
                 {chapterScenes.map((scene, sceneIndex) => {
                   const isEditingScene = editingId === `scene-${scene.id}`;
+                  const isAiWritingScene = aiWritingSceneId === scene.id;
                   return (
                     <div
                       key={scene.id}
-                      className={`chapter-mobile-scene ${activeSceneId === scene.id ? 'chapter-mobile-scene--active' : ''}`}
+                      className={`chapter-mobile-scene ${activeSceneId === scene.id ? 'chapter-mobile-scene--active' : ''} ${isAiWritingScene ? 'chapter-mobile-scene--ai-writing' : ''}`}
                       onClick={() => handleSelectScene(chapter.id, scene.id)}
                     >
                       <div className="chapter-mobile-scene-icon">
@@ -584,7 +600,9 @@ export default function ChapterList({
                         ) : (
                           <>
                             <span className="chapter-mobile-scene-title">{formatStoryLabel(scene.title)}</span>
-                            <span className="chapter-mobile-scene-label">Cảnh {sceneIndex + 1}</span>
+                            <span className="chapter-mobile-scene-label">
+                              Cảnh {sceneIndex + 1}{isAiWritingScene ? ' - AI dang viet' : ''}
+                            </span>
                           </>
                         )}
                       </div>

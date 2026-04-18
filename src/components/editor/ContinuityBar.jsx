@@ -83,10 +83,14 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     };
   }, [currentChapterIndex, chapters, chapterMetas]);
 
-  const currentChapterTitle = useMemo(() => {
+  const currentChapterInfo = useMemo(() => {
     const chapter = chapters.find((item) => item.id === activeChapterId);
-    return chapter?.title || '';
-  }, [chapters, activeChapterId]);
+    if (!chapter) return null;
+    return {
+      title: chapter.title || `Chuong ${currentChapterIndex + 1}`,
+      number: currentChapterIndex >= 0 ? currentChapterIndex + 1 : null,
+    };
+  }, [chapters, activeChapterId, currentChapterIndex]);
 
   const canonStatusLabel = useMemo(() => {
     const status = chapterCanon?.status || 'draft';
@@ -159,22 +163,22 @@ export default function ContinuityBar({ isMobileLayout = false }) {
       <div className={`continuity-bar ${expanded ? 'continuity-bar--expanded' : ''} ${isMobileLayout ? 'continuity-bar--mobile' : ''}`}>
         <div className="continuity-bar-header" onClick={() => setExpanded((value) => !value)}>
           <div className="continuity-bar-left">
-            <Clock size={13} />
-            {prevChapterInfo ? (
-              <>
-                <span className="continuity-bar-label">Chuong truoc:</span>
-                <span className="continuity-bar-title">{prevChapterInfo.title}</span>
-              </>
-            ) : (
-              <>
-                <span className="continuity-bar-label">Su that:</span>
-                <span className="continuity-bar-title">{currentChapterTitle || 'Chuong hien tai'}</span>
-              </>
+            <div className="continuity-bar-current">
+              {chapterCanon?.status === 'canonical' ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
+              <span className="continuity-bar-label">Chuong hien tai:</span>
+              <span className="continuity-bar-title">{currentChapterInfo?.title || 'Chuong hien tai'}</span>
+              <span className={canonStatusClass}>
+                {chapterCanon?.status === 'canonical' ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+                {canonStatusLabel}
+              </span>
+            </div>
+            {prevChapterInfo && (
+              <div className="continuity-bar-previous">
+                <Clock size={13} />
+                <span className="continuity-bar-label">Tom tat chuong truoc:</span>
+                <span className="continuity-bar-title continuity-bar-title--previous">{prevChapterInfo.title}</span>
+              </div>
             )}
-            <span className={canonStatusClass}>
-              {chapterCanon?.status === 'canonical' ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
-              {canonStatusLabel}
-            </span>
             {(chapterCanon?.warningCount || 0) > 0 && (
               <span className="continuity-bar-count">{chapterCanon.warningCount} canh bao</span>
             )}
@@ -204,7 +208,14 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                 {lastActionOutcome.message}
               </div>
             )}
-            {prevChapterInfo && <p className="continuity-bar-summary">{prevChapterInfo.summary}</p>}
+            {prevChapterInfo && (
+              <div className="continuity-bar-summary-block">
+                <div className="continuity-bar-summary-heading">
+                  Tom tat de noi tiep tu {prevChapterInfo.title}
+                </div>
+                <p className="continuity-bar-summary">{prevChapterInfo.summary}</p>
+              </div>
+            )}
             {reports.length > 0 && (
               <div className="continuity-bar-reports">
                 {reports.slice(0, 4).map((report) => (

@@ -59,15 +59,16 @@ function isHtmlBlank(html = '') {
 }
 
 export default function SceneEditor() {
-  const { currentProject, scenes, activeSceneId, activeChapterId } = useProjectStore();
+  const { currentProject, chapters, scenes, activeSceneId, activeChapterId } = useProjectStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
-  const isMobileLayout = useMobileLayout(900);
+  const isMobileLayout = useMobileLayout(1180);
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileAITab, setMobileAITab] = useState('ai');
   const [aiDraftPreview, setAiDraftPreview] = useState(null);
-  const aiIsStreaming = useAIStore((state) => state.isStreaming);
+  const [aiActivity, setAiActivity] = useState(null);
+  const clearAIOutput = useAIStore((state) => state.clearOutput);
 
   const openMobilePanel = useCallback((panel) => {
     setMobilePanel(panel);
@@ -116,6 +117,15 @@ export default function SceneEditor() {
     setAiDraftPreview(preview);
   }, []);
 
+  const handleAiActivityChange = useCallback((activity) => {
+    setAiActivity(activity?.running ? activity : null);
+  }, []);
+
+  const handleAiDraftSaved = useCallback(() => {
+    setAiDraftPreview(null);
+    clearAIOutput();
+  }, [clearAIOutput]);
+
   const activeProjectId = currentProject?.id || null;
   const activeScene = useMemo(
     () => scenes.find((scene) => scene.id === activeSceneId) || null,
@@ -129,9 +139,18 @@ export default function SceneEditor() {
     return aiDraftPreview;
   }, [aiDraftPreview, activeSceneId, activeChapterId]);
   const hasAiDraftPreview = !!scopedAiDraftPreview?.text && isHtmlBlank(activeScene?.draft_text || '');
-  const mobileAIButtonLabel = aiIsStreaming
+  const aiDraftIsStreaming = !!scopedAiDraftPreview?.isStreaming;
+  const aiActivityChapterIndex = useMemo(() => (
+    aiActivity?.chapterId
+      ? chapters.findIndex((chapter) => chapter.id === aiActivity.chapterId)
+      : -1
+  ), [aiActivity?.chapterId, chapters]);
+  const hasAiActivity = !!aiActivity?.running;
+  const mobileAIButtonLabel = aiDraftIsStreaming
     ? 'AI \u0111ang vi\u1ebft'
-    : hasAiDraftPreview
+    : hasAiActivity && aiActivityChapterIndex >= 0
+      ? `AI vi\u1ebft C${aiActivityChapterIndex + 1}`
+      : hasAiDraftPreview
       ? 'B\u1ea3n nh\u00e1p AI'
       : 'AI vi\u1ebft';
   const visibleMobileNavItems = useMemo(
@@ -248,6 +267,8 @@ export default function SceneEditor() {
             allowCollapse={!isMobileLayout}
             isMobileLayout={isMobileLayout}
             onItemSelect={() => isMobileLayout && closeMobilePanel()}
+            aiWritingChapterId={aiActivity?.chapterId || null}
+            aiWritingSceneId={aiActivity?.sceneId || null}
           />
         </div>
       </aside>
@@ -260,12 +281,12 @@ export default function SceneEditor() {
               <span>{'Ch\u01b0\u01a1ng'}</span>
             </button>
             <button
-              className={`scene-editor-mobile-action ${mobilePanel === 'ai' ? 'scene-editor-mobile-action--open' : ''} ${aiIsStreaming ? 'scene-editor-mobile-action--working' : ''} ${hasAiDraftPreview ? 'scene-editor-mobile-action--has-draft' : ''}`}
+              className={`scene-editor-mobile-action ${mobilePanel === 'ai' ? 'scene-editor-mobile-action--open' : ''} ${hasAiActivity ? 'scene-editor-mobile-action--working' : ''} ${hasAiDraftPreview ? 'scene-editor-mobile-action--has-draft' : ''}`}
               type="button"
               onClick={() => openMobilePanel('ai')}
             >
               <Sparkles size={16} />
-              {(aiIsStreaming || hasAiDraftPreview) && (
+              {(hasAiActivity || hasAiDraftPreview) && (
                 <span className="scene-editor-mobile-action-status" aria-hidden="true" />
               )}
               <span>{mobileAIButtonLabel}</span>
@@ -276,6 +297,7 @@ export default function SceneEditor() {
           onEditorReady={handleEditorReady}
           isMobileLayout={isMobileLayout}
           aiDraftPreview={scopedAiDraftPreview}
+          onAiDraftSaved={handleAiDraftSaved}
         />
       </div>
 
@@ -300,6 +322,7 @@ export default function SceneEditor() {
             mobileTab={mobileAITab}
             onMobileTabChange={setMobileAITab}
             onDraftPreviewChange={handleDraftPreviewChange}
+            onAiActivityChange={handleAiActivityChange}
           />
         </div>
       </aside>

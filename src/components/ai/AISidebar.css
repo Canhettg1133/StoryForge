@@ -120,6 +120,9 @@
   outline: none;
   resize: none;
   line-height: 1.4;
+  min-height: 40px;
+  max-height: 180px;
+  overflow-y: hidden;
   transition: border-color var(--transition-fast);
 }
 
@@ -259,7 +262,8 @@
   transition: border-color var(--transition-fast);
   line-height: 1.4;
   min-height: 38px;
-  max-height: 120px;
+  max-height: 180px;
+  overflow-y: hidden;
 }
 
 .ai-prompt-input:focus {

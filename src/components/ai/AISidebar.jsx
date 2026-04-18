@@ -26,7 +26,9 @@ import './AISidebar.css';
 
 const PROSE_INSERT_TASKS = ['continue', 'free_prompt'];
 const PROSE_REPLACE_TASKS = ['rewrite', 'expand'];
+const PROSE_OUTPUT_TASKS = new Set([...PROSE_INSERT_TASKS, ...PROSE_REPLACE_TASKS]);
 const NON_DRAFT_PREVIEW_TASKS = new Set(['plot', 'outline', 'extract', 'conflict']);
+const CHAPTER_SCOPED_OUTPUT_TASKS = new Set(['plot', 'outline']);
 const MOBILE_AI_TABS = [
   { id: 'ai', label: 'AI' },
   { id: 'codex', label: 'Codex' },
@@ -43,6 +45,28 @@ const QUICK_ACTIONS = [
   { id: 'conflict', icon: ShieldAlert, label: 'Check Mâu Thuẫn', taskFn: 'checkConflict', needsText: true, isCustom: true },
 ];
 
+function autosizeTextarea(textarea) {
+  if (!textarea) return;
+
+  textarea.style.height = 'auto';
+  const computed = window.getComputedStyle(textarea);
+  const maxHeight = Number.parseInt(computed.maxHeight, 10) || 160;
+  const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+  textarea.style.height = `${nextHeight}px`;
+  textarea.style.overflowY = textarea.scrollHeight > maxHeight ? 'auto' : 'hidden';
+}
+
+function buildOutputScope(context = {}, taskId = null) {
+  return {
+    projectId: context.projectId || null,
+    chapterId: context.chapterId || null,
+    sceneId: context.sceneId || null,
+    taskId,
+    scopeLevel: CHAPTER_SCOPED_OUTPUT_TASKS.has(taskId) ? 'chapter' : 'scene',
+    createdAt: Date.now(),
+  };
+}
+
 export default function AISidebar({
   editor,
   isMobileLayout = false,
@@ -50,6 +74,7 @@ export default function AISidebar({
   onMobileTabChange,
   onMobileInputFocusChange,
   onDraftPreviewChange,
+  onAiActivityChange,
 }) {
   const {
     isStreaming,
@@ -79,10 +104,12 @@ export default function AISidebar({
   const [pendingAction, setPendingAction] = useState(null);
   const [actionGuidance, setActionGuidance] = useState('');
   const [lastTaskId, setLastTaskId] = useState(null);
+  const [outputScope, setOutputScope] = useState(null);
   const [plotSuggestions, setPlotSuggestions] = useState([]);
   const [showPlotManager, setShowPlotManager] = useState(false);
   const outputRef = useRef(null);
   const guidanceRef = useRef(null);
+  const customPromptRef = useRef(null);
 
   useEffect(() => {
     if (activeChapterId) {
@@ -110,33 +137,92 @@ export default function AISidebar({
 
   const displayText = streamingText || completedText;
   const hasOutput = !!displayText || !!error || isStreaming || isCheckingConflict;
+  const isOutputForActiveScope = (() => {
+    if (!hasOutput) return true;
+    if (!outputScope) return false;
+    if (outputScope.projectId && currentProject?.id && outputScope.projectId !== currentProject.id) return false;
+    if (outputScope.chapterId && activeChapterId && outputScope.chapterId !== activeChapterId) return false;
+    if (outputScope.scopeLevel === 'scene' && outputScope.sceneId && activeSceneId && outputScope.sceneId !== activeSceneId) return false;
+    return true;
+  })();
+  const scopedDisplayText = isOutputForActiveScope ? displayText : '';
+  const scopedError = isOutputForActiveScope ? error : null;
+  const scopedIsStreaming = isOutputForActiveScope && isStreaming;
+  const scopedIsCheckingConflict = isOutputForActiveScope && isCheckingConflict;
+  const scopedHasOutput = !!scopedDisplayText || !!scopedError || scopedIsStreaming || scopedIsCheckingConflict;
+  const scopedTaskId = outputScope?.taskId || lastTaskId;
+  const canApplyOutputToActiveEditor = !!editor && isOutputForActiveScope && outputScope?.scopeLevel === 'scene';
 
   useEffect(() => {
-    if (!isMobileLayout || !hasOutput || !onMobileTabChange) return;
+    if (!onAiActivityChange) return;
+
+    const isProseTask = outputScope?.taskId && PROSE_OUTPUT_TASKS.has(outputScope.taskId);
+    if (isStreaming && isProseTask && outputScope?.chapterId) {
+      onAiActivityChange({
+        running: true,
+        projectId: outputScope.projectId || null,
+        chapterId: outputScope.chapterId,
+        sceneId: outputScope.sceneId || null,
+        taskId: outputScope.taskId,
+        scopeLevel: outputScope.scopeLevel,
+      });
+      return;
+    }
+
+    onAiActivityChange(null);
+  }, [
+    onAiActivityChange,
+    isStreaming,
+    outputScope?.projectId,
+    outputScope?.chapterId,
+    outputScope?.sceneId,
+    outputScope?.taskId,
+    outputScope?.scopeLevel,
+  ]);
+
+  useEffect(() => {
+    if (!isMobileLayout || !scopedHasOutput || !onMobileTabChange) return;
     onMobileTabChange('results');
-  }, [isMobileLayout, hasOutput, onMobileTabChange]);
+  }, [isMobileLayout, scopedHasOutput, onMobileTabChange]);
+
+  useEffect(() => {
+    autosizeTextarea(customPromptRef.current);
+  }, [customPrompt, isMobileLayout]);
+
+  useEffect(() => {
+    autosizeTextarea(guidanceRef.current);
+  }, [actionGuidance, pendingAction]);
 
   useEffect(() => {
     if (!onDraftPreviewChange) return;
 
-    if (!displayText || !activeSceneId || isCheckingConflict || error) {
+    if (!scopedDisplayText || !outputScope?.sceneId || scopedIsCheckingConflict || scopedError || !isOutputForActiveScope) {
       onDraftPreviewChange(null);
       return;
     }
 
-    if (lastTaskId && NON_DRAFT_PREVIEW_TASKS.has(lastTaskId)) {
+    if (scopedTaskId && NON_DRAFT_PREVIEW_TASKS.has(scopedTaskId)) {
       onDraftPreviewChange(null);
       return;
     }
 
     onDraftPreviewChange({
-      sceneId: activeSceneId,
-      chapterId: activeChapterId || null,
-      taskId: lastTaskId,
-      text: displayText,
-      isStreaming,
+      sceneId: outputScope.sceneId,
+      chapterId: outputScope.chapterId || null,
+      taskId: scopedTaskId,
+      text: scopedDisplayText,
+      isStreaming: scopedIsStreaming,
     });
-  }, [onDraftPreviewChange, displayText, isStreaming, isCheckingConflict, error, lastTaskId, activeSceneId, activeChapterId]);
+  }, [
+    onDraftPreviewChange,
+    scopedDisplayText,
+    scopedIsStreaming,
+    scopedIsCheckingConflict,
+    scopedError,
+    scopedTaskId,
+    outputScope,
+    isOutputForActiveScope,
+  ]);
 
   const getContext = () => {
     const scene = scenes.find((item) => item.id === activeSceneId);
@@ -181,6 +267,7 @@ export default function AISidebar({
     setActionGuidance('');
     setActiveAction(action.id);
     setLastTaskId(action.id);
+    setOutputScope(buildOutputScope(context, action.id));
 
     if (action.isCustom && action.id === 'conflict') {
       handleCheckConflict(context);
@@ -237,12 +324,13 @@ export default function AISidebar({
     const context = getContext();
     context.userPrompt = customPrompt.trim();
     setLastTaskId('free_prompt');
+    setOutputScope(buildOutputScope(context, 'free_prompt'));
     freePrompt(context);
     setCustomPrompt('');
   };
 
   const handleCopy = () => {
-    const text = completedText || streamingText;
+    const text = scopedDisplayText;
     if (!text) return;
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -265,19 +353,25 @@ export default function AISidebar({
   );
 
   const handleInsertToEditor = () => {
-    const text = completedText || streamingText;
-    if (text && editor) {
+    const text = scopedDisplayText;
+    if (text && canApplyOutputToActiveEditor && editor) {
       editor.chain().focus().insertContent(textToHtml(text)).run();
       clearOutput();
     }
   };
 
   const handleReplaceEditor = () => {
-    const text = completedText || streamingText;
-    if (text && editor) {
+    const text = scopedDisplayText;
+    if (text && canApplyOutputToActiveEditor && editor) {
       editor.chain().focus().selectAll().deleteSelection().insertContent(textToHtml(text)).run();
       clearOutput();
     }
+  };
+
+  const handleClearOutput = () => {
+    clearOutput();
+    setOutputScope(null);
+    setLastTaskId(null);
   };
 
   useEffect(() => {
@@ -456,7 +550,7 @@ export default function AISidebar({
             executeAction(pendingAction, actionGuidance);
           }
         }}
-        rows={2}
+        rows={1}
       />
       <div className="ai-guidance-actions">
         <button className="btn btn-ghost btn-sm" onClick={() => executeAction(pendingAction, '')}>
@@ -470,40 +564,40 @@ export default function AISidebar({
   );
 
   const renderOutputArea = (showEmptyState = false) => {
-    if (!hasOutput && !showEmptyState) return null;
+    if (!scopedHasOutput && !showEmptyState) return null;
 
     return (
       <div className="ai-output-area">
         <div className="ai-output-header">
           <span className="ai-output-label">
-            {isStreaming || isCheckingConflict ? (
-              <><span className="ai-streaming-dot" /> {isCheckingConflict ? 'Đang kiểm tra...' : 'Đang viết...'}</>
-            ) : error ? 'Lỗi' : 'Kết quả'}
+            {scopedIsStreaming || scopedIsCheckingConflict ? (
+              <><span className="ai-streaming-dot" /> {scopedIsCheckingConflict ? 'Đang kiểm tra...' : 'Đang viết...'}</>
+            ) : scopedError ? 'Lỗi' : 'Kết quả'}
           </span>
           <div className="ai-output-actions">
-            {!isStreaming && displayText && (
+            {!scopedIsStreaming && scopedDisplayText && (
               <>
                 <button className="btn btn-ghost btn-icon btn-sm" onClick={handleCopy} title="Copy">
                   {copied ? <Check size={14} /> : <Copy size={14} />}
                 </button>
-                {PROSE_INSERT_TASKS.includes(lastTaskId) && (
-                  <button className="btn btn-ghost btn-icon btn-sm" onClick={handleInsertToEditor} title="Chèn vào editor">
-                    <ArrowDownToLine size={14} />
+                {PROSE_INSERT_TASKS.includes(scopedTaskId) && canApplyOutputToActiveEditor && (
+                  <button className="btn btn-ghost btn-sm" onClick={handleInsertToEditor} title="Lưu kết quả vào cảnh đang mở">
+                    <ArrowDownToLine size={12} /> Lưu vào
                   </button>
                 )}
-                {PROSE_REPLACE_TASKS.includes(lastTaskId) && (
+                {PROSE_REPLACE_TASKS.includes(scopedTaskId) && canApplyOutputToActiveEditor && (
                   <button className="btn btn-accent btn-sm" onClick={handleReplaceEditor} title="Thay thế đoạn gốc">
                     <Replace size={12} /> Thay thế
                   </button>
                 )}
               </>
             )}
-            {isStreaming ? (
+            {scopedIsStreaming ? (
               <button className="btn btn-danger btn-sm" onClick={abort}>
                 <Square size={12} /> Dừng
               </button>
             ) : (
-              <button className="btn btn-ghost btn-icon btn-sm" onClick={clearOutput} title="Xóa">
+              <button className="btn btn-ghost btn-icon btn-sm" onClick={handleClearOutput} title="Xóa">
                 <X size={14} />
               </button>
             )}
@@ -511,16 +605,16 @@ export default function AISidebar({
         </div>
 
         <div className="ai-output-content" ref={outputRef}>
-          {error ? (
-            <div className="ai-output-error">{error}</div>
-          ) : displayText ? (
-            <div className="ai-output-text">{displayText}{isStreaming && <span className="ai-cursor">|</span>}</div>
+          {scopedError ? (
+            <div className="ai-output-error">{scopedError}</div>
+          ) : scopedDisplayText ? (
+            <div className="ai-output-text">{scopedDisplayText}{scopedIsStreaming && <span className="ai-cursor">|</span>}</div>
           ) : (
-            <div className="ai-output-empty">Chưa có kết quả. Chạy một tác vụ AI để xem nội dung ở đây.</div>
+            <div className="ai-output-empty">Chưa có kết quả cho cảnh/chương đang mở. Chạy một tác vụ AI tại đây để xem nội dung.</div>
           )}
         </div>
 
-        {lastRouteInfo && !isStreaming && !error && (
+        {lastRouteInfo && !scopedIsStreaming && !scopedError && scopedHasOutput && (
           <div className="ai-output-meta">
             <span>{lastRouteInfo.provider === 'ollama' ? 'Local' : 'Cloud'} · {lastRouteInfo.model}</span>
             {lastElapsed && <span>· {(lastElapsed / 1000).toFixed(1)}s</span>}
@@ -533,6 +627,7 @@ export default function AISidebar({
   const renderPromptComposer = () => (
     <form className="ai-free-prompt" onSubmit={handleFreePrompt}>
       <textarea
+        ref={customPromptRef}
         className="ai-prompt-input"
         placeholder="Nhập yêu cầu tự do..."
         value={customPrompt}
@@ -545,7 +640,7 @@ export default function AISidebar({
             handleFreePrompt(event);
           }
         }}
-        rows={isMobileLayout ? 3 : 2}
+        rows={1}
         disabled={isStreaming}
       />
       <button

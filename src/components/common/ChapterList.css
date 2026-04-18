@@ -135,6 +135,13 @@
   color: var(--color-success);
 }
 
+.chapter-list-collapsed-item--ai-writing {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 54%, transparent);
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-bg-tertiary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
 .chapter-list-collapsed-scenes {
   display: flex;
   flex-direction: column;
@@ -324,6 +331,37 @@
 
 .chapter-item--done .chapter-item-title {
   color: var(--color-success);
+}
+
+.chapter-item--ai-writing,
+.scene-item--ai-writing,
+.chapter-mobile-item--ai-writing,
+.chapter-mobile-scene--ai-writing {
+  border-color: color-mix(in srgb, var(--color-accent) 48%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-bg-tertiary));
+}
+
+.chapter-ai-writing-badge,
+.chapter-mobile-ai-writing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  padding: 4px 7px;
+}
+
+.chapter-ai-writing-icon,
+.scene-ai-writing-icon {
+  color: var(--color-accent);
+  animation: pulse 1.2s ease infinite;
+  flex-shrink: 0;
 }
 
 .chapter-done-icon {

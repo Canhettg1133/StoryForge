@@ -38,7 +38,12 @@ function textToHtml(text = '') {
     .join('');
 }
 
-export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiDraftPreview = null }) {
+export default function StoryEditor({
+  onEditorReady,
+  isMobileLayout = false,
+  aiDraftPreview = null,
+  onAiDraftSaved,
+}) {
   const {
     activeSceneId, activeChapterId, scenes, chapters,
     updateScene, updateChapter, updateProjectTimestamp,
@@ -250,6 +255,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
 
     setAiDraft({
       sceneId: aiDraftPreview.sceneId,
+      chapterId: aiDraftPreview.chapterId || null,
       taskId: aiDraftPreview.taskId || 'ai',
       text,
       html: textToHtml(text),
@@ -308,6 +314,10 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
   const handleSaveAiDraft = async () => {
     if (!aiDraft || !editor || !activeSceneId) return;
     if (aiDraft.isStreaming) return;
+    if (aiDraft.sceneId !== activeSceneId || aiDraft.chapterId !== activeChapterId) {
+      setAiDraft(null);
+      return;
+    }
     if (!isEditorEmpty(editor, activeScene?.draft_text || '')) {
       setAiDraft(null);
       return;
@@ -315,6 +325,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false, aiD
 
     editor.commands.setContent(aiDraft.html, false);
     await handleSave(aiDraft.html);
+    onAiDraftSaved?.(aiDraft);
     setAiDraft(null);
   };
 
