@@ -170,6 +170,11 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
   }, [activeScene?.draft_text, activeScene?.id]);
 
   useEffect(() => {
+    if (!isMobileLayout) {
+      setAiDraft(null);
+      return undefined;
+    }
+
     const handleAiDraftReady = (event) => {
       const detail = event.detail || {};
       if (!activeScene || detail.sceneId !== activeScene.id) return;
@@ -190,7 +195,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
 
     window.addEventListener(AI_DRAFT_READY_EVENT, handleAiDraftReady);
     return () => window.removeEventListener(AI_DRAFT_READY_EVENT, handleAiDraftReady);
-  }, [activeScene?.id, activeScene?.draft_text, activeScene]);
+  }, [isMobileLayout, activeScene?.id, activeScene?.draft_text, activeScene]);
 
   // [MỚI] Reset thanh cuộn khi đổi cảnh/chương
   useEffect(() => {
@@ -426,7 +431,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
 
       {/* Editor */}
       <div className="story-editor-wrapper" ref={editorWrapperRef}>
-        {aiDraft && isContentEmpty(activeScene?.draft_text || '') && (
+        {isMobileLayout && aiDraft && isContentEmpty(activeScene?.draft_text || '') && (
           <div className="story-editor-ai-draft">
             <div className="story-editor-ai-draft__header">
               <div>

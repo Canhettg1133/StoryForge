@@ -124,6 +124,7 @@ export default function AISidebar({
   }, [isMobileLayout, hasOutput, onMobileTabChange]);
 
   useEffect(() => {
+    if (!isMobileLayout) return;
     if (!displayText || !PROSE_INSERT_TASKS.includes(lastTaskId) || !activeSceneId) return;
 
     const scene = scenes.find((item) => item.id === activeSceneId);
@@ -142,7 +143,7 @@ export default function AISidebar({
         isStreaming,
       },
     }));
-  }, [displayText, isStreaming, lastTaskId, activeSceneId, activeChapterId, scenes]);
+  }, [isMobileLayout, displayText, isStreaming, lastTaskId, activeSceneId, activeChapterId, scenes]);
 
   const getContext = () => {
     const scene = scenes.find((item) => item.id === activeSceneId);
