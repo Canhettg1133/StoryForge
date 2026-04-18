@@ -184,6 +184,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
         text,
         html: textToHtml(text),
         wordCount: countWords(text),
+        isStreaming: !!detail.isStreaming,
       });
     };
 
@@ -430,7 +431,7 @@ export default function StoryEditor({ onEditorReady, isMobileLayout = false }) {
             <div className="story-editor-ai-draft__header">
               <div>
                 <div className="story-editor-ai-draft__kicker">Bản nháp AI</div>
-                <strong>AI đã viết cho cảnh trống này</strong>
+                <strong>{aiDraft.isStreaming ? 'AI đang viết cho cảnh trống này' : 'AI đã viết cho cảnh trống này'}</strong>
                 <span>{aiDraft.wordCount.toLocaleString()} từ</span>
               </div>
               <div className="story-editor-ai-draft__actions">

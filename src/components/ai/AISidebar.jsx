@@ -124,12 +124,12 @@ export default function AISidebar({
   }, [isMobileLayout, hasOutput, onMobileTabChange]);
 
   useEffect(() => {
-    if (!completedText || !PROSE_INSERT_TASKS.includes(lastTaskId) || !activeSceneId) return;
+    if (!displayText || !PROSE_INSERT_TASKS.includes(lastTaskId) || !activeSceneId) return;
 
     const scene = scenes.find((item) => item.id === activeSceneId);
     if (!isSceneEmpty(scene?.draft_text || '')) return;
 
-    const draftKey = `${activeSceneId}:${lastTaskId}:${completedText}`;
+    const draftKey = `${activeSceneId}:${lastTaskId}:${isStreaming ? 'streaming' : 'done'}:${displayText}`;
     if (lastPublishedDraftRef.current === draftKey) return;
     lastPublishedDraftRef.current = draftKey;
 
@@ -138,10 +138,11 @@ export default function AISidebar({
         sceneId: activeSceneId,
         chapterId: activeChapterId || null,
         taskId: lastTaskId,
-        text: completedText,
+        text: displayText,
+        isStreaming,
       },
     }));
-  }, [completedText, lastTaskId, activeSceneId, activeChapterId, scenes]);
+  }, [displayText, isStreaming, lastTaskId, activeSceneId, activeChapterId, scenes]);
 
   const getContext = () => {
     const scene = scenes.find((item) => item.id === activeSceneId);
