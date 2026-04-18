@@ -6,6 +6,7 @@ import {
   FileSearch,
   FlaskConical,
   Globe,
+  Languages,
   LayoutDashboard,
   Map,
   MessageSquare,
@@ -33,7 +34,7 @@ const MOBILE_NAV_ITEMS = [
   { id: 'characters', label: 'Nhân vật', icon: Users, needsProject: true, getPath: (projectId) => `/project/${projectId}/characters` },
   { id: 'world', label: 'Thế giới', icon: Globe, needsProject: true, getPath: (projectId) => `/project/${projectId}/world` },
   { id: 'editor', label: 'Viết truyện', icon: PenTool, needsProject: true, getPath: (projectId) => `/project/${projectId}/editor`, primary: true },
-  { id: 'project-chat', label: 'Chat AI', icon: MessageSquare, needsProject: true, getPath: (projectId) => `/project/${projectId}/chat` },
+  { id: 'project-chat', label: 'Chat với AI', icon: MessageSquare, needsProject: true, getPath: (projectId) => `/project/${projectId}/chat` },
   { id: 'project-prompts', label: 'Prompt truyện', icon: Sparkles, needsProject: true, getPath: (projectId) => `/project/${projectId}/prompts` },
   { id: 'prompt-manager', label: 'Prompt tổng quát', icon: Sparkles, needsProject: true, getPath: (projectId) => `/project/${projectId}/prompt-manager` },
   { id: 'lab', label: 'Narrative Lab', icon: FlaskConical, needsProject: true, getPath: (projectId) => `/project/${projectId}/lab` },
@@ -43,6 +44,7 @@ const MOBILE_NAV_ITEMS = [
   { id: 'style-lab', label: 'Style Lab', icon: Palette, needsProject: true, getPath: (projectId) => `/project/${projectId}/style-lab`, comingSoon: true },
   { id: 'global-chat', label: 'Chat tự do', icon: MessageSquare, needsProject: false, getPath: () => '/ai-chat' },
   { id: 'settings', label: 'Cài đặt', icon: Settings, needsProject: false, getPath: () => '/settings' },
+  { id: 'translator', label: 'Dịch truyện', icon: Languages, needsProject: false, getPath: () => '/translator' },
 ];
 const VISIBLE_MOBILE_NAV_ITEMS = MOBILE_NAV_ITEMS.filter((item) => shouldShowNavItem(item));
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+  ArrowLeft,
   Bot,
   CheckCircle2,
   ChevronDown,
@@ -33,6 +34,7 @@ import modelRouter, {
   TASK_TYPES,
 } from '../../services/ai/router';
 import db from '../../services/db/database';
+import useMobileLayout from '../../hooks/useMobileLayout';
 
 const GLOBAL_CHAT_PROJECT_ID = 0;
 const CHAT_THREAD_TITLE_FALLBACK = 'Cuộc trò chuyện mới';
@@ -260,6 +262,7 @@ export default function ProjectChat() {
   const { currentProject, loadProject } = useProjectStore();
   const projectScopeEnabled = Boolean(projectId);
   const scopedProjectId = projectScopeEnabled ? Number(projectId) : GLOBAL_CHAT_PROJECT_ID;
+  const isMobileLayout = useMobileLayout(900);
 
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
@@ -1129,6 +1132,15 @@ export default function ProjectChat() {
       ? 'API key và provider dùng chung với phần AI của dự án'
       : 'Chat tự do: không dùng ngữ cảnh truyện';
 
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/');
+  };
+
   if (projectScopeEnabled && !currentProject) {
     return (
       <div className="project-chat-empty card">
@@ -1261,6 +1273,17 @@ export default function ProjectChat() {
 
         <section className="project-chat-main card">
           <div className="project-chat-topbar">
+            {!projectScopeEnabled && isMobileLayout ? (
+              <div className="project-chat-topbar__nav">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={handleGoBack}
+                >
+                  <ArrowLeft size={14} /> Quay lại
+                </button>
+              </div>
+            ) : null}
             <div className="project-chat-topbar__compact">
               <div className="project-chat-topbar__meta">
                 <div className="project-chat-topbar__kicker">

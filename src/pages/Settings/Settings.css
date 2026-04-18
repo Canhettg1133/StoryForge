@@ -8,6 +8,10 @@
 
 .settings-header { margin-bottom: var(--space-8); }
 
+.settings-mobile-back {
+  display: none;
+}
+
 .settings-title {
   font-size: var(--text-3xl);
   font-weight: var(--weight-bold);
@@ -277,6 +281,11 @@
 }
 
 @media (max-width: 900px) {
+  .settings-mobile-back {
+    display: flex;
+    margin-bottom: 12px;
+  }
+
   .settings-page {
     width: 100%;
     max-width: none;

@@ -12,6 +12,41 @@
   position: relative;
 }
 
+.translator-shell {
+  position: fixed;
+  top: -10000px;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.translator-shell.is-active {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  top: auto;
+  left: auto;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.translator-shell__mobile-back {
+  display: none;
+}
+
+.translator-shell__host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
 .app-main--translator-active {
   overflow: hidden;
 }
@@ -31,4 +66,17 @@
 
 .app-layout--mobile.app-layout--project-route .app-main {
   overflow: hidden;
+}
+
+.app-layout--mobile .translator-shell.is-active {
+  height: 100svh;
+  min-height: 100svh;
+}
+
+.app-layout--mobile .translator-shell__mobile-back {
+  display: flex;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
+  z-index: 3;
 }

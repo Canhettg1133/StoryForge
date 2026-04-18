@@ -10,7 +10,7 @@ export const MOBILE_BOTTOM_ITEMS = [
   { id: 'write', label: 'Viet', icon: PenTool, path: (id) => `/project/${id}/editor` },
   { id: 'outline', label: 'Dan y', icon: Map, path: (id) => `/project/${id}/outline` },
   { id: 'bible', label: 'Bible', icon: BookOpen, path: (id) => `/project/${id}/story-bible` },
-  { id: 'ai', label: 'AI', icon: Sparkles, path: (id) => `/project/${id}/chat` },
+  { id: 'ai', label: 'Chat AI', icon: Sparkles, path: (id) => `/project/${id}/chat` },
 ];
 
 export default function MobileBottomNav({ activeId, onItemClick }) {

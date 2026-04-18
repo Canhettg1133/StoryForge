@@ -70,6 +70,12 @@
     min-height: 0;
   }
 
+  .scene-editor-layout--mobile .scene-editor-side--nav,
+  .scene-editor-layout--mobile .scene-editor-side--chapter,
+  .scene-editor-layout--mobile .scene-editor-side--ai {
+    display: none;
+  }
+
   .scene-editor-layout--mobile .scene-editor-overlay {
     display: block;
     position: fixed;
@@ -81,6 +87,8 @@
   }
 
   .scene-editor-layout--mobile .scene-editor-main {
+    flex: 1 1 100%;
+    width: 100%;
     min-width: 0;
     height: 100%;
     min-height: 0;
@@ -118,7 +126,7 @@
     background: var(--color-accent-muted);
   }
 
-  .scene-editor-layout--mobile .scene-editor-side--nav {
+  .scene-editor-layout--mobile .scene-editor-side--sheet.is-open {
     display: flex;
   }
 

@@ -655,16 +655,24 @@
 
 .story-editor--mobile .story-editor-wrapper {
   display: flex;
+  align-items: flex-start;
   justify-content: center;
   padding: 12px 16px 18px;
+}
+
+.story-editor--mobile .story-editor-wrapper > div {
+  width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 .story-editor--mobile .story-editor-content {
   font-size: 1rem;
   line-height: 1.8;
-  text-align: left;
-  width: 100%;
-  max-width: 100%;
+  text-align: justify;
+  text-justify: inter-word;
+  width: min(calc(100vw - 32px), 42rem);
+  max-width: 42rem;
   margin-inline: auto;
 }
 

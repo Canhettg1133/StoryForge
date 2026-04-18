@@ -5,6 +5,7 @@ import {
   BookOpen,
   FileSearch,
   FlaskConical,
+  Languages,
   LayoutDashboard,
   Map,
   PenTool,
@@ -26,7 +27,7 @@ const EDITOR_PANEL_EVENT = 'storyforge:open-mobile-editor-panel';
 const MORE_ITEMS = [
   { id: 'editor', label: 'Vi\u1ebft', icon: PenTool, path: (id) => `/project/${id}/editor` },
   { id: 'outline', label: 'D\u00e0n \u00fd', icon: Map, path: (id) => `/project/${id}/outline` },
-  { id: 'chat', label: 'AI', icon: Sparkles, path: (id) => `/project/${id}/chat` },
+  { id: 'chat', label: 'Chat v\u1edbi AI', icon: Sparkles, path: (id) => `/project/${id}/chat` },
   { id: 'story-bible', label: 'S\u1ed5 tay truy\u1ec7n', icon: BookOpen, path: (id) => `/project/${id}/story-bible` },
   { id: 'characters', label: 'Nh\u00e2n v\u1eadt', icon: Users, path: (id) => `/project/${id}/characters` },
   { id: 'world', label: 'Th\u1ebf gi\u1edbi', icon: Globe, path: (id) => `/project/${id}/world` },
@@ -34,6 +35,7 @@ const MORE_ITEMS = [
   { id: 'prompts', label: 'Prompt truy\u1ec7n', icon: BookMarked, path: (id) => `/project/${id}/prompts` },
   { id: 'prompt-manager', label: 'Prompt t\u1ed5ng qu\u00e1t', icon: Sparkles, path: (id) => `/project/${id}/prompt-manager` },
   { id: 'settings', label: 'C\u00e0i \u0111\u1eb7t', icon: Settings, path: (id) => `/project/${id}/settings` },
+  { id: 'translator', label: 'D\u1ecbch truy\u1ec7n', icon: Languages, path: () => '/translator' },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: () => '/' },
   { id: 'lab', label: 'Narrative Lab', icon: FlaskConical, path: (id) => `/project/${id}/lab`, surface: 'lab' },
   { id: 'corpus-lab', label: 'Corpus Lab', icon: FlaskConical, path: (id) => `/project/${id}/corpus-lab`, surface: 'lab' },
@@ -49,7 +51,7 @@ function getPageTitle(pathname) {
   if (pathname.includes('/characters')) return 'Nh\u00e2n v\u1eadt';
   if (pathname.includes('/world')) return 'Th\u1ebf gi\u1edbi';
   if (pathname.includes('/su-that')) return 'Canon';
-  if (pathname.includes('/chat')) return 'AI';
+  if (pathname.includes('/chat')) return 'Chat v\u1edbi AI';
   if (pathname.includes('/prompt-manager')) return 'Prompt t\u1ed5ng qu\u00e1t';
   if (pathname.includes('/settings')) return 'C\u00e0i \u0111\u1eb7t';
   if (pathname.includes('/prompts')) return 'Prompt truy\u1ec7n';

@@ -11,9 +11,10 @@ import aiService, {
 import {
   Key, Server, Cpu, Cloud, Trash2, Eye, EyeOff, CheckCircle, XCircle,
   Zap, Gauge, Crown, RefreshCw, TestTube, Download, Upload, Copy, Check,
-  Plus, X, BookOpen, ExternalLink,
+  Plus, X, BookOpen, ExternalLink, ArrowLeft,
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
+import useMobileLayout from '../../hooks/useMobileLayout';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
@@ -226,6 +227,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const { projectId } = useParams();
   const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
+  const isMobileLayout = useMobileLayout(900);
   const [proxyUrl, setProxyUrl] = useState(getProxyUrl());
   const [directUrl, setDirectUrl] = useState(getGeminiDirectBaseUrl());
   const [ollamaUrl, setOllamaUrl] = useState(getOllamaUrl());
@@ -257,6 +259,14 @@ export default function Settings() {
   const handleOpenAiStudio = () => {
     window.open('https://aistudio.google.com/app/apikey', '_blank', 'noopener,noreferrer');
   };
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/');
+  };
 
   const handleTest = async (prov) => {
     setTesting(p => ({ ...p, [prov]: true }));
@@ -269,6 +279,17 @@ export default function Settings() {
   return (
     <div className="settings-page">
       <header className="settings-header animate-fade-in">
+        {!scopedProjectId && isMobileLayout ? (
+          <div className="settings-mobile-back">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={handleGoBack}
+            >
+              <ArrowLeft size={14} /> Quay lại
+            </button>
+          </div>
+        ) : null}
         {scopedProjectId ? (
           <button
             type="button"

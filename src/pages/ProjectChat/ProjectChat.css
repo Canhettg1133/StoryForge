@@ -240,6 +240,10 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+.project-chat-topbar__nav {
+  display: none;
+}
+
 .project-chat-topbar__compact {
   display: flex;
   align-items: flex-start;
@@ -817,6 +821,10 @@
 
   .project-chat-topbar {
     padding: 10px 12px;
+  }
+
+  .project-chat-topbar__nav {
+    display: flex;
   }
 
   .project-chat-topbar__compact {
