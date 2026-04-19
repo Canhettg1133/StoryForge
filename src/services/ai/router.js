@@ -76,6 +76,7 @@ export const TASK_TYPES = {
   // GENERATE_MACRO_MILESTONES: AI gợi ý 5-8 cột mốc từ ý tưởng của tác giả
   // AUDIT_ARC_ALIGNMENT: Kiểm tra độ lệch của arc hiện tại so với đại cục
   GENERATE_MACRO_MILESTONES: 'generate_macro_milestones',
+  ANALYZE_MACRO_CONTRACT: 'analyze_macro_contract',
   AUDIT_ARC_ALIGNMENT: 'audit_arc_alignment',
 };
 
@@ -192,6 +193,11 @@ const PROXY_TASK_MAP = {
   // Phase 9 — Grand Strategy
   // generate_macro_milestones: Planning task — dùng pro để output có chiều sâu
   generate_macro_milestones: {
+    fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
+    balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+    best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
+  },
+  analyze_macro_contract: {
     fast: 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',
     balanced: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',
     best: 'gemini-2.5-pro-真流-[星星公益站-CLI渠道]',

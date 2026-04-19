@@ -7,6 +7,7 @@ import {
   buildDraftQueue,
   validateGeneratedOutline,
 } from '../../stores/arcGenerationStore';
+import { compileMacroArcContract, serializeMacroArcContract } from '../../services/ai/macroArcContract';
 
 describe('phase10 auto-gen planning upgrade', () => {
   it('recommends safer default batch counts from target_length', () => {
@@ -195,7 +196,7 @@ describe('phase10 auto-gen planning upgrade', () => {
       arcPacing: 'slow',
       currentMacroArc: {
         title: 'Khoi dong tong mon',
-        description: 'Main moi buoc vao vong ngoai.',
+        description: 'Main moi buoc vao vong ngoai.\nMuc tieu & ket qua: Gieo mam su tin cay vao Thu Su; khien doi thu de y den tai nang cua main.\nTinh trang: Thu Su (Tin cay), Doi thu (To mo).',
         chapter_from: 11,
         chapter_to: 30,
       },
@@ -220,7 +221,9 @@ describe('phase10 auto-gen planning upgrade', () => {
 
     expect(messages[0].content).toContain('"purpose"');
     expect(messages[1].content).toContain('[MACRO ARC HIEN TAI]');
+    expect(messages[1].content).toContain('[HOP DONG DAI CUC BAT BUOC]');
     expect(messages[1].content).toContain('Khoi dong tong mon');
+    expect(messages[1].content).toContain('OBJ1');
     expect(messages[1].content).toContain('[STORY PROGRESS BUDGET]');
     expect(messages[1].content).toContain('Pham vi tien do batch nay: 1.1% -> 1.4%');
     expect(messages[1].content).toContain('[DAN Y HIEN TAI CAN CHINH SUA]');
@@ -229,12 +232,22 @@ describe('phase10 auto-gen planning upgrade', () => {
   });
 
   it('injects progress budget into ARC_CHAPTER_DRAFT prompts', () => {
+    const macroArcContract = compileMacroArcContract({
+      title: 'Arc 1',
+      description: 'To Minh xuyen khong vao vu an tau luon.\nMuc tieu & ket qua: Gieo mam tinh cam an toan vao Ran; khoi day su to mo cua Sonoko.\nTinh trang: Ran (Gieo mam), Sonoko (To mo).',
+      chapter_from: 10,
+      chapter_to: 20,
+    });
     const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
       startChapterNumber: 12,
       chapterOutlineTitle: 'Chuong 12: Thu nghiem dau tien',
       chapterOutlinePurpose: 'Cho main hieu mot quy tac nho cua tong mon.',
       chapterOutlineSummary: 'Main chi thu nghiem va va cham nho.',
       chapterOutlineEvents: ['gap doi thu nho', 'thay quy tac tong mon'],
+      chapterOutlineObjectiveRefs: ['OBJ1'],
+      chapterOutlineStateDelta: 'Ran tang mot nac cam giac an toan, Sonoko chi dung o muc to mo',
+      chapterOutlineGuardrail: 'Khong day sang to tinh hay cap doi',
+      macroArcContract,
       storyProgressBudget: {
         fromPercent: 1.2,
         toPercent: 1.4,
@@ -247,9 +260,51 @@ describe('phase10 auto-gen planning upgrade', () => {
     });
 
     expect(messages[1].content).toContain('[STORY PROGRESS BUDGET]');
+    expect(messages[1].content).toContain('[HOP DONG DAI CUC BAT BUOC]');
+    expect(messages[1].content).toContain('Objective refs: OBJ1');
     expect(messages[1].content).toContain('Purpose: Cho main hieu mot quy tac nho cua tong mon.');
     expect(messages[1].content).toContain('Pham vi tien do batch nay: 1.2% -> 1.4%');
     expect(messages[1].content).toContain('khong resolve tuyen chinh');
+  });
+
+  it('blocks outlines that overshoot a low-intensity macro arc contract', () => {
+    const macroArcContract = compileMacroArcContract({
+      title: 'Arc 1',
+      description: 'To Minh xuyen khong vao vu an tren tau luon.\nMuc tieu & ket qua: Gieo mam tinh cam an toan vao Ran; khoi day su to mo cua Sonoko.\nTinh trang: Ran (Gieo mam), Sonoko (To mo).',
+      chapter_from: 10,
+      chapter_to: 20,
+    });
+
+    const validation = validateGeneratedOutline({
+      chapters: [
+        {
+          title: 'Chuong 10: Loi hua ben lan can',
+          purpose: 'To Minh to tinh voi Ran va cong khai muon o ben co.',
+          summary: 'Ran bat dau xac lap tinh cam ro rang, Sonoko bi dat vao the canh tranh tinh cam.',
+          key_events: ['to tinh voi Ran', 'Sonoko tham gia tranh gianh tinh cam'],
+          objective_refs: ['OBJ1'],
+          state_delta: 'Ran tien thang len cap doi ro rang',
+          arc_guard_note: 'khong co',
+        },
+      ],
+    }, {
+      selectedMacroArc: {
+        title: 'Arc 1',
+        description: 'To Minh xuyen khong vao vu an tren tau luon.\nMuc tieu & ket qua: Gieo mam tinh cam an toan vao Ran; khoi day su to mo cua Sonoko.\nTinh trang: Ran (Gieo mam), Sonoko (To mo).',
+        chapter_from: 10,
+        chapter_to: 20,
+      },
+      macroArcContract,
+      storyProgressBudget: {
+        fromPercent: 1.0,
+        toPercent: 1.1,
+        currentChapterCount: 9,
+        batchCount: 1,
+      },
+    });
+
+    expect(validation.hasBlockingIssues).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'macro-state-overshoot')).toBe(true);
   });
 
   it('injects existing macro milestones and revision guidance into macro milestone prompts', () => {
@@ -269,6 +324,18 @@ describe('phase10 auto-gen planning upgrade', () => {
           chapter_from: 1,
           chapter_to: 80,
           emotional_peak: 'Hao huc va bat an',
+          contract_json: serializeMacroArcContract({
+            title: 'Khoi hanh',
+            chapterFrom: 1,
+            chapterTo: 80,
+            emotionalPeak: 'Hao huc va bat an',
+            narrativeSummary: 'Main roi lang va gap bien co dau tien.',
+            objectives: [{ id: 'OBJ1', text: 'Khoi dong hanh trinh', keywords: ['khoi', 'hanh'], focusCharacters: ['Main'] }],
+            targetStates: [{ character: 'Main', state: 'roi lang', category: 'general', stageScore: 0 }],
+            focusedCharacters: ['Main'],
+            maxRelationshipStage: 0,
+            forbiddenOutcomes: [],
+          }),
         },
       ],
       macroRevisionInstruction: 'Tang buildup phan dau va day midpoint ra xa hon.',
@@ -280,7 +347,83 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(messages[1].content).toContain('[YEU CAU RIENG]');
     expect(messages[1].content).toContain('Nhip truyen cham');
     expect(messages[1].content).toContain('Khoi hanh');
+    expect(messages[1].content).toContain('Objectives: OBJ1');
     expect(messages[1].content).toContain('[HUONG DAN CHINH SUA]');
     expect(messages[1].content).toContain('Tang buildup phan dau');
+  });
+
+  it('requires contract output when generating macro milestones and prefers stored contract_json', () => {
+    const messages = buildPrompt(TASK_TYPES.GENERATE_MACRO_MILESTONES, {
+      projectTitle: 'Truyen moi',
+      genre: 'mystery',
+      authorIdea: 'Main xam nhap vao vu an tren tau luon.',
+      macroMilestoneCount: 4,
+    });
+
+    expect(messages[0].content).toContain('"contract"');
+
+    const macroArc = {
+      title: 'Arc 1',
+      description: 'Mo ta cu nhung se bi bo qua neu contract_json hop le.',
+      chapter_from: 10,
+      chapter_to: 20,
+      contract_json: serializeMacroArcContract({
+        title: 'Arc 1',
+        chapterFrom: 10,
+        chapterTo: 20,
+        emotionalPeak: 'Hoi hop',
+        narrativeSummary: 'To Minh tao an tuong an toan voi Ran va khien Sonoko to mo.',
+        objectives: [{ id: 'OBJ1', text: 'Gieo mam su an toan vao Ran', keywords: ['an', 'toan', 'ran'], focusCharacters: ['Ran'] }],
+        targetStates: [{ character: 'Ran', state: 'Gieo mam', category: 'relationship', stageScore: 1 }],
+        focusedCharacters: ['Ran', 'Sonoko'],
+        maxRelationshipStage: 1,
+        forbiddenOutcomes: ['to tinh', 'cap doi'],
+      }),
+    };
+
+    const contract = compileMacroArcContract(macroArc);
+    expect(contract?.narrativeSummary).toContain('To Minh tao an tuong an toan');
+    expect(contract?.forbiddenOutcomes).toContain('to tinh');
+  });
+
+  it('builds a dedicated AI analysis prompt for one macro arc contract', () => {
+    const messages = buildPrompt(TASK_TYPES.ANALYZE_MACRO_CONTRACT, {
+      projectTitle: 'Truyen moi',
+      genre: 'fantasy',
+      ultimateGoal: 'Main song sot va leo len vi tri cao hon.',
+      currentMacroArc: {
+        title: 'Khoi dong tong mon',
+        description: 'Main buoc vao tong mon.\nMuc tieu & ket qua: Gieo mam su tin cay vao A; khien B to mo.\nTinh trang: A (Tin cay), B (To mo).',
+        chapter_from: 10,
+        chapter_to: 20,
+      },
+    });
+
+    expect(messages[0].content).toContain('"contract"');
+    expect(messages[1].content).toContain('[COT MOC DAI CUC CAN PHAN TICH]');
+    expect(messages[1].content).toContain('Khoi dong tong mon');
+    expect(messages[1].content).toContain('Gieo mam su tin cay vao A');
+  });
+
+  it('parses focus_characters from AI macro arc contracts', () => {
+    const contract = compileMacroArcContract({
+      title: 'Arc 1',
+      description: 'Mo ta khac',
+      contract: {
+        narrative_summary: 'Tom tat',
+        objectives: [
+          { id: 'OBJ1', text: 'Bao ve A va khien B to mo', focus_characters: ['A', 'B'] },
+        ],
+        target_states: [
+          { character: 'A', state: 'Tin cay' },
+        ],
+        focused_characters: ['A', 'B'],
+        forbidden_outcomes: ['to tinh'],
+        max_relationship_stage: 1,
+      },
+    });
+
+    expect(contract?.objectives?.[0]?.focusCharacters).toEqual(['A', 'B']);
+    expect(contract?.focusedCharacters).toEqual(['A', 'B']);
   });
 });

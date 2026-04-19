@@ -20,6 +20,12 @@ import db from '../services/db/database';
 import useProjectStore from './projectStore';
 import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 import { buildProseBuffer } from '../utils/proseBuffer';
+import {
+    compileMacroArcContract,
+    parseStoredMacroArcContract,
+    serializeMacroArcContract,
+    validateOutlineAgainstMacroArcContract,
+} from '../services/ai/macroArcContract';
 
 // Ensure router is injected (same pattern as aiStore.js)
 aiService.setRouter(modelRouter);
@@ -107,6 +113,61 @@ function buildPriorGeneratedBriefs(generatedOutline, upToIndex, startingChapterI
         purpose: chapter?.purpose || (Array.isArray(chapter?.key_events) ? chapter.key_events.join('; ') : ''),
         status: 'planned',
     }));
+}
+
+function normalizeMacroMilestoneItem(item, index = 0) {
+    const base = {
+        order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+        title: String(item?.title || '').trim(),
+        description: String(item?.description || '').trim(),
+        chapter_from: Number(item?.chapter_from) || 0,
+        chapter_to: Number(item?.chapter_to) || 0,
+        emotional_peak: String(item?.emotional_peak || '').trim(),
+    };
+
+    const storedContract = parseStoredMacroArcContract({
+        ...base,
+        contract_json: item?.contract_json || (item?.contract ? JSON.stringify(item.contract) : ''),
+    });
+    const contract = storedContract || compileMacroArcContract(base);
+
+    return {
+        ...base,
+        contract_json: contract ? serializeMacroArcContract(contract) : '',
+    };
+}
+
+function normalizeMacroMilestonePayload(payload) {
+    const milestones = Array.isArray(payload?.milestones) ? payload.milestones : [];
+    return {
+        milestones: milestones.map((item, index) => normalizeMacroMilestoneItem(item, index)),
+    };
+}
+
+function normalizeMacroContractAnalysisPayload(payload, macroArc = {}) {
+    const rawContract = isPlainObject(payload?.contract)
+        ? payload.contract
+        : isPlainObject(payload)
+            ? payload
+            : null;
+
+    if (!rawContract) return null;
+
+    const parsed = parseStoredMacroArcContract({
+        ...macroArc,
+        contract: rawContract,
+    });
+    const contract = parsed || compileMacroArcContract({
+        ...macroArc,
+        description: macroArc?.description || rawContract.narrative_summary || '',
+    });
+    if (!contract) return null;
+
+    return {
+        contract,
+        contract_json: serializeMacroArcContract(contract),
+        warnings: Array.isArray(payload?.warnings) ? payload.warnings.filter(Boolean) : [],
+    };
 }
 
 async function upsertChapterMetaForGeneratedChapter({
@@ -330,9 +391,11 @@ export function validateGeneratedOutline(generatedOutline, {
     storyProgressBudget = null,
     selectedMacroArc = null,
     milestones = [],
+    macroArcContract = null,
 } = {}) {
     const chapters = Array.isArray(generatedOutline?.chapters) ? generatedOutline.chapters : [];
     const issues = [];
+    const effectiveMacroArcContract = macroArcContract || compileMacroArcContract(selectedMacroArc);
     const beatMixSatisfied = getBeatMixStatus(chapters);
     const nextMilestone = storyProgressBudget?.nextMilestone
         || (Array.isArray(milestones) ? milestones.find((item) => Number(item?.percent) > Number(storyProgressBudget?.fromPercent || 0)) : null)
@@ -443,6 +506,10 @@ export function validateGeneratedOutline(generatedOutline, {
         });
     }
 
+    if (effectiveMacroArcContract) {
+        issues.push(...validateOutlineAgainstMacroArcContract(generatedOutline, effectiveMacroArcContract));
+    }
+
     return {
         issues,
         hasBlockingIssues: issues.some((issue) => issue.severity === 'error'),
@@ -511,6 +578,7 @@ function buildOutlineDerivedState(
 ) {
     const chapterCount = Array.isArray(outline?.chapters) ? outline.chapters.length : 0;
     const selectedMacroArc = getSelectedMacroArcFromState(state);
+    const macroArcContract = compileMacroArcContract(selectedMacroArc);
     const storyProgressBudget = buildStoryProgressBudget({
         targetLength: state.projectTargetLength,
         currentChapterCount: state.currentChapterCount,
@@ -522,6 +590,7 @@ function buildOutlineDerivedState(
         storyProgressBudget,
         selectedMacroArc,
         milestones: state.projectMilestones,
+        macroArcContract,
     });
     const normalizedSelection = sanitizeSelectedDraftIndexes(
         selectedDraftIndexes,
@@ -533,6 +602,7 @@ function buildOutlineDerivedState(
         : getDefaultSelectedDraftIndexes(state.projectTargetLength, chapterCount);
 
     return {
+        macroArcContract,
         storyProgressBudget,
         outlineValidation,
         selectedDraftIndexes: nextSelection,
@@ -566,6 +636,7 @@ const useArcGenStore = create((set, get) => ({
     outlineRevisionPrompt: '',
     outlineValidation: { issues: [], hasBlockingIssues: false },
     storyProgressBudget: null,
+    macroArcContract: null,
 
     // Bước 3: Đắp thịt
     draftStatus: 'idle',
@@ -577,6 +648,7 @@ const useArcGenStore = create((set, get) => ({
     isSuggestingMilestones: false,    // đang gọi AI gợi ý cột mốc
     isRevisingMilestones: false,
     macroMilestoneSuggestions: null,  // kết quả gợi ý chưa lưu { milestones: [...] }
+    analyzingMacroContractKeys: {},
     isAuditingArc: false,             // đang kiểm tra độ lệch
     lastAuditResult: null,            // { aligned, drift_score, issues, suggestions }
 
@@ -601,6 +673,7 @@ const useArcGenStore = create((set, get) => ({
                 selectedMacroArc,
                 milestones: state.projectMilestones,
             });
+            nextState.macroArcContract = compileMacroArcContract(selectedMacroArc);
         }
         if (Object.prototype.hasOwnProperty.call(config, 'selectedMacroArcId')
             || Object.prototype.hasOwnProperty.call(config, 'currentMacroArcId')) {
@@ -609,6 +682,7 @@ const useArcGenStore = create((set, get) => ({
                 state.generatedOutline,
                 state.selectedDraftIndexes,
             );
+            nextState.macroArcContract = derived.macroArcContract;
             nextState.storyProgressBudget = derived.storyProgressBudget;
             if (state.generatedOutline) {
                 nextState.outlineValidation = derived.outlineValidation;
@@ -652,6 +726,7 @@ const useArcGenStore = create((set, get) => ({
                     selectedMacroArc,
                     milestones,
                 }),
+                macroArcContract: compileMacroArcContract(selectedMacroArc),
                 draftStatus: 'idle',
                 draftProgress: { current: 0, total: 0 },
                 draftResults: [],
@@ -681,6 +756,7 @@ const useArcGenStore = create((set, get) => ({
         outlineRevisionPrompt: '',
         outlineValidation: { issues: [], hasBlockingIssues: false },
         storyProgressBudget: null,
+        macroArcContract: null,
         draftStatus: 'idle',
         draftProgress: { current: 0, total: 0 },
         draftResults: [],
@@ -701,6 +777,7 @@ const useArcGenStore = create((set, get) => ({
             storyProgressBudget: overrides.storyProgressBudget || state.storyProgressBudget,
             selectedMacroArc,
             milestones: overrides.milestones || state.projectMilestones,
+            macroArcContract: overrides.macroArcContract || state.macroArcContract,
         });
     },
     setSelectedDraftIndexes: (indexes) => set((state) => ({
@@ -748,6 +825,9 @@ const useArcGenStore = create((set, get) => ({
                 batchCount: state.arcChapterCount,
                 selectedMacroArc,
                 milestones: state.projectMilestones.length > 0 ? state.projectMilestones : ctx.milestones,
+            });
+            const effectiveMacroArcContract = compileMacroArcContract(selectedMacroArc || ctx.currentMacroArc, {
+                allCharacters: ctx.allCharacters,
             });
 
             let finalGoal = state.arcGoal;
@@ -800,6 +880,7 @@ const useArcGenStore = create((set, get) => ({
                 startChapterNumber: startingChapterIndex + 1,
                 existingChapterBriefs,
                 currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
+                macroArcContract: effectiveMacroArcContract,
                 milestones: state.projectMilestones.length > 0 ? state.projectMilestones : ctx.milestones,
                 storyProgressBudget,
             });
@@ -828,6 +909,7 @@ const useArcGenStore = create((set, get) => ({
                                 currentChapterCount: startingChapterIndex,
                                 generatedOutline: outline,
                                 outlineStatus: 'ready',
+                                macroArcContract: derived.macroArcContract,
                                 storyProgressBudget: derived.storyProgressBudget,
                                 outlineValidation: derived.outlineValidation,
                                 selectedDraftIndexes: derived.selectedDraftIndexes,
@@ -887,6 +969,9 @@ const useArcGenStore = create((set, get) => ({
                 selectedMacroArc,
                 milestones: state.projectMilestones.length > 0 ? state.projectMilestones : ctx.milestones,
             });
+            const effectiveMacroArcContract = compileMacroArcContract(selectedMacroArc || ctx.currentMacroArc, {
+                allCharacters: ctx.allCharacters,
+            });
             const messages = buildPrompt(TASK_TYPES.ARC_OUTLINE, {
                 ...ctx,
                 userPrompt: state.arcGoal,
@@ -895,6 +980,7 @@ const useArcGenStore = create((set, get) => ({
                 startChapterNumber: startingChapterIndex + 1,
                 existingChapterBriefs,
                 currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
+                macroArcContract: effectiveMacroArcContract,
                 milestones: state.projectMilestones.length > 0 ? state.projectMilestones : ctx.milestones,
                 storyProgressBudget,
                 generatedOutline: state.generatedOutline,
@@ -927,6 +1013,7 @@ const useArcGenStore = create((set, get) => ({
                                 generatedOutline: outline,
                                 outlineStatus: 'ready',
                                 outlineRevisionPrompt: '',
+                                macroArcContract: derived.macroArcContract,
                                 storyProgressBudget: derived.storyProgressBudget,
                                 outlineValidation: derived.outlineValidation,
                                 selectedDraftIndexes: derived.selectedDraftIndexes,
@@ -961,6 +1048,7 @@ const useArcGenStore = create((set, get) => ({
         const derived = buildOutlineDerivedState(state, generatedOutline, state.selectedDraftIndexes);
         set({
             generatedOutline,
+            macroArcContract: derived.macroArcContract,
             storyProgressBudget: derived.storyProgressBudget,
             outlineValidation: derived.outlineValidation,
             selectedDraftIndexes: derived.selectedDraftIndexes,
@@ -980,6 +1068,7 @@ const useArcGenStore = create((set, get) => ({
         const derived = buildOutlineDerivedState(state, generatedOutline, shiftedSelection);
         set({
             generatedOutline,
+            macroArcContract: derived.macroArcContract,
             storyProgressBudget: derived.storyProgressBudget,
             outlineValidation: derived.outlineValidation,
             selectedDraftIndexes: derived.selectedDraftIndexes,
@@ -1031,6 +1120,9 @@ const useArcGenStore = create((set, get) => ({
                     ? (liveState.generatedOutline?.chapters?.[outlineIndex - 1]?.summary || '')
                     : '';
                 const selectedMacroArc = getSelectedMacroArcFromState(liveState);
+                const effectiveMacroArcContract = compileMacroArcContract(selectedMacroArc || ctx.currentMacroArc, {
+                    allCharacters: ctx.allCharacters,
+                });
                 const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
                     ...ctx,
                     previousSummary: previousGeneratedSummary || ctx.previousSummary,
@@ -1039,6 +1131,9 @@ const useArcGenStore = create((set, get) => ({
                     chapterOutlinePurpose: chapter.purpose || '',
                     chapterOutlineSummary: chapter.summary,
                     chapterOutlineEvents: chapter.key_events || [],
+                    chapterOutlineObjectiveRefs: chapter.objective_refs || [],
+                    chapterOutlineStateDelta: chapter.state_delta || '',
+                    chapterOutlineGuardrail: chapter.arc_guard_note || '',
                     startChapterNumber: draftItem.chapterIndex + 1,
                     existingChapterBriefs,
                     priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(
@@ -1047,6 +1142,7 @@ const useArcGenStore = create((set, get) => ({
                         startingChapterIndex,
                     ),
                     currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
+                    macroArcContract: effectiveMacroArcContract,
                     storyProgressBudget: liveState.storyProgressBudget,
                 });
 
@@ -1319,6 +1415,9 @@ const useArcGenStore = create((set, get) => ({
                     || buildProseBuffer(previousContent)
                     || ctx.bridgeBuffer;
                 const selectedMacroArc = getSelectedMacroArcFromState(liveState);
+                const effectiveMacroArcContract = compileMacroArcContract(selectedMacroArc || ctx.currentMacroArc, {
+                    allCharacters: ctx.allCharacters,
+                });
                 const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
                     ...ctx,
                     previousSummary: previousGeneratedSummary || ctx.previousSummary,
@@ -1327,6 +1426,9 @@ const useArcGenStore = create((set, get) => ({
                     chapterOutlinePurpose: ch.purpose || '',
                     chapterOutlineSummary: ch.summary + (flagNote ? '. GHI CHU SUA DOI: ' + flagNote : ''),
                     chapterOutlineEvents: ch.key_events || [],
+                    chapterOutlineObjectiveRefs: ch.objective_refs || [],
+                    chapterOutlineStateDelta: ch.state_delta || '',
+                    chapterOutlineGuardrail: ch.arc_guard_note || '',
                     startChapterNumber: (draftItem.chapterIndex ?? (startingChapterIndex + outlineIndex)) + 1,
                     existingChapterBriefs,
                     priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(
@@ -1335,6 +1437,7 @@ const useArcGenStore = create((set, get) => ({
                         startingChapterIndex,
                     ),
                     currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
+                    macroArcContract: effectiveMacroArcContract,
                     storyProgressBudget: liveState.storyProgressBudget,
                 });
 
@@ -1434,7 +1537,7 @@ const useArcGenStore = create((set, get) => ({
                             if (!isPlainObject(parsed) || !Array.isArray(parsed.milestones)) {
                                 throw new Error('Invalid milestones format');
                             }
-                            set({ macroMilestoneSuggestions: parsed, isSuggestingMilestones: false });
+                            set({ macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed), isSuggestingMilestones: false });
                         } catch (e) {
                             console.error('[ArcGen] Failed to parse milestones:', e, text);
                             set({ isSuggestingMilestones: false });
@@ -1498,7 +1601,7 @@ const useArcGenStore = create((set, get) => ({
                             if (!isPlainObject(parsed) || !Array.isArray(parsed.milestones)) {
                                 throw new Error('Invalid milestones format');
                             }
-                            set({ macroMilestoneSuggestions: parsed, isRevisingMilestones: false });
+                            set({ macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed), isRevisingMilestones: false });
                         } catch (e) {
                             console.error('[ArcGen] Failed to parse revised milestones:', e, text);
                             set({ isRevisingMilestones: false });
@@ -1518,6 +1621,79 @@ const useArcGenStore = create((set, get) => ({
         }
     },
 
+    analyzeMacroContract: async ({ projectId, macroArc, key = 'default' }) => {
+        set((state) => ({
+            analyzingMacroContractKeys: {
+                ...state.analyzingMacroContractKeys,
+                [key]: true,
+            },
+        }));
+
+        try {
+            const project = await db.projects.get(projectId);
+            let promptTemplates = {};
+            if (project?.prompt_templates) {
+                try { promptTemplates = JSON.parse(project.prompt_templates); } catch { }
+            }
+
+            const messages = buildPrompt(TASK_TYPES.ANALYZE_MACRO_CONTRACT, {
+                projectTitle: project?.title || '',
+                genre: project?.genre_primary || '',
+                ultimateGoal: project?.ultimate_goal || '',
+                promptTemplates,
+                currentMacroArc: macroArc,
+                userPrompt: macroArc?.description || '',
+            });
+
+            return await new Promise((resolve) => {
+                aiService.send({
+                    taskType: TASK_TYPES.ANALYZE_MACRO_CONTRACT,
+                    messages,
+                    stream: false,
+                    onComplete: (text) => {
+                        try {
+                            const parsed = parseAIJsonValue(text);
+                            const normalized = normalizeMacroContractAnalysisPayload(parsed, macroArc);
+                            if (!normalized) {
+                                throw new Error('Invalid macro contract analysis format');
+                            }
+                            resolve(normalized);
+                        } catch (e) {
+                            console.error('[ArcGen] Failed to parse macro contract analysis:', e, text);
+                            resolve(null);
+                        } finally {
+                            set((state) => ({
+                                analyzingMacroContractKeys: {
+                                    ...state.analyzingMacroContractKeys,
+                                    [key]: false,
+                                },
+                            }));
+                        }
+                    },
+                    onError: (err) => {
+                        console.error('[ArcGen] analyzeMacroContract error:', err);
+                        set((state) => ({
+                            analyzingMacroContractKeys: {
+                                ...state.analyzingMacroContractKeys,
+                                [key]: false,
+                            },
+                        }));
+                        resolve(null);
+                    },
+                });
+            });
+        } catch (err) {
+            console.error('[ArcGen] analyzeMacroContract failed:', err);
+            set((state) => ({
+                analyzingMacroContractKeys: {
+                    ...state.analyzingMacroContractKeys,
+                    [key]: false,
+                },
+            }));
+            return null;
+        }
+    },
+
     /**
      * Lưu các cột mốc đã tác giả duyệt vào DB (bảng macro_arcs).
      * Gọi sau khi tác giả review `macroMilestoneSuggestions` và confirm.
@@ -1531,7 +1707,7 @@ const useArcGenStore = create((set, get) => ({
 
         const createdIds = [];
         for (let i = 0; i < milestones.length; i++) {
-            const m = milestones[i];
+            const m = normalizeMacroMilestoneItem(milestones[i], i);
             const id = await db.macro_arcs.add({
                 project_id: projectId,
                 order_index: i,
@@ -1540,6 +1716,7 @@ const useArcGenStore = create((set, get) => ({
                 chapter_from: m.chapter_from || 0,
                 chapter_to: m.chapter_to || 0,
                 emotional_peak: m.emotional_peak || '',
+                contract_json: m.contract_json || '',
             });
             createdIds.push(id);
         }

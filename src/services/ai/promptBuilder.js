@@ -21,6 +21,7 @@
 
 import { TASK_TYPES } from './router';
 import { getStoryCreationSettings } from './storyCreationSettings';
+import { compileMacroArcContract, formatMacroArcContract } from './macroArcContract';
 import {
   PRONOUN_PRESETS,
   GENRE_PRONOUN_MAP,
@@ -600,6 +601,8 @@ export const TASK_INSTRUCTIONS = {
     '- BAT BUOC tiep noi truc tiep sau chapter hien co; KHONG duoc reset ve Chuong 1.',
     '- KHONG lap lai su kien, thong tin tiet lo, xung dot, hay ket qua da xay ra trong cac chuong da co.',
     '- Moi chuong moi phai day cau chuyen tien len it nhat 1 thay doi moi, 1 he qua moi, hoac 1 quyet dinh moi.',
+    '- Neu dai cuc da duoc cung cap, moi chuong PHAI bam vao it nhat 1 objective cua dai cuc.',
+    '- Neu dai cuc chi cho phep muc gieo mam/to mo/tin cay, KHONG duoc day sang to tinh, cap doi, lua chon doi tuong, hay payoff tinh cam som.',
     '',
     'Tra ve CHINH XAC JSON format:',
     '{',
@@ -610,6 +613,9 @@ export const TASK_INSTRUCTIONS = {
     '      "purpose": "Muc tieu ke chuyen cua chuong nay trong 1 cau ro rang",',
     '      "summary": "Tom tat 2-3 cau ve noi dung chuong",',
     '      "key_events": ["Su kien 1", "Su kien 2"],',
+    '      "objective_refs": ["OBJ1"],',
+    '      "state_delta": "Trang thai duoc day toi toi da muc nao trong chuong nay",',
+    '      "arc_guard_note": "Tai sao chapter nay van nam trong khung dai cuc hien tai va chua vuot muc",',
     '      "pacing": "slow|medium|fast"',
     '    }',
     '  ]',
@@ -623,6 +629,7 @@ export const TASK_INSTRUCTIONS = {
     'Viet cuc ky chi tiet: hanh dong, tam ly, doi thoai, mieu ta canh vat.',
     'Muc tieu: 5000-7000 tu.',
     'KHONG tu y them su kien ngoai dan y.',
+    'Ton trong objective_refs, state_delta va arc_guard_note neu duoc cung cap; khong duoc viet vuot muc dai cuc cho phep.',
     'KHONG duoc viet lai thanh canh chinh nhung gi da xay ra o cac chuong truoc; chi duoc nhac lai rat ngan neu can.',
     'Moi canh phai la he qua tiep noi tu chuong truoc va day tinh hinh sang trang thai moi.',
     'Chi tra ve noi dung chuong, KHONG them tieu de hay ghi chu.',
@@ -631,18 +638,55 @@ export const TASK_INSTRUCTIONS = {
     'Hoach dinh DUNG so luong cot moc dai cuc duoc yeu cau cho toan bo truyen, moi cot moc la mot diem ngoat LON cua hanh trinh.',
     'Can phan bo hop ly theo tong do dai du kien, co leo thang, khung hoang, dao chieu va tra gia ro rang.',
     'Neu tac gia co yeu cau rieng, uu tien toi da theo yeu cau do.',
+    'Moi cot moc bat buoc phai tra ve them mot contract co cau truc de he thong dung cho planner va validator, khong chi mo ta bang van tu do.',
     'Tra ve CHINH XAC JSON format sau:',
     '{',
     '  "milestones": [',
     '    {',
     '      "order": 1,',
-    '      "title": "Ten cot moc",',
-    '      "description": "Mo ta 2-3 cau",',
-    '      "chapter_from": 1,',
-    '      "chapter_to": 80,',
-    '      "emotional_peak": "Cam xuc can dat"',
-    '    }',
+      '      "title": "Ten cot moc",',
+      '      "description": "Mo ta 2-3 cau",',
+      '      "chapter_from": 1,',
+      '      "chapter_to": 80,',
+      '      "emotional_peak": "Cam xuc can dat",',
+      '      "contract": {',
+      '        "narrative_summary": "Noi dung cot loi cua cot moc",',
+      '        "objectives": [',
+      '          { "id": "OBJ1", "text": "Muc tieu cot loi", "focus_characters": ["Nhan vat A"] }',
+      '        ],',
+      '        "target_states": [',
+      '          { "character": "Nhan vat A", "state": "Trang thai dich toi da duoc phep" }',
+      '        ],',
+      '        "focused_characters": ["Nhan vat A", "Nhan vat B"],',
+      '        "forbidden_outcomes": ["Ket qua khong duoc xay ra trong cot moc nay"],',
+      '        "max_relationship_stage": 1',
+      '      }',
+      '    }',
     '  ]',
+    '}',
+    'Chi tra ve JSON.',
+  ].join('\n')),
+  [TASK_TYPES.ANALYZE_MACRO_CONTRACT]: withPlanningAndCanonPrefix([
+    'Phan tich DUNG 1 cot moc dai cuc va chuyen no thanh contract co cau truc de planner/validator co the dung truc tiep.',
+    'Day la buoc chuan hoa y do tac gia, khong phai viet lai cot moc cho dep hon.',
+    'Phai bam sat noi dung cot moc duoc cung cap; khong tu y day nhanh tinh tiet, khong tu y them payoff, khong tu y nang muc quan he/plot len cao hon neu dau vao chua noi.',
+    'Neu dau vao mo ho, hay dat objective va target_state o muc BAO THU, uu tien buildup/an toan hon la overshoot.',
+    'Neu co phan "muc tieu", "ket qua", "tinh trang", "trang thai" trong text dau vao, phai uu tien doc dung cac phan do.',
+    'Tra ve CHINH XAC JSON format sau:',
+    '{',
+    '  "contract": {',
+    '    "narrative_summary": "Noi dung cot loi cua cot moc",',
+    '    "objectives": [',
+    '      { "id": "OBJ1", "text": "Muc tieu cot loi", "focus_characters": ["Nhan vat A"] }',
+    '    ],',
+    '    "target_states": [',
+    '      { "character": "Nhan vat A", "state": "Trang thai dich toi da duoc phep" }',
+    '    ],',
+    '    "focused_characters": ["Nhan vat A", "Nhan vat B"],',
+    '    "forbidden_outcomes": ["Ket qua khong duoc xay ra trong cot moc nay"],',
+    '    "max_relationship_stage": 1',
+    '  },',
+    '  "warnings": ["Canh bao neu dau vao qua mo ho, neu khong thi mang rong"]',
     '}',
     'Chi tra ve JSON.',
   ].join('\n')),
@@ -673,6 +717,7 @@ const TASK_INSTRUCTION_PROTECTION_MARKERS = {
   [TASK_TYPES.CANON_EXTRACT_OPS]: 'Tra ve CHINH XAC JSON format:',
   [TASK_TYPES.ARC_OUTLINE]: 'Tra ve CHINH XAC JSON format:',
   [TASK_TYPES.GENERATE_MACRO_MILESTONES]: 'Tra ve CHINH XAC JSON format sau:',
+  [TASK_TYPES.ANALYZE_MACRO_CONTRACT]: 'Tra ve CHINH XAC JSON format sau:',
   [TASK_TYPES.AUDIT_ARC_ALIGNMENT]: 'Tra ve CHINH XAC JSON format sau:',
 };
 
@@ -1010,6 +1055,16 @@ function formatStoryProgressBudget(storyProgressBudget) {
   return parts.join('\n');
 }
 
+function buildMacroArcContractLayer(taskType, macroArcContract) {
+  if (!macroArcContract) return '';
+  if (![TASK_TYPES.ARC_OUTLINE, TASK_TYPES.ARC_CHAPTER_DRAFT, TASK_TYPES.OUTLINE].includes(taskType)) {
+    return '';
+  }
+  return formatMacroArcContract(macroArcContract, {
+    header: '[HOP DONG DAI CUC BAT BUOC]',
+  });
+}
+
 const OUTLINE_PROGRESS_STOPWORDS = new Set([
   'va', 'voi', 'cua', 'cho', 'khi', 'sau', 'truoc', 'trong', 'tren', 'duoi',
   'mot', 'nhung', 'cac', 'nay', 'kia', 'roi', 'da', 'se', 'dang', 'la',
@@ -1170,7 +1225,19 @@ function formatMacroMilestoneList(milestones) {
       ? ' [Ch.' + (item?.chapter_from || '?') + '-' + (item?.chapter_to || '?') + ']'
       : '';
     const emotional = item?.emotional_peak ? '\nCam xuc dich: ' + item.emotional_peak : '';
-    return number + '. ' + (item?.title || 'Cot moc') + chapterRange + '\nMo ta: ' + (item?.description || '') + emotional;
+    const contract = compileMacroArcContract(item);
+    const contractBits = [];
+    if (contract?.objectives?.length > 0) {
+      contractBits.push('Objectives: ' + contract.objectives.map(function (objective) { return objective.id + ' ' + objective.text; }).join(' | '));
+    }
+    if (contract?.targetStates?.length > 0) {
+      contractBits.push('Target states: ' + contract.targetStates.map(function (state) { return state.character + ' (' + state.state + ')'; }).join(' | '));
+    }
+    if (contract?.forbiddenOutcomes?.length > 0) {
+      contractBits.push('Forbidden: ' + contract.forbiddenOutcomes.join(' | '));
+    }
+    const contractText = contractBits.length > 0 ? '\nContract: ' + contractBits.join('\n') : '';
+    return number + '. ' + (item?.title || 'Cot moc') + chapterRange + '\nMo ta: ' + (item?.description || '') + emotional + contractText;
   }).join('\n\n');
 }
 
@@ -1605,6 +1672,7 @@ export function buildPrompt(taskType, context = {}) {
     userPrompt,
     previousSummary,
     // Phase 3
+    allCharacters = [],
     characters = [],
     locations = [],
     factions = [],
@@ -1647,6 +1715,7 @@ export function buildPrompt(taskType, context = {}) {
     // Phase 9: Grand Strategy
     currentArc = null,
     currentMacroArc = null,
+    macroArcContract = null,
     // Soul Injection
     writingStyle = '',
     // Custom overrides 
@@ -1670,6 +1739,7 @@ export function buildPrompt(taskType, context = {}) {
   // Resolve writing style: context > auto-detect t? genre
   const genreKey = genre ? genre.toLowerCase().replace(/\s+/g, '_') : '';
   const resolvedWritingStyle = writingStyle || detectWritingStyle(genreKey || '');
+  const effectiveMacroArcContract = macroArcContract || compileMacroArcContract(currentMacroArc, { allCharacters });
   const systemParts = [];
 
   // FREE_PROMPT: skip heavy writing layers for questions/chat
@@ -1689,6 +1759,11 @@ export function buildPrompt(taskType, context = {}) {
   );
   if (grandStrategyLayer && !skipWritingLayers) {
     systemParts.push(grandStrategyLayer);
+  }
+
+  const macroArcContractLayer = buildMacroArcContractLayer(taskType, effectiveMacroArcContract);
+  if (macroArcContractLayer) {
+    systemParts.push(macroArcContractLayer);
   }
 
   // -- Layer 0.5: Author DNA --
@@ -2330,6 +2405,11 @@ export function buildPrompt(taskType, context = {}) {
         }
         arcParts.push(macroParts.join('\n'));
       }
+      if (effectiveMacroArcContract) {
+        arcParts.push(formatMacroArcContract(effectiveMacroArcContract, {
+          header: '[HOP DONG DAI CUC BAT BUOC]',
+        }));
+      }
       if (previousSummary) arcParts.push('\nTom tat chuong truoc:\n' + previousSummary);
       const budgetText = formatStoryProgressBudget(storyProgressBudget);
       if (budgetText) {
@@ -2385,6 +2465,20 @@ export function buildPrompt(taskType, context = {}) {
       userContent += 'Tom tat: ' + (context.chapterOutlineSummary || '') + '\n';
       if (context.chapterOutlineEvents) {
         userContent += 'Su kien chinh:\n' + context.chapterOutlineEvents.map(e => '- ' + e).join('\n');
+      }
+      if (Array.isArray(context.chapterOutlineObjectiveRefs) && context.chapterOutlineObjectiveRefs.length > 0) {
+        userContent += 'Objective refs: ' + context.chapterOutlineObjectiveRefs.join(', ') + '\n';
+      }
+      if (context.chapterOutlineStateDelta) {
+        userContent += 'State delta duoc phep: ' + context.chapterOutlineStateDelta + '\n';
+      }
+      if (context.chapterOutlineGuardrail) {
+        userContent += 'Arc guard: ' + context.chapterOutlineGuardrail + '\n';
+      }
+      if (effectiveMacroArcContract) {
+        userContent += '\n' + formatMacroArcContract(effectiveMacroArcContract, {
+          header: '[HOP DONG DAI CUC BAT BUOC]',
+        }) + '\n';
       }
       const existingBriefText = formatChapterBriefList(existingChapterBriefs, {
         header: '\n[CAC CHUONG DA CO - CHI NHAC LAI NGAN GON, KHONG VIET LAI]',
@@ -2492,6 +2586,26 @@ export function buildPrompt(taskType, context = {}) {
       }
       if (macroRevisionInstruction) {
         userContent += '\n\n[HUONG DAN CHINH SUA]\n' + macroRevisionInstruction;
+      }
+      break;
+    }
+
+    case TASK_TYPES.ANALYZE_MACRO_CONTRACT: {
+      userContent = '[COT MOC DAI CUC CAN PHAN TICH]\n';
+      if (projectTitle) userContent += 'Ten truyen: ' + projectTitle + '\n';
+      if (genre) userContent += 'The loai: ' + genre + '\n';
+      userContent += 'Ten cot moc: ' + (currentMacroArc?.title || '');
+      userContent += '\nChuong: ' + (currentMacroArc?.chapter_from || '?') + ' -> ' + (currentMacroArc?.chapter_to || '?');
+      if (currentMacroArc?.emotional_peak) {
+        userContent += '\nCam xuc dich: ' + currentMacroArc.emotional_peak;
+      }
+      userContent += '\n\n[NOI DUNG COT MOC]\n' + (currentMacroArc?.description || userPrompt || '(trong)');
+      if (ultimateGoal) {
+        userContent += '\n\n[MUC TIEU CUOI CUNG CUA TRUYEN]\n' + ultimateGoal;
+      }
+      if (currentMacroArc?.contract_json) {
+        userContent += '\n\n[CONTRACT HIEN CO NEU CO]\n' + currentMacroArc.contract_json;
+        userContent += '\n\n[YEU CAU]\nPhan tich lai contract cho dung voi noi dung cot moc hien tai, khong bê nguyen contract cu neu no da lech.';
       }
       break;
     }
