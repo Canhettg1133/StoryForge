@@ -6,3 +6,73 @@
 .gemini-proxy-guide-page .gemini-guide-note strong {
   color: var(--color-text-primary);
 }
+
+.gemini-proxy-guide-page .gemini-guide-step,
+.gemini-proxy-guide-page .gemini-guide-shot,
+.gemini-proxy-guide-page .gemini-guide-lightbox__dialog {
+  overflow: hidden;
+}
+
+.gemini-proxy-guide-page .gemini-guide-shot__frame {
+  width: 100%;
+  max-width: min(100%, 960px);
+  margin-inline: auto;
+  aspect-ratio: 16 / 9;
+  min-height: clamp(240px, 34vw, 520px);
+}
+
+.gemini-proxy-guide-page .gemini-guide-shot__image,
+.gemini-proxy-guide-page .gemini-guide-lightbox__image {
+  max-width: 100%;
+}
+
+.gemini-proxy-guide-page .gemini-guide-shot__caption span,
+.gemini-proxy-guide-page .gemini-guide-status-card strong,
+.gemini-proxy-guide-page .gemini-guide-note,
+.gemini-proxy-guide-page .gemini-guide-faq-list article p {
+  overflow-wrap: anywhere;
+}
+
+.gemini-proxy-guide-page .gemini-guide-lightbox__dialog {
+  width: min(1320px, 100%);
+}
+
+.gemini-proxy-guide-page .gemini-guide-lightbox__frame {
+  min-height: min(74vh, 820px);
+}
+
+.gemini-proxy-guide-page .gemini-guide-shot-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.gemini-proxy-guide-page .gemini-guide-shot-grid.is-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 900px) {
+  .gemini-proxy-guide-page .gemini-guide-shot__frame {
+    aspect-ratio: 4 / 3;
+    min-height: clamp(220px, 52vw, 420px);
+  }
+
+  .gemini-proxy-guide-page .gemini-guide-shot-grid.is-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .gemini-proxy-guide-page .gemini-guide-shot__frame {
+    aspect-ratio: 1 / 1;
+    min-height: min(72vw, 340px);
+    padding: 8px;
+  }
+
+  .gemini-proxy-guide-page .gemini-guide-lightbox__dialog {
+    width: 100%;
+  }
+
+  .gemini-proxy-guide-page .gemini-guide-lightbox__frame {
+    min-height: min(58vh, 420px);
+  }
+}

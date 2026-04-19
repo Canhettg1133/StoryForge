@@ -1,16 +1,26 @@
-Dat anh huong dan Gemini Proxy vao day theo dung ten file:
+Dat anh huong dan Gemini Proxy vao day theo dung ten file.
+Bo anh nay duoc dung de bo sung them cho flow add CLI trong guide cu, khong thay toan bo noi dung huong dan:
 
-01-cli-get-credential.png
-02-cli-google-login.png
-03-cli-callback-url.png
-04-dashboard-quota.png
-05-key-management.png
-06-create-api-key.png
+01-dashboard-open-cli.png
+02-cli-get-credential.png
+03-cli-google-login.png
+04-cli-localhost-callback.jpg
+05-cli-submit-callback.png
+06-dashboard-model-usage.png
+07-key-management-create-keys.png
+08-settings-proxy-keys.jpg
+
+Phan anh bo sung theo flow add CLI:
+- Buoc 1: tu dashboard bam vao CLI
+- Buoc 2: bam Get Credential
+- Buoc 3: dang nhap Google o buoc so 1
+- Buoc 4: copy localhost link tra ve
+- Buoc 5: dan localhost link vao o so 2 va bam submit
+- Buoc 6: quay lai dashboard xem luot dung model
+- Buoc 7: vao Key Management va tao dung 3 API key
+- Buoc 8: vao StoryForge Settings, chon Gemini Proxy + Can bang, dan 3 key
 
 Khuyen nghi:
-- Dung PNG hoac WebP do net tot.
-- Chieu rong anh nen tu 1600px tro len de hien thi ro tren PC va man hinh retina.
-- Cat gon dung vung quan trong, tranh de vien den qua nhieu.
-- Nen chup o browser zoom 110% den 125% de chu to va net hon.
-- Neu anh goc da mo hoac bi nen manh, giao dien chi co the giu do net toi da chu khong the lam sac net that.
-- Neu muon thay anh cu, chi can ghi de dung ten file.
+- Nen dung anh rong toi thieu 1200px.
+- Chu va vung can khoanh nen ro, tranh crop sat qua.
+- Trang guide se tu fit vao cung mot khung responsive tren PC va mobile.
