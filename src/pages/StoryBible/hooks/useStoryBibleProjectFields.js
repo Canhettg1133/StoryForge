@@ -20,6 +20,25 @@ function useAutoSave(value, saveFn, delay = 800) {
   return saved;
 }
 
+function buildTargetLengthWarning(targetLengthType, targetLength) {
+  const length = Number(targetLength) || 0;
+  if (!length || targetLengthType === 'unset') return '';
+
+  if (targetLengthType === 'short' && length > 80) {
+    return 'Độ dài hiện tại đang vượt khá xa mức truyện ngắn. Nếu bạn thật sự muốn truyện dài hơn, nên đổi loại độ dài thay vì giữ "Truyện ngắn".';
+  }
+  if (targetLengthType === 'medium' && (length < 80 || length > 260)) {
+    return 'Số chương hiện tại đang lệch nhiều khỏi mức truyện vừa. Điều này dễ là nhập nhầm độ dài hoặc chọn nhầm loại.';
+  }
+  if (targetLengthType === 'long' && (length < 250 || length >= 800)) {
+    return 'Số chương hiện tại đang lệch nhiều khỏi mức trường thiên. Nếu bạn nhắm 800 chương trở lên, nên chuyển sang "Sử thi".';
+  }
+  if (targetLengthType === 'epic' && length < 800) {
+    return 'Loại "Sử thi" nên dùng cho truyện từ 800 chương trở lên. Nếu bạn nhắm thấp hơn, nên đổi lại loại độ dài.';
+  }
+  return '';
+}
+
 export default function useStoryBibleProjectFields({ currentProject, updateProjectSettings }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -76,6 +95,10 @@ export default function useStoryBibleProjectFields({ currentProject, updateProje
   const suggestedMilestoneCount = useMemo(
     () => getSuggestedMacroMilestoneCount(targetLength),
     [targetLength]
+  );
+  const targetLengthWarning = useMemo(
+    () => buildTargetLengthWarning(targetLengthType, targetLength),
+    [targetLength, targetLengthType]
   );
 
   const handleTargetLengthTypeChange = useCallback((value) => {
@@ -165,6 +188,7 @@ export default function useStoryBibleProjectFields({ currentProject, updateProje
     synopsisSaved,
     ultimateGoalSaved,
     targetLengthSaved,
+    targetLengthWarning,
     milestonesSaved,
     currentPronoun,
     suggestedMilestoneCount,

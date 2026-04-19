@@ -32,6 +32,7 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
   targetLength,
   setTargetLength,
   targetLengthSaved,
+  targetLengthWarning,
   ultimateGoal,
   setUltimateGoal,
   ultimateGoalSaved,
@@ -135,6 +136,11 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
             <div className="form-group" style={{ flex: 1 }}>
               <label className="form-label">Số chương mục tiêu {targetLengthSaved && <span className="save-indicator">Đã lưu</span>}</label>
               <input type="number" className="input" value={targetLength} onChange={(event) => setTargetLength(event.target.value)} />
+              {targetLengthWarning && (
+                <span className="form-hint" style={{ color: 'var(--color-warning)', marginTop: '6px' }}>
+                  {targetLengthWarning}
+                </span>
+              )}
             </div>
           </div>
 

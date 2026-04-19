@@ -52,6 +52,18 @@ function normalizeManualMilestonePlan(item, scope) {
   };
 }
 
+function countUncoveredScopeChapters(scope, plans = []) {
+  if (!scope?.start || !scope?.end || scope.end < scope.start) return 0;
+  const covered = new Set();
+  plans.forEach((item) => {
+    if (!item || item.isIncomplete) return;
+    for (let chapter = item.chapter_from; chapter <= item.chapter_to; chapter += 1) {
+      covered.add(chapter);
+    }
+  });
+  return Math.max(0, scope.span - covered.size);
+}
+
 function buildPlanningScopeDefaults({ targetLength, chaptersCount, macroArcs }) {
   const hasExplicitTargetLength = toPositiveInt(targetLength) > 0;
   const safeTarget = Math.max(
@@ -154,6 +166,14 @@ export default function useStoryBibleMacroArcs({
     () => normalizedMilestoneChapterPlans.map((item) => normalizeManualMilestonePlan(item, effectivePlanningScope)),
     [effectivePlanningScope, normalizedMilestoneChapterPlans]
   );
+  const autoMilestoneCount = useMemo(
+    () => manualMilestoneChapterPlans.filter((item) => !item).length,
+    [manualMilestoneChapterPlans]
+  );
+  const uncoveredScopeChapters = useMemo(
+    () => countUncoveredScopeChapters(effectivePlanningScope, manualMilestoneChapterPlans),
+    [effectivePlanningScope, manualMilestoneChapterPlans]
+  );
   const planningScopeOverlapCount = useMemo(
     () => getMacroOverlapCount(macroArcs, effectivePlanningScope.start, effectivePlanningScope.end),
     [effectivePlanningScope.end, effectivePlanningScope.start, macroArcs]
@@ -227,9 +247,24 @@ export default function useStoryBibleMacroArcs({
       }
     }
 
+    if (autoMilestoneCount > 0 && uncoveredScopeChapters === 0) {
+      warnings.push({
+        level: 'warning',
+        code: 'no-room-for-auto-milestones',
+        message: `Bạn đã khóa tay kín toàn bộ phạm vi ${effectivePlanningScope.start}-${effectivePlanningScope.end}, nhưng vẫn còn ${autoMilestoneCount} cột mốc để AI tự chia. Hãy nới bớt các mốc khóa tay hoặc giảm số cột mốc.`,
+      });
+    } else if (autoMilestoneCount > 0 && uncoveredScopeChapters < autoMilestoneCount) {
+      warnings.push({
+        level: 'warning',
+        code: 'tight-room-for-auto-milestones',
+        message: `Chỉ còn ${uncoveredScopeChapters} chương trống cho ${autoMilestoneCount} cột mốc tự động. AI vẫn có thể chia, nhưng nhịp sẽ rất dày và dễ gượng.`,
+      });
+    }
+
     return warnings;
   }, [
     aiMilestoneCount,
+    autoMilestoneCount,
     chaptersCount,
     effectivePlanningScope.end,
     effectivePlanningScope.span,
@@ -237,7 +272,18 @@ export default function useStoryBibleMacroArcs({
     manualMilestoneChapterPlans,
     planningScopeDefaults.hasExplicitTargetLength,
     planningScopeOverlapCount,
+    uncoveredScopeChapters,
   ]);
+
+  const hasBlockingMilestonePlanIssue = useMemo(
+    () => planningScopeWarnings.some((warning) => [
+      'incomplete-milestone-ranges',
+      'no-room-for-auto-milestones',
+      'too-many-milestones-for-scope',
+      'overlapping-manual-milestone-ranges',
+    ].includes(warning.code)),
+    [planningScopeWarnings]
+  );
 
   useEffect(() => {
     macroArcsRef.current = macroArcs;
@@ -642,6 +688,9 @@ export default function useStoryBibleMacroArcs({
     planningScopeHasExplicitTargetLength: planningScopeDefaults.hasExplicitTargetLength,
     planningScopeDefaultsToWholeStory: effectivePlanningScope.start === 1 && effectivePlanningScope.end === planningScopeDefaults.safeTarget,
     planningScopeWarnings,
+    uncoveredScopeChapters,
+    autoMilestoneCount,
+    hasBlockingMilestonePlanIssue,
     useDefaultPlanningScope,
     useWholeStoryPlanningScope,
     showAiSuggest,

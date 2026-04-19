@@ -127,6 +127,7 @@ export default function MobileProjectShell({ children }) {
         backLabel={backLabel}
         onTitleClick={handleTitleClick}
         onMore={() => setMoreOpen(true)}
+        showMoreButton={!isEditorRoute}
       />
 
       <main className="project-mobile-content">

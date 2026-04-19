@@ -115,7 +115,46 @@ function normalizePlotSuggestion(rawSuggestion, index = 0) {
   };
 }
 
+function splitPlotSuggestionBlocks(rawText = '') {
+  const text = String(rawText || '').trim();
+  if (!text) return [];
+
+  const headingRegex = /(?:^|\n)(?:#{1,6}\s*)?(?:\*{0,2})Hướng\s*\d+[^\n]*/gim;
+  const matches = [...text.matchAll(headingRegex)];
+  if (matches.length === 0) return [];
+
+  return matches.map((match, index) => {
+    const start = match.index + (match[0].startsWith('\n') ? 1 : 0);
+    const end = index + 1 < matches.length
+      ? matches[index + 1].index
+      : text.length;
+    return text.slice(start, end).trim();
+  }).filter(Boolean);
+}
+
 function parsePlotSuggestions(rawText = '') {
+  const headingBlocks = splitPlotSuggestionBlocks(rawText);
+  if (headingBlocks.length > 0) {
+    return headingBlocks
+      .map((block, index) => {
+        const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+        const firstLine = lines[0] || '';
+        const title = firstLine
+          .replace(/^(?:#{1,6}\s*)?(?:\*{0,2})?Hướng\s*\d+\s*:\s*/i, '')
+          .replace(/^(?:#{1,6}\s*)?(?:\*{0,2})?Hướng\s*\d+\s*/i, '')
+          .trim() || `Huong ${index + 1}`;
+        const summary = lines.slice(1).join('\n').trim();
+        return normalizePlotSuggestion({
+          id: `plot-${index}-${title}`,
+          title,
+          summary: summary || title,
+          guidance: [title, summary].filter(Boolean).join('\n'),
+        }, index);
+      })
+      .filter(Boolean)
+      .slice(0, 3);
+  }
+
   return rawText
     .split(/\n(?=(?:\*{0,2})?\d+[\)\.\:]|(?:^|\n)[-*]\s|(?:^|\n)\*{2}[^\*])/m)
     .map((entry, index) => normalizePlotSuggestion(entry, index))

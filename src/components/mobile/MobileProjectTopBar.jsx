@@ -9,6 +9,7 @@ export default function MobileProjectTopBar({
   backLabel = 'V\u1ec1 Dashboard',
   onTitleClick,
   onMore,
+  showMoreButton = true,
 }) {
   const titleContent = (
     <>
@@ -36,9 +37,13 @@ export default function MobileProjectTopBar({
           {titleContent}
         </div>
       )}
-      <button className="project-mobile-icon-btn project-mobile-menu-btn" type="button" onClick={onMore} aria-label="M\u1edf menu \u0111i\u1ec1u h\u01b0\u1edbng">
-        <span>Menu</span>
-      </button>
+      {showMoreButton ? (
+        <button className="project-mobile-icon-btn project-mobile-menu-btn" type="button" onClick={onMore} aria-label="M\u1edf menu \u0111i\u1ec1u h\u01b0\u1edbng">
+          <span>Menu</span>
+        </button>
+      ) : (
+        <div className="project-mobile-icon-btn project-mobile-menu-btn" aria-hidden="true" />
+      )}
     </header>
   );
 }
