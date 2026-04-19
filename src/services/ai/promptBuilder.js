@@ -307,17 +307,63 @@ export const TASK_INSTRUCTIONS = {
     'KHONG chon y tuong chung chung kieu "nhan vat manh len". Moi y tuong phai co XUNG DOT that su va HE QUA ro rang.',
   ].join('\n')),
   [TASK_TYPES.OUTLINE]: withPlanningAndCanonPrefix([
-    'Tao outline CHI TIET 5-8 diem chinh cho chuong/phan tiep theo. Moi diem bao gom:',
-    '- Su kien/hanh dong CU THE (khong chung chung kieu "nhan vat chien dau" - ma phai la "nhan vat bi don vao the ket, phai chon giua mat mang hoac phan boi...")',
-    '- Cam xuc nhan vat chuyen bien nhu the nao qua su kien do',
-    '- Lien ket voi tuyen truyen nao dang mo (neu co)',
+    'Ban dang lam viec voi DAN Y CHUONG HIEN TAI, khong phai brainstorm tu do.',
+    'Neu chuong hien tai DA CO DAN Y, nhiem vu cua ban la doi chieu noi dung da viet voi dan y hien co, xac dinh beat nao da duoc thuc hien, beat nao con thieu, va beat tiep theo nen viet trong CHINH CHUONG NAY.',
+    'Neu chuong hien tai CHUA CO DAN Y, chi duoc tao dan y cho CHINH chuong hien tai.',
+    'TUYET DOI KHONG duoc nhay sang viet thay dan y cua chuong ke tiep neu chuong do da co dan y/fence.',
+    'TUYET DOI KHONG duoc giai quyet som thread lon, lo reveal lon, tang cap suc manh lon, hay an mat cot moc cua cac chuong sau neu budget tien do chua cho phep.',
+    'Neu nhan thay chuong hien tai da hoan tat, chi duoc ghi ro "co the chuyen sang lap dan y chuong sau" trong muc goi y chuyen chuong; KHONG viet thay noi dung chuong sau.',
     '',
-    'Outline phai co 3 phan:',
-    '- HOOK: diem cuon hut o dau - doc gia doc dong dau tien phai muon doc tiep',
-    '- ESCALATION: tang dan cang thang va do phuc tap qua tung diem',
-    '- CLIFFHANGER: ket mo bang cau hoi/tinh huong khien doc gia khong the ngu duoc',
+    'Moi beat duoc de xuat phai gom:',
+    '- Su kien/hanh dong CU THE',
+    '- Cam xuc/trang thai nhan vat thay doi ra sao',
+    '- Thread/xung dot nao duoc day',
+    '- Ly do tai sao beat nay nam trong chuong hien tai va khong lan sang chuong sau',
+    '',
+    'Tra ve CHINH XAC JSON format sau:',
+    '{',
+    '  "mode": "create_current_chapter | fill_current_chapter | ready_for_next_chapter",',
+    '  "purpose": "Muc tieu cua chuong hien tai",',
+    '  "summary": "Tom tat ngan cho chuong hien tai",',
+    '  "completed_beats": [',
+    '    {',
+    '      "title": "Ten beat",',
+    '      "status": "covered | partial",',
+    '      "evidence": "Bang chung tu noi dung da viet"',
+    '    }',
+    '  ],',
+    '  "next_beats": [',
+    '    {',
+    '      "title": "Ten beat tiep theo",',
+    '      "beat": "Su kien cu the can viet",',
+    '      "character_change": "Trang thai/cam xuc thay doi",',
+    '      "thread": "Thread/xung dot duoc day",',
+    '      "boundary_reason": "Tai sao beat nay van thuoc chuong hien tai"',
+    '    }',
+    '  ],',
+    '  "progress_warning": "Canh bao tien do neu co, neu khong thi de rong",',
+    '  "transition_note": "Neu chuong nay gan hoan tat thi ghi chu o day, neu khong thi de rong",',
+    '  "chapter_patch": {',
+    '    "purpose": "Purpose de luu vao chapter hien tai",',
+    '    "summary": "Summary de luu vao chapter hien tai",',
+    '    "key_events": ["Beat 1", "Beat 2"],',
+    '    "thread_titles": ["Thread 1"],',
+    '    "featured_characters": ["Nhan vat 1"],',
+    '    "primary_location": "Dia diem chinh",',
+    '    "required_factions": ["The luc 1"],',
+    '    "required_objects": ["Vat pham 1"]',
+    '  }',
+    '}',
+    'Neu chua du du lieu, van phai tra ve du JSON tren voi mang rong hoac chuoi rong.',
+    'Chi tra ve JSON, KHONG them markdown, KHONG them loi mo dau, KHONG them giai thich ngoai JSON.',
   ].join('\n')),
-  [TASK_TYPES.PLOT_SUGGEST]: withPlanningAndCanonPrefix('Goi y 3 huong plot co the xay ra tiep theo. Moi huong gom: tom tat, xung dot, va dieu gi se thay doi.'),
+  [TASK_TYPES.PLOT_SUGGEST]: withPlanningAndCanonPrefix([
+    'Goi y 3 huong plot/beat co the xay ra tiep theo, nhung PHAI ton trong outline va canon da co.',
+    'Neu chuong hien tai da co dan y, uu tien goi y 3 beat tiep dien de viet tiep TRONG pham vi chuong nay.',
+    'Chi khi chapter hien tai da dat du beat chinh hoac sap dong chuong, moi de xuat huong cho chuong ke.',
+    'KHONG de xuat y tuong lam sai/vo hieu hoa dan y cua cac chuong truoc, khong viet lai lich su, khong nhay qua cac cot moc da duoc dat truoc.',
+    'Moi huong phai gom: 1) Tieu de ngan, 2) Beat tiep theo cu the, 3) Xung dot/chu de duoc day, 4) Dieu gi thay doi trong trang thai nhan vat hoac plot thread.',
+  ].join('\n')),
   [TASK_TYPES.SUMMARIZE]: 'Tom tat noi dung trong khoang 150-200 tu, giu cac su kien chinh, thay doi quan trong, va trang thai nhan vat.',
   [TASK_TYPES.EXTRACT_TERMS]: 'Trich xuat: 1) Ten nhan vat (va vai tro), 2) Dia danh, 3) Vat pham quan trong, 4) Thuat ngu the gioi truyen. Tra ve dang danh sach.',
   [TASK_TYPES.SCENE_DRAFT]: 'Viet ban nhap canh nay, mo ta sau vao tung cu chi tam ly. Viet khoang 2000-4000 tu/lan sinh de dong gop vao muc tieu chuong truyen tong cong 7000 tu. CANG DAI CANG TOT.',
@@ -618,6 +664,7 @@ export const TASK_INSTRUCTIONS = {
 const TASK_INSTRUCTION_PROTECTION_MARKERS = {
   [TASK_TYPES.CHECK_CONFLICT]: 'Tra ve CHINH XAC JSON format sau:',
   [TASK_TYPES.CONTINUITY_CHECK]: 'Tra ve CHINH XAC JSON format sau:',
+  [TASK_TYPES.OUTLINE]: 'Tra ve CHINH XAC JSON format sau:',
   [TASK_TYPES.FEEDBACK_EXTRACT]: 'Tra ve CHINH XAC format nay:',
   [TASK_TYPES.STYLE_ANALYZE]: 'Tra ve CHINH XAC JSON format sau:',
   [TASK_TYPES.QA_CHECK]: 'Tra ve CHINH XAC JSON format sau:',
@@ -716,7 +763,7 @@ function buildGrandStrategyLayer(
   currentChapterIndex,
   milestones
 ) {
-  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
+  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType) && taskType !== TASK_TYPES.OUTLINE) return '';
 
   var hasArcInfo = currentMacroArc || currentArc;
   var hasPacingInfo = targetLength > 0 && ultimateGoal;
@@ -806,7 +853,7 @@ function buildGrandStrategyLayer(
  * Only inject for writing tasks.
  */
 function buildChapterOutlineLayer(taskType, currentChapterOutline, chapterBlueprintContext, upcomingChapters) {
-  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType)) return '';
+  if (!WRITING_TASKS_FOR_BRIDGE.has(taskType) && taskType !== TASK_TYPES.PLOT_SUGGEST && taskType !== TASK_TYPES.OUTLINE) return '';
   if (!currentChapterOutline && (!upcomingChapters || upcomingChapters.length === 0)) return '';
 
   const parts = [];
@@ -961,6 +1008,157 @@ function formatStoryProgressBudget(storyProgressBudget) {
     parts.push('Cot moc tiep theo: ' + label + percent);
   }
   return parts.join('\n');
+}
+
+const OUTLINE_PROGRESS_STOPWORDS = new Set([
+  'va', 'voi', 'cua', 'cho', 'khi', 'sau', 'truoc', 'trong', 'tren', 'duoi',
+  'mot', 'nhung', 'cac', 'nay', 'kia', 'roi', 'da', 'se', 'dang', 'la',
+  'bi', 'duoc', 'tu', 'den', 'hay', 'neu', 'thi', 'ma', 'tai', 'nhan', 'vat',
+  'chuong', 'canh', 'beat', 'plot', 'thread', 'noi', 'dung',
+]);
+
+function normalizePlanningText(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPlanningKeywords(value = '') {
+  const normalized = normalizePlanningText(value);
+  if (!normalized) return [];
+  return normalized
+    .split(' ')
+    .filter((word) => word.length >= 3 && !OUTLINE_PROGRESS_STOPWORDS.has(word))
+    .filter((word, index, array) => array.indexOf(word) === index);
+}
+
+function classifyOutlineBeatCoverage(beatText, chapterText) {
+  const normalizedBeat = normalizePlanningText(beatText);
+  const normalizedChapter = normalizePlanningText(chapterText);
+
+  if (!normalizedBeat || !normalizedChapter) {
+    return { status: 'pending', matchedKeywords: [] };
+  }
+
+  if (normalizedBeat.length >= 12 && normalizedChapter.includes(normalizedBeat)) {
+    return { status: 'covered', matchedKeywords: [] };
+  }
+
+  const keywords = extractPlanningKeywords(beatText).slice(0, 8);
+  const matchedKeywords = keywords.filter((keyword) => normalizedChapter.includes(keyword));
+
+  if (matchedKeywords.length >= Math.min(3, Math.max(2, Math.ceil(keywords.length * 0.5)))) {
+    return { status: 'covered', matchedKeywords };
+  }
+
+  if (matchedKeywords.length >= 2 || (matchedKeywords.length === 1 && keywords.length === 1)) {
+    return { status: 'maybe', matchedKeywords };
+  }
+
+  return { status: 'pending', matchedKeywords };
+}
+
+function buildSingleChapterOutlineBudget({
+  targetLength = 0,
+  currentChapterIndex = 0,
+  currentMacroArc = null,
+  milestones = [],
+}) {
+  const safeTarget = Number(targetLength) || 0;
+  if (safeTarget <= 0) return null;
+
+  const currentCount = Math.max(0, Number(currentChapterIndex) || 0);
+  const currentChapterNumber = currentCount + 1;
+  const fromPercent = Number(((currentCount / safeTarget) * 100).toFixed(1));
+  const toPercent = Number((((currentCount + 1) / safeTarget) * 100).toFixed(1));
+  const nextMilestone = Array.isArray(milestones)
+    ? milestones.find((item) => Number(item?.percent) > toPercent) || null
+    : null;
+  const remainingInMacro = currentMacroArc?.chapter_to
+    ? Math.max(0, Number(currentMacroArc.chapter_to) - currentChapterNumber)
+    : null;
+
+  return {
+    fromPercent,
+    toPercent,
+    currentChapterCount: currentCount,
+    targetLength: safeTarget,
+    batchCount: 1,
+    mainPlotMaxStep: 1,
+    romanceMaxStep: 1,
+    mysteryRevealAllowance: nextMilestone && Number(nextMilestone.percent) - toPercent > 5
+      ? '0-1 minor reveal'
+      : '1 minor reveal',
+    powerProgressionCap: remainingInMacro != null && remainingInMacro > 0
+      ? 'khong vuot tier lon trong chuong nay'
+      : 'co the nhich nhe neu day la chuong sat cot moc',
+    requiredBeatMix: 'uu tien buildup / consequence / setup neu cot moc lon con xa',
+    nextMilestone,
+    remainingInMacro,
+  };
+}
+
+function buildOutlinePlannerLayer(
+  taskType,
+  currentChapterOutline,
+  chapterText,
+  chapterSceneCount,
+  storyProgressBudget,
+  targetLength,
+  currentChapterIndex,
+  currentMacroArc,
+  milestones
+) {
+  if (taskType !== TASK_TYPES.OUTLINE) return '';
+
+  const parts = [];
+  const effectiveBudget = storyProgressBudget || buildSingleChapterOutlineBudget({
+    targetLength,
+    currentChapterIndex,
+    currentMacroArc,
+    milestones,
+  });
+  const budgetText = formatStoryProgressBudget(effectiveBudget);
+
+  if (budgetText) {
+    parts.push('[STORY PROGRESS BUDGET - CHUONG NAY]\n' + budgetText);
+  }
+
+  if (chapterText || Number.isFinite(Number(chapterSceneCount))) {
+    const chapterLines = [];
+    chapterLines.push('So canh dang co trong chuong: ' + (Number(chapterSceneCount) || 0));
+    chapterLines.push(chapterText
+      ? 'Chuong hien tai da co van ban. Hay uu tien doi chieu beat da viet truoc khi de xuat beat moi.'
+      : 'Chuong hien tai chua co van ban. Neu da co dan y, hay xuat phat tu dan y do; neu chua co dan y, moi lap dan y cho chinh chuong nay.');
+    parts.push('[TRANG THAI CHUONG HIEN TAI]\n' + chapterLines.join('\n'));
+  }
+
+  if (currentChapterOutline?.keyEvents?.length > 0) {
+    const coverageLines = currentChapterOutline.keyEvents.map((eventText) => {
+      const coverage = classifyOutlineBeatCoverage(eventText, chapterText);
+      const matched = coverage.matchedKeywords.length > 0
+        ? ' | tu khoa trung: ' + coverage.matchedKeywords.join(', ')
+        : '';
+      const statusLabel = coverage.status === 'covered'
+        ? 'co kha nang da viet'
+        : coverage.status === 'maybe'
+          ? 'co tin hieu mot phan'
+          : 'chua thay dau hieu ro';
+      return '- ' + statusLabel + ': ' + eventText + matched;
+    });
+
+    parts.push(
+      '[DOI CHIEU DAN Y VA NOI DUNG DA VIET - HEURISTIC, CHI DUNG DE DOI CHIEU]\n'
+      + coverageLines.join('\n')
+    );
+  }
+
+  if (parts.length === 0) return '';
+  return '\n[OUTLINE GUARDRAILS]\n' + parts.join('\n\n');
 }
 
 function formatMacroMilestoneList(milestones) {
@@ -1398,6 +1596,8 @@ export function buildPrompt(taskType, context = {}) {
     chapterId = null,
     selectedText,
     sceneText,
+    chapterText = '',
+    chapterSceneCount = 0,
     sceneTitle,
     chapterTitle,
     projectTitle,
@@ -1683,6 +1883,21 @@ export function buildPrompt(taskType, context = {}) {
     systemParts.push(chapterOutlineLayer);
   }
 
+  const outlinePlannerLayer = buildOutlinePlannerLayer(
+    taskType,
+    currentChapterOutline,
+    chapterText,
+    chapterSceneCount,
+    storyProgressBudget,
+    targetLength,
+    currentChapterIndex,
+    currentMacroArc,
+    milestones
+  );
+  if (outlinePlannerLayer && !skipWritingLayers) {
+    systemParts.push(outlinePlannerLayer);
+  }
+
   const preWriteValidationLayer = buildPreWriteValidationLayer(taskType, preWriteValidation);
   if (preWriteValidationLayer && !skipWritingLayers) {
     systemParts.push(preWriteValidationLayer);
@@ -1943,13 +2158,85 @@ export function buildPrompt(taskType, context = {}) {
       break;
 
     case TASK_TYPES.OUTLINE:
-      userContent = userPrompt
-        ? 'Tao outline: ' + userPrompt
-        : 'Tao outline 5-8 diem cho chuong tiep theo.\n\n' + (sceneText || '');
+      {
+        const chapterMaterial = chapterText || sceneText || '';
+        const effectiveBudget = storyProgressBudget || buildSingleChapterOutlineBudget({
+          targetLength,
+          currentChapterIndex,
+          currentMacroArc,
+          milestones,
+        });
+        const budgetText = formatStoryProgressBudget(effectiveBudget);
+
+        userContent = '[MUC TIEU]\nLap dan y/beat cho CHINH chuong hien tai. Uu tien doi chieu noi dung da viet voi dan y hien co de xac dinh beat da xong va beat con thieu.';
+
+        if (userPrompt) {
+          userContent += '\n\n[UU TIEN CUA TAC GIA]\n' + userPrompt;
+        }
+
+        if (currentChapterOutline) {
+          const outlineParts = [];
+          if (currentChapterOutline.title) outlineParts.push('Tieu de: ' + currentChapterOutline.title);
+          if (currentChapterOutline.summary) outlineParts.push('Summary: ' + currentChapterOutline.summary);
+          if (currentChapterOutline.purpose) outlineParts.push('Purpose: ' + currentChapterOutline.purpose);
+          if (currentChapterOutline.threadTitles?.length > 0) {
+            outlineParts.push('Thread can day: ' + currentChapterOutline.threadTitles.join(', '));
+          }
+          if (currentChapterOutline.keyEvents?.length > 0) {
+            outlineParts.push('Key events:\n' + currentChapterOutline.keyEvents.map(function (item) {
+              return '- ' + item;
+            }).join('\n'));
+          }
+          if (outlineParts.length > 0) {
+            userContent += '\n\n[DAN Y CHUONG HIEN TAI]\n' + outlineParts.join('\n');
+          }
+        } else {
+          userContent += '\n\n[DAN Y CHUONG HIEN TAI]\n(chua co dan y ro rang, neu tao moi thi chi duoc tao cho chuong nay)';
+        }
+
+        userContent += '\n\n[NOI DUNG DA CO CUA CHUONG HIEN TAI]\n';
+        userContent += chapterMaterial || '(chua co van ban trong chuong)';
+        userContent += '\n\n[SO CANH HIEN CO]\n' + (Number(chapterSceneCount) || 0);
+
+        if (upcomingChapters?.length > 0) {
+          userContent += '\n\n[CAC CHUONG KE TIEP - KHONG DUOC PHA VO]\n' + upcomingChapters.map(function (chapter, index) {
+            return '- Chuong ' + (index + 1) + ': ' + (chapter.title || '(chua dat ten)') + (chapter.summary ? ' - ' + chapter.summary : '');
+          }).join('\n');
+        }
+
+        if (budgetText) {
+          userContent += '\n\n[GIOI HAN TIEN DO CHUONG NAY]\n' + budgetText;
+        }
+
+        userContent += '\n\n[YEU CAU]\nNeu chuong nay da co dan y, hay phan loai beat da hoan thanh, beat con thieu va beat tiep theo TRONG CHINH chuong nay. Neu chuong nay chua co dan y, hay tao dan y cho CHINH chuong nay. Tuyet doi khong viet thay noi dung cua chuong sau da co dan y. Neu thay chuong nay da gan hoan tat, chi ghi ro dieu do trong [GOI Y CHUYEN CHUONG], khong duoc lap beat cu the cho chuong sau.';
+      }
       break;
 
     case TASK_TYPES.PLOT_SUGGEST:
-      userContent = 'Noi dung hien tai:\n' + (sceneText || '');
+      userContent = '[NOI DUNG HIEN TAI]\n' + (sceneText || '(chua co noi dung canh)');
+      if (currentChapterOutline) {
+        const outlineParts = [];
+        if (currentChapterOutline.title) outlineParts.push('Tieu de: ' + currentChapterOutline.title);
+        if (currentChapterOutline.summary) outlineParts.push('Summary: ' + currentChapterOutline.summary);
+        if (currentChapterOutline.purpose) outlineParts.push('Purpose: ' + currentChapterOutline.purpose);
+        if (currentChapterOutline.threadTitles?.length > 0) {
+          outlineParts.push('Thread can day: ' + currentChapterOutline.threadTitles.join(', '));
+        }
+        if (currentChapterOutline.keyEvents?.length > 0) {
+          outlineParts.push('Key events:\n' + currentChapterOutline.keyEvents.map(function (item) {
+            return '- ' + item;
+          }).join('\n'));
+        }
+        if (outlineParts.length > 0) {
+          userContent += '\n\n[DAN Y CHUONG HIEN TAI]\n' + outlineParts.join('\n');
+        }
+      }
+      if (upcomingChapters?.length > 0) {
+        userContent += '\n\n[CAC CHUONG KE TIEP - KHONG DUOC PHA VO]\n' + upcomingChapters.map(function (chapter, index) {
+          return '- Chuong ' + (index + 1) + ': ' + (chapter.title || '(chua dat ten)') + (chapter.summary ? ' - ' + chapter.summary : '');
+        }).join('\n');
+      }
+      userContent += '\n\n[YEU CAU]\nNeu canh/chuong hien tai chua xong, de xuat 3 beat tiep theo de nguoi viet co the bam vao Viet tiep ngay. Neu chapter hien tai da den diem chuyen chuong, moi de xuat huong cho chuong ke. Luon noi ro huong nao dang day plot thread nao va thay doi dieu gi trong canon/trang thai nhan vat.';
       break;
 
     case TASK_TYPES.SUMMARIZE:

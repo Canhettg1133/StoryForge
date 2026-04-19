@@ -1178,7 +1178,56 @@ db.savePlotSuggestions = async (chapterId, projectId, suggestions) => {
     await db.suggestions.bulkDelete(existing.map(s => s.id));
   }
   if (suggestions.length === 0) return;
-  await db.suggestions.bulkAdd(suggestions.map(s => ({
+  const normalizedSuggestions = suggestions
+    .map((suggestion, index) => {
+      if (typeof suggestion === 'string') {
+        const summary = suggestion.trim();
+        if (!summary) return null;
+        const title = summary
+          .replace(/^\*{0,2}\d+[\.\):\-]*\*{0,2}\s*/, '')
+          .split(/[.!?\n]/)[0]
+          .trim() || `Huong ${index + 1}`;
+        return {
+          title,
+          summary,
+          direction: summary,
+          type: 'main',
+        };
+      }
+
+      if (!suggestion || typeof suggestion !== 'object') return null;
+
+      const title = String(
+        suggestion.title
+        || suggestion.suggested_value
+        || ''
+      ).trim();
+      const summary = String(
+        suggestion.summary
+        || suggestion.reasoning
+        || suggestion.description
+        || suggestion.current_value
+        || ''
+      ).trim();
+      const guidance = String(
+        suggestion.guidance
+        || suggestion.direction
+        || summary
+        || title
+      ).trim();
+
+      return {
+        title: title || `Huong ${index + 1}`,
+        summary: summary || guidance || title || `Huong ${index + 1}`,
+        direction: guidance || summary || title || '',
+        type: suggestion.type || suggestion.fact_type || 'main',
+      };
+    })
+    .filter(Boolean);
+
+  if (normalizedSuggestions.length === 0) return;
+
+  await db.suggestions.bulkAdd(normalizedSuggestions.map(s => ({
     project_id: projectId,
     source_chapter_id: chapterId,
     source_type: 'plot_suggestion',

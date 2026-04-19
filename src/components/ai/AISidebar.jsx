@@ -1,14 +1,16 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import useAIStore from '../../stores/aiStore';
 import useProjectStore from '../../stores/projectStore';
 import db from '../../services/db/database';
 import CodexPanel from '../editor/CodexPanel';
+import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
+import { normalizeChapterListField } from '../../services/ai/blueprintGuardrails';
 import {
   PenTool,
   RefreshCw,
   Maximize2,
   Lightbulb,
-  Map,
+  Map as MapIcon,
   Sparkles,
   Send,
   Square,
@@ -40,10 +42,171 @@ const QUICK_ACTIONS = [
   { id: 'rewrite', icon: RefreshCw, label: 'Viết lại', taskFn: 'rewriteText', needsSelection: true, needsGuidance: true, placeholder: 'VD: "Thêm drama hơn", "Giọng văn trang trọng hơn"...' },
   { id: 'expand', icon: Maximize2, label: 'Mở rộng', taskFn: 'expandText', needsSelection: true, needsGuidance: true, placeholder: 'VD: "Mở rộng phần chiến đấu", "Thêm nội tâm nhân vật"...' },
   { id: 'plot', icon: Lightbulb, label: 'Gợi ý plot', taskFn: 'suggestPlot', needsText: true },
-  { id: 'outline', icon: Map, label: 'Outline', taskFn: 'outlineChapter', needsText: false },
+  { id: 'outline', icon: MapIcon, label: 'Dan y chuong', taskFn: 'outlineChapter', needsText: false },
   { id: 'extract', icon: Sparkles, label: 'Trích xuất', taskFn: 'extractTerms', needsText: true },
   { id: 'conflict', icon: ShieldAlert, label: 'Check Mâu Thuẫn', taskFn: 'checkConflict', needsText: true, isCustom: true },
 ];
+
+function buildPlotSuggestionTitle(text, fallbackIndex = 0) {
+  const cleaned = String(text || '')
+    .replace(/^\*{0,2}\d+[\.\):\-]*\*{0,2}\s*/, '')
+    .replace(/^[-*]\s*/, '')
+    .trim();
+
+  if (!cleaned) return `Huong ${fallbackIndex + 1}`;
+
+  const firstLine = cleaned.split('\n').find((line) => line.trim()) || cleaned;
+  const shortTitle = firstLine
+    .replace(/^([A-Z\s]+:)\s*/i, '')
+    .split(/[.!?]/)[0]
+    .trim();
+
+  return shortTitle || `Huong ${fallbackIndex + 1}`;
+}
+
+function normalizePlotSuggestion(rawSuggestion, index = 0) {
+  if (!rawSuggestion) return null;
+
+  if (typeof rawSuggestion === 'string') {
+    const summary = rawSuggestion.trim();
+    if (!summary) return null;
+    const title = buildPlotSuggestionTitle(summary, index);
+    return {
+      id: `plot-${index}-${title}`,
+      title,
+      summary,
+      guidance: summary,
+      fullText: summary,
+      type: 'main',
+    };
+  }
+
+  if (typeof rawSuggestion !== 'object') return null;
+
+  const title = String(
+    rawSuggestion.title
+    || rawSuggestion.suggested_value
+    || rawSuggestion.label
+    || ''
+  ).trim();
+  const summary = String(
+    rawSuggestion.summary
+    || rawSuggestion.reasoning
+    || rawSuggestion.description
+    || rawSuggestion.current_value
+    || ''
+  ).trim();
+  const guidance = String(
+    rawSuggestion.guidance
+    || rawSuggestion.direction
+    || summary
+    || title
+  ).trim();
+  const resolvedTitle = title || buildPlotSuggestionTitle(summary || guidance, index);
+  const resolvedSummary = summary || guidance || resolvedTitle;
+
+  return {
+    id: rawSuggestion.id || `plot-${index}-${resolvedTitle}`,
+    title: resolvedTitle,
+    summary: resolvedSummary,
+    guidance: guidance || resolvedSummary,
+    fullText: [resolvedTitle, resolvedSummary].filter(Boolean).join(': '),
+    type: rawSuggestion.type || rawSuggestion.fact_type || 'main',
+  };
+}
+
+function parsePlotSuggestions(rawText = '') {
+  return rawText
+    .split(/\n(?=(?:\*{0,2})?\d+[\)\.\:]|(?:^|\n)[-*]\s|(?:^|\n)\*{2}[^\*])/m)
+    .map((entry, index) => normalizePlotSuggestion(entry, index))
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+function normalizeOutlineBeat(rawBeat, index = 0) {
+  if (!rawBeat) return null;
+  if (typeof rawBeat === 'string') {
+    const text = rawBeat.trim();
+    if (!text) return null;
+    return {
+      id: `outline-beat-${index}`,
+      title: `Beat ${index + 1}`,
+      beat: text,
+      status: '',
+      evidence: '',
+      characterChange: '',
+      thread: '',
+      boundaryReason: '',
+    };
+  }
+  if (!isPlainObject(rawBeat)) return null;
+
+  const title = String(rawBeat.title || rawBeat.label || `Beat ${index + 1}`).trim();
+  const beat = String(rawBeat.beat || rawBeat.description || rawBeat.summary || '').trim();
+
+  return {
+    id: rawBeat.id || `outline-beat-${index}-${title}`,
+    title,
+    beat,
+    status: String(rawBeat.status || '').trim(),
+    evidence: String(rawBeat.evidence || '').trim(),
+    characterChange: String(rawBeat.character_change || rawBeat.characterChange || '').trim(),
+    thread: String(rawBeat.thread || '').trim(),
+    boundaryReason: String(rawBeat.boundary_reason || rawBeat.boundaryReason || '').trim(),
+  };
+}
+
+function normalizeOutlineResult(rawText = '') {
+  if (!rawText) return null;
+
+  try {
+    const parsed = parseAIJsonValue(rawText);
+    if (!isPlainObject(parsed)) return null;
+
+    const chapterPatchSource = isPlainObject(parsed.chapter_patch) ? parsed.chapter_patch : {};
+    const chapterPatch = {
+      purpose: String(chapterPatchSource.purpose || parsed.purpose || '').trim(),
+      summary: String(chapterPatchSource.summary || parsed.summary || '').trim(),
+      key_events: normalizeChapterListField(chapterPatchSource.key_events || chapterPatchSource.keyEvents || []),
+      thread_titles: normalizeChapterListField(chapterPatchSource.thread_titles || chapterPatchSource.threadTitles || []),
+      featured_characters: normalizeChapterListField(chapterPatchSource.featured_characters || chapterPatchSource.featuredCharacters || []),
+      primary_location: String(chapterPatchSource.primary_location || chapterPatchSource.primaryLocation || '').trim(),
+      required_factions: normalizeChapterListField(chapterPatchSource.required_factions || chapterPatchSource.requiredFactions || []),
+      required_objects: normalizeChapterListField(chapterPatchSource.required_objects || chapterPatchSource.requiredObjects || []),
+    };
+
+    return {
+      mode: String(parsed.mode || '').trim(),
+      purpose: String(parsed.purpose || chapterPatch.purpose || '').trim(),
+      summary: String(parsed.summary || chapterPatch.summary || '').trim(),
+      completedBeats: Array.isArray(parsed.completed_beats)
+        ? parsed.completed_beats.map((item, index) => normalizeOutlineBeat(item, index)).filter(Boolean)
+        : [],
+      nextBeats: Array.isArray(parsed.next_beats)
+        ? parsed.next_beats.map((item, index) => normalizeOutlineBeat(item, index)).filter(Boolean)
+        : [],
+      progressWarning: String(parsed.progress_warning || '').trim(),
+      transitionNote: String(parsed.transition_note || '').trim(),
+      chapterPatch,
+      raw: parsed,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function hasOutlinePatchData(chapterPatch = {}) {
+  return Boolean(
+    chapterPatch?.purpose
+    || chapterPatch?.summary
+    || chapterPatch?.primary_location
+    || (Array.isArray(chapterPatch?.key_events) && chapterPatch.key_events.length > 0)
+    || (Array.isArray(chapterPatch?.thread_titles) && chapterPatch.thread_titles.length > 0)
+    || (Array.isArray(chapterPatch?.featured_characters) && chapterPatch.featured_characters.length > 0)
+    || (Array.isArray(chapterPatch?.required_factions) && chapterPatch.required_factions.length > 0)
+    || (Array.isArray(chapterPatch?.required_objects) && chapterPatch.required_objects.length > 0)
+  );
+}
 
 function autosizeTextarea(textarea) {
   if (!textarea) return;
@@ -96,7 +259,14 @@ export default function AISidebar({
     isCheckingConflict,
   } = useAIStore();
 
-  const { currentProject, scenes, activeSceneId, chapters, activeChapterId } = useProjectStore();
+  const {
+    currentProject,
+    scenes,
+    activeSceneId,
+    chapters,
+    activeChapterId,
+    updateChapter,
+  } = useProjectStore();
 
   const [customPrompt, setCustomPrompt] = useState('');
   const [copied, setCopied] = useState(false);
@@ -107,15 +277,26 @@ export default function AISidebar({
   const [outputScope, setOutputScope] = useState(null);
   const [plotSuggestions, setPlotSuggestions] = useState([]);
   const [showPlotManager, setShowPlotManager] = useState(false);
+  const [showPlotAssistPicker, setShowPlotAssistPicker] = useState(false);
+  const [mobileOverlayTop, setMobileOverlayTop] = useState(0);
+  const [outlineApplyState, setOutlineApplyState] = useState('idle');
   const outputRef = useRef(null);
   const guidanceRef = useRef(null);
   const customPromptRef = useRef(null);
+  const mobileAiRef = useRef(null);
+  const quickActionsRef = useRef(null);
+  const actionButtonRefs = useRef(new Map());
 
   useEffect(() => {
     if (activeChapterId) {
       db.getPlotSuggestions(activeChapterId)
         .then((suggestions) => {
-          setPlotSuggestions(suggestions.map((item) => item.suggested_value || item.reasoning || ''));
+          setPlotSuggestions(
+            suggestions
+              .map((item, index) => normalizePlotSuggestion(item, index))
+              .filter(Boolean)
+              .slice(0, 3),
+          );
         })
         .catch(() => setPlotSuggestions([]));
     } else {
@@ -152,6 +333,13 @@ export default function AISidebar({
   const scopedHasOutput = !!scopedDisplayText || !!scopedError || scopedIsStreaming || scopedIsCheckingConflict;
   const scopedTaskId = outputScope?.taskId || lastTaskId;
   const canApplyOutputToActiveEditor = !!editor && isOutputForActiveScope && outputScope?.scopeLevel === 'scene';
+  const parsedOutlineResult = scopedTaskId === 'outline' && !scopedIsStreaming && !scopedError
+    ? normalizeOutlineResult(scopedDisplayText)
+    : null;
+
+  useEffect(() => {
+    setOutlineApplyState('idle');
+  }, [scopedTaskId, scopedDisplayText, activeChapterId]);
 
   useEffect(() => {
     if (!onAiActivityChange) return;
@@ -194,6 +382,35 @@ export default function AISidebar({
   }, [actionGuidance, pendingAction]);
 
   useEffect(() => {
+    setShowPlotAssistPicker(false);
+  }, [pendingAction?.id, activeChapterId]);
+
+  const currentPinnedActionId = pendingAction?.id || (showPlotManager ? 'plot' : null);
+
+  useLayoutEffect(() => {
+    if (!isMobileLayout || mobileTab !== 'ai' || !currentPinnedActionId) {
+      setMobileOverlayTop(0);
+      return;
+    }
+
+    const measure = () => {
+      const container = mobileAiRef.current;
+      const grid = quickActionsRef.current;
+      const actionButton = actionButtonRefs.current.get(currentPinnedActionId);
+      if (!container || !grid || !actionButton) return;
+
+      const containerRect = container.getBoundingClientRect();
+      const buttonRect = actionButton.getBoundingClientRect();
+      const overlayTop = Math.max(0, Math.round((buttonRect.bottom - containerRect.top) + 12));
+      setMobileOverlayTop(overlayTop);
+    };
+
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [isMobileLayout, mobileTab, currentPinnedActionId]);
+
+  useEffect(() => {
     if (!onDraftPreviewChange) return;
 
     if (!scopedDisplayText || !outputScope?.sceneId || scopedIsCheckingConflict || scopedError || !isOutputForActiveScope) {
@@ -227,6 +444,16 @@ export default function AISidebar({
   const getContext = () => {
     const scene = scenes.find((item) => item.id === activeSceneId);
     const chapter = chapters.find((item) => item.id === activeChapterId);
+    const chapterScenes = scenes
+      .filter((item) => item.chapter_id === activeChapterId)
+      .slice()
+      .sort((left, right) => (left.order_index || 0) - (right.order_index || 0));
+    const chapterText = chapterScenes
+      .map((item) => item?.draft_text || item?.final_text || '')
+      .join('\n\n')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .trim();
     const selectedText = editor?.state?.selection?.empty
       ? ''
       : editor?.state?.doc?.textBetween(
@@ -246,6 +473,8 @@ export default function AISidebar({
       chapterId: activeChapterId || null,
       sceneId: activeSceneId || null,
       chapterIndex: chapter ? chapters.indexOf(chapter) : 0,
+      chapterText,
+      chapterSceneCount: chapterScenes.length,
     };
   };
 
@@ -280,12 +509,18 @@ export default function AISidebar({
   };
 
   const handleQuickAction = (action) => {
+    if (action.id !== 'plot' && showPlotManager) {
+      setShowPlotManager(false);
+    }
+
     if (action.id === 'plot' && plotSuggestions.length > 0 && !isStreaming) {
+      setPendingAction(null);
       setShowPlotManager(true);
       return;
     }
 
     if (action.needsGuidance && !isStreaming) {
+      setShowPlotManager(false);
       setPendingAction(action);
       setActionGuidance('');
       setTimeout(() => guidanceRef.current?.focus(), 50);
@@ -368,6 +603,28 @@ export default function AISidebar({
     }
   };
 
+  const handleApplyOutlineToChapter = async () => {
+    if (!activeChapterId || !parsedOutlineResult || !hasOutlinePatchData(parsedOutlineResult.chapterPatch)) return;
+
+    setOutlineApplyState('saving');
+    try {
+      await updateChapter(activeChapterId, {
+        purpose: parsedOutlineResult.chapterPatch.purpose,
+        summary: parsedOutlineResult.chapterPatch.summary,
+        key_events: parsedOutlineResult.chapterPatch.key_events,
+        thread_titles: parsedOutlineResult.chapterPatch.thread_titles,
+        featured_characters: parsedOutlineResult.chapterPatch.featured_characters,
+        primary_location: parsedOutlineResult.chapterPatch.primary_location,
+        required_factions: parsedOutlineResult.chapterPatch.required_factions,
+        required_objects: parsedOutlineResult.chapterPatch.required_objects,
+      });
+      setOutlineApplyState('saved');
+    } catch (err) {
+      console.error('[Outline] Failed to apply chapter patch:', err);
+      setOutlineApplyState('error');
+    }
+  };
+
   const handleClearOutput = () => {
     clearOutput();
     setOutputScope(null);
@@ -376,14 +633,11 @@ export default function AISidebar({
 
   useEffect(() => {
     if (!isStreaming && completedText && lastTaskId === 'plot' && activeChapterId) {
-      const parsed = completedText
-        .split(/\n(?=(?:\*{0,2})?\d+[\)\.\:]|(?:^|\n)[-\*]\s|(?:^|\n)\*{2}[^\*])/m)
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 15);
+      const parsed = parsePlotSuggestions(completedText);
       if (parsed.length > 0) {
         setPlotSuggestions(parsed);
         setShowPlotManager(false);
-        db.savePlotSuggestions(activeChapterId, currentProject?.id, parsed).catch((err) => {
+        persistPlotSuggestions(parsed).catch((err) => {
           console.warn('[PlotSuggestions] Save failed:', err);
         });
       }
@@ -400,14 +654,44 @@ export default function AISidebar({
     const scene = scenes.find((item) => item.id === activeSceneId);
     return scene?.draft_text || '';
   })();
+  const hasPinnedTaskPanel = showPlotManager || !!pendingAction;
+
+  const persistPlotSuggestions = (nextSuggestions) => {
+    if (!activeChapterId) return Promise.resolve();
+    return db.savePlotSuggestions(activeChapterId, currentProject?.id, nextSuggestions.slice(0, 3));
+  };
+
+  const selectGuidanceText = (text) => {
+    setActionGuidance(text);
+    requestAnimationFrame(() => {
+      if (!guidanceRef.current) return;
+      autosizeTextarea(guidanceRef.current);
+      guidanceRef.current.focus();
+    });
+  };
+
+  const clearPersistedPlotSuggestions = () => {
+    if (!activeChapterId) return Promise.resolve();
+    return db.suggestions
+      .where('source_chapter_id').equals(activeChapterId)
+      .filter((item) => item.source_type === 'plot_suggestion')
+      .delete();
+  };
 
   const renderQuickActions = () => (
-    <div className="ai-quick-actions">
+    <div className="ai-quick-actions" ref={quickActionsRef}>
       {QUICK_ACTIONS.map((action) => {
         const isActive = activeAction === action.id && (isStreaming || isCheckingConflict);
         return (
           <button
             key={action.id}
+            ref={(node) => {
+              if (node) {
+                actionButtonRefs.current.set(action.id, node);
+              } else {
+                actionButtonRefs.current.delete(action.id);
+              }
+            }}
             className={`ai-action-btn ${action.id === 'conflict' ? 'ai-action-btn--warn' : ''} ${isActive ? 'ai-action-btn--active' : ''}`}
             onClick={() => handleQuickAction(action)}
             disabled={isStreaming || isCheckingConflict}
@@ -432,28 +716,21 @@ export default function AISidebar({
       </div>
       <div className="ai-plot-manager">
         {plotSuggestions.map((suggestion, index) => {
-          const title = suggestion.replace(/^\*{0,2}\d+[\.\)]\*{0,2}\s*/, '').split(/[\.\!\?]/)[0];
           return (
-            <div key={index} className="ai-plot-manager-item">
-              <div className="ai-plot-manager-title">{title}</div>
-              <p className="ai-plot-manager-text">{suggestion}</p>
+            <div key={suggestion.id || index} className="ai-plot-manager-item">
+              <div className="ai-plot-manager-title">{suggestion.title}</div>
+              <p className="ai-plot-manager-text">{suggestion.summary}</p>
               <button
                 className="btn btn-ghost btn-sm"
                 onClick={() => {
-                  const updated = plotSuggestions.filter((_, itemIndex) => itemIndex !== index);
+                  const updated = plotSuggestions.filter((item) => item.id !== suggestion.id);
                   setPlotSuggestions(updated);
-                  if (activeChapterId) {
-                    if (updated.length > 0) {
-                      db.savePlotSuggestions(activeChapterId, currentProject?.id, updated).catch((err) => {
-                        console.warn('[PlotSuggestions] Delete item failed:', err);
-                      });
-                    } else {
-                      db.suggestions
-                        .where('source_chapter_id').equals(activeChapterId)
-                        .filter((item) => item.source_type === 'plot_suggestion')
-                        .delete()
-                        .then(() => setShowPlotManager(false));
-                    }
+                  if (updated.length > 0) {
+                    persistPlotSuggestions(updated).catch((err) => {
+                      console.warn('[PlotSuggestions] Delete item failed:', err);
+                    });
+                  } else {
+                    clearPersistedPlotSuggestions().then(() => setShowPlotManager(false));
                   }
                 }}
               >
@@ -468,15 +745,7 @@ export default function AISidebar({
           className="btn btn-ghost btn-sm"
           onClick={() => {
             setPlotSuggestions([]);
-            if (activeChapterId) {
-              db.suggestions
-                .where('source_chapter_id').equals(activeChapterId)
-                .filter((item) => item.source_type === 'plot_suggestion')
-                .delete()
-                .then(() => setShowPlotManager(false));
-            } else {
-              setShowPlotManager(false);
-            }
+            clearPersistedPlotSuggestions().then(() => setShowPlotManager(false));
           }}
         >
           <Trash2 size={12} /> Xóa tất cả
@@ -488,8 +757,19 @@ export default function AISidebar({
     </div>
   );
 
-  const renderGuidanceInput = () => pendingAction && (
-    <div className="ai-guidance-panel">
+  const renderGuidanceInput = () => {
+    if (!pendingAction) return null;
+
+    const showPlotAssist = pendingAction.id === 'continue' && plotSuggestions.length > 0;
+    const plotAssistLabel = `Co ${plotSuggestions.length} huong plot da luu cho chuong nay`;
+    const guidancePanelClassName = [
+      'ai-guidance-panel',
+      !scopedHasOutput ? 'ai-guidance-panel--expanded' : '',
+      isMobileLayout ? 'ai-guidance-panel--mobile' : '',
+    ].filter(Boolean).join(' ');
+
+    return (
+      <div className={guidancePanelClassName}>
       <div className="ai-guidance-header">
         <pendingAction.icon size={14} />
         <span>{pendingAction.label}</span>
@@ -498,41 +778,59 @@ export default function AISidebar({
         </button>
       </div>
 
-      {plotSuggestions.length > 0 && (
-        <div className="ai-guidance-chips">
-          <div className="ai-guidance-chips-header">
-            <Bookmark size={12} />
-            <span>Gợi ý plot ({plotSuggestions.length})</span>
-            <button
-              className="btn btn-ghost btn-icon btn-sm"
-              onClick={() => {
-                setPlotSuggestions([]);
-                if (activeChapterId) {
-                  db.suggestions
-                    .where('source_chapter_id').equals(activeChapterId)
-                    .filter((item) => item.source_type === 'plot_suggestion')
-                    .delete();
-                }
-              }}
-            >
-              <Trash2 size={11} />
-            </button>
+      {showPlotAssist && (
+        <div className="ai-plot-assist">
+          <div className="ai-plot-assist-summary">
+            <div className="ai-plot-assist-title">
+              <Bookmark size={12} />
+              <span>{plotAssistLabel}</span>
+            </div>
+            <div className="ai-plot-assist-summary-actions">
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowPlotAssistPicker((value) => !value)}
+                type="button"
+              >
+                {showPlotAssistPicker ? 'Ẩn chi tiết' : 'Xem chi tiết'}
+              </button>
+              <button
+                className="btn btn-ghost btn-icon btn-sm"
+                onClick={() => {
+                  setPlotSuggestions([]);
+                  clearPersistedPlotSuggestions();
+                }}
+                title="Xóa gợi ý plot"
+                type="button"
+              >
+                <Trash2 size={11} />
+              </button>
+            </div>
           </div>
-          <div className="ai-guidance-chips-list">
+          <div className="ai-plot-assist-note">
+            Plot suggestion chỉ là gợi ý để chọn hướng viết tiếp. Mặc định không tự bung ra để tránh rối mắt.
+          </div>
+          {showPlotAssistPicker && (
+          <div className="ai-plot-assist-list">
             {plotSuggestions.map((suggestion, index) => {
-              const label = suggestion.replace(/^\d+[\.\)]\s*/, '').split(/[\.!\?]/)[0].substring(0, 60);
+              const isActive = actionGuidance === suggestion.guidance;
               return (
                 <button
-                  key={index}
-                  className={`ai-chip ${actionGuidance === suggestion ? 'ai-chip--active' : ''}`}
-                  onClick={() => setActionGuidance(suggestion)}
-                  title={suggestion}
+                  key={suggestion.id || index}
+                  className={`ai-plot-assist-card ${isActive ? 'ai-plot-assist-card--active' : ''}`}
+                  onClick={() => selectGuidanceText(suggestion.guidance)}
+                  title={suggestion.summary}
+                  type="button"
                 >
-                  {label}...
+                  <span className="ai-plot-assist-card-index">{index + 1}</span>
+                  <span className="ai-plot-assist-card-body">
+                    <span className="ai-plot-assist-card-title">{suggestion.title}</span>
+                    <span className="ai-plot-assist-card-text">{suggestion.summary}</span>
+                  </span>
                 </button>
               );
             })}
           </div>
+          )}
         </div>
       )}
 
@@ -563,11 +861,132 @@ export default function AISidebar({
           <Send size={12} /> Gửi
         </button>
       </div>
-    </div>
-  );
+      </div>
+    );
+  };
+
+  const renderOutlineResult = () => {
+    if (!parsedOutlineResult) return null;
+
+    const modeLabels = {
+      create_current_chapter: 'Tao dan y cho chuong hien tai',
+      fill_current_chapter: 'Lap beat con thieu trong chuong hien tai',
+      ready_for_next_chapter: 'Chuong nay gan hoan tat',
+    };
+    const canApplyPatch = hasOutlinePatchData(parsedOutlineResult.chapterPatch);
+
+    const patchMeta = [
+      parsedOutlineResult.chapterPatch.primary_location
+        ? `Dia diem: ${parsedOutlineResult.chapterPatch.primary_location}`
+        : '',
+      parsedOutlineResult.chapterPatch.featured_characters.length > 0
+        ? `Nhan vat: ${parsedOutlineResult.chapterPatch.featured_characters.join(', ')}`
+        : '',
+      parsedOutlineResult.chapterPatch.thread_titles.length > 0
+        ? `Threads: ${parsedOutlineResult.chapterPatch.thread_titles.join(', ')}`
+        : '',
+    ].filter(Boolean);
+
+    return (
+      <div className="ai-outline-result">
+        <div className="ai-outline-result__header">
+          <div className="ai-outline-result__eyebrow">Dan y chuong</div>
+          <div className="ai-outline-result__mode">{modeLabels[parsedOutlineResult.mode] || 'Phan tich dan y chuong hien tai'}</div>
+        </div>
+
+        {(parsedOutlineResult.purpose || parsedOutlineResult.summary) && (
+          <div className="ai-outline-result__section">
+            {parsedOutlineResult.purpose && (
+              <div className="ai-outline-result__lead">
+                <strong>Purpose:</strong> {parsedOutlineResult.purpose}
+              </div>
+            )}
+            {parsedOutlineResult.summary && (
+              <div className="ai-outline-result__lead">
+                <strong>Summary:</strong> {parsedOutlineResult.summary}
+              </div>
+            )}
+            {patchMeta.length > 0 && (
+              <div className="ai-outline-result__chips">
+                {patchMeta.map((item) => (
+                  <span key={item} className="ai-outline-chip">{item}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {parsedOutlineResult.completedBeats.length > 0 && (
+          <div className="ai-outline-result__section">
+            <div className="ai-outline-result__title">Beat da hoan thanh / da co dau hieu</div>
+            <div className="ai-outline-beat-list">
+              {parsedOutlineResult.completedBeats.map((beat) => (
+                <div key={beat.id} className="ai-outline-beat-card ai-outline-beat-card--done">
+                  <div className="ai-outline-beat-card__title">{beat.title}</div>
+                  {beat.status && <div className="ai-outline-beat-card__meta">Trang thai: {beat.status}</div>}
+                  {beat.evidence && <div className="ai-outline-beat-card__text">{beat.evidence}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {parsedOutlineResult.nextBeats.length > 0 && (
+          <div className="ai-outline-result__section">
+            <div className="ai-outline-result__title">Beat con thieu / beat tiep theo</div>
+            <div className="ai-outline-beat-list">
+              {parsedOutlineResult.nextBeats.map((beat) => (
+                <div key={beat.id} className="ai-outline-beat-card">
+                  <div className="ai-outline-beat-card__title">{beat.title}</div>
+                  {beat.beat && <div className="ai-outline-beat-card__text">{beat.beat}</div>}
+                  {beat.characterChange && <div className="ai-outline-beat-card__meta">Nhan vat: {beat.characterChange}</div>}
+                  {beat.thread && <div className="ai-outline-beat-card__meta">Thread: {beat.thread}</div>}
+                  {beat.boundaryReason && <div className="ai-outline-beat-card__meta">Ly do giu trong chuong nay: {beat.boundaryReason}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {parsedOutlineResult.progressWarning && (
+          <div className="ai-outline-result__warning">
+            <strong>Canh bao tien do:</strong> {parsedOutlineResult.progressWarning}
+          </div>
+        )}
+
+        {parsedOutlineResult.transitionNote && (
+          <div className="ai-outline-result__transition">
+            <strong>Goi y chuyen chuong:</strong> {parsedOutlineResult.transitionNote}
+          </div>
+        )}
+
+        {canApplyPatch && (
+          <div className="ai-outline-result__footer">
+            <div className="ai-outline-result__note">Ap vao chapter hien tai se cap nhat purpose, summary va cac truong outline cot loi. Khong tu dong doi ten chuong.</div>
+            <button
+              className="btn btn-accent btn-sm"
+              onClick={handleApplyOutlineToChapter}
+              disabled={outlineApplyState === 'saving'}
+            >
+              {outlineApplyState === 'saving' ? <Loader2 size={12} className="spin" /> : <ArrowDownToLine size={12} />}
+              {outlineApplyState === 'saved' ? 'Da ap vao chuong' : outlineApplyState === 'error' ? 'Thu ap lai' : 'Ap vao chuong hien tai'}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderOutputArea = (showEmptyState = false) => {
     if (!scopedHasOutput && !showEmptyState) return null;
+
+    const showOutputMeta = !!(
+      lastRouteInfo
+      && !scopedIsStreaming
+      && !scopedError
+      && scopedHasOutput
+      && PROSE_OUTPUT_TASKS.has(scopedTaskId)
+    );
 
     return (
       <div className="ai-output-area">
@@ -610,6 +1029,8 @@ export default function AISidebar({
         <div className="ai-output-content" ref={outputRef}>
           {scopedError ? (
             <div className="ai-output-error">{scopedError}</div>
+          ) : parsedOutlineResult ? (
+            renderOutlineResult()
           ) : scopedDisplayText ? (
             <div className="ai-output-text">{scopedDisplayText}{scopedIsStreaming && <span className="ai-cursor">|</span>}</div>
           ) : (
@@ -617,7 +1038,7 @@ export default function AISidebar({
           )}
         </div>
 
-        {lastRouteInfo && !scopedIsStreaming && !scopedError && scopedHasOutput && (
+        {showOutputMeta && (
           <div className="ai-output-meta">
             <span>{lastRouteInfo.provider === 'ollama' ? 'Local' : 'Cloud'} · {lastRouteInfo.model}</span>
             {lastElapsed && <span>· {(lastElapsed / 1000).toFixed(1)}s</span>}
@@ -659,6 +1080,32 @@ export default function AISidebar({
     </form>
   );
 
+  const renderBottomDock = () => (
+    <div
+      className={[
+        'ai-bottom-dock',
+        hasPinnedTaskPanel ? 'ai-bottom-dock--task-open' : '',
+        hasPinnedTaskPanel && !scopedHasOutput ? 'ai-bottom-dock--expanded' : '',
+        isMobileLayout && hasPinnedTaskPanel ? 'ai-bottom-dock--mobile-sheet' : '',
+      ].filter(Boolean).join(' ')}
+    >
+      {renderPlotManager()}
+      {renderGuidanceInput()}
+      {!hasPinnedTaskPanel && renderPromptComposer()}
+    </div>
+  );
+
+  const renderDesktopBody = () => (
+    <div className="ai-sidebar-body">
+      {scopedHasOutput ? (
+        <div className="ai-main-stack">
+          {renderOutputArea(false)}
+        </div>
+      ) : null}
+      {renderBottomDock()}
+    </div>
+  );
+
   const renderMobileBody = () => (
     <div className="ai-mobile-layout">
       <div className="ai-mobile-tabs">
@@ -675,12 +1122,19 @@ export default function AISidebar({
 
       <div className="ai-mobile-panel">
         {mobileTab === 'ai' && (
-          <>
+          <div className="ai-mobile-ai" ref={mobileAiRef}>
             {renderQuickActions()}
-            {renderPlotManager()}
-            {renderGuidanceInput()}
-            {renderPromptComposer()}
-          </>
+            {hasPinnedTaskPanel ? (
+              <div
+                className="ai-mobile-task-overlay"
+                style={{ top: `${mobileOverlayTop}px` }}
+              >
+                {renderBottomDock()}
+              </div>
+            ) : (
+              renderPromptComposer()
+            )}
+          </div>
         )}
 
         {mobileTab === 'codex' && (
@@ -706,10 +1160,7 @@ export default function AISidebar({
     <div className="ai-sidebar">
       <CodexPanel sceneText={currentSceneText} />
       {renderQuickActions()}
-      {renderPlotManager()}
-      {renderGuidanceInput()}
-      {renderOutputArea(false)}
-      {renderPromptComposer()}
+      {renderDesktopBody()}
     </div>
   );
 }

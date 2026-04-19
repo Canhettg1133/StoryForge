@@ -207,4 +207,80 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[0].content).toContain('[KIEM TRA TRUOC KHI VIET]');
     expect(messages[0].content).toContain('Canh bao anti-hallucination');
   });
+
+  it('forces OUTLINE to stay inside the current chapter and respect future chapter fences', () => {
+    const messages = buildPrompt(TASK_TYPES.OUTLINE, {
+      chapterText: 'Lam Phong dot pha Truc Co xong nhung van dang che giau. Tran Lao Quai da xuat hien o son coc.',
+      chapterSceneCount: 2,
+      currentChapterIndex: 9,
+      targetLength: 100,
+      milestones: [{ label: 'Midpoint', percent: 50 }],
+      currentMacroArc: {
+        title: 'Khoi dong tong mon',
+        chapter_from: 8,
+        chapter_to: 15,
+      },
+      currentChapterOutline: {
+        title: 'Chuong 10: Truc Co',
+        summary: 'Che giau vu dot pha va doi dau voi mot loi canh bao som.',
+        purpose: 'Day thread Truc Co len mot nac nhung chua lo het bi mat.',
+        threadTitles: ['Bi mat Truc Co', 'Tran Lao Quai tro lai'],
+        keyEvents: [
+          'Lam Phong dot pha Truc Co',
+          'Tran Lao Quai xuat hien o son coc',
+          'Thanh Van Tong bat dau nghi ngo',
+        ],
+      },
+      upcomingChapters: [
+        { title: 'Chuong 11: Che giau va song gio tro lai', summary: 'Thanh Van Tong dieu tra va bi mat bat dau ro dang.' },
+      ],
+    });
+
+    expect(messages[0].content).toContain('[NHIEM VU CHUONG NAY - BAM SAT, KHONG LAC SANG CHUONG KHAC]');
+    expect(messages[0].content).toContain('[CAC CHUONG TIEP THEO - TUYET DOI KHONG VIET TRUOC NOI DUNG NAY]');
+    expect(messages[0].content).toContain('[OUTLINE GUARDRAILS]');
+    expect(messages[0].content).toContain('[STORY PROGRESS BUDGET - CHUONG NAY]');
+    expect(messages[0].content).toContain('[DOI CHIEU DAN Y VA NOI DUNG DA VIET - HEURISTIC, CHI DUNG DE DOI CHIEU]');
+    expect(messages[0].content).toContain('"chapter_patch"');
+    expect(messages[0].content).toContain('"next_beats"');
+    expect(messages[1].content).toContain('[NOI DUNG DA CO CUA CHUONG HIEN TAI]');
+    expect(messages[1].content).toContain('[GIOI HAN TIEN DO CHUONG NAY]');
+    expect(messages[1].content).toContain('Tuyet doi khong viet thay noi dung cua chuong sau da co dan y.');
+  });
+
+  it('marks likely covered outline beats conservatively from existing chapter text', () => {
+    const messages = buildPrompt(TASK_TYPES.OUTLINE, {
+      chapterText: 'Lam Phong dot pha Truc Co ngay trong son coc. Sau do Tran Lao Quai xuat hien o son coc va ep han im lang.',
+      currentChapterOutline: {
+        title: 'Chuong 10: Truc Co',
+        keyEvents: [
+          'Lam Phong dot pha Truc Co',
+          'Tran Lao Quai xuat hien o son coc',
+          'Thanh Van Tong bat dau nghi ngo',
+        ],
+      },
+    });
+
+    expect(messages[0].content).toContain('co kha nang da viet: Lam Phong dot pha Truc Co');
+    expect(messages[0].content).toContain('co kha nang da viet: Tran Lao Quai xuat hien o son coc');
+    expect(messages[0].content).toContain('chua thay dau hieu ro: Thanh Van Tong bat dau nghi ngo');
+  });
+
+  it('locks the OUTLINE JSON contract so parser fields are not removed by prompt edits', () => {
+    const protection = getTaskInstructionProtection(TASK_TYPES.OUTLINE);
+
+    expect(protection).toBeTruthy();
+    expect(protection.lockedPrompt).toContain('"mode"');
+    expect(protection.lockedPrompt).toContain('"chapter_patch"');
+
+    const editable = stripProtectedTaskInstruction(
+      TASK_TYPES.OUTLINE,
+      TASK_INSTRUCTIONS[TASK_TYPES.OUTLINE],
+    );
+    expect(editable).not.toContain('"chapter_patch"');
+
+    const recomposed = composeTaskInstruction(TASK_TYPES.OUTLINE, editable);
+    expect(recomposed).toContain('"completed_beats"');
+    expect(recomposed).toContain('Chi tra ve JSON');
+  });
 });
