@@ -66,21 +66,7 @@
 }
 
 .scene-editor-desktop-menu-trigger {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 6;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 0 12px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-bg-secondary) 94%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-border) 82%, transparent);
-  backdrop-filter: blur(12px);
-  font-size: 12px;
-  font-weight: 700;
+  display: none !important;
 }
 
 @media (max-width: 1180px) {

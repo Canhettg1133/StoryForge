@@ -64,12 +64,14 @@
 
 .chapter-list-collapsed-body {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   gap: var(--space-3);
   padding: var(--space-3) 0;
+  overflow: hidden;
 }
 
 .chapter-list-collapsed-count {
@@ -88,13 +90,17 @@
 
 .chapter-list-collapsed-tree {
   flex: 1;
+  min-height: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-bottom: var(--space-3);
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .chapter-list-collapsed-group {
