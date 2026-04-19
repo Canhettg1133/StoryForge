@@ -2,11 +2,14 @@
   display: flex;
   width: 100vw;
   height: 100vh;
+  min-height: 0;
   overflow: hidden;
 }
 
 .app-main {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;

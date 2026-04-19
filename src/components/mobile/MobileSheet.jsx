@@ -10,6 +10,7 @@ export default function MobileSheet({
   onClose,
   children,
   footer = null,
+  bodyScroll = 'auto',
 }) {
   useEffect(() => {
     if (!open) return undefined;
@@ -36,7 +37,7 @@ export default function MobileSheet({
             <X size={18} />
           </button>
         </header>
-        <div className="mobile-sheet-body">
+        <div className={`mobile-sheet-body ${bodyScroll === 'hidden' ? 'mobile-sheet-body--no-scroll' : ''}`}>
           {children}
         </div>
         {footer && <footer className="mobile-sheet-footer">{footer}</footer>}

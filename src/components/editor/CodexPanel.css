@@ -4,12 +4,19 @@
 
 .codex-panel {
   border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-  max-height: 30%;
+  flex: 0 0 auto;
   min-height: 44px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.codex-panel--expanded {
+  block-size: clamp(160px, 28%, 320px);
+}
+
+.codex-panel--collapsed {
+  block-size: auto;
 }
 
 .codex-panel-header {
@@ -52,9 +59,10 @@
 }
 
 .codex-panel-body {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 0 var(--space-2) var(--space-2);
-  flex: 1;
 }
 
 .codex-panel-body::-webkit-scrollbar {

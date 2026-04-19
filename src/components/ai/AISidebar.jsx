@@ -1091,18 +1091,18 @@ export default function AISidebar({
     >
       {renderPlotManager()}
       {renderGuidanceInput()}
-      {!hasPinnedTaskPanel && renderPromptComposer()}
     </div>
   );
 
   const renderDesktopBody = () => (
     <div className="ai-sidebar-body">
+      {!hasPinnedTaskPanel && renderPromptComposer()}
       {scopedHasOutput ? (
         <div className="ai-main-stack">
           {renderOutputArea(false)}
         </div>
       ) : null}
-      {renderBottomDock()}
+      {hasPinnedTaskPanel ? renderBottomDock() : null}
     </div>
   );
 

@@ -110,7 +110,7 @@ export default function CodexPanel({ sceneText = '' }) {
   if (!currentProject) return null;
 
   return (
-    <div className="codex-panel">
+    <div className={`codex-panel ${expanded ? 'codex-panel--expanded' : 'codex-panel--collapsed'}`}>
       {/* Header */}
       <div className="codex-panel-header" onClick={() => setExpanded(!expanded)}>
         <div className="codex-panel-header-left">
