@@ -571,6 +571,157 @@
   gap: var(--space-3);
 }
 
+.bible-planning-scope {
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+  border: 1px solid rgba(124, 58, 237, 0.22);
+  border-radius: var(--radius-lg, 10px);
+  background: linear-gradient(180deg, rgba(124, 58, 237, 0.08), rgba(255,255,255,0.02));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.bible-planning-scope__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.bible-planning-scope__header strong {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #d8c4ff;
+  margin-bottom: 4px;
+}
+
+.bible-planning-scope__chips,
+.bible-planning-scope__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bible-planning-scope__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.bible-planning-scope__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.bible-planning-scope__summary {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.bible-planning-scope__warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bible-planning-scope__warning {
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.bible-planning-scope__warning--warning {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.24);
+  color: #ffd89b;
+}
+
+.bible-planning-scope__warning--info {
+  background: rgba(14, 165, 233, 0.08);
+  border-color: rgba(14, 165, 233, 0.22);
+  color: #b9eeff;
+}
+
+.bible-milestone-plan-panel {
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg, 10px);
+  background: rgba(255,255,255,0.02);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.bible-milestone-plan-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.bible-milestone-plan-panel__header strong {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+
+.bible-milestone-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bible-milestone-plan-row {
+  display: grid;
+  grid-template-columns: minmax(0, 160px) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.03);
+}
+
+.bible-milestone-plan-row__label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bible-milestone-plan-row__label strong {
+  font-size: 12px;
+}
+
+.bible-milestone-plan-row__label span {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.bible-milestone-plan-row__inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
 .macro-contract-panel {
   margin-top: var(--space-2);
   padding: var(--space-3);
@@ -923,7 +1074,10 @@
 
   .bible-grid,
   .bible-grid--terms,
-  .bible-edit-row {
+  .bible-edit-row,
+  .bible-planning-scope__grid,
+  .bible-milestone-plan-row,
+  .bible-milestone-plan-row__inputs {
     display: flex;
     flex-direction: column;
   }
@@ -938,6 +1092,11 @@
 
   .bible-inline-actions {
     flex-wrap: wrap;
+  }
+
+  .bible-planning-scope__actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .strictness-options,

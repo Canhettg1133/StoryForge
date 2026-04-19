@@ -635,8 +635,10 @@ export const TASK_INSTRUCTIONS = {
     'Chi tra ve noi dung chuong, KHONG them tieu de hay ghi chu.',
   ].join('\n'),
   [TASK_TYPES.GENERATE_MACRO_MILESTONES]: withPlanningAndCanonPrefix([
-    'Hoach dinh DUNG so luong cot moc dai cuc duoc yeu cau cho toan bo truyen, moi cot moc la mot diem ngoat LON cua hanh trinh.',
-    'Can phan bo hop ly theo tong do dai du kien, co leo thang, khung hoang, dao chieu va tra gia ro rang.',
+    'Hoach dinh DUNG so luong cot moc dai cuc duoc yeu cau cho dung PHAM VI LAP KE HOACH duoc cung cap; moi cot moc la mot diem ngoat LON cua hanh trinh.',
+    'Phai phan biet ro GIUA tong do dai du kien cua toan truyen va pham vi chapter dang duoc yeu cau lap dai cuc.',
+    'Neu pham vi lap ke hoach khong bat dau tu Chuong 1 thi KHONG duoc tu y keo cot moc ve Chuong 1 va KHONG duoc coi pham vi do la toan bo truyen.',
+    'Can phan bo hop ly trong pham vi duoc giao, co leo thang, khung hoang, dao chieu va tra gia ro rang.',
     'Neu tac gia co yeu cau rieng, uu tien toi da theo yeu cau do.',
     'Moi cot moc bat buoc phai tra ve them mot contract co cau truc de he thong dung cho planner va validator, khong chi mo ta bang van tu do.',
     'Tra ve CHINH XAC JSON format sau:',
@@ -1026,6 +1028,12 @@ function formatChapterBriefList(briefs, options) {
 function formatStoryProgressBudget(storyProgressBudget) {
   if (!storyProgressBudget) return '';
   const parts = [];
+  if (Number.isFinite(Number(storyProgressBudget.currentChapterCount))) {
+    parts.push('So chuong da co hien tai: ' + storyProgressBudget.currentChapterCount);
+  }
+  if (Number.isFinite(Number(storyProgressBudget.batchStartChapter)) && Number.isFinite(Number(storyProgressBudget.batchEndChapter))) {
+    parts.push('Dot nay tao tu Chuong ' + storyProgressBudget.batchStartChapter + ' den Chuong ' + storyProgressBudget.batchEndChapter);
+  }
   if (Number.isFinite(Number(storyProgressBudget.fromPercent)) && Number.isFinite(Number(storyProgressBudget.toPercent))) {
     parts.push('Pham vi tien do batch nay: ' + storyProgressBudget.fromPercent + '% -> ' + storyProgressBudget.toPercent + '%');
   }
@@ -1046,6 +1054,18 @@ function formatStoryProgressBudget(storyProgressBudget) {
   }
   if (storyProgressBudget.remainingInMacro != null) {
     parts.push('So chuong con lai truoc khi ket thuc macro arc: ' + storyProgressBudget.remainingInMacro);
+  }
+  if (Number.isFinite(Number(storyProgressBudget.macroStartChapter)) && Number.isFinite(Number(storyProgressBudget.macroEndChapter)) && Number(storyProgressBudget.macroEndChapter) > 0) {
+    parts.push('Pham vi macro arc dang khoa: Chuong ' + storyProgressBudget.macroStartChapter + ' -> Chuong ' + storyProgressBudget.macroEndChapter);
+  }
+  if (Number.isFinite(Number(storyProgressBudget.batchMacroOverlapCount)) && Number(storyProgressBudget.batchMacroOverlapCount) > 0) {
+    parts.push('Batch nay di qua ' + storyProgressBudget.batchMacroOverlapCount + '/' + storyProgressBudget.macroSpan + ' chuong cua macro arc (' + storyProgressBudget.macroCoveragePercent + '%)');
+  }
+  if (storyProgressBudget.chaptersRemainingAfterBatchInMacro != null) {
+    parts.push('Sau batch nay van con ' + storyProgressBudget.chaptersRemainingAfterBatchInMacro + ' chuong nua moi toi cuoi macro arc');
+  }
+  if (storyProgressBudget.macroProgressCap) {
+    parts.push('Gioi han rieng cua macro arc: ' + storyProgressBudget.macroProgressCap);
   }
   if (storyProgressBudget.nextMilestone?.label || storyProgressBudget.nextMilestone?.title) {
     const label = storyProgressBudget.nextMilestone.label || storyProgressBudget.nextMilestone.title;
@@ -1734,6 +1754,9 @@ export function buildPrompt(taskType, context = {}) {
     macroRevisionInstruction = '',
     macroMilestoneCount = 0,
     macroMilestoneRequirements = '',
+    planningScopeStart = 0,
+    planningScopeEnd = 0,
+    macroMilestoneChapterPlans = [],
   } = context;
 
   // Resolve writing style: context > auto-detect t? genre
@@ -2571,10 +2594,33 @@ export function buildPrompt(taskType, context = {}) {
       userContent = '[Y TUONG TAC GIA]\n' + (authorIdea || userPrompt || '(Chua co y tuong cu the)');
       if (projectTitle) userContent += '\n\n[TEN TRUYEN]\n' + projectTitle;
       if (genre) userContent += '\n\n[THE LOAI]\n' + genre;
-      if (targetLength > 0) userContent += '\n\n[DO DAI DU KIEN]\n' + targetLength + ' chuong';
+      if (targetLength > 0) userContent += '\n\n[TONG DO DAI TRUYEN DU KIEN]\n' + targetLength + ' chuong';
+      if (Number(planningScopeStart) > 0 && Number(planningScopeEnd) >= Number(planningScopeStart)) {
+        const planningScopeSpan = Number(planningScopeEnd) - Number(planningScopeStart) + 1;
+        userContent += '\n\n[PHAM VI LAP DAI CUC LAN NAY]\n';
+        userContent += 'Chuong ' + planningScopeStart + ' -> ' + planningScopeEnd + ' (' + planningScopeSpan + ' chuong)';
+        userContent += '\nChi duoc tao va phan bo cot moc trong dung pham vi nay.';
+        userContent += '\nKhong duoc tu y keo nguoc ve chuong 1 neu pham vi khong bat dau tu chuong 1.';
+        userContent += '\nKhong duoc ngam coi pham vi nay la toan bo truyen neu tong do dai truyen con lon hon.';
+      }
       if (ultimateGoal) userContent += '\n\n[MUC TIEU CUOI CUNG]\n' + ultimateGoal;
       if (macroMilestoneCount > 0) {
         userContent += '\n\n[SO LUONG COT MOC CAN TAO]\n' + macroMilestoneCount;
+      }
+      if (Array.isArray(macroMilestoneChapterPlans) && macroMilestoneChapterPlans.length > 0) {
+        const planLines = macroMilestoneChapterPlans.map(function (item, index) {
+          const from = Number(item?.chapter_from) || 0;
+          const to = Number(item?.chapter_to) || 0;
+          if (from > 0 && to >= from) {
+            return '- Cot moc ' + (index + 1) + ': KHOA trong Chuong ' + from + ' -> ' + to;
+          }
+          return '- Cot moc ' + (index + 1) + ': AUTO phan bo';
+        }).join('\n');
+        userContent += '\n\n[PHAM VI RIENG TUNG COT MOC]\n' + planLines;
+        userContent += '\n\n[YEU CAU AP DUNG CHO TUNG COT MOC]\n';
+        userContent += 'Nhung cot moc da KHOA pham vi thi phai giu dung chapter range do.';
+        userContent += '\nNhung cot moc AUTO thi tu phan bo vao phan chapter con lai mot cach hop ly.';
+        userContent += '\nKhong duoc de hai cot moc KHOA dung sai thu tu hoac lan ra ngoai planning scope chung.';
       }
       if (macroMilestoneRequirements) {
         userContent += '\n\n[YEU CAU RIENG]\n' + macroMilestoneRequirements;

@@ -58,7 +58,9 @@ function localizeBudgetText(value) {
         .replace(/0-1 minor reveal/gi, '0-1 tiết lộ nhỏ')
         .replace(/1 minor reveal/gi, '1 tiết lộ nhỏ')
         .replace(/co the tang cap neu day la cuoi cot moc/gi, 'có thể tăng cấp nếu đây là cuối cột mốc')
-        .replace(/khong vuot tier lon trong batch nay/gi, 'không vượt bậc sức mạnh lớn trong đợt này');
+        .replace(/khong vuot tier lon trong batch nay/gi, 'không vượt bậc sức mạnh lớn trong đợt này')
+        .replace(/batch nay chi duoc day mot phan cot moc, khong duoc xem nhu da di tron cot moc/gi, 'đợt này chỉ được đẩy một phần cột mốc, không được xem như đã đi trọn cột mốc')
+        .replace(/batch nay co the cham moc ket thuc neu buildup da du/gi, 'đợt này có thể chạm mốc kết nếu buildup đã đủ');
 }
 
 function formatProgressBudget(storyProgressBudget) {
@@ -161,6 +163,24 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
     const selectedDraftCount = arcStore.selectedDraftIndexes?.length || 0;
     const batchWarning = arcStore.projectTargetLength >= 300
         && arcStore.arcChapterCount > arcStore.recommendedBatchCount;
+    const batchStartChapter = Number(arcStore.storyProgressBudget?.batchStartChapter) || (currentChapterCount + 1);
+    const batchEndChapter = Number(arcStore.storyProgressBudget?.batchEndChapter) || (currentChapterCount + Math.max(1, arcStore.arcChapterCount));
+    const selectedMacroArcHint = useMemo(() => {
+        if (!selectedMacroArc) return 'Chưa khóa theo đại cục nào. Hệ thống sẽ chỉ bám ngân sách tiến độ chung.';
+        const overlap = Number(arcStore.storyProgressBudget?.batchMacroOverlapCount) || 0;
+        const span = Number(arcStore.storyProgressBudget?.macroSpan) || 0;
+        const remaining = arcStore.storyProgressBudget?.chaptersRemainingAfterBatchInMacro;
+        const rangeText = selectedMacroArc.chapter_from && selectedMacroArc.chapter_to
+            ? `Chương ${selectedMacroArc.chapter_from}-${selectedMacroArc.chapter_to}`
+            : 'chưa có phạm vi chương rõ';
+        const overlapText = overlap > 0 && span > 0
+            ? `Đợt này phủ ${overlap}/${span} chương của mốc.`
+            : 'Đợt này chưa đi vào phần lõi của mốc.';
+        const remainingText = remaining != null
+            ? `Sau đợt này còn ${remaining} chương nữa mới đến cuối mốc.`
+            : '';
+        return `${rangeText}. ${overlapText} ${remainingText}`.trim();
+    }, [arcStore.storyProgressBudget, selectedMacroArc]);
 
     const appendRevisionPrompt = (extraPrompt) => {
         const current = (arcStore.outlineRevisionPrompt || '').trim();
@@ -346,6 +366,21 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                     </div>
                 )}
 
+                <div className="arc-batch-summary">
+                    <div className="arc-batch-summary__item">
+                        <span className="arc-batch-summary__label">Đã có</span>
+                        <strong>{currentChapterCount} chương</strong>
+                    </div>
+                    <div className="arc-batch-summary__item">
+                        <span className="arc-batch-summary__label">Đợt này tạo</span>
+                        <strong>Chương {batchStartChapter}-{batchEndChapter}</strong>
+                    </div>
+                    <div className="arc-batch-summary__item">
+                        <span className="arc-batch-summary__label">Đại cục mặc định</span>
+                        <strong>{selectedMacroArc ? selectedMacroArc.title : 'Chưa khóa'}</strong>
+                    </div>
+                </div>
+
                 <div className="arc-config-grid">
                     <div className="form-group">
                         <label className="form-label">Số chương muốn tạo</label>
@@ -359,6 +394,9 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                         />
                         <div className="arc-help-text">
                             Đề xuất hiện tại: {arcStore.recommendedBatchCount} chương cho tổng độ dài {arcStore.projectTargetLength || 'chưa đặt'}.
+                        </div>
+                        <div className="arc-help-text">
+                            Hiện đã có {currentChapterCount} chương. Nếu tạo đợt này, hệ thống sẽ sinh từ chương {batchStartChapter} đến chương {batchEndChapter}.
                         </div>
                     </div>
 
@@ -395,6 +433,9 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                 </option>
                             ))}
                         </select>
+                        <div className="arc-help-text">
+                            {selectedMacroArcHint}
+                        </div>
                     </div>
                 </div>
 

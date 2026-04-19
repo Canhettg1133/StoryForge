@@ -137,10 +137,74 @@ function normalizeMacroMilestoneItem(item, index = 0) {
     };
 }
 
-function normalizeMacroMilestonePayload(payload) {
-    const milestones = Array.isArray(payload?.milestones) ? payload.milestones : [];
+function normalizeMacroPlanningScope({ planningScopeStart = 0, planningScopeEnd = 0, targetLength = 0 }) {
+    const safeTarget = Math.max(Number(targetLength) || 0, Number(planningScopeEnd) || 0, Number(planningScopeStart) || 0, 1);
+    const start = Math.min(safeTarget, Math.max(1, Number(planningScopeStart) || 1));
+    const end = Math.max(start, Math.min(safeTarget, Number(planningScopeEnd) || safeTarget));
+    return { start, end, span: end - start + 1 };
+}
+
+function getDistributedScopeRange(scope, index, total) {
+    if (!scope || !scope.span || total <= 0) {
+        return { chapter_from: 0, chapter_to: 0 };
+    }
+    const startOffset = Math.floor((index * scope.span) / total);
+    const endOffset = Math.max(startOffset, Math.floor((((index + 1) * scope.span) / total) - 1));
     return {
-        milestones: milestones.map((item, index) => normalizeMacroMilestoneItem(item, index)),
+        chapter_from: scope.start + startOffset,
+        chapter_to: Math.min(scope.end, scope.start + endOffset),
+    };
+}
+
+function normalizeManualMacroMilestonePlans(plans = [], scope = null) {
+    if (!Array.isArray(plans) || !scope) return [];
+    return plans.map((item) => {
+        const from = Number(item?.chapter_from) || 0;
+        const to = Number(item?.chapter_to) || 0;
+        if (!from && !to) return null;
+        if (!from || !to) {
+            return {
+                chapter_from: from || 0,
+                chapter_to: to || 0,
+                isIncomplete: true,
+            };
+        }
+        const chapter_from = Math.min(scope.end, Math.max(scope.start, from));
+        const chapter_to = Math.max(chapter_from, Math.min(scope.end, to));
+        return {
+            chapter_from,
+            chapter_to,
+            isIncomplete: false,
+        };
+    });
+}
+
+function normalizeMacroMilestonePayload(payload, options = {}) {
+    const milestones = Array.isArray(payload?.milestones) ? payload.milestones : [];
+    const scope = options?.planningScope ? normalizeMacroPlanningScope(options.planningScope) : null;
+    const manualPlans = normalizeManualMacroMilestonePlans(options?.macroMilestoneChapterPlans, scope);
+    return {
+        milestones: milestones.map((item, index) => {
+            const normalized = normalizeMacroMilestoneItem(item, index);
+            if (!scope) {
+                return normalized;
+            }
+            const distributed = getDistributedScopeRange(scope, index, milestones.length);
+            const fixedPlan = manualPlans[index] && !manualPlans[index]?.isIncomplete ? manualPlans[index] : null;
+            const rawFrom = fixedPlan?.chapter_from || (Number(normalized.chapter_from) > 0 ? Number(normalized.chapter_from) : distributed.chapter_from);
+            const rawTo = fixedPlan?.chapter_to || (Number(normalized.chapter_to) > 0 ? Number(normalized.chapter_to) : distributed.chapter_to);
+            const chapter_from = Math.min(scope.end, Math.max(scope.start, rawFrom || scope.start));
+            const chapter_to = Math.max(
+                chapter_from,
+                Math.min(scope.end, Math.max(chapter_from, rawTo || chapter_from))
+            );
+            return {
+                ...normalized,
+                order: index + 1,
+                chapter_from,
+                chapter_to,
+            };
+        }),
     };
 }
 
@@ -340,9 +404,12 @@ export function buildStoryProgressBudget({
     selectedMacroArc = null,
     milestones = [],
 }) {
-    const safeTarget = Math.max(Number(targetLength) || 0, Math.max(Number(currentChapterCount) || 0, 0) + Math.max(Number(batchCount) || 0, 0), 1);
+    const safeBatchCount = Math.max(1, Number(batchCount) || 1);
+    const safeTarget = Math.max(Number(targetLength) || 0, Math.max(Number(currentChapterCount) || 0, 0) + safeBatchCount, 1);
     const currentCount = Math.max(0, Number(currentChapterCount) || 0);
-    const nextCount = Math.max(currentCount, currentCount + Math.max(1, Number(batchCount) || 1));
+    const nextCount = Math.max(currentCount, currentCount + safeBatchCount);
+    const batchStartChapter = currentCount + 1;
+    const batchEndChapter = nextCount;
     const fromPercent = Number(((currentCount / safeTarget) * 100).toFixed(1));
     const toPercent = Number(((nextCount / safeTarget) * 100).toFixed(1));
     const nextMilestone = Array.isArray(milestones)
@@ -351,23 +418,60 @@ export function buildStoryProgressBudget({
     const remainingInMacro = selectedMacroArc?.chapter_to
         ? Math.max(0, Number(selectedMacroArc.chapter_to) - currentCount)
         : null;
+    const macroStartChapter = Number(selectedMacroArc?.chapter_from) || 0;
+    const macroEndChapter = Number(selectedMacroArc?.chapter_to) || 0;
+    const macroSpan = macroStartChapter > 0 && macroEndChapter >= macroStartChapter
+        ? (macroEndChapter - macroStartChapter + 1)
+        : 0;
+    const batchMacroStart = macroSpan > 0
+        ? Math.max(batchStartChapter, macroStartChapter)
+        : 0;
+    const batchMacroEnd = macroSpan > 0
+        ? Math.min(batchEndChapter, macroEndChapter)
+        : 0;
+    const batchMacroOverlapCount = macroSpan > 0 && batchMacroEnd >= batchMacroStart
+        ? (batchMacroEnd - batchMacroStart + 1)
+        : 0;
+    const chaptersRemainingAfterBatchInMacro = macroSpan > 0
+        ? Math.max(0, macroEndChapter - batchEndChapter)
+        : null;
+    const batchCoversFullMacro = macroSpan > 0 && batchMacroOverlapCount >= macroSpan;
+    const batchReachesMacroEnd = macroSpan > 0 && batchEndChapter >= macroEndChapter;
+    const macroCoveragePercent = macroSpan > 0
+        ? Number(((batchMacroOverlapCount / macroSpan) * 100).toFixed(1))
+        : 0;
 
     return {
         fromPercent,
         toPercent,
         currentChapterCount: currentCount,
         targetLength: safeTarget,
-        batchCount: Math.max(1, Number(batchCount) || 1),
+        batchCount: safeBatchCount,
+        batchStartChapter,
+        batchEndChapter,
         mainPlotMaxStep: 1,
         romanceMaxStep: 1,
         mysteryRevealAllowance: nextMilestone && Number(nextMilestone.percent) - fromPercent > 5 ? '0-1 minor reveal' : '1 minor reveal',
-        powerProgressionCap: remainingInMacro != null && remainingInMacro <= Math.max(1, batchCount)
+        powerProgressionCap: remainingInMacro != null && remainingInMacro <= safeBatchCount
             ? 'co the tang cap neu day la cuoi cot moc'
             : 'khong vuot tier lon trong batch nay',
         requiredBeatMix: 'at least one setup/build-up/consequence chapter',
         selectedMacroArc,
         nextMilestone,
         remainingInMacro,
+        macroStartChapter,
+        macroEndChapter,
+        macroSpan,
+        batchMacroStart,
+        batchMacroEnd,
+        batchMacroOverlapCount,
+        chaptersRemainingAfterBatchInMacro,
+        batchCoversFullMacro,
+        batchReachesMacroEnd,
+        macroCoveragePercent,
+        macroProgressCap: !batchReachesMacroEnd && batchMacroOverlapCount > 0
+            ? 'batch nay chi duoc day mot phan cot moc, khong duoc xem nhu da di tron cot moc'
+            : 'batch nay co the cham moc ket thuc neu buildup da du',
     };
 }
 
@@ -378,6 +482,27 @@ function detectMacroArcForChapter(macroArcs = [], nextChapterNumber = 1) {
         if (!to) return false;
         return nextChapterNumber >= from && nextChapterNumber <= to;
     }) || null;
+}
+
+function detectMacroArcForBatch(macroArcs = [], batchStartChapter = 1, batchEndChapter = batchStartChapter) {
+    const batchOwner = detectMacroArcForChapter(macroArcs, batchStartChapter);
+    if (batchOwner) return batchOwner;
+
+    let bestMatch = null;
+    let bestOverlap = 0;
+    for (const item of macroArcs) {
+        const from = Number(item?.chapter_from) || 0;
+        const to = Number(item?.chapter_to) || 0;
+        if (!to || to < from) continue;
+        const overlapStart = Math.max(batchStartChapter, from);
+        const overlapEnd = Math.min(batchEndChapter, to);
+        const overlap = overlapEnd >= overlapStart ? (overlapEnd - overlapStart + 1) : 0;
+        if (overlap > bestOverlap) {
+            bestOverlap = overlap;
+            bestMatch = item;
+        }
+    }
+    return bestMatch;
 }
 
 function hasThreadAnchor(chapter = {}) {
@@ -530,7 +655,11 @@ async function loadArcGenerationProjectState(projectId, currentChapterCount = 0)
     const targetLength = Number(project?.target_length) || 0;
     const recommendedBatch = recommendArcBatchCount(targetLength);
     const nextChapterNumber = Math.max(1, Number(currentChapterCount) + 1);
-    const selectedMacroArc = detectMacroArcForChapter(macroArcs, nextChapterNumber);
+    const selectedMacroArc = detectMacroArcForBatch(
+        macroArcs,
+        nextChapterNumber,
+        nextChapterNumber + Math.max(0, recommendedBatch - 1),
+    );
 
     return {
         project,
@@ -665,7 +794,16 @@ const useArcGenStore = create((set, get) => ({
             nextState.selectedMacroArcId = config.currentMacroArcId;
         }
         if (Object.prototype.hasOwnProperty.call(config, 'arcChapterCount')) {
-            const selectedMacroArc = getSelectedMacroArcFromState({ ...state, ...nextState });
+            const selectedMacroArc = getSelectedMacroArcFromState({ ...state, ...nextState })
+                || detectMacroArcForBatch(
+                    state.availableMacroArcs,
+                    Number(state.currentChapterCount || 0) + 1,
+                    Number(state.currentChapterCount || 0) + Math.max(1, Number(config.arcChapterCount) || 1),
+                );
+            if (!state.selectedMacroArcId && !state.currentMacroArcId && selectedMacroArc?.id) {
+                nextState.selectedMacroArcId = selectedMacroArc.id;
+                nextState.currentMacroArcId = selectedMacroArc.id;
+            }
             nextState.storyProgressBudget = buildStoryProgressBudget({
                 targetLength: state.projectTargetLength,
                 currentChapterCount: state.currentChapterCount,
@@ -1502,13 +1640,27 @@ const useArcGenStore = create((set, get) => ({
      * @param {string} params.authorIdea   - Ý tưởng tổng thể của tác giả (vài câu)
      * @param {string} params.genre
      */
-    generateMacroMilestones: async ({ projectId, authorIdea, genre, milestoneCount = 0, requirements = '' }) => {
+    generateMacroMilestones: async ({
+        projectId,
+        authorIdea,
+        genre,
+        milestoneCount = 0,
+        requirements = '',
+        planningScopeStart = 0,
+        planningScopeEnd = 0,
+        macroMilestoneChapterPlans = [],
+    }) => {
         set({ isSuggestingMilestones: true, macroMilestoneSuggestions: null });
 
         try {
             const project = await db.projects.get(projectId);
             const targetLength = project?.target_length || 0;
             const ultimateGoal = project?.ultimate_goal || '';
+            const planningScope = normalizeMacroPlanningScope({
+                planningScopeStart,
+                planningScopeEnd,
+                targetLength,
+            });
             let promptTemplates = {};
             if (project?.prompt_templates) {
                 try { promptTemplates = JSON.parse(project.prompt_templates); } catch { }
@@ -1524,6 +1676,9 @@ const useArcGenStore = create((set, get) => ({
                 promptTemplates,
                 macroMilestoneCount: milestoneCount,
                 macroMilestoneRequirements: requirements,
+                planningScopeStart: planningScope.start,
+                planningScopeEnd: planningScope.end,
+                macroMilestoneChapterPlans,
             });
 
             await new Promise((resolve) => {
@@ -1537,7 +1692,13 @@ const useArcGenStore = create((set, get) => ({
                             if (!isPlainObject(parsed) || !Array.isArray(parsed.milestones)) {
                                 throw new Error('Invalid milestones format');
                             }
-                            set({ macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed), isSuggestingMilestones: false });
+                            set({
+                                macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed, {
+                                    planningScope,
+                                    macroMilestoneChapterPlans,
+                                }),
+                                isSuggestingMilestones: false,
+                            });
                         } catch (e) {
                             console.error('[ArcGen] Failed to parse milestones:', e, text);
                             set({ isSuggestingMilestones: false });
@@ -1564,6 +1725,9 @@ const useArcGenStore = create((set, get) => ({
         existingMilestones = [],
         milestoneCount = 0,
         requirements = '',
+        planningScopeStart = 0,
+        planningScopeEnd = 0,
+        macroMilestoneChapterPlans = [],
     }) => {
         set({ isRevisingMilestones: true });
 
@@ -1571,6 +1735,11 @@ const useArcGenStore = create((set, get) => ({
             const project = await db.projects.get(projectId);
             const targetLength = project?.target_length || 0;
             const ultimateGoal = project?.ultimate_goal || '';
+            const planningScope = normalizeMacroPlanningScope({
+                planningScopeStart,
+                planningScopeEnd,
+                targetLength,
+            });
             let promptTemplates = {};
             if (project?.prompt_templates) {
                 try { promptTemplates = JSON.parse(project.prompt_templates); } catch { }
@@ -1588,6 +1757,9 @@ const useArcGenStore = create((set, get) => ({
                 macroRevisionInstruction: authorIdea,
                 macroMilestoneCount: milestoneCount,
                 macroMilestoneRequirements: requirements,
+                planningScopeStart: planningScope.start,
+                planningScopeEnd: planningScope.end,
+                macroMilestoneChapterPlans,
             });
 
             await new Promise((resolve) => {
@@ -1601,7 +1773,13 @@ const useArcGenStore = create((set, get) => ({
                             if (!isPlainObject(parsed) || !Array.isArray(parsed.milestones)) {
                                 throw new Error('Invalid milestones format');
                             }
-                            set({ macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed), isRevisingMilestones: false });
+                            set({
+                                macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed, {
+                                    planningScope,
+                                    macroMilestoneChapterPlans,
+                                }),
+                                isRevisingMilestones: false,
+                            });
                         } catch (e) {
                             console.error('[ArcGen] Failed to parse revised milestones:', e, text);
                             set({ isRevisingMilestones: false });

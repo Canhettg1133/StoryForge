@@ -21,12 +21,17 @@ describe('phase10 auto-gen planning upgrade', () => {
       targetLength: 1000,
       currentChapterCount: 10,
       batchCount: 3,
-      selectedMacroArc: { title: 'Khoi dong', chapter_to: 40 },
+      selectedMacroArc: { title: 'Khoi dong', chapter_from: 11, chapter_to: 40 },
       milestones: [{ label: 'Midpoint', percent: 50 }],
     });
 
     expect(budget.fromPercent).toBe(1);
     expect(budget.toPercent).toBe(1.3);
+    expect(budget.batchStartChapter).toBe(11);
+    expect(budget.batchEndChapter).toBe(13);
+    expect(budget.batchMacroOverlapCount).toBe(3);
+    expect(budget.chaptersRemainingAfterBatchInMacro).toBe(27);
+    expect(budget.batchReachesMacroEnd).toBe(false);
     expect(budget.mainPlotMaxStep).toBe(1);
     expect(budget.requiredBeatMix).toContain('setup');
   });
@@ -203,11 +208,18 @@ describe('phase10 auto-gen planning upgrade', () => {
       storyProgressBudget: {
         fromPercent: 1.1,
         toPercent: 1.4,
+        currentChapterCount: 10,
+        batchStartChapter: 11,
+        batchEndChapter: 13,
         mainPlotMaxStep: 1,
         romanceMaxStep: 1,
         mysteryRevealAllowance: '0-1 minor reveal',
         powerProgressionCap: 'khong vuot tier lon trong batch nay',
         requiredBeatMix: 'at least one setup/build-up/consequence chapter',
+        batchMacroOverlapCount: 3,
+        macroSpan: 20,
+        chaptersRemainingAfterBatchInMacro: 17,
+        macroProgressCap: 'batch nay chi duoc day mot phan cot moc, khong duoc xem nhu da di tron cot moc',
         nextMilestone: { label: 'Vao noi mon', percent: 5 },
       },
       generatedOutline: {
@@ -225,7 +237,9 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(messages[1].content).toContain('Khoi dong tong mon');
     expect(messages[1].content).toContain('OBJ1');
     expect(messages[1].content).toContain('[STORY PROGRESS BUDGET]');
+    expect(messages[1].content).toContain('Dot nay tao tu Chuong 11 den Chuong 13');
     expect(messages[1].content).toContain('Pham vi tien do batch nay: 1.1% -> 1.4%');
+    expect(messages[1].content).toContain('Sau batch nay van con');
     expect(messages[1].content).toContain('[DAN Y HIEN TAI CAN CHINH SUA]');
     expect(messages[1].content).toContain('Purpose:');
     expect(messages[1].content).toContain('[YEU CAU CHINH SUA DAN Y]');
@@ -251,11 +265,15 @@ describe('phase10 auto-gen planning upgrade', () => {
       storyProgressBudget: {
         fromPercent: 1.2,
         toPercent: 1.4,
+        currentChapterCount: 11,
+        batchStartChapter: 12,
+        batchEndChapter: 12,
         mainPlotMaxStep: 1,
         romanceMaxStep: 1,
         mysteryRevealAllowance: '0-1 minor reveal',
         powerProgressionCap: 'khong vuot tier lon trong batch nay',
         requiredBeatMix: 'at least one setup/build-up/consequence chapter',
+        macroProgressCap: 'batch nay chi duoc day mot phan cot moc, khong duoc xem nhu da di tron cot moc',
       },
     });
 
@@ -264,6 +282,7 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(messages[1].content).toContain('Objective refs: OBJ1');
     expect(messages[1].content).toContain('Purpose: Cho main hieu mot quy tac nho cua tong mon.');
     expect(messages[1].content).toContain('Pham vi tien do batch nay: 1.2% -> 1.4%');
+    expect(messages[1].content).toContain('Gioi han rieng cua macro arc');
     expect(messages[1].content).toContain('khong resolve tuyen chinh');
   });
 
@@ -313,6 +332,8 @@ describe('phase10 auto-gen planning upgrade', () => {
       genre: 'fantasy',
       authorIdea: 'Main di tu lang que den chien tranh toan luc.',
       targetLength: 800,
+      planningScopeStart: 120,
+      planningScopeEnd: 220,
       ultimateGoal: 'Lat doat ngai vang va pha bo loi nguyen.',
       macroMilestoneCount: 6,
       macroMilestoneRequirements: 'Nhip truyen cham va bam do dai du kien.',
@@ -344,12 +365,59 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(messages[1].content).toContain('[DAI CUC HIEN TAI / BAN NHAP CAN CHINH SUA]');
     expect(messages[1].content).toContain('[SO LUONG COT MOC CAN TAO]');
     expect(messages[1].content).toContain('6');
+    expect(messages[1].content).toContain('[TONG DO DAI TRUYEN DU KIEN]');
+    expect(messages[1].content).toContain('[PHAM VI LAP DAI CUC LAN NAY]');
+    expect(messages[1].content).toContain('Chuong 120 -> 220');
     expect(messages[1].content).toContain('[YEU CAU RIENG]');
     expect(messages[1].content).toContain('Nhip truyen cham');
     expect(messages[1].content).toContain('Khoi hanh');
     expect(messages[1].content).toContain('Objectives: OBJ1');
     expect(messages[1].content).toContain('[HUONG DAN CHINH SUA]');
     expect(messages[1].content).toContain('Tang buildup phan dau');
+  });
+
+  it('separates whole-story length from macro planning scope when generating milestones', () => {
+    const messages = buildPrompt(TASK_TYPES.GENERATE_MACRO_MILESTONES, {
+      projectTitle: 'Truyen dai hoi',
+      genre: 'fantasy',
+      authorIdea: 'Chi lap dai cuc cho mot doan giua truyen.',
+      targetLength: 480,
+      planningScopeStart: 87,
+      planningScopeEnd: 134,
+      macroMilestoneCount: 4,
+    });
+
+    expect(messages[1].content).toContain('[TONG DO DAI TRUYEN DU KIEN]');
+    expect(messages[1].content).toContain('480 chuong');
+    expect(messages[1].content).toContain('[PHAM VI LAP DAI CUC LAN NAY]');
+    expect(messages[1].content).toContain('Chuong 87 -> 134');
+    expect(messages[1].content).toContain('Khong duoc tu y keo nguoc ve chuong 1');
+    expect(messages[1].content).toContain('Khong duoc ngam coi pham vi nay la toan bo truyen');
+  });
+
+  it('supports optional fixed ranges for individual macro milestones and leaves blank ones on auto', () => {
+    const messages = buildPrompt(TASK_TYPES.GENERATE_MACRO_MILESTONES, {
+      projectTitle: 'Truyen dai hoi',
+      genre: 'fantasy',
+      authorIdea: 'Lap dai cuc cho mot doan con.',
+      targetLength: 320,
+      planningScopeStart: 41,
+      planningScopeEnd: 80,
+      macroMilestoneCount: 4,
+      macroMilestoneChapterPlans: [
+        { chapter_from: 41, chapter_to: 48 },
+        null,
+        { chapter_from: 61, chapter_to: 70 },
+        {},
+      ],
+    });
+
+    expect(messages[1].content).toContain('[PHAM VI RIENG TUNG COT MOC]');
+    expect(messages[1].content).toContain('Cot moc 1: KHOA trong Chuong 41 -> 48');
+    expect(messages[1].content).toContain('Cot moc 2: AUTO phan bo');
+    expect(messages[1].content).toContain('Cot moc 3: KHOA trong Chuong 61 -> 70');
+    expect(messages[1].content).toContain('Cot moc 4: AUTO phan bo');
+    expect(messages[1].content).toContain('Nhung cot moc da KHOA pham vi thi phai giu dung chapter range do');
   });
 
   it('requires contract output when generating macro milestones and prefers stored contract_json', () => {

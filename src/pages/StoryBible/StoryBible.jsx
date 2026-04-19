@@ -112,6 +112,7 @@ export default function StoryBible() {
     ultimateGoal: projectFields.ultimateGoal,
     genrePrimary: projectFields.genrePrimary,
     targetLength: projectFields.targetLength,
+    chaptersCount: chapters.length,
   });
 
   const canonState = useStoryBibleCanonInspector({

@@ -25,6 +25,20 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
   setAiMilestoneCount,
   aiMilestoneRequirements,
   setAiMilestoneRequirements,
+  aiMilestoneChapterPlans,
+  handleUpdateMilestoneChapterPlan,
+  resetMilestoneChapterPlans,
+  planningScopeStart,
+  setPlanningScopeStart,
+  planningScopeEnd,
+  setPlanningScopeEnd,
+  planningScopeSpan,
+  planningScopeTargetLength,
+  planningScopeHasExplicitTargetLength,
+  planningScopeDefaultsToWholeStory,
+  planningScopeWarnings,
+  useDefaultPlanningScope,
+  useWholeStoryPlanningScope,
   showAiSuggest,
   setShowAiSuggest,
   aiMilestoneRevisionPrompt,
@@ -55,6 +69,9 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
   handleDeleteMacroArc,
   allCharacterNames,
 }) {
+  const chaptersCount = chapters.length;
+  const nextChapterNumber = Math.max(1, chaptersCount + 1);
+
   return (
     <div className="bible-section">
       <div className="bible-section-header" onClick={() => onToggle('grandStrategy')} style={{ cursor: 'pointer' }}>
@@ -75,8 +92,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
       {isOpen && (
         <div className="bible-edit-card">
           <p className="bible-subtitle" style={{ marginBottom: 'var(--space-3)' }}>
-            Định nghĩa 5-8 cột mốc lớn của toàn bộ truyện. AI đọc và tôn trọng tuyệt đối:
-            {' '}nhân vật không được vượt qua cột mốc hiện tại.
+            Định nghĩa các cột mốc lớn của truyện. AI sẽ đọc đại cục này trước khi planner hoặc validator sinh dàn ý chương.
           </p>
 
           {showAiSuggest && (
@@ -85,7 +101,16 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                 <Wand2 size={14} style={{ color: 'var(--color-accent)' }} />
                 Gợi ý đại cục bằng AI
               </div>
-              <textarea className="textarea" rows={2} value={aiIdeaInput} onChange={(event) => setAiIdeaInput(event.target.value)} placeholder="Mô tả ngắn về truyện (để trống = AI tự đọc từ Tóm tắt truyện + Đích đến)..." style={{ marginBottom: 'var(--space-2)' }} />
+
+              <textarea
+                className="textarea"
+                rows={2}
+                value={aiIdeaInput}
+                onChange={(event) => setAiIdeaInput(event.target.value)}
+                placeholder="Mô tả ngắn về truyện hoặc đoạn truyện bạn muốn hoạch định..."
+                style={{ marginBottom: 'var(--space-2)' }}
+              />
+
               <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
                 <div className="form-group" style={{ marginBottom: 0, width: '180px' }}>
                   <label className="form-label">Số lượng cột mốc muốn tạo</label>
@@ -95,9 +120,129 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                 <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: '6px' }} onClick={() => setAiMilestoneCount(suggestedMilestoneCount)}>Dùng đề xuất</button>
                 <div className="form-group" style={{ marginBottom: 0, flex: 1, minWidth: '240px' }}>
                   <label className="form-label">Yêu cầu riêng</label>
-                  <textarea className="textarea" rows={2} value={aiMilestoneRequirements} onChange={(event) => setAiMilestoneRequirements(event.target.value)} placeholder="VD: mở đầu chậm, có một tuyến tình cảm phụ, giữ bí mật lớn đến sau..." />
+                  <textarea className="textarea" rows={2} value={aiMilestoneRequirements} onChange={(event) => setAiMilestoneRequirements(event.target.value)} placeholder="VD: mở đầu chậm, giữ bí mật lớn tới cuối đoạn này, chưa cho payoff sớm..." />
                 </div>
               </div>
+
+              <div className="bible-planning-scope">
+                <div className="bible-planning-scope__header">
+                  <div>
+                    <strong>Phạm vi lập đại cục</strong>
+                    <span className="form-hint">
+                      Tách riêng độ dài toàn truyện với đoạn truyện bạn muốn AI hoạch định lần này.
+                    </span>
+                  </div>
+                  <div className="bible-planning-scope__chips">
+                    <span className="bible-planning-scope__chip">
+                      {planningScopeHasExplicitTargetLength
+                        ? `Toàn truyện dự kiến: ${planningScopeTargetLength} chương`
+                        : `Độ dài tạm dùng: ${planningScopeTargetLength} chương`}
+                    </span>
+                    <span className="bible-planning-scope__chip">Đã có: {chaptersCount} chương</span>
+                    <span className="bible-planning-scope__chip">Đợt này: {planningScopeSpan} chương</span>
+                  </div>
+                </div>
+
+                <div className="bible-planning-scope__grid">
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Từ chương</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max={planningScopeHasExplicitTargetLength ? planningScopeTargetLength : undefined}
+                      className="input"
+                      value={planningScopeStart}
+                      onChange={(event) => setPlanningScopeStart(parseInt(event.target.value, 10) || 1)}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Đến chương</label>
+                    <input
+                      type="number"
+                      min={planningScopeStart}
+                      max={planningScopeHasExplicitTargetLength ? planningScopeTargetLength : undefined}
+                      className="input"
+                      value={planningScopeEnd}
+                      onChange={(event) => setPlanningScopeEnd(parseInt(event.target.value, 10) || planningScopeStart)}
+                    />
+                  </div>
+                </div>
+
+                <div className="bible-planning-scope__actions">
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={useDefaultPlanningScope}>
+                    Dùng đoạn kế tiếp mặc định
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={useWholeStoryPlanningScope}>
+                    Bao phủ toàn bộ truyện
+                  </button>
+                </div>
+
+                <div className="bible-planning-scope__summary">
+                  AI sẽ chỉ lập đại cục cho chương {planningScopeStart}-{planningScopeEnd}.{' '}
+                  {planningScopeDefaultsToWholeStory
+                    ? 'Phạm vi hiện tại đang phủ toàn bộ độ dài truyện dự kiến.'
+                    : `Phạm vi này tách khỏi độ dài toàn truyện, nên AI không được mặc định kéo ngược về chương 1 khi chương kế tiếp hiện là ${nextChapterNumber}.`}
+                </div>
+
+                {planningScopeWarnings.length > 0 && (
+                  <div className="bible-planning-scope__warnings">
+                    {planningScopeWarnings.map((warning) => (
+                      <div
+                        key={warning.code}
+                        className={`bible-planning-scope__warning bible-planning-scope__warning--${warning.level}`}
+                      >
+                        {warning.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bible-milestone-plan-panel">
+                <div className="bible-milestone-plan-panel__header">
+                  <div>
+                    <strong>Phạm vi riêng từng cột mốc</strong>
+                    <span className="form-hint">
+                      Tùy chọn. Để trống một cột mốc thì AI tự chia trong phạm vi còn lại. Nhập đủ từ-đến nếu bạn muốn khóa riêng cột mốc đó.
+                    </span>
+                  </div>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={resetMilestoneChapterPlans}>
+                    Để AI tự chia tất cả
+                  </button>
+                </div>
+
+                <div className="bible-milestone-plan-list">
+                  {aiMilestoneChapterPlans.map((plan, index) => (
+                    <div key={`milestone-plan-${index}`} className="bible-milestone-plan-row">
+                      <div className="bible-milestone-plan-row__label">
+                        <strong>Cột mốc {index + 1}</strong>
+                        <span>{plan.chapter_from || plan.chapter_to ? 'Đang khóa tay' : 'Tự động phân bổ'}</span>
+                      </div>
+                      <div className="bible-milestone-plan-row__inputs">
+                        <input
+                          type="number"
+                          min={planningScopeStart}
+                          max={planningScopeEnd}
+                          className="input"
+                          placeholder="Từ"
+                          value={plan.chapter_from}
+                          onChange={(event) => handleUpdateMilestoneChapterPlan(index, 'chapter_from', event.target.value)}
+                        />
+                        <input
+                          type="number"
+                          min={planningScopeStart}
+                          max={planningScopeEnd}
+                          className="input"
+                          placeholder="Đến"
+                          value={plan.chapter_to}
+                          onChange={(event) => handleUpdateMilestoneChapterPlan(index, 'chapter_to', event.target.value)}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-1)', flexWrap: 'wrap' }}>
                 {MACRO_AI_PRESETS.map((preset) => {
                   const active = selectedMilestonePresets.has(preset.id);
@@ -119,7 +264,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
               {editableMilestoneSuggestions.length > 0 && (
                 <div style={{ marginTop: 'var(--space-3)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>AI đã tạo {editableMilestoneSuggestions.length} cột mốc — có thể sửa tay hoặc nhờ AI chỉnh lại batch này:</span>
+                    <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>AI đã tạo {editableMilestoneSuggestions.length} cột mốc. Bạn có thể sửa tay hoặc yêu cầu AI chỉnh lại đúng batch này.</span>
                     <button
                       type="button"
                       className="btn btn-ghost btn-xs"
@@ -137,7 +282,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                   </div>
                   <div className="form-group" style={{ marginBottom: 'var(--space-2)' }}>
                     <label className="form-label">AI chỉnh lại đại cục theo ý tôi</label>
-                    <textarea className="textarea" rows={2} value={aiMilestoneRevisionPrompt} onChange={(event) => setAiMilestoneRevisionPrompt(event.target.value)} placeholder="VD: kéo dài buildup đầu truyện, chia rõ midpoint, giữ bí mật lớn tới 60%, tăng trả giá ở cột mốc 3..." />
+                    <textarea className="textarea" rows={2} value={aiMilestoneRevisionPrompt} onChange={(event) => setAiMilestoneRevisionPrompt(event.target.value)} placeholder="VD: kéo dài buildup đoạn đầu, giữ twist ở gần cuối phạm vi, tăng trả giá ở cột mốc 3..." />
                   </div>
                   {editableMilestoneSuggestions.map((milestone, index) => (
                     <EditableMacroMilestoneCard
@@ -153,7 +298,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                       onAnalyze={handleAnalyzeEditableMilestone}
                     />
                   ))}
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)', flexWrap: 'wrap' }}>
                     <button className="btn btn-ghost btn-sm" onClick={handleAddEditableMilestone}><Plus size={14} /> Thêm mốc</button>
                     <button className="btn btn-primary btn-sm" onClick={handleSaveMilestones} disabled={selectedMilestoneIdxs.size === 0}>
                       <Check size={14} /> Lưu {selectedMilestoneIdxs.size > 0 ? `(${selectedMilestoneIdxs.size})` : ''}
@@ -197,7 +342,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
 
           {macroArcs.length > 0 && (
             <div style={{ padding: 'var(--space-2)', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-sm)', fontSize: '12px', color: 'var(--color-text-muted)' }}>
-              AI sẽ đọc đại cục này trước khi viết mỗi chương. Thay đổi được lưu tự động.
+              AI sẽ đọc đại cục này trước khi viết hoặc kiểm tra planner. Mọi thay đổi được lưu tự động.
             </div>
           )}
         </div>
