@@ -137,11 +137,19 @@ function normalizeMacroMilestoneItem(item, index = 0) {
     };
 }
 
-function normalizeMacroPlanningScope({ planningScopeStart = 0, planningScopeEnd = 0, targetLength = 0 }) {
-    const safeTarget = Math.max(Number(targetLength) || 0, Number(planningScopeEnd) || 0, Number(planningScopeStart) || 0, 1);
-    const start = Math.min(safeTarget, Math.max(1, Number(planningScopeStart) || 1));
-    const end = Math.max(start, Math.min(safeTarget, Number(planningScopeEnd) || safeTarget));
-    return { start, end, span: end - start + 1 };
+function normalizeMacroPlanningScope({
+    planningScopeStart = 0,
+    planningScopeEnd = 0,
+    start = 0,
+    end = 0,
+    targetLength = 0,
+}) {
+    const rawStart = Number(planningScopeStart) || Number(start) || 0;
+    const rawEnd = Number(planningScopeEnd) || Number(end) || 0;
+    const safeTarget = Math.max(Number(targetLength) || 0, rawEnd, rawStart, 1);
+    const normalizedStart = Math.min(safeTarget, Math.max(1, rawStart || 1));
+    const normalizedEnd = Math.max(normalizedStart, Math.min(safeTarget, rawEnd || safeTarget));
+    return { start: normalizedStart, end: normalizedEnd, span: normalizedEnd - normalizedStart + 1 };
 }
 
 function getDistributedScopeRange(scope, index, total) {
@@ -154,6 +162,73 @@ function getDistributedScopeRange(scope, index, total) {
         chapter_from: scope.start + startOffset,
         chapter_to: Math.min(scope.end, scope.start + endOffset),
     };
+}
+
+function distributeChapterBlock(start, end, count) {
+    const safeCount = Math.max(0, Number(count) || 0);
+    if (safeCount === 0) return [];
+
+    const safeStart = Number(start) || 0;
+    const safeEnd = Number(end) || 0;
+    if (safeEnd < safeStart) {
+        return Array.from({ length: safeCount }, () => ({
+            chapter_from: safeStart,
+            chapter_to: safeStart,
+        }));
+    }
+
+    const span = safeEnd - safeStart + 1;
+    return Array.from({ length: safeCount }, (_, index) => {
+        const startOffset = Math.floor((index * span) / safeCount);
+        const endOffset = Math.max(startOffset, Math.floor((((index + 1) * span) / safeCount) - 1));
+        return {
+            chapter_from: safeStart + startOffset,
+            chapter_to: Math.min(safeEnd, safeStart + endOffset),
+        };
+    });
+}
+
+function buildScopedMilestoneRanges(scope, manualPlans = [], total = 0) {
+    if (!scope || !scope.span || total <= 0) return [];
+
+    const ranges = Array.from({ length: total }, () => null);
+    const fixedPlans = manualPlans
+        .map((item, index) => (item && !item.isIncomplete ? { ...item, index } : null))
+        .filter(Boolean)
+        .sort((a, b) => a.index - b.index);
+
+    if (fixedPlans.length === 0) return [];
+
+    let previousFixedIndex = -1;
+    let previousChapterTo = scope.start - 1;
+
+    fixedPlans.forEach((fixedPlan) => {
+        const autoBlockStart = previousFixedIndex + 1;
+        const autoBlockCount = Math.max(0, fixedPlan.index - autoBlockStart);
+        const autoRanges = distributeChapterBlock(previousChapterTo + 1, fixedPlan.chapter_from - 1, autoBlockCount);
+
+        autoRanges.forEach((range, offset) => {
+            ranges[autoBlockStart + offset] = range;
+        });
+
+        ranges[fixedPlan.index] = {
+            chapter_from: fixedPlan.chapter_from,
+            chapter_to: fixedPlan.chapter_to,
+        };
+
+        previousFixedIndex = fixedPlan.index;
+        previousChapterTo = fixedPlan.chapter_to;
+    });
+
+    const trailingStart = previousFixedIndex + 1;
+    const trailingCount = Math.max(0, total - trailingStart);
+    const trailingRanges = distributeChapterBlock(previousChapterTo + 1, scope.end, trailingCount);
+
+    trailingRanges.forEach((range, offset) => {
+        ranges[trailingStart + offset] = range;
+    });
+
+    return ranges;
 }
 
 function normalizeManualMacroMilestonePlans(plans = [], scope = null) {
@@ -180,19 +255,29 @@ function normalizeManualMacroMilestonePlans(plans = [], scope = null) {
 }
 
 function normalizeMacroMilestonePayload(payload, options = {}) {
-    const milestones = Array.isArray(payload?.milestones) ? payload.milestones : [];
+    const requestedMilestoneCount = Math.max(0, Number(options?.requestedMilestoneCount) || 0);
+    const sourceMilestones = Array.isArray(payload?.milestones) ? payload.milestones : [];
+    const milestones = requestedMilestoneCount > 0
+        ? sourceMilestones.slice(0, requestedMilestoneCount)
+        : sourceMilestones;
     const scope = options?.planningScope ? normalizeMacroPlanningScope(options.planningScope) : null;
     const manualPlans = normalizeManualMacroMilestonePlans(options?.macroMilestoneChapterPlans, scope);
+    const scopedRanges = buildScopedMilestoneRanges(scope, manualPlans, milestones.length);
     return {
         milestones: milestones.map((item, index) => {
             const normalized = normalizeMacroMilestoneItem(item, index);
             if (!scope) {
                 return normalized;
             }
-            const distributed = getDistributedScopeRange(scope, index, milestones.length);
             const fixedPlan = manualPlans[index] && !manualPlans[index]?.isIncomplete ? manualPlans[index] : null;
-            const rawFrom = fixedPlan?.chapter_from || (Number(normalized.chapter_from) > 0 ? Number(normalized.chapter_from) : distributed.chapter_from);
-            const rawTo = fixedPlan?.chapter_to || (Number(normalized.chapter_to) > 0 ? Number(normalized.chapter_to) : distributed.chapter_to);
+            const scopedRange = scopedRanges[index];
+            const distributed = getDistributedScopeRange(scope, index, milestones.length);
+            const rawFrom = fixedPlan?.chapter_from
+                || scopedRange?.chapter_from
+                || (Number(normalized.chapter_from) > 0 ? Number(normalized.chapter_from) : distributed.chapter_from);
+            const rawTo = fixedPlan?.chapter_to
+                || scopedRange?.chapter_to
+                || (Number(normalized.chapter_to) > 0 ? Number(normalized.chapter_to) : distributed.chapter_to);
             const chapter_from = Math.min(scope.end, Math.max(scope.start, rawFrom || scope.start));
             const chapter_to = Math.max(
                 chapter_from,
@@ -1696,6 +1781,7 @@ const useArcGenStore = create((set, get) => ({
                                 macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed, {
                                     planningScope,
                                     macroMilestoneChapterPlans,
+                                    requestedMilestoneCount: milestoneCount,
                                 }),
                                 isSuggestingMilestones: false,
                             });
@@ -1777,6 +1863,7 @@ const useArcGenStore = create((set, get) => ({
                                 macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed, {
                                     planningScope,
                                     macroMilestoneChapterPlans,
+                                    requestedMilestoneCount: milestoneCount,
                                 }),
                                 isRevisingMilestones: false,
                             });

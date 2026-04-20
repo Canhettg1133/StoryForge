@@ -13,6 +13,14 @@ const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCar
   onRemove,
   onAnalyze,
 }) {
+  const handleSelectAll = React.useCallback((event) => {
+    event.target.select();
+  }, []);
+
+  const keepSelectionOnMouseUp = React.useCallback((event) => {
+    event.preventDefault();
+  }, []);
+
   return (
     <div
       onClick={() => onToggle(index)}
@@ -65,19 +73,25 @@ const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCar
         <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)', alignItems: 'center' }}>
           <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>Chương</span>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             className="input"
             value={milestone.chapter_from || ''}
             onClick={(event) => event.stopPropagation()}
+            onFocus={handleSelectAll}
+            onMouseUp={keepSelectionOnMouseUp}
             onChange={(event) => onUpdate(index, 'chapter_from', Number(event.target.value) || 0)}
             style={{ width: '88px' }}
           />
           <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>→</span>
           <input
-            type="number"
+            type="text"
+            inputMode="numeric"
             className="input"
             value={milestone.chapter_to || ''}
             onClick={(event) => event.stopPropagation()}
+            onFocus={handleSelectAll}
+            onMouseUp={keepSelectionOnMouseUp}
             onChange={(event) => onUpdate(index, 'chapter_to', Number(event.target.value) || 0)}
             style={{ width: '88px' }}
           />

@@ -74,10 +74,15 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
 }) {
   const chaptersCount = chapters.length;
   const nextChapterNumber = Math.max(1, chaptersCount + 1);
+  const [milestoneCountDraft, setMilestoneCountDraft] = React.useState(String(aiMilestoneCount));
   const [planningScopeDraft, setPlanningScopeDraft] = React.useState({
     start: String(planningScopeStart),
     end: String(planningScopeEnd),
   });
+
+  React.useEffect(() => {
+    setMilestoneCountDraft(String(aiMilestoneCount));
+  }, [aiMilestoneCount]);
 
   React.useEffect(() => {
     setPlanningScopeDraft({
@@ -85,6 +90,30 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
       end: String(planningScopeEnd),
     });
   }, [planningScopeEnd, planningScopeStart]);
+
+  const selectFieldValue = React.useCallback((event) => {
+    event.target.select();
+  }, []);
+
+  const keepFieldSelected = React.useCallback((event) => {
+    event.preventDefault();
+  }, []);
+
+  const commitMilestoneCountDraft = React.useCallback(() => {
+    const rawValue = milestoneCountDraft.trim();
+    if (!rawValue) {
+      setMilestoneCountDraft(String(aiMilestoneCount));
+      return;
+    }
+    const parsed = parseInt(rawValue, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setMilestoneCountDraft(String(aiMilestoneCount));
+      return;
+    }
+    const nextValue = Math.max(1, Math.min(20, parsed));
+    setAiMilestoneCount(nextValue);
+    setMilestoneCountDraft(String(nextValue));
+  }, [aiMilestoneCount, milestoneCountDraft, setAiMilestoneCount]);
 
   const commitPlanningScopeField = React.useCallback((field) => {
     const rawValue = planningScopeDraft[field].trim();
@@ -149,7 +178,22 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
               <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end', marginBottom: 'var(--space-2)', flexWrap: 'wrap' }}>
                 <div className="form-group" style={{ marginBottom: 0, width: '180px' }}>
                   <label className="form-label">Số lượng cột mốc muốn tạo</label>
-                  <input type="number" min="1" max="20" className="input" value={aiMilestoneCount} onChange={(event) => setAiMilestoneCount(Math.max(1, parseInt(event.target.value, 10) || 1))} />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="input"
+                    value={milestoneCountDraft}
+                    onChange={(event) => setMilestoneCountDraft(event.target.value)}
+                    onBlur={commitMilestoneCountDraft}
+                    onFocus={selectFieldValue}
+                    onMouseUp={keepFieldSelected}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        commitMilestoneCountDraft();
+                      }
+                    }}
+                  />
                   <div className="form-hint" style={{ marginTop: '6px' }}>Đề xuất theo độ dài dự kiến: {suggestedMilestoneCount} cột mốc</div>
                 </div>
                 <button type="button" className="btn btn-ghost btn-sm" style={{ marginBottom: '6px' }} onClick={() => setAiMilestoneCount(suggestedMilestoneCount)}>Dùng đề xuất</button>
@@ -190,6 +234,8 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                       value={planningScopeDraft.start}
                       onChange={(event) => setPlanningScopeDraft((prev) => ({ ...prev, start: event.target.value }))}
                       onBlur={() => commitPlanningScopeField('start')}
+                      onFocus={selectFieldValue}
+                      onMouseUp={keepFieldSelected}
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -203,6 +249,8 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                       value={planningScopeDraft.end}
                       onChange={(event) => setPlanningScopeDraft((prev) => ({ ...prev, end: event.target.value }))}
                       onBlur={() => commitPlanningScopeField('end')}
+                      onFocus={selectFieldValue}
+                      onMouseUp={keepFieldSelected}
                     />
                   </div>
                 </div>
@@ -265,22 +313,24 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                       </div>
                       <div className="bible-milestone-plan-row__inputs">
                         <input
-                          type="number"
-                          min={planningScopeStart}
-                          max={planningScopeEnd}
+                          type="text"
+                          inputMode="numeric"
                           className="input"
                           placeholder="Từ"
                           value={plan.chapter_from}
                           onChange={(event) => handleUpdateMilestoneChapterPlan(index, 'chapter_from', event.target.value)}
+                          onFocus={selectFieldValue}
+                          onMouseUp={keepFieldSelected}
                         />
                         <input
-                          type="number"
-                          min={planningScopeStart}
-                          max={planningScopeEnd}
+                          type="text"
+                          inputMode="numeric"
                           className="input"
                           placeholder="Đến"
                           value={plan.chapter_to}
                           onChange={(event) => handleUpdateMilestoneChapterPlan(index, 'chapter_to', event.target.value)}
+                          onFocus={selectFieldValue}
+                          onMouseUp={keepFieldSelected}
                         />
                       </div>
                     </div>

@@ -53,6 +53,14 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
   handleTargetLengthTypeChange,
   pronounStylePresets,
 }) {
+  const handleSelectAll = React.useCallback((event) => {
+    event.target.select();
+  }, []);
+
+  const keepSelectionOnMouseUp = React.useCallback((event) => {
+    event.preventDefault();
+  }, []);
+
   return (
     <div className="bible-section">
       <StoryBibleSectionHeader
@@ -135,7 +143,15 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
             </div>
             <div className="form-group" style={{ flex: 1 }}>
               <label className="form-label">Số chương mục tiêu {targetLengthSaved && <span className="save-indicator">Đã lưu</span>}</label>
-              <input type="number" className="input" value={targetLength} onChange={(event) => setTargetLength(event.target.value)} />
+              <input
+                type="text"
+                inputMode="numeric"
+                className="input"
+                value={targetLength}
+                onFocus={handleSelectAll}
+                onMouseUp={keepSelectionOnMouseUp}
+                onChange={(event) => setTargetLength(event.target.value)}
+              />
               {targetLengthWarning && (
                 <span className="form-hint" style={{ color: 'var(--color-warning)', marginTop: '6px' }}>
                   {targetLengthWarning}
@@ -164,7 +180,17 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
             </label>
             {milestonesInfo.map((milestone, index) => (
               <div key={`${milestone.percent}-${index}`} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                <input type="number" className="input" style={{ width: '80px' }} value={milestone.percent} onChange={(event) => updateMilestone(index, 'percent', Number(event.target.value))} placeholder="%" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="input"
+                  style={{ width: '80px' }}
+                  value={milestone.percent}
+                  onFocus={handleSelectAll}
+                  onMouseUp={keepSelectionOnMouseUp}
+                  onChange={(event) => updateMilestone(index, 'percent', Number(event.target.value))}
+                  placeholder="%"
+                />
                 <span style={{ alignSelf: 'center', fontSize: '12px' }}>%</span>
                 <input className="input" style={{ flex: 1 }} value={milestone.description} onChange={(event) => updateMilestone(index, 'description', event.target.value)} placeholder="Mô tả cột mốc..." />
                 <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => removeMilestone(index)}><X size={14} /></button>

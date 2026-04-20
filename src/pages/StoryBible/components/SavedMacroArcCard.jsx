@@ -11,6 +11,14 @@ const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
   onDelete,
   onAnalyze,
 }) {
+  const handleSelectAll = React.useCallback((event) => {
+    event.target.select();
+  }, []);
+
+  const keepSelectionOnMouseUp = React.useCallback((event) => {
+    event.preventDefault();
+  }, []);
+
   return (
     <div className="bible-edit-card" style={{ marginBottom: 'var(--space-3)', border: '1px solid var(--color-border)' }}>
       <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
@@ -50,19 +58,25 @@ const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
       <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
         <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', flexShrink: 0 }}>Chương</span>
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           className="input"
           style={{ width: '80px' }}
           value={macroArc.chapter_from || ''}
+          onFocus={handleSelectAll}
+          onMouseUp={keepSelectionOnMouseUp}
           onChange={(event) => onUpdate(macroArc.id, 'chapter_from', Number(event.target.value))}
           placeholder="Từ"
         />
         <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>→</span>
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           className="input"
           style={{ width: '80px' }}
           value={macroArc.chapter_to || ''}
+          onFocus={handleSelectAll}
+          onMouseUp={keepSelectionOnMouseUp}
           onChange={(event) => onUpdate(macroArc.id, 'chapter_to', Number(event.target.value))}
           placeholder="Đến"
         />

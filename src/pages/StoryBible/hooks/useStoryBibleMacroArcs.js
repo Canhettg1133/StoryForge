@@ -32,6 +32,24 @@ function syncMilestoneChapterPlans(previous = [], milestoneCount = 0) {
   }));
 }
 
+function getMilestonePlanBounds(plans = []) {
+  let minChapter = 0;
+  let maxChapter = 0;
+
+  plans.forEach((item) => {
+    const from = toPositiveInt(item?.chapter_from);
+    const to = toPositiveInt(item?.chapter_to);
+    const candidates = [from, to].filter((value) => value > 0);
+    if (candidates.length === 0) return;
+    const localMin = Math.min(...candidates);
+    const localMax = Math.max(...candidates);
+    minChapter = minChapter > 0 ? Math.min(minChapter, localMin) : localMin;
+    maxChapter = Math.max(maxChapter, localMax);
+  });
+
+  return { minChapter, maxChapter };
+}
+
 function normalizeManualMilestonePlan(item, scope) {
   const rawFrom = toPositiveInt(item?.chapter_from);
   const rawTo = toPositiveInt(item?.chapter_to);
@@ -82,19 +100,30 @@ function buildPlanningScopeDefaults({ targetLength, chaptersCount, macroArcs }) 
   };
 }
 
-function normalizePlanningScope({ start, end, defaults }) {
+function normalizePlanningScope({ start, end, defaults, extraLowerBound = 0, extraUpperBound = 0 }) {
+  const normalizedExtraLowerBound = toPositiveInt(extraLowerBound);
+  const normalizedExtraUpperBound = toPositiveInt(extraUpperBound);
   const dynamicUpperBound = defaults.hasExplicitTargetLength
     ? defaults.safeTarget
     : Math.max(
       defaults.safeTarget,
       Math.max(1, toPositiveInt(start) || 0),
-      Math.max(1, toPositiveInt(end) || 0)
+      Math.max(1, toPositiveInt(end) || 0),
+      Math.max(1, normalizedExtraUpperBound || 0)
     );
+  const requestedStart = toPositiveInt(start) || defaults.defaultStart;
   const safeStart = Math.min(
     dynamicUpperBound,
-    Math.max(1, toPositiveInt(start) || defaults.defaultStart)
+    Math.max(
+      1,
+      normalizedExtraLowerBound > 0
+        ? Math.min(requestedStart, normalizedExtraLowerBound)
+        : requestedStart
+    )
   );
-  const requestedEnd = toPositiveInt(end) || defaults.defaultEnd;
+  const requestedEnd = defaults.hasExplicitTargetLength
+    ? (toPositiveInt(end) || defaults.defaultEnd)
+    : Math.max(toPositiveInt(end) || defaults.defaultEnd, normalizedExtraUpperBound || 0);
   const safeEnd = Math.max(
     safeStart,
     Math.min(dynamicUpperBound, requestedEnd)
@@ -129,6 +158,7 @@ export default function useStoryBibleMacroArcs({
   const [selectedMilestonePresets, setSelectedMilestonePresets] = useState(() => new Set());
   const macroArcsRef = useRef([]);
   const macroArcSaveTimerRef = useRef(null);
+  const activeProjectIdRef = useRef(null);
   const planningScopeDefaultsRef = useRef({ safeTarget: 1, defaultStart: 1, defaultEnd: 1, hasExplicitTargetLength: false });
 
   const {
@@ -150,17 +180,29 @@ export default function useStoryBibleMacroArcs({
     () => buildPlanningScopeDefaults({ targetLength, chaptersCount, macroArcs }),
     [chaptersCount, macroArcs, targetLength]
   );
+  const normalizedMilestoneChapterPlans = useMemo(
+    () => syncMilestoneChapterPlans(aiMilestoneChapterPlans, aiMilestoneCount),
+    [aiMilestoneChapterPlans, aiMilestoneCount]
+  );
+  const rawMilestonePlanBounds = useMemo(
+    () => getMilestonePlanBounds(normalizedMilestoneChapterPlans),
+    [normalizedMilestoneChapterPlans]
+  );
   const effectivePlanningScope = useMemo(
     () => normalizePlanningScope({
       start: planningScopeStart,
       end: planningScopeEnd,
       defaults: planningScopeDefaults,
+      extraLowerBound: rawMilestonePlanBounds.minChapter,
+      extraUpperBound: rawMilestonePlanBounds.maxChapter,
     }),
-    [planningScopeDefaults, planningScopeEnd, planningScopeStart]
-  );
-  const normalizedMilestoneChapterPlans = useMemo(
-    () => syncMilestoneChapterPlans(aiMilestoneChapterPlans, aiMilestoneCount),
-    [aiMilestoneChapterPlans, aiMilestoneCount]
+    [
+      planningScopeDefaults,
+      planningScopeEnd,
+      planningScopeStart,
+      rawMilestonePlanBounds.maxChapter,
+      rawMilestonePlanBounds.minChapter,
+    ]
   );
   const manualMilestoneChapterPlans = useMemo(
     () => normalizedMilestoneChapterPlans.map((item) => normalizeManualMilestonePlan(item, effectivePlanningScope)),
@@ -294,17 +336,28 @@ export default function useStoryBibleMacroArcs({
   }, [aiMilestoneCount]);
 
   useEffect(() => {
-    if (!currentProject?.id) {
+    const projectId = currentProject?.id || null;
+    if (!projectId) {
+      activeProjectIdRef.current = null;
       setMacroArcs([]);
       return;
     }
-    setAiMilestoneCount(getSuggestedMacroMilestoneCount(currentProject.target_length || 0));
+
+    const isProjectSwitch = activeProjectIdRef.current !== projectId;
+    activeProjectIdRef.current = projectId;
+
+    if (isProjectSwitch) {
+      const nextSuggestedCount = getSuggestedMacroMilestoneCount(currentProject?.target_length || 0);
+      setAiMilestoneCount(nextSuggestedCount);
+      setAiMilestoneChapterPlans(syncMilestoneChapterPlans([], nextSuggestedCount));
+    }
+
     db.macro_arcs
-      .where('project_id').equals(currentProject.id)
+      .where('project_id').equals(projectId)
       .sortBy('order_index')
       .then(setMacroArcs)
       .catch(() => setMacroArcs([]));
-  }, [currentProject]);
+  }, [currentProject?.id, currentProject?.target_length]);
 
   useEffect(() => {
     const previousDefaults = planningScopeDefaultsRef.current;
@@ -313,6 +366,8 @@ export default function useStoryBibleMacroArcs({
       start: planningScopeStart,
       end: planningScopeEnd,
       defaults: previousDefaults,
+      extraLowerBound: rawMilestonePlanBounds.minChapter,
+      extraUpperBound: rawMilestonePlanBounds.maxChapter,
     });
 
     const shouldFollowDefaults =
@@ -327,13 +382,21 @@ export default function useStoryBibleMacroArcs({
         start: planningScopeStart,
         end: planningScopeEnd,
         defaults: nextDefaults,
+        extraLowerBound: rawMilestonePlanBounds.minChapter,
+        extraUpperBound: rawMilestonePlanBounds.maxChapter,
       });
       if (clamped.start !== planningScopeStart) setPlanningScopeStartState(clamped.start);
       if (clamped.end !== planningScopeEnd) setPlanningScopeEndState(clamped.end);
     }
 
     planningScopeDefaultsRef.current = nextDefaults;
-  }, [planningScopeDefaults, planningScopeEnd, planningScopeStart]);
+  }, [
+    planningScopeDefaults,
+    planningScopeEnd,
+    planningScopeStart,
+    rawMilestonePlanBounds.maxChapter,
+    rawMilestonePlanBounds.minChapter,
+  ]);
 
   useEffect(() => {
     if (macroMilestoneSuggestions?.milestones?.length > 0) {
@@ -384,21 +447,27 @@ export default function useStoryBibleMacroArcs({
       start: value,
       end: planningScopeEnd || prev,
       defaults: planningScopeDefaultsRef.current,
+      extraLowerBound: rawMilestonePlanBounds.minChapter,
+      extraUpperBound: rawMilestonePlanBounds.maxChapter,
     }).start);
     setPlanningScopeEndState((prev) => normalizePlanningScope({
       start: value,
       end: prev,
       defaults: planningScopeDefaultsRef.current,
+      extraLowerBound: rawMilestonePlanBounds.minChapter,
+      extraUpperBound: rawMilestonePlanBounds.maxChapter,
     }).end);
-  }, [planningScopeEnd]);
+  }, [planningScopeEnd, rawMilestonePlanBounds.maxChapter, rawMilestonePlanBounds.minChapter]);
 
   const setPlanningScopeEnd = useCallback((value) => {
     setPlanningScopeEndState(normalizePlanningScope({
       start: planningScopeStart,
       end: value,
       defaults: planningScopeDefaultsRef.current,
+      extraLowerBound: rawMilestonePlanBounds.minChapter,
+      extraUpperBound: rawMilestonePlanBounds.maxChapter,
     }).end);
-  }, [planningScopeStart]);
+  }, [planningScopeStart, rawMilestonePlanBounds.maxChapter, rawMilestonePlanBounds.minChapter]);
 
   const useDefaultPlanningScope = useCallback(() => {
     setPlanningScopeStartState(planningScopeDefaults.defaultStart);
@@ -679,9 +748,9 @@ export default function useStoryBibleMacroArcs({
     aiMilestoneChapterPlans: normalizedMilestoneChapterPlans,
     handleUpdateMilestoneChapterPlan,
     resetMilestoneChapterPlans,
-    planningScopeStart,
+    planningScopeStart: effectivePlanningScope.start,
     setPlanningScopeStart,
-    planningScopeEnd,
+    planningScopeEnd: effectivePlanningScope.end,
     setPlanningScopeEnd,
     planningScopeSpan: effectivePlanningScope.span,
     planningScopeTargetLength: planningScopeDefaults.safeTarget,

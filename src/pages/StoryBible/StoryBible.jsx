@@ -55,7 +55,7 @@ export default function StoryBible() {
   const [openSections, setOpenSections] = useState({
     overview: true,
     ai: false,
-    grandStrategy: false,
+    grandStrategy: true,
     suggestions: true,
     canon: true,
     characters: true,

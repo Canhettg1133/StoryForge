@@ -636,6 +636,7 @@ export const TASK_INSTRUCTIONS = {
   ].join('\n'),
   [TASK_TYPES.GENERATE_MACRO_MILESTONES]: withPlanningAndCanonPrefix([
     'Hoach dinh DUNG so luong cot moc dai cuc duoc yeu cau cho dung PHAM VI LAP KE HOACH duoc cung cap; moi cot moc la mot diem ngoat LON cua hanh trinh.',
+    'Neu dau vao co [SO LUONG COT MOC CAN TAO] thi mang milestones PHAI co dung bang do phan tu; khong duoc tu y roi ve mot con so mac dinh.',
     'Phai phan biet ro GIUA tong do dai du kien cua toan truyen va pham vi chapter dang duoc yeu cau lap dai cuc.',
     'Neu pham vi lap ke hoach khong bat dau tu Chuong 1 thi KHONG duoc tu y keo cot moc ve Chuong 1 va KHONG duoc coi pham vi do la toan bo truyen.',
     'Can phan bo hop ly trong pham vi duoc giao, co leo thang, khung hoang, dao chieu va tra gia ro rang.',
@@ -2606,6 +2607,7 @@ export function buildPrompt(taskType, context = {}) {
       if (ultimateGoal) userContent += '\n\n[MUC TIEU CUOI CUNG]\n' + ultimateGoal;
       if (macroMilestoneCount > 0) {
         userContent += '\n\n[SO LUONG COT MOC CAN TAO]\n' + macroMilestoneCount;
+        userContent += '\nTra ve DUNG ' + macroMilestoneCount + ' phan tu trong mang milestones.';
       }
       if (Array.isArray(macroMilestoneChapterPlans) && macroMilestoneChapterPlans.length > 0) {
         const planLines = macroMilestoneChapterPlans.map(function (item, index) {
