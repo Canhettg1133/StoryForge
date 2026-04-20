@@ -243,6 +243,14 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [macroArcsInput, setMacroArcsInput] = useState([]);
   const [showMacroArcs, setShowMacroArcs] = useState(false);
 
+  const handleSelectNumericField = (event) => {
+    event.target.select();
+  };
+
+  const keepNumericSelection = (event) => {
+    event.preventDefault();
+  };
+
   const handleTargetLengthTypeChange = (v) => {
     setTargetLengthType(v);
     let newLen = targetLength;
@@ -965,20 +973,24 @@ Chỉ trả về JSON, không thêm gì khác.`,
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label" style={{ minHeight: '2.5rem', display: 'flex', alignItems: 'flex-end' }}>Số chương mục tiêu</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   className="input"
                   value={targetLength}
+                  onFocus={handleSelectNumericField}
+                  onMouseUp={keepNumericSelection}
                   onChange={(e) => setTargetLength(e.target.value)}
                 />
               </div>
               <div className="form-group" style={{ flex: 1 }}>
                 <label className="form-label" style={{ minHeight: '2.5rem', display: 'flex', alignItems: 'flex-end' }}>Số chương khởi đầu</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   className="input"
                   value={initialChapterCount}
-                  min={1}
-                  max={100}
+                  onFocus={handleSelectNumericField}
+                  onMouseUp={keepNumericSelection}
                   onChange={(e) => setInitialChapterCount(clampInitialChapterCount(e.target.value))}
                 />
                 <span className="form-hint">Bạn tự chọn số chapter muốn tạo ban đầu, từ 1 đến 100. Mode dưới 20 chapter đang tối ưu nhất.</span>
@@ -1006,8 +1018,10 @@ Chỉ trả về JSON, không thêm gì khác.`,
               {milestonesInfo.map((m, idx) => (
                 <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                   <input
-                    type="number" className="input" style={{ width: '80px' }}
+                    type="text" inputMode="numeric" className="input" style={{ width: '80px' }}
                     value={m.percent}
+                    onFocus={handleSelectNumericField}
+                    onMouseUp={keepNumericSelection}
                     onChange={e => updateMilestone(idx, 'percent', Number(e.target.value))}
                     placeholder="%"
                   />
@@ -1077,15 +1091,19 @@ Chỉ trả về JSON, không thêm gì khác.`,
                       <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
                         <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Ch.</span>
                         <input
-                          type="number" className="input input-sm" style={{ width: '70px' }}
+                          type="text" inputMode="numeric" className="input input-sm" style={{ width: '70px' }}
                           value={m.chapter_from}
+                          onFocus={handleSelectNumericField}
+                          onMouseUp={keepNumericSelection}
                           onChange={e => updateMacroArc(idx, 'chapter_from', e.target.value)}
                           placeholder="Từ"
                         />
                         <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>→</span>
                         <input
-                          type="number" className="input input-sm" style={{ width: '70px' }}
+                          type="text" inputMode="numeric" className="input input-sm" style={{ width: '70px' }}
                           value={m.chapter_to}
+                          onFocus={handleSelectNumericField}
+                          onMouseUp={keepNumericSelection}
                           onChange={e => updateMacroArc(idx, 'chapter_to', e.target.value)}
                           placeholder="Đến"
                         />
