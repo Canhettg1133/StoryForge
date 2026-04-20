@@ -121,6 +121,10 @@
   flex: 1 1 auto;
 }
 
+.ai-guidance-panel--plot-assist-open {
+  flex: 1 1 auto;
+}
+
 .ai-guidance-panel--mobile {
   flex: 1 1 auto;
 }

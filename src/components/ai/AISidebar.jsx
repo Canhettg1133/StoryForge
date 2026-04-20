@@ -800,10 +800,12 @@ export default function AISidebar({
     if (!pendingAction) return null;
 
     const showPlotAssist = pendingAction.id === 'continue' && plotSuggestions.length > 0;
+    const isPlotAssistExpanded = showPlotAssist && showPlotAssistPicker;
     const plotAssistLabel = `Co ${plotSuggestions.length} huong plot da luu cho chuong nay`;
     const guidancePanelClassName = [
       'ai-guidance-panel',
       !scopedHasOutput ? 'ai-guidance-panel--expanded' : '',
+      isPlotAssistExpanded ? 'ai-guidance-panel--plot-assist-open' : '',
       isMobileLayout ? 'ai-guidance-panel--mobile' : '',
     ].filter(Boolean).join(' ');
 
@@ -844,9 +846,6 @@ export default function AISidebar({
                 <Trash2 size={11} />
               </button>
             </div>
-          </div>
-          <div className="ai-plot-assist-note">
-            Plot suggestion chỉ là gợi ý để chọn hướng viết tiếp. Mặc định không tự bung ra để tránh rối mắt.
           </div>
           {showPlotAssistPicker && (
           <div className="ai-plot-assist-list">
@@ -1124,7 +1123,9 @@ export default function AISidebar({
       className={[
         'ai-bottom-dock',
         hasPinnedTaskPanel ? 'ai-bottom-dock--task-open' : '',
-        hasPinnedTaskPanel && !scopedHasOutput ? 'ai-bottom-dock--expanded' : '',
+        hasPinnedTaskPanel && (!scopedHasOutput || (pendingAction?.id === 'continue' && plotSuggestions.length > 0 && showPlotAssistPicker))
+          ? 'ai-bottom-dock--expanded'
+          : '',
         isMobileLayout && hasPinnedTaskPanel ? 'ai-bottom-dock--mobile-sheet' : '',
       ].filter(Boolean).join(' ')}
     >
