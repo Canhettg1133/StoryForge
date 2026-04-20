@@ -8,8 +8,14 @@ import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import { X, Sparkles, PenTool, Eye, BookOpen, MessageSquare } from 'lucide-react';
 import ProjectWizard from './ProjectWizard';
 
+function clampInitialChapterCount(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return 10;
+  return Math.max(1, Math.min(100, Math.round(numeric)));
+}
+
 export default function NewProjectModal({ onClose, onCreated }) {
-  const { createProject } = useProjectStore();
+  const { createProject, createChapter } = useProjectStore();
   const [mode, setMode] = useState(null); // null = choose, 'manual' = form, 'ai' = wizard
   const [form, setForm] = useState({
     title: '',
@@ -22,6 +28,10 @@ export default function NewProjectModal({ onClose, onCreated }) {
     pronoun_style: '',
     synopsis: '',
     story_structure: '',
+    target_length_type: 'unset',
+    target_length: 0,
+    initial_chapter_count: 10,
+    ultimate_goal: '',
   });
   const [creating, setCreating] = useState(false);
 
@@ -52,6 +62,21 @@ export default function NewProjectModal({ onClose, onCreated }) {
     return parts.length ? parts.join(' · ') : null;
   }, [selectedTemplate]);
 
+  const handleTargetLengthTypeChange = (value) => {
+    let nextLength = Number(form.target_length) || 0;
+    if (value === 'short') nextLength = 50;
+    else if (value === 'medium') nextLength = 150;
+    else if (value === 'long') nextLength = 400;
+    else if (value === 'epic') nextLength = 800;
+    else if (value === 'unset') nextLength = 0;
+
+    setForm((prev) => ({
+      ...prev,
+      target_length_type: value,
+      target_length: nextLength,
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
@@ -61,7 +86,14 @@ export default function NewProjectModal({ onClose, onCreated }) {
       const id = await createProject({
         ...form,
         pronoun_style: form.pronoun_style || GENRE_TO_PRONOUN_STYLE[form.genre_primary] || 'hien_dai',
+        target_length: Number(form.target_length) || 0,
+        initial_chapter_count: clampInitialChapterCount(form.initial_chapter_count),
+        skipFirstChapter: true,
       });
+      const initialChapterCount = clampInitialChapterCount(form.initial_chapter_count);
+      for (let index = 0; index < initialChapterCount; index += 1) {
+        await createChapter(id, `Chương ${index + 1}`);
+      }
       onCreated(id);
     } catch (err) {
       console.error('Failed to create project:', err);
@@ -253,6 +285,55 @@ export default function NewProjectModal({ onClose, onCreated }) {
               rows={3}
             />
             <span className="form-hint">AI cần nội dung này để duy trì mạch truyện nhất quán</span>
+          </div>
+
+          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Độ dài dự kiến</label>
+              <select
+                className="select"
+                value={form.target_length_type}
+                onChange={(e) => handleTargetLengthTypeChange(e.target.value)}
+              >
+                <option value="unset">Chưa xác định</option>
+                <option value="short">Truyện ngắn (30-50 chương)</option>
+                <option value="medium">Truyện vừa (100-200 chương)</option>
+                <option value="long">Trường thiên (300-500 chương)</option>
+                <option value="epic">Sử thi (500+ chương)</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Số chương mục tiêu</label>
+              <input
+                type="number"
+                className="input"
+                value={form.target_length}
+                onChange={(e) => handleChange('target_length', e.target.value)}
+              />
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Số chương khởi đầu</label>
+              <input
+                type="number"
+                className="input"
+                value={form.initial_chapter_count}
+                min={1}
+                max={100}
+                onChange={(e) => handleChange('initial_chapter_count', clampInitialChapterCount(e.target.value))}
+              />
+              <span className="form-hint">Tạo sẵn chapter trống ban đầu, từ 1 đến 100.</span>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Đích đến tối thượng (Long-term Goal)</label>
+            <textarea
+              className="textarea"
+              placeholder="VD: Main đạt cảnh giới cao nhất và báo thù diệt tộc."
+              value={form.ultimate_goal}
+              onChange={(e) => handleChange('ultimate_goal', e.target.value)}
+              rows={2}
+            />
           </div>
 
           {/* Row 6: Description */}
