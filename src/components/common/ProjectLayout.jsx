@@ -37,7 +37,11 @@ export default function ProjectLayout() {
         initProject();
     }, [projectId, currentProject?.id, loadProject, navigate]);
 
-    if (!init || loading || (!currentProject && projectId)) {
+    const numericProjectId = Number(projectId);
+    const hasLoadedRouteProject = currentProject?.id === numericProjectId;
+    const shouldShowBlockingLoader = !init || (projectId && !hasLoadedRouteProject);
+
+    if (shouldShowBlockingLoader) {
         return (
             <div style={{ display: 'flex', height: '100%', width: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px', color: 'var(--color-text-secondary)' }}>
                 <Loader2 size={32} className="spin" />

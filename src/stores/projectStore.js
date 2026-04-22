@@ -39,6 +39,31 @@ function getFirstSceneForChapter(scenes, chapterId) {
   return scenes.find((scene) => scene.chapter_id === chapterId) || null;
 }
 
+function resolveSelectionAfterChapterDeletion(chapters, scenes, deletedChapterId) {
+  const deletedIndex = chapters.findIndex((chapter) => chapter.id === deletedChapterId);
+  const remainingChapters = chapters.filter((chapter) => chapter.id !== deletedChapterId);
+
+  if (remainingChapters.length === 0) {
+    return {
+      activeChapterId: null,
+      activeSceneId: null,
+    };
+  }
+
+  const fallbackChapter = chapters[deletedIndex + 1]?.id !== deletedChapterId
+    ? chapters[deletedIndex + 1]
+    : chapters[deletedIndex - 1];
+  const targetChapter = fallbackChapter && fallbackChapter.id !== deletedChapterId
+    ? fallbackChapter
+    : remainingChapters[Math.min(deletedIndex, remainingChapters.length - 1)];
+  const targetScene = getFirstSceneForChapter(scenes, targetChapter?.id);
+
+  return {
+    activeChapterId: targetChapter?.id || null,
+    activeSceneId: targetScene?.id || null,
+  };
+}
+
 function resolveActiveSelection(chapters, scenes, requestedChapterId, requestedSceneId) {
   let activeScene = requestedSceneId != null
     ? scenes.find((scene) => scene.id === requestedSceneId) || null
@@ -633,6 +658,20 @@ const useProjectStore = create((set, get) => ({
   deleteChapter: async (id) => {
     const chapter = get().chapters.find((item) => item.id === id) || await db.chapters.get(id);
     if (!chapter) return;
+    const {
+      currentProject,
+      chapters,
+      scenes,
+      activeChapterId,
+      activeSceneId,
+    } = get();
+    const nextSelection = currentProject?.id === chapter.project_id
+      ? (
+        activeChapterId === id
+          ? resolveSelectionAfterChapterDeletion(chapters, scenes, id)
+          : { activeChapterId, activeSceneId }
+      )
+      : { activeChapterId: null, activeSceneId: null };
 
     await purgeChapterCanonState(chapter.project_id, id);
     await db.chapters.delete(id);
@@ -649,9 +688,8 @@ const useProjectStore = create((set, get) => ({
     await reindexProjectChapters(chapter.project_id);
     await rebuildCanonFromChapterEngine(chapter.project_id);
     await touchProjectUpdatedAt(chapter.project_id, set);
-    const { currentProject } = get();
     if (currentProject?.id === chapter.project_id) {
-      await get().loadProject(currentProject.id);
+      await get().loadProject(currentProject.id, nextSelection);
       await useCodexStore.getState().loadCodex(currentProject.id);
     }
   },

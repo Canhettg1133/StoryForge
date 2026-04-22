@@ -59,6 +59,13 @@ class MemoryQuery {
   async sortBy(field) {
     return this._rows().sort(compareByField(field));
   }
+
+  async delete() {
+    const rows = this._rows();
+    const ids = new Set(rows.map((row) => row?.id).filter((id) => id != null));
+    this.table.rows = this.table.rows.filter((row) => !ids.has(row?.id));
+    return ids.size;
+  }
 }
 
 class MemoryTable {
@@ -102,6 +109,19 @@ class MemoryTable {
     const next = { ...clone(record), id: record?.id ?? nextId };
     this.rows.push(next);
     return next.id;
+  }
+
+  async delete(id) {
+    const before = this.rows.length;
+    this.rows = this.rows.filter((row) => row.id !== id);
+    return before === this.rows.length ? 0 : 1;
+  }
+
+  async bulkDelete(ids = []) {
+    const idSet = new Set(ids);
+    const before = this.rows.length;
+    this.rows = this.rows.filter((row) => !idSet.has(row.id));
+    return before - this.rows.length;
   }
 }
 
@@ -249,5 +269,28 @@ describe('phase10 project load resilience', () => {
     expect(store.getState().scenes.map((scene) => scene.id)).toEqual([200]);
     expect(store.getState().activeChapterId).toBe(20);
     expect(store.getState().activeSceneId).toBe(200);
+  });
+
+  it('keeps selection near the deleted chapter instead of jumping back to the first chapter', async () => {
+    const { store } = await loadProjectStore({
+      projects: [{ id: 7, title: 'Project 7', updated_at: 20 }],
+      chapters: [
+        { id: 10, project_id: 7, order_index: 0, title: 'Chuong 1', actual_word_count: 0 },
+        { id: 20, project_id: 7, order_index: 1, title: 'Chuong 2', actual_word_count: 0 },
+        { id: 30, project_id: 7, order_index: 2, title: 'Chuong 3', actual_word_count: 0 },
+      ],
+      scenes: [
+        { id: 100, project_id: 7, chapter_id: 10, order_index: 0, title: 'Canh 1', draft_text: 'one', final_text: '' },
+        { id: 200, project_id: 7, chapter_id: 20, order_index: 0, title: 'Canh 2', draft_text: 'two', final_text: '' },
+        { id: 300, project_id: 7, chapter_id: 30, order_index: 0, title: 'Canh 3', draft_text: 'three', final_text: '' },
+      ],
+    });
+
+    await store.getState().loadProject(7, { activeChapterId: 20, activeSceneId: 200 });
+    await store.getState().deleteChapter(20);
+
+    expect(store.getState().chapters.map((chapter) => chapter.id)).toEqual([10, 30]);
+    expect(store.getState().activeChapterId).toBe(30);
+    expect(store.getState().activeSceneId).toBe(300);
   });
 });

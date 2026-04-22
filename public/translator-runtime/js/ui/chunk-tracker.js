@@ -11,6 +11,15 @@ let chunkTrackingData = []; // Array of { index, inputLen, outputLen, ratio, sta
 let originalChunksRef = []; // Reference to original chunks (raw, no prompt)
 let preparedChunksRef = []; // Reference to prepared chunks (with prompt)
 let customPromptRef = ''; // Reference to custom prompt used
+let chunkTrackerSummaryState = {
+    total: 0,
+    success: 0,
+    warning: 0,
+    failed: 0,
+    totalInput: 0,
+    totalOutput: 0,
+    totalRetries: 0,
+};
 
 // Status enum
 const CHUNK_STATUS = {
@@ -28,7 +37,7 @@ const CHUNK_STATUS = {
 // ============================================
 function initChunkTracker(chunks, preparedChunks, customPrompt) {
     originalChunksRef = chunks;
-    preparedChunksRef = preparedChunks;
+    preparedChunksRef = Array.isArray(preparedChunks) ? preparedChunks : null;
     customPromptRef = customPrompt;
 
     chunkTrackingData = chunks.map((chunk, i) => ({
@@ -44,9 +53,39 @@ function initChunkTracker(chunks, preparedChunks, customPrompt) {
         error: '',
         startTime: 0
     }));
+    chunkTrackerSummaryState = {
+        total: chunkTrackingData.length,
+        success: 0,
+        warning: 0,
+        failed: 0,
+        totalInput: chunkTrackingData.reduce((sum, data) => sum + data.inputLen, 0),
+        totalOutput: 0,
+        totalRetries: 0,
+    };
 
     renderChunkTracker();
     showChunkTrackerPanel();
+}
+
+function getPreparedChunkForTracker(chunkIndex) {
+    if (Array.isArray(preparedChunksRef) && preparedChunksRef[chunkIndex]) {
+        return preparedChunksRef[chunkIndex];
+    }
+    return `${customPromptRef || ''}${originalChunksRef[chunkIndex] || ''}`;
+}
+
+function applyChunkStatus(data, nextStatus) {
+    if (!data || data.status === nextStatus) return;
+
+    if (data.status === CHUNK_STATUS.SUCCESS) chunkTrackerSummaryState.success = Math.max(0, chunkTrackerSummaryState.success - 1);
+    if (data.status === CHUNK_STATUS.WARNING) chunkTrackerSummaryState.warning = Math.max(0, chunkTrackerSummaryState.warning - 1);
+    if (data.status === CHUNK_STATUS.FAILED) chunkTrackerSummaryState.failed = Math.max(0, chunkTrackerSummaryState.failed - 1);
+
+    if (nextStatus === CHUNK_STATUS.SUCCESS) chunkTrackerSummaryState.success += 1;
+    if (nextStatus === CHUNK_STATUS.WARNING) chunkTrackerSummaryState.warning += 1;
+    if (nextStatus === CHUNK_STATUS.FAILED) chunkTrackerSummaryState.failed += 1;
+
+    data.status = nextStatus;
 }
 
 // ============================================
@@ -54,7 +93,7 @@ function initChunkTracker(chunks, preparedChunks, customPrompt) {
 // ============================================
 function trackChunkStart(chunkIndex) {
     if (!chunkTrackingData[chunkIndex]) return;
-    chunkTrackingData[chunkIndex].status = CHUNK_STATUS.TRANSLATING;
+    applyChunkStatus(chunkTrackingData[chunkIndex], CHUNK_STATUS.TRANSLATING);
     chunkTrackingData[chunkIndex].startTime = Date.now();
     renderChunkRow(chunkIndex);
 }
@@ -62,6 +101,7 @@ function trackChunkStart(chunkIndex) {
 function trackChunkSuccess(chunkIndex, outputText, model) {
     if (!chunkTrackingData[chunkIndex]) return;
     const data = chunkTrackingData[chunkIndex];
+    chunkTrackerSummaryState.totalOutput += (outputText ? outputText.length : 0) - data.outputLen;
     data.outputLen = outputText ? outputText.length : 0;
     data.ratio = data.inputLen > 0 ? Math.round((data.outputLen / data.inputLen) * 100) : 0;
     data.model = model || '';
@@ -75,9 +115,9 @@ function trackChunkSuccess(chunkIndex, outputText, model) {
 
     // Determine status based on ratio
     if (data.ratio < 60) {
-        data.status = CHUNK_STATUS.WARNING;
+        applyChunkStatus(data, CHUNK_STATUS.WARNING);
     } else {
-        data.status = CHUNK_STATUS.SUCCESS;
+        applyChunkStatus(data, CHUNK_STATUS.SUCCESS);
     }
     data.error = '';
 
@@ -88,7 +128,7 @@ function trackChunkSuccess(chunkIndex, outputText, model) {
 function trackChunkFailed(chunkIndex, errorMsg) {
     if (!chunkTrackingData[chunkIndex]) return;
     const data = chunkTrackingData[chunkIndex];
-    data.status = CHUNK_STATUS.FAILED;
+    applyChunkStatus(data, CHUNK_STATUS.FAILED);
     data.error = errorMsg || 'Unknown error';
     data.timeMs = data.startTime > 0 ? Date.now() - data.startTime : 0;
 
@@ -98,8 +138,9 @@ function trackChunkFailed(chunkIndex, errorMsg) {
 
 function trackChunkRetry(chunkIndex, attempt) {
     if (!chunkTrackingData[chunkIndex]) return;
+    chunkTrackerSummaryState.totalRetries += Math.max(0, attempt - (chunkTrackingData[chunkIndex].retryCount || 0));
     chunkTrackingData[chunkIndex].retryCount = attempt;
-    chunkTrackingData[chunkIndex].status = CHUNK_STATUS.RETRYING;
+    applyChunkStatus(chunkTrackingData[chunkIndex], CHUNK_STATUS.RETRYING);
     renderChunkRow(chunkIndex);
 }
 
@@ -113,13 +154,14 @@ async function retranslateChunk(chunkIndex) {
     }
 
     const data = chunkTrackingData[chunkIndex];
-    data.status = CHUNK_STATUS.RETRANSLATING;
+    applyChunkStatus(data, CHUNK_STATUS.RETRANSLATING);
+    chunkTrackerSummaryState.totalRetries = Math.max(0, chunkTrackerSummaryState.totalRetries - (data.retryCount || 0));
     data.retryCount = 0;
     data.startTime = Date.now();
     data.error = '';
     renderChunkRow(chunkIndex);
 
-    const chunkText = preparedChunksRef[chunkIndex];
+    const chunkText = getPreparedChunkForTracker(chunkIndex);
 
     try {
         let result;
@@ -138,9 +180,10 @@ async function retranslateChunk(chunkIndex) {
 
         if (result && !result.startsWith('[LỖI')) {
             // Success — update tracking
+            chunkTrackerSummaryState.totalOutput += result.length - data.outputLen;
             data.outputLen = result.length;
             data.ratio = data.inputLen > 0 ? Math.round((data.outputLen / data.inputLen) * 100) : 0;
-            data.status = data.ratio < 60 ? CHUNK_STATUS.WARNING : CHUNK_STATUS.SUCCESS;
+            applyChunkStatus(data, data.ratio < 60 ? CHUNK_STATUS.WARNING : CHUNK_STATUS.SUCCESS);
             data.timeMs = Date.now() - data.startTime;
             data.error = '';
 
@@ -155,7 +198,7 @@ async function retranslateChunk(chunkIndex) {
             throw new Error(result || 'Empty result');
         }
     } catch (e) {
-        data.status = CHUNK_STATUS.FAILED;
+        applyChunkStatus(data, CHUNK_STATUS.FAILED);
         data.error = e.message;
         data.timeMs = Date.now() - data.startTime;
         showToast(`❌ Chunk ${chunkIndex + 1} dịch lại thất bại: ${e.message}`, 'error');
@@ -278,9 +321,10 @@ function editChunkManual(chunkIndex) {
 
         // Update tracking
         const data = chunkTrackingData[chunkIndex];
+        chunkTrackerSummaryState.totalOutput += newText.length - data.outputLen;
         data.outputLen = newText.length;
         data.ratio = data.inputLen > 0 ? Math.round((data.outputLen / data.inputLen) * 100) : 0;
-        data.status = data.ratio < 60 ? CHUNK_STATUS.WARNING : CHUNK_STATUS.SUCCESS;
+        applyChunkStatus(data, data.ratio < 60 ? CHUNK_STATUS.WARNING : CHUNK_STATUS.SUCCESS);
         data.error = '';
 
         // Update textarea
@@ -385,14 +429,14 @@ function updateChunkSummary() {
     const summary = document.getElementById('chunkTrackerSummary');
     if (!summary) return;
 
-    const total = chunkTrackingData.length;
-    const success = chunkTrackingData.filter(d => d.status === CHUNK_STATUS.SUCCESS).length;
-    const warning = chunkTrackingData.filter(d => d.status === CHUNK_STATUS.WARNING).length;
-    const failed = chunkTrackingData.filter(d => d.status === CHUNK_STATUS.FAILED).length;
-    const totalInput = chunkTrackingData.reduce((sum, d) => sum + d.inputLen, 0);
-    const totalOutput = chunkTrackingData.reduce((sum, d) => sum + d.outputLen, 0);
+    const total = chunkTrackerSummaryState.total;
+    const success = chunkTrackerSummaryState.success;
+    const warning = chunkTrackerSummaryState.warning;
+    const failed = chunkTrackerSummaryState.failed;
+    const totalInput = chunkTrackerSummaryState.totalInput;
+    const totalOutput = chunkTrackerSummaryState.totalOutput;
     const totalRatio = totalInput > 0 ? Math.round((totalOutput / totalInput) * 100) : 0;
-    const totalRetries = chunkTrackingData.reduce((sum, d) => sum + d.retryCount, 0);
+    const totalRetries = chunkTrackerSummaryState.totalRetries;
 
     const ratioClass = totalRatio < 60 ? 'ratio-warning' : (totalRatio > 0 ? 'ratio-ok' : '');
 

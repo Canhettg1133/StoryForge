@@ -2497,6 +2497,8 @@ select option {
     cursor: pointer;
     transition: background var(--transition-fast);
     font-size: 0.85rem;
+    content-visibility: auto;
+    contain-intrinsic-size: 32px;
 }
 
 .ct-row:hover {

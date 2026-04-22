@@ -43,6 +43,47 @@ const PRE_WRITE_GUARD_TASKS = new Set([
   TASK_TYPES.ARC_CHAPTER_DRAFT,
 ]);
 
+const STREAMING_TEXT_FLUSH_INTERVAL_MS = 80;
+let aiStreamingRunCounter = 0;
+
+function createStreamingTextThrottler(commit, intervalMs = STREAMING_TEXT_FLUSH_INTERVAL_MS) {
+  let latestText = '';
+  let timerId = null;
+  let lastFlushAt = 0;
+
+  const clearTimer = () => {
+    if (timerId !== null) {
+      clearTimeout(timerId);
+      timerId = null;
+    }
+  };
+
+  const flush = () => {
+    clearTimer();
+    lastFlushAt = Date.now();
+    commit(latestText);
+  };
+
+  return {
+    push(text) {
+      latestText = typeof text === 'string' ? text : '';
+      const now = Date.now();
+      const elapsed = now - lastFlushAt;
+
+      if (elapsed >= intervalMs) {
+        flush();
+        return;
+      }
+
+      if (timerId === null) {
+        timerId = setTimeout(flush, Math.max(0, intervalMs - elapsed));
+      }
+    },
+    flush,
+    cancel: clearTimer,
+  };
+}
+
 function extractTextTail(rawText, wordLimit = 150) {
   const plainText = (rawText || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   if (!plainText) return '';
@@ -247,6 +288,13 @@ const useAIStore = create((set, get) => ({
    * Phase 7: Auto-saves bridge buffer after writing tasks complete.
    */
   runTask: async ({ taskType, context = {}, routeOptions = {} }) => {
+    const streamRunId = ++aiStreamingRunCounter;
+    const streamTextThrottler = createStreamingTextThrottler((streamingText) => {
+      if (streamRunId === aiStreamingRunCounter) {
+        set({ streamingText });
+      }
+    });
+
     set({
       isStreaming: true,
       streamingText: '',
@@ -388,9 +436,11 @@ const useAIStore = create((set, get) => ({
       nsfwMode: enrichedContext.nsfwMode,
       superNsfwMode: enrichedContext.superNsfwMode,
       onToken: (chunk, fullText) => {
-        set({ streamingText: fullText });
+        streamTextThrottler.push(fullText);
       },
       onComplete: async (text, meta) => {
+        streamTextThrottler.cancel();
+        if (streamRunId !== aiStreamingRunCounter) return;
         const safeText = typeof text === 'string' ? text : '';
         if (!safeText.trim()) {
           set({
@@ -432,6 +482,8 @@ const useAIStore = create((set, get) => ({
         }
       },
       onError: (err) => {
+        streamTextThrottler.flush();
+        if (streamRunId !== aiStreamingRunCounter) return;
         set({
           isStreaming: false,
           error: err.message || 'Loi khong xac dinh',
@@ -583,6 +635,7 @@ const useAIStore = create((set, get) => ({
 
   /** Cancel active request */
   abort: () => {
+    aiStreamingRunCounter += 1;
     aiService.abort();
     set({ isStreaming: false });
   },

@@ -13,6 +13,8 @@ const HISTORY_DB_STORE = 'keyValue';
 const HISTORY_DB_RECORD_KEY = 'translationHistory';
 let historyDbPromise = null;
 let historyWriteQueue = Promise.resolve();
+let lastHistoryProgressRenderAt = 0;
+const HISTORY_PROGRESS_RENDER_INTERVAL_MS = 2000;
 
 function normalizeHistoryItems(items) {
     return Array.isArray(items) ? items.map(item => ({
@@ -248,8 +250,19 @@ function updateHistoryProgress(id, translatedText, chunks, completedCount, trans
         }
         translationHistory[index].date = new Date().toISOString();
         saveHistory();
-        renderHistoryList();
+        renderHistoryListForProgress();
     }
+}
+
+function renderHistoryListForProgress() {
+    if (typeof document === 'undefined') return;
+    const historyPanel = document.querySelector('.history-panel');
+    if (historyPanel && historyPanel.style.display === 'none') return;
+
+    const now = Date.now();
+    if (now - lastHistoryProgressRenderAt < HISTORY_PROGRESS_RENDER_INTERVAL_MS) return;
+    lastHistoryProgressRenderAt = now;
+    renderHistoryList();
 }
 
 function renderHistoryList() {

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import useProjectStore from '../../stores/projectStore';
 import {
   Plus,
@@ -61,6 +61,16 @@ export default function ChapterList({
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const contextMenuRef = useRef(null);
   const mobileActionMenuRef = useRef(null);
+  const desktopTreeRef = useRef(null);
+  const collapsedTreeRef = useRef(null);
+  const mobileTreeRef = useRef(null);
+  const pendingScrollRestoreRef = useRef(null);
+
+  const getScrollContainer = () => {
+    if (isMobileLayout) return mobileTreeRef.current;
+    if (panelCollapsed) return collapsedTreeRef.current;
+    return desktopTreeRef.current;
+  };
 
   useEffect(() => {
     if (!allowCollapse) {
@@ -71,6 +81,14 @@ export default function ChapterList({
   useEffect(() => {
     setExpandedChapters(new Set(chapters.map((chapter) => chapter.id)));
   }, [chapters]);
+
+  useLayoutEffect(() => {
+    if (pendingScrollRestoreRef.current == null) return;
+    const container = getScrollContainer();
+    if (!container) return;
+    container.scrollTop = pendingScrollRestoreRef.current;
+    pendingScrollRestoreRef.current = null;
+  }, [chapters, scenes, isMobileLayout, panelCollapsed]);
 
   useEffect(() => {
     if (!activeSceneId || !activeChapterId) return;
@@ -217,6 +235,7 @@ export default function ChapterList({
       : 'Xóa cảnh này?';
 
     if (!window.confirm(message)) return;
+    pendingScrollRestoreRef.current = getScrollContainer()?.scrollTop ?? null;
     if (type === 'chapter') await deleteChapter(id);
     else await deleteScene(id);
   };
@@ -359,7 +378,7 @@ export default function ChapterList({
             {chapters.length}
           </div>
 
-          <div className="chapter-list-collapsed-tree">
+          <div ref={collapsedTreeRef} className="chapter-list-collapsed-tree">
             {chapters.map((chapter, index) => {
               const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapter.id);
               const isActiveChapter = activeChapterId === chapter.id;
@@ -411,7 +430,7 @@ export default function ChapterList({
       )}
 
       {!panelCollapsed && (
-        <div className="chapter-list-tree">
+        <div ref={desktopTreeRef} className="chapter-list-tree">
           {chapters.map((chapter) => {
             const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapter.id);
             const isExpanded = expandedChapters.has(chapter.id);
@@ -517,7 +536,7 @@ export default function ChapterList({
   );
 
   const renderMobileTree = () => (
-    <div className="chapter-list-mobile-tree">
+    <div ref={mobileTreeRef} className="chapter-list-mobile-tree">
       {chapters.map((chapter) => {
         const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapter.id);
         const isExpanded = expandedChapters.has(chapter.id);

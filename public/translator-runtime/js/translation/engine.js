@@ -6,6 +6,84 @@
 // ============================================
 // MAIN TRANSLATION ENGINE
 // ============================================
+const TRANSLATION_PREVIEW_MAX_CHARS = 200000;
+const TRANSLATION_PREVIEW_UPDATE_INTERVAL_MS = 500;
+const TRANSLATION_HISTORY_PERSIST_INTERVAL_MS = 5000;
+const TRANSLATION_HISTORY_PERSIST_CHUNK_STEP = 10;
+const RPD_DASHBOARD_RENDER_INTERVAL_MS = 2000;
+let lastRPDDashboardRenderAt = 0;
+
+function buildPromptedChunk(promptText, chunkText) {
+    return `${promptText || ''}${chunkText || ''}`;
+}
+
+function getTranslatedChunkDisplayText(chunk, index, pendingLabel) {
+    return chunk !== null && chunk !== undefined
+        ? String(chunk)
+        : `[${pendingLabel} chunk ${index + 1}]`;
+}
+
+function buildTranslatedTextFromChunks(chunksArray, pendingLabel = '⏳ Chưa dịch') {
+    if (!Array.isArray(chunksArray)) return '';
+    return chunksArray
+        .map((chunk, idx) => getTranslatedChunkDisplayText(chunk, idx, pendingLabel))
+        .join('\n\n');
+}
+
+function slicePreviewText(text, maxChars) {
+    const sliced = String(text || '').slice(0, Math.max(0, maxChars));
+    if (!sliced) return '';
+
+    const lastCode = sliced.charCodeAt(sliced.length - 1);
+    if (lastCode >= 0xD800 && lastCode <= 0xDBFF) {
+        return sliced.slice(0, -1);
+    }
+    return sliced;
+}
+
+function buildTranslatedTextPreview(chunksArray, options = {}) {
+    if (!Array.isArray(chunksArray)) return '';
+
+    const pendingLabel = options.pendingLabel || '⏳ Đang dịch';
+    const maxChars = Math.max(1000, Number(options.maxChars) || TRANSLATION_PREVIEW_MAX_CHARS);
+    const parts = [];
+    let usedChars = 0;
+    let omittedChunks = 0;
+
+    for (let idx = 0; idx < chunksArray.length; idx += 1) {
+        const separatorLength = parts.length > 0 ? 2 : 0;
+        const text = getTranslatedChunkDisplayText(chunksArray[idx], idx, pendingLabel);
+        const nextLength = usedChars + separatorLength + text.length;
+
+        if (nextLength > maxChars) {
+            omittedChunks = chunksArray.length - idx;
+            const remainingChars = maxChars - usedChars - separatorLength;
+            if (remainingChars > 80) {
+                parts.push(slicePreviewText(text, remainingChars));
+                omittedChunks = chunksArray.length - idx - 1;
+            }
+            break;
+        }
+
+        parts.push(text);
+        usedChars = nextLength;
+    }
+
+    if (omittedChunks > 0) {
+        parts.push(`[Preview đã rút gọn: còn ${omittedChunks} chunk chưa hiển thị trong ô này. Dữ liệu đầy đủ vẫn được lưu để tải xuống/resume.]`);
+    }
+
+    return parts.join('\n\n');
+}
+
+function renderRPDDashboardThrottled(force = false) {
+    if (typeof renderRPDDashboard !== 'function') return;
+    const now = Date.now();
+    if (!force && now - lastRPDDashboardRenderAt < RPD_DASHBOARD_RENDER_INTERVAL_MS) return;
+    lastRPDDashboardRenderAt = now;
+    renderRPDDashboard();
+}
+
 function isChunkSuccessfullyTranslatedForResume(chunkText) {
     if (typeof chunkText !== 'string') return false;
 
@@ -21,10 +99,7 @@ function isChunkSuccessfullyTranslatedForResume(chunkText) {
 }
 
 function buildHistoryTextSnapshotFromChunks(chunksArray) {
-    if (!Array.isArray(chunksArray)) return '';
-    return chunksArray
-        .map((chunk, idx) => chunk !== null ? chunk : `[⏳ Chưa dịch chunk ${idx + 1}]`)
-        .join('\n\n');
+    return buildTranslatedTextFromChunks(chunksArray, '⏳ Chưa dịch');
 }
 
 async function startTranslation() {
@@ -123,12 +198,9 @@ async function startTranslation() {
         return;
     }
 
-    // Prepare chunks with prompt
-    const preparedChunks = chunks.map(chunk => customPrompt + chunk);
-
     // Initialize chunk tracker
     if (typeof initChunkTracker === 'function') {
-        initChunkTracker(chunks, preparedChunks, customPrompt);
+        initChunkTracker(chunks, null, customPrompt);
     }
 
     // UI Setup
@@ -213,7 +285,7 @@ async function startTranslation() {
     document.getElementById('progressSection').style.display = 'block';
     document.getElementById('resultSection').style.display = 'none';
     document.getElementById('translatedText').value = isResumingFromHistory
-        ? translatedChunks.map((c, i) => c !== null ? c : `[⏳ Chưa dịch chunk ${i + 1}]`).join('\n\n')
+        ? buildTranslatedTextPreview(translatedChunks, { pendingLabel: '⏳ Chưa dịch' })
         : '';
 
     updateProgress(
@@ -223,8 +295,32 @@ async function startTranslation() {
     );
     updateProgressStats(0, apiKeys.length, '--:--');
 
-    const persistHistoryProgress = () => {
+    let lastPreviewUpdateAt = 0;
+    let lastHistoryPersistAt = 0;
+    let lastHistoryPersistCompleted = -1;
+
+    const updateTranslatedPreview = (pendingLabel = '⏳ Đang dịch', force = false) => {
+        const now = Date.now();
+        if (!force && now - lastPreviewUpdateAt < TRANSLATION_PREVIEW_UPDATE_INTERVAL_MS) return;
+        lastPreviewUpdateAt = now;
+        const resultEl = document.getElementById('translatedText');
+        if (resultEl) {
+            resultEl.value = buildTranslatedTextPreview(translatedChunks, { pendingLabel });
+        }
+    };
+
+    const persistHistoryProgress = (force = false) => {
         if (!currentHistoryId || typeof updateHistoryProgress !== 'function') return;
+        const now = Date.now();
+        const completedDelta = Math.abs(completedChunks - lastHistoryPersistCompleted);
+        if (!force &&
+            completedChunks < chunks.length &&
+            completedDelta < TRANSLATION_HISTORY_PERSIST_CHUNK_STEP &&
+            now - lastHistoryPersistAt < TRANSLATION_HISTORY_PERSIST_INTERVAL_MS) {
+            return;
+        }
+        lastHistoryPersistAt = now;
+        lastHistoryPersistCompleted = completedChunks;
         const partialText = buildHistoryTextSnapshotFromChunks(translatedChunks);
         updateHistoryProgress(
             currentHistoryId,
@@ -237,7 +333,7 @@ async function startTranslation() {
     };
 
     // Persist initial state immediately.
-    persistHistoryProgress();
+    persistHistoryProgress(true);
 
     try {
         // Process in parallel batches
@@ -285,7 +381,7 @@ async function startTranslation() {
                         if (cancelRequested) {
                             throw new Error('TRANSLATION_CANCELLED');
                         }
-                        return translateChunkWithRetry(preparedChunks[chunkIndex], chunkIndex);
+                        return translateChunkWithRetry(buildPromptedChunk(customPrompt, chunks[chunkIndex]), chunkIndex);
                     })()
                 );
                 batchIndices.push(chunkIndex);
@@ -322,7 +418,7 @@ async function startTranslation() {
             });
 
             if (cancelRequested) {
-                persistHistoryProgress();
+                persistHistoryProgress(true);
                 break;
             }
 
@@ -336,17 +432,13 @@ async function startTranslation() {
             updateProgress(completedChunks, chunks.length, `Đang dịch chunk ${completedChunks}/${chunks.length}...`);
             updateProgressStats(speed.toFixed(1), currentActiveKeys, formatTime(eta));
 
-            // Cập nhật RPD dashboard
-            if (typeof renderRPDDashboard === 'function') {
-                renderRPDDashboard();
-            }
+            // Cập nhật RPD dashboard, nhưng không render lại quá dày khi truyện lớn.
+            renderRPDDashboardThrottled();
 
-            // Update preview - GIỮ ĐÚNG THỨ TỰ, không filter null
-            document.getElementById('translatedText').value = translatedChunks
-                .map((c, i) => c !== null ? c : `[⏳ Đang dịch chunk ${i + 1}...]`)
-                .join('\n\n');
+            // Preview được giới hạn để textarea không phải giữ/render chuỗi 10MB mỗi batch.
+            updateTranslatedPreview('⏳ Đang dịch');
 
-            // Persist after every finished batch.
+            // Persist theo interval/chunk step để vẫn resume được mà không ghi snapshot lớn liên tục.
             persistHistoryProgress();
 
             if (i + effectiveParallel < chunks.length && !cancelRequested) {
@@ -378,7 +470,7 @@ async function startTranslation() {
 
                         try {
                             // Sử dụng prompt tăng dần theo round
-                            let promptToUse = preparedChunks[idx];
+                            let promptToUse = buildPromptedChunk(customPrompt, chunks[idx]);
                             const originalContent = chunks[idx];
 
                             if (round === 1) {
@@ -412,7 +504,7 @@ async function startTranslation() {
                                 // Fallback: Fictional prompt
                                 promptToUse = typeof getFictionalPrompt === 'function' ?
                                     getFictionalPrompt(originalContent) :
-                                    preparedChunks[idx];
+                                    buildPromptedChunk(customPrompt, originalContent);
                                 console.log(`[AUTO-RETRY] Chunk ${idx + 1}: Using FICTIONAL prompt`);
                             }
 
@@ -463,12 +555,10 @@ async function startTranslation() {
                         break;
                     }
 
-                    // Update preview sau mỗi round - GIỮ ĐÚNG THỨ TỰ
-                    document.getElementById('translatedText').value = translatedChunks
-                        .map((c, i) => c !== null ? c : `[⏳ Đang retry chunk ${i + 1}...]`)
-                        .join('\n\n');
+                    // Update preview sau mỗi round, giới hạn kích thước textarea khi truyện lớn.
+                    updateTranslatedPreview('⏳ Đang retry', true);
 
-                    persistHistoryProgress();
+                    persistHistoryProgress(true);
 
                     if (!cancelRequested && round < 3 && failedChunkIndices.length > 0) {
                         console.log(`[AUTO-RETRY] Waiting 2s before next round...`);
@@ -508,7 +598,7 @@ ${chunks[idx]}
         if (!cancelRequested) {
             updateProgress(chunks.length, chunks.length, 'Hoàn thành!');
             document.getElementById('resultSection').style.display = 'block';
-            document.getElementById('translatedText').value = translatedChunks.join('\n\n');
+            document.getElementById('translatedText').value = translatedText;
 
             const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
             const errorCount = translatedChunks.filter(c => c && c.startsWith('[LỖI CHUNK')).length;
