@@ -106,7 +106,7 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                       <span className="bible-canon-meta">{report.chapter_title || 'Draft'}</span>
                     </div>
                   ))}
-                  {(canonOverview?.recentReports || []).length === 0 && <p className="text-muted bible-canon-empty">Chưa có validator report nào.</p>}
+                  {(canonOverview?.recentReports || []).length === 0 && <p className="text-muted bible-canon-empty">Chưa có báo cáo kiểm tra nào.</p>}
                 </div>
               </div>
 

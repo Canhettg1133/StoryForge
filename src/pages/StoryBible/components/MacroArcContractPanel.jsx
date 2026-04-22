@@ -29,11 +29,11 @@ const MacroArcContractPanel = React.memo(function MacroArcContractPanel({
     <div className={`macro-contract-panel${hasCoreData ? '' : ' macro-contract-panel--empty'}`}>
       <div className="macro-contract-panel__header">
         <div>
-          <strong>Contract đại cục</strong>
+          <strong>Ràng buộc đại cục</strong>
           <span>
             {contract.hasStructuredSource
-              ? 'Đang hiển thị contract đã được AI chuẩn hóa'
-              : 'Chưa có contract chuẩn. Hãy bấm "Phân tích bằng AI".'}
+              ? 'Đang hiển thị ràng buộc đã được AI chuẩn hóa'
+              : 'Chưa có ràng buộc chuẩn. Hãy bấm "Phân tích bằng AI".'}
           </span>
         </div>
         <div className="macro-contract-panel__actions">
@@ -128,12 +128,12 @@ const MacroArcContractPanel = React.memo(function MacroArcContractPanel({
 
           {contract.chapterAnchors.length > 0 && (
             <div className="macro-contract-panel__block">
-              <label>Chapter anchors</label>
+              <label>Yêu cầu bắt buộc theo chương</label>
               <ul className="macro-contract-panel__list">
                 {contract.chapterAnchors.map((anchor) => (
                   <li key={anchor.id}>
                     <span>
-                      Chuong {anchor.targetChapter} [{anchor.strictness}] - {anchor.requirementText}
+                      Chương {anchor.targetChapter} [{anchor.strictness === 'hard' ? 'bắt buộc' : 'gợi ý'}] - {anchor.requirementText}
                     </span>
                   </li>
                 ))}
@@ -148,8 +148,8 @@ const MacroArcContractPanel = React.memo(function MacroArcContractPanel({
         </div>
       ) : (
         <div className="macro-contract-panel__empty">
-          Chưa có contract có cấu trúc cho cột mốc này. Sau khi nhập nội dung, hãy bấm
-          {' '}“Phân tích bằng AI” để AI tách mục tiêu, trạng thái đích và các giới hạn cho planner.
+          Chưa có ràng buộc có cấu trúc cho cột mốc này. Sau khi nhập nội dung, hãy bấm
+          {' '}“Phân tích bằng AI” để AI tách mục tiêu, trạng thái đích và các giới hạn cho bộ lập kế hoạch.
         </div>
       )}
     </div>

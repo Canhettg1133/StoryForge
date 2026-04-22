@@ -166,7 +166,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
       {isOpen && (
         <div className="bible-edit-card">
           <p className="bible-subtitle" style={{ marginBottom: 'var(--space-3)' }}>
-            Định nghĩa các cột mốc lớn của truyện. AI sẽ đọc đại cục này trước khi planner hoặc validator sinh dàn ý chương.
+            Định nghĩa các cột mốc lớn của truyện. AI sẽ đọc đại cục này trước khi bộ lập kế hoạch hoặc bộ kiểm tra sinh dàn ý chương.
           </p>
 
           {showAiSuggest && (
@@ -213,8 +213,8 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
               </div>
 
               <ChapterAnchorEditor
-                title="Yeu cau bat buoc theo chuong"
-                hint="Structured anchor dung cho cac yeu cau phai dat o dung chapter trong batch nay."
+                title="Yêu cầu bắt buộc theo chương"
+                hint="Các yêu cầu có cấu trúc phải xuất hiện đúng chương trong đợt tạo này."
                 anchors={aiChapterAnchors}
                 onChange={setAiChapterAnchors}
                 scopeStart={planningScopeStart}
@@ -384,14 +384,14 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
 
               {(hasBlockingMilestonePlanIssue || hasBlockingAiChapterAnchorIssue) && (
                 <div className="bible-planning-scope__warning bible-planning-scope__warning--warning">
-                  Có lỗi logic trong phạm vi riêng từng cột mốc. Sửa các cảnh báo bên trên trước khi nhờ AI tạo batch.
+                  Có lỗi logic trong phạm vi riêng từng cột mốc. Sửa các cảnh báo bên trên trước khi nhờ AI tạo đợt cột mốc.
                 </div>
               )}
 
               {!hasBlockingMilestonePlanIssue && !hasBlockingAiChapterAnchorIssue && editableMilestoneSuggestions.length > 0 && (
                 <div style={{ marginTop: 'var(--space-3)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>AI đã tạo {editableMilestoneSuggestions.length} cột mốc. Bạn có thể sửa tay hoặc yêu cầu AI chỉnh lại đúng batch này.</span>
+                    <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>AI đã tạo {editableMilestoneSuggestions.length} cột mốc. Bạn có thể sửa tay hoặc yêu cầu AI chỉnh lại đúng đợt tạo này.</span>
                     <button
                       type="button"
                       className="btn btn-ghost btn-xs"
@@ -433,7 +433,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                     <button className="btn btn-secondary btn-sm" onClick={() => handleReviseMilestones(MACRO_AI_PRESETS)} disabled={isRevisingMilestones || editableMilestoneSuggestions.length === 0 || hasBlockingMilestonePlanIssue || hasBlockingAiChapterAnchorIssue}>
                       {isRevisingMilestones ? <><Loader2 size={14} className="spin" /> AI đang chỉnh...</> : <><Sparkles size={14} /> AI chỉnh lại</>}
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => handleGenerateMilestones(MACRO_AI_PRESETS)} disabled={isSuggestingMilestones || hasBlockingMilestonePlanIssue || hasBlockingAiChapterAnchorIssue}><RotateCcw size={14} /> Tạo batch mới</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleGenerateMilestones(MACRO_AI_PRESETS)} disabled={isSuggestingMilestones || hasBlockingMilestonePlanIssue || hasBlockingAiChapterAnchorIssue}><RotateCcw size={14} /> Tạo đợt mới</button>
                     <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={resetAiSuggestPanel}><X size={14} /> Hủy</button>
                   </div>
                 </div>
@@ -469,7 +469,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
 
           {macroArcs.length > 0 && (
             <div style={{ padding: 'var(--space-2)', background: 'var(--color-surface-2)', borderRadius: 'var(--radius-sm)', fontSize: '12px', color: 'var(--color-text-muted)' }}>
-              AI sẽ đọc đại cục này trước khi viết hoặc kiểm tra planner. Mọi thay đổi được lưu tự động.
+              AI sẽ đọc đại cục này trước khi viết hoặc kiểm tra kế hoạch. Mọi thay đổi được lưu tự động.
             </div>
           )}
         </div>

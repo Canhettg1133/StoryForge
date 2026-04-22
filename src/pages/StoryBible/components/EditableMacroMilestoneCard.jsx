@@ -70,7 +70,7 @@ const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCar
               event.stopPropagation();
               onRemove(index);
             }}
-            title="Xóa khỏi batch AI"
+            title="Xóa khỏi đợt tạo"
           >
             <Trash2 size={14} />
           </button>
@@ -116,8 +116,8 @@ const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCar
           placeholder="Cảm xúc đích của độc giả"
         />
         <ChapterAnchorEditor
-          title="Chapter anchors"
-          hint="Yeu cau bat buoc dung chapter cho milestone AI nay."
+          title="Yêu cầu bắt buộc theo chương"
+          hint="Các yêu cầu có cấu trúc phải xuất hiện đúng chương trong cột mốc AI này."
           anchors={milestone.chapter_anchors || []}
           onChange={(nextAnchors) => onUpdate(index, 'chapter_anchors', nextAnchors)}
           scopeStart={milestone.chapter_from}

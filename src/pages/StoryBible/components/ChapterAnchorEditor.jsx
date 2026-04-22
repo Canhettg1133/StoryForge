@@ -23,13 +23,13 @@ function getAnchorRangeWarning(anchor, scopeStart = 0, scopeEnd = 0) {
   if (!anchor?.targetChapter || !scopeStart || !scopeEnd || scopeEnd < scopeStart) return '';
   if (anchor.strictness !== 'hard') return '';
   if (anchor.targetChapter < scopeStart || anchor.targetChapter > scopeEnd) {
-    return `Hard anchor nam ngoai pham vi ${scopeStart}-${scopeEnd}.`;
+    return `Yêu cầu bắt buộc nằm ngoài phạm vi chương ${scopeStart}-${scopeEnd}.`;
   }
   return '';
 }
 
 const ChapterAnchorEditor = React.memo(function ChapterAnchorEditor({
-  title = 'Yeu cau bat buoc theo chuong',
+  title = 'Yêu cầu bắt buộc theo chương',
   hint = '',
   anchors = [],
   onChange,
@@ -87,13 +87,13 @@ const ChapterAnchorEditor = React.memo(function ChapterAnchorEditor({
           {hint && <div className="form-hint" style={{ marginTop: '4px' }}>{hint}</div>}
         </div>
         <button type="button" className="btn btn-ghost btn-sm" onClick={addAnchor}>
-          <Plus size={14} /> Them anchor
+          <Plus size={14} /> Thêm yêu cầu
         </button>
       </div>
 
       {normalizedAnchors.length === 0 && (
         <div className="form-hint" style={{ marginTop: 0 }}>
-          Chua co chapter anchor nao.
+          Chưa có yêu cầu bắt buộc theo chương nào.
         </div>
       )}
 
@@ -118,7 +118,7 @@ const ChapterAnchorEditor = React.memo(function ChapterAnchorEditor({
                 style={{ width: '110px' }}
                 value={anchor.targetChapter || ''}
                 onChange={(event) => updateAnchor(index, 'targetChapter', Number(event.target.value) || 0)}
-                placeholder="Chuong"
+                placeholder="Chương"
               />
               <select
                 className="select"
@@ -126,8 +126,8 @@ const ChapterAnchorEditor = React.memo(function ChapterAnchorEditor({
                 value={anchor.strictness}
                 onChange={(event) => updateAnchor(index, 'strictness', event.target.value)}
               >
-                <option value="hard">Hard</option>
-                <option value="soft">Soft</option>
+                <option value="hard">Bắt buộc</option>
+                <option value="soft">Gợi ý</option>
               </select>
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--color-text-muted)' }}>
                 <input
@@ -135,9 +135,9 @@ const ChapterAnchorEditor = React.memo(function ChapterAnchorEditor({
                   checked={anchor.forbidBefore !== false}
                   onChange={(event) => updateAnchor(index, 'forbidBefore', event.target.checked)}
                 />
-                Cam dat som
+                Cấm đặt sớm
               </label>
-              <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => removeAnchor(index)} title="Xoa anchor">
+              <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={() => removeAnchor(index)} title="Xóa yêu cầu">
                 <Trash2 size={14} />
               </button>
             </div>
@@ -147,7 +147,7 @@ const ChapterAnchorEditor = React.memo(function ChapterAnchorEditor({
               rows={2}
               value={anchor.requirementText}
               onChange={(event) => updateAnchor(index, 'requirementText', event.target.value)}
-              placeholder="Dieu bat buoc phai xay ra o chuong nay"
+              placeholder="Điều bắt buộc phải xảy ra ở chương này"
               style={{ marginBottom: '8px' }}
             />
 
@@ -155,7 +155,7 @@ const ChapterAnchorEditor = React.memo(function ChapterAnchorEditor({
               className="input"
               value={anchor.focusCharacters.join(', ')}
               onChange={(event) => updateAnchor(index, 'focusCharacters', event.target.value)}
-              placeholder="Focus characters (tuy chon, ngan cach bang dau phay)"
+              placeholder="Nhân vật trọng tâm (tùy chọn, ngăn cách bằng dấu phẩy)"
             />
 
             {rangeWarning && (

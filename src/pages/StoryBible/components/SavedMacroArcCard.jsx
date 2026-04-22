@@ -117,8 +117,8 @@ const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
         />
       </div>
       <ChapterAnchorEditor
-        title="Chapter anchors"
-        hint="Yeu cau bat buoc dat dung chuong trong cot moc nay."
+        title="Yêu cầu bắt buộc theo chương"
+        hint="Các yêu cầu có cấu trúc phải xuất hiện đúng chương trong cột mốc này."
         anchors={macroArc.chapter_anchors || []}
         onChange={(nextAnchors) => onUpdate(macroArc.id, 'chapter_anchors', nextAnchors)}
         scopeStart={macroArc.chapter_from}
