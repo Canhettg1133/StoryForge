@@ -122,6 +122,7 @@ const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCar
           onChange={(nextAnchors) => onUpdate(index, 'chapter_anchors', nextAnchors)}
           scopeStart={milestone.chapter_from}
           scopeEnd={milestone.chapter_to}
+          allCharacters={allCharacterNames}
         />
         <MacroArcContractPanel
           macroArc={milestone}

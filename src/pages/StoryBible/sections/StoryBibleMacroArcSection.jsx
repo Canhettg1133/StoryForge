@@ -219,6 +219,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                 onChange={setAiChapterAnchors}
                 scopeStart={planningScopeStart}
                 scopeEnd={planningScopeEnd}
+                allCharacters={allCharacterNames}
               />
               {aiChapterAnchorIssues.length > 0 && (
                 <div className="bible-planning-scope__warnings" style={{ marginBottom: 'var(--space-2)' }}>

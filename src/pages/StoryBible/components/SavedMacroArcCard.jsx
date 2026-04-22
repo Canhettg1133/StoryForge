@@ -123,6 +123,7 @@ const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
         onChange={(nextAnchors) => onUpdate(macroArc.id, 'chapter_anchors', nextAnchors)}
         scopeStart={macroArc.chapter_from}
         scopeEnd={macroArc.chapter_to}
+        allCharacters={allCharacterNames}
       />
       {anchorIssues.length > 0 && (
         <div className="form-group" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>
