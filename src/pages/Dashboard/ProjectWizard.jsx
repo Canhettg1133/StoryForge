@@ -43,6 +43,7 @@ import {
   normalizeWizardBlueprintResult,
   resolveWizardProjectTitle,
 } from '../../services/ai/blueprintGuardrails';
+import { buildMacroArcDbPayload } from '../StoryBible/utils/storyBibleHelpers';
 import {
   Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
   RotateCcw, Users, MapPin, BookOpen, List, AlertCircle,
@@ -76,6 +77,42 @@ function clampInitialChapterCount(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 10;
   return Math.max(1, Math.min(100, Math.round(numeric)));
+}
+
+function toPositiveInt(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 0;
+}
+
+function shouldAutoAdvanceStart(currentStart, previousTo, oldPreviousTo) {
+  if (!previousTo) return false;
+  if (!currentStart) return true;
+  if (oldPreviousTo && currentStart === oldPreviousTo + 1) return true;
+  return currentStart <= previousTo;
+}
+
+function clampMacroArcInputRange(item = {}) {
+  const chapterFrom = toPositiveInt(item?.chapter_from);
+  const chapterTo = toPositiveInt(item?.chapter_to);
+  if (!chapterFrom || !chapterTo || chapterTo >= chapterFrom) return item;
+  return {
+    ...item,
+    chapter_to: String(chapterFrom),
+  };
+}
+
+function cascadeMacroArcInputStarts(items = [], oldChapterTos = []) {
+  const next = items.map((item) => ({ ...item }));
+  for (let index = 1; index < next.length; index += 1) {
+    const previousTo = toPositiveInt(next[index - 1]?.chapter_to);
+    const oldPreviousTo = toPositiveInt(oldChapterTos[index - 1]);
+    const currentStart = toPositiveInt(next[index]?.chapter_from);
+    if (shouldAutoAdvanceStart(currentStart, previousTo, oldPreviousTo)) {
+      next[index].chapter_from = String(previousTo + 1);
+    }
+    next[index] = clampMacroArcInputRange(next[index]);
+  }
+  return next.map((item) => clampMacroArcInputRange(item));
 }
 
 function normalizeSearchText(value) {
@@ -244,11 +281,15 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [showMacroArcs, setShowMacroArcs] = useState(false);
 
   const handleSelectNumericField = (event) => {
-    event.target.select();
-  };
-
-  const keepNumericSelection = (event) => {
-    event.preventDefault();
+    const input = event.currentTarget;
+    const selectInput = () => {
+      if (document.activeElement === input) input.select();
+    };
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      window.requestAnimationFrame(selectInput);
+    } else {
+      setTimeout(selectInput, 0);
+    }
   };
 
   const handleTargetLengthTypeChange = (v) => {
@@ -270,18 +311,27 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
   // Phase 9: Macro Arc handlers
   const addMacroArc = () => {
-    setMacroArcsInput(prev => [...prev, {
-      title: 'Cột mốc ' + (prev.length + 1),
-      description: '',
-      chapter_from: '',
-      chapter_to: '',
-      emotional_peak: '',
-    }]);
+    setMacroArcsInput(prev => {
+      const previousEnd = prev.reduce((max, item) => Math.max(max, toPositiveInt(item.chapter_to)), 0);
+      return [...prev, {
+        title: 'Cột mốc ' + (prev.length + 1),
+        description: '',
+        chapter_from: previousEnd ? String(previousEnd + 1) : '',
+        chapter_to: '',
+        emotional_peak: '',
+      }];
+    });
   };
   const updateMacroArc = (idx, field, val) => {
-    const next = [...macroArcsInput];
-    next[idx] = { ...next[idx], [field]: val };
-    setMacroArcsInput(next);
+    setMacroArcsInput(prev => {
+      const oldChapterTos = prev.map((item) => item?.chapter_to);
+      const next = prev.map((item, itemIndex) => (
+        itemIndex === idx ? { ...item, [field]: val } : item
+      ));
+      return field === 'chapter_to'
+        ? cascadeMacroArcInputStarts(next, oldChapterTos)
+        : next;
+    });
   };
   const removeMacroArc = (idx) => setMacroArcsInput(prev => prev.filter((_, i) => i !== idx));
 
@@ -722,6 +772,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
             key_events: normalizeChapterListField(ch.key_events),
             required_factions: normalizeChapterListField(ch.required_factions),
             required_objects: normalizeChapterListField(ch.required_objects),
+            required_terms: normalizeChapterListField(ch.required_terms),
           };
 
           const createdChapter = await createChapter(projectId, chapterData.title, chapterData);
@@ -845,11 +896,15 @@ Chỉ trả về JSON, không thêm gì khác.`,
         await db.macro_arcs.add({
           project_id: projectId,
           order_index: i,
-          title: m.title.trim(),
-          description: m.description || '',
-          chapter_from: Number(m.chapter_from) || 0,
-          chapter_to: Number(m.chapter_to) || 0,
-          emotional_peak: m.emotional_peak || '',
+          ...(buildMacroArcDbPayload({
+            title: m.title.trim(),
+            description: m.description || '',
+            chapter_from: Number(m.chapter_from) || 0,
+            chapter_to: Number(m.chapter_to) || 0,
+            emotional_peak: m.emotional_peak || '',
+            chapter_anchors: [],
+            contract_json: '',
+          }) || {}),
         });
       }
 
@@ -978,7 +1033,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
                   className="input"
                   value={targetLength}
                   onFocus={handleSelectNumericField}
-                  onMouseUp={keepNumericSelection}
                   onChange={(e) => setTargetLength(e.target.value)}
                 />
               </div>
@@ -990,7 +1044,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
                   className="input"
                   value={initialChapterCount}
                   onFocus={handleSelectNumericField}
-                  onMouseUp={keepNumericSelection}
                   onChange={(e) => setInitialChapterCount(clampInitialChapterCount(e.target.value))}
                 />
                 <span className="form-hint">Bạn tự chọn số chapter muốn tạo ban đầu, từ 1 đến 100. Mode dưới 20 chapter đang tối ưu nhất.</span>
@@ -1021,7 +1074,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
                     type="text" inputMode="numeric" className="input" style={{ width: '80px' }}
                     value={m.percent}
                     onFocus={handleSelectNumericField}
-                    onMouseUp={keepNumericSelection}
                     onChange={e => updateMilestone(idx, 'percent', Number(e.target.value))}
                     placeholder="%"
                   />
@@ -1094,7 +1146,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
                           type="text" inputMode="numeric" className="input input-sm" style={{ width: '70px' }}
                           value={m.chapter_from}
                           onFocus={handleSelectNumericField}
-                          onMouseUp={keepNumericSelection}
                           onChange={e => updateMacroArc(idx, 'chapter_from', e.target.value)}
                           placeholder="Từ"
                         />
@@ -1103,7 +1154,6 @@ Chỉ trả về JSON, không thêm gì khác.`,
                           type="text" inputMode="numeric" className="input input-sm" style={{ width: '70px' }}
                           value={m.chapter_to}
                           onFocus={handleSelectNumericField}
-                          onMouseUp={keepNumericSelection}
                           onChange={e => updateMacroArc(idx, 'chapter_to', e.target.value)}
                           placeholder="Đến"
                         />

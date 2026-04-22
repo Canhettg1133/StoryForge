@@ -1,5 +1,6 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
+import ChapterAnchorEditor from './ChapterAnchorEditor';
 import MacroArcContractPanel from './MacroArcContractPanel';
 
 const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCard({
@@ -14,11 +15,15 @@ const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCar
   onAnalyze,
 }) {
   const handleSelectAll = React.useCallback((event) => {
-    event.target.select();
-  }, []);
-
-  const keepSelectionOnMouseUp = React.useCallback((event) => {
-    event.preventDefault();
+    const input = event.currentTarget;
+    const selectInput = () => {
+      if (document.activeElement === input) input.select();
+    };
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      window.requestAnimationFrame(selectInput);
+    } else {
+      setTimeout(selectInput, 0);
+    }
   }, []);
 
   return (
@@ -79,7 +84,6 @@ const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCar
             value={milestone.chapter_from || ''}
             onClick={(event) => event.stopPropagation()}
             onFocus={handleSelectAll}
-            onMouseUp={keepSelectionOnMouseUp}
             onChange={(event) => onUpdate(index, 'chapter_from', Number(event.target.value) || 0)}
             style={{ width: '88px' }}
           />
@@ -91,7 +95,6 @@ const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCar
             value={milestone.chapter_to || ''}
             onClick={(event) => event.stopPropagation()}
             onFocus={handleSelectAll}
-            onMouseUp={keepSelectionOnMouseUp}
             onChange={(event) => onUpdate(index, 'chapter_to', Number(event.target.value) || 0)}
             style={{ width: '88px' }}
           />
@@ -111,6 +114,14 @@ const EditableMacroMilestoneCard = React.memo(function EditableMacroMilestoneCar
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => onUpdate(index, 'emotional_peak', event.target.value)}
           placeholder="Cảm xúc đích của độc giả"
+        />
+        <ChapterAnchorEditor
+          title="Chapter anchors"
+          hint="Yeu cau bat buoc dung chapter cho milestone AI nay."
+          anchors={milestone.chapter_anchors || []}
+          onChange={(nextAnchors) => onUpdate(index, 'chapter_anchors', nextAnchors)}
+          scopeStart={milestone.chapter_from}
+          scopeEnd={milestone.chapter_to}
         />
         <MacroArcContractPanel
           macroArc={milestone}

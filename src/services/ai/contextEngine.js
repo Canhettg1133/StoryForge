@@ -281,6 +281,7 @@ export async function gatherContext({
       threadTitles: normalizeChapterListField(currentRaw.thread_titles),
       requiredFactions: normalizeChapterListField(currentRaw.required_factions),
       requiredObjects: normalizeChapterListField(currentRaw.required_objects),
+      requiredTerms: normalizeChapterListField(currentRaw.required_terms),
       keyEvents: (() => {
         try {
           const raw = currentRaw.key_events || '[]';

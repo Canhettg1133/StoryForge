@@ -109,10 +109,6 @@ export default function MobileProjectShell({ children }) {
 
   const handleMoreNavigate = (item) => {
     const target = item.path(numericProjectId);
-    if (item.id === 'translator') {
-      window.location.assign(new URL(target, window.location.origin).href);
-      return;
-    }
     navigate(target);
     setMoreOpen(false);
   };

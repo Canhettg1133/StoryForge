@@ -176,10 +176,6 @@ export default function SceneEditor() {
     const targetPath = item.id === 'settings' && activeProjectId
       ? `/project/${activeProjectId}/settings`
       : item.getPath(activeProjectId);
-    if (item.id === 'translator') {
-      window.location.assign(new URL(targetPath, window.location.origin).href);
-      return;
-    }
     navigate(targetPath);
     closeMobilePanel();
   };

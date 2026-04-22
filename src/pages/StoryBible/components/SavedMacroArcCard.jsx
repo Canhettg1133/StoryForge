@@ -1,6 +1,8 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
+import ChapterAnchorEditor from './ChapterAnchorEditor';
 import MacroArcContractPanel from './MacroArcContractPanel';
+import { getMacroArcAnchorIssues } from '../utils/storyBibleHelpers';
 
 const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
   macroArc,
@@ -12,12 +14,21 @@ const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
   onAnalyze,
 }) {
   const handleSelectAll = React.useCallback((event) => {
-    event.target.select();
+    const input = event.currentTarget;
+    const selectInput = () => {
+      if (document.activeElement === input) input.select();
+    };
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      window.requestAnimationFrame(selectInput);
+    } else {
+      setTimeout(selectInput, 0);
+    }
   }, []);
 
-  const keepSelectionOnMouseUp = React.useCallback((event) => {
-    event.preventDefault();
-  }, []);
+  const anchorIssues = React.useMemo(
+    () => getMacroArcAnchorIssues(macroArc),
+    [macroArc],
+  );
 
   return (
     <div className="bible-edit-card" style={{ marginBottom: 'var(--space-3)', border: '1px solid var(--color-border)' }}>
@@ -64,7 +75,6 @@ const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
           style={{ width: '80px' }}
           value={macroArc.chapter_from || ''}
           onFocus={handleSelectAll}
-          onMouseUp={keepSelectionOnMouseUp}
           onChange={(event) => onUpdate(macroArc.id, 'chapter_from', Number(event.target.value))}
           placeholder="Từ"
         />
@@ -76,7 +86,6 @@ const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
           style={{ width: '80px' }}
           value={macroArc.chapter_to || ''}
           onFocus={handleSelectAll}
-          onMouseUp={keepSelectionOnMouseUp}
           onChange={(event) => onUpdate(macroArc.id, 'chapter_to', Number(event.target.value))}
           placeholder="Đến"
         />
@@ -107,6 +116,30 @@ const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
           placeholder="VD: Hứng khởi, tò mò - người này sẽ đi đến đâu?"
         />
       </div>
+      <ChapterAnchorEditor
+        title="Chapter anchors"
+        hint="Yeu cau bat buoc dat dung chuong trong cot moc nay."
+        anchors={macroArc.chapter_anchors || []}
+        onChange={(nextAnchors) => onUpdate(macroArc.id, 'chapter_anchors', nextAnchors)}
+        scopeStart={macroArc.chapter_from}
+        scopeEnd={macroArc.chapter_to}
+      />
+      {anchorIssues.length > 0 && (
+        <div className="form-group" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>
+          {anchorIssues.map((issue, issueIndex) => (
+            <div
+              key={`${issue.code}-${issue.anchorId || issueIndex}`}
+              className="form-hint"
+              style={{
+                marginTop: issueIndex === 0 ? 0 : '6px',
+                color: issue.severity === 'error' ? 'var(--color-danger)' : 'var(--color-warning)',
+              }}
+            >
+              [{issue.severity === 'error' ? 'Loi' : 'Canh bao'}] {issue.message}
+            </div>
+          ))}
+        </div>
+      )}
       <MacroArcContractPanel
         macroArc={macroArc}
         allCharacters={allCharacterNames}

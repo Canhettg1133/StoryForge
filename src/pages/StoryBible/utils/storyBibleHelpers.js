@@ -1,7 +1,7 @@
 import {
-  compileMacroArcContract,
+  buildMacroArcPersistenceSnapshot,
   parseStoredMacroArcContract,
-  serializeMacroArcContract,
+  validateMacroArcChapterAnchors,
 } from '../../../services/ai/macroArcContract';
 
 export function getSuggestedMacroMilestoneCount(targetLength) {
@@ -15,8 +15,33 @@ export function getSuggestedMacroMilestoneCount(targetLength) {
 }
 
 export function deriveMacroArcContractJson(macroArc = {}) {
-  const contract = compileMacroArcContract(macroArc);
-  return contract ? serializeMacroArcContract(contract) : '';
+  const snapshot = buildMacroArcPersistenceSnapshot(macroArc);
+  return snapshot?.contract_json || '';
+}
+
+export function getMacroArcAnchorIssues(macroArc = {}) {
+  return validateMacroArcChapterAnchors(macroArc);
+}
+
+export function buildMacroArcEditorSnapshot(macroArc = {}, options = {}) {
+  const snapshot = buildMacroArcPersistenceSnapshot(macroArc, options);
+  if (!snapshot) return null;
+  const { contract, ...rest } = snapshot;
+  return rest;
+}
+
+export function buildMacroArcDbPayload(macroArc = {}, options = {}) {
+  const snapshot = buildMacroArcPersistenceSnapshot(macroArc, options);
+  if (!snapshot) return null;
+  return {
+    title: snapshot.title || '',
+    description: snapshot.description || '',
+    chapter_from: snapshot.chapter_from || 0,
+    chapter_to: snapshot.chapter_to || 0,
+    emotional_peak: snapshot.emotional_peak || '',
+    chapter_anchors: snapshot.chapter_anchors || [],
+    contract_json: snapshot.contract_json || '',
+  };
 }
 
 export function uniqueValues(values = []) {
@@ -75,6 +100,7 @@ export function buildDisplayMacroArcContract(macroArc = {}, allCharacters = []) 
     focusedCharacters,
     forbiddenOutcomes,
     maxRelationshipStage: Number(stored?.maxRelationshipStage) || 0,
+    chapterAnchors: stored?.chapterAnchors || [],
     hasStructuredSource: Boolean(stored),
   };
 }

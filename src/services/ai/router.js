@@ -41,6 +41,23 @@ export const PROXY_MODELS = [
   { id: 'gemini-3.1-pro-low-search-假流-[星星公益站-CLI渠道]', label: '3.1 Pro Low Search (Fake Stream)', tier: 'pro' },
 ];
 
+function createProxyPreset(sourceLabel, label) {
+  const source = PROXY_MODELS.find((model) => model.label === sourceLabel);
+  return {
+    id: source?.id || '',
+    label,
+    tier: source?.tier || 'flash',
+  };
+}
+
+export const PROXY_MODEL_PRESETS = [
+  createProxyPreset('2.5 Flash', 'Gemini 2.5 Flash'),
+  createProxyPreset('3 Flash High', 'Gemini 3.0 Flash'),
+  createProxyPreset('2.5 Pro', 'Gemini 2.5 Pro'),
+  createProxyPreset('3 Pro High', 'Gemini 3.0 Pro'),
+  createProxyPreset('3.1 Pro High', 'Gemini 3.1 Pro'),
+];
+
 // --- Task Types ---
 export const TASK_TYPES = {
   BRAINSTORM: 'brainstorm',
@@ -96,6 +113,8 @@ const DIRECT_QUALITY_MAP = {
   balanced: 'gemini-2.5-flash',
   best: 'gemini-3-flash-preview',
 };
+
+const PROXY_MODEL_KEY = 'sf-proxy-model';
 
 // ─── Proxy: task-specific model mapping ───
 const PROXY_DEFAULT = {
@@ -210,6 +229,45 @@ const PROXY_TASK_MAP = {
   },
 };
 
+// Proxy model selection and legacy quality routing exceptions.
+const PROXY_QUALITY_ROUTING_TASKS = new Set([
+  TASK_TYPES.CHAPTER_SUMMARY,
+  TASK_TYPES.FEEDBACK_EXTRACT,
+  TASK_TYPES.SUGGEST_UPDATES,
+  TASK_TYPES.CANON_EXTRACT_OPS,
+  TASK_TYPES.CANON_ADJUDICATE_WARNINGS,
+  TASK_TYPES.CANON_REPAIR,
+  TASK_TYPES.CONTINUITY_CHECK,
+  TASK_TYPES.CHECK_CONFLICT,
+]);
+
+const PROXY_PRESET_BY_QUALITY = {
+  [QUALITY_MODES.FAST]: PROXY_MODEL_PRESETS[0]?.id,
+  [QUALITY_MODES.BALANCED]: PROXY_MODEL_PRESETS[1]?.id,
+  [QUALITY_MODES.BEST]: PROXY_MODEL_PRESETS[2]?.id,
+};
+
+function getDefaultProxyModel() {
+  return PROXY_MODEL_PRESETS[1]?.id || PROXY_MODELS[0]?.id || '';
+}
+
+function normalizeProxyModel(modelId) {
+  const normalized = String(modelId || '').trim();
+  if (PROXY_MODEL_PRESETS.some((model) => model.id === normalized)) return normalized;
+  return getDefaultProxyModel();
+}
+
+function getInitialProxyModel() {
+  try {
+    const saved = localStorage.getItem(PROXY_MODEL_KEY);
+    if (saved) return normalizeProxyModel(saved);
+
+    const legacyQuality = localStorage.getItem('sf-quality-mode');
+    return normalizeProxyModel(PROXY_PRESET_BY_QUALITY[legacyQuality] || getDefaultProxyModel());
+  } catch { }
+  return getDefaultProxyModel();
+}
+
 // ─── Active Direct models (user can manage) ───
 const ACTIVE_MODELS_KEY = 'sf-active-direct-models';
 
@@ -230,6 +288,12 @@ class ModelRouter {
   constructor() {
     this.qualityMode = localStorage.getItem('sf-quality-mode') || QUALITY_MODES.BALANCED;
     this.preferredProvider = localStorage.getItem('sf-preferred-provider') || PROVIDERS.GEMINI_PROXY;
+    this.proxyModel = getInitialProxyModel();
+    try {
+      if (!localStorage.getItem(PROXY_MODEL_KEY)) {
+        localStorage.setItem(PROXY_MODEL_KEY, this.proxyModel);
+      }
+    } catch { }
     this.ollamaModel = localStorage.getItem('sf-ollama-model') || '';
   }
 
@@ -248,11 +312,22 @@ class ModelRouter {
     localStorage.setItem('sf-ollama-model', model);
   }
 
+  setProxyModel(model) {
+    this.proxyModel = normalizeProxyModel(model);
+    localStorage.setItem(PROXY_MODEL_KEY, this.proxyModel);
+  }
+
   getActiveDirectModels() { return getActiveDirectModels(); }
   setActiveDirectModels(models) { setActiveDirectModels(models); }
 
   route(taskType, options = {}) {
-    const { qualityOverride, providerOverride, modelOverride } = options;
+    const {
+      qualityOverride,
+      providerOverride,
+      modelOverride,
+      proxyModelOverride,
+      useProxyQualityRouting = false,
+    } = options;
 
     if (modelOverride) {
       let provider = providerOverride || PROVIDERS.GEMINI_PROXY;
@@ -276,8 +351,11 @@ class ModelRouter {
     }
 
     // Gemini Proxy
-    const taskMap = PROXY_TASK_MAP[taskType] || PROXY_DEFAULT;
-    const model = taskMap[quality] || PROXY_DEFAULT[quality];
+    const shouldUseQualityRouting =
+      useProxyQualityRouting || PROXY_QUALITY_ROUTING_TASKS.has(taskType);
+    const model = shouldUseQualityRouting
+      ? ((PROXY_TASK_MAP[taskType] || PROXY_DEFAULT)[quality] || PROXY_DEFAULT[quality])
+      : normalizeProxyModel(proxyModelOverride || this.proxyModel);
     const tier = model.includes('pro') ? 'pro' : 'flash';
     return { provider, model, tier };
   }
@@ -296,6 +374,8 @@ class ModelRouter {
   }
 
   getQualityMode() { return this.qualityMode; }
+  getOllamaModel() { return this.ollamaModel; }
+  getProxyModel() { return this.proxyModel; }
   getPreferredProvider() { return this.preferredProvider; }
 }
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check, Flag, Loader2, Plus, RotateCcw, Sparkles, TrendingUp, Wand2, X } from 'lucide-react';
 import ArcNavigator from '../../../components/common/ArcNavigator';
+import ChapterAnchorEditor from '../components/ChapterAnchorEditor';
 import EditableMacroMilestoneCard from '../components/EditableMacroMilestoneCard';
 import SavedMacroArcCard from '../components/SavedMacroArcCard';
 
@@ -25,6 +26,9 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
   setAiMilestoneCount,
   aiMilestoneRequirements,
   setAiMilestoneRequirements,
+  aiChapterAnchors,
+  setAiChapterAnchors,
+  aiChapterAnchorIssues,
   aiMilestoneChapterPlans,
   handleUpdateMilestoneChapterPlan,
   resetMilestoneChapterPlans,
@@ -51,6 +55,8 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
   setSelectedMilestoneIdxs,
   selectedMilestonePresets,
   suggestedMilestoneCount,
+  hasBlockingAiChapterAnchorIssue,
+  hasBlockingSelectedEditableAnchorIssue,
   isSuggestingMilestones,
   isRevisingMilestones,
   analyzingMacroContractKeys,
@@ -92,11 +98,15 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
   }, [planningScopeEnd, planningScopeStart]);
 
   const selectFieldValue = React.useCallback((event) => {
-    event.target.select();
-  }, []);
-
-  const keepFieldSelected = React.useCallback((event) => {
-    event.preventDefault();
+    const input = event.currentTarget;
+    const selectInput = () => {
+      if (document.activeElement === input) input.select();
+    };
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      window.requestAnimationFrame(selectInput);
+    } else {
+      setTimeout(selectInput, 0);
+    }
   }, []);
 
   const commitMilestoneCountDraft = React.useCallback(() => {
@@ -186,7 +196,6 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                     onChange={(event) => setMilestoneCountDraft(event.target.value)}
                     onBlur={commitMilestoneCountDraft}
                     onFocus={selectFieldValue}
-                    onMouseUp={keepFieldSelected}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter') {
                         event.preventDefault();
@@ -202,6 +211,27 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                   <textarea className="textarea" rows={2} value={aiMilestoneRequirements} onChange={(event) => setAiMilestoneRequirements(event.target.value)} placeholder="VD: mở đầu chậm, giữ bí mật lớn tới cuối đoạn này, chưa cho payoff sớm..." />
                 </div>
               </div>
+
+              <ChapterAnchorEditor
+                title="Yeu cau bat buoc theo chuong"
+                hint="Structured anchor dung cho cac yeu cau phai dat o dung chapter trong batch nay."
+                anchors={aiChapterAnchors}
+                onChange={setAiChapterAnchors}
+                scopeStart={planningScopeStart}
+                scopeEnd={planningScopeEnd}
+              />
+              {aiChapterAnchorIssues.length > 0 && (
+                <div className="bible-planning-scope__warnings" style={{ marginBottom: 'var(--space-2)' }}>
+                  {aiChapterAnchorIssues.map((issue, index) => (
+                    <div
+                      key={`${issue.code}-${issue.anchorId || index}`}
+                      className={`bible-planning-scope__warning bible-planning-scope__warning--${issue.severity === 'error' ? 'warning' : 'info'}`}
+                    >
+                      {issue.message}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="bible-planning-scope">
                 <div className="bible-planning-scope__header">
@@ -235,7 +265,6 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                       onChange={(event) => setPlanningScopeDraft((prev) => ({ ...prev, start: event.target.value }))}
                       onBlur={() => commitPlanningScopeField('start')}
                       onFocus={selectFieldValue}
-                      onMouseUp={keepFieldSelected}
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
@@ -250,7 +279,6 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                       onChange={(event) => setPlanningScopeDraft((prev) => ({ ...prev, end: event.target.value }))}
                       onBlur={() => commitPlanningScopeField('end')}
                       onFocus={selectFieldValue}
-                      onMouseUp={keepFieldSelected}
                     />
                   </div>
                 </div>
@@ -317,10 +345,9 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                           inputMode="numeric"
                           className="input"
                           placeholder="Từ"
-                          value={plan.chapter_from}
+                          value={plan.chapter_from || (index === 0 ? String(planningScopeStart) : '')}
                           onChange={(event) => handleUpdateMilestoneChapterPlan(index, 'chapter_from', event.target.value)}
                           onFocus={selectFieldValue}
-                          onMouseUp={keepFieldSelected}
                         />
                         <input
                           type="text"
@@ -330,7 +357,6 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                           value={plan.chapter_to}
                           onChange={(event) => handleUpdateMilestoneChapterPlan(index, 'chapter_to', event.target.value)}
                           onFocus={selectFieldValue}
-                          onMouseUp={keepFieldSelected}
                         />
                       </div>
                     </div>
@@ -350,19 +376,19 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
               </div>
               {selectedMilestonePresets.size > 0 && <div className="form-hint" style={{ marginBottom: 'var(--space-2)' }}>Đang bật {selectedMilestonePresets.size} tùy chọn để kết hợp cùng yêu cầu riêng.</div>}
               <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-                <button className="btn btn-primary btn-sm" onClick={() => handleGenerateMilestones(MACRO_AI_PRESETS)} disabled={isSuggestingMilestones || hasBlockingMilestonePlanIssue}>
+                <button className="btn btn-primary btn-sm" onClick={() => handleGenerateMilestones(MACRO_AI_PRESETS)} disabled={isSuggestingMilestones || hasBlockingMilestonePlanIssue || hasBlockingAiChapterAnchorIssue}>
                   {isSuggestingMilestones ? <><Loader2 size={14} className="spin" /> Đang gợi ý...</> : <><Sparkles size={14} /> Gợi ý</>}
                 </button>
                 <button className="btn btn-ghost btn-sm" onClick={resetAiSuggestPanel}><X size={14} /> Hủy</button>
               </div>
 
-              {hasBlockingMilestonePlanIssue && (
+              {(hasBlockingMilestonePlanIssue || hasBlockingAiChapterAnchorIssue) && (
                 <div className="bible-planning-scope__warning bible-planning-scope__warning--warning">
                   Có lỗi logic trong phạm vi riêng từng cột mốc. Sửa các cảnh báo bên trên trước khi nhờ AI tạo batch.
                 </div>
               )}
 
-              {!hasBlockingMilestonePlanIssue && editableMilestoneSuggestions.length > 0 && (
+              {!hasBlockingMilestonePlanIssue && !hasBlockingAiChapterAnchorIssue && editableMilestoneSuggestions.length > 0 && (
                 <div style={{ marginTop: 'var(--space-3)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>AI đã tạo {editableMilestoneSuggestions.length} cột mốc. Bạn có thể sửa tay hoặc yêu cầu AI chỉnh lại đúng batch này.</span>
@@ -401,13 +427,13 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                   ))}
                   <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)', flexWrap: 'wrap' }}>
                     <button className="btn btn-ghost btn-sm" onClick={handleAddEditableMilestone}><Plus size={14} /> Thêm mốc</button>
-                    <button className="btn btn-primary btn-sm" onClick={handleSaveMilestones} disabled={selectedMilestoneIdxs.size === 0}>
+                    <button className="btn btn-primary btn-sm" onClick={handleSaveMilestones} disabled={selectedMilestoneIdxs.size === 0 || hasBlockingSelectedEditableAnchorIssue}>
                       <Check size={14} /> Lưu {selectedMilestoneIdxs.size > 0 ? `(${selectedMilestoneIdxs.size})` : ''}
                     </button>
-                    <button className="btn btn-secondary btn-sm" onClick={() => handleReviseMilestones(MACRO_AI_PRESETS)} disabled={isRevisingMilestones || editableMilestoneSuggestions.length === 0 || hasBlockingMilestonePlanIssue}>
+                    <button className="btn btn-secondary btn-sm" onClick={() => handleReviseMilestones(MACRO_AI_PRESETS)} disabled={isRevisingMilestones || editableMilestoneSuggestions.length === 0 || hasBlockingMilestonePlanIssue || hasBlockingAiChapterAnchorIssue}>
                       {isRevisingMilestones ? <><Loader2 size={14} className="spin" /> AI đang chỉnh...</> : <><Sparkles size={14} /> AI chỉnh lại</>}
                     </button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => handleGenerateMilestones(MACRO_AI_PRESETS)} disabled={isSuggestingMilestones || hasBlockingMilestonePlanIssue}><RotateCcw size={14} /> Tạo batch mới</button>
+                    <button className="btn btn-ghost btn-sm" onClick={() => handleGenerateMilestones(MACRO_AI_PRESETS)} disabled={isSuggestingMilestones || hasBlockingMilestonePlanIssue || hasBlockingAiChapterAnchorIssue}><RotateCcw size={14} /> Tạo batch mới</button>
                     <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={resetAiSuggestPanel}><X size={14} /> Hủy</button>
                   </div>
                 </div>

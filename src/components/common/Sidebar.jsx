@@ -163,10 +163,6 @@ export default function Sidebar() {
   const handleNav = (item) => {
     if (item.needsProject && !activeProjectId) return;
     const path = getNavPath(item, activeProjectId);
-    if (item.id === 'translator') {
-      window.location.assign(new URL(path, window.location.origin).href);
-      return;
-    }
     navigate(path);
   };
 

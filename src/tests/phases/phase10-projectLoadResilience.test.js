@@ -4,6 +4,16 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function createDeferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function compareByField(field) {
   return (a, b) => {
     const left = a?.[field];
@@ -194,5 +204,50 @@ describe('phase10 project load resilience', () => {
     expect(state.scenes.map((scene) => scene.id)).toEqual([20, 21]);
     expect(state.activeChapterId).toBe(10);
     expect(state.activeSceneId).toBe(20);
+  });
+
+  it('ignores stale loadProject responses that finish after a newer project load', async () => {
+    const { store, db } = await loadProjectStore({
+      projects: [
+        { id: 1, title: 'Project 1', updated_at: 10 },
+        { id: 2, title: 'Project 2', updated_at: 20 },
+      ],
+      chapters: [
+        { id: 10, project_id: 1, order_index: 0, title: 'P1 Chapter', actual_word_count: 0 },
+        { id: 20, project_id: 2, order_index: 0, title: 'P2 Chapter', actual_word_count: 0 },
+      ],
+      scenes: [
+        { id: 100, project_id: 1, chapter_id: 10, order_index: 0, title: 'P1 Scene', draft_text: 'old', final_text: '' },
+        { id: 200, project_id: 2, chapter_id: 20, order_index: 0, title: 'P2 Scene', draft_text: 'new', final_text: '' },
+      ],
+    });
+
+    const project1 = createDeferred();
+    const project2 = createDeferred();
+
+    db.projects.get = vi.fn((id) => {
+      if (id === 1) return project1.promise;
+      if (id === 2) return project2.promise;
+      return Promise.resolve(undefined);
+    });
+
+    const firstLoad = store.getState().loadProject(1);
+    const secondLoad = store.getState().loadProject(2);
+
+    project2.resolve({ id: 2, title: 'Project 2', updated_at: 20 });
+    await secondLoad;
+
+    expect(store.getState().currentProject?.id).toBe(2);
+    expect(store.getState().chapters.map((chapter) => chapter.id)).toEqual([20]);
+    expect(store.getState().scenes.map((scene) => scene.id)).toEqual([200]);
+
+    project1.resolve({ id: 1, title: 'Project 1', updated_at: 10 });
+    await firstLoad;
+
+    expect(store.getState().currentProject?.id).toBe(2);
+    expect(store.getState().chapters.map((chapter) => chapter.id)).toEqual([20]);
+    expect(store.getState().scenes.map((scene) => scene.id)).toEqual([200]);
+    expect(store.getState().activeChapterId).toBe(20);
+    expect(store.getState().activeSceneId).toBe(200);
   });
 });

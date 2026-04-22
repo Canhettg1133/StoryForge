@@ -54,11 +54,15 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
   pronounStylePresets,
 }) {
   const handleSelectAll = React.useCallback((event) => {
-    event.target.select();
-  }, []);
-
-  const keepSelectionOnMouseUp = React.useCallback((event) => {
-    event.preventDefault();
+    const input = event.currentTarget;
+    const selectInput = () => {
+      if (document.activeElement === input) input.select();
+    };
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      window.requestAnimationFrame(selectInput);
+    } else {
+      setTimeout(selectInput, 0);
+    }
   }, []);
 
   return (
@@ -149,7 +153,6 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
                 className="input"
                 value={targetLength}
                 onFocus={handleSelectAll}
-                onMouseUp={keepSelectionOnMouseUp}
                 onChange={(event) => setTargetLength(event.target.value)}
               />
               {targetLengthWarning && (
@@ -187,7 +190,6 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
                   style={{ width: '80px' }}
                   value={milestone.percent}
                   onFocus={handleSelectAll}
-                  onMouseUp={keepSelectionOnMouseUp}
                   onChange={(event) => updateMilestone(index, 'percent', Number(event.target.value))}
                   placeholder="%"
                 />

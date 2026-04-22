@@ -22,6 +22,7 @@ const MacroArcContractPanel = React.memo(function MacroArcContractPanel({
     || contract.targetStates.length
     || contract.focusedCharacters.length
     || contract.forbiddenOutcomes.length
+    || contract.chapterAnchors.length
   );
 
   return (
@@ -125,6 +126,20 @@ const MacroArcContractPanel = React.memo(function MacroArcContractPanel({
             </div>
           )}
 
+          {contract.chapterAnchors.length > 0 && (
+            <div className="macro-contract-panel__block">
+              <label>Chapter anchors</label>
+              <ul className="macro-contract-panel__list">
+                {contract.chapterAnchors.map((anchor) => (
+                  <li key={anchor.id}>
+                    <span>
+                      Chuong {anchor.targetChapter} [{anchor.strictness}] - {anchor.requirementText}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {contract.emotionalPeak && (
             <div className="macro-contract-panel__footer">
               Cảm xúc đích: {contract.emotionalPeak}

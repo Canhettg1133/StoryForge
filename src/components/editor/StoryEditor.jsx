@@ -8,6 +8,7 @@ import { countWords } from '../../utils/constants';
 import ContinuityBar from './ContinuityBar';
 import SceneDetailPanel from './SceneDetailPanel';
 import db from '../../services/db/database';
+import { createSceneAutosaveController } from './storyEditorAutosave';
 import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings, Copy } from 'lucide-react';
 import './StoryEditor.css';
 
@@ -51,8 +52,9 @@ export default function StoryEditor({
 
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
-  const saveTimerRef = useRef(null);
-  const lastSavedRef = useRef('');
+  const autosaveControllerRef = useRef(null);
+  const lastSavedBySceneRef = useRef(new Map());
+  const previousSceneIdRef = useRef(null);
   const editorWrapperRef = useRef(null);
   const [outlinePanelOpen, setOutlinePanelOpen] = useState(() => !isMobileLayout);
   const [sceneDetailOpen, setSceneDetailOpen] = useState(false);
@@ -189,10 +191,11 @@ export default function StoryEditor({
       },
     },
     onUpdate: ({ editor }) => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(() => {
-        handleSave(editor.getHTML());
-      }, 2000);
+      if (!activeSceneId) return;
+      autosaveControllerRef.current?.schedule({
+        sceneId: activeSceneId,
+        html: editor.getHTML(),
+      });
     },
   });
 
@@ -206,15 +209,40 @@ export default function StoryEditor({
   }, [currentProject?.id]);
 
   useEffect(() => {
+    if (!autosaveControllerRef.current) {
+      autosaveControllerRef.current = createSceneAutosaveController({
+        delayMs: 2000,
+        onSave: async (sceneId, html) => {
+          const lastSaved = lastSavedBySceneRef.current.get(sceneId) || '';
+          if (html === lastSaved) return;
+          lastSavedBySceneRef.current.set(sceneId, html);
+          await updateScene(sceneId, { draft_text: html });
+          await updateProjectTimestamp();
+        },
+      });
+    }
+  }, [updateProjectTimestamp, updateScene]);
+
+  useEffect(() => {
+    const previousSceneId = previousSceneIdRef.current;
+    if (previousSceneId && previousSceneId !== activeSceneId) {
+      void autosaveControllerRef.current?.flush();
+    }
+    previousSceneIdRef.current = activeSceneId;
+  }, [activeSceneId]);
+
+  useEffect(() => {
     if (editor && activeScene) {
       const content = activeScene.draft_text || '';
-      if (content !== lastSavedRef.current) {
+      const lastSaved = lastSavedBySceneRef.current.get(activeScene.id) || '';
+      if (content !== lastSaved) {
+        lastSavedBySceneRef.current.set(activeScene.id, content);
+      }
+      if (content !== editor.getHTML()) {
         editor.commands.setContent(content, false);
-        lastSavedRef.current = content;
       }
     } else if (editor && !activeScene) {
       editor.commands.setContent('', false);
-      lastSavedRef.current = '';
     }
   }, [activeSceneId, activeScene?.draft_text, editor]);
 
@@ -302,14 +330,14 @@ export default function StoryEditor({
     return { current: total, target, percent: Math.min(100, Math.round((total / target) * 100)) };
   }, [activeChapterId, scenes, chapters, wordCount]);
 
-  const handleSave = useCallback(async (html) => {
-    if (!activeSceneId) return;
-    if (html === lastSavedRef.current) return;
-    lastSavedRef.current = html;
-    await updateScene(activeSceneId, { draft_text: html });
+  const handleSave = useCallback(async (sceneId, html) => {
+    if (!sceneId) return;
+    const lastSaved = lastSavedBySceneRef.current.get(sceneId) || '';
+    if (html === lastSaved) return;
+    lastSavedBySceneRef.current.set(sceneId, html);
+    await updateScene(sceneId, { draft_text: html });
     await updateProjectTimestamp();
-
-  }, [activeSceneId, activeScene, updateScene, updateProjectTimestamp, chapterProgress, chapters]);
+  }, [updateScene, updateProjectTimestamp]);
 
   const handleSaveAiDraft = async () => {
     if (!aiDraft || !editor || !activeSceneId) return;
@@ -324,14 +352,14 @@ export default function StoryEditor({
     }
 
     editor.commands.setContent(aiDraft.html, false);
-    await handleSave(aiDraft.html);
+    await handleSave(activeSceneId, aiDraft.html);
     onAiDraftSaved?.(aiDraft);
     setAiDraft(null);
   };
 
   useEffect(() => {
     return () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      autosaveControllerRef.current?.dispose({ flushPending: true });
     };
   }, []);
 

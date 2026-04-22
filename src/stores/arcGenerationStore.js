@@ -21,9 +21,13 @@ import useProjectStore from './projectStore';
 import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 import { buildProseBuffer } from '../utils/proseBuffer';
 import {
+    buildMacroArcPersistenceSnapshot,
     compileMacroArcContract,
-    parseStoredMacroArcContract,
-    serializeMacroArcContract,
+    getChapterAnchorsInRange,
+    isLegacyChapterAnchorId,
+    preserveChapterAnchorIds,
+    validateDraftAgainstChapterAnchors,
+    validateOutlineAgainstChapterAnchors,
     validateOutlineAgainstMacroArcContract,
 } from '../services/ai/macroArcContract';
 
@@ -115,25 +119,20 @@ function buildPriorGeneratedBriefs(generatedOutline, upToIndex, startingChapterI
     }));
 }
 
-function normalizeMacroMilestoneItem(item, index = 0) {
-    const base = {
-        order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
+export function normalizeMacroMilestoneItem(item, index = 0) {
+    const snapshot = buildMacroArcPersistenceSnapshot({
+        ...item,
         title: String(item?.title || '').trim(),
         description: String(item?.description || '').trim(),
         chapter_from: Number(item?.chapter_from) || 0,
         chapter_to: Number(item?.chapter_to) || 0,
         emotional_peak: String(item?.emotional_peak || '').trim(),
-    };
-
-    const storedContract = parseStoredMacroArcContract({
-        ...base,
         contract_json: item?.contract_json || (item?.contract ? JSON.stringify(item.contract) : ''),
     });
-    const contract = storedContract || compileMacroArcContract(base);
 
     return {
-        ...base,
-        contract_json: contract ? serializeMacroArcContract(contract) : '',
+        ...snapshot,
+        order: Number.isFinite(Number(item?.order)) ? Number(item.order) : index + 1,
     };
 }
 
@@ -263,11 +262,12 @@ function normalizeMacroMilestonePayload(payload, options = {}) {
     const scope = options?.planningScope ? normalizeMacroPlanningScope(options.planningScope) : null;
     const manualPlans = normalizeManualMacroMilestonePlans(options?.macroMilestoneChapterPlans, scope);
     const scopedRanges = buildScopedMilestoneRanges(scope, manualPlans, milestones.length);
+    const structuredChapterAnchors = normalizeStructuredChapterAnchorInput(options?.macroChapterAnchorInputs);
     return {
         milestones: milestones.map((item, index) => {
             const normalized = normalizeMacroMilestoneItem(item, index);
             if (!scope) {
-                return normalized;
+                return attachStructuredAnchorsToMilestone(normalized, structuredChapterAnchors);
             }
             const fixedPlan = manualPlans[index] && !manualPlans[index]?.isIncomplete ? manualPlans[index] : null;
             const scopedRange = scopedRanges[index];
@@ -283,12 +283,12 @@ function normalizeMacroMilestonePayload(payload, options = {}) {
                 chapter_from,
                 Math.min(scope.end, Math.max(chapter_from, rawTo || chapter_from))
             );
-            return {
+            return attachStructuredAnchorsToMilestone({
                 ...normalized,
                 order: index + 1,
                 chapter_from,
                 chapter_to,
-            };
+            }, structuredChapterAnchors);
         }),
     };
 }
@@ -302,21 +302,106 @@ function normalizeMacroContractAnalysisPayload(payload, macroArc = {}) {
 
     if (!rawContract) return null;
 
-    const parsed = parseStoredMacroArcContract({
-        ...macroArc,
-        contract: rawContract,
-    });
-    const contract = parsed || compileMacroArcContract({
+    const previousChapterAnchors = Array.isArray(macroArc?.chapter_anchors)
+        ? macroArc.chapter_anchors
+        : [];
+    const hasExplicitChapterAnchors = Object.prototype.hasOwnProperty.call(rawContract, 'chapterAnchors')
+        || Object.prototype.hasOwnProperty.call(rawContract, 'chapter_anchors');
+    const nextChapterAnchorsCandidate = rawContract.chapterAnchors ?? rawContract.chapter_anchors;
+    const rawChapterAnchors = hasExplicitChapterAnchors
+        ? (
+            Array.isArray(nextChapterAnchorsCandidate)
+                && (nextChapterAnchorsCandidate.length > 0 || previousChapterAnchors.length === 0)
+                ? nextChapterAnchorsCandidate
+                : previousChapterAnchors
+        )
+        : previousChapterAnchors;
+    const preservedChapterAnchors = preserveChapterAnchorIds(
+        rawChapterAnchors,
+        previousChapterAnchors,
+    );
+    const snapshot = buildMacroArcPersistenceSnapshot({
         ...macroArc,
         description: macroArc?.description || rawContract.narrative_summary || '',
+        contract: rawContract,
+        contract_json: typeof rawContract === 'string' ? rawContract : JSON.stringify(rawContract),
+        chapter_anchors: preservedChapterAnchors,
     });
-    if (!contract) return null;
+    if (!snapshot?.contract) return null;
 
     return {
-        contract,
-        contract_json: serializeMacroArcContract(contract),
+        contract: snapshot.contract,
+        contract_json: snapshot.contract_json,
+        chapter_anchors: snapshot.chapter_anchors || [],
         warnings: Array.isArray(payload?.warnings) ? payload.warnings.filter(Boolean) : [],
     };
+}
+
+function normalizeStructuredChapterAnchorInput(chapterAnchors = []) {
+    const snapshot = buildMacroArcPersistenceSnapshot({
+        title: '',
+        description: '',
+        chapter_anchors: Array.isArray(chapterAnchors) ? chapterAnchors : [],
+    });
+    return snapshot?.chapter_anchors || [];
+}
+
+function mergeChapterAnchorLists(primary = [], secondary = []) {
+    const seen = new Set();
+    return [...(primary || []), ...(secondary || [])].filter((anchor) => {
+        const id = String(anchor?.id || '').trim();
+        const key = anchor?.sourceMacroArcId && isLegacyChapterAnchorId(id)
+            ? `${anchor.sourceMacroArcId}:${id}`
+            : (anchor?.sourceMacroArcId ? `${anchor.sourceMacroArcId}:${id}` : id);
+        if (!id || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+}
+
+function attachStructuredAnchorsToMilestone(milestone, structuredChapterAnchors = []) {
+    const normalized = normalizeMacroMilestoneItem(milestone);
+    const milestoneAnchors = (structuredChapterAnchors || []).filter((anchor) => {
+        const target = Number(anchor?.targetChapter) || 0;
+        return target >= Number(normalized.chapter_from || 0) && target <= Number(normalized.chapter_to || 0);
+    });
+    if (milestoneAnchors.length === 0) return normalized;
+
+    const snapshot = buildMacroArcPersistenceSnapshot({
+        ...normalized,
+        chapter_anchors: mergeChapterAnchorLists(normalized.chapter_anchors, milestoneAnchors),
+    });
+
+    return {
+        ...normalized,
+        chapter_anchors: snapshot?.chapter_anchors || [],
+        contract_json: snapshot?.contract_json || normalized.contract_json,
+    };
+}
+
+export function collectBatchChapterAnchors(macroArcs = [], chapterStart = 0, chapterEnd = chapterStart) {
+    const start = Number(chapterStart) || 0;
+    const end = Math.max(start, Number(chapterEnd) || start);
+    return (Array.isArray(macroArcs) ? macroArcs : []).reduce((accumulator, item) => {
+        const contract = compileMacroArcContract(item);
+        const anchors = getChapterAnchorsInRange(contract, start, end).map((anchor) => ({
+            ...anchor,
+            sourceMacroArcId: item?.id || null,
+            sourceMacroArcTitle: item?.title || '',
+        }));
+        return mergeChapterAnchorLists(accumulator, anchors);
+    }, []);
+}
+
+function partitionDraftChapterAnchors(batchChapterAnchors = [], currentChapterNumber = 0) {
+    const current = [];
+    const future = [];
+    (batchChapterAnchors || []).forEach((anchor) => {
+        if (!anchor?.targetChapter) return;
+        if (anchor.targetChapter === currentChapterNumber) current.push(anchor);
+        else if (anchor.targetChapter > currentChapterNumber) future.push(anchor);
+    });
+    return { current, future };
 }
 
 async function upsertChapterMetaForGeneratedChapter({
@@ -482,6 +567,45 @@ function getBeatMixStatus(chapters = []) {
     return chapters.some((chapter) => getSetupSignal(chapter).isSetupLike);
 }
 
+function hasValidMacroArcRange(macroArc = null) {
+    const from = Number(macroArc?.chapter_from) || 0;
+    const to = Number(macroArc?.chapter_to) || 0;
+    return from > 0 && to >= from;
+}
+
+export function resolveBatchChapterWindow({
+    currentChapterCount = 0,
+    batchCount = 0,
+    selectedMacroArc = null,
+} = {}) {
+    const currentCount = Math.max(0, Number(currentChapterCount) || 0);
+    const requestedBatchCount = Math.max(1, Number(batchCount) || 1);
+    const batchStartChapter = currentCount + 1;
+    const macroStartChapter = Number(selectedMacroArc?.chapter_from) || 0;
+    const macroEndChapter = Number(selectedMacroArc?.chapter_to) || 0;
+    const hasSelectedMacroRange = hasValidMacroArcRange(selectedMacroArc);
+    const batchStartsInsideMacro = hasSelectedMacroRange
+        && batchStartChapter >= macroStartChapter
+        && batchStartChapter <= macroEndChapter;
+    const batchEndChapter = batchStartsInsideMacro
+        ? Math.min(currentCount + requestedBatchCount, macroEndChapter)
+        : (currentCount + requestedBatchCount);
+    const effectiveBatchCount = Math.max(0, batchEndChapter - batchStartChapter + 1);
+
+    return {
+        currentCount,
+        requestedBatchCount,
+        batchStartChapter,
+        batchEndChapter,
+        effectiveBatchCount,
+        macroStartChapter,
+        macroEndChapter,
+        hasSelectedMacroRange,
+        batchStartsInsideMacro,
+        isClampedToMacroRange: batchStartsInsideMacro && effectiveBatchCount < requestedBatchCount,
+    };
+}
+
 export function buildStoryProgressBudget({
     targetLength = 0,
     currentChapterCount = 0,
@@ -489,12 +613,17 @@ export function buildStoryProgressBudget({
     selectedMacroArc = null,
     milestones = [],
 }) {
-    const safeBatchCount = Math.max(1, Number(batchCount) || 1);
-    const safeTarget = Math.max(Number(targetLength) || 0, Math.max(Number(currentChapterCount) || 0, 0) + safeBatchCount, 1);
-    const currentCount = Math.max(0, Number(currentChapterCount) || 0);
-    const nextCount = Math.max(currentCount, currentCount + safeBatchCount);
-    const batchStartChapter = currentCount + 1;
-    const batchEndChapter = nextCount;
+    const batchWindow = resolveBatchChapterWindow({
+        currentChapterCount,
+        batchCount,
+        selectedMacroArc,
+    });
+    const safeBatchCount = Math.max(1, batchWindow.effectiveBatchCount || batchWindow.requestedBatchCount || 1);
+    const currentCount = batchWindow.currentCount;
+    const batchStartChapter = batchWindow.batchStartChapter;
+    const batchEndChapter = batchWindow.batchEndChapter;
+    const nextCount = Math.max(currentCount, batchEndChapter);
+    const safeTarget = Math.max(Number(targetLength) || 0, batchEndChapter, 1);
     const fromPercent = Number(((currentCount / safeTarget) * 100).toFixed(1));
     const toPercent = Number(((nextCount / safeTarget) * 100).toFixed(1));
     const nextMilestone = Array.isArray(milestones)
@@ -503,8 +632,8 @@ export function buildStoryProgressBudget({
     const remainingInMacro = selectedMacroArc?.chapter_to
         ? Math.max(0, Number(selectedMacroArc.chapter_to) - currentCount)
         : null;
-    const macroStartChapter = Number(selectedMacroArc?.chapter_from) || 0;
-    const macroEndChapter = Number(selectedMacroArc?.chapter_to) || 0;
+    const macroStartChapter = batchWindow.macroStartChapter;
+    const macroEndChapter = batchWindow.macroEndChapter;
     const macroSpan = macroStartChapter > 0 && macroEndChapter >= macroStartChapter
         ? (macroEndChapter - macroStartChapter + 1)
         : 0;
@@ -532,6 +661,7 @@ export function buildStoryProgressBudget({
         currentChapterCount: currentCount,
         targetLength: safeTarget,
         batchCount: safeBatchCount,
+        requestedBatchCount: batchWindow.requestedBatchCount,
         batchStartChapter,
         batchEndChapter,
         mainPlotMaxStep: 1,
@@ -554,6 +684,8 @@ export function buildStoryProgressBudget({
         batchCoversFullMacro,
         batchReachesMacroEnd,
         macroCoveragePercent,
+        batchStartsInsideMacro: batchWindow.batchStartsInsideMacro,
+        isClampedToMacroRange: batchWindow.isClampedToMacroRange,
         macroProgressCap: !batchReachesMacroEnd && batchMacroOverlapCount > 0
             ? 'batch nay chi duoc day mot phan cot moc, khong duoc xem nhu da di tron cot moc'
             : 'batch nay co the cham moc ket thuc neu buildup da du',
@@ -564,7 +696,7 @@ function detectMacroArcForChapter(macroArcs = [], nextChapterNumber = 1) {
     return macroArcs.find((item) => {
         const from = Number(item?.chapter_from) || 0;
         const to = Number(item?.chapter_to) || 0;
-        if (!to) return false;
+        if (from <= 0 || to < from) return false;
         return nextChapterNumber >= from && nextChapterNumber <= to;
     }) || null;
 }
@@ -602,10 +734,19 @@ export function validateGeneratedOutline(generatedOutline, {
     selectedMacroArc = null,
     milestones = [],
     macroArcContract = null,
+    batchChapterAnchors = [],
+    startChapterNumber = 1,
 } = {}) {
     const chapters = Array.isArray(generatedOutline?.chapters) ? generatedOutline.chapters : [];
     const issues = [];
     const effectiveMacroArcContract = macroArcContract || compileMacroArcContract(selectedMacroArc);
+    const macroRangeIsValid = hasValidMacroArcRange(selectedMacroArc);
+    const macroStartChapter = Number(selectedMacroArc?.chapter_from) || 0;
+    const macroEndChapter = Number(selectedMacroArc?.chapter_to) || 0;
+    const baseChapterNumber = Math.max(
+        1,
+        Number(startChapterNumber) || (Number(storyProgressBudget?.currentChapterCount || 0) + 1),
+    );
     const beatMixSatisfied = getBeatMixStatus(chapters);
     const nextMilestone = storyProgressBudget?.nextMilestone
         || (Array.isArray(milestones) ? milestones.find((item) => Number(item?.percent) > Number(storyProgressBudget?.fromPercent || 0)) : null)
@@ -621,7 +762,7 @@ export function validateGeneratedOutline(generatedOutline, {
         const purposeText = normalizePlanText(current.purpose || '');
         const combinedText = getNormalizedChapterText(current);
         const resolutionSignal = getResolutionSignal(current);
-        const chapterAbsoluteNumber = Number(storyProgressBudget?.currentChapterCount || 0) + index + 1;
+        const chapterAbsoluteNumber = baseChapterNumber + index;
         const chapterToPercent = Number(storyProgressBudget?.fromPercent || 0) + (chapterStepPercent * (index + 1));
         const remainingMacroAfterChapter = selectedMacroArc?.chapter_to
             ? Math.max(0, Number(selectedMacroArc.chapter_to) - chapterAbsoluteNumber)
@@ -633,6 +774,16 @@ export function validateGeneratedOutline(generatedOutline, {
         const milestoneGap = nextMilestone ? Number(nextMilestone.percent) - chapterToPercent : null;
         const isNearMilestone = milestoneGap != null ? milestoneGap <= 2 : false;
         const isFarFromPlannedResolution = !isNearMacroEnding && !isNearMilestone;
+
+        if (macroRangeIsValid && (chapterAbsoluteNumber < macroStartChapter || chapterAbsoluteNumber > macroEndChapter)) {
+            issues.push({
+                chapterIndex: index,
+                chapterTitle: current.title || `Chuong ${chapterAbsoluteNumber}`,
+                code: 'chapter-out-of-range',
+                severity: 'error',
+                message: `Chapter ${chapterAbsoluteNumber} nam ngoai range da chot cua macro arc "${selectedMacroArc?.title || ''}" (${macroStartChapter}-${macroEndChapter}).`,
+            });
+        }
 
         if (!hasReadablePlanBody(current) || !hasThreadAnchor(current)) {
             issues.push({
@@ -717,7 +868,19 @@ export function validateGeneratedOutline(generatedOutline, {
     }
 
     if (effectiveMacroArcContract) {
-        issues.push(...validateOutlineAgainstMacroArcContract(generatedOutline, effectiveMacroArcContract));
+        issues.push(...validateOutlineAgainstMacroArcContract(generatedOutline, effectiveMacroArcContract, {
+            startChapterNumber,
+        }));
+    }
+
+    const selectedMacroArcId = selectedMacroArc?.id || null;
+    const extraBatchAnchors = batchChapterAnchors.filter((anchor) => !effectiveMacroArcContract?.chapterAnchors?.some((item) => (
+        anchor.sourceMacroArcId === selectedMacroArcId && item.id === anchor.id
+    )));
+    if (extraBatchAnchors.length > 0) {
+        issues.push(...validateOutlineAgainstChapterAnchors(generatedOutline, extraBatchAnchors, {
+            startChapterNumber,
+        }));
     }
 
     return {
@@ -740,8 +903,12 @@ async function loadArcGenerationProjectState(projectId, currentChapterCount = 0)
     const targetLength = Number(project?.target_length) || 0;
     const recommendedBatch = recommendArcBatchCount(targetLength);
     const nextChapterNumber = Math.max(1, Number(currentChapterCount) + 1);
+    const normalizedMacroArcs = macroArcs.map((item, index) => normalizeMacroMilestoneItem({
+        ...item,
+        order: item?.order ?? item?.order_index ?? index + 1,
+    }, index));
     const selectedMacroArc = detectMacroArcForBatch(
-        macroArcs,
+        normalizedMacroArcs,
         nextChapterNumber,
         nextChapterNumber + Math.max(0, recommendedBatch - 1),
     );
@@ -750,7 +917,7 @@ async function loadArcGenerationProjectState(projectId, currentChapterCount = 0)
         project,
         targetLength,
         milestones,
-        macroArcs,
+        macroArcs: normalizedMacroArcs,
         recommendedBatch,
         selectedMacroArc,
     };
@@ -793,6 +960,7 @@ function buildOutlineDerivedState(
     const chapterCount = Array.isArray(outline?.chapters) ? outline.chapters.length : 0;
     const selectedMacroArc = getSelectedMacroArcFromState(state);
     const macroArcContract = compileMacroArcContract(selectedMacroArc);
+    const startChapterNumber = Number(state.currentChapterCount || 0) + 1;
     const storyProgressBudget = buildStoryProgressBudget({
         targetLength: state.projectTargetLength,
         currentChapterCount: state.currentChapterCount,
@@ -800,11 +968,18 @@ function buildOutlineDerivedState(
         selectedMacroArc,
         milestones: state.projectMilestones,
     });
+    const batchChapterAnchors = collectBatchChapterAnchors(
+        state.availableMacroArcs,
+        storyProgressBudget.batchStartChapter,
+        storyProgressBudget.batchEndChapter,
+    );
     const outlineValidation = validateGeneratedOutline(outline, {
         storyProgressBudget,
         selectedMacroArc,
         milestones: state.projectMilestones,
         macroArcContract,
+        batchChapterAnchors,
+        startChapterNumber,
     });
     const normalizedSelection = sanitizeSelectedDraftIndexes(
         selectedDraftIndexes,
@@ -817,10 +992,109 @@ function buildOutlineDerivedState(
 
     return {
         macroArcContract,
+        batchChapterAnchors,
         storyProgressBudget,
         outlineValidation,
         selectedDraftIndexes: nextSelection,
     };
+}
+
+function normalizeGeneratedListField(value = []) {
+    return Array.isArray(value)
+        ? value.map((item) => String(item || '').trim()).filter(Boolean)
+        : [];
+}
+
+function buildGeneratedChapterPersistencePayload({
+    projectId,
+    arcId,
+    orderIndex,
+    chapter = {},
+    status = 'outline',
+    title = '',
+    actualWordCount = 0,
+}) {
+    return {
+        project_id: projectId,
+        arc_id: arcId,
+        order_index: orderIndex,
+        title: title || chapter?.title || `Chuong ${orderIndex + 1}`,
+        summary: chapter?.summary || '',
+        purpose: chapter?.purpose || JSON.stringify(chapter?.key_events || []),
+        status,
+        word_count_target: 7000,
+        actual_word_count: actualWordCount,
+        featured_characters: normalizeGeneratedListField(chapter?.featured_characters),
+        primary_location: String(chapter?.primary_location || '').trim(),
+        thread_titles: normalizeGeneratedListField(chapter?.thread_titles),
+        key_events: normalizeGeneratedListField(chapter?.key_events),
+        required_factions: normalizeGeneratedListField(chapter?.required_factions),
+        required_objects: normalizeGeneratedListField(chapter?.required_objects),
+        required_terms: normalizeGeneratedListField(chapter?.required_terms),
+    };
+}
+
+function buildGeneratedScenePersistencePayload({
+    projectId,
+    chapterId,
+    status = 'outline',
+    draftText = '',
+}) {
+    return {
+        project_id: projectId,
+        chapter_id: chapterId,
+        order_index: 0,
+        title: 'Canh 1',
+        summary: '',
+        pov_character_id: null,
+        location_id: null,
+        time_marker: '',
+        goal: '',
+        conflict: '',
+        emotional_start: '',
+        emotional_end: '',
+        status,
+        draft_text: draftText,
+        final_text: '',
+        must_happen: '[]',
+        must_not_happen: '[]',
+        pacing: '',
+        characters_present: '[]',
+    };
+}
+
+function buildGeneratedCommitPlan(generatedOutline, draftResults = []) {
+    const chapters = Array.isArray(generatedOutline?.chapters) ? generatedOutline.chapters : [];
+    const doneDraftMap = new Map(
+        (draftResults || [])
+            .filter((item) => item?.status === 'done' && item?.content)
+            .map((item) => [Number(item.outlineIndex), item]),
+    );
+
+    return chapters.map((chapter, outlineIndex) => {
+        const draft = doneDraftMap.get(outlineIndex) || null;
+        const hasDraft = Boolean(draft?.content);
+        return {
+            outlineIndex,
+            chapter,
+            status: hasDraft ? 'draft' : 'outline',
+            title: hasDraft ? (draft.title || chapter?.title || '') : (chapter?.title || ''),
+            actualWordCount: hasDraft ? (draft.wordCount || 0) : 0,
+            draftText: hasDraft ? draft.content : '',
+        };
+    });
+}
+
+function deriveOutlineCommitState(state, currentChapterCount) {
+    return buildOutlineDerivedState(
+        {
+            ...state,
+            currentChapterCount,
+        },
+        state.generatedOutline,
+        state.selectedDraftIndexes,
+        { preferDefaultSelection: false },
+    );
 }
 
 const useArcGenStore = create((set, get) => ({
@@ -831,6 +1105,7 @@ const useArcGenStore = create((set, get) => ({
     arcPacing: 'medium',
     arcMode: 'guided',
     outputMode: 'draft_selected',
+    sessionProjectId: null,
     currentChapterCount: 0,
     projectTargetLength: 0,
     projectMilestones: [],
@@ -851,6 +1126,8 @@ const useArcGenStore = create((set, get) => ({
     outlineValidation: { issues: [], hasBlockingIssues: false },
     storyProgressBudget: null,
     macroArcContract: null,
+    batchChapterAnchors: [],
+    outlineRequestToken: 0,
 
     // Bước 3: Đắp thịt
     draftStatus: 'idle',
@@ -897,6 +1174,11 @@ const useArcGenStore = create((set, get) => ({
                 milestones: state.projectMilestones,
             });
             nextState.macroArcContract = compileMacroArcContract(selectedMacroArc);
+            nextState.batchChapterAnchors = collectBatchChapterAnchors(
+                state.availableMacroArcs,
+                nextState.storyProgressBudget.batchStartChapter,
+                nextState.storyProgressBudget.batchEndChapter,
+            );
         }
         if (Object.prototype.hasOwnProperty.call(config, 'selectedMacroArcId')
             || Object.prototype.hasOwnProperty.call(config, 'currentMacroArcId')) {
@@ -906,6 +1188,7 @@ const useArcGenStore = create((set, get) => ({
                 state.selectedDraftIndexes,
             );
             nextState.macroArcContract = derived.macroArcContract;
+            nextState.batchChapterAnchors = derived.batchChapterAnchors;
             nextState.storyProgressBudget = derived.storyProgressBudget;
             if (state.generatedOutline) {
                 nextState.outlineValidation = derived.outlineValidation;
@@ -924,36 +1207,90 @@ const useArcGenStore = create((set, get) => ({
                 recommendedBatch,
                 selectedMacroArc,
             } = await loadArcGenerationProjectState(projectId, currentChapterCount);
-            set({
-                arcGoal: '',
-                arcChapterCount: recommendedBatch,
-                arcPacing: 'medium',
-                arcMode: 'guided',
-                outputMode: getDefaultOutputMode(targetLength),
+            const initialStoryProgressBudget = buildStoryProgressBudget({
+                targetLength,
                 currentChapterCount,
-                projectTargetLength: targetLength,
-                projectMilestones: milestones,
-                recommendedBatchCount: recommendedBatch,
-                availableMacroArcs: macroArcs,
-                selectedMacroArcId: selectedMacroArc?.id || null,
-                currentMacroArcId: selectedMacroArc?.id || null,
-                currentArcId: null,
-                generatedOutline: null,
-                outlineStatus: 'idle',
-                outlineRevisionPrompt: '',
-                outlineValidation: { issues: [], hasBlockingIssues: false },
-                storyProgressBudget: buildStoryProgressBudget({
-                    targetLength,
+                batchCount: recommendedBatch,
+                selectedMacroArc,
+                milestones,
+            });
+            set((state) => {
+                const hasSessionState = state.sessionProjectId === projectId
+                    && state.currentChapterCount === currentChapterCount
+                    && (
+                        state.draftStatus === 'drafting'
+                        || state.outlineStatus === 'generating'
+                        || state.outlineStatus === 'ready'
+                        || state.draftStatus === 'done'
+                        || !!state.generatedOutline
+                        || (Array.isArray(state.draftResults) && state.draftResults.length > 0)
+                    );
+
+                if (hasSessionState) {
+                    const preservedSelectedMacroArcId = state.selectedMacroArcId
+                        && macroArcs.some((item) => item.id === state.selectedMacroArcId)
+                            ? state.selectedMacroArcId
+                            : (selectedMacroArc?.id || null);
+                    const preservedCurrentMacroArcId = state.currentMacroArcId
+                        && macroArcs.some((item) => item.id === state.currentMacroArcId)
+                            ? state.currentMacroArcId
+                            : preservedSelectedMacroArcId;
+                    const activeMacroArc = macroArcs.find((item) => item.id === preservedCurrentMacroArcId)
+                        || selectedMacroArc
+                        || null;
+
+                    return {
+                        sessionProjectId: projectId,
+                        projectTargetLength: targetLength,
+                        projectMilestones: milestones,
+                        recommendedBatchCount: recommendedBatch,
+                        availableMacroArcs: macroArcs,
+                        selectedMacroArcId: preservedSelectedMacroArcId,
+                        currentMacroArcId: preservedCurrentMacroArcId,
+                        macroArcContract: state.macroArcContract || compileMacroArcContract(activeMacroArc),
+                        storyProgressBudget: state.storyProgressBudget || initialStoryProgressBudget,
+                        batchChapterAnchors: (Array.isArray(state.batchChapterAnchors) && state.batchChapterAnchors.length > 0)
+                            ? state.batchChapterAnchors
+                            : collectBatchChapterAnchors(
+                                macroArcs,
+                                initialStoryProgressBudget.batchStartChapter,
+                                initialStoryProgressBudget.batchEndChapter,
+                            ),
+                    };
+                }
+
+                return {
+                    arcGoal: '',
+                    arcChapterCount: recommendedBatch,
+                    arcPacing: 'medium',
+                    arcMode: 'guided',
+                    outputMode: getDefaultOutputMode(targetLength),
+                    sessionProjectId: projectId,
                     currentChapterCount,
-                    batchCount: recommendedBatch,
-                    selectedMacroArc,
-                    milestones,
-                }),
-                macroArcContract: compileMacroArcContract(selectedMacroArc),
-                draftStatus: 'idle',
-                draftProgress: { current: 0, total: 0 },
-                draftResults: [],
-                selectedDraftIndexes: [],
+                    projectTargetLength: targetLength,
+                    projectMilestones: milestones,
+                    recommendedBatchCount: recommendedBatch,
+                    availableMacroArcs: macroArcs,
+                    selectedMacroArcId: selectedMacroArc?.id || null,
+                    currentMacroArcId: selectedMacroArc?.id || null,
+                    currentArcId: null,
+                    generatedOutline: null,
+                    outlineStatus: 'idle',
+                    outlineRevisionPrompt: '',
+                    outlineValidation: { issues: [], hasBlockingIssues: false },
+                    storyProgressBudget: initialStoryProgressBudget,
+                    macroArcContract: compileMacroArcContract(selectedMacroArc),
+                    batchChapterAnchors: collectBatchChapterAnchors(
+                        macroArcs,
+                        initialStoryProgressBudget.batchStartChapter,
+                        initialStoryProgressBudget.batchEndChapter,
+                    ),
+                    outlineRequestToken: 0,
+                    draftStatus: 'idle',
+                    draftProgress: { current: 0, total: 0 },
+                    draftResults: [],
+                    selectedDraftIndexes: [],
+                };
             });
         } catch (error) {
             console.error('[ArcGen] initializeArcGeneration failed:', error);
@@ -966,6 +1303,7 @@ const useArcGenStore = create((set, get) => ({
         arcPacing: 'medium',
         arcMode: 'guided',
         outputMode: 'draft_selected',
+        sessionProjectId: null,
         currentChapterCount: 0,
         projectTargetLength: 0,
         projectMilestones: [],
@@ -980,6 +1318,7 @@ const useArcGenStore = create((set, get) => ({
         outlineValidation: { issues: [], hasBlockingIssues: false },
         storyProgressBudget: null,
         macroArcContract: null,
+        outlineRequestToken: 0,
         draftStatus: 'idle',
         draftProgress: { current: 0, total: 0 },
         draftResults: [],
@@ -1001,6 +1340,8 @@ const useArcGenStore = create((set, get) => ({
             selectedMacroArc,
             milestones: overrides.milestones || state.projectMilestones,
             macroArcContract: overrides.macroArcContract || state.macroArcContract,
+            batchChapterAnchors: overrides.batchChapterAnchors || state.batchChapterAnchors || [],
+            startChapterNumber: overrides.startChapterNumber || (Number(state.currentChapterCount || 0) + 1),
         });
     },
     setSelectedDraftIndexes: (indexes) => set((state) => ({
@@ -1025,7 +1366,15 @@ const useArcGenStore = create((set, get) => ({
     // BƯỚC 2: Sinh Dàn Ý (Outline)
     // ═══════════════════════════════════════════
     generateOutline: async ({ projectId, chapterId, chapterIndex, genre }) => {
-        set({ outlineStatus: 'generating', outlineValidation: { issues: [], hasBlockingIssues: false } });
+        let outlineRequestToken = 0;
+        set((current) => {
+            outlineRequestToken = Number(current.outlineRequestToken || 0) + 1;
+            return {
+                outlineStatus: 'generating',
+                outlineValidation: { issues: [], hasBlockingIssues: false },
+                outlineRequestToken,
+            };
+        });
         try {
             const state = get();
             const existingChapterBriefs = await loadExistingChapterBriefs(projectId);
@@ -1052,6 +1401,11 @@ const useArcGenStore = create((set, get) => ({
             const effectiveMacroArcContract = compileMacroArcContract(selectedMacroArc || ctx.currentMacroArc, {
                 allCharacters: ctx.allCharacters,
             });
+            const batchChapterAnchors = collectBatchChapterAnchors(
+                state.availableMacroArcs,
+                storyProgressBudget.batchStartChapter,
+                storyProgressBudget.batchEndChapter,
+            );
 
             let finalGoal = state.arcGoal;
             if (state.arcMode === 'auto') {
@@ -1098,12 +1452,13 @@ const useArcGenStore = create((set, get) => ({
             const messages = buildPrompt(TASK_TYPES.ARC_OUTLINE, {
                 ...ctx,
                 userPrompt: finalGoal,
-                chapterCount: state.arcChapterCount,
+                chapterCount: storyProgressBudget.batchCount,
                 arcPacing: state.arcPacing,
                 startChapterNumber: startingChapterIndex + 1,
                 existingChapterBriefs,
                 currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
                 macroArcContract: effectiveMacroArcContract,
+                batchChapterAnchors,
                 milestones: state.projectMilestones.length > 0 ? state.projectMilestones : ctx.milestones,
                 storyProgressBudget,
             });
@@ -1115,6 +1470,10 @@ const useArcGenStore = create((set, get) => ({
                     stream: true,
                     onToken: () => { },
                     onComplete: (text) => {
+                        if (get().outlineRequestToken !== outlineRequestToken) {
+                            resolve();
+                            return;
+                        }
                         try {
                             const parsed = parseAIJsonValue(text);
                             const outline = normalizeGeneratedOutline(
@@ -1133,6 +1492,7 @@ const useArcGenStore = create((set, get) => ({
                                 generatedOutline: outline,
                                 outlineStatus: 'ready',
                                 macroArcContract: derived.macroArcContract,
+                                batchChapterAnchors: derived.batchChapterAnchors,
                                 storyProgressBudget: derived.storyProgressBudget,
                                 outlineValidation: derived.outlineValidation,
                                 selectedDraftIndexes: derived.selectedDraftIndexes,
@@ -1147,6 +1507,10 @@ const useArcGenStore = create((set, get) => ({
                         resolve();
                     },
                     onError: (error) => {
+                        if (get().outlineRequestToken !== outlineRequestToken) {
+                            resolve();
+                            return;
+                        }
                         console.error('Outline generation error:', error);
                         set({ outlineStatus: 'error' });
                         resolve();
@@ -1165,10 +1529,15 @@ const useArcGenStore = create((set, get) => ({
         const revisionInstruction = String(instruction ?? state.outlineRevisionPrompt ?? '').trim();
         if (!revisionInstruction) return false;
 
-        set({
-            outlineStatus: 'generating',
-            outlineRevisionPrompt: revisionInstruction,
-            outlineValidation: { issues: [], hasBlockingIssues: false },
+        let outlineRequestToken = 0;
+        set((current) => {
+            outlineRequestToken = Number(current.outlineRequestToken || 0) + 1;
+            return {
+                outlineStatus: 'generating',
+                outlineRevisionPrompt: revisionInstruction,
+                outlineValidation: { issues: [], hasBlockingIssues: false },
+                outlineRequestToken,
+            };
         });
         try {
             const existingChapterBriefs = await loadExistingChapterBriefs(projectId);
@@ -1195,6 +1564,11 @@ const useArcGenStore = create((set, get) => ({
             const effectiveMacroArcContract = compileMacroArcContract(selectedMacroArc || ctx.currentMacroArc, {
                 allCharacters: ctx.allCharacters,
             });
+            const batchChapterAnchors = collectBatchChapterAnchors(
+                state.availableMacroArcs,
+                storyProgressBudget.batchStartChapter,
+                storyProgressBudget.batchEndChapter,
+            );
             const messages = buildPrompt(TASK_TYPES.ARC_OUTLINE, {
                 ...ctx,
                 userPrompt: state.arcGoal,
@@ -1204,6 +1578,7 @@ const useArcGenStore = create((set, get) => ({
                 existingChapterBriefs,
                 currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
                 macroArcContract: effectiveMacroArcContract,
+                batchChapterAnchors,
                 milestones: state.projectMilestones.length > 0 ? state.projectMilestones : ctx.milestones,
                 storyProgressBudget,
                 generatedOutline: state.generatedOutline,
@@ -1218,6 +1593,10 @@ const useArcGenStore = create((set, get) => ({
                     stream: true,
                     onToken: () => { },
                     onComplete: (text) => {
+                        if (get().outlineRequestToken !== outlineRequestToken) {
+                            resolve();
+                            return;
+                        }
                         try {
                             const parsed = parseAIJsonValue(text);
                             const outline = normalizeGeneratedOutline(
@@ -1237,6 +1616,7 @@ const useArcGenStore = create((set, get) => ({
                                 outlineStatus: 'ready',
                                 outlineRevisionPrompt: '',
                                 macroArcContract: derived.macroArcContract,
+                                batchChapterAnchors: derived.batchChapterAnchors,
                                 storyProgressBudget: derived.storyProgressBudget,
                                 outlineValidation: derived.outlineValidation,
                                 selectedDraftIndexes: derived.selectedDraftIndexes,
@@ -1248,6 +1628,10 @@ const useArcGenStore = create((set, get) => ({
                         resolve();
                     },
                     onError: (error) => {
+                        if (get().outlineRequestToken !== outlineRequestToken) {
+                            resolve();
+                            return;
+                        }
                         console.error('Outline revision error:', error);
                         set({ outlineStatus: 'error' });
                         resolve();
@@ -1272,6 +1656,7 @@ const useArcGenStore = create((set, get) => ({
         set({
             generatedOutline,
             macroArcContract: derived.macroArcContract,
+            batchChapterAnchors: derived.batchChapterAnchors,
             storyProgressBudget: derived.storyProgressBudget,
             outlineValidation: derived.outlineValidation,
             selectedDraftIndexes: derived.selectedDraftIndexes,
@@ -1292,6 +1677,7 @@ const useArcGenStore = create((set, get) => ({
         set({
             generatedOutline,
             macroArcContract: derived.macroArcContract,
+            batchChapterAnchors: derived.batchChapterAnchors,
             storyProgressBudget: derived.storyProgressBudget,
             outlineValidation: derived.outlineValidation,
             selectedDraftIndexes: derived.selectedDraftIndexes,
@@ -1346,62 +1732,103 @@ const useArcGenStore = create((set, get) => ({
                 const effectiveMacroArcContract = compileMacroArcContract(selectedMacroArc || ctx.currentMacroArc, {
                     allCharacters: ctx.allCharacters,
                 });
-                const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
-                    ...ctx,
-                    previousSummary: previousGeneratedSummary || ctx.previousSummary,
-                    bridgeBuffer: generatedBridgeBuffer || ctx.bridgeBuffer,
-                    chapterOutlineTitle: chapter.title,
-                    chapterOutlinePurpose: chapter.purpose || '',
-                    chapterOutlineSummary: chapter.summary,
-                    chapterOutlineEvents: chapter.key_events || [],
-                    chapterOutlineObjectiveRefs: chapter.objective_refs || [],
-                    chapterOutlineStateDelta: chapter.state_delta || '',
-                    chapterOutlineGuardrail: chapter.arc_guard_note || '',
-                    startChapterNumber: draftItem.chapterIndex + 1,
-                    existingChapterBriefs,
-                    priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(
-                        liveState.generatedOutline,
-                        outlineIndex,
-                        startingChapterIndex,
-                    ),
-                    currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
-                    macroArcContract: effectiveMacroArcContract,
-                    storyProgressBudget: liveState.storyProgressBudget,
-                });
+                const chapterNumber = draftItem.chapterIndex + 1;
+                const anchorGroups = partitionDraftChapterAnchors(
+                    liveState.batchChapterAnchors,
+                    chapterNumber,
+                );
+                let anchorReports = [];
+                let finished = false;
 
-                await new Promise((resolve) => {
-                    aiService.send({
-                        taskType: TASK_TYPES.ARC_CHAPTER_DRAFT,
-                        messages,
-                        stream: true,
-                        onToken: () => { },
-                        onComplete: (text) => {
-                            const wordCount = text.split(/\s+/).filter(Boolean).length;
-                            generatedBridgeBuffer = buildProseBuffer(text);
-                            set((current) => ({
-                                draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
-                                draftResults: current.draftResults.map((item, index) => (
-                                    index === queueIndex
-                                        ? { ...item, content: text, wordCount, status: 'done' }
-                                        : item
-                                )),
-                            }));
-                            resolve();
-                        },
-                        onError: (error) => {
-                            console.error(`Draft chapter ${outlineIndex} error:`, error);
-                            set((current) => ({
-                                draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
-                                draftResults: current.draftResults.map((item, index) => (
-                                    index === queueIndex
-                                        ? { ...item, status: 'error' }
-                                        : item
-                                )),
-                            }));
-                            resolve();
-                        },
+                for (let attempt = 0; attempt < 2 && !finished; attempt += 1) {
+                    const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
+                        ...ctx,
+                        previousSummary: previousGeneratedSummary || ctx.previousSummary,
+                        bridgeBuffer: generatedBridgeBuffer || ctx.bridgeBuffer,
+                        chapterOutlineTitle: chapter.title,
+                        chapterOutlinePurpose: chapter.purpose || '',
+                        chapterOutlineSummary: chapter.summary,
+                        chapterOutlineEvents: chapter.key_events || [],
+                        chapterOutlineObjectiveRefs: chapter.objective_refs || [],
+                        chapterOutlineAnchorRefs: chapter.anchor_refs || [],
+                        chapterOutlineStateDelta: chapter.state_delta || '',
+                        chapterOutlineGuardrail: chapter.arc_guard_note || '',
+                        startChapterNumber: chapterNumber,
+                        existingChapterBriefs,
+                        priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(
+                            liveState.generatedOutline,
+                            outlineIndex,
+                            startingChapterIndex,
+                        ),
+                        currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
+                        macroArcContract: effectiveMacroArcContract,
+                        currentChapterAnchors: anchorGroups.current,
+                        futureChapterAnchors: anchorGroups.future,
+                        chapterAnchorValidationReports: anchorReports,
+                        storyProgressBudget: liveState.storyProgressBudget,
                     });
-                });
+
+                    const attemptResult = await new Promise((resolve) => {
+                        aiService.send({
+                            taskType: TASK_TYPES.ARC_CHAPTER_DRAFT,
+                            messages,
+                            stream: true,
+                            onToken: () => { },
+                            onComplete: (text) => resolve({ text }),
+                            onError: (error) => resolve({ error }),
+                        });
+                    });
+
+                    if (attemptResult.error) {
+                        console.error(`Draft chapter ${outlineIndex} error:`, attemptResult.error);
+                        set((current) => ({
+                            draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
+                            draftResults: current.draftResults.map((item, index) => (
+                                index === queueIndex
+                                    ? { ...item, status: 'error' }
+                                    : item
+                            )),
+                        }));
+                        break;
+                    }
+
+                    const text = attemptResult.text || '';
+                    const validationReports = validateDraftAgainstChapterAnchors(
+                        { title: chapter.title, summary: chapter.summary, content: text },
+                        [...anchorGroups.current, ...anchorGroups.future],
+                        { currentChapterNumber: chapterNumber },
+                    );
+                    const blockingReports = validationReports.filter((report) => report.severity === 'error');
+
+                    if (blockingReports.length > 0 && attempt === 0) {
+                        anchorReports = blockingReports;
+                        continue;
+                    }
+
+                    if (blockingReports.length > 0) {
+                        set((current) => ({
+                            draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
+                            draftResults: current.draftResults.map((item, index) => (
+                                index === queueIndex
+                                    ? { ...item, status: 'error', flagNote: blockingReports.map((report) => report.message).join(' | ') }
+                                    : item
+                            )),
+                        }));
+                        break;
+                    }
+
+                    const wordCount = text.split(/\s+/).filter(Boolean).length;
+                    generatedBridgeBuffer = buildProseBuffer(text);
+                    set((current) => ({
+                        draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
+                        draftResults: current.draftResults.map((item, index) => (
+                            index === queueIndex
+                                ? { ...item, content: text, wordCount, status: 'done', flagNote: '' }
+                                : item
+                        )),
+                    }));
+                    finished = true;
+                }
             } catch (error) {
                 console.error(`Draft chapter ${outlineIndex} exception:`, error);
                 set((current) => ({
@@ -1432,6 +1859,16 @@ const useArcGenStore = create((set, get) => ({
         const { chapters } = useProjectStore.getState();
         const baseIndex = getNextOrderIndex(chapters);
         const chapterCount = state.generatedOutline.chapters.length;
+        const commitDerived = deriveOutlineCommitState(state, baseIndex);
+        if (commitDerived.outlineValidation.hasBlockingIssues) {
+            set({
+                outlineValidation: commitDerived.outlineValidation,
+                storyProgressBudget: commitDerived.storyProgressBudget,
+                batchChapterAnchors: commitDerived.batchChapterAnchors,
+                macroArcContract: commitDerived.macroArcContract,
+            });
+            return false;
+        }
 
         // Phase 9: Tạo arc record trước, lấy arcId để gán cho chapters
         const arcId = await createArcRecord({
@@ -1641,58 +2078,99 @@ const useArcGenStore = create((set, get) => ({
                 const effectiveMacroArcContract = compileMacroArcContract(selectedMacroArc || ctx.currentMacroArc, {
                     allCharacters: ctx.allCharacters,
                 });
-                const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
-                    ...ctx,
-                    previousSummary: previousGeneratedSummary || ctx.previousSummary,
-                    bridgeBuffer: previousBridgeBuffer,
-                    chapterOutlineTitle: ch.title,
-                    chapterOutlinePurpose: ch.purpose || '',
-                    chapterOutlineSummary: ch.summary + (flagNote ? '. GHI CHU SUA DOI: ' + flagNote : ''),
-                    chapterOutlineEvents: ch.key_events || [],
-                    chapterOutlineObjectiveRefs: ch.objective_refs || [],
-                    chapterOutlineStateDelta: ch.state_delta || '',
-                    chapterOutlineGuardrail: ch.arc_guard_note || '',
-                    startChapterNumber: (draftItem.chapterIndex ?? (startingChapterIndex + outlineIndex)) + 1,
-                    existingChapterBriefs,
-                    priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(
-                        liveState.generatedOutline,
-                        outlineIndex,
-                        startingChapterIndex,
-                    ),
-                    currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
-                    macroArcContract: effectiveMacroArcContract,
-                    storyProgressBudget: liveState.storyProgressBudget,
-                });
+                const chapterNumber = (draftItem.chapterIndex ?? (startingChapterIndex + outlineIndex)) + 1;
+                const anchorGroups = partitionDraftChapterAnchors(
+                    liveState.batchChapterAnchors,
+                    chapterNumber,
+                );
+                let anchorReports = [];
+                let finished = false;
 
-                await new Promise((resolve) => {
-                    aiService.send({
-                        taskType: TASK_TYPES.ARC_CHAPTER_DRAFT,
-                        messages,
-                        stream: true,
-                        onToken: () => { },
-                        onComplete: (text) => {
-                            const wordCount = text.split(/\s+/).filter(Boolean).length;
-                            regeneratedBridgeBuffer = buildProseBuffer(text);
-                            set((current) => ({
-                                draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
-                                draftResults: current.draftResults.map((item, itemIndex) =>
-                                    itemIndex === queueIndex ? { ...item, content: text, wordCount, status: 'done', flagNote: '' } : item
-                                ),
-                            }));
-                            resolve();
-                        },
-                        onError: (error) => {
-                            console.error(`Regen chapter ${outlineIndex} error:`, error);
-                            set((current) => ({
-                                draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
-                                draftResults: current.draftResults.map((item, itemIndex) =>
-                                    itemIndex === queueIndex ? { ...item, status: 'error' } : item
-                                ),
-                            }));
-                            resolve();
-                        },
+                for (let attempt = 0; attempt < 2 && !finished; attempt += 1) {
+                    const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
+                        ...ctx,
+                        previousSummary: previousGeneratedSummary || ctx.previousSummary,
+                        bridgeBuffer: previousBridgeBuffer,
+                        chapterOutlineTitle: ch.title,
+                        chapterOutlinePurpose: ch.purpose || '',
+                        chapterOutlineSummary: ch.summary + (flagNote ? '. GHI CHU SUA DOI: ' + flagNote : ''),
+                        chapterOutlineEvents: ch.key_events || [],
+                        chapterOutlineObjectiveRefs: ch.objective_refs || [],
+                        chapterOutlineAnchorRefs: ch.anchor_refs || [],
+                        chapterOutlineStateDelta: ch.state_delta || '',
+                        chapterOutlineGuardrail: ch.arc_guard_note || '',
+                        startChapterNumber: chapterNumber,
+                        existingChapterBriefs,
+                        priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(
+                            liveState.generatedOutline,
+                            outlineIndex,
+                            startingChapterIndex,
+                        ),
+                        currentMacroArc: selectedMacroArc || ctx.currentMacroArc,
+                        macroArcContract: effectiveMacroArcContract,
+                        currentChapterAnchors: anchorGroups.current,
+                        futureChapterAnchors: anchorGroups.future,
+                        chapterAnchorValidationReports: anchorReports,
+                        storyProgressBudget: liveState.storyProgressBudget,
                     });
-                });
+
+                    const attemptResult = await new Promise((resolve) => {
+                        aiService.send({
+                            taskType: TASK_TYPES.ARC_CHAPTER_DRAFT,
+                            messages,
+                            stream: true,
+                            onToken: () => { },
+                            onComplete: (text) => resolve({ text }),
+                            onError: (error) => resolve({ error }),
+                        });
+                    });
+
+                    if (attemptResult.error) {
+                        console.error(`Regen chapter ${outlineIndex} error:`, attemptResult.error);
+                        set((current) => ({
+                            draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
+                            draftResults: current.draftResults.map((item, itemIndex) =>
+                                itemIndex === queueIndex ? { ...item, status: 'error' } : item
+                            ),
+                        }));
+                        break;
+                    }
+
+                    const text = attemptResult.text || '';
+                    const validationReports = validateDraftAgainstChapterAnchors(
+                        { title: ch.title, summary: ch.summary, content: text },
+                        [...anchorGroups.current, ...anchorGroups.future],
+                        { currentChapterNumber: chapterNumber },
+                    );
+                    const blockingReports = validationReports.filter((report) => report.severity === 'error');
+
+                    if (blockingReports.length > 0 && attempt === 0) {
+                        anchorReports = blockingReports;
+                        continue;
+                    }
+
+                    if (blockingReports.length > 0) {
+                        set((current) => ({
+                            draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
+                            draftResults: current.draftResults.map((item, itemIndex) =>
+                                itemIndex === queueIndex
+                                    ? { ...item, status: 'error', flagNote: blockingReports.map((report) => report.message).join(' | ') }
+                                    : item
+                            ),
+                        }));
+                        break;
+                    }
+
+                    const wordCount = text.split(/\s+/).filter(Boolean).length;
+                    regeneratedBridgeBuffer = buildProseBuffer(text);
+                    set((current) => ({
+                        draftProgress: { ...current.draftProgress, current: queueIndex + 1 },
+                        draftResults: current.draftResults.map((item, itemIndex) =>
+                            itemIndex === queueIndex ? { ...item, content: text, wordCount, status: 'done', flagNote: '' } : item
+                        ),
+                    }));
+                    finished = true;
+                }
             } catch (error) {
                 console.error(`Regen chapter ${outlineIndex} exception:`, error);
                 set((current) => ({
@@ -1734,6 +2212,7 @@ const useArcGenStore = create((set, get) => ({
         planningScopeStart = 0,
         planningScopeEnd = 0,
         macroMilestoneChapterPlans = [],
+        macroChapterAnchorInputs = [],
     }) => {
         set({ isSuggestingMilestones: true, macroMilestoneSuggestions: null });
 
@@ -1764,6 +2243,7 @@ const useArcGenStore = create((set, get) => ({
                 planningScopeStart: planningScope.start,
                 planningScopeEnd: planningScope.end,
                 macroMilestoneChapterPlans,
+                macroChapterAnchorInputs,
             });
 
             await new Promise((resolve) => {
@@ -1780,9 +2260,10 @@ const useArcGenStore = create((set, get) => ({
                             set({
                                 macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed, {
                                     planningScope,
-                                    macroMilestoneChapterPlans,
-                                    requestedMilestoneCount: milestoneCount,
-                                }),
+                                macroMilestoneChapterPlans,
+                                requestedMilestoneCount: milestoneCount,
+                                macroChapterAnchorInputs,
+                            }),
                                 isSuggestingMilestones: false,
                             });
                         } catch (e) {
@@ -1814,6 +2295,7 @@ const useArcGenStore = create((set, get) => ({
         planningScopeStart = 0,
         planningScopeEnd = 0,
         macroMilestoneChapterPlans = [],
+        macroChapterAnchorInputs = [],
     }) => {
         set({ isRevisingMilestones: true });
 
@@ -1846,6 +2328,7 @@ const useArcGenStore = create((set, get) => ({
                 planningScopeStart: planningScope.start,
                 planningScopeEnd: planningScope.end,
                 macroMilestoneChapterPlans,
+                macroChapterAnchorInputs,
             });
 
             await new Promise((resolve) => {
@@ -1862,9 +2345,10 @@ const useArcGenStore = create((set, get) => ({
                             set({
                                 macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed, {
                                     planningScope,
-                                    macroMilestoneChapterPlans,
-                                    requestedMilestoneCount: milestoneCount,
-                                }),
+                                macroMilestoneChapterPlans,
+                                requestedMilestoneCount: milestoneCount,
+                                macroChapterAnchorInputs,
+                            }),
                                 isRevisingMilestones: false,
                             });
                         } catch (e) {
@@ -1981,6 +2465,7 @@ const useArcGenStore = create((set, get) => ({
                 chapter_from: m.chapter_from || 0,
                 chapter_to: m.chapter_to || 0,
                 emotional_peak: m.emotional_peak || '',
+                chapter_anchors: m.chapter_anchors || [],
                 contract_json: m.contract_json || '',
             });
             createdIds.push(id);

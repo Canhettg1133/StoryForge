@@ -271,6 +271,39 @@ function buildCompletionSessionKey(projectId, chapterId) {
   return `complete:${projectId}:${chapterId}:${Date.now()}`;
 }
 
+async function loadCompletionChapterText(chapterId) {
+  let chapterScenes = [];
+  try {
+    chapterScenes = await db.scenes.where('chapter_id').equals(chapterId).sortBy('order_index');
+  } catch (error) {
+    console.warn('[ChapterCompletion] Indexed scene load failed, falling back to raw scan:', error);
+    const allScenes = await db.scenes.toArray();
+    chapterScenes = allScenes
+      .filter((scene) => scene.chapter_id === chapterId)
+      .sort((left, right) => {
+        const leftOrder = Number.isFinite(left?.order_index) ? left.order_index : 0;
+        const rightOrder = Number.isFinite(right?.order_index) ? right.order_index : 0;
+        return leftOrder - rightOrder;
+      });
+  }
+
+  return {
+    chapterScenes,
+    chapterText: sanitizeChapterText(chapterScenes),
+  };
+}
+
+function buildChapterCompletionResult(kind, message, extra = {}) {
+  return {
+    ok: false,
+    kind,
+    message,
+    ...extra,
+  };
+}
+
+let latestProjectLoadRequestId = 0;
+
 const useProjectStore = create((set, get) => ({
   projects: [],
   currentProject: null,
@@ -427,19 +460,22 @@ const useProjectStore = create((set, get) => ({
   },
 
   loadProject: async (id, options = {}) => {
+    const requestId = ++latestProjectLoadRequestId;
     set({ loading: true });
     try {
       const numericId = Number(id);
       const { currentProject, activeChapterId, activeSceneId } = get();
       const project = await db.projects.get(numericId);
       if (!project) {
-        set({
-          currentProject: null,
-          chapters: [],
-          scenes: [],
-          activeChapterId: null,
-          activeSceneId: null,
-        });
+        if (requestId === latestProjectLoadRequestId) {
+          set({
+            currentProject: null,
+            chapters: [],
+            scenes: [],
+            activeChapterId: null,
+            activeSceneId: null,
+          });
+        }
         return null;
       }
 
@@ -478,25 +514,31 @@ const useProjectStore = create((set, get) => ({
         requestedSceneId,
       );
 
-      set({
-        currentProject: project,
-        chapters: syncedChapters,
-        scenes,
-        ...selection,
-      });
+      if (requestId === latestProjectLoadRequestId) {
+        set({
+          currentProject: project,
+          chapters: syncedChapters,
+          scenes,
+          ...selection,
+        });
+      }
       return project;
     } catch (error) {
       console.error('[ProjectStore] loadProject failed:', error);
-      set({
-        currentProject: null,
-        chapters: [],
-        scenes: [],
-        activeChapterId: null,
-        activeSceneId: null,
-      });
+      if (requestId === latestProjectLoadRequestId) {
+        set({
+          currentProject: null,
+          chapters: [],
+          scenes: [],
+          activeChapterId: null,
+          activeSceneId: null,
+        });
+      }
       throw error;
     } finally {
-      set({ loading: false });
+      if (requestId === latestProjectLoadRequestId) {
+        set({ loading: false });
+      }
     }
   },
 
@@ -746,8 +788,15 @@ const useProjectStore = create((set, get) => ({
    * Non-blocking - errors are silently handled.
    */
   runChapterCompletion: async (chapterId, options = {}) => {
-    const { currentProject, chapters, scenes } = get();
+    const { currentProject, chapters, chapterCompletionById } = get();
     if (!currentProject || !chapterId) return null;
+    if (chapterCompletionById[chapterId]?.running) {
+      const result = buildChapterCompletionResult(
+        'busy',
+        'Chuong dang duoc hoan thanh. Hay cho tien trinh hien tai ket thuc.',
+      );
+      return result;
+    }
 
     const chapter = chapters.find((item) => item.id === chapterId) || await db.chapters.get(chapterId);
     if (!chapter) return null;
@@ -763,14 +812,13 @@ const useProjectStore = create((set, get) => ({
     });
 
     try {
-      const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapterId);
-      const chapterText = sanitizeChapterText(chapterScenes);
+      const initialSnapshot = await loadCompletionChapterText(chapterId);
+      const chapterText = initialSnapshot.chapterText;
       if (!chapterText) {
-        const emptyResult = {
-          ok: false,
-          kind: 'empty',
-          message: 'Chuong chua co noi dung de hoan thanh.',
-        };
+        const emptyResult = buildChapterCompletionResult(
+          'empty',
+          'Chuong chua co noi dung de hoan thanh.',
+        );
         get().setChapterCompletionState(chapterId, {
           running: false,
           phase: 'idle',
@@ -823,48 +871,31 @@ const useProjectStore = create((set, get) => ({
 
       if (summaryResult.status === 'fulfilled') {
         summary = summaryResult.value || '';
-        try {
-          await persistChapterSummary({
-            projectId: currentProject.id,
-            chapterId,
-            summary,
-            chapterText,
-          });
-        } catch (error) {
-          console.warn('[ChapterCompletion] Persist summary failed (non-fatal):', error);
-        }
       } else {
         console.warn('[ChapterCompletion] Summarize failed (non-fatal):', summaryResult.reason);
       }
 
       if (extractResult.status === 'fulfilled') {
         extracted = extractResult.value || null;
-        try {
-          const staged = await stageExtractedEntityCandidates({
-            projectId: currentProject.id,
-            chapterId,
-            sessionKey: completionSessionKey,
-            sourceType: 'chapter_extract',
-            sourceRef: `chapter:${chapterId}`,
-            extracted,
-          });
-          extractionStats = {
-            createdCount: 0,
-            created: {
-              staged: staged.stagedCount || 0,
-            },
-            createdEntries: {
-              characters: [],
-              locations: [],
-              worldTerms: [],
-              objects: [],
-            },
-          };
-        } catch (error) {
-          console.warn('[ChapterCompletion] Stage extraction failed (non-fatal):', error);
-        }
       } else {
         console.warn('[ChapterCompletion] Extraction failed (non-fatal):', extractResult.reason);
+      }
+
+      const snapshotBeforeCanon = await loadCompletionChapterText(chapterId);
+      if (snapshotBeforeCanon.chapterText !== chapterText) {
+        const staleResult = buildChapterCompletionResult(
+          'stale',
+          'Noi dung chuong da thay doi trong luc hoan thanh. Hay chay lai de tranh ghi de du lieu cu.',
+        );
+        get().setChapterCompletionState(chapterId, {
+          running: false,
+          phase: 'error',
+          progress: 0,
+          message: staleResult.message,
+          error: staleResult.message,
+          result: staleResult,
+        });
+        return staleResult;
       }
 
       get().setChapterCompletionState(chapterId, {
@@ -924,11 +955,73 @@ const useProjectStore = create((set, get) => ({
         };
       }
 
+      const snapshotAfterCanon = await loadCompletionChapterText(chapterId);
+      if (snapshotAfterCanon.chapterText !== chapterText) {
+        if (!canonReused) {
+          try {
+            await purgeChapterCanonState(currentProject.id, chapterId);
+          } catch (error) {
+            console.warn('[ChapterCompletion] Failed to purge stale canon state:', error);
+          }
+        }
+        const staleResult = buildChapterCompletionResult(
+          'stale',
+          'Noi dung chuong da thay doi trong luc hoan thanh. Hay chay lai de tranh ghi de du lieu cu.',
+        );
+        get().setChapterCompletionState(chapterId, {
+          running: false,
+          phase: 'error',
+          progress: 0,
+          message: staleResult.message,
+          error: staleResult.message,
+          result: staleResult,
+        });
+        return staleResult;
+      }
+
       get().setChapterCompletionState(chapterId, {
         phase: 'finalize',
         progress: 90,
         message: 'Dang dong bo du lieu chuong...',
       });
+      if (summary?.trim()) {
+        try {
+          await persistChapterSummary({
+            projectId: currentProject.id,
+            chapterId,
+            summary,
+            chapterText,
+          });
+        } catch (error) {
+          console.warn('[ChapterCompletion] Persist summary failed (non-fatal):', error);
+        }
+      }
+      if (extracted) {
+        try {
+          const staged = await stageExtractedEntityCandidates({
+            projectId: currentProject.id,
+            chapterId,
+            sessionKey: completionSessionKey,
+            sourceType: 'chapter_extract',
+            sourceRef: `chapter:${chapterId}`,
+            extracted,
+          });
+          extractionStats = {
+            createdCount: 0,
+            created: {
+              staged: staged.stagedCount || 0,
+            },
+            createdEntries: {
+              characters: [],
+              locations: [],
+              worldTerms: [],
+              objects: [],
+            },
+          };
+        } catch (error) {
+          console.warn('[ChapterCompletion] Stage extraction failed (non-fatal):', error);
+        }
+      }
       if (canonSucceeded) {
         await get().updateChapter(chapterId, { status: 'done' });
       } else {

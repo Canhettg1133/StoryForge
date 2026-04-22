@@ -218,6 +218,8 @@ const useAIStore = create((set, get) => ({
   streamingText: '',
   completedText: '',
   error: null,
+  outputScope: null,
+  lastTaskId: null,
   lastRouteInfo: null,
   lastElapsed: null,
   eniPrimed: false,
@@ -245,7 +247,15 @@ const useAIStore = create((set, get) => ({
    * Phase 7: Auto-saves bridge buffer after writing tasks complete.
    */
   runTask: async ({ taskType, context = {}, routeOptions = {} }) => {
-    set({ isStreaming: true, streamingText: '', completedText: '', error: null, lastRouteInfo: null });
+    set({
+      isStreaming: true,
+      streamingText: '',
+      completedText: '',
+      error: null,
+      lastTaskId: taskType,
+      outputScope: context.outputScope || null,
+      lastRouteInfo: null,
+    });
 
     // Phase 3: Auto-gather context if project info is available
     let enrichedContext = { ...context };
@@ -577,9 +587,26 @@ const useAIStore = create((set, get) => ({
     set({ isStreaming: false });
   },
 
+  setOutputTracking: ({ taskId = null, outputScope = null } = {}) => {
+    set({
+      lastTaskId: taskId,
+      outputScope: outputScope || null,
+    });
+  },
+
   /** Clear output */
   clearOutput: () => {
-    set({ streamingText: '', completedText: '', error: null, lastRouteInfo: null, lastElapsed: null, lastExtractResult: null, lastValidatorReports: [] });
+    set({
+      streamingText: '',
+      completedText: '',
+      error: null,
+      outputScope: null,
+      lastTaskId: null,
+      lastRouteInfo: null,
+      lastElapsed: null,
+      lastExtractResult: null,
+      lastValidatorReports: [],
+    });
   },
 
   /** Quality mode */

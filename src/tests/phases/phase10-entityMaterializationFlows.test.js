@@ -202,10 +202,20 @@ function createMockDb(seed = {}) {
 async function loadProjectStoreModule(seed, options = {}) {
   vi.resetModules();
   const db = createMockDb(seed);
-  const summarizeChapter = vi.fn(async () => options.summary ?? 'Tom tat');
-  const extractFromChapter = vi.fn(async () => options.extracted ?? null);
-  const canonicalizeChapter = vi.fn(async () => options.canonResult ?? { ok: true, revisionId: 77 });
-  const applyCompletionDelta = vi.fn(async () => undefined);
+  const summarizeChapter = vi.fn(
+    options.summarizeChapterImpl || (async () => options.summary ?? 'Tom tat'),
+  );
+  const extractFromChapter = vi.fn(
+    options.extractFromChapterImpl || (async () => options.extracted ?? null),
+  );
+  const canonicalizeChapter = vi.fn(
+    options.canonicalizeChapterImpl || (async () => options.canonResult ?? { ok: true, revisionId: 77 }),
+  );
+  const applyCompletionDelta = vi.fn(
+    options.applyCompletionDeltaImpl || (async () => undefined),
+  );
+  const purgeChapterCanonState = vi.fn(async () => null);
+  const rebuildCanonFromChapter = vi.fn(async () => null);
 
   vi.doMock('../../services/db/database', () => ({ default: db }));
   vi.doMock('../../stores/aiStore', () => ({
@@ -228,8 +238,8 @@ async function loadProjectStoreModule(seed, options = {}) {
     canonicalizeChapter,
   }));
   vi.doMock('../../services/canon/projection', () => ({
-    purgeChapterCanonState: vi.fn(async () => null),
-    rebuildCanonFromChapter: vi.fn(async () => null),
+    purgeChapterCanonState,
+    rebuildCanonFromChapter,
   }));
   vi.doMock('../../services/db/projectDataService.js', () => ({
     deleteProjectCascade: vi.fn(async () => undefined),
@@ -244,6 +254,8 @@ async function loadProjectStoreModule(seed, options = {}) {
       extractFromChapter,
       canonicalizeChapter,
       applyCompletionDelta,
+      purgeChapterCanonState,
+      rebuildCanonFromChapter,
     },
   };
 }
@@ -259,6 +271,54 @@ async function loadViewerModule(seed) {
 describe('phase10 entity materialization flows', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('blocks a second chapter completion run while the first is still active', async () => {
+    let resolveSummary;
+    let resolveExtract;
+    const summaryPromise = new Promise((resolve) => {
+      resolveSummary = resolve;
+    });
+    const extractPromise = new Promise((resolve) => {
+      resolveExtract = resolve;
+    });
+
+    const { store, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+    }, {
+      summarizeChapterImpl: () => summaryPromise,
+      extractFromChapterImpl: () => extractPromise,
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+    });
+
+    const firstRun = store.getState().runChapterCompletion(11, { mode: 'manual' });
+    await vi.waitFor(() => {
+      expect(store.getState().chapterCompletionById[11]?.running).toBe(true);
+    });
+    const secondRun = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(secondRun).toMatchObject({
+      ok: false,
+      kind: 'busy',
+    });
+    await vi.waitFor(() => {
+      expect(mocks.summarizeChapter).toHaveBeenCalledTimes(1);
+      expect(mocks.extractFromChapter).toHaveBeenCalledTimes(1);
+    });
+
+    resolveSummary('Tom tat');
+    resolveExtract({ characters: [] });
+
+    const firstResult = await firstRun;
+    expect(firstResult.ok).toBe(true);
   });
 
   it('does not materialize extracted entities when canonization fails', async () => {
@@ -373,6 +433,61 @@ describe('phase10 entity materialization flows', () => {
     expect(result.canonResult.reused).toBe(true);
     expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
     expect((await db.chapters.get(11)).status).toBe('done');
+  });
+
+  it('abandons chapter completion commit when chapter text changes during canonicalization', async () => {
+    let releaseCanon;
+    const canonStarted = new Promise((resolve) => {
+      releaseCanon = resolve;
+    });
+    let resumeCanon;
+    const canonPause = new Promise((resolve) => {
+      resumeCanon = resolve;
+    });
+
+    const { store, db, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung cu.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      summary: 'Tom tat cu',
+      extracted: {
+        characters: [{ name: 'Ly Mac' }],
+      },
+      canonicalizeChapterImpl: async () => {
+        releaseCanon();
+        await canonPause;
+        return { ok: true, revisionId: 99 };
+      },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung cu.', final_text: '', order_index: 0 }],
+    });
+
+    const completionPromise = store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    await canonStarted;
+    await db.scenes.update(21, { draft_text: 'Noi dung moi vua duoc sua.' });
+    resumeCanon();
+
+    const result = await completionPromise;
+
+    expect(result).toMatchObject({
+      ok: false,
+      kind: 'stale',
+    });
+    expect((await db.chapters.get(11)).status).toBe('draft');
+    expect(await db.chapterMeta.toArray()).toHaveLength(0);
+    expect(await db.entity_resolution_candidates.toArray()).toHaveLength(0);
+    expect(mocks.applyCompletionDelta).not.toHaveBeenCalled();
+    expect(mocks.purgeChapterCanonState).toHaveBeenCalledWith(1, 11);
   });
 
   it('saves analysis snapshot without auto-creating ambiguous character duplicates', async () => {

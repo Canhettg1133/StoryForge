@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import db from '../../../services/db/database';
 import useArcGenStore from '../../../stores/arcGenerationStore';
 import {
-  deriveMacroArcContractJson,
+  buildMacroArcDbPayload,
+  buildMacroArcEditorSnapshot,
   getSuggestedMacroMilestoneCount,
+  getMacroArcAnchorIssues,
 } from '../utils/storyBibleHelpers';
 
 function toPositiveInt(value) {
@@ -24,12 +26,95 @@ function getMacroOverlapCount(macroArcs = [], start = 1, end = start) {
   }).length;
 }
 
-function syncMilestoneChapterPlans(previous = [], milestoneCount = 0) {
+export function syncMilestoneChapterPlans(previous = [], milestoneCount = 0) {
   const safeCount = Math.max(1, Number(milestoneCount) || 1);
   return Array.from({ length: safeCount }, (_, index) => ({
     chapter_from: previous[index]?.chapter_from || '',
     chapter_to: previous[index]?.chapter_to || '',
   }));
+}
+
+function shouldAutoAdvanceStart(currentStart, previousTo, oldPreviousTo) {
+  if (!previousTo) return false;
+  if (!currentStart) return true;
+  if (oldPreviousTo && currentStart === oldPreviousTo + 1) return true;
+  return currentStart <= previousTo;
+}
+
+function clampSequentialPlanRange(item = {}) {
+  const chapterFrom = toPositiveInt(item?.chapter_from);
+  const chapterTo = toPositiveInt(item?.chapter_to);
+  if (!chapterFrom || !chapterTo || chapterTo >= chapterFrom) return item;
+  return {
+    ...item,
+    chapter_to: String(chapterFrom),
+  };
+}
+
+function clampSequentialMacroArcRange(item = {}) {
+  const chapterFrom = toPositiveInt(item?.chapter_from);
+  const chapterTo = toPositiveInt(item?.chapter_to);
+  if (!chapterFrom || !chapterTo || chapterTo >= chapterFrom) return item;
+  return {
+    ...item,
+    chapter_to: chapterFrom,
+  };
+}
+
+function cascadeSequentialPlanStarts(plans = [], oldPlanTos = []) {
+  const next = plans.map((item) => ({ ...item }));
+  for (let index = 1; index < next.length; index += 1) {
+    const previousTo = toPositiveInt(next[index - 1]?.chapter_to);
+    const oldPreviousTo = toPositiveInt(oldPlanTos[index - 1]);
+    const currentStart = toPositiveInt(next[index]?.chapter_from);
+    if (shouldAutoAdvanceStart(currentStart, previousTo, oldPreviousTo)) {
+      next[index].chapter_from = String(previousTo + 1);
+    }
+    next[index] = clampSequentialPlanRange(next[index]);
+  }
+  return next.map((item) => clampSequentialPlanRange(item));
+}
+
+export function updateMilestoneChapterPlanSequence(previous = [], {
+  milestoneCount = 0,
+  index = 0,
+  field = '',
+  value = '',
+  defaultStart = 0,
+} = {}) {
+  const safeIndex = Math.max(0, Number(index) || 0);
+  const next = syncMilestoneChapterPlans(previous, milestoneCount);
+  if (!next[safeIndex]) return next;
+
+  const oldPlanTos = next.map((item) => item?.chapter_to);
+  const firstStart = toPositiveInt(next[0]?.chapter_from) || toPositiveInt(defaultStart);
+  if (firstStart) {
+    next[0] = {
+      ...next[0],
+      chapter_from: String(firstStart),
+    };
+  }
+
+  next[safeIndex] = {
+    ...next[safeIndex],
+    [field]: value,
+  };
+
+  return cascadeSequentialPlanStarts(next, oldPlanTos);
+}
+
+export function cascadeSequentialMacroArcStarts(macroArcs = [], oldMacroArcTos = []) {
+  const next = macroArcs.map((item) => ({ ...item }));
+  for (let index = 1; index < next.length; index += 1) {
+    const previousTo = toPositiveInt(next[index - 1]?.chapter_to);
+    const oldPreviousTo = toPositiveInt(oldMacroArcTos[index - 1]);
+    const currentStart = toPositiveInt(next[index]?.chapter_from);
+    if (shouldAutoAdvanceStart(currentStart, previousTo, oldPreviousTo)) {
+      next[index].chapter_from = previousTo + 1;
+    }
+    next[index] = clampSequentialMacroArcRange(next[index]);
+  }
+  return next.map((item) => clampSequentialMacroArcRange(item));
 }
 
 function getMilestonePlanBounds(plans = []) {
@@ -100,8 +185,7 @@ function buildPlanningScopeDefaults({ targetLength, chaptersCount, macroArcs }) 
   };
 }
 
-function normalizePlanningScope({ start, end, defaults, extraLowerBound = 0, extraUpperBound = 0 }) {
-  const normalizedExtraLowerBound = toPositiveInt(extraLowerBound);
+export function normalizePlanningScope({ start, end, defaults, extraLowerBound = 0, extraUpperBound = 0 }) {
   const normalizedExtraUpperBound = toPositiveInt(extraUpperBound);
   const dynamicUpperBound = defaults.hasExplicitTargetLength
     ? defaults.safeTarget
@@ -114,12 +198,7 @@ function normalizePlanningScope({ start, end, defaults, extraLowerBound = 0, ext
   const requestedStart = toPositiveInt(start) || defaults.defaultStart;
   const safeStart = Math.min(
     dynamicUpperBound,
-    Math.max(
-      1,
-      normalizedExtraLowerBound > 0
-        ? Math.min(requestedStart, normalizedExtraLowerBound)
-        : requestedStart
-    )
+    Math.max(1, requestedStart)
   );
   const requestedEnd = defaults.hasExplicitTargetLength
     ? (toPositiveInt(end) || defaults.defaultEnd)
@@ -132,6 +211,14 @@ function normalizePlanningScope({ start, end, defaults, extraLowerBound = 0, ext
     start: safeStart,
     end: safeEnd,
     span: safeEnd - safeStart + 1,
+  };
+}
+
+function normalizeMacroArcEditorItem(item = {}, index = 0) {
+  const snapshot = buildMacroArcEditorSnapshot(item) || item;
+  return {
+    ...snapshot,
+    order: Number(item?.order) || index + 1,
   };
 }
 
@@ -148,6 +235,7 @@ export default function useStoryBibleMacroArcs({
   const [aiIdeaInput, setAiIdeaInput] = useState('');
   const [aiMilestoneCount, setAiMilestoneCount] = useState(5);
   const [aiMilestoneRequirements, setAiMilestoneRequirements] = useState('');
+  const [aiChapterAnchors, setAiChapterAnchors] = useState([]);
   const [aiMilestoneChapterPlans, setAiMilestoneChapterPlans] = useState(() => syncMilestoneChapterPlans([], 5));
   const [planningScopeStart, setPlanningScopeStartState] = useState(1);
   const [planningScopeEnd, setPlanningScopeEndState] = useState(1);
@@ -157,7 +245,7 @@ export default function useStoryBibleMacroArcs({
   const [selectedMilestoneIdxs, setSelectedMilestoneIdxs] = useState(new Set());
   const [selectedMilestonePresets, setSelectedMilestonePresets] = useState(() => new Set());
   const macroArcsRef = useRef([]);
-  const macroArcSaveTimerRef = useRef(null);
+  const macroArcSaveTimersRef = useRef(new Map());
   const activeProjectIdRef = useRef(null);
   const planningScopeDefaultsRef = useRef({ safeTarget: 1, defaultStart: 1, defaultEnd: 1, hasExplicitTargetLength: false });
 
@@ -326,10 +414,33 @@ export default function useStoryBibleMacroArcs({
     ].includes(warning.code)),
     [planningScopeWarnings]
   );
+  const aiChapterAnchorIssues = useMemo(
+    () => getMacroArcAnchorIssues({
+      chapter_from: effectivePlanningScope.start,
+      chapter_to: effectivePlanningScope.end,
+      chapter_anchors: aiChapterAnchors,
+    }),
+    [aiChapterAnchors, effectivePlanningScope.end, effectivePlanningScope.start]
+  );
+  const hasBlockingAiChapterAnchorIssue = useMemo(
+    () => aiChapterAnchorIssues.some((issue) => issue.severity === 'error'),
+    [aiChapterAnchorIssues]
+  );
+  const hasBlockingSelectedEditableAnchorIssue = useMemo(
+    () => editableMilestoneSuggestions
+      .filter((_, index) => selectedMilestoneIdxs.has(index))
+      .some((item) => getMacroArcAnchorIssues(item).some((issue) => issue.severity === 'error')),
+    [editableMilestoneSuggestions, selectedMilestoneIdxs]
+  );
 
   useEffect(() => {
     macroArcsRef.current = macroArcs;
   }, [macroArcs]);
+
+  useEffect(() => () => {
+    macroArcSaveTimersRef.current.forEach((timerId) => clearTimeout(timerId));
+    macroArcSaveTimersRef.current.clear();
+  }, []);
 
   useEffect(() => {
     setAiMilestoneChapterPlans((prev) => syncMilestoneChapterPlans(prev, aiMilestoneCount));
@@ -355,7 +466,7 @@ export default function useStoryBibleMacroArcs({
     db.macro_arcs
       .where('project_id').equals(projectId)
       .sortBy('order_index')
-      .then(setMacroArcs)
+      .then((items) => setMacroArcs(items.map((item, index) => normalizeMacroArcEditorItem(item, index))))
       .catch(() => setMacroArcs([]));
   }, [currentProject?.id, currentProject?.target_length]);
 
@@ -400,7 +511,7 @@ export default function useStoryBibleMacroArcs({
 
   useEffect(() => {
     if (macroMilestoneSuggestions?.milestones?.length > 0) {
-      setEditableMilestoneSuggestions(macroMilestoneSuggestions.milestones.map((item, index) => ({
+      setEditableMilestoneSuggestions(macroMilestoneSuggestions.milestones.map((item, index) => normalizeMacroArcEditorItem({
         order: item.order || index + 1,
         title: item.title || '',
         description: item.description || '',
@@ -408,18 +519,13 @@ export default function useStoryBibleMacroArcs({
         chapter_to: item.chapter_to || 0,
         emotional_peak: item.emotional_peak || '',
         contract_json: item.contract_json || '',
-      })));
+        chapter_anchors: item.chapter_anchors || [],
+      }, index)));
       setSelectedMilestoneIdxs(new Set(macroMilestoneSuggestions.milestones.map((_, index) => index)));
     } else {
       setEditableMilestoneSuggestions([]);
     }
   }, [macroMilestoneSuggestions]);
-
-  useEffect(() => () => {
-    if (macroArcSaveTimerRef.current) {
-      clearTimeout(macroArcSaveTimerRef.current);
-    }
-  }, []);
 
   const buildMilestoneRequirements = useCallback((presets = []) => {
     const presetLines = presets.map((preset) => preset.text);
@@ -433,6 +539,7 @@ export default function useStoryBibleMacroArcs({
     setAiIdeaInput('');
     setAiMilestoneCount(suggestedMilestoneCount);
     setAiMilestoneRequirements('');
+    setAiChapterAnchors([]);
     setAiMilestoneChapterPlans(syncMilestoneChapterPlans([], suggestedMilestoneCount));
     setPlanningScopeStartState(planningScopeDefaults.defaultStart);
     setPlanningScopeEndState(planningScopeDefaults.defaultEnd);
@@ -481,21 +588,22 @@ export default function useStoryBibleMacroArcs({
 
   const handleUpdateMilestoneChapterPlan = useCallback((index, field, value) => {
     setAiMilestoneChapterPlans((prev) => {
-      const next = syncMilestoneChapterPlans(prev, aiMilestoneCount);
-      next[index] = {
-        ...next[index],
-        [field]: value,
-      };
-      return next;
+      return updateMilestoneChapterPlanSequence(prev, {
+        milestoneCount: aiMilestoneCount,
+        index,
+        field,
+        value,
+        defaultStart: effectivePlanningScope.start,
+      });
     });
-  }, [aiMilestoneCount]);
+  }, [aiMilestoneCount, effectivePlanningScope.start]);
 
   const resetMilestoneChapterPlans = useCallback(() => {
     setAiMilestoneChapterPlans(syncMilestoneChapterPlans([], aiMilestoneCount));
   }, [aiMilestoneCount]);
 
   const handleGenerateMilestones = useCallback(async (macroAiPresets) => {
-    if (!currentProject) return;
+    if (!currentProject || hasBlockingAiChapterAnchorIssue) return;
     const selectedPresetModels = macroAiPresets.filter((preset) => selectedMilestonePresets.has(preset.id));
     const combinedRequirements = buildMilestoneRequirements(selectedPresetModels);
     const contextIdea = [
@@ -514,6 +622,7 @@ export default function useStoryBibleMacroArcs({
       planningScopeStart: effectivePlanningScope.start,
       planningScopeEnd: effectivePlanningScope.end,
       macroMilestoneChapterPlans: manualMilestoneChapterPlans,
+      macroChapterAnchorInputs: aiChapterAnchors,
     });
     setSelectedMilestoneIdxs(new Set());
   }, [
@@ -525,6 +634,8 @@ export default function useStoryBibleMacroArcs({
     effectivePlanningScope.start,
     generateMacroMilestones,
     genrePrimary,
+    hasBlockingAiChapterAnchorIssue,
+    aiChapterAnchors,
     manualMilestoneChapterPlans,
     selectedMilestonePresets,
     synopsis,
@@ -540,19 +651,25 @@ export default function useStoryBibleMacroArcs({
         ...item,
         order: index + 1,
       }));
-    if (selected.length === 0) return;
+    if (selected.length === 0 || selected.some((item) => getMacroArcAnchorIssues(item).some((issue) => issue.severity === 'error'))) return;
     await saveMacroMilestones(currentProject.id, selected);
     const updated = await db.macro_arcs
       .where('project_id').equals(currentProject.id)
       .sortBy('order_index');
-    setMacroArcs(updated);
+    setMacroArcs(updated.map((item, index) => normalizeMacroArcEditorItem(item, index)));
     resetAiSuggestPanel();
   }, [currentProject, editableMilestoneSuggestions, resetAiSuggestPanel, saveMacroMilestones, selectedMilestoneIdxs]);
 
   const handleUpdateEditableMilestone = useCallback((index, field, value) => {
-    setEditableMilestoneSuggestions((prev) => prev.map((item, itemIndex) => (
-      itemIndex === index ? { ...item, [field]: value } : item
-    )));
+    setEditableMilestoneSuggestions((prev) => {
+      const oldMilestoneTos = prev.map((item) => item?.chapter_to);
+      const updated = prev.map((item, itemIndex) => (
+        itemIndex === index ? { ...item, [field]: value } : item
+      ));
+      return field === 'chapter_to'
+        ? cascadeSequentialMacroArcStarts(updated, oldMilestoneTos)
+        : updated;
+    });
   }, []);
 
   const getEditableMilestoneAnalyzeKey = useCallback((index) => `editable-macro-${index}`, []);
@@ -567,7 +684,15 @@ export default function useStoryBibleMacroArcs({
     });
     if (!analyzed?.contract_json) return;
     setEditableMilestoneSuggestions((prev) => prev.map((item, itemIndex) => (
-      itemIndex === index ? { ...item, contract_json: analyzed.contract_json } : item
+      itemIndex === index
+        ? normalizeMacroArcEditorItem({
+          ...item,
+          contract_json: analyzed.contract_json,
+          chapter_anchors: Array.isArray(analyzed.chapter_anchors)
+            ? analyzed.chapter_anchors
+            : (item.chapter_anchors || []),
+        }, itemIndex)
+        : item
     )));
   }, [analyzeMacroContract, currentProject, getEditableMilestoneAnalyzeKey]);
 
@@ -579,13 +704,21 @@ export default function useStoryBibleMacroArcs({
       key: getSavedMacroArcAnalyzeKey(macroArc.id),
     });
     if (!analyzed?.contract_json) return;
+    const nextMacroArc = normalizeMacroArcEditorItem({
+      ...macroArc,
+      contract_json: analyzed.contract_json,
+      chapter_anchors: Array.isArray(analyzed.chapter_anchors)
+        ? analyzed.chapter_anchors
+        : (macroArc.chapter_anchors || []),
+    });
     setMacroArcs((prev) => prev.map((item) => (
-      item.id === macroArc.id ? { ...item, contract_json: analyzed.contract_json } : item
+      item.id === macroArc.id ? nextMacroArc : item
     )));
     try {
-      await db.macro_arcs.update(macroArc.id, {
-        contract_json: analyzed.contract_json,
-      });
+      const payload = buildMacroArcDbPayload(nextMacroArc);
+      if (payload) {
+        await db.macro_arcs.update(macroArc.id, payload);
+      }
     } catch (error) {
       console.error('[StoryBible] analyze saved macro arc error:', error);
     }
@@ -619,16 +752,17 @@ export default function useStoryBibleMacroArcs({
         order: prev.length + 1,
         title: `Cột mốc ${prev.length + 1}`,
         description: '',
-        chapter_from: 0,
+        chapter_from: Math.max(getMacroCoverageEnd(prev), planningScopeDefaults.defaultStart - 1) + 1,
         chapter_to: 0,
         emotional_peak: '',
+        chapter_anchors: [],
         contract_json: '',
       },
     ]));
-  }, []);
+  }, [planningScopeDefaults.defaultStart]);
 
   const handleReviseMilestones = useCallback(async (macroAiPresets) => {
-    if (!currentProject) return;
+    if (!currentProject || hasBlockingAiChapterAnchorIssue) return;
     const sourceMilestones = editableMilestoneSuggestions.length > 0
       ? editableMilestoneSuggestions
       : (macroMilestoneSuggestions?.milestones || []);
@@ -654,6 +788,7 @@ export default function useStoryBibleMacroArcs({
       planningScopeStart: effectivePlanningScope.start,
       planningScopeEnd: effectivePlanningScope.end,
       macroMilestoneChapterPlans: manualMilestoneChapterPlans,
+      macroChapterAnchorInputs: aiChapterAnchors,
     });
   }, [
     aiIdeaInput,
@@ -665,6 +800,8 @@ export default function useStoryBibleMacroArcs({
     effectivePlanningScope.end,
     effectivePlanningScope.start,
     genrePrimary,
+    hasBlockingAiChapterAnchorIssue,
+    aiChapterAnchors,
     macroMilestoneSuggestions,
     manualMilestoneChapterPlans,
     reviseMacroMilestones,
@@ -686,46 +823,71 @@ export default function useStoryBibleMacroArcs({
   const handleAddMacroArc = useCallback(async () => {
     if (!currentProject) return;
     const existingCount = macroArcs.length;
-    const newMacroArc = {
+    const newMacroArc = normalizeMacroArcEditorItem({
       project_id: currentProject.id,
       order_index: existingCount,
       title: `Cột mốc ${existingCount + 1}`,
       description: '',
-      chapter_from: 0,
+      chapter_from: planningScopeDefaults.defaultStart,
       chapter_to: 0,
       emotional_peak: '',
+      chapter_anchors: [],
       contract_json: '',
-    };
+    }, existingCount);
     try {
-      const id = await db.macro_arcs.add(newMacroArc);
+      const payload = buildMacroArcDbPayload(newMacroArc);
+      const id = await db.macro_arcs.add({
+        project_id: currentProject.id,
+        order_index: existingCount,
+        ...(payload || {}),
+      });
       setMacroArcs((prev) => [...prev, { ...newMacroArc, id }]);
     } catch (error) {
       console.error('[StoryBible] addMacroArc error:', error);
     }
-  }, [currentProject, macroArcs.length]);
+  }, [currentProject, macroArcs.length, planningScopeDefaults.defaultStart]);
 
   const handleUpdateMacroArc = useCallback((id, field, value) => {
-    setMacroArcs((prev) => prev.map((macroArc) => (
-      macroArc.id === id ? { ...macroArc, [field]: value } : macroArc
-    )));
-    if (macroArcSaveTimerRef.current) {
-      clearTimeout(macroArcSaveTimerRef.current);
-    }
-    macroArcSaveTimerRef.current = setTimeout(async () => {
-      try {
-        const latestMacroArc = macroArcsRef.current.find((item) => item.id === id);
-        const macroArcForSave = latestMacroArc
-          ? { ...latestMacroArc, [field]: value }
-          : { id, [field]: value };
-        const contractJson = deriveMacroArcContractJson(macroArcForSave);
-        await db.macro_arcs.update(id, {
-          [field]: value,
-          contract_json: contractJson,
-        });
-      } catch (error) {
-        console.error('[StoryBible] updateMacroArc error:', error);
+    let dirtyIds = [];
+    setMacroArcs((prev) => {
+      const oldMacroArcTos = prev.map((item) => item?.chapter_to);
+      const updated = prev.map((macroArc) => (
+        macroArc.id === id ? normalizeMacroArcEditorItem({ ...macroArc, [field]: value }) : macroArc
+      ));
+      const next = field === 'chapter_to'
+        ? cascadeSequentialMacroArcStarts(updated, oldMacroArcTos).map((item, index) => normalizeMacroArcEditorItem(item, index))
+        : updated.map((item, index) => normalizeMacroArcEditorItem(item, index));
+
+      if (field === 'chapter_to') {
+        const changedIndex = Math.max(0, next.findIndex((item) => item.id === id));
+        dirtyIds = next.slice(changedIndex).map((item) => item.id);
+      } else {
+        dirtyIds = [id];
       }
-    }, 600);
+
+      return next;
+    });
+
+    [...new Set(dirtyIds.filter(Boolean))].forEach((dirtyId) => {
+      const existingTimer = macroArcSaveTimersRef.current.get(dirtyId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      const nextTimer = setTimeout(async () => {
+        try {
+          const latestMacroArc = macroArcsRef.current.find((item) => item.id === dirtyId);
+          if (!latestMacroArc?.id) return;
+          const payload = buildMacroArcDbPayload(latestMacroArc);
+          if (!payload) return;
+          await db.macro_arcs.update(dirtyId, payload);
+        } catch (error) {
+          console.error('[StoryBible] updateMacroArc error:', error);
+        } finally {
+          macroArcSaveTimersRef.current.delete(dirtyId);
+        }
+      }, 600);
+      macroArcSaveTimersRef.current.set(dirtyId, nextTimer);
+    });
   }, []);
 
   const handleDeleteMacroArc = useCallback(async (id) => {
@@ -745,6 +907,9 @@ export default function useStoryBibleMacroArcs({
     setAiMilestoneCount,
     aiMilestoneRequirements,
     setAiMilestoneRequirements,
+    aiChapterAnchors,
+    setAiChapterAnchors,
+    aiChapterAnchorIssues,
     aiMilestoneChapterPlans: normalizedMilestoneChapterPlans,
     handleUpdateMilestoneChapterPlan,
     resetMilestoneChapterPlans,
@@ -771,6 +936,8 @@ export default function useStoryBibleMacroArcs({
     setSelectedMilestoneIdxs,
     selectedMilestonePresets,
     suggestedMilestoneCount,
+    hasBlockingAiChapterAnchorIssue,
+    hasBlockingSelectedEditableAnchorIssue,
     isSuggestingMilestones,
     isRevisingMilestones,
     analyzingMacroContractKeys,

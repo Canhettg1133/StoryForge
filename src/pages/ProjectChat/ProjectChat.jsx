@@ -30,7 +30,6 @@ import modelRouter, {
   DIRECT_MODELS,
   PROXY_MODELS,
   PROVIDERS,
-  QUALITY_MODES,
   TASK_TYPES,
 } from '../../services/ai/router';
 import db from '../../services/db/database';
@@ -69,14 +68,22 @@ function getProviderLabel(provider) {
   return 'Gemini Proxy';
 }
 
-function getQualityLabel(quality) {
-  if (quality === QUALITY_MODES.FAST) return 'Nhanh';
-  if (quality === QUALITY_MODES.BEST) return 'Tốt nhất';
-  return 'Cân bằng';
-}
-
 function getChatModeLabel(mode) {
   return mode === CHAT_MODES.STORY ? 'AI của truyện' : 'Tự do hỏi đáp';
+}
+
+function normalizeThreadOverrideValue(value) {
+  return String(value || '').trim();
+}
+
+function inferChatProviderFromModel(modelId) {
+  const model = String(modelId || '').trim();
+  if (!model) return '';
+  if (!model.startsWith('gemini')) return PROVIDERS.OLLAMA;
+  if (model.includes('[') || PROXY_MODELS.some((item) => item.id === model)) {
+    return PROVIDERS.GEMINI_PROXY;
+  }
+  return PROVIDERS.GEMINI_DIRECT;
 }
 
 function buildFreeSystemPrompt() {
@@ -107,26 +114,32 @@ function buildDefaultSystemPrompt(mode, project) {
   return mode === CHAT_MODES.STORY ? buildStorySystemPrompt(project) : buildFreeSystemPrompt();
 }
 
-function getRoutePreview(provider, selectedModel) {
-  return modelRouter.route(
-    TASK_TYPES.FREE_PROMPT,
-    selectedModel
-      ? { providerOverride: provider, modelOverride: selectedModel }
-      : { providerOverride: provider },
-  );
+function getThreadOverridePatch(thread = {}) {
+  return {
+    provider_override: normalizeThreadOverrideValue(thread?.provider_override),
+    model_override: normalizeThreadOverrideValue(thread?.model_override),
+  };
 }
 
-function getThreadRouting(thread, providerSnapshot) {
-  if (thread?.model_override) {
-    return {
-      routeOptions: { providerOverride: providerSnapshot, modelOverride: thread.model_override },
-      route: getRoutePreview(providerSnapshot, thread.model_override),
-    };
-  }
+function buildThreadRouteOptions(thread = {}) {
+  const providerOverride = normalizeThreadOverrideValue(thread?.provider_override);
+  const modelOverride = normalizeThreadOverrideValue(thread?.model_override);
 
+  if (providerOverride && modelOverride) return { providerOverride, modelOverride };
+  if (providerOverride) return { providerOverride };
+  if (modelOverride) return { modelOverride };
+  return {};
+}
+
+function getRoutePreview(routeOptions = {}) {
+  return modelRouter.route(TASK_TYPES.FREE_PROMPT, routeOptions);
+}
+
+export function getThreadRouting(thread) {
+  const routeOptions = buildThreadRouteOptions(thread);
   return {
-    routeOptions: { providerOverride: providerSnapshot },
-    route: getRoutePreview(providerSnapshot, ''),
+    routeOptions,
+    route: getRoutePreview(routeOptions),
   };
 }
 
@@ -154,17 +167,63 @@ function getAvailableModelOptions(provider) {
   }));
 }
 
-function normalizeThread(thread, projectScopeEnabled, project) {
+export function normalizeThread(thread, projectScopeEnabled, project) {
   const chatMode = thread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
   return {
     ...thread,
     chat_mode: chatMode,
     system_prompt:
       String(thread?.system_prompt || '').trim() || buildDefaultSystemPrompt(chatMode, project),
-    model_override: thread?.model_override || '',
+    ...getThreadOverridePatch(thread),
     last_provider: thread?.last_provider || '',
     last_model: thread?.last_model || '',
   };
+}
+
+export function buildThreadPayload({
+  scopedProjectId,
+  mode,
+  projectScopeEnabled,
+  project,
+  now = Date.now(),
+} = {}) {
+  return {
+    project_id: scopedProjectId,
+    title: CHAT_THREAD_TITLE_FALLBACK,
+    chat_mode: mode,
+    system_prompt: buildDefaultSystemPrompt(mode, projectScopeEnabled ? project : null),
+    provider_override: '',
+    model_override: '',
+    sticky_provider_override: '',
+    sticky_model_override: '',
+    last_provider: '',
+    last_model: '',
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+export function buildThreadConfigPatch(thread = {}, {
+  activeThreadMode,
+  projectScopeEnabled,
+  project,
+} = {}) {
+  return {
+    chat_mode: thread?.chat_mode || activeThreadMode,
+    system_prompt:
+      String(thread?.system_prompt || '').trim()
+      || buildDefaultSystemPrompt(activeThreadMode, projectScopeEnabled ? project : null),
+    ...getThreadOverridePatch(thread),
+  };
+}
+
+function getRoutingConfigStamp() {
+  return JSON.stringify({
+    preferredProvider: modelRouter.getPreferredProvider(),
+    qualityMode: modelRouter.getQualityMode(),
+    proxyModel: modelRouter.getProxyModel(),
+    ollamaModel: modelRouter.getOllamaModel(),
+  });
 }
 
 function MessageBubble({ message, onCopy, onEdit, onContinue, onRetry }) {
@@ -278,9 +337,8 @@ export default function ProjectChat() {
   const [showTopbarControls, setShowTopbarControls] = useState(false);
   const [mobileThreadsOpen, setMobileThreadsOpen] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState(null);
-  const [providerSnapshot, setProviderSnapshot] = useState(modelRouter.getPreferredProvider());
-  const [qualitySnapshot, setQualitySnapshot] = useState(modelRouter.getQualityMode());
   const [liveRouteInfo, setLiveRouteInfo] = useState(null);
+  const [routingConfigStamp, setRoutingConfigStamp] = useState(() => getRoutingConfigStamp());
 
   const inputRef = useRef(null);
   const composerTextareaRef = useRef(null);
@@ -293,9 +351,16 @@ export default function ProjectChat() {
     () => threads.find((thread) => String(thread.id) === String(activeThreadId)) || null,
     [threads, activeThreadId],
   );
+  const threadRouting = useMemo(
+    () => getThreadRouting(activeThread),
+    [activeThread?.provider_override, activeThread?.model_override, routingConfigStamp],
+  );
+  const routePreview = threadRouting.route;
 
   const activeThreadMode =
     activeThread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
+  const activeChatProvider = routePreview.provider;
+  const providerSelectValue = normalizeThreadOverrideValue(activeThread?.provider_override);
 
   function resizeComposer(textarea) {
     if (!textarea) return;
@@ -319,10 +384,6 @@ export default function ProjectChat() {
     composerTextareaRef.current.style.overflowY = 'hidden';
   }
 
-  const routePreview = useMemo(
-    () => getThreadRouting(activeThread, providerSnapshot).route,
-    [providerSnapshot, activeThread?.model_override],
-  );
   const effectiveModelLabel =
     liveRouteInfo?.model
     || activeThread?.model_override
@@ -330,8 +391,8 @@ export default function ProjectChat() {
   const hasManualModelOverride = Boolean(activeThread?.model_override);
 
   const providerOptions = useMemo(
-    () => getAvailableModelOptions(providerSnapshot),
-    [providerSnapshot],
+    () => getAvailableModelOptions(activeChatProvider),
+    [activeChatProvider],
   );
 
   const defaultSystemPrompt = buildDefaultSystemPrompt(
@@ -346,22 +407,21 @@ export default function ProjectChat() {
     activeThreadMode === CHAT_MODES.STORY ? CHAT_MODES.FREE : CHAT_MODES.STORY;
 
   useEffect(() => {
-    if (!projectScopeEnabled) return;
-    if (!currentProject || String(currentProject.id) !== String(projectId)) {
-      loadProject(Number(projectId)).catch(() => navigate('/'));
-    }
-  }, [currentProject, loadProject, navigate, projectId, projectScopeEnabled]);
-
-  useEffect(() => {
     const sync = () => {
-      setProviderSnapshot(modelRouter.getPreferredProvider());
-      setQualitySnapshot(modelRouter.getQualityMode());
+      setRoutingConfigStamp(getRoutingConfigStamp());
     };
 
     sync();
     window.addEventListener('focus', sync);
     return () => window.removeEventListener('focus', sync);
   }, []);
+
+  useEffect(() => {
+    if (!projectScopeEnabled) return;
+    if (!currentProject || String(currentProject.id) !== String(projectId)) {
+      loadProject(Number(projectId)).catch(() => navigate('/'));
+    }
+  }, [currentProject, loadProject, navigate, projectId, projectScopeEnabled]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -476,13 +536,11 @@ export default function ProjectChat() {
 
     const timeout = window.setTimeout(async () => {
       try {
-        await db.ai_chat_threads.update(activeThread.id, {
-          chat_mode: activeThread.chat_mode || activeThreadMode,
-          system_prompt:
-            activeThread.system_prompt ||
-            buildDefaultSystemPrompt(activeThreadMode, projectScopeEnabled ? currentProject : null),
-          model_override: activeThread.model_override || '',
-        });
+        await db.ai_chat_threads.update(activeThread.id, buildThreadConfigPatch(activeThread, {
+          activeThreadMode,
+          projectScopeEnabled,
+          project: currentProject,
+        }));
         setSaveStatus('Đã lưu cấu hình chat');
       } catch (error) {
         console.error('Failed to save chat thread config:', error);
@@ -495,6 +553,7 @@ export default function ProjectChat() {
     activeThread?.id,
     activeThread?.chat_mode,
     activeThread?.system_prompt,
+    activeThread?.provider_override,
     activeThread?.model_override,
     activeThreadMode,
     currentProject,
@@ -509,20 +568,12 @@ export default function ProjectChat() {
 
   async function createThread({ activate = true, initialMode } = {}) {
     const mode = initialMode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
-    const now = Date.now();
-    const payload = {
-      project_id: scopedProjectId,
-      title: CHAT_THREAD_TITLE_FALLBACK,
-      chat_mode: mode,
-      system_prompt: buildDefaultSystemPrompt(mode, projectScopeEnabled ? currentProject : null),
-      model_override: '',
-      sticky_provider_override: '',
-      sticky_model_override: '',
-      last_provider: '',
-      last_model: '',
-      created_at: now,
-      updated_at: now,
-    };
+    const payload = buildThreadPayload({
+      scopedProjectId,
+      mode,
+      projectScopeEnabled,
+      project: currentProject,
+    });
 
     const id = await db.ai_chat_threads.add(payload);
     const created = { ...payload, id };
@@ -635,6 +686,7 @@ export default function ProjectChat() {
         resetMode,
         projectScopeEnabled ? currentProject : null,
       ),
+      provider_override: normalizeThreadOverrideValue(activeThread.provider_override),
       model_override: '',
       sticky_provider_override: '',
       sticky_model_override: '',
@@ -669,7 +721,7 @@ export default function ProjectChat() {
     if ((thread.chat_mode || activeThreadMode) === CHAT_MODES.STORY && !projectScopeEnabled) return;
 
     const normalizedUserContent = String(userContent || '').trim();
-    const { routeOptions, route: currentRoute } = getThreadRouting(thread, providerSnapshot);
+    const { routeOptions, route: currentRoute } = getThreadRouting(thread);
     const tempAssistantId = `temp-assistant-${Date.now()}`;
     const provisionalTitle =
       !thread.title || thread.title === CHAT_THREAD_TITLE_FALLBACK
@@ -803,7 +855,7 @@ export default function ProjectChat() {
 
     const userContent = draft.trim();
     const currentThread = activeThread;
-    const { routeOptions, route: currentRoute } = getThreadRouting(currentThread, providerSnapshot);
+    const { routeOptions, route: currentRoute } = getThreadRouting(currentThread);
     const tempAssistantId = `temp-assistant-${Date.now()}`;
     const provisionalTitle =
       !currentThread.title || currentThread.title === CHAT_THREAD_TITLE_FALLBACK
@@ -1072,12 +1124,10 @@ export default function ProjectChat() {
 
     if (!options.preserveHistory) {
       const nextThread = await createThread({ activate: true, initialMode: mode });
-      if (activeThread.model_override) {
-        await persistThreadUpdate(nextThread.id, {
-          model_override: activeThread.model_override,
-          updated_at: Date.now(),
-        });
-      }
+      await persistThreadUpdate(nextThread.id, {
+        ...getThreadOverridePatch(activeThread),
+        updated_at: Date.now(),
+      });
       setSaveStatus('Đã mở một cuộc trò chuyện mới ở chế độ vừa chọn');
       return;
     }
@@ -1362,10 +1412,27 @@ export default function ProjectChat() {
               </div>
 
               <div className="project-chat-topbar__control">
-                <span className="project-chat-topbar__label">Kênh AI đang dùng</span>
-                <div className="project-chat-topbar__value">
-                  {getProviderLabel(providerSnapshot)} · {getQualityLabel(qualitySnapshot)}
-                </div>
+                <span className="project-chat-topbar__label">Kênh AI của chat</span>
+                <select
+                  id="chat-provider-select"
+                  className="select"
+                  value={providerSelectValue}
+                  onChange={(event) =>
+                    persistThreadUpdate(activeThread.id, {
+                      provider_override: event.target.value,
+                      model_override: '',
+                      sticky_provider_override: '',
+                      sticky_model_override: '',
+                      updated_at: Date.now(),
+                    })
+                  }
+                  disabled={!activeThread || isStreaming}
+                >
+                  <option value="">Theo Settings hiá»‡n táº¡i ({getProviderLabel(activeChatProvider)})</option>
+                  <option value={PROVIDERS.GEMINI_PROXY}>Gemini Proxy</option>
+                  <option value={PROVIDERS.GEMINI_DIRECT}>Gemini Direct</option>
+                  <option value={PROVIDERS.OLLAMA}>Ollama</option>
+                </select>
               </div>
 
               <div className="project-chat-topbar__control project-chat-topbar__control--wide">
@@ -1386,7 +1453,7 @@ export default function ProjectChat() {
                   }
                   disabled={!activeThread || isStreaming}
                 >
-                  <option value="">Theo mặc định hệ thống</option>
+                  <option value="">Theo Settings hiện tại</option>
                   {providerOptions.map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.label} · {option.meta}

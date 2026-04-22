@@ -5,9 +5,26 @@ import {
   recommendArcBatchCount,
   buildStoryProgressBudget,
   buildDraftQueue,
+  collectBatchChapterAnchors,
+  normalizeMacroMilestoneItem,
+  resolveBatchChapterWindow,
   validateGeneratedOutline,
 } from '../../stores/arcGenerationStore';
-import { compileMacroArcContract, serializeMacroArcContract } from '../../services/ai/macroArcContract';
+import {
+  buildMacroArcPersistenceSnapshot,
+  compileMacroArcContract,
+  normalizeBoolean,
+  parseStoredMacroArcContract,
+  preserveChapterAnchorIds,
+  serializeMacroArcContract,
+  validateMacroArcChapterAnchors,
+  validateDraftAgainstChapterAnchors,
+} from '../../services/ai/macroArcContract';
+import {
+  cascadeSequentialMacroArcStarts,
+  normalizePlanningScope,
+  updateMilestoneChapterPlanSequence,
+} from '../../pages/StoryBible/hooks/useStoryBibleMacroArcs';
 
 describe('phase10 auto-gen planning upgrade', () => {
   it('recommends safer default batch counts from target_length', () => {
@@ -34,6 +51,29 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(budget.batchReachesMacroEnd).toBe(false);
     expect(budget.mainPlotMaxStep).toBe(1);
     expect(budget.requiredBeatMix).toContain('setup');
+  });
+
+  it('clamps batch windows to the selected macro arc range', () => {
+    const window = resolveBatchChapterWindow({
+      currentChapterCount: 10,
+      batchCount: 5,
+      selectedMacroArc: { title: 'Arc ngan', chapter_from: 11, chapter_to: 12 },
+    });
+    const budget = buildStoryProgressBudget({
+      targetLength: 100,
+      currentChapterCount: 10,
+      batchCount: 5,
+      selectedMacroArc: { title: 'Arc ngan', chapter_from: 11, chapter_to: 12 },
+      milestones: [],
+    });
+
+    expect(window.batchStartChapter).toBe(11);
+    expect(window.batchEndChapter).toBe(12);
+    expect(window.effectiveBatchCount).toBe(2);
+    expect(window.isClampedToMacroRange).toBe(true);
+    expect(budget.batchCount).toBe(2);
+    expect(budget.requestedBatchCount).toBe(5);
+    expect(budget.batchReachesMacroEnd).toBe(true);
   });
 
   it('builds draft queues from selected outline indexes only', () => {
@@ -91,6 +131,31 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(validation.issues.some((issue) => issue.code === 'repetitive')).toBe(true);
     expect(validation.issues.some((issue) => issue.code === 'too-fast')).toBe(true);
     expect(validation.issues.some((issue) => issue.code === 'premature-resolution')).toBe(true);
+  });
+
+  it('blocks outlines whose generated chapters spill outside the selected macro arc range', () => {
+    const validation = validateGeneratedOutline({
+      chapters: [
+        { title: 'Chuong 11: A', summary: 'Mo man', key_events: ['mo man'] },
+        { title: 'Chuong 12: B', summary: 'Buildup', key_events: ['buildup'] },
+        { title: 'Chuong 13: C', summary: 'Lech range', key_events: ['lech'] },
+      ],
+    }, {
+      startChapterNumber: 11,
+      selectedMacroArc: {
+        title: 'Arc ngan',
+        chapter_from: 11,
+        chapter_to: 12,
+      },
+      storyProgressBudget: {
+        currentChapterCount: 10,
+        fromPercent: 10,
+        toPercent: 12,
+      },
+    });
+
+    expect(validation.hasBlockingIssues).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'chapter-out-of-range' && issue.chapterIndex === 2)).toBe(true);
   });
 
   it('treats beat-mix heuristics as non-blocking even when setup signals are weak', () => {
@@ -420,6 +485,103 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(messages[1].content).toContain('Nhung cot moc da KHOA pham vi thi phai giu dung chapter range do');
   });
 
+  it('keeps manually selected macro planning start when old milestone ranges start at chapter 1', () => {
+    const scope = normalizePlanningScope({
+      start: 11,
+      end: 120,
+      defaults: {
+        hasExplicitTargetLength: true,
+        safeTarget: 200,
+        defaultStart: 11,
+        defaultEnd: 200,
+      },
+      extraLowerBound: 1,
+      extraUpperBound: 80,
+    });
+
+    expect(scope.start).toBe(11);
+    expect(scope.end).toBe(120);
+  });
+
+  it('auto-continues macro milestone plan starts from the previous end', () => {
+    let plans = updateMilestoneChapterPlanSequence([], {
+      milestoneCount: 3,
+      index: 0,
+      field: 'chapter_to',
+      value: '20',
+      defaultStart: 11,
+    });
+
+    expect(plans[0].chapter_from).toBe('11');
+    expect(plans[0].chapter_to).toBe('20');
+    expect(plans[1].chapter_from).toBe('21');
+
+    plans = updateMilestoneChapterPlanSequence(plans, {
+      milestoneCount: 3,
+      index: 1,
+      field: 'chapter_to',
+      value: '30',
+      defaultStart: 11,
+    });
+
+    expect(plans[2].chapter_from).toBe('31');
+
+    plans = updateMilestoneChapterPlanSequence(plans, {
+      milestoneCount: 3,
+      index: 0,
+      field: 'chapter_to',
+      value: '25',
+      defaultStart: 11,
+    });
+
+    expect(plans[1].chapter_from).toBe('26');
+  });
+
+  it('does not overwrite a manually separated next milestone start', () => {
+    const plans = updateMilestoneChapterPlanSequence([
+      { chapter_from: '11', chapter_to: '20' },
+      { chapter_from: '50', chapter_to: '' },
+    ], {
+      milestoneCount: 2,
+      index: 0,
+      field: 'chapter_to',
+      value: '25',
+      defaultStart: 11,
+    });
+
+    expect(plans[1].chapter_from).toBe('50');
+  });
+
+  it('auto-continues saved macro arc starts after editing previous end', () => {
+    const updated = cascadeSequentialMacroArcStarts([
+      { id: 1, chapter_from: 11, chapter_to: 25 },
+      { id: 2, chapter_from: 21, chapter_to: 30 },
+      { id: 3, chapter_from: 31, chapter_to: 40 },
+    ], [20, 30, 40]);
+
+    expect(updated[1].chapter_from).toBe(26);
+    expect(updated[2].chapter_from).toBe(31);
+  });
+
+  it('keeps manually separated saved macro arc starts', () => {
+    const updated = cascadeSequentialMacroArcStarts([
+      { id: 1, chapter_from: 11, chapter_to: 25 },
+      { id: 2, chapter_from: 50, chapter_to: 60 },
+    ], [20, 60]);
+
+    expect(updated[1].chapter_from).toBe(50);
+  });
+
+  it('clamps auto-shifted saved macro arc ranges so they never flip chapter_from > chapter_to', () => {
+    const updated = cascadeSequentialMacroArcStarts([
+      { id: 1, chapter_from: 11, chapter_to: 25 },
+      { id: 2, chapter_from: 21, chapter_to: 22 },
+    ], [20, 22]);
+
+    expect(updated[1].chapter_from).toBe(26);
+    expect(updated[1].chapter_to).toBe(26);
+  });
+
   it('requires contract output when generating macro milestones and prefers stored contract_json', () => {
     const messages = buildPrompt(TASK_TYPES.GENERATE_MACRO_MILESTONES, {
       projectTitle: 'Truyen moi',
@@ -493,5 +655,499 @@ describe('phase10 auto-gen planning upgrade', () => {
 
     expect(contract?.objectives?.[0]?.focusCharacters).toEqual(['A', 'B']);
     expect(contract?.focusedCharacters).toEqual(['A', 'B']);
+  });
+
+  it('serializes and parses chapter anchors from macro arc contracts', () => {
+    const serialized = serializeMacroArcContract({
+      title: 'Arc neo chapter',
+      chapterFrom: 20,
+      chapterTo: 30,
+      emotionalPeak: '',
+      narrativeSummary: 'Chuan bi cho mot bien co dung chuong.',
+      objectives: [],
+      targetStates: [],
+      focusedCharacters: [],
+      maxRelationshipStage: 0,
+      forbiddenOutcomes: [],
+      chapterAnchors: [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Main phai gap Nu A',
+          objectiveRefs: ['OBJ1'],
+          focusCharacters: ['Main', 'Nu A'],
+          successSignals: ['gap Nu A'],
+          forbidBefore: true,
+          notes: '',
+        },
+      ],
+    });
+
+    const parsed = parseStoredMacroArcContract({
+      title: 'Arc neo chapter',
+      chapter_from: 20,
+      chapter_to: 30,
+      contract_json: serialized,
+    });
+
+    expect(parsed?.chapterAnchors).toHaveLength(1);
+    expect(parsed?.chapterAnchors?.[0]?.targetChapter).toBe(25);
+    expect(parsed?.chapterAnchors?.[0]?.strictness).toBe('hard');
+    expect(parsed?.chapterAnchors?.[0]?.requirementText).toContain('Main phai gap Nu A');
+  });
+
+  it('upgrades legacy anchor ids and keeps overlapping anchors from different macro arcs', () => {
+    const collected = collectBatchChapterAnchors([
+      normalizeMacroMilestoneItem({
+        id: 101,
+        title: 'Arc A',
+        description: 'Mo ta A',
+        chapter_from: 20,
+        chapter_to: 26,
+        chapter_anchors: [
+          { id: 'ANCHOR1', targetChapter: 25, strictness: 'hard', requirementText: 'Main gap Nu A' },
+        ],
+      }),
+      normalizeMacroMilestoneItem({
+        id: 202,
+        title: 'Arc B',
+        description: 'Mo ta B',
+        chapter_from: 24,
+        chapter_to: 30,
+        chapter_anchors: [
+          { id: 'ANCHOR1', targetChapter: 25, strictness: 'hard', requirementText: 'Main mat bi kip' },
+        ],
+      }),
+    ], 24, 25);
+
+    expect(collected).toHaveLength(2);
+    expect(collected[0].id).not.toBe('ANCHOR1');
+    expect(collected[1].id).not.toBe('ANCHOR1');
+    expect(collected[0].id).not.toBe(collected[1].id);
+    expect(collected.map((item) => item.sourceMacroArcId)).toEqual([101, 202]);
+  });
+
+  it('treats top-level chapter_anchors as authoritative even when empty', () => {
+    const staleContractJson = serializeMacroArcContract({
+      title: 'Arc stale',
+      chapterFrom: 20,
+      chapterTo: 30,
+      emotionalPeak: '',
+      narrativeSummary: 'Contract cu',
+      objectives: [],
+      targetStates: [],
+      focusedCharacters: [],
+      maxRelationshipStage: 0,
+      forbiddenOutcomes: [],
+      chapterAnchors: [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Contract cu van con anchor',
+          objectiveRefs: [],
+          focusCharacters: [],
+          successSignals: [],
+          forbidBefore: true,
+          notes: '',
+        },
+      ],
+    });
+
+    const contract = compileMacroArcContract({
+      title: 'Arc stale',
+      description: 'Da xoa het anchor',
+      chapter_from: 20,
+      chapter_to: 30,
+      chapter_anchors: [],
+      contract_json: staleContractJson,
+    });
+
+    expect(contract?.chapterAnchors || []).toEqual([]);
+  });
+
+  it('builds persistence snapshots that keep invalid raw anchors without reviving old contract state', () => {
+    const snapshot = buildMacroArcPersistenceSnapshot({
+      title: 'Arc persist',
+      description: 'Mo ta moi',
+      chapter_from: 20,
+      chapter_to: 30,
+      chapter_anchors: [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 0,
+          strictness: 'hard',
+          requirementText: '',
+          focusCharacters: ['Main'],
+        },
+      ],
+      contract_json: serializeMacroArcContract({
+        title: 'Arc persist',
+        chapterFrom: 20,
+        chapterTo: 30,
+        emotionalPeak: '',
+        narrativeSummary: 'Contract cu',
+        objectives: [],
+        targetStates: [],
+        focusedCharacters: [],
+        maxRelationshipStage: 0,
+        forbiddenOutcomes: [],
+        chapterAnchors: [
+          {
+            id: 'ANCHOR1',
+            targetChapter: 25,
+            strictness: 'hard',
+            requirementText: 'Contract cu',
+            objectiveRefs: [],
+            focusCharacters: [],
+            successSignals: [],
+            forbidBefore: true,
+            notes: '',
+          },
+        ],
+      }),
+    });
+    const mirrored = JSON.parse(snapshot.contract_json);
+    const compiled = compileMacroArcContract(snapshot);
+
+    expect(snapshot.chapter_anchors).toHaveLength(1);
+    expect(snapshot.chapter_anchors[0].id).toMatch(/^anchor_/);
+    expect(mirrored.chapter_anchors).toHaveLength(1);
+    expect(mirrored.chapter_anchors[0].id).toBe(snapshot.chapter_anchors[0].id);
+    expect(mirrored.chapter_anchors[0].target_chapter).toBe(0);
+    expect(mirrored.chapter_anchors[0].requirement_text).toBe('');
+    expect(compiled?.chapterAnchors || []).toEqual([]);
+  });
+
+  it('flags incomplete raw chapter anchors even when executable contract drops them', () => {
+    const macroArc = {
+      title: 'Arc invalid anchor',
+      description: 'Mo ta moi',
+      chapter_from: 20,
+      chapter_to: 30,
+      chapter_anchors: [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 0,
+          strictness: 'hard',
+          requirementText: '',
+          focusCharacters: ['Main'],
+        },
+      ],
+    };
+
+    const issues = validateMacroArcChapterAnchors(macroArc);
+    const compiled = compileMacroArcContract(macroArc);
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        code: 'anchor-incomplete',
+        severity: 'error',
+      }),
+    ]);
+    expect(compiled?.chapterAnchors || []).toEqual([]);
+  });
+
+  it('flags raw hard anchors outside the macro range', () => {
+    const issues = validateMacroArcChapterAnchors({
+      title: 'Arc out of range',
+      description: 'Mo ta moi',
+      chapter_from: 20,
+      chapter_to: 30,
+      chapter_anchors: [
+        {
+          id: 'anchor_existing_out_of_range',
+          targetChapter: 35,
+          strictness: 'hard',
+          requirementText: 'Main phai gap Nu A',
+        },
+      ],
+    });
+
+    expect(issues).toEqual([
+      expect.objectContaining({
+        code: 'anchor-out-of-range',
+        severity: 'error',
+        anchorId: 'anchor_existing_out_of_range',
+      }),
+    ]);
+  });
+
+  it('rebuilds contract mirror from current description instead of reusing stale contract_json', () => {
+    const snapshot = buildMacroArcPersistenceSnapshot({
+      title: 'Arc mirror',
+      description: 'Mo ta moi hoan toan.\nMuc tieu & ket qua: Main nghi ngo Su Ty; Buoc vao vet nut dau tien.\nTinh trang: Main (To mo).',
+      chapter_from: 20,
+      chapter_to: 30,
+      chapter_anchors: [],
+      contract_json: serializeMacroArcContract({
+        title: 'Arc mirror',
+        chapterFrom: 20,
+        chapterTo: 30,
+        emotionalPeak: 'Cu',
+        narrativeSummary: 'Noi dung cu khong duoc giu lai',
+        objectives: [{ id: 'OBJ1', text: 'Muc tieu cu', keywords: ['cu'], focusCharacters: [] }],
+        targetStates: [{ character: 'Main', state: 'Tin cay', category: 'trust', stageScore: 1 }],
+        focusedCharacters: ['Main'],
+        maxRelationshipStage: 1,
+        forbiddenOutcomes: ['to tinh'],
+      }),
+    });
+    const mirrored = JSON.parse(snapshot.contract_json);
+
+    expect(mirrored.narrative_summary).toContain('Mo ta moi hoan toan');
+    expect(mirrored.narrative_summary).not.toContain('Noi dung cu khong duoc giu lai');
+    expect((mirrored.objectives || []).some((item) => String(item.text || '').includes('Muc tieu cu'))).toBe(false);
+  });
+
+  it('clamps invalid chapter ranges before persisting macro arcs', () => {
+    const snapshot = buildMacroArcPersistenceSnapshot({
+      title: 'Arc invalid range',
+      description: 'Mo ta',
+      chapter_from: 26,
+      chapter_to: 22,
+      chapter_anchors: [],
+      contract_json: '',
+    });
+
+    expect(snapshot.chapter_from).toBe(26);
+    expect(snapshot.chapter_to).toBe(26);
+    expect(JSON.parse(snapshot.contract_json)).toEqual(expect.objectContaining({
+      chapter_from: 26,
+      chapter_to: 26,
+    }));
+  });
+
+  it('parses legacy boolean-like values for chapter anchors without coercing "false" to true', () => {
+    expect(normalizeBoolean(false, true)).toBe(false);
+    expect(normalizeBoolean(true, false)).toBe(true);
+    expect(normalizeBoolean('false', true)).toBe(false);
+    expect(normalizeBoolean('true', false)).toBe(true);
+    expect(normalizeBoolean(0, true)).toBe(false);
+    expect(normalizeBoolean(1, false)).toBe(true);
+    expect(normalizeBoolean('0', true)).toBe(false);
+    expect(normalizeBoolean('1', false)).toBe(true);
+    expect(normalizeBoolean(null, true)).toBe(true);
+    expect(normalizeBoolean(undefined, false)).toBe(false);
+  });
+
+  it('preserves existing stable ids for equivalent anchors after analyze-like normalization', () => {
+    const reconciled = preserveChapterAnchorIds(
+      [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Main phai gap Nu A',
+          focusCharacters: ['Main', 'Nu A'],
+          forbidBefore: true,
+        },
+        {
+          targetChapter: 27,
+          strictness: 'soft',
+          requirementText: 'Main bat dau nghi ngo Su Ty',
+          focusCharacters: ['Main'],
+          forbidBefore: false,
+        },
+      ],
+      [
+        {
+          id: 'anchor_existing_1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Main phai gap Nu A',
+          focusCharacters: ['Nu A', 'Main'],
+          forbidBefore: true,
+        },
+        {
+          id: 'anchor_existing_2',
+          targetChapter: 27,
+          strictness: 'soft',
+          requirementText: 'Main bat dau nghi ngo Su Ty',
+          focusCharacters: ['Main'],
+          forbidBefore: false,
+        },
+      ],
+    );
+
+    expect(reconciled[0].id).toBe('anchor_existing_1');
+    expect(reconciled[1].id).toBe('anchor_existing_2');
+  });
+
+  it('injects structured chapter anchor input into macro milestone prompts', () => {
+    const messages = buildPrompt(TASK_TYPES.GENERATE_MACRO_MILESTONES, {
+      projectTitle: 'Truyen neo chapter',
+      authorIdea: 'Lap dai cuc cho batch giua truyen.',
+      planningScopeStart: 20,
+      planningScopeEnd: 30,
+      macroMilestoneCount: 3,
+      macroChapterAnchorInputs: [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Main phai gap Nu A',
+          focusCharacters: ['Main', 'Nu A'],
+          forbidBefore: true,
+        },
+      ],
+    });
+
+    expect(messages[1].content).toContain('[YEU CAU BAT BUOC THEO CHUONG]');
+    expect(messages[1].content).toContain('ANCHOR1');
+    expect(messages[1].content).toContain('Chuong 25');
+    expect(messages[1].content).toContain('Main phai gap Nu A');
+  });
+
+  it('injects batch chapter anchors into ARC_OUTLINE prompts', () => {
+    const messages = buildPrompt(TASK_TYPES.ARC_OUTLINE, {
+      userPrompt: 'Day batch tiep theo.',
+      startChapterNumber: 20,
+      chapterCount: 6,
+      batchChapterAnchors: [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Main phai gap Nu A',
+          focusCharacters: ['Main', 'Nu A'],
+          forbidBefore: true,
+        },
+      ],
+    });
+
+    expect(messages[1].content).toContain('[CHAPTER ANCHORS BAT BUOC TRONG BATCH]');
+    expect(messages[1].content).toContain('ANCHOR1');
+    expect(messages[1].content).toContain('Chuong 25');
+  });
+
+  it('injects chapter anchor refs and guard blocks into ARC_CHAPTER_DRAFT prompts', () => {
+    const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
+      startChapterNumber: 25,
+      chapterOutlineTitle: 'Chuong 25: Cuoc gap',
+      chapterOutlineSummary: 'Main cuoi cung gap Nu A.',
+      chapterOutlineAnchorRefs: ['ANCHOR1'],
+      currentChapterAnchors: [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Main phai gap Nu A',
+          focusCharacters: ['Main', 'Nu A'],
+          forbidBefore: true,
+        },
+      ],
+      futureChapterAnchors: [
+        {
+          id: 'ANCHOR2',
+          targetChapter: 26,
+          strictness: 'hard',
+          requirementText: 'Chua duoc to tinh',
+          focusCharacters: ['Main', 'Nu A'],
+          forbidBefore: true,
+        },
+      ],
+    });
+
+    expect(messages[1].content).toContain('Anchor refs: ANCHOR1');
+    expect(messages[1].content).toContain('[ANCHOR BAT BUOC CHO CHUONG NAY]');
+    expect(messages[1].content).toContain('[ANCHOR CHUA DEN HAN]');
+  });
+
+  it('blocks outlines that miss or trigger hard anchors in the wrong chapter', () => {
+    const validation = validateGeneratedOutline({
+      chapters: [
+        {
+          title: 'Chuong 20: Som',
+          purpose: 'Main gap Nu A qua som.',
+          summary: 'Main gap Nu A ngay dau batch.',
+          key_events: ['Main gap Nu A'],
+          anchor_refs: ['ANCHOR1'],
+        },
+        {
+          title: 'Chuong 21: Chuyen tiep',
+          purpose: 'Chuyen tiep',
+          summary: 'Chua co gi lon.',
+          key_events: ['di chuyen'],
+        },
+        {
+          title: 'Chuong 22: Chuyen tiep',
+          purpose: 'Chuyen tiep',
+          summary: 'Chua co gi lon.',
+          key_events: ['tham do'],
+        },
+        {
+          title: 'Chuong 23: Chuyen tiep',
+          purpose: 'Chuyen tiep',
+          summary: 'Chua co gi lon.',
+          key_events: ['tham do'],
+        },
+        {
+          title: 'Chuong 24: Chuyen tiep',
+          purpose: 'Chuyen tiep',
+          summary: 'Chua co gi lon.',
+          key_events: ['tham do'],
+        },
+        {
+          title: 'Chuong 25: Lech hen',
+          purpose: 'Main lam viec khac.',
+          summary: 'Main van chua gap Nu A.',
+          key_events: ['lam viec khac'],
+          anchor_refs: [],
+        },
+      ],
+    }, {
+      startChapterNumber: 20,
+      batchChapterAnchors: [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Main gap Nu A',
+          focusCharacters: ['Main', 'Nu A'],
+          forbidBefore: true,
+        },
+      ],
+    });
+
+    expect(validation.hasBlockingIssues).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'hard-anchor-early')).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'hard-anchor-missed')).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'hard-anchor-missing-ref')).toBe(true);
+  });
+
+  it('validates draft text against current and future chapter anchors', () => {
+    const missingAtTarget = validateDraftAgainstChapterAnchors(
+      { title: 'Chuong 25', content: 'Main van di mot minh.' },
+      [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Main gap Nu A',
+          focusCharacters: ['Main', 'Nu A'],
+          forbidBefore: true,
+        },
+      ],
+      { currentChapterNumber: 25 },
+    );
+    const earlyBeforeTarget = validateDraftAgainstChapterAnchors(
+      { title: 'Chuong 24', content: 'Main gap Nu A ngay trong dem.' },
+      [
+        {
+          id: 'ANCHOR1',
+          targetChapter: 25,
+          strictness: 'hard',
+          requirementText: 'Main gap Nu A',
+          focusCharacters: ['Main', 'Nu A'],
+          forbidBefore: true,
+        },
+      ],
+      { currentChapterNumber: 24 },
+    );
+
+    expect(missingAtTarget.some((issue) => issue.code === 'hard-anchor-missed')).toBe(true);
+    expect(earlyBeforeTarget.some((issue) => issue.code === 'hard-anchor-early')).toBe(true);
   });
 });

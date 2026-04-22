@@ -212,6 +212,7 @@ function normalizeOutlineResult(rawText = '') {
       primary_location: String(chapterPatchSource.primary_location || chapterPatchSource.primaryLocation || '').trim(),
       required_factions: normalizeChapterListField(chapterPatchSource.required_factions || chapterPatchSource.requiredFactions || []),
       required_objects: normalizeChapterListField(chapterPatchSource.required_objects || chapterPatchSource.requiredObjects || []),
+      required_terms: normalizeChapterListField(chapterPatchSource.required_terms || chapterPatchSource.requiredTerms || []),
     };
 
     return {
@@ -244,6 +245,7 @@ function hasOutlinePatchData(chapterPatch = {}) {
     || (Array.isArray(chapterPatch?.featured_characters) && chapterPatch.featured_characters.length > 0)
     || (Array.isArray(chapterPatch?.required_factions) && chapterPatch.required_factions.length > 0)
     || (Array.isArray(chapterPatch?.required_objects) && chapterPatch.required_objects.length > 0)
+    || (Array.isArray(chapterPatch?.required_terms) && chapterPatch.required_terms.length > 0)
   );
 }
 
@@ -283,10 +285,13 @@ export default function AISidebar({
     streamingText,
     completedText,
     error,
+    outputScope,
+    lastTaskId,
     lastRouteInfo,
     lastElapsed,
     abort,
     clearOutput,
+    setOutputTracking,
     continueWriting,
     rewriteText,
     expandText,
@@ -312,8 +317,6 @@ export default function AISidebar({
   const [activeAction, setActiveAction] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
   const [actionGuidance, setActionGuidance] = useState('');
-  const [lastTaskId, setLastTaskId] = useState(null);
-  const [outputScope, setOutputScope] = useState(null);
   const [plotSuggestions, setPlotSuggestions] = useState([]);
   const [showPlotManager, setShowPlotManager] = useState(false);
   const [showPlotAssistPicker, setShowPlotAssistPicker] = useState(false);
@@ -534,8 +537,12 @@ export default function AISidebar({
     setPendingAction(null);
     setActionGuidance('');
     setActiveAction(action.id);
-    setLastTaskId(action.id);
-    setOutputScope(buildOutputScope(context, action.id));
+    const nextOutputScope = buildOutputScope(context, action.id);
+    setOutputTracking({
+      taskId: action.id,
+      outputScope: nextOutputScope,
+    });
+    context.outputScope = nextOutputScope;
 
     if (action.isCustom && action.id === 'conflict') {
       handleCheckConflict(context);
@@ -572,6 +579,10 @@ export default function AISidebar({
   const handleCheckConflict = async (context) => {
     try {
       clearOutput();
+      setOutputTracking({
+        taskId: 'conflict',
+        outputScope: context.outputScope || buildOutputScope(context, 'conflict'),
+      });
       useAIStore.setState({ streamingText: 'Đang kiểm tra mâu thuẫn cốt truyện...' });
 
       const result = await checkConflict(context);
@@ -597,8 +608,12 @@ export default function AISidebar({
     if (!customPrompt.trim()) return;
     const context = getContext();
     context.userPrompt = customPrompt.trim();
-    setLastTaskId('free_prompt');
-    setOutputScope(buildOutputScope(context, 'free_prompt'));
+    const nextOutputScope = buildOutputScope(context, 'free_prompt');
+    setOutputTracking({
+      taskId: 'free_prompt',
+      outputScope: nextOutputScope,
+    });
+    context.outputScope = nextOutputScope;
     freePrompt(context);
     setCustomPrompt('');
   };
@@ -656,6 +671,7 @@ export default function AISidebar({
         primary_location: parsedOutlineResult.chapterPatch.primary_location,
         required_factions: parsedOutlineResult.chapterPatch.required_factions,
         required_objects: parsedOutlineResult.chapterPatch.required_objects,
+        required_terms: parsedOutlineResult.chapterPatch.required_terms,
       });
       setOutlineApplyState('saved');
     } catch (err) {
@@ -666,8 +682,6 @@ export default function AISidebar({
 
   const handleClearOutput = () => {
     clearOutput();
-    setOutputScope(null);
-    setLastTaskId(null);
   };
 
   useEffect(() => {

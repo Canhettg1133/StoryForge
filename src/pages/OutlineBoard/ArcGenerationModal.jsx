@@ -124,7 +124,6 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
 
     useEffect(() => {
         let ignore = false;
-        arcStore.resetArc();
         (async () => {
             await arcStore.initializeArcGeneration({ projectId, currentChapterCount });
             if (!ignore) {
@@ -152,12 +151,16 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         if (!arcStore.generatedOutline) {
             return arcStore.outlineValidation || { issues: [], hasBlockingIssues: false };
         }
+        const startChapterNumber = Number(arcStore.storyProgressBudget?.batchStartChapter) || (currentChapterCount + 1);
         return validateArcOutline(arcStore.generatedOutline, {
             storyProgressBudget: arcStore.storyProgressBudget,
             selectedMacroArc,
             milestones: arcStore.projectMilestones,
+            macroArcContract: arcStore.macroArcContract,
+            batchChapterAnchors: arcStore.batchChapterAnchors,
+            startChapterNumber,
         });
-    }, [arcStore.generatedOutline, arcStore.outlineValidation, arcStore.storyProgressBudget, selectedMacroArc, arcStore.projectMilestones]);
+    }, [arcStore.batchChapterAnchors, arcStore.generatedOutline, arcStore.macroArcContract, arcStore.outlineValidation, arcStore.storyProgressBudget, currentChapterCount, selectedMacroArc, arcStore.projectMilestones]);
     const validatorIssues = liveOutlineValidation?.issues || [];
     const hasBlockingIssues = !!liveOutlineValidation?.hasBlockingIssues;
     const selectedDraftCount = arcStore.selectedDraftIndexes?.length || 0;

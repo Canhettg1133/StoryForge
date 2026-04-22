@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import keyManager from '../../services/ai/keyManager';
-import modelRouter, { PROVIDERS, DIRECT_MODELS } from '../../services/ai/router';
+import modelRouter, { PROVIDERS, DIRECT_MODELS, PROXY_MODEL_PRESETS } from '../../services/ai/router';
 import aiService, {
   getGeminiDirectBaseUrl,
   getOllamaUrl,
@@ -11,7 +11,7 @@ import aiService, {
 import {
   Key, Server, Cpu, Cloud, Trash2, Eye, EyeOff, CheckCircle, XCircle,
   Zap, Gauge, Crown, RefreshCw, TestTube, Download, Upload, Copy, Check,
-  Plus, X, BookOpen, ExternalLink, ArrowLeft,
+  Plus, X, BookOpen, ExternalLink, ArrowLeft, ChevronsUpDown, Sparkles,
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
 import useMobileLayout from '../../hooks/useMobileLayout';
@@ -236,7 +236,9 @@ export default function Settings() {
   const [testResults, setTestResults] = useState({});
   const [testing, setTesting] = useState({});
   const [quality, setQuality] = useState(modelRouter.getQualityMode());
+  const [proxyModel, setProxyModel] = useState(modelRouter.getProxyModel());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
+  const selectedProxyPreset = PROXY_MODEL_PRESETS.find((model) => model.id === proxyModel) || PROXY_MODEL_PRESETS[0];
 
   useEffect(() => {
     if (!location.hash) return;
@@ -360,25 +362,66 @@ export default function Settings() {
             ))}
           </div>
 
-          <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
-            <label className="form-label">Chế độ chất lượng</label>
-            <div className="settings-radio-group horizontal">
-              {[
-                { value: 'fast', icon: Zap, label: 'Nhanh' },
-                { value: 'balanced', icon: Gauge, label: 'Cân bằng' },
-                { value: 'best', icon: Crown, label: 'Tốt nhất' },
-              ].map(q => (
-                <button
-                  key={q.value}
-                  className={`settings-radio-card compact ${quality === q.value ? 'settings-radio-card--active' : ''}`}
-                  onClick={() => { setQuality(q.value); modelRouter.setQualityMode(q.value); }}
-                >
-                  <q.icon size={16} />
-                  <span className="settings-radio-label">{q.label}</span>
-                </button>
-              ))}
+          {provider === PROVIDERS.GEMINI_PROXY ? (
+            <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
+              <label className="form-label">Model Gemini Proxy</label>
+              <div className="settings-select-callout">
+                <div className="settings-select-callout__copy">
+                  <div className="settings-select-callout__title">
+                    <Sparkles size={15} />
+                    Model mặc định đang dùng
+                  </div>
+                  <div className="settings-select-callout__value">
+                    {selectedProxyPreset?.label || 'Chưa chọn model'}
+                  </div>
+                  <div className="settings-select-callout__hint">
+                    Bấm vào hộp bên dưới để đổi model mặc định cho toàn bộ tác vụ Gemini Proxy.
+                  </div>
+                </div>
+                <div className="settings-select-shell">
+                  <select
+                    className="select settings-select-shell__control"
+                    value={proxyModel}
+                    aria-label="Chọn model Gemini Proxy mặc định"
+                    onChange={(event) => {
+                      setProxyModel(event.target.value);
+                      modelRouter.setProxyModel(event.target.value);
+                    }}
+                  >
+                    {PROXY_MODEL_PRESETS.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="settings-select-shell__prompt">Click để đổi model</span>
+                  <ChevronsUpDown size={16} className="settings-select-shell__icon" />
+                </div>
+              </div>
             </div>
-          </div>
+          ) : null}
+
+          {provider === PROVIDERS.GEMINI_DIRECT ? (
+            <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
+              <label className="form-label">Chế độ chất lượng</label>
+              <div className="settings-radio-group horizontal">
+                {[
+                  { value: 'fast', icon: Zap, label: 'Nhanh' },
+                  { value: 'balanced', icon: Gauge, label: 'Cân bằng' },
+                  { value: 'best', icon: Crown, label: 'Tốt nhất' },
+                ].map(q => (
+                  <button
+                    key={q.value}
+                    className={`settings-radio-card compact ${quality === q.value ? 'settings-radio-card--active' : ''}`}
+                    onClick={() => { setQuality(q.value); modelRouter.setQualityMode(q.value); }}
+                  >
+                    <q.icon size={16} />
+                    <span className="settings-radio-label">{q.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
 
         {/* === API KEYS === */}

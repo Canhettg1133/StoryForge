@@ -68,6 +68,8 @@ function mergeByIdAndName(existingItems = [], nextItems = []) {
 
 // ---------------------------------------------
 
+let latestCodexLoadRequestId = 0;
+
 const useCodexStore = create((set, get) => ({
   // --- State ---
   characters: [],
@@ -85,6 +87,7 @@ const useCodexStore = create((set, get) => ({
   // =============================================
   loadCodex: async (projectId) => {
     if (!projectId) return;
+    const requestId = ++latestCodexLoadRequestId;
     set({ loading: true });
     const [
       characters,
@@ -117,6 +120,9 @@ const useCodexStore = create((set, get) => ({
         canon_status_summary: buildCharacterStateSummary(canonState, ''),
       };
     });
+    if (requestId !== latestCodexLoadRequestId) {
+      return;
+    }
     set({
       characters: hydratedCharacters,
       locations,
