@@ -27,6 +27,13 @@ function formatChapterAnchorLines(chapterAnchors = [], options = {}) {
   }).join('\n');
 }
 
+function revisionInstructionAllowsStructureChange(instruction = '') {
+  const normalized = String(instruction || '').toLowerCase();
+  if (!normalized) return false;
+  if (/chuong dem|chapter break|split chapter|merge chapter|tach chuong|chia chuong/.test(normalized)) return true;
+  return /(?:them|chen|bo sung|add|insert|remove|bo|bot|tach|chia|gop|merge).{0,24}(?:chuong|chapter)/.test(normalized);
+}
+
 export function buildUserContent(taskType, context = {}, effectiveMacroArcContract = null) {
   const {
     selectedText,
@@ -252,13 +259,20 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
 
     case TASK_TYPES.ARC_OUTLINE: {
       const arcParts = [];
+      const allowsStructureChange = revisionInstructionAllowsStructureChange(outlineRevisionInstruction);
       const outlineReportLines = (validatorReports || []).map(function (report, index) {
         const scope = report?.chapterIndex == null
           ? 'Toan bo dot'
           : 'Chuong ' + (startChapterNumber + Number(report.chapterIndex));
         const severity = report?.severity || 'warning';
         const code = report?.code || 'issue';
-        return (index + 1) + '. [' + severity.toUpperCase() + ' | ' + code + ' | ' + scope + '] ' + (report?.message || '');
+        const sourceText = report?.inputLabel
+          ? ' | Nguon: ' + report.inputLabel
+          : '';
+        const fieldText = Array.isArray(report?.relevantFields) && report.relevantFields.length > 0
+          ? ' | Fields: ' + report.relevantFields.join(', ')
+          : '';
+        return (index + 1) + '. [' + severity.toUpperCase() + ' | ' + code + ' | ' + scope + sourceText + fieldText + '] ' + (report?.message || '');
       }).join('\n');
       if (userPrompt) arcParts.push('Muc tieu Arc: ' + userPrompt);
       arcParts.push('Chuong moi phai bat dau tu: Chuong ' + startChapterNumber);
@@ -319,7 +333,11 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
       }
       if (outlineRevisionInstruction) {
         arcParts.push('[YEU CAU CHINH SUA DAN Y]\n' + outlineRevisionInstruction);
-        arcParts.push('Hay chinh sua IN-PLACE tren dan y hien tai. Giu nguyen pham vi batch, so chuong, va budget tien do. Output van phai la FULL JSON outline.');
+        arcParts.push(
+          allowsStructureChange
+            ? 'Hay chinh sua tren dan y hien tai. Ban duoc phep tang/giam/chia/gop so chuong BEN TRONG chinh batch nay neu can de xu ly loi pacing/validator, nhung khong duoc vuot khoi pham vi batch hay budget tien do. Output van phai la FULL JSON outline.'
+            : 'Hay chinh sua IN-PLACE tren dan y hien tai. Giu nguyen pham vi batch, so chuong, va budget tien do. Output van phai la FULL JSON outline.'
+        );
       }
       const existingBriefText = formatChapterBriefList(existingChapterBriefs, {
         header: '[CAC CHUONG DA CO - KHONG DUOC LAP LAI]',

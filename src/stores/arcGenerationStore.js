@@ -729,6 +729,188 @@ function hasThreadAnchor(chapter = {}) {
     return false;
 }
 
+const OUTLINE_ISSUE_SOURCE_MAP = {
+    padding: {
+        inputKind: 'mixed',
+        inputLabel: 'Noi dung dang thay + metadata',
+        relevantFields: ['purpose', 'summary', 'thread_titles', 'key_events'],
+        explanation: 'Loi nay thuong den tu purpose/summary ban dang thay, nhung cung co the do thread_titles hoac key_events dang thieu.',
+    },
+    repetitive: {
+        inputKind: 'mixed',
+        inputLabel: 'Noi dung dang thay + metadata',
+        relevantFields: ['title', 'purpose', 'summary', 'key_events'],
+        explanation: 'He thong doi chieu tieu de, purpose, summary va key_events giua cac chuong lien nhau.',
+    },
+    'too-fast': {
+        inputKind: 'mixed',
+        inputLabel: 'Noi dung dang thay + rang buoc he thong',
+        relevantFields: ['purpose', 'summary', 'key_events', 'state_delta', 'arc_guard_note', 'storyProgressBudget'],
+        explanation: 'Danh gia nay dua vao noi dung dang thay va rang buoc pacing/progress budget cua batch hien tai.',
+    },
+    'premature-resolution': {
+        inputKind: 'mixed',
+        inputLabel: 'Noi dung dang thay + rang buoc he thong',
+        relevantFields: ['purpose', 'summary', 'key_events', 'state_delta', 'arc_guard_note', 'selectedMacroArc'],
+        explanation: 'He thong dang doi chieu noi dung chuong voi pham vi macro arc va moc ket thuc hien tai.',
+    },
+    'chapter-out-of-range': {
+        inputKind: 'system',
+        inputLabel: 'Rang buoc he thong',
+        relevantFields: ['selectedMacroArc.chapter_from', 'selectedMacroArc.chapter_to', 'startChapterNumber'],
+        explanation: 'Loi nay den tu pham vi chapter cua macro arc/batch, khong phai chi do text chuong.',
+    },
+    'macro-drift': {
+        inputKind: 'mixed',
+        inputLabel: 'Noi dung dang thay + metadata dai cuc',
+        relevantFields: ['purpose', 'summary', 'key_events', 'objective_refs', 'state_delta', 'arc_guard_note'],
+        explanation: 'Validator dang so noi dung chuong voi objective/target state cua dai cuc.',
+    },
+    'macro-state-overshoot': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata/rang buoc dai cuc',
+        relevantFields: ['state_delta', 'arc_guard_note', 'objective_refs', 'macroArcContract'],
+        explanation: 'Loi nay thuong den tu state_delta, arc_guard_note hoac hop dong dai cuc, khong chi tu summary.',
+    },
+    'macro-forbidden-outcome': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata/rang buoc dai cuc',
+        relevantFields: ['summary', 'key_events', 'macroArcContract.forbidden_outcomes'],
+        explanation: 'He thong dang so noi dung outline voi forbidden_outcomes cua macro arc.',
+    },
+};
+
+export function describeOutlineValidationIssue(issue = {}) {
+    const code = String(issue?.code || '').trim().toLowerCase();
+    if (OUTLINE_ISSUE_SOURCE_MAP[code]) {
+        return {
+            ...OUTLINE_ISSUE_SOURCE_MAP[code],
+            code,
+        };
+    }
+
+    if (code.includes('anchor-missing-ref') || code.includes('anchor-wrong-chapter')) {
+        return {
+            code,
+            inputKind: 'metadata',
+            inputLabel: 'Metadata anchor',
+            relevantFields: ['anchor_refs'],
+            explanation: 'Loi nay den tu anchor_refs va metadata chapter anchor, khong nam o text summary/purpose ban dang thay.',
+        };
+    }
+
+    if (code.includes('anchor-missed') || code.includes('anchor-early')) {
+        return {
+            code,
+            inputKind: 'mixed',
+            inputLabel: 'Noi dung dang thay + metadata anchor',
+            relevantFields: ['summary', 'purpose', 'key_events', 'anchor_refs'],
+            explanation: 'Validator dang so text chuong voi chapter anchor va ca anchor_refs di kem.',
+        };
+    }
+
+    if (code.includes('macro-')) {
+        return {
+            code,
+            inputKind: 'metadata',
+            inputLabel: 'Metadata dai cuc',
+            relevantFields: ['objective_refs', 'state_delta', 'arc_guard_note', 'macroArcContract'],
+            explanation: 'Loi nay den tu rang buoc macro arc va metadata di kem cua outline.',
+        };
+    }
+
+    return {
+        code,
+        inputKind: 'visible',
+        inputLabel: 'Noi dung dang thay',
+        relevantFields: ['title', 'purpose', 'summary'],
+        explanation: 'Loi nay chu yeu den tu cac field dang hien tren UI cua outline.',
+    };
+}
+
+function annotateOutlineValidationIssue(issue = {}) {
+    return {
+        ...issue,
+        ...describeOutlineValidationIssue(issue),
+    };
+}
+
+function buildIssueSignature(issue = {}) {
+    return [
+        issue?.code || '',
+        issue?.severity || '',
+        Number.isInteger(issue?.chapterIndex) ? issue.chapterIndex : 'batch',
+        issue?.anchorId || '',
+        issue?.chapterTitle || '',
+    ].join('|');
+}
+
+function buildOutlineComparisonSignature(outline = null) {
+    const chapters = Array.isArray(outline?.chapters) ? outline.chapters : [];
+    return JSON.stringify(chapters.map((chapter) => ({
+        title: chapter?.title || '',
+        purpose: chapter?.purpose || '',
+        summary: chapter?.summary || '',
+        key_events: Array.isArray(chapter?.key_events) ? chapter.key_events : [],
+        objective_refs: Array.isArray(chapter?.objective_refs) ? chapter.objective_refs : [],
+        anchor_refs: Array.isArray(chapter?.anchor_refs) ? chapter.anchor_refs : [],
+        state_delta: chapter?.state_delta || '',
+        arc_guard_note: chapter?.arc_guard_note || '',
+        featured_characters: Array.isArray(chapter?.featured_characters) ? chapter.featured_characters : [],
+        primary_location: chapter?.primary_location || '',
+        thread_titles: Array.isArray(chapter?.thread_titles) ? chapter.thread_titles : [],
+    })));
+}
+
+export function summarizeOutlineRevisionAssessment({
+    beforeValidation = null,
+    afterValidation = null,
+    beforeOutline = null,
+    afterOutline = null,
+} = {}) {
+    const beforeIssues = Array.isArray(beforeValidation?.issues) ? beforeValidation.issues : [];
+    const afterIssues = Array.isArray(afterValidation?.issues) ? afterValidation.issues : [];
+    const beforeBlockingIssueCount = beforeIssues.filter((issue) => issue?.severity === 'error').length;
+    const afterBlockingIssueCount = afterIssues.filter((issue) => issue?.severity === 'error').length;
+    const beforeIssueCount = beforeIssues.length;
+    const afterIssueCount = afterIssues.length;
+
+    const beforeSignatures = new Set(beforeIssues.map((issue) => buildIssueSignature(issue)));
+    const afterSignatures = new Set(afterIssues.map((issue) => buildIssueSignature(issue)));
+    const resolvedIssueCount = [...beforeSignatures].filter((signature) => !afterSignatures.has(signature)).length;
+    const introducedIssueCount = [...afterSignatures].filter((signature) => !beforeSignatures.has(signature)).length;
+    const contentChanged = buildOutlineComparisonSignature(beforeOutline) !== buildOutlineComparisonSignature(afterOutline);
+
+    let status = 'unchanged';
+    if (
+        afterBlockingIssueCount < beforeBlockingIssueCount
+        || (afterBlockingIssueCount === beforeBlockingIssueCount && afterIssueCount < beforeIssueCount)
+    ) {
+        status = 'improved';
+    } else if (
+        afterBlockingIssueCount > beforeBlockingIssueCount
+        || (afterBlockingIssueCount === beforeBlockingIssueCount && afterIssueCount > beforeIssueCount)
+    ) {
+        status = 'worse';
+    }
+
+    return {
+        status,
+        contentChanged,
+        beforeIssueCount,
+        afterIssueCount,
+        beforeBlockingIssueCount,
+        afterBlockingIssueCount,
+        resolvedIssueCount,
+        introducedIssueCount,
+        message: status === 'improved'
+            ? `Outline sau revise giam tu ${beforeIssueCount} xuong ${afterIssueCount} loi (${beforeBlockingIssueCount} -> ${afterBlockingIssueCount} loi chan).`
+            : status === 'worse'
+                ? `Outline sau revise te hon: tu ${beforeIssueCount} thanh ${afterIssueCount} loi (${beforeBlockingIssueCount} -> ${afterBlockingIssueCount} loi chan).`
+                : `Outline sau revise khong cai thien so loi (${beforeIssueCount} -> ${afterIssueCount}, loi chan ${beforeBlockingIssueCount} -> ${afterBlockingIssueCount}).`,
+    };
+}
+
 export function validateGeneratedOutline(generatedOutline, {
     storyProgressBudget = null,
     selectedMacroArc = null,
@@ -883,9 +1065,11 @@ export function validateGeneratedOutline(generatedOutline, {
         }));
     }
 
+    const annotatedIssues = issues.map((issue) => annotateOutlineValidationIssue(issue));
+
     return {
-        issues,
-        hasBlockingIssues: issues.some((issue) => issue.severity === 'error'),
+        issues: annotatedIssues,
+        hasBlockingIssues: annotatedIssues.some((issue) => issue.severity === 'error'),
     };
 }
 
@@ -924,7 +1108,7 @@ async function loadArcGenerationProjectState(projectId, currentChapterCount = 0)
 }
 
 function getDefaultOutputMode(targetLength) {
-    return Number(targetLength) >= 300 ? 'outline_review' : 'draft_selected';
+    return 'outline_review';
 }
 
 function sanitizeSelectedDraftIndexes(selectedDraftIndexes = [], chapterCount = 0) {
@@ -1104,7 +1288,7 @@ const useArcGenStore = create((set, get) => ({
     arcChapterCount: 5,
     arcPacing: 'medium',
     arcMode: 'guided',
-    outputMode: 'draft_selected',
+    outputMode: 'outline_review',
     sessionProjectId: null,
     currentChapterCount: 0,
     projectTargetLength: 0,
@@ -1123,7 +1307,9 @@ const useArcGenStore = create((set, get) => ({
     generatedOutline: null,
     outlineStatus: 'idle',
     outlineRevisionPrompt: '',
+    outlineRevisionAssessment: null,
     outlineValidation: { issues: [], hasBlockingIssues: false },
+    outlineSaveFeedback: null,
     storyProgressBudget: null,
     macroArcContract: null,
     batchChapterAnchors: [],
@@ -1146,7 +1332,7 @@ const useArcGenStore = create((set, get) => ({
     // --- Actions ---
 
     setArcConfig: (config) => set((state) => {
-        const nextState = { ...config };
+            const nextState = { ...config };
         if (Object.prototype.hasOwnProperty.call(config, 'selectedMacroArcId')
             && !Object.prototype.hasOwnProperty.call(config, 'currentMacroArcId')) {
             nextState.currentMacroArcId = config.selectedMacroArcId;
@@ -1180,8 +1366,8 @@ const useArcGenStore = create((set, get) => ({
                 nextState.storyProgressBudget.batchEndChapter,
             );
         }
-        if (Object.prototype.hasOwnProperty.call(config, 'selectedMacroArcId')
-            || Object.prototype.hasOwnProperty.call(config, 'currentMacroArcId')) {
+            if (Object.prototype.hasOwnProperty.call(config, 'selectedMacroArcId')
+                || Object.prototype.hasOwnProperty.call(config, 'currentMacroArcId')) {
             const derived = buildOutlineDerivedState(
                 { ...state, ...nextState },
                 state.generatedOutline,
@@ -1193,8 +1379,16 @@ const useArcGenStore = create((set, get) => ({
             if (state.generatedOutline) {
                 nextState.outlineValidation = derived.outlineValidation;
                 nextState.selectedDraftIndexes = derived.selectedDraftIndexes;
+                }
             }
-        }
+            if (state.generatedOutline && (
+                Object.prototype.hasOwnProperty.call(config, 'selectedMacroArcId')
+                || Object.prototype.hasOwnProperty.call(config, 'currentMacroArcId')
+                || Object.prototype.hasOwnProperty.call(config, 'arcChapterCount')
+            )) {
+                nextState.outlineRevisionAssessment = null;
+                nextState.outlineSaveFeedback = null;
+            }
         return nextState;
     }),
 
@@ -1277,7 +1471,9 @@ const useArcGenStore = create((set, get) => ({
                     generatedOutline: null,
                     outlineStatus: 'idle',
                     outlineRevisionPrompt: '',
+                    outlineRevisionAssessment: null,
                     outlineValidation: { issues: [], hasBlockingIssues: false },
+                    outlineSaveFeedback: null,
                     storyProgressBudget: initialStoryProgressBudget,
                     macroArcContract: compileMacroArcContract(selectedMacroArc),
                     batchChapterAnchors: collectBatchChapterAnchors(
@@ -1302,7 +1498,7 @@ const useArcGenStore = create((set, get) => ({
         arcChapterCount: 5,
         arcPacing: 'medium',
         arcMode: 'guided',
-        outputMode: 'draft_selected',
+        outputMode: 'outline_review',
         sessionProjectId: null,
         currentChapterCount: 0,
         projectTargetLength: 0,
@@ -1315,7 +1511,9 @@ const useArcGenStore = create((set, get) => ({
         generatedOutline: null,
         outlineStatus: 'idle',
         outlineRevisionPrompt: '',
+        outlineRevisionAssessment: null,
         outlineValidation: { issues: [], hasBlockingIssues: false },
+        outlineSaveFeedback: null,
         storyProgressBudget: null,
         macroArcContract: null,
         outlineRequestToken: 0,
@@ -1371,7 +1569,9 @@ const useArcGenStore = create((set, get) => ({
             outlineRequestToken = Number(current.outlineRequestToken || 0) + 1;
             return {
                 outlineStatus: 'generating',
+                outlineRevisionAssessment: null,
                 outlineValidation: { issues: [], hasBlockingIssues: false },
+                outlineSaveFeedback: null,
                 outlineRequestToken,
             };
         });
@@ -1491,10 +1691,12 @@ const useArcGenStore = create((set, get) => ({
                                 currentChapterCount: startingChapterIndex,
                                 generatedOutline: outline,
                                 outlineStatus: 'ready',
+                                outlineRevisionAssessment: null,
                                 macroArcContract: derived.macroArcContract,
                                 batchChapterAnchors: derived.batchChapterAnchors,
                                 storyProgressBudget: derived.storyProgressBudget,
                                 outlineValidation: derived.outlineValidation,
+                                outlineSaveFeedback: null,
                                 selectedDraftIndexes: derived.selectedDraftIndexes,
                                 draftStatus: 'idle',
                                 draftProgress: { current: 0, total: 0 },
@@ -1529,13 +1731,23 @@ const useArcGenStore = create((set, get) => ({
         const revisionInstruction = String(instruction ?? state.outlineRevisionPrompt ?? '').trim();
         if (!revisionInstruction) return false;
 
+        const previousOutline = state.generatedOutline;
+        const previousDerived = buildOutlineDerivedState(
+            state,
+            previousOutline,
+            state.selectedDraftIndexes,
+            { preferDefaultSelection: false },
+        );
+
         let outlineRequestToken = 0;
         set((current) => {
             outlineRequestToken = Number(current.outlineRequestToken || 0) + 1;
             return {
                 outlineStatus: 'generating',
                 outlineRevisionPrompt: revisionInstruction,
+                outlineRevisionAssessment: null,
                 outlineValidation: { issues: [], hasBlockingIssues: false },
+                outlineSaveFeedback: null,
                 outlineRequestToken,
             };
         });
@@ -1610,15 +1822,23 @@ const useArcGenStore = create((set, get) => ({
                                 currentChapterCount: startingChapterIndex,
                                 storyProgressBudget,
                             }, outline, nextState.selectedDraftIndexes, { preferDefaultSelection: true });
+                            const revisionAssessment = summarizeOutlineRevisionAssessment({
+                                beforeValidation: previousDerived.outlineValidation,
+                                afterValidation: derived.outlineValidation,
+                                beforeOutline: previousOutline,
+                                afterOutline: outline,
+                            });
                             set({
                                 currentChapterCount: startingChapterIndex,
                                 generatedOutline: outline,
                                 outlineStatus: 'ready',
-                                outlineRevisionPrompt: '',
+                                outlineRevisionPrompt: revisionAssessment.status === 'improved' ? '' : revisionInstruction,
+                                outlineRevisionAssessment: revisionAssessment,
                                 macroArcContract: derived.macroArcContract,
                                 batchChapterAnchors: derived.batchChapterAnchors,
                                 storyProgressBudget: derived.storyProgressBudget,
                                 outlineValidation: derived.outlineValidation,
+                                outlineSaveFeedback: null,
                                 selectedDraftIndexes: derived.selectedDraftIndexes,
                             });
                         } catch (error) {
@@ -1638,11 +1858,15 @@ const useArcGenStore = create((set, get) => ({
                     },
                 });
             });
-            return true;
+            return {
+                ok: true,
+                status: 'revised',
+                revisionAssessment: get().outlineRevisionAssessment,
+            };
         } catch (error) {
             console.error('reviseGeneratedOutline failed:', error);
             set({ outlineStatus: 'error' });
-            return false;
+            return { ok: false, status: 'error', error };
         }
     },
 
@@ -1655,10 +1879,12 @@ const useArcGenStore = create((set, get) => ({
         const derived = buildOutlineDerivedState(state, generatedOutline, state.selectedDraftIndexes);
         set({
             generatedOutline,
+            outlineRevisionAssessment: null,
             macroArcContract: derived.macroArcContract,
             batchChapterAnchors: derived.batchChapterAnchors,
             storyProgressBudget: derived.storyProgressBudget,
             outlineValidation: derived.outlineValidation,
+            outlineSaveFeedback: null,
             selectedDraftIndexes: derived.selectedDraftIndexes,
         });
     },
@@ -1676,10 +1902,12 @@ const useArcGenStore = create((set, get) => ({
         const derived = buildOutlineDerivedState(state, generatedOutline, shiftedSelection);
         set({
             generatedOutline,
+            outlineRevisionAssessment: null,
             macroArcContract: derived.macroArcContract,
             batchChapterAnchors: derived.batchChapterAnchors,
             storyProgressBudget: derived.storyProgressBudget,
             outlineValidation: derived.outlineValidation,
+            outlineSaveFeedback: null,
             selectedDraftIndexes: derived.selectedDraftIndexes,
         });
     },
@@ -1852,22 +2080,31 @@ const useArcGenStore = create((set, get) => ({
     // Lưu Dàn Ý Only (không đắp thịt)
     // Phase 9: Tạo arc record thực sự + gán arc_id cho chapters
     // ═══════════════════════════════════════════
-    commitOutlineOnly: async (projectId) => {
+    commitOutlineOnly: async (projectId, options = {}) => {
         const state = get();
         if (!state.generatedOutline?.chapters?.length) return false;
+        const force = options?.force === true;
 
         const { chapters } = useProjectStore.getState();
         const baseIndex = getNextOrderIndex(chapters);
         const chapterCount = state.generatedOutline.chapters.length;
         const commitDerived = deriveOutlineCommitState(state, baseIndex);
         if (commitDerived.outlineValidation.hasBlockingIssues) {
+            const feedback = {
+                ok: false,
+                status: 'blocked',
+                forced: false,
+                blockingIssueCount: commitDerived.outlineValidation.issues.filter((issue) => issue.severity === 'error').length,
+                message: 'Dan y van con loi blocking. Neu ban chi muon luu outline de sua tiep, hay dung hanh dong "Luu dan y bat chap".',
+            };
             set({
                 outlineValidation: commitDerived.outlineValidation,
                 storyProgressBudget: commitDerived.storyProgressBudget,
                 batchChapterAnchors: commitDerived.batchChapterAnchors,
                 macroArcContract: commitDerived.macroArcContract,
+                outlineSaveFeedback: feedback,
             });
-            return false;
+            if (!force) return feedback;
         }
 
         // Phase 9: Tạo arc record trước, lấy arcId để gán cho chapters
@@ -1927,7 +2164,23 @@ const useArcGenStore = create((set, get) => ({
             cloud_pending_local_fork_until_change: 0,
         });
         await useProjectStore.getState().loadProject(projectId);
-        return true;
+        const feedback = {
+            ok: true,
+            status: 'saved',
+            forced: commitDerived.outlineValidation.hasBlockingIssues && force,
+            blockingIssueCount: commitDerived.outlineValidation.issues.filter((issue) => issue.severity === 'error').length,
+            message: commitDerived.outlineValidation.hasBlockingIssues && force
+                ? 'Da luu outline du con loi blocking. Ban co the mo lai de sua tiep.'
+                : 'Da luu outline vao truyen.',
+        };
+        set({
+            outlineValidation: commitDerived.outlineValidation,
+            storyProgressBudget: commitDerived.storyProgressBudget,
+            batchChapterAnchors: commitDerived.batchChapterAnchors,
+            macroArcContract: commitDerived.macroArcContract,
+            outlineSaveFeedback: feedback,
+        });
+        return feedback;
     },
 
     // ═══════════════════════════════════════════

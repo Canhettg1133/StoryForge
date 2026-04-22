@@ -8,6 +8,8 @@ import {
   collectBatchChapterAnchors,
   normalizeMacroMilestoneItem,
   resolveBatchChapterWindow,
+  describeOutlineValidationIssue,
+  summarizeOutlineRevisionAssessment,
   validateGeneratedOutline,
 } from '../../stores/arcGenerationStore';
 import {
@@ -131,6 +133,61 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(validation.issues.some((issue) => issue.code === 'repetitive')).toBe(true);
     expect(validation.issues.some((issue) => issue.code === 'too-fast')).toBe(true);
     expect(validation.issues.some((issue) => issue.code === 'premature-resolution')).toBe(true);
+  });
+
+  it('annotates outline validator issues with visible vs metadata sources', () => {
+    expect(describeOutlineValidationIssue({ code: 'hard-anchor-missing-ref' })).toMatchObject({
+      inputKind: 'metadata',
+    });
+    expect(describeOutlineValidationIssue({ code: 'too-fast' })).toMatchObject({
+      inputKind: 'mixed',
+    });
+    expect(describeOutlineValidationIssue({ code: 'chapter-out-of-range' })).toMatchObject({
+      inputKind: 'system',
+    });
+  });
+
+  it('summarizes outline revision outcomes as improved, unchanged, or worse', () => {
+    expect(summarizeOutlineRevisionAssessment({
+      beforeValidation: {
+        issues: [
+          { code: 'too-fast', severity: 'error', chapterIndex: 0 },
+          { code: 'padding', severity: 'warning', chapterIndex: 1 },
+        ],
+      },
+      afterValidation: {
+        issues: [
+          { code: 'padding', severity: 'warning', chapterIndex: 1 },
+        ],
+      },
+    }).status).toBe('improved');
+
+    expect(summarizeOutlineRevisionAssessment({
+      beforeValidation: {
+        issues: [
+          { code: 'too-fast', severity: 'error', chapterIndex: 0 },
+        ],
+      },
+      afterValidation: {
+        issues: [
+          { code: 'too-fast', severity: 'error', chapterIndex: 0 },
+        ],
+      },
+    }).status).toBe('unchanged');
+
+    expect(summarizeOutlineRevisionAssessment({
+      beforeValidation: {
+        issues: [
+          { code: 'padding', severity: 'warning', chapterIndex: 0 },
+        ],
+      },
+      afterValidation: {
+        issues: [
+          { code: 'padding', severity: 'warning', chapterIndex: 0 },
+          { code: 'too-fast', severity: 'error', chapterIndex: 1 },
+        ],
+      },
+    }).status).toBe('worse');
   });
 
   it('blocks outlines whose generated chapters spill outside the selected macro arc range', () => {
@@ -308,6 +365,27 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(messages[1].content).toContain('[DAN Y HIEN TAI CAN CHINH SUA]');
     expect(messages[1].content).toContain('Purpose:');
     expect(messages[1].content).toContain('[YEU CAU CHINH SUA DAN Y]');
+  });
+
+  it('allows revision prompts to change chapter count when the instruction explicitly asks for it', () => {
+    const messages = buildPrompt(TASK_TYPES.ARC_OUTLINE, {
+      userPrompt: 'Mo rong hanh trinh vao tong mon.',
+      startChapterNumber: 11,
+      chapterCount: 3,
+      generatedOutline: {
+        arc_title: 'Nhap tong mon',
+        chapters: [
+          { title: 'Chuong 11: Den cong son', purpose: 'Tham do cong son', summary: 'Main toi cong son va tham do.', key_events: ['tham do son mon'] },
+        ],
+      },
+      validatorReports: [
+        { code: 'too-fast', severity: 'error', chapterIndex: 0, message: 'Chapter co dau hieu day plot/reveal qua nhanh.', inputLabel: 'Noi dung dang thay + rang buoc he thong', relevantFields: ['summary', 'key_events', 'storyProgressBudget'] },
+      ],
+      outlineRevisionInstruction: 'Chen it nhat 1 chuong dem de lam cham nhip.',
+    });
+
+    expect(messages[1].content).toContain('Ban duoc phep tang/giam/chia/gop so chuong');
+    expect(messages[1].content).toContain('Nguon: Noi dung dang thay + rang buoc he thong');
   });
 
   it('injects progress budget into ARC_CHAPTER_DRAFT prompts', () => {

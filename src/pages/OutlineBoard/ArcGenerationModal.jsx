@@ -117,6 +117,14 @@ function formatIssueMessage(message) {
         .replace(/buildup\/setup\/consequence/gi, 'chuẩn bị, xây dựng hoặc hệ quả');
 }
 
+function getIssueSourceLabel(issue) {
+    if (!issue?.inputLabel) return '';
+    const fields = Array.isArray(issue?.relevantFields) && issue.relevantFields.length > 0
+        ? ` · Field lien quan: ${issue.relevantFields.join(', ')}`
+        : '';
+    return `${issue.inputLabel}${fields}`;
+}
+
 export default function ArcGenerationModal({ projectId, genre, currentChapterCount, onClose }) {
     const arcStore = useArcGenStore();
     const [step, setStep] = useState(1);
@@ -209,7 +217,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
             genre,
             instruction: arcStore.outlineRevisionPrompt,
         });
-        if (revised) setStep(2);
+        if (revised?.ok) setStep(2);
     };
 
     const handleStartDrafting = async () => {
@@ -233,9 +241,9 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         setStep(started ? 4 : 4);
     };
 
-    const handleCommitOutlineOnly = async () => {
-        const committed = await arcStore.commitOutlineOnly(projectId);
-        if (committed) onClose();
+    const handleCommitOutlineOnly = async (options = {}) => {
+        const committed = await arcStore.commitOutlineOnly(projectId, options);
+        if (committed?.ok) onClose();
     };
 
     const handleCommit = async () => {
@@ -304,7 +312,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                         >
                             Đổi tiết lộ thành manh mối
                         </button>
-                        <button className="btn btn-secondary btn-sm" onClick={handleCommitOutlineOnly}>
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleCommitOutlineOnly({ force: true })}>
                             Lưu dàn ý bất chấp
                         </button>
                     </div>
@@ -324,6 +332,16 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                 <span className="arc-validator-scope">{getIssueLabel(issue, currentChapterCount)}</span>
                             </div>
                             <div className="arc-validator-message">{formatIssueMessage(issue.message)}</div>
+                            {issue?.inputLabel && (
+                                <div className="arc-help-text" style={{ marginTop: '6px' }}>
+                                    Nguon loi: {getIssueSourceLabel(issue)}
+                                </div>
+                            )}
+                            {issue?.explanation && (
+                                <div className="arc-help-text" style={{ marginTop: '4px' }}>
+                                    {issue.explanation}
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -494,7 +512,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                 ? 'Tạo bản nháp để xem'
                 : 'Tạo các chương đã chọn';
         const primaryAction = arcStore.outputMode === 'outline_only'
-            ? handleCommitOutlineOnly
+            ? () => handleCommitOutlineOnly({ force: hasBlockingIssues })
             : handleStartDrafting;
 
         return (
@@ -514,6 +532,34 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
 
                 {renderBudgetBox()}
                 {renderValidatorPanel()}
+
+                {arcStore.outlineRevisionAssessment && (
+                    <div className="arc-warning-box">
+                        <strong>
+                            {arcStore.outlineRevisionAssessment.status === 'improved'
+                                ? 'AI sua dan y: da cai thien'
+                                : arcStore.outlineRevisionAssessment.status === 'worse'
+                                    ? 'AI sua dan y: ket qua te hon'
+                                    : 'AI sua dan y: chua cai thien'}
+                        </strong>
+                        <div style={{ marginTop: '6px' }}>{arcStore.outlineRevisionAssessment.message}</div>
+                        <div className="arc-help-text" style={{ marginTop: '6px' }}>
+                            Loi tong: {arcStore.outlineRevisionAssessment.beforeIssueCount}{' -> '}{arcStore.outlineRevisionAssessment.afterIssueCount}
+                            {' · '}
+                            Loi chan: {arcStore.outlineRevisionAssessment.beforeBlockingIssueCount}{' -> '}{arcStore.outlineRevisionAssessment.afterBlockingIssueCount}
+                            {' · '}
+                            Giai quyet: {arcStore.outlineRevisionAssessment.resolvedIssueCount}
+                            {' · '}
+                            Loi moi: {arcStore.outlineRevisionAssessment.introducedIssueCount}
+                        </div>
+                    </div>
+                )}
+
+                {arcStore.outlineSaveFeedback?.message && (
+                    <div className={arcStore.outlineSaveFeedback.ok ? 'arc-validator-empty' : 'arc-warning-box'}>
+                        {arcStore.outlineSaveFeedback.message}
+                    </div>
+                )}
 
                 <div className="arc-revise-box">
                     <div className="form-group">
@@ -616,7 +662,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                         {primaryLabel}
                     </button>
                     {arcStore.outputMode !== 'outline_only' && (
-                        <button className="btn btn-secondary" onClick={handleCommitOutlineOnly}>
+                        <button className="btn btn-secondary" onClick={() => handleCommitOutlineOnly({ force: hasBlockingIssues })}>
                             <BookmarkPlus size={16} /> {hasBlockingIssues ? 'Lưu dàn ý bất chấp' : 'Lưu dàn ý trước'}
                         </button>
                     )}
@@ -719,8 +765,8 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
 
             <div className="arc-actions border-top pt-4">
                 <button className="btn btn-ghost text-danger" onClick={onClose}>Đóng</button>
-                <button className="btn btn-secondary" onClick={handleCommitOutlineOnly} disabled={hasBlockingIssues}>
-                    <BookmarkPlus size={16} /> Lưu dàn ý
+                <button className="btn btn-secondary" onClick={() => handleCommitOutlineOnly({ force: hasBlockingIssues })}>
+                    <BookmarkPlus size={16} /> {hasBlockingIssues ? 'Lưu dàn ý bất chấp' : 'Lưu dàn ý'}
                 </button>
                 <button className="btn btn-primary" onClick={handleCommit}>
                     <Save size={16} /> Lưu bản nháp vào truyện
