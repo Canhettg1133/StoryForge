@@ -11,6 +11,8 @@ const TRANSLATION_PREVIEW_UPDATE_INTERVAL_MS = 500;
 const TRANSLATION_HISTORY_PERSIST_INTERVAL_MS = 5000;
 const TRANSLATION_HISTORY_PERSIST_CHUNK_STEP = 10;
 const RPD_DASHBOARD_RENDER_INTERVAL_MS = 2000;
+const TRANSLATION_PREVIEW_TAIL_RATIO = 0.35;
+const TRANSLATION_PREVIEW_NOTICE_RESERVED_CHARS = 240;
 let lastRPDDashboardRenderAt = 0;
 
 function buildPromptedChunk(promptText, chunkText) {
@@ -41,38 +43,102 @@ function slicePreviewText(text, maxChars) {
     return sliced;
 }
 
-function buildTranslatedTextPreview(chunksArray, options = {}) {
-    if (!Array.isArray(chunksArray)) return '';
+function slicePreviewTextFromEnd(text, maxChars) {
+    const source = String(text || '');
+    const sliced = source.slice(Math.max(0, source.length - Math.max(0, maxChars)));
+    if (!sliced) return '';
 
-    const pendingLabel = options.pendingLabel || '⏳ Đang dịch';
-    const maxChars = Math.max(1000, Number(options.maxChars) || TRANSLATION_PREVIEW_MAX_CHARS);
+    const firstCode = sliced.charCodeAt(0);
+    if (firstCode >= 0xDC00 && firstCode <= 0xDFFF) {
+        return sliced.slice(1);
+    }
+    return sliced;
+}
+
+function collectPreviewFromStart(chunksArray, pendingLabel, maxChars, endExclusive = chunksArray.length) {
     const parts = [];
     let usedChars = 0;
-    let omittedChunks = 0;
+    let nextIndex = 0;
 
-    for (let idx = 0; idx < chunksArray.length; idx += 1) {
+    for (let idx = 0; idx < endExclusive; idx += 1) {
         const separatorLength = parts.length > 0 ? 2 : 0;
         const text = getTranslatedChunkDisplayText(chunksArray[idx], idx, pendingLabel);
         const nextLength = usedChars + separatorLength + text.length;
 
         if (nextLength > maxChars) {
-            omittedChunks = chunksArray.length - idx;
             const remainingChars = maxChars - usedChars - separatorLength;
             if (remainingChars > 80) {
                 parts.push(slicePreviewText(text, remainingChars));
-                omittedChunks = chunksArray.length - idx - 1;
+                nextIndex = idx + 1;
+            } else {
+                nextIndex = idx;
             }
-            break;
+            return { parts, nextIndex };
         }
 
         parts.push(text);
         usedChars = nextLength;
+        nextIndex = idx + 1;
     }
+
+    return { parts, nextIndex };
+}
+
+function collectPreviewFromEnd(chunksArray, pendingLabel, maxChars, minIndex = 0) {
+    const parts = [];
+    let usedChars = 0;
+    let startIndex = chunksArray.length;
+
+    for (let idx = chunksArray.length - 1; idx >= minIndex; idx -= 1) {
+        const separatorLength = parts.length > 0 ? 2 : 0;
+        const text = getTranslatedChunkDisplayText(chunksArray[idx], idx, pendingLabel);
+        const nextLength = usedChars + separatorLength + text.length;
+
+        if (nextLength > maxChars) {
+            const remainingChars = maxChars - usedChars - separatorLength;
+            if (remainingChars > 80) {
+                parts.unshift(slicePreviewTextFromEnd(text, remainingChars));
+                startIndex = idx;
+            } else {
+                startIndex = idx + 1;
+            }
+            return { parts, startIndex };
+        }
+
+        parts.unshift(text);
+        usedChars = nextLength;
+        startIndex = idx;
+    }
+
+    return { parts, startIndex };
+}
+
+function buildTranslatedTextPreview(chunksArray, options = {}) {
+    if (!Array.isArray(chunksArray)) return '';
+
+    const pendingLabel = options.pendingLabel || '⏳ Đang dịch';
+    const maxChars = Math.max(1000, Number(options.maxChars) || TRANSLATION_PREVIEW_MAX_CHARS);
+    const fullPreview = collectPreviewFromStart(chunksArray, pendingLabel, maxChars);
+    if (fullPreview.nextIndex >= chunksArray.length) {
+        return fullPreview.parts.join('\n\n');
+    }
+
+    const tailBudget = Math.min(
+        Math.max(4000, Math.floor(maxChars * TRANSLATION_PREVIEW_TAIL_RATIO)),
+        Math.max(4000, maxChars - TRANSLATION_PREVIEW_NOTICE_RESERVED_CHARS - 1000)
+    );
+    const headBudget = Math.max(1000, maxChars - tailBudget - TRANSLATION_PREVIEW_NOTICE_RESERVED_CHARS);
+
+    const headPreview = collectPreviewFromStart(chunksArray, pendingLabel, headBudget);
+    const tailPreview = collectPreviewFromEnd(chunksArray, pendingLabel, tailBudget, headPreview.nextIndex);
+    const omittedChunks = Math.max(0, tailPreview.startIndex - headPreview.nextIndex);
+    const parts = [...headPreview.parts];
 
     if (omittedChunks > 0) {
-        parts.push(`[Preview đã rút gọn: còn ${omittedChunks} chunk chưa hiển thị trong ô này. Dữ liệu đầy đủ vẫn được lưu để tải xuống/resume.]`);
+        parts.push(`[Preview đã rút gọn: ẩn ${omittedChunks} chunk ở giữa để giữ phần đầu và đuôi bản dịch. Dữ liệu đầy đủ vẫn được lưu để tải xuống/resume.]`);
     }
 
+    parts.push(...tailPreview.parts);
     return parts.join('\n\n');
 }
 

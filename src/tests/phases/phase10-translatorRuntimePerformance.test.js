@@ -60,6 +60,96 @@ describe('phase10 translator runtime performance', () => {
     expect(emojiPreview.endsWith('\uD83D')).toBe(false);
   });
 
+  it('keeps the final chunk tail visible when previewing a truncated large translation', () => {
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/translation/engine.js',
+    ]);
+
+    const chunks = [
+      `Chunk 1\n${'A'.repeat(90000)}`,
+      `Chunk 2\n${'B'.repeat(90000)}`,
+      `Chunk 3\n${'C'.repeat(40000)}\nTAIL-MARKER-FINAL-CHUNK`,
+    ];
+
+    const preview = context.buildTranslatedTextPreview(chunks, {
+      pendingLabel: 'Đang dịch',
+      maxChars: 120000,
+    });
+
+    expect(preview.length).toBeLessThanOrEqual(125000);
+    expect(preview).toContain('Chunk 1');
+    expect(preview).toContain('TAIL-MARKER-FINAL-CHUNK');
+  });
+
+  it('exports the full translated chunks instead of the capped preview text', async () => {
+    let downloadedBlob = null;
+    let translatedTextValue = '';
+
+    const translatedTextEl = {
+      get value() {
+        return translatedTextValue;
+      },
+      set value(nextValue) {
+        translatedTextValue = String(nextValue);
+      },
+    };
+
+    const anchorEl = {
+      href: '',
+      download: '',
+      click() {},
+    };
+
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/translation/engine.js',
+      'public/translator-runtime/js/ui/progress.js',
+    ], {
+      Blob,
+      URL: {
+        createObjectURL(blob) {
+          downloadedBlob = blob;
+          return 'blob:translator-test';
+        },
+        revokeObjectURL() {},
+      },
+      document: {
+        body: {
+          appendChild() {},
+          removeChild() {},
+        },
+        createElement(tagName) {
+          if (tagName === 'a') return anchorEl;
+          return {};
+        },
+        getElementById(id) {
+          if (id === 'translatedText') return translatedTextEl;
+          return null;
+        },
+      },
+    });
+
+    context.showToast = () => {};
+    context.isTranslating = true;
+    context.originalFileName = 'story.txt';
+    context.translatedChunks = [
+      `Chunk 1\n${'A'.repeat(199950)}`,
+      `Chunk 2\n${'B'.repeat(4000)}\nTAIL-MARKER-FINAL-CHUNK`,
+    ];
+
+    translatedTextEl.value = context.buildTranslatedTextPreview(context.translatedChunks);
+    expect(translatedTextEl.value).not.toBe(
+      context.buildTranslatedTextFromChunks(context.translatedChunks, '⏳ Đang dịch')
+    );
+
+    context.downloadResult();
+
+    expect(downloadedBlob).toBeTruthy();
+    const downloadedText = await downloadedBlob.text();
+    expect(downloadedText).toBe(
+      context.buildTranslatedTextFromChunks(context.translatedChunks, '⏳ Đang dịch')
+    );
+  });
+
   it('keeps translator runtime sources as valid UTF-8 rather than mojibake literals', () => {
     const files = [
       'public/translator-runtime/index.html',

@@ -42,8 +42,22 @@ function formatTime(seconds) {
 // ============================================
 // RESULT ACTIONS
 // ============================================
+function getDownloadableTranslatedText() {
+    const textarea = document.getElementById('translatedText');
+    const text = textarea ? textarea.value : '';
+    const hasChunkData = Array.isArray(translatedChunks) && translatedChunks.length > 0;
+
+    if (isTranslating &&
+        hasChunkData &&
+        typeof buildTranslatedTextFromChunks === 'function') {
+        return buildTranslatedTextFromChunks(translatedChunks, '⏳ Đang dịch');
+    }
+
+    return text;
+}
+
 function copyResult() {
-    const text = document.getElementById('translatedText').value;
+    const text = getDownloadableTranslatedText();
     if (!text) {
         showToast('Không có nội dung để copy!', 'warning');
         return;
@@ -60,7 +74,7 @@ function copyResult() {
 }
 
 function downloadResult() {
-    const text = document.getElementById('translatedText').value;
+    const text = getDownloadableTranslatedText();
     if (!text) {
         showToast('Không có nội dung để tải!', 'warning');
         return;
