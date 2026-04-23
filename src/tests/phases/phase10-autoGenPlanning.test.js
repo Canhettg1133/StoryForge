@@ -615,6 +615,37 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(plans[1].chapter_from).toBe('26');
   });
 
+  it('keeps in-progress milestone end input instead of clamping it to the start while typing', () => {
+    const plans = updateMilestoneChapterPlanSequence([], {
+      milestoneCount: 2,
+      index: 0,
+      field: 'chapter_to',
+      value: '2',
+      defaultStart: 16,
+    });
+
+    expect(plans[0].chapter_from).toBe('16');
+    expect(plans[0].chapter_to).toBe('2');
+    expect(plans[1].chapter_from).toBe('');
+  });
+
+  it('releases auto-generated milestone starts after clearing the previous end', () => {
+    const plans = updateMilestoneChapterPlanSequence([
+      { chapter_from: '16', chapter_to: '16' },
+      { chapter_from: '17', chapter_to: '' },
+    ], {
+      milestoneCount: 2,
+      index: 0,
+      field: 'chapter_to',
+      value: '',
+      defaultStart: 16,
+    });
+
+    expect(plans[0].chapter_from).toBe('16');
+    expect(plans[0].chapter_to).toBe('');
+    expect(plans[1].chapter_from).toBe('');
+  });
+
   it('does not overwrite a manually separated next milestone start', () => {
     const plans = updateMilestoneChapterPlanSequence([
       { chapter_from: '11', chapter_to: '20' },

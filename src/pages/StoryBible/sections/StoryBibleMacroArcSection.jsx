@@ -346,7 +346,7 @@ const StoryBibleMacroArcSection = React.memo(function StoryBibleMacroArcSection(
                           inputMode="numeric"
                           className="input"
                           placeholder="Từ"
-                          value={plan.chapter_from || (index === 0 ? String(planningScopeStart) : '')}
+                          value={plan.chapter_from}
                           onChange={(event) => handleUpdateMilestoneChapterPlan(index, 'chapter_from', event.target.value)}
                           onFocus={selectFieldValue}
                         />
