@@ -28,7 +28,44 @@ import './GeminiProxyGuide.css';
 const PROXY_DASHBOARD_URL = 'https://ag.beijixingxing.com/dashboard';
 const GOOGLE_PERMISSIONS_URL = 'https://myaccount.google.com/permissions';
 const GOOGLE_ACCOUNT_HELP_URL = 'https://support.google.com/accounts/answer/12379384';
+const GEMINI_CLI_AUTH_DOCS_URL = 'https://google-gemini.github.io/gemini-cli/docs/get-started/authentication.html';
+const GEMINI_CLI_TROUBLESHOOTING_URL = 'https://google-gemini.github.io/gemini-cli/docs/troubleshooting.html';
+const GEMINI_CODE_ASSIST_SETUP_URL = 'https://cloud.google.com/gemini/docs/discover/set-up-gemini';
+const GOOGLE_CLOUD_PROJECT_CREATE_URL = 'https://console.cloud.google.com/projectcreate';
+const GOOGLE_CLOUD_API_ENABLE_URL = 'https://console.cloud.google.com/apis/library/cloudaicompanion.googleapis.com';
 const GUIDE_IMAGE_BASE = '/guide/gemini-proxy';
+
+const DISCORD_GUIDE_TEXT_SHORT = `# Setup Gemini Proxy cho StoryForge
+
+Mục tiêu: add CLI/Antigravity -> có quota -> tạo 3 key -> dán vào StoryForge.
+
+## 1. Add CLI
+
+Vào https://ag.beijixingxing.com/dashboard và đăng nhập.
+
+Nếu quota = 0 thì chưa tạo key. Mở **CLI** -> **Get Credential** -> **Obtain via Google OAuth authorization**.
+
+Đăng nhập đúng tài khoản Google muốn add. Login xong copy **nguyên callback URL**, không copy mỗi code. Quay lại dashboard, dán vào **Paste Callback URL**, bấm **Submit to Get Credential**.
+
+Add thành công CLI hoặc Antigravity là đủ. Sau đó kiểm tra quota.
+
+## 2. Lỗi Project not found / GOOGLE_CLOUD_PROJECT
+
+Lỗi này thường nằm ở Gemini CLI/OAuth/Google Cloud, không phải StoryForge.
+
+Checklist: đúng tài khoản Google -> gỡ quyền cũ tại https://myaccount.google.com/permissions -> nếu Google yêu cầu project thì tạo/chọn project tại https://console.cloud.google.com/projectcreate -> copy đúng **Project ID** -> bật Gemini for Google Cloud API tại https://console.cloud.google.com/apis/library/cloudaicompanion.googleapis.com -> chờ vài phút -> lấy callback mới rồi submit lại.
+
+Nếu chạy Gemini CLI local trên Windows PowerShell: set \`$env:GOOGLE_CLOUD_PROJECT="your-project-id"\` và \`$env:GOOGLE_CLOUD_PROJECT_ID="your-project-id"\`, rồi chạy \`gemini\`.
+
+## 3. Dán key vào StoryForge
+
+Khi dashboard đã có quota, vào **Key Management** -> **Create API Key**. Nên tạo **3 key** để StoryForge xoay vòng ổn định hơn. Không gửi key công khai lên Discord.
+
+Trong StoryForge: **Settings / Cài đặt** -> **API Keys** -> **Gemini Proxy**.
+
+Dán 3 key, chọn provider **Gemini Proxy**, giữ Proxy URL \`/api/proxy\`, chọn chất lượng **Cân bằng**, rồi bấm **Test**.
+
+Nếu vẫn lỗi: kiểm tra key thiếu ký tự, đúng khu Gemini Proxy, đúng provider. Nếu dịch bị dừng, giảm số luồng hoặc thêm key.`;
 
 const GUIDE_IMAGE_SLOTS = {
   dashboardCli: {
@@ -170,6 +207,7 @@ function ScreenshotGroup({ shots, onOpen }) {
 export default function GeminiProxyGuide() {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
+  const [copiedDiscordGuide, setCopiedDiscordGuide] = useState(false);
   const [activeShot, setActiveShot] = useState(null);
 
   const setupState = useMemo(() => {
@@ -205,6 +243,16 @@ export default function GeminiProxyGuide() {
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
       setCopied(false);
+    }
+  };
+
+  const handleCopyDiscordGuide = async () => {
+    try {
+      await navigator.clipboard.writeText(DISCORD_GUIDE_TEXT_SHORT);
+      setCopiedDiscordGuide(true);
+      window.setTimeout(() => setCopiedDiscordGuide(false), 1800);
+    } catch {
+      setCopiedDiscordGuide(false);
     }
   };
 
@@ -459,6 +507,92 @@ export default function GeminiProxyGuide() {
               {'.'}
             </li>
           </ol>
+        </StepCard>
+
+        <StepCard index="8.1" title={'L\u1ed7i Project not found / GOOGLE_CLOUD_PROJECT khi add CLI'} icon={AlertTriangle}>
+          <p>
+            {'T\u00f4i \u0111\u00e3 ki\u1ec3m tra th\u00eam t\u00e0i li\u1ec7u Gemini CLI v\u00e0 c\u00e1c issue c\u00f4ng khai. L\u1ed7i ki\u1ec3u '}
+            <strong>Project not found</strong>
+            {' ho\u1eb7c '}
+            <strong>This account requires setting GOOGLE_CLOUD_PROJECT</strong>
+            {' th\u01b0\u1eddng kh\u00f4ng n\u1eb1m \u1edf StoryForge. N\u00f3 \u0111\u1ebfn t\u1eeb lu\u1ed3ng Google OAuth / Gemini CLI / Gemini Code Assist: t\u00e0i kho\u1ea3n \u0111ang c\u1ea7n m\u1ed9t Google Cloud Project ID h\u1ee3p l\u1ec7, project c\u0169 \u0111\u00e3 b\u1ecb sai, ho\u1eb7c API/quy\u1ec1n IAM ch\u01b0a s\u1eb5n s\u00e0ng.'}
+          </p>
+          <ol className="gemini-guide-list">
+            <li>{'Ki\u1ec3m tra \u0111\u00fang t\u00e0i kho\u1ea3n Google. N\u1ebfu tr\u00ecnh duy\u1ec7t \u0111ang login nhi\u1ec1u account, h\u00e3y ch\u1ecdn \u0111\u00fang account c\u1ea7n add.'}</li>
+            <li>
+              {'G\u1ee1 quy\u1ec1n OAuth c\u0169 \u1edf '}
+              <a className="gemini-guide-link" href={GOOGLE_PERMISSIONS_URL} target="_blank" rel="noreferrer">
+                Google Permissions
+              </a>
+              {' n\u1ebfu tr\u01b0\u1edbc \u0111\u00f3 \u0111\u00e3 add nh\u1ea7m Gemini CLI, Antigravity ho\u1eb7c t\u00e0i kho\u1ea3n kh\u00e1c.'}
+            </li>
+            <li>
+              {'N\u1ebfu b\u1ecb y\u00eau c\u1ea7u project, t\u1ea1o ho\u1eb7c ch\u1ecdn project \u1edf '}
+              <a className="gemini-guide-link" href={GOOGLE_CLOUD_PROJECT_CREATE_URL} target="_blank" rel="noreferrer">
+                Google Cloud Project Create
+              </a>
+              {'. Copy '}
+              <strong>Project ID</strong>
+              {', kh\u00f4ng copy Project name. Project ID th\u01b0\u1eddng c\u00f3 d\u1ea1ng '}
+              <code>my-project-123456</code>
+              {'.'}
+            </li>
+            <li>
+              {'B\u1eadt '}
+              <a className="gemini-guide-link" href={GOOGLE_CLOUD_API_ENABLE_URL} target="_blank" rel="noreferrer">
+                Gemini for Google Cloud API
+              </a>
+              {' cho project \u0111\u00f3. T\u00e0i li\u1ec7u Google c\u0169ng n\u00eau c\u00f3 th\u1ec3 b\u1eadt b\u1eb1ng '}
+              <code>gcloud services enable cloudaicompanion.googleapis.com --project PROJECT_ID</code>
+              {'.'}
+            </li>
+            <li>{'Ch\u1edd 2-5 ph\u00fat sau khi b\u1eadt API/quy\u1ec1n, sau \u0111\u00f3 l\u1ea5y callback m\u1edbi. Kh\u00f4ng d\u00f9ng l\u1ea1i callback URL c\u0169.'}</li>
+            <li>{'N\u1ebfu d\u00f9ng Google Workspace, account d\u01b0\u1edbi 18 tu\u1ed5i, ngo\u00e0i v\u00f9ng h\u1ed7 tr\u1ee3, ho\u1eb7c g\u00f3i Gemini Code Assist/Developer Program, c\u00f3 th\u1ec3 ph\u1ea3i nh\u1edd admin c\u1ea5p project, b\u1eadt API v\u00e0 c\u1ea5p IAM.'}</li>
+          </ol>
+          <div className="gemini-guide-note is-warning">
+            <AlertTriangle size={16} />
+            <span>
+              {'N\u1ebfu l\u1ed7i hi\u1ec7n ngay sau khi submit callback tr\u00ean dashboard proxy, h\u00e3y coi \u0111\u00f3 l\u00e0 l\u1ed7i auth/project c\u1ee7a t\u00e0i kho\u1ea3n Google. S\u1eeda \u0111\u00fang project/quy\u1ec1n tr\u01b0\u1edbc, r\u1ed3i quay l\u1ea1i dashboard proxy l\u1ea5y callback m\u1edbi.'}
+            </span>
+          </div>
+          <pre className="gemini-guide-code-block">
+            <code>{`# Windows PowerShell - chỉ dùng nếu bạn chạy Gemini CLI local
+$env:GOOGLE_CLOUD_PROJECT="your-project-id"
+$env:GOOGLE_CLOUD_PROJECT_ID="your-project-id"
+gemini
+
+# Lưu lâu dài trên Windows, sau đó mở terminal mới
+setx GOOGLE_CLOUD_PROJECT "your-project-id"
+setx GOOGLE_CLOUD_PROJECT_ID "your-project-id"`}</code>
+          </pre>
+          <div className="gemini-guide-action-row">
+            <a className="btn btn-ghost" href={GEMINI_CLI_AUTH_DOCS_URL} target="_blank" rel="noreferrer">
+              <ExternalLink size={14} /> {'Gemini CLI Auth docs'}
+            </a>
+            <a className="btn btn-ghost" href={GEMINI_CLI_TROUBLESHOOTING_URL} target="_blank" rel="noreferrer">
+              <ExternalLink size={14} /> {'Troubleshooting'}
+            </a>
+            <a className="btn btn-ghost" href={GEMINI_CODE_ASSIST_SETUP_URL} target="_blank" rel="noreferrer">
+              <ExternalLink size={14} /> {'B\u1eadt Gemini for Cloud API'}
+            </a>
+          </div>
+        </StepCard>
+
+        <StepCard index="9" title={'B\u00e0i vi\u1ebft \u0111\u0103ng Discord'} icon={MessageSquare}>
+          <p>
+            {'\u0110\u00e2y l\u00e0 b\u1ea3n Markdown \u0111\u00e3 vi\u1ebft d\u00e0i h\u01a1n \u0111\u1ec3 \u0111\u0103ng Discord. N\u1ed9i dung n\u00e0y gi\u1eef nguy\u00ean flow c\u0169 trong trang guide, ch\u1ec9 b\u1ed5 sung ph\u1ea7n x\u1eed l\u00fd l\u1ed7i project v\u00e0 checklist debug.'}
+          </p>
+          <div className="gemini-guide-action-row">
+            <button className="btn btn-secondary" type="button" onClick={handleCopyDiscordGuide}>
+              <Copy size={14} /> {copiedDiscordGuide ? '\u0110\u00e3 copy b\u00e0i Discord' : 'Copy b\u00e0i Discord'}
+            </button>
+          </div>
+          <textarea
+            className="gemini-guide-discord-copy"
+            readOnly
+            value={DISCORD_GUIDE_TEXT_SHORT}
+            aria-label="B\u00e0i vi\u1ebft Discord h\u01b0\u1edbng d\u1eabn Gemini Proxy"
+          />
         </StepCard>
 
         <section className="settings-section card animate-slide-up gemini-guide-faq">
