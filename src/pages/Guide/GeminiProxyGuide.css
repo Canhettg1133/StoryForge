@@ -46,8 +46,7 @@
   gap: 16px;
 }
 
-.gemini-proxy-guide-page .gemini-guide-code-block,
-.gemini-proxy-guide-page .gemini-guide-discord-copy {
+.gemini-proxy-guide-page .gemini-guide-code-block {
   width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -57,18 +56,9 @@
   font-size: 12px;
   line-height: 1.6;
   overflow: auto;
-}
-
-.gemini-proxy-guide-page .gemini-guide-code-block {
   margin: 0;
   padding: var(--space-3);
   white-space: pre-wrap;
-}
-
-.gemini-proxy-guide-page .gemini-guide-discord-copy {
-  min-height: 420px;
-  padding: var(--space-3);
-  resize: vertical;
 }
 
 .gemini-proxy-guide-page .gemini-guide-shot-grid.is-2 {

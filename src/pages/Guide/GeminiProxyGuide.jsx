@@ -35,38 +35,6 @@ const GOOGLE_CLOUD_PROJECT_CREATE_URL = 'https://console.cloud.google.com/projec
 const GOOGLE_CLOUD_API_ENABLE_URL = 'https://console.cloud.google.com/apis/library/cloudaicompanion.googleapis.com';
 const GUIDE_IMAGE_BASE = '/guide/gemini-proxy';
 
-const DISCORD_GUIDE_TEXT_SHORT = `# Setup Gemini Proxy cho StoryForge
-
-Mục tiêu: add CLI/Antigravity -> có quota -> tạo 3 key -> dán vào StoryForge.
-
-## 1. Add CLI
-
-Vào https://ag.beijixingxing.com/dashboard và đăng nhập.
-
-Nếu quota = 0 thì chưa tạo key. Mở **CLI** -> **Get Credential** -> **Obtain via Google OAuth authorization**.
-
-Đăng nhập đúng tài khoản Google muốn add. Login xong copy **nguyên callback URL**, không copy mỗi code. Quay lại dashboard, dán vào **Paste Callback URL**, bấm **Submit to Get Credential**.
-
-Add thành công CLI hoặc Antigravity là đủ. Sau đó kiểm tra quota.
-
-## 2. Lỗi Project not found / GOOGLE_CLOUD_PROJECT
-
-Lỗi này thường nằm ở Gemini CLI/OAuth/Google Cloud, không phải StoryForge.
-
-Checklist: đúng tài khoản Google -> gỡ quyền cũ tại https://myaccount.google.com/permissions -> nếu Google yêu cầu project thì tạo/chọn project tại https://console.cloud.google.com/projectcreate -> copy đúng **Project ID** -> bật Gemini for Google Cloud API tại https://console.cloud.google.com/apis/library/cloudaicompanion.googleapis.com -> chờ vài phút -> lấy callback mới rồi submit lại.
-
-Nếu chạy Gemini CLI local trên Windows PowerShell: set \`$env:GOOGLE_CLOUD_PROJECT="your-project-id"\` và \`$env:GOOGLE_CLOUD_PROJECT_ID="your-project-id"\`, rồi chạy \`gemini\`.
-
-## 3. Dán key vào StoryForge
-
-Khi dashboard đã có quota, vào **Key Management** -> **Create API Key**. Nên tạo **3 key** để StoryForge xoay vòng ổn định hơn. Không gửi key công khai lên Discord.
-
-Trong StoryForge: **Settings / Cài đặt** -> **API Keys** -> **Gemini Proxy**.
-
-Dán 3 key, chọn provider **Gemini Proxy**, giữ Proxy URL \`/api/proxy\`, chọn chất lượng **Cân bằng**, rồi bấm **Test**.
-
-Nếu vẫn lỗi: kiểm tra key thiếu ký tự, đúng khu Gemini Proxy, đúng provider. Nếu dịch bị dừng, giảm số luồng hoặc thêm key.`;
-
 const GUIDE_IMAGE_SLOTS = {
   dashboardCli: {
     id: 'dashboard-cli',
@@ -207,7 +175,6 @@ function ScreenshotGroup({ shots, onOpen }) {
 export default function GeminiProxyGuide() {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
-  const [copiedDiscordGuide, setCopiedDiscordGuide] = useState(false);
   const [activeShot, setActiveShot] = useState(null);
 
   const setupState = useMemo(() => {
@@ -243,16 +210,6 @@ export default function GeminiProxyGuide() {
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
       setCopied(false);
-    }
-  };
-
-  const handleCopyDiscordGuide = async () => {
-    try {
-      await navigator.clipboard.writeText(DISCORD_GUIDE_TEXT_SHORT);
-      setCopiedDiscordGuide(true);
-      window.setTimeout(() => setCopiedDiscordGuide(false), 1800);
-    } catch {
-      setCopiedDiscordGuide(false);
     }
   };
 
@@ -576,23 +533,6 @@ setx GOOGLE_CLOUD_PROJECT_ID "your-project-id"`}</code>
               <ExternalLink size={14} /> {'B\u1eadt Gemini for Cloud API'}
             </a>
           </div>
-        </StepCard>
-
-        <StepCard index="9" title={'B\u00e0i vi\u1ebft \u0111\u0103ng Discord'} icon={MessageSquare}>
-          <p>
-            {'\u0110\u00e2y l\u00e0 b\u1ea3n Markdown \u0111\u00e3 vi\u1ebft d\u00e0i h\u01a1n \u0111\u1ec3 \u0111\u0103ng Discord. N\u1ed9i dung n\u00e0y gi\u1eef nguy\u00ean flow c\u0169 trong trang guide, ch\u1ec9 b\u1ed5 sung ph\u1ea7n x\u1eed l\u00fd l\u1ed7i project v\u00e0 checklist debug.'}
-          </p>
-          <div className="gemini-guide-action-row">
-            <button className="btn btn-secondary" type="button" onClick={handleCopyDiscordGuide}>
-              <Copy size={14} /> {copiedDiscordGuide ? '\u0110\u00e3 copy b\u00e0i Discord' : 'Copy b\u00e0i Discord'}
-            </button>
-          </div>
-          <textarea
-            className="gemini-guide-discord-copy"
-            readOnly
-            value={DISCORD_GUIDE_TEXT_SHORT}
-            aria-label="B\u00e0i vi\u1ebft Discord h\u01b0\u1edbng d\u1eabn Gemini Proxy"
-          />
         </StepCard>
 
         <section className="settings-section card animate-slide-up gemini-guide-faq">
