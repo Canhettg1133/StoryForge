@@ -26,6 +26,7 @@ import '../Settings/Settings.css';
 import './ProjectChat.css';
 import useProjectStore from '../../stores/projectStore';
 import aiService from '../../services/ai/client';
+import { buildProjectContentModeAiOptions } from '../../features/projectContentMode/projectContentMode.js';
 import modelRouter, {
   DIRECT_MODELS,
   PROXY_MODELS,
@@ -215,6 +216,13 @@ export function buildThreadConfigPatch(thread = {}, {
       || buildDefaultSystemPrompt(activeThreadMode, projectScopeEnabled ? project : null),
     ...getThreadOverridePatch(thread),
   };
+}
+
+export function buildChatRequestOptions({ routeOptions = {}, project } = {}) {
+  return buildProjectContentModeAiOptions(project, {
+    routeOptions,
+    chatSafetyOff: true,
+  });
 }
 
 function getRoutingConfigStamp() {
@@ -782,8 +790,10 @@ export default function ProjectChat() {
         taskType: TASK_TYPES.FREE_PROMPT,
         messages: buildConversationMessages(normalizedUserContent, thread, historyMessages),
         stream: true,
-        chatSafetyOff: true,
-        routeOptions,
+        ...buildChatRequestOptions({
+          routeOptions,
+          project: projectScopeEnabled ? currentProject : null,
+        }),
         onToken: (_chunk, full) => {
           replaceTempMessage(tempAssistantId, {
             id: tempAssistantId,
@@ -903,8 +913,10 @@ export default function ProjectChat() {
         taskType: TASK_TYPES.FREE_PROMPT,
         messages: buildConversationMessages(userContent, currentThread),
         stream: true,
-        chatSafetyOff: true,
-        routeOptions,
+        ...buildChatRequestOptions({
+          routeOptions,
+          project: projectScopeEnabled ? currentProject : null,
+        }),
         onToken: (_chunk, full) => {
           replaceTempMessage(tempAssistantId, {
             id: tempAssistantId,

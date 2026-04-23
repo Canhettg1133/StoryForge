@@ -23,6 +23,8 @@ import {
 } from '../../services/ai/promptBuilder';
 import { PROJECT_PROMPT_GROUPS } from '../../services/ai/promptManagerMeta';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
+import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
+import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
 
 function parsePromptTemplates(rawValue) {
   if (!rawValue) return {};
@@ -304,6 +306,7 @@ export default function ProjectPromptManager() {
     loadProject,
     updateProjectSettings,
   } = useProjectStore();
+  const { contentMode, setContentMode } = useProjectContentMode();
 
   const [overrideDraft, setOverrideDraft] = useState({});
   const [coreDrafts, setCoreDrafts] = useState({});
@@ -513,6 +516,14 @@ export default function ProjectPromptManager() {
 
   return (
     <div className="settings-page prompt-manager-page" id="prompt-manager-top">
+      <section className="settings-section card animate-slide-up prompt-manager-content-mode-card">
+        <ProjectContentModeControl
+          surface="prompt"
+          mode={contentMode}
+          onChange={setContentMode}
+        />
+      </section>
+
       <section className="settings-section card animate-slide-up prompt-manager-toolbar-card">
         <div className="prompt-toolbar">
           <div className="prompt-toolbar__search">

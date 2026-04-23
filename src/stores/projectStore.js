@@ -400,6 +400,8 @@ const useProjectStore = create((set, get) => ({
       target_length_type: data.target_length_type || 'unset',
       ultimate_goal: data.ultimate_goal || '',
       milestones: data.milestones || '[]',
+      nsfw_mode: !!data.nsfw_mode,
+      super_nsfw_mode: !!data.super_nsfw_mode,
       prompt_templates: initialPromptTemplates, // Writing DNA is injected here at project creation.
       created_at: now,
       updated_at: now,

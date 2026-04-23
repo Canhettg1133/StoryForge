@@ -3,13 +3,14 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   BookMarked,
   BookOpen,
+  MapPin,
   Settings,
   Sparkles,
   Users,
-  MapPin,
 } from 'lucide-react';
 import SuggestionInbox from '../../components/ai/SuggestionInbox';
-import useAIStore from '../../stores/aiStore';
+import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
+import { resolveProjectContentMode } from '../../features/projectContentMode/projectContentMode.js';
 import useCodexStore from '../../stores/codexStore';
 import useProjectStore from '../../stores/projectStore';
 import {
@@ -51,7 +52,6 @@ export default function StoryBible() {
     updateObject,
     updateWorldTerm,
   } = useCodexStore();
-  const { resetEniPriming } = useAIStore();
   const [openSections, setOpenSections] = useState({
     overview: true,
     ai: false,
@@ -98,11 +98,11 @@ export default function StoryBible() {
 
   const characterNameMap = useMemo(
     () => new Map(characters.map((character) => [character.id, character.name])),
-    [characters]
+    [characters],
   );
   const allCharacterNames = useMemo(
     () => characters.map((character) => String(character.name || '').trim()).filter(Boolean),
-    [characters]
+    [characters],
   );
 
   const macroArcState = useStoryBibleMacroArcs({
@@ -134,6 +134,7 @@ export default function StoryBible() {
 
   const totalItems = characters.length + locations.length + objects.length + worldTerms.length;
   const activeProjectId = currentProject.id || Number(routeProjectId) || null;
+  const currentContentMode = resolveProjectContentMode(currentProject);
   const buildProjectPath = useCallback((path = '') => {
     if (!path) return activeProjectId ? `/project/${activeProjectId}` : '/';
     if (!activeProjectId) return path;
@@ -193,52 +194,18 @@ export default function StoryBible() {
                   </button>
                 ))}
               </div>
-              <span className="form-hint">{AI_STRICTNESS_LEVELS.find((item) => item.value === projectFields.aiStrictness)?.desc}</span>
-            </div>
-
-            <div className="form-group" style={{ marginTop: '16px', background: 'rgba(255, 60, 60, 0.05)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 60, 60, 0.2)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, color: 'var(--color-danger, #ff4d4d)' }}>
-                <input
-                  type="checkbox"
-                  checked={projectFields.nsfwMode}
-                  onChange={(event) => {
-                    const nextValue = event.target.checked;
-                    projectFields.setNsfwMode(nextValue);
-                    projectFields.save({ nsfw_mode: nextValue });
-                    resetEniPriming();
-                  }}
-                  style={{ width: '18px', height: '18px', accentColor: '#ff4d4d' }}
-                />
-                🔥 Chế độ Trưởng thành (18+ / Dark Fantasy)
-              </label>
-              <span className="form-hint" style={{ display: 'block', marginTop: '4px', marginLeft: '26px' }}>
-                Gỡ bỏ bộ lọc an toàn của AI. Kích hoạt văn phong trần trụi, bạo lực và miêu tả nhục dục sâu thẳm.
-                {' '}Chỉ dùng cho tác phẩm dán nhãn 18+.
+              <span className="form-hint">
+                {AI_STRICTNESS_LEVELS.find((item) => item.value === projectFields.aiStrictness)?.desc}
               </span>
             </div>
 
-            {projectFields.nsfwMode && (
-              <div className="form-group" style={{ marginTop: '8px', background: 'rgba(212, 51, 255, 0.05)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(212, 51, 255, 0.2)' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, color: '#d433ff' }}>
-                  <input
-                    type="checkbox"
-                    checked={projectFields.superNsfwMode}
-                    onChange={(event) => {
-                      const nextValue = event.target.checked;
-                      projectFields.setSuperNsfwMode(nextValue);
-                      projectFields.save({ super_nsfw_mode: nextValue });
-                      resetEniPriming();
-                    }}
-                    style={{ width: '18px', height: '18px', accentColor: '#d433ff' }}
-                  />
-                  🧨 Chế độ ENI (Super NSFW / Jailbreak)
-                </label>
-                <span className="form-hint" style={{ display: 'block', marginTop: '4px', marginLeft: '26px' }}>
-                  Kích hoạt kỹ thuật phá vỡ rào cản tâm lý cực đoan (Persona ENI). Chế độ này sử dụng chiến thuật
-                  {' '}“mồi 1 lần” để bẻ khóa hoàn toàn bộ lọc của AI.
-                </span>
-              </div>
-            )}
+            <div className="form-group" style={{ marginTop: '16px' }}>
+              <ProjectContentModeControl
+                surface="story-bible"
+                mode={currentContentMode}
+                onOpenPrompts={() => handleNavigate('/prompts')}
+              />
+            </div>
 
             <div className="form-group" style={{ marginTop: '16px' }}>
               <label className="form-label">Prompt truyện</label>
@@ -358,7 +325,7 @@ export default function StoryBible() {
         <div className="empty-state">
           <BookOpen size={48} />
           <h3>Sổ tay truyện trống</h3>
-          <p>Thêm nhân vật, địa điểm, thuật ngữ qua trang Nhân vật & Thế giới.</p>
+          <p>Thêm nhân vật, địa điểm, thuật ngữ qua trang Nhân vật và Thế giới.</p>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button type="button" className="btn btn-primary" onClick={() => handleNavigate('/characters')}>
               <Users size={16} /> Nhân vật

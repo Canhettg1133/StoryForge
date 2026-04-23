@@ -50,6 +50,11 @@ import {
   Trash2, Globe, Eye, MessageSquare, Plus, GitPullRequest,
   Pencil, Landmark, Flag, TrendingUp, Dna,
 } from 'lucide-react';
+import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
+import {
+  buildProjectContentModePatch,
+  PROJECT_CONTENT_MODES,
+} from '../../features/projectContentMode/projectContentMode.js';
 import './ProjectWizard.css';
 
 const STEPS = ['Ý tưởng', 'AI đang tạo...', 'Xem & Duyệt'];
@@ -268,6 +273,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE['tien_hiep'] || 'tien_hiep');
   const [synopsis, setSynopsis] = useState('');
   const [storyStructure, setStoryStructure] = useState('');
+  const [contentMode, setContentMode] = useState(PROJECT_CONTENT_MODES.SAFE);
 
   // Phase 5: Pacing Fields
   const [targetLength, setTargetLength] = useState(0);
@@ -749,6 +755,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
         target_length_type: targetLengthType,
         ultimate_goal: ultimateGoal,
         milestones: JSON.stringify(milestonesInfo),
+        ...buildProjectContentModePatch(contentMode),
         skipFirstChapter: true,
       });
 
@@ -978,6 +985,14 @@ Chỉ trả về JSON, không thêm gì khác.`,
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className="form-group">
+              <ProjectContentModeControl
+                surface="wizard"
+                mode={contentMode}
+                onChange={setContentMode}
+              />
             </div>
 
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>

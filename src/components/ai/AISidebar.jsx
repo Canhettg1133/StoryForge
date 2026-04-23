@@ -24,6 +24,12 @@ import {
   Replace,
   Bookmark,
 } from 'lucide-react';
+import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
+import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
+import {
+  CONTENT_MODE_QUICK_ACTION_ID,
+  getWriterQuickActionOrder,
+} from './quickActionLayout.js';
 import './AISidebar.css';
 
 const PROSE_INSERT_TASKS = ['continue', 'free_prompt'];
@@ -41,11 +47,12 @@ const QUICK_ACTIONS = [
   { id: 'continue', icon: PenTool, label: 'Viết tiếp', taskFn: 'continueWriting', needsText: true, needsGuidance: true, placeholder: 'VD: "Nhân vật gặp phục kích", "Chuyển cảnh sang nhân vật phụ"...' },
   { id: 'rewrite', icon: RefreshCw, label: 'Viết lại', taskFn: 'rewriteText', needsSelection: true, needsGuidance: true, placeholder: 'VD: "Thêm drama hơn", "Giọng văn trang trọng hơn"...' },
   { id: 'expand', icon: Maximize2, label: 'Mở rộng', taskFn: 'expandText', needsSelection: true, needsGuidance: true, placeholder: 'VD: "Mở rộng phần chiến đấu", "Thêm nội tâm nhân vật"...' },
-  { id: 'plot', icon: Lightbulb, label: 'Gợi ý plot', taskFn: 'suggestPlot', needsText: true },
+  { id: 'plot', icon: Lightbulb, label: 'Gợi ý tình tiết', taskFn: 'suggestPlot', needsText: true },
   { id: 'outline', icon: MapIcon, label: 'Dan y chuong', taskFn: 'outlineChapter', needsText: false },
   { id: 'extract', icon: Sparkles, label: 'Trích xuất', taskFn: 'extractTerms', needsText: true },
   { id: 'conflict', icon: ShieldAlert, label: 'Check Mâu Thuẫn', taskFn: 'checkConflict', needsText: true, isCustom: true },
 ];
+const QUICK_ACTIONS_BY_ID = Object.fromEntries(QUICK_ACTIONS.map((action) => [action.id, action]));
 
 function buildPlotSuggestionTitle(text, fallbackIndex = 0) {
   const cleaned = String(text || '')
@@ -311,6 +318,7 @@ export default function AISidebar({
     activeChapterId,
     updateChapter,
   } = useProjectStore();
+  const { contentMode, setContentMode } = useProjectContentMode();
 
   const [customPrompt, setCustomPrompt] = useState('');
   const [copied, setCopied] = useState(false);
@@ -733,7 +741,20 @@ export default function AISidebar({
 
   const renderQuickActions = () => (
     <div className="ai-quick-actions" ref={quickActionsRef}>
-      {QUICK_ACTIONS.map((action) => {
+      {getWriterQuickActionOrder(isMobileLayout).map((actionId) => {
+        if (actionId === CONTENT_MODE_QUICK_ACTION_ID) {
+          return (
+            <ProjectContentModeControl
+              key={CONTENT_MODE_QUICK_ACTION_ID}
+              surface="writer"
+              mode={contentMode}
+              onChange={setContentMode}
+            />
+          );
+        }
+
+        const action = QUICK_ACTIONS_BY_ID[actionId];
+        if (!action) return null;
         const isActive = activeAction === action.id && (isStreaming || isCheckingConflict);
         return (
           <button
@@ -762,7 +783,7 @@ export default function AISidebar({
     <div className="ai-guidance-panel">
       <div className="ai-guidance-header">
         <Lightbulb size={14} />
-        <span>Gợi ý plot</span>
+        <span>Gợi ý tình tiết</span>
         <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowPlotManager(false)}>
           <X size={14} />
         </button>
@@ -815,7 +836,7 @@ export default function AISidebar({
 
     const showPlotAssist = pendingAction.id === 'continue' && plotSuggestions.length > 0;
     const isPlotAssistExpanded = showPlotAssist && showPlotAssistPicker;
-    const plotAssistLabel = `Co ${plotSuggestions.length} huong plot da luu cho chuong nay`;
+    const plotAssistLabel = `Có ${plotSuggestions.length} gợi ý tình tiết đã lưu cho chương này`;
     const guidancePanelClassName = [
       'ai-guidance-panel',
       !scopedHasOutput ? 'ai-guidance-panel--expanded' : '',
@@ -854,7 +875,7 @@ export default function AISidebar({
                   setPlotSuggestions([]);
                   clearPersistedPlotSuggestions();
                 }}
-                title="Xóa gợi ý plot"
+                title="Xóa gợi ý tình tiết"
                 type="button"
               >
                 <Trash2 size={11} />

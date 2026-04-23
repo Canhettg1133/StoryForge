@@ -2,10 +2,36 @@
   max-width: 1220px;
 }
 
+.prompt-manager-content-mode-card {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 14px;
+  border-color: color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 28%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 38%),
+    var(--color-bg-secondary);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.14);
+}
+
+.prompt-manager-content-mode-card::after {
+  content: '';
+  position: absolute;
+  inset: auto 22px 0 22px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-accent) 28%, var(--color-border)), transparent);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .prompt-manager-toolbar-card {
   position: sticky;
   top: 0;
   z-index: 12;
+  border-color: color-mix(in srgb, var(--color-accent) 10%, var(--color-border));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 34%),
+    color-mix(in srgb, var(--color-bg-secondary) 94%, transparent);
   backdrop-filter: blur(10px);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.16);
 }
@@ -439,6 +465,10 @@
   .project-mobile-shell .prompt-manager-page__toolbar .btn {
     flex: 1 1 100%;
     justify-content: center;
+  }
+
+  .prompt-manager-content-mode-card {
+    margin-bottom: 10px;
   }
 
   .prompt-manager-toolbar-card,

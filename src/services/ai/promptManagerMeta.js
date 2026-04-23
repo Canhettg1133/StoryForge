@@ -290,6 +290,13 @@ export const PROJECT_PROMPT_GROUPS = [
         commonInputs: 'Các từ cấm, cụm sáo, cụm AI hay lặp hoặc những biểu đạt phá giọng truyện.',
         expectedOutput: 'Văn bản sạch hơn, bớt chất AI hơn và gần gu người viết hơn.',
       },
+    ],
+  },
+  {
+    key: 'nsfw',
+    title: 'NSFW và ENI',
+    summary: 'Nhóm prompt dành riêng cho nội dung 18+, ENI và các cảnh thân mật khi project bật chế độ nội dung trưởng thành.',
+    items: [
       {
         key: 'nsfw_system_prompt',
         label: 'Luật nền NSFW',
