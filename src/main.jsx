@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { inject } from '@vercel/analytics';
 import App from './App';
 import { initStorage } from './services/db/storage';
 
@@ -7,6 +8,8 @@ import { initStorage } from './services/db/storage';
 import './styles/index.css';
 import './styles/animations.css';
 import './styles/components.css';
+
+inject();
 
 // Initialize theme
 const savedTheme = localStorage.getItem('sf-theme') || 'dark';
