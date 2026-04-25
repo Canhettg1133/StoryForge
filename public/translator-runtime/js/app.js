@@ -37,45 +37,57 @@ const TRANSLATOR_PROMPT_SUPPLEMENTS = [
     {
         key: 'editing-boundary',
         pattern: /uu tien trung thanh truoc|khong tu them y nghia|chi lam muot o muc cau chu/i,
-        block: '\n\n[YEU CAU BAT BUOC VE MUC DO BIEN TAP]\n- Chi lam muot o muc cau chu, ngu phap, va do tu nhien cua tieng Viet.\n- KHONG tu them y nghia moi, cam xuc ngam, subtext, hoac sac thai ma ban convert khong co ro rang.\n- KHONG tu y nang giong van len qua hoa my neu doan goc dang ngan, lanh, truc tiep, hoac thien ve thong tin.\n- Uu tien trung thanh truoc, muot sau.\n',
+        block: '\n\n[YÊU CẦU BẮT BUỘC VỀ MỨC ĐỘ BIÊN TẬP]\n- Chỉ làm mượt ở mức câu chữ, ngữ pháp và độ tự nhiên của tiếng Việt.\n- KHÔNG tự thêm ý nghĩa mới, cảm xúc ngầm, subtext hoặc sắc thái mà bản convert không có rõ ràng.\n- KHÔNG tự ý nâng giọng văn lên quá hoa mỹ nếu đoạn gốc đang ngắn, lạnh, trực tiếp hoặc thiên về thông tin.\n- Ưu tiên trung thành trước, mượt sau.\n',
     },
     {
         key: 'character-name-consistency',
         pattern: /khong tu y doi ten nhan vat|giu xuyen suot cach goi|ten nhan vat va xung ho/i,
-        block: '\n\n[YEU CAU BAT BUOC VE TEN NHAN VAT VA XUNG HO]\n- Neu da chon mot cach goi, phien am, ten rieng, hoac xung ho cho nhan vat thi phai giu xuyen suot.\n- KHONG tu y doi ten kieu Lam Phong -> Lin Feng, han -> cau -> y chi de cau van nghe muot hon.\n- Chi duoc doi xung ho khi van canh that su thay doi vai ve, quan he, hoac diem nhin.\n- Neu ten hoac cach goi con mo ho, uu tien giu theo lan xuat hien dau tien trong doan/chapter hien tai.\n',
+        block: '\n\n[YÊU CẦU BẮT BUỘC VỀ TÊN NHÂN VẬT VÀ XƯNG HÔ]\n- Nếu đã chọn một cách gọi, phiên âm, tên riêng hoặc xưng hô cho nhân vật thì phải giữ xuyên suốt.\n- KHÔNG tự ý đổi tên kiểu Lâm Phong -> Lin Feng, hắn -> cậu -> y chỉ để câu văn nghe mượt hơn.\n- Chỉ được đổi xưng hô khi văn cảnh thật sự thay đổi vai vế, quan hệ hoặc điểm nhìn.\n- Nếu tên hoặc cách gọi còn mơ hồ, ưu tiên giữ theo lần xuất hiện đầu tiên trong đoạn/chapter hiện tại.\n',
     },
     {
         key: 'han-viet-consistency',
         pattern: /han-viet|pinyin|viet hoa nua mua|mon phai, cong phap, canh gioi/i,
-        block: '\n\n[YEU CAU BAT BUOC VE HAN-VIET VA THUAT NGU]\n- KHONG tron Han-Viet va pinyin trong cung mot truyen/doan neu prompt hien tai khong chu dong yeu cau nhu vay.\n- Ten nguoi, dia danh, mon phai, cong phap, canh gioi, phap bao phai duoc giu nhat quan.\n- Neu khong chac cach dich nao tot hon, hay giu cach goi dang dung thay vi tu y doi sang kieu khac.\n- KHONG Viet hoa nua mua va khong doi he quy chieu ten rieng giua cac doan.\n',
+        block: '\n\n[YÊU CẦU BẮT BUỘC VỀ HÁN-VIỆT VÀ THUẬT NGỮ]\n- KHÔNG trộn Hán-Việt và pinyin trong cùng một truyện/đoạn nếu prompt hiện tại không chủ động yêu cầu như vậy.\n- Tên người, địa danh, môn phái, công pháp, cảnh giới, pháp bảo phải được giữ nhất quán.\n- Nếu không chắc cách dịch nào tốt hơn, hãy giữ cách gọi đang dùng thay vì tự ý đổi sang kiểu khác.\n- KHÔNG Việt hóa nửa mùa và không đổi hệ quy chiếu tên riêng giữa các đoạn.\n',
     },
     {
         key: 'structure-preservation',
         pattern: /giu nhip hoi thoai|giu thu tu y|khong tu y gop\/tach/i,
-        block: '\n\n[YEU CAU BAT BUOC VE CAU TRUC VA NHIP VAN]\n- Giu thu tu y, thu tu doan, va cau truc hoi thoai neu ban goc khong bi loi ro rang.\n- KHONG tu y gop nhieu cau thoai thanh mot doan dai, khong bien cau ngan gat thanh cau dai mem.\n- Giu nhip nhanh/cham phu hop voi canh danh nhau, doi thoai, noi tam, va giai thich thong tin.\n- KHONG tu y gop/tach canh, gop/tach hoi thoai, hoac dao vi tri thong tin quan trong.\n',
+        block: '\n\n[YÊU CẦU BẮT BUỘC VỀ CẤU TRÚC VÀ NHỊP VĂN]\n- Giữ thứ tự ý, thứ tự đoạn và cấu trúc hội thoại nếu bản gốc không bị lỗi rõ ràng.\n- KHÔNG tự ý gộp nhiều câu thoại thành một đoạn dài, không biến câu ngắn gắt thành câu dài mềm.\n- Giữ nhịp nhanh/chậm phù hợp với cảnh đánh nhau, đối thoại, nội tâm và giải thích thông tin.\n- KHÔNG tự ý gộp/tách cảnh, gộp/tách hội thoại hoặc đảo vị trí thông tin quan trọng.\n',
     },
     {
         key: 'negative-rules',
         pattern: /lap cum tu may dich|khong dich sat chu kieu han van|khong lam van ai/i,
-        block: '\n\n[LOI CAN TRANH KHI LAM MUOT CONVERT]\n- Tranh lap lai mot cum tu dep qua nhieu lan neu ban goc khong lap nhu vay.\n- KHONG dich sat chu kieu Han van neu cach viet do khien cau tieng Viet bi cung, kho doc, hoac sai nhip.\n- Han che lam dung cac tu dem nhu: lap tuc, bong, khong khoi, trong long, sac mat thay doi... khi khong that su can.\n- Khong de cau nao cung mot nhip van, mot khuon cau, hoac mot kieu nhan nhe giong van AI.\n- Tranh dung qua nhieu tu Han-Viet nang neu co cach dien dat tieng Viet tu nhien hon, nhung cung khong Viet hoa mem qua muc lam mat chat the loai.\n',
+        block: '\n\n[LỖI CẦN TRÁNH KHI LÀM MƯỢT CONVERT]\n- Tránh lặp lại một cụm từ đẹp quá nhiều lần nếu bản gốc không lặp như vậy.\n- KHÔNG dịch sát chữ kiểu Hán văn nếu cách viết đó khiến câu tiếng Việt bị cứng, khó đọc hoặc sai nhịp.\n- Hạn chế lạm dụng các từ đệm như: lập tức, bỗng, không khỏi, trong lòng, sắc mặt thay đổi... khi không thật sự cần.\n- Không để câu nào cũng một nhịp văn, một khuôn câu hoặc một kiểu nhấn nhá giống văn AI.\n- Tránh dùng quá nhiều từ Hán-Việt nặng nếu có cách diễn đạt tiếng Việt tự nhiên hơn, nhưng cũng không Việt hóa mềm quá mức làm mất chất thể loại.\n',
     },
 ];
 
 const PROMPT_SUPPLEMENT_SECTION_HEADERS = [
-    'YEU CAU BAT BUOC VE MUC DO BIEN TAP',
-    'YEU CAU BAT BUOC VE TEN NHAN VAT',
-    'YEU CAU BAT BUOC VE TEN NHAN VAT VA XUNG HO',
-    'YEU CAU BAT BUOC VE THUAT NGU',
-    'YEU CAU BAT BUOC VE HAN-VIET VA THUAT NGU',
-    'YEU CAU BAT BUOC VE CAU TRUC',
-    'YEU CAU BAT BUOC VE CAU TRUC VA NHIP VAN',
-    'LOI CAN TRANH KHI LAM MUOT CONVERT',
+    'YÊU CẦU BẮT BUỘC VỀ MỨC ĐỘ BIÊN TẬP',
+    'YÊU CẦU BẮT BUỘC VỀ TÊN NHÂN VẬT',
+    'YÊU CẦU BẮT BUỘC VỀ TÊN NHÂN VẬT VÀ XƯNG HÔ',
+    'YÊU CẦU BẮT BUỘC VỀ THUẬT NGỮ',
+    'YÊU CẦU BẮT BUỘC VỀ HÁN-VIỆT VÀ THUẬT NGỮ',
+    'YÊU CẦU BẮT BUỘC VỀ CẤU TRÚC',
+    'YÊU CẦU BẮT BUỘC VỀ CẤU TRÚC VÀ NHỊP VĂN',
+    'LỖI CẦN TRÁNH KHI LÀM MƯỢT CONVERT',
 ];
+
+function foldVietnameseHeader(text) {
+    return String(text || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/Đ/g, 'D')
+        .replace(/đ/g, 'd');
+}
 
 function stripExistingPromptSupplements(promptText) {
     let text = String(promptText || '');
+    const headerVariants = [
+        ...PROMPT_SUPPLEMENT_SECTION_HEADERS,
+        ...PROMPT_SUPPLEMENT_SECTION_HEADERS.map(foldVietnameseHeader),
+    ];
 
-    PROMPT_SUPPLEMENT_SECTION_HEADERS.forEach((header) => {
+    headerVariants.forEach((header) => {
         const escapedHeader = header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const blockRegex = new RegExp(
             `\\n*\\[${escapedHeader}\\]\\n(?:- .*\\n?)+`,

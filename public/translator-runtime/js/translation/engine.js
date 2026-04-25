@@ -15,8 +15,52 @@ const TRANSLATION_PREVIEW_TAIL_RATIO = 0.35;
 const TRANSLATION_PREVIEW_NOTICE_RESERVED_CHARS = 240;
 let lastRPDDashboardRenderAt = 0;
 
-function buildPromptedChunk(promptText, chunkText) {
-    return `${promptText || ''}${chunkText || ''}`;
+const TRANSLATOR_SOURCE_LANGUAGE_LABELS = {
+    auto: 'Tự động phát hiện',
+    'zh-CN': 'Tiếng Trung (Giản thể)',
+    'zh-TW': 'Tiếng Trung (Phồn thể)',
+    en: 'Tiếng Anh',
+    ja: 'Tiếng Nhật',
+    ko: 'Tiếng Hàn',
+    th: 'Tiếng Thái',
+    id: 'Tiếng Indonesia',
+    ru: 'Tiếng Nga',
+    fr: 'Tiếng Pháp',
+    es: 'Tiếng Tây Ban Nha',
+};
+
+function normalizeTranslatorSourceLanguage(sourceLang) {
+    const normalized = String(sourceLang || 'auto').trim();
+    return TRANSLATOR_SOURCE_LANGUAGE_LABELS[normalized] ? normalized : 'auto';
+}
+
+function getTranslatorSourceLanguageLabel(sourceLang) {
+    return TRANSLATOR_SOURCE_LANGUAGE_LABELS[normalizeTranslatorSourceLanguage(sourceLang)];
+}
+
+function buildTranslatorLanguageDirective(sourceLang = 'auto') {
+    const normalized = normalizeTranslatorSourceLanguage(sourceLang);
+
+    if (normalized === 'auto') {
+        return `[YÊU CẦU NGÔN NGỮ NGUỒN]
+- Tự động phát hiện ngôn ngữ nguồn của đoạn văn bên dưới.
+- Hãy dịch trực tiếp sang tiếng Việt toàn bộ nội dung từ bất kỳ ngôn ngữ nào, mượt mà và tự nhiên.
+- Nếu đoạn nguồn đã là tiếng Việt convert/dịch máy, hãy biên tập lại cho đúng tiếng Việt tự nhiên.
+- Chỉ trả về bản tiếng Việt cuối cùng, không giải thích, không giữ nguyên tiếng nước ngoài nếu không phải tên riêng/thuật ngữ.`;
+    }
+
+    return `[YÊU CẦU NGÔN NGỮ NGUỒN]
+- Ngôn ngữ nguồn người dùng chọn: ${getTranslatorSourceLanguageLabel(normalized)}.
+- Hãy dịch trực tiếp sang tiếng Việt toàn bộ nội dung từ ${getTranslatorSourceLanguageLabel(normalized)}, mượt mà và tự nhiên.
+- Giữ tên riêng, địa danh, thuật ngữ và sắc thái truyện; không tự ý tóm tắt hoặc bỏ đoạn.
+- Chỉ trả về bản tiếng Việt cuối cùng, không giải thích, không giữ nguyên tiếng nguồn nếu không phải tên riêng/thuật ngữ.`;
+}
+
+function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto') {
+    const directive = buildTranslatorLanguageDirective(sourceLang);
+    const prompt = String(promptText || '').trim();
+    const source = String(chunkText || '').trim();
+    return `${directive}${prompt ? `\n\n${prompt}` : ''}\n\n[Đoạn nguồn]\n${source}`;
 }
 
 function getTranslatedChunkDisplayText(chunk, index, pendingLabel) {
@@ -267,9 +311,11 @@ async function startTranslation() {
         return;
     }
 
+    const preparedChunks = chunks.map(chunk => buildPromptedChunk(customPrompt, chunk, sourceLang));
+
     // Initialize chunk tracker
     if (typeof initChunkTracker === 'function') {
-        initChunkTracker(chunks, null, customPrompt);
+        initChunkTracker(chunks, preparedChunks, customPrompt);
     }
 
     // UI Setup
@@ -451,7 +497,7 @@ async function startTranslation() {
                         if (cancelRequested) {
                             throw new Error('TRANSLATION_CANCELLED');
                         }
-                        return translateChunkWithRetry(buildPromptedChunk(customPrompt, chunks[chunkIndex]), chunkIndex);
+                        return translateChunkWithRetry(preparedChunks[chunkIndex], chunkIndex);
                     })()
                 );
                 batchIndices.push(chunkIndex);
@@ -544,19 +590,24 @@ async function startTranslation() {
 
                         try {
                             // Sử dụng prompt tăng dần theo round
-                            let promptToUse = buildPromptedChunk(customPrompt, chunks[idx]);
+                            let promptToUse = preparedChunks[idx] || buildPromptedChunk(customPrompt, chunks[idx], sourceLang);
                             const originalContent = chunks[idx];
 
                             if (round === 1) {
                                 // Round 1: Thêm emphatic
-                                promptToUse = customPrompt + originalContent +
-                                    (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : '');
+                                promptToUse = buildPromptedChunk(
+                                    `${customPrompt}\n\n${typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : ''}`,
+                                    originalContent,
+                                    sourceLang
+                                );
                                 console.log(`[AUTO-RETRY] Chunk ${idx + 1}: Using EMPHATIC prompt`);
                             } else if (round === 2) {
                                 // Round 2: Literary framing
-                                promptToUse = (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.literary : '') +
-                                    customPrompt + originalContent +
-                                    (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : '');
+                                promptToUse = buildPromptedChunk(
+                                    `${typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.literary : ''}\n\n${customPrompt}\n\n${typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : ''}`,
+                                    originalContent,
+                                    sourceLang
+                                );
                                 console.log(`[AUTO-RETRY] Chunk ${idx + 1}: Using LITERARY prompt`);
                             } else {
                                 // Round 3: Fictional hoặc chia nhỏ
@@ -564,7 +615,7 @@ async function startTranslation() {
                                     console.log(`[AUTO-RETRY] Chunk ${idx + 1}: Trying to SPLIT chunk...`);
                                     try {
                                         const splitResult = await translateLargeChunkBySplitting(
-                                            customPrompt + originalContent, idx
+                                            buildPromptedChunk(customPrompt, originalContent, sourceLang), idx
                                         );
                                         if (splitResult && !splitResult.startsWith('[LỖI')) {
                                             translatedChunks[idx] = splitResult;
@@ -576,9 +627,11 @@ async function startTranslation() {
                                     }
                                 }
                                 // Fallback: Fictional prompt
-                                promptToUse = typeof getFictionalPrompt === 'function' ?
-                                    getFictionalPrompt(originalContent) :
-                                    buildPromptedChunk(customPrompt, originalContent);
+                                promptToUse = buildPromptedChunk(
+                                    typeof getFictionalPrompt === 'function' ? getFictionalPrompt('') : customPrompt,
+                                    originalContent,
+                                    sourceLang
+                                );
                                 console.log(`[AUTO-RETRY] Chunk ${idx + 1}: Using FICTIONAL prompt`);
                             }
 

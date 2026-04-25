@@ -18,6 +18,19 @@ function loadTranslatorErrorContext() {
   return context;
 }
 
+function loadTranslatorEngineContext() {
+  const context = {
+    console: { log: () => {}, warn: () => {}, error: () => {} },
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/translation/engine.js'), 'utf8'),
+    context,
+    { filename: 'public/translator-runtime/js/translation/engine.js' }
+  );
+  return context;
+}
+
 describe('phase10 translator notifications', () => {
   it('maps official Gemini HTTP failures to precise Vietnamese messages', () => {
     const context = loadTranslatorErrorContext();
@@ -105,5 +118,29 @@ describe('phase10 translator notifications', () => {
     expect(combined).not.toMatch(/\b(chua co|chua chon|Dang dung|San sang|Tat|Bat|ky tu|giay|Da chon template|Paste danh|Retry round|Kết nối OK)\b/u);
     expect(combined).not.toMatch(/Copy và paste|để backup|>\s*📋\s*Copy\b|Đang lấy danh sách models|Response không đúng|<strong>Response:|Settings (đã|tối ưu)|textContent = `\$\{chunkCount\} chunks`/u);
     expect(combined).not.toMatch(/Táº|Báº|â–¾/u);
+  });
+
+  it('adds source-language instructions so non-Vietnamese novels translate to Vietnamese', () => {
+    const context = loadTranslatorEngineContext();
+
+    const japanesePrompt = context.buildPromptedChunk('BASE PROMPT\n', 'これは日本語の小説です。', 'ja');
+    const autoPrompt = context.buildPromptedChunk('BASE PROMPT\n', '她推开门。', 'auto');
+
+    expect(japanesePrompt).toContain('Tiếng Nhật');
+    expect(japanesePrompt).toContain('dịch trực tiếp sang tiếng Việt');
+    expect(japanesePrompt).toContain('Đoạn nguồn');
+    expect(japanesePrompt).toContain('これは日本語の小説です。');
+    expect(autoPrompt).toContain('Tự động phát hiện ngôn ngữ nguồn');
+    expect(autoPrompt).toContain('bất kỳ ngôn ngữ nào');
+    expect(autoPrompt).toContain('sang tiếng Việt');
+  });
+
+  it('keeps prompt supplements accented without rewriting their intent', () => {
+    const appSource = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/app.js'), 'utf8');
+
+    expect(appSource).not.toMatch(/block:\s*'[^']*(YEU CAU BAT BUOC|LOI CAN TRANH)/su);
+    expect(appSource).toContain('[YÊU CẦU BẮT BUỘC VỀ MỨC ĐỘ BIÊN TẬP]');
+    expect(appSource).toContain('Chỉ làm mượt ở mức câu chữ, ngữ pháp và độ tự nhiên của tiếng Việt.');
+    expect(appSource).toContain('[LỖI CẦN TRÁNH KHI LÀM MƯỢT CONVERT]');
   });
 });
