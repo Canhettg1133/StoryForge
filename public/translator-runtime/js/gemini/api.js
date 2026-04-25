@@ -8,8 +8,8 @@
 // ============================================
 async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = null) {
     const activeKey = apiKeyOverride || proxyApiKey;
-    if (!activeKey) throw new Error('Chưa nhập API Key proxy!');
-    if (!proxyBaseUrl) throw new Error('Chưa cấu hình Proxy Base URL!');
+    if (!activeKey) throw createTranslatorError('MISSING_PROXY_KEY');
+    if (!proxyBaseUrl) throw createTranslatorError('MISSING_PROXY_URL');
 
     console.log(`[Proxy] Model: ${proxyModel} | Temp: ${temperature} | Key: ...${activeKey.slice(-6)}`);
 
@@ -40,9 +40,18 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
             if (cancelRequested) {
                 throw new Error('TRANSLATION_CANCELLED');
             }
-            throw new Error(`Proxy timeout sau 120s - ${proxyModel}`);
+            throw createTranslatorError('PROXY_TIMEOUT', {
+                provider: 'Proxy',
+                model: proxyModel,
+                timeoutSeconds: 120,
+                retryable: true,
+            });
         }
-        throw fetchError;
+        throw normalizeTranslatorError(fetchError, {
+            provider: 'Proxy',
+            model: proxyModel,
+            retryable: true,
+        });
     } finally {
         clearTimeout(timeoutId);
         if (typeof unregisterActiveRequestController === 'function') {
@@ -56,25 +65,12 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
 
         console.error(`[Proxy ERROR] Status: ${response.status} | ${errorMsg}`);
 
-        if (response.status === 429) {
-            throw new Error(`429 - Proxy rate limited: ${errorMsg}`);
-        }
         if (response.status === 403) {
-            // CONSUMER_SUSPENDED - proxy backend key bị ban, retry sẽ xoay sang key khác
-            console.warn(`[Proxy] 403 - Backend suspended, proxy sẽ xoay key khác khi retry...`);
-            throw new Error(`403 - Backend key suspended (sẽ xoay key khác): ${errorMsg.substring(0, 100)}`);
-        }
-        if (response.status === 402) {
-            throw new Error(`402 - Proxy quota hết: ${errorMsg}`);
-        }
-        if (response.status === 401) {
-            throw new Error('API Key proxy không hợp lệ!');
-        }
-        if (response.status === 404) {
-            throw new Error(`Model "${proxyModel}" không tìm thấy trên proxy!`);
+            // CONSUMER_SUSPENDED - proxy backend key bị khóa, retry sẽ xoay sang key khác.
+            console.warn('[Proxy] 403 - Backend suspended, proxy sẽ xoay key khác khi retry...');
         }
 
-        throw new Error(errorMsg);
+        throw createProxyHttpError(response.status, errorData, { model: proxyModel });
     }
 
     const data = await response.json();
@@ -83,7 +79,12 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
     const content = data.choices?.[0]?.message?.content?.trim();
     if (!content) {
         console.error('[Proxy ERROR] Empty response:', data);
-        throw new Error('Proxy API: Empty response');
+        throw createTranslatorError('PROXY_EMPTY_RESPONSE', {
+            provider: 'Proxy',
+            model: proxyModel,
+            rawMessage: 'Proxy API: Empty response',
+            retryable: true,
+        });
     }
 
     let result = cleanGeminiResponse(content);
@@ -92,7 +93,7 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
     const validationResult = validateTranslationOutput(text, result);
     if (!validationResult.valid) {
         console.error(`[❌ VALIDATION FAILED] ${validationResult.reason}`);
-        throw new Error(`${validationResult.errorCode}:${validationResult.details}`);
+        throw createValidationTranslatorError(validationResult);
     }
     if (validationResult.warning) {
         console.warn(`[⚠️ WARNING] ${validationResult.warning}`);
@@ -155,9 +156,20 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
             if (cancelRequested) {
                 throw new Error('TRANSLATION_CANCELLED');
             }
-            throw new Error(`API timeout sau 120s - ${modelName} + Key ${keyIndex + 1}`);
+            throw createTranslatorError('GEMINI_TIMEOUT', {
+                provider: 'Gemini',
+                model: modelName,
+                keyIndex,
+                timeoutSeconds: 120,
+                retryable: true,
+            });
         }
-        throw fetchError;
+        throw normalizeTranslatorError(fetchError, {
+            provider: 'Gemini',
+            model: modelName,
+            keyIndex,
+            retryable: true,
+        });
     } finally {
         clearTimeout(timeoutId);
         if (typeof unregisterActiveRequestController === 'function') {
@@ -172,23 +184,38 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
         console.error(`[Gemini API ERROR] Status: ${response.status}`);
         console.error(`[Gemini API ERROR] Message: ${errorMsg}`);
 
+        const geminiError = createGeminiHttpError(response.status, errorData, {
+            model: modelName,
+            keyIndex,
+        });
+
         if (response.status === 429) {
             recordModelKeyError(modelName, keyIndex);
-            throw new Error(`429 - ${modelName} + Key ${keyIndex + 1} hết quota. Switching...`);
-        }
-        if (response.status === 400 && errorMsg.includes('API key')) {
-            throw new Error('API Key không hợp lệ. Vui lòng kiểm tra lại.');
+            throw geminiError;
         }
         if (response.status === 404) {
             recordModelKeyError(modelName, keyIndex);
-            throw new Error(`Model "${modelName}" không tìm thấy. Thử combination khác.`);
+            throw geminiError;
         }
 
-        throw new Error(errorMsg);
+        throw geminiError;
     }
 
     const data = await response.json();
     console.log(`[Gemini API] Response received successfully`);
+
+    const finishReason = data.candidates?.[0]?.finishReason;
+    const blockReason = data.promptFeedback?.blockReason;
+
+    if (finishReason && !['STOP', 'FINISH_REASON_UNSPECIFIED'].includes(finishReason)) {
+        console.warn(`[Gemini API] Candidate stopped with finishReason=${finishReason}`);
+        throw createGeminiBlockedError(data, { model: modelName, keyIndex });
+    }
+
+    if (blockReason && blockReason !== 'BLOCK_REASON_UNSPECIFIED') {
+        console.warn(`[Gemini API] Prompt blocked with blockReason=${blockReason}`);
+        throw createGeminiBlockedError(data, { model: modelName, keyIndex });
+    }
 
     // Extract text from Gemini response
     if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
@@ -200,7 +227,7 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
 
         if (!validationResult.valid) {
             console.error(`[❌ VALIDATION FAILED] ${validationResult.reason}`);
-            throw new Error(`${validationResult.errorCode}:${validationResult.details}`);
+            throw createValidationTranslatorError(validationResult);
         }
 
         if (validationResult.warning) {
@@ -210,25 +237,31 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
         return result;
     }
 
-    // Check for blocked content - THROW ERROR instead of returning original text
-    if (data.candidates?.[0]?.finishReason === 'SAFETY') {
-        console.warn('[Gemini API] Content blocked by SAFETY filter');
-        throw new Error('CONTENT_BLOCKED:safety_filter');
+    // Check for blocked/truncated content - THROW ERROR instead of returning original text
+    if (finishReason && !['STOP', 'FINISH_REASON_UNSPECIFIED'].includes(finishReason)) {
+        console.warn(`[Gemini API] Candidate stopped with finishReason=${finishReason}`);
+        throw createGeminiBlockedError(data, { model: modelName, keyIndex });
     }
 
-    if (data.promptFeedback?.blockReason === 'PROHIBITED_CONTENT') {
-        console.warn('[Gemini API] Content blocked by PROHIBITED_CONTENT filter');
-        throw new Error('CONTENT_BLOCKED:prohibited_content');
+    if (blockReason && blockReason !== 'BLOCK_REASON_UNSPECIFIED') {
+        console.warn(`[Gemini API] Prompt blocked with blockReason=${blockReason}`);
+        throw createGeminiBlockedError(data, { model: modelName, keyIndex });
     }
 
     // Check for empty/missing response
     if (!data.candidates || data.candidates.length === 0) {
         console.error('[Gemini API ERROR] No candidates in response');
-        throw new Error('CONTENT_BLOCKED:no_candidates');
+        throw createGeminiBlockedError(data, { model: modelName, keyIndex });
     }
 
     console.error('[Gemini API ERROR] Invalid response format:', data);
-    throw new Error('Gemini API: Invalid response format');
+    throw createTranslatorError('INVALID_RESPONSE_FORMAT', {
+        provider: 'Gemini',
+        model: modelName,
+        keyIndex,
+        rawMessage: 'Gemini API: Invalid response format',
+        retryable: true,
+    });
 }
 
 // ============================================

@@ -129,7 +129,7 @@ function trackChunkFailed(chunkIndex, errorMsg) {
     if (!chunkTrackingData[chunkIndex]) return;
     const data = chunkTrackingData[chunkIndex];
     applyChunkStatus(data, CHUNK_STATUS.FAILED);
-    data.error = errorMsg || 'Unknown error';
+    data.error = errorMsg || 'Lỗi chưa xác định';
     data.timeMs = data.startTime > 0 ? Date.now() - data.startTime : 0;
 
     renderChunkRow(chunkIndex);
@@ -193,15 +193,22 @@ async function retranslateChunk(chunkIndex) {
                 .map((c, i) => c !== null ? c : `[❌ Chunk ${i + 1} thất bại]`)
                 .join('\n\n');
 
-            showToast(`✅ Chunk ${chunkIndex + 1} đã dịch lại thành công!`, 'success');
+            showToast(`Chunk ${chunkIndex + 1} đã dịch lại thành công.`, 'success');
         } else {
-            throw new Error(result || 'Empty result');
+            throw createTranslatorError('INVALID_RESPONSE_FORMAT', {
+                provider: useOllama ? 'Ollama' : (useProxy ? 'Proxy' : 'Gemini'),
+                rawMessage: result || 'Empty result',
+                retryable: true,
+            });
         }
     } catch (e) {
+        const userMessage = typeof formatTranslatorError === 'function'
+            ? formatTranslatorError(e)
+            : String(e?.message || e || 'Lỗi chưa xác định');
         applyChunkStatus(data, CHUNK_STATUS.FAILED);
-        data.error = e.message;
+        data.error = userMessage;
         data.timeMs = Date.now() - data.startTime;
-        showToast(`❌ Chunk ${chunkIndex + 1} dịch lại thất bại: ${e.message}`, 'error');
+        showToast(`Chunk ${chunkIndex + 1} dịch lại thất bại: ${userMessage}`, 'error');
     }
 
     renderChunkRow(chunkIndex);
@@ -219,7 +226,7 @@ async function retranslateAllFailed() {
         return;
     }
 
-    showToast(`🔄 Đang dịch lại ${toRetranslate.length} chunks...`, 'info');
+    showToast(`Đang dịch lại ${toRetranslate.length} chunk...`, 'info');
 
     if (useProxy && typeof getProxyKeyCount === 'function' && getProxyKeyCount() > 1) {
         // Multi-key: group by key, send different-key chunks in parallel
@@ -257,7 +264,7 @@ async function retranslateAllFailed() {
         }
     }
 
-    showToast(`✅ Đã hoàn tất dịch lại!`, 'success');
+    showToast('Đã hoàn tất dịch lại.', 'success');
 }
 
 // ============================================
@@ -334,7 +341,7 @@ function editChunkManual(chunkIndex) {
 
         renderChunkRow(chunkIndex);
         updateChunkSummary();
-        showToast(`✅ Đã cập nhật chunk ${chunkIndex + 1}`, 'success');
+        showToast(`Đã cập nhật chunk ${chunkIndex + 1}.`, 'success');
     }
 }
 
@@ -414,7 +421,7 @@ function getStatusInfo(status) {
         case CHUNK_STATUS.SUCCESS: return { icon: '✅', label: 'OK' };
         case CHUNK_STATUS.WARNING: return { icon: '⚠️', label: 'Ngắn' };
         case CHUNK_STATUS.FAILED: return { icon: '❌', label: 'Lỗi' };
-        case CHUNK_STATUS.RETRYING: return { icon: '🔄', label: 'Retry' };
+        case CHUNK_STATUS.RETRYING: return { icon: '🔄', label: 'Thử lại' };
         case CHUNK_STATUS.RETRANSLATING: return { icon: '🔄', label: 'Dịch lại' };
         default: return { icon: '❓', label: status };
     }
@@ -448,8 +455,8 @@ function updateChunkSummary() {
 
     summary.innerHTML = `
         <span>📥 ${totalInput.toLocaleString()} → 📤 ${totalOutput.toLocaleString()} chữ</span>
-        <span class="${ratioClass}">📊 Ratio: <strong>${totalRatio}%</strong></span>
-        <span>🔄 Retry: ${totalRetries}</span>
+        <span class="${ratioClass}">📊 Tỷ lệ: <strong>${totalRatio}%</strong></span>
+        <span>🔄 Thử lại: ${totalRetries}</span>
         ${(failed + warning) > 0 ? `<button class="btn btn-small btn-warning ct-retry-all-btn" onclick="retranslateAllFailed()">🔄 Dịch lại ${failed + warning} lỗi</button>` : ''}
     `;
 }

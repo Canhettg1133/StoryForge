@@ -64,7 +64,7 @@ function confirmCancel() {
         <div class="cancel-stats">
             <div class="cancel-stats-item">
                 <span class="cancel-stats-label">📦 Đã dịch:</span>
-                <span class="cancel-stats-value">${completedChunks} / ${totalChunksCount} chunks (${percentage}%)</span>
+                <span class="cancel-stats-value">${completedChunks} / ${totalChunksCount} chunk (${percentage}%)</span>
             </div>
             <div class="cancel-stats-item">
                 <span class="cancel-stats-label">⏱️ Thời gian:</span>
@@ -116,7 +116,7 @@ function executeCancel() {
     updateProgress(completedChunks, totalChunksCount, '🛑 Đang hủy và lưu tiến trình...');
 
     const percentage = totalChunksCount > 0 ? Math.round((completedChunks / totalChunksCount) * 100) : 0;
-    showToast(`Đã hủy! Đã lưu ${completedChunks}/${totalChunksCount} chunks (${percentage}%)`, 'warning');
+    showToast(`Đã hủy. Đã lưu ${completedChunks}/${totalChunksCount} chunk (${percentage}%).`, 'warning');
 
     console.log(`[Cancel] Cancelled with ${completedChunks}/${totalChunksCount} chunks completed`);
 }

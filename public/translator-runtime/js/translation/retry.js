@@ -64,7 +64,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
                     if (!validation.valid) {
                         console.warn(`[Ollama] ❌ Validation failed: ${validation.reason}`);
-                        throw new Error(`${validation.errorCode}:${validation.details}`);
+                        throw createValidationTranslatorError(validation);
                     }
 
                     if (validation.warning) {
@@ -147,12 +147,18 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 throw new Error('TRANSLATION_CANCELLED');
             }
 
+            const translatorError = typeof normalizeTranslatorError === 'function'
+                ? normalizeTranslatorError(error)
+                : error;
+            const errorCode = translatorError?.code || '';
             const errorMsg = String(error?.message || error || '').toLowerCase();
+            const rawErrorMsg = String(translatorError?.rawMessage || error?.message || error || '').toLowerCase();
+            const combinedErrorMsg = `${errorMsg} ${rawErrorMsg}`;
 
             // ========== PROXY MODE: XỬ LÝ 403/429 ĐẶC BIỆT ==========
             if (useProxy) {
-                const is403 = errorMsg.includes('403') || errorMsg.includes('suspended');
-                const is429 = errorMsg.includes('429') || errorMsg.includes('rate limit');
+                const is403 = errorCode === 'PROXY_BACKEND_SUSPENDED' || combinedErrorMsg.includes('403') || combinedErrorMsg.includes('suspended');
+                const is429 = errorCode === 'PROXY_RATE_LIMIT' || combinedErrorMsg.includes('429') || combinedErrorMsg.includes('rate limit');
 
                 if (is403 || is429) {
                     const waitTime = is403 ? 5000 : 8000;
@@ -168,7 +174,8 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             // ========== XỬ LÝ OUTPUT QUÁ NGẮN ==========
-            const isOutputTooShort = error.message.includes('OUTPUT_TOO_SHORT');
+            const originalErrorText = String(error?.message || error || '');
+            const isOutputTooShort = errorCode === 'OUTPUT_TOO_SHORT' || originalErrorText.includes('OUTPUT_TOO_SHORT');
             if (isOutputTooShort) {
                 shortOutputCount++;
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ Output quá ngắn (lần ${shortOutputCount}), thử prompt mạnh hơn...`);
@@ -188,7 +195,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             // ========== XỬ LÝ KHÔNG CÓ TIẾNG VIỆT ==========
-            const isNoVietnamese = error.message.includes('NO_VIETNAMESE');
+            const isNoVietnamese = errorCode === 'NO_VIETNAMESE' || originalErrorText.includes('NO_VIETNAMESE');
             if (isNoVietnamese) {
                 shortOutputCount++;
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ Output không có tiếng Việt, thử prompt khác...`);
@@ -197,7 +204,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             // ========== XỬ LÝ ERROR MARKER / AI TỪ CHỐI ==========
-            const isErrorMarker = error.message.includes('ERROR_MARKER');
+            const isErrorMarker = errorCode === 'ERROR_MARKER' || originalErrorText.includes('ERROR_MARKER');
             if (isErrorMarker) {
                 shortOutputCount++;
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ AI từ chối dịch, thử prompt literary/fictional...`);
@@ -206,23 +213,32 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             // ========== XỬ LÝ PROMPT LEAK ==========
-            const isPromptLeak = error.message.includes('PROMPT_LEAK');
+            const isPromptLeak = errorCode === 'PROMPT_LEAK' || originalErrorText.includes('PROMPT_LEAK');
             if (isPromptLeak) {
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ AI lặp lại prompt, thử lại...`);
                 await sleep(300);
                 continue;
             }
 
-            const isContentBlocked = errorMsg.includes('blocked') ||
-                errorMsg.includes('safety') ||
-                errorMsg.includes('prohibited');
-            const isRateLimit = errorMsg.includes('429') || errorMsg.includes('quota');
-            const isServerError = errorMsg.includes('503') || errorMsg.includes('500');
-            const isNotFound = errorMsg.includes('404') || errorMsg.includes('not found') || errorMsg.includes('model not found');
-            const isInvalidKey = errorMsg.includes('api key not valid') ||
-                errorMsg.includes('api key not found') ||
-                errorMsg.includes('invalid api key');
-            const isModelOverloaded = errorMsg.includes('overloaded');
+            const isContentBlocked = errorCode.startsWith('CONTENT_BLOCKED') ||
+                combinedErrorMsg.includes('blocked') ||
+                combinedErrorMsg.includes('safety') ||
+                combinedErrorMsg.includes('prohibited');
+            const isRateLimit = errorCode === 'GEMINI_RATE_LIMIT' || combinedErrorMsg.includes('429') || combinedErrorMsg.includes('quota');
+            const isServerError = ['GEMINI_INTERNAL', 'GEMINI_UNAVAILABLE', 'GEMINI_DEADLINE'].includes(errorCode) ||
+                combinedErrorMsg.includes('503') ||
+                combinedErrorMsg.includes('500') ||
+                combinedErrorMsg.includes('504');
+            const isNotFound = errorCode === 'GEMINI_NOT_FOUND' ||
+                combinedErrorMsg.includes('404') ||
+                combinedErrorMsg.includes('not found') ||
+                combinedErrorMsg.includes('model not found');
+            const isInvalidKey = errorCode === 'INVALID_API_KEY' ||
+                combinedErrorMsg.includes('api key not valid') ||
+                combinedErrorMsg.includes('api key not found') ||
+                combinedErrorMsg.includes('invalid api key');
+            const isPermissionDenied = errorCode === 'GEMINI_PERMISSION_DENIED';
+            const isModelOverloaded = errorCode === 'GEMINI_UNAVAILABLE' && combinedErrorMsg.includes('overloaded');
 
             console.warn(`[Chunk ${chunkIndex + 1}] Attempt ${attempt}/${retries} failed: ${error.message}`);
 
@@ -245,13 +261,16 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             // === XỬ LÝ API KEY KHÔNG HỢP LỆ ===
-            if (modelKeyPair && isInvalidKey) {
+            if (modelKeyPair && (isInvalidKey || isPermissionDenied)) {
                 console.error(`[Chunk ${chunkIndex + 1}] ❌ INVALID API KEY: Key ${modelKeyPair.keyIndex + 1}`);
                 GEMINI_MODELS.forEach(model => {
-                    recordModelKeyError(model.name, modelKeyPair.keyIndex, 86400);
+                    recordModelKeyError(model.name, modelKeyPair.keyIndex, isPermissionDenied ? 300 : 86400);
                 });
-                recordKeyError(modelKeyPair.keyIndex, 'INVALID_KEY', 86400);
-                showToast(`API Key ${modelKeyPair.keyIndex + 1} không hợp lệ!`, 'error');
+                recordKeyError(modelKeyPair.keyIndex, isPermissionDenied ? 'PERMISSION_DENIED' : 'INVALID_KEY', isPermissionDenied ? 300 : 86400);
+                const message = typeof formatTranslatorError === 'function'
+                    ? formatTranslatorError(translatorError)
+                    : `API Key ${modelKeyPair.keyIndex + 1} không hợp lệ!`;
+                showToast(message, 'error');
                 continue;
             }
 
@@ -266,7 +285,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             if (modelKeyPair && (isRateLimit || isNotFound)) {
                 let cooldownSeconds = 60;
                 if (isRateLimit) {
-                    const retryMatch = error.message.match(/retry in ([\d.]+)s/i);
+                    const retryMatch = String(translatorError?.rawMessage || error.message).match(/retry in ([\d.]+)s/i);
                     if (retryMatch) {
                         cooldownSeconds = Math.ceil(parseFloat(retryMatch[1])) + 2;
                     }

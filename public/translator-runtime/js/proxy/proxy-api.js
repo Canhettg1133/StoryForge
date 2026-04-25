@@ -22,9 +22,9 @@ function toggleProxyMode() {
             document.getElementById('ollamaStatus').textContent = 'Tắt';
             document.getElementById('ollamaStatus').style.background = '';
         }
-        showToast('✅ Đã bật Proxy API mode! Hệ thống sẽ gọi qua proxy thay vì Gemini Direct.', 'success');
+        showToast('Đã bật Proxy API. Hệ thống sẽ gọi qua proxy thay vì Gemini Direct.', 'success');
     } else {
-        showToast('🔄 Đã tắt Proxy, sử dụng Gemini Direct.', 'info');
+        showToast('Đã tắt Proxy, sử dụng Gemini Direct.', 'info');
     }
 
     saveSettings();
@@ -62,7 +62,7 @@ function addProxyKey() {
     renderProxyKeysList();
     saveSettings();
     if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
-    showToast(`✅ Đã thêm Proxy Key! (${proxyApiKeys.length} keys → parallel x${proxyApiKeys.length})`, 'success');
+    showToast(`Đã thêm Proxy Key. Hiện có ${proxyApiKeys.length} key, chạy song song tối đa ${proxyApiKeys.length} luồng.`, 'success');
 }
 
 function removeProxyKey(index) {
@@ -81,7 +81,7 @@ function renderProxyKeysList() {
     const count = proxyApiKeys.length;
     const countBadge = document.getElementById('proxyKeyCount');
     if (countBadge) {
-        countBadge.textContent = `${count} key${count > 1 ? 's' : ''} → parallel x${count}`;
+        countBadge.textContent = `${count} key → song song x${count}`;
         countBadge.style.background = count > 1 ? 'var(--success)' : (count === 1 ? 'var(--accent-primary)' : 'var(--danger)');
     }
 
@@ -167,7 +167,7 @@ async function testProxyConnection() {
     const resultDiv = document.getElementById('proxyTestResult');
     const testKey = proxyApiKeys.length > 0 ? proxyApiKeys[0] : proxyApiKey;
 
-    resultDiv.innerHTML = '<p style="color:#f59e0b;">⏳ Đang test kết nối proxy...</p>';
+    resultDiv.innerHTML = '<p style="color:#f59e0b;">⏳ Đang kiểm tra kết nối proxy...</p>';
 
     if (!testKey) {
         resultDiv.innerHTML = '<p style="color:#ef4444;">❌ Chưa nhập API Key!</p>';
@@ -200,8 +200,13 @@ async function testProxyConnection() {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            const errorMsg = errorData.error?.message || `HTTP ${response.status}`;
-            resultDiv.innerHTML = `<p style="color:#ef4444;">❌ Lỗi ${response.status}: ${errorMsg}</p>
+            const proxyError = typeof createProxyHttpError === 'function'
+                ? createProxyHttpError(response.status, errorData, { model: proxyModel })
+                : new Error(errorData.error?.message || `HTTP ${response.status}`);
+            const errorMsg = typeof formatTranslatorError === 'function'
+                ? formatTranslatorError(proxyError)
+                : proxyError.message;
+            resultDiv.innerHTML = `<p style="color:#ef4444;">❌ ${errorMsg}</p>
                 <p style="color:#888;font-size:12px;">Thời gian: ${elapsed}s</p>`;
             return;
         }
@@ -217,18 +222,26 @@ async function testProxyConnection() {
                     <strong>Model:</strong> ${model}<br>
                     <strong>Thời gian:</strong> ${elapsed}s<br>
                     <strong>Key:</strong> ...${testKey.slice(-6)}<br>
-                    <strong>Tổng keys:</strong> ${proxyApiKeys.length} (parallel x${proxyApiKeys.length})<br>
-                    <strong>Response:</strong> ${content.substring(0, 200)}
+                    <strong>Tổng key:</strong> ${proxyApiKeys.length} (song song x${proxyApiKeys.length})<br>
+                    <strong>Phản hồi:</strong> ${content.substring(0, 200)}
                 </p>
             </div>`;
 
-        showToast(`✅ Proxy hoạt động! (${elapsed}s)`, 'success');
+        showToast(`Proxy hoạt động. Thời gian phản hồi ${elapsed}s.`, 'success');
     } catch (error) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         if (error.name === 'AbortError') {
-            resultDiv.innerHTML = `<p style="color:#ef4444;">❌ Timeout sau 30s! Server proxy quá chậm.</p>`;
+            const timeoutError = typeof createTranslatorError === 'function'
+                ? createTranslatorError('PROXY_TIMEOUT', { timeoutSeconds: 30, model: proxyModel, provider: 'Proxy' })
+                : error;
+            const errorMsg = typeof formatTranslatorError === 'function' ? formatTranslatorError(timeoutError) : 'Timeout sau 30 giây. Server proxy quá chậm.';
+            resultDiv.innerHTML = `<p style="color:#ef4444;">❌ ${errorMsg}</p>`;
         } else {
-            resultDiv.innerHTML = `<p style="color:#ef4444;">❌ Lỗi: ${error.message}</p>
+            const normalizedError = typeof normalizeTranslatorError === 'function'
+                ? normalizeTranslatorError(error, { provider: 'Proxy', model: proxyModel })
+                : error;
+            const errorMsg = typeof formatTranslatorError === 'function' ? formatTranslatorError(normalizedError) : error.message;
+            resultDiv.innerHTML = `<p style="color:#ef4444;">❌ ${errorMsg}</p>
                 <p style="color:#888;font-size:12px;">Thời gian: ${elapsed}s</p>`;
         }
     }

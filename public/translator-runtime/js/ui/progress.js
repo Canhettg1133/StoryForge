@@ -10,13 +10,13 @@ function updateProgress(current, total, status) {
     const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
     document.getElementById('progressFill').style.width = `${percentage}%`;
     document.getElementById('progressText').textContent = `${percentage}%`;
-    document.getElementById('progressDetails').textContent = `${current} / ${total} chunks`;
+    document.getElementById('progressDetails').textContent = `${current} / ${total} chunk`;
     document.getElementById('progressStatus').textContent = status;
 
     // Update download button text
     const downloadBtn = document.getElementById('downloadPartialBtn');
     if (downloadBtn && current > 0) {
-        downloadBtn.innerHTML = `📥 Tải ${current} chunks đã dịch`;
+        downloadBtn.innerHTML = `📥 Tải ${current} chunk đã dịch`;
     }
 }
 
@@ -59,17 +59,17 @@ function getDownloadableTranslatedText() {
 function copyResult() {
     const text = getDownloadableTranslatedText();
     if (!text) {
-        showToast('Không có nội dung để copy!', 'warning');
+        showToast('Không có nội dung để sao chép!', 'warning');
         return;
     }
 
     navigator.clipboard.writeText(text).then(() => {
-        showToast('Đã copy vào clipboard!', 'success');
+        showToast('Đã sao chép vào bộ nhớ tạm.', 'success');
     }).catch(() => {
         const textarea = document.getElementById('translatedText');
         textarea.select();
         document.execCommand('copy');
-        showToast('Đã copy vào clipboard!', 'success');
+        showToast('Đã sao chép vào bộ nhớ tạm.', 'success');
     });
 }
 
@@ -116,7 +116,7 @@ function downloadPartial() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    showToast(`Đã tải ${completedChunks} chunks đã dịch!`, 'success');
+    showToast(`Đã tải ${completedChunks} chunk đã dịch.`, 'success');
 }
 
 
@@ -130,10 +130,14 @@ function showToast(message, type = 'info') {
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    toast.innerHTML = `
-        <span class="toast-icon">${icons[type]}</span>
-        <span class="toast-message">${message}</span>
-    `;
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.textContent = icons[type] || icons.info;
+    const text = document.createElement('span');
+    text.className = 'toast-message';
+    text.textContent = String(message || '');
+    toast.appendChild(icon);
+    toast.appendChild(text);
 
     container.appendChild(toast);
 

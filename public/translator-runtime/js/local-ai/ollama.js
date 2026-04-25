@@ -35,7 +35,7 @@ function toggleOllamaMode() {
             if (proxyToggle) proxyToggle.checked = false;
             if (proxySettings) proxySettings.style.display = 'none';
             if (proxyStatus) {
-                proxyStatus.textContent = 'Táº¯t';
+                proxyStatus.textContent = 'Tắt';
                 proxyStatus.style.background = '';
             }
         }
@@ -70,7 +70,7 @@ async function testOllamaConnection() {
         });
 
         if (!response.ok) {
-            throw new Error(`Server trả về lỗi: ${response.status}`);
+            throw createOllamaHttpError(response.status, {}, { model });
         }
 
         const data = await response.json();
@@ -91,20 +91,22 @@ async function testOllamaConnection() {
 
         if (modelExists) {
             resultDiv.className = 'ollama-test-result success';
-            resultDiv.textContent = `✅ Kết nối thành công!\n\n📦 Model "${model}" đã sẵn sàng!\n\n🎉 Bạn có thể bắt đầu dịch với Ollama Local.\n\n📋 Models đã cài: ${models.map(m => m.name).join(', ')}`;
+            resultDiv.textContent = `✅ Kết nối thành công!\n\n📦 Model "${model}" đã sẵn sàng!\n\nBạn có thể bắt đầu dịch với Ollama Local.\n\n📋 Model đã cài: ${models.map(m => m.name).join(', ')}`;
         } else {
             resultDiv.className = 'ollama-test-result error';
-            resultDiv.textContent = `⚠️ Kết nối OK nhưng model "${model}" chưa được cài!\n\n📥 Chạy lệnh sau để cài:\n   ollama pull ${model}\n\n📋 Models đã cài: ${models.map(m => m.name).join(', ') || 'Không có'}`;
+            resultDiv.textContent = `⚠️ Kết nối thành công nhưng model "${model}" chưa được cài!\n\n📥 Chạy lệnh sau để cài:\n   ollama pull ${model}\n\n📋 Model đã cài: ${models.map(m => m.name).join(', ') || 'Không có'}`;
         }
 
     } catch (error) {
         resultDiv.className = 'ollama-test-result error';
 
-        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-            resultDiv.textContent = `❌ Không thể kết nối đến Ollama!\n\n🔧 Kiểm tra:\n1. Ollama đã chạy chưa? (ollama serve)\n2. URL đúng chưa? (${url})\n3. Firewall có chặn không?\n\n📥 Tải Ollama: https://ollama.com/download`;
-        } else {
-            resultDiv.textContent = `❌ Lỗi: ${error.message}`;
-        }
+        const normalizedError = typeof normalizeTranslatorError === 'function'
+            ? normalizeTranslatorError(error, { provider: 'Ollama', model })
+            : error;
+        const errorMsg = typeof formatTranslatorError === 'function'
+            ? formatTranslatorError(normalizedError)
+            : error.message;
+        resultDiv.textContent = `❌ ${errorMsg}\n\n🔧 Kiểm tra:\n1. Ollama đã chạy chưa? (ollama serve)\n2. URL đúng chưa? (${url})\n3. Firewall có chặn không?\n\n📥 Tải Ollama: https://ollama.com/download`;
     }
 }
 
@@ -114,7 +116,7 @@ async function listOllamaModels() {
     const url = document.getElementById('ollamaUrl').value.trim();
 
     resultDiv.className = 'ollama-test-result info';
-    resultDiv.textContent = '📋 Đang lấy danh sách models...';
+    resultDiv.textContent = '📋 Đang lấy danh sách model...';
 
     try {
         const response = await fetch(`${url}/api/tags`, {
@@ -123,7 +125,7 @@ async function listOllamaModels() {
         });
 
         if (!response.ok) {
-            throw new Error(`Server trả về lỗi: ${response.status}`);
+            throw createOllamaHttpError(response.status, {}, { provider: 'Ollama' });
         }
 
         const data = await response.json();
@@ -139,13 +141,16 @@ async function listOllamaModels() {
                 const sizeGB = (m.size / (1024 * 1024 * 1024)).toFixed(1);
                 output += `${i + 1}. ${m.name} (${sizeGB}GB)\n`;
             });
-            output += '\n💡 Click vào tên model để sử dụng.';
+            output += '\n💡 Bấm vào tên model để sử dụng.';
             resultDiv.textContent = output;
         }
 
     } catch (error) {
         resultDiv.className = 'ollama-test-result error';
-        resultDiv.textContent = `❌ Lỗi: ${error.message}\n\n🔧 Đảm bảo Ollama đang chạy: ollama serve`;
+        const errorMsg = typeof formatTranslatorError === 'function'
+            ? formatTranslatorError(normalizeTranslatorError(error, { provider: 'Ollama' }))
+            : error.message;
+        resultDiv.textContent = `❌ ${errorMsg}\n\n🔧 Đảm bảo Ollama đang chạy: ollama serve`;
     }
 }
 
@@ -264,12 +269,26 @@ async function translateWithOllama(text, temperature = 0.7) {
             if (cancelRequested) {
                 throw new Error('TRANSLATION_CANCELLED');
             }
-            throw new Error(`Ollama timeout sau 300s - Chunk quá dài hoặc model quá chậm.`);
+            throw createTranslatorError('OLLAMA_TIMEOUT', {
+                provider: 'Ollama',
+                model,
+                timeoutSeconds: 300,
+                retryable: true,
+            });
         }
         if (fetchError.message.includes('Failed to fetch')) {
-            throw new Error('Không thể kết nối Ollama. Đảm bảo Ollama đang chạy!');
+            throw createTranslatorError('OLLAMA_CONNECTION', {
+                provider: 'Ollama',
+                model,
+                rawMessage: fetchError.message,
+                retryable: true,
+            });
         }
-        throw fetchError;
+        throw normalizeTranslatorError(fetchError, {
+            provider: 'Ollama',
+            model,
+            retryable: true,
+        });
     } finally {
         clearTimeout(timeoutId);
         if (typeof unregisterActiveRequestController === 'function') {
@@ -282,7 +301,7 @@ async function translateWithOllama(text, temperature = 0.7) {
         const errorMsg = errorData.error || `HTTP ${response.status}`;
         console.error(`[Ollama ERROR] Status: ${response.status}`);
         console.error(`[Ollama ERROR] Message: ${errorMsg}`);
-        throw new Error(errorMsg);
+        throw createOllamaHttpError(response.status, errorData, { model });
     }
 
     const data = await response.json();
@@ -352,7 +371,12 @@ async function translateWithOllama(text, temperature = 0.7) {
     }
 
     console.error('[Ollama] Invalid response:', JSON.stringify(data));
-    throw new Error('Ollama API: Invalid response format');
+    throw createTranslatorError('OLLAMA_INVALID_RESPONSE', {
+        provider: 'Ollama',
+        model,
+        rawMessage: 'Ollama API: Invalid response format',
+        retryable: true,
+    });
 }
 
 // ============================================
@@ -429,7 +453,7 @@ function loadOllamaSettings() {
             if (useOllama) {
                 if (settingsDiv) settingsDiv.style.display = 'block';
                 if (badge) {
-                    badge.textContent = 'Báº­t';
+                    badge.textContent = 'Bật';
                     badge.classList.add('active');
                 }
             }
@@ -468,7 +492,7 @@ async function loadOllamaModelsDropdown() {
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            throw createOllamaHttpError(response.status, {}, { model: ollamaModel });
         }
 
         const data = await response.json();
@@ -494,11 +518,14 @@ async function loadOllamaModelsDropdown() {
             select.value = currentModel;
         }
 
-        showToast(`Đã tải ${models.length} models!`, 'success');
+        showToast(`Đã tải ${models.length} model.`, 'success');
 
     } catch (error) {
         select.innerHTML = '<option value="">❌ Lỗi kết nối</option>';
-        showToast(`Lỗi: ${error.message}`, 'error');
+        const errorMsg = typeof formatTranslatorError === 'function'
+            ? formatTranslatorError(normalizeTranslatorError(error, { provider: 'Ollama', model: ollamaModel }))
+            : error.message;
+        showToast(errorMsg, 'error');
     }
 }
 
@@ -558,7 +585,7 @@ async function testOllamaTranslation() {
     const model = document.getElementById('ollamaModel').value.trim() || ollamaModel;
 
     resultDiv.className = 'ollama-test-result info';
-    resultDiv.textContent = '🧪 Đang test dịch thử... Đợi 10-30 giây...';
+    resultDiv.textContent = '🧪 Đang kiểm tra dịch thử... Đợi 10-30 giây...';
 
     let testText = 'Viết lại cho mượt mà: Ta ngửa mặt Quan Thiên, hướng về kia vạn bên trong trời quang chửi ầm lên.';
     const systemPrompt = 'You are a translator. Output ONLY the translation, nothing else. No explanations.';
@@ -590,7 +617,7 @@ async function testOllamaTranslation() {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || `HTTP ${response.status}`);
+            throw createOllamaHttpError(response.status, errorData, { model });
         }
 
         const data = await response.json();
@@ -623,18 +650,21 @@ async function testOllamaTranslation() {
 
         if (content) {
             resultDiv.className = 'ollama-test-result success';
-            resultDiv.textContent = `✅ THÀNH CÔNG! (${elapsed}s)\n\n📝 Kết quả: ${content}\n\n🎉 Ollama hoạt động tốt!`;
+            resultDiv.textContent = `✅ Thành công! (${elapsed}s)\n\n📝 Kết quả: ${content}\n\nOllama hoạt động tốt.`;
             console.log('[Test] SUCCESS! Content:', content);
         } else {
             console.error('[Test] Unknown response format. Keys:', Object.keys(data));
             resultDiv.className = 'ollama-test-result error';
-            resultDiv.textContent = `❌ Response format lạ. Xem Console để debug.\n\nData keys: ${Object.keys(data).join(', ')}`;
+            resultDiv.textContent = `❌ Phản hồi không đúng định dạng mong đợi. Xem Console để kiểm tra.\n\nCác khóa dữ liệu: ${Object.keys(data).join(', ')}`;
         }
 
     } catch (error) {
         console.error('[Test] Error:', error);
         resultDiv.className = 'ollama-test-result error';
-        resultDiv.textContent = `❌ LỖI: ${error.message}\n\n🔧 Kiểm tra:\n1. Ollama đang chạy?\n2. Model đã cài?\n3. URL đúng?`;
+        const errorMsg = typeof formatTranslatorError === 'function'
+            ? formatTranslatorError(normalizeTranslatorError(error, { provider: 'Ollama', model }))
+            : error.message;
+        resultDiv.textContent = `❌ ${errorMsg}\n\n🔧 Kiểm tra:\n1. Ollama đang chạy?\n2. Model đã cài?\n3. URL đúng?`;
     }
 }
 
@@ -653,16 +683,16 @@ function showStartServerGuide() {
 <p><strong>Bước 2:</strong> Chạy lệnh sau:</p>
 <div style="background: #1a1a2e; padding: 10px; border-radius: 8px; margin: 10px 0;">
     <code style="color: #10b981; font-size: 14px;">ollama serve</code>
-    <button onclick="copyCommand('ollama serve')" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">📋 Copy</button>
+    <button onclick="copyCommand('ollama serve')" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">📋 Sao chép</button>
 </div>
 
 <p><strong>Bước 3:</strong> Nếu chưa có model, cài model:</p>
 <div style="background: #1a1a2e; padding: 10px; border-radius: 8px; margin: 10px 0;">
     <code style="color: #10b981; font-size: 14px;">ollama pull qwen3:4b</code>
-    <button onclick="copyCommand('ollama pull qwen3:4b')" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">📋 Copy</button>
+    <button onclick="copyCommand('ollama pull qwen3:4b')" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">📋 Sao chép</button>
 </div>
 
-<p><strong>Models khuyến nghị:</strong></p>
+<p><strong>Model khuyến nghị:</strong></p>
 <ul style="margin: 10px 0; padding-left: 20px;">
     <li><code>qwen3:4b</code> - Nhanh, tốt cho dịch truyện ⭐</li>
     <li><code>qwen3:8b</code> - Chất lượng cao hơn</li>
@@ -676,7 +706,7 @@ function showStartServerGuide() {
 
 function copyCommand(cmd) {
     navigator.clipboard.writeText(cmd).then(() => {
-        showToast('Đã copy: ' + cmd, 'success');
+        showToast('Đã sao chép: ' + cmd, 'success');
     });
 }
 
@@ -697,7 +727,7 @@ const MODEL_PRESETS = {
             top_k: 40
         },
         features: [],  // Qwen2.5 KHÔNG có thinking mode
-        tips: 'Giỏi tiếng Việt nhất, uncensored, tối ưu cho dịch truyện'
+        tips: 'Giỏi tiếng Việt nhất, ít bị kiểm duyệt, tối ưu cho dịch truyện'
     },
     qwen3: {
         name: 'Qwen3',
@@ -725,7 +755,7 @@ const MODEL_PRESETS = {
             top_k: 40
         },
         features: ['think', 'vision', 'tools'],
-        tips: 'Model mới nhất (2026), tiếng Việt xuất sắc, uncensored hoàn toàn, hỗ trợ thinking + vision + tools'
+        tips: 'Model mới nhất (2026), tiếng Việt xuất sắc, ít bị kiểm duyệt, hỗ trợ thinking + vision + tools'
     },
     llama3: {
         name: 'Llama3',
@@ -797,7 +827,7 @@ function applyModelPreset(presetKey) {
     modelInput.value = preset.recommended;
     ollamaModel = preset.recommended;
 
-    // Lưu settings cho model này
+    // Lưu cấu hình cho model này
     localStorage.setItem('ollamaModelPreset', JSON.stringify({
         presetKey: presetKey,
         model: preset.recommended,
@@ -813,7 +843,7 @@ function applyModelPreset(presetKey) {
 ✅ <strong>Đã chọn ${preset.name}!</strong>
 
 📦 Model: <code>${preset.recommended}</code>
-⚙️ Settings đã tối ưu tự động
+⚙️ Cấu hình đã được tối ưu tự động
 
 💡 <strong>Tip:</strong> ${preset.tips}
 
@@ -824,7 +854,7 @@ function applyModelPreset(presetKey) {
 </div>
     `;
 
-    showToast(`Đã chọn ${preset.name}! Settings tối ưu đã áp dụng.`, 'success');
+    showToast(`Đã chọn ${preset.name}. Cấu hình tối ưu đã được áp dụng.`, 'success');
 }
 
 // Auto-detect model type từ tên model

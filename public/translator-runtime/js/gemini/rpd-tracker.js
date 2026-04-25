@@ -365,11 +365,11 @@ function renderRPDDashboard() {
  * Reset RPD data (manual)
  */
 function resetRPDData() {
-    if (!confirm('Reset RPD counters? (Chỉ reset bộ đếm, không ảnh hưởng Google quota thực tế)')) return;
+    if (!confirm('Reset bộ đếm RPD? (Chỉ reset bộ đếm nội bộ, không ảnh hưởng quota thật của Google)')) return;
     rpdData = { date: getPacificDateString(), pairs: {} };
     saveRPDData();
     renderRPDDashboard();
-    showToast('Đã reset RPD counters!', 'success');
+    showToast('Đã reset bộ đếm RPD.', 'success');
     console.log('[RPD] Manual reset completed');
 }
 

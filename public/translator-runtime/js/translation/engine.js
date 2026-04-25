@@ -187,9 +187,12 @@ async function startTranslation() {
     let parallelCount = parseInt(document.getElementById('parallelCount').value) || 5;
     let delayMs = parseInt(document.getElementById('delayMs').value) || 100;
     const promptInput = document.getElementById('customPrompt');
-    const customPrompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
+    let customPrompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
         ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '')
         : (promptInput?.value || '');
+    if (typeof applyActiveCanonPackToPrompt === 'function') {
+        customPrompt = await applyActiveCanonPackToPrompt(customPrompt);
+    }
     if (promptInput && promptInput.value !== customPrompt) {
         promptInput.value = customPrompt;
     }
@@ -364,6 +367,7 @@ async function startTranslation() {
     let lastPreviewUpdateAt = 0;
     let lastHistoryPersistAt = 0;
     let lastHistoryPersistCompleted = -1;
+    const chunkFailureReasons = new Map();
 
     const updateTranslatedPreview = (pendingLabel = '⏳ Đang dịch', force = false) => {
         const now = Date.now();
@@ -473,12 +477,16 @@ async function startTranslation() {
                     if (cancelRequested || reasonText.includes('TRANSLATION_CANCELLED')) {
                         return;
                     }
-                    translatedChunks[chunkIndex] = `[LỖI CHUNK ${chunkIndex + 1}]\n${chunks[chunkIndex]}`;
+                    const userReason = typeof formatTranslatorError === 'function'
+                        ? formatTranslatorError(result.reason)
+                        : reasonText;
+                    chunkFailureReasons.set(chunkIndex, userReason);
+                    translatedChunks[chunkIndex] = `[LỖI CHUNK ${chunkIndex + 1}]\nNguyên nhân: ${userReason}\n\n${chunks[chunkIndex]}`;
                     completedChunks++;
                     console.error(`Chunk ${chunkIndex + 1} failed:`, result.reason);
                     // Track failure
                     if (typeof trackChunkFailed === 'function') {
-                        trackChunkFailed(chunkIndex, result.reason?.message || String(result.reason));
+                        trackChunkFailed(chunkIndex, userReason);
                     }
                 }
             });
@@ -528,7 +536,7 @@ async function startTranslation() {
 
                 for (let round = 1; round <= 3 && failedChunkIndices.length > 0; round++) {
                     console.log(`[AUTO-RETRY] Round ${round}/3 for ${failedChunkIndices.length} chunks`);
-                    updateProgress(completedChunks, chunks.length, `🔄 Retry round ${round}/3: ${failedChunkIndices.length} chunks...`);
+                    updateProgress(completedChunks, chunks.length, `🔄 Lần thử lại ${round}/3: còn ${failedChunkIndices.length} chunk...`);
 
                     const stillFailed = [];
                     for (const idx of failedChunkIndices) {
@@ -602,6 +610,10 @@ async function startTranslation() {
                             if (cancelRequested || retryErrorText.includes('TRANSLATION_CANCELLED')) {
                                 break;
                             }
+                            const userReason = typeof formatTranslatorError === 'function'
+                                ? formatTranslatorError(e)
+                                : retryErrorText;
+                            chunkFailureReasons.set(idx, userReason);
                             console.warn(`[AUTO-RETRY] Chunk ${idx + 1} failed again: ${e.message}`);
                             stillFailed.push(idx);
                         }
@@ -638,9 +650,13 @@ async function startTranslation() {
 
                     // Đánh dấu với format dễ nhận biết
                     failedChunkIndices.forEach(idx => {
+                        const failureReason = chunkFailureReasons.get(idx) || 'Đã thử lại nhiều lần nhưng vẫn chưa có bản dịch đạt yêu cầu.';
                         translatedChunks[idx] = `\n\n╔═══════════════════════════════════════╗
 ║ ⚠️ CHUNK ${idx + 1} - CẦN DỊCH THỦ CÔNG ║
 ╚═══════════════════════════════════════╝
+
+[Nguyên nhân]
+${failureReason}
 
 [Nguyên văn - cần review và dịch lại:]
 ${chunks[idx]}
@@ -694,7 +710,10 @@ ${chunks[idx]}
         }
 
         console.error('Translation error:', error);
-        showToast(`Lỗi: ${error.message}`, 'error');
+        const userMessage = typeof formatTranslatorError === 'function'
+            ? formatTranslatorError(error, 'Dịch thất bại')
+            : 'Dịch thất bại. Chi tiết kỹ thuật đã được ghi trong Console.';
+        showToast(userMessage, 'error');
 
         if (completedChunks > 0) {
             // GIỮ ĐÚNG THỨ TỰ kể cả khi có lỗi

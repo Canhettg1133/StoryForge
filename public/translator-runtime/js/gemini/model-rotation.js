@@ -318,8 +318,8 @@ function exportApiKeys() {
             display: flex;
             flex-direction: column;
         ">
-            <h3 style="color: #fff; margin: 0 0 15px 0;">📋 Xuất API Keys (${apiKeys.length} keys)</h3>
-            <p style="color: #888; margin: 0 0 10px 0; font-size: 13px;">Mỗi dòng 1 key - Copy và paste vào nơi khác để backup</p>
+            <h3 style="color: #fff; margin: 0 0 15px 0;">📋 Xuất API key (${apiKeys.length} key)</h3>
+            <p style="color: #888; margin: 0 0 10px 0; font-size: 13px;">Mỗi dòng 1 key. Sao chép và lưu ở nơi an toàn để dự phòng.</p>
             <textarea id="keyExportTextarea" readonly style="
                 width: 600px;
                 max-width: 100%;
@@ -343,7 +343,7 @@ function exportApiKeys() {
                     border-radius: 8px;
                     cursor: pointer;
                     font-size: 14px;
-                ">📋 Copy tất cả</button>
+                ">📋 Sao chép tất cả</button>
                 <button onclick="closeKeyModal()" style="
                     flex: 1;
                     padding: 12px;
@@ -371,7 +371,7 @@ function copyExportedKeys() {
     const textarea = document.getElementById('keyExportTextarea');
     textarea.select();
     document.execCommand('copy');
-    showToast('Đã copy ' + apiKeys.length + ' API keys!', 'success');
+    showToast('Đã sao chép ' + apiKeys.length + ' API key.', 'success');
 }
 
 function closeKeyModal() {
@@ -412,11 +412,11 @@ function openImportApiKeysModal() {
             flex-direction: column;
         ">
             <h3 style="color: #fff; margin: 0 0 10px 0;">📥 Nhập nhiều API Keys</h3>
-            <p style="color: #888; margin: 0 0 5px 0; font-size: 13px;">Paste danh sách API keys vào đây. Hỗ trợ các định dạng:</p>
+            <p style="color: #888; margin: 0 0 5px 0; font-size: 13px;">Dán danh sách API key vào đây. Hỗ trợ các định dạng:</p>
             <ul style="color: #888; margin: 0 0 15px 0; font-size: 12px; padding-left: 20px;">
                 <li>Mỗi dòng 1 key</li>
-                <li>Keys phân cách bằng dấu phẩy (,)</li>
-                <li>Keys phân cách bằng dấu chấm phẩy (;)</li>
+                <li>Key phân cách bằng dấu phẩy (,)</li>
+                <li>Key phân cách bằng dấu chấm phẩy (;)</li>
             </ul>
             <textarea id="keyImportTextarea" placeholder="AIzaSyB...&#10;AIzaSyC...&#10;AIzaSyD...&#10;&#10;hoặc: AIzaSyB..., AIzaSyC..., AIzaSyD..." style="
                 width: 600px;
@@ -438,7 +438,7 @@ function openImportApiKeysModal() {
                 padding: 8px;
                 background: rgba(0,0,0,0.3);
                 border-radius: 6px;
-            ">Paste danh sách keys để xem preview...</div>
+            ">Dán danh sách key để xem trước...</div>
             <div style="display: flex; gap: 10px; margin-top: 15px;">
                 <button onclick="executeImportApiKeys()" style="
                     flex: 1;
@@ -449,7 +449,7 @@ function openImportApiKeysModal() {
                     border-radius: 8px;
                     cursor: pointer;
                     font-size: 14px;
-                ">✅ Nhập keys</button>
+                ">✅ Nhập key</button>
                 <button onclick="closeImportModal()" style="
                     flex: 1;
                     padding: 12px;
@@ -478,7 +478,7 @@ function updateImportPreview() {
     const rawText = textarea.value;
 
     if (!rawText.trim()) {
-        previewDiv.innerHTML = 'Paste danh sách keys để xem preview...';
+        previewDiv.innerHTML = 'Dán danh sách key để xem trước...';
         previewDiv.style.color = '#888';
         return;
     }
@@ -486,24 +486,24 @@ function updateImportPreview() {
     const result = parseApiKeysFromText(rawText);
 
     if (result.validKeys.length === 0) {
-        previewDiv.innerHTML = `❌ Không tìm thấy API key hợp lệ nào!<br>Keys phải bắt đầu bằng "AIza" và dài hơn 30 ký tự.`;
+        previewDiv.innerHTML = `❌ Không tìm thấy API key hợp lệ nào!<br>Key phải bắt đầu bằng "AIza" và dài hơn 30 ký tự.`;
         previewDiv.style.color = '#ef4444';
     } else {
-        let html = `✅ Tìm thấy <strong style="color:#10b981">${result.validKeys.length}</strong> keys hợp lệ`;
+        let html = `✅ Tìm thấy <strong style="color:#10b981">${result.validKeys.length}</strong> key hợp lệ`;
 
         if (result.duplicates > 0) {
-            html += ` | ⚠️ <strong style="color:#f59e0b">${result.duplicates}</strong> keys trùng lặp (sẽ bỏ qua)`;
+            html += ` | ⚠️ <strong style="color:#f59e0b">${result.duplicates}</strong> key trùng lặp (sẽ bỏ qua)`;
         }
 
         if (result.alreadyExists > 0) {
-            html += ` | 📌 <strong style="color:#3b82f6">${result.alreadyExists}</strong> keys đã tồn tại`;
+            html += ` | 📌 <strong style="color:#3b82f6">${result.alreadyExists}</strong> key đã tồn tại`;
         }
 
         if (result.invalid > 0) {
-            html += ` | ❌ <strong style="color:#ef4444">${result.invalid}</strong> keys không hợp lệ`;
+            html += ` | ❌ <strong style="color:#ef4444">${result.invalid}</strong> key không hợp lệ`;
         }
 
-        html += `<br>Sẽ thêm: <strong style="color:#10b981">${result.newKeys.length}</strong> keys mới`;
+        html += `<br>Sẽ thêm: <strong style="color:#10b981">${result.newKeys.length}</strong> key mới`;
 
         previewDiv.innerHTML = html;
         previewDiv.style.color = '#ccc';
@@ -555,7 +555,7 @@ function executeImportApiKeys() {
     const rawText = textarea.value;
 
     if (!rawText.trim()) {
-        showToast('Vui lòng paste danh sách API keys!', 'warning');
+        showToast('Vui lòng dán danh sách API key!', 'warning');
         return;
     }
 
@@ -563,7 +563,7 @@ function executeImportApiKeys() {
 
     if (result.newKeys.length === 0) {
         if (result.alreadyExists > 0) {
-            showToast(`Tất cả ${result.alreadyExists} keys đã tồn tại trong hệ thống!`, 'info');
+            showToast(`Tất cả ${result.alreadyExists} key đã tồn tại trong hệ thống.`, 'info');
         } else {
             showToast('Không tìm thấy API key hợp lệ nào!', 'error');
         }
@@ -581,9 +581,9 @@ function executeImportApiKeys() {
     closeImportModal();
 
     // Thông báo kết quả
-    let message = `✅ Đã thêm ${result.newKeys.length} API keys mới!`;
+    let message = `Đã thêm ${result.newKeys.length} API key mới.`;
     if (result.alreadyExists > 0) {
-        message += ` (${result.alreadyExists} keys đã tồn tại được bỏ qua)`;
+        message += ` (${result.alreadyExists} key đã tồn tại được bỏ qua)`;
     }
     showToast(message, 'success');
 

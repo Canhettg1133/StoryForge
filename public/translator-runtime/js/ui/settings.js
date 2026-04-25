@@ -1,12 +1,12 @@
 /**
  * Novel Translator Pro - Settings
- * Luu va tai cau hinh
+ * Lưu và tải cấu hình
  */
 
 // ============================================
 // SETTINGS MANAGEMENT
 // ============================================
-const SETTINGS_GROUPS = ['gemini', 'proxy', 'ollama', 'general', 'prompt'];
+const SETTINGS_GROUPS = ['gemini', 'proxy', 'ollama', 'general', 'canon-pack', 'prompt'];
 const STORYFORGE_KEYS_STORAGE = 'sf-api-keys-v2';
 const STORYFORGE_SETTINGS_STORAGE = 'sf-ai-settings';
 const STORYFORGE_PROVIDER_STORAGE = 'sf-preferred-provider';
@@ -86,7 +86,7 @@ function shortenSummary(text, maxLength = 42) {
 
 function getGeminiPrimaryModelSummary() {
     const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : [];
-    if (!activeModels.length) return 'chua co model';
+    if (!activeModels.length) return 'chưa có model';
     if (activeModels.length === 1) return activeModels[0].name;
     return `${activeModels[0].name} +${activeModels.length - 1}`;
 }
@@ -109,11 +109,11 @@ function getGeminiAccordionSummary() {
 
 function getProxyAccordionSummary() {
     const proxyCount = typeof getProxyKeyCount === 'function' ? getProxyKeyCount() : 0;
-    return `${proxyModel || 'chua chon model'} • ${proxyCount} key`;
+    return `${proxyModel || 'chưa chọn model'} • ${proxyCount} key`;
 }
 
 function getOllamaAccordionSummary() {
-    return `${ollamaModel || 'chua chon model local'} • ${ollamaUrl || 'localhost'}`;
+    return `${ollamaModel || 'chưa chọn model local'} • ${ollamaUrl || 'localhost'}`;
 }
 
 function getGeneralAccordionSummary() {
@@ -127,12 +127,12 @@ function getGeneralAccordionSummary() {
     const parallelCount = parallelInput?.value || '2';
     const chunkSize = chunkInput?.value || '2000';
 
-    return `${shortenSummary(sourceLangLabel, 18)} • ${parallelCount} luong • ${chunkSize} ky tu`;
+    return `${shortenSummary(sourceLangLabel, 18)} • ${parallelCount} luồng • ${chunkSize} ký tự`;
 }
 
 function getPromptAccordionSummary() {
     const promptValue = document.getElementById('customPrompt')?.value?.trim() || '';
-    if (!promptValue) return 'Dang de trong';
+    if (!promptValue) return 'Đang để trống';
 
     if (typeof PROMPT_TEMPLATES !== 'undefined') {
         const matchedEntry = Object.entries(PROMPT_TEMPLATES).find(([, value]) => value === promptValue);
@@ -141,20 +141,26 @@ function getPromptAccordionSummary() {
         }
     }
 
-    return `${promptValue.length.toLocaleString()} ky tu prompt`;
+    return `${promptValue.length.toLocaleString()} ký tự prompt`;
+}
+
+function getCanonPackAccordionSummary() {
+    if (typeof useCanonPackTranslation === 'undefined' || !useCanonPackTranslation) return 'Tắt';
+    const pack = typeof getSelectedCanonPack === 'function' ? getSelectedCanonPack() : null;
+    return pack?.title || pack?.id || 'Chưa chọn Canon Pack';
 }
 
 function setAccordionStatus(elementId, label, isActive = false) {
-    const element = document.getElementById(elementId);
-    if (!element) return;
-
-    element.textContent = label;
-    element.classList.toggle('is-active', isActive);
+    document.querySelectorAll(`[id="${elementId}"]`).forEach((element) => {
+        element.textContent = label;
+        element.classList.toggle('is-active', isActive);
+    });
 }
 
 function setAccordionSummary(elementId, summary) {
-    const element = document.getElementById(elementId);
-    if (element) element.textContent = shortenSummary(summary, 72);
+    document.querySelectorAll(`[id="${elementId}"]`).forEach((element) => {
+        element.textContent = shortenSummary(summary, 72);
+    });
 }
 
 function getGroupPanels(group) {
@@ -183,20 +189,25 @@ function closeAllConfigGroups() {
 function updateSettingsAccordions() {
     const isGeminiActive = !useProxy && !useOllama;
 
-    setAccordionStatus('geminiAccordionStatus', isGeminiActive ? 'Dang dung' : 'San sang', isGeminiActive);
+    setAccordionStatus('geminiAccordionStatus', isGeminiActive ? 'Đang dùng' : 'Sẵn sàng', isGeminiActive);
     setAccordionSummary('geminiAccordionSummary', getGeminiAccordionSummary());
 
-    setAccordionStatus('proxyAccordionStatus', useProxy ? 'Dang dung' : 'Tat', useProxy);
+    setAccordionStatus('proxyAccordionStatus', useProxy ? 'Đang dùng' : 'Tắt', useProxy);
     setAccordionSummary('proxyAccordionSummary', getProxyAccordionSummary());
 
-    setAccordionStatus('ollamaAccordionStatus', useOllama ? 'Dang dung' : 'Tat', useOllama);
+    setAccordionStatus('ollamaAccordionStatus', useOllama ? 'Đang dùng' : 'Tắt', useOllama);
     setAccordionSummary('ollamaAccordionSummary', getOllamaAccordionSummary());
 
-    setAccordionStatus('generalAccordionStatus', 'Cau hinh');
+    setAccordionStatus('generalAccordionStatus', 'Cấu hình');
     setAccordionSummary('generalAccordionSummary', getGeneralAccordionSummary());
 
-    setAccordionStatus('promptAccordionStatus', 'Tuy chon');
+    setAccordionStatus('promptAccordionStatus', 'Tùy chọn');
     setAccordionSummary('promptAccordionSummary', getPromptAccordionSummary());
+
+    if (typeof useCanonPackTranslation !== 'undefined') {
+        setAccordionStatus('canonPackAccordionStatus', useCanonPackTranslation ? 'Đang dùng' : 'Tắt', useCanonPackTranslation);
+        setAccordionSummary('canonPackAccordionSummary', getCanonPackAccordionSummary());
+    }
 }
 
 function updateWorkspaceToolbar() {
@@ -268,6 +279,8 @@ function saveSettings() {
         chunkSize: document.getElementById('chunkSize').value,
         delayMs: document.getElementById('delayMs').value,
         customPrompt: normalizedPrompt,
+        useCanonPackTranslation: typeof useCanonPackTranslation !== 'undefined' ? useCanonPackTranslation : false,
+        selectedCanonPackId: typeof selectedCanonPackId !== 'undefined' ? selectedCanonPackId : '',
         useProxy: useProxy,
         proxyBaseUrl: proxyBaseUrl,
         proxyApiKey: proxyApiKey,
@@ -291,6 +304,12 @@ function loadSettings() {
             if (settings.customPrompt) document.getElementById('customPrompt').value = typeof ensureCharacterNameConsistencyPrompt === 'function'
                 ? ensureCharacterNameConsistencyPrompt(settings.customPrompt)
                 : settings.customPrompt;
+            if (typeof useCanonPackTranslation !== 'undefined' && settings.useCanonPackTranslation !== undefined) {
+                useCanonPackTranslation = Boolean(settings.useCanonPackTranslation);
+            }
+            if (typeof selectedCanonPackId !== 'undefined' && settings.selectedCanonPackId) {
+                selectedCanonPackId = settings.selectedCanonPackId;
+            }
             if (settings.useProxy !== undefined) useProxy = settings.useProxy;
             if (settings.proxyBaseUrl) proxyBaseUrl = settings.proxyBaseUrl;
             if (settings.proxyApiKey) proxyApiKey = settings.proxyApiKey;
@@ -309,7 +328,7 @@ function loadSettings() {
     if (document.getElementById('useProxyToggle')) {
         document.getElementById('useProxyToggle').checked = useProxy;
         document.getElementById('proxySettings').style.display = useProxy ? 'block' : 'none';
-        document.getElementById('proxyStatus').textContent = useProxy ? 'Bat' : 'Tat';
+        document.getElementById('proxyStatus').textContent = useProxy ? 'Bật' : 'Tắt';
         document.getElementById('proxyStatus').style.background = useProxy ? '#10b981' : '';
     }
     if (document.getElementById('proxyBaseUrlInput')) {
@@ -317,6 +336,12 @@ function loadSettings() {
     }
     if (document.getElementById('proxyModelSelect')) {
         document.getElementById('proxyModelSelect').value = proxyModel;
+    }
+    if (document.getElementById('useCanonPackToggle') && typeof useCanonPackTranslation !== 'undefined') {
+        document.getElementById('useCanonPackToggle').checked = useCanonPackTranslation;
+    }
+    if (typeof refreshCanonPackSelector === 'function') {
+        refreshCanonPackSelector();
     }
 
     saveSettings();
@@ -337,9 +362,9 @@ function updateStats() {
     const batches = Math.ceil(chunkCount / Math.min(parallelCount, apiKeys.length || 1));
     const estimatedSeconds = batches * 0.8;
 
-    document.getElementById('charCount').textContent = `${charCount.toLocaleString()} ky tu`;
-    document.getElementById('chunkCount').textContent = `${chunkCount} chunks`;
-    document.getElementById('estimatedTime').textContent = `~${Math.ceil(estimatedSeconds)} giay`;
+    document.getElementById('charCount').textContent = `${charCount.toLocaleString()} ký tự`;
+    document.getElementById('chunkCount').textContent = `${chunkCount} chunk`;
+    document.getElementById('estimatedTime').textContent = `~${Math.ceil(estimatedSeconds)} giây`;
 }
 
 // ============================================
@@ -357,20 +382,20 @@ function setPromptTemplate(templateName) {
         });
         event.target.classList.add('active-template');
 
-        showToast(`Da chon template: ${getTemplateName(templateName)}`, 'success');
+        showToast(`Đã chọn template: ${getTemplateName(templateName)}`, 'success');
     }
 }
 
 function getTemplateName(key) {
     const names = {
-        convert: 'Convert (Lam muot)',
-        novel: 'Tieu thuyet',
-        adult: 'Truyen 18+',
-        sacHiep: 'Sac Hiep',
-        sacHiepPro: 'Sac Hiep PRO',
-        sacHiepENI: 'Sac Hiep ENI',
-        wuxia: 'Tu tien/Kiem hiep',
-        romance: 'Ngon tinh'
+        convert: 'Convert (làm mượt)',
+        novel: 'Tiểu thuyết',
+        adult: 'Truyện 18+',
+        sacHiep: 'Sắc hiệp',
+        sacHiepPro: 'Sắc hiệp PRO',
+        sacHiepENI: 'Sắc hiệp ENI',
+        wuxia: 'Tu tiên/Kiếm hiệp',
+        romance: 'Ngôn tình'
     };
     return names[key] || key;
 }
