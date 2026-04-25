@@ -167,13 +167,18 @@ export default function Dashboard() {
       return;
     }
 
-    navigate(path);
+    navigate(path, options.state ? { state: options.state } : undefined);
   };
 
   const handleMobileDrawerNavigate = (item) => {
     if (item.needsProject && !activeProjectId) return;
 
-    handleUtilityNavigate(getMobileDrawerPath(item, activeProjectId));
+    handleUtilityNavigate(
+      getMobileDrawerPath(item, activeProjectId),
+      item.id === 'cloud-sync'
+        ? { state: { returnTo: `${location.pathname}${location.search}${location.hash}` } }
+        : {},
+    );
     setMobileMenuOpen(false);
   };
 
@@ -224,7 +229,12 @@ export default function Dashboard() {
                   key={item.id}
                   type="button"
                   className="dashboard-tool-card"
-                  onClick={() => handleUtilityNavigate(item.path)}
+                  onClick={() => handleUtilityNavigate(
+                    item.path,
+                    item.id === 'cloud-sync'
+                      ? { state: { returnTo: `${location.pathname}${location.search}${location.hash}` } }
+                      : {},
+                  )}
                 >
                   <div className="dashboard-tool-card__icon">
                     <Icon size={22} />

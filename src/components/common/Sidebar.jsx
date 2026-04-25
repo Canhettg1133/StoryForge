@@ -163,7 +163,12 @@ export default function Sidebar() {
   const handleNav = (item) => {
     if (item.needsProject && !activeProjectId) return;
     const path = getNavPath(item, activeProjectId);
-    navigate(path);
+    navigate(
+      path,
+      item.id === 'cloud-sync'
+        ? { state: { returnTo: `${location.pathname}${location.search}${location.hash}` } }
+        : undefined,
+    );
   };
 
   return (

@@ -1,11 +1,30 @@
 import React from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Cloud, Database, ShieldCheck, Smartphone } from 'lucide-react';
 import { PRODUCT_SURFACE } from '../../config/productSurface';
 import useMobileLayout from '../../hooks/useMobileLayout';
 import { CloudSyncWorkspace } from '../Settings/CloudSyncSection';
 import '../Settings/Settings.css';
 import './CloudSyncPage.css';
+
+function normalizeInternalReturnPath(value) {
+  const path = String(value || '').trim();
+  if (!path || !path.startsWith('/') || path.startsWith('//')) return '';
+  return path;
+}
+
+function getPathnameOnly(path) {
+  return String(path || '').split(/[?#]/)[0] || '/';
+}
+
+function isCloudSyncRoute(path) {
+  const pathname = getPathnameOnly(path);
+  return pathname === '/cloud-sync' || /^\/project\/[^/]+\/cloud-sync$/.test(pathname);
+}
+
+function getDefaultBackPath(scopedProjectId) {
+  return scopedProjectId ? `/project/${scopedProjectId}/editor` : '/';
+}
 
 function CloudSyncDesktopHero({ scopedProjectId, onBack }) {
   return (
@@ -67,6 +86,7 @@ function CloudSyncMobileHero({ scopedProjectId, onBack }) {
 }
 
 export default function CloudSyncPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const { projectId } = useParams();
   const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
@@ -77,12 +97,12 @@ export default function CloudSyncPage() {
   }
 
   const handleBack = () => {
-    if (scopedProjectId) {
-      navigate(`/project/${scopedProjectId}/settings`);
-      return;
-    }
+    const returnTo = normalizeInternalReturnPath(location.state?.returnTo);
+    const targetPath = returnTo && !isCloudSyncRoute(returnTo)
+      ? returnTo
+      : getDefaultBackPath(scopedProjectId);
 
-    navigate('/settings');
+    navigate(targetPath, { replace: true });
   };
 
   return (

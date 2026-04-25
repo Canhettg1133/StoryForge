@@ -176,7 +176,12 @@ export default function SceneEditor() {
     const targetPath = item.id === 'settings' && activeProjectId
       ? `/project/${activeProjectId}/settings`
       : item.getPath(activeProjectId);
-    navigate(targetPath);
+    navigate(
+      targetPath,
+      item.id === 'cloud-sync'
+        ? { state: { returnTo: `${location.pathname}${location.search}${location.hash}` } }
+        : undefined,
+    );
     closeMobilePanel();
   };
 

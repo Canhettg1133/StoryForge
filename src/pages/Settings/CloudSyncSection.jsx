@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
   Cloud,
@@ -94,9 +94,15 @@ const EMPTY_RESTORE_STATE = {
 
 export default function CloudSyncSection() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { projectId } = useParams();
   const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
   const targetPath = scopedProjectId ? `/project/${scopedProjectId}/cloud-sync` : '/cloud-sync';
+  const openCloudSyncPage = () => {
+    navigate(targetPath, {
+      state: { returnTo: `${location.pathname}${location.search}${location.hash}` },
+    });
+  };
 
   if (!PRODUCT_SURFACE.enableCloudSync) {
     return null;
@@ -126,14 +132,14 @@ export default function CloudSyncSection() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => navigate(targetPath)}
+            onClick={openCloudSyncPage}
           >
             <Cloud size={14} /> Mở Cloud Sync
           </button>
           <button
             type="button"
             className="btn btn-ghost"
-            onClick={() => navigate(targetPath)}
+            onClick={openCloudSyncPage}
           >
             <Database size={14} /> Xem trang sao lưu
           </button>

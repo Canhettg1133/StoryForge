@@ -109,7 +109,12 @@ export default function MobileProjectShell({ children }) {
 
   const handleMoreNavigate = (item) => {
     const target = item.path(numericProjectId);
-    navigate(target);
+    navigate(
+      target,
+      item.id === 'cloud-sync'
+        ? { state: { returnTo: `${location.pathname}${location.search}${location.hash}` } }
+        : undefined,
+    );
     setMoreOpen(false);
   };
 
