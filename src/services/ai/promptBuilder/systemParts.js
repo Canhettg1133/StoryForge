@@ -44,6 +44,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     chapterTitle,
     projectTitle,
     genre,
+    tone = '',
     userPrompt,
     previousSummary,
     // Phase 3
@@ -120,6 +121,17 @@ export function buildPromptSystemParts(taskType, context = {}) {
   const effectiveMacroArcContract = macroArcContract || compileMacroArcContract(currentMacroArc, { allCharacters });
   const systemParts = [];
 
+  const listFromTemplate = (value) => {
+    if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean);
+    if (typeof value === 'string') {
+      return value
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+    }
+    return [];
+  };
+
   // FREE_PROMPT: skip heavy writing layers for questions/chat
   const freePromptInProject = taskType === TASK_TYPES.FREE_PROMPT && !!(projectId || chapterId);
   const skipWritingLayers = taskType === TASK_TYPES.FREE_PROMPT && !freePromptInProject && !isWritingIntent(userPrompt);
@@ -184,6 +196,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
   const povLabel = { first: 'Ngoi 1', third_limited: 'Ngoi 3 han che', third_omni: 'Ngoi 3 toan tri', multi_pov: 'Da goc nhin' };
   const projectInfo = ['Truyen: ' + (projectTitle || 'Chua dat ten')];
   if (genre) projectInfo.push('The loai: ' + genre);
+  if (tone) projectInfo.push('Tone: ' + tone);
   if (povMode) projectInfo.push('Goc nhin: ' + (povLabel[povMode] || povMode));
   systemParts.push('\n[' + projectInfo.join(' - ') + ']');
 
@@ -211,6 +224,13 @@ export function buildPromptSystemParts(taskType, context = {}) {
         ? 'GOI Y SANG TAC'
         : 'NGUYEN TAC SANG TAC';
     systemParts.push('\n[' + principleHeader + ']\n' + aiGuidelines);
+  }
+
+  const constitutionRules = listFromTemplate(promptTemplates.constitution);
+  if (constitutionRules.length > 0 && !skipWritingLayers) {
+    systemParts.push('\n[LUAT COT LOI CUA TRUYEN - BAT BUOC TUAN THU]\n' + constitutionRules.map(function(rule, index) {
+      return (index + 1) + '. ' + rule;
+    }).join('\n'));
   }
 
   // -- Layer 2: Task Instruction --
@@ -553,9 +573,22 @@ export function buildPromptSystemParts(taskType, context = {}) {
   const styleDNALayer = buildStyleDNALayer(taskType, resolvedWritingStyle);
   if (styleDNALayer && !skipWritingLayers) {
     systemParts.push(styleDNALayer);
+    const projectStyleDNA = listFromTemplate(promptTemplates.style_dna);
+    if (projectStyleDNA.length > 0) {
+      systemParts.push('\n[DNA VAN PHONG CUA TRUYEN - PROJECT OVERRIDE]\n' + projectStyleDNA.map(function(rule, index) {
+        return (index + 1) + '. ' + rule;
+      }).join('\n'));
+    }
     // Append the Anti-AI Blacklist right after Style DNA.
     const antiAIBlock = buildAntiAIBlock(resolvedWritingStyle);
     if (antiAIBlock) systemParts.push(antiAIBlock);
+    const projectBlacklist = listFromTemplate(promptTemplates.anti_ai_blacklist);
+    if (projectBlacklist.length > 0) {
+      systemParts.push('\n[TU/CUM CAN TRANH CUA TRUYEN - PROJECT BLACKLIST]\n' + [
+        'KHONG DUOC dung cac tu/cum sau trong van ban dau ra:',
+        ...projectBlacklist.map(function(item) { return '- ' + item; }),
+      ].join('\n'));
+    }
   }
 
   // -- Layer 7.5: Mood Board --

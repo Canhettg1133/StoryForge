@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GENRE_TO_PRONOUN_STYLE, PRONOUN_STYLE_PRESETS } from '../../../utils/constants';
+import { GENRE_TEMPLATES } from '../../../utils/genreTemplates';
 import { getSuggestedMacroMilestoneCount } from '../utils/storyBibleHelpers';
 
 function useAutoSave(value, saveFn, delay = 800) {
@@ -37,6 +38,39 @@ function buildTargetLengthWarning(targetLengthType, targetLength) {
     return 'Loại "Sử thi" nên dùng cho truyện từ 800 chương trở lên. Nếu bạn nhắm thấp hơn, nên đổi lại loại độ dài.';
   }
   return '';
+}
+
+function parsePromptTemplates(rawValue) {
+  if (!rawValue) return {};
+  try {
+    const parsed = typeof rawValue === 'string' ? JSON.parse(rawValue) : rawValue;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function sameList(left, right) {
+  return JSON.stringify(Array.isArray(left) ? left : []) === JSON.stringify(Array.isArray(right) ? right : []);
+}
+
+function buildGenreDNAPatch(currentProject, nextGenre) {
+  const nextTemplate = GENRE_TEMPLATES[nextGenre] || {};
+  const currentTemplates = parsePromptTemplates(currentProject?.prompt_templates);
+  const currentGenre = currentProject?.genre_primary || '';
+  const currentTemplate = GENRE_TEMPLATES[currentGenre] || {};
+  const nextTemplates = { ...currentTemplates };
+
+  ['constitution', 'style_dna', 'anti_ai_blacklist'].forEach((key) => {
+    const currentValue = currentTemplates[key];
+    const oldDefault = currentTemplate[key] || [];
+    const shouldRefresh = !Array.isArray(currentValue) || currentValue.length === 0 || sameList(currentValue, oldDefault);
+    if (shouldRefresh) {
+      nextTemplates[key] = nextTemplate[key] || [];
+    }
+  });
+
+  return JSON.stringify(nextTemplates);
 }
 
 export default function useStoryBibleProjectFields({ currentProject, updateProjectSettings }) {
@@ -132,8 +166,12 @@ export default function useStoryBibleProjectFields({ currentProject, updateProje
     setGenrePrimary(value);
     const nextPronounStyle = GENRE_TO_PRONOUN_STYLE[value] || 'hien_dai';
     setPronounStyle(nextPronounStyle);
-    save({ genre_primary: value, pronoun_style: nextPronounStyle });
-  }, [save]);
+    save({
+      genre_primary: value,
+      pronoun_style: nextPronounStyle,
+      prompt_templates: buildGenreDNAPatch(currentProject, value),
+    });
+  }, [currentProject, save]);
 
   const handleToneChange = useCallback((value) => {
     setTone(value);

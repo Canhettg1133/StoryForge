@@ -138,11 +138,13 @@ export async function gatherContext({
     try { promptTemplates = JSON.parse(project.prompt_templates); } catch { }
   }
 
+  const effectiveGenre = genre || project?.genre_primary || '';
+  const tone = project?.tone || '';
   const aiGuidelines = project?.ai_guidelines || '';
   const aiStrictness = project?.ai_strictness || 'balanced';
   const nsfwMode = project?.nsfw_mode || false;
   const superNsfwMode = project?.super_nsfw_mode || false;
-  const genreKey = (genre || '').toLowerCase().replace(/\s+/g, '_');
+  const genreKey = (effectiveGenre || '').toLowerCase().replace(/\s+/g, '_');
 
   const cleanText = (sceneText || '').replace(/<[^>]*>/g, ' ').toLowerCase();
 
@@ -487,7 +489,8 @@ export async function gatherContext({
     // Soul injection: auto-detect writing style from genre.
     writingStyle: detectWritingStyle(genreKey || genre?.toLowerCase().replace(/\s+/g, '_') || ''),
     worldProfile,
-    genre,
+    genre: effectiveGenre,
+    tone,
     allCharacters,
     aiGuidelines,
     aiStrictness,
