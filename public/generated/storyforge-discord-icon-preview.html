@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StoryForge Discord Icon Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #050814;
+        color: #e8ecf4;
+        font-family: "Segoe UI", sans-serif;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 32px;
+        background:
+          radial-gradient(circle at 25% 20%, rgba(139, 92, 246, 0.3), transparent 34%),
+          radial-gradient(circle at 75% 72%, rgba(6, 182, 212, 0.24), transparent 36%),
+          #050814;
+      }
+
+      main {
+        width: min(920px, 100%);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(24px, 4vw, 42px);
+      }
+
+      p {
+        margin: 0 0 28px;
+        color: #94a3b8;
+      }
+
+      a {
+        color: #06b6d4;
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        gap: 28px;
+      }
+
+      .sample {
+        display: grid;
+        gap: 10px;
+        justify-items: center;
+        color: #94a3b8;
+      }
+
+      img {
+        display: block;
+        border-radius: 50%;
+        box-shadow: 0 22px 70px rgba(0, 0, 0, 0.55);
+      }
+
+      .s256 {
+        width: 256px;
+        height: 256px;
+      }
+
+      .s128 {
+        width: 128px;
+        height: 128px;
+      }
+
+      .s64 {
+        width: 64px;
+        height: 64px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>StoryForge Discord Server Icon</h1>
+      <p>
+        Direct image:
+        <a href="/generated/storyforge-discord-icon.png">/generated/storyforge-discord-icon.png</a>
+      </p>
+      <div class="row">
+        <div class="sample">
+          <img class="s256" src="/generated/storyforge-discord-icon.png" alt="StoryForge server icon 256px" />
+          <span>256px</span>
+        </div>
+        <div class="sample">
+          <img class="s128" src="/generated/storyforge-discord-icon.png" alt="StoryForge server icon 128px" />
+          <span>128px</span>
+        </div>
+        <div class="sample">
+          <img class="s64" src="/generated/storyforge-discord-icon.png" alt="StoryForge server icon 64px" />
+          <span>64px</span>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

@@ -9,6 +9,7 @@ import useCodexStore from '../../stores/codexStore';
 import {
   Users, Plus, Edit3, Trash2, X, Save, Shield, Heart,
   Sword, Star, UserCheck, ChevronDown, AlertTriangle, Sparkles, Link2,
+  CheckSquare,
 } from 'lucide-react';
 import {
   CHARACTER_ROLES, PRONOUN_PRESETS, GENRE_PRONOUN_MAP,
@@ -50,7 +51,7 @@ export default function CharacterHub() {
   const { currentProject, chapters } = useProjectStore();
   const {
     characters, taboos, loading, loadCodex,
-    createCharacter, updateCharacter, deleteCharacter,
+    createCharacter, updateCharacter, deleteCharacter, deleteCharacters,
     createTaboo, updateTaboo, deleteTaboo,
   } = useCodexStore();
 
@@ -59,6 +60,9 @@ export default function CharacterHub() {
   const [form, setForm] = useState({ ...EMPTY_CHARACTER });
   const [activeTab, setActiveTab] = useState('characters'); // 'characters' | 'taboos'
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedCharacterIds, setSelectedCharacterIds] = useState(() => new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [showBatchGen, setShowBatchGen] = useState(false);
   const [showRelMap, setShowRelMap] = useState(false);
   const [modalTab, setModalTab] = useState('info'); // 'info' | 'timeline'
@@ -76,9 +80,26 @@ export default function CharacterHub() {
     if (currentProject) loadCodex(currentProject.id);
   }, [currentProject?.id]);
 
+  useEffect(() => {
+    const existingIds = new Set(characters.map((char) => char.id));
+    setSelectedCharacterIds((current) => {
+      const next = new Set([...current].filter((id) => existingIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [characters]);
+
+  useEffect(() => {
+    if (activeTab !== 'characters') {
+      setSelectionMode(false);
+      setSelectedCharacterIds(new Set());
+      setBulkDeleteConfirm(false);
+    }
+  }, [activeTab]);
+
   // Genre preset
   const genreKey = GENRE_PRONOUN_MAP[currentProject?.genre_primary] || 'modern';
   const preset = PRONOUN_PRESETS[genreKey] || PRONOUN_PRESETS.modern;
+  const selectedCharacterCount = selectedCharacterIds.size;
 
   // --- Character Handlers ---
   const openCreate = () => {
@@ -124,8 +145,56 @@ export default function CharacterHub() {
   };
 
   const handleDelete = async (id) => {
+    if (editingChar?.id === id) {
+      setShowModal(false);
+      setEditingChar(null);
+    }
     await deleteCharacter(id, currentProject.id);
     setDeleteConfirm(null);
+  };
+
+  const toggleSelectionMode = () => {
+    setSelectionMode((current) => {
+      const next = !current;
+      if (!next) {
+        setSelectedCharacterIds(new Set());
+        setBulkDeleteConfirm(false);
+      }
+      return next;
+    });
+  };
+
+  const toggleCharacterSelection = (id) => {
+    setBulkDeleteConfirm(false);
+    setSelectedCharacterIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllCharacters = () => {
+    setBulkDeleteConfirm(false);
+    setSelectedCharacterIds(new Set(characters.map((char) => char.id)));
+  };
+
+  const clearCharacterSelection = () => {
+    setSelectedCharacterIds(new Set());
+    setBulkDeleteConfirm(false);
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = [...selectedCharacterIds];
+    if (ids.length === 0) return;
+    if (editingChar && ids.includes(editingChar.id)) {
+      setShowModal(false);
+      setEditingChar(null);
+    }
+    await deleteCharacters(ids, currentProject.id);
+    setSelectedCharacterIds(new Set());
+    setBulkDeleteConfirm(false);
+    setSelectionMode(false);
   };
 
   // --- Taboo Handlers ---
@@ -210,6 +279,14 @@ export default function CharacterHub() {
               <button className="btn btn-accent btn-sm" onClick={() => setShowBatchGen(true)}>
                 <Sparkles size={14} /> Tạo hàng loạt
               </button>
+              {characters.length > 0 && (
+                <button
+                  className={`btn btn-ghost btn-sm ${selectionMode ? 'character-select-mode-active' : ''}`}
+                  onClick={toggleSelectionMode}
+                >
+                  <CheckSquare size={14} /> {selectionMode ? 'Đóng chọn' : 'Chọn nhiều'}
+                </button>
+              )}
               <AIGenerateButton
                 entityType="character"
                 projectContext={{ projectTitle: currentProject?.title, genre: currentProject?.genre_primary, promptTemplates: currentProject?.prompt_templates }}
@@ -254,13 +331,74 @@ export default function CharacterHub() {
               </button>
             </div>
           ) : (
-            <div className="character-grid">
-              {characters.map(char => {
-                const RoleIcon = ROLE_ICONS[char.role] || Users;
-                const roleLabel = CHARACTER_ROLES.find(r => r.value === char.role)?.label || char.role;
-                return (
-                  <div key={char.id} className="character-card" onClick={() => openEdit(char)}>
+            <>
+              {selectionMode && (
+                <div className="character-bulk-toolbar">
+                  <span>{selectedCharacterCount} nhân vật đã chọn</span>
+                  <button className="btn btn-ghost btn-sm" onClick={selectAllCharacters}>
+                    Chọn tất cả
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={clearCharacterSelection}
+                    disabled={selectedCharacterCount === 0}
+                  >
+                    Bỏ chọn
+                  </button>
+                  {bulkDeleteConfirm ? (
+                    <>
+                      <span className="character-bulk-warning">Xóa vĩnh viễn các nhân vật đã chọn?</span>
+                      <button
+                        className="btn btn-danger btn-sm"
+                        onClick={handleBulkDelete}
+                        disabled={selectedCharacterCount === 0}
+                      >
+                        Xóa {selectedCharacterCount} nhân vật
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setBulkDeleteConfirm(false)}>
+                        Hủy
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => setBulkDeleteConfirm(true)}
+                      disabled={selectedCharacterCount === 0}
+                    >
+                      <Trash2 size={14} /> Xóa đã chọn
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="character-grid">
+                {characters.map(char => {
+                  const RoleIcon = ROLE_ICONS[char.role] || Users;
+                  const roleLabel = CHARACTER_ROLES.find(r => r.value === char.role)?.label || char.role;
+                  const isSelected = selectedCharacterIds.has(char.id);
+                  return (
+                    <div
+                      key={char.id}
+                      className={`character-card ${selectionMode ? 'character-card--selecting' : ''} ${isSelected ? 'character-card--selected' : ''}`}
+                      onClick={() => {
+                        if (selectionMode) {
+                          toggleCharacterSelection(char.id);
+                          return;
+                        }
+                        openEdit(char);
+                      }}
+                    >
                     <div className="character-card-header">
+                      {selectionMode && (
+                        <label className="character-select" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleCharacterSelection(char.id)}
+                            aria-label={`Chọn ${char.name}`}
+                          />
+                        </label>
+                      )}
                       <div className="character-avatar">
                         <RoleIcon size={20} />
                       </div>
@@ -324,16 +462,17 @@ export default function CharacterHub() {
 
                     {/* Delete confirm */}
                     {deleteConfirm === char.id && (
-                      <div className="character-delete-confirm">
+                      <div className="character-delete-confirm" onClick={e => e.stopPropagation()}>
                         <span>Xoá nhân vật này?</span>
                         <button className="btn btn-danger btn-sm" onClick={() => handleDelete(char.id)}>Xoá</button>
                         <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirm(null)}>Huỷ</button>
                       </div>
                     )}
-                  </div>
-                );
-              })}
-            </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </>
       )}

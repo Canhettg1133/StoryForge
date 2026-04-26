@@ -86,6 +86,7 @@ export const TASK_TYPES = {
   CANON_EXTRACT_OPS: 'canon_extract_ops',
   CANON_ADJUDICATE_WARNINGS: 'canon_adjudicate_warnings',
   CANON_REPAIR: 'canon_repair',
+  CANON_REVIEW: 'canon_review',
   // Phase 5 — AI Auto Generation
   ARC_OUTLINE: 'arc_outline',
   ARC_CHAPTER_DRAFT: 'arc_chapter_draft',
@@ -229,6 +230,8 @@ const PROXY_TASK_MAP = {
   },
 };
 
+PROXY_TASK_MAP.canon_review = { ...PROXY_TASK_MAP.canon_repair };
+
 // Proxy model selection and legacy quality routing exceptions.
 const PROXY_QUALITY_ROUTING_TASKS = new Set([
   TASK_TYPES.CHAPTER_SUMMARY,
@@ -237,6 +240,7 @@ const PROXY_QUALITY_ROUTING_TASKS = new Set([
   TASK_TYPES.CANON_EXTRACT_OPS,
   TASK_TYPES.CANON_ADJUDICATE_WARNINGS,
   TASK_TYPES.CANON_REPAIR,
+  TASK_TYPES.CANON_REVIEW,
   TASK_TYPES.CONTINUITY_CHECK,
   TASK_TYPES.CHECK_CONFLICT,
 ]);

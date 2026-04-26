@@ -18,10 +18,15 @@ import { buildRetrievalPacket } from '../canon/queries';
 import { buildCharacterStateSummary } from '../canon/state';
 import { TASK_TYPES } from './router';
 import {
+  buildCharacterContextGate,
+  flattenGateCharacters,
+} from './characterContextGate';
+import {
   buildChapterBlueprintContext,
   normalizeChapterListField,
   validateChapterWritingReadiness,
 } from './blueprintGuardrails';
+import { loadFanficCanonContext } from '../labLite/canonPackContext.js';
 
 function resolveRetrievalMode(taskType, explicitMode) {
   if (explicitMode) return explicitMode;
@@ -59,6 +64,7 @@ export async function gatherContext({
   genre = '',
   taskType = null,
   retrievalMode = '',
+  userPrompt = '',
 }) {
   if (!projectId) {
     return {
@@ -81,8 +87,10 @@ export async function gatherContext({
       relationships: [],
       sceneContract: {},
       canonFacts: [],
+      fanficCanonContext: null,
       aiGuidelines: '',
       aiStrictness: 'balanced',
+      characterContextGate: null,
     };
   }
 
@@ -175,32 +183,6 @@ export async function gatherContext({
       seen.add(key);
       return true;
     });
-  }
-
-  const detectedCharacters = detectByName(allCharacters);
-
-  // [FIX] Bootstrap character context for an empty new scene.
-  // If the scene is blank, seed POV/characters_present from stored chapter data.
-  if (sceneId && detectedCharacters.length === 0) {
-    try {
-      // Find scene manually since we only have ID at this point, but actually we do load it below.
-      // However doing it quickly via memory is fine if we loaded them, but we don't have allScenes.
-      // We will just do a quick DB fetch.
-      const scene = cachedScene;
-      if (scene) {
-        const povChar = allCharacters.find(c => c.id === scene.pov_character_id);
-        if (povChar && !detectedCharacters.some(c => c.id === povChar.id)) {
-          detectedCharacters.push(povChar);
-        }
-        const presentIds = JSON.parse(scene.characters_present || '[]');
-        presentIds.forEach(id => {
-          const c = allCharacters.find(char => char.id === id);
-          if (c && !detectedCharacters.some(extC => extC.id === c.id)) {
-            detectedCharacters.push(c);
-          }
-        });
-      }
-    } catch (e) { /* ignore */ }
   }
 
   const detectedLocations = detectByName(allLocations);
@@ -307,7 +289,26 @@ export async function gatherContext({
   const blueprintTerms = chapterBlueprintContext?.relatedTerms || [];
   const blueprintFactions = chapterBlueprintContext?.relatedFactions || [];
 
-  const effectiveCharacters = mergeById(detectedCharacters, blueprintCharacters);
+  const characterContextGate = buildCharacterContextGate({
+    allCharacters,
+    allLocations,
+    allObjects,
+    allTerms,
+    allFactions,
+    allRelationships,
+    canonFacts: allCanonFacts,
+    taboos: allTaboos,
+    scene: cachedScene,
+    sceneText,
+    userPrompt,
+    currentChapterOutline,
+    chapterBlueprintContext,
+  });
+
+  const gateCharacters = flattenGateCharacters(characterContextGate);
+  const effectiveCharacters = gateCharacters.length > 0
+    ? gateCharacters
+    : blueprintCharacters;
   const effectiveLocations = mergeById(detectedLocations, blueprintLocations);
   const effectiveObjects = mergeById(detectedObjects, blueprintObjects);
   const effectiveTerms = mergeById(detectedTerms, blueprintTerms);
@@ -335,14 +336,20 @@ export async function gatherContext({
   }
 
   // --- Relationships for detected characters ---
-  const detectedCharIds = new Set(effectiveCharacters.map(c => c.id));
+  const gatedCharIds = new Set(effectiveCharacters.map(c => c.id));
+  const sceneCastIds = new Set((characterContextGate?.sceneCast || []).map((item) => item.character.id));
   const RELATION_LABELS = {
     ally: 'Đồng minh', enemy: 'Kẻ thù', lover: 'Người yêu',
     family: 'Gia đình', mentor: 'Sư phụ/Cố vấn', rival: 'Đối thủ',
     friend: 'Bạn bè', subordinate: 'Cấp dưới/Cấp trên', other: 'Khác',
   };
   const relationships = allRelationships
-    .filter(r => detectedCharIds.has(r.character_a_id) || detectedCharIds.has(r.character_b_id))
+    .filter((r) => {
+      const aInScene = sceneCastIds.has(r.character_a_id);
+      const bInScene = sceneCastIds.has(r.character_b_id);
+      if (aInScene || bInScene) return true;
+      return gatedCharIds.has(r.character_a_id) && gatedCharIds.has(r.character_b_id);
+    })
     .map(r => ({
       charA: allCharacters.find(c => c.id === r.character_a_id)?.name || '???',
       charB: allCharacters.find(c => c.id === r.character_b_id)?.name || '???',
@@ -467,6 +474,23 @@ export async function gatherContext({
     sceneText,
   });
 
+  let fanficCanonContext = null;
+  if (project?.source_canon_pack_id && ['fanfic', 'rewrite', 'translation_context'].includes(project?.project_mode)) {
+    try {
+      fanficCanonContext = await loadFanficCanonContext({
+        project,
+        sceneText,
+        currentChapterOutline: {
+          ...currentChapterOutline,
+          chapterIndex: resolvedChapterIndex + 1,
+        },
+        characters: hydratedCharacters,
+      });
+    } catch (error) {
+      console.warn('[Context] Failed to load Lab Lite Canon Pack context (non-fatal):', error);
+    }
+  }
+
   return {
     characters: hydratedCharacters,
     locations: effectiveLocations,
@@ -494,9 +518,11 @@ export async function gatherContext({
     allCharacters,
     aiGuidelines,
     aiStrictness,
+    characterContextGate,
     relationships,
     sceneContract,
     canonFacts: effectiveCanonFacts,
+    fanficCanonContext,
     plotThreads: activePlotThreads,
     targetLength,
     targetLengthType,

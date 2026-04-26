@@ -28,6 +28,7 @@ export {
 export {
   validateCandidateOps,
   validateDraftTextAgainstTruth,
+  validateGeneratedProseDiscipline,
   reportsHaveErrors,
 } from './validation';
 

@@ -24,15 +24,28 @@ function getOutcomeClass(outcome) {
   return 'continuity-bar-feedback--error';
 }
 
+function getReportKey(report) {
+  return report?.id || `${report?.rule_code || 'report'}-${report?.message || ''}-${report?.evidence || ''}`;
+}
+
+function isSceneCastReport(report) {
+  return [
+    'OUT_OF_SCENE_CHARACTER_DIALOGUE',
+    'OUT_OF_SCENE_CHARACTER_ACTION',
+  ].includes(report?.rule_code);
+}
+
 export default function ContinuityBar({ isMobileLayout = false }) {
   const {
     chapters,
+    scenes,
     activeChapterId,
     activeSceneId,
     currentProject,
     completingChapterId,
     chapterCompletionById,
     runChapterCompletion,
+    updateScene,
   } = useProjectStore();
   const { chapterMetas, loadCodex } = useCodexStore();
   const {
@@ -52,6 +65,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   } = useCanonStore();
   const [expanded, setExpanded] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
+  const [ignoredReportKeys, setIgnoredReportKeys] = useState(() => new Set());
 
   useEffect(() => {
     if (isMobileLayout) {
@@ -63,6 +77,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     clearActionOutcome();
     clearRepairText();
     setIssuesOpen(false);
+    setIgnoredReportKeys(new Set());
   }, [activeChapterId, activeSceneId, clearActionOutcome, clearRepairText]);
 
   useEffect(() => {
@@ -137,7 +152,11 @@ export default function ContinuityBar({ isMobileLayout = false }) {
         ? 'continuity-bar-btn--danger'
         : '';
   const canonStatusOk = canonIsFreshAnalyzed || (chapterCanon?.status === 'canonical' && !chapterCanon?.isStale);
-  const reports = chapterCanon?.reports || [];
+  const rawReports = chapterCanon?.reports || [];
+  const reports = useMemo(
+    () => rawReports.filter((report) => !ignoredReportKeys.has(getReportKey(report))),
+    [rawReports, ignoredReportKeys],
+  );
   const activeRevisionId = chapterCanon?.revision?.id || chapterCanon?.commit?.current_revision_id || null;
   const scopedRepairPreview = repairPreview?.chapterId === activeChapterId ? repairPreview : null;
   const hasCanonIssues = reports.length > 0;
@@ -204,6 +223,29 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     } catch {
       // Store already carries the actionable error state for the dialog/banner.
     }
+  };
+
+  const handleAddReportCharacterToScene = async (report) => {
+    const characterId = Array.isArray(report?.related_entity_ids) ? report.related_entity_ids[0] : null;
+    if (!activeSceneId || !characterId) return;
+    const activeScene = scenes.find((scene) => scene.id === activeSceneId);
+    if (!activeScene) return;
+    let charactersPresent = [];
+    try {
+      charactersPresent = JSON.parse(activeScene.characters_present || '[]');
+    } catch {
+      charactersPresent = [];
+    }
+    if (!charactersPresent.some((id) => String(id) === String(characterId))) {
+      await updateScene(activeSceneId, {
+        characters_present: JSON.stringify([...charactersPresent, characterId]),
+      });
+    }
+    setIgnoredReportKeys((current) => new Set([...current, getReportKey(report)]));
+  };
+
+  const handleIgnoreReport = (report) => {
+    setIgnoredReportKeys((current) => new Set([...current, getReportKey(report)]));
   };
 
   const handleSaveDraft = async () => {
@@ -383,6 +425,33 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                       <div className="continuity-issue__rule">{report.rule_code || report.severity || 'CANON_REPORT'}</div>
                       <div className="continuity-issue__message">{report.message}</div>
                       {report.evidence && <div className="continuity-issue__evidence">{report.evidence}</div>}
+                      {isSceneCastReport(report) && (
+                        <div className="continuity-issue__actions">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleAddReportCharacterToScene(report)}
+                            disabled={!activeSceneId || !report.related_entity_ids?.length}
+                          >
+                            Thêm vào cảnh
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleRepair(report.id || null)}
+                            disabled={!activeRevisionId || scopedRepairPreview?.loading}
+                          >
+                            Yêu cầu AI sửa
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => handleIgnoreReport(report)}
+                          >
+                            Bỏ qua
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

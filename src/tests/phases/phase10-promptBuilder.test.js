@@ -37,6 +37,26 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[1].content).toContain('Nhan vat da co: A, B');
   });
 
+  it('can make character batch generation treat inferred missing cast as an upper limit', () => {
+    const messages = buildPrompt(TASK_TYPES.AI_GENERATE_ENTITY, {
+      projectTitle: 'He He',
+      genre: 'fantasy',
+      userPrompt: 'Dan y co Kael, Lyra, Borg, Zeryn, Evelyn.',
+      entityType: 'character',
+      batchCount: 5,
+      selectedBatchCount: 20,
+      aiInferCharacterList: true,
+      knownMissingCharacterNames: ['Kael', 'Lyra', 'Borg', 'Zeryn', 'Evelyn'],
+      entityContextText: 'Nhan vat da co: Lyra aliases: Phap su ky uc',
+    });
+
+    expect(messages[1].content).toContain('[CHE DO TU PHAN TICH NHAN VAT CON THIEU]');
+    expect(messages[1].content).toContain('Toi da 5 muc');
+    expect(messages[1].content).toContain('name + aliases');
+    expect(messages[1].content).toContain('[DANH SACH CON THIEU UI GOI Y - CAN KIEM TRA LAI]');
+    expect(messages[1].content).toContain('So tac gia dang chon tren UI: 20');
+  });
+
   it('builds macro milestone and audit prompts with dedicated user blocks', () => {
     const milestoneMessages = buildPrompt(TASK_TYPES.GENERATE_MACRO_MILESTONES, {
       projectTitle: 'Dai Truyen',
@@ -206,6 +226,61 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[0].content).toContain('Chi duoc dung entity ngoai danh sach neu summary chuong hoac canon dang co bat buoc phai goi toi.');
     expect(messages[0].content).toContain('[KIEM TRA TRUOC KHI VIET]');
     expect(messages[0].content).toContain('Canh bao anti-hallucination');
+  });
+
+  it('builds permissioned character blocks and prose discipline from the character context gate', () => {
+    const messages = buildPrompt(TASK_TYPES.CONTINUE, {
+      projectTitle: 'Du An Thu',
+      genre: 'fantasy',
+      characters: [
+        { id: 1, name: 'Lan', role: 'protagonist' },
+        { id: 2, name: 'Kha', role: 'supporting' },
+        { id: 3, name: 'Mai', role: 'supporting' },
+      ],
+      characterContextGate: {
+        sceneCast: [{
+          character: {
+            id: 1,
+            name: 'Lan',
+            role: 'protagonist',
+            aliases: ['A Lan'],
+            pronouns_self: 'ta',
+            personality: 'Kien dinh',
+            flaws: 'Noi nong',
+            speech_pattern: 'Ngan gon',
+            current_status: 'Dang bi truy duoi',
+            goals: 'Tim su that',
+            secrets: 'La nguoi giu an tin',
+            notes: 'Truc cam xuc cua canh',
+            story_function: 'Dan mach chinh',
+          },
+          permission: 'direct_scene',
+        }],
+        chapterFocusCast: [{
+          character: { id: 2, name: 'Kha', role: 'supporting', speech_pattern: 'Cham rai' },
+          permission: 'chapter_focus_only',
+        }],
+        referencedCanonCast: [{
+          character: { id: 3, name: 'Mai', role: 'supporting', current_status: 'Mat tich' },
+          permission: 'canon_reference_only',
+        }],
+      },
+    });
+
+    const system = messages[0].content;
+    expect(system).toContain('[NHAN VAT DUOC XUAT HIEN TRUC TIEP TRONG CANH]');
+    expect(system).toContain('[NHAN VAT QUAN TRONG CUA CHUONG - KHONG TU DONG XUAT HIEN TRONG CANH]');
+    expect(system).toContain('[CANON NHAN VAT LIEN QUAN / DUOC NHAC TOI]');
+    expect(system).toContain('Muc tieu: Tim su that');
+    expect(system).toContain('Bi mat canon (khong tu tiet lo neu chua den luc): La nguoi giu an tin');
+    expect(system).toContain('Ghi chu: Truc cam xuc cua canh');
+    expect(system).toContain('Vai tro truyen: Dan mach chinh');
+    expect(system).toContain('[CAM BIA CANON NHAN VAT]');
+    expect(system).toContain('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]');
+    expect(system.indexOf('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]')).toBeGreaterThan(system.indexOf('[DNA VAN PHONG'));
+    expect(system.indexOf('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]')).toBeLessThan(system.indexOf('[DO DAI VA NHIP DO]'));
+    expect(system).toContain('[NHIEM VU]');
+    expect(system).toContain('[THE LOAI]');
   });
 
   it('forces OUTLINE to stay inside the current chapter and respect future chapter fences', () => {

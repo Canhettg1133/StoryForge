@@ -66,6 +66,9 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
     validatorReports = [],
     entityType = '',
     batchCount = 0,
+    aiInferCharacterList = false,
+    knownMissingCharacterNames = [],
+    selectedBatchCount = 0,
     entityContextText = '',
     recentChapterSummaries = [],
     authorIdea = '',
@@ -225,6 +228,7 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
       const targetType = entityType || 'character';
       const isBatchMode = Number(batchCount) > 1;
       const count = Math.max(1, Number(batchCount) || 1);
+      const shouldInferCharacterList = targetType === 'character' && Boolean(aiInferCharacterList);
       const labelMap = {
         character: 'nhan vat',
         location: 'dia diem',
@@ -243,9 +247,29 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         : singularSchema;
 
       userContent = '[LOAI THUC THE]\n' + (labelMap[targetType] || targetType);
-      userContent += '\n\n[SO LUONG]\n' + (isBatchMode ? count + ' muc' : '1 muc');
+      userContent += '\n\n[SO LUONG]\n' + (shouldInferCharacterList
+        ? `Toi da ${count} muc. Neu danh sach nhan vat ro trong yeu cau bo sung co it hon, chi tao so nhan vat con thieu thuc te.`
+        : (isBatchMode ? count + ' muc' : '1 muc'));
       if (projectTitle) userContent += '\n\n[TEN TRUYEN]\n' + projectTitle;
       if (entityContextText) userContent += '\n\n[BOI CANH HIEN CO]\n' + entityContextText;
+      if (shouldInferCharacterList) {
+        const missingNames = Array.isArray(knownMissingCharacterNames)
+          ? knownMissingCharacterNames.filter(Boolean)
+          : [];
+        userContent += '\n\n[CHE DO TU PHAN TICH NHAN VAT CON THIEU]';
+        userContent += '\n- Hay tu doc [YEU CAU CUA TAC GIA] nhu mot dan y/cast list, nhan dien ten nguoi/nhan vat bang cau truc danh sach, dau :, dau (), vai tro, name + aliases.';
+        userContent += '\n- Ho tro ten Viet Nam, ten Han Viet/Trung Quoc dich ra, ten tieng Anh, ten viet thuong, ten co dau va alias ngan.';
+        userContent += '\n- Doi chieu voi [BOI CANH HIEN CO], dac biet la name + aliases cua nhan vat da co. Ten khac/biet danh cua cung mot nguoi KHONG duoc tinh la nhan vat moi.';
+        userContent += '\n- Chi tao nhan vat con thieu. Khong lay dia danh, tieu de phan/chuong, vat pham, phe phai, thuat ngu, hoac cau prose lam ten nhan vat.';
+        userContent += '\n- Neu tac gia dang chon so cao hon so con thieu, bo qua so cao va tra ve dung so con thieu.';
+        userContent += '\n- Neu tac gia dang chon so thap hon so con thieu, chi tao toi da so duoc chon/so toi da va uu tien cac ten xuat hien trong danh sach nhan vat.';
+        if (Number(selectedBatchCount) > 0) {
+          userContent += '\n- So tac gia dang chon tren UI: ' + Number(selectedBatchCount) + '.';
+        }
+        if (missingNames.length > 0) {
+          userContent += '\n\n[DANH SACH CON THIEU UI GOI Y - CAN KIEM TRA LAI]\n' + missingNames.map((name) => '- ' + name).join('\n');
+        }
+      }
       userContent += '\n\n[YEU CAU CUA TAC GIA]\n' + (userPrompt || 'Hay tao mot muc phu hop voi du an nay.');
       userContent += '\n\n[OUTPUT JSON BAT BUOC]\n' + outputSchema;
       break;

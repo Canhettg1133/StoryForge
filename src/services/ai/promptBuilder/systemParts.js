@@ -100,6 +100,8 @@ export function buildPromptSystemParts(taskType, context = {}) {
     superNsfwMode = false,
     sceneList = [],
     validatorReports = [],
+    fanficCanonContext = null,
+    characterContextGate = null,
     retrievalPacket = null,
     entityType = '',
     batchCount = 0,
@@ -131,6 +133,59 @@ export function buildPromptSystemParts(taskType, context = {}) {
     }
     return [];
   };
+
+  const formatCharacterProfile = (character) => {
+    const c = character || {};
+    const parts = ['- ' + (c.name || 'Nhan vat') + ' (' + (c.role || 'nhan vat') + ')'];
+    if (Array.isArray(c.aliases) && c.aliases.length > 0) parts.push('  Aliases/ten goi khac: ' + c.aliases.join(', '));
+    if (typeof c.aliases === 'string' && c.aliases.trim()) parts.push('  Aliases/ten goi khac: ' + c.aliases);
+    const selfPronoun = c.pronouns_self || c.pronouns?.self || '';
+    const otherPronoun = c.pronouns_other || c.pronouns?.other || '';
+    if (selfPronoun) parts.push('  Xung: "' + selfPronoun + '"' + (otherPronoun ? ', goi nguoi: "' + otherPronoun + '"' : ''));
+    if (c.appearance) parts.push('  Ngoai hinh: ' + c.appearance);
+    if (c.personality_tags) parts.push('  Tags: ' + c.personality_tags);
+    if (c.personality) parts.push('  Tinh cach: ' + c.personality);
+    if (c.flaws) parts.push('  Diem yeu: ' + c.flaws);
+    if (c.goals) parts.push('  Muc tieu: ' + c.goals);
+    if (c.secrets) parts.push('  Bi mat canon (khong tu tiet lo neu chua den luc): ' + c.secrets);
+    if (c.notes) parts.push('  Ghi chu: ' + c.notes);
+    if (c.story_function) parts.push('  Vai tro truyen: ' + c.story_function);
+    if (c.speech_pattern) parts.push('  Giong noi: ' + c.speech_pattern);
+    if (c.current_status) parts.push('  Trang thai hien tai: ' + c.current_status);
+    return parts.join('\n');
+  };
+
+  const buildPermissionedCharacterBlock = (header, rule, items, cap = 15) => {
+    const normalizedItems = (items || [])
+      .map((item) => item?.character || item)
+      .filter(Boolean)
+      .slice(0, cap);
+    if (normalizedItems.length === 0) return '';
+    return '\n[' + header + ']\n'
+      + rule
+      + '\n'
+      + normalizedItems.map(formatCharacterProfile).join('\n');
+  };
+
+  const CANON_FABRICATION_GUARDRAIL = [
+    '\n[CAM BIA CANON NHAN VAT]',
+    '- Khong tu bia than the, cha me, con nuoi/con ruot, huyet thong, qua khu, vet thuong cu, loi hua cu, nang luc an, quan he gia dinh hoac yeu duong neu ho so/canon khong ghi.',
+    '- Neu canon chua noi thi viet trung tinh hoac bo qua; neu ho so noi ro thi khong viet nguoc lai.',
+    '- Bi mat trong ho so chi dung de tranh mau thuan, khong tu tiet lo trong van ban neu chua den luc.',
+  ].join('\n');
+
+  const PROSE_DIALOGUE_DISCIPLINE_LAYER = [
+    '\n[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]',
+    '- Viet thanh van xuoi hoan chinh, khong dan y, khong tom tat, khong bullet, khong markdown, khong heading meta trong prose.',
+    '- Tach ro hanh dong, noi tam, cau dan va thoai; doi nguoi noi thi xuong dong.',
+    '- Khong nhoi nhieu luot thoai cua nhieu nguoi vao cung mot doan.',
+    '- Moi doan chi nen co mot trong tam: hanh dong, cam giac, quan sat, noi tam, hoac mot luot thoai.',
+    '- Thoai phai tu nhien theo speech_pattern, quan he, tuoi/tang lop va cam xuc hien tai cua tung nhan vat.',
+    '- Khong ngat cau may moc; cau ngan chi dung khi can tao nhip, khong lap lien tiep vo nghia.',
+    '- Khong de nhan vat noi nhu dang liet ke y.',
+    '- Khong de nhan vat tu giai thich ho so, than the, tinh cach, qua khu neu khong co dong co trong canh.',
+    '- Khong tom tat thay cho viet canh.',
+  ].join('\n');
 
   // FREE_PROMPT: skip heavy writing layers for questions/chat
   const freePromptInProject = taskType === TASK_TYPES.FREE_PROMPT && !!(projectId || chapterId);
@@ -345,6 +400,39 @@ export function buildPromptSystemParts(taskType, context = {}) {
     systemParts.push('\n[BOI CANH TRUYEN]\n' + canonContextParts.join('\n\n'));
   }
 
+  if (fanficCanonContext && !skipWritingLayers) {
+    const fanficParts = [];
+    fanficParts.push('Canon Pack: ' + (fanficCanonContext.packTitle || 'Canon Pack'));
+    fanficParts.push('Che do: ' + (fanficCanonContext.projectMode || 'fanfic'));
+    fanficParts.push('Muc bam canon: ' + (fanficCanonContext.adherenceLevel || 'balanced'));
+    if (fanficCanonContext.divergencePoint) {
+      fanficParts.push('Diem re nhanh co chu dich: ' + fanficCanonContext.divergencePoint);
+    }
+    if (fanficCanonContext.globalCanon) {
+      fanficParts.push('Global Canon:\n' + fanficCanonContext.globalCanon);
+    }
+    if (fanficCanonContext.characterCanon?.length > 0) {
+      fanficParts.push('Nhan vat lien quan:\n' + fanficCanonContext.characterCanon.map(function (character) {
+        return '- ' + character.name + (character.status ? ': ' + character.status : '') + (character.voice ? ' | Giong: ' + character.voice : '');
+      }).join('\n'));
+    }
+    if (fanficCanonContext.relationshipCanon?.length > 0) {
+      fanficParts.push('Quan he lien quan:\n' + fanficCanonContext.relationshipCanon.map(function (relationship) {
+        return '- ' + (relationship.characterA || relationship.charA || '?') + ' / ' + (relationship.characterB || relationship.charB || '?') + ': ' + (relationship.change || relationship.relation || '');
+      }).join('\n'));
+    }
+    if (fanficCanonContext.styleCanon) {
+      fanficParts.push('Style Canon:\n' + fanficCanonContext.styleCanon);
+    }
+    if (fanficCanonContext.canonRestrictions?.length > 0) {
+      fanficParts.push('Dieu cam pha canon:\n' + fanficCanonContext.canonRestrictions.map(function (item) { return '- ' + item; }).join('\n'));
+    }
+    if (fanficCanonContext.creativeGaps?.length > 0) {
+      fanficParts.push('Khoang trong co the sang tao:\n' + fanficCanonContext.creativeGaps.map(function (item) { return '- ' + item; }).join('\n'));
+    }
+    systemParts.push('\n[CANON PACK CHO DONG NHAN / VIET LAI]\n' + fanficParts.join('\n\n'));
+  }
+
   // -- Layer 4.2: Chapter Outline Context (Phase 8) --
   const chapterOutlineLayer = buildChapterOutlineLayer(
     taskType,
@@ -379,21 +467,38 @@ export function buildPromptSystemParts(taskType, context = {}) {
   // [Layer 4.5 removed - merged into Grand Strategy (Layer 0)]
 
   // -- Layer 5: Character State (token budget: max 15) --
-  var cappedCharacters = characters.slice(0, 15);
-  if (cappedCharacters.length > 0) {
-    const charInfo = cappedCharacters.map(function (c) {
-      const parts = ['- ' + c.name + ' (' + (c.role || 'nhan vat') + ')'];
-      if (Array.isArray(c.aliases) && c.aliases.length > 0) parts.push('  Aliases/ten goi khac: ' + c.aliases.join(', '));
-      if (c.pronouns_self) parts.push('  Xung: "' + c.pronouns_self + '"' + (c.pronouns_other ? ', goi nguoi: "' + c.pronouns_other + '"' : ''));
-      if (c.appearance) parts.push('  Ngoai hinh: ' + c.appearance);
-      if (c.personality_tags) parts.push('  Tags: ' + c.personality_tags);
-      if (c.personality) parts.push('  Tinh cach: ' + c.personality);
-      if (c.flaws) parts.push('  Diem yeu: ' + c.flaws);
-      if (c.speech_pattern) parts.push('  Giong noi: ' + c.speech_pattern);
-      if (c.current_status) parts.push('  Trang thai hien tai: ' + c.current_status);
-      return parts.join('\n');
-    }).join('\n');
-    systemParts.push('\n[NHAN VAT XUAT HIEN]\n' + charInfo + '\n\nQUY TAC NHAN VAT: Dung ten chinh thuc o dau dong khi tham chieu nhan vat. Ten ngan, biet danh, danh xung, ho/ten dem chi la alias cua nhan vat da co; khong bien chung thanh nhan vat moi.');
+  if (characterContextGate) {
+    const characterBlocks = [
+      buildPermissionedCharacterBlock(
+        'NHAN VAT DUOC XUAT HIEN TRUC TIEP TRONG CANH',
+        'QUYEN: Nhom nay duoc noi thoai, hanh dong va xuat hien truc tiep trong canh.',
+        characterContextGate.sceneCast,
+        15
+      ),
+      buildPermissionedCharacterBlock(
+        'NHAN VAT QUAN TRONG CUA CHUONG - KHONG TU DONG XUAT HIEN TRONG CANH',
+        'QUYEN: Chi dung de giu huong chuong; khong tu dua vao canh, khong cho noi thoai/hanh dong neu scene cast khong co.',
+        characterContextGate.chapterFocusCast,
+        10
+      ),
+      buildPermissionedCharacterBlock(
+        'CANON NHAN VAT LIEN QUAN / DUOC NHAC TOI',
+        'QUYEN: Chi lam nen canon hoac duoc nhac toi; khong tu cho xuat hien truc tiep, noi thoai, hay hanh dong.',
+        characterContextGate.referencedCanonCast,
+        8
+      ),
+    ].filter(Boolean);
+    if (characterBlocks.length > 0) {
+      systemParts.push(characterBlocks.join('\n\n') + '\n\nQUY TAC NHAN VAT: Dung ten chinh thuc o dau dong khi tham chieu nhan vat. Ten ngan, biet danh, danh xung, ho/ten dem chi la alias cua nhan vat da co; khong bien chung thanh nhan vat moi.');
+      systemParts.push(CANON_FABRICATION_GUARDRAIL);
+    }
+  } else {
+    var cappedCharacters = characters.slice(0, 15);
+    if (cappedCharacters.length > 0) {
+      const charInfo = cappedCharacters.map(formatCharacterProfile).join('\n');
+      systemParts.push('\n[NHAN VAT XUAT HIEN]\n' + charInfo + '\n\nQUY TAC NHAN VAT: Dung ten chinh thuc o dau dong khi tham chieu nhan vat. Ten ngan, biet danh, danh xung, ho/ten dem chi la alias cua nhan vat da co; khong bien chung thanh nhan vat moi.');
+      systemParts.push(CANON_FABRICATION_GUARDRAIL);
+    }
   }
 
   // Relationships (Phase 4)
@@ -589,6 +694,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
         ...projectBlacklist.map(function(item) { return '- ' + item; }),
       ].join('\n'));
     }
+    systemParts.push(PROSE_DIALOGUE_DISCIPLINE_LAYER);
   }
 
   // -- Layer 7.5: Mood Board --

@@ -1,12 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import useProjectStore from '../../stores/projectStore';
 import {
   GENRES, TONES, POV_MODES, STORY_STRUCTURES,
   PRONOUN_STYLE_PRESETS, GENRE_TO_PRONOUN_STYLE,
 } from '../../utils/constants';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
-import { X, Sparkles, PenTool, Eye, BookOpen, MessageSquare } from 'lucide-react';
+import { X, Sparkles, PenTool, Eye, BookOpen, MessageSquare, BookKey } from 'lucide-react';
 import ProjectWizard from './ProjectWizard';
+import { listAvailableCanonPacks } from '../../services/labLite/canonPackRepository.js';
+import {
+  CANON_ADHERENCE_LEVELS,
+  FANFIC_TYPES,
+  PROJECT_MODES,
+  generateFanficProjectSeed,
+} from '../../services/labLite/fanficProjectSetup.js';
 
 function clampInitialChapterCount(value) {
   const numeric = Number(value);
@@ -17,6 +24,14 @@ function clampInitialChapterCount(value) {
 export default function NewProjectModal({ onClose, onCreated }) {
   const { createProject, createChapter } = useProjectStore();
   const [mode, setMode] = useState(null); // null = choose, 'manual' = form, 'ai' = wizard
+  const [canonPacks, setCanonPacks] = useState([]);
+  const [fanficForm, setFanficForm] = useState({
+    title: '',
+    canonPackId: '',
+    fanficType: 'continue_after_ending',
+    adherenceLevel: 'balanced',
+    divergencePoint: '',
+  });
   const [form, setForm] = useState({
     title: '',
     genre_primary: 'fantasy',
@@ -34,6 +49,17 @@ export default function NewProjectModal({ onClose, onCreated }) {
     ultimate_goal: '',
   });
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    listAvailableCanonPacks()
+      .then((packs) => {
+        setCanonPacks(packs);
+        if (packs[0]?.id) {
+          setFanficForm((prev) => ({ ...prev, canonPackId: prev.canonPackId || packs[0].id }));
+        }
+      })
+      .catch(() => setCanonPacks([]));
+  }, []);
 
   const handleChange = (field, value) => {
     setForm(prev => {
@@ -101,6 +127,61 @@ export default function NewProjectModal({ onClose, onCreated }) {
     }
   };
 
+  const handleFanficSubmit = async (event) => {
+    event.preventDefault();
+    setCreating(true);
+    try {
+      const selectedPack = canonPacks.find((pack) => pack.id === fanficForm.canonPackId) || null;
+      if (!selectedPack) {
+        const id = await createProject({
+          title: fanficForm.title.trim() || 'Dự án đồng nhân mới',
+          description: 'Dự án đồng nhân / viết lại theo canon. Hãy tạo Canon Pack trong Lab Lite trước khi viết.',
+          genre_primary: 'fantasy',
+          project_mode: PROJECT_MODES.FANFIC,
+          canon_adherence_level: fanficForm.adherenceLevel,
+          divergence_point: fanficForm.divergencePoint,
+          fanfic_setup: JSON.stringify({
+            fanficType: fanficForm.fanficType,
+            adherenceLevel: fanficForm.adherenceLevel,
+            divergencePoint: fanficForm.divergencePoint,
+          }),
+          skipFirstChapter: true,
+        });
+        onCreated(id, { path: `/project/${id}/lab-lite` });
+        return;
+      }
+
+      const seed = await generateFanficProjectSeed({
+        canonPack: selectedPack,
+        setup: {
+          fanficType: fanficForm.fanficType,
+          adherenceLevel: fanficForm.adherenceLevel,
+          divergencePoint: fanficForm.divergencePoint,
+        },
+        title: fanficForm.title.trim(),
+      });
+      const id = await createProject({
+        title: seed.title,
+        description: seed.description,
+        synopsis: seed.synopsis,
+        genre_primary: 'fantasy',
+        project_mode: PROJECT_MODES.FANFIC,
+        source_canon_pack_id: selectedPack.id,
+        canon_adherence_level: fanficForm.adherenceLevel,
+        divergence_point: fanficForm.divergencePoint,
+        fanfic_setup: JSON.stringify(seed.fanfic_setup),
+        skipFirstChapter: true,
+      });
+      for (const chapter of seed.chapters) {
+        await createChapter(id, chapter.title, chapter);
+      }
+      onCreated(id);
+    } catch (err) {
+      console.error('Failed to create fanfic project:', err);
+      setCreating(false);
+    }
+  };
+
   // AI Wizard mode
   if (mode === 'ai') {
     return <ProjectWizard onClose={onClose} onCreated={onCreated} />;
@@ -145,7 +226,104 @@ export default function NewProjectModal({ onClose, onCreated }) {
                 <span>Thiết lập chi tiết và bắt đầu viết ngay</span>
               </div>
             </button>
+
+            <button
+              className="wizard-choice-btn"
+              onClick={() => setMode('fanfic')}
+            >
+              <div className="wizard-choice-icon"><BookKey size={24} /></div>
+              <div className="wizard-choice-text">
+                <strong>Đồng nhân / viết lại theo canon</strong>
+                <span>Chọn Canon Pack hoặc vào Lab Lite để nạp liệu trước.</span>
+              </div>
+            </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === 'fanfic') {
+    return (
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal modal--lg animate-scale-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
+          <div className="modal-header">
+            <h2 className="modal-title">
+              <BookKey size={20} style={{ color: 'var(--color-accent)' }} />
+              {' '}Đồng nhân / viết lại theo canon
+            </h2>
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <form onSubmit={handleFanficSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', padding: '0 var(--space-5) var(--space-5)' }}>
+            <div className="form-group">
+              <label className="form-label">Tên dự án</label>
+              <input
+                className="input"
+                placeholder="VD: Sau hồi kết của Thanh Vân"
+                value={fanficForm.title}
+                onChange={(event) => setFanficForm((prev) => ({ ...prev, title: event.target.value }))}
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Canon Pack</label>
+              <select
+                className="select"
+                value={fanficForm.canonPackId}
+                onChange={(event) => setFanficForm((prev) => ({ ...prev, canonPackId: event.target.value }))}
+              >
+                {canonPacks.length === 0 ? <option value="">Chưa có Canon Pack - tạo project shell và mở Lab Lite</option> : null}
+                {canonPacks.map((pack) => <option key={pack.id} value={pack.id}>{pack.title}</option>)}
+              </select>
+              <span className="form-hint">Nếu chưa có Canon Pack, StoryForge sẽ đưa bạn sang Lab Lite để nạp liệu.</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Kiểu đồng nhân</label>
+                <select
+                  className="select"
+                  value={fanficForm.fanficType}
+                  onChange={(event) => setFanficForm((prev) => ({ ...prev, fanficType: event.target.value }))}
+                >
+                  {FANFIC_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{ flex: 1 }}>
+                <label className="form-label">Mức bám canon</label>
+                <select
+                  className="select"
+                  value={fanficForm.adherenceLevel}
+                  onChange={(event) => setFanficForm((prev) => ({ ...prev, adherenceLevel: event.target.value }))}
+                >
+                  {CANON_ADHERENCE_LEVELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Điểm rẽ nhánh</label>
+              <textarea
+                className="textarea"
+                placeholder="VD: Sau chương 120, nhân vật phụ biết bí mật sớm hơn bản gốc."
+                value={fanficForm.divergencePoint}
+                onChange={(event) => setFanficForm((prev) => ({ ...prev, divergencePoint: event.target.value }))}
+                rows={3}
+              />
+            </div>
+
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setMode(null)}>← Quay lại</button>
+              <button type="submit" className="btn btn-primary" disabled={creating}>
+                <BookKey size={16} />
+                {creating ? 'Đang tạo...' : 'Tạo dự án đồng nhân'}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     );

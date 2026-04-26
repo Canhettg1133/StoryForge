@@ -40,6 +40,7 @@ const MORE_ITEMS = [
   { id: 'translator', label: 'D\u1ecbch truy\u1ec7n', icon: Languages, path: () => '/translator' },
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: () => '/' },
   { id: 'lab', label: 'Narrative Lab', icon: FlaskConical, path: (id) => `/project/${id}/lab`, surface: 'lab' },
+  { id: 'lab-lite', label: 'Lab Lite', icon: BookMarked, path: (id) => `/project/${id}/lab-lite`, surface: 'lab-lite' },
   { id: 'corpus-lab', label: 'Corpus Lab', icon: FlaskConical, path: (id) => `/project/${id}/corpus-lab`, surface: 'lab' },
   { id: 'timeline', label: 'Timeline', icon: Map, path: (id) => `/project/${id}/timeline`, surface: 'roadmap' },
   { id: 'revision', label: 'Revision & QA', icon: FileSearch, path: (id) => `/project/${id}/revision`, surface: 'roadmap' },
@@ -64,6 +65,7 @@ function getPageTitle(pathname) {
 
 function canShowItem(item) {
   if (!shouldShowNavItem(item)) return false;
+  if (item.id === 'lab-lite' || item.surface === 'lab-lite') return PRODUCT_SURFACE.showLabLite;
   if (item.surface === 'lab') return PRODUCT_SURFACE.showLabs;
   if (item.surface === 'roadmap') return PRODUCT_SURFACE.showRoadmapPages;
   return true;

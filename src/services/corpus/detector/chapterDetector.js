@@ -215,6 +215,23 @@ function isNumberedHeading(line, normalizedLine) {
     || /^tap\s*\d+\b/i.test(normalizedLine);
 }
 
+function isBareNumberedHeading(line) {
+  if (!looksLikeHeading(line)) {
+    return false;
+  }
+
+  return /^\d{1,4}\s+[\p{L}\p{N}]/u.test(line.trim());
+}
+
+function parseHeadingNumber(value) {
+  const raw = String(value || '').trim();
+  if (/^\d+$/u.test(raw)) {
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function detectChapterMarker(line = '') {
   const trimmed = String(line || '').trim();
   if (!trimmed) {
@@ -245,6 +262,17 @@ function detectChapterMarker(line = '') {
       type: 'numbered_heading',
       number: (trimmed.match(/^(\d{1,4}|[ivxlcdm]+)/iu) || [])[1] || null,
       source: 'numbered_heading',
+    };
+  }
+
+  if (isBareNumberedHeading(trimmed)) {
+    return {
+      matched: true,
+      strong: false,
+      explicit: false,
+      type: 'bare_numbered_heading',
+      number: (trimmed.match(/^(\d{1,4})\s+/u) || [])[1] || null,
+      source: 'bare_numbered_heading',
     };
   }
 
@@ -355,6 +383,65 @@ function detectChapterHeadingCandidates(lines = []) {
   return candidates;
 }
 
+function isSequentialNumberCandidate(candidate) {
+  return ['numbered_heading', 'bare_numbered_heading'].includes(candidate?.markerInfo?.type);
+}
+
+function promoteSequentialNumberedCandidates(candidates = []) {
+  const numberedCandidates = candidates
+    .map((candidate, index) => ({ candidate, index, number: parseHeadingNumber(candidate?.markerInfo?.number) }))
+    .filter((entry) => Number.isFinite(entry.number));
+
+  const sequentialIndexes = new Set();
+
+  for (let index = 0; index < numberedCandidates.length; index += 1) {
+    const current = numberedCandidates[index];
+    if (!isSequentialNumberCandidate(current.candidate)) {
+      continue;
+    }
+
+    const previous = numberedCandidates[index - 1];
+    const next = numberedCandidates[index + 1];
+    const previousDistance = previous ? current.candidate.lineIndex - previous.candidate.lineIndex : 0;
+    const nextDistance = next ? next.candidate.lineIndex - current.candidate.lineIndex : 0;
+    const followsPrevious = previous
+      && isSequentialNumberCandidate(previous.candidate)
+      && current.number - previous.number === 1
+      && previousDistance >= 2
+      && previousDistance <= 500;
+    const leadsNext = next
+      && isSequentialNumberCandidate(next.candidate)
+      && next.number - current.number === 1
+      && nextDistance >= 2
+      && nextDistance <= 500;
+
+    if (followsPrevious || leadsNext) {
+      sequentialIndexes.add(current.index);
+      if (previous && followsPrevious) sequentialIndexes.add(previous.index);
+      if (next && leadsNext) sequentialIndexes.add(next.index);
+    }
+  }
+
+  if (sequentialIndexes.size === 0) {
+    return candidates;
+  }
+
+  return candidates.map((candidate, index) => {
+    if (!sequentialIndexes.has(index)) {
+      return candidate;
+    }
+    return {
+      ...candidate,
+      markerInfo: {
+        ...candidate.markerInfo,
+        strong: true,
+        source: `${candidate.markerInfo.source || candidate.markerInfo.type}_sequence`,
+      },
+      sequentialNumbered: true,
+    };
+  });
+}
+
 function looksLikeSentenceTitle(title = '') {
   const trimmed = String(title || '').trim();
   if (!trimmed) return false;
@@ -385,6 +472,11 @@ function scoreHeadingCandidates(candidates = []) {
     if (candidate.markerInfo.number) {
       score += 3;
       reasons.push('has_number');
+    }
+
+    if (candidate.sequentialNumbered) {
+      score += 3;
+      reasons.push('sequential_numbered_heading');
     }
 
     if (candidate.hasSeparatorAbove || candidate.hasSeparatorBelow) {
@@ -434,7 +526,9 @@ function scoreHeadingCandidates(candidates = []) {
       reasons.push('punctuation_heavy');
     }
 
-    const accepted = score >= 8 || (candidate.markerInfo.strong && score >= 6);
+    const accepted = score >= 8
+      || (candidate.markerInfo.strong && score >= 6)
+      || (candidate.sequentialNumbered && candidate.nextBlockWords >= 10 && score >= 4);
     return {
       ...candidate,
       score,
@@ -466,7 +560,12 @@ function validateAcceptedBoundaries(candidates = [], lines = [], options = {}) {
     if (previous) {
       const distance = candidate.lineIndex - previous.lineIndex;
       const sameHeading = normalizeHeadingIdentity(candidate.text) === normalizeHeadingIdentity(previous.text);
-      if (sameHeading && distance <= 4) {
+      const previousNumber = parseHeadingNumber(previous.markerInfo?.number);
+      const candidateNumber = parseHeadingNumber(candidate.markerInfo?.number);
+      const hasDifferentSequentialNumber = Number.isFinite(previousNumber)
+        && Number.isFinite(candidateNumber)
+        && previousNumber !== candidateNumber;
+      if (sameHeading && distance <= 4 && !hasDifferentSequentialNumber) {
         rejected.push({ ...candidate, rejectedReason: 'duplicate_heading' });
         continue;
       }
@@ -673,10 +772,10 @@ function mergeSuspiciousChapters(chapters = [], options = {}) {
     const shouldMergeIntoPrevious = (
       previous
       && current.wordCount < minChapterWords
-      && !titleInfo.strong
+      && !titleInfo.matched
     ) || (
       previous
-      && !titleInfo.strong
+      && !titleInfo.matched
       && looksLikeSentenceTitle(current.title || '')
     );
 
@@ -714,7 +813,7 @@ export function analyzeChapterSegmentation(rawText, options = {}) {
   const lines = normalizedText.split('\n');
   const frontMatterCandidates = extractFrontMatterCandidates(lines);
   const headingCandidates = detectChapterHeadingCandidates(lines);
-  const scoredCandidates = scoreHeadingCandidates(headingCandidates);
+  const scoredCandidates = scoreHeadingCandidates(promoteSequentialNumberedCandidates(headingCandidates));
   const { accepted, rejected } = validateAcceptedBoundaries(scoredCandidates, lines, options);
   const split = splitByAcceptedBoundaries(lines, accepted, options);
   const merged = mergeSuspiciousChapters(split.chapters, options);

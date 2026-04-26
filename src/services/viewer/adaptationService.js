@@ -7,22 +7,22 @@ import aiService from '../ai/client.js';
 
 const ADAPTATION_TROPE_MAPPINGS = [
   // HP → generic
-  { hp: 'rival_meeting', label: 'Rival Encounter' },
-  { hp: 'secret_relationship', label: 'Secret Relationship' },
-  { hp: 'training_arc', label: 'Training Arc' },
-  { hp: 'betrayal_reveal', label: 'Betrayal Reveal' },
-  { hp: 'first_kiss', label: 'First Kiss' },
-  { hp: 'forbidden_love', label: 'Forbidden Love' },
-  { hp: 'hurt_comfort', label: 'Hurt/Comfort' },
-  { hp: 'enemy_to_lover', label: 'Enemy to Lover' },
-  { hp: 'time_skip', label: 'Time Skip' },
-  { hp: 'final_battle', label: 'Final Battle' },
-  { hp: 'mentor_death', label: 'Mentor Death' },
-  { hp: 'power_revelation', label: 'Power Revelation' },
-  { hp: 'group_formation', label: 'Group Formation' },
-  { hp: 'road_trip', label: 'Road Trip' },
-  { hp: 'fake_dating', label: 'Fake Dating' },
-  { hp: 'forced_proximity', label: 'Forced Proximity' },
+  { hp: 'rival_meeting', label: 'Gặp đối thủ' },
+  { hp: 'secret_relationship', label: 'Quan hệ bí mật' },
+  { hp: 'training_arc', label: 'Arc luyện tập' },
+  { hp: 'betrayal_reveal', label: 'Reveal phản bội' },
+  { hp: 'first_kiss', label: 'Nụ hôn đầu' },
+  { hp: 'forbidden_love', label: 'Tình yêu bị cấm' },
+  { hp: 'hurt_comfort', label: 'Tổn thương và an ủi' },
+  { hp: 'enemy_to_lover', label: 'Từ thù thành yêu' },
+  { hp: 'time_skip', label: 'Nhảy thời gian' },
+  { hp: 'final_battle', label: 'Trận chiến cuối' },
+  { hp: 'mentor_death', label: 'Cái chết của người dẫn dắt' },
+  { hp: 'power_revelation', label: 'Reveal sức mạnh' },
+  { hp: 'group_formation', label: 'Hình thành nhóm' },
+  { hp: 'road_trip', label: 'Hành trình đường dài' },
+  { hp: 'fake_dating', label: 'Hẹn hò giả' },
+  { hp: 'forced_proximity', label: 'Bị buộc ở gần nhau' },
 ];
 
 const TROPES_BY_FANDOM = {
@@ -43,48 +43,49 @@ const TROPES_BY_FANDOM = {
 function buildAdaptationPrompt(event, targetFandom, sourceFandom = 'HP') {
   const tropeList = ADAPTATION_TROPE_MAPPINGS.map(t => `  - ${t.label} (${t.hp})`).join('\n');
 
-  return `You are a storytelling expert helping adapt story events between different fictional universes (fandoms).
+  return `Bạn là chuyên gia kể chuyện hỗ trợ chuyển thể biến cố giữa các vũ trụ hư cấu/fandom khác nhau.
 
-## Task
-Adapt the following event from ${sourceFandom} to ${targetFandom}.
+## Nhiệm vụ
+Chuyển thể biến cố sau từ ${sourceFandom} sang ${targetFandom}.
 
-## Source Event
-Description: ${event.description || 'N/A'}
-Severity: ${event.severity || 'unknown'}
-Chapter: ${event.chapter || 'unknown'}
-Tags: ${(event.tags || []).join(', ') || 'none'}
+## Biến cố nguồn
+Mô tả: ${event.description || 'N/A'}
+Mức độ: ${event.severity || 'unknown'}
+Chương: ${event.chapter || 'unknown'}
+Tag: ${(event.tags || []).join(', ') || 'none'}
 Canon/Fanon: ${event.canonOrFanon?.type || 'canon'}
-Emotional Intensity: ${event.emotionalIntensity || 5}/10
-Insertability: ${event.insertability || 5}/10
-Characters involved: ${(event.characters || []).join(', ') || 'unknown'}
+Cường độ cảm xúc: ${event.emotionalIntensity || 5}/10
+Độ dễ chèn vào truyện: ${event.insertability || 5}/10
+Nhân vật liên quan: ${(event.characters || []).join(', ') || 'unknown'}
 
-## Known Trope Equivalents
+## Trope tương đương đã biết
 ${tropeList}
 
-## Output Format (JSON only, no extra text)
+## Định dạng đầu ra
+Chỉ trả JSON hợp lệ, không thêm văn bản ngoài JSON:
 {
-  "equivalentEvent": "Description of the equivalent event in ${targetFandom} universe",
-  "equivalentChapter": "Approximate chapter/arc where this occurs",
-  "characterEquivalent": "Which character(s) from ${targetFandom} this maps to",
+  "equivalentEvent": "Mô tả biến cố tương đương trong vũ trụ ${targetFandom}",
+  "equivalentChapter": "Chương/arc gần đúng nơi biến cố này xảy ra",
+  "characterEquivalent": "Nhân vật tương ứng trong ${targetFandom}",
   "cautions": [
-    "Warning 1 about adaptation (e.g. character personality differences)",
-    "Warning 2"
+    "Cảnh báo 1 khi chuyển thể, ví dụ khác biệt tính cách nhân vật",
+    "Cảnh báo 2"
   ],
   "adaptationNotes": [
-    "Key change needed 1",
-    "Key change needed 2"
+    "Điều chỉnh quan trọng cần làm 1",
+    "Điều chỉnh quan trọng cần làm 2"
   ],
   "similarityScore": 0.85,
   "intensityMatch": "${event.emotionalIntensity >= 7 ? 'high' : event.emotionalIntensity >= 4 ? 'medium' : 'low'}",
   "tropesMatched": ["trope1", "trope2"]
 }
 
-## Rules
-- Only output valid JSON, no markdown code blocks
-- If no equivalent exists, output equivalentEvent as null and explain why
-- Be specific about character equivalents, not just "similar character archetype"
-- cautions should be actionable warnings, not generic advice
-- similarityScore: 0.0 (no match) to 1.0 (nearly identical)`;
+## Quy tắc
+- Chỉ xuất JSON hợp lệ, không dùng markdown code block.
+- Nếu không có biến cố tương đương, đặt equivalentEvent là null và giải thích lý do trong cautions/adaptationNotes.
+- Phải nêu nhân vật tương ứng cụ thể, không chỉ nói chung chung kiểu nguyên mẫu nhân vật giống nhau.
+- cautions phải là cảnh báo có thể hành động, không phải lời khuyên chung chung.
+- similarityScore chạy từ 0.0 (không khớp) đến 1.0 (gần như giống hệt).`;
 }
 
 /**

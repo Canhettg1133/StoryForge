@@ -1056,3 +1056,257 @@ export function validateDraftTextAgainstTruth({
 
   return reports;
 }
+
+function normalizeSceneCastIds(sceneCast = []) {
+  return new Set((sceneCast || [])
+    .map((item) => item?.character?.id ?? item?.id)
+    .filter((id) => id != null));
+}
+
+function characterProfileText(character = {}) {
+  return [
+    character.name,
+    character.aliases,
+    character.role,
+    character.appearance,
+    character.personality,
+    character.personality_tags,
+    character.flaws,
+    character.goals,
+    character.secrets,
+    character.notes,
+    character.story_function,
+    character.current_status,
+    character.speech_pattern,
+  ].join(' ');
+}
+
+function hasCharacterNameInText(text, character) {
+  const normalizedText = normalizeKey(text);
+  const names = [
+    character?.name,
+    ...(Array.isArray(character?.aliases) ? character.aliases : []),
+    ...(typeof character?.aliases === 'string' ? [character.aliases] : []),
+  ].map((item) => normalizeKey(item)).filter(Boolean);
+  return names.some((name) => {
+    try {
+      return new RegExp(`(^|\\s)${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=\\s|$)`).test(normalizedText);
+    } catch {
+      return normalizedText.includes(name);
+    }
+  });
+}
+
+function paragraphHasDialogueForCharacter(paragraph, character) {
+  const normalized = normalizeKey(paragraph);
+  const names = [
+    character?.name,
+    ...(Array.isArray(character?.aliases) ? character.aliases : []),
+    ...(typeof character?.aliases === 'string' ? [character.aliases] : []),
+  ].map((item) => normalizeKey(item)).filter(Boolean);
+  return names.some((name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const cue = new RegExp(`(^|\\s)${escaped}\\s+(noi|hoi|dap|thot|goi|thi tham|len tieng|la len)(?=\\s|$)`);
+    const quoted = new RegExp(`(^|\\s)${escaped}(?=\\s|$).{0,40}["“”]`);
+    return cue.test(normalized) || quoted.test(normalized);
+  });
+}
+
+function paragraphHasActionForCharacter(paragraph, character) {
+  const normalized = normalizeKey(paragraph);
+  const names = [
+    character?.name,
+    ...(Array.isArray(character?.aliases) ? character.aliases : []),
+    ...(typeof character?.aliases === 'string' ? [character.aliases] : []),
+  ].map((item) => normalizeKey(item)).filter(Boolean);
+  const actionWords = 'buoc|di|dung|nhin|nam|cam|keo|day|mo|dong|chay|quay|ngoi|dua|rut|gap|cuoi|khoc|run|lao|nem|dat|nhat';
+  return names.some((name) => {
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|\\s)${escaped}\\s+(${actionWords})(?=\\s|$)`).test(normalized);
+  });
+}
+
+function hasKnownBackstoryMarker(marker, characters = [], factStates = []) {
+  const normalizedMarker = normalizeKey(marker);
+  const canonText = [
+    ...characters.map(characterProfileText),
+    ...factStates.map((fact) => fact.description || ''),
+  ].map((item) => normalizeKey(item)).join(' ');
+  return canonText.includes(normalizedMarker);
+}
+
+function paragraphHasDenseDialogue(paragraph) {
+  const quoteCount = (paragraph.match(/["“”]/g) || []).length;
+  const speakerCueCount = (normalizeKey(paragraph).match(/\b\w+\s+(noi|hoi|dap|thot|goi|thi tham|len tieng)\b/g) || []).length;
+  return quoteCount >= 4 || speakerCueCount >= 2;
+}
+
+function paragraphHasMechanicalShortSentences(paragraph) {
+  const sentences = String(paragraph || '')
+    .split(/[.!?。！？]+/)
+    .map((sentence) => normalizeKey(sentence))
+    .filter(Boolean);
+  if (sentences.length < 5) return false;
+  const shortCount = sentences.filter((sentence) => sentence.split(' ').filter(Boolean).length <= 4).length;
+  return shortCount >= 5;
+}
+
+function isUnavailableCharacter(character, entityStates = []) {
+  const state = entityStates.find((item) => String(item.entity_id) === String(character?.id));
+  const statusText = normalizeKey([
+    character?.current_status,
+    character?.status,
+    state?.alive_status,
+    state?.summary,
+  ].join(' '));
+  if (state?.alive_status === 'dead') return true;
+  return [
+    'da chet',
+    'chet',
+    'dead',
+    'mat tich',
+    'mất tích',
+    'missing',
+    'khong ro tung tich',
+  ].some((marker) => statusText.includes(normalizeKey(marker)));
+}
+
+export function validateGeneratedProseDiscipline({
+  projectId,
+  chapterId,
+  revisionId = null,
+  sceneId = null,
+  sceneText = '',
+  characters = [],
+  entityStates = [],
+  factStates = [],
+  sceneCast = [],
+  characterContextGate = null,
+}) {
+  const reports = [];
+  const text = String(sceneText || '');
+  if (!text.trim()) return reports;
+
+  const effectiveSceneCast = Array.isArray(sceneCast) && sceneCast.length > 0
+    ? sceneCast
+    : (characterContextGate?.sceneCast || []);
+  const sceneCastIds = normalizeSceneCastIds(effectiveSceneCast);
+  const paragraphs = text.split(/\n{1,}/).map((item) => item.trim()).filter(Boolean);
+
+  if (sceneCastIds.size > 0 && characters.length > 0) {
+    characters
+      .filter((character) => !sceneCastIds.has(character.id) && hasCharacterNameInText(text, character))
+      .forEach((character) => {
+        const dialogueParagraph = paragraphs.find((paragraph) => paragraphHasDialogueForCharacter(paragraph, character));
+        if (dialogueParagraph) {
+          reports.push(createReport({
+            severity: CANON_SEVERITY.WARNING,
+            ruleCode: 'OUT_OF_SCENE_CHARACTER_DIALOGUE',
+            message: `Nhân vật ${character.name || 'ngoài cảnh'} có dấu hiệu nói thoại dù không nằm trong sceneCast.`,
+            projectId,
+            chapterId,
+            revisionId,
+            sceneId,
+            relatedEntityIds: [character.id],
+            evidence: dialogueParagraph,
+          }));
+          return;
+        }
+        const actionParagraph = paragraphs.find((paragraph) => paragraphHasActionForCharacter(paragraph, character));
+        if (actionParagraph) {
+          reports.push(createReport({
+            severity: CANON_SEVERITY.WARNING,
+            ruleCode: 'OUT_OF_SCENE_CHARACTER_ACTION',
+            message: `Nhân vật ${character.name || 'ngoài cảnh'} có dấu hiệu hành động trực tiếp dù không nằm trong sceneCast.`,
+            projectId,
+            chapterId,
+            revisionId,
+            sceneId,
+            relatedEntityIds: [character.id],
+            evidence: actionParagraph,
+          }));
+        }
+      });
+  }
+
+  characters
+    .filter((character) => isUnavailableCharacter(character, entityStates) && hasCharacterNameInText(text, character))
+    .forEach((character) => {
+      const activeParagraph = paragraphs.find((paragraph) => (
+        paragraphHasDialogueForCharacter(paragraph, character)
+        || paragraphHasActionForCharacter(paragraph, character)
+      ));
+      if (!activeParagraph) return;
+      reports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'UNAVAILABLE_CHARACTER_ACTIVE',
+        message: `Nhân vật ${character.name || 'không rõ'} đang chết/mất tích theo canon nhưng có dấu hiệu xuất hiện hoặc hành động trực tiếp.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId,
+        relatedEntityIds: [character.id],
+        evidence: activeParagraph,
+      }));
+    });
+
+  const normalizedText = normalizeKey(text);
+  ['con nuôi', 'cha ruột', 'mẹ ruột', 'huyết thống', 'bị bỏ rơi', 'được nhận nuôi'].forEach((marker) => {
+    if (!normalizedText.includes(normalizeKey(marker))) return;
+    if (hasKnownBackstoryMarker(marker, characters, factStates)) return;
+    reports.push(createReport({
+      severity: CANON_SEVERITY.WARNING,
+      ruleCode: 'POSSIBLE_FABRICATED_BACKSTORY',
+      message: `Draft có dấu hiệu thêm thân thế nhạy cảm "${marker}" nhưng chưa thấy trong hồ sơ/canon.`,
+      projectId,
+      chapterId,
+      revisionId,
+      sceneId,
+      evidence: marker,
+    }));
+  });
+
+  const markdownLine = text.split('\n').find((line) => /^\s*(#{1,6}\s+|[-*]\s+|\d+\.\s+)/.test(line));
+  if (markdownLine) {
+    reports.push(createReport({
+      severity: CANON_SEVERITY.WARNING,
+      ruleCode: 'PROSE_MARKDOWN_OR_OUTLINE',
+      message: 'Draft có dấu hiệu bullet/markdown/heading meta trong phần văn xuôi.',
+      projectId,
+      chapterId,
+      revisionId,
+      sceneId,
+      evidence: markdownLine,
+    }));
+  }
+
+  const denseDialogue = paragraphs.find(paragraphHasDenseDialogue);
+  if (denseDialogue) {
+    reports.push(createReport({
+      severity: CANON_SEVERITY.WARNING,
+      ruleCode: 'DIALOGUE_FORMAT_DENSE',
+      message: 'Một đoạn có nhiều lượt thoại dồn lại, nên tách người nói theo dòng/đoạn riêng.',
+      projectId,
+      chapterId,
+      revisionId,
+      sceneId,
+      evidence: denseDialogue,
+    }));
+  }
+
+  const mechanicalParagraph = paragraphs.find(paragraphHasMechanicalShortSentences);
+  if (mechanicalParagraph) {
+    reports.push(createReport({
+      severity: CANON_SEVERITY.WARNING,
+      ruleCode: 'MECHANICAL_SHORT_SENTENCES',
+      message: 'Draft có chuỗi câu ngắn cụt liên tiếp, dễ tạo cảm giác máy móc.',
+      projectId,
+      chapterId,
+      revisionId,
+      sceneId,
+      evidence: mechanicalParagraph,
+    }));
+  }
+
+  return reports;
+}

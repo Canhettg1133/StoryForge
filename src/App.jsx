@@ -13,6 +13,7 @@ import TimelineThread from './pages/TimelineThread/TimelineThread';
 import RevisionQA from './pages/RevisionQA/RevisionQA';
 import StyleLab from './pages/StyleLab/StyleLab';
 import NarrativeLab from './pages/Lab/NarrativeLab';
+import LabLite from './pages/Lab/LabLite/LabLite';
 import CorpusLab from './pages/Lab/CorpusLab/CorpusLab';
 import AnalysisViewer from './pages/Lab/CorpusLab/AnalysisViewer';
 import Settings from './pages/Settings/Settings';
@@ -42,6 +43,7 @@ export default function App() {
           <Route path="/guide/translator" element={<TranslatorSetupGuide />} />
           <Route path="/ai-chat" element={<ProjectChat />} />
           <Route path="/translator" element={<Translator />} />
+          <Route path="/lab-lite" element={PRODUCT_SURFACE.showLabLite ? <LabLite /> : <Navigate to="/" replace />} />
           <Route path="/prompt-manager" element={<StoryCreationSettings />} />
           <Route path="/story-creation-settings" element={<Navigate to="/prompt-manager" replace />} />
 
@@ -62,6 +64,7 @@ export default function App() {
             <Route path="revision" element={PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback} />
             <Route path="style-lab" element={PRODUCT_SURFACE.showRoadmapPages ? <StyleLab /> : roadmapFallback} />
             <Route path="lab" element={PRODUCT_SURFACE.showLabs ? <NarrativeLab /> : labFallback} />
+            <Route path="lab-lite" element={PRODUCT_SURFACE.showLabLite ? <LabLite /> : labFallback} />
             <Route path="corpus-lab" element={PRODUCT_SURFACE.showLabs ? <CorpusLab /> : labFallback} />
             <Route path="corpus-lab/viewer" element={PRODUCT_SURFACE.showLabs ? <AnalysisViewer /> : labFallback} />
           </Route>

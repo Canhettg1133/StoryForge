@@ -26,6 +26,7 @@ import {
   reportsHaveErrors,
   validateCandidateOps,
   validateDraftTextAgainstTruth,
+  validateGeneratedProseDiscipline,
 } from './validation';
 import { resolveCanonFactRegistration } from '../entityIdentity/factIdentity.js';
 import {
@@ -889,6 +890,8 @@ export async function validateSceneDraft({
   chapterId,
   sceneId = null,
   sceneText = '',
+  sceneCast = [],
+  characterContextGate = null,
 }) {
   const [preTruth, project] = await Promise.all([
     loadPreChapterTruth(projectId, chapterId),
@@ -913,6 +916,43 @@ export async function validateSceneDraft({
     chapterText: sceneText,
     status: CHAPTER_REVISION_STATUS.DRAFT,
   });
+  let resolvedSceneCast = sceneCast;
+  if ((!resolvedSceneCast || resolvedSceneCast.length === 0) && characterContextGate?.sceneCast?.length > 0) {
+    resolvedSceneCast = characterContextGate.sceneCast;
+  }
+  if ((!resolvedSceneCast || resolvedSceneCast.length === 0) && sceneId) {
+    try {
+      const scene = await db.scenes.get(sceneId);
+      const presentIds = (() => {
+        try {
+          return JSON.parse(scene?.characters_present || '[]');
+        } catch {
+          return [];
+        }
+      })();
+      const ids = [scene?.pov_character_id, ...presentIds].filter((id) => id != null && id !== '');
+      resolvedSceneCast = ids
+        .map((id) => preTruth.characters.find((character) => String(character.id) === String(id)))
+        .filter(Boolean);
+    } catch {
+      resolvedSceneCast = [];
+    }
+  }
+  reports = [
+    ...reports,
+    ...validateGeneratedProseDiscipline({
+      projectId,
+      chapterId,
+      revisionId: revision.id,
+      sceneId,
+      sceneText,
+      characters: preTruth.characters,
+      entityStates: preTruth.entityStates,
+      factStates: preTruth.factStates,
+      sceneCast: resolvedSceneCast || [],
+      characterContextGate,
+    }),
+  ];
   reports = await adjudicateWarningReports({
     project,
     chapter: preTruth.chapter,

@@ -57,6 +57,7 @@
                     <button class="btn btn-secondary" id="toggleHistoryBtn" onclick="toggleHistoryPanel()">
                         📜 Lịch sử dịch
                     </button>
+
                 </div>
             </section>
 
@@ -116,6 +117,18 @@
                         </span>
                         <span class="settings-accordion-meta">
                             <span class="settings-accordion-summary" id="generalAccordionSummary">Auto • 2 luồng • 2000 ký tự</span>
+                            <span class="settings-accordion-caret">▾</span>
+                        </span>
+                    </button>
+
+                    <button type="button" class="settings-accordion" data-config-toggle="canon-pack"
+                        onclick="toggleConfigGroup('canon-pack')">
+                        <span class="settings-accordion-main">
+                            <span class="settings-accordion-title">Dịch với Canon Pack</span>
+                            <span class="settings-accordion-status" id="canonPackAccordionStatus">Tắt</span>
+                        </span>
+                        <span class="settings-accordion-meta">
+                            <span class="settings-accordion-summary" id="canonPackAccordionSummary">Chưa chọn Canon Pack</span>
                             <span class="settings-accordion-caret">▾</span>
                         </span>
                     </button>
@@ -620,6 +633,53 @@
                 </div>
             </section>
 
+            <!-- Canon Pack Translation Panel -->
+            <section class="canon-pack-panel glass-card settings-subpanel" data-settings-group="canon-pack"
+                style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">📚</span>
+                    Dịch với Canon Pack
+                    <span class="badge" id="canonPackStatus">Chưa tải</span>
+                </h2>
+
+                <div class="prompt-info">
+                    <p>Canon Pack chỉ được dùng để giữ tên riêng, glossary, quan hệ và giọng văn nhất quán trong lúc dịch. Runtime không phân tích lại corpus.</p>
+                </div>
+
+                <div class="settings-grid canon-pack-grid">
+                    <div class="form-group">
+                        <label for="useCanonPackToggle">
+                            <span class="icon">🔗</span>
+                            Bật Canon Pack
+                        </label>
+                        <label class="toggle-row">
+                            <input type="checkbox" id="useCanonPackToggle" onchange="handleCanonPackToggle()">
+                            <span>Chèn ngữ cảnh Canon Pack vào prompt dịch</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="canonPackSelect">
+                            <span class="icon">📦</span>
+                            Canon Pack
+                        </label>
+                        <select id="canonPackSelect" onchange="selectedCanonPackId = this.value; saveSettings(); updateSettingsAccordions();">
+                            <option value="">Chưa có Canon Pack</option>
+                        </select>
+                        <small class="hint">Đọc trực tiếp từ StoryForgeLabLiteDB trong trình duyệt.</small>
+                    </div>
+                </div>
+
+                <div class="settings-actions">
+                    <button class="btn btn-secondary btn-small" type="button" onclick="refreshCanonPackSelector()">
+                        Làm mới
+                    </button>
+                    <button class="btn btn-primary btn-small" type="button" onclick="applySelectedCanonPackToPrompt()">
+                        Nạp vào prompt
+                    </button>
+                </div>
+            </section>
+
             <!-- Upload Section -->
             <section class="upload-section glass-card">
                 <h2 class="section-title">
@@ -799,9 +859,13 @@
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
     <script src="js/app.js"></script>
+    <script src="js/canon-pack.js"></script>
 
     <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
     <script src="js/worker-timer.js"></script>
+
+    <!-- 1c. Error messages (PHẢI load trước Gemini/Proxy/Ollama để chuẩn hóa lỗi) -->
+    <script src="js/translation/errors.js"></script>
 
     <!-- 2. Gemini API -->
     <script src="js/gemini/model-rotation.js"></script>

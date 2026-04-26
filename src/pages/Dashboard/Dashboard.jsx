@@ -78,6 +78,7 @@ const FULL_MOBILE_DRAWER_ITEMS = [
   { id: 'project-prompts', title: 'Prompt truyện', icon: Sparkles, path: '/prompts', needsProject: true, surface: 'core' },
   { divider: true },
   { id: 'lab', title: 'Narrative Lab', icon: FlaskConical, path: '/lab', needsProject: true, surface: 'lab' },
+  { id: 'lab-lite', title: 'Lab Lite', icon: BookKey, path: '/lab-lite', needsProject: true, surface: 'lab-lite' },
   { id: 'corpus-lab', title: 'Corpus Lab', icon: FlaskConical, path: '/corpus-lab', needsProject: true, surface: 'lab' },
   { divider: true },
   { id: 'timeline', title: 'Timeline', icon: Clock, path: '/timeline', needsProject: true, comingSoon: true, surface: 'roadmap' },
@@ -145,10 +146,10 @@ export default function Dashboard() {
     setContextMenu(null);
   };
 
-  const handleProjectCreated = async (id) => {
+  const handleProjectCreated = async (id, options = {}) => {
     setShowModal(false);
     await loadProject(id);
-    navigate(`/project/${id}/editor`);
+    navigate(options.path || `/project/${id}/editor`);
   };
 
   const filteredProjects = projects.filter((project) => {

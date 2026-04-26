@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StoryForge Discord Banner Preview</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #050814;
+        color: #e8ecf4;
+        font-family: "Segoe UI", sans-serif;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 32px;
+        background:
+          radial-gradient(circle at 18% 18%, rgba(139, 92, 246, 0.28), transparent 34%),
+          radial-gradient(circle at 78% 72%, rgba(6, 182, 212, 0.24), transparent 38%),
+          #050814;
+      }
+
+      main {
+        width: min(1120px, 100%);
+      }
+
+      h1 {
+        margin: 0 0 14px;
+        font-size: clamp(24px, 4vw, 42px);
+      }
+
+      p {
+        margin: 0 0 22px;
+        color: #94a3b8;
+      }
+
+      img {
+        display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 24px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+      }
+
+      a {
+        color: #06b6d4;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>StoryForge Discord Banner</h1>
+      <p>
+        Direct image:
+        <a href="/generated/storyforge-discord-banner.png">/generated/storyforge-discord-banner.png</a>
+      </p>
+      <img src="/generated/storyforge-discord-banner.png" alt="StoryForge Discord server banner" />
+    </main>
+  </body>
+</html>

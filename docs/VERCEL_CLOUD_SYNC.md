@@ -19,7 +19,27 @@ Frontend:
 - `VITE_SHOW_ROADMAP_PAGES=false`
 - `VITE_SHOW_JOB_UI=false`
 - `VITE_ENABLE_CLOUD_SYNC=true`
+- `VITE_SUPABASE_URL=https://your-project.supabase.co`
+- `VITE_SUPABASE_ANON_KEY=your-supabase-anon-key`
 - `VITE_CLOUD_SYNC_BASE_URL=/api/cloud`
+
+## Supabase Google OAuth redirect
+
+Neu dang nhap Google tren localhost duoc nhung tren Vercel lai quay ve `http://localhost:3000/?code=...`, hay sua trong Supabase Dashboard:
+
+1. Vao `Authentication -> URL Configuration`.
+2. Dat `Site URL` thanh URL production, vi du `https://story-forge-virid.vercel.app`.
+3. Them `Redirect URLs`:
+   - `https://story-forge-virid.vercel.app`
+   - `http://localhost:3000`
+   - `https://*-<team-or-account-slug>.vercel.app/**` neu can Vercel preview deployment
+4. Vao `Authentication -> Providers -> Google`.
+5. Trong Google Cloud OAuth client, `Authorized redirect URI` phai la callback cua Supabase:
+   - `https://<your-project-ref>.supabase.co/auth/v1/callback`
+
+App mac dinh gui `redirectTo` ve domain goc hien tai, vi vay cau hinh tren chi can allow-list domain goc. Truoc khi nhay sang Google, app luu route Cloud Sync hien tai trong sessionStorage; sau khi Supabase tra ve `?code=...` o domain goc, app se tu dieu huong lai Cloud Sync.
+
+Neu muon ep callback ve path rieng, co the dat them `VITE_CLOUD_AUTH_REDIRECT_URL`, nhung URL do phai nam trong Supabase Redirect URLs.
 
 ## Cac buoc deploy
 

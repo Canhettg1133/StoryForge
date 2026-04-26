@@ -264,6 +264,17 @@ const useCodexStore = create((set, get) => ({
     if (projectId) await get().loadCodex(projectId);
   },
 
+  deleteCharacters: async (ids, projectId) => {
+    const characterIds = [...new Set((ids || [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id)))];
+    if (characterIds.length === 0) return;
+
+    await db.characters.bulkDelete(characterIds);
+    await db.taboos.where('character_id').anyOf(characterIds).delete();
+    if (projectId) await get().loadCodex(projectId);
+  },
+
   // ---------------------------------------------
   // LOCATIONS
   // ---------------------------------------------

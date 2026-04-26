@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import useAIStore from '../../stores/aiStore';
 import useProjectStore from '../../stores/projectStore';
 import db from '../../services/db/database';
@@ -18,6 +19,7 @@ import {
   Check,
   Trash2,
   ArrowDownToLine,
+  BookKey,
   X,
   ShieldAlert,
   Loader2,
@@ -26,6 +28,13 @@ import {
 } from 'lucide-react';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
+import { loadCanonPack } from '../../services/labLite/canonPackRepository.js';
+import { runCanonReview, abortCanonReview } from '../../services/labLite/canonReview.js';
+import {
+  listCanonReviewItems,
+  saveCanonReviewItem,
+  updateCanonReviewItem,
+} from '../../services/labLite/labLiteDb.js';
 import {
   CONTENT_MODE_QUICK_ACTION_ID,
   getWriterQuickActionOrder,
@@ -287,6 +296,7 @@ export default function AISidebar({
   onDraftPreviewChange,
   onAiActivityChange,
 }) {
+  const navigate = useNavigate();
   const {
     isStreaming,
     streamingText,
@@ -330,6 +340,10 @@ export default function AISidebar({
   const [showPlotAssistPicker, setShowPlotAssistPicker] = useState(false);
   const [mobileOverlayTop, setMobileOverlayTop] = useState(0);
   const [outlineApplyState, setOutlineApplyState] = useState('idle');
+  const [linkedCanonPack, setLinkedCanonPack] = useState(null);
+  const [canonReviewMode, setCanonReviewMode] = useState('standard');
+  const [canonReviewState, setCanonReviewState] = useState({ status: 'idle', error: null });
+  const [canonReviewItems, setCanonReviewItems] = useState([]);
   const outputRef = useRef(null);
   const guidanceRef = useRef(null);
   const customPromptRef = useRef(null);
@@ -353,6 +367,46 @@ export default function AISidebar({
       setPlotSuggestions([]);
     }
   }, [activeChapterId]);
+
+  useEffect(() => {
+    const packId = currentProject?.source_canon_pack_id;
+    if (!packId || !['fanfic', 'rewrite', 'translation_context'].includes(currentProject?.project_mode)) {
+      setLinkedCanonPack(null);
+      return;
+    }
+    let canceled = false;
+    loadCanonPack(packId)
+      .then((pack) => {
+        if (!canceled) setLinkedCanonPack(pack || null);
+      })
+      .catch(() => {
+        if (!canceled) setLinkedCanonPack(null);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [currentProject?.source_canon_pack_id, currentProject?.project_mode]);
+
+  useEffect(() => {
+    if (!currentProject?.id || !linkedCanonPack?.id) {
+      setCanonReviewItems([]);
+      return;
+    }
+    let canceled = false;
+    listCanonReviewItems({
+      projectId: currentProject.id,
+      canonPackId: linkedCanonPack.id,
+    })
+      .then((items) => {
+        if (!canceled) setCanonReviewItems(items.slice(0, 8));
+      })
+      .catch(() => {
+        if (!canceled) setCanonReviewItems([]);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [currentProject?.id, linkedCanonPack?.id, activeChapterId, activeSceneId]);
 
   useEffect(() => {
     if (outputRef.current) {
@@ -665,6 +719,72 @@ export default function AISidebar({
     }
   };
 
+  const refreshCanonReviewItems = async () => {
+    if (!currentProject?.id || !linkedCanonPack?.id) return [];
+    const items = await listCanonReviewItems({
+      projectId: currentProject.id,
+      canonPackId: linkedCanonPack.id,
+    });
+    setCanonReviewItems(items.slice(0, 8));
+    return items;
+  };
+
+  const handleRunCanonReview = async () => {
+    if (!linkedCanonPack || canonReviewState.status === 'running') return;
+    const context = getContext();
+    const textForReview = context.selectedText || context.sceneText || context.chapterText;
+    if (!textForReview) {
+      setCanonReviewState({ status: 'error', error: 'Chưa có nội dung để kiểm tra.' });
+      return;
+    }
+
+    setCanonReviewState({ status: 'running', error: null });
+    try {
+      const result = await runCanonReview({
+        mode: canonReviewMode,
+        canonPack: linkedCanonPack,
+        project: currentProject,
+        newText: textForReview,
+        currentChapterText: canonReviewMode === 'quick' ? '' : context.chapterText,
+        currentChapterOutline: {
+          title: context.chapterTitle,
+          chapterIndex: context.chapterIndex + 1,
+        },
+      });
+      const saved = await saveCanonReviewItem({
+        projectId: currentProject?.id || null,
+        chapterId: activeChapterId || null,
+        sceneId: activeSceneId || null,
+        canonPackId: linkedCanonPack.id,
+        mode: canonReviewMode,
+        status: 'complete',
+        verdict: result.verdict,
+        result,
+      });
+      setCanonReviewItems((items) => [saved, ...items.filter((item) => item.id !== saved.id)].slice(0, 8));
+      setCanonReviewState({ status: 'complete', error: null });
+    } catch (err) {
+      setCanonReviewState({ status: 'error', error: err?.message || 'Không chạy được AI Canon Review.' });
+    }
+  };
+
+  const handleCancelCanonReview = () => {
+    abortCanonReview();
+    setCanonReviewState({ status: 'canceled', error: null });
+  };
+
+  const handleCanonReviewStatus = async (item, status, extra = {}) => {
+    const saved = await updateCanonReviewItem(item.id, { status, ...extra });
+    setCanonReviewItems((items) => items.map((entry) => (entry.id === item.id ? saved : entry)));
+  };
+
+  const handleApplyCanonReviewFix = async (item, issue) => {
+    const fix = String(issue?.suggestedFix || '').trim();
+    if (!fix || !editor) return;
+    editor.chain().focus().insertContent(textToHtml(fix)).run();
+    await handleCanonReviewStatus(item, 'fix_applied');
+  };
+
   const handleApplyOutlineToChapter = async () => {
     if (!activeChapterId || !parsedOutlineResult || !hasOutlinePatchData(parsedOutlineResult.chapterPatch)) return;
 
@@ -778,6 +898,156 @@ export default function AISidebar({
       })}
     </div>
   );
+
+  const renderFanficCanonPanel = () => {
+    const isFanficProject = ['fanfic', 'rewrite', 'translation_context'].includes(currentProject?.project_mode);
+    if (!linkedCanonPack && !isFanficProject) return null;
+    if (!linkedCanonPack) {
+      return (
+        <div className="ai-fanfic-canon-panel ai-fanfic-canon-panel--missing">
+          <div className="ai-fanfic-canon-panel__header">
+            <BookKey size={14} />
+            <span>Chưa liên kết Canon Pack</span>
+          </div>
+          <p>Dự án này đang ở chế độ đồng nhân / viết lại, nhưng chưa có Canon Pack để AI bám canon.</p>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              if (currentProject?.id) navigate(`/project/${currentProject.id}/lab-lite`);
+            }}
+          >
+            <BookKey size={12} /> Mở Lab Lite để nạp liệu
+          </button>
+        </div>
+      );
+    }
+    const setup = (() => {
+      try {
+        return typeof currentProject?.fanfic_setup === 'string'
+          ? JSON.parse(currentProject.fanfic_setup)
+          : currentProject?.fanfic_setup || {};
+      } catch {
+        return {};
+      }
+    })();
+    return (
+      <div className="ai-fanfic-canon-panel">
+        <div className="ai-fanfic-canon-panel__header">
+          <BookKey size={14} />
+          <span>Canon Pack đang dùng</span>
+        </div>
+        <div className="ai-fanfic-canon-panel__title">{linkedCanonPack.title}</div>
+        <div className="ai-fanfic-canon-panel__meta">
+          <span>{currentProject?.project_mode || 'fanfic'}</span>
+          <span>{currentProject?.canon_adherence_level || setup.adherenceLevel || 'balanced'}</span>
+        </div>
+        {currentProject?.divergence_point ? (
+          <p>Điểm rẽ nhánh: {currentProject.divergence_point}</p>
+        ) : null}
+        {linkedCanonPack.canonRestrictions?.length > 0 ? (
+          <p>Điều cấm phá canon: {linkedCanonPack.canonRestrictions.slice(0, 3).join('; ')}</p>
+        ) : null}
+        {linkedCanonPack.creativeGaps?.length > 0 ? (
+          <p>Khoảng trống sáng tạo: {linkedCanonPack.creativeGaps.slice(0, 3).join('; ')}</p>
+        ) : null}
+      </div>
+    );
+  };
+
+  const renderCanonReviewPanel = () => {
+    if (!linkedCanonPack) return null;
+    const isRunning = canonReviewState.status === 'running';
+    const latestItems = canonReviewItems.slice(0, 4);
+    return (
+      <div className="ai-canon-review-panel" data-testid="ai-canon-review-panel">
+        <div className="ai-canon-review-panel__header">
+          <ShieldAlert size={14} />
+          <span>AI gợi ý phát hiện lệch canon</span>
+        </div>
+        <div className="ai-canon-review-panel__controls">
+          <select
+            value={canonReviewMode}
+            onChange={(event) => setCanonReviewMode(event.target.value)}
+            disabled={isRunning}
+            aria-label="Canon Review mode"
+          >
+            <option value="quick">Nhanh</option>
+            <option value="standard">Chuẩn</option>
+            <option value="deep">Sâu</option>
+          </select>
+          <button
+            className="btn btn-primary btn-sm"
+            type="button"
+            onClick={handleRunCanonReview}
+            disabled={isRunning}
+          >
+            {isRunning ? <Loader2 size={12} className="spin" /> : <ShieldAlert size={12} />}
+            Kiểm tra lệch canon
+          </button>
+          {isRunning ? (
+            <button className="btn btn-ghost btn-icon btn-sm" type="button" onClick={handleCancelCanonReview} title="Hủy Canon Review">
+              <Square size={12} />
+            </button>
+          ) : null}
+        </div>
+        {canonReviewState.error ? (
+          <div className="ai-canon-review-panel__error">{canonReviewState.error}</div>
+        ) : null}
+        {latestItems.length > 0 ? (
+          <div className="ai-canon-review-panel__list">
+            {latestItems.map((item) => {
+              const issues = item.result?.issues || [];
+              const firstIssue = issues[0] || null;
+              return (
+                <div key={item.id} className="ai-canon-review-card">
+                  <div className="ai-canon-review-card__meta">
+                    <span>{item.mode || 'standard'}</span>
+                    <span>{item.verdict || item.result?.verdict || 'no_obvious_issue'}</span>
+                    <span>{item.status || 'complete'}</span>
+                  </div>
+                  {firstIssue ? (
+                    <>
+                      <div className="ai-canon-review-card__issue">
+                        <strong>{firstIssue.type}</strong>
+                        <span>{firstIssue.severity}</span>
+                      </div>
+                      {firstIssue.explanation ? <p>{firstIssue.explanation}</p> : null}
+                      {firstIssue.canonReference ? <p className="ai-canon-review-card__ref">{firstIssue.canonReference}</p> : null}
+                    </>
+                  ) : (
+                    <p>Không thấy vấn đề rõ ràng trong phạm vi Canon Pack đã nạp.</p>
+                  )}
+                  <div className="ai-canon-review-card__actions">
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleCanonReviewStatus(item, 'ignored')}>
+                      Bỏ qua
+                    </button>
+                    <button className="btn btn-ghost btn-sm" type="button" onClick={() => handleCanonReviewStatus(item, 'needs_review')}>
+                      Cần xem lại
+                    </button>
+                    {firstIssue?.suggestedFix ? (
+                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => handleApplyCanonReviewFix(item, firstIssue)}>
+                        <Replace size={12} /> Dùng gợi ý
+                      </button>
+                    ) : null}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => handleCanonReviewStatus(item, 'intentional_divergence', { userNote: 'Accepted intentional divergence.' })}
+                    >
+                      Đánh dấu rẽ nhánh
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="ai-canon-review-panel__empty">Chưa có mục review cho Canon Pack này.</p>
+        )}
+      </div>
+    );
+  };
 
   const renderPlotManager = () => showPlotManager && (
     <div className="ai-guidance-panel">
@@ -1233,6 +1503,8 @@ export default function AISidebar({
 
   return (
     <div className="ai-sidebar">
+      {renderFanficCanonPanel()}
+      {renderCanonReviewPanel()}
       <CodexPanel sceneText={currentSceneText} />
       {renderQuickActions()}
       {renderDesktopBody()}

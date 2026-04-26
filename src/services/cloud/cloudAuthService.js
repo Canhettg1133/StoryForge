@@ -4,20 +4,70 @@ import {
   isSupabaseConfigured,
 } from './supabaseClient.js';
 
+const CLOUD_AUTH_REDIRECT_URL = String(
+  import.meta.env.VITE_CLOUD_AUTH_REDIRECT_URL
+    || import.meta.env.VITE_SUPABASE_REDIRECT_URL
+    || '',
+).trim();
+const CLOUD_AUTH_RETURN_PATH_KEY = 'sf-cloud-auth-return-path';
+
 function ensureConfigured() {
   if (!isSupabaseConfigured()) {
     throw new Error(getSupabaseConfigError());
   }
 }
 
-function getSafeCloudRedirectPath() {
-  if (typeof window === 'undefined' || !window.location?.origin) {
-    return undefined;
+export function normalizeCloudRedirectUrl(value, origin) {
+  const normalized = String(value || '').trim();
+  if (!normalized) return '';
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
   }
 
-  const pathname = String(window.location.pathname || '').trim();
-  const cloudPath = pathname.endsWith('/cloud-sync') ? pathname : '/cloud-sync';
-  return `${window.location.origin}${cloudPath}`;
+  const normalizedOrigin = String(origin || '').trim().replace(/\/+$/, '');
+  if (!normalizedOrigin) return normalized;
+  const normalizedPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
+  return `${normalizedOrigin}${normalizedPath}`;
+}
+
+export function getSafeCloudRedirectUrl() {
+  if (typeof window === 'undefined' || !window.location?.origin) {
+    return normalizeCloudRedirectUrl(CLOUD_AUTH_REDIRECT_URL, '');
+  }
+
+  if (CLOUD_AUTH_REDIRECT_URL) {
+    return normalizeCloudRedirectUrl(CLOUD_AUTH_REDIRECT_URL, window.location.origin);
+  }
+
+  return window.location.origin;
+}
+
+function getCurrentReturnPath() {
+  if (typeof window === 'undefined') return '/cloud-sync';
+  const pathname = String(window.location.pathname || '').trim() || '/';
+  if (!pathname.endsWith('/cloud-sync')) return '/cloud-sync';
+  return pathname;
+}
+
+export function rememberCloudAuthReturnPath(path = getCurrentReturnPath()) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage?.setItem(CLOUD_AUTH_RETURN_PATH_KEY, String(path || '/cloud-sync'));
+  } catch {
+    // Session storage may be blocked; the root callback still completes auth.
+  }
+}
+
+export function consumeCloudAuthReturnPath() {
+  if (typeof window === 'undefined') return '/cloud-sync';
+  try {
+    const value = String(window.sessionStorage?.getItem(CLOUD_AUTH_RETURN_PATH_KEY) || '').trim();
+    window.sessionStorage?.removeItem(CLOUD_AUTH_RETURN_PATH_KEY);
+    return value || '/cloud-sync';
+  } catch {
+    return '/cloud-sync';
+  }
 }
 
 export async function getSession() {
@@ -31,7 +81,11 @@ export async function getSession() {
 export async function signInWithGoogle(options = {}) {
   ensureConfigured();
   const client = getSupabaseClient();
-  const redirectTo = String(options.redirectTo || getSafeCloudRedirectPath() || '').trim() || undefined;
+  rememberCloudAuthReturnPath();
+  const redirectTo = normalizeCloudRedirectUrl(
+    options.redirectTo || getSafeCloudRedirectUrl(),
+    typeof window !== 'undefined' ? window.location?.origin : '',
+  ) || undefined;
   const { data, error } = await client.auth.signInWithOAuth({
     provider: 'google',
     options: redirectTo ? { redirectTo } : undefined,

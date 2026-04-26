@@ -56,12 +56,43 @@
   gap: var(--space-2);
 }
 
+.batch-gen-count-btn {
+  width: 36px;
+  height: 36px;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
 .batch-gen-count-value {
   font-size: var(--text-lg);
   font-weight: var(--weight-bold);
   color: var(--color-accent);
   min-width: 32px;
   text-align: center;
+}
+
+.batch-gen-count-input {
+  width: 84px;
+  min-height: 38px;
+  padding: 0 var(--space-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--color-accent);
+  text-align: center;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  outline: none;
+}
+
+.batch-gen-count-input:focus {
+  border-color: var(--color-accent);
+}
+
+.batch-gen-count-meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
 }
 
 .batch-gen-hint {
@@ -123,6 +154,73 @@
   color: var(--color-danger);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
+}
+
+.batch-gen-warning,
+.batch-gen-auto-detect {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+}
+
+.batch-gen-auto-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.batch-gen-auto-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.batch-gen-warning {
+  background: var(--color-warning-muted, rgba(245, 158, 11, 0.12));
+  color: var(--color-warning, #b45309);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.batch-gen-auto-detect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.batch-gen-auto-detect__label {
+  font-weight: var(--weight-semibold);
+  color: var(--color-accent);
+}
+
+.batch-gen-auto-detect p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.batch-gen-auto-detect__names {
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.batch-gen-generate-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.batch-gen-generate-actions .btn {
+  justify-content: center;
 }
 
 /* Loading */

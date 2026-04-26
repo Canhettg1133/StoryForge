@@ -42,6 +42,7 @@ const RAW_NAV_ITEMS = [
   { path: '/prompts', icon: Sparkles, label: 'Prompt truyện', id: 'project-prompts', needsProject: true, surface: 'core' },
   { divider: true },
   { path: '/lab', icon: FlaskConical, label: 'Narrative Lab', id: 'lab', needsProject: true, surface: 'lab' },
+  { path: '/lab-lite', icon: BookKey, label: 'Lab Lite', id: 'lab-lite', needsProject: true, surface: 'lab-lite' },
   { path: '/corpus-lab', icon: FlaskConical, label: 'Corpus Lab', id: 'corpus-lab', needsProject: true, surface: 'lab' },
   { divider: true },
   { path: '/timeline', icon: Clock, label: 'Timeline', id: 'timeline', needsProject: true, comingSoon: true, surface: 'roadmap' },

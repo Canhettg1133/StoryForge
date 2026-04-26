@@ -546,6 +546,28 @@ select option {
     border-top: 1px solid var(--border-color);
 }
 
+.canon-pack-panel .prompt-info {
+    margin-bottom: var(--spacing-md);
+}
+
+.canon-pack-grid {
+    align-items: end;
+}
+
+.toggle-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-height: 44px;
+    color: var(--text-secondary);
+}
+
+.toggle-row input {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+
 /* ============================================
    BUTTONS
    ============================================ */

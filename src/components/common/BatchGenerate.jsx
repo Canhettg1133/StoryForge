@@ -12,12 +12,17 @@
  *   onBatchCreated: (items[]) => void
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, X, Loader2, Check, RotateCcw, Trash2, Plus } from 'lucide-react';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
 import { buildPrompt } from '../../services/ai/promptBuilder';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
+import {
+  BATCH_CHARACTER_MAX_COUNT,
+  buildCharacterBatchPlan,
+  clampBatchCount,
+} from '../../utils/batchCharacterHint';
 import './BatchGenerate.css';
 
 const ENTITY_CONFIG = {
@@ -25,7 +30,7 @@ const ENTITY_CONFIG = {
     label: 'nhân vật',
     plural: 'nhân vật',
     defaultCount: 3,
-    maxCount: 8,
+    maxCount: BATCH_CHARACTER_MAX_COUNT,
     prompt: (genre, ctx) => `Bạn là trợ lý xây dựng nhân vật cho truyện thể loại ${genre || 'fantasy'}.
 
 Thông tin truyện hiện tại:
@@ -100,8 +105,59 @@ export default function BatchGenerate({
   const [results, setResults] = useState([]);
   const [excluded, setExcluded] = useState(new Set());
   const [error, setError] = useState(null);
+  const [autoDetectEnabled, setAutoDetectEnabled] = useState(true);
+  const [generatingCount, setGeneratingCount] = useState(null);
 
   const config = ENTITY_CONFIG[entityType];
+  const defaultCount = config?.defaultCount || 3;
+  const maxCount = config?.maxCount || BATCH_CHARACTER_MAX_COUNT;
+  const characterBatchPlan = useMemo(() => {
+    if (entityType !== 'character' || !autoDetectEnabled) {
+      const clampedCount = clampBatchCount(count, 1, maxCount);
+      return {
+        count: clampedCount,
+        effectiveCount: clampedCount,
+        suggestedCount: clampedCount,
+        hasClearMissingList: false,
+        warning: '',
+        hintAnalysis: {
+          detectedCharacters: [],
+          existingCharacters: [],
+          missingCharacters: [],
+          clearList: false,
+        },
+      };
+    }
+
+    return buildCharacterBatchPlan({
+      selectedCount: count,
+      hint: customHint,
+      existingCharacters: existingEntities.characters || [],
+      maxCount,
+    });
+  }, [autoDetectEnabled, count, customHint, entityType, existingEntities.characters, maxCount]);
+
+  useEffect(() => {
+    setCount((previousCount) => clampBatchCount(previousCount, 1, maxCount));
+  }, [maxCount]);
+
+  useEffect(() => {
+    if (entityType !== 'character' || customHint.trim()) return;
+    setCount(defaultCount);
+  }, [customHint, defaultCount, entityType]);
+
+  const setClampedCount = (value) => {
+    setCount(clampBatchCount(value, 1, maxCount));
+  };
+
+  const missingCharacterNames = characterBatchPlan.hintAnalysis.missingCharacters
+    .map((character) => character.name);
+  const hasMissingCharacterPlan = entityType === 'character' && autoDetectEnabled && characterBatchPlan.hasClearMissingList;
+  const missingCount = missingCharacterNames.length;
+  const manualCount = clampBatchCount(count, 1, maxCount);
+  const manualWarning = hasMissingCharacterPlan && manualCount < missingCount
+    ? `Phát hiện ${characterBatchPlan.hintAnalysis.detectedCharacters.length} nhân vật trong dàn ý, đã có ${characterBatchPlan.hintAnalysis.existingCharacters.length}, còn thiếu ${missingCount}. Bạn đang chọn ${manualCount}.`
+    : '';
 
   const resolvePromptTemplates = () => {
     if (!projectContext?.promptTemplates) return {};
@@ -158,25 +214,38 @@ export default function BatchGenerate({
     return parts.join('\n\n');
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (generationMode = 'manual') => {
+    const useMissingMode = generationMode === 'missing' && hasMissingCharacterPlan;
+    const generationCount = useMissingMode ? Math.min(missingCount, maxCount) : manualCount;
     setIsGenerating(true);
+    setGeneratingCount(generationCount);
     setError(null);
     setResults([]);
     setExcluded(new Set());
 
     const contextStr = buildContext();
-    const characterSchemaHint = entityType === 'character'
-      ? '\n\nBat buoc voi moi nhan vat: co truong "personality_tags" (chuoi tag ngan, phan tach bang dau phay) va truong "flaws" (diem yeu/khuyet diem ro rang). Khong tao nhan vat hoan hao.'
+    const missingTargetList = missingCharacterNames.length > 0
+      ? missingCharacterNames.join(', ')
       : '';
-    const systemPrompt = config.prompt(projectContext.genre, contextStr) + characterSchemaHint;
-    const userHint = customHint.trim() 
-      ? `\n\nYêu cầu bổ sung: ${customHint}\n\nTạo chính xác ${count} ${config.plural}.`
-      : `\n\nTạo chính xác ${count} ${config.plural} phù hợp với cốt truyện trên.`;
-
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Truyện: ${projectContext.projectTitle || 'Chưa đặt tên'}\nThể loại: ${projectContext.genre || 'fantasy'}${userHint}` },
-    ];
+    const promptUserRequest = customHint.trim()
+      ? useMissingMode
+        ? [
+          `Dua tren yeu cau bo sung duoi day va danh sach nhan vat da co, hay tu phan tich danh sach nhan vat ro rang trong dan y.`,
+          `Chi tao ho so cho toi da ${generationCount} nhan vat con thieu so voi name + aliases da co.`,
+          missingTargetList ? `Uu tien cac ten con thieu: ${missingTargetList}.` : '',
+          'Neu danh sach nhan vat ro rang it hon so luong toi da, chi tra ve so nhan vat con thieu thuc te.',
+          'Khong tao them nhan vat ngoai danh sach con thieu neu dan y da neu ro danh sach.',
+          '',
+          '[YEU CAU BO SUNG]',
+          customHint,
+        ].filter(Boolean).join('\n')
+        : [
+          `Dua tren yeu cau bo sung duoi day, tao ${generationCount} ${config.plural}.`,
+          '',
+          '[YEU CAU BO SUNG]',
+          customHint,
+        ].join('\n')
+      : `Tao ${generationCount} ${config.plural} phu hop voi cot truyen tren.`;
 
     aiService.send({
       taskType: TASK_TYPES.AI_GENERATE_ENTITY,
@@ -184,16 +253,18 @@ export default function BatchGenerate({
         projectTitle: projectContext.projectTitle || '',
         genre: projectContext.genre || '',
         promptTemplates: resolvePromptTemplates(),
-        userPrompt: customHint.trim()
-          ? `${customHint}\n\nTao chinh xac ${count} ${config.plural}.`
-          : `Tao chinh xac ${count} ${config.plural} phu hop voi cot truyen tren.`,
+        userPrompt: promptUserRequest,
         entityType,
-        batchCount: count,
+        batchCount: generationCount,
+        aiInferCharacterList: useMissingMode,
+        knownMissingCharacterNames: missingCharacterNames,
+        selectedBatchCount: manualCount,
         entityContextText: contextStr,
       }),
       stream: false,
       onComplete: (text) => {
         setIsGenerating(false);
+        setGeneratingCount(null);
         try {
           const parsed = parseAIJsonValue(text);
           const items = Array.isArray(parsed)
@@ -209,6 +280,7 @@ export default function BatchGenerate({
       },
       onError: (err) => {
         setIsGenerating(false);
+        setGeneratingCount(null);
         setError(err.message || 'Lỗi AI');
       },
     });
@@ -241,9 +313,21 @@ export default function BatchGenerate({
           <div className="batch-gen-row">
             <label>Số lượng:</label>
             <div className="batch-gen-count">
-              <button className="btn btn-ghost btn-sm" onClick={() => setCount(Math.max(1, count - 1))}>−</button>
-              <span className="batch-gen-count-value">{count}</span>
-              <button className="btn btn-ghost btn-sm" onClick={() => setCount(Math.min(config.maxCount, count + 1))}>+</button>
+              <button className="btn btn-ghost btn-sm batch-gen-count-btn" onClick={() => setClampedCount(count - 1)}>−</button>
+              <input
+                className="batch-gen-count-input"
+                type="number"
+                min={1}
+                max={maxCount}
+                value={count}
+                onChange={(event) => setClampedCount(event.target.value)}
+                onBlur={(event) => setClampedCount(event.target.value)}
+                aria-label="Số lượng cần tạo"
+              />
+              <button className="btn btn-ghost btn-sm batch-gen-count-btn" onClick={() => setClampedCount(count + 1)}>+</button>
+            </div>
+            <div className="batch-gen-count-meta">
+              Tối đa {maxCount}. Nút tạo chính sẽ dùng đúng số bạn đang chọn: {manualCount}.
             </div>
           </div>
 
@@ -264,6 +348,38 @@ export default function BatchGenerate({
             />
           </div>
 
+          {entityType === 'character' && (
+            <label className="batch-gen-auto-toggle">
+              <input
+                type="checkbox"
+                checked={autoDetectEnabled}
+                onChange={(event) => setAutoDetectEnabled(event.target.checked)}
+              />
+              <span>Phân tích danh sách nhân vật trong yêu cầu bổ sung</span>
+            </label>
+          )}
+
+          {entityType === 'character' && autoDetectEnabled && characterBatchPlan.hintAnalysis.detectedCharacters.length > 0 && (
+            <div className="batch-gen-auto-detect">
+              <span className="batch-gen-auto-detect__label">Tự đoán từ yêu cầu bổ sung</span>
+              <p>
+                Phát hiện {characterBatchPlan.hintAnalysis.detectedCharacters.length} nhân vật trong dàn ý,
+                {' '}đã có {characterBatchPlan.hintAnalysis.existingCharacters.length},
+                {' '}còn thiếu {characterBatchPlan.hintAnalysis.missingCharacters.length}.
+              </p>
+              {missingCharacterNames.length > 0 && (
+                <div className="batch-gen-auto-detect__names">
+                  {missingCharacterNames.slice(0, 10).join(', ')}
+                  {missingCharacterNames.length > 10 ? ` +${missingCharacterNames.length - 10}` : ''}
+                </div>
+              )}
+            </div>
+          )}
+
+          {manualWarning && (
+            <div className="batch-gen-warning">{manualWarning}</div>
+          )}
+
           {/* Context preview */}
           <div className="batch-gen-context-preview">
             <span className="batch-gen-context-label">AI sẽ dựa trên:</span>
@@ -278,9 +394,16 @@ export default function BatchGenerate({
 
           {error && <div className="batch-gen-error">{error}</div>}
 
-          <button className="btn btn-primary" onClick={handleGenerate} disabled={isGenerating}>
-            <Sparkles size={15} /> Tạo {count} {config.plural}
-          </button>
+          <div className="batch-gen-generate-actions">
+            <button className="btn btn-primary" onClick={() => handleGenerate('manual')} disabled={isGenerating || manualCount < 1}>
+              <Sparkles size={15} /> Tạo {manualCount} {config.plural}
+            </button>
+            {hasMissingCharacterPlan && missingCount > 0 && (
+              <button className="btn btn-ghost" onClick={() => handleGenerate('missing')} disabled={isGenerating}>
+                Tạo {missingCount} nhân vật còn thiếu
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -288,7 +411,7 @@ export default function BatchGenerate({
       {isGenerating && (
         <div className="batch-gen-loading">
           <Loader2 size={32} className="spin" />
-          <p>AI đang tạo {count} {config.plural} phù hợp cốt truyện...</p>
+          <p>AI đang tạo {generatingCount || manualCount} {config.plural} phù hợp cốt truyện...</p>
         </div>
       )}
 

@@ -459,4 +459,125 @@ describe('phase10 canon extraction fallback', () => {
     expect(validation.reports.some((item) => item.rule_code === 'MISSING_SCENE_LINK')).toBe(true);
     expect(sendMock).not.toHaveBeenCalledWith(expect.objectContaining({ taskType: 'canon_adjudicate_warnings' }));
   });
+
+  it('warns when a character outside sceneCast speaks but allows plain mentions', async () => {
+    const { engine } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Scene cast validator', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', pov_character_id: 1, characters_present: '[1]' }],
+      characters: [
+        { id: 1, project_id: 1, name: 'Lan' },
+        { id: 2, project_id: 1, name: 'Mai' },
+      ],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+      chapter_revisions: [],
+    });
+
+    const mentionOnly = await engine.validateSceneDraft({
+      projectId: 1,
+      chapterId: 11,
+      sceneId: 21,
+      sceneText: 'Lan nho ve Mai trong mot khoanh khac cu.',
+      characterContextGate: {
+        sceneCast: [{ character: { id: 1, name: 'Lan' } }],
+      },
+    });
+    expect(mentionOnly.reports.some((item) => item.rule_code === 'OUT_OF_SCENE_CHARACTER_DIALOGUE')).toBe(false);
+
+    const withDialogue = await engine.validateSceneDraft({
+      projectId: 1,
+      chapterId: 11,
+      sceneId: 21,
+      sceneText: 'Lan quay lai.\nMai noi: "Dung di nua."',
+      characterContextGate: {
+        sceneCast: [{ character: { id: 1, name: 'Lan' } }],
+      },
+    });
+    expect(withDialogue.reports.some((item) => item.rule_code === 'OUT_OF_SCENE_CHARACTER_DIALOGUE')).toBe(true);
+  });
+
+  it('warns for fabricated backstory markers and prose formatting problems', async () => {
+    const { engine } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Prose validator', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', pov_character_id: 1, characters_present: '[1]' }],
+      characters: [{ id: 1, project_id: 1, name: 'Lan' }],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+      chapter_revisions: [],
+    });
+
+    const validation = await engine.validateSceneDraft({
+      projectId: 1,
+      chapterId: 11,
+      sceneId: 21,
+      sceneText: [
+        '# Dan y canh',
+        '- Lan tiet lo minh la con nuoi cua gia toc.',
+        'Lan noi: "Ta di." Kha noi: "Dung lai." Mai dap: "Khong."',
+        'Lan di. Lan dung. Lan nhin. Lan im. Lan thở.',
+      ].join('\n'),
+      characterContextGate: {
+        sceneCast: [{ character: { id: 1, name: 'Lan' } }],
+      },
+    });
+
+    const ruleCodes = validation.reports.map((item) => item.rule_code);
+    expect(ruleCodes).toContain('POSSIBLE_FABRICATED_BACKSTORY');
+    expect(ruleCodes).toContain('PROSE_MARKDOWN_OR_OUTLINE');
+    expect(ruleCodes).toContain('DIALOGUE_FORMAT_DENSE');
+    expect(ruleCodes).toContain('MECHANICAL_SHORT_SENTENCES');
+  });
+
+  it('warns when a dead or missing character appears actively in prose', async () => {
+    const { engine } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Unavailable character', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', pov_character_id: 1, characters_present: '[1]' }],
+      characters: [
+        { id: 1, project_id: 1, name: 'Lan' },
+        { id: 2, project_id: 1, name: 'Mai', current_status: 'Mất tích sau chương trước' },
+      ],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+      chapter_revisions: [],
+    });
+
+    const validation = await engine.validateSceneDraft({
+      projectId: 1,
+      chapterId: 11,
+      sceneId: 21,
+      sceneText: 'Mai bước vào phòng và nói: "Ta đã trở lại."',
+      characterContextGate: {
+        sceneCast: [{ character: { id: 1, name: 'Lan' } }],
+      },
+    });
+
+    expect(validation.reports.some((item) => item.rule_code === 'UNAVAILABLE_CHARACTER_ACTIVE')).toBe(true);
+  });
 });

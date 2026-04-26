@@ -402,6 +402,13 @@
   overflow: auto;
 }
 
+.continuity-issue__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 .continuity-issues-empty {
   padding: var(--space-4);
   border-radius: var(--radius-lg);

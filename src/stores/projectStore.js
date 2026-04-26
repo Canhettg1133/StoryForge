@@ -402,6 +402,11 @@ const useProjectStore = create((set, get) => ({
       milestones: data.milestones || '[]',
       nsfw_mode: !!data.nsfw_mode,
       super_nsfw_mode: !!data.super_nsfw_mode,
+      project_mode: data.project_mode || 'original',
+      source_canon_pack_id: data.source_canon_pack_id || '',
+      fanfic_setup: data.fanfic_setup || '',
+      canon_adherence_level: data.canon_adherence_level || '',
+      divergence_point: data.divergence_point || '',
       prompt_templates: initialPromptTemplates, // Writing DNA is injected here at project creation.
       created_at: now,
       updated_at: now,

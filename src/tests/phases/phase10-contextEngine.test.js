@@ -93,15 +93,17 @@ function createMockDb(seed = {}) {
 async function loadContextEngine(seed) {
   vi.resetModules();
   const db = createMockDb(seed);
+  const buildRetrievalPacketMock = vi.fn(async () => null);
   vi.doMock('../../services/db/database', () => ({ default: db }));
   vi.doMock('../../services/canon/queries', () => ({
-    buildRetrievalPacket: vi.fn(async () => null),
+    buildRetrievalPacket: buildRetrievalPacketMock,
   }));
   vi.doMock('../../services/canon/state', () => ({
     buildCharacterStateSummary: vi.fn((_state, fallback) => fallback || ''),
   }));
   return {
     db,
+    buildRetrievalPacketMock,
     contextEngine: await import('../../services/ai/contextEngine'),
   };
 }
@@ -203,5 +205,110 @@ describe('phase10 context engine blueprint injection', () => {
     expect(ctx.factions.map((item) => item.name)).toContain('Thanh Van Tong');
     expect(ctx.objects.map((item) => item.name)).toContain('Ngoc boi');
     expect(ctx.preWriteValidation.warnings.some((item) => item.code === 'empty-scene-bootstrap-weak')).toBe(true);
+  });
+
+  it('always keeps manual scene cast when scene text detects another character', async () => {
+    const { contextEngine, buildRetrievalPacketMock } = await loadContextEngine({
+      projects: [{ id: 1, title: 'Du an thu', genre_primary: 'fantasy', prompt_templates: '{}' }],
+      chapters: [{
+        id: 12,
+        project_id: 1,
+        order_index: 0,
+        title: 'Chuong 1',
+        featured_characters: ['Mai'],
+        key_events: ['Mai nghe tin ve Lan'],
+      }],
+      chapterMeta: [],
+      characters: [
+        { id: 101, project_id: 1, name: 'Lan', role: 'protagonist' },
+        { id: 102, project_id: 1, name: 'Kha', role: 'supporting' },
+        { id: 103, project_id: 1, name: 'Mai', role: 'supporting' },
+      ],
+      locations: [],
+      objects: [],
+      factions: [],
+      worldTerms: [],
+      plotThreads: [],
+      relationships: [],
+      canonFacts: [],
+      taboos: [],
+      scenes: [{
+        id: 701,
+        project_id: 1,
+        chapter_id: 12,
+        order_index: 0,
+        title: 'Canh 1',
+        pov_character_id: 101,
+        characters_present: '[102]',
+        draft_text: '',
+        final_text: '',
+      }],
+      arcs: [],
+      macro_arcs: [],
+      threadBeats: [],
+    });
+
+    const ctx = await contextEngine.gatherContext({
+      projectId: 1,
+      chapterId: 12,
+      sceneId: 701,
+      sceneText: 'Mai dung ngoai cong.',
+      taskType: TASK_TYPES.CONTINUE,
+    });
+
+    expect(ctx.characterContextGate.sceneCast.map((item) => item.character.name)).toEqual(['Lan', 'Kha']);
+    expect(ctx.characterContextGate.chapterFocusCast.map((item) => item.character.name)).toEqual(['Mai']);
+    expect(ctx.characters.map((item) => item.name)).toEqual(expect.arrayContaining(['Lan', 'Kha', 'Mai']));
+    expect(buildRetrievalPacketMock).toHaveBeenCalledWith(expect.objectContaining({
+      detectedCharacterIds: expect.arrayContaining([101, 102, 103]),
+    }));
+  });
+
+  it('limits relationship injection to gated characters instead of expanding the whole network', async () => {
+    const { contextEngine } = await loadContextEngine({
+      projects: [{ id: 1, title: 'Du an thu', genre_primary: 'fantasy', prompt_templates: '{}' }],
+      chapters: [{ id: 12, project_id: 1, order_index: 0, title: 'Chuong 1', featured_characters: ['Mai'] }],
+      chapterMeta: [],
+      characters: [
+        { id: 101, project_id: 1, name: 'Lan', role: 'protagonist' },
+        { id: 102, project_id: 1, name: 'Kha', role: 'supporting' },
+        { id: 103, project_id: 1, name: 'Mai', role: 'supporting' },
+        { id: 104, project_id: 1, name: 'Nam', role: 'supporting' },
+      ],
+      locations: [],
+      objects: [],
+      factions: [],
+      worldTerms: [],
+      plotThreads: [],
+      relationships: [
+        { id: 1, project_id: 1, character_a_id: 101, character_b_id: 102, relation_type: 'ally', description: 'Cung canh' },
+        { id: 2, project_id: 1, character_a_id: 103, character_b_id: 104, relation_type: 'enemy', description: 'Ngoai canh' },
+      ],
+      canonFacts: [],
+      taboos: [],
+      scenes: [{
+        id: 701,
+        project_id: 1,
+        chapter_id: 12,
+        order_index: 0,
+        title: 'Canh 1',
+        pov_character_id: 101,
+        characters_present: '[102]',
+      }],
+      arcs: [],
+      macro_arcs: [],
+      threadBeats: [],
+    });
+
+    const ctx = await contextEngine.gatherContext({
+      projectId: 1,
+      chapterId: 12,
+      sceneId: 701,
+      sceneText: '',
+      taskType: TASK_TYPES.CONTINUE,
+    });
+
+    expect(ctx.relationships.map((item) => `${item.charA}/${item.charB}`)).toContain('Lan/Kha');
+    expect(ctx.relationships.map((item) => `${item.charA}/${item.charB}`)).not.toContain('Mai/Nam');
   });
 });
