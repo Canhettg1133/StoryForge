@@ -190,7 +190,7 @@ const useCodexStore = create((set, get) => ({
   // ---------------------------------------------
   // CHARACTERS
   // ---------------------------------------------
-  createCharacter: async (data) => {
+  createCharacter: async (data, options = {}) => {
     const now = Date.now();
     const flawSuffixes = data.flaws
       ? [`\nDiem yeu: ${data.flaws}`]
@@ -228,20 +228,22 @@ const useCodexStore = create((set, get) => ({
       created_at: now,
     };
 
-    const existingCharacters = await db.characters.where('project_id').equals(data.project_id).toArray();
-    const identityMatch = findCharacterIdentityMatch(existingCharacters, payload);
-    if (identityMatch?.character) {
-      const patch = {
-        ...mergeCharacterPatch(identityMatch.character, payload),
-        normalized_name: identity.normalized_name,
-        alias_keys: identity.alias_keys,
-        identity_key: identity.identity_key,
-      };
-      if (Object.keys(patch).length > 0) {
-        await db.characters.update(identityMatch.character.id, patch);
+    if (options.dedupe !== false) {
+      const existingCharacters = await db.characters.where('project_id').equals(data.project_id).toArray();
+      const identityMatch = findCharacterIdentityMatch(existingCharacters, payload);
+      if (identityMatch?.character) {
+        const patch = {
+          ...mergeCharacterPatch(identityMatch.character, payload),
+          normalized_name: identity.normalized_name,
+          alias_keys: identity.alias_keys,
+          identity_key: identity.identity_key,
+        };
+        if (Object.keys(patch).length > 0) {
+          await db.characters.update(identityMatch.character.id, patch);
+        }
+        await get().loadCodex(data.project_id);
+        return identityMatch.character.id;
       }
-      await get().loadCodex(data.project_id);
-      return identityMatch.character.id;
     }
 
     const id = await db.characters.add(payload);

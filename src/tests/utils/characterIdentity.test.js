@@ -52,6 +52,19 @@ describe('character identity helpers', () => {
     )).toBeNull();
   });
 
+  it('does not merge numbered character variants into the first matching prefix', () => {
+    const existingCharacters = Array.from({ length: 18 }, (_, index) => ({
+      id: index + 1,
+      name: `Hac Y Ve ${index + 1}`,
+      aliases: [],
+    }));
+
+    expect(findCharacterIdentityMatch(
+      existingCharacters,
+      { name: 'Hac Y Ve 19' },
+    )).toBeNull();
+  });
+
   it('merges new information without overwriting existing character canon', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1700000000000);

@@ -68,6 +68,18 @@ function nameTokens(value = '') {
     .filter((token) => token.length > 1);
 }
 
+function numericTokens(value = '') {
+  return normalizeCharacterIdentityKey(value).match(/\d+/g) || [];
+}
+
+function numericIdentityCompatible(left = '', right = '') {
+  const leftNumbers = numericTokens(left);
+  const rightNumbers = numericTokens(right);
+  if (leftNumbers.length === 0 && rightNumbers.length === 0) return true;
+  if (leftNumbers.length !== rightNumbers.length) return false;
+  return leftNumbers.every((token, index) => token === rightNumbers[index]);
+}
+
 function uniqueText(values = []) {
   const seen = new Set();
   const result = [];
@@ -112,14 +124,15 @@ export function characterNameSimilarity(left = '', right = '') {
   const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
   const union = new Set([...leftTokens, ...rightTokens]).size;
   const tokenScore = union > 0 ? intersection / union : 0;
-  const subsetScore = intersection >= 2 && intersection === Math.min(leftTokens.size, rightTokens.size)
+  const numbersCompatible = numericIdentityCompatible(leftKey, rightKey);
+  const subsetScore = numbersCompatible && intersection >= 2 && intersection === Math.min(leftTokens.size, rightTokens.size)
     ? 0.92
     : 0;
 
   const leftCompact = compactKey(leftKey);
   const rightCompact = compactKey(rightKey);
   const maxLength = Math.max(leftCompact.length, rightCompact.length);
-  const editScore = maxLength >= 4
+  const editScore = numbersCompatible && maxLength >= 4
     ? 1 - (editDistance(leftCompact, rightCompact) / maxLength)
     : 0;
 

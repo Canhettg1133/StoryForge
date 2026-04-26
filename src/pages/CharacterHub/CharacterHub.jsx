@@ -139,7 +139,7 @@ export default function CharacterHub() {
     if (editingChar) {
       await updateCharacter(editingChar.id, form);
     } else {
-      await createCharacter({ ...form, project_id: currentProject.id });
+      await createCharacter({ ...form, project_id: currentProject.id }, { dedupe: false });
     }
     setShowModal(false);
   };
@@ -808,7 +808,7 @@ export default function CharacterHub() {
                     speech_pattern: item.speech_pattern || '',
                     goals: item.goals || '',
                     notes: item.notes || '',
-                  });
+                  }, { dedupe: false });
                 }
                 setShowBatchGen(false);
               }}

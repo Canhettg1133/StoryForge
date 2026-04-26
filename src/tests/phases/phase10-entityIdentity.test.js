@@ -45,4 +45,18 @@ describe('phase10 entity identity', () => {
 
     expect(resolution.status).toBe('created_new');
   });
+
+  it('creates a new character when only the numbered suffix differs', () => {
+    const resolution = identity.resolveEntityCandidate(
+      { name: 'Hac Y Ve 19' },
+      Array.from({ length: 18 }, (_, index) => ({
+        id: index + 1,
+        name: `Hac Y Ve ${index + 1}`,
+        aliases: [],
+      })),
+      'character',
+    );
+
+    expect(resolution.status).toBe('created_new');
+  });
 });

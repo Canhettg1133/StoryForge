@@ -17,11 +17,35 @@ vi.mock('../../stores/codexStore', () => ({
 }));
 
 vi.mock('../../components/common/AIGenerateButton', () => ({
-  default: () => <button type="button">AI generate</button>,
+  default: ({ onApprove }) => (
+    <button
+      type="button"
+      onClick={() => onApprove({
+        name: 'Hac Y Ve 19',
+        role: 'supporting',
+        appearance: 'Ao den',
+        personality: 'Tram lang',
+      })}
+    >
+      AI generate
+    </button>
+  ),
 }));
 
 vi.mock('../../components/common/BatchGenerate', () => ({
-  default: () => <div>Batch generate</div>,
+  default: ({ onBatchCreated }) => (
+    <div>
+      <button
+        type="button"
+        onClick={() => onBatchCreated([
+          { name: 'Hac Y Ve 19', role: 'supporting', personality: 'Tram lang' },
+          { name: 'Hac Y Ve 20', role: 'supporting', personality: 'Can trong' },
+        ])}
+      >
+        Batch add
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('../../components/common/RelationshipMap', () => ({
@@ -63,6 +87,21 @@ function normalizedText(node) {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd')
     .replace(/Đ/g, 'D');
+}
+
+function setInputValue(input, value) {
+  const valueSetter = Object.getOwnPropertyDescriptor(input, 'value')?.set;
+  const prototypeValueSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    'value',
+  )?.set;
+
+  if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+    prototypeValueSetter.call(input, value);
+  } else {
+    input.value = value;
+  }
+  input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 describe('phase10 CharacterHub deletion', () => {
@@ -109,6 +148,100 @@ describe('phase10 CharacterHub deletion', () => {
       root.render(<CharacterHub />);
     });
   }
+
+  it('sends the 19th manually-created character to the store', async () => {
+    codexState.characters = Array.from({ length: 18 }, (_, index) => (
+      createCharacter({ id: index + 1, name: `Hac Y Ve ${index + 1}` })
+    ));
+
+    await renderHub();
+
+    const manualCreateButton = container.querySelector('.codex-header-actions .btn-primary');
+    expect(manualCreateButton).not.toBeNull();
+
+    await act(async () => {
+      manualCreateButton.click();
+    });
+
+    const nameInput = container.querySelector('.codex-modal input[type="text"]');
+    expect(nameInput).not.toBeNull();
+
+    await act(async () => {
+      setInputValue(nameInput, 'Hac Y Ve 19');
+    });
+
+    const saveButton = container.querySelector('.codex-modal-footer .btn-primary');
+    await act(async () => {
+      saveButton.click();
+    });
+
+    expect(codexState.createCharacter).toHaveBeenCalledWith(expect.objectContaining({
+      project_id: 1,
+      name: 'Hac Y Ve 19',
+    }), { dedupe: false });
+  });
+
+  it('keeps AI-created character approval editable and saves it through the same create path', async () => {
+    codexState.characters = Array.from({ length: 18 }, (_, index) => (
+      createCharacter({ id: index + 1, name: `Hac Y Ve ${index + 1}` })
+    ));
+
+    await renderHub();
+
+    const aiButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => normalizedText(button).includes('AI generate'));
+    expect(aiButton).toBeDefined();
+
+    await act(async () => {
+      aiButton.click();
+    });
+
+    expect(container.querySelector('.codex-modal input[type="text"]').value).toBe('Hac Y Ve 19');
+
+    const saveButton = container.querySelector('.codex-modal-footer .btn-primary');
+    await act(async () => {
+      saveButton.click();
+    });
+
+    expect(codexState.createCharacter).toHaveBeenCalledWith(expect.objectContaining({
+      project_id: 1,
+      name: 'Hac Y Ve 19',
+      appearance: 'Ao den',
+      personality: 'Tram lang',
+    }), { dedupe: false });
+  });
+
+  it('passes each batch-generated 19th+ character to createCharacter', async () => {
+    codexState.characters = Array.from({ length: 18 }, (_, index) => (
+      createCharacter({ id: index + 1, name: `Hac Y Ve ${index + 1}` })
+    ));
+
+    await renderHub();
+
+    const batchButton = container.querySelector('.codex-header-actions .btn-accent');
+    expect(batchButton).not.toBeNull();
+
+    await act(async () => {
+      batchButton.click();
+    });
+
+    const batchAddButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => normalizedText(button).includes('Batch add'));
+    expect(batchAddButton).toBeDefined();
+
+    await act(async () => {
+      batchAddButton.click();
+    });
+
+    expect(codexState.createCharacter).toHaveBeenCalledWith(expect.objectContaining({
+      project_id: 1,
+      name: 'Hac Y Ve 19',
+    }), { dedupe: false });
+    expect(codexState.createCharacter).toHaveBeenCalledWith(expect.objectContaining({
+      project_id: 1,
+      name: 'Hac Y Ve 20',
+    }), { dedupe: false });
+  });
 
   it('does not open the character editor when confirming a card deletion', async () => {
     await renderHub();

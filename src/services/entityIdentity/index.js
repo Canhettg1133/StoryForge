@@ -111,6 +111,18 @@ function meaningfulTokens(value) {
     .filter((token) => token.length > 1 && !AMBIGUOUS_TOKENS.has(token));
 }
 
+function numericTokens(value) {
+  return normalizeIdentityText(value).match(/\d+/g) || [];
+}
+
+function numericIdentityCompatible(left, right) {
+  const leftNumbers = numericTokens(left);
+  const rightNumbers = numericTokens(right);
+  if (leftNumbers.length === 0 && rightNumbers.length === 0) return true;
+  if (leftNumbers.length !== rightNumbers.length) return false;
+  return leftNumbers.every((token, index) => token === rightNumbers[index]);
+}
+
 function isContiguousSubsequence(shorterTokens, longerTokens) {
   if (shorterTokens.length === 0 || shorterTokens.length > longerTokens.length) return false;
   for (let index = 0; index <= longerTokens.length - shorterTokens.length; index += 1) {
@@ -123,6 +135,7 @@ function isContiguousSubsequence(shorterTokens, longerTokens) {
 }
 
 function safeSubsetMatchScore(left, right) {
+  if (!numericIdentityCompatible(left, right)) return 0;
   const leftTokens = meaningfulTokens(left);
   const rightTokens = meaningfulTokens(right);
   if (leftTokens.length < 2 || rightTokens.length < 2) return 0;
