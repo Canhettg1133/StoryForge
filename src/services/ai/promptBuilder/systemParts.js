@@ -142,6 +142,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     const selfPronoun = c.pronouns_self || c.pronouns?.self || '';
     const otherPronoun = c.pronouns_other || c.pronouns?.other || '';
     if (selfPronoun) parts.push('  Xung: "' + selfPronoun + '"' + (otherPronoun ? ', goi nguoi: "' + otherPronoun + '"' : ''));
+    if (c.age) parts.push('  Tuoi/do tuoi: ' + c.age);
     if (c.appearance) parts.push('  Ngoai hinh: ' + c.appearance);
     if (c.personality_tags) parts.push('  Tags: ' + c.personality_tags);
     if (c.personality) parts.push('  Tinh cach: ' + c.personality);
@@ -170,6 +171,9 @@ export function buildPromptSystemParts(taskType, context = {}) {
   const CANON_FABRICATION_GUARDRAIL = [
     '\n[CAM BIA CANON NHAN VAT]',
     '- Khong tu bia than the, cha me, con nuoi/con ruot, huyet thong, qua khu, vet thuong cu, loi hua cu, nang luc an, quan he gia dinh hoac yeu duong neu ho so/canon khong ghi.',
+    '- Khong tu bia tuoi/do tuoi neu ho so/canon khong ghi; neu khong co du lieu tuoi thi khong nhac tuoi trong van ban.',
+    '- Age/tuoi chi la tin hieu mem cho xung ho, do truong thanh, nhip thoai, von song va phan ung tam ly; khong dung nhu luat cung ep nhan vat noi theo khuon.',
+    '- Voi hien dai/hoc duong/do thi co the dung tuoi so cu the khi da co du lieu; voi tien hiep/huyen huyen/than linh/bat tu uu tien mo ta linh hoat nhu thieu nien, ngoai hinh doi muoi, tuoi that rat cao, truong boi.',
     '- Neu canon chua noi thi viet trung tinh hoac bo qua; neu ho so noi ro thi khong viet nguoc lai.',
     '- Bi mat trong ho so chi dung de tranh mau thuan, khong tu tiet lo trong van ban neu chua den luc.',
   ].join('\n');
@@ -181,6 +185,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     '- Khong nhoi nhieu luot thoai cua nhieu nguoi vao cung mot doan.',
     '- Moi doan chi nen co mot trong tam: hanh dong, cam giac, quan sat, noi tam, hoac mot luot thoai.',
     '- Thoai phai tu nhien theo speech_pattern, quan he, tuoi/tang lop va cam xuc hien tai cua tung nhan vat.',
+    '- Neu age/tuoi duoc cung cap, chi dung nhu ngu canh tham khao cho xung ho, do truong thanh, nhip thoai, von song va phan ung tam ly; khong bien no thanh khuon noi cung nhac.',
     '- Khong ngat cau may moc; cau ngan chi dung khi can tao nhip, khong lap lien tiep vo nghia.',
     '- Khong de nhan vat noi nhu dang liet ke y.',
     '- Khong de nhan vat tu giai thich ho so, than the, tinh cach, qua khu neu khong co dong co trong canh.',

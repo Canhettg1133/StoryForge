@@ -14,7 +14,7 @@ const PROJECT_WIZARD_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON format:
     "world_rules": ["Quy tac 1", "Quy tac 2", "Quy tac 3"],
     "world_description": "Mo ta tong quan the gioi 2-3 cau"
   },
-  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem luc dau", "goals": "...", "story_function": "vai tro trong cac chapter dau"}],
+  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "age": "tuoi/do tuoi tuy chon, chi dien khi phu hop the loai hoac huu ich cho giong thoai", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem luc dau", "goals": "...", "story_function": "vai tro trong cac chapter dau"}],
   "locations": [{"name": "...", "description": "...", "story_function": "dia diem nay dung de lam gi trong chapter dau"}],
   "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chi them neu chapter dau that su can vat pham nay"}],
   "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "..."}],
@@ -38,6 +38,7 @@ QUY TAC CHUONG VA ENTITY:
 - "objects" la field tuy chon, chi them neu chapter dau that su can va chapter outline co nhac den.
 - Moi chapter phai co tien trien ro, nhung khong duoc nhoi qua nhieu bien co neu day moi la mo dau truyen.
 - Moi nhan vat chi duoc co MOT record chinh thuc trong "characters". Neu cung mot nguoi co ten ngan, ho, biet danh, danh xung, hoac cach goi khac, dua vao "aliases" cua record do; TUYET DOI khong tao thanh nhan vat moi.
+- Field "age" la tuy chon: chi dien tuoi/do tuoi khi phu hop the loai hoac huu ich cho giong thoai; hien dai/hoc duong/do thi co the dung tuoi so, tien hiep/huyen huyen/than linh/bat tu uu tien mo ta linh hoat nhu thieu nien, ngoai hinh doi muoi, tuoi that rat cao, truong boi.
 - Khong tao 2 protagonist/main character cho cung mot nguoi chi vi ten hoi khac nhau. "featured_characters" phai dung ten chinh thuc trong "characters".
 
 Chi tra ve JSON, khong them gi khac.`;
@@ -186,6 +187,7 @@ NGUYEN TAC BAT BUOC:
 - Nhan vat, dia diem, thuat ngu, va plot thread phai bam sat premise va phai duoc nhac den trong chapter outline.
 - Moi nhan vat chi co 1 record chinh thuc. Ten ngan, biet danh, danh xung, ho/ten dem, hoac bien the chinh ta phai nam trong aliases cua record do, KHONG tao thanh nhan vat moi.
 - Neu mot nhan vat da co trong danh sach, moi chi tiet moi lien quan den nguoi do phai cap nhat vao chinh nhan vat do.
+- Tuoi/do tuoi la tuy chon. Chi dien khi phu hop the loai hoac huu ich cho giong thoai; khong can thi de trong, khong bien tuoi thanh luat cung ve tinh cach.
 - Nhac lai it nhung huu dung tot hon nhieu nhung roi rac.
 - Nhip truyen phai phu hop voi do dai muc tieu va khong duoc tang toc qua tay trong giai doan mo dau.{{pacing_guidance}}`,
     userPromptTemplate: `The loai: {{genre}}

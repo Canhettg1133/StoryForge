@@ -23,7 +23,7 @@ describe('phase10 blueprint guardrails', () => {
         required_factions: ['Thanh Van Tong', 'Thanh Van Tong'],
         required_objects: 'Ngoc boi',
       }],
-      characters: [{ name: ' Lan ', role: ' protagonist ', story_function: 'neo mo dau' }],
+      characters: [{ name: ' Lan ', role: ' protagonist ', age: ' thieu nien ', story_function: 'neo mo dau' }],
       locations: [{ name: ' Thanh Co ', story_function: 'san khau mo dau' }],
       terms: [{ name: ' Linh can ', story_function: 'giai thich he thong' }],
       plot_threads: [{ title: ' Bi mat hoang toc ', opening_window: 'chuong 1-2', anchor_chapters: 'Chuong 1' }],
@@ -41,6 +41,7 @@ describe('phase10 blueprint guardrails', () => {
     expect(normalized.chapters[0].featured_characters).toEqual(['Lan', 'Kha']);
     expect(normalized.chapters[0].thread_titles).toEqual(['Bi mat hoang toc']);
     expect(normalized.characters[0].story_function).toBe('neo mo dau');
+    expect(normalized.characters[0].age).toBe('thieu nien');
     expect(normalized.locations[0].story_function).toBe('san khau mo dau');
     expect(normalized.terms[0].story_function).toBe('giai thich he thong');
     expect(normalized.plot_threads[0].anchor_chapters).toEqual(['Chuong 1']);

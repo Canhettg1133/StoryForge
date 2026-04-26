@@ -211,6 +211,7 @@ const useCodexStore = create((set, get) => ({
       identity_key: identity.identity_key,
       aliases: data.aliases || [],          // new
       role: data.role || 'supporting',
+      age: data.age || '',
       appearance: data.appearance || '',
       personality,
       flaws: data.flaws || '',

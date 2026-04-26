@@ -20,6 +20,7 @@ const CharacterDraftCard = React.memo(function CharacterDraftCard({
         </select>
       </div>
       <input className="input input-inline" value={draft.name} placeholder="Tên" onChange={(event) => onChange(character.id, 'name', event.target.value)} />
+      <input className="input input-inline" value={draft.age || ''} placeholder="Tuổi / độ tuổi" onChange={(event) => onChange(character.id, 'age', event.target.value)} />
       <input className="input input-inline" value={draft.appearance || ''} placeholder="Ngoại hình" onChange={(event) => onChange(character.id, 'appearance', event.target.value)} />
       <input className="input input-inline" value={draft.personality || ''} placeholder="Tính cách" onChange={(event) => onChange(character.id, 'personality', event.target.value)} />
       <input className="input input-inline" value={draft.personality_tags || ''} placeholder="Tags (VD: #Kiên_nhẫn, #Quyết_đoán)" onChange={(event) => onChange(character.id, 'personality_tags', event.target.value)} />

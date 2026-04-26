@@ -52,6 +52,7 @@ async function planCharacters(projectId, pack) {
       identity_key: identity.identity_key,
       aliases: character.aliases || [],
       role: character.role || 'supporting',
+      age: character.age || character.ageRange || character.age_range || '',
       personality: character.personality || '',
       current_status: character.status || '',
       goals: character.goals || '',
@@ -61,6 +62,9 @@ async function planCharacters(projectId, pack) {
       source_kind: 'lab_lite_canon_pack',
       created_at: now(),
     };
+    if (existing && !payload.age) {
+      delete payload.age;
+    }
     actions.push(actionRecord({
       type: 'character',
       source: character,

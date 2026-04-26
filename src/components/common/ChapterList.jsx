@@ -305,6 +305,7 @@ export default function ChapterList({
                   name: character.name,
                   role: character.role || 'minor',
                   appearance: character.appearance || '',
+                  age: character.age || '',
                   personality: character.personality || '',
                   flaws: character.flaws || '',
                   personality_tags: character.personality_tags || '',

@@ -34,6 +34,7 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[1].content).toContain('[LOAI THUC THE]');
     expect(messages[1].content).toContain('nhan vat');
     expect(messages[1].content).toContain('"items"');
+    expect(messages[1].content).toContain('"age"');
     expect(messages[1].content).toContain('Nhan vat da co: A, B');
   });
 
@@ -244,6 +245,7 @@ describe('phase10 prompt builder coverage', () => {
             name: 'Lan',
             role: 'protagonist',
             aliases: ['A Lan'],
+            age: 'ngoai hinh doi muoi, tuoi that rat cao',
             pronouns_self: 'ta',
             personality: 'Kien dinh',
             flaws: 'Noi nong',
@@ -272,6 +274,9 @@ describe('phase10 prompt builder coverage', () => {
     expect(system).toContain('[NHAN VAT QUAN TRONG CUA CHUONG - KHONG TU DONG XUAT HIEN TRONG CANH]');
     expect(system).toContain('[CANON NHAN VAT LIEN QUAN / DUOC NHAC TOI]');
     expect(system).toContain('Muc tieu: Tim su that');
+    expect(system).toContain('Tuoi/do tuoi: ngoai hinh doi muoi, tuoi that rat cao');
+    expect(system).toContain('Khong tu bia tuoi/do tuoi');
+    expect(system).toContain('Age/tuoi chi la tin hieu mem');
     expect(system).toContain('Bi mat canon (khong tu tiet lo neu chua den luc): La nguoi giu an tin');
     expect(system).toContain('Ghi chu: Truc cam xuc cua canh');
     expect(system).toContain('Vai tro truyen: Dan mach chinh');
@@ -281,6 +286,18 @@ describe('phase10 prompt builder coverage', () => {
     expect(system.indexOf('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]')).toBeLessThan(system.indexOf('[DO DAI VA NHIP DO]'));
     expect(system).toContain('[NHIEM VU]');
     expect(system).toContain('[THE LOAI]');
+  });
+
+  it('omits character age context when the author did not provide it', () => {
+    const messages = buildPrompt(TASK_TYPES.CONTINUE, {
+      characters: [
+        { id: 1, name: 'Lan', role: 'protagonist', personality: 'Kien dinh' },
+      ],
+    });
+
+    const system = messages[0].content;
+    expect(system).not.toContain('Tuoi/do tuoi:');
+    expect(system).toContain('Khong tu bia tuoi/do tuoi');
   });
 
   it('forces OUTLINE to stay inside the current chapter and respect future chapter fences', () => {

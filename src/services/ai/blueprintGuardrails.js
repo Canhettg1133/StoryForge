@@ -566,6 +566,7 @@ export function normalizeWizardBlueprintResult(rawValue, fallbackTitle = '') {
       .map((item) => normalizeEntityRecord(item, {
         name: 'text',
         role: 'text',
+        age: 'text',
         appearance: 'text',
         personality: 'text',
         personality_tags: 'text',

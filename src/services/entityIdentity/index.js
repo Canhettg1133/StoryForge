@@ -526,6 +526,7 @@ function tablePayloadFromCandidate(projectId, candidate, kind) {
       aliases: mergeUniqueAliases(payload.aliases, candidate.aliases),
       role: cleanText(payload.role || 'supporting') || 'supporting',
       appearance: cleanText(payload.appearance || ''),
+      age: cleanText(payload.age || ''),
       personality: cleanText(payload.personality || ''),
       flaws: cleanText(payload.flaws || ''),
       personality_tags: cleanText(payload.personality_tags || payload.personalityTags || ''),

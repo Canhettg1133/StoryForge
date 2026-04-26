@@ -31,6 +31,7 @@ export default function useStoryBibleDrafts({
     setCharacterDrafts((previousDrafts) => syncDraftMap(previousDrafts, characters, (item) => ({
       role: item.role || 'supporting',
       name: item.name || '',
+      age: item.age || '',
       appearance: item.appearance || '',
       personality: item.personality || '',
       personality_tags: item.personality_tags || '',

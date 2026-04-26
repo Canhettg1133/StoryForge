@@ -119,4 +119,41 @@ describe('phase10 character creation persistence', () => {
     expect(storedNames).toEqual(['Tư Lúa', 'Ông Tư Lúa']);
     expect(useCodexStore.getState().characters.map((character) => character.name)).toEqual(storedNames);
   });
+  it('persists optional character age and only fills it during dedupe when blank', async () => {
+    const projectId = await createProject();
+    const store = useCodexStore.getState();
+
+    const id = await store.createCharacter({
+      project_id: projectId,
+      name: 'Lam Phong',
+      role: 'protagonist',
+      age: 'ngoai hinh doi muoi, tuoi that rat cao',
+    });
+    await store.createCharacter({
+      project_id: projectId,
+      name: 'Lam Phong',
+      role: 'protagonist',
+      age: '300 tuoi',
+      goals: 'Truy tim chan tuong',
+    });
+
+    const stored = await db.characters.get(id);
+    expect(stored.age).toBe('ngoai hinh doi muoi, tuoi that rat cao');
+    expect(stored.goals).toBe('Truy tim chan tuong');
+
+    const blankAgeId = await store.createCharacter({
+      project_id: projectId,
+      name: 'Thanh Ha',
+      role: 'supporting',
+    });
+    await store.createCharacter({
+      project_id: projectId,
+      name: 'Thanh Ha',
+      role: 'supporting',
+      age: '16',
+    });
+
+    const filled = await db.characters.get(blankAgeId);
+    expect(filled.age).toBe('16');
+  });
 });

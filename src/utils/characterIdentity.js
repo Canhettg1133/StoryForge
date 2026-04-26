@@ -217,6 +217,7 @@ export function mergeCharacterPatch(existing = {}, incoming = {}) {
     'personality',
     'flaws',
     'personality_tags',
+    'age',
     'pronouns_self',
     'pronouns_other',
     'speech_pattern',

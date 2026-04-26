@@ -24,6 +24,7 @@ import './CharacterHub.css';
 const EMPTY_CHARACTER = {
   name: '',
   role: 'supporting',
+  age: '',
   appearance: '',
   personality: '',
   flaws: '',
@@ -118,6 +119,7 @@ export default function CharacterHub() {
     setForm({
       name: char.name || '',
       role: char.role || 'supporting',
+      age: char.age || '',
       appearance: char.appearance || '',
       personality: char.personality || '',
       flaws: char.flaws || '',
@@ -295,6 +297,7 @@ export default function CharacterHub() {
                   setForm({
                     name: data.name || '',
                     role: data.role || 'supporting',
+                    age: data.age || '',
                     appearance: data.appearance || '',
                     personality: data.personality || '',
                     flaws: data.flaws || '',
@@ -405,6 +408,7 @@ export default function CharacterHub() {
                       <div className="character-card-info">
                         <h4 className="character-name">{char.name}</h4>
                         <span className="character-role">{roleLabel}</span>
+                        {char.age && <span className="character-role">{char.age}</span>}
                       </div>
                       <div className="character-card-actions" onClick={e => e.stopPropagation()}>
                         <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(char)} title="Sửa">
@@ -572,6 +576,16 @@ export default function CharacterHub() {
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Tuổi / độ tuổi (tùy chọn)</label>
+                    <input
+                      type="text"
+                      value={form.age}
+                      onChange={e => setForm({ ...form, age: e.target.value })}
+                      placeholder="Ví dụ: 16, thiếu niên, ngoại hình đôi mươi, tuổi thật rất cao..."
+                    />
                   </div>
 
                   {/* Pronouns */}
@@ -801,6 +815,7 @@ export default function CharacterHub() {
                     project_id: pid,
                     name: item.name,
                     role: item.role || 'supporting',
+                    age: item.age || '',
                     appearance: item.appearance || '',
                     personality: item.personality || '',
                     flaws: item.flaws || '',

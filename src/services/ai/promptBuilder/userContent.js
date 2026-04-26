@@ -236,7 +236,7 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         term: 'thuat ngu',
       };
       const schemaMap = {
-        character: '{"name":"Ten nhan vat","role":"protagonist|antagonist|supporting|mentor|minor","appearance":"Mo ta 2-3 cau","personality":"Mo ta 2-3 cau","personality_tags":"tag1, tag2","flaws":"Diem yeu/khuyet diem","goals":"Muc tieu","secrets":"Bi mat neu co","notes":"Vai tro trong cot truyen"}',
+        character: '{"name":"Ten nhan vat","role":"protagonist|antagonist|supporting|mentor|minor","age":"tuoi/do tuoi tuy chon, chi dien khi phu hop the loai hoac huu ich cho giong thoai","appearance":"Mo ta 2-3 cau","personality":"Mo ta 2-3 cau","personality_tags":"tag1, tag2","flaws":"Diem yeu/khuyet diem","goals":"Muc tieu","secrets":"Bi mat neu co","notes":"Vai tro trong cot truyen"}',
         location: '{"name":"Ten dia diem","description":"Mo ta 2-3 cau","details":"Chi tiet bo sung, kien truc, bi mat..."}',
         object: '{"name":"Ten vat pham","description":"Mo ta 2-3 cau","properties":"Cong dung, thuoc tinh, han che","owner":"Ten chu so huu neu co"}',
         term: '{"name":"Ten thuat ngu","definition":"Dinh nghia 3-5 cau","category":"magic|organization|race|technology|concept|culture|other"}',
@@ -269,6 +269,12 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         if (missingNames.length > 0) {
           userContent += '\n\n[DANH SACH CON THIEU UI GOI Y - CAN KIEM TRA LAI]\n' + missingNames.map((name) => '- ' + name).join('\n');
         }
+      }
+      if (targetType === 'character') {
+        userContent += '\n\n[HUONG DAN TUOI/DO TUOI]\n';
+        userContent += '- Field age la tuy chon. Chi dien khi phu hop the loai hoac khi huu ich cho giong thoai.\n';
+        userContent += '- Hien dai/hoc duong/do thi: co the dung tuoi so cu the. Tien hiep/huyen huyen/than linh/bat tu: uu tien mo ta linh hoat nhu thieu nien, ngoai hinh doi muoi, tuoi that rat cao, truong boi.\n';
+        userContent += '- Khong dien age neu khong can; khong bien age thanh luat cung ve tinh cach.';
       }
       userContent += '\n\n[YEU CAU CUA TAC GIA]\n' + (userPrompt || 'Hay tao mot muc phu hop voi du an nay.');
       userContent += '\n\n[OUTPUT JSON BAT BUOC]\n' + outputSchema;

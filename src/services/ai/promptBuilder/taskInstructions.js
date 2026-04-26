@@ -136,12 +136,12 @@ export const TASK_INSTRUCTIONS = {
   [TASK_TYPES.FEEDBACK_EXTRACT]: withPlanningAndCanonPrefix([
     'Phan tich doan van va trich xuat thong tin moi duoi dang JSON. Tra ve CHINH XAC format nay:',
     '{',
-    '  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "...", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem"}],',
+    '  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "...", "age": "tuoi/do tuoi neu van ban noi ro, khong suy dien", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem"}],',
     '  "locations": [{"name": "...", "description": "..."}],',
     '  "terms": [{"name": "...", "definition": "...", "category": "..."}],',
     '  "objects": [{"name": "...", "description": "...", "owner": "..."}]',
     '}',
-    'Chi liet ke thong tin MOI xuat hien. Neu thong tin thuoc ve nhan vat da biet, dung dung ten chinh thuc cua nhan vat do va dua ten goi khac vao aliases; KHONG tao record nhan vat moi chi vi ten lech nhe.',
+    'Chi liet ke thong tin MOI xuat hien. Neu thong tin thuoc ve nhan vat da biet, dung dung ten chinh thuc cua nhan vat do va dua ten goi khac vao aliases; KHONG tao record nhan vat moi chi vi ten lech nhe. Chi dien age khi van ban noi ro tuoi/do tuoi, khong suy dien.',
     'Neu khong co gi moi, tra ve mang rong. Chi tra ve JSON, khong them gi khac.',
   ].join('\n')),
   [TASK_TYPES.STYLE_ANALYZE]: [
@@ -189,7 +189,7 @@ export const TASK_INSTRUCTIONS = {
     'Dua tren the loai va y tuong, tao blueprint cho du an truyen. Tra ve CHINH XAC JSON format:',
     '{',
     '  "premise": "Tom tat premise 2-3 cau",',
-    '  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "mo ta ngan", "personality": "mo ta ngan", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem", "goals": "muc tieu"}],',
+    '  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "age": "tuoi/do tuoi tuy chon", "appearance": "mo ta ngan", "personality": "mo ta ngan", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem", "goals": "muc tieu"}],',
     '  "locations": [{"name": "...", "description": "mo ta ngan"}],',
     '  "terms": [{"name": "...", "definition": "...", "category": "magic|organization|race|technology|other"}],',
     '  "chapters": [{"title": "Chuong 1: ...", "summary": "Tom tat noi dung chuong"}]',

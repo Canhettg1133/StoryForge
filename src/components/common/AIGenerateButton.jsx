@@ -23,7 +23,7 @@ import './AIGenerateButton.css';
 
 const ENTITY_PROMPTS = {
   character: {
-    placeholder: 'Vi du: Nu sat thu lanh lung, 20 tuoi, co bi mat den toi...',
+    placeholder: 'Vi du: Nu sat thu lanh lung, 20 tuoi; hoac tien boi ngoai hinh doi muoi...',
   },
   location: {
     placeholder: 'Vi du: Toa thanh co tren dinh nui, bao quanh boi suong mu...',

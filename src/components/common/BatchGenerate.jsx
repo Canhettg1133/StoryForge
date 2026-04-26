@@ -435,6 +435,7 @@ export default function BatchGenerate({
                   </span>
                   <strong>{item.name}</strong>
                   {item.role && <span className="badge badge-sm">{item.role}</span>}
+                  {item.age && <span className="badge badge-sm">{item.age}</span>}
                   {item.category && <span className="badge badge-sm">{item.category}</span>}
                 </div>
                 <div className="batch-gen-item-body">

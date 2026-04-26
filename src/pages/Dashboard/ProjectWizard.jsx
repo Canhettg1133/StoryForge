@@ -407,6 +407,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
         <textarea className="textarea textarea-sm" rows={2} value={c.personality || ''} onChange={e => updateResultItem('characters', i, 'personality', e.target.value)} />
       </div>
       <div className="wizard-edit-field">
+        <label>Tuổi / độ tuổi</label>
+        <input className="input input-sm" value={c.age || ''} onChange={e => updateResultItem('characters', i, 'age', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
         <label>Điểm yếu</label>
         <input className="input input-sm" value={c.flaws || ''} onChange={e => updateResultItem('characters', i, 'flaws', e.target.value)} />
       </div>
@@ -799,6 +803,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
               name: c.name,
               aliases: c.aliases || [],
               role: c.role || 'supporting',
+              age: c.age || '',
               appearance: c.appearance || '',
               personality: (c.personality || '') + (c.flaws ? `\nDiem yeu: ${c.flaws}` : ''),
               flaws: c.flaws || '',
@@ -1379,6 +1384,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
                         <div className="wizard-item-content">
                           <strong>{c.name}</strong>{' '}
                           <span className="badge badge-sm">{c.role}</span>
+                          {c.age && <span className="badge badge-sm">{c.age}</span>}
                           {c.personality && <p>{c.personality}</p>}
                           {c.flaws && (
                             <p style={{ fontSize: '13px', marginTop: '4px', color: 'var(--color-warning, #f59e0b)' }}>
