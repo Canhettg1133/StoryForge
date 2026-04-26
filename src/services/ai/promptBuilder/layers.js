@@ -154,6 +154,9 @@ export function buildChapterOutlineLayer(taskType, currentChapterOutline, chapte
     if (currentChapterOutline.title) cur.push('Tieu de: ' + currentChapterOutline.title);
     if (currentChapterOutline.summary) cur.push('Noi dung can viet: ' + currentChapterOutline.summary);
     if (currentChapterOutline.purpose) cur.push('Purpose: ' + currentChapterOutline.purpose);
+    if (currentChapterOutline.stateDelta) {
+      cur.push('State delta / thay doi Character Live Canon du kien: ' + currentChapterOutline.stateDelta);
+    }
     if (currentChapterOutline.featuredCharacters && currentChapterOutline.featuredCharacters.length > 0) {
       cur.push('Nhan vat bat buoc bam sat: ' + currentChapterOutline.featuredCharacters.join(', '));
     }

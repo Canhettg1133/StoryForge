@@ -65,6 +65,8 @@ export async function gatherContext({
   taskType = null,
   retrievalMode = '',
   userPrompt = '',
+  contextChapter = null,
+  includeAllCharacters = false,
 }) {
   if (!projectId) {
     return {
@@ -116,10 +118,10 @@ export async function gatherContext({
   const requestedChapter = chapterId
     ? chapters.find((chapter) => chapter.id === chapterId) || null
     : null;
+  const indexedChapter = chapters.find((chapter) => chapter.order_index === chapterIndex) || null;
   const resolvedChapter = requestedChapter
-    || chapters.find((chapter) => chapter.order_index === chapterIndex)
-    || chapters[0]
-    || null;
+    || indexedChapter
+    || (chapterIndex === 0 ? (chapters[0] || null) : null);
   const resolvedChapterIndex = Number.isFinite(resolvedChapter?.order_index)
     ? resolvedChapter.order_index
     : (Number.isFinite(chapterIndex) ? chapterIndex : 0);
@@ -245,7 +247,7 @@ export async function gatherContext({
   // 2. upcomingChapters fences off near-future beats so the AI does not write ahead.
   // Reuses the chapter list already loaded above, so no extra DB query is needed.
 
-  const currentRaw = resolvedChapter;
+  const currentRaw = contextChapter || resolvedChapter;
   const chapterBlueprintContext = buildChapterBlueprintContext({
     chapter: currentRaw,
     allCharacters,
@@ -266,6 +268,7 @@ export async function gatherContext({
       requiredFactions: normalizeChapterListField(currentRaw.required_factions),
       requiredObjects: normalizeChapterListField(currentRaw.required_objects),
       requiredTerms: normalizeChapterListField(currentRaw.required_terms),
+      stateDelta: currentRaw.state_delta || '',
       keyEvents: (() => {
         try {
           const raw = currentRaw.key_events || '[]';
@@ -306,9 +309,11 @@ export async function gatherContext({
   });
 
   const gateCharacters = flattenGateCharacters(characterContextGate);
-  const effectiveCharacters = gateCharacters.length > 0
-    ? gateCharacters
-    : blueprintCharacters;
+  const effectiveCharacters = includeAllCharacters
+    ? mergeById(mergeById(gateCharacters, blueprintCharacters), allCharacters)
+    : (gateCharacters.length > 0
+      ? gateCharacters
+      : blueprintCharacters);
   const effectiveLocations = mergeById(detectedLocations, blueprintLocations);
   const effectiveObjects = mergeById(detectedObjects, blueprintObjects);
   const effectiveTerms = mergeById(detectedTerms, blueprintTerms);

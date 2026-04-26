@@ -1189,6 +1189,40 @@ function normalizeGeneratedListField(value = []) {
         : [];
 }
 
+function buildGeneratedChapterContext(chapter = {}) {
+    return {
+        title: chapter?.title || '',
+        summary: chapter?.summary || '',
+        purpose: chapter?.purpose || '',
+        featured_characters: normalizeGeneratedListField(chapter?.featured_characters),
+        primary_location: String(chapter?.primary_location || '').trim(),
+        thread_titles: normalizeGeneratedListField(chapter?.thread_titles),
+        key_events: normalizeGeneratedListField(chapter?.key_events),
+        required_factions: normalizeGeneratedListField(chapter?.required_factions),
+        required_objects: normalizeGeneratedListField(chapter?.required_objects),
+        required_terms: normalizeGeneratedListField(chapter?.required_terms),
+        state_delta: String(chapter?.state_delta || '').trim(),
+    };
+}
+
+function buildGeneratedChapterFocusText(chapter = {}, extra = '') {
+    const context = buildGeneratedChapterContext(chapter);
+    return [
+        context.title,
+        context.purpose,
+        context.summary,
+        context.state_delta,
+        ...context.featured_characters,
+        ...context.thread_titles,
+        ...context.key_events,
+        context.primary_location,
+        ...context.required_factions,
+        ...context.required_objects,
+        ...context.required_terms,
+        extra,
+    ].filter(Boolean).join('\n');
+}
+
 function buildGeneratedChapterPersistencePayload({
     projectId,
     arcId,
@@ -1215,6 +1249,7 @@ function buildGeneratedChapterPersistencePayload({
         required_factions: normalizeGeneratedListField(chapter?.required_factions),
         required_objects: normalizeGeneratedListField(chapter?.required_objects),
         required_terms: normalizeGeneratedListField(chapter?.required_terms),
+        state_delta: String(chapter?.state_delta || '').trim(),
     };
 }
 
@@ -1589,6 +1624,9 @@ const useArcGenStore = create((set, get) => ({
                 sceneId: null,
                 sceneText: '',
                 genre,
+                taskType: TASK_TYPES.ARC_OUTLINE,
+                userPrompt: state.arcGoal,
+                includeAllCharacters: true,
             });
             const selectedMacroArc = getSelectedMacroArcFromState(state);
             const storyProgressBudget = buildStoryProgressBudget({
@@ -1764,6 +1802,9 @@ const useArcGenStore = create((set, get) => ({
                 sceneId: null,
                 sceneText: '',
                 genre,
+                taskType: TASK_TYPES.ARC_OUTLINE,
+                userPrompt: revisionInstruction || state.arcGoal,
+                includeAllCharacters: true,
             });
             const selectedMacroArc = getSelectedMacroArcFromState(state);
             const storyProgressBudget = buildStoryProgressBudget({
@@ -1952,6 +1993,9 @@ const useArcGenStore = create((set, get) => ({
                     sceneId: null,
                     sceneText: generatedBridgeBuffer,
                     genre,
+                    taskType: TASK_TYPES.ARC_CHAPTER_DRAFT,
+                    userPrompt: buildGeneratedChapterFocusText(chapter),
+                    contextChapter: buildGeneratedChapterContext(chapter),
                 });
                 const previousGeneratedSummary = outlineIndex > 0
                     ? (liveState.generatedOutline?.chapters?.[outlineIndex - 1]?.summary || '')
@@ -2318,6 +2362,9 @@ const useArcGenStore = create((set, get) => ({
                     sceneId: null,
                     sceneText: previousContent.slice(-3000),
                     genre,
+                    taskType: TASK_TYPES.ARC_CHAPTER_DRAFT,
+                    userPrompt: buildGeneratedChapterFocusText(ch, draftItem.flagNote || ''),
+                    contextChapter: buildGeneratedChapterContext(ch),
                 });
 
                 const flagNote = draftItem.flagNote || '';
