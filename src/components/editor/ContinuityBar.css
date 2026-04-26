@@ -428,8 +428,14 @@
     "main toggle"
     "actions actions";
   align-items: start;
-  padding: 8px 10px 10px;
-  gap: 8px;
+  padding: 6px 10px 8px;
+  gap: 6px;
+}
+
+.continuity-bar--mobile-compact .continuity-bar-header {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "actions";
+  padding: 6px 10px;
 }
 
 .continuity-bar--mobile .continuity-bar-left {
@@ -442,7 +448,7 @@
 .continuity-bar--mobile .continuity-bar-current,
 .continuity-bar--mobile .continuity-bar-previous {
   max-width: 100%;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   row-gap: 4px;
 }
 
@@ -453,6 +459,7 @@
 .continuity-bar--mobile .continuity-bar-previous {
   display: inline-flex;
   color: var(--color-text-muted);
+  width: 100%;
 }
 
 .continuity-bar--mobile .continuity-bar-actions {
@@ -468,12 +475,13 @@
 
 .continuity-bar--mobile .continuity-bar-btn {
   width: 100%;
-  min-height: 34px;
+  min-height: 28px;
   justify-content: center;
-  padding: 6px 8px;
-  font-size: 10px;
+  padding: 4px 6px;
+  font-size: 9.5px;
   max-width: none;
   white-space: nowrap;
+  gap: 4px;
 }
 
 .continuity-bar--mobile .continuity-bar-label {
@@ -490,9 +498,11 @@
 
 .continuity-bar--mobile .continuity-bar-status--mobile-pill {
   width: 100%;
-  min-height: 34px;
+  min-height: 28px;
   justify-content: center;
-  padding: 6px 8px;
+  padding: 4px 6px;
+  font-size: 9.5px;
+  gap: 4px;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
@@ -509,6 +519,11 @@
   white-space: nowrap;
 }
 
+.continuity-bar--mobile .continuity-bar-previous .continuity-bar-title {
+  flex: 1;
+  min-width: 0;
+}
+
 .continuity-bar--mobile .continuity-bar-header > svg:last-child {
   grid-area: toggle;
   align-self: start;
@@ -522,6 +537,8 @@
 .continuity-bar--mobile .continuity-bar-btn svg,
 .continuity-bar--mobile .continuity-bar-status--mobile-pill svg {
   flex-shrink: 0;
+  width: 11px;
+  height: 11px;
 }
 
 @media (max-width: 640px) {

@@ -75,3 +75,67 @@
 .rel-card:hover .rel-card-actions {
   opacity: 1;
 }
+
+@media (max-width: 900px) {
+  .project-mobile-shell .rel-form {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .rel-form .form-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .project-mobile-shell .rel-form .form-row .form-group[style] {
+    display: none;
+  }
+
+  .project-mobile-shell .rel-form .btn {
+    min-height: 36px;
+    height: auto;
+    white-space: normal;
+  }
+
+  .project-mobile-shell .rel-card {
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .rel-card-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
+    padding-right: 0;
+  }
+
+  .project-mobile-shell .rel-card-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .project-mobile-shell .rel-card-type {
+    grid-column: 1 / -1;
+    margin-left: 0;
+    padding-top: 2px;
+    line-height: 1.2;
+  }
+
+  .project-mobile-shell .rel-card-desc {
+    margin: 8px 0 0;
+    overflow-wrap: anywhere;
+  }
+
+  .project-mobile-shell .rel-card-actions {
+    position: static;
+    opacity: 1;
+    margin-top: 10px;
+    justify-content: flex-end;
+  }
+
+  .project-mobile-shell .rel-card-actions .btn {
+    min-width: 42px;
+    min-height: 34px;
+  }
+}

@@ -4,6 +4,7 @@ import {
   getSafeCloudRedirectUrl,
   normalizeCloudRedirectUrl,
   rememberCloudAuthReturnPath,
+  resolveCloudRedirectUrl,
 } from '../../services/cloud/cloudAuthService.js';
 
 describe('phase10 cloud auth redirect', () => {
@@ -23,6 +24,20 @@ describe('phase10 cloud auth redirect', () => {
     window.history.replaceState({}, '', '/project/12/cloud-sync');
 
     expect(getSafeCloudRedirectUrl()).toBe(window.location.origin);
+  });
+
+  it('does not allow a localhost redirect override on a deployed origin', () => {
+    expect(resolveCloudRedirectUrl(
+      'http://localhost:5173',
+      'https://story-forge-virid.vercel.app',
+    )).toBe('https://story-forge-virid.vercel.app');
+  });
+
+  it('keeps localhost redirects when the app itself is running locally', () => {
+    expect(resolveCloudRedirectUrl(
+      'http://localhost:5173',
+      'http://localhost:5173',
+    )).toBe('http://localhost:5173');
   });
 
   it('remembers the cloud sync route separately from the OAuth redirect URL', () => {

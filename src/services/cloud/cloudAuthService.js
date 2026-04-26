@@ -31,16 +31,39 @@ export function normalizeCloudRedirectUrl(value, origin) {
   return `${normalizedOrigin}${normalizedPath}`;
 }
 
+function isLocalhostRedirect(value) {
+  try {
+    const url = new URL(value);
+    return ['localhost', '127.0.0.1', '0.0.0.0'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isLocalOrigin(origin) {
+  return isLocalhostRedirect(origin);
+}
+
+export function resolveCloudRedirectUrl(configuredRedirectUrl, currentOrigin) {
+  const origin = String(currentOrigin || '').trim();
+  const configured = String(configuredRedirectUrl || '').trim();
+  const normalized = configured
+    ? normalizeCloudRedirectUrl(configured, origin)
+    : origin;
+
+  if (origin && !isLocalOrigin(origin) && isLocalhostRedirect(normalized)) {
+    return origin;
+  }
+
+  return normalized;
+}
+
 export function getSafeCloudRedirectUrl() {
   if (typeof window === 'undefined' || !window.location?.origin) {
     return normalizeCloudRedirectUrl(CLOUD_AUTH_REDIRECT_URL, '');
   }
 
-  if (CLOUD_AUTH_REDIRECT_URL) {
-    return normalizeCloudRedirectUrl(CLOUD_AUTH_REDIRECT_URL, window.location.origin);
-  }
-
-  return window.location.origin;
+  return resolveCloudRedirectUrl(CLOUD_AUTH_REDIRECT_URL, window.location.origin);
 }
 
 function getCurrentReturnPath() {

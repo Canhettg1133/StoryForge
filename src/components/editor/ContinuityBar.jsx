@@ -277,48 +277,52 @@ export default function ContinuityBar({ isMobileLayout = false }) {
 
   return (
     <>
-      <div className={`continuity-bar ${expanded ? 'continuity-bar--expanded' : ''} ${isMobileLayout ? 'continuity-bar--mobile' : ''}`}>
+      <div className={`continuity-bar ${expanded ? 'continuity-bar--expanded' : ''} ${isMobileLayout ? 'continuity-bar--mobile' : ''} ${isMobileLayout && !prevChapterInfo ? 'continuity-bar--mobile-compact' : ''}`}>
         <div className="continuity-bar-header" onClick={() => setExpanded((value) => !value)}>
-          <div className="continuity-bar-left">
-            <div className="continuity-bar-current">
-              {canonStatusOk ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
-              <span className="continuity-bar-label">{isMobileLayout ? 'Chuong:' : 'Chuong hien tai:'}</span>
-              <span className="continuity-bar-title">{currentChapterInfo?.title || 'Chuong hien tai'}</span>
-              {!isMobileLayout && hasCanonIssues ? (
-                <button
-                  type="button"
-                  className={`${canonStatusClass} continuity-bar-status--button`}
-                  onClick={openIssuesDialog}
-                  title="Mo chi tiet loi canon"
-                >
-                  {canonStatusOk ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
-                  {canonStatusLabel}
-                </button>
-              ) : !isMobileLayout ? (
-                <span className={canonStatusClass}>
-                  {canonStatusOk ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
-                  {canonStatusLabel}
-                </span>
-              ) : null}
-              {!isMobileLayout && hasCanonIssues && (
-                <button
-                  type="button"
-                  className={`continuity-bar-issue-trigger ${(chapterCanon?.errorCount || 0) > 0 ? 'continuity-bar-issue-trigger--error' : ''}`}
-                  onClick={openIssuesDialog}
-                  title="Mo chi tiet loi canon"
-                >
-                  {canonIssueLabel}
-                </button>
+          {(!isMobileLayout || prevChapterInfo) && (
+            <div className="continuity-bar-left">
+              {!isMobileLayout && (
+                <div className="continuity-bar-current">
+                  {canonStatusOk ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
+                  <span className="continuity-bar-label">Chuong hien tai:</span>
+                  <span className="continuity-bar-title">{currentChapterInfo?.title || 'Chuong hien tai'}</span>
+                  {hasCanonIssues ? (
+                    <button
+                      type="button"
+                      className={`${canonStatusClass} continuity-bar-status--button`}
+                      onClick={openIssuesDialog}
+                      title="Mo chi tiet loi canon"
+                    >
+                      {canonStatusOk ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+                      {canonStatusLabel}
+                    </button>
+                  ) : (
+                    <span className={canonStatusClass}>
+                      {canonStatusOk ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+                      {canonStatusLabel}
+                    </span>
+                  )}
+                  {hasCanonIssues && (
+                    <button
+                      type="button"
+                      className={`continuity-bar-issue-trigger ${(chapterCanon?.errorCount || 0) > 0 ? 'continuity-bar-issue-trigger--error' : ''}`}
+                      onClick={openIssuesDialog}
+                      title="Mo chi tiet loi canon"
+                    >
+                      {canonIssueLabel}
+                    </button>
+                  )}
+                </div>
               )}
-            </div>
             {prevChapterInfo && (
               <div className="continuity-bar-previous">
                 <Clock size={13} />
-                <span className="continuity-bar-label">{isMobileLayout ? 'Truoc:' : 'Tom tat chuong truoc:'}</span>
+                <span className="continuity-bar-label">{isMobileLayout ? 'Chuong truoc:' : 'Tom tat chuong truoc:'}</span>
                 <span className="continuity-bar-title continuity-bar-title--previous">{prevChapterInfo.title}</span>
               </div>
             )}
-          </div>
+            </div>
+          )}
 
           <div className="continuity-bar-actions" onClick={(event) => event.stopPropagation()}>
             {isMobileLayout && (
@@ -368,7 +372,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
             )}
           </div>
 
-          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+          {(!isMobileLayout || prevChapterInfo) && (expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
         </div>
 
         {expanded && (

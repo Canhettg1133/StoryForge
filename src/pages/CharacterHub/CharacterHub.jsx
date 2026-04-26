@@ -452,7 +452,7 @@ export default function CharacterHub() {
 
                     {char.flaws && (
                       <p className="character-snippet" style={{ color: 'var(--color-warning)', fontWeight: 500 }}>
-                        Diem yeu: {char.flaws}
+                        Điểm yếu: {char.flaws}
                       </p>
                     )}
 
@@ -544,11 +544,11 @@ export default function CharacterHub() {
               {modalTab === 'info' ? (
                 <>
                   <div className="form-group">
-                    <label>Diem yeu / Khuyet diem</label>
+                    <label>Điểm yếu / Khuyết điểm</label>
                     <textarea
                       value={form.flaws}
                       onChange={e => setForm({ ...form, flaws: e.target.value })}
-                      placeholder="Vi du: Nong voi, qua tu tin, bi anh huong boi qua khu..."
+                      placeholder="Ví dụ: Nóng vội, quá tự tin, bị ảnh hưởng bởi quá khứ..."
                       rows={2}
                     />
                   </div>

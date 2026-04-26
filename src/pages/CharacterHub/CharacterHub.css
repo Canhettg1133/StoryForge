@@ -492,19 +492,114 @@
   .project-mobile-shell .character-hub .codex-header-left {
     min-width: 0;
     justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
   }
 
-  .project-mobile-shell .character-hub .codex-tabs {
+  .project-mobile-shell .character-hub .codex-header-left h2 {
+    min-width: 0;
+    font-size: 18px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .project-mobile-shell .character-hub .codex-count {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .project-mobile-shell .character-hub > .codex-header .codex-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
-    flex-wrap: wrap;
     overflow-x: visible;
-    border-radius: 8px;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--color-surface-1) 84%, var(--color-bg-primary));
   }
 
-  .project-mobile-shell .character-hub .codex-tab {
-    flex: 1 1 calc(50% - 4px);
+  .project-mobile-shell .character-hub > .codex-header .codex-tab {
+    width: 100%;
+    justify-content: center;
     border-radius: 8px;
     white-space: normal;
+    line-height: 1.2;
+    min-height: 40px;
+    padding: 7px 6px;
+    border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+    background: color-mix(in srgb, var(--color-surface-2) 82%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  .project-mobile-shell .character-hub > .codex-header .codex-tab--active {
+    border-color: color-mix(in srgb, var(--color-accent) 46%, var(--color-border));
+    background: color-mix(in srgb, var(--color-accent) 17%, var(--color-surface-2));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+
+  .project-mobile-shell .character-hub > .codex-header .codex-tabs > .btn {
+    width: 100%;
+    margin-left: 0 !important;
+    min-height: 40px;
+    height: auto;
+    padding: 7px 6px;
+    border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-surface-2) 82%, transparent);
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  .project-mobile-shell .character-hub .codex-header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .project-mobile-shell .character-hub .codex-header-actions .btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    height: auto;
+    padding: 7px 8px;
+    line-height: 1.2;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .project-mobile-shell .character-hub .codex-header-actions .btn svg {
+    flex-shrink: 0;
+  }
+
+  .project-mobile-shell .character-hub .character-bulk-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 8px;
+  }
+
+  .project-mobile-shell .character-hub .character-bulk-toolbar > span {
+    grid-column: 1 / -1;
+    line-height: 1.35;
+  }
+
+  .project-mobile-shell .character-hub .character-bulk-toolbar .btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    height: auto;
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  .project-mobile-shell .character-hub .character-bulk-warning {
+    text-align: left;
+    overflow-wrap: anywhere;
   }
 
   .project-mobile-shell .character-grid {
@@ -519,6 +614,10 @@
     padding: 14px;
   }
 
+  .project-mobile-shell .character-card--selecting {
+    padding-left: 14px;
+  }
+
   .project-mobile-shell .character-card:hover,
   .project-mobile-shell .taboo-card:hover {
     transform: none;
@@ -526,6 +625,8 @@
 
   .project-mobile-shell .character-card-actions {
     opacity: 1;
+    flex-shrink: 0;
+    align-self: flex-start;
   }
 
   .project-mobile-shell .character-avatar {
@@ -540,7 +641,42 @@
   .project-mobile-shell .taboo-card-actions,
   .project-mobile-shell .character-delete-confirm {
     width: 100%;
-    justify-content: flex-end;
+    justify-content: stretch;
+  }
+
+  .project-mobile-shell .character-delete-confirm {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .project-mobile-shell .character-delete-confirm span {
+    grid-column: 1 / -1;
+    line-height: 1.35;
+  }
+
+  .project-mobile-shell .character-delete-confirm .btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    height: auto;
+    white-space: normal;
+  }
+
+  .project-mobile-shell .character-card-header {
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .project-mobile-shell .character-select {
+    width: 20px;
+    height: 36px;
+  }
+
+  .project-mobile-shell .character-role {
+    display: block;
+    overflow-wrap: anywhere;
+    white-space: normal;
   }
 
   .project-mobile-shell .character-snippet,
@@ -562,6 +698,36 @@
   .project-mobile-shell .character-hub .codex-modal-footer {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  .project-mobile-shell .character-hub .codex-modal-header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .project-mobile-shell .character-hub .codex-modal-header h3 {
+    min-width: 0;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .project-mobile-shell .character-hub .codex-modal-header .btn {
+    flex-shrink: 0;
+  }
+
+  .project-mobile-shell .character-hub .codex-modal > .codex-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .project-mobile-shell .character-hub .codex-modal > .codex-tabs .codex-tab {
+    justify-content: center;
+    min-height: 36px;
+    line-height: 1.2;
+    white-space: normal;
   }
 
   .project-mobile-shell .character-hub .codex-modal-body {

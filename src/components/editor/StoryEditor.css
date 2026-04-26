@@ -764,7 +764,7 @@
 }
 
 .story-editor--mobile .story-editor-header {
-  padding: 6px 12px;
+  padding: 5px 12px;
 }
 
 .story-editor--mobile .story-editor-scene-meta {
@@ -777,11 +777,12 @@
 }
 
 .story-editor--mobile .story-editor-detail-trigger {
-  min-height: 32px;
-  padding: 7px 9px;
+  min-height: 30px;
+  padding: 6px 9px;
   border-radius: 8px;
   width: 100%;
   justify-content: center;
+  font-size: 12px;
 }
 
 .story-editor--mobile .story-editor-detail-trigger span {
@@ -793,12 +794,13 @@
 }
 
 .story-editor--mobile .chapter-outline-toggle {
-  padding-inline: 16px;
+  min-height: 34px;
+  padding: 7px 16px;
 }
 
 .story-editor--mobile .chapter-outline-body {
   margin-left: 16px;
-  padding: 0 16px 16px;
+  padding: 0 16px 12px;
 }
 
 .story-editor--mobile .story-editor-wrapper {
