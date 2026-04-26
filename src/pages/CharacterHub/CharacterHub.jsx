@@ -444,7 +444,7 @@ export default function CharacterHub() {
                     {char.current_status && (
                       <p className="character-snippet" style={{ color: 'var(--color-warning)', fontWeight: 500 }}>
                         <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }} />
-                        Trạng thái: {char.current_status}
+                        Live Canon: {char.current_status}
                       </p>
                     )}
 
@@ -686,11 +686,11 @@ export default function CharacterHub() {
                       />
                     </div>
                     <div className="form-group">
-                      <label>Trạng thái hiện tại (bối cảnh cho AI)</label>
+                      <label>Trạng thái hiện tại / ràng buộc canon đang hiệu lực</label>
                       <textarea
                         value={form.current_status}
                         onChange={e => setForm({ ...form, current_status: e.target.value })}
-                        placeholder="Ví dụ: Đang bị thương nặng ở tay trái, mất trí nhớ tạm thời..."
+                        placeholder="Ví dụ: Đang sống dưới danh phận góa phụ trong nhà chồng; tránh điều tiếng, không dễ tin người lạ. Chưa biết chồng từng để lại thư mật. Tay trái còn đau sau trận trước."
                         rows={2}
                       />
                     </div>
@@ -822,6 +822,7 @@ export default function CharacterHub() {
                     personality_tags: item.personality_tags || '',
                     speech_pattern: item.speech_pattern || '',
                     goals: item.goals || '',
+                    current_status: item.current_status || '',
                     notes: item.notes || '',
                   }, { dedupe: false });
                 }

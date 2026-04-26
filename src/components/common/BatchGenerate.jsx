@@ -181,7 +181,7 @@ export default function BatchGenerate({
     // Existing characters
     if (existingEntities.characters?.length > 0) {
       const charList = existingEntities.characters
-        .map(c => `- ${c.name} (${c.role})${c.goals ? ': ' + c.goals.substring(0, 50) : ''}`)
+        .map(c => `- ${c.name} (${c.role})${c.current_status ? ' | Live Canon: ' + c.current_status : ''}${c.goals ? ': ' + c.goals.substring(0, 50) : ''}`)
         .join('\n');
       parts.push(`Nhân vật đã có:\n${charList}`);
     }
@@ -442,6 +442,7 @@ export default function BatchGenerate({
                   {item.personality && <p>{item.personality}</p>}
                   {item.personality_tags && <p><b>Tags:</b> {item.personality_tags}</p>}
                   {item.flaws && <p><b>Flaws:</b> {item.flaws}</p>}
+                  {item.current_status && <p><b>Live Canon:</b> {item.current_status}</p>}
                   {item.description && <p>{item.description}</p>}
                   {item.definition && <p>{item.definition}</p>}
                   {item.goals && <p><b>Mục tiêu:</b> {item.goals}</p>}

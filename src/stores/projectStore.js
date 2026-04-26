@@ -594,6 +594,7 @@ const useProjectStore = create((set, get) => ({
       required_factions = [],
       required_objects = [],
       required_terms = [],
+      state_delta = '',
       ...chapterCore
     } = chapterData || {};
     const chapterId = await db.chapters.add({
@@ -613,6 +614,7 @@ const useProjectStore = create((set, get) => ({
       required_factions,
       required_objects,
       required_terms,
+      state_delta,
     });
 
     const sceneId = await db.scenes.add({

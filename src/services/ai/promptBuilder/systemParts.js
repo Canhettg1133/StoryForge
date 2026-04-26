@@ -152,9 +152,18 @@ export function buildPromptSystemParts(taskType, context = {}) {
     if (c.notes) parts.push('  Ghi chu: ' + c.notes);
     if (c.story_function) parts.push('  Vai tro truyen: ' + c.story_function);
     if (c.speech_pattern) parts.push('  Giong noi: ' + c.speech_pattern);
-    if (c.current_status) parts.push('  Trang thai hien tai: ' + c.current_status);
+    if (c.current_status) parts.push('  Character Live Canon / rang buoc canon dang hieu luc: ' + c.current_status);
     return parts.join('\n');
   };
+
+  const CURRENT_STATUS_LIVE_CANON_RULES = [
+    '\n[RANG BUOC CURRENT_STATUS - CHARACTER LIVE CANON]',
+    '- current_status la rang buoc canon hien hanh cua nhan vat, khong phai ghi chu phu.',
+    '- Neu current_status trong: khong suy dien rang buoc, vet thuong, bi mat, quan he, dia vi, tri thuc, phe phai hay gioi han hanh vi.',
+    '- Neu current_status co du lieu: phai uu tien hon personality khi quyet dinh hanh dong, thoai, phan ung, tri thuc, quan he, dia vi xa hoi, the chat/tam ly, vi tri/phe va quyen xuat hien.',
+    '- Khong duoc viet noi dung trai voi current_status: nhan vat bi thuong khong hanh dong nhu lanh lan; chua biet bi mat khong noi nhu da biet; dang bi giam/mat tich/chet/phong an/lan tron khong tu xuat hien truc tiep neu scene/outline khong cho phep.',
+    '- Moi thay doi current_status sau chuong phai dua tren bang chung ro trong van ban, khong doan.',
+  ].join('\n');
 
   const buildPermissionedCharacterBlock = (header, rule, items, cap = 15) => {
     const normalizedItems = (items || [])
@@ -476,7 +485,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     const characterBlocks = [
       buildPermissionedCharacterBlock(
         'NHAN VAT DUOC XUAT HIEN TRUC TIEP TRONG CANH',
-        'QUYEN: Nhom nay duoc noi thoai, hanh dong va xuat hien truc tiep trong canh.',
+        'QUYEN: Nhom nay duoc noi thoai, hanh dong va xuat hien truc tiep trong canh, NHUNG van phai chiu rang buoc current_status/Character Live Canon.',
         characterContextGate.sceneCast,
         15
       ),
@@ -495,6 +504,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     ].filter(Boolean);
     if (characterBlocks.length > 0) {
       systemParts.push(characterBlocks.join('\n\n') + '\n\nQUY TAC NHAN VAT: Dung ten chinh thuc o dau dong khi tham chieu nhan vat. Ten ngan, biet danh, danh xung, ho/ten dem chi la alias cua nhan vat da co; khong bien chung thanh nhan vat moi.');
+      systemParts.push(CURRENT_STATUS_LIVE_CANON_RULES);
       systemParts.push(CANON_FABRICATION_GUARDRAIL);
     }
   } else {
@@ -502,6 +512,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     if (cappedCharacters.length > 0) {
       const charInfo = cappedCharacters.map(formatCharacterProfile).join('\n');
       systemParts.push('\n[NHAN VAT XUAT HIEN]\n' + charInfo + '\n\nQUY TAC NHAN VAT: Dung ten chinh thuc o dau dong khi tham chieu nhan vat. Ten ngan, biet danh, danh xung, ho/ten dem chi la alias cua nhan vat da co; khong bien chung thanh nhan vat moi.');
+      systemParts.push(CURRENT_STATUS_LIVE_CANON_RULES);
       systemParts.push(CANON_FABRICATION_GUARDRAIL);
     }
   }

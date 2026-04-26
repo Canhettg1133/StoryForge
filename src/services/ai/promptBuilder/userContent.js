@@ -236,7 +236,7 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         term: 'thuat ngu',
       };
       const schemaMap = {
-        character: '{"name":"Ten nhan vat","role":"protagonist|antagonist|supporting|mentor|minor","age":"tuoi/do tuoi tuy chon, chi dien khi phu hop the loai hoac huu ich cho giong thoai","appearance":"Mo ta 2-3 cau","personality":"Mo ta 2-3 cau","personality_tags":"tag1, tag2","flaws":"Diem yeu/khuyet diem","goals":"Muc tieu","secrets":"Bi mat neu co","notes":"Vai tro trong cot truyen"}',
+        character: '{"name":"Ten nhan vat","role":"protagonist|antagonist|supporting|mentor|minor","age":"tuoi/do tuoi tuy chon, chi dien khi phu hop the loai hoac huu ich cho giong thoai","appearance":"Mo ta 2-3 cau","personality":"Mo ta 2-3 cau","personality_tags":"tag1, tag2","flaws":"Diem yeu/khuyet diem","goals":"Muc tieu","current_status":"Character Live Canon luc khoi dau; de rong neu khong co rang buoc canon that","secrets":"Bi mat neu co","notes":"Vai tro trong cot truyen"}',
         location: '{"name":"Ten dia diem","description":"Mo ta 2-3 cau","details":"Chi tiet bo sung, kien truc, bi mat..."}',
         object: '{"name":"Ten vat pham","description":"Mo ta 2-3 cau","properties":"Cong dung, thuoc tinh, han che","owner":"Ten chu so huu neu co"}',
         term: '{"name":"Ten thuat ngu","definition":"Dinh nghia 3-5 cau","category":"magic|organization|race|technology|concept|culture|other"}',
@@ -275,6 +275,11 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         userContent += '- Field age la tuy chon. Chi dien khi phu hop the loai hoac khi huu ich cho giong thoai.\n';
         userContent += '- Hien dai/hoc duong/do thi: co the dung tuoi so cu the. Tien hiep/huyen huyen/than linh/bat tu: uu tien mo ta linh hoat nhu thieu nien, ngoai hinh doi muoi, tuoi that rat cao, truong boi.\n';
         userContent += '- Khong dien age neu khong can; khong bien age thanh luat cung ve tinh cach.';
+        userContent += '\n\n[HUONG DAN CURRENT_STATUS / CHARACTER LIVE CANON]\n';
+        userContent += '- current_status la trang thai canon dang co hieu luc luc nhan vat buoc vao truyen, khong phai ghi chu phu.\n';
+        userContent += '- Chi dien khi trang thai khoi dau co luc rang buoc that voi chuong dau/boi canh hien tai: dia vi, quan he, bi mat biet/chua biet, vet thuong, benh, phe phai, dang bi giam/mat tich/lan tron, hoac gioi han hanh vi.\n';
+        userContent += '- Khong dien cac status rong/chung chung nhu "buon", "manh me", "lanh lung", "tot bung" neu no khong tao rang buoc canon cu the.\n';
+        userContent += '- Neu khong co rang buoc canon that, de current_status rong.';
       }
       userContent += '\n\n[YEU CAU CUA TAC GIA]\n' + (userPrompt || 'Hay tao mot muc phu hop voi du an nay.');
       userContent += '\n\n[OUTPUT JSON BAT BUOC]\n' + outputSchema;
@@ -454,7 +459,8 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         .map(function (f) { return '- [' + f.fact_type + '] ' + f.description; })
         .join('\n');
 
-      userContent = '[TRANG THAI HIEN TAI CUA NHAN VAT]\n' + (charStatuses || '(chua co nhan vat)');
+      userContent = '[CHARACTER LIVE CANON / CURRENT_STATUS CUA NHAN VAT]\n' + (charStatuses || '(chua co nhan vat)');
+      userContent += '\nQuy tac: day la Character Live Canon dang co hieu luc. Neu trong thi khong suy dien; neu co thi chi de xuat doi khi noi dung chuong co bang chung ro.';
       userContent += '\n\n[CANON FACTS HIEN CO]\n' + (existingFacts || '(chua co)');
       userContent += '\n\n[NOI DUNG CHUONG]\n---\n' + (sceneText || '') + '\n---';
       break;
@@ -469,7 +475,8 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         .map(function (f) { return '- [' + f.fact_type + '] ' + f.description; })
         .join('\n');
 
-      userContent = '[TRANG THAI NHAN VAT DE KIEM TRA]\n' + (charStatuses || '(chua co nhan vat)');
+      userContent = '[CHARACTER LIVE CANON / CURRENT_STATUS DE KIEM TRA]\n' + (charStatuses || '(chua co nhan vat)');
+      userContent += '\nQuy tac: coi cac dong tren la Character Live Canon. Bat loi neu noi dung trai voi rang buoc tri thuc, quan he, dia vi, the chat/tam ly, vi tri/phe, hoac hanh vi.';
       userContent += '\n\n[CANON FACTS DE KIEM TRA]\n' + (existingFacts || '(chua co)');
       userContent += '\n\n[NOI DUNG CANH/CHUONG CAN KIEM TRA MAU THUAN]\n---\n' + (sceneText || selectedText || '') + '\n---';
       break;
@@ -490,7 +497,8 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         return '[' + scene.index + '] ' + scene.title + '\n' + scene.text;
       }).join('\n\n');
 
-      userContent = '[NHAN VAT DA BIET]\n' + (knownCharacters || '(khong co)');
+      userContent = '[NHAN VAT DA BIET - CHARACTER LIVE CANON]\n' + (knownCharacters || '(khong co)');
+      userContent += '\nQuy tac: chi trich xuat CHARACTER_STATUS_CHANGED khi co bang chung ro lam doi current_status sau chuong.';
       userContent += '\n\n[THREAD DA BIET]\n' + (knownThreads || '(khong co)');
       userContent += '\n\n[CANON FACTS DA BIET]\n' + (knownFacts || '(khong co)');
       userContent += '\n\n[DANH SACH CANH]\n' + (sceneTextList || '(khong co)');

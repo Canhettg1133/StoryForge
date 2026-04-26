@@ -419,6 +419,16 @@ export default function ProjectWizard({ onClose, onCreated }) {
         <input className="input input-sm" value={c.goals || ''} onChange={e => updateResultItem('characters', i, 'goals', e.target.value)} />
       </div>
       <div className="wizard-edit-field">
+        <label>Trạng thái hiện tại / ràng buộc canon đang hiệu lực</label>
+        <textarea
+          className="textarea textarea-sm"
+          rows={2}
+          value={c.current_status || ''}
+          placeholder="Ví dụ: Đang sống dưới danh phận góa phụ trong nhà chồng; tránh điều tiếng, không dễ tin người lạ. Chưa biết chồng từng để lại thư mật. Tay trái còn đau sau trận trước."
+          onChange={e => updateResultItem('characters', i, 'current_status', e.target.value)}
+        />
+      </div>
+      <div className="wizard-edit-field">
         <label>Ngoại hình</label>
         <input className="input input-sm" value={c.appearance || ''} onChange={e => updateResultItem('characters', i, 'appearance', e.target.value)} />
       </div>
@@ -534,6 +544,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
       <div className="wizard-edit-field">
         <label>Tóm tắt</label>
         <textarea className="textarea textarea-sm" rows={3} value={ch.summary || ''} onChange={e => updateResultItem('chapters', i, 'summary', e.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>State delta / thay đổi Live Canon</label>
+        <textarea className="textarea textarea-sm" rows={2} value={ch.state_delta || ''} onChange={e => updateResultItem('chapters', i, 'state_delta', e.target.value)} />
       </div>
       <div className="wizard-edit-row">
         <div className="wizard-edit-field">
@@ -663,11 +677,11 @@ Trả về CHÍNH XÁC JSON format:
     "world_rules": ["Quy tắc 1", "Quy tắc 2", "Quy tắc 3"],
     "world_description": "Mô tả tổng quan thế giới 2-3 câu"
   },
-  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu / khuyết điểm lúc đầu", "goals": "..."}],
+  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu / khuyết điểm lúc đầu", "goals": "...", "current_status": "Character Live Canon lúc khởi đầu; để rỗng nếu không có ràng buộc canon thật"}],
   "locations": [{"name": "...", "description": "..."}],
   "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "..."}],
   "terms": [{"name": "...", "definition": "...", "category": "magic|race|technology|other"}],
-  "chapters": [{"title": "Chương 1: ...", "summary": "Tóm tắt nội dung chương"}],
+  "chapters": [{"title": "Chương 1: ...", "summary": "Tóm tắt nội dung chương", "state_delta": "Thay đổi dự kiến của Character Live Canon/current_status sau chương này; để rỗng nếu không đổi"}],
   "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mô tả tuyến truyện 1-2 câu", "state": "active"}]
 }
 
@@ -678,6 +692,7 @@ PHÂN LOẠI RÕ RÀNG — RẤT QUAN TRỌNG:
 
 Tạo: world_profile chi tiết, 3-5 nhân vật, 3-5 địa điểm vật lý, 2-4 thế lực/tông môn (nếu phù hợp thể loại), 3-5 thuật ngữ, 8-12 chương, 2-4 tuyến truyện lớn.
 LƯU Ý: Bất kỳ nhân vật nào ở điểm bắt đầu cũng phải có điểm yếu (flaws) rõ ràng. Cấm tạo nhân vật hoàn mỹ ngay từ đầu.
+current_status là Character Live Canon lúc khởi đầu; chỉ điền nếu trạng thái đó thật sự ràng buộc chương đầu/bối cảnh hiện tại, không dùng trạng thái chung chung.
 Chỉ trả về JSON, không thêm gì khác.`,
       },
       {
@@ -784,6 +799,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
             required_factions: normalizeChapterListField(ch.required_factions),
             required_objects: normalizeChapterListField(ch.required_objects),
             required_terms: normalizeChapterListField(ch.required_terms),
+            state_delta: ch.state_delta || '',
           };
 
           const createdChapter = await createChapter(projectId, chapterData.title, chapterData);
@@ -809,6 +825,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
               flaws: c.flaws || '',
               personality_tags: c.personality_tags || '',
               goals: c.goals || '',
+              current_status: c.current_status || '',
               notes: c.story_function || '',
               story_function: c.story_function || '',
             });
@@ -1386,6 +1403,11 @@ Chỉ trả về JSON, không thêm gì khác.`,
                           <span className="badge badge-sm">{c.role}</span>
                           {c.age && <span className="badge badge-sm">{c.age}</span>}
                           {c.personality && <p>{c.personality}</p>}
+                          {c.current_status && (
+                            <p style={{ fontSize: '13px', marginTop: '4px', color: 'var(--color-warning, #f59e0b)' }}>
+                              <strong>Live Canon:</strong> {c.current_status}
+                            </p>
+                          )}
                           {c.flaws && (
                             <p style={{ fontSize: '13px', marginTop: '4px', color: 'var(--color-warning, #f59e0b)' }}>
                               <strong>Điểm yếu:</strong> {c.flaws}
@@ -1518,6 +1540,11 @@ Chỉ trả về JSON, không thêm gì khác.`,
                           {ch.purpose && (
                             <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
                               <strong>Purpose:</strong> {ch.purpose}
+                            </p>
+                          )}
+                          {ch.state_delta && (
+                            <p style={{ fontSize: '12px', color: 'var(--color-warning, #f59e0b)' }}>
+                              <strong>State delta:</strong> {ch.state_delta}
                             </p>
                           )}
                           {(normalizeChapterListField(ch.featured_characters).length > 0 || ch.primary_location) && (

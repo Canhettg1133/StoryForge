@@ -572,6 +572,7 @@ export function normalizeWizardBlueprintResult(rawValue, fallbackTitle = '') {
         personality_tags: 'text',
         flaws: 'text',
         goals: 'text',
+        current_status: 'text',
         secrets: 'text',
         story_function: 'text',
       }))
@@ -624,6 +625,7 @@ export function normalizeWizardBlueprintResult(rawValue, fallbackTitle = '') {
         title: 'text',
         purpose: 'text',
         summary: 'text',
+        state_delta: 'text',
         featured_characters: 'list',
         primary_location: 'text',
         thread_titles: 'list',

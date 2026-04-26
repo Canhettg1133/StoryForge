@@ -35,6 +35,8 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[1].content).toContain('nhan vat');
     expect(messages[1].content).toContain('"items"');
     expect(messages[1].content).toContain('"age"');
+    expect(messages[1].content).toContain('"current_status"');
+    expect(messages[1].content).toContain('[HUONG DAN CURRENT_STATUS / CHARACTER LIVE CANON]');
     expect(messages[1].content).toContain('Nhan vat da co: A, B');
   });
 
@@ -280,6 +282,9 @@ describe('phase10 prompt builder coverage', () => {
     expect(system).toContain('Bi mat canon (khong tu tiet lo neu chua den luc): La nguoi giu an tin');
     expect(system).toContain('Ghi chu: Truc cam xuc cua canh');
     expect(system).toContain('Vai tro truyen: Dan mach chinh');
+    expect(system).toContain('Character Live Canon / rang buoc canon dang hieu luc: Dang bi truy duoi');
+    expect(system).toContain('[RANG BUOC CURRENT_STATUS - CHARACTER LIVE CANON]');
+    expect(system).toContain('current_status la rang buoc canon hien hanh');
     expect(system).toContain('[CAM BIA CANON NHAN VAT]');
     expect(system).toContain('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]');
     expect(system.indexOf('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]')).toBeGreaterThan(system.indexOf('[DNA VAN PHONG'));
@@ -331,10 +336,12 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[0].content).toContain('[NHIEM VU CHUONG NAY - BAM SAT, KHONG LAC SANG CHUONG KHAC]');
     expect(messages[0].content).toContain('[CAC CHUONG TIEP THEO - TUYET DOI KHONG VIET TRUOC NOI DUNG NAY]');
     expect(messages[0].content).toContain('[OUTLINE GUARDRAILS]');
+    expect(messages[0].content).toContain('Character Live Canon');
     expect(messages[0].content).toContain('[STORY PROGRESS BUDGET - CHUONG NAY]');
     expect(messages[0].content).toContain('[DOI CHIEU DAN Y VA NOI DUNG DA VIET - HEURISTIC, CHI DUNG DE DOI CHIEU]');
     expect(messages[0].content).toContain('"chapter_patch"');
     expect(messages[0].content).toContain('"next_beats"');
+    expect(messages[0].content).toContain('"state_delta"');
     expect(messages[1].content).toContain('[NOI DUNG DA CO CUA CHUONG HIEN TAI]');
     expect(messages[1].content).toContain('[GIOI HAN TIEN DO CHUONG NAY]');
     expect(messages[1].content).toContain('Tuyet doi khong viet thay noi dung cua chuong sau da co dan y.');

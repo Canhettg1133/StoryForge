@@ -580,4 +580,51 @@ describe('phase10 canon extraction fallback', () => {
 
     expect(validation.reports.some((item) => item.rule_code === 'UNAVAILABLE_CHARACTER_ACTIVE')).toBe(true);
   });
+
+  it('warns when current_status live canon constraints are ignored', async () => {
+    const { engine } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Live canon constraints', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', pov_character_id: 1, characters_present: '[1,2,3]' }],
+      characters: [
+        { id: 1, project_id: 1, name: 'Lan', current_status: 'Tay trai con dau sau tran truoc; khong the dung tay trai' },
+        { id: 2, project_id: 1, name: 'Mai', current_status: 'Chua biet thu mat cua chong' },
+        { id: 3, project_id: 1, name: 'Kha', current_status: 'Dang bi giam trong thap da' },
+      ],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+      chapter_revisions: [],
+    });
+
+    const validation = await engine.validateSceneDraft({
+      projectId: 1,
+      chapterId: 11,
+      sceneId: 21,
+      sceneText: [
+        'Lan dung tay trai rut kiem khoi vo.',
+        'Mai nhan ra thu mat cua chong da nam trong ruong go.',
+        'Kha buoc vao phong va noi: "Ta da thoat."',
+      ].join('\n'),
+      characterContextGate: {
+        sceneCast: [
+          { character: { id: 1, name: 'Lan' } },
+          { character: { id: 2, name: 'Mai' } },
+          { character: { id: 3, name: 'Kha' } },
+        ],
+      },
+    });
+
+    const ruleCodes = validation.reports.map((item) => item.rule_code);
+    expect(ruleCodes).toContain('LIVE_CANON_ACTION_CONSTRAINT');
+    expect(ruleCodes).toContain('LIVE_CANON_KNOWLEDGE_CONSTRAINT');
+    expect(ruleCodes).toContain('UNAVAILABLE_CHARACTER_ACTIVE');
+  });
 });

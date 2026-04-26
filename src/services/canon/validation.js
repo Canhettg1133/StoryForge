@@ -1168,7 +1168,79 @@ function isUnavailableCharacter(character, entityStates = []) {
     'mất tích',
     'missing',
     'khong ro tung tich',
+    'bi giam',
+    'dang bi giam',
+    'giam giu',
+    'bi nhot',
+    'dang bi nhot',
+    'phong an',
+    'bi phong an',
+    'dang lan tron',
+    'lan tron',
   ].some((marker) => statusText.includes(normalizeKey(marker)));
+}
+
+function findCharacterLiveCanonActionConstraint(paragraphs = [], character = {}, entityStates = []) {
+  const state = entityStates.find((item) => String(item.entity_id) === String(character?.id));
+  const statusText = normalizeKey([
+    character?.current_status,
+    character?.status,
+    state?.summary,
+  ].join(' '));
+  if (!statusText) return null;
+
+  const leftHandRestricted = [
+    'khong the dung tay trai',
+    'khong duoc dung tay trai',
+    'tay trai con dau',
+    'tay trai bi thuong',
+    'dau tay trai',
+    'liet tay trai',
+  ].some((marker) => statusText.includes(normalizeKey(marker)));
+  if (!leftHandRestricted) return null;
+
+  return paragraphs.find((paragraph) => {
+    if (!hasCharacterNameInText(paragraph, character)) return false;
+    const normalized = normalizeKey(paragraph);
+    return normalized.includes('tay trai') && /(dung|nam|cam|rut|vung|danh|keo|day|mo|giu|nang)/.test(normalized);
+  }) || null;
+}
+
+function extractUnknownKnowledgeConstraints(character = {}, entityStates = []) {
+  const state = entityStates.find((item) => String(item.entity_id) === String(character?.id));
+  const source = [
+    character?.current_status,
+    character?.status,
+    state?.summary,
+  ].join(' ');
+  const constraints = [];
+  const rx = /(chưa biết|chua biet|không biết|khong biet|chưa rõ|chua ro|chưa hay|chua hay)\s+([^.;|\n]+)/giu;
+  let match = rx.exec(source);
+  while (match) {
+    const raw = cleanText(match[2] || '');
+    const normalized = normalizeKey(raw);
+    if (normalized.split(' ').filter(Boolean).length > 0) {
+      constraints.push({ raw, normalized });
+    }
+    match = rx.exec(source);
+  }
+  return constraints;
+}
+
+function findKnowledgeContradictionParagraph(paragraphs = [], character = {}, constraints = []) {
+  if (!constraints.length) return null;
+  const knowledgeVerbs = /\b(biet|nhan ra|hieu|hieu ra|da ro|noi ve|ke ve|tiet lo|xac nhan)\b/;
+  return paragraphs.find((paragraph) => {
+    if (!hasCharacterNameInText(paragraph, character)) return false;
+    const normalized = normalizeKey(paragraph);
+    if (!knowledgeVerbs.test(normalized)) return false;
+    return constraints.some((constraint) => {
+      const tokens = constraint.normalized.split(' ').filter((token) => token.length >= 3);
+      if (tokens.length === 0) return false;
+      const hitCount = tokens.filter((token) => normalized.includes(token)).length;
+      return hitCount >= Math.min(2, tokens.length);
+    });
+  }) || null;
 }
 
 export function validateGeneratedProseDiscipline({
@@ -1249,6 +1321,42 @@ export function validateGeneratedProseDiscipline({
         evidence: activeParagraph,
       }));
     });
+
+  characters.forEach((character) => {
+    const restrictedActionParagraph = findCharacterLiveCanonActionConstraint(paragraphs, character, entityStates);
+    if (restrictedActionParagraph) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'LIVE_CANON_ACTION_CONSTRAINT',
+        message: `Nhan vat ${character.name || 'khong ro'} dang co rang buoc hanh vi trong current_status nhung draft viet nhu rang buoc do khong ton tai.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId,
+        relatedEntityIds: [character.id],
+        evidence: restrictedActionParagraph,
+      }));
+    }
+
+    const knowledgeParagraph = findKnowledgeContradictionParagraph(
+      paragraphs,
+      character,
+      extractUnknownKnowledgeConstraints(character, entityStates),
+    );
+    if (knowledgeParagraph) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'LIVE_CANON_KNOWLEDGE_CONSTRAINT',
+        message: `Nhan vat ${character.name || 'khong ro'} co current_status ghi chua biet mot bi mat/thong tin, nhung draft viet nhu nhan vat da biet.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId,
+        relatedEntityIds: [character.id],
+        evidence: knowledgeParagraph,
+      }));
+    }
+  });
 
   const normalizedText = normalizeKey(text);
   ['con nuôi', 'cha ruột', 'mẹ ruột', 'huyết thống', 'bị bỏ rơi', 'được nhận nuôi'].forEach((marker) => {

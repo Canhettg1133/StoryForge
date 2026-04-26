@@ -229,6 +229,7 @@ function normalizeOutlineResult(rawText = '') {
       required_factions: normalizeChapterListField(chapterPatchSource.required_factions || chapterPatchSource.requiredFactions || []),
       required_objects: normalizeChapterListField(chapterPatchSource.required_objects || chapterPatchSource.requiredObjects || []),
       required_terms: normalizeChapterListField(chapterPatchSource.required_terms || chapterPatchSource.requiredTerms || []),
+      state_delta: String(chapterPatchSource.state_delta || chapterPatchSource.stateDelta || parsed.state_delta || '').trim(),
     };
 
     return {
@@ -262,6 +263,7 @@ function hasOutlinePatchData(chapterPatch = {}) {
     || (Array.isArray(chapterPatch?.required_factions) && chapterPatch.required_factions.length > 0)
     || (Array.isArray(chapterPatch?.required_objects) && chapterPatch.required_objects.length > 0)
     || (Array.isArray(chapterPatch?.required_terms) && chapterPatch.required_terms.length > 0)
+    || chapterPatch?.state_delta
   );
 }
 
@@ -800,6 +802,7 @@ export default function AISidebar({
         required_factions: parsedOutlineResult.chapterPatch.required_factions,
         required_objects: parsedOutlineResult.chapterPatch.required_objects,
         required_terms: parsedOutlineResult.chapterPatch.required_terms,
+        state_delta: parsedOutlineResult.chapterPatch.state_delta,
       });
       setOutlineApplyState('saved');
     } catch (err) {
@@ -1227,6 +1230,9 @@ export default function AISidebar({
         : '',
       parsedOutlineResult.chapterPatch.thread_titles.length > 0
         ? `Threads: ${parsedOutlineResult.chapterPatch.thread_titles.join(', ')}`
+        : '',
+      parsedOutlineResult.chapterPatch.state_delta
+        ? `State delta: ${parsedOutlineResult.chapterPatch.state_delta}`
         : '',
     ].filter(Boolean);
 

@@ -155,7 +155,7 @@ export default function OutlineBoard() {
     setIsGenerating(true);
     setGenError(null);
 
-    const charList = characters.map((c) => `${c.name} (${c.role})`).join(', ');
+    const charList = characters.map((c) => `${c.name} (${c.role})${c.current_status ? ` - Live Canon: ${c.current_status}` : ''}`).join(', ');
     const locList = locations.map((l) => l.name).join(', ');
     const existingOutline = chapters.length > 0
       ? chapters.map((ch, i) => `${i + 1}. ${ch.title}${ch.purpose ? ' - ' + ch.purpose : ''}`).join('\n')
@@ -164,8 +164,8 @@ export default function OutlineBoard() {
     const storyCreationSettings = getStoryCreationSettings();
     const outlinePrompts = storyCreationSettings.outlineGeneration;
     const outlineTaskInstruction = chapters.length > 0
-      ? 'Phan tich outline hien tai va GOI Y purpose (muc tieu) + summary (tom tat) cho tung chuong. Gan moi chuong vao act (1, 2, hoac 3).'
-      : 'Tao outline 10 chuong theo cau truc 3 hoi. Moi chuong phai co muc tieu ro rang.';
+      ? 'Phan tich outline hien tai va GOI Y purpose (muc tieu) + summary (tom tat) cho tung chuong. Gan moi chuong vao act (1, 2, hoac 3). Doc Character Live Canon/current_status truoc khi gan beat/cast.'
+      : 'Tao outline 10 chuong theo cau truc 3 hoi. Moi chuong phai co muc tieu ro rang va ton trong Character Live Canon/current_status cua nhan vat.';
     const outlineUserRequest = chapters.length > 0
       ? 'Phan tich va bo sung outline cho cac chuong hien co.'
       : `Tao outline 10 chuong cho truyen "${currentProject.title}".`;
@@ -211,6 +211,7 @@ export default function OutlineBoard() {
               await updateChapter(chapters[i].id, {
                 purpose: nextChapters[i].purpose || '',
                 summary: nextChapters[i].summary || '',
+                state_delta: nextChapters[i].state_delta || '',
                 arc_id: nextChapters[i].act || null,
               });
             }
@@ -219,6 +220,7 @@ export default function OutlineBoard() {
               await createChapter(currentProject.id, ac.title, {
                 purpose: ac.purpose || '',
                 summary: ac.summary || '',
+                state_delta: ac.state_delta || '',
                 arc_id: ac.act || null,
               });
             }
@@ -260,7 +262,7 @@ export default function OutlineBoard() {
     setShowSuggestInput(false);
 
     const synopsisText = currentProject.synopsis || currentProject.description || 'Chua co';
-    const charList = characters.map((c) => `${c.name} (${c.role})`).join(', ') || 'Chua co';
+    const charList = characters.map((c) => `${c.name} (${c.role})${c.current_status ? ` - Live Canon: ${c.current_status}` : ''}`).join(', ') || 'Chua co';
     const chapterList = chapters.length > 0
       ? chapters.map((ch, i) =>
         `${i + 1}. ${ch.title}${ch.purpose ? ' - ' + ch.purpose : ''}${ch.summary ? ': ' + ch.summary : ''}`

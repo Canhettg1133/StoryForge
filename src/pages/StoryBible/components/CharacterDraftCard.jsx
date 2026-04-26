@@ -24,7 +24,7 @@ const CharacterDraftCard = React.memo(function CharacterDraftCard({
       <input className="input input-inline" value={draft.appearance || ''} placeholder="Ngoại hình" onChange={(event) => onChange(character.id, 'appearance', event.target.value)} />
       <input className="input input-inline" value={draft.personality || ''} placeholder="Tính cách" onChange={(event) => onChange(character.id, 'personality', event.target.value)} />
       <input className="input input-inline" value={draft.personality_tags || ''} placeholder="Tags (VD: #Kiên_nhẫn, #Quyết_đoán)" onChange={(event) => onChange(character.id, 'personality_tags', event.target.value)} />
-      <input className="input input-inline" value={draft.current_status || ''} placeholder="Trạng thái hiện tại" onChange={(event) => onChange(character.id, 'current_status', event.target.value)} />
+      <input className="input input-inline" value={draft.current_status || ''} placeholder="Trạng thái hiện tại / ràng buộc canon đang hiệu lực" onChange={(event) => onChange(character.id, 'current_status', event.target.value)} />
       <input className="input input-inline" value={draft.goals || ''} placeholder="Mục tiêu" onChange={(event) => onChange(character.id, 'goals', event.target.value)} />
       <input className="input input-inline" value={draft.flaws || ''} placeholder="Điểm yếu / khuyết điểm" onChange={(event) => onChange(character.id, 'flaws', event.target.value)} />
       <div style={{ display: 'flex', gap: '4px' }}>
