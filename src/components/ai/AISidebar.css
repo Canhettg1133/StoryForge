@@ -386,7 +386,7 @@
 
 .ai-output-text {
   font-family: var(--font-prose);
-  font-size: 1rem;
+  font-size: var(--sf-content-font-size, 1rem);
   line-height: 1.8;
   color: var(--color-text-primary);
   white-space: pre-wrap;

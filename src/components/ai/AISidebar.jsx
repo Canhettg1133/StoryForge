@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAIStore from '../../stores/aiStore';
 import useProjectStore from '../../stores/projectStore';
+import useUIStore from '../../stores/uiStore';
 import db from '../../services/db/database';
 import CodexPanel from '../editor/CodexPanel';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
@@ -331,6 +332,10 @@ export default function AISidebar({
     updateChapter,
   } = useProjectStore();
   const { contentMode, setContentMode } = useProjectContentMode();
+  const contentFontSize = useUIStore((state) => state.contentFontSize);
+  const contentTypographyStyle = contentFontSize
+    ? { '--sf-content-font-size': `${contentFontSize}px` }
+    : undefined;
 
   const [customPrompt, setCustomPrompt] = useState('');
   const [copied, setCopied] = useState(false);
@@ -1501,14 +1506,14 @@ export default function AISidebar({
 
   if (isMobileLayout) {
     return (
-      <div className="ai-sidebar ai-sidebar--mobile">
+      <div className="ai-sidebar ai-sidebar--mobile" style={contentTypographyStyle}>
         {renderMobileBody()}
       </div>
     );
   }
 
   return (
-    <div className="ai-sidebar">
+    <div className="ai-sidebar" style={contentTypographyStyle}>
       {renderFanficCanonPanel()}
       {renderCanonReviewPanel()}
       <CodexPanel sceneText={currentSceneText} />

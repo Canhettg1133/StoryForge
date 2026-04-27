@@ -4,12 +4,17 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
 import useProjectStore from '../../stores/projectStore';
+import useUIStore, {
+  CONTENT_FONT_SIZE_MAX,
+  CONTENT_FONT_SIZE_MIN,
+  DEFAULT_CONTENT_FONT_SIZE,
+} from '../../stores/uiStore';
 import { countWords } from '../../utils/constants';
 import ContinuityBar from './ContinuityBar';
 import SceneDetailPanel from './SceneDetailPanel';
 import db from '../../services/db/database';
 import { createSceneAutosaveController } from './storyEditorAutosave';
-import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings, Copy } from 'lucide-react';
+import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings, Copy, Type, Minus, Plus, RotateCcw } from 'lucide-react';
 import './StoryEditor.css';
 
 function isContentEmpty(html = '') {
@@ -52,12 +57,17 @@ export default function StoryEditor({
 
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
+  const contentFontSize = useUIStore((state) => state.contentFontSize);
+  const setContentFontSize = useUIStore((state) => state.setContentFontSize);
+  const resetContentFontSize = useUIStore((state) => state.resetContentFontSize);
   const autosaveControllerRef = useRef(null);
   const lastSavedBySceneRef = useRef(new Map());
   const previousSceneIdRef = useRef(null);
   const editorWrapperRef = useRef(null);
+  const fontControlRef = useRef(null);
   const [outlinePanelOpen, setOutlinePanelOpen] = useState(() => !isMobileLayout);
   const [sceneDetailOpen, setSceneDetailOpen] = useState(false);
+  const [fontPopoverOpen, setFontPopoverOpen] = useState(false);
   const [allCharacters, setAllCharacters] = useState([]);
 
   // [MỚI] Outline edit state
@@ -315,6 +325,10 @@ export default function StoryEditor({
   const charCount = editor ? editor.storage.characterCount.characters() : 0;
   const isEmptySceneForAiDraft = !activeScene?.draft_text || isContentEmpty(activeScene.draft_text || '');
   const useAiDraftFocus = !!aiDraft && isEmptySceneForAiDraft;
+  const activeContentFontSize = contentFontSize ?? DEFAULT_CONTENT_FONT_SIZE;
+  const contentTypographyStyle = contentFontSize
+    ? { '--sf-content-font-size': `${contentFontSize}px` }
+    : undefined;
   const aiDraftTitle = aiDraft?.isStreaming ? 'AI đang viết cảnh trống này' : 'AI đã viết cảnh trống này';
 
   const chapterProgress = useMemo(() => {
@@ -357,6 +371,29 @@ export default function StoryEditor({
     setAiDraft(null);
   };
 
+  const adjustContentFontSize = (delta) => {
+    setContentFontSize(activeContentFontSize + delta);
+  };
+
+  useEffect(() => {
+    if (!fontPopoverOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (fontControlRef.current?.contains(event.target)) return;
+      setFontPopoverOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setFontPopoverOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [fontPopoverOpen]);
+
   useEffect(() => {
     return () => {
       autosaveControllerRef.current?.dispose({ flushPending: true });
@@ -378,7 +415,10 @@ export default function StoryEditor({
   }
 
   return (
-    <div className={`story-editor ${isMobileLayout ? 'story-editor--mobile' : ''}`}>
+    <div
+      className={`story-editor ${isMobileLayout ? 'story-editor--mobile' : ''}`}
+      style={contentTypographyStyle}
+    >
       {/* Scene title */}
       <div className="story-editor-header">
         <div className="story-editor-header-main">
@@ -395,6 +435,7 @@ export default function StoryEditor({
               />
             </div>
           )}
+          <div className="story-editor-header-actions" ref={fontControlRef}>
           <button
             className="story-editor-detail-trigger"
             onClick={() => setSceneDetailOpen(true)}
@@ -403,6 +444,51 @@ export default function StoryEditor({
             <Settings size={14} />
             <span>Chi tiết cảnh</span>
           </button>
+          <button
+            type="button"
+            className={`story-editor-font-trigger ${fontPopoverOpen ? 'story-editor-font-trigger--active' : ''}`}
+            onClick={() => setFontPopoverOpen((value) => !value)}
+            title="Chỉnh cỡ chữ nội dung"
+            aria-expanded={fontPopoverOpen}
+          >
+            <Type size={14} />
+            <span>Chỉnh cỡ chữ</span>
+          </button>
+          <div className={`story-editor-font-control ${fontPopoverOpen ? 'story-editor-font-control--open' : ''}`} aria-label="Cỡ chữ nội dung">
+            <Type size={14} />
+            <button
+              type="button"
+              className="story-editor-font-control__btn"
+              onClick={() => adjustContentFontSize(-1)}
+              disabled={activeContentFontSize <= CONTENT_FONT_SIZE_MIN}
+              title="Giảm cỡ chữ nội dung"
+            >
+              <Minus size={13} />
+            </button>
+            <span className="story-editor-font-control__value">
+              {contentFontSize ? `${contentFontSize}px` : 'Mặc định'}
+            </span>
+            <button
+              type="button"
+              className="story-editor-font-control__btn"
+              onClick={() => adjustContentFontSize(1)}
+              disabled={activeContentFontSize >= CONTENT_FONT_SIZE_MAX}
+              title="Tăng cỡ chữ nội dung"
+            >
+              <Plus size={13} />
+            </button>
+            {contentFontSize && (
+              <button
+                type="button"
+                className="story-editor-font-control__btn"
+                onClick={resetContentFontSize}
+                title="Trở về cỡ chữ mặc định"
+              >
+                <RotateCcw size={13} />
+              </button>
+            )}
+          </div>
+          </div>
         </div>
       </div>
 
