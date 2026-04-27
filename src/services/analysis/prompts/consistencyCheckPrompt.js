@@ -33,11 +33,12 @@ Output JSON:
       "type": "",
       "severity": "hard|medium|soft",
       "description": "",
+      "chapterStart": 1,
+      "chapterEnd": 1,
       "involvedIncidents": [],
       "involvedEvents": [],
       "involvedLocations": [],
-      "evidence": [],
-      "chapterRange": [0, 0]
+      "evidence": []
     }
   ]
 }

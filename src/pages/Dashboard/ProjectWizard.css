@@ -330,6 +330,23 @@
   letter-spacing: 0.5px;
 }
 
+.wizard-edit-field .wizard-inline-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  margin-top: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.wizard-inline-check input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--color-accent);
+}
+
 /* Input / textarea / select nhỏ */
 .input-sm,
 .textarea-sm,

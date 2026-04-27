@@ -62,6 +62,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     relationships = [],
     sceneContract = {},
     canonFacts = [],
+    canonRoleLocks = [],
     plotThreads = [],
     povMode = '',
     synopsis = '',
@@ -151,6 +152,12 @@ export function buildPromptSystemParts(taskType, context = {}) {
     if (c.secrets) parts.push('  Bi mat canon (khong tu tiet lo neu chua den luc): ' + c.secrets);
     if (c.notes) parts.push('  Ghi chu: ' + c.notes);
     if (c.story_function) parts.push('  Vai tro truyen: ' + c.story_function);
+    if (c.specific_role) {
+      parts.push(
+        '  Vai tro cu the: ' + c.specific_role
+        + (c.specific_role_locked ? ' (da khoa canon)' : '')
+      );
+    }
     if (c.speech_pattern) parts.push('  Giong noi: ' + c.speech_pattern);
     if (c.current_status) parts.push('  Character Live Canon / rang buoc canon dang hieu luc: ' + c.current_status);
     return parts.join('\n');
@@ -177,6 +184,38 @@ export function buildPromptSystemParts(taskType, context = {}) {
       + normalizedItems.map(formatCharacterProfile).join('\n');
   };
 
+  const buildOutlineCharacterRosterLayer = () => {
+    if (taskType !== TASK_TYPES.OUTLINE) return '';
+    const source = (Array.isArray(allCharacters) && allCharacters.length > 0)
+      ? allCharacters
+      : characters;
+    const seen = new Set();
+    const roster = (Array.isArray(source) ? source : [])
+      .filter(Boolean)
+      .filter((character) => {
+        const key = character.id || character.name;
+        if (!key) return false;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    if (roster.length === 0) return '';
+
+    const cappedRoster = roster.slice(0, 40);
+    const overflowNote = roster.length > cappedRoster.length
+      ? '\n- Danh sach bi cat bot vi qua dai; neu can dung nhan vat ngoai phan hien thi, phai co bang chung ro tu yeu cau tac gia hoac canon hien co.'
+      : '';
+
+    return '\n[DANH SACH NHAN VAT TRONG TRANG NHAN VAT - NGUON CANON DE LAP DAN Y]\n'
+      + cappedRoster.map(formatCharacterProfile).join('\n')
+      + '\n\nQUY TAC LAP DAN Y THEO NHAN VAT:'
+      + '\n- Khi dien "featured_characters", uu tien chon tu danh sach tren va dung ten chinh thuc.'
+      + '\n- Ten ngan, biet danh, danh xung, ho/ten dem chi la alias cua nhan vat da co; khong bien alias thanh nhan vat moi.'
+      + '\n- Khong tao nhan vat moi neu tac gia khong yeu cau ro hoac outline hien co khong bat buoc; neu bat buoc de xuat nhan vat moi, phai ghi nhu de xuat moi, khong ghi nhu canon da co.'
+      + '\n- Moi beat nhan vat phai ton trong current_status/Character Live Canon neu ho so co ghi.'
+      + overflowNote;
+  };
+
   const CANON_FABRICATION_GUARDRAIL = [
     '\n[CAM BIA CANON NHAN VAT]',
     '- Khong tu bia than the, cha me, con nuoi/con ruot, huyet thong, qua khu, vet thuong cu, loi hua cu, nang luc an, quan he gia dinh hoac yeu duong neu ho so/canon khong ghi.',
@@ -186,6 +225,32 @@ export function buildPromptSystemParts(taskType, context = {}) {
     '- Neu canon chua noi thi viet trung tinh hoac bo qua; neu ho so noi ro thi khong viet nguoc lai.',
     '- Bi mat trong ho so chi dung de tranh mau thuan, khong tu tiet lo trong van ban neu chua den luc.',
   ].join('\n');
+
+  const buildCanonRoleLocksLayer = (locks = []) => {
+    const locked = (Array.isArray(locks) ? locks : [])
+      .map((item) => ({
+        characterName: String(item?.characterName || item?.character_name || '').trim(),
+        specificRole: String(item?.specificRole || item?.specific_role || '').trim(),
+        locked: item?.locked !== false,
+      }))
+      .filter((item) => item.locked && item.characterName && item.specificRole);
+    if (locked.length === 0) return '';
+
+    return [
+      '\n[CANON VAI TRO DA KHOA - BAT BUOC]',
+      'Cac muc duoi day la vai tro canon da duoc tac gia xac nhan. Moi dong gan mot nhan vat voi mot vai tro cu the trong truyen.',
+      '',
+      locked.map((item) => '- ' + item.characterName + ': ' + item.specificRole).join('\n'),
+      '',
+      'Quy tac bat buoc:',
+      '1. Neu noi dung can dung, nhac den, hoac phat trien mot vai tro da khoa, phai dung dung nhan vat dang giu vai tro do.',
+      '2. Khong tao, thay the, gan lai, hoac am chi nhan vat khac giu cung vai tro hoac vai tro tuong duong neu tac gia khong yeu cau doi canon.',
+      '3. Khong tu bien mot vai tro da khoa thanh bien the khac de lach canon. Chi phan biet bien the khi du lieu da noi ro.',
+      '4. Neu vai tro da khoa khong thuoc canh hien tai, khong tu ep nhan vat do xuat hien; chi dung nhu rang buoc canon nen.',
+      '5. Neu yeu cau cua tac gia mau thuan voi vai tro da khoa, uu tien hoi lai hoac neu ro can doi canon, khong tu sua ngam.',
+      '6. Khi chua chac mot vai tro moi co trung voi vai tro da khoa hay khong, viet trung tinh va khong tao them canon moi.',
+    ].join('\n');
+  };
 
   const PROSE_DIALOGUE_DISCIPLINE_LAYER = [
     '\n[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]',
@@ -307,6 +372,11 @@ export function buildPromptSystemParts(taskType, context = {}) {
   const taskInstruction = composeTaskInstruction(taskType, rawTaskInstruction);
   if (taskInstruction) {
     systemParts.push('\n[NHIEM VU]\n' + taskInstruction);
+  }
+
+  const canonRoleLocksLayer = buildCanonRoleLocksLayer(canonRoleLocks);
+  if (canonRoleLocksLayer && !skipWritingLayers) {
+    systemParts.push(canonRoleLocksLayer);
   }
 
   // -- Layer 3: Genre Constraints --
@@ -479,6 +549,13 @@ export function buildPromptSystemParts(taskType, context = {}) {
   }
 
   // [Layer 4.5 removed - merged into Grand Strategy (Layer 0)]
+
+  const outlineCharacterRosterLayer = buildOutlineCharacterRosterLayer();
+  if (outlineCharacterRosterLayer && !skipWritingLayers) {
+    systemParts.push(outlineCharacterRosterLayer);
+    systemParts.push(CURRENT_STATUS_LIVE_CANON_RULES);
+    systemParts.push(CANON_FABRICATION_GUARDRAIL);
+  }
 
   // -- Layer 5: Character State (token budget: max 15) --
   if (characterContextGate) {

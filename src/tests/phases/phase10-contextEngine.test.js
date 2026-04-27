@@ -311,4 +311,70 @@ describe('phase10 context engine blueprint injection', () => {
     expect(ctx.relationships.map((item) => `${item.charA}/${item.charB}`)).toContain('Lan/Kha');
     expect(ctx.relationships.map((item) => `${item.charA}/${item.charB}`)).not.toContain('Mai/Nam');
   });
+
+  it('collects canon role locks from the whole project even when locked characters are not in scene context', async () => {
+    const { contextEngine } = await loadContextEngine({
+      projects: [{ id: 1, title: 'Du an thu', genre_primary: 'fantasy', prompt_templates: '{}' }],
+      chapters: [{ id: 12, project_id: 1, order_index: 0, title: 'Chuong 1', featured_characters: ['Lan'] }],
+      chapterMeta: [],
+      characters: [
+        { id: 101, project_id: 1, name: 'Lan', role: 'protagonist' },
+        {
+          id: 102,
+          project_id: 1,
+          name: 'Minh',
+          role: 'supporting',
+          specific_role: 'nguoi tung phan boi hoi dong',
+          specific_role_locked: true,
+        },
+        {
+          id: 103,
+          project_id: 1,
+          name: 'Ha',
+          role: 'supporting',
+          specific_role: 'nguoi giu ban do co',
+          specific_role_locked: false,
+        },
+      ],
+      locations: [],
+      objects: [],
+      factions: [],
+      worldTerms: [],
+      plotThreads: [],
+      relationships: [],
+      canonFacts: [],
+      taboos: [],
+      scenes: [{
+        id: 701,
+        project_id: 1,
+        chapter_id: 12,
+        order_index: 0,
+        title: 'Canh 1',
+        pov_character_id: 101,
+        characters_present: '[]',
+      }],
+      arcs: [],
+      macro_arcs: [],
+      threadBeats: [],
+    });
+
+    const ctx = await contextEngine.gatherContext({
+      projectId: 1,
+      chapterId: 12,
+      sceneId: 701,
+      sceneText: '',
+      taskType: TASK_TYPES.CONTINUE,
+    });
+
+    expect(ctx.characters.map((item) => item.name)).toContain('Lan');
+    expect(ctx.characters.map((item) => item.name)).not.toContain('Minh');
+    expect(ctx.canonRoleLocks).toEqual([
+      {
+        characterId: 102,
+        characterName: 'Minh',
+        specificRole: 'nguoi tung phan boi hoi dong',
+        locked: true,
+      },
+    ]);
+  });
 });

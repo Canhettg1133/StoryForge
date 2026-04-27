@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import outlineBoardSource from '../../pages/OutlineBoard/OutlineBoard.jsx?raw';
+import projectWizardSource from '../../pages/Dashboard/ProjectWizard.jsx?raw';
 import {
   buildPrompt,
   TASK_INSTRUCTIONS,
@@ -7,6 +9,7 @@ import {
   stripProtectedTaskInstruction,
 } from '../../services/ai/promptBuilder';
 import { TASK_TYPES } from '../../services/ai/router';
+import { composeStoryCreationSystemPrompt } from '../../services/ai/storyCreationSettings';
 
 describe('phase10 prompt builder coverage', () => {
   it('provides default prompts for story configuration tasks that were previously missing', () => {
@@ -293,6 +296,83 @@ describe('phase10 prompt builder coverage', () => {
     expect(system).toContain('[THE LOAI]');
   });
 
+  it('injects generic canon role locks for writing, outline, chapter draft, and entity generation prompts', () => {
+    const canonRoleLocks = [
+      {
+        characterId: 2,
+        characterName: 'Lan',
+        specificRole: 'nguoi giu ban do co',
+        locked: true,
+      },
+      {
+        characterId: 3,
+        characterName: 'Minh',
+        specificRole: 'nguoi tung phan boi hoi dong',
+        locked: true,
+      },
+    ];
+
+    const taskTypes = [
+      TASK_TYPES.CONTINUE,
+      TASK_TYPES.OUTLINE,
+      TASK_TYPES.ARC_CHAPTER_DRAFT,
+      TASK_TYPES.AI_GENERATE_ENTITY,
+    ];
+
+    for (const taskType of taskTypes) {
+      const messages = buildPrompt(taskType, {
+        projectTitle: 'Du An Thu',
+        userPrompt: 'Tao noi dung tiep theo.',
+        entityType: 'character',
+        canonRoleLocks,
+      });
+
+      expect(messages[0].content).toContain('[CANON VAI TRO DA KHOA - BAT BUOC]');
+      expect(messages[0].content).toContain('- Lan: nguoi giu ban do co');
+      expect(messages[0].content).toContain('- Minh: nguoi tung phan boi hoi dong');
+      expect(messages[0].content).toContain('Khong tao, thay the, gan lai, hoac am chi nhan vat khac');
+      expect(messages[0].content).not.toContain('me cua main');
+      expect(messages[0].content).not.toContain('nguoi yeu cua main');
+      expect(messages[0].content).not.toContain('su phu cua main');
+    }
+
+    const noLockMessages = buildPrompt(TASK_TYPES.CONTINUE, {
+      canonRoleLocks: [],
+    });
+    expect(noLockMessages[0].content).not.toContain('[CANON VAI TRO DA KHOA - BAT BUOC]');
+  });
+
+  it('includes role lock guidance in character generation user schema', () => {
+    const messages = buildPrompt(TASK_TYPES.AI_GENERATE_ENTITY, {
+      projectTitle: 'Du An Thu',
+      userPrompt: 'Tao mot nhan vat moi.',
+      entityType: 'character',
+      batchCount: 1,
+      canonRoleLocks: [{
+        characterId: 1,
+        characterName: 'Ha',
+        specificRole: 'nguoi duy nhat biet than phan that',
+        locked: true,
+      }],
+    });
+
+    expect(messages[1].content).toContain('"specific_role"');
+    expect(messages[1].content).toContain('"specific_role_locked"');
+    expect(messages[1].content).toContain('[HUONG DAN VAI TRO CU THE / CANON ROLE LOCK]');
+    expect(messages[1].content).toContain('Khong tao nhan vat moi co vai tro cu the trung');
+  });
+
+  it('keeps project wizard locked schema compatible with specific role locks', () => {
+    const systemPrompt = composeStoryCreationSystemPrompt('projectWizard', 'Custom wizard prompt');
+
+    expect(systemPrompt).toContain('"specific_role"');
+    expect(systemPrompt).toContain('"specific_role_locked"');
+    expect(systemPrompt).toContain('specific_role la vai tro canon cu the');
+    expect(systemPrompt).not.toContain('me cua main');
+    expect(systemPrompt).not.toContain('nguoi yeu cua main');
+    expect(systemPrompt).not.toContain('su phu cua main');
+  });
+
   it('omits character age context when the author did not provide it', () => {
     const messages = buildPrompt(TASK_TYPES.CONTINUE, {
       characters: [
@@ -303,6 +383,45 @@ describe('phase10 prompt builder coverage', () => {
     const system = messages[0].content;
     expect(system).not.toContain('Tuoi/do tuoi:');
     expect(system).toContain('Khong tu bia tuoi/do tuoi');
+  });
+
+  it('injects the Character page roster into OUTLINE prompts before a chapter has cast anchors', () => {
+    const messages = buildPrompt(TASK_TYPES.OUTLINE, {
+      allCharacters: [
+        {
+          id: 1,
+          name: 'Lan',
+          aliases: ['A Lan'],
+          role: 'protagonist',
+          current_status: 'Dang bi thuong va chua biet bi mat cua Kha.',
+        },
+        {
+          id: 2,
+          name: 'Kha',
+          role: 'supporting',
+          specific_role: 'nguoi giu chia khoa vao noi dien',
+          specific_role_locked: true,
+        },
+      ],
+      characters: [],
+      characterContextGate: {
+        sceneCast: [],
+        chapterFocusCast: [],
+        referencedCanonCast: [],
+      },
+      currentChapterOutline: {
+        title: 'Chuong 2: Canh cong noi dien',
+      },
+    });
+
+    const system = messages[0].content;
+    expect(system).toContain('[DANH SACH NHAN VAT TRONG TRANG NHAN VAT');
+    expect(system).toContain('Lan');
+    expect(system).toContain('A Lan');
+    expect(system).toContain('Kha');
+    expect(system).toContain('nguoi giu chia khoa vao noi dien');
+    expect(system).toContain('featured_characters');
+    expect(system).toContain('khong bien alias thanh nhan vat moi');
   });
 
   it('forces OUTLINE to stay inside the current chapter and respect future chapter fences', () => {
@@ -342,6 +461,7 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[0].content).toContain('"chapter_patch"');
     expect(messages[0].content).toContain('"next_beats"');
     expect(messages[0].content).toContain('"state_delta"');
+    expect(messages[0].content).toContain('"required_terms"');
     expect(messages[1].content).toContain('[NOI DUNG DA CO CUA CHUONG HIEN TAI]');
     expect(messages[1].content).toContain('[GIOI HAN TIEN DO CHUONG NAY]');
     expect(messages[1].content).toContain('Tuyet doi khong viet thay noi dung cua chuong sau da co dan y.');
@@ -371,6 +491,7 @@ describe('phase10 prompt builder coverage', () => {
     expect(protection).toBeTruthy();
     expect(protection.lockedPrompt).toContain('"mode"');
     expect(protection.lockedPrompt).toContain('"chapter_patch"');
+    expect(protection.lockedPrompt).toContain('"required_terms"');
 
     const editable = stripProtectedTaskInstruction(
       TASK_TYPES.OUTLINE,
@@ -380,6 +501,54 @@ describe('phase10 prompt builder coverage', () => {
 
     const recomposed = composeTaskInstruction(TASK_TYPES.OUTLINE, editable);
     expect(recomposed).toContain('"completed_beats"');
+    expect(recomposed).toContain('"required_terms"');
     expect(recomposed).toContain('Chi tra ve JSON');
+  });
+
+  it('keeps project wizard locked schema aligned with chapter blueprint fields consumed by the app', () => {
+    const systemPrompt = composeStoryCreationSystemPrompt('projectWizard', 'Custom wizard prompt');
+
+    expect(systemPrompt).toContain('"required_factions"');
+    expect(systemPrompt).toContain('"required_objects"');
+    expect(systemPrompt).toContain('"required_terms"');
+    expect(systemPrompt).toContain('"featured_characters", "primary_location", "thread_titles", "required_factions", "required_objects", "required_terms"');
+  });
+
+  it('keeps OutlineBoard generation schema and persistence aligned with chapter anchors', () => {
+    const systemPrompt = composeStoryCreationSystemPrompt('outlineGeneration', 'Custom outline prompt');
+
+    expect(systemPrompt).toContain('"featured_characters"');
+    expect(systemPrompt).toContain('"primary_location"');
+    expect(systemPrompt).toContain('"thread_titles"');
+    expect(systemPrompt).toContain('"key_events"');
+    expect(systemPrompt).toContain('"required_factions"');
+    expect(systemPrompt).toContain('"required_objects"');
+    expect(systemPrompt).toContain('"required_terms"');
+    expect(systemPrompt).toContain('Ten ngan/biet danh/alias khong duoc bien thanh nhan vat moi');
+
+    expect(outlineBoardSource).toContain('function buildChapterAnchorPatch');
+    expect(outlineBoardSource).toContain('...buildChapterAnchorPatch(nextChapters[i], { preserveMissing: true })');
+    expect(outlineBoardSource).toContain('...buildChapterAnchorPatch(ac)');
+    expect(outlineBoardSource).toContain('formatCharacterForOutlinePrompt');
+  });
+
+  it('keeps the ProjectWizard inline prompt copy aligned with the same blueprint schema', () => {
+    const messagesStart = projectWizardSource.indexOf(
+      'const messages = [',
+      projectWizardSource.indexOf('const templateVariables'),
+    );
+    const sendStart = projectWizardSource.indexOf('aiService.send', messagesStart);
+    const inlinePromptCopy = projectWizardSource.slice(messagesStart, sendStart);
+
+    expect(inlinePromptCopy).toContain('"title_options"');
+    expect(inlinePromptCopy).toContain('"aliases"');
+    expect(inlinePromptCopy).toContain('"objects"');
+    expect(inlinePromptCopy).toContain('"story_function"');
+    expect(inlinePromptCopy).toContain('"purpose"');
+    expect(inlinePromptCopy).toContain('"featured_characters"');
+    expect(inlinePromptCopy).toContain('"required_factions"');
+    expect(inlinePromptCopy).toContain('"required_objects"');
+    expect(inlinePromptCopy).toContain('"required_terms"');
+    expect(inlinePromptCopy).toContain('"anchor_chapters"');
   });
 });

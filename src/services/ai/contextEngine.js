@@ -89,6 +89,7 @@ export async function gatherContext({
       relationships: [],
       sceneContract: {},
       canonFacts: [],
+      canonRoleLocks: [],
       fanficCanonContext: null,
       aiGuidelines: '',
       aiStrictness: 'balanced',
@@ -199,6 +200,15 @@ export async function gatherContext({
       ...t,
       characterName: allCharacters.find(c => c.id === t.character_id)?.name || null,
     }));
+
+  const canonRoleLocks = allCharacters
+    .map((character) => ({
+      characterId: character.id,
+      characterName: character.name || '',
+      specificRole: String(character.specific_role || '').trim(),
+      locked: Boolean(character.specific_role_locked),
+    }))
+    .filter((item) => item.locked && item.characterName && item.specificRole);
 
   // --- Previous chapter: summary + Bridge Memory (Phase 7) ---
   let previousSummary = '';
@@ -527,6 +537,7 @@ export async function gatherContext({
     relationships,
     sceneContract,
     canonFacts: effectiveCanonFacts,
+    canonRoleLocks,
     fanficCanonContext,
     plotThreads: activePlotThreads,
     targetLength,

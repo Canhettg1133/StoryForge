@@ -533,6 +533,8 @@ function tablePayloadFromCandidate(projectId, candidate, kind) {
       pronouns_self: cleanText(payload.pronouns_self || ''),
       pronouns_other: cleanText(payload.pronouns_other || ''),
       speech_pattern: cleanText(payload.speech_pattern || ''),
+      specific_role: cleanText(payload.specific_role || payload.specificRole || ''),
+      specific_role_locked: Boolean((payload.specific_role_locked ?? payload.specificRoleLocked) && cleanText(payload.specific_role || payload.specificRole || '')),
       current_status: cleanText(payload.current_status || ''),
       goals: cleanText(payload.goals || ''),
       secrets: cleanText(payload.secrets || ''),

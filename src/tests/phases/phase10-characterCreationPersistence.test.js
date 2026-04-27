@@ -156,4 +156,47 @@ describe('phase10 character creation persistence', () => {
     const filled = await db.characters.get(blankAgeId);
     expect(filled.age).toBe('16');
   });
+
+  it('persists specific role locks and only fills them during dedupe when blank', async () => {
+    const projectId = await createProject();
+    const store = useCodexStore.getState();
+
+    const id = await store.createCharacter({
+      project_id: projectId,
+      name: 'Lan',
+      role: 'supporting',
+      specific_role: 'nguoi giu ban do co',
+      specific_role_locked: true,
+    });
+
+    const stored = await db.characters.get(id);
+    expect(stored.specific_role).toBe('nguoi giu ban do co');
+    expect(stored.specific_role_locked).toBe(true);
+
+    await store.updateCharacter(id, {
+      specific_role: 'nguoi giu chia khoa cam dia',
+      specific_role_locked: false,
+    });
+
+    const updated = await db.characters.get(id);
+    expect(updated.specific_role).toBe('nguoi giu chia khoa cam dia');
+    expect(updated.specific_role_locked).toBe(false);
+
+    const blankRoleId = await store.createCharacter({
+      project_id: projectId,
+      name: 'Minh',
+      role: 'supporting',
+    });
+    await store.createCharacter({
+      project_id: projectId,
+      name: 'Minh',
+      role: 'supporting',
+      specific_role: 'nguoi tung phan boi hoi dong',
+      specific_role_locked: true,
+    });
+
+    const filled = await db.characters.get(blankRoleId);
+    expect(filled.specific_role).toBe('nguoi tung phan boi hoi dong');
+    expect(filled.specific_role_locked).toBe(true);
+  });
 });

@@ -22,6 +22,8 @@ import {
   validatePassBOutput,
   validatePassCOutput,
 } from '../../services/analysis/v2/contracts.js';
+import { buildConsistencyCheckPrompt } from '../../services/analysis/prompts/consistencyCheckPrompt.js';
+import { buildIncidentAnalysisPrompt } from '../../services/analysis/prompts/incidentAnalysisPrompt.js';
 import { buildStoryGraph } from '../../services/analysis/v2/storyGraph.js';
 import { bootstrapPostgres } from '../../services/storage/postgres/bootstrap.js';
 import { queryPostgres } from '../../services/storage/postgres/client.js';
@@ -126,6 +128,32 @@ describe('Phase 6D - Analysis V3 Compat', () => {
     });
     expect(passC.valid).toBe(true);
     expect(passC.value.world_profile.world_name).toContain('The gioi');
+  });
+
+  it('keeps legacy analysis prompt JSON contracts aligned with normalizers', () => {
+    const incidentPrompt = buildIncidentAnalysisPrompt(
+      { id: 'inc-1', title: 'Mo dau', startChapter: 1, endChapter: 2 },
+      { text: 'Chapter sample' },
+    );
+
+    expect(incidentPrompt).toContain('"events": [');
+    expect(incidentPrompt).toContain('"chapter": 1');
+    expect(incidentPrompt).toContain('"causesEventIds": []');
+    expect(incidentPrompt).toContain('"causedByEventIds": []');
+    expect(incidentPrompt).toContain('"locations": [');
+    expect(incidentPrompt).toContain('"eventIds": []');
+    expect(incidentPrompt).not.toContain('0-based');
+
+    const consistencyPrompt = buildConsistencyCheckPrompt({
+      incidentCount: 1,
+      eventCount: 1,
+      locationCount: 1,
+      context: 'Context',
+    });
+
+    expect(consistencyPrompt).toContain('"chapterStart": 1');
+    expect(consistencyPrompt).toContain('"chapterEnd": 1');
+    expect(consistencyPrompt).not.toContain('"chapterRange"');
   });
 
   it('builds craft and coverage data from seeds and local evidence without extra AI passes', () => {

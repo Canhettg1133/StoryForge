@@ -9,6 +9,7 @@
  * Props:
  *   entityType: 'character' | 'location' | 'object' | 'term'
  *   projectContext: { projectTitle, genre }
+ *   canonRoleLocks?: [{ characterId, characterName, specificRole, locked }]
  *   onApprove: (data) => void
  *   buttonLabel?: string
  */
@@ -43,7 +44,13 @@ const ENTITY_LABELS = {
   term: 'thuat ngu',
 };
 
-export default function AIGenerateButton({ entityType, projectContext = {}, onApprove, buttonLabel }) {
+export default function AIGenerateButton({
+  entityType,
+  projectContext = {},
+  canonRoleLocks = [],
+  onApprove,
+  buttonLabel,
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -53,6 +60,9 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
 
   const config = ENTITY_PROMPTS[entityType] || ENTITY_PROMPTS.character;
   const label = ENTITY_LABELS[entityType] || 'muc';
+  const resolvedCanonRoleLocks = Array.isArray(canonRoleLocks)
+    ? canonRoleLocks
+    : (Array.isArray(projectContext?.canonRoleLocks) ? projectContext.canonRoleLocks : []);
 
   const resolvePromptTemplates = () => {
     if (!projectContext?.promptTemplates) return {};
@@ -89,6 +99,7 @@ export default function AIGenerateButton({ entityType, projectContext = {}, onAp
       userPrompt: prompt,
       entityType,
       batchCount: 1,
+      canonRoleLocks: resolvedCanonRoleLocks,
       entityContextText: projectContext.description || projectContext.worldName || '',
     });
 

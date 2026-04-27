@@ -382,6 +382,34 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const updateResultListField = (section, index, field, value) => {
     updateResultItem(section, index, field, normalizeChapterListField(value));
   };
+  const updateCharacterSpecificRole = (index, value) => {
+    setResult(prev => {
+      const arr = [...(prev.characters || [])];
+      const current = arr[index] || {};
+      const previousRole = String(current.specific_role || '').trim();
+      const nextRole = String(value || '').trim();
+      arr[index] = {
+        ...current,
+        specific_role: value,
+        specific_role_locked: nextRole
+          ? (previousRole ? Boolean(current.specific_role_locked) : true)
+          : false,
+      };
+      return { ...prev, characters: arr };
+    });
+  };
+  const updateCharacterSpecificRoleLocked = (index, checked) => {
+    setResult(prev => {
+      const arr = [...(prev.characters || [])];
+      const current = arr[index] || {};
+      const specificRole = String(current.specific_role || '').trim();
+      arr[index] = {
+        ...current,
+        specific_role_locked: Boolean(checked && specificRole),
+      };
+      return { ...prev, characters: arr };
+    });
+  };
   const validationSummary = buildWizardValidation(result, excluded);
   const blockingIssues = validationSummary.blockingIssues;
   const coverageWarnings = validationSummary.warnings;
@@ -401,6 +429,23 @@ export default function ProjectWizard({ onClose, onCreated }) {
             {CHAR_ROLES.map(r => <option key={r} value={r}>{CHAR_ROLE_LABELS[r] || r}</option>)}
           </select>
         </div>
+      </div>
+      <div className="wizard-edit-field">
+        <label>Vai trò cụ thể</label>
+        <input
+          className="input input-sm"
+          value={c.specific_role || ''}
+          onChange={e => updateCharacterSpecificRole(i, e.target.value)}
+        />
+        <label className="wizard-inline-check" title="Khi khóa, AI sẽ không tự tạo nhân vật khác thay thế hoặc trùng vai trò này.">
+          <input
+            type="checkbox"
+            checked={Boolean(c.specific_role_locked && String(c.specific_role || '').trim())}
+            disabled={!String(c.specific_role || '').trim()}
+            onChange={e => updateCharacterSpecificRoleLocked(i, e.target.checked)}
+          />
+          <span>Khóa vai trò này như canon</span>
+        </label>
       </div>
       <div className="wizard-edit-field">
         <label>Tính cách</label>
@@ -668,6 +713,8 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
 Trả về CHÍNH XÁC JSON format:
 {
+  "title": "Ten truyen chinh thuc",
+  "title_options": ["Ten 1", "Ten 2", "Ten 3"],
   "premise": "Tóm tắt premise 2-3 câu",
   "world_profile": {
     "world_name": "Tên thế giới",
@@ -677,12 +724,13 @@ Trả về CHÍNH XÁC JSON format:
     "world_rules": ["Quy tắc 1", "Quy tắc 2", "Quy tắc 3"],
     "world_description": "Mô tả tổng quan thế giới 2-3 câu"
   },
-  "characters": [{"name": "...", "role": "protagonist|antagonist|supporting|mentor|minor", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu / khuyết điểm lúc đầu", "goals": "...", "current_status": "Character Live Canon lúc khởi đầu; để rỗng nếu không có ràng buộc canon thật"}],
-  "locations": [{"name": "...", "description": "..."}],
-  "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "..."}],
-  "terms": [{"name": "...", "definition": "...", "category": "magic|race|technology|other"}],
-  "chapters": [{"title": "Chương 1: ...", "summary": "Tóm tắt nội dung chương", "state_delta": "Thay đổi dự kiến của Character Live Canon/current_status sau chương này; để rỗng nếu không đổi"}],
-  "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mô tả tuyến truyện 1-2 câu", "state": "active"}]
+  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "specific_role": "vai tro canon cu the neu tac gia yeu cau; de rong neu khong co", "specific_role_locked": false, "age": "tuoi/do tuoi tuy chon", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu / khuyết điểm lúc đầu", "goals": "...", "current_status": "Character Live Canon lúc khởi đầu; để rỗng nếu không có ràng buộc canon thật", "story_function": "vai tro trong cac chapter dau"}],
+  "locations": [{"name": "...", "description": "...", "story_function": "dia diem nay dung de lam gi trong chapter dau"}],
+  "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chi them neu chapter dau that su can vat pham nay"}],
+  "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "...", "story_function": "the luc nay dung de lam gi trong chapter dau"}],
+  "terms": [{"name": "...", "definition": "...", "category": "magic|race|technology|other", "story_function": "thuat ngu nay anh huong gi toi chapter dau"}],
+  "chapters": [{"title": "Chương 1: ...", "purpose": "muc tieu ke chuyen cua chuong", "summary": "Tóm tắt nội dung chương", "state_delta": "Thay đổi dự kiến của Character Live Canon/current_status sau chương này; để rỗng nếu không đổi", "featured_characters": ["..."], "primary_location": "...", "thread_titles": ["..."], "key_events": ["neo noi bo neu can"], "required_factions": ["..."], "required_objects": ["..."], "required_terms": ["..."]}],
+  "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mô tả tuyến truyện 1-2 câu", "state": "active", "opening_window": "xuat hien tu chuong nao", "anchor_chapters": ["Chuong 1", "Chuong 3"]}]
 }
 
 PHÂN LOẠI RÕ RÀNG — RẤT QUAN TRỌNG:
@@ -693,6 +741,7 @@ PHÂN LOẠI RÕ RÀNG — RẤT QUAN TRỌNG:
 Tạo: world_profile chi tiết, 3-5 nhân vật, 3-5 địa điểm vật lý, 2-4 thế lực/tông môn (nếu phù hợp thể loại), 3-5 thuật ngữ, 8-12 chương, 2-4 tuyến truyện lớn.
 LƯU Ý: Bất kỳ nhân vật nào ở điểm bắt đầu cũng phải có điểm yếu (flaws) rõ ràng. Cấm tạo nhân vật hoàn mỹ ngay từ đầu.
 current_status là Character Live Canon lúc khởi đầu; chỉ điền nếu trạng thái đó thật sự ràng buộc chương đầu/bối cảnh hiện tại, không dùng trạng thái chung chung.
+specific_role la vai tro canon cu the, khac voi role la vai tro truyen. Neu specific_role trong thi specific_role_locked phai la false; neu can khoa vai tro canon cu the thi dat true.
 Chỉ trả về JSON, không thêm gì khác.`,
       },
       {
@@ -819,6 +868,8 @@ Chỉ trả về JSON, không thêm gì khác.`,
               name: c.name,
               aliases: c.aliases || [],
               role: c.role || 'supporting',
+              specific_role: String(c.specific_role || '').trim(),
+              specific_role_locked: Boolean(c.specific_role_locked && String(c.specific_role || '').trim()),
               age: c.age || '',
               appearance: c.appearance || '',
               personality: (c.personality || '') + (c.flaws ? `\nDiem yeu: ${c.flaws}` : ''),
@@ -1402,6 +1453,12 @@ Chỉ trả về JSON, không thêm gì khác.`,
                           <strong>{c.name}</strong>{' '}
                           <span className="badge badge-sm">{c.role}</span>
                           {c.age && <span className="badge badge-sm">{c.age}</span>}
+                          {c.specific_role && (
+                            <p style={{ fontSize: '13px', marginTop: '4px', color: 'var(--color-accent)' }}>
+                              <strong>Vai trò cụ thể:</strong> {c.specific_role}
+                              {c.specific_role_locked && ' · đã khóa'}
+                            </p>
+                          )}
                           {c.personality && <p>{c.personality}</p>}
                           {c.current_status && (
                             <p style={{ fontSize: '13px', marginTop: '4px', color: 'var(--color-warning, #f59e0b)' }}>

@@ -47,6 +47,7 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
     previousSummary,
     characters = [],
     canonFacts = [],
+    canonRoleLocks = [],
     plotThreads = [],
     targetLength = 0,
     ultimateGoal = '',
@@ -236,7 +237,7 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         term: 'thuat ngu',
       };
       const schemaMap = {
-        character: '{"name":"Ten nhan vat","role":"protagonist|antagonist|supporting|mentor|minor","age":"tuoi/do tuoi tuy chon, chi dien khi phu hop the loai hoac huu ich cho giong thoai","appearance":"Mo ta 2-3 cau","personality":"Mo ta 2-3 cau","personality_tags":"tag1, tag2","flaws":"Diem yeu/khuyet diem","goals":"Muc tieu","current_status":"Character Live Canon luc khoi dau; de rong neu khong co rang buoc canon that","secrets":"Bi mat neu co","notes":"Vai tro trong cot truyen"}',
+        character: '{"name":"Ten nhan vat","role":"protagonist|antagonist|supporting|mentor|minor","specific_role":"Vai tro canon cu the neu tac gia yeu cau; de rong neu khong co","specific_role_locked":false,"age":"tuoi/do tuoi tuy chon, chi dien khi phu hop the loai hoac huu ich cho giong thoai","appearance":"Mo ta 2-3 cau","personality":"Mo ta 2-3 cau","personality_tags":"tag1, tag2","flaws":"Diem yeu/khuyet diem","goals":"Muc tieu","current_status":"Character Live Canon luc khoi dau; de rong neu khong co rang buoc canon that","secrets":"Bi mat neu co","notes":"Vai tro trong cot truyen"}',
         location: '{"name":"Ten dia diem","description":"Mo ta 2-3 cau","details":"Chi tiet bo sung, kien truc, bi mat..."}',
         object: '{"name":"Ten vat pham","description":"Mo ta 2-3 cau","properties":"Cong dung, thuoc tinh, han che","owner":"Ten chu so huu neu co"}',
         term: '{"name":"Ten thuat ngu","definition":"Dinh nghia 3-5 cau","category":"magic|organization|race|technology|concept|culture|other"}',
@@ -280,6 +281,14 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
         userContent += '- Chi dien khi trang thai khoi dau co luc rang buoc that voi chuong dau/boi canh hien tai: dia vi, quan he, bi mat biet/chua biet, vet thuong, benh, phe phai, dang bi giam/mat tich/lan tron, hoac gioi han hanh vi.\n';
         userContent += '- Khong dien cac status rong/chung chung nhu "buon", "manh me", "lanh lung", "tot bung" neu no khong tao rang buoc canon cu the.\n';
         userContent += '- Neu khong co rang buoc canon that, de current_status rong.';
+        userContent += '\n\n[HUONG DAN VAI TRO CU THE / CANON ROLE LOCK]\n';
+        userContent += '- specific_role la vai tro canon cu the trong the gioi truyen, khac voi role la vai tro truyen.\n';
+        userContent += '- Chi dien specific_role khi tac gia yeu cau ro hoac boi canh can mot vai tro cu the co gia tri canon.\n';
+        userContent += '- Neu specific_role co noi dung va can khoa canon, dat specific_role_locked = true; neu khong, dat false.\n';
+        userContent += '- Khong tao nhan vat moi co vai tro cu the trung hoac tuong duong voi danh sach vai tro da khoa trong system prompt.\n';
+        if (Array.isArray(canonRoleLocks) && canonRoleLocks.length > 0) {
+          userContent += '- Neu yeu cau can mot vai tro da khoa, dung nhan vat da co thay vi tao nhan vat moi.';
+        }
       }
       userContent += '\n\n[YEU CAU CUA TAC GIA]\n' + (userPrompt || 'Hay tao mot muc phu hop voi du an nay.');
       userContent += '\n\n[OUTPUT JSON BAT BUOC]\n' + outputSchema;

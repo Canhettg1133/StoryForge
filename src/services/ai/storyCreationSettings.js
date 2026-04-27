@@ -14,12 +14,12 @@ const PROJECT_WIZARD_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON format:
     "world_rules": ["Quy tac 1", "Quy tac 2", "Quy tac 3"],
     "world_description": "Mo ta tong quan the gioi 2-3 cau"
   },
-  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "age": "tuoi/do tuoi tuy chon, chi dien khi phu hop the loai hoac huu ich cho giong thoai", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem luc dau", "goals": "...", "current_status": "Character Live Canon luc khoi dau; de rong neu khong co rang buoc canon that", "story_function": "vai tro trong cac chapter dau"}],
+  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "specific_role": "vai tro canon cu the neu tac gia yeu cau; de rong neu khong co", "specific_role_locked": false, "age": "tuoi/do tuoi tuy chon, chi dien khi phu hop the loai hoac huu ich cho giong thoai", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem luc dau", "goals": "...", "current_status": "Character Live Canon luc khoi dau; de rong neu khong co rang buoc canon that", "story_function": "vai tro trong cac chapter dau"}],
   "locations": [{"name": "...", "description": "...", "story_function": "dia diem nay dung de lam gi trong chapter dau"}],
   "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chi them neu chapter dau that su can vat pham nay"}],
-  "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "..."}],
+  "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "...", "story_function": "the luc nay dung de lam gi trong chapter dau"}],
   "terms": [{"name": "...", "definition": "...", "category": "magic|race|technology|other", "story_function": "thuat ngu nay anh huong gi toi chapter dau"}],
-  "chapters": [{"title": "Chuong 1: ...", "purpose": "muc tieu ke chuyen cua chuong", "summary": "Tom tat noi dung chuong", "state_delta": "Thay doi du kien cua Character Live Canon/current_status sau chuong nay; de rong neu khong doi", "featured_characters": ["..."], "primary_location": "...", "thread_titles": ["..."], "key_events": ["neo noi bo neu can"], "required_factions": ["..."], "required_objects": ["..."]}],
+  "chapters": [{"title": "Chuong 1: ...", "purpose": "muc tieu ke chuyen cua chuong", "summary": "Tom tat noi dung chuong", "state_delta": "Thay doi du kien cua Character Live Canon/current_status sau chuong nay; de rong neu khong doi", "featured_characters": ["..."], "primary_location": "...", "thread_titles": ["..."], "key_events": ["neo noi bo neu can"], "required_factions": ["..."], "required_objects": ["..."], "required_terms": ["..."]}],
   "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mo ta tuyen truyen 1-2 cau", "state": "active", "opening_window": "xuat hien tu chuong nao", "anchor_chapters": ["Chuong 1", "Chuong 3"]}]
 }
 
@@ -33,12 +33,14 @@ QUY TAC TEN TRUYEN:
 - "title_options" phai co 3-5 phuong an du khac nhau, bam sat the loai va y tuong.
 
 QUY TAC CHUONG VA ENTITY:
-- "featured_characters", "primary_location", "thread_titles", "required_factions", "required_objects" trong tung chapter phai tham chieu toi entity/tuyen da tao o tren.
+- "featured_characters", "primary_location", "thread_titles", "required_factions", "required_objects", "required_terms" trong tung chapter phai tham chieu toi entity/tuyen da tao o tren.
 - Khong tao character/location/term chi duoc neu o codex ma khong lien he voi chapter.
 - "objects" la field tuy chon, chi them neu chapter dau that su can va chapter outline co nhac den.
 - Moi chapter phai co tien trien ro, nhung khong duoc nhoi qua nhieu bien co neu day moi la mo dau truyen.
 - "state_delta" cua chapter la thay doi du kien cua Character Live Canon/current_status sau chapter; de rong neu chapter khong doi trang thai canon nao.
 - Moi nhan vat chi duoc co MOT record chinh thuc trong "characters". Neu cung mot nguoi co ten ngan, ho, biet danh, danh xung, hoac cach goi khac, dua vao "aliases" cua record do; TUYET DOI khong tao thanh nhan vat moi.
+- specific_role la vai tro canon cu the do tac gia/blueprint xac nhan, khac voi "role" la vai tro truyen. Chi dien khi co vai tro cu the that su can khoa trong canon; neu de trong thi "specific_role_locked" phai la false.
+- Khi "specific_role" co noi dung va can khoa canon, dat "specific_role_locked": true. Khong tao nhan vat khac giu cung vai tro cu the hoac vai tro tuong duong.
 - Field "age" la tuy chon: chi dien tuoi/do tuoi khi phu hop the loai hoac huu ich cho giong thoai; hien dai/hoc duong/do thi co the dung tuoi so, tien hiep/huyen huyen/than linh/bat tu uu tien mo ta linh hoat nhu thieu nien, ngoai hinh doi muoi, tuoi that rat cao, truong boi.
 - Field "current_status" la Character Live Canon luc khoi dau. Chi dien neu trang thai do anh huong chuong dau, quan he, xung dot, dia vi xa hoi, tri thuc, phe phai, vet thuong, hoac rang buoc hanh vi. Khong dien status rong/chung chung kieu "buon", "manh me".
 - Khong tao 2 protagonist/main character cho cung mot nguoi chi vi ten hoi khac nhau. "featured_characters" phai dung ten chinh thuc trong "characters".
@@ -56,7 +58,11 @@ const OUTLINE_GENERATION_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON:
       "act":1,
       "featured_characters":["..."],
       "primary_location":"...",
-      "thread_titles":["..."]
+      "thread_titles":["..."],
+      "key_events":["neo noi bo neu can"],
+      "required_factions":["..."],
+      "required_objects":["..."],
+      "required_terms":["..."]
     }
   ],
   "plot_threads": [
@@ -71,9 +77,11 @@ const OUTLINE_GENERATION_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON:
 }
 
 QUY TAC THEM:
-- "featured_characters" phai la nhan vat thuc su tham gia hoac bi anh huong manh trong chuong.
+- "featured_characters" phai la nhan vat thuc su tham gia hoac bi anh huong manh trong chuong, dung ten chinh thuc trong "Nhan vat". Ten ngan/biet danh/alias khong duoc bien thanh nhan vat moi.
 - "primary_location" phai la dia diem chinh cua chuong.
 - "thread_titles" phai tro toi cac plot thread thuc su duoc day trong chuong do.
+- "key_events", "required_factions", "required_objects", "required_terms" phai la neo can cho chuong do; khong dien cho du so.
+- "required_factions", "required_objects", "required_terms" phai bam entity/term da co trong du an neu co; chi de xuat moi khi outline that su bat buoc.
 - "state_delta" phai neu ro neu chuong nay lam doi Character Live Canon/current_status cua nhan vat; de rong neu khong co doi thay ro.
 - Neu chapter chua can dung toi mot thread lon, dung gan vao cho du so.
 - Outline phai ro duong day tien trien, khong duoc toan chapter na na nhau.
@@ -191,7 +199,8 @@ NGUYEN TAC BAT BUOC:
 - Nhan vat, dia diem, thuat ngu, va plot thread phai bam sat premise va phai duoc nhac den trong chapter outline.
 - Moi nhan vat chi co 1 record chinh thuc. Ten ngan, biet danh, danh xung, ho/ten dem, hoac bien the chinh ta phai nam trong aliases cua record do, KHONG tao thanh nhan vat moi.
 - Neu mot nhan vat da co trong danh sach, moi chi tiet moi lien quan den nguoi do phai cap nhat vao chinh nhan vat do.
-- Tuoi/do tuoi la tuy chon. Chi dien khi phu hop the loai hoac huu ich cho giong thoai; khong can thi de trong, khong bien tuoi thanh luat cung ve tinh cach.
+  - Tuoi/do tuoi la tuy chon. Chi dien khi phu hop the loai hoac huu ich cho giong thoai; khong can thi de trong, khong bien tuoi thanh luat cung ve tinh cach.
+  - specific_role la vai tro canon cu the, khac voi role la vai tro truyen. Chi dien khi y tuong/blueprint can mot vai tro cu the duoc khoa; neu co noi dung va can khoa canon thi dat specific_role_locked = true, neu khong thi false.
 - current_status la Character Live Canon luc khoi dau. Khi tao cast ban dau, hay nghi nhan vat dang o trang thai nao khi truyen bat dau; chi dien neu trang thai do co luc rang buoc that voi chuong dau/boi canh hien tai.
 - Khong tao current_status chung chung nhu "buon", "manh me", "lanh lung"; uu tien dia vi, quan he, bi mat biet/chua biet, vet thuong, phe phai, dang bi giam/mat tich/lan tron, hoac gioi han hanh vi.
 - Nhac lai it nhung huu dung tot hon nhieu nhung roi rac.

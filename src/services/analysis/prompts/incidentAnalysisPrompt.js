@@ -19,12 +19,36 @@ Yeu cau:
 - Trich xuat events ben trong incident.
 - Trich xuat locations lien quan.
 - Tao causal links (causes / causedBy).
-- Moi event can co chapter index (0-based), severity, confidence va evidence.
+- Moi event can co chapter 1-based, severity, confidence va evidence.
 
 Output JSON:
 {
-  "events": [],
-  "locations": [],
+  "events": [
+    {
+      "id": "evt_...",
+      "title": "",
+      "description": "",
+      "chapter": 1,
+      "severity": "crucial|major|moderate|minor",
+      "confidence": 0.7,
+      "tags": [],
+      "characters": [],
+      "evidence": [],
+      "causesEventIds": [],
+      "causedByEventIds": []
+    }
+  ],
+  "locations": [
+    {
+      "id": "loc_...",
+      "name": "",
+      "aliases": [],
+      "eventIds": [],
+      "confidence": 0.7,
+      "importance": 0.7,
+      "evidence": []
+    }
+  ],
   "climaxAnchor": { "eventId": "", "description": "" }
 }
 

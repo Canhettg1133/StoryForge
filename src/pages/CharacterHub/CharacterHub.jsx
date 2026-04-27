@@ -24,6 +24,8 @@ import './CharacterHub.css';
 const EMPTY_CHARACTER = {
   name: '',
   role: 'supporting',
+  specific_role: '',
+  specific_role_locked: false,
   age: '',
   appearance: '',
   personality: '',
@@ -101,6 +103,15 @@ export default function CharacterHub() {
   const genreKey = GENRE_PRONOUN_MAP[currentProject?.genre_primary] || 'modern';
   const preset = PRONOUN_PRESETS[genreKey] || PRONOUN_PRESETS.modern;
   const selectedCharacterCount = selectedCharacterIds.size;
+  const lockedRoleCharacters = characters.filter((char) => (
+    char.specific_role_locked && String(char.specific_role || '').trim()
+  ));
+  const canonRoleLocks = lockedRoleCharacters.map((char) => ({
+    characterId: char.id,
+    characterName: char.name || '',
+    specificRole: String(char.specific_role || '').trim(),
+    locked: true,
+  }));
 
   // --- Character Handlers ---
   const openCreate = () => {
@@ -119,6 +130,8 @@ export default function CharacterHub() {
     setForm({
       name: char.name || '',
       role: char.role || 'supporting',
+      specific_role: char.specific_role || '',
+      specific_role_locked: Boolean(char.specific_role_locked && String(char.specific_role || '').trim()),
       age: char.age || '',
       appearance: char.appearance || '',
       personality: char.personality || '',
@@ -138,12 +151,32 @@ export default function CharacterHub() {
 
   const handleSave = async () => {
     if (!form.name.trim()) return;
+    const specificRole = String(form.specific_role || '').trim();
+    const payload = {
+      ...form,
+      specific_role: specificRole,
+      specific_role_locked: Boolean(form.specific_role_locked && specificRole),
+    };
     if (editingChar) {
-      await updateCharacter(editingChar.id, form);
+      await updateCharacter(editingChar.id, payload);
     } else {
-      await createCharacter({ ...form, project_id: currentProject.id }, { dedupe: false });
+      await createCharacter({ ...payload, project_id: currentProject.id }, { dedupe: false });
     }
     setShowModal(false);
+  };
+
+  const handleSpecificRoleChange = (value) => {
+    setForm((previous) => {
+      const previousRole = String(previous.specific_role || '').trim();
+      const nextRole = String(value || '').trim();
+      return {
+        ...previous,
+        specific_role: value,
+        specific_role_locked: nextRole
+          ? (previousRole ? previous.specific_role_locked : true)
+          : false,
+      };
+    });
   };
 
   const handleDelete = async (id) => {
@@ -292,11 +325,14 @@ export default function CharacterHub() {
               <AIGenerateButton
                 entityType="character"
                 projectContext={{ projectTitle: currentProject?.title, genre: currentProject?.genre_primary, promptTemplates: currentProject?.prompt_templates }}
+                canonRoleLocks={canonRoleLocks}
                 onApprove={(data) => {
                   setEditingChar(null);
                   setForm({
                     name: data.name || '',
                     role: data.role || 'supporting',
+                    specific_role: data.specific_role || '',
+                    specific_role_locked: Boolean(data.specific_role_locked && String(data.specific_role || '').trim()),
                     age: data.age || '',
                     appearance: data.appearance || '',
                     personality: data.personality || '',
@@ -335,6 +371,21 @@ export default function CharacterHub() {
             </div>
           ) : (
             <>
+              {lockedRoleCharacters.length > 0 && (
+                <div className="canon-role-lock-panel">
+                  <div className="canon-role-lock-panel__header">
+                    Vai trò canon đã khóa ({lockedRoleCharacters.length})
+                  </div>
+                  <div className="canon-role-lock-panel__list">
+                    {lockedRoleCharacters.map((char) => (
+                      <span key={char.id} className="canon-role-lock-panel__item">
+                        {char.name}: {char.specific_role}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {selectionMode && (
                 <div className="character-bulk-toolbar">
                   <span>{selectedCharacterCount} nhân vật đã chọn</span>
@@ -429,6 +480,13 @@ export default function CharacterHub() {
                         Xưng: <strong>{char.pronouns_self}</strong>
                         {char.pronouns_other && <> — Gọi người: <strong>{char.pronouns_other}</strong></>}
                       </div>
+                    )}
+
+                    {char.specific_role && (
+                      <p className="character-snippet character-specific-role">
+                        Vai trò cụ thể: {char.specific_role}
+                        {char.specific_role_locked && <span> · đã khóa</span>}
+                      </p>
                     )}
 
                     {char.personality_tags && (
@@ -586,6 +644,33 @@ export default function CharacterHub() {
                       onChange={e => setForm({ ...form, age: e.target.value })}
                       placeholder="Ví dụ: 16, thiếu niên, ngoại hình đôi mươi, tuổi thật rất cao..."
                     />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Vai trò cụ thể</label>
+                    <input
+                      data-testid="character-specific-role-input"
+                      type="text"
+                      value={form.specific_role}
+                      onChange={e => handleSpecificRoleChange(e.target.value)}
+                      placeholder="Ví dụ: người giữ bản đồ cổ, người chứng kiến vụ án, người thừa kế hợp pháp..."
+                    />
+                    <label
+                      className="character-role-lock-toggle"
+                      title="Khi khóa, AI sẽ không tự tạo nhân vật khác thay thế hoặc trùng vai trò này."
+                    >
+                      <input
+                        data-testid="character-specific-role-locked"
+                        type="checkbox"
+                        checked={Boolean(form.specific_role_locked && String(form.specific_role || '').trim())}
+                        disabled={!String(form.specific_role || '').trim()}
+                        onChange={e => setForm({
+                          ...form,
+                          specific_role_locked: Boolean(e.target.checked && String(form.specific_role || '').trim()),
+                        })}
+                      />
+                      <span>Khóa vai trò này như canon</span>
+                    </label>
                   </div>
 
                   {/* Pronouns */}
@@ -793,6 +878,7 @@ export default function CharacterHub() {
           <div className="codex-modal codex-modal--lg" onClick={e => e.stopPropagation()}>
             <BatchGenerate
               entityType="character"
+              canonRoleLocks={canonRoleLocks}
               projectContext={{
                 projectTitle: currentProject?.title,
                 genre: currentProject?.genre_primary,
@@ -815,6 +901,8 @@ export default function CharacterHub() {
                     project_id: pid,
                     name: item.name,
                     role: item.role || 'supporting',
+                    specific_role: item.specific_role || '',
+                    specific_role_locked: Boolean(item.specific_role_locked && String(item.specific_role || '').trim()),
                     age: item.age || '',
                     appearance: item.appearance || '',
                     personality: item.personality || '',

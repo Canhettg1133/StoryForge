@@ -1,4 +1,4 @@
-/**
+﻿/**
  * StoryForge — Batch AI Generation (Phase 3 Enhancement)
  * 
  * Context-aware batch entity generation.
@@ -9,6 +9,7 @@
  *   entityType: 'character' | 'location' | 'object' | 'term'
  *   projectContext: { projectTitle, genre, description }
  *   existingEntities: { characters, locations, objects, terms, chapters }
+ *   canonRoleLocks?: [{ characterId, characterName, specificRole, locked }]
  *   onBatchCreated: (items[]) => void
  */
 
@@ -40,7 +41,7 @@ Dựa trên cốt truyện và nhân vật đã có, TẠO THÊM nhân vật m�
 Mỗi nhân vật phải có LÝ DO TỒN TẠI trong cốt truyện (không tạo random).
 
 Trả về CHÍNH XÁC JSON:
-{ "items": [{"name":"...","role":"protagonist|antagonist|supporting|mentor|minor","appearance":"2-3 câu","personality":"2-3 câu","goals":"mục tiêu","notes":"vai trò trong cốt truyện"}] }`,
+{ "items": [{"name":"...","role":"protagonist|antagonist|supporting|mentor|minor","specific_role":"vai tro canon cu the neu tac gia yeu cau; de rong neu khong co","specific_role_locked":false,"appearance":"2-3 câu","personality":"2-3 câu","goals":"mục tiêu","notes":"vai trò trong cốt truyện"}] }`,
   },
   location: {
     label: 'địa điểm',
@@ -96,6 +97,7 @@ export default function BatchGenerate({
   entityType = 'character',
   projectContext = {},
   existingEntities = {},
+  canonRoleLocks: providedCanonRoleLocks = [],
   onBatchCreated,
   onClose,
 }) {
@@ -111,6 +113,20 @@ export default function BatchGenerate({
   const config = ENTITY_CONFIG[entityType];
   const defaultCount = config?.defaultCount || 3;
   const maxCount = config?.maxCount || BATCH_CHARACTER_MAX_COUNT;
+  const derivedCanonRoleLocks = useMemo(() => (
+    (existingEntities.characters || [])
+      .map((character) => ({
+        characterId: character.id,
+        characterName: String(character.name || '').trim(),
+        specificRole: String(character.specific_role || character.specificRole || '').trim(),
+        locked: Boolean(character.specific_role_locked ?? character.specificRoleLocked),
+      }))
+      .filter((item) => item.locked && item.characterName && item.specificRole)
+  ), [existingEntities.characters]);
+  const canonRoleLocks = Array.isArray(providedCanonRoleLocks) && providedCanonRoleLocks.length > 0
+    ? providedCanonRoleLocks
+    : derivedCanonRoleLocks;
+
   const characterBatchPlan = useMemo(() => {
     if (entityType !== 'character' || !autoDetectEnabled) {
       const clampedCount = clampBatchCount(count, 1, maxCount);
@@ -181,7 +197,11 @@ export default function BatchGenerate({
     // Existing characters
     if (existingEntities.characters?.length > 0) {
       const charList = existingEntities.characters
-        .map(c => `- ${c.name} (${c.role})${c.current_status ? ' | Live Canon: ' + c.current_status : ''}${c.goals ? ': ' + c.goals.substring(0, 50) : ''}`)
+        .map((c) => {
+          const specificRole = String(c.specific_role || c.specificRole || '').trim();
+          const roleLocked = Boolean((c.specific_role_locked ?? c.specificRoleLocked) && specificRole);
+          return `- ${c.name} (${c.role})${specificRole ? ' | Vai tro cu the: ' + specificRole + (roleLocked ? ' (da khoa canon)' : '') : ''}${c.current_status ? ' | Live Canon: ' + c.current_status : ''}${c.goals ? ': ' + c.goals.substring(0, 50) : ''}`;
+        })
         .join('\n');
       parts.push(`Nhân vật đã có:\n${charList}`);
     }
@@ -259,6 +279,7 @@ export default function BatchGenerate({
         aiInferCharacterList: useMissingMode,
         knownMissingCharacterNames: missingCharacterNames,
         selectedBatchCount: manualCount,
+        canonRoleLocks,
         entityContextText: contextStr,
       }),
       stream: false,
@@ -386,6 +407,7 @@ export default function BatchGenerate({
             <div className="batch-gen-context-tags">
               {existingEntities.chapters?.length > 0 && <span className="batch-tag">📋 {existingEntities.chapters.length} chương</span>}
               {existingEntities.characters?.length > 0 && <span className="batch-tag">👤 {existingEntities.characters.length} nhân vật</span>}
+              {canonRoleLocks.length > 0 && <span className="batch-tag">{canonRoleLocks.length} vai trò canon đã khóa</span>}
               {existingEntities.locations?.length > 0 && <span className="batch-tag">📍 {existingEntities.locations.length} địa điểm</span>}
               {existingEntities.terms?.length > 0 && <span className="batch-tag">📖 {existingEntities.terms.length} thuật ngữ</span>}
               {projectContext.worldName && <span className="batch-tag">🌍 {projectContext.worldName}</span>}
@@ -436,9 +458,16 @@ export default function BatchGenerate({
                   <strong>{item.name}</strong>
                   {item.role && <span className="badge badge-sm">{item.role}</span>}
                   {item.age && <span className="badge badge-sm">{item.age}</span>}
+                  {item.specific_role && <span className="badge badge-sm">Vai trò cụ thể</span>}
                   {item.category && <span className="badge badge-sm">{item.category}</span>}
                 </div>
                 <div className="batch-gen-item-body">
+                  {item.specific_role && (
+                    <p>
+                      <b>Vai trò cụ thể:</b> {item.specific_role}
+                      {item.specific_role_locked && ' · đã khóa'}
+                    </p>
+                  )}
                   {item.personality && <p>{item.personality}</p>}
                   {item.personality_tags && <p><b>Tags:</b> {item.personality_tags}</p>}
                   {item.flaws && <p><b>Flaws:</b> {item.flaws}</p>}

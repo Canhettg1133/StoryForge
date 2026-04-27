@@ -20,6 +20,16 @@ const CharacterDraftCard = React.memo(function CharacterDraftCard({
         </select>
       </div>
       <input className="input input-inline" value={draft.name} placeholder="Tên" onChange={(event) => onChange(character.id, 'name', event.target.value)} />
+      <input className="input input-inline" value={draft.specific_role || ''} placeholder="Vai trò cụ thể" onChange={(event) => onChange(character.id, 'specific_role', event.target.value)} />
+      <label className="bible-inline-check" title="Khi khóa, AI sẽ không tự tạo nhân vật khác thay thế hoặc trùng vai trò này.">
+        <input
+          type="checkbox"
+          checked={Boolean(draft.specific_role_locked && String(draft.specific_role || '').trim())}
+          disabled={!String(draft.specific_role || '').trim()}
+          onChange={(event) => onChange(character.id, 'specific_role_locked', event.target.checked)}
+        />
+        <span>Khóa vai trò này như canon</span>
+      </label>
       <input className="input input-inline" value={draft.age || ''} placeholder="Tuổi / độ tuổi" onChange={(event) => onChange(character.id, 'age', event.target.value)} />
       <input className="input input-inline" value={draft.appearance || ''} placeholder="Ngoại hình" onChange={(event) => onChange(character.id, 'appearance', event.target.value)} />
       <input className="input input-inline" value={draft.personality || ''} placeholder="Tính cách" onChange={(event) => onChange(character.id, 'personality', event.target.value)} />

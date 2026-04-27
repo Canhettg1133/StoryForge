@@ -38,6 +38,71 @@ const ACTS = [
 
 const VALID_THREAD_TYPES = ['main', 'subplot', 'character_arc', 'mystery', 'romance'];
 
+function normalizeOutlineListField(value) {
+  const normalizeItem = (item) => {
+    if (isPlainObject(item)) {
+      return String(item.name || item.title || item.label || item.value || '').trim();
+    }
+    return String(item || '').trim();
+  };
+
+  if (Array.isArray(value)) {
+    return value.map(normalizeItem).filter(Boolean);
+  }
+
+  if (typeof value !== 'string') return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  try {
+    const parsed = parseAIJsonValue(trimmed);
+    if (Array.isArray(parsed)) {
+      return parsed.map(normalizeItem).filter(Boolean);
+    }
+  } catch {
+    // Fall through to loose splitting for model outputs like "A, B, C".
+  }
+
+  return trimmed
+    .split(/[\n,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeOutlineTextField(value) {
+  return typeof value === 'string' ? value.trim() : String(value || '').trim();
+}
+
+function buildChapterAnchorPatch(chapter = {}, { preserveMissing = false } = {}) {
+  const hasField = (key) => Object.prototype.hasOwnProperty.call(chapter, key);
+  const patch = {};
+  const setList = (key) => {
+    if (!preserveMissing || hasField(key)) patch[key] = normalizeOutlineListField(chapter[key]);
+  };
+  const setText = (key) => {
+    if (!preserveMissing || hasField(key)) patch[key] = normalizeOutlineTextField(chapter[key]);
+  };
+
+  setList('featured_characters');
+  setText('primary_location');
+  setList('thread_titles');
+  setList('key_events');
+  setList('required_factions');
+  setList('required_objects');
+  setList('required_terms');
+  return patch;
+}
+
+function formatCharacterForOutlinePrompt(character = {}) {
+  const name = character.name || 'Nhan vat';
+  const parts = [name + ' (' + (character.role || 'nhan vat') + ')'];
+  const aliases = normalizeOutlineListField(character.aliases);
+  if (aliases.length > 0) parts.push('aliases: ' + aliases.join(', '));
+  if (character.specific_role) parts.push('specific_role: ' + character.specific_role);
+  if (character.current_status) parts.push('Live Canon: ' + character.current_status);
+  return '- ' + parts.join(' | ');
+}
+
 export default function OutlineBoard() {
   const navigate = useNavigate();
   const {
@@ -155,7 +220,7 @@ export default function OutlineBoard() {
     setIsGenerating(true);
     setGenError(null);
 
-    const charList = characters.map((c) => `${c.name} (${c.role})${c.current_status ? ` - Live Canon: ${c.current_status}` : ''}`).join(', ');
+    const charList = characters.map(formatCharacterForOutlinePrompt).join('\n');
     const locList = locations.map((l) => l.name).join(', ');
     const existingOutline = chapters.length > 0
       ? chapters.map((ch, i) => `${i + 1}. ${ch.title}${ch.purpose ? ' - ' + ch.purpose : ''}`).join('\n')
@@ -213,6 +278,7 @@ export default function OutlineBoard() {
                 summary: nextChapters[i].summary || '',
                 state_delta: nextChapters[i].state_delta || '',
                 arc_id: nextChapters[i].act || null,
+                ...buildChapterAnchorPatch(nextChapters[i], { preserveMissing: true }),
               });
             }
           } else {
@@ -222,6 +288,7 @@ export default function OutlineBoard() {
                 summary: ac.summary || '',
                 state_delta: ac.state_delta || '',
                 arc_id: ac.act || null,
+                ...buildChapterAnchorPatch(ac),
               });
             }
           }
@@ -262,7 +329,7 @@ export default function OutlineBoard() {
     setShowSuggestInput(false);
 
     const synopsisText = currentProject.synopsis || currentProject.description || 'Chua co';
-    const charList = characters.map((c) => `${c.name} (${c.role})${c.current_status ? ` - Live Canon: ${c.current_status}` : ''}`).join(', ') || 'Chua co';
+    const charList = characters.map(formatCharacterForOutlinePrompt).join('\n') || 'Chua co';
     const chapterList = chapters.length > 0
       ? chapters.map((ch, i) =>
         `${i + 1}. ${ch.title}${ch.purpose ? ' - ' + ch.purpose : ''}${ch.summary ? ': ' + ch.summary : ''}`

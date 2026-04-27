@@ -31,6 +31,8 @@ export default function useStoryBibleDrafts({
     setCharacterDrafts((previousDrafts) => syncDraftMap(previousDrafts, characters, (item) => ({
       role: item.role || 'supporting',
       name: item.name || '',
+      specific_role: item.specific_role || '',
+      specific_role_locked: Boolean(item.specific_role_locked && String(item.specific_role || '').trim()),
       age: item.age || '',
       appearance: item.appearance || '',
       personality: item.personality || '',
@@ -101,15 +103,33 @@ export default function useStoryBibleDrafts({
   }, []);
 
   const handleCharacterDraftChange = useCallback((id, field, value) => {
-    setCharacterDrafts((prev) => ({
-      ...prev,
-      [id]: {
-        ...(prev[id] || {}),
-        [field]: value,
-      },
-    }));
-    scheduleDraftPersist(characterSaveTimersRef, id, () => updateCharacter(id, { [field]: value }));
-  }, [scheduleDraftPersist, updateCharacter]);
+    const currentDraft = characterDrafts[id] || {};
+    const patch = { [field]: value };
+    if (field === 'specific_role') {
+      const previousRole = String(currentDraft.specific_role || '').trim();
+      const nextRole = String(value || '').trim();
+      patch.specific_role = value;
+      patch.specific_role_locked = nextRole
+        ? (previousRole ? Boolean(currentDraft.specific_role_locked) : true)
+        : false;
+    }
+    if (field === 'specific_role_locked') {
+      const specificRole = String(currentDraft.specific_role || '').trim();
+      patch.specific_role_locked = Boolean(value && specificRole);
+    }
+    setCharacterDrafts((prev) => {
+      const previousDraft = prev[id] || {};
+      const nextDraft = {
+        ...previousDraft,
+        ...patch,
+      };
+      return {
+        ...prev,
+        [id]: nextDraft,
+      };
+    });
+    scheduleDraftPersist(characterSaveTimersRef, id, () => updateCharacter(id, patch));
+  }, [characterDrafts, scheduleDraftPersist, updateCharacter]);
 
   const handleLocationDraftChange = useCallback((id, field, value) => {
     setLocationDrafts((prev) => ({

@@ -221,6 +221,7 @@ export function mergeCharacterPatch(existing = {}, incoming = {}) {
     'pronouns_self',
     'pronouns_other',
     'speech_pattern',
+    'specific_role',
     'current_status',
     'goals',
     'secrets',
@@ -232,6 +233,11 @@ export function mergeCharacterPatch(existing = {}, incoming = {}) {
     if (!cleanText(existing[field]) && cleanText(incoming[field])) {
       patch[field] = incoming[field];
     }
+  }
+
+  if (!cleanText(existing.specific_role) && cleanText(incoming.specific_role)) {
+    patch.specific_role = incoming.specific_role;
+    patch.specific_role_locked = Boolean(incoming.specific_role_locked);
   }
 
   const roleRank = { minor: 1, supporting: 2, mentor: 3, antagonist: 4, protagonist: 5 };

@@ -542,10 +542,25 @@ function normalizeEntityRecord(rawValue, fieldMap = {}) {
       nextValue[key] = normalizeOptionalText(source[key]);
       return;
     }
+    if (kind === 'boolean') {
+      nextValue[key] = normalizeBoolean(source[key]);
+      return;
+    }
     nextValue[key] = source[key];
   });
 
   return nextValue;
+}
+
+function normalizeBoolean(value) {
+  if (value === true) return true;
+  if (value === false || value === null || value === undefined) return false;
+  if (typeof value === 'string') {
+    const normalized = normalizeBlueprintText(value);
+    if (['true', 'yes', '1', 'co', 'da khoa'].includes(normalized)) return true;
+    if (['false', 'no', '0', 'khong', 'khong khoa'].includes(normalized)) return false;
+  }
+  return Boolean(value);
 }
 
 function getBlueprintEntityName(item = {}) {
@@ -566,6 +581,8 @@ export function normalizeWizardBlueprintResult(rawValue, fallbackTitle = '') {
       .map((item) => normalizeEntityRecord(item, {
         name: 'text',
         role: 'text',
+        specific_role: 'text',
+        specific_role_locked: 'boolean',
         age: 'text',
         appearance: 'text',
         personality: 'text',
@@ -575,6 +592,10 @@ export function normalizeWizardBlueprintResult(rawValue, fallbackTitle = '') {
         current_status: 'text',
         secrets: 'text',
         story_function: 'text',
+      }))
+      .map((item) => ({
+        ...item,
+        specific_role_locked: Boolean(item.specific_role_locked && item.specific_role),
       }))
     : [];
   nextResult.locations = Array.isArray(nextResult.locations)

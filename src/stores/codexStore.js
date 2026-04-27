@@ -42,6 +42,10 @@ function cleanHtml(text) {
   return (text || '').replace(/<[^>]*>/g, ' ').toLowerCase();
 }
 
+function cleanText(value) {
+  return String(value || '').trim();
+}
+
 function mergeByIdAndName(existingItems = [], nextItems = []) {
   if (!Array.isArray(nextItems) || nextItems.length === 0) return existingItems;
 
@@ -219,6 +223,8 @@ const useCodexStore = create((set, get) => ({
       pronouns_self: data.pronouns_self || '',
       pronouns_other: data.pronouns_other || '',
       speech_pattern: data.speech_pattern || '',
+      specific_role: cleanText(data.specific_role || ''),
+      specific_role_locked: Boolean(data.specific_role_locked && cleanText(data.specific_role || '')),
       current_status: data.current_status || '',
       goals: data.goals || '',
       secrets: data.secrets || '',
@@ -253,10 +259,24 @@ const useCodexStore = create((set, get) => ({
   },
 
   updateCharacter: async (id, data) => {
-    await db.characters.update(id, data);
+    const patch = { ...data };
+    if (Object.prototype.hasOwnProperty.call(patch, 'specific_role')) {
+      patch.specific_role = cleanText(patch.specific_role);
+      if (!patch.specific_role) {
+        patch.specific_role_locked = false;
+      } else if (Object.prototype.hasOwnProperty.call(patch, 'specific_role_locked')) {
+        patch.specific_role_locked = Boolean(patch.specific_role_locked);
+      }
+    } else if (Object.prototype.hasOwnProperty.call(patch, 'specific_role_locked')) {
+      const current = get().characters.find((character) => character.id === id) || await db.characters.get(id);
+      const specificRole = cleanText(current?.specific_role || '');
+      patch.specific_role_locked = Boolean(patch.specific_role_locked && specificRole);
+    }
+
+    await db.characters.update(id, patch);
     set(state => ({
       characters: state.characters.map(c =>
-        c.id === id ? { ...c, ...data } : c
+        c.id === id ? { ...c, ...patch } : c
       ),
     }));
   },

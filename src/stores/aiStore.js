@@ -319,6 +319,7 @@ const useAIStore = create((set, get) => ({
           taskType,
           retrievalMode: context.retrievalMode || '',
           userPrompt: context.userPrompt || '',
+          includeAllCharacters: taskType === TASK_TYPES.OUTLINE,
         });
         // Keep full contextEngine output, then let explicit caller context override.
         enrichedContext = {
