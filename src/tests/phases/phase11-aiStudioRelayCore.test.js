@@ -48,6 +48,7 @@ describe('AI Studio Relay room core', () => {
     expect(isTrustedAIStudioOrigin('https://ai.studio')).toBe(true);
     expect(isTrustedAIStudioOrigin('https://aistudio.google.com')).toBe(true);
     expect(isTrustedAIStudioOrigin('https://preview.googleusercontent.com')).toBe(true);
+    expect(isTrustedAIStudioOrigin('https://ais-pre-rrm5ukw3mkjjcoxofo46zm-764285983482.asia-east1.run.app')).toBe(true);
     expect(isTrustedAIStudioOrigin('http://ai.studio')).toBe(false);
   });
 

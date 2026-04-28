@@ -46,6 +46,7 @@ export function isTrustedAIStudioOrigin(origin) {
       hostname.endsWith('.run.app')
       && (
         hostname.startsWith('ais-dev-')
+        || hostname.startsWith('ais-pre-')
         || hostname.startsWith('ais-prod-')
         || hostname.startsWith('aistudio-')
       )
