@@ -4,6 +4,7 @@ import {
   createRoomCode,
   sanitizeRelayLogEvent,
 } from '../../../relay-worker/src/room-core.js';
+import relayWorker from '../../../relay-worker/src/index.js';
 import { isTrustedAIStudioOrigin } from '../../../relay-worker/src/index.js';
 
 class FakeSocket {
@@ -48,6 +49,20 @@ describe('AI Studio Relay room core', () => {
     expect(isTrustedAIStudioOrigin('https://aistudio.google.com')).toBe(true);
     expect(isTrustedAIStudioOrigin('https://preview.googleusercontent.com')).toBe(true);
     expect(isTrustedAIStudioOrigin('http://ai.studio')).toBe(false);
+  });
+
+  it('allows sandboxed AI Studio connector fetches with opaque null origin', async () => {
+    const env = {
+      ALLOWED_ORIGINS: 'https://story-forge-virid.vercel.app,https://ai.studio',
+    };
+    const request = new Request('https://relay.example.test/health', {
+      headers: { Origin: 'null' },
+    });
+
+    const response = await relayWorker.fetch(request, env);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('null');
   });
 
   it('creates readable room codes without ambiguous state', () => {

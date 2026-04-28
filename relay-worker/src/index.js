@@ -52,12 +52,18 @@ export function isTrustedAIStudioOrigin(origin) {
     );
 }
 
+function isAllowedOpaqueOrigin(request) {
+  // Some AI Studio previews/mobile browsers run connector code in a sandboxed
+  // frame, so browser fetch uses the opaque CORS origin "null".
+  return request.headers.get('Origin') === 'null';
+}
+
 function isOriginAllowed(request, env) {
   const allowedOrigins = getAllowedOrigins(env);
   if (allowedOrigins.length === 0) return true;
   const origin = request.headers.get('Origin');
   if (!origin) return true;
-  if (origin === 'null' && request.headers.get('Upgrade') === 'websocket') return true;
+  if (isAllowedOpaqueOrigin(request)) return true;
   if (isTrustedAIStudioOrigin(origin)) return true;
   return allowedOrigins.some((allowedOrigin) => matchesAllowedOrigin(origin, allowedOrigin));
 }
@@ -73,7 +79,8 @@ function corsHeaders(request, env) {
 
   const origin = request.headers.get('Origin');
   const responseOrigin = origin && (
-    isTrustedAIStudioOrigin(origin)
+    isAllowedOpaqueOrigin(request)
+    || isTrustedAIStudioOrigin(origin)
     || allowedOrigins.some((allowedOrigin) => matchesAllowedOrigin(origin, allowedOrigin))
   )
     ? origin
