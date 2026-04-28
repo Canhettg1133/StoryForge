@@ -33,6 +33,7 @@ const GEMINI_CLI_TROUBLESHOOTING_URL = 'https://google-gemini.github.io/gemini-c
 const GEMINI_CODE_ASSIST_SETUP_URL = 'https://cloud.google.com/gemini/docs/discover/set-up-gemini';
 const GOOGLE_CLOUD_PROJECT_CREATE_URL = 'https://console.cloud.google.com/projectcreate';
 const GOOGLE_CLOUD_API_ENABLE_URL = 'https://console.cloud.google.com/apis/library/cloudaicompanion.googleapis.com';
+const AI_STUDIO_FIX_CLI_APP_URL = 'https://ai.studio/apps/a9e5212b-a876-4d92-8e00-2ec744def595';
 const GUIDE_IMAGE_BASE = '/guide/gemini-proxy';
 
 const GUIDE_IMAGE_SLOTS = {
@@ -100,9 +101,9 @@ function StatusCard({ icon: Icon, label, value, tone = 'neutral' }) {
   );
 }
 
-function StepCard({ index, title, icon: Icon, children }) {
+function StepCard({ index, title, icon: Icon, id, children }) {
   return (
-    <section className="settings-section card animate-slide-up gemini-guide-step">
+    <section id={id} className="settings-section card animate-slide-up gemini-guide-step">
       <div className="settings-section-header">
         <div className="gemini-guide-step__badge">{index}</div>
         <Icon size={20} />
@@ -172,7 +173,7 @@ function ScreenshotGroup({ shots, onOpen }) {
   );
 }
 
-export default function GeminiProxyGuide() {
+export default function GeminiProxyGuide({ focusFixCli = false }) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [activeShot, setActiveShot] = useState(null);
@@ -212,6 +213,17 @@ export default function GeminiProxyGuide() {
       setCopied(false);
     }
   };
+
+  useEffect(() => {
+    if (!focusFixCli) {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById('fix-cli')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+    return () => window.clearTimeout(timeoutId);
+  }, [focusFixCli]);
 
   useEffect(() => {
     if (!activeShot) {
@@ -264,6 +276,9 @@ export default function GeminiProxyGuide() {
             </button>
             <button className="btn btn-ghost" onClick={() => navigate('/guide')}>
               <Sparkles size={14} /> {'Xem guide Gemini Direct'}
+            </button>
+            <button className="btn btn-ghost" onClick={() => navigate('/guide/proxy/fix-cli')}>
+              <AlertTriangle size={14} /> {'Fix CLI'}
             </button>
           </div>
         </div>
@@ -464,9 +479,14 @@ export default function GeminiProxyGuide() {
               {'.'}
             </li>
           </ol>
+          <div className="gemini-guide-action-row">
+            <button className="btn btn-secondary" onClick={() => navigate('/guide/proxy/fix-cli')}>
+              <AlertTriangle size={14} /> {'M\u1edf ph\u1ea7n fix CLI'}
+            </button>
+          </div>
         </StepCard>
 
-        <StepCard index="8.1" title={'L\u1ed7i Project not found / GOOGLE_CLOUD_PROJECT khi add CLI'} icon={AlertTriangle}>
+        <StepCard id="fix-cli" index="8.1" title={'L\u1ed7i Project not found / GOOGLE_CLOUD_PROJECT khi add CLI'} icon={AlertTriangle}>
           <p>
             {'T\u00f4i \u0111\u00e3 ki\u1ec3m tra th\u00eam t\u00e0i li\u1ec7u Gemini CLI v\u00e0 c\u00e1c issue c\u00f4ng khai. L\u1ed7i ki\u1ec3u '}
             <strong>Project not found</strong>
@@ -512,6 +532,12 @@ export default function GeminiProxyGuide() {
               {'N\u1ebfu l\u1ed7i hi\u1ec7n ngay sau khi submit callback tr\u00ean dashboard proxy, h\u00e3y coi \u0111\u00f3 l\u00e0 l\u1ed7i auth/project c\u1ee7a t\u00e0i kho\u1ea3n Google. S\u1eeda \u0111\u00fang project/quy\u1ec1n tr\u01b0\u1edbc, r\u1ed3i quay l\u1ea1i dashboard proxy l\u1ea5y callback m\u1edbi.'}
             </span>
           </div>
+          <div className="gemini-guide-note">
+            <ShieldCheck size={16} />
+            <span>
+              {'N\u1ebfu mu\u1ed1n ch\u1ea1y tool t\u1ef1 \u0111\u1ed9ng ki\u1ec3m tra project, enable API v\u00e0 IAM, m\u1edf App1 trong AI Studio. App1 kh\u00f4ng c\u00f2n hard-code OAuth Client Secret; secret ph\u1ea3i nh\u1eadp l\u00fac ch\u1ea1y v\u00e0 kh\u00f4ng commit l\u00ean GitHub.'}
+            </span>
+          </div>
           <pre className="gemini-guide-code-block">
             <code>{`# Windows PowerShell - chỉ dùng nếu bạn chạy Gemini CLI local
 $env:GOOGLE_CLOUD_PROJECT="your-project-id"
@@ -531,6 +557,9 @@ setx GOOGLE_CLOUD_PROJECT_ID "your-project-id"`}</code>
             </a>
             <a className="btn btn-ghost" href={GEMINI_CODE_ASSIST_SETUP_URL} target="_blank" rel="noreferrer">
               <ExternalLink size={14} /> {'B\u1eadt Gemini for Cloud API'}
+            </a>
+            <a className="btn btn-secondary" href={AI_STUDIO_FIX_CLI_APP_URL} target="_blank" rel="noreferrer">
+              <ExternalLink size={14} /> {'M\u1edf App1 fix CLI'}
             </a>
           </div>
         </StepCard>

@@ -10,11 +10,18 @@
 import keyManager from './keyManager';
 import { AI_ERROR_CODES, normalizeAIError, shouldFallbackForError } from './errorUtils';
 import { PROVIDERS, TASK_TYPES } from './router';
+import {
+  callAIStudioRelayTransport,
+  createAIStudioRelayRoom,
+  getAIStudioRelayRoomStatus,
+} from './aiStudioRelayClient';
 import { NSFW_REBUKE_PROMPT } from '../../utils/constants';
 
 const SETTINGS_KEY = 'sf-ai-settings';
 const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 65000;
 const PROXY_MAX_OUTPUT_TOKENS = 65000;
+const DEFAULT_AI_STUDIO_RELAY_URL = 'https://storyforge-ai-studio-relay.canhettg113.workers.dev';
+const DEFAULT_AI_STUDIO_CONNECTOR_URL = 'https://ai.studio/apps/685f3deb-17d8-4197-9733-a8f144543129';
 const GOOGLE_SAFETY_CATEGORIES = [
   'HARM_CATEGORY_SEXUALLY_EXPLICIT',
   'HARM_CATEGORY_HATE_SPEECH',
@@ -111,6 +118,20 @@ export function getGeminiDirectBaseUrl() {
 export function getOllamaUrl() {
   return getSettings().ollamaUrl || 'http://localhost:11434';
 }
+
+export function getAIStudioRelayUrl() {
+  return getSettings().aiStudioRelayUrl || import.meta.env.VITE_AI_STUDIO_RELAY_URL || DEFAULT_AI_STUDIO_RELAY_URL;
+}
+
+export function getAIStudioConnectorUrl() {
+  return getSettings().aiStudioConnectorUrl || import.meta.env.VITE_AI_STUDIO_CONNECTOR_URL || DEFAULT_AI_STUDIO_CONNECTOR_URL;
+}
+
+export function getAIStudioRelayRoomCode() {
+  return getSettings().aiStudioRelayRoomCode || '';
+}
+
+export { createAIStudioRelayRoom, getAIStudioRelayRoomStatus };
 
 function buildGeminiDirectEndpoint(baseUrl, pathWithQuery = '') {
   const normalizedBase = String(baseUrl || '').replace(/\/+$/u, '');
@@ -368,6 +389,45 @@ async function callOllama({ model, messages, stream = true, signal, onToken, onC
 }
 
 // ================================
+// AI Studio Relay
+// ================================
+async function callAIStudioRelay({ model, messages, stream = true, signal, onToken, onComplete, onError }) {
+  const relayUrl = getAIStudioRelayUrl();
+  const roomCode = getAIStudioRelayRoomCode();
+
+  if (!relayUrl) {
+    throw normalizeAIError(
+      { code: AI_ERROR_CODES.NETWORK_ERROR, rawMessage: 'AI_STUDIO_RELAY_URL_REQUIRED' },
+      { provider: PROVIDERS.AI_STUDIO_RELAY, model },
+    );
+  }
+  if (!roomCode) {
+    throw normalizeAIError(
+      { code: AI_ERROR_CODES.NETWORK_ERROR, rawMessage: 'AI_STUDIO_RELAY_ROOM_REQUIRED' },
+      { provider: PROVIDERS.AI_STUDIO_RELAY, model },
+    );
+  }
+
+  try {
+    return await callAIStudioRelayTransport({
+      relayUrl,
+      roomCode,
+      model,
+      messages,
+      stream,
+      signal,
+      onToken,
+      onComplete,
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    const normalized = normalizeAIError(err, { provider: PROVIDERS.AI_STUDIO_RELAY, model });
+    onError?.(normalized);
+    throw normalized;
+  }
+}
+
+// ================================
 // Stream Parsers
 // ================================
 async function streamSSE(response, { onToken, onComplete, onError, errorContext = {} }) {
@@ -519,6 +579,7 @@ async function streamNDJSON(response, { onToken, onComplete, onError }) {
 // ================================
 function getCallFn(provider) {
   switch (provider) {
+    case PROVIDERS.AI_STUDIO_RELAY: return callAIStudioRelay;
     case PROVIDERS.GEMINI_DIRECT: return callGeminiDirect;
     case PROVIDERS.GEMINI_PROXY: return callGeminiProxy;
     case PROVIDERS.OLLAMA: return callOllama;
@@ -766,6 +827,24 @@ class AIService {
         );
         if (!res.ok) throw new Error(`Status ${res.status}`);
         return { success: true, models: [] };
+      }
+      if (provider === PROVIDERS.AI_STUDIO_RELAY) {
+        const relayUrl = getAIStudioRelayUrl();
+        const roomCode = getAIStudioRelayRoomCode();
+        if (!relayUrl) return { success: false, error: 'Chua cau hinh Relay URL' };
+        if (roomCode) {
+          const status = await getAIStudioRelayRoomStatus(relayUrl, roomCode, {
+            signal: AbortSignal.timeout(8000),
+          });
+          return { success: true, models: [], status };
+        }
+
+        const healthUrl = new URL(relayUrl, window.location.origin);
+        healthUrl.pathname = `${healthUrl.pathname.replace(/\/+$/u, '')}/health`;
+        const res = await fetch(healthUrl.toString(), { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error(`Status ${res.status}`);
+        const status = await res.json().catch(() => ({}));
+        return { success: true, models: [], status };
       }
       return { success: false, error: 'Unknown provider' };
     } catch (err) {

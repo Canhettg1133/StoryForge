@@ -12,6 +12,7 @@ export const PROVIDERS = {
   GEMINI_PROXY: 'gemini_proxy',
   GEMINI_DIRECT: 'gemini_direct',
   OLLAMA: 'ollama',
+  AI_STUDIO_RELAY: 'ai_studio_relay',
 };
 
 // --- Gemini Direct: Free-tier models (ID thực từ ListModels) ---
@@ -19,6 +20,22 @@ export const DIRECT_MODELS = [
   { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', rpm: 5, rpd: 20, default: true },
   { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview', rpm: 5, rpd: 20, default: true },
   { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite Preview', rpm: 15, rpd: 500, default: true },
+];
+
+export const AI_STUDIO_RELAY_MODELS = [
+  { id: 'gemini-flash-latest', label: 'Gemini Flash Latest', default: true },
+  { id: 'gemini-flash-lite-latest', label: 'Gemini Flash-Lite Latest' },
+  { id: 'gemini-pro-latest', label: 'Gemini Pro Latest' },
+  { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro Preview' },
+  { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite Preview' },
+  { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+  { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
+  { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+  { id: 'gemini-2.5-flash-preview-09-2025', label: 'Gemini 2.5 Flash Preview 09-2025' },
+  { id: 'gemini-2.5-flash-lite-preview-09-2025', label: 'Gemini 2.5 Flash Lite Preview 09-2025' },
+  { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' },
+  { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
 ];
 
 // --- Gemini Proxy: 星星 真流 models ---
@@ -116,6 +133,7 @@ const DIRECT_QUALITY_MAP = {
 };
 
 const PROXY_MODEL_KEY = 'sf-proxy-model';
+const AI_STUDIO_RELAY_MODEL_KEY = 'sf-ai-studio-relay-model';
 
 // ─── Proxy: task-specific model mapping ───
 const PROXY_DEFAULT = {
@@ -272,6 +290,26 @@ function getInitialProxyModel() {
   return getDefaultProxyModel();
 }
 
+function getDefaultAIStudioRelayModel() {
+  return AI_STUDIO_RELAY_MODELS.find((model) => model.default)?.id
+    || AI_STUDIO_RELAY_MODELS[0]?.id
+    || 'gemini-2.5-flash';
+}
+
+function normalizeAIStudioRelayModel(modelId) {
+  const normalized = String(modelId || '').trim();
+  if (AI_STUDIO_RELAY_MODELS.some((model) => model.id === normalized)) return normalized;
+  return getDefaultAIStudioRelayModel();
+}
+
+function getInitialAIStudioRelayModel() {
+  try {
+    const saved = localStorage.getItem(AI_STUDIO_RELAY_MODEL_KEY);
+    if (saved) return normalizeAIStudioRelayModel(saved);
+  } catch { }
+  return getDefaultAIStudioRelayModel();
+}
+
 // ─── Active Direct models (user can manage) ───
 const ACTIVE_MODELS_KEY = 'sf-active-direct-models';
 
@@ -299,6 +337,7 @@ class ModelRouter {
       }
     } catch { }
     this.ollamaModel = localStorage.getItem('sf-ollama-model') || '';
+    this.aiStudioRelayModel = getInitialAIStudioRelayModel();
   }
 
   setQualityMode(mode) {
@@ -321,6 +360,11 @@ class ModelRouter {
     localStorage.setItem(PROXY_MODEL_KEY, this.proxyModel);
   }
 
+  setAIStudioRelayModel(model) {
+    this.aiStudioRelayModel = normalizeAIStudioRelayModel(model);
+    localStorage.setItem(AI_STUDIO_RELAY_MODEL_KEY, this.aiStudioRelayModel);
+  }
+
   getActiveDirectModels() { return getActiveDirectModels(); }
   setActiveDirectModels(models) { setActiveDirectModels(models); }
 
@@ -339,7 +383,11 @@ class ModelRouter {
         if (!modelOverride.includes('[')) provider = PROVIDERS.GEMINI_DIRECT;
         if (!modelOverride.startsWith('gemini')) provider = PROVIDERS.OLLAMA;
       }
-      return { provider, model: modelOverride, tier: 'custom' };
+      return {
+        provider,
+        model: modelOverride,
+        tier: provider === PROVIDERS.AI_STUDIO_RELAY ? 'relay' : 'custom',
+      };
     }
 
     const provider = providerOverride || this.preferredProvider;
@@ -347,6 +395,14 @@ class ModelRouter {
 
     if (provider === PROVIDERS.OLLAMA) {
       return { provider, model: this.ollamaModel || 'llama3', tier: 'local' };
+    }
+
+    if (provider === PROVIDERS.AI_STUDIO_RELAY) {
+      return {
+        provider,
+        model: normalizeAIStudioRelayModel(this.aiStudioRelayModel),
+        tier: 'relay',
+      };
     }
 
     if (provider === PROVIDERS.GEMINI_DIRECT) {
@@ -380,6 +436,7 @@ class ModelRouter {
   getQualityMode() { return this.qualityMode; }
   getOllamaModel() { return this.ollamaModel; }
   getProxyModel() { return this.proxyModel; }
+  getAIStudioRelayModel() { return this.aiStudioRelayModel; }
   getPreferredProvider() { return this.preferredProvider; }
 }
 

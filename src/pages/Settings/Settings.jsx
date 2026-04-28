@@ -1,8 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import keyManager from '../../services/ai/keyManager';
-import modelRouter, { PROVIDERS, DIRECT_MODELS, PROXY_MODEL_PRESETS } from '../../services/ai/router';
+import modelRouter, {
+  AI_STUDIO_RELAY_MODELS,
+  PROVIDERS,
+  DIRECT_MODELS,
+  PROXY_MODEL_PRESETS,
+} from '../../services/ai/router';
 import aiService, {
+  createAIStudioRelayRoom,
+  getAIStudioConnectorUrl,
+  getAIStudioRelayRoomStatus,
+  getAIStudioRelayRoomCode,
+  getAIStudioRelayUrl,
   getGeminiDirectBaseUrl,
   getOllamaUrl,
   getProxyUrl,
@@ -231,6 +241,15 @@ export default function Settings() {
   const [proxyUrl, setProxyUrl] = useState(getProxyUrl());
   const [directUrl, setDirectUrl] = useState(getGeminiDirectBaseUrl());
   const [ollamaUrl, setOllamaUrl] = useState(getOllamaUrl());
+  const [aiStudioRelayUrl, setAIStudioRelayUrl] = useState(getAIStudioRelayUrl());
+  const [aiStudioConnectorUrl, setAIStudioConnectorUrl] = useState(getAIStudioConnectorUrl());
+  const [aiStudioRelayRoomCode, setAIStudioRelayRoomCode] = useState(getAIStudioRelayRoomCode());
+  const [aiStudioRelayModel, setAIStudioRelayModel] = useState(modelRouter.getAIStudioRelayModel());
+  const [creatingRelayRoom, setCreatingRelayRoom] = useState(false);
+  const [copiedRelayRoom, setCopiedRelayRoom] = useState(false);
+  const [showAIStudioRelaySetup, setShowAIStudioRelaySetup] = useState(false);
+  const [aiStudioRelayStatus, setAIStudioRelayStatus] = useState(null);
+  const [aiStudioRelayStatusError, setAIStudioRelayStatusError] = useState('');
   const [ollamaModel, setOllamaModel] = useState(localStorage.getItem('sf-ollama-model') || '');
   const [ollamaModels, setOllamaModels] = useState([]);
   const [testResults, setTestResults] = useState({});
@@ -239,6 +258,18 @@ export default function Settings() {
   const [proxyModel, setProxyModel] = useState(modelRouter.getProxyModel());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
   const selectedProxyPreset = PROXY_MODEL_PRESETS.find((model) => model.id === proxyModel) || PROXY_MODEL_PRESETS[0];
+  const aiStudioConnectorConnected = Boolean(aiStudioRelayStatus?.connectorConnected);
+  const aiStudioClientConnected = Boolean(aiStudioRelayStatus?.clientConnected);
+  const aiStudioRelayExpired = Boolean(aiStudioRelayStatus?.expired);
+  const aiStudioRelayStatusLabel = !aiStudioRelayRoomCode
+    ? 'Chưa tạo mã phòng'
+    : aiStudioRelayStatusError
+      ? 'Không đọc được trạng thái'
+      : aiStudioRelayExpired
+        ? 'Room đã hết hạn'
+        : aiStudioConnectorConnected
+          ? 'Connector đã kết nối'
+          : 'Đang chờ connector';
 
   useEffect(() => {
     if (!location.hash) return;
@@ -257,7 +288,121 @@ export default function Settings() {
     return () => window.clearTimeout(timeoutId);
   }, [location.hash]);
 
-  const handleSaveUrls = () => saveSettings({ proxyUrl, geminiDirectUrl: directUrl, ollamaUrl });
+  useEffect(() => {
+    const shouldPoll = provider === PROVIDERS.AI_STUDIO_RELAY || showAIStudioRelaySetup;
+    const relay = aiStudioRelayUrl.trim();
+    const code = aiStudioRelayRoomCode.trim();
+
+    if (!shouldPoll || !relay || !code) {
+      setAIStudioRelayStatus(null);
+      setAIStudioRelayStatusError('');
+      return undefined;
+    }
+
+    let cancelled = false;
+    const pollStatus = async () => {
+      try {
+        const status = await getAIStudioRelayRoomStatus(relay, code, {
+          signal: AbortSignal.timeout(6000),
+        });
+        if (cancelled) return;
+        setAIStudioRelayStatus(status);
+        setAIStudioRelayStatusError('');
+      } catch (error) {
+        if (cancelled) return;
+        setAIStudioRelayStatus(null);
+        setAIStudioRelayStatusError(error?.message || 'Không đọc được trạng thái room.');
+      }
+    };
+
+    pollStatus();
+    const intervalId = window.setInterval(pollStatus, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [aiStudioRelayUrl, aiStudioRelayRoomCode, provider, showAIStudioRelaySetup]);
+
+  const handleSaveUrls = () => saveSettings({
+    proxyUrl,
+    geminiDirectUrl: directUrl,
+    ollamaUrl,
+    aiStudioRelayUrl,
+    aiStudioConnectorUrl,
+    aiStudioRelayRoomCode,
+    aiStudioRelayModel,
+  });
+
+  const handleSaveAIStudioRelay = () => {
+    modelRouter.setAIStudioRelayModel(aiStudioRelayModel);
+    saveSettings({
+      aiStudioRelayUrl,
+      aiStudioConnectorUrl,
+      aiStudioRelayRoomCode,
+      aiStudioRelayModel,
+    });
+  };
+
+  const handleCreateRelayRoom = async () => {
+    setCreatingRelayRoom(true);
+    try {
+      handleSaveAIStudioRelay();
+      const room = await createAIStudioRelayRoom(aiStudioRelayUrl, {
+        signal: AbortSignal.timeout(10000),
+      });
+      const code = room?.code || '';
+      setAIStudioRelayRoomCode(code);
+      setAIStudioRelayStatus({
+        code,
+        clientConnected: false,
+        connectorConnected: false,
+        expired: false,
+      });
+      setAIStudioRelayStatusError('');
+      saveSettings({
+        aiStudioRelayUrl,
+        aiStudioConnectorUrl,
+        aiStudioRelayRoomCode: code,
+        aiStudioRelayModel,
+      });
+      setTestResults(p => ({
+        ...p,
+        [PROVIDERS.AI_STUDIO_RELAY]: {
+          success: true,
+          status: room,
+        },
+      }));
+    } catch (error) {
+      setTestResults(p => ({
+        ...p,
+        [PROVIDERS.AI_STUDIO_RELAY]: {
+          success: false,
+          error: error.message || 'Không thể tạo room AI Studio Relay',
+        },
+      }));
+    } finally {
+      setCreatingRelayRoom(false);
+    }
+  };
+
+  const handleCopyRelayRoom = async () => {
+    if (!aiStudioRelayRoomCode) return;
+    await navigator.clipboard.writeText(aiStudioRelayRoomCode);
+    setCopiedRelayRoom(true);
+    setTimeout(() => setCopiedRelayRoom(false), 2000);
+  };
+
+  const handleOpenConnector = () => {
+    const url = aiStudioConnectorUrl.trim() || 'https://aistudio.google.com/';
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+  const handleProviderSelect = (nextProvider) => {
+    setProvider(nextProvider);
+    modelRouter.setPreferredProvider(nextProvider);
+    if (nextProvider === PROVIDERS.AI_STUDIO_RELAY) {
+      setShowAIStudioRelaySetup(true);
+    }
+  };
   const handleOpenAiStudio = () => {
     window.open('https://aistudio.google.com/app/apikey', '_blank', 'noopener,noreferrer');
   };
@@ -271,6 +416,9 @@ export default function Settings() {
   };
 
   const handleTest = async (prov) => {
+    if (prov === PROVIDERS.AI_STUDIO_RELAY) {
+      handleSaveAIStudioRelay();
+    }
     setTesting(p => ({ ...p, [prov]: true }));
     const result = await aiService.testConnection(prov);
     setTestResults(p => ({ ...p, [prov]: result }));
@@ -346,12 +494,13 @@ export default function Settings() {
             {[
               { value: PROVIDERS.GEMINI_PROXY, icon: Server, label: 'Gemini Proxy', desc: '星星公益站' },
               { value: PROVIDERS.GEMINI_DIRECT, icon: Cloud, label: 'Gemini Direct', desc: 'AI Studio (free)' },
+              { value: PROVIDERS.AI_STUDIO_RELAY, icon: Cloud, label: 'AI Studio Relay', desc: 'Experimental' },
               { value: PROVIDERS.OLLAMA, icon: Cpu, label: 'Ollama', desc: 'Local AI' },
             ].map(p => (
               <button
                 key={p.value}
                 className={`settings-radio-card compact ${provider === p.value ? 'settings-radio-card--active' : ''}`}
-                onClick={() => { setProvider(p.value); modelRouter.setPreferredProvider(p.value); }}
+                onClick={() => handleProviderSelect(p.value)}
               >
                 <p.icon size={18} />
                 <div>
@@ -420,6 +569,38 @@ export default function Settings() {
                   </button>
                 ))}
               </div>
+            </div>
+          ) : null}
+
+          {provider === PROVIDERS.AI_STUDIO_RELAY ? (
+            <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
+              <label className="form-label">Model StoryForge sẽ gửi</label>
+              <select
+                className="select"
+                value={aiStudioRelayModel}
+                onChange={(event) => {
+                  setAIStudioRelayModel(event.target.value);
+                  modelRouter.setAIStudioRelayModel(event.target.value);
+                  saveSettings({ aiStudioRelayModel: event.target.value });
+                }}
+              >
+                {AI_STUDIO_RELAY_MODELS.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
+                  </option>
+                ))}
+              </select>
+              <p className="settings-hint">
+                Thử nghiệm. Model này được gửi sang AI Studio Connector trong mỗi request. Connector dùng quota AI Studio/Gemini API của người dùng, không phải Gemini CLI quota.
+              </p>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ marginTop: 'var(--space-3)' }}
+                onClick={() => setShowAIStudioRelaySetup(true)}
+              >
+                <Cloud size={14} /> Mở setup nhanh
+              </button>
             </div>
           ) : null}
         </section>
@@ -505,6 +686,93 @@ export default function Settings() {
           <DirectModelManager />
         </section>
 
+        {/* === AI STUDIO RELAY === */}
+        <section className="settings-section card animate-slide-up" style={{ animationDelay: '210ms' }}>
+          <div className="settings-section-header">
+            <Cloud size={20} />
+            <div>
+              <h2>AI Studio Relay</h2>
+              <p>Provider thử nghiệm. Relay chỉ chuyển tin giữa StoryForge và tab AI Studio Connector của người dùng.</p>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Relay URL</label>
+            <div className="settings-input-row">
+              <input
+                className="input"
+                value={aiStudioRelayUrl}
+                onChange={(event) => setAIStudioRelayUrl(event.target.value)}
+                placeholder="https://your-relay.workers.dev"
+              />
+              <button className="btn btn-secondary" onClick={handleSaveAIStudioRelay}>Lưu</button>
+              <button
+                className="btn btn-ghost btn-icon"
+                onClick={() => handleTest(PROVIDERS.AI_STUDIO_RELAY)}
+                disabled={testing[PROVIDERS.AI_STUDIO_RELAY]}
+              >
+                {testing[PROVIDERS.AI_STUDIO_RELAY] ? <RefreshCw size={16} className="animate-spin" /> : <TestTube size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Connector App URL</label>
+            <div className="settings-input-row">
+              <input
+                className="input"
+                value={aiStudioConnectorUrl}
+                onChange={(event) => setAIStudioConnectorUrl(event.target.value)}
+                placeholder="https://aistudio.google.com/apps/..."
+              />
+              <button className="btn btn-secondary" onClick={handleOpenConnector}>
+                <ExternalLink size={14} /> Mở connector
+              </button>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Mã phòng</label>
+            <div className="settings-input-row">
+              <input
+                className="input"
+                value={aiStudioRelayRoomCode}
+                onChange={(event) => {
+                  setAIStudioRelayRoomCode(event.target.value.toUpperCase());
+                  saveSettings({ aiStudioRelayRoomCode: event.target.value.toUpperCase() });
+                }}
+                placeholder="ABC-123"
+                style={{ fontFamily: 'var(--font-mono)', maxWidth: '180px' }}
+              />
+              <button className="btn btn-primary" onClick={handleCreateRelayRoom} disabled={creatingRelayRoom || !aiStudioRelayUrl.trim()}>
+                {creatingRelayRoom ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />} Tạo room
+              </button>
+              <button className="btn btn-ghost" onClick={handleCopyRelayRoom} disabled={!aiStudioRelayRoomCode}>
+                {copiedRelayRoom ? <Check size={14} /> : <Copy size={14} />} {copiedRelayRoom ? 'Đã copy' : 'Copy'}
+              </button>
+            </div>
+            <p className="settings-hint">
+              Mở AI Studio Connector, nhập mã phòng này, rồi quay lại StoryForge. Trên điện thoại, bật Chế độ điện thoại trong connector.
+            </p>
+            {aiStudioRelayRoomCode ? (
+              <div className={`settings-test-result ${aiStudioConnectorConnected ? 'success' : aiStudioRelayStatusError || aiStudioRelayExpired ? 'error' : 'pending'}`}>
+                {aiStudioConnectorConnected
+                  ? <><CheckCircle size={14} /> Connector đã kết nối. Bạn có thể gọi AI từ StoryForge.</>
+                  : aiStudioRelayStatusError || aiStudioRelayExpired
+                    ? <><XCircle size={14} /> {aiStudioRelayStatusError || 'Room đã hết hạn. Hãy tạo room mới.'}</>
+                    : <><RefreshCw size={14} className="animate-spin" /> Đang chờ AI Studio Connector nhập mã phòng.</>}
+              </div>
+            ) : null}
+            {testResults[PROVIDERS.AI_STUDIO_RELAY] && (
+              <div className={`settings-test-result ${testResults[PROVIDERS.AI_STUDIO_RELAY].success ? 'success' : 'error'}`}>
+                {testResults[PROVIDERS.AI_STUDIO_RELAY].success
+                  ? <><CheckCircle size={14} /> Relay OK</>
+                  : <><XCircle size={14} /> {testResults[PROVIDERS.AI_STUDIO_RELAY].error}</>}
+              </div>
+            )}
+          </div>
+        </section>
+
         {/* === OLLAMA === */}
         <section className="settings-section card animate-slide-up" style={{ animationDelay: '240ms' }}>
           <div className="settings-section-header">
@@ -549,6 +817,203 @@ export default function Settings() {
         <CloudSyncSection />
 
       </div>
+
+      {showAIStudioRelaySetup ? (
+        <div className="modal-overlay ai-studio-relay-overlay" role="presentation" onClick={() => setShowAIStudioRelaySetup(false)}>
+          <div
+            className="modal ai-studio-relay-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ai-studio-relay-setup-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <div className="ai-studio-relay-modal__eyebrow">Provider thử nghiệm</div>
+                <h2 className="modal-title" id="ai-studio-relay-setup-title">Thiết lập AI Studio Relay</h2>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                onClick={() => setShowAIStudioRelaySetup(false)}
+                aria-label="Đóng thiết lập AI Studio Relay"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="ai-studio-relay-modal__body">
+              <div className="ai-studio-relay-hero">
+                <div>
+                  <p className="ai-studio-relay-hero__kicker">Dùng phiên AI Studio của chính người dùng</p>
+                  <p>
+                    StoryForge chỉ gửi yêu cầu qua relay. Người dùng mở AI Studio Connector, đăng nhập Google,
+                    nhập mã phòng, rồi để tab connector mở trong lúc tạo nội dung. Trên điện thoại, tab nền có thể bị tạm dừng.
+                  </p>
+                </div>
+                <div className="ai-studio-relay-hero__status">
+                  <span>Trạng thái</span>
+                  <strong>{aiStudioRelayStatusLabel}</strong>
+                  {aiStudioRelayRoomCode ? (
+                    <small>
+                      Web: {aiStudioClientConnected ? 'đang mở' : 'chưa gọi'} · Connector: {aiStudioConnectorConnected ? 'đã nối' : 'chưa nối'}
+                    </small>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="ai-studio-relay-layout">
+                <aside className="ai-studio-relay-guide">
+                  <h3>Luồng thao tác</h3>
+                  <div className="ai-studio-relay-steps">
+                    {[
+                      ['Tạo mã phòng', 'Bấm Tạo room để StoryForge tạo mã kết nối tạm thời.'],
+                      ['Mở connector', 'Mở AI Studio Connector bằng link đã lưu hoặc mở thủ công trong AI Studio.'],
+                      ['Nhập mã', 'Dán mã phòng vào connector, sau đó bấm Kết nối.'],
+                      ['Quay lại viết', 'Khi connector báo Đã kết nối, quay lại StoryForge. Nếu mobile pause tab nền, mở lại connector để nó nhận request đang chờ.'],
+                    ].map(([title, detail], index) => (
+                      <div className="ai-studio-relay-step" key={title}>
+                        <span>{index + 1}</span>
+                        <div>
+                          <strong>{title}</strong>
+                          <p>{detail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="ai-studio-relay-note">
+                    <strong>Lưu ý</strong>
+                    <p>Không nhập cookie hoặc token Google vào StoryForge. Provider này dùng quota AI Studio/Gemini API của tài khoản đang mở connector.</p>
+                  </div>
+                </aside>
+
+                <section className="ai-studio-relay-config">
+                  <div className="form-group">
+                    <label className="form-label">Relay URL</label>
+                    <div className="settings-input-row">
+                      <input
+                        className="input"
+                        value={aiStudioRelayUrl}
+                        onChange={(event) => setAIStudioRelayUrl(event.target.value)}
+                        placeholder="https://your-relay.workers.dev"
+                      />
+                      <button type="button" className="btn btn-secondary" onClick={handleSaveAIStudioRelay}>Lưu</button>
+                    </div>
+                    <p className="settings-hint">Đây là URL Cloudflare relay. Thông thường người dùng không cần sửa.</p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Connector App URL</label>
+                    <div className="settings-input-row">
+                      <input
+                        className="input"
+                        value={aiStudioConnectorUrl}
+                        onChange={(event) => setAIStudioConnectorUrl(event.target.value)}
+                        placeholder="https://aistudio.google.com/apps/..."
+                      />
+                      <button type="button" className="btn btn-secondary" onClick={handleOpenConnector}>
+                        <ExternalLink size={14} /> Mở connector
+                      </button>
+                    </div>
+                    <p className="settings-hint">Dán link app đã share từ AI Studio. Nếu chưa share, có thể mở connector thủ công.</p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Model StoryForge sẽ gửi</label>
+                    <select
+                      className="select"
+                      value={aiStudioRelayModel}
+                      onChange={(event) => {
+                        setAIStudioRelayModel(event.target.value);
+                        modelRouter.setAIStudioRelayModel(event.target.value);
+                        saveSettings({ aiStudioRelayModel: event.target.value });
+                      }}
+                    >
+                      {AI_STUDIO_RELAY_MODELS.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="settings-hint">Model này là nguồn chính. AI Studio Connector sẽ ưu tiên model do StoryForge gửi trong request; model trong connector chỉ là dự phòng.</p>
+                  </div>
+
+                  <div className="ai-studio-relay-room">
+                    <div className="form-group">
+                      <label className="form-label">Mã phòng</label>
+                      <div className="settings-input-row">
+                        <input
+                          className="input ai-studio-relay-room__code"
+                          value={aiStudioRelayRoomCode}
+                          onChange={(event) => {
+                            setAIStudioRelayRoomCode(event.target.value.toUpperCase());
+                            saveSettings({ aiStudioRelayRoomCode: event.target.value.toUpperCase() });
+                          }}
+                          placeholder="ABC-123"
+                        />
+                        <button type="button" className="btn btn-primary" onClick={handleCreateRelayRoom} disabled={creatingRelayRoom || !aiStudioRelayUrl.trim()}>
+                          {creatingRelayRoom ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />} Tạo room
+                        </button>
+                        <button type="button" className="btn btn-ghost" onClick={handleCopyRelayRoom} disabled={!aiStudioRelayRoomCode}>
+                          {copiedRelayRoom ? <Check size={14} /> : <Copy size={14} />} {copiedRelayRoom ? 'Đã copy' : 'Copy'}
+                        </button>
+                      </div>
+                      <p className="settings-hint">Mã này là cầu nối giữa StoryForge và tab AI Studio Connector. Tạo mã mới nếu connector bị mất kết nối.</p>
+                    </div>
+                    <div className="ai-studio-relay-room__preview">
+                      <span>Mã hiện tại</span>
+                      <strong>{aiStudioRelayRoomCode || 'Chưa có room'}</strong>
+                      {aiStudioRelayRoomCode ? (
+                        <small>{aiStudioRelayStatusLabel}</small>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {aiStudioRelayRoomCode ? (
+                    <div className={`settings-test-result ${aiStudioConnectorConnected ? 'success' : aiStudioRelayStatusError || aiStudioRelayExpired ? 'error' : 'pending'}`}>
+                      {aiStudioConnectorConnected
+                        ? <><CheckCircle size={14} /> Connector đã kết nối. Khi bạn gọi AI, StoryForge sẽ gửi request qua room này.</>
+                        : aiStudioRelayStatusError || aiStudioRelayExpired
+                          ? <><XCircle size={14} /> {aiStudioRelayStatusError || 'Room đã hết hạn. Hãy tạo room mới.'}</>
+                          : <><RefreshCw size={14} className="animate-spin" /> Đang chờ AI Studio Connector nhập đúng mã phòng.</>}
+                    </div>
+                  ) : null}
+
+                  {testResults[PROVIDERS.AI_STUDIO_RELAY] ? (
+                    <div className={`settings-test-result ${testResults[PROVIDERS.AI_STUDIO_RELAY].success ? 'success' : 'error'}`}>
+                      {testResults[PROVIDERS.AI_STUDIO_RELAY].success
+                        ? <><CheckCircle size={14} /> Relay OK. Hãy mở connector và nhập mã phòng.</>
+                        : <><XCircle size={14} /> {testResults[PROVIDERS.AI_STUDIO_RELAY].error}</>}
+                    </div>
+                  ) : null}
+                </section>
+              </div>
+
+              <div className="ai-studio-relay-next">
+                <div>
+                  <strong>Bước tiếp theo sau khi tạo room</strong>
+                  <p>Mở connector, nhập đúng Relay URL và mã phòng. Khi connector hiện Đã kết nối, quay lại StoryForge để chạy AI.</p>
+                </div>
+                <button type="button" className="btn btn-primary" onClick={handleCreateRelayRoom} disabled={creatingRelayRoom || !aiStudioRelayUrl.trim()}>
+                  {creatingRelayRoom ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />} Tạo room mới
+                </button>
+              </div>
+            </div>
+
+            <div className="modal-actions ai-studio-relay-modal__actions">
+              <button type="button" className="btn btn-secondary" onClick={() => handleTest(PROVIDERS.AI_STUDIO_RELAY)} disabled={testing[PROVIDERS.AI_STUDIO_RELAY]}>
+                {testing[PROVIDERS.AI_STUDIO_RELAY] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />} Test relay
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={handleOpenConnector}>
+                <ExternalLink size={14} /> Mở connector
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => setShowAIStudioRelaySetup(false)}>
+               Xong
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

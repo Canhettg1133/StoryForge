@@ -40,6 +40,7 @@ export default function App() {
           <Route path="/cloud-sync" element={<CloudSyncPage />} />
           <Route path="/guide" element={<GeminiSetupGuide />} />
           <Route path="/guide/proxy" element={<GeminiProxyGuide />} />
+          <Route path="/guide/proxy/fix-cli" element={<GeminiProxyGuide focusFixCli />} />
           <Route path="/guide/translator" element={<TranslatorSetupGuide />} />
           <Route path="/ai-chat" element={<ProjectChat />} />
           <Route path="/translator" element={<Translator />} />

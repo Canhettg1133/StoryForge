@@ -26,6 +26,7 @@ dist-ssr
 # StoryForge specific
 .gemini
 tmp
+tmp_edit.py
 tinix-story/
 _reference/
 external/

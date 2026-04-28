@@ -28,6 +28,7 @@ import useProjectStore from '../../stores/projectStore';
 import aiService from '../../services/ai/client';
 import { buildProjectContentModeAiOptions } from '../../features/projectContentMode/projectContentMode.js';
 import modelRouter, {
+  AI_STUDIO_RELAY_MODELS,
   DIRECT_MODELS,
   PROXY_MODELS,
   PROVIDERS,
@@ -63,10 +64,17 @@ function formatRelativeTime(timestamp) {
   return `${Math.round(diff / 86400000)} ngày trước`;
 }
 
-function getProviderLabel(provider) {
+export function getProviderLabel(provider) {
+  if (provider === PROVIDERS.AI_STUDIO_RELAY) return 'AI Studio Relay';
   if (provider === PROVIDERS.GEMINI_DIRECT) return 'Gemini Direct';
   if (provider === PROVIDERS.OLLAMA) return 'Ollama';
   return 'Gemini Proxy';
+}
+
+function getProviderScopeLabel(provider) {
+  if (provider === PROVIDERS.OLLAMA) return 'Local';
+  if (provider === PROVIDERS.AI_STUDIO_RELAY) return 'Relay';
+  return 'Cloud';
 }
 
 function getChatModeLabel(mode) {
@@ -144,7 +152,15 @@ export function getThreadRouting(thread) {
   };
 }
 
-function getAvailableModelOptions(provider) {
+export function getAvailableModelOptions(provider) {
+  if (provider === PROVIDERS.AI_STUDIO_RELAY) {
+    return AI_STUDIO_RELAY_MODELS.map((model) => ({
+      id: model.id,
+      label: model.label,
+      meta: 'AI Studio Relay',
+    }));
+  }
+
   if (provider === PROVIDERS.GEMINI_DIRECT) {
     const activeIds = new Set(modelRouter.getActiveDirectModels().map((item) => item.id));
     return DIRECT_MODELS
@@ -231,6 +247,7 @@ function getRoutingConfigStamp() {
     qualityMode: modelRouter.getQualityMode(),
     proxyModel: modelRouter.getProxyModel(),
     ollamaModel: modelRouter.getOllamaModel(),
+    aiStudioRelayModel: modelRouter.getAIStudioRelayModel(),
   });
 }
 
@@ -260,7 +277,7 @@ function MessageBubble({ message, onCopy, onEdit, onContinue, onRetry }) {
         <div className="project-chat-message__tools">
           {message.model ? (
             <span className="project-chat-message__chip">
-              {message.provider === PROVIDERS.OLLAMA ? 'Local' : 'Cloud'} · {message.model}
+              {getProviderScopeLabel(message.provider)} · {message.model}
             </span>
           ) : null}
           {message.is_streaming ? (
@@ -1443,6 +1460,7 @@ export default function ProjectChat() {
                   <option value="">Theo Settings hiá»‡n táº¡i ({getProviderLabel(activeChatProvider)})</option>
                   <option value={PROVIDERS.GEMINI_PROXY}>Gemini Proxy</option>
                   <option value={PROVIDERS.GEMINI_DIRECT}>Gemini Direct</option>
+                  <option value={PROVIDERS.AI_STUDIO_RELAY}>AI Studio Relay</option>
                   <option value={PROVIDERS.OLLAMA}>Ollama</option>
                 </select>
               </div>

@@ -128,4 +128,42 @@ describe('phase10 model router proxy model selection', () => {
 
     expect(route.model).toBe(PROXY_MODEL_PRESETS[2].id);
   });
+
+  it('routes AI Studio Relay to the stored relay model without requiring keys', async () => {
+    const {
+      default: modelRouter,
+      AI_STUDIO_RELAY_MODELS,
+      PROVIDERS,
+      TASK_TYPES,
+    } = await loadRouter();
+
+    modelRouter.setPreferredProvider(PROVIDERS.AI_STUDIO_RELAY);
+
+    const route = modelRouter.route(TASK_TYPES.CONTINUE);
+
+    expect(route).toEqual({
+      provider: PROVIDERS.AI_STUDIO_RELAY,
+      model: AI_STUDIO_RELAY_MODELS[0].id,
+      tier: 'relay',
+    });
+  });
+
+  it('lets an explicit AI Studio Relay provider override win over the global provider', async () => {
+    const {
+      default: modelRouter,
+      AI_STUDIO_RELAY_MODELS,
+      PROVIDERS,
+      TASK_TYPES,
+    } = await loadRouter();
+
+    modelRouter.setPreferredProvider(PROVIDERS.GEMINI_PROXY);
+
+    const route = modelRouter.route(TASK_TYPES.FREE_PROMPT, {
+      providerOverride: PROVIDERS.AI_STUDIO_RELAY,
+    });
+
+    expect(route.provider).toBe(PROVIDERS.AI_STUDIO_RELAY);
+    expect(route.model).toBe(AI_STUDIO_RELAY_MODELS[0].id);
+    expect(route.tier).toBe('relay');
+  });
 });

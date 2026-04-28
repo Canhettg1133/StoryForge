@@ -26,6 +26,7 @@ function providerLabel(provider) {
   if (provider === 'gemini_proxy') return 'Gemini Proxy';
   if (provider === 'gemini_direct') return 'Gemini Direct';
   if (provider === 'ollama') return 'Ollama';
+  if (provider === 'ai_studio_relay') return 'AI Studio Relay';
   return 'AI';
 }
 
@@ -243,7 +244,14 @@ export function normalizeAIError(input = {}, context = {}) {
     });
   }
 
-  if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed') || lower.includes('cannot connect')) {
+  if (
+    shape.code === AI_ERROR_CODES.NETWORK_ERROR
+    || lower.includes('failed to fetch')
+    || lower.includes('networkerror')
+    || lower.includes('load failed')
+    || lower.includes('cannot connect')
+    || lower.includes('ai_studio_relay')
+  ) {
     return createAIError({
       userMessage: `Không thể kết nối tới ${providerName}. Kiểm tra mạng hoặc URL cấu hình trong Settings.`,
       code: AI_ERROR_CODES.NETWORK_ERROR,

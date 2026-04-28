@@ -1,0 +1,15 @@
+name = "storyforge-ai-studio-relay"
+main = "src/index.js"
+compatibility_date = "2026-04-28"
+
+[[durable_objects.bindings]]
+name = "AI_STUDIO_RELAY_ROOMS"
+class_name = "AIStudioRelayRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AIStudioRelayRoom"]
+
+[vars]
+# Allowed StoryForge origins. Add your final production domain here if it changes.
+ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,https://story-forge-virid.vercel.app,https://ai.studio,https://aistudio.google.com,https://*.googleusercontent.com,https://*.usercontent.goog"

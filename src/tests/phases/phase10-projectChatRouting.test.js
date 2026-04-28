@@ -142,4 +142,21 @@ describe('phase10 ProjectChat routing inheritance', () => {
     expect(patch.provider_override).toBe('');
     expect(patch.model_override).toBe('');
   });
+
+  it('labels AI Studio Relay and exposes relay model options without falling back to proxy models', async () => {
+    const {
+      getAvailableModelOptions,
+      getProviderLabel,
+      routerModule: { AI_STUDIO_RELAY_MODELS, PROVIDERS },
+    } = await loadProjectChatHelpers();
+
+    expect(getProviderLabel(PROVIDERS.AI_STUDIO_RELAY)).toBe('AI Studio Relay');
+
+    const options = getAvailableModelOptions(PROVIDERS.AI_STUDIO_RELAY);
+
+    expect(options.map((option) => option.id)).toEqual(
+      AI_STUDIO_RELAY_MODELS.map((model) => model.id),
+    );
+    expect(options.every((option) => option.meta.includes('Relay'))).toBe(true);
+  });
 });
