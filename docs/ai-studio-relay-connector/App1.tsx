@@ -782,7 +782,7 @@ export default function App1() {
                 {authStep === 1 && (
                   <div className="space-y-3">
                     <p className="text-sm text-slate-400">Mở cổng đăng nhập của Google và lấy mã. Trang hiển thị lỗi localhost là BÌNH THƯỜNG.</p>
-                    <button onClick={handleLogin} disabled={!!loading || !oauthClientSecret.trim()} className="w-full flex justify-center items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 rounded-lg border border-slate-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button onClick={handleLogin} disabled={!!loading} className="w-full flex justify-center items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-medium py-3 rounded-lg border border-slate-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
                       <Key className="w-5 h-5 text-emerald-400" /> Đăng Nhập Google
                     </button>
                   </div>

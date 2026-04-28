@@ -1126,7 +1126,7 @@ export default function App() {
                   {oauthStep === 1 && (
                     <div className="space-y-2">
                       <p className="text-xs text-slate-600 leading-snug">Nhấn Đăng nhập Google. Khi trang chuyển đến <code>localhost:11451</code> và báo lỗi, hãy sao chép toàn bộ đường link (URL) trang lỗi đó.</p>
-                      <button onClick={handleLogin} disabled={!oauthClientSecret.trim()} className="w-full rounded-lg border border-purple-300 bg-purple-50 px-4 py-2 font-semibold text-purple-800 hover:bg-purple-100 transition text-sm disabled:opacity-50">
+                      <button onClick={handleLogin} className="w-full rounded-lg border border-purple-300 bg-purple-50 px-4 py-2 font-semibold text-purple-800 hover:bg-purple-100 transition text-sm">
                         1. Đăng nhập bằng Google
                       </button>
                     </div>
