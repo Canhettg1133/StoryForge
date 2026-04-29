@@ -41,6 +41,7 @@ import {
   WORKFLOW_TABS,
 } from './labLiteUiHelpers.js';
 import LabLiteHero from './components/LabLiteHero.jsx';
+import GuidedWorkspaceRail from './components/GuidedWorkspaceRail.jsx';
 
 import { ChapterDetail, ChapterPanel } from './components/ChapterPanels.jsx';
 import { CorpusLibrary, IngestBatchPanel, ParseDiagnostics, UploadPanel } from './components/ImportPanels.jsx';
@@ -1157,15 +1158,15 @@ export default function LabLite() {
              <span>{formatNumber(currentCorpus?.totalEstimatedTokens || 0)} token</span>
           </div>
         </div>
-        <div className="lab-lite-top-controls__right">
-          <div className="lab-lite-top-controls__next-action">
-             <strong>{nextAction.title}</strong>
-          </div>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActiveTab(nextAction.step)}>
-             Mở bước này <BookOpen size={14} />
-          </button>
-        </div>
       </div>
+
+      <GuidedWorkspaceRail
+        activeStep={activeTab}
+        stepStatuses={stepStatuses}
+        nextAction={nextAction}
+        onStepChange={setActiveTab}
+        onRunAction={handleRunWorkflowAction}
+      />
 
       <div className="lab-lite-tabs" style={{ marginBottom: '16px', display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
         {[
