@@ -8,15 +8,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleGenAI } from '@google/genai';
 
-const OAUTH_CLIENT_ID = "861823451650-heam38v432jq22s22ja09fhuo5o2hevm.apps.googleusercontent.com";
+const OAUTH_CLIENT_ID = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID || '';
+const OAUTH_CLIENT_SECRET = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_SECRET || '';
 const OAUTH_REDIRECT_URI = "http://localhost:11451";
 const OAUTH_SCOPES = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile";
+const CREDENTIALS_STORAGE_KEY = 'gemini_oauth_credentials';
+const CREDENTIALS_REMEMBER_KEY = 'gemini_oauth_credentials_remember';
 
 type CredentialStatus = 'Ready' | 'In Use' | 'Limit Exceeded' | 'Expired' | 'Invalid Token' | 'Refreshing';
 
 interface Credential {
   id: string;
+  project_id?: string;
   client_id: string;
+  client_secret?: string;
   refresh_token?: string;
   access_token?: string;
   token_expiry?: number;
@@ -30,6 +35,7 @@ function sanitizeCredential(cred: Credential): Credential {
   return {
     id: cred.id,
     client_id: cred.client_id || OAUTH_CLIENT_ID,
+    client_secret: cred.client_secret || OAUTH_CLIENT_SECRET,
     refresh_token: cred.refresh_token,
     access_token: cred.access_token,
     token_expiry: cred.token_expiry,
@@ -37,6 +43,7 @@ function sanitizeCredential(cred: Credential): Credential {
     requestsUsed: cred.requestsUsed || 0,
     lastResetTime: cred.lastResetTime || Date.now(),
     email: cred.email,
+    project_id: cred.project_id,
   };
 }
 
@@ -198,34 +205,9 @@ function isSocketOpen(socket: WebSocket | null) {
   return Boolean(socket && socket.readyState === WebSocket.OPEN);
 }
 
-function toRelayOAuthUrl(relayUrl: string, action: 'exchange' | 'refresh' | 'status') {
-  const url = new URL(relayUrl.trim());
-  if (url.protocol === 'wss:') url.protocol = 'https:';
-  if (url.protocol === 'ws:') url.protocol = 'http:';
-  url.pathname = `${url.pathname.replace(/\/+$/u, '')}/oauth/${action}`;
-  url.search = '';
-  return url.toString();
-}
-
 function extractOAuthCode(redirectUrl: string) {
   const url = new URL(String(redirectUrl || '').trim());
   return url.searchParams.get('code') || '';
-}
-
-function formatOAuthRelayError(payload: any, status: number) {
-  if (payload?.code === 'NOT_FOUND' || status === 404) {
-    return 'Relay dang chay ban cu, chua co /oauth/exchange. Hay deploy lai relay-worker roi thu lai.';
-  }
-  if (payload?.code === 'OAUTH_SECRET_MISSING') {
-    return 'Relay chua cau hinh OAUTH_CLIENT_SECRET. Chay: cd D:\\StoryForge\\relay-worker; npx wrangler secret put OAUTH_CLIENT_SECRET; npx wrangler deploy.';
-  }
-  if (payload?.code === 'OAUTH_EXCHANGE_FAILED' && /invalid_client/i.test(String(payload?.error || ''))) {
-    return 'OAuth secret tren Worker khong khop voi OAuth Client ID trong connector.';
-  }
-  if (payload?.code === 'OAUTH_EXCHANGE_FAILED' && /invalid_grant/i.test(String(payload?.error || ''))) {
-    return 'OAuth code da het han hoac da duoc dung mot lan. Dang nhap Google lai va copy URL localhost moi.';
-  }
-  return payload?.error || `OAuth exchange failed: HTTP ${status}`;
 }
 
 export default function App() {
@@ -233,9 +215,20 @@ export default function App() {
   const heartbeatRef = useRef<number | null>(null);
   const [credentials, setCredentials] = useState<Credential[]>(() => {
     try {
-      const saved = localStorage.getItem('gemini_oauth_credentials');
+      const remember = localStorage.getItem(CREDENTIALS_REMEMBER_KEY) === 'true';
+      const saved = remember
+        ? localStorage.getItem(CREDENTIALS_STORAGE_KEY)
+        : sessionStorage.getItem(CREDENTIALS_STORAGE_KEY);
       return saved ? sanitizeStoredCredentials(JSON.parse(saved)) : [];
     } catch { return []; }
+  });
+  const credentialsRef = useRef<Credential[]>(credentials);
+  const [rememberCredentials, setRememberCredentials] = useState(() => {
+    try {
+      return localStorage.getItem(CREDENTIALS_REMEMBER_KEY) === 'true';
+    } catch {
+      return false;
+    }
   });
   const [oauthStep, setOauthStep] = useState(1);
   const [redirectUrl, setRedirectUrl] = useState('');
@@ -244,8 +237,22 @@ export default function App() {
   const [activeKeyInUse, setActiveKeyInUse] = useState<string>('');
 
   useEffect(() => {
-    localStorage.setItem('gemini_oauth_credentials', JSON.stringify(credentials.map(sanitizeCredential)));
-  }, [credentials]);
+    credentialsRef.current = credentials;
+    const payload = JSON.stringify(credentials.map(sanitizeCredential));
+    try {
+      if (rememberCredentials) {
+        localStorage.setItem(CREDENTIALS_REMEMBER_KEY, 'true');
+        localStorage.setItem(CREDENTIALS_STORAGE_KEY, payload);
+        sessionStorage.removeItem(CREDENTIALS_STORAGE_KEY);
+      } else {
+        localStorage.removeItem(CREDENTIALS_REMEMBER_KEY);
+        localStorage.removeItem(CREDENTIALS_STORAGE_KEY);
+        sessionStorage.setItem(CREDENTIALS_STORAGE_KEY, payload);
+      }
+    } catch {
+      // AI Studio preview storage can be temporarily unavailable during reload.
+    }
+  }, [credentials, rememberCredentials]);
 
   const removeCredential = (id: string) => {
     setCredentials(prev => prev.filter(c => c.id !== id));
@@ -255,59 +262,18 @@ export default function App() {
     setCredentials(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  const checkOAuthRelayReady = async () => {
-    const response = await fetch(toRelayOAuthUrl(relayUrl, 'status'), {
-      method: 'GET',
-      cache: 'no-store',
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.error) {
-      throw new Error(formatOAuthRelayError(payload, response.status));
-    }
-    if (!payload.oauthConfigured) {
-      throw new Error('Relay chua san sang cho OAuth. Chu relay can cau hinh OAUTH_CLIENT_SECRET mot lan tren Cloudflare Worker; nguoi dung public khong can lam buoc nay.');
-    }
-    return payload;
-  };
-
-  const handleLogin = async () => {
-    try {
-      setOauthLoading(true);
-      setOauthError('');
-      await checkOAuthRelayReady();
-      const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${OAUTH_CLIENT_ID}&redirect_uri=${encodeURIComponent(OAUTH_REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(OAUTH_SCOPES)}&access_type=offline&prompt=consent`;
-      window.open(url, '_blank');
-      setOauthStep(2);
-    } catch (err: any) {
-      setOauthError(err?.message || 'Khong kiem tra duoc OAuth relay.');
-    } finally {
-      setOauthLoading(false);
-    }
-  };
-
-  const exchangeOAuthCode = async (code: string) => {
-    const response = await fetch(toRelayOAuthUrl(relayUrl, 'exchange'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        code,
-        redirect_uri: OAUTH_REDIRECT_URI,
-      }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || payload.error) {
-      throw new Error(formatOAuthRelayError(payload, response.status));
-    }
-    return payload;
-  };
-
   const refreshGoogleToken = async (cred: Credential): Promise<Partial<Credential> | null> => {
     try {
       if (!cred.refresh_token) return null;
-      const response = await fetch(toRelayOAuthUrl(relayUrl, 'refresh'), {
+      const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: cred.refresh_token }),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: cred.client_id || OAUTH_CLIENT_ID,
+          client_secret: cred.client_secret || OAUTH_CLIENT_SECRET,
+          refresh_token: cred.refresh_token,
+          grant_type: 'refresh_token',
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload.error || !payload.access_token) return null;
@@ -321,12 +287,41 @@ export default function App() {
     }
   };
 
+  const handleLogin = () => {
+    setOauthError('');
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${OAUTH_CLIENT_ID}&redirect_uri=${encodeURIComponent(OAUTH_REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(OAUTH_SCOPES)}&access_type=offline&prompt=consent`;
+    window.open(url, '_blank');
+    setOauthStep(2);
+  };
+
+  const exchangeGoogleOAuthCode = async (code: string) => {
+    const response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: OAUTH_CLIENT_ID,
+        client_secret: OAUTH_CLIENT_SECRET,
+        code,
+        redirect_uri: OAUTH_REDIRECT_URI,
+        grant_type: 'authorization_code',
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.error) {
+      if (/invalid_grant/i.test(String(payload?.error || payload?.error_description || ''))) {
+        throw new Error('OAuth code da het han hoac da duoc dung mot lan. Dang nhap Google lai va copy URL localhost moi.');
+      }
+      throw new Error(payload?.error_description || payload?.error || `OAuth exchange failed: HTTP ${response.status}`);
+    }
+    return payload;
+  };
+
   const handleExchange = async () => {
     try {
       setOauthLoading(true); setOauthError('');
       const code = extractOAuthCode(redirectUrl);
       if (!code) throw new Error('Khong tim thay code trong URL localhost. Hay copy toan bo URL co ?code=...');
-      const token = await exchangeOAuthCode(code);
+      const token = await exchangeGoogleOAuthCode(code);
       const accessToken = token.access_token || '';
       if (!accessToken) throw new Error('Google khong tra ve access_token.');
 
@@ -340,7 +335,11 @@ export default function App() {
 
       const newCred: Credential = {
         id: Math.random().toString(36).substring(7),
-        client_id: OAUTH_CLIENT_ID, refresh_token: token.refresh_token, access_token: accessToken,
+        project_id: 'Gemini CLI OAuth',
+        client_id: OAUTH_CLIENT_ID,
+        client_secret: OAUTH_CLIENT_SECRET,
+        refresh_token: token.refresh_token,
+        access_token: accessToken,
         token_expiry: Date.now() + Number(token.expires_in || 3600) * 1000,
         status: 'Ready', requestsUsed: 0, lastResetTime: Date.now(), email: userData.email
       };
@@ -443,6 +442,258 @@ export default function App() {
     }
   };
 
+  const sendRelayPayload = (payload: any) => {
+    const ok = send(payload);
+    if (!ok) {
+      const id = payload?.request_id || payload?.requestId || '';
+      log(`Khong gui duoc payload ve relay${id ? ` cho request ${id}` : ''}.`);
+    }
+    return ok;
+  };
+
+  const getNextCredential = (): Credential | null => {
+    const now = Date.now();
+    let updated = false;
+    const nextCredentials = credentialsRef.current.map((cred) => {
+      if (now - Number(cred.lastResetTime || 0) > 24 * 60 * 60 * 1000) {
+        updated = true;
+        return {
+          ...cred,
+          requestsUsed: 0,
+          lastResetTime: now,
+          status: cred.status === 'Limit Exceeded' ? 'Ready' : cred.status,
+        };
+      }
+      return cred;
+    });
+
+    if (updated) {
+      credentialsRef.current = nextCredentials;
+      setCredentials(nextCredentials);
+    }
+
+    const available = credentialsRef.current
+      .filter((cred) => cred.status === 'Ready' || cred.status === 'Expired')
+      .sort((a, b) => Number(a.requestsUsed || 0) - Number(b.requestsUsed || 0));
+
+    return available[0] || null;
+  };
+
+  const updateCredentialNow = (current: Credential, updates: Partial<Credential>) => {
+    const next = { ...current, ...updates };
+    credentialsRef.current = credentialsRef.current.map((cred) => cred.id === current.id ? next : cred);
+    setCredentials(credentialsRef.current);
+    return next;
+  };
+
+  const processRawProxyRequest = async (request: any, initialCredential?: Credential | null) => {
+    const requestId = String(request?.request_id || '');
+    const path = String(request?.path || '');
+    if (!requestId || !path) return;
+
+    let credential = initialCredential || getNextCredential();
+    if (!credential) {
+      log(`Khong co credential kha dung cho raw request ${requestId}.`);
+      sendRelayPayload({
+        request_id: requestId,
+        event_type: 'error',
+        status: 503,
+        message: 'No available OAuth credentials',
+      });
+      return;
+    }
+
+    const updateCurrentCredential = (updates: Partial<Credential>) => {
+      credential = updateCredentialNow(credential as Credential, updates);
+      return credential;
+    };
+
+    try {
+      setStatus('running');
+      setActiveRequestId(requestId);
+      setActiveModel(path);
+      setRequestCount((value) => value + 1);
+      setChunkCount(0);
+      setOutputChars(0);
+      markActivity();
+
+      if (!credential.access_token || Date.now() >= Number(credential.token_expiry || 0)) {
+        log(`Token ${credential.email || credential.project_id || credential.id} het han, dang refresh...`);
+        updateCurrentCredential({ status: 'Refreshing' });
+        let refreshed: Partial<Credential> | null = null;
+        for (let attempt = 0; attempt < 3 && !refreshed; attempt += 1) {
+          refreshed = await refreshGoogleToken(credential);
+        }
+        if (!refreshed) {
+          updateCurrentCredential({ status: 'Invalid Token' });
+          sendRelayPayload({
+            request_id: requestId,
+            event_type: 'error',
+            status: 401,
+            message: 'Failed to refresh OAuth token',
+          });
+          setStatus('error');
+          return;
+        }
+        updateCurrentCredential(refreshed);
+      }
+
+      updateCurrentCredential({ status: 'In Use' });
+      setActiveKeyInUse(credential.email || 'OAuth');
+
+      const targetUrl = new URL(`https://generativelanguage.googleapis.com${path}`);
+      if (request.query_params && typeof request.query_params === 'object') {
+        Object.entries(request.query_params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            targetUrl.searchParams.append(key, String(value));
+          }
+        });
+      }
+
+      const fetchHeaders = new Headers();
+      const forbiddenHeaders = new Set(['host', 'connection', 'content-length', 'origin', 'referer', 'user-agent']);
+      if (request.headers && typeof request.headers === 'object') {
+        Object.entries(request.headers).forEach(([key, value]) => {
+          if (!forbiddenHeaders.has(String(key).toLowerCase())) {
+            fetchHeaders.set(String(key), String(value));
+          }
+        });
+      }
+      fetchHeaders.set('Authorization', `Bearer ${credential.access_token}`);
+
+      let fetchBody = request.body;
+      if (fetchBody && typeof fetchBody === 'object') {
+        const bodyCopy = { ...fetchBody };
+        if (path.includes('/openai/') && 'extra_body' in bodyCopy) {
+          delete bodyCopy.extra_body;
+        }
+        fetchBody = JSON.stringify(bodyCopy);
+      } else if (typeof fetchBody === 'string' && path.includes('/openai/')) {
+        try {
+          const parsed = JSON.parse(fetchBody);
+          if ('extra_body' in parsed) {
+            delete parsed.extra_body;
+            fetchBody = JSON.stringify(parsed);
+          }
+        } catch {
+          // Keep raw string body.
+        }
+      }
+
+      const callGemini = async () => {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 5 * 60 * 1000);
+        try {
+          return await fetch(targetUrl.toString(), {
+            method: request.method || 'GET',
+            headers: fetchHeaders,
+            body: ['GET', 'HEAD'].includes(String(request.method || 'GET').toUpperCase()) ? undefined : fetchBody,
+            signal: controller.signal,
+          });
+        } catch (error: any) {
+          if (error?.name === 'AbortError') {
+            throw new Error('Gemini API khong phan hoi sau 5 phut.');
+          }
+          throw error;
+        } finally {
+          window.clearTimeout(timeoutId);
+        }
+      };
+
+      log(`Forward raw request ${requestId} toi Gemini: ${path}`);
+      let response = await callGemini();
+
+      if (response.status === 401 || response.status === 403) {
+        log(`Raw request ${requestId} gap ${response.status}, refresh token va thu lai...`);
+        const refreshed = await refreshGoogleToken(credential);
+        if (!refreshed?.access_token) {
+          updateCurrentCredential({ status: 'Invalid Token' });
+          sendRelayPayload({
+            request_id: requestId,
+            event_type: 'error',
+            status: response.status,
+            message: 'Invalid OAuth token',
+          });
+          setStatus('error');
+          return;
+        }
+        updateCurrentCredential(refreshed);
+        fetchHeaders.set('Authorization', `Bearer ${refreshed.access_token}`);
+        response = await callGemini();
+      }
+
+      if (response.status === 429) {
+        updateCurrentCredential({ status: 'Limit Exceeded' });
+        sendRelayPayload({
+          request_id: requestId,
+          event_type: 'error',
+          status: 429,
+          message: 'Rate limit exceeded',
+        });
+        log(`Credential ${credential.email || credential.id} het quota 429.`);
+        setStatus('connected');
+        return;
+      }
+
+      updateCurrentCredential({
+        status: 'Ready',
+        requestsUsed: Number(credential.requestsUsed || 0) + 1,
+      });
+
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+
+      sendRelayPayload({
+        request_id: requestId,
+        event_type: 'response_headers',
+        status: response.status,
+        headers: responseHeaders,
+      });
+
+      if (response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let chunkTotal = 0;
+        while (true) {
+          if (cancelledRequestsRef.current.has(requestId)) break;
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          chunkTotal += 1;
+          setChunkCount(chunkTotal);
+          setOutputChars((count) => count + chunk.length);
+          sendRelayPayload({
+            request_id: requestId,
+            event_type: 'chunk',
+            data: chunk,
+          });
+        }
+      }
+
+      sendRelayPayload({
+        request_id: requestId,
+        event_type: 'stream_close',
+      });
+      log(`Hoan tat raw request ${requestId}.`);
+      setStatus('connected');
+      setActiveRequestId('');
+    } catch (error: any) {
+      updateCurrentCredential({ status: 'Ready' });
+      sendRelayPayload({
+        request_id: requestId,
+        event_type: 'error',
+        status: 500,
+        message: error?.message || 'Raw proxy request failed',
+      });
+      setStatus('error');
+      log(`Raw request ${requestId} loi: ${error?.message || error}`);
+    } finally {
+      setActiveKeyInUse('');
+    }
+  };
+
   const stopPolling = () => {
     pollingActiveRef.current = false;
     if (pollIntervalRef.current) {
@@ -453,6 +704,32 @@ export default function App() {
 
   const handleRelayPayload = (payload: RelayPayload | null) => {
     if (!payload) return;
+
+    if ((payload as any).event_type === 'heartbeat' || (payload as any).event_type === 'ping' || (payload as any).event_type === 'pong') {
+      sendRelayPayload({ event_type: 'heartbeat', ts: Date.now() });
+      return;
+    }
+
+    if ((payload as any).event_type === 'server_info') {
+      log(`Relay raw proxy da ket noi${(payload as any).version ? ` v${(payload as any).version}` : ''}.`);
+      return;
+    }
+
+    if ((payload as any).event_type === 'batch' && Array.isArray((payload as any).items)) {
+      for (const item of (payload as any).items) {
+        try {
+          handleRelayPayload(typeof item === 'string' ? JSON.parse(item) : item);
+        } catch {
+          // Ignore malformed batched relay item.
+        }
+      }
+      return;
+    }
+
+    if ((payload as any).request_id && (payload as any).path) {
+      void processRawProxyRequest(payload as any);
+      return;
+    }
 
     if (payload.type === 'heartbeat') {
       send({ type: 'heartbeat', ts: Date.now() });
@@ -700,7 +977,7 @@ export default function App() {
           log(`Đang gọi Gemini bằng tài khoản OAuth: ${cred.email}...`);
 
           if (!cred.access_token || Date.now() >= (cred.token_expiry || 0)) {
-            log(`Token tài khoản ${cred.email} hết hạn, đang làm mới qua relay...`);
+            log(`Token tài khoản ${cred.email} hết hạn, đang làm mới trực tiếp qua Google...`);
             updateCredential(cred.id, { status: 'Refreshing' });
             const refreshed = await refreshGoogleToken(cred);
             if (!refreshed) {
@@ -760,6 +1037,10 @@ export default function App() {
           }
 
           updateCredential(cred.id, { status: 'Ready', requestsUsed: cred.requestsUsed + 1 });
+        }
+
+        if (!cancelledRequestsRef.current.has(requestId) && !fullText.trim()) {
+          throw new Error('Gemini tra ve stream rong. Hay dung raw proxy mode hoac chon model/account khac.');
         }
 
         if (!cancelledRequestsRef.current.has(requestId)) {
@@ -1164,9 +1445,22 @@ export default function App() {
 
                 <div className="bg-white p-4 rounded-lg border border-purple-200 shadow-sm space-y-3">
                   <h3 className="text-sm font-semibold text-purple-900">Thêm tài khoản Google mới</h3>
+                  <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={rememberCredentials}
+                      onChange={(event) => setRememberCredentials(event.target.checked)}
+                      className="mt-0.5 h-4 w-4"
+                    />
+                    <span>
+                      <span className="block font-semibold text-slate-900">Ghi nhớ trên trình duyệt này</span>
+                      <span className="mt-1 block leading-5">Tắt mục này để credential chỉ nằm trong sessionStorage của tab hiện tại.</span>
+                    </span>
+                  </label>
                   {oauthStep === 1 && (
                     <div className="space-y-2">
                       <p className="text-xs text-slate-600 leading-snug">Nhấn Đăng nhập Google. Khi trang chuyển đến <code>localhost:11451</code> và báo lỗi, hãy sao chép toàn bộ URL trên thanh địa chỉ.</p>
+                      <p className="text-xs italic text-slate-500">Sử dụng OAuth client công khai của Gemini CLI. Connector tự đổi mã trực tiếp với Google như bản mẫu.</p>
                       {oauthError && <p className="text-xs font-semibold text-red-600">{oauthError}</p>}
                       <button onClick={handleLogin} disabled={oauthLoading} className="w-full rounded-lg border border-purple-300 bg-purple-50 px-4 py-2 font-semibold text-purple-800 hover:bg-purple-100 transition text-sm disabled:opacity-50">
                         Đăng nhập bằng Google
@@ -1175,7 +1469,7 @@ export default function App() {
                   )}
                   {oauthStep === 2 && (
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold text-purple-800">Dán link <code>localhost:11451</code> có <code>?code=...</code> vào đây. Secret được giữ ở relay, không nằm trong app.</p>
+                      <p className="text-xs font-semibold text-purple-800">Dán link <code>localhost:11451</code> có <code>?code=...</code> vào đây. Connector sẽ đổi token trực tiếp với Google.</p>
                       <input type="text" value={redirectUrl} onChange={e => setRedirectUrl(e.target.value)} placeholder="http://localhost:11451/?code=..." className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-purple-500 focus:outline-none" />
                       {oauthError && <p className="text-xs font-semibold text-red-600">{oauthError}</p>}
                       <div className="flex gap-2">

@@ -1364,9 +1364,33 @@ export default function ProjectChat() {
               </div>
             ) : null}
             <div className="project-chat-topbar__compact">
-              <div className="project-chat-topbar__meta">
-                <div className="project-chat-topbar__kicker">
+              <div className="project-chat-topbar__meta" style={{ minWidth: 0, flex: 1 }}>
+                <div className="project-chat-topbar__kicker project-chat-hide-on-mobile" style={{ marginBottom: '4px', color: 'var(--color-text-secondary)', fontSize: '10px', whiteSpace: 'nowrap' }}>
                   {chatSpaceLabel}
+                </div>
+                <h2 className="project-chat-hide-on-mobile" style={{ fontSize: '1.1rem', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {activeThreadMode === CHAT_MODES.STORY ? <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} /> : <Bot size={16} style={{ flexShrink: 0 }} />}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {activeThread?.title || 'Cuộc trò chuyện mới'}
+                  </span>
+                </h2>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', fontSize: '10.5px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                    <Bot size={12} /> {getChatModeLabel(activeThreadMode)}
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', fontSize: '10.5px', fontWeight: 600, color: 'var(--color-text-secondary)' }} title={effectiveModelLabel}>
+                    <Zap size={12} /> {effectiveModelLabel.split('·')[0].trim()}
+                  </span>
+                  {liveRouteInfo ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)', fontSize: '10.5px', fontWeight: 600 }}>
+                      <Zap size={12} /> {liveRouteInfo.model}
+                    </span>
+                  ) : null}
+                  {saveStatus ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', fontSize: '10.5px', fontWeight: 600, color: 'var(--color-success)' }}>
+                      <Save size={12} /> {saveStatus}
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <div className="project-chat-topbar__header-actions">
@@ -1457,7 +1481,7 @@ export default function ProjectChat() {
                   }
                   disabled={!activeThread || isStreaming}
                 >
-                  <option value="">Theo Settings hiá»‡n táº¡i ({getProviderLabel(activeChatProvider)})</option>
+                  <option value="">Theo Settings hiện tại ({getProviderLabel(activeChatProvider)})</option>
                   <option value={PROVIDERS.GEMINI_PROXY}>Gemini Proxy</option>
                   <option value={PROVIDERS.GEMINI_DIRECT}>Gemini Direct</option>
                   <option value={PROVIDERS.AI_STUDIO_RELAY}>AI Studio Relay</option>
@@ -1495,32 +1519,7 @@ export default function ProjectChat() {
             </div>
           </div>
 
-          <div className="project-chat-statusbar">
-            <div className="project-chat-statusbar__item">
-              <Bot size={14} />
-              Chế độ: {getChatModeLabel(activeThreadMode)}
-            </div>
-            <div className="project-chat-statusbar__item">
-              <Sparkles size={14} />
-              {hasManualModelOverride ? 'Model khóa cho thread' : 'Model mục tiêu'}: {effectiveModelLabel}
-            </div>
-            <div className="project-chat-statusbar__item">
-              <MessageSquare size={14} />
-              {providerScopeLabel}
-            </div>
-            {liveRouteInfo ? (
-              <div className="project-chat-statusbar__item project-chat-statusbar__item--live">
-                <Zap size={14} />
-                AI đang chạy: {getProviderLabel(liveRouteInfo.provider)} · {liveRouteInfo.model}
-              </div>
-            ) : null}
-            {saveStatus ? (
-              <div className="project-chat-statusbar__item project-chat-statusbar__item--success">
-                <Save size={14} />
-                {saveStatus}
-              </div>
-            ) : null}
-          </div>
+
 
           {errorMessage ? <div className="project-chat-error">{errorMessage}</div> : null}
 

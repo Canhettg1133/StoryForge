@@ -41,7 +41,7 @@ import {
   WORKFLOW_TABS,
 } from './labLiteUiHelpers.js';
 import LabLiteHero from './components/LabLiteHero.jsx';
-import GuidedWorkspaceRail from './components/GuidedWorkspaceRail.jsx';
+
 import { ChapterDetail, ChapterPanel } from './components/ChapterPanels.jsx';
 import { CorpusLibrary, IngestBatchPanel, ParseDiagnostics, UploadPanel } from './components/ImportPanels.jsx';
 import './LabLite.css';
@@ -230,6 +230,8 @@ function ScoutPanel({
                 key={result.id}
                 className="lab-lite-virtual-row"
                 style={{ transform: `translateY(${virtualRow.start}px)` }}
+                data-index={virtualRow.index}
+                ref={resultVirtualizer.measureElement}
               >
                 <div className="lab-lite-result-item">
                   <strong>Chương {result.chapterIndex} - {getRecommendationLabel(result.recommendation)}</strong>
@@ -600,7 +602,7 @@ function CanonPackPanel({ canonPackState, canonPacks, canonPackMergePlans, curre
             disabled={isLinkedToCurrentProject}
           >
             <BookKey size={14} />
-            {isLinkedToCurrentProject ? 'Đã dùng cho dự án này' : 'Dùng Canon Pack để viết'}
+            {isLinkedToCurrentProject ? 'Đã dùng cho dự án này' : 'Dùng cho dự án này'}
           </button>
         ) : null}
         {canWrite ? (
@@ -1144,18 +1146,49 @@ export default function LabLite() {
 
   return (
     <div className="lab-lite-page">
-      <LabLiteHero currentCorpus={currentCorpus} chapters={chapters} scoutPlan={scoutPlan} />
+      <div className="lab-lite-top-controls">
+        <div className="lab-lite-top-controls__left">
+          <h2><Wand2 size={18} /> Lab Lite</h2>
+          <div className="lab-lite-top-controls__stats">
+             <span>{formatNumber(currentCorpus?.chapterCount || chapters.length)} chương</span>
+             <span className="dot">•</span>
+             <span>{formatNumber(scoutPlan.estimatedRequests)} request</span>
+             <span className="dot">•</span>
+             <span>{formatNumber(currentCorpus?.totalEstimatedTokens || 0)} token</span>
+          </div>
+        </div>
+        <div className="lab-lite-top-controls__right">
+          <div className="lab-lite-top-controls__next-action">
+             <strong>{nextAction.title}</strong>
+          </div>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setActiveTab(nextAction.step)}>
+             Mở bước này <BookOpen size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="lab-lite-tabs" style={{ marginBottom: '16px', display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+        {[
+          { id: 'import', label: '1. Nạp liệu' },
+          { id: 'scout', label: '2. Quét & Lập map' },
+          { id: 'deep', label: '3. Phân tích sâu' },
+          { id: 'canon-pack', label: '4. Đóng gói Canon' },
+          { id: 'materialize', label: '5. Đưa vào Story Bible' }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`lab-lite-tab ${activeTab === tab.id ? 'is-active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+            style={{ whiteSpace: 'nowrap' }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       {loading ? <div className="lab-lite-loading"><Loader2 className="spin" size={18} /> Đang tải Lab Lite...</div> : null}
       {error ? <p className="lab-lite-error">{error}</p> : null}
-
-      <GuidedWorkspaceRail
-        activeStep={activeTab}
-        stepStatuses={stepStatuses}
-        nextAction={nextAction}
-        onStepChange={setActiveTab}
-        onRunAction={handleRunWorkflowAction}
-      />
 
       <div className={`lab-lite-grid lab-lite-grid--${activeTab}`}>
         <aside className="lab-lite-left">

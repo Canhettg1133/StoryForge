@@ -45,6 +45,84 @@ function createRelayError(message, code = 'AI_STUDIO_RELAY_ERROR') {
   return error;
 }
 
+function normalizeModelName(name) {
+  return String(name || '').replace(/^models\//u, '').trim();
+}
+
+function extractSSEDataValue(rawLine) {
+  const trimmed = String(rawLine || '').trim();
+  if (!trimmed || !trimmed.startsWith('data:')) return null;
+  return trimmed.slice(5).trimStart();
+}
+
+function extractGeminiPayloadText(payload) {
+  return (payload?.candidates?.[0]?.content?.parts || [])
+    .map((part) => String(part?.text || ''))
+    .join('');
+}
+
+function extractGeminiResponseText(payload) {
+  const text = extractGeminiPayloadText(payload);
+  if (text) return text;
+  return (payload?.candidates || [])
+    .flatMap((candidate) => candidate?.content?.parts || [])
+    .map((part) => String(part?.text || ''))
+    .join('');
+}
+
+function splitGeminiMessages(messages = []) {
+  const systemParts = [];
+  const contents = [];
+
+  for (const message of messages) {
+    const content = String(message?.content || '');
+    if (!content) continue;
+
+    if (message.role === 'system') {
+      systemParts.push(content);
+      continue;
+    }
+
+    contents.push({
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: content }],
+    });
+  }
+
+  return {
+    systemInstruction: systemParts.join('\n\n'),
+    contents,
+  };
+}
+
+export function buildAIStudioRawGenerateRequest({
+  requestId,
+  model,
+  messages,
+  stream = true,
+} = {}) {
+  const { systemInstruction, contents } = splitGeminiMessages(messages);
+  const action = stream ? 'streamGenerateContent' : 'generateContent';
+  const body = {
+    contents,
+    ...(systemInstruction && {
+      systemInstruction: { parts: [{ text: systemInstruction }] },
+    }),
+    generationConfig: {
+      maxOutputTokens: 65000,
+    },
+  };
+
+  return {
+    request_id: requestId,
+    method: 'POST',
+    path: `/v1beta/models/${normalizeModelName(model)}:${action}`,
+    headers: { 'Content-Type': 'application/json' },
+    query_params: stream ? { alt: 'sse' } : undefined,
+    body,
+  };
+}
+
 function isSocketOpen(socket, WebSocketImpl) {
   const openState = WebSocketImpl?.OPEN ?? 1;
   return socket?.readyState === openState;
@@ -119,6 +197,9 @@ export function callAIStudioRelayTransport({
   let socket = null;
   let settled = false;
   let fullText = '';
+  let rawStreamBuffer = '';
+  let rawResponseText = '';
+  let rawResponseStatus = 200;
   let timeoutId = null;
   let heartbeatId = null;
 
@@ -158,6 +239,54 @@ export function callAIStudioRelayTransport({
       return true;
     }
 
+    function appendText(text) {
+      if (!text) return;
+      fullText += text;
+      onToken?.(text, fullText);
+    }
+
+    function readRawStreamChunk(rawChunk) {
+      const chunk = String(rawChunk || '');
+      if (!chunk) return;
+
+      rawResponseText += chunk;
+      rawStreamBuffer += chunk;
+      const lines = rawStreamBuffer.split('\n');
+      rawStreamBuffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const dataValue = extractSSEDataValue(line);
+        if (!dataValue || dataValue === '[DONE]') continue;
+
+        try {
+          const payload = JSON.parse(dataValue);
+          appendText(extractGeminiPayloadText(payload));
+        } catch {
+          // Keep buffering; malformed partial SSE lines can be completed by a later chunk.
+        }
+      }
+    }
+
+    function readBufferedRawResponse() {
+      const lastDataValue = extractSSEDataValue(rawStreamBuffer);
+      if (lastDataValue && lastDataValue !== '[DONE]') {
+        try {
+          appendText(extractGeminiPayloadText(JSON.parse(lastDataValue)));
+        } catch {
+          // Fall through to whole-response parsing below.
+        }
+      }
+
+      if (fullText) return fullText;
+
+      try {
+        const payload = JSON.parse(rawResponseText);
+        return extractGeminiResponseText(payload);
+      } catch {
+        return '';
+      }
+    }
+
     function handleAbort() {
       if (settled) return;
       sendMessage({ type: 'cancel', requestId });
@@ -183,13 +312,12 @@ export function callAIStudioRelayTransport({
     signal?.addEventListener?.('abort', handleAbort, { once: true });
 
     socket.addEventListener('open', () => {
-      sendMessage({
-        type: 'generate',
+      sendMessage(buildAIStudioRawGenerateRequest({
         requestId,
         model,
         messages,
         stream,
-      });
+      }));
 
       heartbeatId = setInterval(() => {
         sendMessage({ type: 'heartbeat', ts: Date.now() });
@@ -210,12 +338,46 @@ export function callAIStudioRelayTransport({
       }
       if (payload.type === 'ready') return;
       if (payload.requestId && payload.requestId !== requestId) return;
+      if (payload.request_id && payload.request_id !== requestId) return;
+
+      if (payload.event_type === 'response_headers') {
+        rawResponseStatus = Number(payload.status || 200);
+        return;
+      }
+
+      if (payload.event_type === 'chunk') {
+        readRawStreamChunk(payload.data);
+        return;
+      }
+
+      if (payload.event_type === 'stream_close') {
+        const finalText = readBufferedRawResponse();
+        if (!finalText) {
+          const code = rawResponseStatus >= 400
+            ? `AI_STUDIO_RELAY_HTTP_${rawResponseStatus}`
+            : 'AI_STUDIO_RELAY_EMPTY_STREAM';
+          finishReject(createRelayError(
+            rawResponseStatus >= 400
+              ? `AI Studio Relay raw Gemini request failed with HTTP ${rawResponseStatus}.`
+              : 'AI Studio Relay returned an empty Gemini stream.',
+            code,
+          ));
+          return;
+        }
+        onComplete?.(finalText);
+        finishResolve(finalText);
+        return;
+      }
+
+      if (payload.event_type === 'error') {
+        finishReject(createRelayError(payload.message || 'AI Studio Relay raw proxy returned an error.', payload.code || `AI_STUDIO_RELAY_HTTP_${payload.status || 500}`));
+        return;
+      }
 
       if (payload.type === 'chunk') {
         const text = String(payload.text || '');
         if (!text) return;
-        fullText += text;
-        onToken?.(text, fullText);
+        appendText(text);
         return;
       }
 

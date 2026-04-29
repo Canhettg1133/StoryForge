@@ -120,7 +120,12 @@ export function UploadPanel({
             </button>
           </div>
           <div className="lab-lite-stat-grid lab-lite-stat-grid--compact">
-            {preflight.stats.slice(0, 2).map((item) => <span key={item.label}>{item.label}: {item.value}</span>)}
+            {preflight.stats.slice(0, 2).map((item) => (
+              <span key={item.label} className="lab-lite-stat-badge">
+                <span className="stat-label">{item.label}</span>
+                <strong className="stat-value">{item.value}</strong>
+              </span>
+            ))}
           </div>
           {preflight.warnings.length ? (
             <div className="lab-lite-warning-list">
@@ -129,7 +134,12 @@ export function UploadPanel({
           ) : <p className="lab-lite-muted">Chưa thấy cảnh báo tách chương đáng chú ý.</p>}
           {showImportDetails ? (
             <div className="lab-lite-stat-grid lab-lite-stat-grid--compact">
-              {preflight.stats.slice(2).map((item) => <span key={item.label}>{item.label}: {item.value}</span>)}
+              {preflight.stats.slice(2).map((item) => (
+                <span key={item.label} className="lab-lite-stat-badge">
+                  <span className="stat-label">{item.label}</span>
+                  <strong className="stat-value">{item.value}</strong>
+                </span>
+              ))}
             </div>
           ) : null}
         </div>

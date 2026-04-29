@@ -104,6 +104,8 @@ export function ChapterPanel({ chapters, currentChapterId, scoutResults, chapter
                 key={chapter.id}
                 className="lab-lite-virtual-row"
                 style={{ transform: `translateY(${virtualRow.start}px)` }}
+                data-index={virtualRow.index}
+                ref={rowVirtualizer.measureElement}
               >
             <button
               type="button"

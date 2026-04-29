@@ -9,6 +9,10 @@ import { X, Sparkles, PenTool, Eye, BookOpen, MessageSquare, BookKey } from 'luc
 import ProjectWizard from './ProjectWizard';
 import { listAvailableCanonPacks } from '../../services/labLite/canonPackRepository.js';
 import {
+  createProjectFromBibleTemplate,
+  getBibleTemplateSourceSummary,
+} from '../../services/projects/projectTemplateService.js';
+import {
   CANON_ADHERENCE_LEVELS,
   FANFIC_TYPES,
   PROJECT_MODES,
@@ -21,9 +25,53 @@ function clampInitialChapterCount(value) {
   return Math.max(1, Math.min(100, Math.round(numeric)));
 }
 
+const TEMPLATE_INCLUDE_DEFAULTS = {
+  settings: true,
+  worldProfile: true,
+  characters: true,
+  locations: true,
+  objects: true,
+  worldTerms: true,
+  factions: true,
+  relationships: true,
+  taboos: true,
+  canonFacts: false,
+};
+
+const TEMPLATE_INCLUDE_OPTIONS = [
+  { key: 'settings', label: 'Cài đặt & prompt', description: 'Genre, tone, POV, xưng hô, guideline và prompt templates.' },
+  { key: 'worldProfile', label: 'Hồ sơ thế giới', description: 'Tên thế giới, loại thế giới, quy mô, thời đại và luật nền.' },
+  { key: 'characters', label: 'Nhân vật', description: 'Hồ sơ nhân vật, alias, vai trò, giọng và trạng thái hiện tại.' },
+  { key: 'locations', label: 'Địa điểm', description: 'Địa danh và quan hệ địa điểm cha/con.' },
+  { key: 'objects', label: 'Vật phẩm', description: 'Vật phẩm, chủ sở hữu và vị trí hiện tại nếu có thể remap.' },
+  { key: 'worldTerms', label: 'Thuật ngữ', description: 'Khái niệm, thuật ngữ và định nghĩa world-builder.' },
+  { key: 'factions', label: 'Thế lực', description: 'Tông môn, tổ chức, phe phái hoặc vương triều.' },
+  { key: 'relationships', label: 'Quan hệ', description: 'Chỉ copy khi cả hai nhân vật đều được mang sang.' },
+  { key: 'taboos', label: 'Cấm kỵ', description: 'Cấm kỵ chung hoặc cấm kỵ gắn với nhân vật được remap.' },
+  { key: 'canonFacts', label: 'Canon facts nền', description: 'Tùy chọn rủi ro cao, mặc định tắt để tránh kéo ký ức truyện cũ.' },
+];
+
+function getTemplateCount(summary, key) {
+  return Number(summary?.counts?.[key] || 0);
+}
+
+function buildTemplateIncludeFromCounts(counts = {}) {
+  const next = { ...TEMPLATE_INCLUDE_DEFAULTS };
+  for (const item of TEMPLATE_INCLUDE_OPTIONS) {
+    if (item.key !== 'settings' && Number(counts[item.key] || 0) <= 0) {
+      next[item.key] = false;
+    }
+  }
+  if (!next.characters) {
+    next.relationships = false;
+    next.taboos = false;
+  }
+  return next;
+}
+
 export default function NewProjectModal({ onClose, onCreated }) {
-  const { createProject, createChapter } = useProjectStore();
-  const [mode, setMode] = useState(null); // null = choose, 'manual' = form, 'ai' = wizard
+  const { createProject, createChapter, projects, loadProjects } = useProjectStore();
+  const [mode, setMode] = useState(null); // null = choose, 'manual' = form, 'ai' = wizard, 'template' = Bible transfer
   const [canonPacks, setCanonPacks] = useState([]);
   const [fanficForm, setFanficForm] = useState({
     title: '',
@@ -48,6 +96,17 @@ export default function NewProjectModal({ onClose, onCreated }) {
     initial_chapter_count: 10,
     ultimate_goal: '',
   });
+  const [templateForm, setTemplateForm] = useState({
+    sourceProjectId: '',
+    title: '',
+    description: '',
+    synopsis: '',
+    initial_chapter_count: 1,
+  });
+  const [templateInclude, setTemplateInclude] = useState(TEMPLATE_INCLUDE_DEFAULTS);
+  const [templateSummary, setTemplateSummary] = useState(null);
+  const [templateSummaryLoading, setTemplateSummaryLoading] = useState(false);
+  const [templateError, setTemplateError] = useState('');
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -60,6 +119,59 @@ export default function NewProjectModal({ onClose, onCreated }) {
       })
       .catch(() => setCanonPacks([]));
   }, []);
+
+  const sourceProjects = useMemo(
+    () => (projects || []).filter((project) => project?.id),
+    [projects],
+  );
+
+  useEffect(() => {
+    if (mode !== 'template') return;
+    loadProjects().catch((error) => {
+      console.error('Failed to load source projects:', error);
+      setTemplateError('Không tải được danh sách dự án nguồn.');
+    });
+  }, [mode, loadProjects]);
+
+  useEffect(() => {
+    if (mode !== 'template' || templateForm.sourceProjectId || sourceProjects.length === 0) return;
+    setTemplateForm((prev) => ({
+      ...prev,
+      sourceProjectId: String(sourceProjects[0].id),
+    }));
+  }, [mode, sourceProjects, templateForm.sourceProjectId]);
+
+  useEffect(() => {
+    if (mode !== 'template') return undefined;
+    const sourceProjectId = Number(templateForm.sourceProjectId);
+    if (!Number.isFinite(sourceProjectId) || sourceProjectId <= 0) {
+      setTemplateSummary(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setTemplateSummaryLoading(true);
+    setTemplateError('');
+    getBibleTemplateSourceSummary(sourceProjectId)
+      .then((summary) => {
+        if (cancelled) return;
+        setTemplateSummary(summary);
+        setTemplateInclude(buildTemplateIncludeFromCounts(summary?.counts || {}));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('Failed to summarize source project:', error);
+        setTemplateSummary(null);
+        setTemplateError('Không đọc được Bible của dự án nguồn.');
+      })
+      .finally(() => {
+        if (!cancelled) setTemplateSummaryLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, templateForm.sourceProjectId]);
 
   const handleChange = (field, value) => {
     setForm(prev => {
@@ -101,6 +213,64 @@ export default function NewProjectModal({ onClose, onCreated }) {
       target_length_type: value,
       target_length: nextLength,
     }));
+  };
+
+  const handleTemplateFormChange = (field, value) => {
+    setTemplateForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleTemplateSourceChange = (value) => {
+    setTemplateForm((prev) => ({ ...prev, sourceProjectId: value }));
+    setTemplateSummary(null);
+    setTemplateError('');
+  };
+
+  const handleTemplateIncludeChange = (key, checked) => {
+    setTemplateInclude((prev) => {
+      const next = { ...prev, [key]: checked };
+      if (key === 'characters') {
+        if (!checked) {
+          next.relationships = false;
+          next.taboos = false;
+        } else {
+          next.relationships = getTemplateCount(templateSummary, 'relationships') > 0;
+          next.taboos = getTemplateCount(templateSummary, 'taboos') > 0;
+        }
+      }
+      return next;
+    });
+  };
+
+  const isTemplateIncludeDisabled = (key) => {
+    if (!templateSummary || templateSummaryLoading) return true;
+    if (key !== 'settings' && getTemplateCount(templateSummary, key) <= 0) return true;
+    if ((key === 'relationships' || key === 'taboos') && !templateInclude.characters) return true;
+    return false;
+  };
+
+  const handleTemplateSubmit = async (event) => {
+    event.preventDefault();
+    if (!templateForm.sourceProjectId || !templateForm.title.trim() || templateSummaryLoading || !templateSummary) return;
+    setCreating(true);
+    setTemplateError('');
+    try {
+      const result = await createProjectFromBibleTemplate({
+        sourceProjectId: Number(templateForm.sourceProjectId),
+        projectData: {
+          title: templateForm.title.trim(),
+          description: templateForm.description,
+          synopsis: templateForm.synopsis,
+        },
+        include: templateInclude,
+        initialChapterCount: clampInitialChapterCount(templateForm.initial_chapter_count),
+      });
+      await loadProjects();
+      onCreated(result.projectId, { path: `/project/${result.projectId}/story-bible` });
+    } catch (err) {
+      console.error('Failed to create project from Bible template:', err);
+      setTemplateError(err?.message || 'Không tạo được truyện mới từ Bible.');
+      setCreating(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -229,6 +399,17 @@ export default function NewProjectModal({ onClose, onCreated }) {
 
             <button
               className="wizard-choice-btn"
+              onClick={() => setMode('template')}
+            >
+              <div className="wizard-choice-icon"><BookOpen size={24} /></div>
+              <div className="wizard-choice-text">
+                <strong>Dùng thế giới & nhân vật có sẵn</strong>
+                <span>Tạo truyện mới sạch từ Bible/World của một dự án khác</span>
+              </div>
+            </button>
+
+            <button
+              className="wizard-choice-btn"
               onClick={() => setMode('fanfic')}
             >
               <div className="wizard-choice-icon"><BookKey size={24} /></div>
@@ -238,6 +419,184 @@ export default function NewProjectModal({ onClose, onCreated }) {
               </div>
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === 'template') {
+    return (
+      <div className="modal-overlay" onClick={onClose} style={{ backdropFilter: 'blur(3px)', backgroundColor: 'rgba(0, 0, 0, 0.4)' }}>
+        <div className="modal animate-scale-up" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', maxHeight: '90vh', maxWidth: '760px', padding: 0, borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--color-border)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+          <div className="modal-header" style={{ flexShrink: 0, padding: '24px', borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-elevated)' }}>
+            <h2 className="modal-title" style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div style={{ padding: '8px', background: 'var(--color-accent)', color: '#fff', borderRadius: '10px', display: 'flex', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)' }}>
+                <BookOpen size={20} />
+              </div>
+              Tạo truyện từ Bible có sẵn
+            </h2>
+            <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={onClose} style={{ borderRadius: '50%', border: '1px solid var(--color-border)' }}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <form onSubmit={handleTemplateSubmit} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <div style={{ padding: '24px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Dự án nguồn *</label>
+                  <select
+                    className="select"
+                    value={templateForm.sourceProjectId}
+                    onChange={(event) => handleTemplateSourceChange(event.target.value)}
+                    disabled={creating || sourceProjects.length === 0}
+                  >
+                    <option value="">Chọn dự án nguồn...</option>
+                    {sourceProjects.map((project) => (
+                      <option key={project.id} value={project.id}>{project.title || `Dự án #${project.id}`}</option>
+                    ))}
+                  </select>
+                  <span className="form-hint" style={{ marginTop: '8px', fontSize: '13px' }}>
+                    {sourceProjects.length === 0
+                      ? 'Chưa có dự án nào để lấy Bible/World.'
+                      : 'Chỉ lấy dữ liệu tái sử dụng được, không copy chương/cảnh cũ.'}
+                  </span>
+                </div>
+
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Tên truyện mới *</label>
+                  <input
+                    className="input"
+                    placeholder="VD: Huyết Nguyệt Tân Biên"
+                    value={templateForm.title}
+                    onChange={(event) => handleTemplateFormChange('title', event.target.value)}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="form-group" style={{ margin: 0 }}>
+                <label className="form-label" style={{ fontWeight: 600 }}>Synopsis mới</label>
+                <textarea
+                  className="textarea"
+                  placeholder="Tóm tắt hướng truyện mới, mục tiêu mới hoặc biến thể mới của thế giới này..."
+                  value={templateForm.synopsis}
+                  onChange={(event) => handleTemplateFormChange('synopsis', event.target.value)}
+                  rows={3}
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Mô tả ngắn</label>
+                  <textarea
+                    className="textarea"
+                    placeholder="Premise hoặc ghi chú ngắn cho dự án mới..."
+                    value={templateForm.description}
+                    onChange={(event) => handleTemplateFormChange('description', event.target.value)}
+                    rows={2}
+                    style={{ resize: 'none' }}
+                  />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Chương trống</label>
+                  <input
+                    type="number"
+                    className="input"
+                    value={templateForm.initial_chapter_count}
+                    min={1}
+                    max={100}
+                    onChange={(event) => handleTemplateFormChange('initial_chapter_count', clampInitialChapterCount(event.target.value))}
+                  />
+                  <span className="form-hint" style={{ marginTop: '8px', fontSize: '13px' }}>Mặc định 1 chương mới.</span>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ margin: 0, paddingTop: '16px', borderTop: '1px dashed var(--color-border)' }}>
+                <label className="form-label" style={{ fontWeight: 600, fontSize: '15px', marginBottom: '16px' }}>
+                  Dữ liệu mang sang
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '12px' }}>
+                  {TEMPLATE_INCLUDE_OPTIONS.map((item) => {
+                    const disabled = isTemplateIncludeDisabled(item.key);
+                    const count = getTemplateCount(templateSummary, item.key);
+                    const isChecked = Boolean(templateInclude[item.key]) && !disabled;
+
+                    return (
+                      <label
+                        key={item.key}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '12px',
+                          padding: '14px',
+                          border: isChecked ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+                          borderRadius: '10px',
+                          backgroundColor: 'var(--color-bg-elevated)',
+                          opacity: disabled ? 0.5 : 1,
+                          cursor: disabled || creating ? 'not-allowed' : 'pointer',
+                          transition: 'all 0.2s ease',
+                          boxShadow: isChecked ? '0 2px 8px rgba(0, 0, 0, 0.05)' : 'none'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={disabled || creating}
+                          onChange={(event) => handleTemplateIncludeChange(item.key, event.target.checked)}
+                          style={{ marginTop: '4px', accentColor: 'var(--color-accent)', width: '16px', height: '16px', cursor: 'pointer' }}
+                        />
+                        <span style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0, flex: 1 }}>
+                          <span style={{ fontSize: '14px', fontWeight: 600, color: isChecked ? 'var(--color-accent)' : 'inherit', transition: 'color 0.2s' }}>{item.label}</span>
+                          <span className="form-hint" style={{ margin: 0, lineHeight: 1.4, fontSize: '12px' }}>{item.description}</span>
+                        </span>
+                        <span
+                          className="badge"
+                          style={{
+                            flexShrink: 0,
+                            backgroundColor: isChecked ? 'var(--color-accent)' : 'transparent',
+                            border: isChecked ? 'none' : '1px solid var(--color-border)',
+                            color: isChecked ? '#fff' : 'var(--color-text-secondary)',
+                            fontWeight: 600,
+                            borderRadius: '6px',
+                            padding: '4px 8px',
+                            fontSize: '11px'
+                          }}
+                        >
+                          {item.key === 'settings' ? 'có' : count}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <span className="form-hint" style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', padding: '12px 16px', borderRadius: '8px', fontSize: '13px', borderLeft: '3px solid var(--color-accent)' }}>
+                  {templateSummaryLoading
+                    ? '⏳ Đang đọc Bible của dự án nguồn...'
+                    : '💡 Nếu tắt Nhân vật, phần Quan hệ và Cấm kỵ sẽ tự động được tắt theo. Chủ sở hữu của vật phẩm cũng sẽ bị xóa bỏ để tránh lỗi.'}
+                </span>
+              </div>
+
+              {templateError && (
+                <div style={{ color: 'var(--color-danger)', backgroundColor: 'var(--color-bg-elevated)', borderLeft: '3px solid var(--color-danger)', borderTop: '1px solid var(--color-border)', borderRight: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)', padding: '12px 16px', borderRadius: '0 8px 8px 0', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 500 }}>
+                  {templateError}
+                </div>
+              )}
+            </div>
+
+            <div className="modal-actions" style={{ flexShrink: 0, margin: 0, padding: '16px 24px', borderTop: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-elevated)', display: 'flex', justifyItems: 'center', justifyContent: 'flex-end', gap: '12px' }}>
+              <button type="button" className="btn btn-ghost" onClick={() => setMode(null)} style={{ padding: '10px 20px', borderRadius: '8px', fontWeight: 600 }}>← Quay lại</button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={!templateForm.sourceProjectId || !templateForm.title.trim() || templateSummaryLoading || !templateSummary || creating}
+                style={{ padding: '10px 24px', borderRadius: '8px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', transition: 'all 0.2s' }}
+              >
+                <BookOpen size={18} />
+                {creating ? 'Đang khởi tạo...' : 'Tạo truyện mới'}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     );

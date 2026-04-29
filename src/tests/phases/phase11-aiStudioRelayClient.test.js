@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { callAIStudioRelayTransport, toRelayWebSocketUrl } from '../../services/ai/aiStudioRelayClient.js';
+import {
+  buildAIStudioRawGenerateRequest,
+  callAIStudioRelayTransport,
+  toRelayWebSocketUrl,
+} from '../../services/ai/aiStudioRelayClient.js';
 
 class MockWebSocket {
   static instances = [];
@@ -73,6 +77,114 @@ describe('AI Studio Relay client transport', () => {
     expect(toRelayWebSocketUrl('http://localhost:8787/', 'ABC-123')).toBe(
       'ws://localhost:8787/rooms/ABC-123?role=client',
     );
+  });
+
+  it('builds raw Gemini proxy requests for the connector', () => {
+    const request = buildAIStudioRawGenerateRequest({
+      requestId: 'req-raw',
+      model: 'models/gemini-2.5-flash',
+      messages: [
+        { role: 'system', content: 'system rule' },
+        { role: 'user', content: 'hello' },
+      ],
+      stream: true,
+    });
+
+    expect(request).toMatchObject({
+      request_id: 'req-raw',
+      method: 'POST',
+      path: '/v1beta/models/gemini-2.5-flash:streamGenerateContent',
+      query_params: { alt: 'sse' },
+    });
+    expect(request.body.systemInstruction.parts[0].text).toBe('system rule');
+    expect(request.body.contents).toEqual([
+      { role: 'user', parts: [{ text: 'hello' }] },
+    ]);
+  });
+
+  it('parses raw proxy Gemini SSE chunks into text tokens', async () => {
+    resetMockSockets();
+    const onToken = vi.fn();
+    const onComplete = vi.fn();
+
+    const promise = callAIStudioRelayTransport({
+      relayUrl: 'https://relay.example.com',
+      roomCode: 'ABC-123',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      WebSocketImpl: MockWebSocket,
+      onToken,
+      onComplete,
+      requestId: 'req-raw',
+      timeoutMs: 1000,
+    });
+
+    await waitForAssertion(() => expect(MockWebSocket.instances[0]?.sent.length).toBe(1));
+    expect(JSON.parse(MockWebSocket.instances[0].sent[0])).toMatchObject({
+      request_id: 'req-raw',
+      path: '/v1beta/models/gemini-2.5-flash:streamGenerateContent',
+    });
+
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-raw',
+      event_type: 'response_headers',
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    });
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-raw',
+      event_type: 'chunk',
+      data: 'data: {"candidates":[{"content":{"parts":[{"text":"Xin "}]}}]}\n\n',
+    });
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-raw',
+      event_type: 'chunk',
+      data: 'data: {"candidates":[{"content":{"parts":[{"text":"chao"}]}}]}\n\n',
+    });
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-raw',
+      event_type: 'stream_close',
+    });
+
+    await expect(promise).resolves.toBe('Xin chao');
+    expect(onToken).toHaveBeenNthCalledWith(1, 'Xin ', 'Xin ');
+    expect(onToken).toHaveBeenNthCalledWith(2, 'chao', 'Xin chao');
+    expect(onComplete).toHaveBeenCalledWith('Xin chao');
+  });
+
+  it('rejects raw proxy streams that complete without text', async () => {
+    resetMockSockets();
+    const onError = vi.fn();
+
+    const promise = callAIStudioRelayTransport({
+      relayUrl: 'https://relay.example.com',
+      roomCode: 'ABC-123',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      WebSocketImpl: MockWebSocket,
+      onError,
+      requestId: 'req-empty',
+      timeoutMs: 1000,
+    });
+
+    await waitForAssertion(() => expect(MockWebSocket.instances[0]?.sent.length).toBe(1));
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-empty',
+      event_type: 'response_headers',
+      status: 200,
+    });
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-empty',
+      event_type: 'chunk',
+      data: 'data: {"candidates":[{"finishReason":"SAFETY"}]}\n\n',
+    });
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-empty',
+      event_type: 'stream_close',
+    });
+
+    await expect(promise).rejects.toMatchObject({ code: 'AI_STUDIO_RELAY_EMPTY_STREAM' });
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'AI_STUDIO_RELAY_EMPTY_STREAM' }));
   });
 
   it('streams chunk messages into onToken and resolves on done', async () => {
