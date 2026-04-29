@@ -11,7 +11,7 @@ import {
 } from '../../../docs/ai-studio-relay-connector/App1.tsx';
 
 describe('AI Studio App1 Service Usage operations', () => {
-  it('does not commit the OAuth client secret literal in App1 source', () => {
+  it('uses the relay OAuth flow instead of a browser-side OAuth client secret in App1 source', () => {
     const source = readFileSync(
       path.resolve(process.cwd(), 'docs/ai-studio-relay-connector/App1.tsx'),
       'utf8',
@@ -19,7 +19,9 @@ describe('AI Studio App1 Service Usage operations', () => {
 
     expect(source).not.toContain(['GOC', 'SPX'].join(''));
     expect(source).not.toMatch(/const\s+OAUTH_CLIENT_SECRET\s*=/);
-    expect(source).toContain('OAUTH_CLIENT_SECRET_SESSION_KEY');
+    expect(source).not.toContain('OAUTH_CLIENT_SECRET_SESSION_KEY');
+    expect(source).not.toContain('https://oauth2.googleapis.com/token');
+    expect(source).toContain("toRelayOAuthUrl(relayUrl, 'exchange')");
   });
 
   it('treats DONE_OPERATION as already completed instead of polling it', () => {

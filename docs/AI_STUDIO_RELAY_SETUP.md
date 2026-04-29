@@ -121,7 +121,32 @@ Khong dung:
 https://storyforge.example.com/
 ```
 
-### 1.3 Deploy Worker
+### 1.3 Cau hinh OAuth secret tren Worker
+
+Neu muon dung nut `Dang nhap bang Google` trong connector, OAuth Client Secret phai nam o Cloudflare Worker, khong nam trong source connector va khong nhap trong UI.
+
+Chay lenh nay trong PowerShell:
+
+```powershell
+cd D:\StoryForge\relay-worker
+npx wrangler secret put OAUTH_CLIENT_SECRET
+```
+
+Wrangler se hien prompt rieng. Dan OAuth Client Secret vao prompt do, khong dan vao source code.
+
+Mac dinh Worker dung OAuth Client ID dang co trong connector:
+
+```text
+861823451650-heam38v432jq22s22ja09fhuo5o2hevm.apps.googleusercontent.com
+```
+
+Neu sau nay doi OAuth Client ID, set them secret/var `OAUTH_CLIENT_ID` cho Worker hoac sua source Worker cho khop. OAuth client tren Google phai co redirect URI:
+
+```text
+http://localhost:11451
+```
+
+### 1.4 Deploy Worker
 
 Chay:
 
@@ -138,7 +163,7 @@ https://storyforge-ai-studio-relay.<ten-account>.workers.dev
 
 Copy URL nay. Day la `Relay URL`.
 
-### 1.4 Test relay da song
+### 1.5 Test relay da song
 
 Chay lenh nay, thay `RELAY_URL` bang URL cua ban:
 
@@ -253,7 +278,8 @@ Luu y quan trong:
 
 - Code cua app share co the bi nguoi khac xem.
 - Khong paste API key, OAuth Client Secret, cookie, refresh token hoac `.env.local` vao code.
-- Connector source khong duoc hard-code secret. Neu can OAuth Client Secret, nhap luc chay trong UI.
+- Connector source khong duoc hard-code secret. OAuth Client Secret duoc luu bang `wrangler secret put OAUTH_CLIENT_SECRET` tren Worker.
+- Token OAuth cua tung user duoc luu trong localStorage cua trinh duyet dang chay connector. Neu may do la may ca nhan cua ban thi dung voi muc tieu "luu tren may minh".
 - Khi user chay shared app trong AI Studio, AI Studio se dung key/session cua user do.
 
 ## 3. Dan URL vao StoryForge
@@ -368,6 +394,29 @@ Cach xu ly:
 - Thu model `gemini-2.5-flash`.
 - Tao room moi.
 - Neu van loi, dung provider Gemini Direct/BYOK.
+
+### Loi OAuth: no registered origin / invalid_client
+
+Loi nay xay ra khi dung Google Identity Services token flow truc tiep trong connector. Connector hien tai khong dung flow do nua.
+
+Can lam:
+
+1. Cap nhat source connector bang file `docs\ai-studio-relay-connector\App.tsx` moi.
+2. Set Worker secret:
+
+```powershell
+cd D:\StoryForge\relay-worker
+npx wrangler secret put OAUTH_CLIENT_SECRET
+npx wrangler deploy
+```
+
+3. Dang nhap lai trong connector bang nut `Dang nhap bang Google`.
+
+Neu connector bao `OAUTH_SECRET_MISSING`, Worker chua co secret hoac chua deploy lai.
+
+Neu Google bao `invalid_grant`, code localhost da het han hoac da dung mot lan. Bam dang nhap lai va copy URL moi.
+
+Neu Google bao `invalid_client` khi bam `Hoan tat dang nhap`, OAuth Client Secret tren Worker khong khop voi OAuth Client ID trong connector.
 
 ## 6. Deploy lai khi sua relay
 

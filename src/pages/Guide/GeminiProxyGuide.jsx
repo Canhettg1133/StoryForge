@@ -535,7 +535,7 @@ export default function GeminiProxyGuide({ focusFixCli = false }) {
           <div className="gemini-guide-note">
             <ShieldCheck size={16} />
             <span>
-              {'N\u1ebfu mu\u1ed1n ch\u1ea1y tool t\u1ef1 \u0111\u1ed9ng ki\u1ec3m tra project, enable API v\u00e0 IAM, m\u1edf App1 trong AI Studio. App1 kh\u00f4ng c\u00f2n hard-code OAuth Client Secret; secret ph\u1ea3i nh\u1eadp l\u00fac ch\u1ea1y v\u00e0 kh\u00f4ng commit l\u00ean GitHub.'}
+              {'N\u1ebfu mu\u1ed1n ch\u1ea1y tool t\u1ef1 \u0111\u1ed9ng ki\u1ec3m tra project, enable API v\u00e0 IAM, m\u1edf App1 trong AI Studio. App1 kh\u00f4ng nh\u1eadp OAuth Client Secret trong UI; secret n\u1eb1m tr\u00ean Cloudflare Worker qua endpoint OAuth relay.'}
             </span>
           </div>
           <pre className="gemini-guide-code-block">

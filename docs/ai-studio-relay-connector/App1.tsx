@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Shield, Key, AlertCircle, CheckCircle2, Loader2, Plus, Server, RefreshCw, Power } from 'lucide-react';
 
-const OAUTH_CLIENT_ID = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
-const OAUTH_CLIENT_SECRET_SESSION_KEY = 'gcp-api-fixer-oauth-client-secret';
+const OAUTH_CLIENT_ID = "861823451650-heam38v432jq22s22ja09fhuo5o2hevm.apps.googleusercontent.com";
 const OAUTH_REDIRECT_URI = "http://localhost:11451";
 const OAUTH_SCOPES = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email";
 const OAUTH_STEP_SESSION_KEY = 'gcp-api-fixer-oauth-step';
 const OAUTH_REDIRECT_SESSION_KEY = 'gcp-api-fixer-redirect-url';
+const DEFAULT_RELAY_URL = 'https://storyforge-ai-studio-relay.canhettg113.workers.dev';
 const DEFAULT_REQUEST_TIMEOUT_MS = 45000;
 const CODE_ASSIST_BASE_URL = 'https://cloudcode-pa.googleapis.com/v1internal';
 
@@ -134,11 +134,25 @@ const writeSessionValue = (key: string, value: string) => {
   }
 };
 
+function toRelayOAuthUrl(relayUrl: string, action: 'exchange' | 'refresh') {
+  const url = new URL(relayUrl.trim());
+  if (url.protocol === 'wss:') url.protocol = 'https:';
+  if (url.protocol === 'ws:') url.protocol = 'http:';
+  url.pathname = `${url.pathname.replace(/\/+$/u, '')}/oauth/${action}`;
+  url.search = '';
+  return url.toString();
+}
+
+function extractOAuthCode(redirectUrl: string) {
+  const url = new URL(String(redirectUrl || '').trim());
+  return url.searchParams.get('code') || '';
+}
+
 export default function App1() {
   const [credential, setCredential] = useState<{access_token: string, email: string} | null>(null);
   const [authStep, setAuthStepState] = useState(() => readSessionValue(OAUTH_STEP_SESSION_KEY) === '2' ? 2 : 1);
   const [redirectUrl, setRedirectUrlState] = useState(() => readSessionValue(OAUTH_REDIRECT_SESSION_KEY));
-  const [oauthClientSecret, setOAuthClientSecretState] = useState(() => readSessionValue(OAUTH_CLIENT_SECRET_SESSION_KEY));
+  const [relayUrl, setRelayUrl] = useState(DEFAULT_RELAY_URL);
 
   const [loading, setLoading] = useState('');
   const [logs, setLogs] = useState<{msg: string, time: Date, isError: boolean}[]>([]);
@@ -153,11 +167,6 @@ export default function App1() {
   const setRedirectUrl = (value: string) => {
     setRedirectUrlState(value);
     writeSessionValue(OAUTH_REDIRECT_SESSION_KEY, value);
-  };
-
-  const setOAuthClientSecret = (value: string) => {
-    setOAuthClientSecretState(value);
-    writeSessionValue(OAUTH_CLIENT_SECRET_SESSION_KEY, value.trim());
   };
 
   const log = (msg: string, isError = false) => {
@@ -176,6 +185,10 @@ export default function App1() {
   };
 
   const getApiErrorMessage = (data: any, fallback: string) => {
+    if (data?.code === 'NOT_FOUND') return 'Relay dang chay ban cu, chua co /oauth/exchange. Hay deploy lai relay-worker roi thu lai.';
+    if (data?.code === 'OAUTH_SECRET_MISSING') return 'Relay chua cau hinh OAUTH_CLIENT_SECRET tren Cloudflare Worker.';
+    if (data?.code === 'OAUTH_EXCHANGE_FAILED' && /invalid_client/i.test(String(data?.error || ''))) return 'OAuth secret tren Worker khong khop voi OAuth Client ID.';
+    if (data?.code === 'OAUTH_EXCHANGE_FAILED' && /invalid_grant/i.test(String(data?.error || ''))) return 'OAuth code da het han hoac da duoc dung mot lan. Dang nhap Google lai va copy URL localhost moi.';
     return data?.error?.message || data?.error_description || data?.error || data?.raw || fallback;
   };
 
@@ -221,19 +234,15 @@ export default function App1() {
   const handleExchange = async () => {
     try {
       setLoading('Đang lấy Token...');
-      const clientSecret = oauthClientSecret.trim();
-      if (!clientSecret) throw new Error('Chua nhap OAuth Client Secret.');
-
-      const urlObj = new URL(redirectUrl);
-      const code = urlObj.searchParams.get('code');
+      const code = extractOAuthCode(redirectUrl);
       if (!code) throw new Error('Không tìm thấy mã code trong URL!');
 
-      const res = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
+      const res = await fetchWithTimeout(toRelayOAuthUrl(relayUrl, 'exchange'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: OAUTH_CLIENT_ID, client_secret: clientSecret, code,
-          grant_type: 'authorization_code', redirect_uri: OAUTH_REDIRECT_URI
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          redirect_uri: OAUTH_REDIRECT_URI
         })
       });
       const data = await readApiPayload(res);
@@ -761,21 +770,20 @@ export default function App1() {
             {!credential ? (
               <div className="space-y-4">
                 <h2 className="text-lg font-bold text-white mb-2">Bước 1: Nạp Tài Khoản Google</h2>
-                <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-                  <label className="block text-sm font-semibold text-amber-100" htmlFor="oauth-client-secret">
-                    OAuth Client Secret
+                <div className="space-y-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+                  <label className="block text-sm font-semibold text-emerald-100" htmlFor="relay-url">
+                    Relay URL
                   </label>
                   <input
-                    id="oauth-client-secret"
-                    type="password"
-                    value={oauthClientSecret}
-                    onChange={e => setOAuthClientSecret(e.target.value)}
-                    placeholder="Nhap OAuth Client Secret luc chay, khong commit vao source"
-                    autoComplete="off"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-400 transition"
+                    id="relay-url"
+                    type="text"
+                    value={relayUrl}
+                    onChange={e => setRelayUrl(e.target.value)}
+                    placeholder={DEFAULT_RELAY_URL}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-400 transition"
                   />
-                  <p className="text-xs leading-relaxed text-amber-100/80">
-                    Secret chi luu tam trong sessionStorage cua tab nay de doi OAuth code lay token.
+                  <p className="text-xs leading-relaxed text-emerald-100/80">
+                    OAuth secret duoc giu tren Worker qua endpoint /oauth/exchange, khong nam trong app share.
                   </p>
                 </div>
 
@@ -797,7 +805,7 @@ export default function App1() {
                       className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500 transition"
                     />
                     <div className="flex gap-2">
-                       <button onClick={handleExchange} disabled={!!loading || !redirectUrl || !oauthClientSecret.trim()} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2">
+                       <button onClick={handleExchange} disabled={!!loading || !redirectUrl || !relayUrl.trim()} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition disabled:opacity-50 flex items-center justify-center gap-2">
                          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Trao Đổi Thông Tin Kêt Nối'}
                        </button>
                        <button onClick={() => { setAuthStep(1); setRedirectUrl(''); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-3 rounded-lg transition">Huỷ</button>

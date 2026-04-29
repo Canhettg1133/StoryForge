@@ -5,6 +5,9 @@ const BASE_CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
+const DEFAULT_OAUTH_CLIENT_ID = '861823451650-heam38v432jq22s22ja09fhuo5o2hevm.apps.googleusercontent.com';
+const DEFAULT_OAUTH_REDIRECT_URI = 'http://localhost:11451';
+
 function getAllowedOrigins(env) {
   return String(env.ALLOWED_ORIGINS || '')
     .split(',')
@@ -103,6 +106,119 @@ function json(payload, status = 200, cors = BASE_CORS_HEADERS) {
   });
 }
 
+async function readJson(request) {
+  try {
+    return await request.json();
+  } catch {
+    return {};
+  }
+}
+
+function getOAuthClientSecret(env) {
+  return String(env.OAUTH_CLIENT_SECRET || '').trim();
+}
+
+function getOAuthClientId(env) {
+  return String(env.OAUTH_CLIENT_ID || DEFAULT_OAUTH_CLIENT_ID).trim();
+}
+
+async function proxyGoogleOAuthToken(formBody) {
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formBody,
+  });
+  const payload = await response.json().catch(() => ({}));
+  return { response, payload };
+}
+
+function handleOAuthStatus(env, requestCorsHeaders) {
+  return json({
+    ok: true,
+    oauthConfigured: Boolean(getOAuthClientSecret(env)),
+    clientId: getOAuthClientId(env),
+    redirectUri: DEFAULT_OAUTH_REDIRECT_URI,
+  }, 200, requestCorsHeaders);
+}
+
+async function handleOAuthExchange(request, env, requestCorsHeaders) {
+  if (request.method !== 'POST') {
+    return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
+  }
+
+  const clientSecret = getOAuthClientSecret(env);
+  if (!clientSecret) {
+    return json({ error: 'OAuth relay secret is not configured', code: 'OAUTH_SECRET_MISSING' }, 500, requestCorsHeaders);
+  }
+
+  const payload = await readJson(request);
+  const code = String(payload.code || '').trim();
+  if (!code) {
+    return json({ error: 'Missing OAuth code', code: 'OAUTH_CODE_REQUIRED' }, 400, requestCorsHeaders);
+  }
+
+  const { response, payload: tokenPayload } = await proxyGoogleOAuthToken(new URLSearchParams({
+    client_id: getOAuthClientId(env),
+    client_secret: clientSecret,
+    code,
+    grant_type: 'authorization_code',
+    redirect_uri: String(payload.redirect_uri || DEFAULT_OAUTH_REDIRECT_URI),
+  }));
+
+  if (!response.ok || tokenPayload.error) {
+    return json({
+      error: tokenPayload.error_description || tokenPayload.error || 'OAuth exchange failed',
+      code: 'OAUTH_EXCHANGE_FAILED',
+    }, response.status || 400, requestCorsHeaders);
+  }
+
+  return json({
+    access_token: tokenPayload.access_token,
+    refresh_token: tokenPayload.refresh_token,
+    expires_in: tokenPayload.expires_in,
+    token_type: tokenPayload.token_type,
+    scope: tokenPayload.scope,
+  }, 200, requestCorsHeaders);
+}
+
+async function handleOAuthRefresh(request, env, requestCorsHeaders) {
+  if (request.method !== 'POST') {
+    return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
+  }
+
+  const clientSecret = getOAuthClientSecret(env);
+  if (!clientSecret) {
+    return json({ error: 'OAuth relay secret is not configured', code: 'OAUTH_SECRET_MISSING' }, 500, requestCorsHeaders);
+  }
+
+  const payload = await readJson(request);
+  const refreshToken = String(payload.refresh_token || '').trim();
+  if (!refreshToken) {
+    return json({ error: 'Missing refresh token', code: 'OAUTH_REFRESH_TOKEN_REQUIRED' }, 400, requestCorsHeaders);
+  }
+
+  const { response, payload: tokenPayload } = await proxyGoogleOAuthToken(new URLSearchParams({
+    client_id: getOAuthClientId(env),
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token',
+  }));
+
+  if (!response.ok || tokenPayload.error) {
+    return json({
+      error: tokenPayload.error_description || tokenPayload.error || 'OAuth refresh failed',
+      code: 'OAUTH_REFRESH_FAILED',
+    }, response.status || 400, requestCorsHeaders);
+  }
+
+  return json({
+    access_token: tokenPayload.access_token,
+    expires_in: tokenPayload.expires_in,
+    token_type: tokenPayload.token_type,
+    scope: tokenPayload.scope,
+  }, 200, requestCorsHeaders);
+}
+
 function parseRoomPath(pathname) {
   const match = pathname.match(/^\/rooms\/([^/]+)(?:\/(status|poll|send))?$/u);
   if (!match) return null;
@@ -132,6 +248,18 @@ export default {
 
     if (url.pathname === '/health') {
       return json({ ok: true, service: 'ai-studio-relay' }, 200, requestCorsHeaders);
+    }
+
+    if (url.pathname === '/oauth/status') {
+      return handleOAuthStatus(env, requestCorsHeaders);
+    }
+
+    if (url.pathname === '/oauth/exchange') {
+      return handleOAuthExchange(request, env, requestCorsHeaders);
+    }
+
+    if (url.pathname === '/oauth/refresh') {
+      return handleOAuthRefresh(request, env, requestCorsHeaders);
     }
 
     if (url.pathname === '/rooms' && request.method === 'POST') {

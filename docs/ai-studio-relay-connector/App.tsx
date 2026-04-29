@@ -8,8 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleGenAI } from '@google/genai';
 
-const OAUTH_CLIENT_ID = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
-const OAUTH_CLIENT_SECRET_SESSION_KEY = "storyforge_oauth_client_secret";
+const OAUTH_CLIENT_ID = "861823451650-heam38v432jq22s22ja09fhuo5o2hevm.apps.googleusercontent.com";
 const OAUTH_REDIRECT_URI = "http://localhost:11451";
 const OAUTH_SCOPES = "https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile";
 
@@ -18,8 +17,7 @@ type CredentialStatus = 'Ready' | 'In Use' | 'Limit Exceeded' | 'Expired' | 'Inv
 interface Credential {
   id: string;
   client_id: string;
-  client_secret?: string;
-  refresh_token: string;
+  refresh_token?: string;
   access_token?: string;
   token_expiry?: number;
   status: CredentialStatus;
@@ -29,7 +27,17 @@ interface Credential {
 }
 
 function sanitizeCredential(cred: Credential): Credential {
-  return { ...cred, client_secret: '' };
+  return {
+    id: cred.id,
+    client_id: cred.client_id || OAUTH_CLIENT_ID,
+    refresh_token: cred.refresh_token,
+    access_token: cred.access_token,
+    token_expiry: cred.token_expiry,
+    status: cred.status || 'Ready',
+    requestsUsed: cred.requestsUsed || 0,
+    lastResetTime: cred.lastResetTime || Date.now(),
+    email: cred.email,
+  };
 }
 
 function sanitizeStoredCredentials(value: unknown): Credential[] {
@@ -38,29 +46,6 @@ function sanitizeStoredCredentials(value: unknown): Credential[] {
     .filter(Boolean)
     .map((cred) => sanitizeCredential(cred as Credential));
 }
-
-const refreshGoogleToken = async (cred: Credential, oauthClientSecret: string): Promise<Partial<Credential> | null> => {
-  try {
-    const clientSecret = String(cred.client_secret || oauthClientSecret || '').trim();
-    if (!clientSecret) return null;
-
-    const res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: cred.client_id,
-        client_secret: clientSecret,
-        refresh_token: cred.refresh_token,
-        grant_type: 'refresh_token'
-      })
-    });
-    const data = await res.json();
-    if (data.access_token) {
-      return { access_token: data.access_token, token_expiry: Date.now() + data.expires_in * 1000, status: 'Ready' };
-    }
-    return null;
-  } catch (e) { return null; }
-};
 
 const DEFAULT_RELAY_URL = 'https://storyforge-ai-studio-relay.canhettg113.workers.dev';
 const HEARTBEAT_INTERVAL_MS = 15000;
@@ -213,6 +198,36 @@ function isSocketOpen(socket: WebSocket | null) {
   return Boolean(socket && socket.readyState === WebSocket.OPEN);
 }
 
+function toRelayOAuthUrl(relayUrl: string, action: 'exchange' | 'refresh' | 'status') {
+  const url = new URL(relayUrl.trim());
+  if (url.protocol === 'wss:') url.protocol = 'https:';
+  if (url.protocol === 'ws:') url.protocol = 'http:';
+  url.pathname = `${url.pathname.replace(/\/+$/u, '')}/oauth/${action}`;
+  url.search = '';
+  return url.toString();
+}
+
+function extractOAuthCode(redirectUrl: string) {
+  const url = new URL(String(redirectUrl || '').trim());
+  return url.searchParams.get('code') || '';
+}
+
+function formatOAuthRelayError(payload: any, status: number) {
+  if (payload?.code === 'NOT_FOUND' || status === 404) {
+    return 'Relay dang chay ban cu, chua co /oauth/exchange. Hay deploy lai relay-worker roi thu lai.';
+  }
+  if (payload?.code === 'OAUTH_SECRET_MISSING') {
+    return 'Relay chua cau hinh OAUTH_CLIENT_SECRET. Chay: cd D:\\StoryForge\\relay-worker; npx wrangler secret put OAUTH_CLIENT_SECRET; npx wrangler deploy.';
+  }
+  if (payload?.code === 'OAUTH_EXCHANGE_FAILED' && /invalid_client/i.test(String(payload?.error || ''))) {
+    return 'OAuth secret tren Worker khong khop voi OAuth Client ID trong connector.';
+  }
+  if (payload?.code === 'OAUTH_EXCHANGE_FAILED' && /invalid_grant/i.test(String(payload?.error || ''))) {
+    return 'OAuth code da het han hoac da duoc dung mot lan. Dang nhap Google lai va copy URL localhost moi.';
+  }
+  return payload?.error || `OAuth exchange failed: HTTP ${status}`;
+}
+
 export default function App() {
   const socketRef = useRef<WebSocket | null>(null);
   const heartbeatRef = useRef<number | null>(null);
@@ -221,11 +236,6 @@ export default function App() {
       const saved = localStorage.getItem('gemini_oauth_credentials');
       return saved ? sanitizeStoredCredentials(JSON.parse(saved)) : [];
     } catch { return []; }
-  });
-  const [oauthClientSecret, setOauthClientSecret] = useState(() => {
-    try {
-      return sessionStorage.getItem(OAUTH_CLIENT_SECRET_SESSION_KEY) || '';
-    } catch { return ''; }
   });
   const [oauthStep, setOauthStep] = useState(1);
   const [redirectUrl, setRedirectUrl] = useState('');
@@ -237,16 +247,6 @@ export default function App() {
     localStorage.setItem('gemini_oauth_credentials', JSON.stringify(credentials.map(sanitizeCredential)));
   }, [credentials]);
 
-  useEffect(() => {
-    try {
-      if (oauthClientSecret.trim()) {
-        sessionStorage.setItem(OAUTH_CLIENT_SECRET_SESSION_KEY, oauthClientSecret);
-      } else {
-        sessionStorage.removeItem(OAUTH_CLIENT_SECRET_SESSION_KEY);
-      }
-    } catch { /* noop */ }
-  }, [oauthClientSecret]);
-
   const removeCredential = (id: string) => {
     setCredentials(prev => prev.filter(c => c.id !== id));
   };
@@ -255,48 +255,100 @@ export default function App() {
     setCredentials(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
   };
 
-  const handleLogin = () => {
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${OAUTH_CLIENT_ID}&redirect_uri=${encodeURIComponent(OAUTH_REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(OAUTH_SCOPES)}&access_type=offline&prompt=consent`;
-    window.open(url, '_blank');
-    setOauthStep(2);
+  const checkOAuthRelayReady = async () => {
+    const response = await fetch(toRelayOAuthUrl(relayUrl, 'status'), {
+      method: 'GET',
+      cache: 'no-store',
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.error) {
+      throw new Error(formatOAuthRelayError(payload, response.status));
+    }
+    if (!payload.oauthConfigured) {
+      throw new Error('Relay chua san sang cho OAuth. Chu relay can cau hinh OAUTH_CLIENT_SECRET mot lan tren Cloudflare Worker; nguoi dung public khong can lam buoc nay.');
+    }
+    return payload;
+  };
+
+  const handleLogin = async () => {
+    try {
+      setOauthLoading(true);
+      setOauthError('');
+      await checkOAuthRelayReady();
+      const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${OAUTH_CLIENT_ID}&redirect_uri=${encodeURIComponent(OAUTH_REDIRECT_URI)}&response_type=code&scope=${encodeURIComponent(OAUTH_SCOPES)}&access_type=offline&prompt=consent`;
+      window.open(url, '_blank');
+      setOauthStep(2);
+    } catch (err: any) {
+      setOauthError(err?.message || 'Khong kiem tra duoc OAuth relay.');
+    } finally {
+      setOauthLoading(false);
+    }
+  };
+
+  const exchangeOAuthCode = async (code: string) => {
+    const response = await fetch(toRelayOAuthUrl(relayUrl, 'exchange'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        code,
+        redirect_uri: OAUTH_REDIRECT_URI,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.error) {
+      throw new Error(formatOAuthRelayError(payload, response.status));
+    }
+    return payload;
+  };
+
+  const refreshGoogleToken = async (cred: Credential): Promise<Partial<Credential> | null> => {
+    try {
+      if (!cred.refresh_token) return null;
+      const response = await fetch(toRelayOAuthUrl(relayUrl, 'refresh'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: cred.refresh_token }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.error || !payload.access_token) return null;
+      return {
+        access_token: payload.access_token,
+        token_expiry: Date.now() + Number(payload.expires_in || 3600) * 1000,
+        status: 'Ready',
+      };
+    } catch {
+      return null;
+    }
   };
 
   const handleExchange = async () => {
     try {
       setOauthLoading(true); setOauthError('');
-      const urlObj = new URL(redirectUrl);
-      const code = urlObj.searchParams.get('code');
-      if (!code) throw new Error('Không tìm thấy mã code trong URL (bạn đã copy đúng trang lỗi ở port 11451 chưa?)');
-
-      const clientSecret = oauthClientSecret.trim();
-      if (!clientSecret) throw new Error('Nhap OAuth Client Secret truoc khi hoan tat OAuth.');
-
-      const res = await fetch('https://oauth2.googleapis.com/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          client_id: OAUTH_CLIENT_ID, client_secret: clientSecret, code,
-          grant_type: 'authorization_code', redirect_uri: OAUTH_REDIRECT_URI
-        })
-      });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error_description || data.error);
+      const code = extractOAuthCode(redirectUrl);
+      if (!code) throw new Error('Khong tim thay code trong URL localhost. Hay copy toan bo URL co ?code=...');
+      const token = await exchangeOAuthCode(code);
+      const accessToken = token.access_token || '';
+      if (!accessToken) throw new Error('Google khong tra ve access_token.');
 
       const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: { Authorization: `Bearer ${data.access_token}` }
+        headers: { Authorization: `Bearer ${accessToken}` }
       });
       const userData = await userRes.json();
+      if (!userRes.ok || !userData.email) {
+        throw new Error(userData?.error?.message || 'Khong doc duoc email tu tai khoan Google.');
+      }
 
       const newCred: Credential = {
         id: Math.random().toString(36).substring(7),
-        client_id: OAUTH_CLIENT_ID, client_secret: '',
-        refresh_token: data.refresh_token, access_token: data.access_token,
-        token_expiry: Date.now() + data.expires_in * 1000,
+        client_id: OAUTH_CLIENT_ID, refresh_token: token.refresh_token, access_token: accessToken,
+        token_expiry: Date.now() + Number(token.expires_in || 3600) * 1000,
         status: 'Ready', requestsUsed: 0, lastResetTime: Date.now(), email: userData.email
       };
 
       setCredentials(prev => [...prev, newCred]);
-      setOauthStep(1); setRedirectUrl(''); log(`Đã đăng nhập thành công tài khoản: ${newCred.email}`);
+      setOauthStep(1);
+      setRedirectUrl('');
+      log(`Đã đăng nhập thành công tài khoản: ${newCred.email}`);
     } catch (err: any) { setOauthError(err.message); } finally { setOauthLoading(false); }
   };
 
@@ -601,7 +653,7 @@ export default function App() {
     markActivity(); log(`Nhận yêu cầu ${requestId} với model ${requestModel}.`);
 
     const envKey = getApiKey();
-    const availableCreds = credentials.filter(c => c.status !== 'In Use' && c.status !== 'Invalid Token');
+    const availableCreds = credentials.filter(c => c.status !== 'In Use' && c.status !== 'Invalid Token' && c.status !== 'Expired');
 
     const keysToTry: ('ENV' | Credential)[] = [];
     if (envKey) keysToTry.push('ENV');
@@ -648,12 +700,12 @@ export default function App() {
           log(`Đang gọi Gemini bằng tài khoản OAuth: ${cred.email}...`);
 
           if (!cred.access_token || Date.now() >= (cred.token_expiry || 0)) {
-            log(`Token tài khoản ${cred.email} hết hạn, đang làm mới...`);
+            log(`Token tài khoản ${cred.email} hết hạn, đang làm mới qua relay...`);
             updateCredential(cred.id, { status: 'Refreshing' });
-            const refreshed = await refreshGoogleToken(cred, oauthClientSecret);
+            const refreshed = await refreshGoogleToken(cred);
             if (!refreshed) {
               updateCredential(cred.id, { status: 'Invalid Token' });
-              throw new Error('Failed to refresh token. Nhap lai OAuth Client Secret roi thu lai.');
+              throw new Error('Failed to refresh token (401)');
             }
             updateCredential(cred.id, refreshed);
             cred = { ...cred, ...refreshed } as Credential;
@@ -720,7 +772,7 @@ export default function App() {
         lastError = error;
         const message = String(error?.message || '').toLowerCase();
         const isQuota = message.includes('quota') || message.includes('rate limit') || message.includes('429');
-        const is401 = message.includes('401') || message.includes('failed to refresh');
+        const is401 = message.includes('401') || message.includes('expired') || message.includes('failed to refresh');
 
         if (item !== 'ENV') {
           updateCredential((item as Credential).id, { status: isQuota ? 'Limit Exceeded' : (is401 ? 'Invalid Token' : 'Ready') });
@@ -1111,36 +1163,26 @@ export default function App() {
                 </div>
 
                 <div className="bg-white p-4 rounded-lg border border-purple-200 shadow-sm space-y-3">
-                  <div className="space-y-1">
-                    <input
-                      type="password"
-                      value={oauthClientSecret}
-                      onChange={e => setOauthClientSecret(e.target.value)}
-                      placeholder="OAuth Client Secret"
-                      autoComplete="off"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-purple-500 focus:outline-none"
-                    />
-                    <p className="text-xs text-slate-500 leading-snug">Secret nay chi giu trong phien tab hien tai va khong duoc luu vao danh sach tai khoan.</p>
-                  </div>
                   <h3 className="text-sm font-semibold text-purple-900">Thêm tài khoản Google mới</h3>
                   {oauthStep === 1 && (
                     <div className="space-y-2">
-                      <p className="text-xs text-slate-600 leading-snug">Nhấn Đăng nhập Google. Khi trang chuyển đến <code>localhost:11451</code> và báo lỗi, hãy sao chép toàn bộ đường link (URL) trang lỗi đó.</p>
-                      <button onClick={handleLogin} className="w-full rounded-lg border border-purple-300 bg-purple-50 px-4 py-2 font-semibold text-purple-800 hover:bg-purple-100 transition text-sm">
-                        1. Đăng nhập bằng Google
+                      <p className="text-xs text-slate-600 leading-snug">Nhấn Đăng nhập Google. Khi trang chuyển đến <code>localhost:11451</code> và báo lỗi, hãy sao chép toàn bộ URL trên thanh địa chỉ.</p>
+                      {oauthError && <p className="text-xs font-semibold text-red-600">{oauthError}</p>}
+                      <button onClick={handleLogin} disabled={oauthLoading} className="w-full rounded-lg border border-purple-300 bg-purple-50 px-4 py-2 font-semibold text-purple-800 hover:bg-purple-100 transition text-sm disabled:opacity-50">
+                        Đăng nhập bằng Google
                       </button>
                     </div>
                   )}
                   {oauthStep === 2 && (
                     <div className="space-y-2">
-                      <p className="text-xs font-semibold text-purple-800">Dán link <code>localhost:11451</code> bạn vừa sao chép vào đây:</p>
+                      <p className="text-xs font-semibold text-purple-800">Dán link <code>localhost:11451</code> có <code>?code=...</code> vào đây. Secret được giữ ở relay, không nằm trong app.</p>
                       <input type="text" value={redirectUrl} onChange={e => setRedirectUrl(e.target.value)} placeholder="http://localhost:11451/?code=..." className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-purple-500 focus:outline-none" />
                       {oauthError && <p className="text-xs font-semibold text-red-600">{oauthError}</p>}
                       <div className="flex gap-2">
                         <button onClick={handleExchange} disabled={oauthLoading || !redirectUrl} className="flex-1 rounded-lg bg-purple-600 px-4 py-2.5 font-semibold text-white hover:bg-purple-700 transition text-sm disabled:opacity-50">
-                          {oauthLoading ? 'Đang xử lý...' : '2. Hoàn tất việc lấy Tài Khoản'}
+                          {oauthLoading ? 'Đang xử lý...' : 'Hoàn tất đăng nhập'}
                         </button>
-                        <button onClick={() => { setOauthStep(1); setRedirectUrl(''); }} className="px-3 py-2 bg-slate-100 font-semibold text-slate-600 rounded-lg text-sm border hover:bg-slate-200">
+                        <button onClick={() => { setOauthStep(1); setRedirectUrl(''); setOauthError(''); }} className="px-3 py-2 bg-slate-100 font-semibold text-slate-600 rounded-lg text-sm border hover:bg-slate-200">
                           Hủy
                         </button>
                       </div>

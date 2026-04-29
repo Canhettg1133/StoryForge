@@ -66,6 +66,107 @@ describe('AI Studio Relay room core', () => {
     expect(response.headers.get('Access-Control-Allow-Origin')).toBe('null');
   });
 
+  it('exchanges OAuth codes through the relay without exposing the client secret to the connector', async () => {
+    const tokenFetch = vi.fn(async (_url, init) => {
+      const body = new URLSearchParams(init.body);
+      expect(body.get('client_secret')).toBe('worker-secret');
+      expect(body.get('code')).toBe('oauth-code');
+      expect(body.get('grant_type')).toBe('authorization_code');
+      return new Response(JSON.stringify({
+        access_token: 'access-token',
+        refresh_token: 'refresh-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', tokenFetch);
+
+    const response = await relayWorker.fetch(new Request('https://relay.example.test/oauth/exchange', {
+      method: 'POST',
+      headers: { Origin: 'https://ai.studio', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'oauth-code', redirect_uri: 'http://localhost:11451' }),
+    }), {
+      ALLOWED_ORIGINS: 'https://story-forge-virid.vercel.app',
+      OAUTH_CLIENT_SECRET: 'worker-secret',
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      access_token: 'access-token',
+      refresh_token: 'refresh-token',
+      expires_in: 3600,
+    });
+    expect(JSON.stringify(payload)).not.toContain('worker-secret');
+    vi.unstubAllGlobals();
+  });
+
+  it('refuses OAuth exchange when the relay secret is not configured', async () => {
+    const response = await relayWorker.fetch(new Request('https://relay.example.test/oauth/exchange', {
+      method: 'POST',
+      headers: { Origin: 'https://ai.studio', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'oauth-code' }),
+    }), {
+      ALLOWED_ORIGINS: 'https://story-forge-virid.vercel.app',
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(payload.code).toBe('OAUTH_SECRET_MISSING');
+  });
+
+  it('reports OAuth relay readiness without exposing the client secret', async () => {
+    const response = await relayWorker.fetch(new Request('https://relay.example.test/oauth/status', {
+      headers: { Origin: 'https://ai.studio' },
+    }), {
+      ALLOWED_ORIGINS: 'https://story-forge-virid.vercel.app',
+      OAUTH_CLIENT_SECRET: 'worker-secret',
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      oauthConfigured: true,
+      redirectUri: 'http://localhost:11451',
+    });
+    expect(payload.clientId).toContain('.apps.googleusercontent.com');
+    expect(JSON.stringify(payload)).not.toContain('worker-secret');
+  });
+
+  it('refreshes OAuth access tokens through the relay without returning the client secret', async () => {
+    const tokenFetch = vi.fn(async (_url, init) => {
+      const body = new URLSearchParams(init.body);
+      expect(body.get('client_secret')).toBe('worker-secret');
+      expect(body.get('refresh_token')).toBe('refresh-token');
+      expect(body.get('grant_type')).toBe('refresh_token');
+      return new Response(JSON.stringify({
+        access_token: 'new-access-token',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    vi.stubGlobal('fetch', tokenFetch);
+
+    const response = await relayWorker.fetch(new Request('https://relay.example.test/oauth/refresh', {
+      method: 'POST',
+      headers: { Origin: 'https://ai.studio', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: 'refresh-token' }),
+    }), {
+      ALLOWED_ORIGINS: 'https://story-forge-virid.vercel.app',
+      OAUTH_CLIENT_SECRET: 'worker-secret',
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      access_token: 'new-access-token',
+      expires_in: 3600,
+    });
+    expect(JSON.stringify(payload)).not.toContain('worker-secret');
+    vi.unstubAllGlobals();
+  });
+
   it('creates readable room codes without ambiguous state', () => {
     expect(createRoomCode(() => 0)).toBe('AAA-AAA');
     expect(createRoomCode(() => 0.999999)).toMatch(/^[A-Z0-9]{3}-[A-Z0-9]{3}$/);
