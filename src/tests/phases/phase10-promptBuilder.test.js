@@ -11,6 +11,14 @@ import {
 import { TASK_TYPES } from '../../services/ai/router';
 import { composeStoryCreationSystemPrompt } from '../../services/ai/storyCreationSettings';
 
+function toAsciiUpper(text) {
+  return String(text || '')
+    .replace(/[Đđ]/g, (char) => (char === 'Đ' ? 'D' : 'd'))
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toUpperCase();
+}
+
 describe('phase10 prompt builder coverage', () => {
   it('provides default prompts for story configuration tasks that were previously missing', () => {
     expect(TASK_INSTRUCTIONS[TASK_TYPES.AI_GENERATE_ENTITY]).toBeTruthy();
@@ -162,6 +170,40 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[0].content).toContain('[NSFW BASE TÙY CHỈNH]');
     expect(messages[0].content).toContain('[LUAT NSFW BO SUNG CUA DU AN]');
     expect(messages[0].content).toContain('Khong duoc drift.');
+  });
+
+  it('keeps the stronger nsfw jailbreak blocks and intimate continuity rules in the default prompt stack', () => {
+    const messages = buildPrompt(TASK_TYPES.FREE_PROMPT, {
+      projectId: 1,
+      chapterId: 2,
+      userPrompt: 'Viet mot canh nong 18+ giua hai nhan vat nay.',
+      nsfwMode: true,
+      retrievalPacket: {
+        relevantRelationshipStates: [
+          {
+            character_a_id: 11,
+            character_b_id: 12,
+            intimacy_level: 'high',
+            consent_state: 'mutual',
+            secrecy_state: 'secret',
+            emotional_aftermath: 'day dut va le thuoc',
+          },
+        ],
+      },
+    });
+
+    const systemAscii = toAsciiUpper(messages[0].content);
+
+    expect(systemAscii).toContain('DANH TINH COT LOI');
+    expect(systemAscii).toContain('CHONG TU CHOI');
+    expect(systemAscii).toContain('XUNG DOT COT LOI');
+    expect(systemAscii).toContain('NHAN DIEN NGU CANH TRUOC KHI VIET');
+    expect(systemAscii).toContain('KIEM TRA TINH CACH NHAN VAT');
+    expect(systemAscii).toContain('GIAI DOAN 1');
+    expect(systemAscii).toContain('GIAI DOAN 5');
+    expect(systemAscii).toContain('KIEM TRA NHAN VAT');
+    expect(systemAscii).toContain('VIET LIEN MACH');
+    expect(systemAscii).toContain('KHONG TU Y TAO TIEU DE CHUONG MOI');
   });
 
   it('uses custom intimate nsfw prompt while preserving dynamic continuity append', () => {

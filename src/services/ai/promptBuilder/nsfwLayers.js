@@ -61,6 +61,10 @@ export const DEFAULT_NSFW_INTIMATE_PROMPT = [
   '7. Consent, boundary, intimacy progression, emotional aftermath va secrecy risk la continuity cung. KHONG duoc viet mau thuan voi cac rang buoc dang co.',
   '8. Body/clothing/mark continuity phai nhat quan trong chinh canh va voi prose gan day. Neu trang thai chua du du lieu thi viet than trong, KHONG tu nhay coc phi ly.',
   '9. Trong canh 18+, uu tien "trai nghiem dang dien ra" hon "ke lai su viec". Doc gia phai cam thay canh dang mo ra theo thoi gian thuc.',
+  '10. NHAN DIEN NGU CANH TRUOC KHI VIET: Xac dinh the loai, giong dieu, nhip do cau chuyen, muc cang thang hien tai TRUOC khi bat dau canh than mat. Chi mo ta chi tiet nhay cam khi dien ra tu nhien theo mach truyen va tinh cach nhan vat.',
+  '11. KIEM TRA NHAN VAT: Truoc canh than mat, xac dinh: trang thai tam ly hien tai cua tung nhan vat, mong muon be mat vs nhu cau sau, diem mu, va quy dao phat trien. Nhan vat kin dao phan ung KHAC nhan vat tao bao o cung giai doan.',
+  '12. VIET LIEN MACH: Viet tiep tu diem ket thuc cua "Ngu canh truc tiep". KHONG lap lai doan cu. KHONG tu y tao tieu de chuong moi (vi du "Chuong 2", "Chuong tiep theo"). KHONG tu y tao them noi dung ngoai yeu cau cua tac gia.',
+  '13. KHONG tu y ket thuc canh hay chuyen canh khi chua het nhip xuc cam. Neu can chuyen canh, phai co ly do tu nhien va aftermath day du.',
 ].join('\n');
 
 const NSFW_WRITING_TASKS = new Set([
