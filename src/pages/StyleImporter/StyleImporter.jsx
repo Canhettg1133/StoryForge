@@ -14,7 +14,7 @@ import '../Settings/Settings.css';
 import './StyleImporter.css';
 import useProjectStore from '../../stores/projectStore.js';
 import useStyleImporterStore from '../../stores/styleImporterStore.js';
-import { FULL_FILE_MAX_BYTES } from '../../services/styleImporter/fileSafety.js';
+import { MAX_STYLE_IMPORTER_SOURCE_TOKENS } from '../../services/styleImporter/fileSafety.js';
 import { applyStyleImporterPatches } from '../../services/styleImporter/patchApplier.js';
 import {
   buildProjectPromptItemMap,
@@ -25,13 +25,6 @@ import {
 } from '../../services/styleImporter/projectPromptInterop.js';
 import { buildPromptPatchCoverage } from '../../services/styleImporter/promptPatchCoverage.js';
 
-const STEP_DEFS = [
-  { id: 'read', label: 'Đọc file' },
-  { id: 'chapters', label: 'Tách chương' },
-  { id: 'chunks', label: 'Tạo chunk' },
-  { id: 'analyze', label: 'Phân tích style' },
-  { id: 'patch', label: 'Tạo patch' },
-];
 
 const STYLE_FIELDS = [
   ['narrative_voice', 'Giọng kể'],
@@ -314,8 +307,7 @@ export default function StyleImporter() {
 
   const canAnalyze = !!fileState?.chunkPlan && !isRunning;
   const canSave = patchResult.applied.length > 0 && !isSaving;
-  const chunkCount = fileState?.chunkPlan?.chunks?.length || 0;
-  const fullContext = fileState?.chunkPlan?.mode === 'full';
+  const sampleTokens = fileState?.chunkPlan?.sampleEstimatedTokens || fileState?.chunkPlan?.chunks?.[0]?.estimatedTokens || 0;
 
   if (!currentProject) {
     return (
@@ -356,14 +348,14 @@ export default function StyleImporter() {
           <UploadCloud size={20} />
           <div>
             <h2>Tải tác phẩm mẫu</h2>
-            <p>V1 xử lý TXT/MD trong browser, không upload binary thô lên backend.</p>
+            <p>Xử lý TXT/MD/DOCX/EPUB trong browser và chỉ lấy mẫu tối đa 250k token cho Prompt Doctor.</p>
           </div>
         </div>
         <input
           ref={fileInputRef}
           className="style-importer-file-input"
           type="file"
-          accept=".txt,.md"
+          accept=".txt,.md,.doc,.docx,.epub"
           onChange={(event) => handleFiles(event.target.files)}
           disabled={isRunning}
         />
@@ -384,23 +376,23 @@ export default function StyleImporter() {
           disabled={isRunning}
         >
           <UploadCloud size={28} />
-          <span>{fileState?.file?.name || 'Kéo thả hoặc chọn file TXT/MD'}</span>
-          <small>Giới hạn 10MB. File trên 5MB sẽ tự chia mega chunks.</small>
+          <span>{fileState?.file?.name || 'Kéo thả hoặc chọn file TXT/MD/DOCX/EPUB'}</span>
+          <small>File lớn hay nhỏ đều chỉ gửi mẫu đại diện tối đa 250k token.</small>
         </button>
 
         {fileState ? (
           <div className="style-importer-stats">
             <StatCard label="Kích thước" value={formatBytes(fileState.file?.size)} />
             <StatCard label="Token ước tính" value={formatNumber(fileState.tokenDetail?.estimatedTokens)} />
-            <StatCard label="Số chương" value={formatNumber(fileState.chapters?.length)} />
-            <StatCard label="Chunk" value={fullContext ? 'Full context' : formatNumber(chunkCount)} />
+            <StatCard label="Định dạng" value={String(fileState.fileType || '').toUpperCase() || 'TEXT'} />
+            <StatCard label="Token mẫu" value={formatNumber(sampleTokens)} />
           </div>
         ) : (
           <div className="style-importer-stats">
-            <StatCard label="Ngưỡng full" value={`${formatBytes(FULL_FILE_MAX_BYTES)} / 750k token`} />
-            <StatCard label="Chunk target" value="650k token" />
-            <StatCard label="Hard cap" value="750k token" />
-            <StatCard label="Song song" value="Tối đa 2 request" />
+            <StatCard label="Định dạng" value="TXT/MD/DOCX/EPUB" />
+            <StatCard label="Mẫu tối đa" value={`${formatNumber(MAX_STYLE_IMPORTER_SOURCE_TOKENS)} token`} />
+            <StatCard label="Cách lấy mẫu" value="Đầu / giữa / cuối" />
+            <StatCard label="Request" value="1 lần phân tích" />
           </div>
         )}
 
@@ -450,7 +442,12 @@ export default function StyleImporter() {
           </div>
         </div>
         <div className="style-importer-progress">
-          {STEP_DEFS.map((step) => (
+          {[
+            { id: 'read', label: 'Doc file' },
+            { id: 'sample', label: 'Chon mau 250k' },
+            { id: 'analyze', label: 'Phan tich style' },
+            { id: 'patch', label: 'Tao patch' },
+          ].map((step) => (
             <div key={step.id} className={`style-importer-step is-${progress[step.id] || 'idle'}`}>
               <StatusIcon status={progress[step.id]} />
               <span>{step.label}</span>

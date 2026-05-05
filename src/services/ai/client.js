@@ -11,6 +11,13 @@ import keyManager from './keyManager';
 import { AI_ERROR_CODES, normalizeAIError, shouldFallbackForError } from './errorUtils';
 import { PROVIDERS, TASK_TYPES } from './router';
 import {
+  DEFAULT_PROXY_CHAT_PATH,
+  DEFAULT_PROXY_MODELS_PATH,
+  fetchOpenAIProxyModels,
+  getActiveOpenAIProxyProfile,
+  resolveOpenAIProxyRequest,
+} from './openAIProxyConfig';
+import {
   callAIStudioRelayTransport,
   createAIStudioRelayRoom,
   getAIStudioRelayRoomStatus,
@@ -74,41 +81,8 @@ export function saveSettings(settings) {
   return merged;
 }
 
-function getDefaultProxyUrl() {
-  if (typeof window === 'undefined') {
-    return 'https://ag.beijixingxing.com';
-  }
-
-  const protocol = String(window.location?.protocol || '').toLowerCase();
-  const isHttpOrigin = protocol === 'http:' || protocol === 'https:';
-
-  // In browser web deployments, always prefer same-origin proxy/rewrite to avoid CORS.
-  if (isHttpOrigin) {
-    return '/api/proxy';
-  }
-
-  return 'https://ag.beijixingxing.com';
-}
-
-function normalizeConfiguredProxyUrl(rawValue) {
-  const trimmed = String(rawValue || '').trim();
-  if (!trimmed) return '';
-  if (typeof window === 'undefined') return trimmed;
-
-  const protocol = String(window.location?.protocol || '').toLowerCase();
-  const isHttpOrigin = protocol === 'http:' || protocol === 'https:';
-  if (!isHttpOrigin) return trimmed;
-
-  // Migrate old browser setting that pointed directly to the upstream host and caused CORS.
-  if (trimmed === 'https://ag.beijixingxing.com' || trimmed === 'https://ag.beijixingxing.com/') {
-    return '/api/proxy';
-  }
-
-  return trimmed;
-}
-
 export function getProxyUrl() {
-  return normalizeConfiguredProxyUrl(getSettings().proxyUrl) || getDefaultProxyUrl();
+  return getActiveOpenAIProxyProfile().baseUrl;
 }
 
 export function getGeminiDirectBaseUrl() {
@@ -131,7 +105,7 @@ export function getAIStudioRelayRoomCode() {
   return getSettings().aiStudioRelayRoomCode || '';
 }
 
-export { createAIStudioRelayRoom, getAIStudioRelayRoomStatus };
+export { createAIStudioRelayRoom, fetchOpenAIProxyModels, getAIStudioRelayRoomStatus };
 
 function buildGeminiDirectEndpoint(baseUrl, pathWithQuery = '') {
   const normalizedBase = String(baseUrl || '').replace(/\/+$/u, '');
@@ -191,21 +165,28 @@ function extractGeminiDirectResponseText(data, errorContext = {}) {
 // ================================
 // Gemini Proxy (OpenAI-compatible)
 // ================================
-async function callGeminiProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode }) {
-  const proxyUrl = getProxyUrl();
-  if (!proxyUrl) throw new Error('Chưa cấu hình Proxy URL.');
-
-  const apiKey = keyManager.getNextKey('gemini_proxy');
-  if (!apiKey) {
+async function callOpenAIProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode, proxyProfileId }) {
+  const proxyProfile = getActiveOpenAIProxyProfile(proxyProfileId);
+  if (!proxyProfile?.baseUrl) throw new Error('Chua cau hinh Proxy URL.');
+  if (!String(model || '').trim()) {
     throw normalizeAIError(
-      { code: AI_ERROR_CODES.MISSING_API_KEY, rawMessage: 'MISSING_API_KEY' },
-      { provider: PROVIDERS.GEMINI_PROXY, model },
+      { code: AI_ERROR_CODES.MISSING_MODEL, rawMessage: 'Chua chon model cho OpenAI-compatible Proxy.' },
+      { provider: PROVIDERS.OPENAI_PROXY, model },
     );
   }
 
-  const url = `${proxyUrl}/v1/chat/completions`;
+  const apiKey = keyManager.getNextKey(PROVIDERS.OPENAI_PROXY);
+  if (!apiKey) {
+    throw normalizeAIError(
+      { code: AI_ERROR_CODES.MISSING_API_KEY, rawMessage: 'MISSING_API_KEY' },
+      { provider: PROVIDERS.OPENAI_PROXY, model },
+    );
+  }
+
   const safetyThreshold = getSafetyThreshold({ nsfwMode, safetyMode });
-  const safetySettings = buildGoogleSafetySettings(safetyThreshold);
+  const safetySettings = proxyProfile.supportsGeminiSafetySettings
+    ? buildGoogleSafetySettings(safetyThreshold)
+    : null;
   const payload = {
     model,
     messages,
@@ -216,15 +197,24 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
       safety_settings: safetySettings,
     }),
   };
+  const target = resolveOpenAIProxyRequest(proxyProfile, 'chat');
+  const requestBody = target.mode === 'relay'
+    ? {
+      action: 'chat',
+      baseUrl: proxyProfile.baseUrl,
+      chatCompletionsPath: proxyProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
+      payload,
+    }
+    : payload;
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(target.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(requestBody),
       signal,
     });
 
@@ -233,7 +223,7 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
       const normalized = normalizeAIError({
         status: response.status,
         bodyText: errText,
-      }, { provider: PROVIDERS.GEMINI_PROXY, model });
+      }, { provider: PROVIDERS.OPENAI_PROXY, model });
       if (normalized.code === AI_ERROR_CODES.RATE_LIMITED) {
         keyManager.markRateLimited(apiKey, 60000);
       }
@@ -244,12 +234,12 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
       throw normalizeAIError({
         status: response.status,
         bodyText: errText,
-      }, { provider: PROVIDERS.GEMINI_PROXY, model });
+      }, { provider: PROVIDERS.OPENAI_PROXY, model });
     }
 
     if (!stream) {
       const data = await response.json();
-      const text = extractProxyResponseText(data, { provider: PROVIDERS.GEMINI_PROXY, model });
+      const text = extractProxyResponseText(data, { provider: PROVIDERS.OPENAI_PROXY, model });
       onComplete?.(text);
       return text;
     }
@@ -257,11 +247,11 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
       onToken,
       onComplete,
       onError,
-      errorContext: { provider: PROVIDERS.GEMINI_PROXY, model },
+      errorContext: { provider: PROVIDERS.OPENAI_PROXY, model },
     });
   } catch (err) {
     if (err.name === 'AbortError') return;
-    const normalized = normalizeAIError(err, { provider: PROVIDERS.GEMINI_PROXY, model });
+    const normalized = normalizeAIError(err, { provider: PROVIDERS.OPENAI_PROXY, model });
     if (normalized.code === AI_ERROR_CODES.RATE_LIMITED || normalized.code === AI_ERROR_CODES.MODEL_CAPACITY_EXHAUSTED) throw normalized;
     onError?.(normalized);
     throw normalized;
@@ -581,9 +571,10 @@ function getCallFn(provider) {
   switch (provider) {
     case PROVIDERS.AI_STUDIO_RELAY: return callAIStudioRelay;
     case PROVIDERS.GEMINI_DIRECT: return callGeminiDirect;
-    case PROVIDERS.GEMINI_PROXY: return callGeminiProxy;
+    case PROVIDERS.OPENAI_PROXY:
+    case PROVIDERS.GEMINI_PROXY: return callOpenAIProxy;
     case PROVIDERS.OLLAMA: return callOllama;
-    default: return callGeminiProxy;
+    default: return callOpenAIProxy;
   }
 }
 
@@ -687,7 +678,8 @@ class AIService {
 
           const apology = await getCallFn(route.provider)({
             model: route.model, messages: rebukeMessages, stream: false, signal: controller.signal,
-            nsfwMode: true
+            nsfwMode: true,
+            proxyProfileId: route.proxyProfileId,
           });
 
           // Turn 6 (Final request after apology)
@@ -702,6 +694,7 @@ class AIService {
 
           await getCallFn(route.provider)({
             model: route.model, messages: finalMessages, stream, signal: controller.signal,
+            proxyProfileId: route.proxyProfileId,
             onToken: (chunk, full) => {
               // Ensure cleanup on the final streaming output too
               const clean = cleanMetadata(cleanThoughts(full));
@@ -746,6 +739,7 @@ class AIService {
           onToken?.('', '[Bị chặn bởi bộ lọc. Đang thực hiện Leo thang Rebuke...]');
           await getCallFn(route.provider)({
             model: route.model, messages: rebukeMessages, stream, signal: controller.signal,
+            proxyProfileId: route.proxyProfileId,
             onToken, onComplete: (finalText) => {
               const cleanFinal = superNsfwMode ? finalText.replace(/^\[.*?\]\n*/gm, '').trim() : finalText;
               wrappedOnComplete(cleanFinal);
@@ -766,6 +760,7 @@ class AIService {
             onRouteChange?.(fb);
             await getCallFn(fb.provider)({
               model: fb.model, messages, stream, signal: controller.signal,
+              proxyProfileId: fb.proxyProfileId,
               onToken, onComplete: (text) => wrappedOnComplete(text, fb),
               onError: (e) => { this.releaseController(controller, allowConcurrent); onError?.(normalizeAIError(e, fb)); },
               nsfwMode,
@@ -781,6 +776,7 @@ class AIService {
 
     getCallFn(route.provider)({
       model: route.model, messages, stream, signal: controller.signal,
+      proxyProfileId: route.proxyProfileId,
       onToken, onComplete: wrappedOnComplete, onError: wrappedOnError,
       nsfwMode: nsfwMode || superNsfwMode,
       safetyMode: chatSafetyOff ? 'off' : undefined,
@@ -808,15 +804,22 @@ class AIService {
         const data = await res.json();
         return { success: true, models: data.models?.map(m => m.name) || [] };
       }
-      if (provider === PROVIDERS.GEMINI_PROXY) {
-        const apiKey = keyManager.getNextKey('gemini_proxy') || 'test';
-        const res = await fetch(`${getProxyUrl()}/v1/models`, {
-          headers: { 'Authorization': `Bearer ${apiKey}` },
+      if (provider === PROVIDERS.OPENAI_PROXY || provider === PROVIDERS.GEMINI_PROXY) {
+        const apiKey = keyManager.getNextKey(PROVIDERS.OPENAI_PROXY) || '';
+        const profile = getActiveOpenAIProxyProfile();
+        const models = await fetchOpenAIProxyModels({
+          profile,
+          apiKey,
           signal: AbortSignal.timeout(8000),
         });
-        if (!res.ok) throw new Error(`Status ${res.status}`);
-        const data = await res.json();
-        return { success: true, models: data.data?.map(m => m.id) || [] };
+        return {
+          success: true,
+          models,
+          status: {
+            profile: profile.label,
+            modelsPath: profile.modelsPath || DEFAULT_PROXY_MODELS_PATH,
+          },
+        };
       }
       if (provider === PROVIDERS.GEMINI_DIRECT) {
         const apiKey = keyManager.getNextKey('gemini_direct');

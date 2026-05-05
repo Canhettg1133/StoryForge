@@ -1,10 +1,12 @@
-export const MAX_STYLE_IMPORTER_FILE_BYTES = 10 * 1024 * 1024;
+export const MAX_STYLE_IMPORTER_FILE_BYTES = Number.POSITIVE_INFINITY;
 export const FULL_FILE_MAX_BYTES = 5 * 1024 * 1024;
 export const MODEL_INPUT_LIMIT_TOKENS = 1_000_000;
+export const MAX_STYLE_IMPORTER_SOURCE_TOKENS = 250_000;
 export const CHUNK_TARGET_TOKENS = 650_000;
 export const CHUNK_HARD_CAP_TOKENS = 750_000;
 
-const ALLOWED_EXTENSIONS = new Set(['.txt', '.md']);
+const ALLOWED_EXTENSIONS = new Set(['.txt', '.md', '.doc', '.docx', '.epub']);
+const ZIP_CONTAINER_EXTENSIONS = new Set(['.docx', '.epub']);
 const UNSAFE_EXTENSIONS = new Set([
   '.exe',
   '.js',
@@ -19,7 +21,6 @@ const UNSAFE_MIME_PARTS = [
   'html',
   'javascript',
   'ecmascript',
-  'zip',
   'rar',
   '7z',
   'x-msdownload',
@@ -29,6 +30,9 @@ const TEXT_MIME_TYPES = new Set([
   'text/plain',
   'text/markdown',
   'application/octet-stream',
+  'application/epub+zip',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ]);
 
 function getExtension(fileName = '') {
@@ -64,10 +68,14 @@ function asciiPrefix(bytes) {
     .toLowerCase();
 }
 
-function hasUnsafeMagicBytes(bytes) {
+function hasUnsafeMagicBytes(bytes, extension = '') {
   if (!bytes || bytes.length === 0) return false;
   if (bytes[0] === 0x4d && bytes[1] === 0x5a) return true; // MZ executable
-  if (bytes[0] === 0x50 && bytes[1] === 0x4b) return true; // ZIP/DOCX/EPUB archives
+  if (
+    bytes[0] === 0x50
+    && bytes[1] === 0x4b
+    && !ZIP_CONTAINER_EXTENSIONS.has(extension)
+  ) return true; // ZIP archives are allowed only for DOCX/EPUB.
 
   const prefix = asciiPrefix(bytes);
   return prefix.startsWith('<!doctype html')
@@ -108,7 +116,7 @@ export async function inspectStyleImporterFile(file) {
   const size = Number(file.size || 0);
 
   if (size > MAX_STYLE_IMPORTER_FILE_BYTES) {
-    return makeResult(false, 'FILE_TOO_LARGE', 'File vượt quá giới hạn 10MB.', {
+    return makeResult(false, 'FILE_TOO_LARGE', 'File vuot qua gioi han an toan cua Prompt Doctor.', {
       extension,
       mimeType,
       size,
@@ -131,7 +139,10 @@ export async function inspectStyleImporterFile(file) {
     });
   }
 
-  if (UNSAFE_MIME_PARTS.some((part) => mimeType.includes(part))) {
+  if (
+    UNSAFE_MIME_PARTS.some((part) => mimeType.includes(part))
+    || (mimeType.includes('zip') && !ZIP_CONTAINER_EXTENSIONS.has(extension))
+  ) {
     return makeResult(false, 'UNSAFE_MIME', 'MIME type của file không an toàn để phân tích.', {
       extension,
       mimeType,
@@ -148,7 +159,7 @@ export async function inspectStyleImporterFile(file) {
   }
 
   const magicBytes = await readMagicBytes(file);
-  if (hasUnsafeMagicBytes(magicBytes)) {
+  if (hasUnsafeMagicBytes(magicBytes, extension)) {
     return makeResult(false, 'UNSAFE_MAGIC_BYTES', 'Magic bytes cho thấy file không phải văn bản an toàn.', {
       extension,
       mimeType,

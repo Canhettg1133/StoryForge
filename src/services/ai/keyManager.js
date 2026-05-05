@@ -12,6 +12,10 @@
 const STORAGE_KEY = 'sf-api-keys-v2';
 const RATE_LIMIT_COOLDOWN = 60000;
 
+function normalizeProviderKey(provider) {
+  return provider === 'openai_proxy' ? 'gemini_proxy' : provider;
+}
+
 class KeyManager {
   constructor() {
     // Separate key pools per provider
@@ -35,7 +39,7 @@ class KeyManager {
         const parsed = JSON.parse(saved);
         this.pools = {
           gemini_direct: parsed.gemini_direct || [],
-          gemini_proxy: parsed.gemini_proxy || [],
+          gemini_proxy: parsed.gemini_proxy || parsed.openai_proxy || [],
         };
       }
     } catch (e) {
@@ -49,11 +53,11 @@ class KeyManager {
 
   // --- Get/Set keys for a specific provider ---
   getKeys(provider) {
-    return this.pools[provider] || [];
+    return this.pools[normalizeProviderKey(provider)] || [];
   }
 
   getKeyCount(provider) {
-    return (this.pools[provider] || []).length;
+    return (this.pools[normalizeProviderKey(provider)] || []).length;
   }
 
   /**
@@ -64,8 +68,9 @@ class KeyManager {
    * @returns {{ added: number, skipped: number }}
    */
   setKeys(provider, keys) {
-    if (!this.pools[provider]) this.pools[provider] = [];
-    const existing = new Set(this.pools[provider].map(k => k.key));
+    const poolKey = normalizeProviderKey(provider);
+    if (!this.pools[poolKey]) this.pools[poolKey] = [];
+    const existing = new Set(this.pools[poolKey].map(k => k.key));
     let added = 0;
     let skipped = 0;
     for (const raw of keys) {
@@ -76,9 +81,9 @@ class KeyManager {
         continue;
       }
       existing.add(key);
-      this.pools[provider].push({
+      this.pools[poolKey].push({
         key,
-        label: `Key ${this.pools[provider].length + 1}`,
+        label: `Key ${this.pools[poolKey].length + 1}`,
       });
       added++;
     }
@@ -90,22 +95,24 @@ class KeyManager {
    * Add a single key. Returns false if duplicate.
    */
   addKey(provider, key, label = '') {
-    if (!this.pools[provider]) this.pools[provider] = [];
+    const poolKey = normalizeProviderKey(provider);
+    if (!this.pools[poolKey]) this.pools[poolKey] = [];
     const trimmed = key.trim();
-    if (this.pools[provider].some(k => k.key === trimmed)) {
+    if (this.pools[poolKey].some(k => k.key === trimmed)) {
       return false; // duplicate
     }
-    this.pools[provider].push({
+    this.pools[poolKey].push({
       key: trimmed,
-      label: label || `Key ${this.pools[provider].length + 1}`,
+      label: label || `Key ${this.pools[poolKey].length + 1}`,
     });
     this._save();
     return true;
   }
 
   removeKey(provider, index) {
-    if (this.pools[provider]) {
-      this.pools[provider].splice(index, 1);
+    const poolKey = normalizeProviderKey(provider);
+    if (this.pools[poolKey]) {
+      this.pools[poolKey].splice(index, 1);
       this._save();
     }
   }
@@ -114,7 +121,7 @@ class KeyManager {
    * Get displayed keys (masked).
    */
   getDisplayKeys(provider) {
-    return (this.pools[provider] || []).map((k, i) => ({
+    return (this.pools[normalizeProviderKey(provider)] || []).map((k, i) => ({
       ...k,
       index: i,
       masked: k.key.slice(0, 8) + '•••' + k.key.slice(-4),
@@ -126,7 +133,7 @@ class KeyManager {
    * Export keys as plain text (one per line), full key values.
    */
   exportKeys(provider) {
-    return (this.pools[provider] || []).map(k => k.key).join('\n');
+    return (this.pools[normalizeProviderKey(provider)] || []).map(k => k.key).join('\n');
   }
 
   // --- Key Selection ---
@@ -135,7 +142,8 @@ class KeyManager {
    * @param {string} provider - 'gemini_direct' | 'gemini_proxy'
    */
   getNextKey(provider) {
-    const pool = this.pools[provider] || [];
+    const poolKey = normalizeProviderKey(provider);
+    const pool = this.pools[poolKey] || [];
     if (pool.length === 0) return null;
 
     // Single key mode
@@ -146,12 +154,12 @@ class KeyManager {
     }
 
     // Multi-key round-robin
-    const startIdx = this.currentIndex[provider] || 0;
+    const startIdx = this.currentIndex[poolKey] || 0;
     for (let i = 0; i < pool.length; i++) {
       const idx = (startIdx + i) % pool.length;
       const k = pool[idx];
       if (!this.isRateLimited(k.key)) {
-        this.currentIndex[provider] = (idx + 1) % pool.length;
+        this.currentIndex[poolKey] = (idx + 1) % pool.length;
         return k.key;
       }
     }
@@ -176,7 +184,7 @@ class KeyManager {
 
   // --- Status ---
   getStatus(provider) {
-    const pool = this.pools[provider] || [];
+    const pool = this.pools[normalizeProviderKey(provider)] || [];
     const total = pool.length;
     const available = pool.filter(k => !this.isRateLimited(k.key)).length;
     return { total, available, rateLimited: total - available };

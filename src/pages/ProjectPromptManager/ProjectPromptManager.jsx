@@ -1,10 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   AlertCircle,
   CheckCircle2,
   Copy,
+  Eye,
   FileStack,
+  Loader2,
+  Power,
   RefreshCw,
   Save,
   Sparkles,
@@ -22,6 +25,14 @@ import {
   stripProtectedTaskInstruction,
 } from '../../services/ai/promptBuilder';
 import { PROJECT_PROMPT_GROUPS } from '../../services/ai/promptManagerMeta';
+import {
+  computeProjectStyleRuntimeSourceHash,
+  getProjectStyleRuntimeState,
+  hasRequiredProjectStyleRuntimeSections,
+  PROJECT_STYLE_RUNTIME_SECTIONS,
+} from '../../services/ai/projectStyleRuntime';
+import { generateProjectStyleRuntimeBlock } from '../../services/ai/projectStyleRuntimeGenerator';
+import { TASK_TYPES } from '../../services/ai/router';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
@@ -137,6 +148,198 @@ function getProjectPromptSignature(draft) {
     prompt_templates: draft || {},
     ai_guidelines: draft?.ai_guidelines || '',
   });
+}
+
+function formatRuntimeDate(timestamp) {
+  const value = Number(timestamp || 0);
+  if (!value) return 'Chưa có';
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function getRuntimeStatus(runtimeState, hasPreview) {
+  if (hasPreview) {
+    return {
+      key: 'preview',
+      label: 'Có bản xem trước',
+      tone: 'preview',
+      description: 'Block mới đã được AI rút lõi, cần bấm lưu để có hiệu lực.',
+    };
+  }
+
+  if (!runtimeState?.block) {
+    return {
+      key: 'empty',
+      label: 'Chưa tạo',
+      tone: 'idle',
+      description: 'Runtime đang dùng logic cũ và gửi các prompt rời như trước.',
+    };
+  }
+
+  if (!runtimeState.enabled) {
+    return {
+      key: 'disabled',
+      label: 'Đang tắt',
+      tone: 'idle',
+      description: 'Block đã lưu nhưng đang tắt, runtime quay về logic cũ.',
+    };
+  }
+
+  if (!runtimeState.validBlock) {
+    return {
+      key: 'invalid',
+      label: 'Block lỗi',
+      tone: 'danger',
+      description: 'Block thiếu 6 mục bắt buộc nên không được inject.',
+    };
+  }
+
+  if (runtimeState.stale) {
+    return {
+      key: 'stale',
+      label: 'Đã lỗi thời',
+      tone: 'warning',
+      description: 'Prompt nguồn đã đổi sau lần rút lõi, runtime tạm dùng logic cũ để không bỏ sót sửa đổi mới.',
+    };
+  }
+
+  if (runtimeState.active) {
+    return {
+      key: 'active',
+      label: 'Đang dùng',
+      tone: 'success',
+      description: 'Block đang được chèn sớm vào system prompt cho các luồng viết của truyện.',
+    };
+  }
+
+  return {
+    key: 'ready',
+    label: 'Sẵn sàng',
+    tone: 'success',
+    description: 'Block hợp lệ và sẽ có hiệu lực trong các task viết được hỗ trợ.',
+  };
+}
+
+function ProjectStyleRuntimeCard({
+  runtimeState,
+  runtimeStatus,
+  draftSourceHash,
+  displayBlock,
+  runtimePreview,
+  runtimeMessage,
+  isGeneratingRuntime,
+  isSaving,
+  isPromptDraftDirty,
+  onGenerate,
+  onSavePreview,
+  onToggleEnabled,
+  onDelete,
+}) {
+  const hasPreview = !!runtimePreview?.project_style_runtime_block;
+  const hasSavedBlock = !!runtimeState?.block;
+  const displayMeta = runtimePreview?.meta || runtimeState?.meta || {};
+  const previewSourceChanged = Boolean(
+    hasPreview
+    && runtimePreview?.meta?.source_hash
+    && runtimePreview.meta.source_hash !== draftSourceHash,
+  );
+  const canSavePreview = hasPreview && !previewSourceChanged && !isSaving;
+  const canToggle = hasSavedBlock && runtimeState.validBlock && !isSaving;
+  const canDelete = hasSavedBlock && !isSaving;
+
+  return (
+    <section className="settings-section card animate-slide-up project-style-runtime-card">
+      <div className="project-style-runtime-card__header">
+        <div className="settings-section-header">
+          <Sparkles size={20} />
+          <div>
+            <h2>System Prompt Runtime của truyện</h2>
+            <p>
+              Rút lõi prompt của truyện thành block <strong>[PROJECT STYLE - BẮT BUỘC]</strong> để AI bám văn phong sớm hơn, không sửa global system prompt.
+            </p>
+          </div>
+        </div>
+        <span className={`project-style-runtime-status is-${runtimeStatus.tone}`}>
+          {runtimeStatus.label}
+        </span>
+      </div>
+
+      <div className="project-style-runtime-summary">
+        <div>
+          <strong>Trạng thái</strong>
+          <p>{runtimeStatus.description}</p>
+        </div>
+        <div>
+          <strong>Source hash</strong>
+          <code>{displayMeta.source_hash || 'Chưa có'}</code>
+        </div>
+        <div>
+          <strong>Tạo lúc</strong>
+          <span>{formatRuntimeDate(displayMeta.generated_at)}</span>
+        </div>
+      </div>
+
+      <div className="project-style-runtime-rules">
+        {PROJECT_STYLE_RUNTIME_SECTIONS.map((section) => (
+          <span key={section.number}>{section.number}. {section.label}</span>
+        ))}
+      </div>
+
+      {isPromptDraftDirty && (
+        <div className="project-style-runtime-note is-warning">
+          <AlertCircle size={14} />
+          Prompt truyện đang có thay đổi chưa lưu. Khi lưu block, hệ thống sẽ lưu kèm các thay đổi prompt hiện tại để hash không bị lệch.
+        </div>
+      )}
+
+      {previewSourceChanged && (
+        <div className="project-style-runtime-note is-warning">
+          <AlertCircle size={14} />
+          Prompt nguồn đã đổi sau khi tạo preview. Hãy rút lõi lại trước khi lưu block.
+        </div>
+      )}
+
+      <div className="project-style-runtime-actions">
+        <button type="button" className="btn btn-primary" onClick={onGenerate} disabled={isGeneratingRuntime || isSaving}>
+          {isGeneratingRuntime ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          Rút lõi vào System Prompt
+        </button>
+        <button type="button" className="btn btn-secondary" onClick={onSavePreview} disabled={!canSavePreview}>
+          <Save size={14} />
+          Lưu block
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={onToggleEnabled} disabled={!canToggle}>
+          <Power size={14} />
+          {runtimeState?.enabled ? 'Tắt block' : 'Bật block'}
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={onDelete} disabled={!canDelete}>
+          <Trash2 size={14} />
+          Xóa block
+        </button>
+      </div>
+
+      {runtimeMessage && (
+        <div className={`project-style-runtime-note is-${runtimeMessage.type}`}>
+          {runtimeMessage.type === 'error' ? <AlertCircle size={14} /> : <CheckCircle2 size={14} />}
+          {runtimeMessage.text}
+        </div>
+      )}
+
+      <details className="project-style-runtime-preview" open={Boolean(displayBlock)}>
+        <summary>
+          <Eye size={14} />
+          Xem block runtime
+        </summary>
+        {displayBlock ? (
+          <pre>{displayBlock}</pre>
+        ) : (
+          <p>Chưa có block để xem trước.</p>
+        )}
+      </details>
+    </section>
+  );
 }
 
 function PromptInfoGrid({ item }) {
@@ -315,6 +518,9 @@ export default function ProjectPromptManager() {
   const [activeGroupKey, setActiveGroupKey] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [editableCoreKeys, setEditableCoreKeys] = useState({});
+  const [runtimePreview, setRuntimePreview] = useState(null);
+  const [runtimeMessage, setRuntimeMessage] = useState(null);
+  const [isGeneratingRuntime, setIsGeneratingRuntime] = useState(false);
   const isHydratingRef = useRef(true);
   const lastSavedSignatureRef = useRef('');
 
@@ -358,6 +564,49 @@ export default function ProjectPromptManager() {
       isHydratingRef.current = false;
     }, 0);
   }, [currentProject, genreKey]);
+
+  const runtimeWritingStyle = currentProject?.writing_style || '';
+  const runtimeDraftSource = useMemo(() => {
+    const promptTemplates = cleanPromptTemplates(PROJECT_PROMPT_GROUPS, overrideDraft);
+    const aiGuidelines = String(overrideDraft.ai_guidelines || '').trim();
+    const sourceHash = computeProjectStyleRuntimeSourceHash({
+      aiGuidelines,
+      promptTemplates,
+      genre: genreKey,
+      writingStyle: runtimeWritingStyle,
+    });
+
+    return {
+      promptTemplates,
+      aiGuidelines,
+      sourceHash,
+    };
+  }, [overrideDraft, genreKey, runtimeWritingStyle]);
+
+  const savedRuntimeState = useMemo(() => {
+    if (!currentProject) {
+      return getProjectStyleRuntimeState({ taskType: TASK_TYPES.FREE_PROMPT });
+    }
+
+    return getProjectStyleRuntimeState({
+      taskType: TASK_TYPES.FREE_PROMPT,
+      aiGuidelines: currentProject.ai_guidelines || '',
+      promptTemplates: parsePromptTemplates(currentProject.prompt_templates),
+      genre: currentProject.genre_primary || genreKey,
+      writingStyle: runtimeWritingStyle,
+      projectStyleRuntimeBlock: currentProject.project_style_runtime_block || '',
+      projectStyleRuntimeEnabled: currentProject.project_style_runtime_enabled,
+      projectStyleRuntimeMeta: currentProject.project_style_runtime_meta,
+    });
+  }, [currentProject, genreKey, runtimeWritingStyle]);
+
+  const promptDraftDirty = getProjectPromptSignature(overrideDraft) !== lastSavedSignatureRef.current;
+  const runtimeStatus = useMemo(
+    () => getRuntimeStatus(savedRuntimeState, !!runtimePreview?.project_style_runtime_block),
+    [savedRuntimeState, runtimePreview],
+  );
+  const runtimeDisplayBlock = runtimePreview?.project_style_runtime_block || savedRuntimeState.block || '';
+  const deferredRuntimeDisplayBlock = useDeferredValue(runtimeDisplayBlock);
 
   const filteredGroups = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -475,6 +724,138 @@ export default function ProjectPromptManager() {
 
   const handleSave = async () => {
     await persistOverrideDraft('manual');
+  };
+
+  const handleGenerateRuntimeBlock = async () => {
+    if (!currentProject || isGeneratingRuntime) return;
+
+    setIsGeneratingRuntime(true);
+    setRuntimeMessage(null);
+    try {
+      const result = await generateProjectStyleRuntimeBlock({
+        projectTitle: currentProject.title || '',
+        genre: genreKey,
+        aiGuidelines: runtimeDraftSource.aiGuidelines,
+        promptTemplates: runtimeDraftSource.promptTemplates,
+        writingStyle: runtimeWritingStyle,
+      });
+
+      if (!hasRequiredProjectStyleRuntimeSections(result.project_style_runtime_block)) {
+        throw new Error('Block AI trả về thiếu 6 mục bắt buộc.');
+      }
+
+      setRuntimePreview(result);
+      setRuntimeMessage({
+        type: 'success',
+        text: 'Đã tạo bản xem trước. Kiểm tra nội dung rồi bấm Lưu block để áp dụng cho truyện này.',
+      });
+    } catch (error) {
+      setRuntimeMessage({
+        type: 'error',
+        text: error?.message || 'Không thể rút lõi Project Style Runtime.',
+      });
+    } finally {
+      setIsGeneratingRuntime(false);
+    }
+  };
+
+  const handleSaveRuntimePreview = async () => {
+    if (!currentProject || !runtimePreview?.project_style_runtime_block || isSaving) return;
+
+    if (runtimePreview.meta?.source_hash && runtimePreview.meta.source_hash !== runtimeDraftSource.sourceHash) {
+      setRuntimeMessage({
+        type: 'error',
+        text: 'Prompt nguồn đã đổi sau khi tạo preview. Hãy rút lõi lại trước khi lưu.',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    setRuntimeMessage(null);
+    try {
+      await updateProjectSettings({
+        prompt_templates: JSON.stringify(runtimeDraftSource.promptTemplates),
+        ai_guidelines: runtimeDraftSource.aiGuidelines,
+        project_style_runtime_block: runtimePreview.project_style_runtime_block,
+        project_style_runtime_enabled: true,
+        project_style_runtime_meta: {
+          ...(runtimePreview.meta || {}),
+          source_hash: runtimeDraftSource.sourceHash,
+          generated_at: runtimePreview.meta?.generated_at || Date.now(),
+        },
+      });
+
+      const savedDraft = {
+        ...runtimeDraftSource.promptTemplates,
+        ai_guidelines: runtimeDraftSource.aiGuidelines,
+      };
+      setOverrideDraft(savedDraft);
+      lastSavedSignatureRef.current = getProjectPromptSignature(savedDraft);
+      setRuntimePreview(null);
+      setRuntimeMessage({
+        type: 'success',
+        text: 'Đã lưu Project Style Runtime. Block sẽ được dùng ngay cho các luồng viết của truyện.',
+      });
+    } catch (error) {
+      setRuntimeMessage({
+        type: 'error',
+        text: error?.message || 'Không thể lưu Project Style Runtime.',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleToggleRuntimeEnabled = async () => {
+    if (!currentProject || !savedRuntimeState.block || isSaving) return;
+    setRuntimeMessage(null);
+    setIsSaving(true);
+    try {
+      await updateProjectSettings({
+        project_style_runtime_enabled: !savedRuntimeState.enabled,
+      });
+      setRuntimeMessage({
+        type: 'success',
+        text: savedRuntimeState.enabled
+          ? 'Đã tắt Project Style Runtime. Runtime quay về logic prompt cũ.'
+          : 'Đã bật Project Style Runtime.',
+      });
+    } catch (error) {
+      setRuntimeMessage({
+        type: 'error',
+        text: error?.message || 'Không thể đổi trạng thái Project Style Runtime.',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteRuntimeBlock = async () => {
+    if (!currentProject || !savedRuntimeState.block || isSaving) return;
+    const confirmed = window.confirm('Xóa Project Style Runtime của truyện này? Prompt gốc và Project Override vẫn được giữ nguyên.');
+    if (!confirmed) return;
+
+    setRuntimeMessage(null);
+    setIsSaving(true);
+    try {
+      await updateProjectSettings({
+        project_style_runtime_block: '',
+        project_style_runtime_enabled: false,
+        project_style_runtime_meta: null,
+      });
+      setRuntimePreview(null);
+      setRuntimeMessage({
+        type: 'success',
+        text: 'Đã xóa Project Style Runtime. Truyện sẽ dùng logic prompt cũ.',
+      });
+    } catch (error) {
+      setRuntimeMessage({
+        type: 'error',
+        text: error?.message || 'Không thể xóa Project Style Runtime.',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -614,6 +995,22 @@ export default function ProjectPromptManager() {
           </div>
         )}
       </section>
+
+      <ProjectStyleRuntimeCard
+        runtimeState={savedRuntimeState}
+        runtimeStatus={runtimeStatus}
+        draftSourceHash={runtimeDraftSource.sourceHash}
+        displayBlock={deferredRuntimeDisplayBlock}
+        runtimePreview={runtimePreview}
+        runtimeMessage={runtimeMessage}
+        isGeneratingRuntime={isGeneratingRuntime}
+        isSaving={isSaving}
+        isPromptDraftDirty={promptDraftDirty}
+        onGenerate={handleGenerateRuntimeBlock}
+        onSavePreview={handleSaveRuntimePreview}
+        onToggleEnabled={handleToggleRuntimeEnabled}
+        onDelete={handleDeleteRuntimeBlock}
+      />
 
       <div className="settings-sections">
         {filteredGroups.map((group, groupIndex) => (

@@ -183,7 +183,7 @@ export default function GeminiProxyGuide({ focusFixCli = false }) {
     const preferredProvider = modelRouter.getPreferredProvider();
     const endpoint = getProxyUrl();
     const route = modelRouter.route(TASK_TYPES.FREE_PROMPT, {
-      providerOverride: PROVIDERS.GEMINI_PROXY,
+      providerOverride: PROVIDERS.OPENAI_PROXY,
     });
 
     return {
@@ -191,7 +191,7 @@ export default function GeminiProxyGuide({ focusFixCli = false }) {
       preferredProvider,
       endpoint,
       route,
-      usingProxy: preferredProvider === PROVIDERS.GEMINI_PROXY,
+      usingProxy: preferredProvider === PROVIDERS.OPENAI_PROXY || preferredProvider === PROVIDERS.GEMINI_PROXY,
     };
   }, []);
 

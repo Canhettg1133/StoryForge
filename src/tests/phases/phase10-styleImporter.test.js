@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import JSZip from 'jszip';
 import {
   FULL_FILE_MAX_BYTES,
+  MAX_STYLE_IMPORTER_SOURCE_TOKENS,
   inspectStyleImporterFile,
 } from '../../services/styleImporter/fileSafety.js';
+import {
+  buildStyleImporterSample,
+  detectStyleImporterFileType,
+  readStyleImporterFile,
+} from '../../services/styleImporter/fileReader.js';
 import {
   CHUNK_HARD_CAP_TOKENS,
   planStyleImporterChunks,
@@ -100,6 +107,74 @@ describe('phase10 Style Importer core contracts', () => {
       type: 'text/plain',
       bytes: [0x4d, 0x5a, 0x90, 0x00],
     }))).resolves.toMatchObject({ ok: false, code: 'UNSAFE_MAGIC_BYTES' });
+  });
+
+  it('allows Prompt Doctor story formats before parser-specific handling', async () => {
+    await expect(inspectStyleImporterFile(makeBrowserFile({
+      name: 'book.epub',
+      type: 'application/epub+zip',
+      bytes: [0x50, 0x4b, 0x03, 0x04],
+    }))).resolves.toMatchObject({ ok: true, extension: '.epub' });
+
+    await expect(inspectStyleImporterFile(makeBrowserFile({
+      name: 'draft.docx',
+      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      bytes: [0x50, 0x4b, 0x03, 0x04],
+    }))).resolves.toMatchObject({ ok: true, extension: '.docx' });
+
+    expect(detectStyleImporterFileType({ name: 'book.epub' })).toBe('epub');
+    expect(detectStyleImporterFileType({ name: 'draft.docx' })).toBe('docx');
+  });
+
+  it('builds one fixed Prompt Doctor sample capped at 250k tokens', () => {
+    const thirdA = 'a '.repeat(120_000);
+    const thirdB = 'b '.repeat(120_000);
+    const thirdC = 'c '.repeat(120_000);
+    const rawText = `${thirdA}\n\n${thirdB}\n\n${thirdC}`;
+
+    const sample = buildStyleImporterSample({
+      rawText,
+      totalEstimatedTokens: 360_000,
+    });
+
+    expect(sample.mode).toBe('sample');
+    expect(sample.chunks).toHaveLength(1);
+    expect(sample.sampleEstimatedTokens).toBeLessThanOrEqual(MAX_STYLE_IMPORTER_SOURCE_TOKENS);
+    expect(sample.chunks[0].text).toContain('[SAMPLE: BEGINNING]');
+    expect(sample.chunks[0].text).toContain('[SAMPLE: MIDDLE]');
+    expect(sample.chunks[0].text).toContain('[SAMPLE: END]');
+    expect(sample.estimatedRequests).toBe(1);
+  });
+
+  it('extracts readable text from EPUB for Prompt Doctor without Lab Lite parsing', async () => {
+    const zip = new JSZip();
+    zip.file('META-INF/container.xml', [
+      '<?xml version="1.0"?>',
+      '<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>',
+    ].join(''));
+    zip.file('OEBPS/content.opf', [
+      '<package>',
+      '<metadata><dc:title>Demo Book</dc:title></metadata>',
+      '<manifest><item id="c1" href="chapter1.xhtml" media-type="application/xhtml+xml"/></manifest>',
+      '<spine><itemref idref="c1"/></spine>',
+      '</package>',
+    ].join(''));
+    zip.file('OEBPS/chapter1.xhtml', '<html><body><h1>Chapter 1</h1><p>Mot doan van mau de Prompt Doctor hoc nhip ke va giong van.</p></body></html>');
+    const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+    const file = {
+      name: 'demo.epub',
+      type: 'application/epub+zip',
+      async arrayBuffer() {
+        return buffer;
+      },
+    };
+
+    const parsed = await readStyleImporterFile(file);
+
+    expect(parsed.fileType).toBe('epub');
+    expect(parsed.title).toBe('Demo Book');
+    expect(parsed.rawText).toContain('Mot doan van mau');
+    expect(parsed.sectionCount).toBe(1);
   });
 
   it('wraps uploaded story text as source data, not system instructions', () => {

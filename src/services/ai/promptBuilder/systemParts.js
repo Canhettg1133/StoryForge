@@ -31,6 +31,7 @@ import {
   buildAntiAIBlock,
   buildMoodBoardLayer,
 } from './layers';
+import { getProjectStyleRuntimeState } from '../projectStyleRuntime';
 
 export function buildPromptSystemParts(taskType, context = {}) {
   const {
@@ -97,6 +98,9 @@ export function buildPromptSystemParts(taskType, context = {}) {
     writingStyle = '',
     // Custom overrides 
     promptTemplates = {},
+    projectStyleRuntimeBlock = '',
+    projectStyleRuntimeEnabled = false,
+    projectStyleRuntimeMeta = null,
     nsfwMode = false,
     superNsfwMode = false,
     sceneList = [],
@@ -269,6 +273,17 @@ export function buildPromptSystemParts(taskType, context = {}) {
   // FREE_PROMPT: skip heavy writing layers for questions/chat
   const freePromptInProject = taskType === TASK_TYPES.FREE_PROMPT && !!(projectId || chapterId);
   const skipWritingLayers = taskType === TASK_TYPES.FREE_PROMPT && !freePromptInProject && !isWritingIntent(userPrompt);
+  const projectStyleRuntime = getProjectStyleRuntimeState({
+    taskType,
+    skipWritingLayers,
+    aiGuidelines,
+    promptTemplates,
+    genre,
+    writingStyle: resolvedWritingStyle,
+    projectStyleRuntimeBlock,
+    projectStyleRuntimeEnabled,
+    projectStyleRuntimeMeta,
+  });
 
   // -- Layer 0: Grand Strategy & Pacing (merged) --
   // Keep this before Layer 1 so arc constraints stay highly visible.
@@ -348,10 +363,14 @@ export function buildPromptSystemParts(taskType, context = {}) {
     systemParts.push('[GOC NHIN]: Da goc nhin - moi canh/chuong theo 1 nhan vat. Giu nhat quan trong cung 1 canh.');
   }
 
+  if (projectStyleRuntime.active) {
+    systemParts.push(projectStyleRuntime.systemBlock);
+  }
+
   // -- Layer 1.5: Writing Constitution (nguyen tac sang tac) --
   // Moved upward because the model pays more attention near the top of the prompt.
   // Dung strictness de frame: strict = khong the vi pham, relaxed = goi y.
-  if (aiGuidelines) {
+  if (aiGuidelines && !projectStyleRuntime.active) {
     const principleHeader = aiStrictness === 'strict'
       ? 'NGUYEN TAC SANG TAC - TUYET DOI TUAN THU'
       : aiStrictness === 'relaxed'
@@ -361,7 +380,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
   }
 
   const constitutionRules = listFromTemplate(promptTemplates.constitution);
-  if (constitutionRules.length > 0 && !skipWritingLayers) {
+  if (constitutionRules.length > 0 && !skipWritingLayers && !projectStyleRuntime.active) {
     systemParts.push('\n[LUAT COT LOI CUA TRUYEN - BAT BUOC TUAN THU]\n' + constitutionRules.map(function(rule, index) {
       return (index + 1) + '. ' + rule;
     }).join('\n'));
@@ -770,22 +789,24 @@ export function buildPromptSystemParts(taskType, context = {}) {
   // -- Layer 7: Style DNA --
   const styleDNALayer = buildStyleDNALayer(taskType, resolvedWritingStyle);
   if (styleDNALayer && !skipWritingLayers) {
-    systemParts.push(styleDNALayer);
-    const projectStyleDNA = listFromTemplate(promptTemplates.style_dna);
-    if (projectStyleDNA.length > 0) {
-      systemParts.push('\n[DNA VAN PHONG CUA TRUYEN - PROJECT OVERRIDE]\n' + projectStyleDNA.map(function(rule, index) {
-        return (index + 1) + '. ' + rule;
-      }).join('\n'));
-    }
-    // Append the Anti-AI Blacklist right after Style DNA.
-    const antiAIBlock = buildAntiAIBlock(resolvedWritingStyle);
-    if (antiAIBlock) systemParts.push(antiAIBlock);
-    const projectBlacklist = listFromTemplate(promptTemplates.anti_ai_blacklist);
-    if (projectBlacklist.length > 0) {
-      systemParts.push('\n[TU/CUM CAN TRANH CUA TRUYEN - PROJECT BLACKLIST]\n' + [
-        'KHONG DUOC dung cac tu/cum sau trong van ban dau ra:',
-        ...projectBlacklist.map(function(item) { return '- ' + item; }),
-      ].join('\n'));
+    if (!projectStyleRuntime.active) {
+      systemParts.push(styleDNALayer);
+      const projectStyleDNA = listFromTemplate(promptTemplates.style_dna);
+      if (projectStyleDNA.length > 0) {
+        systemParts.push('\n[DNA VAN PHONG CUA TRUYEN - PROJECT OVERRIDE]\n' + projectStyleDNA.map(function(rule, index) {
+          return (index + 1) + '. ' + rule;
+        }).join('\n'));
+      }
+      // Append the Anti-AI Blacklist right after Style DNA.
+      const antiAIBlock = buildAntiAIBlock(resolvedWritingStyle);
+      if (antiAIBlock) systemParts.push(antiAIBlock);
+      const projectBlacklist = listFromTemplate(promptTemplates.anti_ai_blacklist);
+      if (projectBlacklist.length > 0) {
+        systemParts.push('\n[TU/CUM CAN TRANH CUA TRUYEN - PROJECT BLACKLIST]\n' + [
+          'KHONG DUOC dung cac tu/cum sau trong van ban dau ra:',
+          ...projectBlacklist.map(function(item) { return '- ' + item; }),
+        ].join('\n'));
+      }
     }
     systemParts.push(PROSE_DIALOGUE_DISCIPLINE_LAYER);
   }

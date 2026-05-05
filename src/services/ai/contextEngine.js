@@ -93,6 +93,9 @@ export async function gatherContext({
       fanficCanonContext: null,
       aiGuidelines: '',
       aiStrictness: 'balanced',
+      projectStyleRuntimeBlock: '',
+      projectStyleRuntimeEnabled: false,
+      projectStyleRuntimeMeta: null,
       characterContextGate: null,
     };
   }
@@ -533,6 +536,9 @@ export async function gatherContext({
     allCharacters,
     aiGuidelines,
     aiStrictness,
+    projectStyleRuntimeBlock: project?.project_style_runtime_block || '',
+    projectStyleRuntimeEnabled: !!project?.project_style_runtime_enabled,
+    projectStyleRuntimeMeta: project?.project_style_runtime_meta || null,
     characterContextGate,
     relationships,
     sceneContract,

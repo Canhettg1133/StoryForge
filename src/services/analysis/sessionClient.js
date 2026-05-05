@@ -40,6 +40,23 @@ function resolveProxyUrl(explicitUrl) {
   return fallback;
 }
 
+function getOpenAIProxyRoot(rawUrl) {
+  let root = String(rawUrl || '').trim().replace(/\/+$/u, '');
+  const suffixes = [
+    '/v1/chat/completions',
+    '/chat/completions',
+    '/v1/models',
+    '/models',
+    '/v1',
+  ];
+  const lower = root.toLowerCase();
+  const suffix = suffixes.find((item) => lower.endsWith(item));
+  if (suffix) {
+    root = root.slice(0, root.length - suffix.length).replace(/\/+$/u, '');
+  }
+  return root;
+}
+
 function resolveDirectUrl(explicitUrl) {
   if (explicitUrl) {
     return explicitUrl;
@@ -281,7 +298,7 @@ export class SessionClient {
   }
 
   async requestGeminiProxy(options = {}) {
-    const url = `${this.proxyUrl.replace(/\/+$/u, '')}/v1/chat/completions`;
+    const url = `${getOpenAIProxyRoot(this.proxyUrl)}/v1/chat/completions`;
     const body = {
       model: this.model,
       messages: toOpenAIMessages(this.systemPrompt, this.history),

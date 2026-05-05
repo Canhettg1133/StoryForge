@@ -1,11 +1,13 @@
 import { create } from 'zustand';
-import { readLabLiteFile } from '../services/labLite/fileReader.js';
-import { estimateTokensDetailed } from '../services/labLite/tokenEstimator.js';
 import {
   detectMojibakeWarnings,
   inspectStyleImporterFile,
 } from '../services/styleImporter/fileSafety.js';
-import { planStyleImporterChunks } from '../services/styleImporter/chunkPlanner.js';
+import {
+  buildStyleImporterSample,
+  readStyleImporterFile,
+} from '../services/styleImporter/fileReader.js';
+import { estimateStyleImporterTokensDetailed } from '../services/styleImporter/tokenEstimator.js';
 import {
   analyzeStyleChunks,
   generatePromptPatches,
@@ -13,7 +15,7 @@ import {
 } from '../services/styleImporter/styleImporterRunner.js';
 import { STYLE_IMPORTER_ALLOWED_TARGETS } from '../services/styleImporter/projectPromptInterop.js';
 
-const STEP_IDS = ['read', 'chapters', 'chunks', 'analyze', 'patch'];
+const STEP_IDS = ['read', 'sample', 'analyze', 'patch'];
 
 function makeInitialProgress() {
   return Object.fromEntries(STEP_IDS.map((step) => [step, 'idle']));
@@ -100,29 +102,25 @@ const useStyleImporterStore = create((set, get) => ({
     }
 
     try {
-      const readResult = await readLabLiteFile(file, { fallbackTitlePrefix: 'Chương' });
+      const readResult = await readStyleImporterFile(file);
       get().setStep('read', 'done');
-      get().setStep('chapters', 'running');
+      get().setStep('sample', 'running');
 
       const rawText = String(readResult.rawText || '');
-      const chapters = Array.isArray(readResult.chapters) ? readResult.chapters : [];
-      const tokenDetail = estimateTokensDetailed(rawText);
-      get().setStep('chapters', 'done');
-      get().setStep('chunks', 'running');
-
-      const chunkPlan = planStyleImporterChunks({
+      const tokenDetail = estimateStyleImporterTokensDetailed(rawText);
+      const chunkPlan = buildStyleImporterSample({
         rawText,
-        chapters,
-        fileSizeBytes: file.size,
         totalEstimatedTokens: tokenDetail.estimatedTokens,
       });
-      get().setStep('chunks', 'done');
+      get().setStep('sample', 'done');
 
       set({
         fileState: {
           file: fileMetaFrom(file),
           safety,
-          chapters,
+          fileType: readResult.fileType,
+          sectionCount: readResult.sectionCount || 1,
+          metadata: readResult.metadata || {},
           tokenDetail,
           chunkPlan,
           warnings: [
@@ -137,7 +135,7 @@ const useStyleImporterStore = create((set, get) => ({
         fileState: {
           file: fileMetaFrom(file),
           safety,
-          error: error?.message || 'Không đọc được file.',
+          error: error?.message || 'Khong doc duoc file.',
         },
       });
     }
@@ -161,7 +159,9 @@ const useStyleImporterStore = create((set, get) => ({
     try {
       const fileMeta = {
         sourceFileName: state.fileState.file?.name || '',
-        chapterCount: state.fileState.chapters?.length || 0,
+        chapterCount: state.fileState.sectionCount || 0,
+        sourceEstimatedTokens: state.fileState.chunkPlan?.totalEstimatedTokens || 0,
+        sampleEstimatedTokens: state.fileState.chunkPlan?.sampleEstimatedTokens || 0,
       };
       const analyses = await analyzeStyleChunks({
         chunks: state.fileState.chunkPlan.chunks,
@@ -184,7 +184,7 @@ const useStyleImporterStore = create((set, get) => ({
         allowedTargets,
       });
       if (!Array.isArray(nextPatches) || nextPatches.length === 0) {
-        throw new Error('AI không trả về patch prompt hợp lệ. Hãy chạy lại hoặc thêm yêu cầu cụ thể hơn cho Style Importer.');
+        throw new Error('AI khong tra ve patch prompt hop le. Hay chay lai hoac them yeu cau cu the hon cho Style Importer.');
       }
       set({
         patches: nextPatches,
@@ -192,7 +192,7 @@ const useStyleImporterStore = create((set, get) => ({
       });
       get().setStep('patch', 'done');
     } catch (error) {
-      set({ runError: error?.message || 'Không thể phân tích tác phẩm mẫu.' });
+      set({ runError: error?.message || 'Khong the phan tich tac pham mau.' });
       get().setStep(currentPhase, 'error');
     } finally {
       set({ isRunning: false });

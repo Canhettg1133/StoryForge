@@ -29,7 +29,7 @@ describe('phase10 model router proxy model selection', () => {
     expect(modelRouter.route(TASK_TYPES.FREE_PROMPT).model).toBe(PROXY_MODEL_PRESETS[4].id);
   });
 
-  it('keeps canon and background tasks on legacy proxy quality routing', async () => {
+  it('keeps canon and background tasks on the selected proxy model by default', async () => {
     const {
       default: modelRouter,
       PROXY_MODEL_PRESETS,
@@ -48,8 +48,65 @@ describe('phase10 model router proxy model selection', () => {
       qualityOverride: QUALITY_MODES.BALANCED,
     });
 
-    expect(summaryRoute.model).toBe(PROXY_MODEL_PRESETS[1].id);
-    expect(canonRoute.model).toBe(PROXY_MODEL_PRESETS[1].id);
+    expect(summaryRoute.model).toBe(PROXY_MODEL_PRESETS[4].id);
+    expect(canonRoute.model).toBe(PROXY_MODEL_PRESETS[4].id);
+  });
+
+  it('routes custom OpenAI-compatible proxies to the custom model instead of ag presets', async () => {
+    const {
+      default: modelRouter,
+      PROVIDERS,
+      TASK_TYPES,
+    } = await loadRouter();
+    const {
+      CUSTOM_PROXY_PROFILE_ID,
+      setOpenAIProxyActiveProfile,
+      updateCustomOpenAIProxyProfile,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+
+    updateCustomOpenAIProxyProfile({
+      baseUrl: 'https://proxy.example.com',
+      defaultModel: 'custom-gemini-model',
+      models: ['custom-gemini-model'],
+    });
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    const route = modelRouter.route(TASK_TYPES.CANON_EXTRACT_OPS, {
+      qualityOverride: 'best',
+      useProxyQualityRouting: true,
+    });
+
+    expect(route.provider).toBe(PROVIDERS.OPENAI_PROXY);
+    expect(route.model).toBe('custom-gemini-model');
+    expect(route.proxyProfileId).toBe(CUSTOM_PROXY_PROFILE_ID);
+  });
+
+  it('does not silently fall back to an ag model when a custom proxy has no model configured', async () => {
+    const {
+      default: modelRouter,
+      PROVIDERS,
+      TASK_TYPES,
+    } = await loadRouter();
+    const {
+      CUSTOM_PROXY_PROFILE_ID,
+      setOpenAIProxyActiveProfile,
+      updateCustomOpenAIProxyProfile,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+
+    updateCustomOpenAIProxyProfile({
+      baseUrl: 'https://proxy.example.com',
+      defaultModel: '',
+      models: [],
+    });
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    const route = modelRouter.route(TASK_TYPES.FREE_PROMPT);
+
+    expect(route.provider).toBe(PROVIDERS.OPENAI_PROXY);
+    expect(route.model).toBe('');
+    expect(route.proxyProfileId).toBe(CUSTOM_PROXY_PROFILE_ID);
   });
 
   it('lets explicit modelOverride win over proxyModelOverride and stored proxy model', async () => {

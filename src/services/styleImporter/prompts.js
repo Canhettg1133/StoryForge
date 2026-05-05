@@ -57,6 +57,8 @@ export function buildStyleAnalysisMessages({ chunk, userInstruction = '', fileMe
     stringifyJson({
       sourceFileName: fileMeta.sourceFileName || '',
       chapterCount: fileMeta.chapterCount || 0,
+      sourceEstimatedTokens: fileMeta.sourceEstimatedTokens || 0,
+      sampleEstimatedTokens: fileMeta.sampleEstimatedTokens || 0,
       chunkId: chunk?.id || '',
       chunkLabel: chunk?.label || '',
       estimatedTokens: chunk?.estimatedTokens || 0,

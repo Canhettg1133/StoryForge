@@ -1,0 +1,46 @@
+const CJK_REGEX = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/gu;
+const WORD_REGEX = /[\p{L}\p{N}][\p{L}\p{N}'_-]*/gu;
+const VIETNAMESE_DIACRITIC_REGEX = /[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]/iu;
+
+export function countStyleImporterWords(text = '') {
+  return String(text || '').match(WORD_REGEX)?.length || 0;
+}
+
+export function estimateStyleImporterTokensDetailed(text = '', { overheadTokens = 0 } = {}) {
+  const value = String(text || '');
+  const overhead = Math.max(0, Math.trunc(Number(overheadTokens)) || 0);
+  if (!value.trim()) {
+    return {
+      estimatedTokens: overhead,
+      wordCount: 0,
+      cjkCharacters: 0,
+      nonWhitespaceChars: 0,
+      languageHint: 'empty',
+      overheadTokens: overhead,
+    };
+  }
+
+  const wordCount = countStyleImporterWords(value);
+  const cjkCount = (value.match(CJK_REGEX) || []).length;
+  const nonWhitespaceChars = value.replace(/\s+/g, '').length;
+  const languageHint = cjkCount > Math.max(4, nonWhitespaceChars * 0.25)
+    ? 'cjk'
+    : VIETNAMESE_DIACRITIC_REGEX.test(value)
+      ? 'vietnamese'
+      : 'latin';
+
+  const wordMultiplier = languageHint === 'vietnamese' ? 1.55 : 1.35;
+  const charDivisor = languageHint === 'vietnamese' ? 3.2 : 3.8;
+  const wordBased = Math.ceil(wordCount * wordMultiplier);
+  const cjkBased = Math.ceil(cjkCount * 1.08);
+  const charBased = Math.ceil(nonWhitespaceChars / charDivisor);
+
+  return {
+    estimatedTokens: Math.max(1, wordBased, cjkBased, charBased) + overhead,
+    wordCount,
+    cjkCharacters: cjkCount,
+    nonWhitespaceChars,
+    languageHint,
+    overheadTokens: overhead,
+  };
+}

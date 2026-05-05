@@ -10,6 +10,7 @@ const SETTINGS_GROUPS = ['gemini', 'proxy', 'ollama', 'general', 'canon-pack', '
 const STORYFORGE_KEYS_STORAGE = 'sf-api-keys-v2';
 const STORYFORGE_SETTINGS_STORAGE = 'sf-ai-settings';
 const STORYFORGE_PROVIDER_STORAGE = 'sf-preferred-provider';
+const STORYFORGE_PROXY_MODEL_STORAGE = 'sf-proxy-model';
 
 function readStoryForgeJson(key) {
     try {
@@ -29,20 +30,50 @@ function getStoryForgeKeys(provider) {
         .filter(Boolean);
 }
 
+function getStoryForgeProxyKeys() {
+    return [...new Set([
+        ...getStoryForgeKeys('openai_proxy'),
+        ...getStoryForgeKeys('gemini_proxy'),
+    ])];
+}
+
 function normalizeStoryForgeProxyUrl(rawValue) {
     const trimmed = String(rawValue || '').trim().replace(/\/+$/g, '');
     if (!trimmed) return '';
-    if (/\/v1\/chat\/completions$/i.test(trimmed)) return trimmed;
-    if (trimmed === '/api/proxy') return '/api/proxy/v1/chat/completions';
-    if (trimmed === 'https://ag.beijixingxing.com') return 'https://ag.beijixingxing.com/v1/chat/completions';
-    return `${trimmed}/v1/chat/completions`;
+    const suffixes = [
+        '/v1/chat/completions',
+        '/chat/completions',
+        '/v1/models',
+        '/models',
+        '/v1',
+    ];
+    const lower = trimmed.toLowerCase();
+    const suffix = suffixes.find((item) => lower.endsWith(item));
+    const root = suffix ? trimmed.slice(0, trimmed.length - suffix.length).replace(/\/+$/g, '') : trimmed;
+    return `${root}/v1/chat/completions`;
+}
+
+function getStoryForgeOpenAIProxyProfile(appSettings) {
+    const proxySettings = appSettings?.openAIProxy || {};
+    if (proxySettings.activeProfileId === 'custom-openai-proxy' && proxySettings.customProfile) {
+        return {
+            baseUrl: proxySettings.customProfile.baseUrl || '',
+            defaultModel: proxySettings.customProfile.defaultModel || '',
+        };
+    }
+
+    return {
+        baseUrl: appSettings?.proxyUrl || '/api/proxy',
+        defaultModel: localStorage.getItem(STORYFORGE_PROXY_MODEL_STORAGE) || '',
+    };
 }
 
 function importStoryForgeFallbackSettings() {
     const appSettings = readStoryForgeJson(STORYFORGE_SETTINGS_STORAGE) || {};
     const preferredProvider = String(localStorage.getItem(STORYFORGE_PROVIDER_STORAGE) || '').trim();
     const directKeys = getStoryForgeKeys('gemini_direct');
-    const proxyKeys = getStoryForgeKeys('gemini_proxy');
+    const proxyKeys = getStoryForgeProxyKeys();
+    const storyForgeProxyProfile = getStoryForgeOpenAIProxyProfile(appSettings);
     const hasTranslatorAiConfig = apiKeys.length > 0 || proxyApiKeys.length > 0 || Boolean(proxyApiKey);
     let imported = false;
 
@@ -57,15 +88,20 @@ function importStoryForgeFallbackSettings() {
         imported = true;
     }
 
-    if ((!proxyBaseUrl || proxyBaseUrl === 'https://ag.beijixingxing.com/v1/chat/completions') && appSettings.proxyUrl) {
-        proxyBaseUrl = normalizeStoryForgeProxyUrl(appSettings.proxyUrl);
+    if ((!proxyBaseUrl || proxyBaseUrl === 'https://ag.beijixingxing.com/v1/chat/completions') && storyForgeProxyProfile.baseUrl) {
+        proxyBaseUrl = normalizeStoryForgeProxyUrl(storyForgeProxyProfile.baseUrl);
         imported = Boolean(proxyBaseUrl) || imported;
     }
 
+    if (storyForgeProxyProfile.defaultModel) {
+        proxyModel = storyForgeProxyProfile.defaultModel;
+        imported = true;
+    }
+
     if (!hasTranslatorAiConfig
-        && (preferredProvider === 'gemini_proxy' || preferredProvider === 'gemini_direct')
+        && (preferredProvider === 'openai_proxy' || preferredProvider === 'gemini_proxy' || preferredProvider === 'gemini_direct')
         && proxyKeys.length + directKeys.length > 0) {
-        useProxy = preferredProvider === 'gemini_proxy' && proxyKeys.length > 0;
+        useProxy = (preferredProvider === 'openai_proxy' || preferredProvider === 'gemini_proxy') && proxyKeys.length > 0;
         imported = true;
     }
 

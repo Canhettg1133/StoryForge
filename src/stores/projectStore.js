@@ -3,7 +3,6 @@ import db from '../services/db/database';
 import { countWords } from '../utils/constants';
 import { GENRE_TEMPLATES } from '../utils/genreTemplates';
 import { buildProseBuffer } from '../utils/proseBuffer';
-import { PROVIDERS, QUALITY_MODES } from '../services/ai/router';
 import {
   resolveAndMaterializeEntityCandidates,
   stageExtractedEntityCandidates,
@@ -199,10 +198,7 @@ function buildInitialPromptTemplates(genreKey, existingTemplates) {
   return JSON.stringify(merged);
 }
 
-const CHAPTER_COMPLETION_ROUTE_OPTIONS = {
-  providerOverride: PROVIDERS.GEMINI_PROXY,
-  qualityOverride: QUALITY_MODES.BALANCED,
-};
+const CHAPTER_COMPLETION_ROUTE_OPTIONS = {};
 
 const COMPLETION_SUCCESS_CANON_STATUSES = new Set([
   CHAPTER_COMMIT_STATUS.CANONICAL,

@@ -7,6 +7,11 @@
 
 import keyManager from '../../../services/ai/keyManager';
 import { PROVIDERS, TASK_TYPES } from '../../../services/ai/router';
+import {
+    DEFAULT_PROXY_CHAT_PATH,
+    getActiveOpenAIProxyProfile,
+    resolveOpenAIProxyRequest,
+} from '../../../services/ai/openAIProxyConfig';
 import { NSFW_REBUKE_PROMPT } from '../../../utils/constants';
 
 function isRefusal(text) {
@@ -36,39 +41,8 @@ function getSettings() {
     } catch { return {}; }
 }
 
-function getDefaultProxyUrl() {
-    if (typeof window === 'undefined') {
-        return 'https://ag.beijixingxing.com';
-    }
-
-    const protocol = String(window.location?.protocol || '').toLowerCase();
-    const isHttpOrigin = protocol === 'http:' || protocol === 'https:';
-
-    if (isHttpOrigin) {
-        return '/api/proxy';
-    }
-
-    return 'https://ag.beijixingxing.com';
-}
-
-function normalizeConfiguredProxyUrl(rawValue) {
-    const trimmed = String(rawValue || '').trim();
-    if (!trimmed) return '';
-    if (typeof window === 'undefined') return trimmed;
-
-    const protocol = String(window.location?.protocol || '').toLowerCase();
-    const isHttpOrigin = protocol === 'http:' || protocol === 'https:';
-    if (!isHttpOrigin) return trimmed;
-
-    if (trimmed === 'https://ag.beijixingxing.com' || trimmed === 'https://ag.beijixingxing.com/') {
-        return '/api/proxy';
-    }
-
-    return trimmed;
-}
-
 export function getProxyUrl() {
-    return normalizeConfiguredProxyUrl(getSettings().proxyUrl) || getDefaultProxyUrl();
+    return getActiveOpenAIProxyProfile().baseUrl;
 }
 
 export function getOllamaUrl() {
@@ -78,21 +52,31 @@ export function getOllamaUrl() {
 // ================================
 // Gemini Proxy (OpenAI-compatible)
 // ================================
-async function callGeminiProxy({ model, messages, stream = true, signal, onToken, onComplete, onError }) {
-    const proxyUrl = getProxyUrl();
-    const apiKey = keyManager.getNextKey('gemini_proxy');
-    if (!apiKey) throw new Error('Không có API key cho Gemini Proxy.');
+async function callGeminiProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, proxyProfileId }) {
+    const proxyProfile = getActiveOpenAIProxyProfile(proxyProfileId);
+    if (!String(model || '').trim()) throw new Error('Chua chon model cho OpenAI-compatible Proxy.');
+    const apiKey = keyManager.getNextKey(PROVIDERS.OPENAI_PROXY);
+    if (!apiKey) throw new Error('Khong co API key cho OpenAI-compatible Proxy.');
 
-    const url = `${proxyUrl}/v1/chat/completions`;
+    const target = resolveOpenAIProxyRequest(proxyProfile, 'chat');
+    const payload = { model, messages, stream, max_tokens: PROXY_MAX_OUTPUT_TOKENS };
+    const body = target.mode === 'relay'
+        ? {
+            action: 'chat',
+            baseUrl: proxyProfile.baseUrl,
+            chatCompletionsPath: proxyProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
+            payload,
+        }
+        : payload;
 
     try {
-        const response = await fetch(url, {
+        const response = await fetch(target.url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`,
             },
-            body: JSON.stringify({ model, messages, stream, max_tokens: PROXY_MAX_OUTPUT_TOKENS }),
+            body: JSON.stringify(body),
             signal,
         });
 
@@ -305,7 +289,7 @@ class LabAIService {
 
                 try {
                     const apology = await getCallFn(route.provider)({
-                        model: route.model, messages: rebukeMessages, stream: false, signal: controller.signal, nsfwMode: true
+                        model: route.model, messages: rebukeMessages, stream: false, signal: controller.signal, nsfwMode: true, proxyProfileId: route.proxyProfileId
                     });
 
                     // Turn 6
@@ -317,7 +301,7 @@ class LabAIService {
                     ];
 
                     await getCallFn(route.provider)({
-                        model: route.model, messages: finalMessages, stream, signal: controller.signal,
+                        model: route.model, messages: finalMessages, stream, signal: controller.signal, proxyProfileId: route.proxyProfileId,
                         onToken,
                         onComplete: (finalText) => {
                             this.activeController = null;
@@ -341,6 +325,7 @@ class LabAIService {
             messages,
             stream,
             signal: controller.signal,
+            proxyProfileId: route.proxyProfileId,
             onToken,
             onComplete: wrappedOnComplete,
             onError: async (err) => {
@@ -351,7 +336,7 @@ class LabAIService {
                     try {
                         onToken?.('', '[Bị chặn bởi bộ lọc (Lab). Đang Leo thang Rebuke...]');
                         await getCallFn(route.provider)({
-                            model: route.model, messages: rebukeMessages, stream, signal: controller.signal,
+                            model: route.model, messages: rebukeMessages, stream, signal: controller.signal, proxyProfileId: route.proxyProfileId,
                             onToken, onComplete: wrappedOnComplete,
                             onError: (e) => { this.activeController = null; onError?.(e); },
                             nsfwMode: true

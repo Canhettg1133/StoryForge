@@ -1,0 +1,230 @@
+import {
+  AG_PROXY_PROFILE_ID,
+  CUSTOM_PROXY_PROFILE_ID,
+  DEFAULT_AG_PROXY_BASE_URL,
+  DEFAULT_AG_PROXY_MODEL,
+  DEFAULT_PROXY_CHAT_PATH,
+  DEFAULT_PROXY_MODELS_PATH,
+  buildOpenAIProxyEndpoint,
+  parseOpenAIModelIds,
+  resolveProxyTransportMode,
+} from './openAIProxyCore.js';
+
+const SETTINGS_KEY = 'sf-ai-settings';
+const PROXY_MODEL_KEY = 'sf-proxy-model';
+
+function readSettings() {
+  try {
+    const saved = localStorage.getItem(SETTINGS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSettings(settings) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  return settings;
+}
+
+function trimText(value) {
+  return String(value || '').trim();
+}
+
+function isLegacyAgProxyUrl(value) {
+  const normalized = trimText(value).replace(/\/+$/u, '');
+  return !normalized
+    || normalized === DEFAULT_AG_PROXY_BASE_URL
+    || normalized === 'https://ag.beijixingxing.com'
+    || normalized === 'https://ag.beijixingxing.com/v1'
+    || normalized.startsWith('https://ag.beijixingxing.com/v1/');
+}
+
+export function normalizeOpenAIProxyProvider(provider) {
+  return provider === 'gemini_proxy' ? 'openai_proxy' : provider;
+}
+
+export function getAgProxyModel() {
+  try {
+    return trimText(localStorage.getItem(PROXY_MODEL_KEY)) || DEFAULT_AG_PROXY_MODEL;
+  } catch {
+    return DEFAULT_AG_PROXY_MODEL;
+  }
+}
+
+export function setAgProxyModel(model) {
+  const normalized = trimText(model) || DEFAULT_AG_PROXY_MODEL;
+  localStorage.setItem(PROXY_MODEL_KEY, normalized);
+  return normalized;
+}
+
+export function getDefaultCustomOpenAIProxyProfile() {
+  return {
+    id: CUSTOM_PROXY_PROFILE_ID,
+    label: 'Custom OpenAI-compatible',
+    baseUrl: '',
+    defaultModel: '',
+    models: [],
+    chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
+    modelsPath: DEFAULT_PROXY_MODELS_PATH,
+    authType: 'bearer',
+    requiresApiKey: true,
+    supportsGeminiSafetySettings: false,
+    transport: 'auto',
+  };
+}
+
+export function getAgOpenAIProxyProfile() {
+  return {
+    id: AG_PROXY_PROFILE_ID,
+    label: 'Gemini Proxy mac dinh',
+    baseUrl: DEFAULT_AG_PROXY_BASE_URL,
+    defaultModel: getAgProxyModel(),
+    models: [],
+    chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
+    modelsPath: DEFAULT_PROXY_MODELS_PATH,
+    authType: 'bearer',
+    requiresApiKey: true,
+    supportsGeminiSafetySettings: true,
+    transport: 'vercelRewrite',
+  };
+}
+
+export function getOpenAIProxySettings() {
+  const settings = readSettings();
+  const saved = settings.openAIProxy || {};
+  const legacyProxyUrl = trimText(settings.proxyUrl);
+  const shouldMigrateLegacyCustomUrl = !saved.customProfile
+    && legacyProxyUrl
+    && !isLegacyAgProxyUrl(legacyProxyUrl);
+  const customProfile = {
+    ...getDefaultCustomOpenAIProxyProfile(),
+    ...(shouldMigrateLegacyCustomUrl ? { baseUrl: legacyProxyUrl } : {}),
+    ...(saved.customProfile || {}),
+  };
+  const activeProfileId = saved.activeProfileId === CUSTOM_PROXY_PROFILE_ID || shouldMigrateLegacyCustomUrl
+    ? CUSTOM_PROXY_PROFILE_ID
+    : AG_PROXY_PROFILE_ID;
+
+  return {
+    activeProfileId,
+    customProfile,
+  };
+}
+
+export function saveOpenAIProxySettings(patch = {}) {
+  const settings = readSettings();
+  const current = getOpenAIProxySettings();
+  const next = {
+    ...current,
+    ...patch,
+    customProfile: {
+      ...current.customProfile,
+      ...(patch.customProfile || {}),
+    },
+  };
+
+  writeSettings({
+    ...settings,
+    openAIProxy: next,
+    proxyUrl: next.activeProfileId === AG_PROXY_PROFILE_ID
+      ? DEFAULT_AG_PROXY_BASE_URL
+      : next.customProfile.baseUrl,
+  });
+  return next;
+}
+
+export function setOpenAIProxyActiveProfile(profileId) {
+  return saveOpenAIProxySettings({
+    activeProfileId: profileId === CUSTOM_PROXY_PROFILE_ID
+      ? CUSTOM_PROXY_PROFILE_ID
+      : AG_PROXY_PROFILE_ID,
+  });
+}
+
+export function updateCustomOpenAIProxyProfile(patch = {}) {
+  return saveOpenAIProxySettings({
+    activeProfileId: CUSTOM_PROXY_PROFILE_ID,
+    customProfile: patch,
+  }).customProfile;
+}
+
+export function getActiveOpenAIProxyProfile(profileId = null) {
+  const settings = getOpenAIProxySettings();
+  const activeProfileId = profileId || settings.activeProfileId;
+  if (activeProfileId === CUSTOM_PROXY_PROFILE_ID) {
+    return {
+      ...settings.customProfile,
+      id: CUSTOM_PROXY_PROFILE_ID,
+      label: settings.customProfile.label || 'Custom OpenAI-compatible',
+    };
+  }
+  return getAgOpenAIProxyProfile();
+}
+
+export function getOpenAIProxyModel(profile = getActiveOpenAIProxyProfile(), fallback = DEFAULT_AG_PROXY_MODEL) {
+  return trimText(profile?.defaultModel) || fallback;
+}
+
+export function resolveOpenAIProxyRequest(profile, action) {
+  const mode = resolveProxyTransportMode(profile);
+  const path = action === 'models'
+    ? (profile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
+    : (profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
+
+  if (mode === 'relay') {
+    return {
+      mode,
+      url: '/api/openai-proxy',
+      path,
+    };
+  }
+
+  return {
+    mode,
+    url: buildOpenAIProxyEndpoint(profile.baseUrl, path),
+    path,
+  };
+}
+
+export async function fetchOpenAIProxyModels({ profile = getActiveOpenAIProxyProfile(), apiKey = '', signal } = {}) {
+  const target = resolveOpenAIProxyRequest(profile, 'models');
+  const authHeader = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+  const response = target.mode === 'relay'
+    ? await fetch(target.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeader,
+      },
+      body: JSON.stringify({
+        action: 'models',
+        baseUrl: profile.baseUrl,
+        modelsPath: profile.modelsPath || DEFAULT_PROXY_MODELS_PATH,
+      }),
+      signal,
+    })
+    : await fetch(target.url, {
+      method: 'GET',
+      headers: authHeader,
+      signal,
+    });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(text || `Model list failed with status ${response.status}`);
+  }
+
+  return parseOpenAIModelIds(await response.json());
+}
+
+export {
+  AG_PROXY_PROFILE_ID,
+  CUSTOM_PROXY_PROFILE_ID,
+  DEFAULT_AG_PROXY_BASE_URL,
+  DEFAULT_PROXY_CHAT_PATH,
+  DEFAULT_PROXY_MODELS_PATH,
+  buildOpenAIProxyEndpoint,
+  parseOpenAIModelIds,
+  resolveProxyTransportMode,
+};

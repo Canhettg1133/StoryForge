@@ -35,7 +35,12 @@ const WRITING_TASK_TYPES = new Set([
   TASK_TYPES.CONTINUE,
   TASK_TYPES.SCENE_DRAFT,
   TASK_TYPES.ARC_CHAPTER_DRAFT,
+  TASK_TYPES.FREE_PROMPT,
 ]);
+
+export function isWritingOutputTaskType(taskType) {
+  return WRITING_TASK_TYPES.has(taskType);
+}
 
 const PRE_WRITE_GUARD_TASKS = new Set([
   TASK_TYPES.CONTINUE,
@@ -420,7 +425,7 @@ const useAIStore = create((set, get) => ({
     }
 
     // Snapshot values needed inside callbacks (closure-safe).
-    const isWritingTask = WRITING_TASK_TYPES.has(taskType);
+    const isWritingTask = isWritingOutputTaskType(taskType);
     const chapterId = enrichedContext.chapterId;
     const projectId = enrichedContext.projectId;
 

@@ -1,5 +1,6 @@
 const AI_ERROR_CODES = {
   MISSING_API_KEY: 'MISSING_API_KEY',
+  MISSING_MODEL: 'MISSING_MODEL',
   RATE_LIMITED: 'RATE_LIMITED',
   MODEL_CAPACITY_EXHAUSTED: 'MODEL_CAPACITY_EXHAUSTED',
   SAFETY_BLOCK: 'SAFETY_BLOCK',
@@ -23,6 +24,7 @@ function tryParseJson(value) {
 }
 
 function providerLabel(provider) {
+  if (provider === 'openai_proxy') return 'OpenAI-compatible Proxy';
   if (provider === 'gemini_proxy') return 'Gemini Proxy';
   if (provider === 'gemini_direct') return 'Gemini Direct';
   if (provider === 'ollama') return 'Ollama';
@@ -124,6 +126,19 @@ export function normalizeAIError(input = {}, context = {}) {
     return createAIError({
       userMessage: `Chưa có API key cho ${providerName}. Vào Settings để thêm key.`,
       code: AI_ERROR_CODES.MISSING_API_KEY,
+      provider,
+      model,
+      status: shape.status,
+      rawMessage,
+      reason: shape.reason,
+      details: shape.details,
+    });
+  }
+
+  if (shape.code === AI_ERROR_CODES.MISSING_MODEL || lower.includes('chua chon model')) {
+    return createAIError({
+      userMessage: `Chua chon model cho ${providerName}. Vao Settings de lay models hoac nhap model thu cong.`,
+      code: AI_ERROR_CODES.MISSING_MODEL,
       provider,
       model,
       status: shape.status,

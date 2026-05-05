@@ -7,8 +7,17 @@
  *   - ollama: Local (không cần key)
  */
 
+import {
+  AG_PROXY_PROFILE_ID,
+  getActiveOpenAIProxyProfile,
+  getOpenAIProxyModel,
+  normalizeOpenAIProxyProvider,
+  setAgProxyModel,
+} from './openAIProxyConfig';
+
 // --- Providers ---
 export const PROVIDERS = {
+  OPENAI_PROXY: 'openai_proxy',
   GEMINI_PROXY: 'gemini_proxy',
   GEMINI_DIRECT: 'gemini_direct',
   OLLAMA: 'ollama',
@@ -250,19 +259,6 @@ const PROXY_TASK_MAP = {
 
 PROXY_TASK_MAP.canon_review = { ...PROXY_TASK_MAP.canon_repair };
 
-// Proxy model selection and legacy quality routing exceptions.
-const PROXY_QUALITY_ROUTING_TASKS = new Set([
-  TASK_TYPES.CHAPTER_SUMMARY,
-  TASK_TYPES.FEEDBACK_EXTRACT,
-  TASK_TYPES.SUGGEST_UPDATES,
-  TASK_TYPES.CANON_EXTRACT_OPS,
-  TASK_TYPES.CANON_ADJUDICATE_WARNINGS,
-  TASK_TYPES.CANON_REPAIR,
-  TASK_TYPES.CANON_REVIEW,
-  TASK_TYPES.CONTINUITY_CHECK,
-  TASK_TYPES.CHECK_CONFLICT,
-]);
-
 const PROXY_PRESET_BY_QUALITY = {
   [QUALITY_MODES.FAST]: PROXY_MODEL_PRESETS[0]?.id,
   [QUALITY_MODES.BALANCED]: PROXY_MODEL_PRESETS[1]?.id,
@@ -329,7 +325,9 @@ function setActiveDirectModels(models) {
 class ModelRouter {
   constructor() {
     this.qualityMode = localStorage.getItem('sf-quality-mode') || QUALITY_MODES.BALANCED;
-    this.preferredProvider = localStorage.getItem('sf-preferred-provider') || PROVIDERS.GEMINI_PROXY;
+    this.preferredProvider = normalizeOpenAIProxyProvider(
+      localStorage.getItem('sf-preferred-provider') || PROVIDERS.OPENAI_PROXY,
+    );
     this.proxyModel = getInitialProxyModel();
     try {
       if (!localStorage.getItem(PROXY_MODEL_KEY)) {
@@ -346,8 +344,8 @@ class ModelRouter {
   }
 
   setPreferredProvider(provider) {
-    this.preferredProvider = provider;
-    localStorage.setItem('sf-preferred-provider', provider);
+    this.preferredProvider = normalizeOpenAIProxyProvider(provider);
+    localStorage.setItem('sf-preferred-provider', this.preferredProvider);
   }
 
   setOllamaModel(model) {
@@ -357,7 +355,7 @@ class ModelRouter {
 
   setProxyModel(model) {
     this.proxyModel = normalizeProxyModel(model);
-    localStorage.setItem(PROXY_MODEL_KEY, this.proxyModel);
+    setAgProxyModel(this.proxyModel);
   }
 
   setAIStudioRelayModel(model) {
@@ -378,19 +376,22 @@ class ModelRouter {
     } = options;
 
     if (modelOverride) {
-      let provider = providerOverride || PROVIDERS.GEMINI_PROXY;
-      if (!providerOverride) {
-        if (!modelOverride.includes('[')) provider = PROVIDERS.GEMINI_DIRECT;
-        if (!modelOverride.startsWith('gemini')) provider = PROVIDERS.OLLAMA;
-      }
+      const provider = normalizeOpenAIProxyProvider(providerOverride || this.preferredProvider || PROVIDERS.OPENAI_PROXY);
+      const proxyProfile = provider === PROVIDERS.OPENAI_PROXY
+        ? getActiveOpenAIProxyProfile(options.proxyProfileId)
+        : null;
       return {
         provider,
         model: modelOverride,
         tier: provider === PROVIDERS.AI_STUDIO_RELAY ? 'relay' : 'custom',
+        ...(proxyProfile && {
+          proxyProfileId: proxyProfile.id,
+          supportsGeminiSafetySettings: !!proxyProfile.supportsGeminiSafetySettings,
+        }),
       };
     }
 
-    const provider = providerOverride || this.preferredProvider;
+    const provider = normalizeOpenAIProxyProvider(providerOverride || this.preferredProvider);
     const quality = qualityOverride || this.qualityMode;
 
     if (provider === PROVIDERS.OLLAMA) {
@@ -410,14 +411,22 @@ class ModelRouter {
       return { provider, model, tier: 'free' };
     }
 
-    // Gemini Proxy
+    // OpenAI-compatible proxy. Legacy gemini_proxy maps here.
+    const proxyProfile = getActiveOpenAIProxyProfile(options.proxyProfileId);
     const shouldUseQualityRouting =
-      useProxyQualityRouting || PROXY_QUALITY_ROUTING_TASKS.has(taskType);
+      useProxyQualityRouting && proxyProfile.id === AG_PROXY_PROFILE_ID;
+    const modelFallback = proxyProfile.id === AG_PROXY_PROFILE_ID ? this.proxyModel : '';
     const model = shouldUseQualityRouting
       ? ((PROXY_TASK_MAP[taskType] || PROXY_DEFAULT)[quality] || PROXY_DEFAULT[quality])
-      : normalizeProxyModel(proxyModelOverride || this.proxyModel);
+      : (proxyModelOverride || getOpenAIProxyModel(proxyProfile, modelFallback));
     const tier = model.includes('pro') ? 'pro' : 'flash';
-    return { provider, model, tier };
+    return {
+      provider: PROVIDERS.OPENAI_PROXY,
+      model,
+      tier,
+      proxyProfileId: proxyProfile.id,
+      supportsGeminiSafetySettings: !!proxyProfile.supportsGeminiSafetySettings,
+    };
   }
 
   getFallbacks(primaryRoute) {
@@ -436,6 +445,7 @@ class ModelRouter {
   getQualityMode() { return this.qualityMode; }
   getOllamaModel() { return this.ollamaModel; }
   getProxyModel() { return this.proxyModel; }
+  getOpenAIProxyProfile() { return getActiveOpenAIProxyProfile(); }
   getAIStudioRelayModel() { return this.aiStudioRelayModel; }
   getPreferredProvider() { return this.preferredProvider; }
 }

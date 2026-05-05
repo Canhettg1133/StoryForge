@@ -13,11 +13,31 @@ async function loadProjectChatHelpers() {
   return Promise.all([
     import('../../pages/ProjectChat/ProjectChat.jsx'),
     import('../../services/ai/router.js'),
-  ]).then(([projectChatModule, routerModule]) => ({
+    import('../../services/ai/projectStyleRuntime.js'),
+  ]).then(([projectChatModule, routerModule, runtimeModule]) => ({
     ...projectChatModule,
+    ...runtimeModule,
     routerModule,
     modelRouter: routerModule.default,
   }));
+}
+
+function makeRuntimeBlock(header = '[PROJECT STYLE - BẮT BUỘC]') {
+  return [
+    header,
+    '1. Luật cốt lõi',
+    '- Không retcon.',
+    '2. Giọng kể / POV',
+    '- Giữ POV đã khóa.',
+    '3. Nhịp chương',
+    '- Mở nhanh, kết có hook.',
+    '4. Scene grammar',
+    '- Viết cảnh theo đúng loại nhịp.',
+    '5. Cần tránh',
+    '- Tránh generic.',
+    '6. QA tự kiểm ngầm',
+    '- Tự kiểm style trước khi trả lời.',
+  ].join('\n');
 }
 
 describe('phase10 ProjectChat routing inheritance', () => {
@@ -38,6 +58,7 @@ describe('phase10 ProjectChat routing inheritance', () => {
 
     expect(payload.provider_override).toBe('');
     expect(payload.model_override).toBe('');
+    expect(payload.proxy_profile_id).toBe('');
   });
 
   it('builds the free chat default system prompt with role identity, anti-refusal, and responsibility displacement', async () => {
@@ -89,6 +110,48 @@ describe('phase10 ProjectChat routing inheritance', () => {
     expect(promptAscii).toContain('[TOM TAT DU AN]');
     expect(promptAscii).toContain('[DICH DEN DAI HAN]');
     expect(promptAscii).toContain('[CHI DAN AI CUA DU AN]');
+  });
+
+  it('uses active Project Style Runtime block for new story threads instead of duplicating ai_guidelines', async () => {
+    const {
+      buildThreadPayload,
+      computeProjectStyleRuntimeSourceHash,
+      PROJECT_STYLE_RUNTIME_HEADER,
+    } = await loadProjectChatHelpers();
+    const promptTemplates = {
+      constitution: ['Không đổi POV.'],
+      style_dna: ['Giọng lạnh và sắc.'],
+    };
+    const aiGuidelines = 'UNIQUE_CHAT_AI_GUIDELINES';
+    const sourceHash = computeProjectStyleRuntimeSourceHash({
+      aiGuidelines,
+      promptTemplates,
+      genre: 'dark fantasy',
+    });
+
+    const payload = buildThreadPayload({
+      scopedProjectId: 9,
+      mode: 'story',
+      projectScopeEnabled: true,
+      project: {
+        title: 'Hac Hoa Ky',
+        genre_primary: 'dark fantasy',
+        synopsis: 'Nu chinh gia nhap mot nghi le co gia.',
+        ultimate_goal: 'Lat mat giao hoi.',
+        ai_guidelines: aiGuidelines,
+        prompt_templates: JSON.stringify(promptTemplates),
+        project_style_runtime_block: makeRuntimeBlock(PROJECT_STYLE_RUNTIME_HEADER),
+        project_style_runtime_enabled: true,
+        project_style_runtime_meta: { source_hash: sourceHash, generated_at: 123 },
+      },
+      now: 123,
+    });
+
+    const promptAscii = toAsciiUpper(payload.system_prompt);
+
+    expect(payload.system_prompt).toContain(PROJECT_STYLE_RUNTIME_HEADER);
+    expect(promptAscii).not.toContain('[CHI DAN AI CUA DU AN]');
+    expect(payload.system_prompt).not.toContain(aiGuidelines);
   });
 
   it('keeps legacy threads without provider_override inheriting the global Ollama route', async () => {
@@ -159,8 +222,100 @@ describe('phase10 ProjectChat routing inheritance', () => {
 
     expect(thread.provider_override).toBe('');
     expect(routing.routeOptions).toEqual({});
-    expect(routing.route.provider).toBe(PROVIDERS.GEMINI_PROXY);
+    expect(routing.route.provider).toBe(PROVIDERS.OPENAI_PROXY);
     expect(routing.route.model).toBe(PROXY_MODEL_PRESETS[4].id);
+  });
+
+  it('normalizes legacy gemini_proxy thread overrides to the shared Web Proxy provider', async () => {
+    const {
+      getThreadRouting,
+      routerModule: { PROVIDERS },
+    } = await loadProjectChatHelpers();
+
+    const routing = getThreadRouting({
+      id: 106,
+      provider_override: PROVIDERS.GEMINI_PROXY,
+      model_override: 'legacy-thread-model',
+      proxy_profile_id: 'ag-gemini-proxy',
+    });
+
+    expect(routing.routeOptions).toEqual({
+      providerOverride: PROVIDERS.OPENAI_PROXY,
+      modelOverride: 'legacy-thread-model',
+      proxyProfileId: 'ag-gemini-proxy',
+    });
+    expect(routing.route.provider).toBe(PROVIDERS.OPENAI_PROXY);
+    expect(routing.route.model).toBe('legacy-thread-model');
+  });
+
+  it('lists custom proxy profile models without inferring provider from model names', async () => {
+    const {
+      getAvailableModelOptions,
+      getProviderLabel,
+      routerModule: { PROVIDERS, PROXY_MODELS },
+    } = await loadProjectChatHelpers();
+    const {
+      CUSTOM_PROXY_PROFILE_ID,
+      setOpenAIProxyActiveProfile,
+      updateCustomOpenAIProxyProfile,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+
+    updateCustomOpenAIProxyProfile({
+      label: 'My proxy',
+      baseUrl: 'https://proxy.example.com',
+      defaultModel: 'llama-3.1-proxy',
+      models: ['llama-3.1-proxy', 'gemini-custom', 'qwen-custom'],
+    });
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+
+    expect(getProviderLabel(PROVIDERS.GEMINI_PROXY)).toBe('Web Proxy');
+    expect(getProviderLabel(PROVIDERS.OPENAI_PROXY)).toBe('Web Proxy');
+
+    const options = getAvailableModelOptions(PROVIDERS.OPENAI_PROXY);
+
+    expect(options.map((option) => option.id)).toEqual([
+      'llama-3.1-proxy',
+      'gemini-custom',
+      'qwen-custom',
+    ]);
+    expect(options.every((option) => option.providerProfileId === CUSTOM_PROXY_PROFILE_ID)).toBe(true);
+    expect(options.some((option) => PROXY_MODELS.some((preset) => preset.id === option.id))).toBe(false);
+  });
+
+  it('keeps a Project Chat custom proxy model bound to its proxy profile id', async () => {
+    const {
+      getThreadRouting,
+      routerModule: { PROVIDERS },
+    } = await loadProjectChatHelpers();
+    const {
+      AG_PROXY_PROFILE_ID,
+      CUSTOM_PROXY_PROFILE_ID,
+      setOpenAIProxyActiveProfile,
+      updateCustomOpenAIProxyProfile,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+
+    updateCustomOpenAIProxyProfile({
+      baseUrl: 'https://proxy.example.com',
+      defaultModel: 'custom-thread-model',
+      models: ['custom-thread-model'],
+    });
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+
+    const routing = getThreadRouting({
+      id: 107,
+      provider_override: PROVIDERS.OPENAI_PROXY,
+      model_override: 'custom-thread-model',
+      proxy_profile_id: CUSTOM_PROXY_PROFILE_ID,
+    });
+
+    expect(routing.routeOptions).toEqual({
+      providerOverride: PROVIDERS.OPENAI_PROXY,
+      modelOverride: 'custom-thread-model',
+      proxyProfileId: CUSTOM_PROXY_PROFILE_ID,
+    });
+    expect(routing.route.provider).toBe(PROVIDERS.OPENAI_PROXY);
+    expect(routing.route.model).toBe('custom-thread-model');
+    expect(routing.route.proxyProfileId).toBe(CUSTOM_PROXY_PROFILE_ID);
   });
 
   it('treats model_override = empty string as no override and uses the real router default', async () => {
