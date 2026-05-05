@@ -34,6 +34,7 @@ const MORE_ITEMS = [
   { id: 'world', label: 'Th\u1ebf gi\u1edbi', icon: Globe, path: (id) => `/project/${id}/world` },
   { id: 'canon', label: 'Canon', icon: ShieldCheck, path: (id) => `/project/${id}/su-that` },
   { id: 'prompts', label: 'Prompt truy\u1ec7n', icon: BookMarked, path: (id) => `/project/${id}/prompts` },
+  { id: 'style-importer', label: 'Prompt Doctor', icon: Sparkles, path: (id) => `/project/${id}/style-importer` },
   { id: 'prompt-manager', label: 'Prompt t\u1ed5ng qu\u00e1t', icon: Sparkles, path: (id) => `/project/${id}/prompt-manager` },
   { id: 'cloud-sync', label: 'Cloud Sync', icon: Cloud, path: (id) => `/project/${id}/cloud-sync` },
   { id: 'settings', label: 'C\u00e0i \u0111\u1eb7t', icon: Settings, path: (id) => `/project/${id}/settings` },
@@ -58,6 +59,7 @@ function getPageTitle(pathname) {
   if (pathname.includes('/prompt-manager')) return 'Prompt t\u1ed5ng qu\u00e1t';
   if (pathname.includes('/cloud-sync')) return 'Cloud Sync';
   if (pathname.includes('/settings')) return 'C\u00e0i \u0111\u1eb7t';
+  if (pathname.includes('/style-importer')) return 'Prompt Doctor';
   if (pathname.includes('/prompts')) return 'Prompt truy\u1ec7n';
   if (pathname.includes('/lab')) return 'Lab';
   return 'D\u1ef1 \u00e1n';

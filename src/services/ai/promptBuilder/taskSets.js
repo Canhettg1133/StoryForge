@@ -46,6 +46,7 @@ export const DEFAULT_WRITING_DISCIPLINE_LAYER = [
   '- Ton trong POV hien tai va gioi han thong tin cua tung nhan vat.',
   '- Ton trong logic cam xuc: khong duoc lam nhan vat out-of-character chi de tao hieu ung.',
   '- Khong retcon, khong tu y doi quan he, luat the gioi, moc thoi gian, hay muc suc manh neu task khong yeu cau ro rang.',
+  '- BAT BUOC ton trong logic nhan qua: timeline/dem nguoc, an phat/giam giu, thuong tich, lo tu vi/bao vat/nang luc, va phan ung cua nhan vat phu/phia doi dich phai co he qua hop ly.',
   '- Khong AI-sounding: tranh triet ly rong, tong ket dao ly, len lop, lap y, hoac van qua pho neu khong co can cu.',
   '- Moi doan viet ra phai co tac dung ro: day tinh tiet, dao sau cam xuc, khac hoa nhan vat, tang xung dot, hoac giai phong thong tin.',
 ].join('\n');
@@ -67,4 +68,3 @@ export function isWritingIntent(userPrompt) {
   // Default: treat as writing (over-inject is better than under-inject for creative tasks)
   return true;
 }
-

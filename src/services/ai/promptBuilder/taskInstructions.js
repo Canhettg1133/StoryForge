@@ -22,7 +22,7 @@ export function withPlanningAndCanonPrefix(instruction) {
 }
 
 export const TASK_INSTRUCTIONS = {
-  [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Hay mieu ta that chi tiet tung hanh dong, tam ly, canh vat, doi thoai. Viet DAI va CHI TIET, muc tieu 2000-4000 tu de dong gop vao muc tieu chuong truyen 7000 tu. KHONG viet ngan, KHONG luoc bo, KHONG tom tat. KHONG duoc nhay thoi gian (time skip) - moi su kien phai dien ra LIEN TUC tu vi tri cuoi cung, cam viet kieu "Ba ngay sau...", "Mot thoi gian troi qua...", "Khong lau sau...". Neu can chuyen canh, hay ket thuc canh hien tai bang cliffhanger roi mo canh moi tu nhien.',
+  [TASK_TYPES.CONTINUE]: 'Viet tiep doan van, giu nguyen giong van va nhip ke. Hay mieu ta that chi tiet tung hanh dong, tam ly, canh vat, doi thoai. Viet DAI va CHI TIET, muc tieu 2000-4000 tu de dong gop vao muc tieu chuong truyen 7000 tu. KHONG viet ngan, KHONG luoc bo, KHONG tom tat. KHONG duoc nhay thoi gian (time skip) - moi su kien phai dien ra LIEN TUC tu vi tri cuoi cung, cam viet kieu "Ba ngay sau...", "Mot thoi gian troi qua...", "Khong lau sau...". Neu can chuyen canh, hay ket thuc canh hien tai bang cliffhanger roi mo canh moi tu nhien. BAT BUOC truoc khi viet tiep phai ngam doi chieu timeline, rang buoc an phat/giam giu/thuong tich, va cac bat thuong da lo; neu nhan vat phu/phia doi dich thay mot viec bat thuong thi phan ung phai hop voi tri thuc, loi ich va muc do canh giac cua ho.',
   [TASK_TYPES.REWRITE]: 'Viet lai doan van, cai thien van phong nhung GIU NGUYEN noi dung, cot truyen va y nghia. Lam cho no tu nhien hon, giau cam xuc hon, nhip dieu tot hon. GIU do dai TUONG DUONG doan goc (cho phep dai hon 20-50% de them mieu ta cam xuc va chi tiet ngu giac). TUYET DOI KHONG tu y them su kien moi, nhan vat moi, dia danh moi, hay thay doi dien bien - chi nang cap cau van, nhip dieu, va chieu sau cam xuc.',
   [TASK_TYPES.EXPAND]: 'Mo rong doan van GAP 3-5 LAN do dai goc. Giu nguyen giong van va mach truyen. Them vao: mieu ta ngu giac (nhin/nghe/ngui/cham/vi), noi tam nhan vat, doi thoai tu nhien, va hanh dong cham (slow motion). KHONG duoc them su kien moi hay thay doi cot truyen - chi lam PHONG PHU nhung gi da co. Dao sau vao tam ly nhan vat (ho nghi gi, so gi, muon gi trong khoang khac do), boi canh (am thanh, mui, anh sang, nhiet do), va tung cu dong nho.',
   [TASK_TYPES.BRAINSTORM]: withPlanningAndCanonPrefix([
@@ -44,6 +44,9 @@ export const TASK_INSTRUCTIONS = {
     'Neu chuong hien tai CHUA CO DAN Y, chi duoc tao dan y cho CHINH chuong hien tai.',
     'TUYET DOI KHONG duoc nhay sang viet thay dan y cua chuong ke tiep neu chuong do da co dan y/fence.',
     'TUYET DOI KHONG duoc giai quyet som thread lon, lo reveal lon, tang cap suc manh lon, hay an mat cot moc cua cac chuong sau neu budget tien do chua cho phep.',
+    'BAT BUOC kiem tra timeline noi bo cua chuong: hien tai la luc nao, da qua bao lau tu beat truoc, con bao lau toi su kien da hen. Khong lap lai moc dem nguoc cu neu da qua dem/ngay.',
+    'BAT BUOC an phat, giam giu, truy na, thuong tich, cam tuc va rang buoc hanh vi phai tao he qua that trong beat tiep theo; neu nhan vat can den mot su kien sap toi, beat phai cai duong hop phap hoac hop logic de den do.',
+    'BAT BUOC neu nhan vat de lo tu vi, linh luc, bao vat, kiem y, song sot bat thuong, hoac nang luc vuot nhan thuc cu cua nguoi khac, dan y phai co phan ung tu nguoi chung kien/phia doi dich: nghi ngo, hoi, dieu tra, che giau, loi dung, hoac doi ke hoach.',
     'Neu nhan thay chuong hien tai da hoan tat, chi duoc ghi ro "co the chuyen sang lap dan y chuong sau" trong muc goi y chuyen chuong; KHONG viet thay noi dung chuong sau.',
     '',
     'Moi beat duoc de xuat phai gom:',
@@ -96,14 +99,16 @@ export const TASK_INSTRUCTIONS = {
     'Neu chuong hien tai da co dan y, uu tien goi y 3 beat tiep dien de viet tiep TRONG pham vi chuong nay.',
     'Chi khi chapter hien tai da dat du beat chinh hoac sap dong chuong, moi de xuat huong cho chuong ke.',
     'KHONG de xuat y tuong lam sai/vo hieu hoa dan y cua cac chuong truoc, khong viet lai lich su, khong nhay qua cac cot moc da duoc dat truoc.',
+    'BAT BUOC moi goi y phai ton trong timeline, an phat/giam giu/thuong tich, va phan ung hop ly cua nhan vat truoc cac bat thuong da lo.',
     'Moi huong phai gom: 1) Tieu de ngan, 2) Beat tiep theo cu the, 3) Xung dot/chu de duoc day, 4) Dieu gi thay doi trong trang thai nhan vat hoac plot thread.',
   ].join('\n')),
   [TASK_TYPES.SUMMARIZE]: 'Tom tat noi dung trong khoang 150-200 tu, giu cac su kien chinh, thay doi quan trong, va trang thai nhan vat.',
   [TASK_TYPES.EXTRACT_TERMS]: 'Trich xuat: 1) Ten nhan vat (va vai tro), 2) Dia danh, 3) Vat pham quan trong, 4) Thuat ngu the gioi truyen. Tra ve dang danh sach.',
-  [TASK_TYPES.SCENE_DRAFT]: 'Viet ban nhap canh nay, mo ta sau vao tung cu chi tam ly. Viet khoang 2000-4000 tu/lan sinh de dong gop vao muc tieu chuong truyen tong cong 7000 tu. CANG DAI CANG TOT.',
+  [TASK_TYPES.SCENE_DRAFT]: 'Viet ban nhap canh nay, mo ta sau vao tung cu chi tam ly. Viet khoang 2000-4000 tu/lan sinh de dong gop vao muc tieu chuong truyen tong cong 7000 tu. CANG DAI CANG TOT. BAT BUOC truoc khi xuat canh phai tu kiem tra timeline, trang thai nhan vat, he qua cua an phat/giam giu/thuong tich, va phan ung hop ly cua nhan vat phu/phia doi dich khi thay bat thuong.',
   [TASK_TYPES.CHECK_CONFLICT]: withPlanningAndCanonPrefix([
     'Phan tich noi dung chuong/canh de tim ra Mau Thuan (Conflict) so voi Su That Canon, Character Live Canon/current_status, Trang Thai Nhan Vat, va Thong Tin The Gioi.',
     'current_status la rang buoc canon hien hanh. Bat loi khi van ban/outline viet nhu rang buoc tri thuc, quan he, dia vi xa hoi, the chat/tam ly, vi tri/phe, hoac hanh vi khong ton tai.',
+    'BAT BUOC bat loi timeline dem nguoc bi lap sai, an phat/giam giu/thuong tich bi bo qua, nhan vat xuat hien khong co duong hop logic, va phan ung qua thieu canh giac khi co bat thuong nhu song sot tu dia, lo tu vi, lo bao vat, lo kiem y.',
     'Chi chi ra nhung mau thuan ro rang voi cac thong tin duoc cung cap, KHONG bat be nhung tieu tiet khong quan trong.',
     '',
     'Tra ve CHINH XAC JSON format sau:',
@@ -124,6 +129,7 @@ export const TASK_INSTRUCTIONS = {
   [TASK_TYPES.CONTINUITY_CHECK]: withPlanningAndCanonPrefix([
     'Kiem tra tinh nhat quan cua noi dung voi canon, Character Live Canon/current_status, logic nhan vat, trinh tu su kien va rang buoc the gioi.',
     'Dung current_status de bat loi khi nhan vat dang co rang buoc quan he/xa hoi/tri thuc/the chat/tam ly/vi tri/phe/hanh vi nhung van ban viet nhu rang buoc do khong ton tai.',
+    'BAT BUOC kiem tra 4 nhom loi: timeline/dem nguoc, an phat-giam giu-thuong tich bi bo qua, lo tu vi/bao vat/nang luc nhung khong co phan ung tu nguoi xung quanh, va phan ung phia doi dich khong hop ly voi thong tin ho dang co.',
     'Tra ve CHINH XAC JSON format sau:',
     '{',
     '  "issues": [',
@@ -137,7 +143,7 @@ export const TASK_INSTRUCTIONS = {
     '}',
     'Neu khong co van de, tra ve {"issues":[]}. Chi tra ve JSON.',
   ].join('\n')),
-  [TASK_TYPES.FREE_PROMPT]: 'Thuc hien yeu cau cua tac gia. Neu duoc yeu cau viet noi dung truyen, hay viet CUC KY CHI TIET: mieu ta hanh dong, tam ly, doi thoai, canh vat. Muc tieu toi thieu 5000-7000 tu cho ca chuong. Moi phan tra ve phai dai it nhat 3000-4000 tu.',
+  [TASK_TYPES.FREE_PROMPT]: 'Thuc hien yeu cau cua tac gia. Neu duoc yeu cau viet noi dung truyen, hay viet CUC KY CHI TIET: mieu ta hanh dong, tam ly, doi thoai, canh vat. Muc tieu toi thieu 5000-7000 tu cho ca chuong. Moi phan tra ve phai dai it nhat 3000-4000 tu. Neu viet truyen, BAT BUOC ton trong timeline, an phat/giam giu/thuong tich, va phan ung hop ly cua nhan vat truoc cac bat thuong da lo.',
   [TASK_TYPES.CHAPTER_SUMMARY]: 'Tom tat chuong nay trong khoang 150-200 tu. Bao gom: su kien chinh, thay doi quan trong, nhan vat xuat hien, va trang thai ket thuc. Chi tra ve tom tat, khong them tieu de hay ghi chu.',
   [TASK_TYPES.FEEDBACK_EXTRACT]: withPlanningAndCanonPrefix([
     'Phan tich doan van va trich xuat thong tin moi duoi dang JSON. Tra ve CHINH XAC format nay:',
@@ -167,11 +173,13 @@ export const TASK_INSTRUCTIONS = {
     'Viet noi dung moi theo van phong mau duoc cung cap.',
     'Giu nhat quan ve giong ke, nhac cau, muc do mieu ta va sac thai cam xuc.',
     'Neu co yeu cau cua tac gia, uu tien yeu cau do nhung van bam sat van phong mau.',
+    'Neu viet them su kien moi, BAT BUOC giu timeline, he qua cua rang buoc hien co, va phan ung hop ly cua nhan vat truoc cac bat thuong da lo.',
     'Chi tra ve noi dung can viet, khong them giai thich.',
   ].join('\n'),
   [TASK_TYPES.QA_CHECK]: [
     'Ra soat chat luong doan van/chuong ve logic, dien dat, pacing, lap y, va loi de doc.',
     'Neu co Character Live Canon/current_status trong context, phai xem do la rang buoc canon dang hieu luc va bat loi khi doan van viet trai voi no.',
+    'BAT BUOC ra soat timeline/dem nguoc, he qua cua an phat/giam giu/thuong tich, phan ung xa hoi khi nhan vat lo tu vi/bao vat/nang luc, va muc do canh giac cua phan dien truoc bat thuong.',
     'Tra ve CHINH XAC JSON format sau:',
     '{',
     '  "issues": [',
@@ -205,6 +213,7 @@ export const TASK_INSTRUCTIONS = {
     'Tao 3-5 nhan vat, 3-5 dia diem, 3-5 thuat ngu, va 8-12 chuong. Moi nguoi chi co 1 record nhan vat; ten khac/ten ngan/biet danh phai dua vao aliases, khong tao thanh nhan vat moi. Chi tra ve JSON.',
     'specific_role la vai tro canon cu the, khac voi role la vai tro truyen. Chi dien khi co vai tro cu the can khoa; neu specific_role trong thi specific_role_locked phai la false.',
     'Khi tao cast ban dau, hay nghi nhan vat dang o trang thai nao khi truyen bat dau. Neu trang thai do anh huong chuong dau, quan he, xung dot, tri thuc, dia vi xa hoi, phe phai, vet thuong, bi mat, hoac rang buoc hanh vi thi dien current_status; neu khong thi de rong.',
+    'BAT BUOC outline ban dau phai co logic timeline, he qua cua an phat/giam giu/thuong tich, va phan ung hop ly khi nhan vat lo tu vi/bao vat/nang luc bat thuong.',
   ].join('\n'),
 
   // Phase A - Suggestion Inbox
@@ -343,6 +352,9 @@ export const TASK_INSTRUCTIONS = {
     '- BAT BUOC tiep noi truc tiep sau chapter hien co; KHONG duoc reset ve Chuong 1.',
     '- KHONG lap lai su kien, thong tin tiet lo, xung dot, hay ket qua da xay ra trong cac chuong da co.',
     '- Moi chuong moi phai day cau chuyen tien len it nhat 1 thay doi moi, 1 he qua moi, hoac 1 quyet dinh moi.',
+    '- BAT BUOC giu timeline ro trong toan arc: neu co su kien dem nguoc, chuong sau phai cap nhat moc thoi gian; khong lap lai moc cu nhu chua qua thoi gian.',
+    '- BAT BUOC moi an phat, giam giu, truy na, thuong tich, cam tuc hoac rang buoc hanh vi tao he qua that; neu nhan vat can den su kien sap toi, arc phai co duong hop phap hoac hop logic.',
+    '- BAT BUOC phan ung nhan vat/phia doi dich hop ly khi thay bat thuong nhu song sot tu dia, lo tu vi, lo bao vat, lo kiem y, hoac tang suc manh dot ngot.',
     '- Neu dai cuc da duoc cung cap, moi chuong PHAI bam vao it nhat 1 objective cua dai cuc.',
     '- Neu dai cuc chi cho phep muc gieo mam/to mo/tin cay, KHONG duoc day sang to tinh, cap doi, lua chon doi tuong, hay payoff tinh cam som.',
     '- Neu co [CHAPTER ANCHORS BAT BUOC TRONG BATCH], chuong dich PHAI dat dung anchor do, khong duoc dat som va khong duoc dat sai chuong.',
@@ -378,6 +390,7 @@ export const TASK_INSTRUCTIONS = {
     'Neu co [ANCHOR BAT BUOC CHO CHUONG NAY] thi chapter nay PHAI dat dung cac yeu cau do. Neu co [ANCHOR CHUA DEN HAN] thi khong duoc payoff som cac anchor do.',
     'KHONG duoc viet lai thanh canh chinh nhung gi da xay ra o cac chuong truoc; chi duoc nhac lai rat ngan neu can.',
     'Moi canh phai la he qua tiep noi tu chuong truoc va day tinh hinh sang trang thai moi.',
+    'BAT BUOC truoc khi xuat chuong phai tu kiem tra timeline, an phat/giam giu/thuong tich, lo tu vi/bao vat/nang luc, va phan ung hop ly cua nhan vat phu/phia doi dich.',
     'Chi tra ve noi dung chuong, KHONG them tieu de hay ghi chu.',
   ].join('\n'),
   [TASK_TYPES.GENERATE_MACRO_MILESTONES]: withPlanningAndCanonPrefix([

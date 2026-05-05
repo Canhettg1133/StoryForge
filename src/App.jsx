@@ -20,6 +20,7 @@ import Settings from './pages/Settings/Settings';
 import CloudSyncPage from './pages/CloudSync/CloudSyncPage';
 import StoryCreationSettings from './pages/StoryCreationSettings/StoryCreationSettings';
 import ProjectPromptManager from './pages/ProjectPromptManager/ProjectPromptManager';
+import StyleImporter from './pages/StyleImporter/StyleImporter';
 import ProjectChat from './pages/ProjectChat/ProjectChat';
 import Translator from './pages/Translator/Translator';
 import GeminiSetupGuide from './pages/Guide/GeminiSetupGuide';
@@ -60,6 +61,7 @@ export default function App() {
             <Route path="cloud-sync" element={<CloudSyncPage />} />
             <Route path="chat" element={<ProjectChat />} />
             <Route path="prompts" element={<ProjectPromptManager />} />
+            <Route path="style-importer" element={<StyleImporter />} />
             <Route path="prompt-manager" element={<StoryCreationSettings />} />
             <Route path="timeline" element={PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback} />
             <Route path="revision" element={PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback} />

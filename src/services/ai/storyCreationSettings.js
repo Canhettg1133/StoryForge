@@ -37,6 +37,9 @@ QUY TAC CHUONG VA ENTITY:
 - Khong tao character/location/term chi duoc neu o codex ma khong lien he voi chapter.
 - "objects" la field tuy chon, chi them neu chapter dau that su can va chapter outline co nhac den.
 - Moi chapter phai co tien trien ro, nhung khong duoc nhoi qua nhieu bien co neu day moi la mo dau truyen.
+- BAT BUOC giu timeline ro: neu co su kien dem nguoc ("3 ngay nua", "1 thang sau", "ky sat hach"), cac chapter sau phai cap nhat moc thoi gian tuong ung, khong duoc lap lai moc cu nhu chua co thoi gian troi qua.
+- BAT BUOC moi an phat, giam giu, truy na, thuong tich, cam tuc hoac rang buoc hanh vi tao he qua that trong outline. Neu nhan vat can du mot su kien sap toi, outline phai neu con duong hop phap hoac hop logic de ho xuat hien.
+- BAT BUOC phan ung nhan vat theo thong tin ho dang co: khi mot "phe vat" song sot tu dia, lo tu vi, kiem y, bao vat hoac nang luc bat thuong, nguoi xung quanh/phia doi dich phai nghi ngo, hoi, dieu tra, che giau, loi dung, hoac doi ke hoach.
 - "state_delta" cua chapter la thay doi du kien cua Character Live Canon/current_status sau chapter; de rong neu chapter khong doi trang thai canon nao.
 - Moi nhan vat chi duoc co MOT record chinh thuc trong "characters". Neu cung mot nguoi co ten ngan, ho, biet danh, danh xung, hoac cach goi khac, dua vao "aliases" cua record do; TUYET DOI khong tao thanh nhan vat moi.
 - specific_role la vai tro canon cu the do tac gia/blueprint xac nhan, khac voi "role" la vai tro truyen. Chi dien khi co vai tro cu the that su can khoa trong canon; neu de trong thi "specific_role_locked" phai la false.
@@ -83,6 +86,9 @@ QUY TAC THEM:
 - "key_events", "required_factions", "required_objects", "required_terms" phai la neo can cho chuong do; khong dien cho du so.
 - "required_factions", "required_objects", "required_terms" phai bam entity/term da co trong du an neu co; chi de xuat moi khi outline that su bat buoc.
 - "state_delta" phai neu ro neu chuong nay lam doi Character Live Canon/current_status cua nhan vat; de rong neu khong co doi thay ro.
+- BAT BUOC giu timeline ro: neu co su kien dem nguoc ("3 ngay nua", "1 thang sau", "ky sat hach"), cac chapter sau phai cap nhat moc thoi gian tuong ung, khong duoc lap lai moc cu nhu chua co thoi gian troi qua.
+- BAT BUOC moi an phat, giam giu, truy na, thuong tich, cam tuc hoac rang buoc hanh vi tao he qua that trong outline. Neu nhan vat can du mot su kien sap toi, outline phai neu con duong hop phap hoac hop logic de ho xuat hien.
+- BAT BUOC phan ung nhan vat theo thong tin ho dang co: khi mot "phe vat" song sot tu dia, lo tu vi, kiem y, bao vat hoac nang luc bat thuong, nguoi xung quanh/phia doi dich phai nghi ngo, hoi, dieu tra, che giau, loi dung, hoac doi ke hoach.
 - Neu chapter chua can dung toi mot thread lon, dung gan vao cho du so.
 - Outline phai ro duong day tien trien, khong duoc toan chapter na na nhau.
 
@@ -186,7 +192,8 @@ Ban uu tien so 1 la tinh nhat quan (consistency), giong van rieng cua tac pham, 
 Mac dinh, ban viet bang tieng Viet tru khi duoc yeu cau khac.
 Ban KHONG tu y them meta-commentary, ghi chu, hay giai thich du thua - chi tra ve dung noi dung task can.
 Ban PHAI tuan thu tuyet doi moi taboo, blacklist, va quy tac an toan duoc cung cap.
-Ban KHONG duoc tu y bo sung canon, nhan vat, dia danh, vat pham, ky nang, hay luat the gioi moi neu task hien tai khong cho phep sang tao mo rong ro rang.`,
+Ban KHONG duoc tu y bo sung canon, nhan vat, dia danh, vat pham, ky nang, hay luat the gioi moi neu task hien tai khong cho phep sang tao mo rong ro rang.
+BAT BUOC giu logic nhan qua: timeline, an phat/giam giu, thuong tich, lo tu vi/bao vat, va phan ung cua nhan vat phu/phia doi dich phai tao he qua that trong canh sau.`,
     userPromptTemplate: ``,
   },
   projectWizard: {
@@ -204,6 +211,9 @@ NGUYEN TAC BAT BUOC:
 - current_status la Character Live Canon luc khoi dau. Khi tao cast ban dau, hay nghi nhan vat dang o trang thai nao khi truyen bat dau; chi dien neu trang thai do co luc rang buoc that voi chuong dau/boi canh hien tai.
 - Khong tao current_status chung chung nhu "buon", "manh me", "lanh lung"; uu tien dia vi, quan he, bi mat biet/chua biet, vet thuong, phe phai, dang bi giam/mat tich/lan tron, hoac gioi han hanh vi.
 - Nhac lai it nhung huu dung tot hon nhieu nhung roi rac.
+- BAT BUOC giu timeline ro: neu tao su kien dem nguoc ("3 ngay nua", "1 thang sau", "ky sat hach"), cac chapter sau phai cap nhat moc thoi gian tuong ung, khong lap lai moc cu nhu chua co thoi gian troi qua.
+- BAT BUOC moi an phat, giam giu, truy na, thuong tich, cam tuc hoac rang buoc hanh vi tao he qua that. Neu nhan vat can du mot su kien sap toi, blueprint phai cai san con duong hop phap hoac hop logic de ho xuat hien.
+- BAT BUOC phan ung nhan vat theo thong tin ho dang co: khi mot "phe vat" song sot tu dia, lo tu vi, kiem y, bao vat hoac nang luc bat thuong, nguoi xung quanh/phia doi dich phai nghi ngo, hoi, dieu tra, che giau, loi dung, hoac doi ke hoach.
 - Nhip truyen phai phu hop voi do dai muc tieu va khong duoc tang toc qua tay trong giai doan mo dau.{{pacing_guidance}}`,
     userPromptTemplate: `The loai: {{genre}}
 Tone: {{tone}}
@@ -227,6 +237,9 @@ NGUYEN TAC BAT BUOC:
 - Khi nhac nhan vat trong outline, chi dung ten chinh thuc da co trong danh sach Nhan vat; khong bien ten ngan/biet danh thanh mot nhan vat moi.
 - Khong duoc tang toc nhip qua tay o giai doan mo dau; khong nhoi qua nhieu bien co vao mot chapter.
 - Khong duoc tao thread lon nhung khong co chapter nao gan vao.
+- BAT BUOC giu timeline ro: neu outline hien tai co su kien dem nguoc ("3 ngay nua", "1 thang sau", "ky sat hach"), chapter sau phai cap nhat moc thoi gian tuong ung, khong lap lai moc cu nhu chua co thoi gian troi qua.
+- BAT BUOC moi an phat, giam giu, truy na, thuong tich, cam tuc hoac rang buoc hanh vi tao he qua that. Neu nhan vat can du mot su kien sap toi, outline phai cai san con duong hop phap hoac hop logic de ho xuat hien.
+- BAT BUOC phan ung nhan vat theo thong tin ho dang co: khi mot "phe vat" song sot tu dia, lo tu vi, kiem y, bao vat hoac nang luc bat thuong, nguoi xung quanh/phia doi dich phai nghi ngo, hoi, dieu tra, che giau, loi dung, hoac doi ke hoach.
 
 Thong tin truyen:
 - Ten: {{project_title}}
