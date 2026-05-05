@@ -24,6 +24,7 @@ import {
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
   fetchOpenAIProxyModels,
+  filterGeminiModelIds,
   getOpenAIProxySettings,
   getOpenAIProxyKeyProvider,
   resolveProxyTransportMode,
@@ -298,6 +299,49 @@ function normalizeProxyModelList(models = []) {
   )];
 }
 
+function normalizeGeminiProxyModelList(models = []) {
+  return filterGeminiModelIds(normalizeProxyModelList(models));
+}
+
+function CustomProxyModelPicker({ models, selectedModel, onSelect, title = 'Model Gemini đã lấy' }) {
+  if (!models.length) return null;
+
+  const selected = models.includes(selectedModel) ? selectedModel : '';
+
+  return (
+    <div className="custom-proxy-model-picker">
+      <div className="custom-proxy-model-picker__header">
+        <div>
+          <strong>{title}</strong>
+          <span>{models.length} model Gemini</span>
+        </div>
+      </div>
+      <select
+        className="select"
+        value={selected}
+        onChange={(event) => onSelect(event.target.value)}
+      >
+        <option value="">Chọn model Gemini...</option>
+        {models.map((model) => (
+          <option key={model} value={model}>{model}</option>
+        ))}
+      </select>
+      <div className="custom-proxy-model-list">
+        {models.map((model) => (
+          <button
+            key={model}
+            type="button"
+            className={`custom-proxy-model-item ${selectedModel === model ? 'is-active' : ''}`}
+            onClick={() => onSelect(model)}
+          >
+            {model}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function getProxyProfileTestKey(profileId) {
   return `${PROVIDERS.OPENAI_PROXY}:${profileId}`;
 }
@@ -354,7 +398,7 @@ export default function Settings() {
   const selectedProviderCard = provider === PROVIDERS.OPENAI_PROXY
     ? (activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? PROVIDER_CARD_CUSTOM_PROXY : PROVIDER_CARD_AG_PROXY)
     : provider;
-  const customProxyModels = normalizeProxyModelList([
+  const customProxyModels = normalizeGeminiProxyModelList([
     customProxyProfile.defaultModel,
     ...(Array.isArray(customProxyProfile.models) ? customProxyProfile.models : []),
   ]);
@@ -584,11 +628,12 @@ export default function Settings() {
         apiKey: keyManager.getNextKey(getOpenAIProxyKeyProvider(profile)) || '',
         signal: AbortSignal.timeout(15000),
       });
-      const uniqueModels = normalizeProxyModelList(models);
+      const allModels = normalizeProxyModelList(models);
+      const uniqueModels = normalizeGeminiProxyModelList(allModels);
       if (uniqueModels.length === 0) {
         setProxyModelFetchStatus({
           type: 'error',
-          text: 'Proxy trả về rỗng. Bạn vẫn có thể nhập model thủ công.',
+          text: `Đã lấy ${allModels.length} models nhưng không thấy model Gemini. Bạn vẫn có thể nhập model thủ công.`,
         });
         return;
       }
@@ -600,7 +645,7 @@ export default function Settings() {
       }, { activate: true });
       setProxyModelFetchStatus({
         type: 'success',
-        text: `Đã lấy ${saved.models.length} models.`,
+        text: `Đã lấy ${allModels.length} models, lọc còn ${saved.models.length} model Gemini.`,
       });
     } catch (error) {
       setProxyModelFetchStatus({
@@ -830,26 +875,6 @@ export default function Settings() {
               icon={Server}
               onKeysChange={handleKeysChange}
             />
-            <div className="key-section key-section--linked">
-              <div className="key-section-header">
-                <Server size={16} />
-                <span className="key-section-label">Custom OpenAI-compatible</span>
-                <span className="key-section-count">{customProxyKeyCount} keys</span>
-              </div>
-              <p className="key-section-description">
-                Key riêng cho proxy bạn tự nhập. Quản lý trong trang cấu hình Custom Proxy để tránh nhầm với ag.
-              </p>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => {
-                  syncCustomProxyProfile({}, { activate: true });
-                  setShowCustomProxySetup(true);
-                }}
-              >
-                <Server size={14} /> Mở Custom Proxy
-              </button>
-            </div>
             <KeySection
               provider={PROVIDERS.GEMINI_DIRECT}
               providerLabel="Gemini Direct (AI Studio)"
@@ -968,6 +993,12 @@ export default function Settings() {
               {proxyModelFetchStatus.text}
             </div>
           ) : null}
+          <CustomProxyModelPicker
+            models={customProxyModels}
+            selectedModel={customProxyProfile.defaultModel || ''}
+            onSelect={(model) => syncCustomProxyProfile({ defaultModel: model }, { activate: true })}
+            title="Model Gemini của Custom Proxy"
+          />
           {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? (
             <div className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
               {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success
@@ -1293,20 +1324,12 @@ export default function Settings() {
                       </button>
                     </div>
 
-                    {customProxyModels.length > 0 ? (
-                      <div className="form-group">
-                        <label className="form-label">Chọn model từ danh sách</label>
-                        <select
-                          className="select"
-                          value={customProxyProfile.defaultModel || ''}
-                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: event.target.value }))}
-                        >
-                          {customProxyModels.map((model) => (
-                            <option key={model} value={model}>{model}</option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : null}
+                    <CustomProxyModelPicker
+                      models={customProxyModels}
+                      selectedModel={customProxyProfile.defaultModel || ''}
+                      onSelect={(model) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: model }))}
+                      title="Danh sách model Gemini"
+                    />
 
                     <div className="form-group">
                       <label className="form-label">Nhập model thủ công</label>

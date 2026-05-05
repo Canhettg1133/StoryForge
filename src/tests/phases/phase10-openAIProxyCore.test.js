@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildOpenAIProxyEndpoint,
+  filterGeminiModelIds,
   isRelayAllowedTarget,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
@@ -37,6 +38,21 @@ describe('openAIProxyCore model parsing and transport policy', () => {
     expect(parseOpenAIModelIds({ data: [{ id: 'model-a' }, { id: 'model-b' }, {}] })).toEqual([
       'model-a',
       'model-b',
+    ]);
+  });
+
+  it('filters fetched proxy models down to Gemini-related ids', () => {
+    expect(filterGeminiModelIds([
+      'openai/gpt-4.1',
+      'gemini-2.5-flash',
+      'google/gemini-2.5-pro',
+      'qwen/qwen3',
+      'models/gemini-embedding',
+      'gemini-2.5-flash',
+    ])).toEqual([
+      'gemini-2.5-flash',
+      'google/gemini-2.5-pro',
+      'models/gemini-embedding',
     ]);
   });
 

@@ -84,6 +84,14 @@ export function parseOpenAIModelIds(payload) {
     .filter(Boolean);
 }
 
+export function filterGeminiModelIds(models = []) {
+  return [...new Set(
+    models
+      .map((model) => String(model || '').trim())
+      .filter((model) => /\bgemini\b|gemini-/iu.test(model)),
+  )];
+}
+
 export function isLocalProxyHost(hostname = '') {
   const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/gu, '').replace(/\.+$/u, '');
   if (!host) return false;

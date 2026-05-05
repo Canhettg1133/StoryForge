@@ -6,6 +6,7 @@ import {
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
+  filterGeminiModelIds,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
 } from './openAIProxyCore.js';
@@ -259,6 +260,7 @@ export {
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
+  filterGeminiModelIds,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
 };
