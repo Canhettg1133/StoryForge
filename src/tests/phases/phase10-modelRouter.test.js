@@ -10,6 +10,16 @@ describe('phase10 model router proxy model selection', () => {
     localStorage.clear();
   });
 
+  it('defaults the ag Gemini Proxy preset to Gemini 3.1 Pro', async () => {
+    const {
+      default: modelRouter,
+      PROXY_MODEL_PRESETS,
+    } = await loadRouter();
+
+    expect(modelRouter.getProxyModel()).toBe(PROXY_MODEL_PRESETS[4].id);
+    expect(localStorage.getItem('sf-proxy-model')).toBe(PROXY_MODEL_PRESETS[4].id);
+  });
+
   it('routes normal proxy tasks to the selected proxy model instead of task quality map', async () => {
     const {
       default: modelRouter,

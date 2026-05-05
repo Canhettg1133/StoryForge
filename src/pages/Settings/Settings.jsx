@@ -43,7 +43,7 @@ import './Settings.css';
 // ─── Reusable Key Section Component ───
 function KeySection({ provider, providerLabel, description = '', icon: Icon, onKeysChange }) {
   const [keys, setKeys] = useState([...keyManager.getKeys(provider)]);
-  const [bulkMode, setBulkMode] = useState(true);
+  const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [showKeys, setShowKeys] = useState({});
   const [copied, setCopied] = useState(false);
@@ -124,7 +124,7 @@ function KeySection({ provider, providerLabel, description = '', icon: Icon, onK
     const { added, skipped } = keyManager.setKeys(provider, lines);
     refresh();
     setBulkText('');
-    setBulkMode(true);
+    setBulkMode(false);
     if (skipped > 0) {
       showFeedback('warn', `Đã thêm ${added} keys, bỏ qua ${skipped} key trùng`);
     } else {
@@ -187,12 +187,17 @@ function KeySection({ provider, providerLabel, description = '', icon: Icon, onK
 
       {/* Toolbar */}
       <div className="key-toolbar">
-        <button className="btn btn-secondary btn-sm" onClick={() => setBulkText('')} disabled={!bulkText.trim()}>
-          {bulkMode ? <><X size={12} /> Đóng</> : <><Upload size={12} /> Nhập nhiều</>}
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => setBulkMode((prev) => !prev)}
+        >
+          {bulkMode ? <><X size={12} /> Đóng nhập nhiều</> : <><Upload size={12} /> Nhập nhiều</>}
         </button>
-        <button className="btn btn-secondary btn-sm key-clear-bulk" onClick={() => setBulkText('')} disabled={!bulkText.trim()}>
-          <X size={12} /> Xoa o nhap nhieu
-        </button>
+        {bulkMode ? (
+          <button className="btn btn-secondary btn-sm key-clear-bulk" onClick={() => setBulkText('')} disabled={!bulkText.trim()}>
+            <X size={12} /> Xóa ô nhập nhiều
+          </button>
+        ) : null}
         <button className="btn btn-ghost btn-sm" onClick={handleExport} disabled={keys.length === 0}>
           <Download size={12} /> Xuất
         </button>
@@ -202,7 +207,7 @@ function KeySection({ provider, providerLabel, description = '', icon: Icon, onK
       </div>
 
       {/* Bulk import */}
-      {true && (
+      {bulkMode && (
         <div className="bulk-import-area">
           <textarea
             className="textarea"
@@ -303,6 +308,57 @@ function normalizeGeminiProxyModelList(models = []) {
   return filterGeminiModelIds(normalizeProxyModelList(models));
 }
 
+function ModelDefaultCallout({
+  eyebrow,
+  value,
+  hint,
+  selectLabel,
+  selectValue,
+  options,
+  onChange,
+  disabled = false,
+}) {
+  return (
+    <div className="model-default-block">
+      <div className="model-default-block__eyebrow">{eyebrow}</div>
+      <div className="settings-select-callout">
+        <div className="settings-select-callout__copy">
+          <div className="settings-select-callout__title">
+            <Sparkles size={15} />
+            Model mặc định đang dùng
+          </div>
+          <div className="settings-select-callout__value">
+            {value || 'Chưa chọn model'}
+          </div>
+          <div className="settings-select-callout__hint">
+            {hint}
+          </div>
+        </div>
+        <div className="settings-select-shell">
+          <select
+            className="select settings-select-shell__control"
+            value={selectValue || ''}
+            aria-label={selectLabel}
+            onChange={(event) => onChange(event.target.value)}
+            disabled={disabled}
+          >
+            {options.length === 0 ? (
+              <option value="">Chưa có model</option>
+            ) : null}
+            {options.map((model) => (
+              <option key={model.id} value={model.id}>
+                {model.label}
+              </option>
+            ))}
+          </select>
+          <span className="settings-select-shell__prompt">Click để đổi model</span>
+          <ChevronsUpDown size={16} className="settings-select-shell__icon" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CustomProxyModelPicker({ models, selectedModel, onSelect, title = 'Model Gemini đã lấy' }) {
   if (!models.length) return null;
 
@@ -394,7 +450,7 @@ export default function Settings() {
   const [quality, setQuality] = useState(modelRouter.getQualityMode());
   const [proxyModel, setProxyModel] = useState(modelRouter.getProxyModel());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
-  const selectedProxyPreset = PROXY_MODEL_PRESETS.find((model) => model.id === proxyModel) || PROXY_MODEL_PRESETS[0];
+  const selectedProxyPreset = PROXY_MODEL_PRESETS.find((model) => model.id === proxyModel) || PROXY_MODEL_PRESETS[4] || PROXY_MODEL_PRESETS[0];
   const selectedProviderCard = provider === PROVIDERS.OPENAI_PROXY
     ? (activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? PROVIDER_CARD_CUSTOM_PROXY : PROVIDER_CARD_AG_PROXY)
     : provider;
@@ -402,6 +458,7 @@ export default function Settings() {
     customProxyProfile.defaultModel,
     ...(Array.isArray(customProxyProfile.models) ? customProxyProfile.models : []),
   ]);
+  const customProxyModelOptions = customProxyModels.map((model) => ({ id: model, label: model }));
   const customProxyTransportMode = resolveProxyTransportMode(customProxyProfile);
   const customProxyChatPreview = getProxyEndpointPreview(
     customProxyProfile,
@@ -590,15 +647,11 @@ export default function Settings() {
 
     if (nextProvider === PROVIDER_CARD_CUSTOM_PROXY) {
       syncCustomProxyProfile({}, { activate: true });
-      setShowCustomProxySetup(true);
       return;
     }
 
     setProvider(nextProvider);
     modelRouter.setPreferredProvider(nextProvider);
-    if (nextProvider === PROVIDERS.AI_STUDIO_RELAY) {
-      setShowAIStudioRelaySetup(true);
-    }
   };
   const handleOpenAiStudio = () => {
     window.open('https://aistudio.google.com/app/apikey', '_blank', 'noopener,noreferrer');
@@ -765,40 +818,95 @@ export default function Settings() {
 
           {selectedProviderCard === PROVIDER_CARD_AG_PROXY ? (
             <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
-              <label className="form-label">Model Gemini Proxy</label>
-              <div className="settings-select-callout">
-                <div className="settings-select-callout__copy">
-                  <div className="settings-select-callout__title">
-                    <Sparkles size={15} />
-                    Model mặc định đang dùng
-                  </div>
-                  <div className="settings-select-callout__value">
-                    {selectedProxyPreset?.label || 'Chưa chọn model'}
-                  </div>
-                  <div className="settings-select-callout__hint">
-                    Bấm vào hộp bên dưới để đổi model mặc định cho toàn bộ tác vụ Gemini Proxy.
-                  </div>
+              <ModelDefaultCallout
+                eyebrow="Model Gemini Proxy"
+                value={selectedProxyPreset?.label || 'Chưa chọn model'}
+                hint="Bấm vào hộp bên dưới để đổi model mặc định cho toàn bộ tác vụ Gemini Proxy."
+                selectLabel="Chọn model Gemini Proxy mặc định"
+                selectValue={proxyModel}
+                options={PROXY_MODEL_PRESETS}
+                onChange={(model) => {
+                  setProxyModel(model);
+                  modelRouter.setProxyModel(model);
+                }}
+              />
+            </div>
+          ) : null}
+
+          {selectedProviderCard === PROVIDER_CARD_CUSTOM_PROXY ? (
+            <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
+              <div className="settings-provider-setup-banner">
+                <div>
+                  <strong>Cấu hình Custom Proxy</strong>
+                  <p>
+                    Sửa Base URL, API key riêng, lấy models, path và transport ở trang setup lớn.
+                  </p>
                 </div>
-                <div className="settings-select-shell">
-                  <select
-                    className="select settings-select-shell__control"
-                    value={proxyModel}
-                    aria-label="Chọn model Gemini Proxy mặc định"
-                    onChange={(event) => {
-                      setProxyModel(event.target.value);
-                      modelRouter.setProxyModel(event.target.value);
-                    }}
-                  >
-                    {PROXY_MODEL_PRESETS.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="settings-select-shell__prompt">Click để đổi model</span>
-                  <ChevronsUpDown size={16} className="settings-select-shell__icon" />
-                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => setShowCustomProxySetup(true)}
+                >
+                  <Server size={14} /> Mở setup Custom
+                </button>
               </div>
+
+              <ModelDefaultCallout
+                eyebrow="Model Custom Proxy"
+                value={customProxyProfile.defaultModel || 'Chưa chọn model'}
+                hint="Model này áp dụng cho mọi tác vụ khi bạn chọn Custom OpenAI-compatible."
+                selectLabel="Chọn model Custom Proxy mặc định"
+                selectValue={customProxyProfile.defaultModel || ''}
+                options={customProxyModelOptions}
+                onChange={(model) => syncCustomProxyProfile({ defaultModel: model }, { activate: true })}
+                disabled={customProxyModelOptions.length === 0}
+              />
+
+              <div className="form-group">
+                <label className="form-label">Nhập model thủ công</label>
+                <input
+                  className="input"
+                  value={customProxyProfile.defaultModel || ''}
+                  onChange={(event) => syncCustomProxyProfile({ defaultModel: event.target.value }, { activate: true })}
+                  placeholder="gcli-gemini-3.1-pro-preview, gemini-2.5-flash..."
+                />
+                <p className="settings-hint">
+                  Nếu chưa lấy được danh sách model, nhập đúng model id của proxy rồi bấm Test.
+                </p>
+              </div>
+
+              <div className="settings-action-row settings-action-row--spaced">
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleFetchCustomProxyModels}
+                  disabled={fetchingProxyModels || !String(customProxyProfile.baseUrl || '').trim()}
+                >
+                  {fetchingProxyModels ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  Lấy models
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => handleTest(PROVIDERS.OPENAI_PROXY, getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID))}
+                  disabled={testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] || !String(customProxyProfile.baseUrl || '').trim()}
+                >
+                  {testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
+                  Test
+                </button>
+              </div>
+
+              {proxyModelFetchStatus ? (
+                <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
+                  {proxyModelFetchStatus.type === 'success' ? <CheckCircle size={14} /> : proxyModelFetchStatus.type === 'pending' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
+                  {proxyModelFetchStatus.text}
+                </div>
+              ) : null}
+              {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? (
+                <div className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
+                  {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success
+                    ? <><CheckCircle size={14} /> Kết nối OK</>
+                    : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].error}</>}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -872,6 +980,13 @@ export default function Settings() {
               provider="gemini_proxy"
               providerLabel="Gemini Proxy mặc định (ag)"
               description="Dùng cho preset /api/proxy trên Vercel."
+              icon={Server}
+              onKeysChange={handleKeysChange}
+            />
+            <KeySection
+              provider={PROVIDERS.OPENAI_PROXY}
+              providerLabel="Custom OpenAI-compatible"
+              description="Dùng riêng cho web/proxy custom. Không dùng chung với Gemini Proxy mặc định ag."
               icon={Server}
               onKeysChange={handleKeysChange}
             />
@@ -970,42 +1085,19 @@ export default function Settings() {
               <Check size={14} /> Dùng custom
             </button>
             <button
-              className="btn btn-secondary"
-              onClick={handleFetchCustomProxyModels}
-              disabled={fetchingProxyModels || !String(customProxyProfile.baseUrl || '').trim()}
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                syncCustomProxyProfile({}, { activate: true });
+                setShowCustomProxySetup(true);
+              }}
             >
-              {fetchingProxyModels ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              Lấy models
-            </button>
-            <button
-              className="btn btn-ghost"
-              onClick={() => handleTest(PROVIDERS.OPENAI_PROXY, getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID))}
-              disabled={testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] || !String(customProxyProfile.baseUrl || '').trim()}
-            >
-              {testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
-              Test
+              <Server size={14} /> Mở setup Custom
             </button>
           </div>
-
-          {proxyModelFetchStatus ? (
-            <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
-              {proxyModelFetchStatus.type === 'success' ? <CheckCircle size={14} /> : proxyModelFetchStatus.type === 'pending' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
-              {proxyModelFetchStatus.text}
-            </div>
-          ) : null}
-          <CustomProxyModelPicker
-            models={customProxyModels}
-            selectedModel={customProxyProfile.defaultModel || ''}
-            onSelect={(model) => syncCustomProxyProfile({ defaultModel: model }, { activate: true })}
-            title="Model Gemini của Custom Proxy"
-          />
-          {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? (
-            <div className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
-              {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success
-                ? <><CheckCircle size={14} /> Kết nối OK</>
-                : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].error}</>}
-            </div>
-          ) : null}
+          <p className="settings-hint">
+            Đổi model nhanh ở khối Provider đang dùng. Mở setup khi cần sửa Base URL, key riêng, path hoặc transport.
+          </p>
         </section>
 
         {/* === GEMINI DIRECT === */}

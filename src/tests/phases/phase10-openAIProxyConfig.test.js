@@ -57,6 +57,18 @@ describe('openAIProxyConfig legacy settings migration', () => {
     expect(getOpenAIProxyKeyProvider(getDefaultCustomOpenAIProxyProfile())).toBe('openai_proxy');
   });
 
+  it('migrates the old ag default model to Gemini 3.1 Pro', async () => {
+    localStorage.setItem('sf-proxy-model', 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]');
+
+    const {
+      DEFAULT_AG_PROXY_MODEL,
+      getAgProxyModel,
+    } = await loadConfig();
+
+    expect(getAgProxyModel()).toBe(DEFAULT_AG_PROXY_MODEL);
+    expect(localStorage.getItem('sf-proxy-model')).toBe(DEFAULT_AG_PROXY_MODEL);
+  });
+
   it('falls back to direct model fetch when the same-origin relay route is missing', async () => {
     const {
       DEFAULT_PROXY_MODELS_PATH,

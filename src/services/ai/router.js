@@ -266,7 +266,7 @@ const PROXY_PRESET_BY_QUALITY = {
 };
 
 function getDefaultProxyModel() {
-  return PROXY_MODEL_PRESETS[1]?.id || PROXY_MODELS[0]?.id || '';
+  return PROXY_MODEL_PRESETS[4]?.id || PROXY_MODEL_PRESETS[1]?.id || PROXY_MODELS[0]?.id || '';
 }
 
 function normalizeProxyModel(modelId) {
@@ -278,7 +278,10 @@ function normalizeProxyModel(modelId) {
 function getInitialProxyModel() {
   try {
     const saved = localStorage.getItem(PROXY_MODEL_KEY);
-    if (saved) return normalizeProxyModel(saved);
+    if (saved) {
+      if (saved === PROXY_MODEL_PRESETS[1]?.id) return getDefaultProxyModel();
+      return normalizeProxyModel(saved);
+    }
 
     const legacyQuality = localStorage.getItem('sf-quality-mode');
     return normalizeProxyModel(PROXY_PRESET_BY_QUALITY[legacyQuality] || getDefaultProxyModel());
@@ -330,7 +333,7 @@ class ModelRouter {
     );
     this.proxyModel = getInitialProxyModel();
     try {
-      if (!localStorage.getItem(PROXY_MODEL_KEY)) {
+      if (localStorage.getItem(PROXY_MODEL_KEY) !== this.proxyModel) {
         localStorage.setItem(PROXY_MODEL_KEY, this.proxyModel);
       }
     } catch { }

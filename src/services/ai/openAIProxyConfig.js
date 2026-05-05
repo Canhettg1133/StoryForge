@@ -13,6 +13,7 @@ import {
 
 const SETTINGS_KEY = 'sf-ai-settings';
 const PROXY_MODEL_KEY = 'sf-proxy-model';
+const LEGACY_DEFAULT_AG_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
 
 function readSettings() {
   try {
@@ -47,7 +48,12 @@ export function normalizeOpenAIProxyProvider(provider) {
 
 export function getAgProxyModel() {
   try {
-    return trimText(localStorage.getItem(PROXY_MODEL_KEY)) || DEFAULT_AG_PROXY_MODEL;
+    const saved = trimText(localStorage.getItem(PROXY_MODEL_KEY));
+    if (saved === LEGACY_DEFAULT_AG_PROXY_MODEL) {
+      localStorage.setItem(PROXY_MODEL_KEY, DEFAULT_AG_PROXY_MODEL);
+      return DEFAULT_AG_PROXY_MODEL;
+    }
+    return saved || DEFAULT_AG_PROXY_MODEL;
   } catch {
     return DEFAULT_AG_PROXY_MODEL;
   }
@@ -257,6 +263,7 @@ export {
   AG_PROXY_PROFILE_ID,
   CUSTOM_PROXY_PROFILE_ID,
   DEFAULT_AG_PROXY_BASE_URL,
+  DEFAULT_AG_PROXY_MODEL,
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
