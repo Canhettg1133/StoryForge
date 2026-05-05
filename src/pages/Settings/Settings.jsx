@@ -25,6 +25,7 @@ import {
   buildOpenAIProxyEndpoint,
   fetchOpenAIProxyModels,
   getOpenAIProxySettings,
+  getOpenAIProxyKeyProvider,
   resolveProxyTransportMode,
   setOpenAIProxyActiveProfile,
   updateCustomOpenAIProxyProfile,
@@ -39,7 +40,7 @@ import useMobileLayout from '../../hooks/useMobileLayout';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
-function KeySection({ provider, providerLabel, icon: Icon }) {
+function KeySection({ provider, providerLabel, description = '', icon: Icon, onKeysChange }) {
   const [keys, setKeys] = useState([...keyManager.getKeys(provider)]);
   const [bulkMode, setBulkMode] = useState(true);
   const [bulkText, setBulkText] = useState('');
@@ -48,7 +49,12 @@ function KeySection({ provider, providerLabel, icon: Icon }) {
   const [singleKey, setSingleKey] = useState('');
   const [feedback, setFeedback] = useState(null); // { type: 'success'|'error'|'warn', text }
 
-  const refresh = () => setKeys([...keyManager.getKeys(provider)]);
+  const refresh = () => {
+    const nextKeys = [...keyManager.getKeys(provider)];
+    setKeys(nextKeys);
+    onKeysChange?.(provider, nextKeys);
+    return nextKeys;
+  };
 
   const showFeedback = (type, text) => {
     setFeedback({ type, text });
@@ -63,7 +69,7 @@ function KeySection({ provider, providerLabel, icon: Icon }) {
   const addKeys = (rawValue, { closeBulk = false } = {}) => {
     const candidates = parseKeysFromText(rawValue);
     if (candidates.length === 0) {
-      showFeedback('error', 'Khong tim thay API key hop le');
+      showFeedback('error', 'Không tìm thấy API key hợp lệ');
       return false;
     }
 
@@ -75,11 +81,11 @@ function KeySection({ provider, providerLabel, icon: Icon }) {
     }
 
     if (added === 0 && skipped > 0) {
-      showFeedback('warn', `Tat ca ${skipped} key da ton tai - bo qua`);
+      showFeedback('warn', `Tất cả ${skipped} key đã tồn tại - bỏ qua`);
     } else if (skipped > 0) {
-      showFeedback('warn', `Da them ${added} keys, bo qua ${skipped} key trung`);
+      showFeedback('warn', `Đã thêm ${added} keys, bỏ qua ${skipped} key trùng`);
     } else {
-      showFeedback('success', `Da them ${added} keys`);
+      showFeedback('success', `Đã thêm ${added} keys`);
     }
     return added > 0;
   };
@@ -89,7 +95,7 @@ function KeySection({ provider, providerLabel, icon: Icon }) {
     const key = singleKey.trim();
     const candidates = parseKeysFromText(key);
     if (candidates.length > 1) {
-      showFeedback('warn', 'O nay chi them 1 key. Dan nhieu key vao o "Nhap nhieu key" ben duoi.');
+      showFeedback('warn', 'Ô này chỉ thêm 1 key. Dán nhiều key vào ô "Nhập nhiều key" bên dưới.');
       return;
     }
     if (!key || key.length < 10) {
@@ -151,6 +157,7 @@ function KeySection({ provider, providerLabel, icon: Icon }) {
         <span className="key-section-label">{providerLabel}</span>
         <span className="key-section-count">{keys.length} keys</span>
       </div>
+      {description ? <p className="key-section-description">{description}</p> : null}
 
       {/* Feedback message */}
       {feedback && (
@@ -303,6 +310,14 @@ function getProxyEndpointPreview(profile, path) {
   }
 }
 
+function readSettingsKeyCounts() {
+  return {
+    agProxy: keyManager.getKeyCount('gemini_proxy'),
+    customProxy: keyManager.getKeyCount(PROVIDERS.OPENAI_PROXY),
+    geminiDirect: keyManager.getKeyCount(PROVIDERS.GEMINI_DIRECT),
+  };
+}
+
 export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -315,6 +330,8 @@ export default function Settings() {
   const [proxyModelFetchStatus, setProxyModelFetchStatus] = useState(null);
   const [fetchingProxyModels, setFetchingProxyModels] = useState(false);
   const [showCustomProxyAdvanced, setShowCustomProxyAdvanced] = useState(false);
+  const [showCustomProxySetup, setShowCustomProxySetup] = useState(false);
+  const [keyCounts, setKeyCounts] = useState(readSettingsKeyCounts);
   const [directUrl, setDirectUrl] = useState(getGeminiDirectBaseUrl());
   const [ollamaUrl, setOllamaUrl] = useState(getOllamaUrl());
   const [aiStudioRelayUrl, setAIStudioRelayUrl] = useState(getAIStudioRelayUrl());
@@ -350,6 +367,8 @@ export default function Settings() {
     customProxyProfile,
     customProxyProfile.modelsPath || DEFAULT_PROXY_MODELS_PATH,
   );
+  const customProxyKeyCount = keyCounts.customProxy;
+  const geminiDirectKeyCount = keyCounts.geminiDirect;
   const aiStudioConnectorConnected = Boolean(aiStudioRelayStatus?.connectorConnected);
   const aiStudioClientConnected = Boolean(aiStudioRelayStatus?.clientConnected);
   const aiStudioRelayExpired = Boolean(aiStudioRelayStatus?.expired);
@@ -527,6 +546,7 @@ export default function Settings() {
 
     if (nextProvider === PROVIDER_CARD_CUSTOM_PROXY) {
       syncCustomProxyProfile({}, { activate: true });
+      setShowCustomProxySetup(true);
       return;
     }
 
@@ -547,27 +567,28 @@ export default function Settings() {
 
     navigate('/');
   };
+  const handleKeysChange = () => setKeyCounts(readSettingsKeyCounts());
 
   const handleFetchCustomProxyModels = async () => {
     const profile = syncCustomProxyProfile({}, { activate: true });
     if (!profile.baseUrl) {
-      setProxyModelFetchStatus({ type: 'error', text: 'Nhap Base URL truoc khi lay models.' });
+      setProxyModelFetchStatus({ type: 'error', text: 'Nhập Base URL trước khi lấy models.' });
       return;
     }
 
     setFetchingProxyModels(true);
-    setProxyModelFetchStatus({ type: 'pending', text: 'Dang lay danh sach models...' });
+    setProxyModelFetchStatus({ type: 'pending', text: 'Đang lấy danh sách models...' });
     try {
       const models = await fetchOpenAIProxyModels({
         profile,
-        apiKey: keyManager.getNextKey(PROVIDERS.OPENAI_PROXY) || '',
+        apiKey: keyManager.getNextKey(getOpenAIProxyKeyProvider(profile)) || '',
         signal: AbortSignal.timeout(15000),
       });
       const uniqueModels = normalizeProxyModelList(models);
       if (uniqueModels.length === 0) {
         setProxyModelFetchStatus({
           type: 'error',
-          text: 'Proxy tra ve rong. Ban van co the nhap model thu cong.',
+          text: 'Proxy trả về rỗng. Bạn vẫn có thể nhập model thủ công.',
         });
         return;
       }
@@ -579,12 +600,12 @@ export default function Settings() {
       }, { activate: true });
       setProxyModelFetchStatus({
         type: 'success',
-        text: `Da lay ${saved.models.length} models.`,
+        text: `Đã lấy ${saved.models.length} models.`,
       });
     } catch (error) {
       setProxyModelFetchStatus({
         type: 'error',
-        text: `${error?.message || 'Khong lay duoc models'}. Neu bi CORS hoac proxy khong co /v1/models, nhap model thu cong.`,
+        text: `${error?.message || 'Không lấy được models'}. Nếu bị CORS hoặc proxy không có /v1/models, nhập model thủ công.`,
       });
     } finally {
       setFetchingProxyModels(false);
@@ -677,7 +698,7 @@ export default function Settings() {
 
           <div className="settings-radio-group horizontal">
             {[
-              { value: PROVIDER_CARD_AG_PROXY, icon: Server, label: 'Gemini Proxy mac dinh', desc: '/api/proxy - ag' },
+              { value: PROVIDER_CARD_AG_PROXY, icon: Server, label: 'Gemini Proxy mặc định', desc: '/api/proxy - ag' },
               { value: PROVIDER_CARD_CUSTOM_PROXY, icon: Server, label: 'Custom OpenAI-compatible', desc: 'one-api / NewAPI / proxy clone' },
               { value: PROVIDERS.GEMINI_DIRECT, icon: Cloud, label: 'Gemini Direct', desc: 'AI Studio (free)' },
               { value: PROVIDERS.AI_STUDIO_RELAY, icon: Cloud, label: 'AI Studio Relay', desc: 'Experimental' },
@@ -797,13 +818,46 @@ export default function Settings() {
             <Key size={20} />
             <div>
               <h2>API Keys</h2>
-              <p>Keys tách riêng cho từng provider. Nhập/Xuất riêng.</p>
+              <p>Keys tách riêng theo từng nguồn. Key của ag không dùng chung với Custom Proxy.</p>
             </div>
           </div>
 
-          <KeySection provider="openai_proxy" providerLabel="Web Proxy / Gemini Proxy" icon={Server} />
-          <div className="key-section-divider" />
-          <KeySection provider="gemini_direct" providerLabel="Gemini Direct (AI Studio)" icon={Cloud} />
+          <div className="settings-key-grid">
+            <KeySection
+              provider="gemini_proxy"
+              providerLabel="Gemini Proxy mặc định (ag)"
+              description="Dùng cho preset /api/proxy trên Vercel."
+              icon={Server}
+              onKeysChange={handleKeysChange}
+            />
+            <div className="key-section key-section--linked">
+              <div className="key-section-header">
+                <Server size={16} />
+                <span className="key-section-label">Custom OpenAI-compatible</span>
+                <span className="key-section-count">{customProxyKeyCount} keys</span>
+              </div>
+              <p className="key-section-description">
+                Key riêng cho proxy bạn tự nhập. Quản lý trong trang cấu hình Custom Proxy để tránh nhầm với ag.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  syncCustomProxyProfile({}, { activate: true });
+                  setShowCustomProxySetup(true);
+                }}
+              >
+                <Server size={14} /> Mở Custom Proxy
+              </button>
+            </div>
+            <KeySection
+              provider={PROVIDERS.GEMINI_DIRECT}
+              providerLabel="Gemini Direct (AI Studio)"
+              description="Dùng cho API key từ Google AI Studio."
+              icon={Cloud}
+              onKeysChange={handleKeysChange}
+            />
+          </div>
         </section>
 
         {/* === GEMINI PROXY === */}
@@ -811,8 +865,8 @@ export default function Settings() {
           <div className="settings-section-header">
             <Server size={20} />
             <div>
-              <h2>Gemini Proxy</h2>
-              <p>ag.beijixingxing - OpenAI-compatible qua /api/proxy de tranh CORS tren Vercel.</p>
+              <h2>Gemini Proxy mặc định</h2>
+              <p>ag.beijixingxing - OpenAI-compatible qua /api/proxy để tránh CORS trên Vercel.</p>
             </div>
           </div>
 
@@ -820,7 +874,7 @@ export default function Settings() {
             <label className="form-label">Proxy URL</label>
             <div className="settings-input-row">
               <input className="input" value="/api/proxy" readOnly placeholder="/api/proxy" />
-              <button className="btn btn-secondary" onClick={() => handleProviderSelect(PROVIDER_CARD_AG_PROXY)}>Dung preset</button>
+              <button className="btn btn-secondary" onClick={() => handleProviderSelect(PROVIDER_CARD_AG_PROXY)}>Dùng preset</button>
               <button
                 className="btn btn-ghost btn-icon"
                 onClick={() => handleTest(PROVIDERS.OPENAI_PROXY, getProxyProfileTestKey(AG_PROXY_PROFILE_ID))}
@@ -829,7 +883,7 @@ export default function Settings() {
                 {testing[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] ? <RefreshCw size={16} className="animate-spin" /> : <TestTube size={16} />}
               </button>
             </div>
-            <p className="settings-hint">Mac dinh: <code>/api/proxy</code> (Vercel rewrite -&gt; ag.beijixingxing.com). Khong can doi tru khi dung proxy khac.</p>
+            <p className="settings-hint">Mặc định: <code>/api/proxy</code> (Vercel rewrite -&gt; ag.beijixingxing.com). Không cần đổi trừ khi dùng proxy khác.</p>
             {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] && (
               <div className={`settings-test-result ${testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
                 {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success
@@ -841,164 +895,86 @@ export default function Settings() {
         </section>
 
         <section className="settings-section card animate-slide-up" style={{ animationDelay: '150ms' }}>
-          <div className="settings-section-header">
-            <Server size={20} />
-            <div>
-              <h2>Custom OpenAI-compatible</h2>
-              <p>Nhap web proxy OpenAI-compatible. Hosted HTTPS dung Vercel relay; local/private URL dung direct va can CORS.</p>
-            </div>
-          </div>
-
-          <div className="openai-proxy-stack">
-            <div className="openai-proxy-subblock">
-              <div className="openai-proxy-subblock__title">Ket noi</div>
-              <label className="form-label">Base URL</label>
-              <input
-                className="input"
-                value={customProxyProfile.baseUrl || ''}
-                onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, baseUrl: event.target.value }))}
-                placeholder="https://proxy.example.com hoac http://localhost:1234/v1"
-              />
-              <div className="openai-proxy-preview">
-                <span>Chat</span>
-                <code>{customProxyChatPreview || 'Nhap Base URL de xem endpoint'}</code>
+          <div className="settings-section-header settings-section-header--with-action">
+            <div className="settings-section-header__title">
+              <Server size={20} />
+              <div>
+                <h2>Custom OpenAI-compatible</h2>
+                <p>Nhập web proxy OpenAI-compatible. Hosted HTTPS dùng Vercel relay; local/private URL dùng direct và cần CORS.</p>
               </div>
-              <div className="openai-proxy-preview">
-                <span>Models</span>
-                <code>{customProxyModelsPreview || 'Nhap Base URL de xem endpoint'}</code>
-              </div>
-              <p className="settings-hint">
-                Nhap root, /v1, hoac full /v1/chat/completions deu duoc. App se chuan hoa path de tranh noi trung /v1.
-              </p>
             </div>
-
-            <div className="openai-proxy-subblock">
-              <div className="openai-proxy-subblock__title">Models</div>
-              <div className="settings-input-row">
-                <button
-                  className="btn btn-secondary"
-                  onClick={handleFetchCustomProxyModels}
-                  disabled={fetchingProxyModels || !String(customProxyProfile.baseUrl || '').trim()}
-                >
-                  {fetchingProxyModels ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  Lay models
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    syncCustomProxyProfile({}, { activate: true });
-                    setProxyModelFetchStatus({ type: 'success', text: 'Da luu custom proxy.' });
-                  }}
-                >
-                  <Check size={14} /> Luu
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => handleTest(PROVIDERS.OPENAI_PROXY, getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID))}
-                  disabled={testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] || !String(customProxyProfile.baseUrl || '').trim()}
-                >
-                  {testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
-                  Test
-                </button>
-              </div>
-
-              {customProxyModels.length > 0 ? (
-                <select
-                  className="select"
-                  value={customProxyProfile.defaultModel || ''}
-                  onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: event.target.value }))}
-                >
-                  {customProxyModels.map((model) => (
-                    <option key={model} value={model}>{model}</option>
-                  ))}
-                </select>
-              ) : null}
-
-              <label className="form-label">Nhap model thu cong</label>
-              <input
-                className="input"
-                value={customProxyProfile.defaultModel || ''}
-                onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: event.target.value }))}
-                placeholder="gemini-2.5-flash, openai/gpt-4.1, llama3..."
-              />
-            </div>
-
-            <div className="openai-proxy-subblock">
-              <div className="openai-proxy-subblock__title">Trang thai</div>
-              <div className="openai-proxy-status-grid">
-                <span>Profile</span>
-                <strong>{activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? 'Custom dang dung' : 'Dang luu san'}</strong>
-                <span>Transport</span>
-                <strong>{customProxyTransportMode === 'relay' ? 'Vercel relay' : 'Direct'}</strong>
-                <span>Models</span>
-                <strong>{customProxyModels.length}</strong>
-                <span>Gemini safety</span>
-                <strong>{customProxyProfile.supportsGeminiSafetySettings ? 'Bat' : 'Tat'}</strong>
-              </div>
-              {proxyModelFetchStatus ? (
-                <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
-                  {proxyModelFetchStatus.type === 'success' ? <CheckCircle size={14} /> : proxyModelFetchStatus.type === 'pending' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
-                  {proxyModelFetchStatus.text}
-                </div>
-              ) : null}
-              {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? (
-                <div className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
-                  {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success
-                    ? <><CheckCircle size={14} /> Ket noi OK</>
-                    : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].error}</>}
-                </div>
-              ) : null}
-            </div>
-
-            <details
-              className="openai-proxy-advanced"
-              open={showCustomProxyAdvanced}
-              onToggle={(event) => setShowCustomProxyAdvanced(event.currentTarget.open)}
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                syncCustomProxyProfile({}, { activate: true });
+                setShowCustomProxySetup(true);
+              }}
             >
-              <summary>Advanced</summary>
-              <div className="openai-proxy-advanced__grid">
-                <label>
-                  <span>Chat path</span>
-                  <input
-                    className="input"
-                    value={customProxyProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH}
-                    onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, chatCompletionsPath: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>Models path</span>
-                  <input
-                    className="input"
-                    value={customProxyProfile.modelsPath || DEFAULT_PROXY_MODELS_PATH}
-                    onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, modelsPath: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  <span>Transport</span>
-                  <select
-                    className="select"
-                    value={customProxyProfile.transport || 'auto'}
-                    onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, transport: event.target.value }))}
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="relay">Vercel relay</option>
-                    <option value="direct">Direct</option>
-                  </select>
-                </label>
-                <label className="openai-proxy-toggle">
-                  <input
-                    type="checkbox"
-                    checked={Boolean(customProxyProfile.supportsGeminiSafetySettings)}
-                    onChange={(event) => setCustomProxyProfile((prev) => ({
-                      ...prev,
-                      supportsGeminiSafetySettings: event.target.checked,
-                    }))}
-                  />
-                  <span>Gui Gemini safety settings</span>
-                </label>
-              </div>
-            </details>
+              <Server size={14} /> Mở cấu hình
+            </button>
           </div>
+
+          <div className="settings-summary-grid">
+            <div className="settings-summary-tile">
+              <span>Base URL</span>
+              <strong>{customProxyProfile.baseUrl || 'Chưa cấu hình'}</strong>
+            </div>
+            <div className="settings-summary-tile">
+              <span>Model</span>
+              <strong>{customProxyProfile.defaultModel || 'Chưa chọn'}</strong>
+            </div>
+            <div className="settings-summary-tile">
+              <span>Keys riêng</span>
+              <strong>{customProxyKeyCount} keys</strong>
+            </div>
+            <div className="settings-summary-tile">
+              <span>Transport</span>
+              <strong>{customProxyTransportMode === 'relay' ? 'Vercel relay' : 'Direct'}</strong>
+            </div>
+          </div>
+
+          <div className="settings-action-row settings-action-row--spaced">
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                syncCustomProxyProfile({}, { activate: true });
+                setProxyModelFetchStatus({ type: 'success', text: 'Đã chọn Custom Proxy.' });
+              }}
+            >
+              <Check size={14} /> Dùng custom
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={handleFetchCustomProxyModels}
+              disabled={fetchingProxyModels || !String(customProxyProfile.baseUrl || '').trim()}
+            >
+              {fetchingProxyModels ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              Lấy models
+            </button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => handleTest(PROVIDERS.OPENAI_PROXY, getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID))}
+              disabled={testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] || !String(customProxyProfile.baseUrl || '').trim()}
+            >
+              {testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
+              Test
+            </button>
+          </div>
+
+          {proxyModelFetchStatus ? (
+            <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
+              {proxyModelFetchStatus.type === 'success' ? <CheckCircle size={14} /> : proxyModelFetchStatus.type === 'pending' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
+              {proxyModelFetchStatus.text}
+            </div>
+          ) : null}
+          {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? (
+            <div className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
+              {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success
+                ? <><CheckCircle size={14} /> Kết nối OK</>
+                : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].error}</>}
+            </div>
+          ) : null}
         </section>
 
         {/* === GEMINI DIRECT === */}
@@ -1021,7 +997,7 @@ export default function Settings() {
               />
               <button className="btn btn-secondary" onClick={handleSaveUrls}>Lưu</button>
               <button className="btn btn-ghost btn-icon" onClick={() => handleTest(PROVIDERS.GEMINI_DIRECT)}
-                disabled={testing[PROVIDERS.GEMINI_DIRECT] || keyManager.getKeyCount('gemini_direct') === 0}>
+                disabled={testing[PROVIDERS.GEMINI_DIRECT] || geminiDirectKeyCount === 0}>
                 {testing[PROVIDERS.GEMINI_DIRECT] ? <RefreshCw size={16} className="animate-spin" /> : <TestTube size={16} />}
               </button>
             </div>
@@ -1168,6 +1144,296 @@ export default function Settings() {
         <CloudSyncSection />
 
       </div>
+
+      {showCustomProxySetup ? (
+        <div className="modal-overlay ai-studio-relay-overlay openai-proxy-setup-overlay" role="presentation" onClick={() => setShowCustomProxySetup(false)}>
+          <div
+            className="modal ai-studio-relay-modal openai-proxy-setup-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="openai-proxy-setup-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <div className="ai-studio-relay-modal__eyebrow">Custom provider</div>
+                <h2 className="modal-title" id="openai-proxy-setup-title">Thiết lập Custom OpenAI-compatible</h2>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                onClick={() => setShowCustomProxySetup(false)}
+                aria-label="Đóng thiết lập Custom OpenAI-compatible"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="ai-studio-relay-modal__body openai-proxy-setup-body">
+              <div className="ai-studio-relay-hero openai-proxy-hero">
+                <div>
+                  <p className="ai-studio-relay-hero__kicker">Dành cho proxy OpenAI-compatible</p>
+                  <p>
+                    Dùng cho one-api, NewAPI, OpenRouter, Gemini CLI proxy clone hoặc endpoint có dạng
+                    <code> /v1/chat/completions</code>. Nếu là URL HTTPS public, StoryForge có thể đi qua Vercel relay.
+                    Nếu là localhost hoặc mạng riêng, trình duyệt sẽ gọi direct và server đó cần bật CORS.
+                  </p>
+                </div>
+                <div className="ai-studio-relay-hero__status openai-proxy-hero__status">
+                  <span>Trạng thái</span>
+                  <strong>{activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? 'Đang dùng Custom' : 'Chưa chọn Custom'}</strong>
+                  <small>
+                    {customProxyKeyCount} keys riêng · {customProxyModels.length} models · {customProxyTransportMode === 'relay' ? 'Vercel relay' : 'Direct'}
+                  </small>
+                </div>
+              </div>
+
+              <div className="ai-studio-relay-layout openai-proxy-layout">
+                <aside className="ai-studio-relay-guide openai-proxy-guide">
+                  <h3>Cách cấu hình</h3>
+                  <div className="ai-studio-relay-steps">
+                    {[
+                      ['Nhập Base URL', 'Dán root domain, /v1 hoặc full /v1/chat/completions. StoryForge sẽ tự chuẩn hóa endpoint.'],
+                      ['Thêm key riêng', 'Key ở đây chỉ dùng cho Custom Proxy, không trộn với key Gemini Proxy mặc định ag.'],
+                      ['Lấy hoặc nhập model', 'Bấm Lấy models nếu proxy có /v1/models. Nếu fail, nhập model thủ công vẫn dùng được.'],
+                      ['Test rồi dùng', 'Bấm Test để kiểm tra kết nối, sau đó bấm Lưu và dùng để áp dụng toàn app.'],
+                    ].map(([title, detail], index) => (
+                      <div className="ai-studio-relay-step" key={title}>
+                        <span>{index + 1}</span>
+                        <div>
+                          <strong>{title}</strong>
+                          <p>{detail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="ai-studio-relay-note">
+                    <strong>Lưu ý Vercel</strong>
+                    <p>
+                      Hosted HTTPS public có thể dùng relay cùng origin. Localhost, LM Studio local hoặc IP mạng riêng
+                      phải dùng direct vì Vercel cloud không gọi được máy local của người dùng.
+                    </p>
+                  </div>
+                </aside>
+
+                <section className="ai-studio-relay-config openai-proxy-config">
+                  <div className="openai-proxy-config-grid">
+                    <div className="openai-proxy-subblock">
+                      <div className="openai-proxy-subblock__title">Kết nối</div>
+                      <div className="form-group">
+                        <label className="form-label">Tên hiển thị</label>
+                        <input
+                          className="input"
+                          value={customProxyProfile.label || ''}
+                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, label: event.target.value }))}
+                          placeholder="Custom OpenAI-compatible"
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Base URL</label>
+                        <input
+                          className="input"
+                          value={customProxyProfile.baseUrl || ''}
+                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, baseUrl: event.target.value }))}
+                          placeholder="https://proxy.example.com hoặc http://localhost:1234/v1"
+                        />
+                        <p className="settings-hint">
+                          Có thể nhập root, /v1 hoặc full /v1/chat/completions. Không nối trùng /v1.
+                        </p>
+                      </div>
+                      <div className="openai-proxy-preview">
+                        <span>Chat</span>
+                        <code>{customProxyChatPreview || 'Nhập Base URL để xem endpoint'}</code>
+                      </div>
+                      <div className="openai-proxy-preview">
+                        <span>Models</span>
+                        <code>{customProxyModelsPreview || 'Nhập Base URL để xem endpoint'}</code>
+                      </div>
+                    </div>
+
+                    <div className="openai-proxy-subblock">
+                      <div className="openai-proxy-subblock__title">API key riêng</div>
+                      <KeySection
+                        provider={PROVIDERS.OPENAI_PROXY}
+                        providerLabel="Custom Proxy"
+                        description="Key này chỉ dùng cho Base URL custom, không dùng cho ag."
+                        icon={Key}
+                        onKeysChange={handleKeysChange}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="openai-proxy-subblock">
+                    <div className="openai-proxy-subblock__title">Models</div>
+                    <div className="settings-action-row">
+                      <button
+                        className="btn btn-secondary"
+                        onClick={handleFetchCustomProxyModels}
+                        disabled={fetchingProxyModels || !String(customProxyProfile.baseUrl || '').trim()}
+                      >
+                        {fetchingProxyModels ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                        Lấy models
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          syncCustomProxyProfile({}, { activate: true });
+                          setProxyModelFetchStatus({ type: 'success', text: 'Đã lưu Custom Proxy.' });
+                        }}
+                      >
+                        <Check size={14} /> Lưu
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => handleTest(PROVIDERS.OPENAI_PROXY, getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID))}
+                        disabled={testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] || !String(customProxyProfile.baseUrl || '').trim()}
+                      >
+                        {testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
+                        Test
+                      </button>
+                    </div>
+
+                    {customProxyModels.length > 0 ? (
+                      <div className="form-group">
+                        <label className="form-label">Chọn model từ danh sách</label>
+                        <select
+                          className="select"
+                          value={customProxyProfile.defaultModel || ''}
+                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: event.target.value }))}
+                        >
+                          {customProxyModels.map((model) => (
+                            <option key={model} value={model}>{model}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+
+                    <div className="form-group">
+                      <label className="form-label">Nhập model thủ công</label>
+                      <input
+                        className="input"
+                        value={customProxyProfile.defaultModel || ''}
+                        onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: event.target.value }))}
+                        placeholder="gemini-2.5-flash, openai/gpt-4.1, llama3..."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="openai-proxy-subblock">
+                    <div className="openai-proxy-subblock__title">Trạng thái</div>
+                    <div className="openai-proxy-status-grid">
+                      <span>Profile</span>
+                      <strong>{activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? 'Custom đang dùng' : 'Đang lưu sẵn'}</strong>
+                      <span>Transport</span>
+                      <strong>{customProxyTransportMode === 'relay' ? 'Vercel relay' : 'Direct'}</strong>
+                      <span>Models</span>
+                      <strong>{customProxyModels.length}</strong>
+                      <span>Keys</span>
+                      <strong>{customProxyKeyCount}</strong>
+                      <span>Gemini safety</span>
+                      <strong>{customProxyProfile.supportsGeminiSafetySettings ? 'Bật' : 'Tắt'}</strong>
+                    </div>
+                    {proxyModelFetchStatus ? (
+                      <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
+                        {proxyModelFetchStatus.type === 'success' ? <CheckCircle size={14} /> : proxyModelFetchStatus.type === 'pending' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
+                        {proxyModelFetchStatus.text}
+                      </div>
+                    ) : null}
+                    {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? (
+                      <div className={`settings-test-result ${testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
+                        {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success
+                          ? <><CheckCircle size={14} /> Kết nối OK</>
+                          : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].error}</>}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <details
+                    className="openai-proxy-advanced"
+                    open={showCustomProxyAdvanced}
+                    onToggle={(event) => setShowCustomProxyAdvanced(event.currentTarget.open)}
+                  >
+                    <summary>Nâng cao</summary>
+                    <div className="openai-proxy-advanced__grid">
+                      <label>
+                        <span>Chat path</span>
+                        <input
+                          className="input"
+                          value={customProxyProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH}
+                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, chatCompletionsPath: event.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        <span>Models path</span>
+                        <input
+                          className="input"
+                          value={customProxyProfile.modelsPath || DEFAULT_PROXY_MODELS_PATH}
+                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, modelsPath: event.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        <span>Transport</span>
+                        <select
+                          className="select"
+                          value={customProxyProfile.transport || 'auto'}
+                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, transport: event.target.value }))}
+                        >
+                          <option value="auto">Auto</option>
+                          <option value="relay">Vercel relay</option>
+                          <option value="direct">Direct</option>
+                        </select>
+                      </label>
+                      <label className="openai-proxy-toggle">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(customProxyProfile.supportsGeminiSafetySettings)}
+                          onChange={(event) => setCustomProxyProfile((prev) => ({
+                            ...prev,
+                            supportsGeminiSafetySettings: event.target.checked,
+                          }))}
+                        />
+                        <span>Gửi Gemini safety settings</span>
+                      </label>
+                    </div>
+                  </details>
+                </section>
+              </div>
+            </div>
+
+            <div className="modal-actions ai-studio-relay-modal__actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleFetchCustomProxyModels}
+                disabled={fetchingProxyModels || !String(customProxyProfile.baseUrl || '').trim()}
+              >
+                {fetchingProxyModels ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Lấy models
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => handleTest(PROVIDERS.OPENAI_PROXY, getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID))}
+                disabled={testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] || !String(customProxyProfile.baseUrl || '').trim()}
+              >
+                {testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
+                Test
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  syncCustomProxyProfile({}, { activate: true });
+                  setProxyModelFetchStatus({ type: 'success', text: 'Đã lưu và chọn Custom Proxy.' });
+                  setShowCustomProxySetup(false);
+                }}
+              >
+                <Check size={14} /> Lưu và dùng
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showAIStudioRelaySetup ? (
         <div className="modal-overlay ai-studio-relay-overlay" role="presentation" onClick={() => setShowAIStudioRelaySetup(false)}>

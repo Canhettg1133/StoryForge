@@ -166,6 +166,13 @@ export function getOpenAIProxyModel(profile = getActiveOpenAIProxyProfile(), fal
   return trimText(profile?.defaultModel) || fallback;
 }
 
+export function getOpenAIProxyKeyProvider(profileOrId = getActiveOpenAIProxyProfile()) {
+  const profileId = typeof profileOrId === 'string'
+    ? profileOrId
+    : profileOrId?.id;
+  return profileId === AG_PROXY_PROFILE_ID ? 'gemini_proxy' : 'openai_proxy';
+}
+
 export function resolveOpenAIProxyRequest(profile, action) {
   const mode = resolveProxyTransportMode(profile);
   const path = action === 'models'
@@ -187,10 +194,28 @@ export function resolveOpenAIProxyRequest(profile, action) {
   };
 }
 
+export function resolveOpenAIProxyDirectRequest(profile, action) {
+  const path = action === 'models'
+    ? (profile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
+    : (profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
+  return {
+    mode: 'direct',
+    url: buildOpenAIProxyEndpoint(profile.baseUrl, path),
+    path,
+  };
+}
+
+export function shouldFallbackOpenAIProxyRelay(response) {
+  if (!response) return false;
+  if (response.status === 404 || response.status === 405) return true;
+  const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
+  return response.ok && contentType.includes('text/html');
+}
+
 export async function fetchOpenAIProxyModels({ profile = getActiveOpenAIProxyProfile(), apiKey = '', signal } = {}) {
   const target = resolveOpenAIProxyRequest(profile, 'models');
   const authHeader = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
-  const response = target.mode === 'relay'
+  let response = target.mode === 'relay'
     ? await fetch(target.url, {
       method: 'POST',
       headers: {
@@ -209,6 +234,15 @@ export async function fetchOpenAIProxyModels({ profile = getActiveOpenAIProxyPro
       headers: authHeader,
       signal,
     });
+
+  if (target.mode === 'relay' && shouldFallbackOpenAIProxyRelay(response)) {
+    const directTarget = resolveOpenAIProxyDirectRequest(profile, 'models');
+    response = await fetch(directTarget.url, {
+      method: 'GET',
+      headers: authHeader,
+      signal,
+    });
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');

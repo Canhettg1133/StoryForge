@@ -4,6 +4,7 @@
  * Quản lý API keys RIÊNG BIỆT cho từng provider:
  *   - gemini_direct: keys từ Google AI Studio (free tier)
  *   - gemini_proxy: keys từ 星星公益站 proxy
+ *   - openai_proxy: keys từ Custom OpenAI-compatible proxy
  * 
  * Mỗi pool có rotation riêng, rate limit riêng.
  * Hoạt động tối ưu: 1 key (no overhead) hoặc N keys (round-robin).
@@ -13,7 +14,9 @@ const STORAGE_KEY = 'sf-api-keys-v2';
 const RATE_LIMIT_COOLDOWN = 60000;
 
 function normalizeProviderKey(provider) {
-  return provider === 'openai_proxy' ? 'gemini_proxy' : provider;
+  const key = String(provider || '').trim();
+  if (key === 'custom_openai_proxy') return 'openai_proxy';
+  return key;
 }
 
 class KeyManager {
@@ -22,10 +25,12 @@ class KeyManager {
     this.pools = {
       gemini_direct: [],  // [{ key, label }]
       gemini_proxy: [],   // [{ key, label }]
+      openai_proxy: [],   // [{ key, label }]
     };
     this.currentIndex = {
       gemini_direct: 0,
       gemini_proxy: 0,
+      openai_proxy: 0,
     };
     this.rateLimited = new Map(); // key → timestamp
     this._load();
@@ -39,7 +44,8 @@ class KeyManager {
         const parsed = JSON.parse(saved);
         this.pools = {
           gemini_direct: parsed.gemini_direct || [],
-          gemini_proxy: parsed.gemini_proxy || parsed.openai_proxy || [],
+          gemini_proxy: parsed.gemini_proxy || [],
+          openai_proxy: parsed.openai_proxy || parsed.custom_openai_proxy || [],
         };
       }
     } catch (e) {
@@ -191,7 +197,11 @@ class KeyManager {
   }
 
   getTotalKeys() {
-    return (this.pools.gemini_direct?.length || 0) + (this.pools.gemini_proxy?.length || 0);
+    return (
+      (this.pools.gemini_direct?.length || 0)
+      + (this.pools.gemini_proxy?.length || 0)
+      + (this.pools.openai_proxy?.length || 0)
+    );
   }
 }
 

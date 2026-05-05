@@ -2,8 +2,24 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+function openAIProxyDevMiddleware() {
+  return {
+    name: 'storyforge-openai-proxy-dev-middleware',
+    configureServer(server) {
+      server.middlewares.use('/api/openai-proxy', async (req, res, next) => {
+        try {
+          const { default: handler } = await import('./api/openai-proxy.js')
+          await handler(req, res)
+        } catch (error) {
+          next(error)
+        }
+      })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), openAIProxyDevMiddleware()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

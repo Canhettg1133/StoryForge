@@ -10,7 +10,10 @@ import { PROVIDERS, TASK_TYPES } from '../../../services/ai/router';
 import {
     DEFAULT_PROXY_CHAT_PATH,
     getActiveOpenAIProxyProfile,
+    getOpenAIProxyKeyProvider,
+    resolveOpenAIProxyDirectRequest,
     resolveOpenAIProxyRequest,
+    shouldFallbackOpenAIProxyRelay,
 } from '../../../services/ai/openAIProxyConfig';
 import { NSFW_REBUKE_PROMPT } from '../../../utils/constants';
 
@@ -54,9 +57,9 @@ export function getOllamaUrl() {
 // ================================
 async function callGeminiProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, proxyProfileId }) {
     const proxyProfile = getActiveOpenAIProxyProfile(proxyProfileId);
-    if (!String(model || '').trim()) throw new Error('Chua chon model cho OpenAI-compatible Proxy.');
-    const apiKey = keyManager.getNextKey(PROVIDERS.OPENAI_PROXY);
-    if (!apiKey) throw new Error('Khong co API key cho OpenAI-compatible Proxy.');
+    if (!String(model || '').trim()) throw new Error('Chưa chọn model cho OpenAI-compatible Proxy.');
+    const apiKey = keyManager.getNextKey(getOpenAIProxyKeyProvider(proxyProfile));
+    if (!apiKey) throw new Error('Không có API key cho OpenAI-compatible Proxy.');
 
     const target = resolveOpenAIProxyRequest(proxyProfile, 'chat');
     const payload = { model, messages, stream, max_tokens: PROXY_MAX_OUTPUT_TOKENS };
@@ -70,7 +73,7 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
         : payload;
 
     try {
-        const response = await fetch(target.url, {
+        let response = await fetch(target.url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -79,6 +82,19 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
             body: JSON.stringify(body),
             signal,
         });
+
+        if (target.mode === 'relay' && shouldFallbackOpenAIProxyRelay(response)) {
+            const directTarget = resolveOpenAIProxyDirectRequest(proxyProfile, 'chat');
+            response = await fetch(directTarget.url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                },
+                body: JSON.stringify(payload),
+                signal,
+            });
+        }
 
         if (response.status === 429) {
             keyManager.markRateLimited(apiKey, 60000);

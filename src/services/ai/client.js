@@ -15,7 +15,10 @@ import {
   DEFAULT_PROXY_MODELS_PATH,
   fetchOpenAIProxyModels,
   getActiveOpenAIProxyProfile,
+  getOpenAIProxyKeyProvider,
+  resolveOpenAIProxyDirectRequest,
   resolveOpenAIProxyRequest,
+  shouldFallbackOpenAIProxyRelay,
 } from './openAIProxyConfig';
 import {
   callAIStudioRelayTransport,
@@ -167,15 +170,16 @@ function extractGeminiDirectResponseText(data, errorContext = {}) {
 // ================================
 async function callOpenAIProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode, proxyProfileId }) {
   const proxyProfile = getActiveOpenAIProxyProfile(proxyProfileId);
-  if (!proxyProfile?.baseUrl) throw new Error('Chua cau hinh Proxy URL.');
+  if (!proxyProfile?.baseUrl) throw new Error('Chưa cấu hình Proxy URL.');
   if (!String(model || '').trim()) {
     throw normalizeAIError(
-      { code: AI_ERROR_CODES.MISSING_MODEL, rawMessage: 'Chua chon model cho OpenAI-compatible Proxy.' },
+      { code: AI_ERROR_CODES.MISSING_MODEL, rawMessage: 'Chưa chọn model cho OpenAI-compatible Proxy.' },
       { provider: PROVIDERS.OPENAI_PROXY, model },
     );
   }
 
-  const apiKey = keyManager.getNextKey(PROVIDERS.OPENAI_PROXY);
+  const keyProvider = getOpenAIProxyKeyProvider(proxyProfile);
+  const apiKey = keyManager.getNextKey(keyProvider);
   if (!apiKey) {
     throw normalizeAIError(
       { code: AI_ERROR_CODES.MISSING_API_KEY, rawMessage: 'MISSING_API_KEY' },
@@ -208,7 +212,7 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
     : payload;
 
   try {
-    const response = await fetch(target.url, {
+    let response = await fetch(target.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -217,6 +221,19 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
       body: JSON.stringify(requestBody),
       signal,
     });
+
+    if (target.mode === 'relay' && shouldFallbackOpenAIProxyRelay(response)) {
+      const directTarget = resolveOpenAIProxyDirectRequest(proxyProfile, 'chat');
+      response = await fetch(directTarget.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(payload),
+        signal,
+      });
+    }
 
     if (response.status === 429) {
       const errText = await response.text().catch(() => '');
@@ -805,8 +822,8 @@ class AIService {
         return { success: true, models: data.models?.map(m => m.name) || [] };
       }
       if (provider === PROVIDERS.OPENAI_PROXY || provider === PROVIDERS.GEMINI_PROXY) {
-        const apiKey = keyManager.getNextKey(PROVIDERS.OPENAI_PROXY) || '';
         const profile = getActiveOpenAIProxyProfile();
+        const apiKey = keyManager.getNextKey(getOpenAIProxyKeyProvider(profile)) || '';
         const models = await fetchOpenAIProxyModels({
           profile,
           apiKey,
@@ -834,7 +851,7 @@ class AIService {
       if (provider === PROVIDERS.AI_STUDIO_RELAY) {
         const relayUrl = getAIStudioRelayUrl();
         const roomCode = getAIStudioRelayRoomCode();
-        if (!relayUrl) return { success: false, error: 'Chua cau hinh Relay URL' };
+        if (!relayUrl) return { success: false, error: 'Chưa cấu hình Relay URL' };
         if (roomCode) {
           const status = await getAIStudioRelayRoomStatus(relayUrl, roomCode, {
             signal: AbortSignal.timeout(8000),
