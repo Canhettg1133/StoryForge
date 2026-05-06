@@ -25,9 +25,11 @@ import {
   buildOpenAIProxyEndpoint,
   fetchOpenAIProxyModels,
   filterGeminiModelIds,
+  getAgOpenAIProxyProfile,
   getOpenAIProxySettings,
   getOpenAIProxyKeyProvider,
   resolveProxyTransportMode,
+  setAgProxyModels,
   setOpenAIProxyActiveProfile,
   updateCustomOpenAIProxyProfile,
 } from '../../services/ai/openAIProxyConfig';
@@ -308,6 +310,14 @@ function normalizeGeminiProxyModelList(models = []) {
   return filterGeminiModelIds(normalizeProxyModelList(models));
 }
 
+function getAgProxyModelOption(model) {
+  const preset = PROXY_MODEL_PRESETS.find((item) => item.id === model);
+  return {
+    id: model,
+    label: preset?.label || model,
+  };
+}
+
 function ModelDefaultCallout({
   eyebrow,
   value,
@@ -425,7 +435,9 @@ export default function Settings() {
   const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
   const isMobileLayout = useMobileLayout(900);
   const initialProxySettings = getOpenAIProxySettings();
+  const initialAgProxyProfile = getAgOpenAIProxyProfile();
   const [activeProxyProfileId, setActiveProxyProfileId] = useState(initialProxySettings.activeProfileId);
+  const [agProxyModels, setAgProxyModelList] = useState(initialAgProxyProfile.models);
   const [customProxyProfile, setCustomProxyProfile] = useState(initialProxySettings.customProfile);
   const [proxyModelFetchStatus, setProxyModelFetchStatus] = useState(null);
   const [fetchingProxyModels, setFetchingProxyModels] = useState(false);
@@ -450,10 +462,21 @@ export default function Settings() {
   const [quality, setQuality] = useState(modelRouter.getQualityMode());
   const [proxyModel, setProxyModel] = useState(modelRouter.getProxyModel());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
-  const selectedProxyPreset = PROXY_MODEL_PRESETS.find((model) => model.id === proxyModel) || PROXY_MODEL_PRESETS[4] || PROXY_MODEL_PRESETS[0];
+  const selectedProxyPreset = PROXY_MODEL_PRESETS.find((model) => model.id === proxyModel)
+    || (proxyModel ? { id: proxyModel, label: proxyModel } : PROXY_MODEL_PRESETS[1] || PROXY_MODEL_PRESETS[0]);
   const selectedProviderCard = provider === PROVIDERS.OPENAI_PROXY
     ? (activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? PROVIDER_CARD_CUSTOM_PROXY : PROVIDER_CARD_AG_PROXY)
     : provider;
+  const agProxyFetchedModels = normalizeGeminiProxyModelList(agProxyModels);
+  const agProxyFallbackOptions = [
+    ...(!PROXY_MODEL_PRESETS.some((model) => model.id === proxyModel) && proxyModel
+      ? [getAgProxyModelOption(proxyModel)]
+      : []),
+    ...PROXY_MODEL_PRESETS,
+  ];
+  const agProxyModelOptions = agProxyFetchedModels.length > 0
+    ? normalizeGeminiProxyModelList([proxyModel, ...agProxyFetchedModels]).map(getAgProxyModelOption)
+    : agProxyFallbackOptions;
   const customProxyModels = normalizeGeminiProxyModelList([
     customProxyProfile.defaultModel,
     ...(Array.isArray(customProxyProfile.models) ? customProxyProfile.models : []),
@@ -666,6 +689,58 @@ export default function Settings() {
   };
   const handleKeysChange = () => setKeyCounts(readSettingsKeyCounts());
 
+  const handleSelectAgProxyModel = (model) => {
+    const normalized = String(model || '').trim();
+    setProxyModel(normalized);
+    modelRouter.setProxyModel(normalized);
+  };
+
+  const handleFetchAgProxyModels = async () => {
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    setActiveProxyProfileId(AG_PROXY_PROFILE_ID);
+    setProvider(PROVIDERS.OPENAI_PROXY);
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    const profile = getAgOpenAIProxyProfile();
+    setFetchingProxyModels(true);
+    setProxyModelFetchStatus({ type: 'pending', text: 'Đang lấy danh sách models từ Gemini Proxy mặc định...' });
+    try {
+      const models = await fetchOpenAIProxyModels({
+        profile,
+        apiKey: keyManager.getNextKey(getOpenAIProxyKeyProvider(profile)) || '',
+        signal: AbortSignal.timeout(15000),
+      });
+      const allModels = normalizeProxyModelList(models);
+      const uniqueModels = normalizeGeminiProxyModelList(allModels);
+      if (uniqueModels.length === 0) {
+        setProxyModelFetchStatus({
+          type: 'error',
+          text: `Đã lấy ${allModels.length} models nhưng không thấy model Gemini. Vẫn giữ danh sách preset có sẵn.`,
+        });
+        return;
+      }
+
+      const savedModels = setAgProxyModels(uniqueModels);
+      setAgProxyModelList(savedModels);
+      const stableFlashModel = PROXY_MODEL_PRESETS[1]?.id;
+      const nextModel = savedModels.includes(proxyModel)
+        ? proxyModel
+        : (savedModels.includes(stableFlashModel) ? stableFlashModel : savedModels[0]);
+      handleSelectAgProxyModel(nextModel);
+      setProxyModelFetchStatus({
+        type: 'success',
+        text: `Đã lấy ${allModels.length} models, lọc còn ${savedModels.length} model Gemini cho ag.`,
+      });
+    } catch (error) {
+      setProxyModelFetchStatus({
+        type: 'error',
+        text: `${error?.message || 'Không lấy được models'}. Vẫn có thể dùng preset Gemini Proxy có sẵn.`,
+      });
+    } finally {
+      setFetchingProxyModels(false);
+    }
+  };
+
   const handleFetchCustomProxyModels = async () => {
     const profile = syncCustomProxyProfile({}, { activate: true });
     if (!profile.baseUrl) {
@@ -824,12 +899,46 @@ export default function Settings() {
                 hint="Bấm vào hộp bên dưới để đổi model mặc định cho toàn bộ tác vụ Gemini Proxy."
                 selectLabel="Chọn model Gemini Proxy mặc định"
                 selectValue={proxyModel}
-                options={PROXY_MODEL_PRESETS}
-                onChange={(model) => {
-                  setProxyModel(model);
-                  modelRouter.setProxyModel(model);
-                }}
+                options={agProxyModelOptions}
+                onChange={handleSelectAgProxyModel}
               />
+              <div className="settings-action-row settings-action-row--spaced">
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleFetchAgProxyModels}
+                  disabled={fetchingProxyModels}
+                >
+                  {fetchingProxyModels ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  Lấy models
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => handleTest(PROVIDERS.OPENAI_PROXY, getProxyProfileTestKey(AG_PROXY_PROFILE_ID))}
+                  disabled={testing[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)]}
+                >
+                  {testing[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
+                  Test
+                </button>
+              </div>
+              <CustomProxyModelPicker
+                models={agProxyFetchedModels}
+                selectedModel={proxyModel}
+                onSelect={handleSelectAgProxyModel}
+                title="Danh sách model Gemini Proxy ag"
+              />
+              {proxyModelFetchStatus ? (
+                <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
+                  {proxyModelFetchStatus.type === 'success' ? <CheckCircle size={14} /> : proxyModelFetchStatus.type === 'pending' ? <RefreshCw size={14} className="animate-spin" /> : <XCircle size={14} />}
+                  {proxyModelFetchStatus.text}
+                </div>
+              ) : null}
+              {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] ? (
+                <div className={`settings-test-result ${testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
+                  {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success
+                    ? <><CheckCircle size={14} /> Kết nối OK</>
+                    : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].error}</>}
+                </div>
+              ) : null}
             </div>
           ) : null}
 

@@ -243,13 +243,13 @@ export function getLabLiteModelRoute({ task = '', mode = 'standard' } = {}) {
   const normalizedMode = String(mode || 'standard').toLowerCase();
 
   if (normalizedTask === 'scout') {
-    return { task: normalizedTask, quality: QUALITY_MODES.FAST, useProxyQualityRouting: true };
+    return { task: normalizedTask, quality: QUALITY_MODES.FAST };
   }
   if (normalizedTask === 'arc_mapper') {
-    return { task: normalizedTask, quality: QUALITY_MODES.BALANCED, useProxyQualityRouting: true };
+    return { task: normalizedTask, quality: QUALITY_MODES.BALANCED };
   }
   if (normalizedTask === 'deep_analysis') {
-    return { task: normalizedTask, quality: QUALITY_MODES.BEST, useProxyQualityRouting: true };
+    return { task: normalizedTask, quality: QUALITY_MODES.BEST };
   }
   if (normalizedTask === 'canon_review') {
     const quality = normalizedMode === 'quick'
@@ -259,7 +259,7 @@ export function getLabLiteModelRoute({ task = '', mode = 'standard' } = {}) {
         : QUALITY_MODES.BALANCED;
     return { task: normalizedTask, mode: normalizedMode, quality, useProxyQualityRouting: true };
   }
-  return { task: normalizedTask, quality: QUALITY_MODES.BALANCED, useProxyQualityRouting: true };
+  return { task: normalizedTask, quality: QUALITY_MODES.BALANCED };
 }
 
 export function buildChapterAnalysisCacheEntry({

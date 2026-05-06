@@ -3,7 +3,7 @@ export const CUSTOM_PROXY_PROFILE_ID = 'custom-openai-proxy';
 export const DEFAULT_PROXY_CHAT_PATH = '/v1/chat/completions';
 export const DEFAULT_PROXY_MODELS_PATH = '/v1/models';
 export const DEFAULT_AG_PROXY_BASE_URL = '/api/proxy';
-export const DEFAULT_AG_PROXY_MODEL = 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]';
+export const DEFAULT_AG_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
 
 const KNOWN_ENDPOINT_SUFFIXES = [
   '/v1/chat/completions',

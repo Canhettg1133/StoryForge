@@ -13,7 +13,9 @@ import {
 
 const SETTINGS_KEY = 'sf-ai-settings';
 const PROXY_MODEL_KEY = 'sf-proxy-model';
-const LEGACY_DEFAULT_AG_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
+const AG_PROXY_MODELS_KEY = 'sf-ag-proxy-models';
+const AG_PROXY_MODEL_META_KEY = 'sf-ag-proxy-model-meta';
+const ACCIDENTAL_AG_PROXY_PRO_DEFAULT = 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]';
 
 function readSettings() {
   try {
@@ -33,6 +35,23 @@ function trimText(value) {
   return String(value || '').trim();
 }
 
+function normalizeStoredModelList(models = []) {
+  return [...new Set(
+    (Array.isArray(models) ? models : [])
+      .map((model) => trimText(model))
+      .filter(Boolean),
+  )];
+}
+
+function readJsonStorage(key, fallback) {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function isLegacyAgProxyUrl(value) {
   const normalized = trimText(value).replace(/\/+$/u, '');
   return !normalized
@@ -49,7 +68,10 @@ export function normalizeOpenAIProxyProvider(provider) {
 export function getAgProxyModel() {
   try {
     const saved = trimText(localStorage.getItem(PROXY_MODEL_KEY));
-    if (saved === LEGACY_DEFAULT_AG_PROXY_MODEL) {
+    if (saved === ACCIDENTAL_AG_PROXY_PRO_DEFAULT) {
+      const meta = readJsonStorage(AG_PROXY_MODEL_META_KEY, {});
+      if (trimText(meta?.manualModel) === saved) return saved;
+
       localStorage.setItem(PROXY_MODEL_KEY, DEFAULT_AG_PROXY_MODEL);
       return DEFAULT_AG_PROXY_MODEL;
     }
@@ -62,6 +84,17 @@ export function getAgProxyModel() {
 export function setAgProxyModel(model) {
   const normalized = trimText(model) || DEFAULT_AG_PROXY_MODEL;
   localStorage.setItem(PROXY_MODEL_KEY, normalized);
+  localStorage.setItem(AG_PROXY_MODEL_META_KEY, JSON.stringify({ manualModel: normalized }));
+  return normalized;
+}
+
+export function getAgProxyModels() {
+  return normalizeStoredModelList(readJsonStorage(AG_PROXY_MODELS_KEY, []));
+}
+
+export function setAgProxyModels(models = []) {
+  const normalized = normalizeStoredModelList(models);
+  localStorage.setItem(AG_PROXY_MODELS_KEY, JSON.stringify(normalized));
   return normalized;
 }
 
@@ -87,7 +120,7 @@ export function getAgOpenAIProxyProfile() {
     label: 'Gemini Proxy mac dinh',
     baseUrl: DEFAULT_AG_PROXY_BASE_URL,
     defaultModel: getAgProxyModel(),
-    models: [],
+    models: getAgProxyModels(),
     chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
     modelsPath: DEFAULT_PROXY_MODELS_PATH,
     authType: 'bearer',

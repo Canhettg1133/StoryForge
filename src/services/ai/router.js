@@ -9,7 +9,9 @@
 
 import {
   AG_PROXY_PROFILE_ID,
+  DEFAULT_AG_PROXY_MODEL,
   getActiveOpenAIProxyProfile,
+  getAgProxyModel,
   getOpenAIProxyModel,
   normalizeOpenAIProxyProvider,
   setAgProxyModel,
@@ -266,21 +268,19 @@ const PROXY_PRESET_BY_QUALITY = {
 };
 
 function getDefaultProxyModel() {
-  return PROXY_MODEL_PRESETS[4]?.id || PROXY_MODEL_PRESETS[1]?.id || PROXY_MODELS[0]?.id || '';
+  return DEFAULT_AG_PROXY_MODEL || PROXY_MODEL_PRESETS[1]?.id || PROXY_MODELS[0]?.id || '';
 }
 
 function normalizeProxyModel(modelId) {
   const normalized = String(modelId || '').trim();
-  if (PROXY_MODEL_PRESETS.some((model) => model.id === normalized)) return normalized;
-  return getDefaultProxyModel();
+  return normalized || getDefaultProxyModel();
 }
 
 function getInitialProxyModel() {
   try {
     const saved = localStorage.getItem(PROXY_MODEL_KEY);
     if (saved) {
-      if (saved === PROXY_MODEL_PRESETS[1]?.id) return getDefaultProxyModel();
-      return normalizeProxyModel(saved);
+      return normalizeProxyModel(getAgProxyModel());
     }
 
     const legacyQuality = localStorage.getItem('sf-quality-mode');

@@ -56,6 +56,14 @@ describe('Lab Lite Phase 11 - long context optimization', () => {
     expect(getLabLiteModelRoute({ task: 'canon_review', mode: 'deep' }).quality).toBe('best');
   });
 
+  it('uses hidden AG quality routing only for canon review routes', () => {
+    expect(getLabLiteModelRoute({ task: 'scout' }).useProxyQualityRouting).not.toBe(true);
+    expect(getLabLiteModelRoute({ task: 'arc_mapper' }).useProxyQualityRouting).not.toBe(true);
+    expect(getLabLiteModelRoute({ task: 'deep_analysis' }).useProxyQualityRouting).not.toBe(true);
+    expect(getLabLiteModelRoute({ task: 'unknown' }).useProxyQualityRouting).not.toBe(true);
+    expect(getLabLiteModelRoute({ task: 'canon_review', mode: 'standard' }).useProxyQualityRouting).toBe(true);
+  });
+
   it('uses stable content hashes to skip unchanged scout and deep analysis work', () => {
     const chapter = { id: 'c1', corpusId: 'corpus_1', index: 1, content: 'Lan waits.' };
     const entry = buildChapterAnalysisCacheEntry({

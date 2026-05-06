@@ -57,7 +57,7 @@ describe('openAIProxyConfig legacy settings migration', () => {
     expect(getOpenAIProxyKeyProvider(getDefaultCustomOpenAIProxyProfile())).toBe('openai_proxy');
   });
 
-  it('migrates the old ag default model to Gemini 3.1 Pro', async () => {
+  it('keeps the stable ag Flash model as the default model', async () => {
     localStorage.setItem('sf-proxy-model', 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]');
 
     const {
@@ -67,6 +67,44 @@ describe('openAIProxyConfig legacy settings migration', () => {
 
     expect(getAgProxyModel()).toBe(DEFAULT_AG_PROXY_MODEL);
     expect(localStorage.getItem('sf-proxy-model')).toBe(DEFAULT_AG_PROXY_MODEL);
+  });
+
+  it('migrates the accidental ag 3.1 Pro default back to stable Flash only once', async () => {
+    const accidentalProDefault = 'gemini-3.1-pro-high-真流-[星星公益站-CLI渠道]';
+    localStorage.setItem('sf-proxy-model', accidentalProDefault);
+
+    const {
+      DEFAULT_AG_PROXY_MODEL,
+      getAgProxyModel,
+      setAgProxyModel,
+    } = await loadConfig();
+
+    expect(getAgProxyModel()).toBe(DEFAULT_AG_PROXY_MODEL);
+    expect(localStorage.getItem('sf-proxy-model')).toBe(DEFAULT_AG_PROXY_MODEL);
+
+    setAgProxyModel(accidentalProDefault);
+
+    expect(getAgProxyModel()).toBe(accidentalProDefault);
+    expect(localStorage.getItem('sf-proxy-model')).toBe(accidentalProDefault);
+  });
+
+  it('stores fetched ag proxy models on the ag profile', async () => {
+    const {
+      getAgOpenAIProxyProfile,
+      setAgProxyModels,
+    } = await loadConfig();
+
+    setAgProxyModels([
+      ' gcli-gemini-3.1-pro-preview-live ',
+      'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+      'gcli-gemini-3.1-pro-preview-live',
+      '',
+    ]);
+
+    expect(getAgOpenAIProxyProfile().models).toEqual([
+      'gcli-gemini-3.1-pro-preview-live',
+      'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    ]);
   });
 
   it('falls back to direct model fetch when the same-origin relay route is missing', async () => {

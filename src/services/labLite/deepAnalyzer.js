@@ -276,7 +276,6 @@ export function runDeepAnalysisBatch({
       allowConcurrent: true,
       routeOptions: {
         qualityOverride: QUALITY_MODES.BEST,
-        useProxyQualityRouting: true,
       },
       onComplete: (text) => {
         try {

@@ -200,7 +200,6 @@ export async function generateFanficProjectSeed({ canonPack, setup = {}, title =
         allowConcurrent: true,
         routeOptions: {
           qualityOverride: QUALITY_MODES.BALANCED,
-          useProxyQualityRouting: true,
         },
         onComplete: resolve,
         onError: reject,

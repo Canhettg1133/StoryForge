@@ -232,6 +232,57 @@ describe('phase10 arc outline revision flow', () => {
     expect(useArcGenStore.getState().outputMode).toBe('outline_review');
   });
 
+  it('keeps outline and generated chapter drafting on the selected proxy model', async () => {
+    dbMock.__reset({
+      projects: [{ id: 1, updated_at: 0, target_length: 120, milestones: '[]' }],
+      chapters: buildExistingChapters(10),
+      chapterMeta: [],
+      macro_arcs: [],
+    });
+    projectStoreState.chapters = buildExistingChapters(10);
+    useArcGenStore.setState({
+      currentChapterCount: 10,
+      projectTargetLength: 120,
+      projectMilestones: [],
+      availableMacroArcs: [],
+      selectedMacroArcId: null,
+      currentMacroArcId: null,
+      arcGoal: 'Build the next investigation arc.',
+      arcChapterCount: 2,
+      outputMode: 'outline_review',
+    });
+
+    aiServiceMock.send.mockImplementationOnce(({ onComplete }) => {
+      onComplete(JSON.stringify(buildSlowOutline()));
+    });
+
+    await useArcGenStore.getState().generateOutline({
+      projectId: 1,
+      chapterIndex: 10,
+      genre: 'fantasy',
+    });
+
+    expect(aiServiceMock.send).toHaveBeenCalledTimes(1);
+    expect(aiServiceMock.send.mock.calls[0][0].routeOptions?.useProxyQualityRouting).not.toBe(true);
+
+    aiServiceMock.send.mockReset();
+    aiServiceMock.send.mockImplementation(({ onComplete }) => {
+      onComplete('Draft text for the generated chapter. It follows the outline and keeps the branch focused.');
+    });
+
+    const started = await useArcGenStore.getState().startBatchDraft({
+      projectId: 1,
+      genre: 'fantasy',
+      startingChapterIndex: 10,
+    });
+
+    expect(started).toBe(true);
+    expect(aiServiceMock.send).toHaveBeenCalled();
+    aiServiceMock.send.mock.calls.forEach(([options]) => {
+      expect(options.routeOptions?.useProxyQualityRouting).not.toBe(true);
+    });
+  });
+
   it('force-saves outline even when blocking issues remain', async () => {
     const macroArc = buildGuardedMacroArc();
     const validationContext = buildValidationContext();

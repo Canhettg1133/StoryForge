@@ -145,7 +145,6 @@ function sendJsonRequest(messages, { quality = QUALITY_MODES.BEST } = {}) {
       allowConcurrent: true,
       routeOptions: {
         qualityOverride: quality,
-        useProxyQualityRouting: true,
       },
       onComplete: (text) => {
         try {

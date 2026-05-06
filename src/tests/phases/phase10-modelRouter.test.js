@@ -10,14 +10,14 @@ describe('phase10 model router proxy model selection', () => {
     localStorage.clear();
   });
 
-  it('defaults the ag Gemini Proxy preset to Gemini 3.1 Pro', async () => {
+  it('defaults the ag Gemini Proxy preset to the stable Flash model', async () => {
     const {
       default: modelRouter,
       PROXY_MODEL_PRESETS,
     } = await loadRouter();
 
-    expect(modelRouter.getProxyModel()).toBe(PROXY_MODEL_PRESETS[4].id);
-    expect(localStorage.getItem('sf-proxy-model')).toBe(PROXY_MODEL_PRESETS[4].id);
+    expect(modelRouter.getProxyModel()).toBe(PROXY_MODEL_PRESETS[1].id);
+    expect(localStorage.getItem('sf-proxy-model')).toBe(PROXY_MODEL_PRESETS[1].id);
   });
 
   it('routes normal proxy tasks to the selected proxy model instead of task quality map', async () => {
@@ -138,6 +138,27 @@ describe('phase10 model router proxy model selection', () => {
 
     expect(route.model).toBe(PROXY_MODEL_PRESETS[0].id);
     expect(route.tier).toBe('custom');
+  });
+
+  it('preserves fetched ag proxy model ids instead of forcing them back to built-in presets', async () => {
+    const {
+      default: modelRouter,
+      PROVIDERS,
+      TASK_TYPES,
+    } = await loadRouter();
+
+    const fetchedAgModel = 'gcli-gemini-3.1-pro-preview-live';
+
+    modelRouter.setPreferredProvider(PROVIDERS.GEMINI_PROXY);
+    modelRouter.setProxyModel(fetchedAgModel);
+
+    const route = modelRouter.route(TASK_TYPES.FREE_PROMPT);
+
+    expect(modelRouter.getProxyModel()).toBe(fetchedAgModel);
+    expect(localStorage.getItem('sf-proxy-model')).toBe(fetchedAgModel);
+    expect(route.provider).toBe(PROVIDERS.OPENAI_PROXY);
+    expect(route.model).toBe(fetchedAgModel);
+    expect(route.proxyProfileId).toBe('ag-gemini-proxy');
   });
 
   it('preserves Gemini Direct quality mapping', async () => {

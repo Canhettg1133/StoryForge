@@ -161,7 +161,6 @@ export function runChapterScout({ chapter, totalChapters, goal, allowAdultSignal
       allowConcurrent: true,
       routeOptions: {
         qualityOverride: QUALITY_MODES.FAST,
-        useProxyQualityRouting: true,
       },
       onComplete: (text) => {
         try {
@@ -203,7 +202,6 @@ export function runChapterScoutBatch({ chapters = [], corpusId = null, totalChap
       allowConcurrent: true,
       routeOptions: {
         qualityOverride: QUALITY_MODES.FAST,
-        useProxyQualityRouting: true,
       },
       onComplete: (text) => {
         try {

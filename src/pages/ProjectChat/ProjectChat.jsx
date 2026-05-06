@@ -32,11 +32,13 @@ import modelRouter, {
   AI_STUDIO_RELAY_MODELS,
   DIRECT_MODELS,
   PROXY_MODELS,
+  PROXY_MODEL_PRESETS,
   PROVIDERS,
   TASK_TYPES,
 } from '../../services/ai/router';
 import {
   AG_PROXY_PROFILE_ID,
+  CUSTOM_PROXY_PROFILE_ID,
   getActiveOpenAIProxyProfile,
   getOpenAIProxyModel,
   normalizeOpenAIProxyProvider,
@@ -50,6 +52,8 @@ const CHAT_MODES = {
   STORY: 'story',
   FREE: 'free',
 };
+const PROVIDER_SELECT_AG_PROXY = `${PROVIDERS.OPENAI_PROXY}:${AG_PROXY_PROFILE_ID}`;
+const PROVIDER_SELECT_CUSTOM_PROXY = `${PROVIDERS.OPENAI_PROXY}:${CUSTOM_PROXY_PROFILE_ID}`;
 const COMPOSER_MIN_HEIGHT = 58;
 const COMPOSER_MAX_HEIGHT = 220;
 
@@ -71,8 +75,14 @@ function formatRelativeTime(timestamp) {
   return `${Math.round(diff / 86400000)} ngày trước`;
 }
 
-export function getProviderLabel(provider) {
+export function getProviderLabel(provider, proxyProfileId = '') {
   const normalizedProvider = normalizeOpenAIProxyProvider(provider);
+  if (normalizedProvider === PROVIDERS.OPENAI_PROXY && proxyProfileId === AG_PROXY_PROFILE_ID) {
+    return 'Gemini Proxy mặc định (ag)';
+  }
+  if (normalizedProvider === PROVIDERS.OPENAI_PROXY && proxyProfileId === CUSTOM_PROXY_PROFILE_ID) {
+    return 'Custom OpenAI-compatible';
+  }
   if (normalizedProvider === PROVIDERS.OPENAI_PROXY) return 'Web Proxy';
   if (normalizedProvider === PROVIDERS.AI_STUDIO_RELAY) return 'AI Studio Relay';
   if (normalizedProvider === PROVIDERS.GEMINI_DIRECT) return 'Gemini Direct';
@@ -94,6 +104,109 @@ function getChatModeLabel(mode) {
 
 function normalizeThreadOverrideValue(value) {
   return String(value || '').trim();
+}
+
+function normalizeProxyProfileId(profileId) {
+  return profileId === CUSTOM_PROXY_PROFILE_ID ? CUSTOM_PROXY_PROFILE_ID : AG_PROXY_PROFILE_ID;
+}
+
+function getProxyProviderSelectValue(profileId) {
+  return `${PROVIDERS.OPENAI_PROXY}:${normalizeProxyProfileId(profileId)}`;
+}
+
+export function getProviderSelectValue(thread = {}, routePreview = {}) {
+  const providerOverride = normalizeOpenAIProxyProvider(
+    normalizeThreadOverrideValue(thread?.provider_override),
+  );
+  if (!providerOverride) return '';
+  if (providerOverride === PROVIDERS.OPENAI_PROXY) {
+    return getProxyProviderSelectValue(
+      normalizeThreadOverrideValue(thread?.proxy_profile_id)
+      || routePreview?.proxyProfileId
+      || AG_PROXY_PROFILE_ID,
+    );
+  }
+  return providerOverride;
+}
+
+function parseProviderSelectValue(value) {
+  const normalized = normalizeThreadOverrideValue(value);
+  if (!normalized) {
+    return { provider: '', proxyProfileId: '' };
+  }
+
+  if (normalized.startsWith(`${PROVIDERS.OPENAI_PROXY}:`)) {
+    return {
+      provider: PROVIDERS.OPENAI_PROXY,
+      proxyProfileId: normalizeProxyProfileId(normalized.split(':')[1]),
+    };
+  }
+
+  return {
+    provider: normalizeOpenAIProxyProvider(normalized),
+    proxyProfileId: '',
+  };
+}
+
+export function buildProviderOverridePatch(value, { now = Date.now() } = {}) {
+  const parsed = parseProviderSelectValue(value);
+  return {
+    provider_override: parsed.provider,
+    model_override: '',
+    proxy_profile_id: parsed.provider === PROVIDERS.OPENAI_PROXY ? parsed.proxyProfileId : '',
+    sticky_provider_override: '',
+    sticky_model_override: '',
+    updated_at: now,
+  };
+}
+
+export function buildModelOverridePatch({
+  nextModel = '',
+  activeThread = {},
+  activeChatProvider = '',
+  routePreview = {},
+  selectedOption = null,
+  now = Date.now(),
+} = {}) {
+  const model = normalizeThreadOverrideValue(nextModel);
+  const explicitProvider = normalizeOpenAIProxyProvider(
+    normalizeThreadOverrideValue(activeThread?.provider_override),
+  );
+  const providerForModel = normalizeOpenAIProxyProvider(
+    activeChatProvider || routePreview?.provider || explicitProvider,
+  );
+  const patch = {
+    model_override: model,
+    proxy_profile_id: '',
+    sticky_provider_override: '',
+    sticky_model_override: '',
+    updated_at: now,
+  };
+
+  if (model && providerForModel) {
+    patch.provider_override = providerForModel;
+  }
+
+  if (providerForModel === PROVIDERS.OPENAI_PROXY) {
+    patch.proxy_profile_id = model
+      ? (
+        selectedOption?.providerProfileId
+        || routePreview?.proxyProfileId
+        || normalizeThreadOverrideValue(activeThread?.proxy_profile_id)
+        || getActiveOpenAIProxyProfile().id
+      )
+      : (
+        normalizeThreadOverrideValue(activeThread?.proxy_profile_id)
+        || routePreview?.proxyProfileId
+        || ''
+      );
+  }
+
+  if (!model && explicitProvider && explicitProvider !== PROVIDERS.OPENAI_PROXY) {
+    patch.proxy_profile_id = '';
+  }
+
+  return patch;
 }
 
 function buildFreeSystemPrompt() {
@@ -170,6 +283,41 @@ function getRoutePreview(routeOptions = {}) {
   return modelRouter.route(TASK_TYPES.FREE_PROMPT, routeOptions);
 }
 
+function normalizeModelList(models = []) {
+  return [...new Set(
+    models
+      .map((model) => String(model || '').trim())
+      .filter(Boolean),
+  )];
+}
+
+function getProxyModelOption(model, profile) {
+  const preset = PROXY_MODEL_PRESETS.find((item) => item.id === model)
+    || PROXY_MODELS.find((item) => item.id === model);
+  return {
+    id: model,
+    label: preset?.label || model,
+    meta: preset
+      ? (preset.tier === 'pro' ? 'Proxy - Pro' : 'Proxy - Flash')
+      : (profile?.label || 'Proxy - fetched'),
+    providerProfileId: profile.id,
+  };
+}
+
+function getAgProxyModelOptions(profile) {
+  const fetchedModels = normalizeModelList(Array.isArray(profile.models) ? profile.models : []);
+  const presetModels = PROXY_MODEL_PRESETS.map((model) => model.id);
+  const currentModel = getOpenAIProxyModel(profile, '');
+  const modelIds = fetchedModels.length > 0
+    ? normalizeModelList([currentModel, ...fetchedModels])
+    : normalizeModelList([
+      ...(currentModel && !presetModels.includes(currentModel) ? [currentModel] : []),
+      ...presetModels,
+    ]);
+
+  return modelIds.map((model) => getProxyModelOption(model, profile));
+}
+
 export function getThreadRouting(thread) {
   const routeOptions = buildThreadRouteOptions(thread);
   return {
@@ -178,29 +326,21 @@ export function getThreadRouting(thread) {
   };
 }
 
-export function getAvailableModelOptions(provider) {
+export function getAvailableModelOptions(provider, { proxyProfileId = '' } = {}) {
   const normalizedProvider = normalizeOpenAIProxyProvider(provider);
 
   if (normalizedProvider === PROVIDERS.OPENAI_PROXY) {
-    const profile = getActiveOpenAIProxyProfile();
+    const profile = getActiveOpenAIProxyProfile(proxyProfileId || null);
     if (profile.id === AG_PROXY_PROFILE_ID) {
-      return PROXY_MODELS.map((model) => ({
-        id: model.id,
-        label: model.label,
-        meta: model.tier === 'pro' ? 'Proxy - Pro' : 'Proxy - Flash',
-        providerProfileId: AG_PROXY_PROFILE_ID,
-      }));
+      return getAgProxyModelOptions(profile);
     }
 
-    const models = [
+    const models = normalizeModelList([
       getOpenAIProxyModel(profile, ''),
       ...(Array.isArray(profile.models) ? profile.models : []),
-    ]
-      .map((model) => String(model || '').trim())
-      .filter(Boolean);
-    const uniqueModels = [...new Set(models)];
+    ]);
 
-    return uniqueModels.map((model) => ({
+    return models.map((model) => ({
       id: model,
       label: model,
       meta: profile.label || 'OpenAI-compatible',
@@ -438,9 +578,10 @@ export default function ProjectChat() {
   const activeThreadMode =
     activeThread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
   const activeChatProvider = routePreview.provider;
-  const providerSelectValue = normalizeOpenAIProxyProvider(
-    normalizeThreadOverrideValue(activeThread?.provider_override),
-  );
+  const activeProxyProfileId = activeChatProvider === PROVIDERS.OPENAI_PROXY
+    ? (routePreview.proxyProfileId || normalizeThreadOverrideValue(activeThread?.proxy_profile_id) || getActiveOpenAIProxyProfile().id)
+    : '';
+  const providerSelectValue = getProviderSelectValue(activeThread, routePreview);
 
   function resizeComposer(textarea) {
     if (!textarea) return;
@@ -471,8 +612,8 @@ export default function ProjectChat() {
   const hasManualModelOverride = Boolean(activeThread?.model_override);
 
   const providerOptions = useMemo(
-    () => getAvailableModelOptions(activeChatProvider),
-    [activeChatProvider],
+    () => getAvailableModelOptions(activeChatProvider, { proxyProfileId: activeProxyProfileId }),
+    [activeChatProvider, activeProxyProfileId, routingConfigStamp],
   );
 
   const defaultSystemPrompt = buildDefaultSystemPrompt(
@@ -1528,22 +1669,13 @@ export default function ProjectChat() {
                   className="select"
                   value={providerSelectValue}
                   onChange={(event) => {
-                    const nextProvider = normalizeOpenAIProxyProvider(event.target.value);
-                    persistThreadUpdate(activeThread.id, {
-                      provider_override: nextProvider,
-                      model_override: '',
-                      proxy_profile_id: nextProvider === PROVIDERS.OPENAI_PROXY
-                        ? (routePreview.proxyProfileId || getActiveOpenAIProxyProfile().id)
-                        : '',
-                      sticky_provider_override: '',
-                      sticky_model_override: '',
-                      updated_at: Date.now(),
-                    });
+                    persistThreadUpdate(activeThread.id, buildProviderOverridePatch(event.target.value));
                   }}
                   disabled={!activeThread || isStreaming}
                 >
-                  <option value="">Theo Settings hiện tại ({getProviderLabel(activeChatProvider)})</option>
-                  <option value={PROVIDERS.OPENAI_PROXY}>Web Proxy</option>
+                  <option value="">Theo Settings hiện tại ({getProviderLabel(activeChatProvider, activeProxyProfileId)})</option>
+                  <option value={PROVIDER_SELECT_AG_PROXY}>Gemini Proxy mặc định (ag)</option>
+                  <option value={PROVIDER_SELECT_CUSTOM_PROXY}>Custom OpenAI-compatible</option>
                   <option value={PROVIDERS.GEMINI_DIRECT}>Gemini Direct</option>
                   <option value={PROVIDERS.AI_STUDIO_RELAY}>AI Studio Relay</option>
                   <option value={PROVIDERS.OLLAMA}>Ollama</option>
@@ -1561,20 +1693,13 @@ export default function ProjectChat() {
                   onChange={(event) => {
                     const nextModel = event.target.value;
                     const selectedOption = providerOptions.find((option) => option.id === nextModel);
-                    const explicitProvider = normalizeOpenAIProxyProvider(
-                      normalizeThreadOverrideValue(activeThread.provider_override),
-                    );
-                    persistThreadUpdate(activeThread.id, {
-                      model_override: nextModel,
-                      proxy_profile_id: nextModel && activeChatProvider === PROVIDERS.OPENAI_PROXY
-                        ? (selectedOption?.providerProfileId || routePreview.proxyProfileId || getActiveOpenAIProxyProfile().id)
-                        : (explicitProvider === PROVIDERS.OPENAI_PROXY
-                          ? normalizeThreadOverrideValue(activeThread.proxy_profile_id)
-                          : ''),
-                      sticky_provider_override: '',
-                      sticky_model_override: '',
-                      updated_at: Date.now(),
-                    });
+                    persistThreadUpdate(activeThread.id, buildModelOverridePatch({
+                      nextModel,
+                      activeThread,
+                      activeChatProvider,
+                      routePreview,
+                      selectedOption,
+                    }));
                   }}
                   disabled={!activeThread || isStreaming}
                 >

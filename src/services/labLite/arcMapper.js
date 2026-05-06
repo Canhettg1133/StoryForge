@@ -76,7 +76,6 @@ function askArcMapper({ scoutResults, chapterCount, corpusId, windowLabel }) {
       allowConcurrent: true,
       routeOptions: {
         qualityOverride: QUALITY_MODES.FAST,
-        useProxyQualityRouting: true,
       },
       onComplete: (text) => {
         try {

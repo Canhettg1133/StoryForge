@@ -282,6 +282,165 @@ describe('phase10 ProjectChat routing inheritance', () => {
     expect(options.some((option) => PROXY_MODELS.some((preset) => preset.id === option.id))).toBe(false);
   });
 
+  it('lists fetched ag proxy models before falling back to built-in ag presets', async () => {
+    const {
+      getAvailableModelOptions,
+      routerModule: { PROVIDERS, PROXY_MODEL_PRESETS },
+    } = await loadProjectChatHelpers();
+    const {
+      AG_PROXY_PROFILE_ID,
+      setAgProxyModels,
+      setOpenAIProxyActiveProfile,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+
+    setAgProxyModels([
+      'gcli-gemini-3.1-pro-preview-live',
+      'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+    ]);
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+
+    const options = getAvailableModelOptions(PROVIDERS.OPENAI_PROXY);
+
+    expect(options.map((option) => option.id)).toEqual([
+      'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+      'gcli-gemini-3.1-pro-preview-live',
+    ]);
+    expect(options.every((option) => option.providerProfileId === AG_PROXY_PROFILE_ID)).toBe(true);
+  });
+
+  it('keeps ag and custom proxy model lists separated by proxy profile id', async () => {
+    const {
+      getAvailableModelOptions,
+      routerModule: { PROVIDERS, PROXY_MODEL_PRESETS },
+    } = await loadProjectChatHelpers();
+    const {
+      AG_PROXY_PROFILE_ID,
+      CUSTOM_PROXY_PROFILE_ID,
+      setAgProxyModels,
+      setOpenAIProxyActiveProfile,
+      updateCustomOpenAIProxyProfile,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+
+    setAgProxyModels(['ag-only-model']);
+    updateCustomOpenAIProxyProfile({
+      baseUrl: 'https://proxy.example.com',
+      defaultModel: 'custom-only-model',
+      models: ['custom-only-model', 'custom-secondary-model'],
+    });
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+
+    const agOptions = getAvailableModelOptions(PROVIDERS.OPENAI_PROXY, {
+      proxyProfileId: AG_PROXY_PROFILE_ID,
+    });
+    const customOptions = getAvailableModelOptions(PROVIDERS.OPENAI_PROXY, {
+      proxyProfileId: CUSTOM_PROXY_PROFILE_ID,
+    });
+
+    expect(agOptions.map((option) => option.id)).toEqual([
+      PROXY_MODEL_PRESETS[1].id,
+      'ag-only-model',
+    ]);
+    expect(agOptions.some((option) => option.id === 'custom-only-model')).toBe(false);
+    expect(agOptions.every((option) => option.providerProfileId === AG_PROXY_PROFILE_ID)).toBe(true);
+
+    expect(customOptions.map((option) => option.id)).toEqual([
+      'custom-only-model',
+      'custom-secondary-model',
+    ]);
+    expect(customOptions.some((option) => option.id === 'ag-only-model')).toBe(false);
+    expect(customOptions.every((option) => option.providerProfileId === CUSTOM_PROXY_PROFILE_ID)).toBe(true);
+  });
+
+  it('falls back to ag proxy presets without adding the full raw proxy model list', async () => {
+    const {
+      getAvailableModelOptions,
+      routerModule: { PROVIDERS, PROXY_MODEL_PRESETS, PROXY_MODELS },
+    } = await loadProjectChatHelpers();
+    const {
+      AG_PROXY_PROFILE_ID,
+      setOpenAIProxyActiveProfile,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+
+    const options = getAvailableModelOptions(PROVIDERS.OPENAI_PROXY, {
+      proxyProfileId: AG_PROXY_PROFILE_ID,
+    });
+    const optionIds = options.map((option) => option.id);
+
+    expect(optionIds).toEqual(PROXY_MODEL_PRESETS.map((model) => model.id));
+    expect(optionIds.length).toBeLessThan(PROXY_MODELS.length);
+  });
+
+  it('builds separate chat provider values for ag and custom proxy profiles', async () => {
+    const {
+      buildProviderOverridePatch,
+      getProviderSelectValue,
+      routerModule: { PROVIDERS },
+    } = await loadProjectChatHelpers();
+    const {
+      AG_PROXY_PROFILE_ID,
+      CUSTOM_PROXY_PROFILE_ID,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+
+    expect(getProviderSelectValue({
+      provider_override: PROVIDERS.OPENAI_PROXY,
+      proxy_profile_id: AG_PROXY_PROFILE_ID,
+    })).toBe(`${PROVIDERS.OPENAI_PROXY}:${AG_PROXY_PROFILE_ID}`);
+    expect(getProviderSelectValue({
+      provider_override: PROVIDERS.OPENAI_PROXY,
+      proxy_profile_id: CUSTOM_PROXY_PROFILE_ID,
+    })).toBe(`${PROVIDERS.OPENAI_PROXY}:${CUSTOM_PROXY_PROFILE_ID}`);
+
+    expect(buildProviderOverridePatch(`${PROVIDERS.OPENAI_PROXY}:${CUSTOM_PROXY_PROFILE_ID}`, { now: 456 }))
+      .toEqual({
+        provider_override: PROVIDERS.OPENAI_PROXY,
+        model_override: '',
+        proxy_profile_id: CUSTOM_PROXY_PROFILE_ID,
+        sticky_provider_override: '',
+        sticky_model_override: '',
+        updated_at: 456,
+      });
+  });
+
+  it('binds a selected inherited chat model to the current provider and proxy profile', async () => {
+    const {
+      buildModelOverridePatch,
+      routerModule: { PROVIDERS },
+    } = await loadProjectChatHelpers();
+    const {
+      CUSTOM_PROXY_PROFILE_ID,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+
+    const patch = buildModelOverridePatch({
+      nextModel: 'custom-only-model',
+      activeThread: {
+        provider_override: '',
+        model_override: '',
+        proxy_profile_id: '',
+      },
+      activeChatProvider: PROVIDERS.OPENAI_PROXY,
+      routePreview: {
+        provider: PROVIDERS.OPENAI_PROXY,
+        proxyProfileId: CUSTOM_PROXY_PROFILE_ID,
+      },
+      selectedOption: {
+        id: 'custom-only-model',
+        providerProfileId: CUSTOM_PROXY_PROFILE_ID,
+      },
+      now: 789,
+    });
+
+    expect(patch).toEqual({
+      provider_override: PROVIDERS.OPENAI_PROXY,
+      model_override: 'custom-only-model',
+      proxy_profile_id: CUSTOM_PROXY_PROFILE_ID,
+      sticky_provider_override: '',
+      sticky_model_override: '',
+      updated_at: 789,
+    });
+  });
+
   it('keeps a Project Chat custom proxy model bound to its proxy profile id', async () => {
     const {
       getThreadRouting,
