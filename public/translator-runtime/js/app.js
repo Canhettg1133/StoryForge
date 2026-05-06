@@ -661,6 +661,23 @@ function addCustomModel() {
     }
 }
 
+function selectOnlyGeminiModel(index) {
+    if (!GEMINI_MODELS[index]) {
+        showToast('Không tìm thấy model để chọn!', 'error');
+        return;
+    }
+
+    GEMINI_MODELS = GEMINI_MODELS.map((model, modelIndex) => ({
+        ...model,
+        enabled: modelIndex === index,
+    }));
+    saveGeminiModels();
+    renderModelsList();
+    if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
+    if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
+    showToast(`Đã chọn chỉ dùng model: ${GEMINI_MODELS[index].name}`, 'success');
+}
+
 function normalizeAIStudioModelId(rawName) {
     const value = String(rawName || '').trim();
     if (!value) return '';
@@ -670,7 +687,7 @@ function normalizeAIStudioModelId(rawName) {
 
 function isUsableAIStudioTextModel(model) {
     const name = normalizeAIStudioModelId(model?.name || model?.id);
-    if (!name || !name.startsWith('gemini-')) return false;
+    if (!name || !/^(gemini|gemma)-/i.test(name)) return false;
 
     const methods = Array.isArray(model?.supportedGenerationMethods)
         ? model.supportedGenerationMethods.map((method) => String(method).toLowerCase())
@@ -692,6 +709,7 @@ function getQuotaForAIStudioModel(modelName) {
     if (normalizedName.includes('flash-lite')) return 15;
     if (normalizedName.includes('flash')) return 5;
     if (normalizedName.includes('pro')) return 2;
+    if (normalizedName.startsWith('gemma-')) return 15;
     return 15;
 }
 
@@ -751,7 +769,7 @@ async function fetchAIStudioFreeModels() {
         const models = Array.isArray(data.models) ? data.models : [];
         const usableModels = models.filter(isUsableAIStudioTextModel);
         if (!usableModels.length) {
-            showToast('AI Studio không trả về model Gemini text nào có generateContent cho key này.', 'warning');
+            showToast('AI Studio không trả về model Gemini/Gemma text nào có generateContent cho key này.', 'warning');
             return [];
         }
 
@@ -796,6 +814,7 @@ function renderModelsList() {
         <div class="model-item" style="opacity: ${opacity}">
             <button class="model-toggle-btn" onclick="toggleGeminiModel(${index})" title="${isEnabled ? 'Tắt' : 'Bật'} model">${statusIcon}</button>
             <span class="model-name">${model.name}</span>
+            <button class="model-single-btn" onclick="selectOnlyGeminiModel(${index})" title="Chỉ dùng model này để dịch">Chỉ dùng</button>
             <input type="number" class="model-quota-input" value="${model.quota}" min="1" max="100"
                 onchange="updateModelQuota(${index}, this.value)" title="RPM quota">
             <span class="model-quota-label">RPM</span>

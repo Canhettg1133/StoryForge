@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TranslatorPro">
-    <link rel="manifest" href="manifest.json">
+    <link rel="manifest" href="manifest.json?v=9">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
 
     <!-- Fonts -->
@@ -21,7 +21,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=9">
 </head>
 
 <body>
@@ -336,6 +336,9 @@
                             Model
                         </label>
                         <select id="proxyModelSelect" onchange="selectProxyModel()">
+                            <option value="gemini-3-flash-high-真流-[星星公益站-CLI渠道]" selected>🔥 Gemini 3 Flash HIGH (nhanh, 1100/ngày)</option>
+                            <option value="gemini-2.5-flash-真流-[星星公益站-CLI渠道]">⚡ Gemini 2.5 Flash (ổn định, 1100/ngày)</option>
+                            <option value="gemini-2.5-pro-真流-[星星公益站-CLI渠道]">💎 Gemini 2.5 Pro (chất lượng cao, 520/ngày)</option>
                         </select>
                     </div>
 
@@ -862,44 +865,44 @@
     ============================================== -->
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
-    <script src="js/app.js"></script>
-    <script src="js/canon-pack.js"></script>
+    <script src="js/app.js?v=9"></script>
+    <script src="js/canon-pack.js?v=9"></script>
 
     <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
-    <script src="js/worker-timer.js"></script>
+    <script src="js/worker-timer.js?v=9"></script>
 
     <!-- 1c. Error messages (PHẢI load trước Gemini/Proxy/Ollama để chuẩn hóa lỗi) -->
-    <script src="js/translation/errors.js"></script>
+    <script src="js/translation/errors.js?v=9"></script>
 
     <!-- 2. Gemini API -->
-    <script src="js/gemini/model-rotation.js"></script>
-    <script src="js/gemini/rpd-tracker.js"></script>
-    <script src="js/gemini/api.js"></script>
+    <script src="js/gemini/model-rotation.js?v=9"></script>
+    <script src="js/gemini/rpd-tracker.js?v=9"></script>
+    <script src="js/gemini/api.js?v=9"></script>
 
     <!-- 3. Translation Engine -->
-    <script src="js/translation/chunker.js"></script>
-    <script src="js/translation/retry.js"></script>
-    <script src="js/translation/engine.js"></script>
+    <script src="js/translation/chunker.js?v=9"></script>
+    <script src="js/translation/retry.js?v=9"></script>
+    <script src="js/translation/engine.js?v=9"></script>
 
 
     <!-- 4. UI Components -->
-    <script src="js/ui/progress.js"></script>
-    <script src="js/ui/file-handler.js"></script>
-    <script src="js/ui/settings.js"></script>
-    <script src="js/ui/controls.js"></script>
-    <script src="js/ui/chunk-tracker.js"></script>
+    <script src="js/ui/progress.js?v=9"></script>
+    <script src="js/ui/file-handler.js?v=9"></script>
+    <script src="js/ui/settings.js?v=9"></script>
+    <script src="js/ui/controls.js?v=9"></script>
+    <script src="js/ui/chunk-tracker.js?v=9"></script>
 
     <!-- 5. History -->
-    <script src="js/history/history.js"></script>
+    <script src="js/history/history.js?v=9"></script>
 
     <!-- 6. Local AI (Ollama) -->
-    <script src="js/local-ai/ollama.js"></script>
+    <script src="js/local-ai/ollama.js?v=9"></script>
 
     <!-- 6b. Proxy API -->
-    <script src="js/proxy/proxy-api.js"></script>
+    <script src="js/proxy/proxy-api.js?v=9"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
-    <script src="js/init.js"></script>
+    <script src="js/init.js?v=9"></script>
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->

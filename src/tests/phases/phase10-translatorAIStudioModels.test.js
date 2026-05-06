@@ -71,22 +71,11 @@ describe('phase10 translator AI Studio model discovery', () => {
         status: 200,
         json: async () => ({
           models: [
-            {
-              name: 'models/gemini-3.1-flash-lite-preview',
-              supportedGenerationMethods: ['generateContent'],
-            },
-            {
-              name: 'models/gemini-2.5-pro',
-              supportedGenerationMethods: ['generateContent', 'countTokens'],
-            },
-            {
-              name: 'models/text-embedding-004',
-              supportedGenerationMethods: ['embedContent'],
-            },
-            {
-              name: 'models/imagen-4.0-generate-preview',
-              supportedGenerationMethods: ['predict'],
-            },
+            { name: 'models/gemini-3.1-flash-lite-preview', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/gemini-2.5-pro', supportedGenerationMethods: ['generateContent', 'countTokens'] },
+            { name: 'models/gemma-3-27b-it', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+            { name: 'models/imagen-4.0-generate-preview', supportedGenerationMethods: ['predict'] },
           ],
         }),
       };
@@ -103,28 +92,55 @@ describe('phase10 translator AI Studio model discovery', () => {
     expect(imported.map((model) => model.name)).toEqual([
       'gemini-3.1-flash-lite-preview',
       'gemini-2.5-pro',
+      'gemma-3-27b-it',
     ]);
 
-    const activeModels = vm.runInContext('getActiveModels().map((model) => model.name)', context);
-    expect(activeModels).toEqual([
+    expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual([
       'gemini-3.1-flash-lite-preview',
       'gemini-2.5-pro',
+      'gemma-3-27b-it',
     ]);
 
     const persisted = JSON.parse(stored.get('novelTranslatorModels'));
     expect(persisted).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: 'gemini-3.1-flash-lite-preview', enabled: true }),
       expect.objectContaining({ name: 'gemini-2.5-pro', enabled: true }),
+      expect.objectContaining({ name: 'gemma-3-27b-it', enabled: true }),
     ]));
     expect(JSON.parse(stored.get('sf-active-direct-models'))).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'gemini-3.1-flash-lite-preview' }),
       expect.objectContaining({ id: 'gemini-2.5-pro' }),
+      expect.objectContaining({ id: 'gemma-3-27b-it' }),
     ]));
-    expect(elements.modelCount.textContent).toContain('2/3 models');
+    expect(elements.modelCount.textContent).toContain('3/4 models');
+    expect(elements.modelsList.innerHTML).toContain('selectOnlyGeminiModel(1)');
+    expect(elements.modelsList.innerHTML).toContain('Chỉ dùng');
     expect(toastMessages.at(-1)).toEqual(expect.objectContaining({
       type: 'success',
-      message: expect.stringContaining('Đã lấy 2 model'),
+      message: expect.stringContaining('3 model'),
     }));
+  });
+
+  it('can select one discovered AI Studio model as the only active translation model', async () => {
+    const { context, stored } = createRuntimeContext(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        models: [
+          { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/gemma-3-27b-it', supportedGenerationMethods: ['generateContent'] },
+        ],
+      }),
+    }));
+
+    vm.runInContext('apiKeys = ["direct-key-for-list-models"]; GEMINI_MODELS = [];', context);
+    await context.fetchAIStudioFreeModels();
+    context.selectOnlyGeminiModel(1);
+
+    expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual(['gemma-3-27b-it']);
+    expect(JSON.parse(stored.get('sf-active-direct-models'))).toEqual([
+      expect.objectContaining({ id: 'gemma-3-27b-it' }),
+    ]);
   });
 
   it('explains in Vietnamese when no Gemini Direct key is available for ListModels', async () => {

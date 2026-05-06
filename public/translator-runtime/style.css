@@ -1577,6 +1577,24 @@ select option {
     word-break: break-word;
 }
 
+.model-single-btn {
+    flex: 0 0 auto;
+    border: 1px solid rgba(129, 140, 248, 0.45);
+    border-radius: 6px;
+    background: rgba(129, 140, 248, 0.14);
+    color: var(--text-accent);
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 4px 8px;
+    white-space: nowrap;
+}
+
+.model-single-btn:hover {
+    border-color: rgba(129, 140, 248, 0.75);
+    background: rgba(129, 140, 248, 0.24);
+}
+
 .model-quota-input {
     width: 55px !important;
     padding: var(--spacing-xs) var(--spacing-sm) !important;

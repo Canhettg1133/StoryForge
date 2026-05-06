@@ -28,6 +28,7 @@ window.exportHistory = exportHistory;
 window.importHistory = importHistory;
 window.exportApiKeys = exportApiKeys;
 if (typeof fetchAIStudioFreeModels === 'function') window.fetchAIStudioFreeModels = fetchAIStudioFreeModels;
+if (typeof selectOnlyGeminiModel === 'function') window.selectOnlyGeminiModel = selectOnlyGeminiModel;
 window.copyExportedKeys = copyExportedKeys;
 window.closeKeyModal = closeKeyModal;
 window.openImportApiKeysModal = openImportApiKeysModal;

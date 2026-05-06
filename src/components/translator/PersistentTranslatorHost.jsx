@@ -1,7 +1,7 @@
 import React from 'react';
 import './PersistentTranslatorHost.css';
 
-const TRANSLATOR_URL = '/translator-runtime/index.html?v=8';
+const TRANSLATOR_URL = '/translator-runtime/index.html?v=9';
 
 export default function PersistentTranslatorHost({ active = false }) {
   return (

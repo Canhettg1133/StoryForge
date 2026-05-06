@@ -83,6 +83,17 @@ function loadRuntime({ savedSettings = null } = {}) {
 }
 
 describe('phase10 translator proxy model default', () => {
+  it('ships the proxy default model and versioned runtime assets in the translator HTML', () => {
+    const html = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/index.html'), 'utf8');
+
+    expect(html).toContain(`<option value="${DEFAULT_MODEL}" selected>`);
+    expect(html).toContain('Gemini 3 Flash HIGH');
+    expect(html).toContain('href="style.css?v=9"');
+    expect(html).toContain('src="js/app.js?v=9"');
+    expect(html).toContain('src="js/proxy/proxy-api.js?v=9"');
+    expect(html).toContain('src="js/init.js?v=9"');
+  });
+
   it('defaults Gemini Proxy to Flash 3 when saved translator settings do not contain a model', () => {
     const { context, elements, stored } = loadRuntime({
       savedSettings: {
