@@ -136,6 +136,10 @@ function renderProxyModelsDropdown() {
     const select = document.getElementById('proxyModelSelect');
     if (!select) return;
 
+    if (typeof ensureProxyModelDefault === 'function') {
+        ensureProxyModelDefault();
+    }
+
     select.innerHTML = '<option value="">-- Chọn model --</option>';
 
     // Group models by group property
@@ -158,6 +162,17 @@ function renderProxyModelsDropdown() {
         });
         select.appendChild(optgroup);
     }
+
+    const hasSelectedModel = Array.from(select.options).some(option => option.value === proxyModel);
+    if (!hasSelectedModel && proxyModel) {
+        const option = document.createElement('option');
+        option.value = proxyModel;
+        option.textContent = proxyModel;
+        option.selected = true;
+        select.appendChild(option);
+    }
+
+    select.value = proxyModel;
 }
 
 // ============================================

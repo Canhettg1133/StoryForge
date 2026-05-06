@@ -27,6 +27,7 @@ window.clearAllHistory = clearAllHistory;
 window.exportHistory = exportHistory;
 window.importHistory = importHistory;
 window.exportApiKeys = exportApiKeys;
+if (typeof fetchAIStudioFreeModels === 'function') window.fetchAIStudioFreeModels = fetchAIStudioFreeModels;
 window.copyExportedKeys = copyExportedKeys;
 window.closeKeyModal = closeKeyModal;
 window.openImportApiKeysModal = openImportApiKeysModal;

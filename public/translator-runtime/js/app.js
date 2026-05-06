@@ -160,12 +160,88 @@ let useProxy = false;
 let proxyBaseUrl = 'https://ag.beijixingxing.com/v1/chat/completions';
 let proxyApiKey = ''; // Legacy single key (backward compat)
 let proxyApiKeys = []; // Multi-key support
-let proxyModel = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
+const DEFAULT_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
+let proxyModel = DEFAULT_PROXY_MODEL;
+let proxyKeyHealthMap = {};
+const PROXY_RATE_LIMIT_COOLDOWN_MS = 60000;
+const PROXY_FORBIDDEN_COOLDOWN_MS = 300000;
+
+function normalizeProxyKeyIndex(index, keyCount = proxyApiKeys.length) {
+    if (!keyCount) return 0;
+    const numericIndex = Number.isFinite(Number(index)) ? Number(index) : 0;
+    return ((Math.trunc(numericIndex) % keyCount) + keyCount) % keyCount;
+}
+
+function getProxyKeyIndex(proxyKey) {
+    if (!proxyKey || !Array.isArray(proxyApiKeys)) return -1;
+    return proxyApiKeys.findIndex(key => key === proxyKey);
+}
+
+function initProxyKeyHealth(keyIndex) {
+    if (keyIndex < 0) return null;
+    if (!proxyKeyHealthMap[keyIndex]) {
+        proxyKeyHealthMap[keyIndex] = {
+            errorCount: 0,
+            successCount: 0,
+            disabledUntil: null,
+            lastError: '',
+            lastErrorTime: null,
+        };
+    }
+    return proxyKeyHealthMap[keyIndex];
+}
+
+function isProxyKeyAvailable(keyIndex) {
+    const health = initProxyKeyHealth(keyIndex);
+    if (!health?.disabledUntil) return true;
+
+    if (Date.now() >= health.disabledUntil) {
+        health.disabledUntil = null;
+        health.errorCount = 0;
+        health.lastError = '';
+        return true;
+    }
+
+    return false;
+}
+
+function recordProxyKeySuccess(proxyKey) {
+    const keyIndex = getProxyKeyIndex(proxyKey);
+    const health = initProxyKeyHealth(keyIndex);
+    if (!health) return;
+    health.successCount += 1;
+    health.errorCount = Math.max(0, health.errorCount - 1);
+    health.lastError = '';
+}
+
+function recordProxyKeyError(proxyKey, errorType = 'UNKNOWN', cooldownMs = PROXY_RATE_LIMIT_COOLDOWN_MS) {
+    const keyIndex = getProxyKeyIndex(proxyKey);
+    const health = initProxyKeyHealth(keyIndex);
+    if (!health) return;
+
+    const safeCooldown = Math.max(1000, Number(cooldownMs) || PROXY_RATE_LIMIT_COOLDOWN_MS);
+    health.errorCount += 1;
+    health.lastError = errorType;
+    health.lastErrorTime = Date.now();
+    health.disabledUntil = Date.now() + safeCooldown;
+
+    console.warn(`[ProxyKey] Key ${keyIndex + 1} tạm dừng ${Math.ceil(safeCooldown / 1000)}s vì ${errorType}.`);
+}
 
 // Get proxy key for a specific chunk (deterministic assignment)
 function getProxyKeyForChunk(chunkIndex) {
     if (proxyApiKeys.length > 0) {
-        return proxyApiKeys[chunkIndex % proxyApiKeys.length];
+        const startIndex = normalizeProxyKeyIndex(chunkIndex, proxyApiKeys.length);
+
+        for (let offset = 0; offset < proxyApiKeys.length; offset++) {
+            const keyIndex = (startIndex + offset) % proxyApiKeys.length;
+            if (isProxyKeyAvailable(keyIndex)) {
+                return proxyApiKeys[keyIndex];
+            }
+        }
+
+        console.warn('[ProxyKey] Tất cả proxy key đang cooldown, dùng key gốc của chunk để chờ lỗi/timeout thật.');
+        return proxyApiKeys[startIndex];
     }
     return proxyApiKey; // Fallback to legacy single key
 }
@@ -435,12 +511,15 @@ const PRESET_GEMINI_MODELS = [
     { name: 'gemini-2.0-pro-exp', quota: 15, label: '🧪 Gemini 2.0 Pro Exp (Experimental)' },
 ];
 
+const AI_STUDIO_MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+const STORYFORGE_ACTIVE_DIRECT_MODELS_STORAGE = 'sf-active-direct-models';
+
 // Dynamic model list - loaded from localStorage
 let GEMINI_MODELS = [];
 
 function loadStoryForgeDirectModels() {
     try {
-        const raw = localStorage.getItem('sf-active-direct-models');
+        const raw = localStorage.getItem(STORYFORGE_ACTIVE_DIRECT_MODELS_STORAGE);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
@@ -492,6 +571,12 @@ function loadGeminiModels() {
 
 function saveGeminiModels() {
     localStorage.setItem('novelTranslatorModels', JSON.stringify(GEMINI_MODELS));
+    const activeDirectModels = getActiveModels()
+        .map((model) => ({
+            id: model.name,
+            rpm: Number.isFinite(Number(model.quota)) && Number(model.quota) > 0 ? Number(model.quota) : 15,
+        }));
+    localStorage.setItem(STORYFORGE_ACTIVE_DIRECT_MODELS_STORAGE, JSON.stringify(activeDirectModels));
 }
 
 function getActiveModels() {
@@ -573,6 +658,119 @@ function addCustomModel() {
     if (addGeminiModel(nameInput.value, quotaInput.value)) {
         nameInput.value = '';
         quotaInput.value = '15';
+    }
+}
+
+function normalizeAIStudioModelId(rawName) {
+    const value = String(rawName || '').trim();
+    if (!value) return '';
+    const parts = value.split('/').filter(Boolean);
+    return (parts[parts.length - 1] || value).trim().toLowerCase();
+}
+
+function isUsableAIStudioTextModel(model) {
+    const name = normalizeAIStudioModelId(model?.name || model?.id);
+    if (!name || !name.startsWith('gemini-')) return false;
+
+    const methods = Array.isArray(model?.supportedGenerationMethods)
+        ? model.supportedGenerationMethods.map((method) => String(method).toLowerCase())
+        : [];
+    if (!methods.includes('generatecontent')) return false;
+
+    return !/(embedding|embed|imagen|veo|tts|aqa)/i.test(name);
+}
+
+function getQuotaForAIStudioModel(modelName) {
+    const normalizedName = normalizeAIStudioModelId(modelName);
+    const existing = GEMINI_MODELS.find((model) => model.name === normalizedName);
+    if (existing) return parseInt(existing.quota, 10) || 15;
+
+    const knownModel = [...DEFAULT_GEMINI_MODELS, ...PRESET_GEMINI_MODELS]
+        .find((model) => model.name === normalizedName);
+    if (knownModel) return parseInt(knownModel.quota, 10) || 15;
+
+    if (normalizedName.includes('flash-lite')) return 15;
+    if (normalizedName.includes('flash')) return 5;
+    if (normalizedName.includes('pro')) return 2;
+    return 15;
+}
+
+function mergeAIStudioModels(discoveredModels) {
+    const existingByName = new Map(GEMINI_MODELS.map((model) => [model.name, model]));
+    const addedModels = [];
+
+    discoveredModels.forEach((model) => {
+        const name = normalizeAIStudioModelId(model?.name || model?.id);
+        if (!name) return;
+
+        const existing = existingByName.get(name);
+        if (existing) {
+            existing.enabled = true;
+            existing.quota = getQuotaForAIStudioModel(name);
+            addedModels.push(existing);
+            return;
+        }
+
+        const newModel = {
+            name,
+            quota: getQuotaForAIStudioModel(name),
+            enabled: true,
+        };
+        GEMINI_MODELS.push(newModel);
+        existingByName.set(name, newModel);
+        addedModels.push(newModel);
+    });
+
+    return addedModels;
+}
+
+async function fetchAIStudioFreeModels() {
+    const apiKey = String(apiKeys?.[0] || '').trim();
+    if (!apiKey) {
+        showToast('Thêm ít nhất 1 Gemini Direct API key trước khi lấy model từ AI Studio.', 'warning');
+        return [];
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort('ai-studio-model-timeout'), 30000);
+
+    try {
+        showToast('Đang lấy danh sách model từ AI Studio...', 'info');
+        const response = await fetch(`${AI_STUDIO_MODELS_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+            method: 'GET',
+            signal: controller.signal,
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            const errorMessage = data?.error?.message || data?.error || `HTTP ${response.status}`;
+            showToast(`Không lấy được model AI Studio: ${errorMessage}`, 'error');
+            return [];
+        }
+
+        const models = Array.isArray(data.models) ? data.models : [];
+        const usableModels = models.filter(isUsableAIStudioTextModel);
+        if (!usableModels.length) {
+            showToast('AI Studio không trả về model Gemini text nào có generateContent cho key này.', 'warning');
+            return [];
+        }
+
+        const importedModels = mergeAIStudioModels(usableModels);
+        saveGeminiModels();
+        renderModelsList();
+        if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
+        if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
+
+        showToast(`Đã lấy ${importedModels.length} model từ AI Studio và bật để Gemini Direct dùng khi dịch.`, 'success');
+        return importedModels.map((model) => ({ ...model }));
+    } catch (error) {
+        const message = error?.name === 'AbortError'
+            ? 'Timeout sau 30 giây khi gọi AI Studio ListModels.'
+            : (error?.message || 'Lỗi mạng/CORS khi gọi AI Studio ListModels.');
+        showToast(`Không lấy được model AI Studio: ${message}`, 'error');
+        return [];
+    } finally {
+        clearTimeout(timeoutId);
     }
 }
 

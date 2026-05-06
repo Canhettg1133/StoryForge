@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AG Proxy Key Concurrent Tester</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1020;
+      --panel: #17182a;
+      --panel-2: #202138;
+      --text: #eef2ff;
+      --muted: #a9b2d0;
+      --line: #30324f;
+      --ok: #10b981;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --info: #60a5fa;
+      --accent: #818cf8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 24px auto 40px;
+    }
+
+    h1 {
+      margin: 0 0 6px;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0b0c18;
+      color: var(--text);
+      padding: 10px 12px;
+      font: inherit;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 240px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.18);
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #080916;
+      cursor: pointer;
+      font-weight: 750;
+      padding: 10px 14px;
+    }
+
+    button.secondary {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .metric {
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .log {
+      min-height: 44px;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .key {
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      color: #c7d2fe;
+      white-space: nowrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .err { color: var(--err); }
+    .info { color: var(--info); }
+    .badge.ok { background: rgba(16, 185, 129, 0.14); }
+    .badge.warn { background: rgba(245, 158, 11, 0.14); }
+    .badge.err { background: rgba(239, 68, 68, 0.14); }
+    .badge.info { background: rgba(96, 165, 250, 0.14); }
+
+    .message {
+      color: var(--muted);
+      max-width: 420px;
+      word-break: break-word;
+    }
+
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>AG Proxy Key Concurrent Tester</h1>
+    <p>Paste danh sách key AG, chạy đồng thời và phân loại lỗi bằng tiếng Việt. Trang này không tự lưu key. Mở qua <code>http://localhost:3000/ag-proxy-key-tester.html</code> hoặc URL Vercel, không mở bằng file://.</p>
+
+    <div class="grid">
+      <section class="panel">
+        <label for="keyInput">Danh sách AG API key</label>
+        <textarea id="keyInput" spellcheck="false" placeholder="Mỗi dòng một key sk-..."></textarea>
+
+        <div class="row">
+          <div>
+            <label for="transport">Đường gọi API</label>
+            <select id="transport">
+              <option value="app-proxy">Qua app /api/proxy</option>
+              <option value="direct">Gọi trực tiếp AG (thường bị CORS)</option>
+            </select>
+          </div>
+          <div>
+            <label for="timeoutMs">Timeout mỗi key</label>
+            <input id="timeoutMs" type="number" min="5000" step="1000" value="30000">
+          </div>
+        </div>
+
+        <label for="baseUrl">AG base URL khi gọi trực tiếp</label>
+        <input id="baseUrl" value="https://ag.beijixingxing.com/v1">
+
+        <label for="model">Model</label>
+        <input id="model" value="gemini-3-flash-high-真流-[星星公益站-CLI渠道]">
+
+        <div class="row">
+          <div>
+            <label for="rounds">Số vòng test</label>
+            <input id="rounds" type="number" min="1" max="10" value="1">
+          </div>
+          <div>
+            <label for="roundDelayMs">Delay giữa vòng</label>
+            <input id="roundDelayMs" type="number" min="0" step="1000" value="0">
+          </div>
+        </div>
+
+        <label for="maxTokens">Max tokens</label>
+        <input id="maxTokens" type="number" min="256" max="32768" step="256" value="2048">
+
+        <label for="prompt">Prompt test</label>
+        <input id="prompt" value="Viết một đoạn tiếng Việt 3 câu xác nhận kiểm tra kết nối AG Proxy thành công. Chỉ trả lời nội dung, không giải thích.">
+
+        <div class="actions">
+          <button id="runBtn" onclick="runConcurrentTest()">Test đồng thời</button>
+          <button class="secondary" onclick="clearResults()">Xóa kết quả</button>
+          <button class="secondary" onclick="copyReport()">Copy báo cáo</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="summary">
+          <div class="metric"><strong id="totalCount">0</strong><span>Tổng request</span></div>
+          <div class="metric"><strong id="okCount" class="ok">0</strong><span>Hoạt động</span></div>
+          <div class="metric"><strong id="rateCount" class="warn">0</strong><span>Rate/quota</span></div>
+          <div class="metric"><strong id="forbiddenCount" class="err">0</strong><span>403/khóa</span></div>
+          <div class="metric"><strong id="failedCount" class="err">0</strong><span>Lỗi khác</span></div>
+        </div>
+        <div id="log" class="log">Chưa chạy test.</div>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Key</th>
+              <th>Trạng thái</th>
+              <th>HTTP</th>
+              <th>Thời gian</th>
+              <th>Thông báo</th>
+            </tr>
+          </thead>
+          <tbody id="resultsBody">
+            <tr><td colspan="6" class="message">Paste key rồi bấm Test đồng thời.</td></tr>
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    let latestResults = [];
+    let activeRunId = 0;
+
+    function parseKeys(rawText) {
+      const parts = String(rawText || '')
+        .split(/[\r\n,; \t]+/u)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      return [...new Set(parts)];
+    }
+
+    function maskKey(key) {
+      const text = String(key || '');
+      if (text.length <= 14) return text;
+      return `${text.slice(0, 8)}...${text.slice(-6)}`;
+    }
+
+    function normalizeBaseUrl(rawValue) {
+      return String(rawValue || '').trim().replace(/\/+$/u, '');
+    }
+
+    function buildRequestUrl() {
+      const transport = document.getElementById('transport').value;
+      if (transport === 'app-proxy') return '/api/proxy/v1/chat/completions';
+      const baseUrl = normalizeBaseUrl(document.getElementById('baseUrl').value || 'https://ag.beijixingxing.com/v1');
+      return `${baseUrl}/chat/completions`;
+    }
+
+    function validateTransportBeforeRun() {
+      const transport = document.getElementById('transport').value;
+
+      if (location.protocol === 'file:') {
+        return 'Bạn đang mở tester bằng file:// nên browser không có /api/proxy để gọi. Hãy chạy npm run dev rồi mở http://localhost:3000/ag-proxy-key-tester.html, hoặc mở file này trên bản Vercel đã deploy.';
+      }
+
+      if (transport === 'app-proxy' && !/^https?:$/u.test(location.protocol)) {
+        return 'Chế độ /api/proxy cần chạy trên origin http/https của app.';
+      }
+
+      return '';
+    }
+
+    function classifyResult(status, rawMessage) {
+      const message = String(rawMessage || '').trim();
+      const lower = message.toLowerCase();
+
+      if (status === 200) {
+        return { code: 'OK', label: 'Hoạt động', level: 'ok', message: 'Key gọi model thành công.' };
+      }
+      if (status === 0) {
+        return { code: 'NETWORK', label: 'Lỗi mạng/CORS', level: 'err', message: message || 'Không gọi được endpoint. Nếu mở bằng file://, hãy chạy qua localhost/Vercel hoặc chọn /api/proxy.' };
+      }
+      if (status === 401) {
+        return { code: 'INVALID_KEY', label: 'Key sai', level: 'err', message: message || 'Key không hợp lệ hoặc đã bị thu hồi.' };
+      }
+      if (status === 402 || lower.includes('quota') || lower.includes('balance')) {
+        return { code: 'NO_BALANCE', label: 'Hết quota/số dư', level: 'warn', message: message || 'Key hết quota hoặc số dư.' };
+      }
+      if (status === 403) {
+        return { code: 'FORBIDDEN', label: '403/khóa', level: 'err', message: message || 'Proxy từ chối key. Có thể backend/consumer bị khóa, suspended hoặc bị chặn theo tài khoản.' };
+      }
+      if (status === 404) {
+        return { code: 'MODEL_NOT_FOUND', label: 'Sai model/endpoint', level: 'err', message: message || 'Không tìm thấy model hoặc endpoint.' };
+      }
+      if (status === 429 || lower.includes('rate limit')) {
+        return { code: 'RATE_LIMIT', label: 'Rate limit', level: 'warn', message: message || 'Key hoặc tài khoản đang bị giới hạn tốc độ.' };
+      }
+      if (status >= 500) {
+        return { code: 'SERVER_ERROR', label: 'Lỗi server proxy', level: 'warn', message: message || `Proxy trả HTTP ${status}.` };
+      }
+      return { code: 'HTTP_ERROR', label: `HTTP ${status}`, level: 'err', message: message || `Endpoint trả HTTP ${status}.` };
+    }
+
+    async function readResponsePayload(response) {
+      const text = await response.text().catch(() => '');
+      if (!text) return { text: '', json: null };
+      try {
+        return { text, json: JSON.parse(text) };
+      } catch {
+        return { text, json: null };
+      }
+    }
+
+    function extractErrorMessage(payload) {
+      return payload?.json?.error?.message ||
+        payload?.json?.message ||
+        payload?.text ||
+        '';
+    }
+
+    function trimPreview(value, maxLength = 420) {
+      const normalized = String(value || '').replace(/\s+/gu, ' ').trim();
+      if (!normalized) return '';
+      return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
+    }
+
+    function extractSseContent(text) {
+      const parts = [];
+      String(text || '').split(/\r?\n/u).forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) return;
+        const dataText = trimmed.slice(5).trim();
+        if (!dataText || dataText === '[DONE]') return;
+        try {
+          const data = JSON.parse(dataText);
+          const content = data?.choices?.[0]?.delta?.content ||
+            data?.choices?.[0]?.message?.content ||
+            '';
+          if (content) parts.push(content);
+        } catch {
+          parts.push(dataText);
+        }
+      });
+      return parts.join('');
+    }
+
+    function extractOpenAIContent(payload) {
+      return payload?.json?.choices?.[0]?.message?.content ||
+        payload?.json?.choices?.[0]?.delta?.content ||
+        payload?.json?.choices?.[0]?.text ||
+        extractSseContent(payload?.text) ||
+        '';
+    }
+
+    async function testKeyOnce(key, index, round, url, model, prompt, timeoutMs, maxTokens) {
+      const startedAt = performance.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${key}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.2,
+            max_tokens: maxTokens,
+          }),
+          signal: controller.signal,
+        });
+
+        const elapsedMs = Math.round(performance.now() - startedAt);
+        const payload = await readResponsePayload(response);
+
+        if (!response.ok) {
+          const info = classifyResult(response.status, extractErrorMessage(payload));
+          return { index, round, key, status: response.status, elapsedMs, ...info };
+        }
+
+        const content = extractOpenAIContent(payload);
+        if (!String(content).trim()) {
+          const rawPreview = trimPreview(payload?.text || JSON.stringify(payload?.json || {}));
+          const finishReason = payload?.json?.choices?.[0]?.finish_reason || '';
+          const tokenHint = finishReason === 'length'
+            ? ` AG trả finish_reason=length khi max_tokens=${maxTokens}; hãy thử tăng Max tokens hoặc đổi model test.`
+            : '';
+          return {
+            index,
+            round,
+            key,
+            status: response.status,
+            elapsedMs,
+            code: 'EMPTY_RESPONSE',
+            label: 'Response 200 lạ',
+            level: 'warn',
+            message: rawPreview
+              ? `Endpoint trả 200 nhưng không có choices[0].message.content.${tokenHint} Raw: ${rawPreview}`
+              : 'Endpoint trả 200 nhưng body rỗng hoặc không đọc được.',
+          };
+        }
+
+        const info = classifyResult(200, '');
+        return {
+          index,
+          round,
+          key,
+          status: response.status,
+          elapsedMs,
+          ...info,
+          message: `${info.message} Phản hồi: ${String(content).slice(0, 120)}`,
+        };
+      } catch (error) {
+        const elapsedMs = Math.round(performance.now() - startedAt);
+        const isAbort = error?.name === 'AbortError';
+        const info = classifyResult(0, isAbort
+          ? `Timeout sau ${Math.round(timeoutMs / 1000)} giây.`
+          : (error?.message || 'Lỗi mạng không xác định.'));
+        return { index, round, key, status: 0, elapsedMs, ...info };
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+
+    async function sleep(ms) {
+      if (!ms) return;
+      await new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    async function runConcurrentTest() {
+      const runId = ++activeRunId;
+      const transportError = validateTransportBeforeRun();
+      if (transportError) {
+        setLog(transportError, 'err');
+        return;
+      }
+
+      const keys = parseKeys(document.getElementById('keyInput').value);
+      const invalidKeys = keys.filter((key) => !key.startsWith('sk-'));
+      const validKeys = keys.filter((key) => key.startsWith('sk-'));
+      const runBtn = document.getElementById('runBtn');
+
+      if (!validKeys.length) {
+        setLog('Không tìm thấy key AG hợp lệ. Key phải bắt đầu bằng sk-.', 'err');
+        return;
+      }
+
+      if (invalidKeys.length) {
+        setLog(`Bỏ qua ${invalidKeys.length} dòng không giống key AG.`, 'warn');
+      }
+
+      latestResults = [];
+      renderResults();
+
+      const url = buildRequestUrl();
+      if (document.getElementById('transport').value === 'direct') {
+        setLog('Đang gọi trực tiếp AG. Nếu tất cả request báo Failed to fetch rất nhanh, đó là CORS của browser; hãy đổi sang Qua app /api/proxy.', 'warn');
+      }
+      const model = document.getElementById('model').value.trim();
+      const prompt = document.getElementById('prompt').value.trim() || 'Trả lời ngắn bằng tiếng Việt.';
+      const timeoutMs = Math.max(5000, Number(document.getElementById('timeoutMs').value) || 30000);
+      const rounds = Math.min(10, Math.max(1, Number(document.getElementById('rounds').value) || 1));
+      const roundDelayMs = Math.max(0, Number(document.getElementById('roundDelayMs').value) || 0);
+      const maxTokens = Math.min(32768, Math.max(256, Number(document.getElementById('maxTokens').value) || 2048));
+
+      runBtn.disabled = true;
+      setLog(`Đang chạy ${validKeys.length} key đồng thời qua ${url}...`, 'info');
+
+      try {
+        for (let round = 1; round <= rounds; round++) {
+          if (runId !== activeRunId) return;
+          setLog(`Vòng ${round}/${rounds}: gửi ${validKeys.length} request cùng lúc...`, 'info');
+          const roundResults = await Promise.all(
+            validKeys.map((key, index) => testKeyOnce(key, index, round, url, model, prompt, timeoutMs, maxTokens))
+          );
+          latestResults.push(...roundResults);
+          renderResults();
+
+          if (round < rounds) {
+            await sleep(roundDelayMs);
+          }
+        }
+        setLog('Hoàn tất test đồng thời.', 'ok');
+      } finally {
+        runBtn.disabled = false;
+      }
+    }
+
+    function getSummary(results) {
+      return results.reduce((summary, item) => {
+        summary.total += 1;
+        if (item.code === 'OK') summary.ok += 1;
+        else if (item.code === 'RATE_LIMIT' || item.code === 'NO_BALANCE') summary.rate += 1;
+        else if (item.code === 'FORBIDDEN') summary.forbidden += 1;
+        else summary.failed += 1;
+        return summary;
+      }, { total: 0, ok: 0, rate: 0, forbidden: 0, failed: 0 });
+    }
+
+    function renderResults() {
+      const body = document.getElementById('resultsBody');
+      const summary = getSummary(latestResults);
+      document.getElementById('totalCount').textContent = summary.total;
+      document.getElementById('okCount').textContent = summary.ok;
+      document.getElementById('rateCount').textContent = summary.rate;
+      document.getElementById('forbiddenCount').textContent = summary.forbidden;
+      document.getElementById('failedCount').textContent = summary.failed;
+
+      if (!latestResults.length) {
+        body.innerHTML = '<tr><td colspan="6" class="message">Chưa có kết quả.</td></tr>';
+        return;
+      }
+
+      body.innerHTML = latestResults.map((item) => `
+        <tr>
+          <td>${item.index + 1}${item.round > 1 ? `<br><span class="info">vòng ${item.round}</span>` : ''}</td>
+          <td class="key">${maskKey(item.key)}</td>
+          <td><span class="badge ${item.level}">${escapeHtml(item.label)}</span><br><span class="${item.level}">${escapeHtml(item.code)}</span></td>
+          <td>${item.status || '--'}</td>
+          <td>${item.elapsedMs.toLocaleString()}ms</td>
+          <td class="message">${escapeHtml(item.message)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function setLog(message, level = 'info') {
+      const log = document.getElementById('log');
+      log.className = `log ${level}`;
+      log.textContent = message;
+    }
+
+    function clearResults() {
+      activeRunId += 1;
+      latestResults = [];
+      renderResults();
+      setLog('Đã xóa kết quả.', 'info');
+    }
+
+    async function copyReport() {
+      if (!latestResults.length) {
+        setLog('Chưa có báo cáo để copy.', 'warn');
+        return;
+      }
+
+      const lines = latestResults.map((item) => [
+        `#${item.index + 1}`,
+        `round=${item.round}`,
+        `key=${maskKey(item.key)}`,
+        `status=${item.status || '--'}`,
+        `code=${item.code}`,
+        `time=${item.elapsedMs}ms`,
+        `message=${item.message}`,
+      ].join(' | '));
+
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setLog('Đã copy báo cáo đã mask key.', 'ok');
+    }
+
+    function escapeHtml(value) {
+      const div = document.createElement('div');
+      div.textContent = String(value ?? '');
+      return div.innerHTML;
+    }
+
+    renderResults();
+  </script>
+</body>
+</html>

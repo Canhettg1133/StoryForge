@@ -12,6 +12,18 @@ const STORYFORGE_SETTINGS_STORAGE = 'sf-ai-settings';
 const STORYFORGE_PROVIDER_STORAGE = 'sf-preferred-provider';
 const STORYFORGE_PROXY_MODEL_STORAGE = 'sf-proxy-model';
 
+function getDefaultProxyModel() {
+    if (typeof DEFAULT_PROXY_MODEL !== 'undefined' && DEFAULT_PROXY_MODEL) return DEFAULT_PROXY_MODEL;
+    return 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
+}
+
+function ensureProxyModelDefault() {
+    const current = String(typeof proxyModel !== 'undefined' ? proxyModel : '').trim();
+    if (current) return current;
+    proxyModel = getDefaultProxyModel();
+    return proxyModel;
+}
+
 function readStoryForgeJson(key) {
     try {
         const raw = localStorage.getItem(key);
@@ -64,7 +76,7 @@ function getStoryForgeOpenAIProxyProfile(appSettings) {
 
     return {
         baseUrl: appSettings?.proxyUrl || '/api/proxy',
-        defaultModel: localStorage.getItem(STORYFORGE_PROXY_MODEL_STORAGE) || '',
+        defaultModel: localStorage.getItem(STORYFORGE_PROXY_MODEL_STORAGE) || getDefaultProxyModel(),
     };
 }
 
@@ -93,10 +105,8 @@ function importStoryForgeFallbackSettings() {
         imported = Boolean(proxyBaseUrl) || imported;
     }
 
-    if (storyForgeProxyProfile.defaultModel) {
-        proxyModel = storyForgeProxyProfile.defaultModel;
-        imported = true;
-    }
+    proxyModel = storyForgeProxyProfile.defaultModel || ensureProxyModelDefault();
+    imported = true;
 
     if (!hasTranslatorAiConfig
         && (preferredProvider === 'openai_proxy' || preferredProvider === 'gemini_proxy' || preferredProvider === 'gemini_direct')
@@ -353,13 +363,14 @@ function loadSettings() {
             if (!proxyApiKeys.length && proxyApiKey) {
                 proxyApiKeys = [proxyApiKey];
             }
-            if (settings.proxyModel) proxyModel = settings.proxyModel;
+            proxyModel = settings.proxyModel || getDefaultProxyModel();
         } catch (e) {
             console.error('Error loading settings:', e);
         }
     }
 
     importStoryForgeFallbackSettings();
+    ensureProxyModelDefault();
 
     if (document.getElementById('useProxyToggle')) {
         document.getElementById('useProxyToggle').checked = useProxy;
@@ -371,7 +382,7 @@ function loadSettings() {
         document.getElementById('proxyBaseUrlInput').value = proxyBaseUrl;
     }
     if (document.getElementById('proxyModelSelect')) {
-        document.getElementById('proxyModelSelect').value = proxyModel;
+        document.getElementById('proxyModelSelect').value = ensureProxyModelDefault();
     }
     if (document.getElementById('useCanonPackToggle') && typeof useCanonPackTranslation !== 'undefined') {
         document.getElementById('useCanonPackToggle').checked = useCanonPackTranslation;

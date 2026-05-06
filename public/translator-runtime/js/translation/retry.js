@@ -26,6 +26,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
         }
 
         let modelKeyPair = null;
+        let proxyKeyUsed = null;
         try {
             const temperature = temperatures[(attempt - 1) % temperatures.length];
 
@@ -102,7 +103,11 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
                 console.log(`[Proxy] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}, model=${proxyModel}`);
                 const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(chunkIndex) : proxyApiKey;
+                proxyKeyUsed = proxyKey;
                 const result = await translateChunkViaProxy(promptToUse, temperature, proxyKey);
+                if (typeof recordProxyKeySuccess === 'function') {
+                    recordProxyKeySuccess(proxyKey);
+                }
                 return result;
             }
 
@@ -163,6 +168,13 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 if (is403 || is429) {
                     const waitTime = is403 ? 5000 : 8000;
                     console.warn(`[Proxy] Chunk ${chunkIndex + 1} ⚠️ ${is403 ? '403 Backend suspended' : '429 Rate limited'}, chờ ${waitTime / 1000}s rồi retry...`);
+                    if (typeof recordProxyKeyError === 'function' && proxyKeyUsed) {
+                        const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
+                        const cooldownMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                            ? retryAfterSeconds * 1000
+                            : (is403 ? PROXY_FORBIDDEN_COOLDOWN_MS : PROXY_RATE_LIMIT_COOLDOWN_MS);
+                        recordProxyKeyError(proxyKeyUsed, is403 ? 'FORBIDDEN_403' : 'RATE_LIMIT_429', cooldownMs);
+                    }
 
                     if (attempt === retries) {
                         throw error;
