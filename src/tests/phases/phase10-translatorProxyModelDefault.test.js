@@ -8,12 +8,19 @@ const DEFAULT_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
 
 function createSelectElement() {
   const select = {
-    value: '',
+    _value: '',
     innerHTML: '',
     options: [],
+    get value() {
+      return this._value;
+    },
+    set value(nextValue) {
+      const normalized = String(nextValue || '');
+      this._value = this.options.some((option) => option.value === normalized) ? normalized : '';
+    },
     appendChild(option) {
       this.options.push(option);
-      if (option.selected) this.value = option.value;
+      if (option.selected) this._value = option.value;
     },
   };
   return select;
@@ -88,10 +95,10 @@ describe('phase10 translator proxy model default', () => {
 
     expect(html).toContain(`<option value="${DEFAULT_MODEL}" selected>`);
     expect(html).toContain('Gemini 3 Flash HIGH');
-    expect(html).toContain('href="style.css?v=9"');
-    expect(html).toContain('src="js/app.js?v=9"');
-    expect(html).toContain('src="js/proxy/proxy-api.js?v=9"');
-    expect(html).toContain('src="js/init.js?v=9"');
+    expect(html).toContain('href="style.css?v=10"');
+    expect(html).toContain('src="js/app.js?v=10"');
+    expect(html).toContain('src="js/proxy/proxy-api.js?v=10"');
+    expect(html).toContain('src="js/init.js?v=10"');
   });
 
   it('defaults Gemini Proxy to Flash 3 when saved translator settings do not contain a model', () => {
@@ -113,5 +120,34 @@ describe('phase10 translator proxy model default', () => {
 
     const saved = JSON.parse(stored.get('novelTranslatorProSettings'));
     expect(saved.proxyModel).toBe(DEFAULT_MODEL);
+  });
+
+  it('re-renders the proxy dropdown after importing a custom proxy model from StoryForge settings', () => {
+    const customModel = 'custom-gemini-model-from-main-settings';
+    const { context, elements, stored } = loadRuntime();
+
+    stored.set('sf-preferred-provider', 'openai_proxy');
+    stored.set('sf-api-keys-v2', JSON.stringify({
+      openai_proxy: [{ key: 'sk-custom-proxy-key' }],
+      gemini_proxy: [{ key: 'sk-ag-proxy-key' }],
+    }));
+    stored.set('sf-ai-settings', JSON.stringify({
+      openAIProxy: {
+        activeProfileId: 'custom-openai-proxy',
+        customProfile: {
+          baseUrl: 'https://custom.example/v1',
+          defaultModel: customModel,
+          models: [customModel],
+        },
+      },
+    }));
+
+    context.initProxyUI();
+    context.loadSettings();
+
+    expect(vm.runInContext('proxyModel', context)).toBe(customModel);
+    expect(elements.proxyModelSelect.value).toBe(customModel);
+    expect(elements.proxyModelSelect.options.some((option) => option.value === customModel)).toBe(true);
+    expect(vm.runInContext('proxyApiKeys', context)).toEqual(['sk-custom-proxy-key']);
   });
 });

@@ -42,10 +42,14 @@ function getStoryForgeKeys(provider) {
         .filter(Boolean);
 }
 
-function getStoryForgeProxyKeys() {
+function getStoryForgeProxyKeys(profileId = '') {
+    if (profileId === 'custom-openai-proxy') {
+        return getStoryForgeKeys('openai_proxy');
+    }
+
     return [...new Set([
-        ...getStoryForgeKeys('openai_proxy'),
         ...getStoryForgeKeys('gemini_proxy'),
+        ...getStoryForgeKeys('openai_proxy'),
     ])];
 }
 
@@ -68,13 +72,19 @@ function normalizeStoryForgeProxyUrl(rawValue) {
 function getStoryForgeOpenAIProxyProfile(appSettings) {
     const proxySettings = appSettings?.openAIProxy || {};
     if (proxySettings.activeProfileId === 'custom-openai-proxy' && proxySettings.customProfile) {
+        const customProfile = proxySettings.customProfile;
+        const customModels = Array.isArray(customProfile.models)
+            ? customProfile.models.map((model) => String(model || '').trim()).filter(Boolean)
+            : [];
         return {
-            baseUrl: proxySettings.customProfile.baseUrl || '',
-            defaultModel: proxySettings.customProfile.defaultModel || '',
+            profileId: 'custom-openai-proxy',
+            baseUrl: customProfile.baseUrl || '',
+            defaultModel: customProfile.defaultModel || customModels[0] || '',
         };
     }
 
     return {
+        profileId: 'ag-gemini-proxy',
         baseUrl: appSettings?.proxyUrl || '/api/proxy',
         defaultModel: localStorage.getItem(STORYFORGE_PROXY_MODEL_STORAGE) || getDefaultProxyModel(),
     };
@@ -84,8 +94,8 @@ function importStoryForgeFallbackSettings() {
     const appSettings = readStoryForgeJson(STORYFORGE_SETTINGS_STORAGE) || {};
     const preferredProvider = String(localStorage.getItem(STORYFORGE_PROVIDER_STORAGE) || '').trim();
     const directKeys = getStoryForgeKeys('gemini_direct');
-    const proxyKeys = getStoryForgeProxyKeys();
     const storyForgeProxyProfile = getStoryForgeOpenAIProxyProfile(appSettings);
+    const proxyKeys = getStoryForgeProxyKeys(storyForgeProxyProfile.profileId);
     const hasTranslatorAiConfig = apiKeys.length > 0 || proxyApiKeys.length > 0 || Boolean(proxyApiKey);
     let imported = false;
 
@@ -381,8 +391,13 @@ function loadSettings() {
     if (document.getElementById('proxyBaseUrlInput')) {
         document.getElementById('proxyBaseUrlInput').value = proxyBaseUrl;
     }
-    if (document.getElementById('proxyModelSelect')) {
-        document.getElementById('proxyModelSelect').value = ensureProxyModelDefault();
+    const proxyModelSelect = document.getElementById('proxyModelSelect');
+    if (proxyModelSelect) {
+        if (typeof renderProxyModelsDropdown === 'function') {
+            renderProxyModelsDropdown();
+        } else {
+            proxyModelSelect.value = ensureProxyModelDefault();
+        }
     }
     if (document.getElementById('useCanonPackToggle') && typeof useCanonPackTranslation !== 'undefined') {
         document.getElementById('useCanonPackToggle').checked = useCanonPackTranslation;
