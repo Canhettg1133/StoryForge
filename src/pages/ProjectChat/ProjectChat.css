@@ -816,26 +816,36 @@
     border-radius: 8px;
   }
 
-  .project-chat-main {
+  .project-chat-page .project-chat-main.card {
     position: static;
     height: 100%;
     min-height: 0;
     width: 100%;
     border: 0;
+    gap: 0;
+    padding: 0;
   }
 
   .project-chat-topbar {
-    padding: 10px 12px;
+    gap: 6px;
+    padding: 0 12px 7px;
   }
 
   .project-chat-topbar__nav {
     display: flex;
+    align-items: flex-start;
+    min-height: 22px;
+  }
+
+  .project-chat-topbar__nav .btn {
+    height: 22px;
+    padding: 0 4px;
   }
 
   .project-chat-topbar__compact {
     flex-direction: column;
     align-items: stretch;
-    gap: 10px;
+    gap: 7px;
   }
 
   .project-chat-topbar__header-actions {
@@ -845,7 +855,9 @@
 
   .project-chat-topbar__header-actions .btn {
     flex: 1;
+    height: 34px;
     min-width: 0;
+    padding-inline: 8px;
   }
 
   .project-chat-topbar__controls {
@@ -882,7 +894,7 @@
   }
 
   .project-chat-messages {
-    padding: 12px;
+    padding: 10px 12px 8px;
   }
 
   .project-chat-message {
@@ -905,18 +917,33 @@
   }
 
   .project-chat-composer {
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    flex: 0 0 auto;
+    padding: 6px 10px calc(6px + env(safe-area-inset-bottom, 0px));
   }
 
   .project-chat-composer__input {
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
+    gap: 6px;
+    padding: 7px;
+    border-radius: 18px;
+  }
+
+  .project-chat-composer__input .textarea {
+    min-height: 48px;
+    max-height: 180px;
+    padding: 9px 12px;
+    border-radius: 14px;
   }
 
   .project-chat-composer__submit {
     align-self: end;
     justify-content: center;
     padding-bottom: 0;
+  }
+
+  .project-chat-composer__submit-button {
+    width: 44px;
+    height: 44px;
   }
 
   .project-chat-composer__actions {

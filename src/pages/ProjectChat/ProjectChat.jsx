@@ -54,8 +54,10 @@ const CHAT_MODES = {
 };
 const PROVIDER_SELECT_AG_PROXY = `${PROVIDERS.OPENAI_PROXY}:${AG_PROXY_PROFILE_ID}`;
 const PROVIDER_SELECT_CUSTOM_PROXY = `${PROVIDERS.OPENAI_PROXY}:${CUSTOM_PROXY_PROFILE_ID}`;
-const COMPOSER_MIN_HEIGHT = 58;
-const COMPOSER_MAX_HEIGHT = 220;
+const COMPOSER_DESKTOP_MIN_HEIGHT = 58;
+const COMPOSER_MOBILE_MIN_HEIGHT = 48;
+const COMPOSER_DESKTOP_MAX_HEIGHT = 220;
+const COMPOSER_MOBILE_MAX_HEIGHT = 180;
 
 const sortThreadsDesc = (threads) =>
   [...threads].sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0));
@@ -540,6 +542,12 @@ export default function ProjectChat() {
   const projectScopeEnabled = Boolean(projectId);
   const scopedProjectId = projectScopeEnabled ? Number(projectId) : GLOBAL_CHAT_PROJECT_ID;
   const isMobileLayout = useMobileLayout(900);
+  const composerMinHeight = isMobileLayout
+    ? COMPOSER_MOBILE_MIN_HEIGHT
+    : COMPOSER_DESKTOP_MIN_HEIGHT;
+  const composerMaxHeight = isMobileLayout
+    ? COMPOSER_MOBILE_MAX_HEIGHT
+    : COMPOSER_DESKTOP_MAX_HEIGHT;
 
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
@@ -586,20 +594,20 @@ export default function ProjectChat() {
   function resizeComposer(textarea) {
     if (!textarea) return;
     if (!textarea.value) {
-      textarea.style.height = `${COMPOSER_MIN_HEIGHT}px`;
+      textarea.style.height = `${composerMinHeight}px`;
       textarea.style.overflowY = 'hidden';
       return;
     }
-    textarea.style.height = `${COMPOSER_MIN_HEIGHT}px`;
+    textarea.style.height = `${composerMinHeight}px`;
     const nextHeight = Math.min(
-      Math.max(textarea.scrollHeight, COMPOSER_MIN_HEIGHT),
-      COMPOSER_MAX_HEIGHT,
+      Math.max(textarea.scrollHeight, composerMinHeight),
+      composerMaxHeight,
     );
     textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY = nextHeight >= COMPOSER_MAX_HEIGHT ? 'auto' : 'hidden';
+    textarea.style.overflowY = nextHeight >= composerMaxHeight ? 'auto' : 'hidden';
   }
 
-  function resetComposerHeight(minHeight = COMPOSER_MIN_HEIGHT) {
+  function resetComposerHeight(minHeight = composerMinHeight) {
     if (!composerTextareaRef.current) return;
     composerTextareaRef.current.style.height = `${minHeight}px`;
     composerTextareaRef.current.style.overflowY = 'hidden';
@@ -650,7 +658,7 @@ export default function ProjectChat() {
 
   useLayoutEffect(() => {
     resizeComposer(composerTextareaRef.current);
-  }, [draft, editingMessageId]);
+  }, [draft, editingMessageId, composerMinHeight, composerMaxHeight]);
 
   useEffect(() => {
     if (projectScopeEnabled && (!currentProject || currentProject.id !== scopedProjectId)) return;
