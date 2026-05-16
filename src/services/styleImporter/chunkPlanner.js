@@ -27,7 +27,7 @@ function normalizeChapters({ chapters = [], rawText = '' } = {}) {
       return {
         id: chapter?.id || `chapter_${arrayIndex + 1}`,
         index: asPositiveInteger(chapter?.index || chapter?.chapterIndex, arrayIndex + 1),
-        title: String(chapter?.title || `Chuong ${arrayIndex + 1}`).trim(),
+    title: String(chapter?.title || `Chương ${arrayIndex + 1}`).trim(),
         content,
         estimatedTokens: asPositiveInteger(
           chapter?.estimatedTokens,
@@ -46,7 +46,7 @@ function normalizeChapters({ chapters = [], rawText = '' } = {}) {
   return [{
     id: 'chapter_1',
     index: 1,
-    title: 'Toan bo tac pham',
+    title: 'Toàn bộ tác phẩm',
     content: fallbackText,
     estimatedTokens: estimateTokensDetailed(fallbackText).estimatedTokens,
   }];

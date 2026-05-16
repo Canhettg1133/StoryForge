@@ -23,7 +23,7 @@ const usePlotStore = create((set, get) => ({
         try {
             const id = await db.plotThreads.add({
                 project_id: data.project_id,
-                title: data.title || 'Tuyen truyen moi',
+      title: data.title || 'Tuyến truyện mới',
                 type: data.type || 'main', // main, subplot, character_arc, mystery, romance
                 state: data.state || 'active', // active, resolved, dropped
                 description: data.description || '', // New dynamic field

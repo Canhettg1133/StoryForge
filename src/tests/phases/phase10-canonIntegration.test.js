@@ -769,6 +769,74 @@ describe('phase10 canon integration', () => {
     expect(packet.criticalConstraints.deadCharacters).toContain(33);
   });
 
+  it('uses the pre-chapter snapshot instead of latest global state for writing retrieval', async () => {
+    const { engine } = await loadModules({
+      projects: [{ id: 1, title: 'Pre chapter retrieval state' }],
+      chapters: [
+        { id: 9, project_id: 1, order_index: 8, title: 'Chuong 9', summary: 'Ket thuc o son coc' },
+        { id: 10, project_id: 1, order_index: 9, title: 'Chuong 10', summary: 'Canh hien tai' },
+      ],
+      scenes: [
+        { id: 110, project_id: 1, chapter_id: 10, order_index: 0, title: 'Canh 1', pov_character_id: 150, characters_present: '[150]' },
+      ],
+      characters: [{ id: 150, project_id: 1, name: 'Lam Phong' }],
+      chapter_snapshots: [{
+        id: 501,
+        project_id: 1,
+        chapter_id: 9,
+        revision_id: 500,
+        snapshot_json: {
+          entityStates: [{
+            project_id: 1,
+            entity_id: 150,
+            entity_type: 'character',
+            alive_status: 'alive',
+            current_location_name: 'Son coc la',
+            status_summary: 'Trong thuong, bi nam U Minh Lang bao vay',
+          }],
+          threadStates: [],
+          factStates: [],
+          itemStates: [],
+          relationshipStates: [],
+        },
+      }],
+      entity_state_current: [{
+        id: 601,
+        project_id: 1,
+        entity_id: 150,
+        entity_type: 'character',
+        alive_status: 'alive',
+        current_location_name: 'Thanh Van Tong',
+        status_summary: 'Da tro ve tong mon',
+      }],
+      plot_thread_state: [],
+      canonFacts: [],
+      plotThreads: [],
+      objects: [],
+      chapter_commits: [],
+      item_state_current: [],
+      relationship_state_current: [],
+      chapterMeta: [],
+      memory_evidence: [],
+      story_events: [],
+    });
+
+    const packet = await engine.buildRetrievalPacket({
+      projectId: 1,
+      chapterId: 10,
+      sceneId: 110,
+      detectedCharacterIds: [150],
+    });
+
+    expect(packet.relevantEntityStates).toHaveLength(1);
+    expect(packet.relevantEntityStates[0].current_location_name).toBe('Son coc la');
+    expect(packet.relevantEntityStates[0].status_summary).toContain('U Minh Lang');
+    expect(packet.criticalConstraints.locationAnchors).toEqual([{
+      entity_id: 150,
+      location_name: 'Son coc la',
+    }]);
+  });
+
   it('supports retrieval modes with deeper near-memory and evidence caps', async () => {
     const { engine } = await loadModules({
       projects: [{ id: 1, title: 'Retrieval Modes Test' }],

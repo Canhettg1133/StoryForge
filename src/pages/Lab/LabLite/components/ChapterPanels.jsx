@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { BookOpen, CheckCircle2 } from 'lucide-react';
 import { getChapterContent } from '../../../../services/labLite/labLiteDb.js';
+import { toVietnameseErrorMessage } from '../../../../utils/errorMessages.js';
 import { buildChapterCoverageBadges, buildCoverageMap, chapterMatchesCoverageFilter, formatChapterDisplayTitle, formatNumber, getPriorityLabel, getRecommendationLabel } from '../labLiteUiHelpers.js';
 
 export function ChapterPanel({ chapters, currentChapterId, scoutResults, chapterCoverage, filter, coverageFilter, onCoverageFilterChange, onSelect }) {
@@ -169,7 +170,7 @@ export function ChapterDetail({ chapter, corpus, hasPrevious, hasNext, onPreviou
       })
       .catch((error) => {
         if (canceled) return;
-        setContentState({ status: 'error', error: error?.message || 'Không tải được nội dung chương.' });
+        setContentState({ status: 'error', error: toVietnameseErrorMessage(error, 'Không tải được nội dung chương.') });
       });
     return () => {
       canceled = true;
@@ -200,7 +201,7 @@ export function ChapterDetail({ chapter, corpus, hasPrevious, hasNext, onPreviou
       await onRename(chapter.id, title);
       setEditState({ status: 'complete', error: '' });
     } catch (error) {
-      setEditState({ status: 'error', error: error?.message || 'Không lưu được tên chương.' });
+      setEditState({ status: 'error', error: toVietnameseErrorMessage(error, 'Không lưu được tên chương.') });
     }
   };
   const handleSplit = async () => {
@@ -215,7 +216,7 @@ export function ChapterDetail({ chapter, corpus, hasPrevious, hasNext, onPreviou
       setSplitLine('');
       setSplitTitle('');
     } catch (error) {
-      setEditState({ status: 'error', error: error?.message || 'Không tách được chương.' });
+      setEditState({ status: 'error', error: toVietnameseErrorMessage(error, 'Không tách được chương.') });
     }
   };
 

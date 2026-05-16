@@ -33,11 +33,11 @@ function getExtension(fileName = '') {
 }
 
 function titleFromFileName(fileName = '') {
-  return String(fileName || 'Untitled')
+  return String(fileName || 'Chưa đặt tên')
     .replace(/\.[^.]+$/u, '')
     .replace(/[_-]+/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim() || 'Untitled';
+    .trim() || 'Chưa đặt tên';
 }
 
 export function detectLabLiteFileType(file = {}) {
@@ -55,7 +55,7 @@ async function readDocxText(file) {
     const result = await mammoth.extractRawText({ arrayBuffer });
     return String(result?.value || '').trim();
   } catch (error) {
-    const wrapped = new Error('DOCX parser is not available in this browser build.');
+    const wrapped = new Error('Bộ đọc DOCX không khả dụng trong bản chạy browser này.');
     wrapped.code = 'DOCX_UNSUPPORTED';
     wrapped.cause = error;
     throw wrapped;
@@ -64,12 +64,12 @@ async function readDocxText(file) {
 
 export async function readLabLiteFile(file, options = {}) {
   if (!file) {
-    throw new Error('Please choose a file.');
+    throw new Error('Vui lòng chọn file.');
   }
 
   const fileType = detectLabLiteFileType(file);
   if (!fileType) {
-    const error = new Error('Unsupported file type. Lab Lite currently supports TXT, MD, and DOCX.');
+    const error = new Error('Định dạng file chưa được hỗ trợ. Lab Lite hiện hỗ trợ TXT, MD và DOCX.');
     error.code = 'UNSUPPORTED_FILE_TYPE';
     throw error;
   }
@@ -91,12 +91,12 @@ export async function readLabLiteFile(file, options = {}) {
 
   const parsed = parseChaptersFromText(rawText, {
     ...options,
-    fallbackTitlePrefix: options.fallbackTitlePrefix || 'Chapter',
+    fallbackTitlePrefix: options.fallbackTitlePrefix || 'Chương',
   });
 
   return {
     fileType,
-    sourceFileName: file.name || 'Untitled',
+    sourceFileName: file.name || 'Chưa đặt tên',
     title: options.title || titleFromFileName(file.name),
     rawText: parsed.rawText,
     chapters: parsed.chapters,

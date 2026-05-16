@@ -1,3 +1,7 @@
+.story-creation-page {
+  max-width: 1120px;
+}
+
 .story-creation-page-actions {
   display: flex;
   margin-bottom: var(--space-4);
@@ -85,6 +89,49 @@
   gap: var(--space-3);
 }
 
+.story-creation-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: 4px;
+}
+
+.story-creation-title-row h2 {
+  margin-bottom: 0;
+}
+
+.story-creation-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: var(--weight-semibold);
+  line-height: 1.25;
+}
+
+.story-creation-status-badge.is-active {
+  background: var(--color-success-muted, rgba(34, 197, 94, 0.12));
+  color: var(--color-success, #22c55e);
+  border-color: color-mix(in srgb, var(--color-success, #22c55e) 30%, var(--color-border));
+}
+
+.story-creation-status-badge.is-runtime,
+.story-creation-status-badge.is-board {
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+}
+
+.story-creation-status-badge.is-legacy {
+  background: color-mix(in srgb, #f59e0b 13%, transparent);
+  color: #f59e0b;
+  border-color: color-mix(in srgb, #f59e0b 30%, var(--color-border));
+}
+
 .story-creation-guide {
   display: flex;
   gap: var(--space-3);
@@ -142,7 +189,7 @@
 
 .story-creation-info-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
@@ -255,6 +302,15 @@
 }
 
 @media (max-width: 900px) {
+  .story-creation-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 12px;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
   .story-creation-toolbar-card,
   .story-creation-guide,
   .story-creation-info-box {

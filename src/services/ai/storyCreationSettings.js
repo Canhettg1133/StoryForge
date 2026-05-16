@@ -1,68 +1,161 @@
 const STORAGE_KEY = 'sf-story-creation-settings';
 const META_KEY = 'sf-story-creation-settings-meta';
 
-const PROJECT_WIZARD_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON format:
+const STORY_BIBLE_SEED_SYSTEM_PROMPT_LOCKED = `Trả về CHÍNH XÁC JSON format:
 {
-  "title": "Ten truyen chinh thuc",
-  "title_options": ["Ten 1", "Ten 2", "Ten 3"],
-  "premise": "Tom tat premise 2-3 cau",
+  "title": "Tên truyện chính thức",
+  "title_options": ["Tên 1", "Tên 2", "Tên 3"],
+  "premise": "Tóm tắt premise 2-3 câu",
   "world_profile": {
-    "world_name": "Ten the gioi",
-    "world_type": "Loai: tu tien / hien dai / sci-fi...",
-    "world_scale": "Quy mo: 1 luc dia / nhieu gioi...",
-    "world_era": "Thoi dai: thuong co / trung co / hien dai...",
-    "world_rules": ["Quy tac 1", "Quy tac 2", "Quy tac 3"],
-    "world_description": "Mo ta tong quan the gioi 2-3 cau"
+    "world_name": "Tên thế giới",
+    "world_type": "Loại: tu tiên / hiện đại / sci-fi...",
+    "world_scale": "Quy mô: 1 lục địa / nhiều giới...",
+    "world_era": "Thời đại: thượng cổ / trung cổ / hiện đại...",
+    "world_rules": ["Quy tắc 1", "Quy tắc 2", "Quy tắc 3"],
+    "world_description": "Mô tả tổng quan thế giới 2-3 câu"
   },
-  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "specific_role": "vai tro canon cu the neu tac gia yeu cau; de rong neu khong co", "specific_role_locked": false, "age": "tuoi/do tuoi tuy chon, chi dien khi phu hop the loai hoac huu ich cho giong thoai", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "diem yeu / khuyet diem luc dau", "goals": "...", "current_status": "Character Live Canon luc khoi dau; de rong neu khong co rang buoc canon that", "story_function": "vai tro trong cac chapter dau"}],
-  "locations": [{"name": "...", "description": "...", "story_function": "dia diem nay dung de lam gi trong chapter dau"}],
-  "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chi them neu chapter dau that su can vat pham nay"}],
-  "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "...", "story_function": "the luc nay dung de lam gi trong chapter dau"}],
-  "terms": [{"name": "...", "definition": "...", "category": "magic|race|technology|other", "story_function": "thuat ngu nay anh huong gi toi chapter dau"}],
-  "chapters": [{"title": "Chuong 1: ...", "purpose": "muc tieu ke chuyen cua chuong", "summary": "Tom tat noi dung chuong", "state_delta": "Thay doi du kien cua Character Live Canon/current_status sau chuong nay; de rong neu khong doi", "featured_characters": ["..."], "primary_location": "...", "thread_titles": ["..."], "key_events": ["neo noi bo neu can"], "required_factions": ["..."], "required_objects": ["..."], "required_terms": ["..."]}],
-  "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mo ta tuyen truyen 1-2 cau", "state": "active", "opening_window": "xuat hien tu chuong nao", "anchor_chapters": ["Chuong 1", "Chuong 3"]}]
+  "characters": [{"name": "...", "aliases": ["tên gọi khác / biệt danh nếu có"], "role": "protagonist|antagonist|supporting|mentor|minor", "specific_role": "vai trò canon cụ thể nếu cần khóa; để rỗng nếu không có", "specific_role_locked": false, "age": "tuổi/độ tuổi tùy chọn", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu lúc đầu", "goals": "...", "current_status": "Live Canon tại lúc mở truyện/chương 1; không ghi trạng thái tương lai", "story_function": "vai trò cụ thể trong phần mở đầu"}],
+  "locations": [{"name": "...", "description": "...", "story_function": "địa điểm này dùng để làm gì ở phần mở đầu"}],
+  "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chỉ thêm nếu phần mở đầu thật sự cần vật phẩm này"}],
+  "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "...", "story_function": "thế lực này dùng để làm gì ở phần mở đầu"}],
+  "terms": [{"name": "...", "definition": "...", "category": "magic|race|technology|other", "story_function": "thuật ngữ này ảnh hưởng gì tới phần mở đầu"}],
+  "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mô tả tuyến truyện 1-2 câu", "state": "active", "opening_window": "xuất hiện từ chương nào", "anchor_chapters": []}]
 }
 
-QUY TAC PHAN LOAI:
-- "locations": chi la dia diem vat ly co the den duoc.
-- "factions": tong mon, bang phai, vuong trieu, to chuc, the luc chinh tri.
-- "terms": chi la khai niem tru tuong, he thong, chung toc, cong nghe.
+QUY TẮC SEED:
+- Đây chỉ là Story Bible Seed, KHÔNG lập dàn ý chương ở bước này.
+- Số nhân vật phải tỉ lệ với {{initial_chapter_count}} chương khởi đầu: 1 chương = 1 protagonist + tối đa 1 nhân vật phụ thật sự cần xuất hiện; 2-3 chương = 2-4 nhân vật; 4+ chương = 3-5 nhân vật.
+- Không tạo nhân vật, địa điểm, vật phẩm, thế lực, thuật ngữ "để dành về sau".
+- Mỗi entity phải có story_function cụ thể trong phần mở đầu hoặc premise. Nếu chưa dùng sớm thì không tạo.
+- Với truyện tu tiên/huyền huyễn, nếu phần mở đầu chắc chắn dùng các khái niệm hoặc tài nguyên nền tảng như linh khí, cảnh giới tu luyện, linh thạch, tông môn, công pháp, thì phải tạo record tương ứng trong terms/objects/factions/locations ngay ở seed.
+- Nếu một tông môn vừa là thế lực vừa là nơi diễn ra cảnh sớm, tạo faction cho tổ chức và location cho khu vực/địa điểm vật lý tương ứng.
+- current_status chỉ là trạng thái canon tại lúc truyện bắt đầu, không được ghi kết quả tương lai của outline.
+- Mỗi người chỉ có một record chính thức; biệt danh hoặc cách gọi khác phải nằm trong aliases.
+- locations chỉ là địa điểm vật lý có thể đến được; factions là tổ chức/thế lực; terms là khái niệm/hệ thống/chủng tộc/công nghệ.
 
-QUY TAC TEN TRUYEN:
-- "title" phai la ten day du, khong cat ngan tu premise.
-- "title_options" phai co 3-5 phuong an du khac nhau, bam sat the loai va y tuong.
+Chỉ trả về JSON, không thêm gì khác.`;
 
-QUY TAC CHUONG VA ENTITY:
-- "featured_characters", "primary_location", "thread_titles", "required_factions", "required_objects", "required_terms" trong tung chapter phai tham chieu toi entity/tuyen da tao o tren.
-- Khong tao character/location/term chi duoc neu o codex ma khong lien he voi chapter.
-- "objects" la field tuy chon, chi them neu chapter dau that su can va chapter outline co nhac den.
-- Moi chapter phai co tien trien ro, nhung khong duoc nhoi qua nhieu bien co neu day moi la mo dau truyen.
-- BAT BUOC giu timeline ro: neu co su kien dem nguoc ("3 ngay nua", "1 thang sau", "ky sat hach"), cac chapter sau phai cap nhat moc thoi gian tuong ung, khong duoc lap lai moc cu nhu chua co thoi gian troi qua.
-- BAT BUOC moi an phat, giam giu, truy na, thuong tich, cam tuc hoac rang buoc hanh vi tao he qua that trong outline. Neu nhan vat can du mot su kien sap toi, outline phai neu con duong hop phap hoac hop logic de ho xuat hien.
-- BAT BUOC phan ung nhan vat theo thong tin ho dang co: khi mot "phe vat" song sot tu dia, lo tu vi, kiem y, bao vat hoac nang luc bat thuong, nguoi xung quanh/phia doi dich phai nghi ngo, hoi, dieu tra, che giau, loi dung, hoac doi ke hoach.
-- "state_delta" cua chapter la thay doi du kien cua Character Live Canon/current_status sau chapter; de rong neu chapter khong doi trang thai canon nao.
-- Moi nhan vat chi duoc co MOT record chinh thuc trong "characters". Neu cung mot nguoi co ten ngan, ho, biet danh, danh xung, hoac cach goi khac, dua vao "aliases" cua record do; TUYET DOI khong tao thanh nhan vat moi.
-- specific_role la vai tro canon cu the do tac gia/blueprint xac nhan, khac voi "role" la vai tro truyen. Chi dien khi co vai tro cu the that su can khoa trong canon; neu de trong thi "specific_role_locked" phai la false.
-- Khi "specific_role" co noi dung va can khoa canon, dat "specific_role_locked": true. Khong tao nhan vat khac giu cung vai tro cu the hoac vai tro tuong duong.
-- Field "age" la tuy chon: chi dien tuoi/do tuoi khi phu hop the loai hoac huu ich cho giong thoai; hien dai/hoc duong/do thi co the dung tuoi so, tien hiep/huyen huyen/than linh/bat tu uu tien mo ta linh hoat nhu thieu nien, ngoai hinh doi muoi, tuoi that rat cao, truong boi.
-- Field "current_status" la Character Live Canon luc khoi dau. Chi dien neu trang thai do anh huong chuong dau, quan he, xung dot, dia vi xa hoi, tri thuc, phe phai, vet thuong, hoac rang buoc hanh vi. Khong dien status rong/chung chung kieu "buon", "manh me".
-- Khong tao 2 protagonist/main character cho cung mot nguoi chi vi ten hoi khac nhau. "featured_characters" phai dung ten chinh thuc trong "characters".
+const CHAPTER_OUTLINE_PASS_SYSTEM_PROMPT_LOCKED = `Trả về CHÍNH XÁC JSON format:
+{
+  "chapters": [
+    {
+      "title": "Chương 1: ...",
+      "purpose": "mục tiêu kể chuyện của chương 1-2 câu",
+      "summary": "tóm tắt nội dung chương 2-3 câu",
+      "opening_state": "Trạng thái mở chương",
+      "handoff_from_previous": "Chương 1 để rỗng; từ Chương 2 trở đi bắt buộc nêu cầu nối nhân quả",
+      "ending_state": "Trạng thái kết chương để chương sau nối tiếp",
+      "state_delta": "Thay đổi dự kiến của Live Canon/current_status sau chương này; để rỗng nếu không đổi",
+      "featured_characters": ["..."],
+      "primary_location": "...",
+      "thread_titles": ["..."],
+      "key_events": ["neo nội bộ cần có"],
+      "required_factions": ["..."],
+      "required_objects": ["..."],
+      "required_terms": ["..."]
+    }
+  ],
+  "plot_threads": [
+    {
+      "title": "...",
+      "type": "main|subplot|character_arc|mystery|romance",
+      "description": "mô tả tuyến truyện 1-2 câu",
+      "state": "active",
+      "opening_window": "xuất hiện từ chương nào",
+      "anchor_chapters": ["Chương 1"]
+    }
+  ],
+  "proposed_entities": {
+    "characters": [],
+    "locations": [],
+    "objects": [],
+    "factions": [],
+    "terms": [],
+    "plot_threads": []
+  }
+}
 
-Chi tra ve JSON, khong them gi khac.`;
+QUY TẮC OUTLINE:
+- Phải tạo đúng {{initial_chapter_count}} chương.
+- Chỉ dùng cast/world/entity đã có trong seed đã duyệt.
+- Nếu thật sự cần entity mới, KHÔNG nhét trực tiếp vào canon; đưa vào proposed_entities với reason/story_function rõ ràng.
+- Bất kỳ tên nào xuất hiện trong featured_characters, primary_location, thread_titles, required_factions, required_objects hoặc required_terms mà chưa có trong seed đã duyệt thì BẮT BUỘC phải có record cùng tên trong proposed_entities đúng nhóm.
+- Ví dụ: nếu dùng "Linh Thạch" trong required_objects thì proposed_entities.objects phải có {"name":"Linh Thạch", ...}; nếu dùng "Luyện Khí" hoặc "Linh Khí" trong required_terms thì proposed_entities.terms phải có record tương ứng; nếu dùng "Thanh Vân Tông" làm primary_location mà seed chưa có location này thì proposed_entities.locations phải có record tương ứng.
+- Mỗi chương bắt buộc có opening_state và ending_state.
+- Từ chương 2 trở đi, handoff_from_previous phải nói rõ chương này nối từ ending_state/state_delta của chương trước bằng cầu nhân quả nào.
+- Không nhảy từ nguy hiểm, trọng thương, giam giữ, mất tích, đang bị truy đuổi sang trạng thái an toàn nếu chưa có beat giải quyết.
+- featured_characters, primary_location, thread_titles, required_factions, required_objects, required_terms phải dùng tên chính thức trong seed hoặc proposed_entities.
+- state_delta chỉ mô tả thay đổi sau chương, không được ghi ngược vào current_status của nhân vật.
 
-const OUTLINE_GENERATION_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON:
+Chỉ trả về JSON, không thêm gì khác.`;
+
+const PROJECT_WIZARD_SYSTEM_PROMPT_LOCKED = `Trả về CHÍNH XÁC JSON format:
+{
+  "title": "Tên truyện chính thức",
+  "title_options": ["Tên 1", "Tên 2", "Tên 3"],
+  "premise": "Tóm tắt premise 2-3 câu",
+  "world_profile": {
+    "world_name": "Tên thế giới",
+    "world_type": "Loại: tu tiên / hiện đại / sci-fi...",
+    "world_scale": "Quy mô: 1 lục địa / nhiều giới...",
+    "world_era": "Thời đại: thượng cổ / trung cổ / hiện đại...",
+    "world_rules": ["Quy tắc 1", "Quy tắc 2", "Quy tắc 3"],
+    "world_description": "Mô tả tổng quan thế giới 2-3 câu"
+  },
+  "characters": [{"name": "...", "aliases": ["tên gọi khác / biệt danh nếu có"], "role": "protagonist|antagonist|supporting|mentor|minor", "specific_role": "vai trò canon cụ thể nếu tác giả yêu cầu; để rỗng nếu không có", "specific_role_locked": false, "age": "tuổi/độ tuổi tùy chọn, chỉ điền khi phù hợp thể loại hoặc hữu ích cho giọng thoại", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu / khuyết điểm lúc đầu", "goals": "...", "current_status": "Character Live Canon lúc khởi đầu; để rỗng nếu không có ràng buộc canon thật", "story_function": "vai trò trong các chapter đầu"}],
+  "locations": [{"name": "...", "description": "...", "story_function": "địa điểm này dùng để làm gì trong chapter đầu"}],
+  "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chỉ thêm nếu chapter đầu thật sự cần vật phẩm này"}],
+  "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "...", "story_function": "thế lực này dùng để làm gì trong chapter đầu"}],
+  "terms": [{"name": "...", "definition": "...", "category": "magic|race|technology|other", "story_function": "thuật ngữ này ảnh hưởng gì tới chapter đầu"}],
+  "chapters": [{"title": "Chương 1: ...", "purpose": "mục tiêu kể chuyện của chương", "summary": "Tóm tắt nội dung chương", "opening_state": "Trạng thái nhân vật/thế giới lúc mở chương", "handoff_from_previous": "Chương 1 để rỗng; từ Chương 2 trở đi bắt buộc nêu rõ cầu nhân quả từ ending_state chương trước", "ending_state": "Trạng thái kết chương để chương sau nối tiếp", "state_delta": "Thay đổi dự kiến của Character Live Canon/current_status sau chương này; để rỗng nếu không đổi", "featured_characters": ["..."], "primary_location": "...", "thread_titles": ["..."], "key_events": ["neo nội bộ nếu cần"], "required_factions": ["..."], "required_objects": ["..."], "required_terms": ["..."]}],
+  "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mô tả tuyến truyện 1-2 câu", "state": "active", "opening_window": "xuất hiện từ chương nào", "anchor_chapters": ["Chương 1", "Chương 3"]}]
+}
+
+QUY TẮC PHÂN LOẠI:
+- "locations": chỉ là địa điểm vật lý có thể đến được.
+- "factions": tông môn, bang phái, vương triều, tổ chức, thế lực chính trị.
+- "terms": chỉ là khái niệm trừu tượng, hệ thống, chủng tộc, công nghệ.
+
+QUY TẮC TÊN TRUYỆN:
+- "title" phải là tên đầy đủ, không cắt ngắn từ premise.
+- "title_options" phải có 3-5 phương án đủ khác nhau, bám sát thể loại và ý tưởng.
+
+QUY TẮC CHƯƠNG VÀ ENTITY:
+- "featured_characters", "primary_location", "thread_titles", "required_factions", "required_objects", "required_terms" trong từng chapter phải tham chiếu tới entity/tuyến đã tạo ở trên.
+- Không tạo character/location/term chỉ để có ở codex mà không liên hệ với chapter.
+- "objects" là field tùy chọn, chỉ thêm nếu chapter đầu thật sự cần và chapter outline có nhắc đến.
+- Mỗi chapter phải có tiến triển rõ, nhưng không được nhồi quá nhiều biến cố nếu đây mới là mở đầu truyện.
+- BẮT BUỘC giữ timeline rõ: nếu có sự kiện đếm ngược ("3 ngày nữa", "1 tháng sau", "kỳ sát hạch"), các chapter sau phải cập nhật mốc thời gian tương ứng, không được lặp lại mốc cũ như chưa có thời gian trôi qua.
+- BẮT BUỘC mọi án phạt, giam giữ, truy nã, thương tích, cấm túc hoặc ràng buộc hành vi tạo hệ quả thật trong outline. Nếu nhân vật cần dự một sự kiện sắp tới, outline phải nêu con đường hợp pháp hoặc hợp logic để họ xuất hiện.
+- BẮT BUỘC phản ứng nhân vật theo thông tin họ đang có: khi một "phế vật" sống sót tử địa, lộ tu vi, kiếm ý, bảo vật hoặc năng lực bất thường, người xung quanh/phía đối địch phải nghi ngờ, hỏi, điều tra, che giấu, lợi dụng, hoặc đổi kế hoạch.
+- "state_delta" của chapter là thay đổi dự kiến của Character Live Canon/current_status sau chapter; để rỗng nếu chapter không đổi trạng thái canon nào.
+- "opening_state", "ending_state", và "handoff_from_previous" là cầu nối nhân quả. Chương N+1 PHẢI nối trực tiếp từ ending_state/state_delta của Chương N; nếu cần đổi địa điểm/thời gian/trạng thái, phải nêu cầu nối hợp logic trong handoff_from_previous hoặc key_events.
+- Không được để chapter sau nhảy từ nguy hiểm/bị thương/giam giữ/mất tích sang địa điểm/an toàn/mục tiêu mới nếu chưa có beat giải quyết cầu nối.
+- Mỗi nhân vật chỉ được có MỘT record chính thức trong "characters". Nếu cùng một người có tên ngắn, họ, biệt danh, danh xưng, hoặc cách gọi khác, đưa vào "aliases" của record đó; TUYỆT ĐỐI không tạo thành nhân vật mới.
+- specific_role là vai trò canon cụ thể do tác giả/blueprint xác nhận, khác với "role" là vai trò truyện. Chỉ điền khi có vai trò cụ thể thật sự cần khóa trong canon; nếu để trống thì "specific_role_locked" phải là false.
+- Khi "specific_role" có nội dung và cần khóa canon, đặt "specific_role_locked": true. Không tạo nhân vật khác giữ cùng vai trò cụ thể hoặc vai trò tương đương.
+- Field "age" là tùy chọn: chỉ điền tuổi/độ tuổi khi phù hợp thể loại hoặc hữu ích cho giọng thoại; hiện đại/học đường/đô thị có thể dùng tuổi số, tiên hiệp/huyền huyễn/thần linh/bất tử ưu tiên mô tả linh hoạt như thiếu niên, ngoại hình đôi mươi, tuổi thật rất cao, trưởng bối.
+- Field "current_status" là Character Live Canon lúc khởi đầu. Chỉ điền nếu trạng thái đó ảnh hưởng chương đầu, quan hệ, xung đột, địa vị xã hội, tri thức, phe phái, vết thương, hoặc ràng buộc hành vi. Không điền status rỗng/chung chung kiểu "buồn", "mạnh mẽ".
+- Không tạo 2 protagonist/main character cho cùng một người chỉ vì tên hơi khác nhau. "featured_characters" phải dùng tên chính thức trong "characters".
+
+Chỉ trả về JSON, không thêm gì khác.`;
+
+const OUTLINE_GENERATION_SYSTEM_PROMPT_LOCKED = `Trả về CHÍNH XÁC JSON:
 {
   "chapters": [
     {
       "title":"...",
-      "purpose":"muc tieu ke chuyen cua chuong 1-2 cau",
-      "summary":"tom tat noi dung 2-3 cau",
-      "state_delta":"Thay doi du kien cua Character Live Canon/current_status sau chuong nay; de rong neu khong doi",
+      "purpose":"mục tiêu kể chuyện của chương 1-2 câu",
+      "summary":"tóm tắt nội dung 2-3 câu",
+      "opening_state":"Trạng thái mở chương",
+      "handoff_from_previous":"Chương đầu để rỗng; chương sau nêu rõ cầu nhân quả từ chương trước",
+      "ending_state":"Trạng thái kết chương để chương sau bám vào",
+      "state_delta":"Thay đổi dự kiến của Character Live Canon/current_status sau chương này; để rỗng nếu không đổi",
       "act":1,
       "featured_characters":["..."],
       "primary_location":"...",
       "thread_titles":["..."],
-      "key_events":["neo noi bo neu can"],
+      "key_events":["neo nội bộ nếu cần"],
       "required_factions":["..."],
       "required_objects":["..."],
       "required_terms":["..."]
@@ -72,68 +165,123 @@ const OUTLINE_GENERATION_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON:
     {
       "title":"...",
       "type":"main|subplot|character_arc|mystery|romance",
-      "description":"mo ta tuyen truyen 1-2 cau",
+      "description":"mô tả tuyến truyện 1-2 câu",
       "state":"active",
-      "anchor_chapters":["Chuong 1","Chuong 3"]
+      "anchor_chapters":["Chương 1","Chương 3"]
     }
   ]
 }
 
-QUY TAC THEM:
-- "featured_characters" phai la nhan vat thuc su tham gia hoac bi anh huong manh trong chuong, dung ten chinh thuc trong "Nhan vat". Ten ngan/biet danh/alias khong duoc bien thanh nhan vat moi.
-- "primary_location" phai la dia diem chinh cua chuong.
-- "thread_titles" phai tro toi cac plot thread thuc su duoc day trong chuong do.
-- "key_events", "required_factions", "required_objects", "required_terms" phai la neo can cho chuong do; khong dien cho du so.
-- "required_factions", "required_objects", "required_terms" phai bam entity/term da co trong du an neu co; chi de xuat moi khi outline that su bat buoc.
-- "state_delta" phai neu ro neu chuong nay lam doi Character Live Canon/current_status cua nhan vat; de rong neu khong co doi thay ro.
-- BAT BUOC giu timeline ro: neu co su kien dem nguoc ("3 ngay nua", "1 thang sau", "ky sat hach"), cac chapter sau phai cap nhat moc thoi gian tuong ung, khong duoc lap lai moc cu nhu chua co thoi gian troi qua.
-- BAT BUOC moi an phat, giam giu, truy na, thuong tich, cam tuc hoac rang buoc hanh vi tao he qua that trong outline. Neu nhan vat can du mot su kien sap toi, outline phai neu con duong hop phap hoac hop logic de ho xuat hien.
-- BAT BUOC phan ung nhan vat theo thong tin ho dang co: khi mot "phe vat" song sot tu dia, lo tu vi, kiem y, bao vat hoac nang luc bat thuong, nguoi xung quanh/phia doi dich phai nghi ngo, hoi, dieu tra, che giau, loi dung, hoac doi ke hoach.
-- Neu chapter chua can dung toi mot thread lon, dung gan vao cho du so.
-- Outline phai ro duong day tien trien, khong duoc toan chapter na na nhau.
+QUY TẮC THÊM:
+- "featured_characters" phải là nhân vật thực sự tham gia hoặc bị ảnh hưởng mạnh trong chương, dùng tên chính thức trong "Nhân vật". Tên ngắn/biệt danh/alias không được biến thành nhân vật mới.
+- "primary_location" phải là địa điểm chính của chương.
+- "thread_titles" phải trỏ tới các plot thread thực sự được đẩy trong chương đó.
+- "key_events", "required_factions", "required_objects", "required_terms" phải là neo cần cho chương đó; không điền cho đủ số.
+- "required_factions", "required_objects", "required_terms" phải bám entity/term đã có trong dự án nếu có; chỉ đề xuất mới khi outline thật sự bắt buộc.
+- "state_delta" phải nêu rõ nếu chương này làm đổi Character Live Canon/current_status của nhân vật; để rỗng nếu không có đổi thay rõ.
+- Mỗi chapter từ chapter thứ 2 trong batch phải có "handoff_from_previous" giải thích vì sao nó nối tiếp được chapter trước. Nếu chapter trước kết thúc bằng cliffhanger/nguy hiểm/thương tích/giam giữ/di chuyển, chapter sau phải có beat cầu nối trước khi sang mục tiêu mới.
+- BẮT BUỘC giữ timeline rõ: nếu có sự kiện đếm ngược ("3 ngày nữa", "1 tháng sau", "kỳ sát hạch"), các chapter sau phải cập nhật mốc thời gian tương ứng, không được lặp lại mốc cũ như chưa có thời gian trôi qua.
+- BẮT BUỘC mọi án phạt, giam giữ, truy nã, thương tích, cấm túc hoặc ràng buộc hành vi tạo hệ quả thật trong outline. Nếu nhân vật cần dự một sự kiện sắp tới, outline phải nêu con đường hợp pháp hoặc hợp logic để họ xuất hiện.
+- BẮT BUỘC phản ứng nhân vật theo thông tin họ đang có: khi một "phế vật" sống sót tử địa, lộ tu vi, kiếm ý, bảo vật hoặc năng lực bất thường, người xung quanh/phía đối địch phải nghi ngờ, hỏi, điều tra, che giấu, lợi dụng, hoặc đổi kế hoạch.
+- Nếu chapter chưa cần dùng tới một thread lớn, đừng gán vào cho đủ số.
+- Outline phải rõ đường dây tiến triển, không được toàn chapter na ná nhau.
 
-Chi tra ve JSON.`;
+Chỉ trả về JSON.`;
 
-const THREAD_SUGGESTION_SYSTEM_PROMPT_LOCKED = `Tra ve CHINH XAC JSON:
-{"plot_threads": [{"title":"...","type":"main|subplot|character_arc|mystery|romance","description":"mo ta 1-2 cau"}]}`;
+const THREAD_SUGGESTION_SYSTEM_PROMPT_LOCKED = `Trả về CHÍNH XÁC JSON:
+{"plot_threads": [{"title":"...","type":"main|subplot|character_arc|mystery|romance","description":"mô tả 1-2 câu"}]}`;
 
 const STORY_CREATION_SYSTEM_PROMPT_PROTECTIONS = {
+  storyBibleSeed: {
+    marker: 'Trả về CHÍNH XÁC JSON format:',
+    lockedPrompt: STORY_BIBLE_SEED_SYSTEM_PROMPT_LOCKED,
+    label: 'JSON contract được khóa',
+    description: 'Schema seed được khóa để AI Wizard chỉ tạo nền truyện, chưa tạo dàn ý chương.',
+  },
+  chapterOutlinePass: {
+    marker: 'Trả về CHÍNH XÁC JSON format:',
+    lockedPrompt: CHAPTER_OUTLINE_PASS_SYSTEM_PROMPT_LOCKED,
+    label: 'JSON contract được khóa',
+    description: 'Schema outline được khóa để dàn ý bám seed đã duyệt và có cầu nối nhân quả.',
+  },
   projectWizard: {
-    marker: 'Tra ve CHINH XAC JSON format:',
+    marker: 'Trả về CHÍNH XÁC JSON format:',
+    legacyMarkers: ['Tra ve CHINH XAC JSON format:'],
     lockedPrompt: PROJECT_WIZARD_SYSTEM_PROMPT_LOCKED,
-    label: 'JSON contract duoc khoa',
-    description: 'Schema nay luon duoc app ghep lai de tranh vo parser khi AI Wizard tra ket qua.',
+    label: 'JSON contract được khóa',
+    description: 'Schema này luôn được app ghép lại để tránh vỡ parser khi luồng legacy trả kết quả.',
   },
   outlineGeneration: {
-    marker: 'Tra ve CHINH XAC JSON:',
+    marker: 'Trả về CHÍNH XÁC JSON:',
+    legacyMarkers: ['Tra ve CHINH XAC JSON:'],
     lockedPrompt: OUTLINE_GENERATION_SYSTEM_PROMPT_LOCKED,
-    label: 'JSON contract duoc khoa',
-    description: 'Outline Board van cho sua huong dan, nhung block output JSON nay la bat bien.',
+    label: 'JSON contract được khóa',
+    description: 'Outline Board vẫn cho sửa hướng dẫn, nhưng block output JSON này là bất biến.',
   },
   threadSuggestion: {
-    marker: 'Tra ve CHINH XAC JSON:',
+    marker: 'Trả về CHÍNH XÁC JSON:',
+    legacyMarkers: ['Tra ve CHINH XAC JSON:'],
     lockedPrompt: THREAD_SUGGESTION_SYSTEM_PROMPT_LOCKED,
-    label: 'JSON contract duoc khoa',
-    description: 'Phan output nay duoc khoa de luong goi y plot thread luon parse on dinh.',
+    label: 'JSON contract được khóa',
+    description: 'Phần output này được khóa để luồng gợi ý plot thread luôn parse ổn định.',
   },
 };
 
 export const STORY_CREATION_PROMPT_GROUPS = [
   {
     key: 'writingSystemIdentity',
-    label: 'He thong viet truyen',
-    description: 'Dung cho system identity mac dinh cua engine viet truyen tren toan bo app.',
-    systemHelp: 'Sua khi muon doi vai tro mac dinh, nguyen tac nen va cach AI tu xac dinh ban than khi xu ly cac tac vu viet truyen.',
+    label: 'Hệ thống viết truyện',
+    description: 'Dùng cho system identity mặc định của engine viết truyện trên toàn bộ app.',
+    systemHelp: 'Sửa khi muốn đổi vai trò mặc định, nguyên tắc nền và cách AI tự xác định bản thân khi xử lý các tác vụ viết truyện.',
     userHelp: '',
     variables: [],
     showUserPrompt: false,
   },
   {
+    key: 'storyBibleSeed',
+    label: 'Story Bible Seed',
+    description: 'Dùng cho bước đầu của AI Wizard: tạo premise, world rules, cast tối thiểu và plot thread, chưa tạo dàn ý chương.',
+    systemHelp: 'Sửa khi muốn đổi cách AI dựng nền truyện ban đầu, giới hạn số nhân vật, hoặc siết việc không tạo entity để dành về sau.',
+    userHelp: 'Sửa khi muốn đổi thông tin đầu vào cho seed: thể loại, tone, góc nhìn, số chương khởi đầu, mục tiêu dài hạn và ý tưởng.',
+    variables: [
+      'genre',
+      'tone',
+      'pov_label',
+      'pronoun_label',
+      'target_length_label',
+      'ultimate_goal',
+      'synopsis_line',
+      'story_structure_line',
+      'idea',
+      'template_hint',
+      'initial_chapter_count',
+      'pacing_guidance',
+    ],
+  },
+  {
+    key: 'chapterOutlinePass',
+    label: 'Chapter Outline Pass',
+    description: 'Dùng cho bước hai của AI Wizard: tạo dàn ý chương từ seed đã duyệt, có opening/ending state và handoff.',
+    systemHelp: 'Sửa khi muốn đổi cách AI nối chương, xử lý proposal entity mới, hoặc siết logic nhân quả của outline.',
+    userHelp: 'Sửa khi muốn đổi payload seed đã duyệt và yêu cầu số chương cho outline.',
+    variables: [
+      'genre',
+      'tone',
+      'pov_label',
+      'pronoun_label',
+      'target_length_label',
+      'ultimate_goal',
+      'initial_chapter_count',
+      'approved_seed_json',
+      'pacing_guidance',
+    ],
+  },
+  {
     key: 'projectWizard',
-    label: 'Khoi tao du an bang AI',
-    description: 'Dung cho AI Wizard khi sinh blueprint truyen moi tu y tuong ban dau.',
-    systemHelp: 'Sua khi muon ep AI tuan thu vai tro, logic tao blueprint, pacing, va do bam sat giua entity voi outline.',
-    userHelp: 'Sua khi muon bo sung thong tin dau vao, huong dan ve y tuong, tone, cau truc, do dai mong muon.',
+    label: 'Khởi tạo dự án bằng AI',
+    description: 'Luồng cũ / không dùng trực tiếp bởi AI Wizard mới. Giữ lại để tương thích và tra cứu.',
+    systemHelp: 'Sửa khi muốn ép luồng legacy tuân thủ vai trò, logic tạo blueprint, pacing, và độ bám sát giữa entity với outline.',
+    userHelp: 'Sửa khi muốn bổ sung thông tin đầu vào, hướng dẫn về ý tưởng, tone, cấu trúc, độ dài mong muốn cho luồng legacy.',
     variables: [
       'genre',
       'tone',
@@ -151,10 +299,10 @@ export const STORY_CREATION_PROMPT_GROUPS = [
   },
   {
     key: 'outlineGeneration',
-    label: 'Tao outline khoi dau',
-    description: 'Dung khi tao outline khoi dau hoac bo sung purpose/summary trong Outline Board.',
-    systemHelp: 'Sua khi muon thay doi cach AI lap dan y, cach neo plot thread vao chapter, va logic outline.',
-    userHelp: 'Sua khi muon doi cau lenh yeu cau AI tao outline hoac bo sung outline dang co.',
+    label: 'Tạo outline khởi đầu',
+    description: 'Dùng khi tạo outline khởi đầu hoặc bổ sung purpose/summary trong Outline Board.',
+    systemHelp: 'Sửa khi muốn thay đổi cách AI lập dàn ý, cách neo plot thread vào chapter, và logic outline.',
+    userHelp: 'Sửa khi muốn đổi câu lệnh yêu cầu AI tạo outline hoặc bổ sung outline đang có.',
     variables: [
       'genre',
       'project_title',
@@ -168,10 +316,10 @@ export const STORY_CREATION_PROMPT_GROUPS = [
   },
   {
     key: 'threadSuggestion',
-    label: 'Goi y tuyen truyen',
-    description: 'Dung khi goi y them plot thread moi dua tren synopsis va outline hien tai.',
-    systemHelp: 'Sua khi muon ep AI phan tich sau hon, tranh lap, hoac uu tien mot loai thread cu the.',
-    userHelp: 'Sua khi muon doi cach dat yeu cau phan tich va goi y tuyen truyen.',
+    label: 'Gợi ý tuyến truyện',
+    description: 'Dùng khi gợi ý thêm plot thread mới dựa trên synopsis và outline hiện tại.',
+    systemHelp: 'Sửa khi muốn ép AI phân tích sâu hơn, tránh lặp, hoặc ưu tiên một loại thread cụ thể.',
+    userHelp: 'Sửa khi muốn đổi cách đặt yêu cầu phân tích và gợi ý tuyến truyện.',
     variables: [
       'project_title',
       'genre',
@@ -187,87 +335,128 @@ export const STORY_CREATION_PROMPT_GROUPS = [
 
 export const DEFAULT_STORY_CREATION_SETTINGS = {
   writingSystemIdentity: {
-    systemPrompt: `Ban la dong bien tap vien truyen chu chuyen nghiep trong ung dung StoryForge.
-Ban uu tien so 1 la tinh nhat quan (consistency), giong van rieng cua tac pham, va logic noi tai cua the gioi truyen.
-Mac dinh, ban viet bang tieng Viet tru khi duoc yeu cau khac.
-Ban KHONG tu y them meta-commentary, ghi chu, hay giai thich du thua - chi tra ve dung noi dung task can.
-Ban PHAI tuan thu tuyet doi moi taboo, blacklist, va quy tac an toan duoc cung cap.
-Ban KHONG duoc tu y bo sung canon, nhan vat, dia danh, vat pham, ky nang, hay luat the gioi moi neu task hien tai khong cho phep sang tao mo rong ro rang.
-BAT BUOC giu logic nhan qua: timeline, an phat/giam giu, thuong tich, lo tu vi/bao vat, va phan ung cua nhan vat phu/phia doi dich phai tao he qua that trong canh sau.`,
+    systemPrompt: `Bạn là đồng biên tập viên truyện chữ chuyên nghiệp trong ứng dụng StoryForge.
+Bạn ưu tiên số 1 là tính nhất quán (consistency), giọng văn riêng của tác phẩm, và logic nội tại của thế giới truyện.
+Mặc định, bạn viết bằng tiếng Việt trừ khi được yêu cầu khác.
+Bạn KHÔNG tự ý thêm meta-commentary, ghi chú, hay giải thích dư thừa - chỉ trả về đúng nội dung task cần.
+Bạn PHẢI tuân thủ tuyệt đối mọi taboo, blacklist, và quy tắc an toàn được cung cấp.
+Bạn KHÔNG được tự ý bổ sung canon, nhân vật, địa danh, vật phẩm, kỹ năng, hay luật thế giới mới nếu task hiện tại không cho phép sáng tạo mở rộng rõ ràng.
+BẮT BUỘC giữ logic nhân quả: timeline, án phạt/giam giữ, thương tích, lộ tu vi/bảo vật, và phản ứng của nhân vật phụ/phía đối địch phải tạo hệ quả thật trong cảnh sau.`,
     userPromptTemplate: ``,
   },
-  projectWizard: {
-    systemPrompt: `Ban la tro ly khoi tao du an truyen cho StoryForge.
-Nhiem vu cua ban la tao mot blueprint ban dau cho du an, vua du de tac gia bat dau viet, nhung KHONG duoc sinh ra codex dep ma vo dung.
+  storyBibleSeed: {
+    systemPrompt: `Bạn là trợ lý tạo Story Bible Seed cho StoryForge.
+Nhiệm vụ của bạn là dựng nền truyện đủ dùng cho phần mở đầu, nhưng chưa lập dàn ý chương.
 
-NGUYEN TAC BAT BUOC:
-- So chapter trong "chapters" PHAI dung bang {{initial_chapter_count}}.
-- Moi entity duoc tao ra phai co chuc nang ro trong phan chapter dau; neu khong can cho {{initial_chapter_count}} chapter dau thi KHONG tao.
-- Nhan vat, dia diem, thuat ngu, va plot thread phai bam sat premise va phai duoc nhac den trong chapter outline.
-- Moi nhan vat chi co 1 record chinh thuc. Ten ngan, biet danh, danh xung, ho/ten dem, hoac bien the chinh ta phai nam trong aliases cua record do, KHONG tao thanh nhan vat moi.
-- Neu mot nhan vat da co trong danh sach, moi chi tiet moi lien quan den nguoi do phai cap nhat vao chinh nhan vat do.
-  - Tuoi/do tuoi la tuy chon. Chi dien khi phu hop the loai hoac huu ich cho giong thoai; khong can thi de trong, khong bien tuoi thanh luat cung ve tinh cach.
-  - specific_role la vai tro canon cu the, khac voi role la vai tro truyen. Chi dien khi y tuong/blueprint can mot vai tro cu the duoc khoa; neu co noi dung va can khoa canon thi dat specific_role_locked = true, neu khong thi false.
-- current_status la Character Live Canon luc khoi dau. Khi tao cast ban dau, hay nghi nhan vat dang o trang thai nao khi truyen bat dau; chi dien neu trang thai do co luc rang buoc that voi chuong dau/boi canh hien tai.
-- Khong tao current_status chung chung nhu "buon", "manh me", "lanh lung"; uu tien dia vi, quan he, bi mat biet/chua biet, vet thuong, phe phai, dang bi giam/mat tich/lan tron, hoac gioi han hanh vi.
-- Nhac lai it nhung huu dung tot hon nhieu nhung roi rac.
-- BAT BUOC giu timeline ro: neu tao su kien dem nguoc ("3 ngay nua", "1 thang sau", "ky sat hach"), cac chapter sau phai cap nhat moc thoi gian tuong ung, khong lap lai moc cu nhu chua co thoi gian troi qua.
-- BAT BUOC moi an phat, giam giu, truy na, thuong tich, cam tuc hoac rang buoc hanh vi tao he qua that. Neu nhan vat can du mot su kien sap toi, blueprint phai cai san con duong hop phap hoac hop logic de ho xuat hien.
-- BAT BUOC phan ung nhan vat theo thong tin ho dang co: khi mot "phe vat" song sot tu dia, lo tu vi, kiem y, bao vat hoac nang luc bat thuong, nguoi xung quanh/phia doi dich phai nghi ngo, hoi, dieu tra, che giau, loi dung, hoac doi ke hoach.
-- Nhip truyen phai phu hop voi do dai muc tieu va khong duoc tang toc qua tay trong giai doan mo dau.{{pacing_guidance}}`,
-    userPromptTemplate: `The loai: {{genre}}
+NGUYÊN TẮC BẮT BUỘC:
+- Chỉ tạo premise, luật thế giới, cast tối thiểu, địa điểm, vật phẩm thật sự cần, thế lực, thuật ngữ và tuyến truyện.
+- Số nhân vật phải tỉ lệ với {{initial_chapter_count}} chương khởi đầu.
+- Không tạo nhân vật hoặc entity để dành về sau.
+- Mỗi entity phải có story_function cụ thể trong phần mở đầu.
+- current_status chỉ là trạng thái tại lúc mở truyện/chương 1, không được ghi trạng thái tương lai.
+- Nhắc ít nhưng hữu dụng tốt hơn nhiều nhưng rời rạc.
+- Nhịp truyện phải phù hợp độ dài mục tiêu và không tăng tốc quá tay.{{pacing_guidance}}`,
+    userPromptTemplate: `Thể loại: {{genre}}
 Tone: {{tone}}
-Goc nhin: {{pov_label}}
-Xung ho: {{pronoun_label}}
-Do dai du kien: {{target_length_label}}
-So chuong khoi dau: {{initial_chapter_count}}
-Dich den toi thuong: {{ultimate_goal}}
-{{synopsis_line}}{{story_structure_line}}Y tuong: {{idea}}{{template_hint}}`,
+Góc nhìn: {{pov_label}}
+Xưng hô: {{pronoun_label}}
+Độ dài dự kiến: {{target_length_label}}
+Số chương khởi đầu: {{initial_chapter_count}}
+Đích đến tối thượng: {{ultimate_goal}}
+{{synopsis_line}}{{story_structure_line}}Ý tưởng: {{idea}}{{template_hint}}`,
+  },
+  chapterOutlinePass: {
+    systemPrompt: `Bạn là trợ lý lập Chapter Outline Pass cho StoryForge.
+Bạn chỉ được tạo dàn ý chương dựa trên Story Bible Seed đã duyệt.
+
+NGUYÊN TẮC BẮT BUỘC:
+- Phải tạo đúng {{initial_chapter_count}} chương.
+- Mỗi chương phải có opening_state, ending_state và key_events rõ.
+- Từ chương 2 trở đi phải có handoff_from_previous nối trực tiếp từ ending_state/state_delta của chương trước.
+- Không dùng entity ngoài seed, trừ khi đưa vào proposed_entities để tác giả duyệt.
+- Không ghi trạng thái tương lai vào current_status của nhân vật.
+- Không nhảy cóc qua thương tích, giam giữ, truy đuổi, cliffhanger hoặc thay đổi địa điểm nếu chưa có cầu nối hợp lý.
+
+Story Bible Seed đã duyệt:
+{{approved_seed_json}}
+
+{{pacing_guidance}}`,
+    userPromptTemplate: `Hãy tạo dàn ý {{initial_chapter_count}} chương đầu từ seed đã duyệt ở trên. Chỉ trả JSON theo schema khóa.`,
+  },
+  projectWizard: {
+    systemPrompt: `Bạn là trợ lý khởi tạo dự án truyện cho StoryForge.
+Nhiệm vụ của bạn là tạo một blueprint ban đầu cho dự án, vừa đủ để tác giả bắt đầu viết, nhưng KHÔNG được sinh ra codex đẹp mà vô dụng.
+
+NGUYÊN TẮC BẮT BUỘC:
+- Số chapter trong "chapters" PHẢI đúng bằng {{initial_chapter_count}}.
+- Mỗi entity được tạo ra phải có chức năng rõ trong phần chapter đầu; nếu không cần cho {{initial_chapter_count}} chapter đầu thì KHÔNG tạo.
+- Số nhân vật phải tỉ lệ với {{initial_chapter_count}} chapter đầu: nếu chỉ 1 chapter thì thường chỉ 1 protagonist + tối đa 1 nhân vật phụ thật sự xuất hiện; nếu 2-3 chapter thì 2-4 nhân vật; chỉ khi 4+ chapter mới cần 3-5 nhân vật. Không tạo nhân vật "để dành về sau" trong wizard khởi đầu.
+- Nhân vật, địa điểm, thuật ngữ, và plot thread phải bám sát premise và phải được nhắc đến trong chapter outline.
+- Mỗi nhân vật chỉ có 1 record chính thức. Tên ngắn, biệt danh, danh xưng, họ/tên đệm, hoặc biến thể chính tả phải nằm trong aliases của record đó, KHÔNG tạo thành nhân vật mới.
+- Nếu một nhân vật đã có trong danh sách, mọi chi tiết mới liên quan đến người đó phải cập nhật vào chính nhân vật đó.
+  - Tuổi/độ tuổi là tùy chọn. Chỉ điền khi phù hợp thể loại hoặc hữu ích cho giọng thoại; không cần thì để trống, không biến tuổi thành luật cứng về tính cách.
+  - specific_role là vai trò canon cụ thể, khác với role là vai trò truyện. Chỉ điền khi ý tưởng/blueprint cần một vai trò cụ thể được khóa; nếu có nội dung và cần khóa canon thì đặt specific_role_locked = true, nếu không thì false.
+- current_status là Character Live Canon lúc khởi đầu. Khi tạo cast ban đầu, hãy nghĩ nhân vật đang ở trạng thái nào khi truyện bắt đầu; chỉ điền nếu trạng thái đó có lực ràng buộc thật với chương đầu/bối cảnh hiện tại.
+- Không tạo current_status chung chung như "buồn", "mạnh mẽ", "lạnh lùng"; ưu tiên địa vị, quan hệ, bí mật biết/chưa biết, vết thương, phe phái, đang bị giam/mất tích/lẩn trốn, hoặc giới hạn hành vi.
+- Mỗi chapter phải có opening_state và ending_state. Từ chapter thứ 2 trở đi, handoff_from_previous phải nói rõ chapter này tiếp nối ending_state/state_delta của chapter trước bằng cầu nhân quả nào.
+- Nhắc lại ít nhưng hữu dụng tốt hơn nhiều nhưng rời rạc.
+- BẮT BUỘC giữ timeline rõ: nếu tạo sự kiện đếm ngược ("3 ngày nữa", "1 tháng sau", "kỳ sát hạch"), các chapter sau phải cập nhật mốc thời gian tương ứng, không lặp lại mốc cũ như chưa có thời gian trôi qua.
+- BẮT BUỘC mọi án phạt, giam giữ, truy nã, thương tích, cấm túc hoặc ràng buộc hành vi tạo hệ quả thật. Nếu nhân vật cần dự một sự kiện sắp tới, blueprint phải cài sẵn con đường hợp pháp hoặc hợp logic để họ xuất hiện.
+- BẮT BUỘC phản ứng nhân vật theo thông tin họ đang có: khi một "phế vật" sống sót tử địa, lộ tu vi, kiếm ý, bảo vật hoặc năng lực bất thường, người xung quanh/phía đối địch phải nghi ngờ, hỏi, điều tra, che giấu, lợi dụng, hoặc đổi kế hoạch.
+- Nhịp truyện phải phù hợp với độ dài mục tiêu và không được tăng tốc quá tay trong giai đoạn mở đầu.{{pacing_guidance}}`,
+    userPromptTemplate: `Thể loại: {{genre}}
+Tone: {{tone}}
+Góc nhìn: {{pov_label}}
+Xưng hô: {{pronoun_label}}
+Độ dài dự kiến: {{target_length_label}}
+Số chương khởi đầu: {{initial_chapter_count}}
+Đích đến tối thượng: {{ultimate_goal}}
+{{synopsis_line}}{{story_structure_line}}Ý tưởng: {{idea}}{{template_hint}}`,
   },
   outlineGeneration: {
-    systemPrompt: `Ban la tro ly lap outline truyen cho StoryForge.
-Ban duoc phep sang tao trong pham vi outline, nhung phai giu outline co muc dich, co nhip, va bam sat du an.
+    systemPrompt: `Bạn là trợ lý lập outline truyện cho StoryForge.
+Bạn được phép sáng tạo trong phạm vi outline, nhưng phải giữ outline có mục đích, có nhịp, và bám sát dự án.
 
-NGUYEN TAC BAT BUOC:
-- Moi chapter phai co "purpose" ro rang, khong duoc la chapter de day so.
-- Moi plot thread phai co diem neo cu the trong it nhat mot chapter.
-- Character usage va location usage phai ro, khong duoc mo ho.
-- Outline phai doc current_status nhu Character Live Canon truoc khi quyet dinh featured_characters, quyen xuat hien, tri thuc va beat cua nhan vat.
-- Neu nhan vat dang mat tich, bi giam, chua biet bi mat, bi thuong, goa chong, bi truy na, dang lan tron, hoac co rang buoc hanh vi, outline khong duoc viet nhu rang buoc do khong ton tai.
-- Khi nhac nhan vat trong outline, chi dung ten chinh thuc da co trong danh sach Nhan vat; khong bien ten ngan/biet danh thanh mot nhan vat moi.
-- Khong duoc tang toc nhip qua tay o giai doan mo dau; khong nhoi qua nhieu bien co vao mot chapter.
-- Khong duoc tao thread lon nhung khong co chapter nao gan vao.
-- BAT BUOC giu timeline ro: neu outline hien tai co su kien dem nguoc ("3 ngay nua", "1 thang sau", "ky sat hach"), chapter sau phai cap nhat moc thoi gian tuong ung, khong lap lai moc cu nhu chua co thoi gian troi qua.
-- BAT BUOC moi an phat, giam giu, truy na, thuong tich, cam tuc hoac rang buoc hanh vi tao he qua that. Neu nhan vat can du mot su kien sap toi, outline phai cai san con duong hop phap hoac hop logic de ho xuat hien.
-- BAT BUOC phan ung nhan vat theo thong tin ho dang co: khi mot "phe vat" song sot tu dia, lo tu vi, kiem y, bao vat hoac nang luc bat thuong, nguoi xung quanh/phia doi dich phai nghi ngo, hoi, dieu tra, che giau, loi dung, hoac doi ke hoach.
+NGUYÊN TẮC BẮT BUỘC:
+- Mỗi chapter phải có "purpose" rõ ràng, không được là chapter để đầy số.
+- Mỗi plot thread phải có điểm neo cụ thể trong ít nhất một chapter.
+- Character usage và location usage phải rõ, không được mơ hồ.
+- Outline phải đọc current_status như Character Live Canon trước khi quyết định featured_characters, quyền xuất hiện, tri thức và beat của nhân vật.
+- Nếu nhân vật đang mất tích, bị giam, chưa biết bí mật, bị thương, góa chồng, bị truy nã, đang lẩn trốn, hoặc có ràng buộc hành vi, outline không được viết như ràng buộc đó không tồn tại.
+- Khi nhắc nhân vật trong outline, chỉ dùng tên chính thức đã có trong danh sách Nhân vật; không biến tên ngắn/biệt danh thành một nhân vật mới.
+- Không được tăng tốc nhịp quá tay ở giai đoạn mở đầu; không nhồi quá nhiều biến cố vào một chapter.
+- Không được tạo thread lớn nhưng không có chapter nào gắn vào.
+- BẮT BUỘC giữ timeline rõ: nếu outline hiện tại có sự kiện đếm ngược ("3 ngày nữa", "1 tháng sau", "kỳ sát hạch"), chapter sau phải cập nhật mốc thời gian tương ứng, không lặp lại mốc cũ như chưa có thời gian trôi qua.
+- BẮT BUỘC mọi án phạt, giam giữ, truy nã, thương tích, cấm túc hoặc ràng buộc hành vi tạo hệ quả thật. Nếu nhân vật cần dự một sự kiện sắp tới, outline phải cài sẵn con đường hợp pháp hoặc hợp logic để họ xuất hiện.
+- BẮT BUỘC phản ứng nhân vật theo thông tin họ đang có: khi một "phế vật" sống sót tử địa, lộ tu vi, kiếm ý, bảo vật hoặc năng lực bất thường, người xung quanh/phía đối địch phải nghi ngờ, hỏi, điều tra, che giấu, lợi dụng, hoặc đổi kế hoạch.
 
-Thong tin truyen:
-- Ten: {{project_title}}
-- Mo ta: {{project_description}}
-- Nhan vat: {{character_list}}
-- Dia diem: {{location_list}}
-- Outline hien tai: {{existing_outline}}
+Thông tin truyện:
+- Tên: {{project_title}}
+- Mô tả: {{project_description}}
+- Nhân vật: {{character_list}}
+- Địa điểm: {{location_list}}
+- Outline hiện tại: {{existing_outline}}
 
 {{outline_task_instruction}}`,
     userPromptTemplate: `{{outline_user_request}}`,
   },
   threadSuggestion: {
-    systemPrompt: `Ban la tro ly phan tich cot truyen cho ung dung StoryForge.
+    systemPrompt: `Bạn là trợ lý phân tích cốt truyện cho ứng dụng StoryForge.
 
-Thong tin truyen:
-- Ten: {{project_title}}
-- The loai: {{genre}}
-- Cot truyen: {{synopsis}}
-- Nhan vat: {{character_list}}
-- Outline chuong:
+Thông tin truyện:
+- Tên: {{project_title}}
+- Thể loại: {{genre}}
+- Cốt truyện: {{synopsis}}
+- Nhân vật: {{character_list}}
+- Outline chương:
 {{chapter_list}}
 
-CAC TUYEN TRUYEN DA CO (khong duoc lap lai):
+CÁC TUYẾN TRUYỆN ĐÃ CÓ (không được lặp lại):
 {{existing_threads}}
-{{hint_section}}Nhiem vu: Doc toan bo thong tin tren, phan tich cac khoang trong chua duoc khai thac, va de xuat them 2-3 Plot Thread moi de cau chuyen them chieu sau.
-- KHONG lap lai bat ky tuyen truyuyen da co.
-- CHI goi y cac tuyen co tinh buoc ngoat, anh huong vi mo den nhieu chuong.
-- KHONG tao tuyen truyen nho lat vat.`,
+{{hint_section}}Nhiệm vụ: Đọc toàn bộ thông tin trên, phân tích các khoảng trống chưa được khai thác, và đề xuất thêm 2-3 Plot Thread mới để câu chuyện thêm chiều sâu.
+- KHÔNG lặp lại bất kỳ tuyến truyện đã có.
+- CHỈ gợi ý các tuyến có tính bước ngoặt, ảnh hưởng vĩ mô đến nhiều chương.
+- KHÔNG tạo tuyến truyện nhỏ lặt vặt.`,
     userPromptTemplate: `{{thread_user_request}}`,
   },
 };
@@ -329,8 +518,17 @@ function stripProtectedSystemPrompt(groupKey, value) {
   const raw = String(value || '').trim();
   if (!protection || !raw) return raw;
 
-  const marker = String(protection.marker || '').trim().toLowerCase();
-  const markerIndex = marker ? raw.toLowerCase().indexOf(marker) : -1;
+  const normalizedRaw = raw.toLowerCase();
+  const markers = [
+    protection.marker,
+    ...(protection.legacyMarkers || []),
+  ]
+    .map((marker) => String(marker || '').trim().toLowerCase())
+    .filter(Boolean);
+  const markerIndex = markers
+    .map((marker) => normalizedRaw.indexOf(marker))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0] ?? -1;
   if (markerIndex >= 0) {
     return raw.slice(0, markerIndex).trimEnd();
   }

@@ -369,7 +369,7 @@ export default function useStoryBibleMacroArcs({
       warnings.push({
         level: 'warning',
         code: 'invalid-milestone-ranges',
-        message: `CĂ³ ${invalidRangeCount} cá»™t má»‘c Ä‘ang cĂ³ "Ä‘áº¿n" nhá» hÆ¡n "tá»«". HĂ£y nháº­p pháº¡m vi tÄƒng dáº§n hoáº·c Ä‘á»ƒ trá»‘ng háº³n Ä‘á»ƒ AI tá»± chia.`,
+        message: `C? ${invalidRangeCount} c?t m?c ?ang c? "??n" nh? h?n "t?". H?y nh?p ph?m vi t?ng d?n ho?c ?? tr?ng h?n ?? AI t? chia.`,
       });
     }
 

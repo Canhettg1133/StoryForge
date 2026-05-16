@@ -33,6 +33,7 @@ import {
 } from '../../services/ai/projectStyleRuntime';
 import { generateProjectStyleRuntimeBlock } from '../../services/ai/projectStyleRuntimeGenerator';
 import { TASK_TYPES } from '../../services/ai/router';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
@@ -342,13 +343,45 @@ function ProjectStyleRuntimeCard({
   );
 }
 
+function getPromptScopeNote(itemKey) {
+  if (itemKey === TASK_TYPES.CONTINUITY_CHECK) {
+    return {
+      label: 'Phạm vi kiểm tra',
+      text: 'Audit rộng continuity: canon, timeline, current_status, quan hệ, vật phẩm, world rules và logic nhân vật.',
+    };
+  }
+
+  if (itemKey === TASK_TYPES.CHECK_CONFLICT) {
+    return {
+      label: 'Phạm vi kiểm tra',
+      text: 'Chỉ tập trung vào mâu thuẫn canon rõ ràng, tránh biến thành kiểm tra rộng mọi lỗi nhỏ.',
+    };
+  }
+
+  return null;
+}
+
 function PromptInfoGrid({ item }) {
+  const scopeNote = getPromptScopeNote(item.key);
+
   return (
     <div className="prompt-card__info-grid">
       <div className="prompt-card__info-box">
         <strong>Dùng để làm gì</strong>
         <p>{item.purpose}</p>
       </div>
+      {item.whenToEdit && (
+        <div className="prompt-card__info-box">
+          <strong>Khi nào sửa</strong>
+          <p>{item.whenToEdit}</p>
+        </div>
+      )}
+      {scopeNote && (
+        <div className="prompt-card__info-box is-scope">
+          <strong>{scopeNote.label}</strong>
+          <p>{scopeNote.text}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -371,7 +404,7 @@ function PromptEditorCard({
     ? parseListText(overrideDraft).length > 0
     : String(overrideDraft || '').trim().length > 0;
 
-  const effectiveLabel = hasOverride ? 'Đang dùng Override của truyện' : 'Đang dùng prompt mặc định';
+  const effectiveLabel = hasOverride ? 'Override của truyện đang có hiệu lực' : 'Core Defaults đang có hiệu lực';
   const coreHelp = item.key === 'ai_guidelines'
     ? 'Đây là chỉ dẫn nền riêng của truyện này. Mặc định để trống và chỉ cần điền khi bạn muốn thêm định hướng mềm cho AI.'
     : item.key === 'nsfw_system_prompt'
@@ -399,11 +432,16 @@ function PromptEditorCard({
       <div className="prompt-card__header">
         <div>
           <h3>{item.label}</h3>
-          <p>{effectiveLabel}</p>
+          <p>{item.expectedOutput}</p>
         </div>
         <span className={`prompt-card__badge ${hasOverride ? 'is-override' : 'is-default'}`}>
           {hasOverride ? 'Override' : 'Mặc định'}
         </span>
+      </div>
+
+      <div className={`prompt-card__effective ${hasOverride ? 'is-override' : 'is-default'}`}>
+        <strong>Prompt đang có hiệu lực</strong>
+        <span>{effectiveLabel}</span>
       </div>
 
       <PromptInfoGrid item={item} />
@@ -414,7 +452,7 @@ function PromptEditorCard({
             <div>
               <div className="prompt-editor-block__title-row">
                 <strong>Core Defaults</strong>
-                <span className="prompt-editor-block__badge is-reference">Chỉ tham chiếu, chưa có hiệu lực</span>
+                <span className="prompt-editor-block__badge is-reference">Bản gốc để tham chiếu</span>
               </div>
               <p>{coreHelp}</p>
             </div>
@@ -443,7 +481,7 @@ function PromptEditorCard({
             <div className="prompt-editor-block__locked">
               <div className="prompt-editor-block__locked-header">
                 <strong>{protection.label}</strong>
-                <span>Read-only</span>
+                <span>Khóa</span>
               </div>
               <p>{protection.description}</p>
               <pre className="prompt-editor-block__locked-body">{protection.lockedPrompt}</pre>
@@ -479,7 +517,7 @@ function PromptEditorCard({
 
           {protection && (
             <details className="prompt-editor-block__preview">
-              <summary>Xem prompt cuoi cung</summary>
+              <summary>Xem prompt cuối cùng</summary>
               <pre className="prompt-editor-block__locked-body">
                 {composeTaskInstruction(item.key, overrideDraft || coreDraft)}
               </pre>
@@ -715,7 +753,7 @@ export default function ProjectPromptManager() {
     } catch (error) {
       setSaveMessage({
         type: 'error',
-        text: error?.message || 'Không thể lưu Prompt truyện.',
+        text: toVietnameseErrorMessage(error, 'Không thể lưu Prompt truyện.'),
       });
     } finally {
       setIsSaving(false);
@@ -752,7 +790,7 @@ export default function ProjectPromptManager() {
     } catch (error) {
       setRuntimeMessage({
         type: 'error',
-        text: error?.message || 'Không thể rút lõi Project Style Runtime.',
+        text: toVietnameseErrorMessage(error, 'Không thể rút lõi Project Style Runtime.'),
       });
     } finally {
       setIsGeneratingRuntime(false);
@@ -799,7 +837,7 @@ export default function ProjectPromptManager() {
     } catch (error) {
       setRuntimeMessage({
         type: 'error',
-        text: error?.message || 'Không thể lưu Project Style Runtime.',
+        text: toVietnameseErrorMessage(error, 'Không thể lưu Project Style Runtime.'),
       });
     } finally {
       setIsSaving(false);
@@ -823,7 +861,7 @@ export default function ProjectPromptManager() {
     } catch (error) {
       setRuntimeMessage({
         type: 'error',
-        text: error?.message || 'Không thể đổi trạng thái Project Style Runtime.',
+        text: toVietnameseErrorMessage(error, 'Không thể đổi trạng thái Project Style Runtime.'),
       });
     } finally {
       setIsSaving(false);
@@ -851,7 +889,7 @@ export default function ProjectPromptManager() {
     } catch (error) {
       setRuntimeMessage({
         type: 'error',
-        text: error?.message || 'Không thể xóa Project Style Runtime.',
+        text: toVietnameseErrorMessage(error, 'Không thể xóa Project Style Runtime.'),
       });
     } finally {
       setIsSaving(false);

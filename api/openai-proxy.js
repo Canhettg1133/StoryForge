@@ -68,7 +68,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
-    sendJson(res, 405, { error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' });
+    sendJson(res, 405, { error: 'Phương thức yêu cầu không được hỗ trợ.', code: 'METHOD_NOT_ALLOWED' });
     return;
   }
 
@@ -76,20 +76,20 @@ export default async function handler(req, res) {
   try {
     body = await readJsonBody(req);
   } catch {
-    sendJson(res, 400, { error: 'Invalid JSON body.', code: 'OPENAI_PROXY_BAD_JSON' });
+    sendJson(res, 400, { error: 'Nội dung JSON gửi lên không hợp lệ.', code: 'OPENAI_PROXY_BAD_JSON' });
     return;
   }
 
   const action = String(body?.action || '').trim();
   if (!ALLOWED_ACTIONS.has(action)) {
-    sendJson(res, 400, { error: 'Unsupported proxy action.', code: 'OPENAI_PROXY_BAD_ACTION' });
+    sendJson(res, 400, { error: 'Hành động proxy không được hỗ trợ.', code: 'OPENAI_PROXY_BAD_ACTION' });
     return;
   }
 
   const baseUrl = String(body?.baseUrl || body?.targetBaseUrl || '').trim();
   if (!isRelayAllowedTarget(baseUrl)) {
     sendJson(res, 400, {
-      error: 'Proxy target must be a public HTTPS URL.',
+      error: 'Proxy target phải là URL HTTPS public.',
       code: 'OPENAI_PROXY_TARGET_BLOCKED',
     });
     return;
@@ -122,7 +122,7 @@ export default async function handler(req, res) {
     await pipeUpstreamResponse(upstream, res);
   } catch (error) {
     sendJson(res, 502, {
-      error: error?.message || 'OpenAI proxy relay failed.',
+      error: error?.message || 'Relay OpenAI proxy thất bại.',
       code: 'OPENAI_PROXY_UPSTREAM_FAILED',
     });
   }

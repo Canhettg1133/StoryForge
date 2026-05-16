@@ -605,7 +605,7 @@ export function validateMacroArcChapterAnchors(macroArcOrContract = null) {
         code: 'anchor-incomplete',
         severity: anchor?.strictness === 'soft' ? 'warning' : 'error',
         anchorId: anchor?.id || '',
-        message: `Anchor ${anchor?.id || ''} dang thieu chapter hoac noi dung bat buoc.`,
+        message: `Anchor ${anchor?.id || ''} đang thiếu chapter hoặc nội dung bắt buộc.`,
       });
       return;
     }
@@ -616,7 +616,7 @@ export function validateMacroArcChapterAnchors(macroArcOrContract = null) {
           code: 'anchor-duplicate-id',
           severity: 'error',
           anchorId: rawId,
-          message: `Trung id chapter anchor ${rawId}.`,
+          message: `Trùng id chapter anchor ${rawId}.`,
         });
         return;
       }
@@ -633,7 +633,7 @@ export function validateMacroArcChapterAnchors(macroArcOrContract = null) {
         code: 'anchor-out-of-range',
         severity: 'error',
         anchorId: anchor.id,
-        message: `Hard anchor ${anchor.id} nam ngoai pham vi cot moc (${chapterFrom}-${chapterTo}).`,
+        message: `Hard anchor ${anchor.id} nằm ngoài phạm vi cột mốc (${chapterFrom}-${chapterTo}).`,
       });
     }
 
@@ -642,7 +642,7 @@ export function validateMacroArcChapterAnchors(macroArcOrContract = null) {
         code: 'anchor-duplicate-id',
         severity: 'error',
         anchorId: anchor.id,
-        message: `Trung id chapter anchor ${anchor.id}.`,
+        message: `Trùng id chapter anchor ${anchor.id}.`,
       });
       return;
     }
@@ -1001,7 +1001,7 @@ export function validateOutlineAgainstChapterAnchors(generatedOutline, chapterAn
         code: `${anchor.strictness}-anchor-missing-ref`,
         severity,
         anchorId: anchor.id,
-        message: `Chuong ${anchor.targetChapter} phai khai bao anchor_refs cho ${anchor.id}.`,
+        message: `Chương ${anchor.targetChapter} phải khai báo anchor_refs cho ${anchor.id}.`,
       });
     }
 
@@ -1012,7 +1012,7 @@ export function validateOutlineAgainstChapterAnchors(generatedOutline, chapterAn
         code: `${anchor.strictness}-anchor-missed`,
         severity,
         anchorId: anchor.id,
-        message: `Chuong ${anchor.targetChapter} chua the hien ro yeu cau anchor ${anchor.id}.`,
+        message: `Chương ${anchor.targetChapter} chưa thể hiện rõ yêu cầu anchor ${anchor.id}.`,
       });
     }
 
@@ -1030,8 +1030,8 @@ export function validateOutlineAgainstChapterAnchors(generatedOutline, chapterAn
           severity,
           anchorId: anchor.id,
           message: code.endsWith('early')
-            ? `Anchor ${anchor.id} dang bi day som truoc Chuong ${anchor.targetChapter}.`
-            : `Anchor ${anchor.id} dang roi vao Chuong ${chapterNumber} thay vi Chuong ${anchor.targetChapter}.`,
+            ? `Anchor ${anchor.id} đang bị đẩy sớm trước Chương ${anchor.targetChapter}.`
+            : `Anchor ${anchor.id} đang rơi vào Chương ${chapterNumber} thay vì Chương ${anchor.targetChapter}.`,
         });
       });
 
@@ -1051,7 +1051,7 @@ export function validateOutlineAgainstChapterAnchors(generatedOutline, chapterAn
           code: `${anchor.strictness}-anchor-wrong-chapter`,
           severity,
           anchorId: anchor.id,
-          message: `anchor_refs cua ${anchor.id} dang nam sai Chuong ${chapterNumber}.`,
+          message: `anchor_refs của ${anchor.id} đang nằm sai Chương ${chapterNumber}.`,
         });
       });
   });
@@ -1080,7 +1080,7 @@ export function validateDraftAgainstChapterAnchors(chapterDraft = {}, chapterAnc
         code: `${anchor.strictness}-anchor-missed`,
         severity,
         anchorId: anchor.id,
-        message: `Ban nhap chuong ${currentChapterNumber} chua dat yeu cau anchor ${anchor.id}.`,
+        message: `Bản nháp chương ${currentChapterNumber} chưa đạt yêu cầu anchor ${anchor.id}.`,
       });
     }
 
@@ -1089,7 +1089,7 @@ export function validateDraftAgainstChapterAnchors(chapterDraft = {}, chapterAnc
         code: `${anchor.strictness}-anchor-early`,
         severity,
         anchorId: anchor.id,
-        message: `Ban nhap chuong ${currentChapterNumber} dang dat som anchor ${anchor.id} truoc chuong dich ${anchor.targetChapter}.`,
+        message: `Bản nháp chương ${currentChapterNumber} đang đặt sớm anchor ${anchor.id} trước chương đích ${anchor.targetChapter}.`,
       });
     }
   });
@@ -1141,7 +1141,7 @@ export function validateOutlineAgainstMacroArcContract(generatedOutline, macroAr
         chapterTitle: chapter?.title || `Chuong ${index + 1}`,
         code: 'macro-drift',
         severity: 'warning',
-        message: 'Chapter nay chua bam ro vao muc tieu/noi dung cot loi cua dai cuc hien tai.',
+        message: 'Chapter này chưa bám rõ vào mục tiêu/nội dung cốt lõi của đại cục hiện tại.',
       });
     }
 
@@ -1153,7 +1153,7 @@ export function validateOutlineAgainstMacroArcContract(generatedOutline, macroAr
           chapterTitle: chapter?.title || `Chuong ${index + 1}`,
           code: 'macro-focus-miss',
           severity: 'warning',
-          message: 'Chapter nay khong nhac ro den nhan vat/truc tieu diem ma dai cuc dang theo doi.',
+          message: 'Chapter này không nhắc rõ đến nhân vật/trục tiêu điểm mà đại cục đang theo dõi.',
         });
       }
     }
@@ -1188,7 +1188,7 @@ export function validateOutlineAgainstMacroArcContract(generatedOutline, macroAr
       chapterTitle: '',
       code: 'macro-drift',
       severity: 'error',
-      message: 'Ca batch chuong chua bam duoc vao muc tieu/noi dung cot loi cua dai cuc hien tai.',
+      message: 'Cả batch chương chưa bám được vào mục tiêu/nội dung cốt lõi của đại cục hiện tại.',
     });
   } else if (contract.objectives.length > 1 && coveredObjectiveIds.size < Math.min(2, contract.objectives.length)) {
     issues.push({
@@ -1196,7 +1196,7 @@ export function validateOutlineAgainstMacroArcContract(generatedOutline, macroAr
       chapterTitle: '',
       code: 'macro-objective-gap',
       severity: 'warning',
-      message: 'Batch chuong moi chi cover mot phan nho muc tieu dai cuc; nen phan bo lai de bam sat arc hon.',
+      message: 'Batch chương mới chỉ cover một phần nhỏ mục tiêu đại cục; nên phân bổ lại để bám sát arc hơn.',
     });
   }
 

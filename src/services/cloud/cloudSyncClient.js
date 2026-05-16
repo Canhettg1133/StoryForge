@@ -40,7 +40,7 @@ function buildHeaders(config) {
 async function request(config, method = 'GET', body = null, query = null) {
   const normalized = normalizeConfig(config);
   if (!normalized.workspaceSlug || !normalized.accessKey) {
-    const error = new Error('Cloud Sync chua duoc cau hinh day du.');
+    const error = new Error('Cloud Sync chưa được cấu hình đầy đủ.');
     error.code = 'CLOUD_SYNC_NOT_CONFIGURED';
     throw error;
   }
@@ -62,7 +62,7 @@ async function request(config, method = 'GET', body = null, query = null) {
     });
   } catch (networkError) {
     const error = new Error(
-      `Khong ket noi duoc Cloud Sync API tai ${normalized.apiBaseUrl}. Neu dang dev local, hay dung Vercel deployment hoac vercel dev.`,
+      `Không kết nối được Cloud Sync API tại ${normalized.apiBaseUrl}. Nếu đang dev local, hãy dùng Vercel deployment hoặc vercel dev.`,
     );
     error.code = 'CLOUD_SYNC_UNREACHABLE';
     error.cause = networkError;
@@ -75,7 +75,7 @@ async function request(config, method = 'GET', body = null, query = null) {
     : { error: await response.text() };
 
   if (!response.ok) {
-    const error = new Error(payload?.error || `Cloud Sync request failed: ${response.status}`);
+    const error = new Error(payload?.error || `Yêu cầu Cloud Sync thất bại với mã ${response.status}.`);
     error.code = payload?.code || 'CLOUD_SYNC_REQUEST_FAILED';
     error.status = response.status;
     throw error;
@@ -113,7 +113,7 @@ export async function listCloudSnapshots(config) {
 
 export async function syncProjectToCloud(project, config) {
   if (!project?.id) {
-    throw new Error('Khong tim thay du an local de backup.');
+    throw new Error('Không tìm thấy dự án local để backup.');
   }
 
   const projectSlug = resolveCloudProjectSlug(project);
@@ -140,7 +140,7 @@ export async function restoreCloudSnapshot(projectSlug, config) {
   const response = await request(config, 'GET', null, { projectSlug });
   const snapshotJson = response?.item?.snapshotJson;
   if (!snapshotJson) {
-    throw new Error('Khong tim thay snapshot cloud.');
+    throw new Error('Không tìm thấy snapshot cloud.');
   }
 
   const newProjectId = await importProject(snapshotJson);

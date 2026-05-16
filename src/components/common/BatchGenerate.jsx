@@ -18,6 +18,7 @@ import { Sparkles, X, Loader2, Check, RotateCcw, Trash2, Plus } from 'lucide-rea
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
 import { buildPrompt } from '../../services/ai/promptBuilder';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import {
   BATCH_CHARACTER_MAX_COUNT,
@@ -302,7 +303,7 @@ export default function BatchGenerate({
       onError: (err) => {
         setIsGenerating(false);
         setGeneratingCount(null);
-        setError(err.message || 'Lỗi AI');
+        setError(toVietnameseErrorMessage(err, 'Lỗi AI'));
       },
     });
   };

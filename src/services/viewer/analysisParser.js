@@ -805,13 +805,13 @@ const OBJECT_FALLBACK_PATTERNS = [
 ];
 
 const TERM_FALLBACK_PATTERNS = [
-  { label: 'Thanh ly gian phong', regex: /thanh\s*l[yý]\s*gian\s*ph[oò]ng/iu, category: 'concept' },
-  { label: 'O khoa chu Nguc', regex: /(?:[oổ]\s*)?kh[oó]a\s*ch(?:u|u)\s*['"]?ng[uụ]c['"]?/iu, category: 'concept' },
+  { label: 'Thanh lý gian phòng', regex: /thanh\s*l[yý]\s*gian\s*ph[oò]ng/iu, category: 'concept' },
+  { label: 'Ổ khóa chữ Ngục', regex: /(?:[oổ]\s*)?kh[oó]a\s*ch(?:u|u)\s*['"]?ng[uụ]c['"]?/iu, category: 'concept' },
   { label: 'Quy tac 3 nam 1 nu', regex: /quy\s*t[aă]c\s*3\s*nam\s*1\s*n[uữ]/iu, category: 'concept' },
   { label: 'Nguoi thu nam', regex: /ng[uư]oi\s*th[uứ]\s*n[aă]m/iu, category: 'concept' },
   { label: 'Quy tac sinh ton', regex: /quy\s*t[aă]c\s*sinh\s*t[oồ]n/iu, category: 'concept' },
   { label: 'Tra mat', regex: /tr[aả]\s*m[aặ]t/iu, category: 'concept' },
-  { label: 'Khong gian di biet', regex: /kh[oô]ng\s*gian\s*d[iị]\s*bi[eệ]t/iu, category: 'concept' },
+  { label: 'Không gian dị biệt', regex: /kh[oô]ng\s*gian\s*d[iị]\s*bi[eệ]t/iu, category: 'concept' },
   { label: 'Dua ta', regex: /d[uư]a\s*ta/iu, category: 'phrase' },
 ];
 

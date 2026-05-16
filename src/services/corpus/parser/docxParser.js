@@ -59,7 +59,7 @@ export async function parseDocx(buffer, options = {}) {
   }
 
   if (chapters.length === 0) {
-    throw new Error('DOCX parser could not extract readable text');
+  throw new Error('Không trích xuất được văn bản đọc được từ file DOCX.');
   }
 
   return {

@@ -101,7 +101,8 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                     }
                 }
 
-                console.log(`[Proxy] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}, model=${proxyModel}`);
+                const activeProxyModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;
+                console.log(`[Proxy] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}, model=${activeProxyModel}`);
                 const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(chunkIndex) : proxyApiKey;
                 proxyKeyUsed = proxyKey;
                 const result = await translateChunkViaProxy(promptToUse, temperature, proxyKey);

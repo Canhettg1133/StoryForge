@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { corpusApi } from '../services/api/corpusApi';
+import { toVietnameseErrorMessage } from '../utils/errorMessages';
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const ACTIVE_STATUSES = new Set(['pending', 'processing']);
@@ -178,7 +179,7 @@ export const useAnalysisStore = create(
             },
             errorsByCorpus: {
               ...state.errorsByCorpus,
-              [corpusId]: error?.message || 'Failed to load analyses.',
+              [corpusId]: toVietnameseErrorMessage(error, 'Không tải được danh sách phân tích.'),
             },
           }));
           throw error;
@@ -187,7 +188,7 @@ export const useAnalysisStore = create(
 
       startAnalysis: async (corpusId, config = {}) => {
         if (!corpusId) {
-          throw new Error('corpusId is required.');
+          throw new Error('Thiếu corpusId.');
         }
 
         const analysis = await corpusApi.startAnalysis(corpusId, config);

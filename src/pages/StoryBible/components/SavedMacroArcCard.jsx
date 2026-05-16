@@ -136,7 +136,7 @@ const SavedMacroArcCard = React.memo(function SavedMacroArcCard({
                 color: issue.severity === 'error' ? 'var(--color-danger)' : 'var(--color-warning)',
               }}
             >
-              [{issue.severity === 'error' ? 'Loi' : 'Canh bao'}] {issue.message}
+                      [{issue.severity === 'error' ? 'Lỗi' : 'Cảnh báo'}] {issue.message}
             </div>
           ))}
         </div>

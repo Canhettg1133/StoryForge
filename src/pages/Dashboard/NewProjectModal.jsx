@@ -18,6 +18,7 @@ import {
   PROJECT_MODES,
   generateFanficProjectSeed,
 } from '../../services/labLite/fanficProjectSetup.js';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 
 function clampInitialChapterCount(value) {
   const numeric = Number(value);
@@ -268,7 +269,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
       onCreated(result.projectId, { path: `/project/${result.projectId}/story-bible` });
     } catch (err) {
       console.error('Failed to create project from Bible template:', err);
-      setTemplateError(err?.message || 'Không tạo được truyện mới từ Bible.');
+      setTemplateError(toVietnameseErrorMessage(err, 'Không tạo được truyện mới từ Bible.'));
       setCreating(false);
     }
   };

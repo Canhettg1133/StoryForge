@@ -398,7 +398,7 @@ export class SessionClient {
         });
       } catch (error) {
         throw createRequestError(
-          `Không thể kết nối Gemini direct: ${error?.message || 'Network error'}`,
+          `Không thể kết nối Gemini direct: ${error?.message || 'lỗi mạng'}`,
           'AI_SERVICE_UNAVAILABLE',
           { cause: error?.message || String(error || '') },
         );

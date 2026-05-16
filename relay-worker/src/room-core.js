@@ -207,7 +207,7 @@ export class RelayRoomCore {
       safeSend(this.sockets.get(normalizedRole), {
         type: 'error',
         code: 'MESSAGE_TOO_LARGE',
-        message: 'Relay message is too large.',
+        message: 'Tin nhắn relay quá lớn.',
       });
       return;
     }
@@ -255,8 +255,8 @@ export class RelayRoomCore {
       requestId: payload?.requestId,
       code: 'PEER_NOT_CONNECTED',
       message: peerRole === 'connector'
-        ? 'AI Studio Connector is not connected.'
-        : 'StoryForge client is not connected.',
+        ? 'AI Studio Connector chưa kết nối.'
+        : 'StoryForge client chưa kết nối.',
     };
 
     const sender = this.sockets.get(normalizedRole);
@@ -297,7 +297,7 @@ export class RelayRoomCore {
         payload: {
           type: 'error',
           code: 'MESSAGE_TOO_LARGE',
-          message: 'Relay message is too large.',
+          message: 'Tin nhắn relay quá lớn.',
         },
       };
     }

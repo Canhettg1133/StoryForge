@@ -207,7 +207,7 @@ describe('phase10 ChapterAnchorEditor', () => {
   it('preserves trailing spaces while editing the requirement textarea', async () => {
     await mountEditor({
       initialAnchors: [createAnchor()],
-      allCharacters: ['LĂ¢m Máº·c'],
+      allCharacters: ['Lâm Mặc'],
     });
 
     const requirementTextarea = container.querySelector('textarea');

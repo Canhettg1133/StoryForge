@@ -16,6 +16,7 @@ import useSuggestionStore from '../../stores/suggestionStore';
 import useAIStore from '../../stores/aiStore';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import './SuggestionInbox.css';
 
 function parseCandidateOp(value) {
@@ -94,7 +95,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
 
       setInfo('Không tìm thấy thay đổi nào đủ rõ để tạo đề xuất mới.');
     } catch (err) {
-      setInfo(err.message || 'Lỗi khi tạo đề xuất.', 'error');
+      setInfo(toVietnameseErrorMessage(err, 'Lỗi khi tạo đề xuất.'), 'error');
     }
   };
 
@@ -116,7 +117,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
       onAccepted?.();
       setInfo('Đã duyệt đề xuất qua canon engine và cập nhật dữ liệu dự án.', 'success');
     } catch (err) {
-      setInfo(err.message || 'Không thể canonize đề xuất này.', 'error');
+      setInfo(toVietnameseErrorMessage(err, 'Không thể canon hóa đề xuất này.'), 'error');
     }
   };
 
@@ -134,7 +135,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
       onAccepted?.();
       setInfo('Đã duyệt toàn bộ đề xuất qua canon engine.', 'success');
     } catch (err) {
-      setInfo(err.message || 'Không thể canonize toàn bộ đề xuất.', 'error');
+      setInfo(toVietnameseErrorMessage(err, 'Không thể canon hóa toàn bộ đề xuất.'), 'error');
     }
   };
 
@@ -265,9 +266,9 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                     || (resolution?.recommended_target_id ? String(resolution.recommended_target_id) : '__create_new__');
                   return (
                     <div className="si-card-body">
-                      <div className="si-char-name">{item.target_name || resolution?.raw_name || '(Khong ro ten)'}</div>
+                      <div className="si-char-name">{item.target_name || resolution?.raw_name || '(Không rõ tên)'}</div>
                       <div className="si-fact-content">
-                        {item.reasoning || 'Entity nay mo ho, can chon gop vao entity co san hoac tao moi.'}
+                        {item.reasoning || 'Entity này mơ hồ, cần chọn gộp vào entity có sẵn hoặc tạo mới.'}
                       </div>
                       <select
                         className="select"
@@ -279,7 +280,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                       >
                         {options.map((option) => (
                           <option key={`${item.id}:${option.entity_id}`} value={String(option.entity_id)}>
-                            {`Gop vao ${option.name} (${(option.score || 0).toFixed(2)})`}
+                            {`Gộp vào ${option.name} (${(option.score || 0).toFixed(2)})`}
                           </option>
                         ))}
                         <option value="__create_new__">Tao entity moi</option>

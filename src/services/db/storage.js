@@ -21,7 +21,7 @@ const PERSIST_KEY = 'sf-storage-persistent';
  */
 export async function requestPersistentStorage() {
   if (!navigator.storage || !navigator.storage.persist) {
-    return { success: false, persisted: false, error: 'Storage API not supported' };
+    return { success: false, persisted: false, error: 'Trình duyệt chưa hỗ trợ Storage API.' };
   }
 
   try {

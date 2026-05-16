@@ -72,7 +72,7 @@ async function commitSuggestionBatch(projectId, suggestions) {
     }));
 
   if (!sourceChapterId || candidateOps.length === 0) {
-    throw new Error('De xuat nay chua co canon op hop le de ap dung.');
+      throw new Error('Đề xuất này chưa có thao tác canon hợp lệ để áp dụng.');
   }
 
   const result = await canonicalizeCandidateOps({
@@ -84,7 +84,7 @@ async function commitSuggestionBatch(projectId, suggestions) {
 
   if (!result.ok) {
     const firstError = (result.reports || []).find((report) => report.severity === 'error');
-    throw new Error(firstError?.message || 'Validator chan de xuat nay truoc khi canon hoa.');
+      throw new Error(firstError?.message || 'Bộ kiểm tra đã chặn đề xuất này trước khi canon hóa.');
   }
 
   return result;

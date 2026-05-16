@@ -6,6 +6,7 @@ import useUIStore from '../../stores/uiStore';
 import db from '../../services/db/database';
 import CodexPanel from '../editor/CodexPanel';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import { normalizeChapterListField } from '../../services/ai/blueprintGuardrails';
 import {
   PenTool,
@@ -54,13 +55,13 @@ const MOBILE_AI_TABS = [
 ];
 
 const QUICK_ACTIONS = [
-  { id: 'continue', icon: PenTool, label: 'Viết tiếp', taskFn: 'continueWriting', needsText: true, needsGuidance: true, placeholder: 'VD: "Nhân vật gặp phục kích", "Chuyển cảnh sang nhân vật phụ"...' },
+  { id: 'continue', icon: PenTool, label: 'Viết tiếp', taskFn: 'continueWriting', needsText: true, needsChapterContent: true, usesChapterTextFallback: true, needsGuidance: true, placeholder: 'VD: "Nhân vật gặp phục kích", "Chuyển cảnh sang nhân vật phụ"...' },
   { id: 'rewrite', icon: RefreshCw, label: 'Viết lại', taskFn: 'rewriteText', needsSelection: true, needsGuidance: true, placeholder: 'VD: "Thêm drama hơn", "Giọng văn trang trọng hơn"...' },
   { id: 'expand', icon: Maximize2, label: 'Mở rộng', taskFn: 'expandText', needsSelection: true, needsGuidance: true, placeholder: 'VD: "Mở rộng phần chiến đấu", "Thêm nội tâm nhân vật"...' },
-  { id: 'plot', icon: Lightbulb, label: 'Gợi ý tình tiết', taskFn: 'suggestPlot', needsText: true },
-  { id: 'outline', icon: MapIcon, label: 'Dan y chuong', taskFn: 'outlineChapter', needsText: false },
-  { id: 'extract', icon: Sparkles, label: 'Trích xuất', taskFn: 'extractTerms', needsText: true },
-  { id: 'conflict', icon: ShieldAlert, label: 'Check Mâu Thuẫn', taskFn: 'checkConflict', needsText: true, isCustom: true },
+  { id: 'plot', icon: Lightbulb, label: 'Gợi ý tình tiết', taskFn: 'suggestPlot', needsText: true, needsChapterContent: true, usesChapterTextFallback: true },
+  { id: 'outline', icon: MapIcon, label: 'Dàn ý chương', taskFn: 'outlineChapter', needsText: false },
+  { id: 'extract', icon: Sparkles, label: 'Trích xuất', taskFn: 'extractTerms', needsText: true, needsChapterContent: true, usesChapterTextFallback: true },
+  { id: 'conflict', icon: ShieldAlert, label: 'Check Mâu Thuẫn', taskFn: 'checkConflict', needsText: true, needsChapterContent: true, usesChapterTextFallback: true, isCustom: true },
 ];
 const QUICK_ACTIONS_BY_ID = Object.fromEntries(QUICK_ACTIONS.map((action) => [action.id, action]));
 
@@ -230,6 +231,9 @@ function normalizeOutlineResult(rawText = '') {
       required_factions: normalizeChapterListField(chapterPatchSource.required_factions || chapterPatchSource.requiredFactions || []),
       required_objects: normalizeChapterListField(chapterPatchSource.required_objects || chapterPatchSource.requiredObjects || []),
       required_terms: normalizeChapterListField(chapterPatchSource.required_terms || chapterPatchSource.requiredTerms || []),
+      opening_state: String(chapterPatchSource.opening_state || chapterPatchSource.openingState || parsed.opening_state || '').trim(),
+      handoff_from_previous: String(chapterPatchSource.handoff_from_previous || chapterPatchSource.handoffFromPrevious || parsed.handoff_from_previous || '').trim(),
+      ending_state: String(chapterPatchSource.ending_state || chapterPatchSource.endingState || parsed.ending_state || '').trim(),
       state_delta: String(chapterPatchSource.state_delta || chapterPatchSource.stateDelta || parsed.state_delta || '').trim(),
     };
 
@@ -264,8 +268,62 @@ function hasOutlinePatchData(chapterPatch = {}) {
     || (Array.isArray(chapterPatch?.required_factions) && chapterPatch.required_factions.length > 0)
     || (Array.isArray(chapterPatch?.required_objects) && chapterPatch.required_objects.length > 0)
     || (Array.isArray(chapterPatch?.required_terms) && chapterPatch.required_terms.length > 0)
+    || chapterPatch?.opening_state
+    || chapterPatch?.handoff_from_previous
+    || chapterPatch?.ending_state
     || chapterPatch?.state_delta
   );
+}
+
+function stripHtmlToPlainText(value = '') {
+  return String(value || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getEditorPlainText(editor) {
+  if (!editor?.getText) return '';
+
+  try {
+    return String(editor.getText({ blockSeparator: '\n\n' }) || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  } catch {
+    return String(editor.getText() || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+}
+
+function getSelectedEditorText(editor) {
+  const selection = editor?.state?.selection;
+  if (!selection || selection.empty) return '';
+
+  return String(editor.state?.doc?.textBetween(selection.from, selection.to, ' ') || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getQuickActionDisabledReason(action, state = {}) {
+  if (!state.hasActiveChapter) {
+    return 'Cần mở một chương trước.';
+  }
+
+  if (action.needsSelection && !state.hasSelection && !state.hasSceneContent) {
+    return 'Cần chọn đoạn hoặc có nội dung cảnh để dùng nút này.';
+  }
+
+  if (action.needsChapterContent && !state.hasChapterContent) {
+    return 'Cần có nội dung chương trước khi dùng nút này.';
+  }
+
+  if (action.needsText && !state.hasSelection && !state.hasSceneContent && !state.hasChapterContent) {
+    return 'Cần có nội dung trước khi dùng nút này.';
+  }
+
+  return '';
 }
 
 function autosizeTextarea(textarea) {
@@ -351,12 +409,58 @@ export default function AISidebar({
   const [canonReviewMode, setCanonReviewMode] = useState('standard');
   const [canonReviewState, setCanonReviewState] = useState({ status: 'idle', error: null });
   const [canonReviewItems, setCanonReviewItems] = useState([]);
+  const [, setEditorRevision] = useState(0);
   const outputRef = useRef(null);
   const guidanceRef = useRef(null);
   const customPromptRef = useRef(null);
   const mobileAiRef = useRef(null);
   const quickActionsRef = useRef(null);
   const actionButtonRefs = useRef(new Map());
+
+  useEffect(() => {
+    if (!editor?.on || !editor?.off) return undefined;
+
+    const refreshEditorSnapshot = () => {
+      setEditorRevision((revision) => revision + 1);
+    };
+
+    editor.on('update', refreshEditorSnapshot);
+    editor.on('selectionUpdate', refreshEditorSnapshot);
+    editor.on('transaction', refreshEditorSnapshot);
+    refreshEditorSnapshot();
+
+    return () => {
+      editor.off('update', refreshEditorSnapshot);
+      editor.off('selectionUpdate', refreshEditorSnapshot);
+      editor.off('transaction', refreshEditorSnapshot);
+    };
+  }, [editor, activeSceneId]);
+
+  const activeScene = scenes.find((item) => item.id === activeSceneId) || null;
+  const activeChapter = chapters.find((item) => item.id === activeChapterId) || null;
+  const chapterScenes = scenes
+    .filter((item) => item.chapter_id === activeChapterId)
+    .slice()
+    .sort((left, right) => (left.order_index || 0) - (right.order_index || 0));
+  const selectedText = getSelectedEditorText(editor);
+  const storedSceneText = stripHtmlToPlainText(activeScene?.draft_text || activeScene?.final_text || '');
+  const liveEditorText = getEditorPlainText(editor);
+  const currentSceneText = editor ? liveEditorText : storedSceneText;
+  const chapterText = chapterScenes
+    .map((item) => (
+      item.id === activeSceneId
+        ? currentSceneText
+        : stripHtmlToPlainText(item?.draft_text || item?.final_text || '')
+    ))
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+  const quickActionState = {
+    hasActiveChapter: !!activeChapter,
+    hasSelection: !!selectedText,
+    hasSceneContent: !!currentSceneText,
+    hasChapterContent: !!(selectedText || currentSceneText || chapterText),
+  };
 
   useEffect(() => {
     if (activeChapterId) {
@@ -553,49 +657,56 @@ export default function AISidebar({
   ]);
 
   const getContext = () => {
-    const scene = scenes.find((item) => item.id === activeSceneId);
-    const chapter = chapters.find((item) => item.id === activeChapterId);
-    const chapterScenes = scenes
-      .filter((item) => item.chapter_id === activeChapterId)
-      .slice()
-      .sort((left, right) => (left.order_index || 0) - (right.order_index || 0));
-    const chapterText = chapterScenes
-      .map((item) => item?.draft_text || item?.final_text || '')
+    const freshSelectedText = getSelectedEditorText(editor);
+    const freshSceneText = editor ? getEditorPlainText(editor) : storedSceneText;
+    const freshChapterText = chapterScenes
+      .map((item) => (
+        item.id === activeSceneId
+          ? freshSceneText
+          : stripHtmlToPlainText(item?.draft_text || item?.final_text || '')
+      ))
+      .filter(Boolean)
       .join('\n\n')
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
       .trim();
-    const selectedText = editor?.state?.selection?.empty
-      ? ''
-      : editor?.state?.doc?.textBetween(
-        editor.state.selection.from,
-        editor.state.selection.to,
-        ' ',
-      ) || '';
 
     return {
-      selectedText,
-      sceneText: scene?.draft_text?.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').trim() || '',
-      sceneTitle: scene?.title || '',
-      chapterTitle: chapter?.title || '',
+      selectedText: freshSelectedText,
+      sceneText: freshSceneText,
+      sceneTitle: activeScene?.title || '',
+      chapterTitle: activeChapter?.title || '',
       projectTitle: currentProject?.title || '',
       genre: currentProject?.genre_primary || '',
       projectId: currentProject?.id || null,
       chapterId: activeChapterId || null,
       sceneId: activeSceneId || null,
-      chapterIndex: chapter ? chapters.indexOf(chapter) : 0,
-      chapterText,
+      chapterIndex: activeChapter ? chapters.indexOf(activeChapter) : 0,
+      chapterText: freshChapterText,
       chapterSceneCount: chapterScenes.length,
+      chapterCandidates: chapters.map((item, index) => ({
+        id: item.id,
+        title: item.title || '',
+        summary: item.summary || '',
+        purpose: item.purpose || '',
+        key_events: item.key_events || '[]',
+        order_index: Number.isFinite(item.order_index) ? item.order_index : index,
+      })),
     };
   };
 
   const executeAction = (action, guidance) => {
     const context = getContext();
+    const textAvailable = context.selectedText || context.sceneText || context.chapterText;
 
     if (action.needsSelection && !context.selectedText) {
       context.selectedText = context.sceneText;
     }
-    if (action.needsText && !context.sceneText && !context.selectedText) {
+    if (action.needsSelection && !context.selectedText) {
+      return;
+    }
+    if (action.usesChapterTextFallback && !context.sceneText && context.chapterText) {
+      context.sceneText = context.chapterText;
+    }
+    if ((action.needsText || action.needsChapterContent) && !textAvailable) {
       return;
     }
 
@@ -624,6 +735,10 @@ export default function AISidebar({
   };
 
   const handleQuickAction = (action) => {
+    if (isStreaming || isCheckingConflict || getQuickActionDisabledReason(action, quickActionState)) {
+      return;
+    }
+
     if (action.id !== 'plot' && showPlotManager) {
       setShowPlotManager(false);
     }
@@ -668,7 +783,7 @@ export default function AISidebar({
       }
       useAIStore.setState({ streamingText: '', completedText: outputText });
     } catch (err) {
-      useAIStore.setState({ streamingText: '', error: `Lỗi kiểm tra mâu thuẫn: ${err.message}` });
+      useAIStore.setState({ streamingText: '', error: `Lỗi kiểm tra mâu thuẫn: ${toVietnameseErrorMessage(err, 'Không chạy được kiểm tra mâu thuẫn.')}` });
     }
   };
 
@@ -771,7 +886,7 @@ export default function AISidebar({
       setCanonReviewItems((items) => [saved, ...items.filter((item) => item.id !== saved.id)].slice(0, 8));
       setCanonReviewState({ status: 'complete', error: null });
     } catch (err) {
-      setCanonReviewState({ status: 'error', error: err?.message || 'Không chạy được AI Canon Review.' });
+      setCanonReviewState({ status: 'error', error: toVietnameseErrorMessage(err, 'Không chạy được AI Canon Review.') });
     }
   };
 
@@ -807,6 +922,9 @@ export default function AISidebar({
         required_factions: parsedOutlineResult.chapterPatch.required_factions,
         required_objects: parsedOutlineResult.chapterPatch.required_objects,
         required_terms: parsedOutlineResult.chapterPatch.required_terms,
+        opening_state: parsedOutlineResult.chapterPatch.opening_state,
+        handoff_from_previous: parsedOutlineResult.chapterPatch.handoff_from_previous,
+        ending_state: parsedOutlineResult.chapterPatch.ending_state,
         state_delta: parsedOutlineResult.chapterPatch.state_delta,
       });
       setOutlineApplyState('saved');
@@ -839,10 +957,6 @@ export default function AISidebar({
     if (plotAction) executeAction(plotAction, '');
   };
 
-  const currentSceneText = (() => {
-    const scene = scenes.find((item) => item.id === activeSceneId);
-    return scene?.draft_text || '';
-  })();
   const hasPinnedTaskPanel = showPlotManager || !!pendingAction;
 
   const persistPlotSuggestions = (nextSuggestions) => {
@@ -884,6 +998,9 @@ export default function AISidebar({
         const action = QUICK_ACTIONS_BY_ID[actionId];
         if (!action) return null;
         const isActive = activeAction === action.id && (isStreaming || isCheckingConflict);
+        const disabledReason = getQuickActionDisabledReason(action, quickActionState);
+        const isDisabled = isStreaming || isCheckingConflict || !!disabledReason;
+        const title = disabledReason || action.label;
         return (
           <button
             key={action.id}
@@ -894,10 +1011,11 @@ export default function AISidebar({
                 actionButtonRefs.current.delete(action.id);
               }
             }}
-            className={`ai-action-btn ${action.id === 'conflict' ? 'ai-action-btn--warn' : ''} ${isActive ? 'ai-action-btn--active' : ''}`}
+            className={`ai-action-btn ${action.id === 'conflict' ? 'ai-action-btn--warn' : ''} ${isActive ? 'ai-action-btn--active' : ''} ${disabledReason ? 'ai-action-btn--locked' : ''}`}
             onClick={() => handleQuickAction(action)}
-            disabled={isStreaming || isCheckingConflict}
-            title={action.label}
+            disabled={isDisabled}
+            title={title}
+            aria-label={`${action.label}${disabledReason ? ` - ${disabledReason}` : ''}`}
           >
             {isActive ? <Loader2 size={15} className="spin" /> : <action.icon size={15} />}
             <span>{action.label}</span>
@@ -1220,18 +1338,18 @@ export default function AISidebar({
     if (!parsedOutlineResult) return null;
 
     const modeLabels = {
-      create_current_chapter: 'Tao dan y cho chuong hien tai',
-      fill_current_chapter: 'Lap beat con thieu trong chuong hien tai',
-      ready_for_next_chapter: 'Chuong nay gan hoan tat',
+      create_current_chapter: 'Tạo dàn ý cho chương hiện tại',
+      fill_current_chapter: 'Lấp beat còn thiếu trong chương hiện tại',
+      ready_for_next_chapter: 'Chương này gần hoàn tất',
     };
     const canApplyPatch = hasOutlinePatchData(parsedOutlineResult.chapterPatch);
 
     const patchMeta = [
       parsedOutlineResult.chapterPatch.primary_location
-        ? `Dia diem: ${parsedOutlineResult.chapterPatch.primary_location}`
+        ? `Địa điểm: ${parsedOutlineResult.chapterPatch.primary_location}`
         : '',
       parsedOutlineResult.chapterPatch.featured_characters.length > 0
-        ? `Nhan vat: ${parsedOutlineResult.chapterPatch.featured_characters.join(', ')}`
+        ? `Nhân vật: ${parsedOutlineResult.chapterPatch.featured_characters.join(', ')}`
         : '',
       parsedOutlineResult.chapterPatch.thread_titles.length > 0
         ? `Threads: ${parsedOutlineResult.chapterPatch.thread_titles.join(', ')}`
@@ -1244,8 +1362,8 @@ export default function AISidebar({
     return (
       <div className="ai-outline-result">
         <div className="ai-outline-result__header">
-          <div className="ai-outline-result__eyebrow">Dan y chuong</div>
-          <div className="ai-outline-result__mode">{modeLabels[parsedOutlineResult.mode] || 'Phan tich dan y chuong hien tai'}</div>
+          <div className="ai-outline-result__eyebrow">Dàn ý chương</div>
+          <div className="ai-outline-result__mode">{modeLabels[parsedOutlineResult.mode] || 'Phân tích dàn ý chương hiện tại'}</div>
         </div>
 
         {(parsedOutlineResult.purpose || parsedOutlineResult.summary) && (
@@ -1272,7 +1390,7 @@ export default function AISidebar({
 
         {parsedOutlineResult.completedBeats.length > 0 && (
           <div className="ai-outline-result__section">
-            <div className="ai-outline-result__title">Beat da hoan thanh / da co dau hieu</div>
+            <div className="ai-outline-result__title">Beat đã hoàn thành / đã có dấu hiệu</div>
             <div className="ai-outline-beat-list">
               {parsedOutlineResult.completedBeats.map((beat) => (
                 <div key={beat.id} className="ai-outline-beat-card ai-outline-beat-card--done">
@@ -1287,15 +1405,15 @@ export default function AISidebar({
 
         {parsedOutlineResult.nextBeats.length > 0 && (
           <div className="ai-outline-result__section">
-            <div className="ai-outline-result__title">Beat con thieu / beat tiep theo</div>
+            <div className="ai-outline-result__title">Beat còn thiếu / beat tiếp theo</div>
             <div className="ai-outline-beat-list">
               {parsedOutlineResult.nextBeats.map((beat) => (
                 <div key={beat.id} className="ai-outline-beat-card">
                   <div className="ai-outline-beat-card__title">{beat.title}</div>
                   {beat.beat && <div className="ai-outline-beat-card__text">{beat.beat}</div>}
-                  {beat.characterChange && <div className="ai-outline-beat-card__meta">Nhan vat: {beat.characterChange}</div>}
+                  {beat.characterChange && <div className="ai-outline-beat-card__meta">Nhân vật: {beat.characterChange}</div>}
                   {beat.thread && <div className="ai-outline-beat-card__meta">Thread: {beat.thread}</div>}
-                  {beat.boundaryReason && <div className="ai-outline-beat-card__meta">Ly do giu trong chuong nay: {beat.boundaryReason}</div>}
+                  {beat.boundaryReason && <div className="ai-outline-beat-card__meta">Lý do giữ trong chương này: {beat.boundaryReason}</div>}
                 </div>
               ))}
             </div>
@@ -1304,26 +1422,26 @@ export default function AISidebar({
 
         {parsedOutlineResult.progressWarning && (
           <div className="ai-outline-result__warning">
-            <strong>Canh bao tien do:</strong> {parsedOutlineResult.progressWarning}
+            <strong>Cảnh báo tiến độ:</strong> {parsedOutlineResult.progressWarning}
           </div>
         )}
 
         {parsedOutlineResult.transitionNote && (
           <div className="ai-outline-result__transition">
-            <strong>Goi y chuyen chuong:</strong> {parsedOutlineResult.transitionNote}
+            <strong>Gợi ý chuyển chương:</strong> {parsedOutlineResult.transitionNote}
           </div>
         )}
 
         {canApplyPatch && (
           <div className="ai-outline-result__footer">
-            <div className="ai-outline-result__note">Ap vao chapter hien tai se cap nhat purpose, summary va cac truong outline cot loi. Khong tu dong doi ten chuong.</div>
+            <div className="ai-outline-result__note">Áp vào chapter hiện tại sẽ cập nhật purpose, summary và các trường outline cốt lõi. Không tự động đổi tên chương.</div>
             <button
               className="btn btn-accent btn-sm"
               onClick={handleApplyOutlineToChapter}
               disabled={outlineApplyState === 'saving'}
             >
               {outlineApplyState === 'saving' ? <Loader2 size={12} className="spin" /> : <ArrowDownToLine size={12} />}
-              {outlineApplyState === 'saved' ? 'Da ap vao chuong' : outlineApplyState === 'error' ? 'Thu ap lai' : 'Ap vao chuong hien tai'}
+              {outlineApplyState === 'saved' ? 'Đã áp vào chương' : outlineApplyState === 'error' ? 'Thử áp lại' : 'Áp vào chương hiện tại'}
             </button>
           </div>
         )}
@@ -1404,30 +1522,39 @@ export default function AISidebar({
 
   const renderPromptComposer = () => (
     <form className="ai-free-prompt" onSubmit={handleFreePrompt}>
-      <textarea
-        ref={customPromptRef}
-        className="ai-prompt-input"
-        placeholder="Nhập yêu cầu tự do..."
-        value={customPrompt}
-        onFocus={() => onMobileInputFocusChange?.(true)}
-        onBlur={() => onMobileInputFocusChange?.(false)}
-        onChange={(event) => {
-          setCustomPrompt(event.target.value);
-          autosizeTextarea(event.currentTarget);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            handleFreePrompt(event);
-          }
-        }}
-        rows={1}
-        disabled={isStreaming}
-      />
+      <div className="ai-free-prompt__main">
+        <div className="ai-free-prompt__label">
+          <PenTool size={12} />
+          <span>Viết chính</span>
+        </div>
+        <textarea
+          ref={customPromptRef}
+          className="ai-prompt-input"
+          placeholder="Nhập yêu cầu viết chính cho cảnh/chương..."
+          aria-label="Yêu cầu viết chính"
+          value={customPrompt}
+          onFocus={() => onMobileInputFocusChange?.(true)}
+          onBlur={() => onMobileInputFocusChange?.(false)}
+          onChange={(event) => {
+            setCustomPrompt(event.target.value);
+            autosizeTextarea(event.currentTarget);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              handleFreePrompt(event);
+            }
+          }}
+          rows={1}
+          disabled={isStreaming}
+        />
+      </div>
       <button
         type="submit"
         className="btn btn-primary btn-sm ai-send-btn"
         disabled={isStreaming || isCheckingConflict || !customPrompt.trim()}
+        title="Gửi yêu cầu viết chính"
+        aria-label="Gửi yêu cầu viết chính"
       >
         {isStreaming ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
       </button>

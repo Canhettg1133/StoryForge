@@ -20,43 +20,43 @@ function parseProjectBackup(jsonString) {
   const data = JSON.parse(jsonString);
 
   if (!data._storyforge_version || !data.project) {
-    throw new Error('File khong hop le - khong phai backup StoryForge');
+    throw new Error('File không hợp lệ - không phải bản sao lưu StoryForge');
   }
 
   return data;
 }
 
 function resolveImportedProjectTitle(title, titleMode = 'imported') {
-  const normalizedTitle = String(title || 'Project').trim() || 'Project';
+  const normalizedTitle = String(title || 'Dự án').trim() || 'Dự án';
   if (titleMode === 'original') {
     return normalizedTitle;
   }
 
-  if (/\(Imported\)$/i.test(normalizedTitle)) {
+  if (/\(Imported\)$/i.test(normalizedTitle) || /\(Đã nhập\)$/iu.test(normalizedTitle)) {
     return normalizedTitle;
   }
 
-  return `${normalizedTitle} (Imported)`;
+  return `${normalizedTitle} (Đã nhập)`;
 }
 
 function resolveImportedChatTitle(title, titleMode = 'imported') {
-  const normalizedTitle = String(title || 'Cuoc tro chuyen moi').trim() || 'Cuoc tro chuyen moi';
+  const normalizedTitle = String(title || 'Cuộc trò chuyện mới').trim() || 'Cuộc trò chuyện mới';
   if (titleMode === 'original') {
     return normalizedTitle;
   }
 
-  if (/\(Imported\)$/i.test(normalizedTitle)) {
+  if (/\(Imported\)$/i.test(normalizedTitle) || /\(Đã nhập\)$/iu.test(normalizedTitle)) {
     return normalizedTitle;
   }
 
-  return `${normalizedTitle} (Imported)`;
+  return `${normalizedTitle} (Đã nhập)`;
 }
 
 function parseChatBackup(jsonString) {
   const data = JSON.parse(jsonString);
 
   if (!data?._storyforge_version || data?._cloud_scope !== 'chat' || !data?.thread || !Array.isArray(data?.messages)) {
-    throw new Error('File khong hop le - khong phai backup chat StoryForge');
+    throw new Error('File không hợp lệ - không phải bản sao lưu chat StoryForge');
   }
 
   return data;
@@ -66,7 +66,7 @@ function parsePromptBundleBackup(jsonString) {
   const data = JSON.parse(jsonString);
 
   if (!data?._storyforge_version || data?._cloud_scope !== 'prompt_bundle' || !data?.story_creation_settings) {
-    throw new Error('File khong hop le - khong phai backup prompt StoryForge');
+    throw new Error('File không hợp lệ - không phải bản sao lưu prompt StoryForge');
   }
 
   return data;
@@ -240,7 +240,7 @@ export async function exportProject(projectId) {
 export async function exportChatThread(threadId) {
   const normalizedThreadId = Number(threadId);
   if (!Number.isFinite(normalizedThreadId) || normalizedThreadId <= 0) {
-    throw new Error('Khong tim thay thread chat de backup.');
+    throw new Error('Không tìm thấy cuộc chat để sao lưu.');
   }
 
   const [thread, messages] = await Promise.all([
@@ -249,7 +249,7 @@ export async function exportChatThread(threadId) {
   ]);
 
   if (!thread) {
-    throw new Error('Khong tim thay thread chat local.');
+    throw new Error('Không tìm thấy cuộc chat local.');
   }
 
   let projectTitle = '';
@@ -331,7 +331,7 @@ export async function importProject(jsonString, options = {}) {
   const preserveCloudMetadata = options.preserveCloudMetadata === true;
 
   if (!data._storyforge_version || !data.project) {
-    throw new Error('File không hợp lệ — không phải backup StoryForge');
+    throw new Error('File không hợp lệ - không phải bản sao lưu StoryForge');
   }
 
   // ═══════════════════════════════════════════

@@ -109,6 +109,8 @@ export const TASK_TYPES = {
   // AI Enhancement
   AI_GENERATE_ENTITY: 'ai_generate_entity',
   PROJECT_WIZARD: 'project_wizard',
+  STORY_BIBLE_SEED: 'story_bible_seed',
+  CHAPTER_OUTLINE_PASS: 'chapter_outline_pass',
   // Phase A — Suggestion Inbox
   SUGGEST_UPDATES: 'suggest_updates',
   CANON_EXTRACT_OPS: 'canon_extract_ops',
@@ -260,6 +262,8 @@ const PROXY_TASK_MAP = {
 };
 
 PROXY_TASK_MAP.canon_review = { ...PROXY_TASK_MAP.canon_repair };
+PROXY_TASK_MAP.story_bible_seed = { ...PROXY_TASK_MAP.project_wizard };
+PROXY_TASK_MAP.chapter_outline_pass = { ...PROXY_TASK_MAP.project_wizard };
 
 const PROXY_PRESET_BY_QUALITY = {
   [QUALITY_MODES.FAST]: PROXY_MODEL_PRESETS[0]?.id,

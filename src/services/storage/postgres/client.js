@@ -10,7 +10,7 @@ export function requirePostgresDatabase(context = 'Postgres database access') {
     return;
   }
 
-  throw new Error(`${context} requires DATABASE_URL to be configured.`);
+  throw new Error(`${context} cần cấu hình DATABASE_URL.`);
 }
 
 export async function getPostgresPool() {

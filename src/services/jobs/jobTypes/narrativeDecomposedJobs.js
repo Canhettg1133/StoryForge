@@ -90,7 +90,7 @@ async function beginStage(job, signal) {
   ]);
 
   if (!session) {
-    const error = new Error('Execution session not found.');
+    const error = new Error('Không tìm thấy phiên chạy.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
@@ -162,7 +162,7 @@ async function loadContext(analysisId) {
   ]);
 
   if (!analysis || !artifact) {
-    const error = new Error('Analysis artifact not found for decomposed rerun job.');
+    const error = new Error('Không tìm thấy artifact phân tích cho job chạy lại decomposed.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
@@ -321,7 +321,7 @@ export async function processAnalysisWindowJob(job, onProgress, { signal } = {})
       name: 'window_local_extraction',
       status: 'running',
       progress: 40,
-      message: `Rebuilding ${windowId}`,
+      message: `Đang dựng lại cửa sổ ${windowId}`,
     },
   });
 
@@ -334,18 +334,18 @@ export async function processAnalysisWindowJob(job, onProgress, { signal } = {})
   const carryPackets = materialized.carryPackets.filter((item) => item.sourceWindowId === windowId);
 
   if (!window) {
-    const error = new Error(`Window ${windowId} not found.`);
+    const error = new Error(`Không tìm thấy cửa sổ ${windowId}.`);
     error.code = 'INVALID_INPUT';
     throw error;
   }
 
-  await onProgress(100, `Window ${windowId}: completed`, {
+  await onProgress(100, `Cửa sổ ${windowId}: hoàn tất`, {
     event: 'step_complete',
     step: {
       name: 'window_local_extraction',
       status: 'completed',
       progress: 100,
-      message: `Window ${windowId} completed`,
+      message: `Cửa sổ ${windowId} đã hoàn tất`,
     },
   });
 
@@ -445,13 +445,13 @@ export async function processIncidentReducerJob(job, onProgress, { signal } = {}
     currentPhase: 'incident_reducer',
   });
 
-  await onProgress(100, 'Reducer completed', {
+  await onProgress(100, 'Bộ gộp đã hoàn tất.', {
     event: 'step_complete',
     step: {
       name: 'window_reducer',
       status: 'completed',
       progress: 100,
-      message: 'Reducer completed',
+      message: 'Bộ gộp đã hoàn tất.',
     },
   });
 
@@ -483,7 +483,7 @@ export async function processIncidentWorkerJob(job, onProgress, { signal } = {})
       name: 'incident_worker',
       status: 'running',
       progress: 50,
-      message: `Refreshing beats for ${incidentId}`,
+      message: `Đang làm mới beats cho ${incidentId}`,
     },
   });
 
@@ -492,13 +492,13 @@ export async function processIncidentWorkerJob(job, onProgress, { signal } = {})
     context.sourceEvents,
   ).filter((beat) => beat.incidentId === incidentId);
 
-  await onProgress(100, `Incident ${incidentId}: completed`, {
+  await onProgress(100, `Sự kiện lớn ${incidentId}: hoàn tất`, {
     event: 'step_complete',
     step: {
       name: 'incident_worker',
       status: 'completed',
       progress: 100,
-      message: `Incident ${incidentId} completed`,
+      message: `Sự kiện lớn ${incidentId} đã hoàn tất`,
     },
   });
 
@@ -522,12 +522,12 @@ export async function processCharacterCanonicalizerJob(job, onProgress, { signal
   const incidentOutputs = await getDependencyOutputs(dependencyJobIds);
   const beats = mergeIncidentOutputs(context.beats, incidentOutputs);
 
-  await onProgress(55, 'Character canonicalizer running', {
+  await onProgress(55, 'Đang chuẩn hóa nhân vật.', {
     step: {
       name: 'character_canonicalizer',
       status: 'running',
       progress: 55,
-      message: 'Refreshing canonical characters',
+      message: 'Đang làm mới nhân vật canonical',
     },
   });
 
@@ -537,13 +537,13 @@ export async function processCharacterCanonicalizerJob(job, onProgress, { signal
     beats,
   );
 
-  await onProgress(100, 'Character canonicalizer completed', {
+  await onProgress(100, 'Đã chuẩn hóa nhân vật xong.', {
     event: 'step_complete',
     step: {
       name: 'character_canonicalizer',
       status: 'completed',
       progress: 100,
-      message: 'Character canonicalizer completed',
+      message: 'Đã chuẩn hóa nhân vật xong.',
     },
   });
 
@@ -567,12 +567,12 @@ export async function processWorldCanonicalizerJob(job, onProgress, { signal } =
   const incidentOutputs = await getDependencyOutputs(dependencyJobIds);
   const beats = mergeIncidentOutputs(context.beats, incidentOutputs);
 
-  await onProgress(55, 'World canonicalizer running', {
+  await onProgress(55, 'Đang chuẩn hóa thế giới.', {
     step: {
       name: 'world_canonicalizer',
       status: 'running',
       progress: 55,
-      message: 'Refreshing canonical world entities',
+      message: 'Đang làm mới thực thể thế giới canonical',
     },
   });
 
@@ -582,13 +582,13 @@ export async function processWorldCanonicalizerJob(job, onProgress, { signal } =
     beats,
   );
 
-  await onProgress(100, 'World canonicalizer completed', {
+  await onProgress(100, 'Đã chuẩn hóa thế giới xong.', {
     event: 'step_complete',
     step: {
       name: 'world_canonicalizer',
       status: 'completed',
       progress: 100,
-      message: 'World canonicalizer completed',
+      message: 'Đã chuẩn hóa thế giới xong.',
     },
   });
 
@@ -625,12 +625,12 @@ export async function processGraphProjectionJob(job, onProgress, { signal } = {}
     canonicalizerOutputs,
   );
 
-  await onProgress(65, 'Graph projection running', {
+  await onProgress(65, 'Đang dựng đồ thị.', {
     step: {
       name: 'graph_projection',
       status: 'running',
       progress: 65,
-      message: 'Refreshing graph projections',
+      message: 'Đang làm mới đồ thị kết xuất',
     },
   });
 
@@ -643,13 +643,13 @@ export async function processGraphProjectionJob(job, onProgress, { signal } = {}
   });
   const graphProjections = buildGraphProjections(graph);
 
-  await onProgress(100, 'Graph projection completed', {
+  await onProgress(100, 'Đã dựng đồ thị xong.', {
     event: 'step_complete',
     step: {
       name: 'graph_projection',
       status: 'completed',
       progress: 100,
-      message: 'Graph projection completed',
+      message: 'Đã dựng đồ thị xong.',
     },
   });
 
@@ -708,12 +708,12 @@ export async function processReviewIntelligenceJob(job, onProgress, { signal } =
   });
   const graphProjections = graphOutput.graphProjections || buildGraphProjections(storyGraph);
 
-  await onProgress(78, 'Review intelligence running', {
+  await onProgress(78, 'Đang suy luận hàng đợi duyệt.', {
     step: {
       name: 'review_intelligence',
       status: 'running',
       progress: 75,
-      message: 'Refreshing review queue and final artifact',
+      message: 'Đang làm mới hàng đợi duyệt và artifact cuối',
     },
   });
 
@@ -749,7 +749,7 @@ export async function processReviewIntelligenceJob(job, onProgress, { signal } =
   if (
     Number(context.analysis.artifactRevision || 0) !== Number(session?.baselineArtifactRevision || context.analysis.artifactRevision || 0)
   ) {
-    const error = new Error('Artifact revision changed during rerun session.');
+    const error = new Error('Phiên bản artifact đã thay đổi trong phiên chạy lại.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
@@ -810,13 +810,13 @@ export async function processReviewIntelligenceJob(job, onProgress, { signal } =
     completedAt: Date.now(),
   });
 
-  await onProgress(100, 'Review intelligence completed', {
+  await onProgress(100, 'Đã suy luận hàng đợi duyệt xong.', {
     event: 'step_complete',
     step: {
       name: 'review_intelligence',
       status: 'completed',
       progress: 100,
-      message: 'Review intelligence completed',
+      message: 'Đã suy luận hàng đợi duyệt xong.',
     },
   });
 

@@ -89,22 +89,22 @@ export async function parseEpub(buffer, options = {}) {
   const containerXml = await readZipText(zip, 'META-INF/container.xml');
 
   if (!containerXml) {
-    throw new Error('Invalid EPUB: missing META-INF/container.xml');
+    throw new Error('EPUB không hợp lệ: thiếu META-INF/container.xml.');
   }
 
   const opfPath = getContainerOpfPath(containerXml);
   if (!opfPath) {
-    throw new Error('Invalid EPUB: missing package document path');
+    throw new Error('EPUB không hợp lệ: thiếu đường dẫn package document.');
   }
 
   const packageXml = await readZipText(zip, opfPath);
   if (!packageXml) {
-    throw new Error('Invalid EPUB: package document not found');
+    throw new Error('EPUB không hợp lệ: không tìm thấy package document.');
   }
 
   const pkg = extractPackage(packageXml);
   if (!pkg) {
-    throw new Error('Invalid EPUB: failed to parse package document');
+    throw new Error('EPUB không hợp lệ: không đọc được package document.');
   }
 
   const manifestItems = asArray(pkg.manifest?.item);
@@ -199,7 +199,7 @@ export async function parseEpub(buffer, options = {}) {
   }
 
   if (chapters.length === 0) {
-    throw new Error('EPUB parser could not extract readable chapter content');
+    throw new Error('Không trích xuất được nội dung chương đọc được từ file EPUB.');
   }
 
   return {

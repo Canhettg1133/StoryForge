@@ -108,13 +108,13 @@ class JobQueue extends EventEmitter {
 
   async createJob({ type, inputData, dependsOn = [], priority }) {
     if (!Object.values(JOB_TYPES).includes(type)) {
-      const error = new Error(`Unsupported job type: ${type}`);
+      const error = new Error(`Loại job chưa được hỗ trợ: ${type}`);
       error.code = 'INVALID_INPUT';
       throw error;
     }
 
     if (await jobRepository.countQueuedAndRunningJobs() >= JOB_CONFIG.MAX_QUEUE_SIZE) {
-      const error = new Error('Job queue is full');
+      const error = new Error('Hàng đợi job đã đầy. Hãy chờ bớt tác vụ rồi thử lại.');
       error.code = 'QUEUE_FULL';
       throw error;
     }
@@ -131,7 +131,7 @@ class JobQueue extends EventEmitter {
       type: job.type,
       status: job.status,
       progress: job.progress,
-      progressMessage: job.progressMessage || 'Queued',
+      progressMessage: job.progressMessage || 'Đang xếp hàng',
       createdAt: job.createdAt,
     });
 
@@ -168,7 +168,7 @@ class JobQueue extends EventEmitter {
     if (sessionId) {
       await analysisRepository.updateExecutionSession(sessionId, {
         status: 'failed',
-        errorMessage: 'Execution cancelled by user',
+        errorMessage: 'Phiên chạy đã bị người dùng hủy.',
         releasedAt: Date.now(),
         completedAt: Date.now(),
       }).catch(() => {});
@@ -176,7 +176,7 @@ class JobQueue extends EventEmitter {
 
     const updated = await jobRepository.updateJob(jobId, {
       status: JOB_STATUS.CANCELLED,
-      progressMessage: 'Job cancelled',
+      progressMessage: 'Job đã bị hủy.',
       completedAt: Date.now(),
       workerId: null,
     });
@@ -185,7 +185,7 @@ class JobQueue extends EventEmitter {
       id: jobId,
       status: JOB_STATUS.CANCELLED,
       progress: updated?.progress ?? job.progress,
-      progressMessage: 'Job cancelled',
+      progressMessage: 'Job đã bị hủy.',
     });
 
     return updated;
@@ -227,7 +227,7 @@ class JobQueue extends EventEmitter {
         id: claimedJob.id,
         status: JOB_STATUS.RUNNING,
         progress: claimedJob.progress,
-        progressMessage: claimedJob.progressMessage || 'Job started',
+        progressMessage: claimedJob.progressMessage || 'Job đã bắt đầu.',
         workerId,
       });
 
@@ -293,7 +293,7 @@ class JobQueue extends EventEmitter {
     const updated = await jobRepository.updateJob(jobId, {
       status: JOB_STATUS.COMPLETED,
       progress: 100,
-      progressMessage: 'Job completed',
+      progressMessage: 'Job đã hoàn tất.',
       outputData,
       errorMessage: null,
       errorStack: null,
@@ -305,7 +305,7 @@ class JobQueue extends EventEmitter {
       id: jobId,
       status: JOB_STATUS.COMPLETED,
       progress: 100,
-      progressMessage: updated?.progressMessage || 'Job completed',
+      progressMessage: updated?.progressMessage || 'Job đã hoàn tất.',
       outputData,
     });
 
@@ -328,7 +328,7 @@ class JobQueue extends EventEmitter {
         ? currentJob
         : await jobRepository.updateJob(job.id, {
           status: JOB_STATUS.CANCELLED,
-          progressMessage: 'Job cancelled',
+          progressMessage: 'Job đã bị hủy.',
           completedAt: Date.now(),
           workerId: null,
         });
@@ -337,7 +337,7 @@ class JobQueue extends EventEmitter {
         id: job.id,
         status: JOB_STATUS.CANCELLED,
         progress: cancelled?.progress ?? currentJob.progress,
-        progressMessage: 'Job cancelled',
+        progressMessage: 'Job đã bị hủy.',
       });
 
       return cancelled;
@@ -365,15 +365,15 @@ class JobQueue extends EventEmitter {
       const pending = await jobRepository.updateJob(job.id, {
         status: JOB_STATUS.PENDING,
         workerId: null,
-        errorMessage: error?.message || 'Unknown processing error',
+        errorMessage: error?.message || 'Lỗi xử lý chưa xác định',
         errorStack: error?.stack || null,
-        progressMessage: `Retrying in ${Math.round(delay / 1000)}s (${nextAttempt}/${JOB_CONFIG.MAX_RETRIES})`,
+        progressMessage: `Sẽ thử lại sau ${Math.round(delay / 1000)} giây (${nextAttempt}/${JOB_CONFIG.MAX_RETRIES})`,
       });
 
       this.emitJobEvent(job.id, 'error', {
         id: job.id,
         status: pending?.status || JOB_STATUS.PENDING,
-        message: error?.message || 'Unknown processing error',
+        message: error?.message || 'Lỗi xử lý chưa xác định',
         stack: error?.stack || null,
         retrying: true,
         attempt: nextAttempt,
@@ -389,16 +389,16 @@ class JobQueue extends EventEmitter {
       status: JOB_STATUS.FAILED,
       workerId: null,
       completedAt: Date.now(),
-      errorMessage: error?.message || 'Unknown processing error',
+      errorMessage: error?.message || 'Lỗi xử lý chưa xác định',
       errorStack: error?.stack || null,
-      progressMessage: error?.message || 'Job failed',
+      progressMessage: error?.message || 'Job thất bại',
     });
 
     const sessionId = job?.inputData?.sessionId;
     if (sessionId) {
       await analysisRepository.updateExecutionSession(sessionId, {
         status: 'failed',
-        errorMessage: error?.message || 'Execution failed',
+        errorMessage: error?.message || 'Quá trình thực thi thất bại',
         releasedAt: Date.now(),
         completedAt: Date.now(),
       }).catch(() => {});
@@ -407,7 +407,7 @@ class JobQueue extends EventEmitter {
     this.emitJobEvent(job.id, 'error', {
       id: job.id,
       status: JOB_STATUS.FAILED,
-      message: error?.message || 'Unknown processing error',
+      message: error?.message || 'Lỗi xử lý chưa xác định',
       stack: error?.stack || null,
       retrying: false,
       attempt: nextAttempt,

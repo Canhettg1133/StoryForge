@@ -38,7 +38,7 @@ export default function JobNotificationToast() {
             className="job-toast__dismiss"
             onClick={() => dismissNotification(notification.id)}
           >
-            Dismiss
+            Đóng
           </button>
         </div>
       ))}

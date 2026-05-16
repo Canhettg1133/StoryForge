@@ -13,9 +13,11 @@ import { TASK_TYPES, QUALITY_MODES, PROVIDERS } from '../services/ai/router';
 import modelRouter from '../services/ai/router';
 import keyManager from '../services/ai/keyManager';
 import { gatherContext } from '../services/ai/contextEngine';
+import { detectChapterPromptMismatch } from '../services/ai/chapterPromptGuard';
 import db from '../services/db/database';
 import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 import { NSFW_SUPER_PROMPT_1 } from '../utils/constants';
+import { toVietnameseErrorMessage } from '../utils/errorMessages';
 import useSuggestionStore from './suggestionStore';
 import useProjectStore from './projectStore';
 import { findCharacterIdentityMatch } from '../utils/characterIdentity';
@@ -344,6 +346,19 @@ const useAIStore = create((set, get) => ({
       }
     }
 
+    const chapterMismatch = detectChapterPromptMismatch(enrichedContext, {
+      chapters: enrichedContext.chapterCandidates,
+    });
+    if (chapterMismatch) {
+      set({
+        isStreaming: false,
+        streamingText: '',
+        completedText: '',
+        error: chapterMismatch.message,
+      });
+      return () => {};
+    }
+
     // Super NSFW: Try to restore ENI priming from IndexedDB (survives page refresh)
     if (enrichedContext.superNsfwMode && !get().eniPrimed && enrichedContext.chapterId) {
       const saved = await loadEniState(enrichedContext.chapterId);
@@ -356,7 +371,7 @@ const useAIStore = create((set, get) => ({
     // Super NSFW: one-time priming (first run only).
     if (enrichedContext.superNsfwMode && !get().eniPrimed && taskType !== TASK_TYPES.CHAPTER_SUMMARY) {
       console.log('[AI] Super NSFW ON: Performing one-time priming (ENI Persona)...');
-      set({ isStreaming: true, streamingText: '[Dang moi ENI Persona lan dau...]' });
+      set({ isStreaming: true, streamingText: '[Đang mồi ENI Persona lần đầu...]' });
       try {
         await new Promise((resolve) => {
           console.log('[AI] Starting priming call...');
@@ -407,7 +422,7 @@ const useAIStore = create((set, get) => ({
           isStreaming: false,
           streamingText: '',
           completedText: '',
-          error: message || 'Chapter blueprint chua du dieu kien de bat dau viet.',
+          error: message || 'Chapter blueprint chưa đủ điều kiện để bắt đầu viết.',
         });
         return () => {};
       }
@@ -454,7 +469,7 @@ const useAIStore = create((set, get) => ({
             isStreaming: false,
             streamingText: '',
             completedText: '',
-            error: 'AI khong tra noi dung (EMPTY_STREAM). Thu lai hoac doi chat luong trong Settings.',
+          error: 'AI không trả nội dung (EMPTY_STREAM). Thử lại hoặc đổi chất lượng trong Cài đặt.',
             lastRouteInfo: meta || routeInfo,
             lastElapsed: meta?.elapsed || null,
           });
@@ -493,7 +508,7 @@ const useAIStore = create((set, get) => ({
         if (streamRunId !== aiStreamingRunCounter) return;
         set({
           isStreaming: false,
-          error: err.message || 'Loi khong xac dinh',
+          error: toVietnameseErrorMessage(err, 'Lỗi không xác định.'),
         });
         set({ keyCount: keyManager.getTotalKeys() });
       },

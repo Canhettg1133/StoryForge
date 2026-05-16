@@ -21,6 +21,7 @@ import {
   getWritingDebugTaskConfig,
   WRITING_DEBUG_TASKS,
 } from '../../services/ai/writingRequestDebugger';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 
 const VIEW_TABS = [
   { id: 'system', label: 'System prompt' },
@@ -138,7 +139,7 @@ export default function WritingRequestDebugger() {
       setPayload(nextPayload);
       return nextPayload;
     } catch (error) {
-      setDebugError(error?.message || 'Không dựng được prompt debug.');
+      setDebugError(toVietnameseErrorMessage(error, 'Không dựng được prompt debug.'));
       return null;
     } finally {
       setIsBuilding(false);
@@ -149,6 +150,11 @@ export default function WritingRequestDebugger() {
     if (isSending) return;
     const nextPayload = await buildPayload();
     if (!nextPayload) return;
+    if (nextPayload.blockingIssues?.length > 0) {
+      setDebugError(nextPayload.blockingIssues.map((issue) => issue.message).join(' '));
+      setActiveTab('context');
+      return;
+    }
 
     setResponseText('');
     setDebugError('');
@@ -174,7 +180,7 @@ export default function WritingRequestDebugger() {
         abortRef.current = null;
       },
       onError: (error) => {
-        setDebugError(error?.userMessage || error?.message || 'AI không trả lời được request debug.');
+        setDebugError(toVietnameseErrorMessage(error?.userMessage || error, 'AI không trả lời được request debug.'));
         setIsSending(false);
         abortRef.current = null;
       },

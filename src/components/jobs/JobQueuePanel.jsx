@@ -20,8 +20,8 @@ function formatRelativeTime(timestamp) {
 function getJobLabel(job) {
   if (job.type === 'corpus_analysis') return 'Phân tích kho truyện';
   if (job.type === 'incident_analysis') return 'Phân tích sự kiện lớn';
-  if (job.type === 'coherence_pass') return 'Pass mạch truyện';
-  if (job.type === 'scoped_rerun') return 'Chạy lại theo scope';
+  if (job.type === 'coherence_pass') return 'Kiểm tra mạch truyện';
+  if (job.type === 'scoped_rerun') return 'Chạy lại theo phạm vi';
   if (job.type === 'analysis_window') return 'Xử lý cửa sổ';
   if (job.type === 'incident_reducer') return 'Gộp sự kiện lớn';
   if (job.type === 'incident_worker') return 'Phân tích chi tiết sự kiện lớn';
@@ -31,6 +31,33 @@ function getJobLabel(job) {
   if (job.type === 'review_intelligence') return 'Suy luận review';
   if (job.type === 'file_parsing') return 'Tách file';
   return job.type || 'Tác vụ';
+}
+
+function getStepLabel(name) {
+  const labels = {
+    parse_chapters: 'Tách chương',
+    extract_characters: 'Trích xuất nhân vật',
+    extract_events: 'Trích xuất sự kiện',
+    analyze_worldbuilding: 'Phân tích thế giới',
+    analyze_relationships: 'Phân tích quan hệ',
+    analyze_craft: 'Phân tích kỹ thuật viết',
+    read_file: 'Đọc file',
+    tokenize_content: 'Tách nội dung',
+    build_document_model: 'Dựng mô hình tài liệu',
+    prepare: 'Chuẩn bị',
+    coherence: 'Kiểm tra mạch truyện',
+    normalize: 'Chuẩn hóa',
+    load_scope: 'Tải phạm vi',
+    persist_scope: 'Lưu phạm vi',
+    window_local_extraction: 'Trích xuất cửa sổ',
+    window_reducer: 'Gộp cửa sổ',
+    incident_worker: 'Phân tích sự kiện lớn',
+    character_canonicalizer: 'Chuẩn hóa nhân vật',
+    world_canonicalizer: 'Chuẩn hóa thế giới',
+    graph_projection: 'Dựng đồ thị',
+    review_intelligence: 'Suy luận hàng đợi duyệt',
+  };
+  return labels[name] || name || 'Bước xử lý';
 }
 
 function getStatusLabel(status) {
@@ -84,7 +111,7 @@ function JobCard({ job, queueIndex, onCancel }) {
         <div className="job-queue-card__meta">
           {activeSteps.map((step) => (
             <div key={`${job.id}-${step.name}`}>
-              {step.name}: {step.message || `${step.progress || 0}%`}
+              {getStepLabel(step.name)}: {step.message || `${step.progress || 0}%`}
             </div>
           ))}
         </div>
@@ -159,7 +186,7 @@ export default function JobQueuePanel() {
         className="job-queue-launcher glass"
         onClick={() => setHistoryExpanded(true)}
       >
-        <strong>Job gần đây</strong>
+        <strong>Tác vụ gần đây</strong>
         <span>{historyData.length} mục</span>
       </button>
     );
@@ -168,7 +195,7 @@ export default function JobQueuePanel() {
   return (
     <aside className="job-queue-panel glass">
       <header className="job-queue-panel__header">
-        <h3>Hàng đợi job</h3>
+        <h3>Hàng đợi tác vụ</h3>
         <div className="job-queue-panel__actions">
           {!hasActiveJobs && hasHistory && (
             <button type="button" onClick={() => setHistoryExpanded(false)}>
@@ -192,7 +219,7 @@ export default function JobQueuePanel() {
             />
           ))
         ) : (
-          <p className="job-queue-empty">Không có job đang chạy.</p>
+          <p className="job-queue-empty">Không có tác vụ đang chạy.</p>
         )}
       </section>
 
@@ -208,7 +235,7 @@ export default function JobQueuePanel() {
             ))}
           </ul>
         ) : (
-          <p className="job-queue-empty">Chưa có job nào hoàn tất.</p>
+          <p className="job-queue-empty">Chưa có tác vụ nào hoàn tất.</p>
         )}
       </section>
     </aside>

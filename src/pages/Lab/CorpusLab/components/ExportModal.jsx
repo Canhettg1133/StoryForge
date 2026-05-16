@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { exportEvents, downloadFile, copyToClipboard, getExportFilename } from '../../../../services/viewer/exportService.js';
+import { toVietnameseErrorMessage } from '../../../../utils/errorMessages.js';
 
 const FORMAT_OPTIONS = [
   { value: 'markdown', label: 'Markdown', desc: 'Dùng cho ghi chú và tài liệu' },
@@ -73,7 +74,7 @@ export default function ExportModal({ selectedItems, onClose, onExport }) {
         onClose();
       }, 1200);
     } catch (err) {
-      setExportSuccess(`Lỗi: ${err.message}`);
+      setExportSuccess(`Lỗi: ${toVietnameseErrorMessage(err, 'Không export được dữ liệu.')}`);
     } finally {
       setExporting(false);
     }

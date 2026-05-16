@@ -110,7 +110,8 @@ function recordRequestTimestamp(modelName, keyIndex) {
 }
 
 function getModelQuota(modelName) {
-    const model = GEMINI_MODELS.find(m => m.name === modelName);
+    const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : [];
+    const model = activeModels.find(m => m.name === modelName) || GEMINI_MODELS.find(m => m.name === modelName);
     return model ? model.quota : 5;
 }
 
@@ -127,9 +128,11 @@ function getBestAvailablePair() {
 
     const scoredCombinations = [];
 
+    const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
+
     for (let keyIdx = 0; keyIdx < apiKeys.length; keyIdx++) {
-        for (let modelIdx = 0; modelIdx < GEMINI_MODELS.length; modelIdx++) {
-            const model = GEMINI_MODELS[modelIdx];
+        for (let modelIdx = 0; modelIdx < activeModels.length; modelIdx++) {
+            const model = activeModels[modelIdx];
 
             if (!isModelKeyAvailable(model.name, keyIdx)) continue;
 

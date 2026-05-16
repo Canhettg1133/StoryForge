@@ -13,6 +13,7 @@ import usePlotStore from '../../stores/plotStore';
 import ChapterDetailModal from './ChapterDetailModal';
 import PlotThreadModal from './PlotThreadModal';
 import ArcGenerationModal from './ArcGenerationModal';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import {
   Map, Plus, Sparkles, Loader2, ChevronDown, FileText,
   Users, MapPin, Target, Zap, PenTool, LayoutGrid, List,
@@ -90,12 +91,15 @@ function buildChapterAnchorPatch(chapter = {}, { preserveMissing = false } = {})
   setList('required_factions');
   setList('required_objects');
   setList('required_terms');
+  setText('opening_state');
+  setText('handoff_from_previous');
+  setText('ending_state');
   return patch;
 }
 
 function formatCharacterForOutlinePrompt(character = {}) {
-  const name = character.name || 'Nhan vat';
-  const parts = [name + ' (' + (character.role || 'nhan vat') + ')'];
+  const name = character.name || 'Nhân vật';
+  const parts = [name + ' (' + (character.role || 'nhân vật') + ')'];
   const aliases = normalizeOutlineListField(character.aliases);
   if (aliases.length > 0) parts.push('aliases: ' + aliases.join(', '));
   if (character.specific_role) parts.push('specific_role: ' + character.specific_role);
@@ -224,22 +228,22 @@ export default function OutlineBoard() {
     const locList = locations.map((l) => l.name).join(', ');
     const existingOutline = chapters.length > 0
       ? chapters.map((ch, i) => `${i + 1}. ${ch.title}${ch.purpose ? ' - ' + ch.purpose : ''}`).join('\n')
-      : 'Chua co outline';
+      : 'Chưa có outline';
 
     const storyCreationSettings = getStoryCreationSettings();
     const outlinePrompts = storyCreationSettings.outlineGeneration;
     const outlineTaskInstruction = chapters.length > 0
-      ? 'Phan tich outline hien tai va GOI Y purpose (muc tieu) + summary (tom tat) cho tung chuong. Gan moi chuong vao act (1, 2, hoac 3). Doc Character Live Canon/current_status truoc khi gan beat/cast.'
-      : 'Tao outline 10 chuong theo cau truc 3 hoi. Moi chuong phai co muc tieu ro rang va ton trong Character Live Canon/current_status cua nhan vat.';
+      ? 'Phân tích outline hiện tại và GỢI Ý purpose (mục tiêu) + summary (tóm tắt) cho từng chương. Gắn mỗi chương vào act (1, 2, hoặc 3). Đọc Character Live Canon/current_status trước khi gắn beat/cast.'
+      : 'Tạo outline 10 chương theo cấu trúc 3 hồi. Mỗi chương phải có mục tiêu rõ ràng và tôn trọng Character Live Canon/current_status của nhân vật.';
     const outlineUserRequest = chapters.length > 0
-      ? 'Phan tich va bo sung outline cho cac chuong hien co.'
-      : `Tao outline 10 chuong cho truyen "${currentProject.title}".`;
+      ? 'Phân tích và bổ sung outline cho các chương hiện có.'
+      : `Tạo outline 10 chương cho truyện "${currentProject.title}".`;
     const outlineTemplateVariables = {
       genre: currentProject.genre_primary || 'fantasy',
       project_title: currentProject.title,
-      project_description: currentProject.description || 'Chua co',
-      character_list: charList || 'Chua co',
-      location_list: locList || 'Chua co',
+      project_description: currentProject.description || 'Chưa có',
+      character_list: charList || 'Chưa có',
+      location_list: locList || 'Chưa có',
       existing_outline: existingOutline,
       outline_task_instruction: outlineTaskInstruction,
       outline_user_request: outlineUserRequest,
@@ -267,7 +271,7 @@ export default function OutlineBoard() {
           const normalized = Array.isArray(parsedValue)
             ? { chapters: parsedValue.filter(isPlainObject) }
             : (isPlainObject(parsedValue) ? parsedValue : null);
-          if (!normalized) throw new Error('Unexpected JSON format');
+    if (!normalized) throw new Error('Phản hồi JSON không đúng định dạng.');
 
           const nextChapters = Array.isArray(normalized.chapters) ? normalized.chapters : [];
 
@@ -312,12 +316,12 @@ export default function OutlineBoard() {
           return;
         } catch (e) {
           console.error('[OutlineBoard] AI parse error:', e);
-          setGenError('Khong parse duoc. Thu lai?');
+          setGenError('Không parse được. Thử lại?');
         }
       },
       onError: (err) => {
         setIsGenerating(false);
-        setGenError(err.message || 'Loi AI');
+        setGenError(toVietnameseErrorMessage(err, 'Lỗi AI'));
       },
     });
   };
@@ -328,30 +332,30 @@ export default function OutlineBoard() {
     setIsSuggesting(true);
     setShowSuggestInput(false);
 
-    const synopsisText = currentProject.synopsis || currentProject.description || 'Chua co';
-    const charList = characters.map(formatCharacterForOutlinePrompt).join('\n') || 'Chua co';
+    const synopsisText = currentProject.synopsis || currentProject.description || 'Chưa có';
+    const charList = characters.map(formatCharacterForOutlinePrompt).join('\n') || 'Chưa có';
     const chapterList = chapters.length > 0
       ? chapters.map((ch, i) =>
         `${i + 1}. ${ch.title}${ch.purpose ? ' - ' + ch.purpose : ''}${ch.summary ? ': ' + ch.summary : ''}`
       ).join('\n')
-      : 'Chua co';
+      : 'Chưa có';
     const existingThreads = plotThreads.length > 0
       ? plotThreads.map((pt) => `- [${pt.type}] ${pt.title}: ${pt.description || ''}`).join('\n')
-      : 'Chua co';
+      : 'Chưa có';
 
     const hintSection = suggestHint.trim()
       ? `
 Huong di tac gia muon khai thac: ${suggestHint.trim()}
-Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
+Ưu tiên gợi ý theo hướng này nếu phù hợp với câu chuyện.
 `
       : '';
 
     const storyCreationSettings = getStoryCreationSettings();
     const threadPrompts = storyCreationSettings.threadSuggestion;
-    const threadUserRequest = 'Hay phan tich va goi y tuyen truyen moi cho toi.';
+    const threadUserRequest = 'Hãy phân tích và gợi ý tuyến truyện mới cho tôi.';
     const threadTemplateVariables = {
       project_title: currentProject.title,
-      genre: currentProject.genre_primary || 'Chua co',
+      genre: currentProject.genre_primary || 'Chưa có',
       synopsis: synopsisText,
       character_list: charList,
       chapter_list: chapterList,
@@ -381,7 +385,7 @@ Uu tien goi y theo huong nay neu phu hop voi cau chuyen.
         try {
           const parsedValue = parseAIJsonValue(text);
           const normalized = isPlainObject(parsedValue) ? parsedValue : null;
-          if (!normalized) throw new Error('Unexpected JSON format');
+    if (!normalized) throw new Error('Phản hồi JSON không đúng định dạng.');
 
           const suggestions = Array.isArray(normalized.plot_threads)
             ? normalized.plot_threads.filter((pt) => isPlainObject(pt) && pt.title?.trim())

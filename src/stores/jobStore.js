@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { jobsApi } from '../services/api/jobsApi';
 import { JOB_CONFIG } from '../services/jobs/config';
+import { toVietnameseErrorMessage } from '../utils/errorMessages';
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const ACTIVE_STATUSES = new Set(['pending', 'running']);
@@ -111,7 +112,7 @@ export const useJobStore = create(
         type,
         status: response.status,
         progress: 0,
-        progressMessage: 'Queued',
+        progressMessage: 'Đang xếp hàng',
         inputData,
         createdAt: response.createdAt,
         steps: [],
@@ -145,7 +146,7 @@ export const useJobStore = create(
             type: job.type,
             status: job.status || 'pending',
             progress: job.progress ?? 0,
-            progressMessage: job.progressMessage || 'Queued',
+            progressMessage: job.progressMessage || 'Đang xếp hàng',
             inputData: job.inputData || {},
             createdAt: job.createdAt || Date.now(),
           }),
@@ -309,8 +310,8 @@ export const useJobStore = create(
         id: `${jobId}-complete-${Date.now()}`,
         jobId,
         status: 'success',
-        title: 'Job Complete',
-        message: job.progressMessage || `${job.type} completed`,
+        title: 'Tác vụ hoàn tất',
+        message: job.progressMessage || 'Tác vụ đã hoàn tất.',
         createdAt: Date.now(),
       };
 
@@ -333,8 +334,8 @@ export const useJobStore = create(
         id: `${jobId}-cancelled-${Date.now()}`,
         jobId,
         status: 'warning',
-        title: 'Job Cancelled',
-        message: 'Job was cancelled.',
+        title: 'Tác vụ đã hủy',
+        message: 'Tác vụ đã bị hủy.',
         createdAt: Date.now(),
       };
 
@@ -351,8 +352,8 @@ export const useJobStore = create(
         id: `${jobId}-failed-${Date.now()}`,
         jobId,
         status: 'error',
-        title: 'Job Failed',
-        message: message || 'Job failed.',
+        title: 'Tác vụ thất bại',
+        message: toVietnameseErrorMessage(message, 'Tác vụ thất bại.'),
         createdAt: Date.now(),
       };
 
@@ -367,7 +368,7 @@ export const useJobStore = create(
       get().handleJobUpdate(jobId, {
         id: jobId,
         status: 'cancelled',
-        progressMessage: 'Job cancelled',
+        progressMessage: 'Tác vụ đã bị hủy',
         type: 'cancelled',
       });
     },

@@ -215,6 +215,37 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(validation.issues.some((issue) => issue.code === 'chapter-out-of-range' && issue.chapterIndex === 2)).toBe(true);
   });
 
+  it('blocks generated outlines when a chapter skips the previous ending state handoff', () => {
+    const validation = validateGeneratedOutline({
+      chapters: [
+        {
+          title: 'Chuong 10: Son coc',
+          purpose: 'Dat nhan vat vao nguy co sinh ton.',
+          summary: 'Main bi thuong trong son coc va bi yeu thu bao vay.',
+          key_events: ['bi yeu thu bao vay'],
+          ending_state: 'Main trong thuong, bi nam yeu thu bao vay trong son coc.',
+          state_delta: 'Main dang o son coc va can song sot.',
+        },
+        {
+          title: 'Chuong 11: Tro ve tong mon',
+          purpose: 'Cho Main bat dau dot pha.',
+          summary: 'Main xuat hien tai tong mon va chuan bi dot pha.',
+          key_events: ['chuan bi dot pha'],
+        },
+      ],
+    }, {
+      storyProgressBudget: {
+        fromPercent: 1,
+        toPercent: 1.2,
+        currentChapterCount: 9,
+        batchCount: 2,
+      },
+    });
+
+    expect(validation.hasBlockingIssues).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'chapter-missing-handoff' && issue.chapterIndex === 1)).toBe(true);
+  });
+
   it('treats beat-mix heuristics as non-blocking even when setup signals are weak', () => {
     const validation = validateGeneratedOutline({
       chapters: [

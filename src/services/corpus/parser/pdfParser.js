@@ -59,7 +59,7 @@ export async function parsePdf(buffer, options = {}) {
       .filter(Boolean);
 
   if (extractedPages.length === 0) {
-    throw new Error('PDF parser could not extract readable text');
+  throw new Error('Không trích xuất được văn bản đọc được từ file PDF.');
   }
 
   const fullText = extractedPages.join('\n\n');

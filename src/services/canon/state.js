@@ -52,14 +52,14 @@ function appendStateSummaryChunks(parts, summary, aliveStatus) {
 
 export function buildCharacterStateSummary(state, fallbackSummary = '') {
   const parts = [];
-  if (state?.alive_status === 'dead') parts.push('Da chet');
-  else if (state?.alive_status === 'alive') parts.push('Con song');
-  if (state?.rescued) parts.push('Da duoc cuu');
-  if (state?.injury_level && state.injury_level !== 'none') parts.push(`Bi thuong: ${state.injury_level}`);
-  if (state?.current_location_name) parts.push(`Dang o ${state.current_location_name}`);
+  if (state?.alive_status === 'dead') parts.push('Đã chết');
+  else if (state?.alive_status === 'alive') parts.push('Còn sống');
+  if (state?.rescued) parts.push('Đã được cứu');
+  if (state?.injury_level && state.injury_level !== 'none') parts.push(`Bị thương: ${state.injury_level}`);
+  if (state?.current_location_name) parts.push(`Đang ở ${state.current_location_name}`);
   if (state?.allegiance) parts.push(`Phe: ${state.allegiance}`);
   if (Array.isArray(state?.goals_active) && state.goals_active.length > 0) {
-    parts.push(`Muc tieu: ${state.goals_active.join(', ')}`);
+    parts.push(`Mục tiêu: ${state.goals_active.join(', ')}`);
   }
   if (state?.summary) appendStateSummaryChunks(parts, state.summary, state?.alive_status);
   if (parts.length === 0 && fallbackSummary) appendStateSummaryChunks(parts, fallbackSummary, state?.alive_status);
@@ -205,12 +205,12 @@ export function applyEventToEntityState(prevState, event) {
     case CANON_OP_TYPES.CHARACTER_RESCUED:
       next.rescued = true;
       next.alive_status = 'alive';
-      next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc cuu');
+      next.summary = cleanText(payload.status_summary || event.summary || 'Đã được cứu');
       break;
     case CANON_OP_TYPES.CHARACTER_DIED:
       next.alive_status = 'dead';
       next.rescued = false;
-      next.summary = cleanText(payload.status_summary || event.summary || 'Da chet');
+      next.summary = cleanText(payload.status_summary || event.summary || 'Đã chết');
       break;
     case CANON_OP_TYPES.GOAL_CHANGED: {
       const newGoals = uniqueList([
@@ -349,7 +349,7 @@ export function applyEventToItemState(prevState, event) {
       applyQuantityGain();
       next.owner_character_id = resolveRecipientCharacterId() || next.owner_character_id || null;
       next.holder_character_id = payload.holder_character_id || resolveRecipientCharacterId() || next.owner_character_id || null;
-      next.summary = cleanText(payload.status_summary || event.summary || next.summary || 'Da co duoc vat pham');
+      next.summary = cleanText(payload.status_summary || event.summary || next.summary || 'Đã có được vật phẩm');
       next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
       break;
     case CANON_OP_TYPES.OBJECT_STATUS_CHANGED:
@@ -376,13 +376,13 @@ export function applyEventToItemState(prevState, event) {
       applyQuantityLoss(true);
       next.availability = cleanText(payload.availability || next.availability || 'consumed') || 'consumed';
       next.is_consumed = true;
-      next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc su dung het');
+      next.summary = cleanText(payload.status_summary || event.summary || 'Đã được sử dụng hết');
       next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
       break;
     case CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED:
     case CANON_OP_TYPES.OBJECT_SPENT:
       applyQuantityLoss(false);
-      next.summary = cleanText(payload.status_summary || event.summary || next.summary || 'Da duoc su dung mot phan');
+      next.summary = cleanText(payload.status_summary || event.summary || next.summary || 'Đã được sử dụng một phần');
       next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
       break;
     case CANON_OP_TYPES.OBJECT_LOST:
@@ -390,19 +390,19 @@ export function applyEventToItemState(prevState, event) {
       next.holder_character_id = null;
       next.current_location_id = payload.location_id || null;
       next.current_location_name = cleanText(payload.location_name || '');
-      next.summary = cleanText(payload.status_summary || event.summary || 'Da bi mat');
+      next.summary = cleanText(payload.status_summary || event.summary || 'Đã bị mất');
       break;
     case CANON_OP_TYPES.OBJECT_FOUND:
       setAvailable();
       applyQuantityGain();
       next.holder_character_id = event.subject_id || event.target_id || payload.holder_character_id || next.holder_character_id || null;
-      next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc tim thay');
+      next.summary = cleanText(payload.status_summary || event.summary || 'Đã được tìm thấy');
       break;
     case CANON_OP_TYPES.OBJECT_RESTORED:
       setAvailable();
       next.is_damaged = Boolean(payload.is_damaged ?? false);
       applyQuantityGain();
-      next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc khoi phuc');
+      next.summary = cleanText(payload.status_summary || event.summary || 'Đã được khôi phục');
       next.usage_notes = cleanText(payload.usage_notes || next.usage_notes || '');
       break;
     case CANON_OP_TYPES.OBJECT_RETURNED:
@@ -413,7 +413,7 @@ export function applyEventToItemState(prevState, event) {
       } else if (!next.owner_character_id) {
         next.owner_character_id = payload.return_to_character_id || event.target_id || null;
       }
-      next.summary = cleanText(payload.status_summary || event.summary || 'Da duoc tra lai');
+      next.summary = cleanText(payload.status_summary || event.summary || 'Đã được trả lại');
       break;
     default:
       break;

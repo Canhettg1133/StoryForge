@@ -1,6 +1,7 @@
 import { buildPrompt } from './promptBuilder';
 import { TASK_TYPES } from './router';
 import { gatherContext } from './contextEngine';
+import { detectChapterPromptMismatch } from './chapterPromptGuard';
 
 export const WRITING_DEBUG_TASKS = [
   {
@@ -181,6 +182,12 @@ export async function buildWritingDebugPayload({
   }
 
   enrichedContext = prepareWritingDebugContext(taskConfig.taskType, enrichedContext);
+  const blockingIssues = [];
+  const chapterMismatch = detectChapterPromptMismatch(enrichedContext, { chapters });
+  if (chapterMismatch) {
+    blockingIssues.push(chapterMismatch);
+    warnings.push(chapterMismatch.message);
+  }
   const messages = buildPrompt(taskConfig.taskType, enrichedContext);
   const systemPrompt = messages.find((message) => message.role === 'system')?.content || '';
   const userContent = messages.find((message) => message.role === 'user')?.content || '';
@@ -194,6 +201,7 @@ export async function buildWritingDebugPayload({
     systemPrompt,
     userContent,
     warnings,
+    blockingIssues,
     summary: {
       messageCount: messages.length,
       systemChars: systemPrompt.length,
@@ -203,6 +211,7 @@ export async function buildWritingDebugPayload({
       hasPromptTask: systemPrompt.includes('[NHIEM VU]'),
       hasCanonEngine: systemPrompt.includes('[CANON ENGINE]'),
       hasBridgeMemory: systemPrompt.includes('[BO NHO') || systemPrompt.includes('[BRIDGE MEMORY'),
+      hasBlockingIssues: blockingIssues.length > 0,
     },
   };
 }

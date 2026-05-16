@@ -13,10 +13,10 @@ function buildRelayUrl(relayUrl, roomCode, { websocket = false, status = false }
   const trimmedRoomCode = String(roomCode || '').trim();
 
   if (!trimmedRelayUrl) {
-    throw new Error('AI_STUDIO_RELAY_URL_REQUIRED');
+    throw new Error('Thiếu URL AI Studio Relay.');
   }
   if (!trimmedRoomCode) {
-    throw new Error('AI_STUDIO_RELAY_ROOM_REQUIRED');
+    throw new Error('Thiếu mã room AI Studio Relay.');
   }
 
   const url = new URL(trimmedRelayUrl, getBrowserOrigin());
@@ -139,7 +139,7 @@ export function toRelayStatusUrl(relayUrl, roomCode) {
 export async function createAIStudioRelayRoom(relayUrl, { signal } = {}) {
   const trimmedRelayUrl = String(relayUrl || '').trim();
   if (!trimmedRelayUrl) {
-    throw new Error('AI_STUDIO_RELAY_URL_REQUIRED');
+    throw new Error('Thiếu URL AI Studio Relay.');
   }
 
   const url = new URL(trimmedRelayUrl, getBrowserOrigin());
@@ -154,7 +154,7 @@ export async function createAIStudioRelayRoom(relayUrl, { signal } = {}) {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     throw createRelayError(
-      payload?.error || `Relay room create failed with status ${response.status}`,
+      payload?.error || `Không tạo được room relay. Mã lỗi ${response.status}.`,
       payload?.code || 'AI_STUDIO_RELAY_ROOM_CREATE_FAILED',
     );
   }
@@ -168,7 +168,7 @@ export async function getAIStudioRelayRoomStatus(relayUrl, roomCode, { signal } 
 
   if (!response.ok) {
     throw createRelayError(
-      payload?.error || `Relay room status failed with status ${response.status}`,
+      payload?.error || `Không đọc được trạng thái room relay. Mã lỗi ${response.status}.`,
       payload?.code || 'AI_STUDIO_RELAY_STATUS_FAILED',
     );
   }
@@ -191,7 +191,7 @@ export function callAIStudioRelayTransport({
   timeoutMs = DEFAULT_RELAY_TIMEOUT_MS,
 } = {}) {
   if (!WebSocketImpl) {
-    return Promise.reject(createRelayError('WebSocket is not available in this environment.', 'AI_STUDIO_RELAY_WEBSOCKET_UNAVAILABLE'));
+    return Promise.reject(createRelayError('WebSocket không khả dụng trong môi trường hiện tại.', 'AI_STUDIO_RELAY_WEBSOCKET_UNAVAILABLE'));
   }
 
   let socket = null;
@@ -301,12 +301,12 @@ export function callAIStudioRelayTransport({
     try {
       socket = new WebSocketImpl(toRelayWebSocketUrl(relayUrl, roomCode));
     } catch (error) {
-      finishReject(createRelayError(error?.message || 'Unable to open AI Studio Relay socket.', 'AI_STUDIO_RELAY_CONNECT_FAILED'));
+      finishReject(createRelayError(error?.message || 'Không mở được kết nối AI Studio Relay.', 'AI_STUDIO_RELAY_CONNECT_FAILED'));
       return;
     }
 
     timeoutId = setTimeout(() => {
-      finishReject(createRelayError('AI Studio Relay request timed out.', 'AI_STUDIO_RELAY_TIMEOUT'));
+      finishReject(createRelayError('Yêu cầu AI Studio Relay đã quá thời gian chờ.', 'AI_STUDIO_RELAY_TIMEOUT'));
     }, timeoutMs);
 
     signal?.addEventListener?.('abort', handleAbort, { once: true });
@@ -358,8 +358,8 @@ export function callAIStudioRelayTransport({
             : 'AI_STUDIO_RELAY_EMPTY_STREAM';
           finishReject(createRelayError(
             rawResponseStatus >= 400
-              ? `AI Studio Relay raw Gemini request failed with HTTP ${rawResponseStatus}.`
-              : 'AI Studio Relay returned an empty Gemini stream.',
+              ? `Yêu cầu Gemini qua AI Studio Relay thất bại với HTTP ${rawResponseStatus}.`
+              : 'AI Studio Relay trả về stream Gemini rỗng.',
             code,
           ));
           return;
@@ -370,7 +370,7 @@ export function callAIStudioRelayTransport({
       }
 
       if (payload.event_type === 'error') {
-        finishReject(createRelayError(payload.message || 'AI Studio Relay raw proxy returned an error.', payload.code || `AI_STUDIO_RELAY_HTTP_${payload.status || 500}`));
+        finishReject(createRelayError(payload.message || 'Proxy thô của AI Studio Relay trả về lỗi.', payload.code || `AI_STUDIO_RELAY_HTTP_${payload.status || 500}`));
         return;
       }
 
@@ -389,17 +389,17 @@ export function callAIStudioRelayTransport({
       }
 
       if (payload.type === 'error') {
-        finishReject(createRelayError(payload.message || 'AI Studio Relay connector returned an error.', payload.code || 'AI_STUDIO_RELAY_CONNECTOR_ERROR'));
+        finishReject(createRelayError(payload.message || 'Connector AI Studio Relay trả về lỗi.', payload.code || 'AI_STUDIO_RELAY_CONNECTOR_ERROR'));
       }
     });
 
     socket.addEventListener('error', () => {
-      finishReject(createRelayError('AI Studio Relay socket error.', 'AI_STUDIO_RELAY_SOCKET_ERROR'));
+      finishReject(createRelayError('Kết nối AI Studio Relay bị lỗi.', 'AI_STUDIO_RELAY_SOCKET_ERROR'));
     });
 
     socket.addEventListener('close', () => {
       if (settled) return;
-      finishReject(createRelayError('AI Studio Relay disconnected before the request completed.', 'AI_STUDIO_RELAY_DISCONNECTED'));
+      finishReject(createRelayError('AI Studio Relay đã ngắt kết nối trước khi yêu cầu hoàn tất.', 'AI_STUDIO_RELAY_DISCONNECTED'));
     });
   });
 }

@@ -22,27 +22,27 @@ const RUN_MODE_OPTIONS = [
   {
     id: 'fast_preview',
     label: 'Fast Preview',
-    description: 'Pipeline V2, budget nhe hon, uu tien toc do.',
+    description: 'Pipeline V2, budget nhẹ hơn, ưu tiên tốc độ.',
   },
   {
     id: 'balanced',
     label: 'Balanced',
-    description: 'Pipeline V2 can bang chat luong va chi phi.',
+    description: 'Pipeline V2 cân bằng chất lượng và chi phí.',
   },
   {
     id: 'deep',
     label: 'Deep',
-    description: 'Pipeline V2 ky hon, retry va review nghiem hon.',
+    description: 'Pipeline V2 kỹ hơn, retry và review nghiêm hơn.',
   },
   {
     id: 'full_corpus_1m',
     label: 'Full Corpus 1M',
-    description: 'Pipeline V2 day du: incident map -> deep pass -> knowledge.',
+    description: 'Pipeline V2 đầy đủ: incident map -> deep pass -> knowledge.',
   },
   {
     id: 'legacy',
     label: 'Legacy',
-    description: 'Pipeline incident-first cu, chi dung de fallback/tuong thich.',
+    description: 'Pipeline incident-first cũ, chỉ dùng để fallback/tương thích.',
   },
 ];
 
@@ -324,7 +324,7 @@ export default function AnalysisConfig({
           </label>
         ) : (
           <div className="analysis-estimate" style={{ alignSelf: 'end', margin: 0 }}>
-            <span>Mode V2 se chay pass-based pipeline va tu sinh run report/degraded report.</span>
+            <span>Mode V2 sẽ chạy pass-based pipeline và tự sinh run report/degraded report.</span>
           </div>
         )}
       </div>

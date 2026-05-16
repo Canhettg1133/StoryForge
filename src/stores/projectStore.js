@@ -18,6 +18,7 @@ import { getChapterCanonState } from '../services/canon/queries';
 import { CHAPTER_COMMIT_STATUS } from '../services/canon/constants';
 import { isRevisionFreshForCanonText } from '../services/canon/utils';
 import { deleteProjectCascade } from '../services/db/projectDataService.js';
+import { toVietnameseErrorMessage } from '../utils/errorMessages';
 import useAIStore from './aiStore';
 import useCodexStore from './codexStore';
 
@@ -371,7 +372,7 @@ const useProjectStore = create((set, get) => ({
     );
 
     const id = await db.projects.add({
-      title: data.title || 'Truyen chua dat ten',
+      title: data.title || 'Truyện chưa đặt tên',
       description: data.description || '',
       genre_primary: data.genre_primary || 'fantasy',
       genre_secondary: data.genre_secondary || '',
@@ -590,6 +591,9 @@ const useProjectStore = create((set, get) => ({
       required_factions = [],
       required_objects = [],
       required_terms = [],
+      opening_state = '',
+      handoff_from_previous = '',
+      ending_state = '',
       state_delta = '',
       ...chapterCore
     } = chapterData || {};
@@ -610,6 +614,9 @@ const useProjectStore = create((set, get) => ({
       required_factions,
       required_objects,
       required_terms,
+      opening_state,
+      handoff_from_previous,
+      ending_state,
       state_delta,
     });
 
@@ -836,7 +843,7 @@ const useProjectStore = create((set, get) => ({
     if (chapterCompletionById[chapterId]?.running) {
       const result = buildChapterCompletionResult(
         'busy',
-        'Chuong dang duoc hoan thanh. Hay cho tien trinh hien tai ket thuc.',
+        'Chương đang được hoàn thành. Hãy chờ tiến trình hiện tại kết thúc.',
       );
       return result;
     }
@@ -848,7 +855,7 @@ const useProjectStore = create((set, get) => ({
       running: true,
       phase: 'prepare',
       progress: 5,
-      message: 'Dang chuan bi hoan thanh chuong...',
+      message: 'Đang chuẩn bị hoàn thành chương...',
       error: '',
       result: null,
       mode: options.mode || 'manual',
@@ -860,7 +867,7 @@ const useProjectStore = create((set, get) => ({
       if (!chapterText) {
         const emptyResult = buildChapterCompletionResult(
           'empty',
-          'Chuong chua co noi dung de hoan thanh.',
+          'Chương chưa có nội dung để hoàn thành.',
         );
         get().setChapterCompletionState(chapterId, {
           running: false,
@@ -904,7 +911,7 @@ const useProjectStore = create((set, get) => ({
       get().setChapterCompletionState(chapterId, {
         phase: 'summarize_extract',
         progress: 20,
-        message: 'Dang tom tat va trich xuat du lieu codex...',
+        message: 'Đang tóm tắt và trích xuất dữ liệu codex...',
       });
       await yieldToUi();
       const [summaryResult, extractResult] = await Promise.allSettled([
@@ -928,7 +935,7 @@ const useProjectStore = create((set, get) => ({
       if (snapshotBeforeCanon.chapterText !== chapterText) {
         const staleResult = buildChapterCompletionResult(
           'stale',
-          'Noi dung chuong da thay doi trong luc hoan thanh. Hay chay lai de tranh ghi de du lieu cu.',
+          'Nội dung chương đã thay đổi trong lúc hoàn thành. Hãy chạy lại để tránh ghi đè dữ liệu cũ.',
         );
         get().setChapterCompletionState(chapterId, {
           running: false,
@@ -944,7 +951,7 @@ const useProjectStore = create((set, get) => ({
       get().setChapterCompletionState(chapterId, {
         phase: 'canon',
         progress: 72,
-        message: 'Dang kiem tra trang thai phan tich su that...',
+        message: 'Đang kiểm tra trạng thái phân tích sự thật...',
       });
       await yieldToUi();
       let existingCanonState = null;
@@ -980,7 +987,7 @@ const useProjectStore = create((set, get) => ({
           get().setChapterCompletionState(chapterId, {
             phase: 'canon',
             progress: 76,
-            message: 'Dang phan tich su that va canon hoa...',
+            message: 'Đang phân tích sự thật và canon hóa...',
           });
           await yieldToUi();
           canonResult = await canonicalizeChapterEngine(currentProject.id, chapterId, {
@@ -991,7 +998,7 @@ const useProjectStore = create((set, get) => ({
         }
       } catch (error) {
         console.warn('[ChapterCompletion] Canonicalize failed:', error);
-        canonRuntimeError = error?.message || '';
+        canonRuntimeError = toVietnameseErrorMessage(error, 'Không thể canon hóa chương.');
         canonResult = {
           ok: false,
           runtime_error: canonRuntimeError,
@@ -1009,7 +1016,7 @@ const useProjectStore = create((set, get) => ({
         }
         const staleResult = buildChapterCompletionResult(
           'stale',
-          'Noi dung chuong da thay doi trong luc hoan thanh. Hay chay lai de tranh ghi de du lieu cu.',
+          'Nội dung chương đã thay đổi trong lúc hoàn thành. Hãy chạy lại để tránh ghi đè dữ liệu cũ.',
         );
         get().setChapterCompletionState(chapterId, {
           running: false,
@@ -1025,7 +1032,7 @@ const useProjectStore = create((set, get) => ({
       get().setChapterCompletionState(chapterId, {
         phase: 'finalize',
         progress: 90,
-        message: 'Dang dong bo du lieu chuong...',
+        message: 'Đang đồng bộ dữ liệu chương...',
       });
       if (summary?.trim()) {
         try {
@@ -1097,15 +1104,15 @@ const useProjectStore = create((set, get) => ({
           : 'runtime',
         message: canonSucceeded
           ? (canonReused
-            ? 'Da hoan thanh chuong. Phan tich su that da co san va van khop noi dung.'
-            : 'Da hoan thanh chuong.')
+            ? 'Đã hoàn thành chương. Phân tích sự thật đã có sẵn và vẫn khớp nội dung.'
+            : 'Đã hoàn thành chương.')
           : canonProcessed
             ? (canonReused
-              ? 'Phan tich su that hien tai van dang co loi chan, chuong chua duoc danh dau hoan thanh.'
-              : 'Phan tich su that phat hien mau thuan, chuong chua duoc danh dau hoan thanh.')
+              ? 'Phân tích sự thật hiện tại vẫn đang có lỗi chặn, chương chưa được đánh dấu hoàn thành.'
+              : 'Phân tích sự thật phát hiện mâu thuẫn, chương chưa được đánh dấu hoàn thành.')
             : (canonRuntimeError
-              ? `Khong the hoan thanh chuong vi loi canon hoa: ${canonRuntimeError}`
-              : 'Khong the hoan thanh chuong vi loi runtime khi canon hoa.'),
+              ? `Không thể hoàn thành chương vì lỗi canon hóa: ${canonRuntimeError}`
+              : 'Không thể hoàn thành chương vì lỗi runtime khi canon hóa.'),
         summary,
         extracted,
         extractionStats,
@@ -1122,7 +1129,7 @@ const useProjectStore = create((set, get) => ({
       });
       return result;
     } catch (error) {
-      const message = error?.message || 'Khong the hoan thanh chuong.';
+      const message = toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.');
       const result = {
         ok: false,
         kind: 'runtime',

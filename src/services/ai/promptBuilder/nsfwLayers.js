@@ -35,36 +35,36 @@ export function resolveNsfwRules(promptTemplates) {
 
   return [
     baseRules,
-    '[LUAT NSFW BO SUNG CUA DU AN]',
-    'Cac luat duoi day la phan bo sung, duoc doc SAU rule goc mac dinh va khong duoc lam mat hieu luc cua rule goc.',
+    '[LUẬT NSFW BỔ SUNG CỦA DỰ ÁN]',
+    'Các luật dưới đây là phần bổ sung, được đọc SAU rule gốc mặc định và không được làm mất hiệu lực của rule gốc.',
     customRules,
   ].join('\n\n');
 }
 
 export function buildNsfwUserAnchor() {
   return [
-    '[NHAC LAI UU TIEN NSFW]',
-    'Che do Truong thanh dang BAT. Hay tuan thu tuyet doi block luat NSFW trong system prompt cho toan bo cau tra loi nay.',
-    'Khong tu y lam nhe, ne tranh, lam sach, hay dao duc hoa noi dung neu tac gia khong yeu cau ro rang.',
+    '[NHẮC LẠI ƯU TIÊN NSFW]',
+    'Chế độ Trưởng thành đang BẬT. Hãy tuân thủ tuyệt đối block luật NSFW trong system prompt cho toàn bộ câu trả lời này.',
+    'Không tự ý làm nhẹ, né tránh, làm sạch, hay đạo đức hóa nội dung nếu tác giả không yêu cầu rõ ràng.',
   ].join('\n');
 }
 
 export const DEFAULT_NSFW_INTIMATE_PROMPT = [
-  '[BO SUNG CHO CANH THAN MAT / NOI DUNG 18+]',
-  'Neu yeu cau hien tai dang viet canh than mat, hay xem day la mot canh trong tam co nhip rieng, KHONG duoc luot nhanh hay tom tat cho xong viec.',
-  '1. Nhip canh phai CHAM va lien tuc: trien khai theo tung beat nho, tung chuyen bien nho, tung thay doi trong cam xuc va quyen luc giua cac nhan vat.',
-  '2. KHONG nhay coc trong canh. Moi chuyen bien than mat phai co buildup, co phan ung, co he qua ngay sau do.',
-  '3. KHONG viet kieu tong ket nhu "roi ho quan he voi nhau" hoac luoc canh bang vai cau ngan. Neu canh da bat dau, phai day no den het nhiep xuc cam cua canh.',
-  '4. Luon uu tien 4 lop cung luc: cam xuc, quyen luc / the chu dong, cang thang, va du am sau moi beat.',
-  '5. Sau moi doan than mat, phai cho thay su doi chuyen trong tam ly, nhip tho, thai do, im lang, noi chuyen, hoac khoang cach giua hai ben. KHONG cat ngang khi chua co aftermath.',
-  '6. Neu canh co tinh chat bi mat, hay duy tri ap luc lo bi phat hien, dau vet de lai, he qua xa hoi, va nguy co bi lo.',
-  '7. Consent, boundary, intimacy progression, emotional aftermath va secrecy risk la continuity cung. KHONG duoc viet mau thuan voi cac rang buoc dang co.',
-  '8. Body/clothing/mark continuity phai nhat quan trong chinh canh va voi prose gan day. Neu trang thai chua du du lieu thi viet than trong, KHONG tu nhay coc phi ly.',
-  '9. Trong canh 18+, uu tien "trai nghiem dang dien ra" hon "ke lai su viec". Doc gia phai cam thay canh dang mo ra theo thoi gian thuc.',
-  '10. NHAN DIEN NGU CANH TRUOC KHI VIET: Xac dinh the loai, giong dieu, nhip do cau chuyen, muc cang thang hien tai TRUOC khi bat dau canh than mat. Chi mo ta chi tiet nhay cam khi dien ra tu nhien theo mach truyen va tinh cach nhan vat.',
-  '11. KIEM TRA NHAN VAT: Truoc canh than mat, xac dinh: trang thai tam ly hien tai cua tung nhan vat, mong muon be mat vs nhu cau sau, diem mu, va quy dao phat trien. Nhan vat kin dao phan ung KHAC nhan vat tao bao o cung giai doan.',
-  '12. VIET LIEN MACH: Viet tiep tu diem ket thuc cua "Ngu canh truc tiep". KHONG lap lai doan cu. KHONG tu y tao tieu de chuong moi (vi du "Chuong 2", "Chuong tiep theo"). KHONG tu y tao them noi dung ngoai yeu cau cua tac gia.',
-  '13. KHONG tu y ket thuc canh hay chuyen canh khi chua het nhip xuc cam. Neu can chuyen canh, phai co ly do tu nhien va aftermath day du.',
+  '[BỔ SUNG CHO CẢNH THÂN MẬT / NỘI DUNG 18+]',
+  'Nếu yêu cầu hiện tại đang viết cảnh thân mật, hãy xem đây là một cảnh trọng tâm có nhịp riêng, KHÔNG được lướt nhanh hay tóm tắt cho xong việc.',
+  '1. Nhịp cảnh phải CHẬM và liên tục: triển khai theo từng beat nhỏ, từng chuyển biến nhỏ, từng thay đổi trong cảm xúc và quyền lực giữa các nhân vật.',
+  '2. KHÔNG nhảy cóc trong cảnh. Mỗi chuyển biến thân mật phải có buildup, có phản ứng, có hệ quả ngay sau đó.',
+  '3. KHÔNG viết kiểu tổng kết như "rồi họ quan hệ với nhau" hoặc lược cảnh bằng vài câu ngắn. Nếu cảnh đã bắt đầu, phải đẩy nó đến hết nhịp xúc cảm của cảnh.',
+  '4. Luôn ưu tiên 4 lớp cùng lúc: cảm xúc, quyền lực / thế chủ động, căng thẳng, và dư âm sau mỗi beat.',
+  '5. Sau mỗi đoạn thân mật, phải cho thấy sự đổi chuyển trong tâm lý, nhịp thở, thái độ, im lặng, nói chuyện, hoặc khoảng cách giữa hai bên. KHÔNG cắt ngang khi chưa có aftermath.',
+  '6. Nếu cảnh có tính chất bí mật, hãy duy trì áp lực lộ bị phát hiện, dấu vết để lại, hệ quả xã hội, và nguy cơ bị lộ.',
+  '7. Consent, boundary, intimacy progression, emotional aftermath và secrecy risk là continuity cứng. KHÔNG được viết mâu thuẫn với các ràng buộc đang có.',
+  '8. Body/clothing/mark continuity phải nhất quán trong chính cảnh và với prose gần đây. Nếu trạng thái chưa đủ dữ liệu thì viết thận trọng, KHÔNG tự nhảy cóc phi lý.',
+  '9. Trong cảnh 18+, ưu tiên "trải nghiệm đang diễn ra" hơn "kể lại sự việc". Độc giả phải cảm thấy cảnh đang mở ra theo thời gian thực.',
+  '10. NHẬN DIỆN NGỮ CẢNH TRƯỚC KHI VIẾT: Xác định thể loại, giọng điệu, nhịp độ câu chuyện, mức căng thẳng hiện tại TRƯỚC khi bắt đầu cảnh thân mật. Chỉ mô tả chi tiết nhạy cảm khi diễn ra tự nhiên theo mạch truyện và tính cách nhân vật.',
+  '11. KIỂM TRA NHÂN VẬT: Trước cảnh thân mật, xác định: trạng thái tâm lý hiện tại của từng nhân vật, mong muốn bề mặt vs nhu cầu sâu, điểm mù, và quỹ đạo phát triển. Nhân vật kín đáo phản ứng KHÁC nhân vật táo bạo ở cùng giai đoạn.',
+  '12. VIẾT LIỀN MẠCH: Viết tiếp từ điểm kết thúc của "Ngữ cảnh trực tiếp". KHÔNG lặp lại đoạn cũ. KHÔNG tự ý tạo tiêu đề chương mới (ví dụ "Chương 2", "Chương tiếp theo"). KHÔNG tự ý tạo thêm nội dung ngoài yêu cầu của tác giả.',
+  '13. KHÔNG tự ý kết thúc cảnh hay chuyển cảnh khi chưa hết nhịp xúc cảm. Nếu cần chuyển cảnh, phải có lý do tự nhiên và aftermath đầy đủ.',
 ].join('\n');
 
 const NSFW_WRITING_TASKS = new Set([
@@ -137,18 +137,17 @@ export function buildNsfwIntimateSystemLayer(taskType, {
 
   if (sensitiveStates.length > 0) {
     lines.push('');
-    lines.push('[CONTINUITY THAN MAT DANG CO HIEU LUC]');
+    lines.push('[CONTINUITY THÂN MẬT ĐANG CÓ HIỆU LỰC]');
     sensitiveStates.forEach((state) => {
       const bits = [];
-      bits.push('cap #' + state.character_a_id + ' & #' + state.character_b_id);
-      if (state.intimacy_level && state.intimacy_level !== 'none') bits.push('than_mat=' + state.intimacy_level);
-      if (state.consent_state && state.consent_state !== 'unknown') bits.push('dong_thuan=' + state.consent_state);
-      if (state.secrecy_state) bits.push('bi_mat=' + state.secrecy_state);
-      if (state.emotional_aftermath) bits.push('du_am=' + state.emotional_aftermath);
+      bits.push('cặp #' + state.character_a_id + ' & #' + state.character_b_id);
+      if (state.intimacy_level && state.intimacy_level !== 'none') bits.push('thân_mật=' + state.intimacy_level);
+      if (state.consent_state && state.consent_state !== 'unknown') bits.push('đồng_thuận=' + state.consent_state);
+      if (state.secrecy_state) bits.push('bí_mật=' + state.secrecy_state);
+      if (state.emotional_aftermath) bits.push('dư_âm=' + state.emotional_aftermath);
       lines.push('- ' + bits.join(' | '));
     });
   }
 
   return lines.join('\n');
 }
-

@@ -7,18 +7,18 @@ function throwIfCancelled(signal) {
     return;
   }
 
-  const error = new Error('Job cancelled');
+  const error = new Error('Job đã bị hủy.');
   error.code = 'JOB_CANCELLED';
   throw error;
 }
 
 const STEPS = [
-  { name: 'parse_chapters', weight: 15, durationMs: 500 },
-  { name: 'extract_characters', weight: 20, durationMs: 700 },
-  { name: 'extract_events', weight: 25, durationMs: 700 },
-  { name: 'analyze_worldbuilding', weight: 20, durationMs: 700 },
-  { name: 'analyze_relationships', weight: 10, durationMs: 500 },
-  { name: 'analyze_craft', weight: 10, durationMs: 500 },
+  { name: 'parse_chapters', label: 'Tách chương', weight: 15, durationMs: 500 },
+  { name: 'extract_characters', label: 'Trích xuất nhân vật', weight: 20, durationMs: 700 },
+  { name: 'extract_events', label: 'Trích xuất sự kiện', weight: 25, durationMs: 700 },
+  { name: 'analyze_worldbuilding', label: 'Phân tích thế giới', weight: 20, durationMs: 700 },
+  { name: 'analyze_relationships', label: 'Phân tích quan hệ', weight: 10, durationMs: 500 },
+  { name: 'analyze_craft', label: 'Phân tích kỹ thuật viết', weight: 10, durationMs: 500 },
 ];
 
 export async function processCorpusAnalysisJob(
@@ -47,12 +47,12 @@ export async function processCorpusAnalysisJob(
   for (const step of STEPS) {
     throwIfCancelled(signal);
 
-    await onProgress(completedWeight, `Starting ${step.name}`, {
+    await onProgress(completedWeight, `Bắt đầu: ${step.label}`, {
       step: {
         name: step.name,
         status: 'running',
         progress: 0,
-        message: `Starting ${step.name}`,
+        message: `Bắt đầu: ${step.label}`,
       },
     });
 
@@ -67,32 +67,32 @@ export async function processCorpusAnalysisJob(
         Math.round(completedWeight + (step.weight * stepProgress) / 100),
       );
 
-      await onProgress(overallProgress, `${step.name}: ${stepProgress}%`, {
+      await onProgress(overallProgress, `${step.label}: ${stepProgress}%`, {
         step: {
           name: step.name,
           status: 'running',
           progress: stepProgress,
-          message: `${step.name}: ${stepProgress}%`,
+          message: `${step.label}: ${stepProgress}%`,
         },
       });
     }
 
     completedWeight += step.weight;
 
-    await onProgress(completedWeight, `${step.name} completed`, {
+    await onProgress(completedWeight, `${step.label} hoàn tất`, {
       event: 'step_complete',
       step: {
         name: step.name,
         status: 'completed',
         progress: 100,
-        message: `${step.name} completed`,
+        message: `${step.label} hoàn tất`,
       },
     });
   }
 
   return {
     analysisComplete: true,
-    summary: 'Phase 1 placeholder corpus analysis completed.',
+    summary: 'Phân tích corpus phase 1 đã hoàn tất.',
     corpusId: job.inputData?.corpusId || null,
     generatedAt: Date.now(),
   };

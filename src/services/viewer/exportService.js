@@ -31,7 +31,7 @@ export async function exportEvents(selectedEvents, options = {}) {
     case 'html':
       return exportAsHTML(selectedEvents, options);
     default:
-      throw new Error(`Unknown format: ${format}`);
+      throw new Error(`Định dạng export chưa được hỗ trợ: ${format}`);
   }
 }
 
@@ -81,9 +81,9 @@ export function exportAsMarkdown(events, options = {}) {
     includeRarity = true,
   } = options;
 
-  let md = `# Exported Events\n\n`;
-  md += `**Generated:** ${new Date().toLocaleString('vi-VN')}\n\n`;
-  md += `**Total:** ${events.length} events\n\n`;
+  let md = `# Sự kiện đã export\n\n`;
+  md += `**Tạo lúc:** ${new Date().toLocaleString('vi-VN')}\n\n`;
+  md += `**Tổng số:** ${events.length} sự kiện\n\n`;
   md += `---\n\n`;
 
   const severityEmoji = {
@@ -107,16 +107,16 @@ export function exportAsMarkdown(events, options = {}) {
 
     if (includeChapterRefs && event.chapter) {
       const chLabel = event.chapterEnd && event.chapterEnd !== event.chapter
-        ? `Ch. ${event.chapter}-${event.chapterEnd}`
-        : `Ch. ${event.chapter}`;
+        ? `Chương ${event.chapter}-${event.chapterEnd}`
+        : `Chương ${event.chapter}`;
       md += `**${chLabel}**  ·  `;
     }
     if (event.locationLink?.locationName) {
       md += `**Địa điểm:** ${event.locationLink.locationName}  ·  `;
     }
 
-    md += `**Severity:** ${capitalize(event.severity)}  ·  `;
-    md += `${canonEmojiStr} ${capitalize(canonType)}`;
+    md += `**Mức độ:** ${formatSeverity(event.severity)}  ·  `;
+    md += `${canonEmojiStr} ${formatCanonType(canonType)}`;
 
     if (includeRarity && event.rarity) {
       const rareStar = event.rarity.score === 'rare' ? '⭐ ' : '';
@@ -124,22 +124,22 @@ export function exportAsMarkdown(events, options = {}) {
     }
 
     if (includeIntensity && event.emotionalIntensity) {
-      md += `  ·  🔥 Intensity: ${event.emotionalIntensity}/10`;
+      md += `  ·  🔥 Cường độ: ${event.emotionalIntensity}/10`;
     }
 
     md += `\n\n`;
 
     if (includeCharacterInfo && event.characters?.length) {
-      md += `**Characters:** ${event.characters.join(', ')}\n\n`;
+      md += `**Nhân vật:** ${event.characters.join(', ')}\n\n`;
     }
 
     if (includeCharacterInfo && event.ships?.length) {
-      md += `**Ships:** ${event.ships.join(', ')}\n\n`;
+      md += `**Cặp đôi/quan hệ:** ${event.ships.join(', ')}\n\n`;
     }
 
     if (includeTags && event.tags?.length) {
       const tagList = event.tags.map(t => `\`${t}\``).join(' ');
-      md += `**Tags:** ${tagList}\n\n`;
+      md += `**Tag:** ${tagList}\n\n`;
     }
 
     if (includeAnnotations && event.annotation?.note) {
@@ -165,13 +165,13 @@ export function exportAsCSV(events, options = {}) {
     includeRarity = true,
   } = options;
 
-  const headers = ['ID', 'Description', 'Severity', 'Chapter', 'Canon/Fanon', 'Rarity', 'Location', 'Incident'];
+  const headers = ['ID', 'Mô tả', 'Mức độ', 'Chương', 'Canon/Fanon', 'Độ hiếm', 'Địa điểm', 'Sự kiện lớn'];
 
-  if (includeChapterRefs) headers.push('Chapter', 'Chapter End', 'Position');
-  if (includeCharacterInfo) headers.push('Characters', 'Ships');
-  if (includeTags) headers.push('Tags');
-  if (includeIntensity) headers.push('Emotional Intensity', 'Insertability');
-  if (includeAnnotations) headers.push('Annotation', 'Starred', 'Custom Tags', 'Linked Projects');
+  if (includeChapterRefs) headers.push('Chương bắt đầu', 'Chương kết thúc', 'Vị trí');
+  if (includeCharacterInfo) headers.push('Nhân vật', 'Cặp đôi/quan hệ');
+  if (includeTags) headers.push('Tag');
+  if (includeIntensity) headers.push('Cường độ cảm xúc', 'Mức dễ chèn');
+  if (includeAnnotations) headers.push('Ghi chú', 'Đã đánh sao', 'Tag tùy chỉnh', 'Dự án đã liên kết');
 
   const rows = [headers.join(',')];
 
@@ -209,7 +209,7 @@ export function exportAsCSV(events, options = {}) {
 
     if (includeAnnotations) {
       row.push(csvEscape(event.annotation?.note || ''));
-      row.push(event.annotation?.starred ? 'Yes' : 'No');
+      row.push(event.annotation?.starred ? 'Có' : 'Không');
       row.push(csvEscape((event.annotation?.customTags || []).join('; ')));
       row.push(csvEscape((event.annotation?.linkedProjectIds || []).join('; ')));
     }
@@ -242,9 +242,9 @@ export function exportAsHTML(events, options = {}) {
   } = options;
 
   let html = `<div class="storyforge-export">\n`;
-  html += `<h1>Exported Events</h1>\n`;
-  html += `<p><em>Generated: ${new Date().toLocaleString('vi-VN')}</em></p>\n`;
-  html += `<p><strong>Total: ${events.length} events</strong></p>\n`;
+  html += `<h1>Sự kiện đã export</h1>\n`;
+  html += `<p><em>Tạo lúc: ${new Date().toLocaleString('vi-VN')}</em></p>\n`;
+  html += `<p><strong>Tổng số: ${events.length} sự kiện</strong></p>\n`;
   html += `<hr/>\n`;
 
   for (const event of events) {
@@ -252,24 +252,24 @@ export function exportAsHTML(events, options = {}) {
     html += `<h2>${escapeHtml(event.description || '')}</h2>\n`;
 
     const meta = [];
-    if (event.chapter) meta.push(`Ch. ${event.chapter}`);
-    meta.push(capitalize(event.severity || ''));
-    meta.push(`${event.canonOrFanon?.type === 'fanon' ? 'Fanon' : 'Canon'}`);
-    if (event.rarity?.score === 'rare') meta.push('⭐ Rare');
+    if (event.chapter) meta.push(`Chương ${event.chapter}`);
+    meta.push(formatSeverity(event.severity || ''));
+    meta.push(formatCanonType(event.canonOrFanon?.type || 'canon'));
+    if (event.rarity?.score === 'rare') meta.push('⭐ Hiếm');
 
     html += `<p class="meta">${meta.join(' · ')}</p>\n`;
 
     if (includeCharacterInfo && event.characters?.length) {
-      html += `<p><strong>Characters:</strong> ${escapeHtml(event.characters.join(', '))}</p>\n`;
+      html += `<p><strong>Nhân vật:</strong> ${escapeHtml(event.characters.join(', '))}</p>\n`;
     }
 
     if (includeTags && event.tags?.length) {
       const tagHtml = event.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join(' ');
-      html += `<p><strong>Tags:</strong> ${tagHtml}</p>\n`;
+      html += `<p><strong>Tag:</strong> ${tagHtml}</p>\n`;
     }
 
     if (includeIntensity && event.emotionalIntensity) {
-      html += `<p><strong>Intensity:</strong> ${event.emotionalIntensity}/10</p>\n`;
+      html += `<p><strong>Cường độ:</strong> ${event.emotionalIntensity}/10</p>\n`;
     }
 
     if (includeAnnotations && event.annotation?.note) {
@@ -338,6 +338,22 @@ export function getExportFilename(format, prefix = 'events') {
 // Helpers
 function capitalize(str) {
   return str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
+}
+
+function formatSeverity(value) {
+  const labels = {
+    crucial: 'Cốt lõi',
+    major: 'Lớn',
+    moderate: 'Vừa',
+    minor: 'Nhỏ',
+  };
+  return labels[value] || capitalize(value);
+}
+
+function formatCanonType(value) {
+  if (value === 'fanon') return 'Phi chính sử';
+  if (value === 'canon') return 'Chính sử';
+  return capitalize(value);
 }
 
 function csvEscape(str) {

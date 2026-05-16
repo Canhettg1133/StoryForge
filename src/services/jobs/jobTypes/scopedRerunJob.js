@@ -6,7 +6,7 @@ function throwIfCancelled(signal) {
     return;
   }
 
-  const error = new Error('Job cancelled');
+  const error = new Error('Job đã bị hủy.');
   error.code = 'JOB_CANCELLED';
   throw error;
 }
@@ -33,7 +33,7 @@ export async function processScopedRerunJob(
   const analysisId = String(inputData.analysisId || '').trim();
 
   if (!corpusId || !analysisId) {
-    const error = new Error('Scoped rerun requires corpusId and analysisId.');
+    const error = new Error('Chạy lại theo phạm vi cần có corpusId và analysisId.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
@@ -44,23 +44,23 @@ export async function processScopedRerunJob(
   ]);
 
   if (!analysis || analysis.corpusId !== corpusId) {
-    const error = new Error('Analysis not found for scoped rerun.');
+    const error = new Error('Không tìm thấy phân tích cho lượt chạy lại theo phạm vi.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
 
   if (!artifact) {
-    const error = new Error('Artifact V3 is required before scoped rerun can execute.');
+    const error = new Error('Cần có artifact V3 trước khi chạy lại theo phạm vi.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
 
-  await onProgress(5, 'Scoped rerun queued', {
+  await onProgress(5, 'Đã xếp hàng lượt chạy lại theo phạm vi.', {
     step: {
       name: 'load_scope',
       status: 'running',
       progress: 10,
-      message: 'Loading analysis artifact for scoped rerun',
+      message: 'Đang tải artifact phân tích để chạy lại theo phạm vi.',
     },
   });
 

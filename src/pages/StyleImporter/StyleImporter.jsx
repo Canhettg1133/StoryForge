@@ -24,6 +24,7 @@ import {
   STYLE_IMPORTER_ALLOWED_TARGETS,
 } from '../../services/styleImporter/projectPromptInterop.js';
 import { buildPromptPatchCoverage } from '../../services/styleImporter/promptPatchCoverage.js';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 
 
 const STYLE_FIELDS = [
@@ -280,7 +281,7 @@ export default function StyleImporter() {
       setBackupSnapshot(snapshot);
       setSaveMessage({ type: 'success', text: 'Đã lưu vào Prompt truyện. Override mới có hiệu lực ngay.' });
     } catch (error) {
-      setSaveMessage({ type: 'error', text: error?.message || 'Không thể lưu Prompt truyện.' });
+      setSaveMessage({ type: 'error', text: toVietnameseErrorMessage(error, 'Không thể lưu Prompt truyện.') });
     } finally {
       setIsSaving(false);
     }
@@ -294,7 +295,7 @@ export default function StyleImporter() {
       setSaveMessage({ type: 'success', text: 'Đã hoàn tác về snapshot trước khi lưu.' });
       setBackupSnapshot(null);
     } catch (error) {
-      setSaveMessage({ type: 'error', text: error?.message || 'Không thể hoàn tác.' });
+      setSaveMessage({ type: 'error', text: toVietnameseErrorMessage(error, 'Không thể hoàn tác.') });
     } finally {
       setIsSaving(false);
     }
@@ -445,7 +446,7 @@ export default function StyleImporter() {
           {[
             { id: 'read', label: 'Doc file' },
             { id: 'sample', label: 'Chon mau 250k' },
-            { id: 'analyze', label: 'Phan tich style' },
+  { id: 'analyze', label: 'Phân tích style' },
             { id: 'patch', label: 'Tao patch' },
           ].map((step) => (
             <div key={step.id} className={`style-importer-step is-${progress[step.id] || 'idle'}`}>

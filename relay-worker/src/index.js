@@ -143,18 +143,18 @@ function handleOAuthStatus(env, requestCorsHeaders) {
 
 async function handleOAuthExchange(request, env, requestCorsHeaders) {
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
+    return json({ error: 'Phương thức yêu cầu không được hỗ trợ', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
   }
 
   const clientSecret = getOAuthClientSecret(env);
   if (!clientSecret) {
-    return json({ error: 'OAuth relay secret is not configured', code: 'OAUTH_SECRET_MISSING' }, 500, requestCorsHeaders);
+    return json({ error: 'OAuth relay chưa cấu hình secret', code: 'OAUTH_SECRET_MISSING' }, 500, requestCorsHeaders);
   }
 
   const payload = await readJson(request);
   const code = String(payload.code || '').trim();
   if (!code) {
-    return json({ error: 'Missing OAuth code', code: 'OAUTH_CODE_REQUIRED' }, 400, requestCorsHeaders);
+    return json({ error: 'Thiếu mã OAuth', code: 'OAUTH_CODE_REQUIRED' }, 400, requestCorsHeaders);
   }
 
   const { response, payload: tokenPayload } = await proxyGoogleOAuthToken(new URLSearchParams({
@@ -167,7 +167,9 @@ async function handleOAuthExchange(request, env, requestCorsHeaders) {
 
   if (!response.ok || tokenPayload.error) {
     return json({
-      error: tokenPayload.error_description || tokenPayload.error || 'OAuth exchange failed',
+      error: tokenPayload.error
+        ? `Google OAuth từ chối yêu cầu đổi mã (${tokenPayload.error}).`
+        : 'Đổi mã OAuth thất bại',
       code: 'OAUTH_EXCHANGE_FAILED',
     }, response.status || 400, requestCorsHeaders);
   }
@@ -183,18 +185,18 @@ async function handleOAuthExchange(request, env, requestCorsHeaders) {
 
 async function handleOAuthRefresh(request, env, requestCorsHeaders) {
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
+    return json({ error: 'Phương thức yêu cầu không được hỗ trợ', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
   }
 
   const clientSecret = getOAuthClientSecret(env);
   if (!clientSecret) {
-    return json({ error: 'OAuth relay secret is not configured', code: 'OAUTH_SECRET_MISSING' }, 500, requestCorsHeaders);
+    return json({ error: 'OAuth relay chưa cấu hình secret', code: 'OAUTH_SECRET_MISSING' }, 500, requestCorsHeaders);
   }
 
   const payload = await readJson(request);
   const refreshToken = String(payload.refresh_token || '').trim();
   if (!refreshToken) {
-    return json({ error: 'Missing refresh token', code: 'OAUTH_REFRESH_TOKEN_REQUIRED' }, 400, requestCorsHeaders);
+    return json({ error: 'Thiếu refresh token', code: 'OAUTH_REFRESH_TOKEN_REQUIRED' }, 400, requestCorsHeaders);
   }
 
   const { response, payload: tokenPayload } = await proxyGoogleOAuthToken(new URLSearchParams({
@@ -206,7 +208,9 @@ async function handleOAuthRefresh(request, env, requestCorsHeaders) {
 
   if (!response.ok || tokenPayload.error) {
     return json({
-      error: tokenPayload.error_description || tokenPayload.error || 'OAuth refresh failed',
+      error: tokenPayload.error
+        ? `Google OAuth từ chối yêu cầu làm mới token (${tokenPayload.error}).`
+        : 'Làm mới OAuth thất bại',
       code: 'OAUTH_REFRESH_FAILED',
     }, response.status || 400, requestCorsHeaders);
   }
@@ -243,7 +247,7 @@ export default {
     }
 
     if (!isOriginAllowed(request, env)) {
-      return json({ error: 'Origin not allowed', code: 'ORIGIN_NOT_ALLOWED' }, 403, requestCorsHeaders);
+      return json({ error: 'Origin không được phép truy cập', code: 'ORIGIN_NOT_ALLOWED' }, 403, requestCorsHeaders);
     }
 
     if (url.pathname === '/health') {
@@ -275,7 +279,7 @@ export default {
 
     const roomPath = parseRoomPath(url.pathname);
     if (!roomPath) {
-      return json({ error: 'Not found', code: 'NOT_FOUND' }, 404, requestCorsHeaders);
+      return json({ error: 'Không tìm thấy dữ liệu', code: 'NOT_FOUND' }, 404, requestCorsHeaders);
     }
 
     const stub = getRoomStub(env, roomPath.code);
@@ -322,12 +326,12 @@ export class AIStudioRelayRoom {
 
     const roomPath = parseRoomPath(url.pathname);
     if (!roomPath) {
-      return json({ error: 'Room not found', code: 'ROOM_NOT_FOUND' }, 404, requestCorsHeaders);
+      return json({ error: 'Không tìm thấy room', code: 'ROOM_NOT_FOUND' }, 404, requestCorsHeaders);
     }
 
     const core = await this.getCore(roomPath.code);
     if (core.isExpired()) {
-      return json({ error: 'Room expired', code: 'ROOM_EXPIRED' }, 410, requestCorsHeaders);
+      return json({ error: 'Room đã hết hạn', code: 'ROOM_EXPIRED' }, 410, requestCorsHeaders);
     }
 
     if (roomPath.action === 'status') {
@@ -336,7 +340,7 @@ export class AIStudioRelayRoom {
 
     if (roomPath.action === 'poll') {
       if (request.method !== 'GET' && request.method !== 'POST') {
-        return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
+        return json({ error: 'Phương thức yêu cầu không được hỗ trợ', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
       }
 
       const result = core.poll(url.searchParams.get('role'));
@@ -348,7 +352,7 @@ export class AIStudioRelayRoom {
 
     if (roomPath.action === 'send') {
       if (request.method !== 'POST') {
-        return json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
+        return json({ error: 'Phương thức yêu cầu không được hỗ trợ', code: 'METHOD_NOT_ALLOWED' }, 405, requestCorsHeaders);
       }
 
       const result = core.sendFromHttp(url.searchParams.get('role'), await request.text());
@@ -360,7 +364,7 @@ export class AIStudioRelayRoom {
     }
 
     if (request.headers.get('Upgrade') !== 'websocket') {
-      return json({ error: 'Expected WebSocket upgrade', code: 'WEBSOCKET_REQUIRED' }, 426, requestCorsHeaders);
+      return json({ error: 'Yêu cầu cần nâng cấp lên WebSocket', code: 'WEBSOCKET_REQUIRED' }, 426, requestCorsHeaders);
     }
 
     const role = url.searchParams.get('role');

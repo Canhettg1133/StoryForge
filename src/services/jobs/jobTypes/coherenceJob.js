@@ -5,7 +5,7 @@ function throwIfCancelled(signal) {
     return;
   }
 
-  const error = new Error('Job cancelled');
+  const error = new Error('Job đã bị hủy.');
   error.code = 'JOB_CANCELLED';
   throw error;
 }
@@ -40,7 +40,7 @@ export async function processCoherenceJob(job, onProgress, { signal } = {}) {
   const mode = String(inputData.mode || 'balanced').toLowerCase();
 
   if (!incidents.length && !events.length) {
-    const error = new Error('Missing coherence input: incidents/events are empty.');
+    const error = new Error('Thiếu dữ liệu coherence: incidents/events đang rỗng.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
@@ -53,10 +53,10 @@ export async function processCoherenceJob(job, onProgress, { signal } = {}) {
     throw simulatedError;
   }
 
-  await emitStep(onProgress, 10, 'Preparing coherence pass input', 'prepare', 40);
+  await emitStep(onProgress, 10, 'Đang chuẩn bị dữ liệu kiểm tra mạch truyện.', 'prepare', 40);
   throwIfCancelled(signal);
 
-  await emitStep(onProgress, 35, 'Running merge/split coherence rules', 'coherence', 30);
+  await emitStep(onProgress, 35, 'Đang chạy luật gộp/tách mạch truyện.', 'coherence', 30);
   const result = await runCoherenceJob({
     incidents,
     events,
@@ -76,7 +76,7 @@ export async function processCoherenceJob(job, onProgress, { signal } = {}) {
   });
 
   throwIfCancelled(signal);
-  await emitStep(onProgress, 75, 'Rebuilding normalized links', 'normalize', 85);
+  await emitStep(onProgress, 75, 'Đang dựng lại liên kết chuẩn hóa.', 'normalize', 85);
 
   const merged = Number(result?.changes?.merged || 0);
   const splitSuggestions = Number(result?.changes?.splitSuggestions || 0);
@@ -85,7 +85,7 @@ export async function processCoherenceJob(job, onProgress, { signal } = {}) {
   await emitStep(
     onProgress,
     100,
-    'Coherence pass completed',
+    'Đã kiểm tra mạch truyện xong.',
     'coherence_pass',
     100,
     'step_complete',

@@ -110,9 +110,9 @@ describe('phase10 project style runtime block', () => {
     });
 
     const system = messages[0].content;
-    const projectIndex = system.indexOf('[Truyen: Runtime Test');
+    const projectIndex = system.indexOf('[Truyện: Runtime Test');
     const runtimeIndex = system.indexOf(PROJECT_STYLE_RUNTIME_HEADER);
-    const taskIndex = system.indexOf('[NHIEM VU]');
+    const taskIndex = system.indexOf('[NHIỆM VỤ]');
 
     expect(runtimeIndex).toBeGreaterThan(projectIndex);
     expect(runtimeIndex).toBeLessThan(taskIndex);
@@ -121,9 +121,9 @@ describe('phase10 project style runtime block', () => {
     expect(system).not.toContain('UNIQUE_CONSTITUTION_RULE');
     expect(system).not.toContain('UNIQUE_STYLE_DNA_RULE');
     expect(system).not.toContain('UNIQUE_BLACKLIST_PHRASE');
-    expect(system).not.toContain('[VAN PHONG DNA -');
-    expect(system).toContain('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]');
-    expect(system).toContain('[DO DAI VA NHIP DO]');
+    expect(system).not.toContain('[VĂN PHONG DNA -');
+    expect(system).toContain('[KỶ LUẬT VĂN XUÔI VÀ THOẠI - BỔ SUNG BẮT BUỘC]');
+    expect(system).toContain('[ĐỘ DÀI VÀ NHỊP ĐỘ]');
   });
 
   it('falls back to the old prompt layers when the saved block is stale', () => {
@@ -209,10 +209,10 @@ describe('phase10 project style runtime block', () => {
 
     expect(qaMessages[0].content).toContain(PROJECT_STYLE_RUNTIME_HEADER);
     expect(qaMessages[0].content).toContain('"issues"');
-    expect(qaMessages[0].content).toContain('Chi tra ve JSON');
+    expect(qaMessages[0].content).toContain('Chỉ trả về JSON');
     expect(continuityMessages[0].content).toContain(PROJECT_STYLE_RUNTIME_HEADER);
     expect(continuityMessages[0].content).toContain('"issues"');
-    expect(continuityMessages[0].content).toContain('Chi tra ve JSON');
+    expect(continuityMessages[0].content).toContain('Chỉ trả về JSON');
   });
 
   it('treats FREE_PROMPT as writing output for bridge save and validation flow', () => {

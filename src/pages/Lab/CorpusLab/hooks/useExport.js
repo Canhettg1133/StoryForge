@@ -9,6 +9,7 @@ import {
   copyToClipboard,
   getExportFilename,
 } from '../../../../services/viewer/exportService.js';
+import { toVietnameseErrorMessage } from '../../../../utils/errorMessages';
 
 export default function useExport() {
   const [exporting, setExporting] = useState(false);
@@ -21,14 +22,14 @@ export default function useExport() {
       setExportPreview(preview);
       return preview;
     } catch (error) {
-      setExportError(error.message);
+      setExportError(toVietnameseErrorMessage(error, 'Không tạo được bản xem trước export.'));
       return null;
     }
   }, []);
 
   const handleExport = useCallback(async (events, format, options = {}) => {
     if (!events || !events.length) {
-      setExportError('No events selected for export.');
+      setExportError('Chưa chọn sự kiện nào để export.');
       return null;
     }
 
@@ -60,11 +61,12 @@ export default function useExport() {
         }
 
         default:
-          throw new Error(`Unsupported export format: ${format}`);
+        throw new Error(`Định dạng export chưa được hỗ trợ: ${format}`);
       }
     } catch (error) {
-      setExportError(error.message);
-      return { success: false, error: error.message };
+      const message = toVietnameseErrorMessage(error, 'Không export được dữ liệu.');
+      setExportError(message);
+      return { success: false, error: message };
     } finally {
       setExporting(false);
     }

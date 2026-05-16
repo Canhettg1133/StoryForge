@@ -314,7 +314,7 @@ class CorpusAnalysisService extends EventEmitter {
       if (coveredChunkCount !== totalSourceChunks) {
         throw createServiceError(
           'SESSION_CHUNK_COVERAGE_MISMATCH',
-          `Session input khong phu het chunk cua corpus (${coveredChunkCount}/${totalSourceChunks}).`,
+          `Session input không phủ hết chunk của corpus (${coveredChunkCount}/${totalSourceChunks}).`,
         );
       }
 
@@ -393,7 +393,7 @@ class CorpusAnalysisService extends EventEmitter {
           totalChunks: totalSourceChunks,
           totalSessions,
           maxParallelSessions,
-          message: message || 'Dang xu ly phan tich',
+          message: message || 'Đang xử lý phân tích',
         };
 
         if (Number.isFinite(Number(sessionIndex)) && Number(sessionIndex) >= 1) {
@@ -417,7 +417,7 @@ class CorpusAnalysisService extends EventEmitter {
 
       await persistAndEmitProgress({
         phase: 'session_dispatch_ready',
-        message: `San sang chay ${totalSessions} session, toi da ${maxParallelSessions} session song song`,
+        message: `Sẵn sàng chạy ${totalSessions} session, tối đa ${maxParallelSessions} session song song`,
       });
 
       const processSingleSession = async (sessionIndex) => {
@@ -434,7 +434,7 @@ class CorpusAnalysisService extends EventEmitter {
           phase: 'session_processing',
           sessionIndex: currentSession,
           sessionChunkCount,
-          message: `Dang phan tich session ${currentSession}/${totalSessions}`,
+          message: `Đang phân tích session ${currentSession}/${totalSessions}`,
         });
 
         const sessionResult = await analyzeWithSession({
@@ -462,7 +462,7 @@ class CorpusAnalysisService extends EventEmitter {
               sessionChunkCount,
               part,
               totalParts,
-              message: payload.message || `Dang xu ly session ${currentSession}/${totalSessions}`,
+              message: payload.message || `Đang xử lý session ${currentSession}/${totalSessions}`,
             });
           },
           onPart: async ({ part, response, hasMore }) => {
@@ -491,7 +491,7 @@ class CorpusAnalysisService extends EventEmitter {
               part: globalPart,
               totalParts: totalPartsGenerated,
               hasMore,
-              message: `Da luu part ${globalPart} (session ${currentSession}/${totalSessions}, part noi bo ${part || 0})`,
+              message: `Đã lưu part ${globalPart} (session ${currentSession}/${totalSessions}, part nội bộ ${part || 0})`,
             });
           },
         });
@@ -509,7 +509,7 @@ class CorpusAnalysisService extends EventEmitter {
           phase: 'chunk_completed',
           sessionIndex: currentSession,
           sessionChunkCount,
-          message: `Hoan tat session ${currentSession}/${totalSessions} (${processedChunkCount}/${totalSourceChunks} chunk)`,
+          message: `Hoàn tất session ${currentSession}/${totalSessions} (${processedChunkCount}/${totalSourceChunks} chunk)`,
         });
       };
 
@@ -538,7 +538,7 @@ class CorpusAnalysisService extends EventEmitter {
       if (processedChunkCount !== totalSourceChunks) {
         throw createServiceError(
           'SESSION_CHUNK_COVERAGE_MISMATCH',
-          `Session xu ly thieu chunk (${processedChunkCount}/${totalSourceChunks}).`,
+          `Session xử lý thiếu chunk (${processedChunkCount}/${totalSourceChunks}).`,
         );
       }
 
@@ -546,7 +546,7 @@ class CorpusAnalysisService extends EventEmitter {
 
       await persistAndEmitProgress({
         phase: 'event_grounding',
-        message: 'Dang grounding su kien vao chapter/chunk',
+        message: 'Đang grounding sự kiện vào chapter/chunk',
       });
 
       const mergedResult = mergeOutputParts(
@@ -558,7 +558,7 @@ class CorpusAnalysisService extends EventEmitter {
       });
       await persistAndEmitProgress({
         phase: 'incident_intelligence',
-        message: 'Dang trich xuat dia diem va gom incident clusters',
+        message: 'Đang trích xuất địa điểm và gom incident clusters',
       });
 
       const incidentModeOptions = {
@@ -583,7 +583,7 @@ class CorpusAnalysisService extends EventEmitter {
 
       await persistAndEmitProgress({
         phase: 'incident_first_persist',
-        message: 'Dang luu du lieu incident-first',
+        message: 'Đang lưu dữ liệu incident-first',
       });
 
       try {
@@ -611,7 +611,7 @@ class CorpusAnalysisService extends EventEmitter {
       } catch (persistError) {
         incidentFirstPersistence = {
           persisted: false,
-          reason: persistError?.message || 'Unknown persistence error.',
+          reason: persistError?.message || 'Lỗi lưu dữ liệu chưa xác định.',
         };
       }
 
@@ -621,7 +621,7 @@ class CorpusAnalysisService extends EventEmitter {
       if (shouldExtractKnowledge) {
         await persistAndEmitProgress({
           phase: 'knowledge_extraction',
-          message: 'Dang trich xuat tri thuc the gioi/nhan vat/dia diem',
+          message: 'Đang trích xuất tri thức thế giới/nhân vật/địa điểm',
         });
 
         try {
@@ -653,7 +653,7 @@ class CorpusAnalysisService extends EventEmitter {
         } catch (knowledgeError) {
           knowledgeExtraction = {
             applied: false,
-            reason: knowledgeError?.message || 'knowledge_extraction_failed',
+            reason: knowledgeError?.message || 'Trích xuất tri thức thất bại.',
           };
         }
       }
@@ -900,7 +900,7 @@ class CorpusAnalysisService extends EventEmitter {
       } catch (persistError) {
         incidentFirstPersistence = {
           persisted: false,
-          reason: persistError?.message || 'incident_first_persist_failed',
+          reason: persistError?.message || 'Lưu dữ liệu incident-first thất bại.',
         };
       }
 

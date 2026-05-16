@@ -51,6 +51,37 @@ const STRICT_UNIQUE_ITEM_CATEGORIES = new Set([
   ITEM_CATEGORIES.QUEST_ITEM,
 ]);
 
+const CANON_OP_LABELS = {
+  [CANON_OP_TYPES.CHARACTER_STATUS_CHANGED]: 'đổi trạng thái nhân vật',
+  [CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED]: 'đổi vị trí nhân vật',
+  [CANON_OP_TYPES.CHARACTER_RESCUED]: 'nhân vật được cứu',
+  [CANON_OP_TYPES.CHARACTER_DIED]: 'nhân vật tử vong',
+  [CANON_OP_TYPES.SECRET_REVEALED]: 'tiết lộ bí mật',
+  [CANON_OP_TYPES.GOAL_CHANGED]: 'đổi mục tiêu',
+  [CANON_OP_TYPES.ALLEGIANCE_CHANGED]: 'đổi phe',
+  [CANON_OP_TYPES.THREAD_OPENED]: 'mở tuyến truyện',
+  [CANON_OP_TYPES.THREAD_PROGRESS]: 'đẩy tiếp tuyến truyện',
+  [CANON_OP_TYPES.THREAD_RESOLVED]: 'khép tuyến truyện',
+  [CANON_OP_TYPES.FACT_REGISTERED]: 'ghi nhận sự thật',
+  [CANON_OP_TYPES.OBJECT_ACQUIRED]: 'nhận vật phẩm',
+  [CANON_OP_TYPES.OBJECT_STATUS_CHANGED]: 'đổi trạng thái vật phẩm',
+  [CANON_OP_TYPES.OBJECT_TRANSFERRED]: 'chuyển vật phẩm',
+  [CANON_OP_TYPES.OBJECT_CONSUMED]: 'dùng hết vật phẩm',
+  [CANON_OP_TYPES.OBJECT_LOST]: 'mất vật phẩm',
+  [CANON_OP_TYPES.OBJECT_FOUND]: 'tìm lại vật phẩm',
+  [CANON_OP_TYPES.OBJECT_RESTORED]: 'khôi phục vật phẩm',
+  [CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED]: 'tiêu hao một phần vật phẩm',
+  [CANON_OP_TYPES.OBJECT_SPENT]: 'tiêu hao vật phẩm',
+  [CANON_OP_TYPES.OBJECT_RETURNED]: 'trả lại vật phẩm',
+  [CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED]: 'đổi trạng thái quan hệ',
+  [CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED]: 'đổi mức bí mật quan hệ',
+  [CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED]: 'đổi mức độ thân mật',
+};
+
+function describeCanonOp(opType) {
+  return CANON_OP_LABELS[opType] || `thao tác canon ${opType || '(trống)'}`;
+}
+
 function toOptionalNumber(value) {
   if (value == null || value === '') return null;
   const numeric = Number(value);
@@ -160,14 +191,14 @@ function validateItemTimeline({
     const missingClassification = !category;
 
     if (ITEM_USE_OP_TYPES.has(op.op_type) && isUnavailableItemState(previousState) && !hasRecoverySemantics(op)) {
-      const availability = cleanText(previousState.availability || 'khong kha dung');
+      const availability = cleanText(previousState.availability || 'không khả dụng');
       const severity = strictUnique ? CANON_SEVERITY.ERROR : CANON_SEVERITY.WARNING;
       reports.push(createReport({
         severity,
         ruleCode: strictUnique ? 'ITEM_UNAVAILABLE_REUSED' : 'ITEM_REUSE_NEEDS_REVIEW',
         message: strictUnique
-          ? `${op.object_name || 'Vat pham'} dang o trang thai ${availability} nhung bi dung lai ma chua co su kien tim lai/mua lai/khoi phuc/tra lai truoc do.`
-          : `${op.object_name || 'Vat pham'} dang o trang thai ${availability}, nhung thieu phan loai/so luong hoac timeline ro rang nen can review thay vi ket luan dung sai.`,
+          ? `${op.object_name || 'Vật phẩm'} đang ở trạng thái ${availability} nhưng bị dùng lại mà chưa có sự kiện tìm lại/mua lại/khôi phục/trả lại trước đó.`
+          : `${op.object_name || 'Vật phẩm'} đang ở trạng thái ${availability}, nhưng thiếu phân loại/số lượng hoặc dòng thời gian rõ ràng nên cần xem lại thay vì kết luận đúng sai.`,
         projectId,
         chapterId,
         revisionId,
@@ -182,8 +213,8 @@ function validateItemTimeline({
           severity: missingClassification ? CANON_SEVERITY.WARNING : CANON_SEVERITY.ERROR,
           ruleCode: missingClassification ? 'ITEM_REUSE_NEEDS_REVIEW' : 'ITEM_QUANTITY_DEPLETED',
           message: missingClassification
-            ? `${op.object_name || 'Vat pham'} dang o trang thai da can va so luong bang 0, nhung thieu phan loai nen can review truoc khi ket luan dung sai.`
-            : `${op.object_name || 'Vat pham'} da het so luong trong canon nhung draft van tieu hao/dung tiep.`,
+            ? `${op.object_name || 'Vật phẩm'} đang ở trạng thái đã cạn và số lượng bằng 0, nhưng thiếu phân loại nên cần xem lại trước khi kết luận đúng sai.`
+            : `${op.object_name || 'Vật phẩm'} đã hết số lượng trong canon nhưng bản nháp vẫn tiêu hao/dùng tiếp.`,
           projectId,
           chapterId,
           revisionId,
@@ -195,8 +226,8 @@ function validateItemTimeline({
           severity: missingClassification ? CANON_SEVERITY.WARNING : CANON_SEVERITY.ERROR,
           ruleCode: missingClassification ? 'ITEM_QUANTITY_NEEDS_REVIEW' : 'ITEM_QUANTITY_OVERSPENT',
           message: missingClassification
-            ? `${op.object_name || 'Vat pham'} co dau hieu vuot qua so luong dang co, nhung thieu phan loai nen can review truoc khi ket luan overspend.`
-            : `${op.object_name || 'Vat pham'} chi con ${knownQuantity}${previousState.quantity_unit ? ` ${previousState.quantity_unit}` : ''} nhung draft tieu hao ${Math.abs(requestedQuantity)}.`,
+            ? `${op.object_name || 'Vật phẩm'} có dấu hiệu vượt quá số lượng đang có, nhưng thiếu phân loại nên cần xem lại trước khi kết luận tiêu hao quá mức.`
+            : `${op.object_name || 'Vật phẩm'} chỉ còn ${knownQuantity}${previousState.quantity_unit ? ` ${previousState.quantity_unit}` : ''} nhưng bản nháp tiêu hao ${Math.abs(requestedQuantity)}.`,
           projectId,
           chapterId,
           revisionId,
@@ -207,7 +238,7 @@ function validateItemTimeline({
         reports.push(createReport({
           severity: CANON_SEVERITY.WARNING,
           ruleCode: 'ITEM_QUANTITY_NEEDS_REVIEW',
-          message: `${op.object_name || 'Vat pham'} la vat pham dang stack/tai nguyen nhung op tieu hao chua ghi ro so luong va don vi.`,
+          message: `${op.object_name || 'Vật phẩm'} là vật phẩm dạng cộng dồn/tài nguyên nhưng thao tác tiêu hao chưa ghi rõ số lượng và đơn vị.`,
           projectId,
           chapterId,
           revisionId,
@@ -249,7 +280,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
         ruleCode: 'INVALID_OP_TYPE',
-        message: `Op type khong hop le: ${op.op_type || '(trong)'}.`,
+        message: `Loại thao tác canon không hợp lệ: ${op.op_type || '(trống)'}.`,
         projectId,
         chapterId,
         revisionId,
@@ -263,7 +294,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
         ruleCode: mappingError.ruleCode || 'AMBIGUOUS_REFERENCE',
-        message: `Khong the map ro rang "${mappingError.rawValue}" vao ${mappingError.kind || 'reference'}; co ${mappingError.candidateIds?.length || 0} ket qua trung ten.`,
+        message: `Không thể khớp rõ ràng "${mappingError.rawValue}" vào ${mappingError.kind || 'tham chiếu'}; có ${mappingError.candidateIds?.length || 0} kết quả trùng tên.`,
         projectId,
         chapterId,
         revisionId,
@@ -277,7 +308,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'DUPLICATE_CANON_OP',
-        message: `Op ${op.op_type} bi lap trong cung mot revision.`,
+        message: `Thao tác ${describeCanonOp(op.op_type)} bị lặp trong cùng một phiên bản.`,
         projectId,
         chapterId,
         revisionId,
@@ -294,7 +325,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'MISSING_SCENE_LINK',
-        message: `Op ${op.op_type} chua gan scene cu the.`,
+        message: `Thao tác ${describeCanonOp(op.op_type)} chưa gắn với cảnh cụ thể.`,
         projectId,
         chapterId,
         revisionId,
@@ -306,7 +337,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'LOW_CONFIDENCE_CANON_OP_FILTERED',
-        message: `Op ${op.op_type} co do tin cay thap (${op.confidence.toFixed(2)}) va se khong duoc commit.`,
+        message: `Thao tác ${describeCanonOp(op.op_type)} có độ tin cậy thấp (${op.confidence.toFixed(2)}) và sẽ không được chốt.`,
         projectId,
         chapterId,
         revisionId,
@@ -331,7 +362,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
         ruleCode: 'MISSING_SUBJECT_REFERENCE',
-        message: `Op ${op.op_type} khong map duoc nhan vat chinh.`,
+        message: `Thao tác ${describeCanonOp(op.op_type)} không khớp được nhân vật chính.`,
         projectId,
         chapterId,
         revisionId,
@@ -344,7 +375,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
         ruleCode: 'MISSING_LOCATION_REFERENCE',
-        message: 'Op doi vi tri nhan vat khong map duoc dia diem cu the.',
+        message: 'Thao tác đổi vị trí nhân vật không khớp được địa điểm cụ thể.',
         projectId,
         chapterId,
         revisionId,
@@ -365,7 +396,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
         ruleCode: 'MISSING_THREAD_REFERENCE',
-        message: `Op ${op.op_type} khong map duoc tuyen truyen cu the.`,
+        message: `Thao tác ${describeCanonOp(op.op_type)} không khớp được tuyến truyện cụ thể.`,
         projectId,
         chapterId,
         revisionId,
@@ -379,7 +410,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
         ruleCode: 'MISSING_FACT_REFERENCE',
-        message: 'Op tiet lo bi mat khong map duoc bi mat canon cu the.',
+        message: 'Thao tác tiết lộ bí mật không khớp được bí mật canon cụ thể.',
         projectId,
         chapterId,
         revisionId,
@@ -393,7 +424,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
         ruleCode: 'EMPTY_FACT_DESCRIPTION',
-        message: 'Op ghi nhan su that moi nhung khong co mo ta ro rang.',
+        message: 'Thao tác ghi nhận sự thật mới nhưng không có mô tả rõ ràng.',
         projectId,
         chapterId,
         revisionId,
@@ -413,7 +444,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.WARNING,
           ruleCode: 'DUPLICATE_FACT_REGISTRATION',
-          message: 'Op ghi nhan su that moi trung voi canon fact da ton tai; he thong se reuse fingerprint hien co.',
+          message: 'Thao tác ghi nhận sự thật mới trùng với sự thật canon đã tồn tại; hệ thống sẽ dùng lại dấu vết nhận diện hiện có.',
           projectId,
           chapterId,
           revisionId,
@@ -431,7 +462,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
         ruleCode: 'MISSING_OBJECT_REFERENCE',
-        message: `Op ${op.op_type} khong map duoc vat pham cu the.`,
+        message: `Thao tác ${describeCanonOp(op.op_type)} không khớp được vật phẩm cụ thể.`,
         projectId,
         chapterId,
         revisionId,
@@ -452,7 +483,7 @@ export function validateCandidateOps({
       reports.push(createReport({
         severity: CANON_SEVERITY.ERROR,
         ruleCode: 'MISSING_RELATIONSHIP_REFERENCE',
-        message: `Op ${op.op_type} phai map duoc ca hai nhan vat trong cap quan he.`,
+        message: `Thao tác ${describeCanonOp(op.op_type)} phải khớp được cả hai nhân vật trong cặp quan hệ.`,
         projectId,
         chapterId,
         revisionId,
@@ -476,7 +507,7 @@ export function validateCandidateOps({
           reports.push(createReport({
             severity: CANON_SEVERITY.WARNING,
             ruleCode: 'INTIMACY_CONSENT_UNSPECIFIED',
-            message: 'Thay doi muc do than mat nhung chua co consent_state ro rang.',
+            message: 'Thay đổi mức độ thân mật nhưng chưa ghi rõ trạng thái đồng thuận.',
             projectId,
             chapterId,
             revisionId,
@@ -497,7 +528,7 @@ export function validateCandidateOps({
           reports.push(createReport({
             severity: CANON_SEVERITY.WARNING,
             ruleCode: 'RELATIONSHIP_SECRET_RESET',
-            message: 'Quan he da lo nhung draft lai dua ve bi mat ma khong co ly do ro rang.',
+            message: 'Quan hệ đã lộ nhưng bản nháp lại đưa về bí mật mà không có lý do rõ ràng.',
             projectId,
             chapterId,
             revisionId,
@@ -516,7 +547,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.ERROR,
           ruleCode: 'DEAD_CHARACTER_ACTIVE',
-          message: `${op.subject_name || 'Nhan vat'} da chet nhung van phat sinh hanh dong ${op.op_type}.`,
+          message: `${op.subject_name || 'Nhân vật'} đã chết nhưng vẫn phát sinh hành động ${describeCanonOp(op.op_type)}.`,
           projectId,
           chapterId,
           revisionId,
@@ -534,7 +565,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.WARNING,
           ruleCode: 'THREAD_ALREADY_ACTIVE',
-          message: `Thread "${op.thread_title || 'khong ro'}" dang mo, khong nen mo lai ma khong co ly do ro rang.`,
+          message: `Tuyến truyện "${op.thread_title || 'không rõ'}" đang mở, không nên mở lại mà không có lý do rõ ràng.`,
           projectId,
           chapterId,
           revisionId,
@@ -548,7 +579,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.ERROR,
           ruleCode: 'THREAD_ALREADY_RESOLVED',
-          message: `Thread "${op.thread_title || 'khong ro'}" da dong nhung draft van day tiep.`,
+          message: `Tuyến truyện "${op.thread_title || 'không rõ'}" đã đóng nhưng bản nháp vẫn đẩy tiếp.`,
           projectId,
           chapterId,
           revisionId,
@@ -572,7 +603,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.WARNING,
           ruleCode: 'LOCATION_CHANGE_WITHOUT_REASON',
-          message: `${op.subject_name || 'Nhan vat'} doi dia diem tu "${state.current_location_name}" sang "${nextLocationName}" nhung chua co ly do ro rang.`,
+          message: `${op.subject_name || 'Nhân vật'} đổi địa điểm từ "${state.current_location_name}" sang "${nextLocationName}" nhưng chưa có lý do rõ ràng.`,
           projectId,
           chapterId,
           revisionId,
@@ -589,7 +620,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.WARNING,
           ruleCode: 'SECRET_ALREADY_REVEALED',
-          message: `Bi mat "${fact.description}" da duoc tiet lo truoc do.`,
+          message: `Bí mật "${fact.description}" đã được tiết lộ trước đó.`,
           projectId,
           chapterId,
           revisionId,
@@ -609,7 +640,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.ERROR,
           ruleCode: 'GOAL_REVERSAL_WITHOUT_REASON',
-          message: `${op.subject_name || 'Nhan vat'} quay lai muc tieu cu "${conflicting.join(', ')}" ma khong co giai thich ro rang.`,
+          message: `${op.subject_name || 'Nhân vật'} quay lại mục tiêu cũ "${conflicting.join(', ')}" mà không có giải thích rõ ràng.`,
           projectId,
           chapterId,
           revisionId,
@@ -628,7 +659,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.WARNING,
           ruleCode: 'ALLEGIANCE_CHANGE_WITHOUT_REASON',
-          message: `${op.subject_name || 'Nhan vat'} doi phe nhung chua co ly do ro rang trong payload.`,
+          message: `${op.subject_name || 'Nhân vật'} đổi phe nhưng chưa có lý do rõ ràng trong dữ liệu canon.`,
           projectId,
           chapterId,
           revisionId,
@@ -655,7 +686,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.WARNING,
           ruleCode: 'RELATIONSHIP_REVERSAL_WITHOUT_REASON',
-          message: `Cap quan he ${op.subject_name || op.subject_id}/${op.target_name || op.target_id} dao chieu manh nhung chua co ly do ro rang.`,
+          message: `Cặp quan hệ ${op.subject_name || op.subject_id}/${op.target_name || op.target_id} đảo chiều mạnh nhưng chưa có lý do rõ ràng.`,
           projectId,
           chapterId,
           revisionId,
@@ -673,7 +704,7 @@ export function validateCandidateOps({
         reports.push(createReport({
           severity: CANON_SEVERITY.WARNING,
           ruleCode: 'INTIMACY_AFTERMATH_MISSING',
-          message: 'Canh thay doi do than mat thieu du am cam xuc/hau qua, de gay dut continuity NSFW.',
+          message: 'Cảnh thay đổi độ thân mật thiếu dư âm cảm xúc/hậu quả, dễ gây đứt mạch liên tục của cảnh nhạy cảm.',
           projectId,
           chapterId,
           revisionId,
@@ -721,7 +752,7 @@ export function filterCommitReadyOps(candidateOps = [], {
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'LOW_CONFIDENCE_CANON_OP_FILTERED',
-        message: `Op ${op.op_type} co do tin cay thap (${confidence.toFixed(2)}) va da bi loai khoi commit.`,
+        message: `Thao tác ${describeCanonOp(op.op_type)} có độ tin cậy thấp (${confidence.toFixed(2)}) và đã bị loại khỏi phần chốt canon.`,
         projectId,
         chapterId,
         revisionId,
@@ -1009,7 +1040,7 @@ export function validateDraftTextAgainstTruth({
       reports.push(createReport({
         severity: CANON_SEVERITY.INFO,
         ruleCode: 'DRAFT_REFERENCES_RESOLVED_THREAD',
-        message: 'Draft dang goi lai mot thread da dong.',
+        message: 'Bản nháp đang gọi lại một tuyến truyện đã đóng.',
         projectId,
         chapterId,
         revisionId,
@@ -1027,7 +1058,7 @@ export function validateDraftTextAgainstTruth({
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'DRAFT_TOUCHES_HIDDEN_SECRET',
-        message: `Draft co dau hieu dong vao bi mat chua lo: "${fact.description}".`,
+        message: `Bản nháp có dấu hiệu đụng vào bí mật chưa lộ: "${fact.description}".`,
         projectId,
         chapterId,
         revisionId,
@@ -1045,7 +1076,7 @@ export function validateDraftTextAgainstTruth({
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'DRAFT_REFERENCES_SPENT_ITEM',
-        message: `Draft dang goi lai vat pham ${object.name}, trong khi canon hien tai ghi nhan vat pham nay khong con dung duoc.`,
+        message: `Bản nháp đang gọi lại vật phẩm ${object.name}, trong khi canon hiện tại ghi nhận vật phẩm này không còn dùng được.`,
         projectId,
         chapterId,
         revisionId,
@@ -1274,7 +1305,7 @@ export function validateGeneratedProseDiscipline({
           reports.push(createReport({
             severity: CANON_SEVERITY.WARNING,
             ruleCode: 'OUT_OF_SCENE_CHARACTER_DIALOGUE',
-            message: `Nhân vật ${character.name || 'ngoài cảnh'} có dấu hiệu nói thoại dù không nằm trong sceneCast.`,
+            message: `Nhân vật ${character.name || 'ngoài cảnh'} có dấu hiệu nói thoại dù không nằm trong danh sách nhân vật của cảnh.`,
             projectId,
             chapterId,
             revisionId,
@@ -1289,7 +1320,7 @@ export function validateGeneratedProseDiscipline({
           reports.push(createReport({
             severity: CANON_SEVERITY.WARNING,
             ruleCode: 'OUT_OF_SCENE_CHARACTER_ACTION',
-            message: `Nhân vật ${character.name || 'ngoài cảnh'} có dấu hiệu hành động trực tiếp dù không nằm trong sceneCast.`,
+            message: `Nhân vật ${character.name || 'ngoài cảnh'} có dấu hiệu hành động trực tiếp dù không nằm trong danh sách nhân vật của cảnh.`,
             projectId,
             chapterId,
             revisionId,
@@ -1328,7 +1359,7 @@ export function validateGeneratedProseDiscipline({
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'LIVE_CANON_ACTION_CONSTRAINT',
-        message: `Nhan vat ${character.name || 'khong ro'} dang co rang buoc hanh vi trong current_status nhung draft viet nhu rang buoc do khong ton tai.`,
+        message: `Nhân vật ${character.name || 'không rõ'} đang có ràng buộc hành vi trong trạng thái hiện tại nhưng bản nháp viết như ràng buộc đó không tồn tại.`,
         projectId,
         chapterId,
         revisionId,
@@ -1347,7 +1378,7 @@ export function validateGeneratedProseDiscipline({
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'LIVE_CANON_KNOWLEDGE_CONSTRAINT',
-        message: `Nhan vat ${character.name || 'khong ro'} co current_status ghi chua biet mot bi mat/thong tin, nhung draft viet nhu nhan vat da biet.`,
+        message: `Nhân vật ${character.name || 'không rõ'} có trạng thái hiện tại ghi chưa biết một bí mật/thông tin, nhưng bản nháp viết như nhân vật đã biết.`,
         projectId,
         chapterId,
         revisionId,
@@ -1365,7 +1396,7 @@ export function validateGeneratedProseDiscipline({
     reports.push(createReport({
       severity: CANON_SEVERITY.WARNING,
       ruleCode: 'POSSIBLE_FABRICATED_BACKSTORY',
-      message: `Draft có dấu hiệu thêm thân thế nhạy cảm "${marker}" nhưng chưa thấy trong hồ sơ/canon.`,
+      message: `Bản nháp có dấu hiệu thêm thân thế nhạy cảm "${marker}" nhưng chưa thấy trong hồ sơ/canon.`,
       projectId,
       chapterId,
       revisionId,
@@ -1379,7 +1410,7 @@ export function validateGeneratedProseDiscipline({
     reports.push(createReport({
       severity: CANON_SEVERITY.WARNING,
       ruleCode: 'PROSE_MARKDOWN_OR_OUTLINE',
-      message: 'Draft có dấu hiệu bullet/markdown/heading meta trong phần văn xuôi.',
+      message: 'Bản nháp có dấu hiệu gạch đầu dòng/markdown/tiêu đề kỹ thuật trong phần văn xuôi.',
       projectId,
       chapterId,
       revisionId,
@@ -1407,7 +1438,7 @@ export function validateGeneratedProseDiscipline({
     reports.push(createReport({
       severity: CANON_SEVERITY.WARNING,
       ruleCode: 'MECHANICAL_SHORT_SENTENCES',
-      message: 'Draft có chuỗi câu ngắn cụt liên tiếp, dễ tạo cảm giác máy móc.',
+      message: 'Bản nháp có chuỗi câu ngắn cụt liên tiếp, dễ tạo cảm giác máy móc.',
       projectId,
       chapterId,
       revisionId,

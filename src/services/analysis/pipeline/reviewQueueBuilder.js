@@ -46,19 +46,19 @@ function buildReasons(item, itemType, consistencyRisks = [], graphSignals = null
   const reasons = [];
 
   if (needsReview(item, itemType)) {
-    reasons.push('Diem tin cay chua du de tu dong chap nhan.');
+    reasons.push('Điểm tin cậy chưa đủ để tự động chấp nhận.');
   }
   if (!Array.isArray(item?.evidence) || item.evidence.length === 0) {
-    reasons.push('Thieu bang chung hoac trich dan doi chieu.');
+    reasons.push('Thiếu bằng chứng hoặc trích dẫn đối chiếu.');
   }
   if (item?.uncertainStart || item?.uncertainEnd) {
-    reasons.push('Ranh gioi incident con mo ho.');
+    reasons.push('Ranh giới incident còn mơ hồ.');
   }
 
   if (graphSignals?.isolatedNodeIds?.has?.(item.id)) {
-    reasons.push('Node nay dang bi co lap trong story graph.');
+    reasons.push('Node này đang bị cô lập trong story graph.');
   } else if (graphSignals?.weakNodeIds?.has?.(item.id)) {
-    reasons.push('Node nay co it lien ket trong story graph.');
+    reasons.push('Node này có ít liên kết trong story graph.');
   }
 
   const keyByType = {
@@ -73,7 +73,7 @@ function buildReasons(item, itemType, consistencyRisks = [], graphSignals = null
     )).length;
 
     if (relatedRiskCount > 0) {
-      reasons.push(`Co ${relatedRiskCount} canh bao consistency lien quan.`);
+      reasons.push(`Có ${relatedRiskCount} cảnh báo consistency liên quan.`);
     }
   }
 
@@ -84,22 +84,22 @@ function buildSuggestions(itemType, graphSignals = null, itemId = '') {
   const suggestions = [];
 
   if (itemType === REVIEW_ITEM_TYPES.INCIDENT) {
-    suggestions.push('Kiem tra chuong bat dau/ket thuc va lien ket nhan qua.');
-    suggestions.push('Xac nhan tieu de va loai incident.');
+    suggestions.push('Kiểm tra chương bắt đầu/kết thúc và liên kết nhân quả.');
+    suggestions.push('Xác nhận tiêu đề và loại incident.');
   } else if (itemType === REVIEW_ITEM_TYPES.EVENT) {
-    suggestions.push('Kiem tra grounding theo chuong/chunk.');
-    suggestions.push('Doi chieu mo ta su kien voi bang chung va do quan trong.');
+    suggestions.push('Kiểm tra grounding theo chương/chunk.');
+    suggestions.push('Đối chiếu mô tả sự kiện với bằng chứng và độ quan trọng.');
   } else if (itemType === REVIEW_ITEM_TYPES.LOCATION) {
-    suggestions.push('Gop alias trung neu can.');
-    suggestions.push('Xac nhan dia diem that su xuat hien o cac chuong da gan.');
+    suggestions.push('Gộp alias trùng nếu cần.');
+    suggestions.push('Xác nhận địa điểm thật sự xuất hiện ở các chương đã gắn.');
   } else {
-    suggestions.push('Xem lai canh bao va chon huong xu ly phu hop.');
+    suggestions.push('Xem lại cảnh báo và chọn hướng xử lý phù hợp.');
   }
 
   if (graphSignals?.isolatedNodeIds?.has?.(itemId)) {
-    suggestions.push('Kiem tra vi sao node nay chua co quan he nao trong story graph.');
+    suggestions.push('Kiểm tra vì sao node này chưa có quan hệ nào trong story graph.');
   } else if (graphSignals?.weakNodeIds?.has?.(itemId)) {
-    suggestions.push('Xac nhan xem co thieu quan he, event hoac location lien quan hay khong.');
+    suggestions.push('Xác nhận xem có thiếu quan hệ, event hoặc location liên quan hay không.');
   }
 
   return suggestions;
@@ -228,8 +228,8 @@ function createRiskQueueItems(consistencyRisks = [], { corpusId, analysisId }) {
         boundaryAmbiguity: 0.2,
         missingEvidence: 0.2,
       },
-      reason: [risk.description || 'Co canh bao consistency can xu ly.'],
-      suggestions: ['Mo chi tiet risk, doi chieu bang chung va xac nhan cach giai quyet.'],
+      reason: [risk.description || 'Có cảnh báo consistency cần xử lý.'],
+      suggestions: ['Mở chi tiết risk, đối chiếu bằng chứng và xác nhận cách giải quyết.'],
       status: REVIEW_ITEM_STATUS.PENDING,
       createdAt: Date.now(),
     };

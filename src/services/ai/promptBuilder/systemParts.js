@@ -141,39 +141,39 @@ export function buildPromptSystemParts(taskType, context = {}) {
 
   const formatCharacterProfile = (character) => {
     const c = character || {};
-    const parts = ['- ' + (c.name || 'Nhan vat') + ' (' + (c.role || 'nhan vat') + ')'];
-    if (Array.isArray(c.aliases) && c.aliases.length > 0) parts.push('  Aliases/ten goi khac: ' + c.aliases.join(', '));
-    if (typeof c.aliases === 'string' && c.aliases.trim()) parts.push('  Aliases/ten goi khac: ' + c.aliases);
+    const parts = ['- ' + (c.name || 'Nhân vật') + ' (' + (c.role || 'nhân vật') + ')'];
+    if (Array.isArray(c.aliases) && c.aliases.length > 0) parts.push('  Aliases/tên gọi khác: ' + c.aliases.join(', '));
+    if (typeof c.aliases === 'string' && c.aliases.trim()) parts.push('  Aliases/tên gọi khác: ' + c.aliases);
     const selfPronoun = c.pronouns_self || c.pronouns?.self || '';
     const otherPronoun = c.pronouns_other || c.pronouns?.other || '';
-    if (selfPronoun) parts.push('  Xung: "' + selfPronoun + '"' + (otherPronoun ? ', goi nguoi: "' + otherPronoun + '"' : ''));
-    if (c.age) parts.push('  Tuoi/do tuoi: ' + c.age);
-    if (c.appearance) parts.push('  Ngoai hinh: ' + c.appearance);
+    if (selfPronoun) parts.push('  Xưng: "' + selfPronoun + '"' + (otherPronoun ? ', gọi người: "' + otherPronoun + '"' : ''));
+    if (c.age) parts.push('  Tuổi/độ tuổi: ' + c.age);
+    if (c.appearance) parts.push('  Ngoại hình: ' + c.appearance);
     if (c.personality_tags) parts.push('  Tags: ' + c.personality_tags);
-    if (c.personality) parts.push('  Tinh cach: ' + c.personality);
-    if (c.flaws) parts.push('  Diem yeu: ' + c.flaws);
-    if (c.goals) parts.push('  Muc tieu: ' + c.goals);
-    if (c.secrets) parts.push('  Bi mat canon (khong tu tiet lo neu chua den luc): ' + c.secrets);
-    if (c.notes) parts.push('  Ghi chu: ' + c.notes);
-    if (c.story_function) parts.push('  Vai tro truyen: ' + c.story_function);
+    if (c.personality) parts.push('  Tính cách: ' + c.personality);
+    if (c.flaws) parts.push('  Điểm yếu: ' + c.flaws);
+    if (c.goals) parts.push('  Mục tiêu: ' + c.goals);
+    if (c.secrets) parts.push('  Bí mật canon (không tự tiết lộ nếu chưa đến lúc): ' + c.secrets);
+    if (c.notes) parts.push('  Ghi chú: ' + c.notes);
+    if (c.story_function) parts.push('  Vai trò truyện: ' + c.story_function);
     if (c.specific_role) {
       parts.push(
-        '  Vai tro cu the: ' + c.specific_role
-        + (c.specific_role_locked ? ' (da khoa canon)' : '')
+        '  Vai trò cụ thể: ' + c.specific_role
+        + (c.specific_role_locked ? ' (đã khóa canon)' : '')
       );
     }
-    if (c.speech_pattern) parts.push('  Giong noi: ' + c.speech_pattern);
-    if (c.current_status) parts.push('  Character Live Canon / rang buoc canon dang hieu luc: ' + c.current_status);
+    if (c.speech_pattern) parts.push('  Giọng nói: ' + c.speech_pattern);
+    if (c.current_status) parts.push('  Character Live Canon / ràng buộc canon đang hiệu lực: ' + c.current_status);
     return parts.join('\n');
   };
 
   const CURRENT_STATUS_LIVE_CANON_RULES = [
-    '\n[RANG BUOC CURRENT_STATUS - CHARACTER LIVE CANON]',
-    '- current_status la rang buoc canon hien hanh cua nhan vat, khong phai ghi chu phu.',
-    '- Neu current_status trong: khong suy dien rang buoc, vet thuong, bi mat, quan he, dia vi, tri thuc, phe phai hay gioi han hanh vi.',
-    '- Neu current_status co du lieu: phai uu tien hon personality khi quyet dinh hanh dong, thoai, phan ung, tri thuc, quan he, dia vi xa hoi, the chat/tam ly, vi tri/phe va quyen xuat hien.',
-    '- Khong duoc viet noi dung trai voi current_status: nhan vat bi thuong khong hanh dong nhu lanh lan; chua biet bi mat khong noi nhu da biet; dang bi giam/mat tich/chet/phong an/lan tron khong tu xuat hien truc tiep neu scene/outline khong cho phep.',
-    '- Moi thay doi current_status sau chuong phai dua tren bang chung ro trong van ban, khong doan.',
+    '\n[RÀNG BUỘC CURRENT_STATUS - CHARACTER LIVE CANON]',
+    '- current_status là ràng buộc canon hiện hành của nhân vật, không phải ghi chú phụ.',
+    '- Nếu current_status trống: không suy diễn ràng buộc, vết thương, bí mật, quan hệ, địa vị, tri thức, phe phái hay giới hạn hành vi.',
+    '- Nếu current_status có dữ liệu: phải ưu tiên hơn personality khi quyết định hành động, thoại, phản ứng, tri thức, quan hệ, địa vị xã hội, thể chất/tâm lý, vị trí/phe và quyền xuất hiện.',
+    '- Không được viết nội dung trái với current_status: nhân vật bị thương không hành động như lành lặn; chưa biết bí mật không nói như đã biết; đang bị giam/mất tích/chết/phong ấn/lẩn trốn không tự xuất hiện trực tiếp nếu scene/outline không cho phép.',
+    '- Mọi thay đổi current_status sau chương phải dựa trên bằng chứng rõ trong văn bản, không đoán.',
   ].join('\n');
 
   const buildPermissionedCharacterBlock = (header, rule, items, cap = 15) => {
@@ -207,27 +207,27 @@ export function buildPromptSystemParts(taskType, context = {}) {
 
     const cappedRoster = roster.slice(0, 40);
     const overflowNote = roster.length > cappedRoster.length
-      ? '\n- Danh sach bi cat bot vi qua dai; neu can dung nhan vat ngoai phan hien thi, phai co bang chung ro tu yeu cau tac gia hoac canon hien co.'
+      ? '\n- Danh sách bị cắt bớt vì quá dài; nếu cần dùng nhân vật ngoài phần hiển thị, phải có bằng chứng rõ từ yêu cầu tác giả hoặc canon hiện có.'
       : '';
 
-    return '\n[DANH SACH NHAN VAT TRONG TRANG NHAN VAT - NGUON CANON DE LAP DAN Y]\n'
+    return '\n[DANH SÁCH NHÂN VẬT TRONG TRANG NHÂN VẬT - NGUỒN CANON ĐỂ LẬP DÀN Ý]\n'
       + cappedRoster.map(formatCharacterProfile).join('\n')
-      + '\n\nQUY TAC LAP DAN Y THEO NHAN VAT:'
-      + '\n- Khi dien "featured_characters", uu tien chon tu danh sach tren va dung ten chinh thuc.'
-      + '\n- Ten ngan, biet danh, danh xung, ho/ten dem chi la alias cua nhan vat da co; khong bien alias thanh nhan vat moi.'
-      + '\n- Khong tao nhan vat moi neu tac gia khong yeu cau ro hoac outline hien co khong bat buoc; neu bat buoc de xuat nhan vat moi, phai ghi nhu de xuat moi, khong ghi nhu canon da co.'
-      + '\n- Moi beat nhan vat phai ton trong current_status/Character Live Canon neu ho so co ghi.'
+      + '\n\nQUY TẮC LẬP DÀN Ý THEO NHÂN VẬT:'
+      + '\n- Khi điền "featured_characters", ưu tiên chọn từ danh sách trên và dùng tên chính thức.'
+      + '\n- Tên ngắn, biệt danh, danh xưng, họ/tên đệm chỉ là alias của nhân vật đã có; không biến alias thành nhân vật mới.'
+      + '\n- Không tạo nhân vật mới nếu tác giả không yêu cầu rõ hoặc outline hiện có không bắt buộc; nếu bắt buộc đề xuất nhân vật mới, phải ghi như đề xuất mới, không ghi như canon đã có.'
+      + '\n- Mỗi beat nhân vật phải tôn trọng current_status/Character Live Canon nếu hồ sơ có ghi.'
       + overflowNote;
   };
 
   const CANON_FABRICATION_GUARDRAIL = [
-    '\n[CAM BIA CANON NHAN VAT]',
-    '- Khong tu bia than the, cha me, con nuoi/con ruot, huyet thong, qua khu, vet thuong cu, loi hua cu, nang luc an, quan he gia dinh hoac yeu duong neu ho so/canon khong ghi.',
-    '- Khong tu bia tuoi/do tuoi neu ho so/canon khong ghi; neu khong co du lieu tuoi thi khong nhac tuoi trong van ban.',
-    '- Age/tuoi chi la tin hieu mem cho xung ho, do truong thanh, nhip thoai, von song va phan ung tam ly; khong dung nhu luat cung ep nhan vat noi theo khuon.',
-    '- Voi hien dai/hoc duong/do thi co the dung tuoi so cu the khi da co du lieu; voi tien hiep/huyen huyen/than linh/bat tu uu tien mo ta linh hoat nhu thieu nien, ngoai hinh doi muoi, tuoi that rat cao, truong boi.',
-    '- Neu canon chua noi thi viet trung tinh hoac bo qua; neu ho so noi ro thi khong viet nguoc lai.',
-    '- Bi mat trong ho so chi dung de tranh mau thuan, khong tu tiet lo trong van ban neu chua den luc.',
+    '\n[CẤM BỊA CANON NHÂN VẬT]',
+    '- Không tự bịa thân thế, cha mẹ, con nuôi/con ruột, huyết thống, quá khứ, vết thương cũ, lời hứa cũ, năng lực ẩn, quan hệ gia đình hoặc yêu đương nếu hồ sơ/canon không ghi.',
+    '- Không tự bịa tuổi/độ tuổi nếu hồ sơ/canon không ghi; nếu không có dữ liệu tuổi thì không nhắc tuổi trong văn bản.',
+    '- Age/tuổi chỉ là tín hiệu mềm cho xưng hô, độ trưởng thành, nhịp thoại, vốn sống và phản ứng tâm lý; không dùng như luật cứng ép nhân vật nói theo khuôn.',
+    '- Với hiện đại/học đường/đô thị có thể dùng tuổi số cụ thể khi đã có dữ liệu; với tiên hiệp/huyền huyễn/thần linh/bất tử ưu tiên mô tả linh hoạt như thiếu niên, ngoại hình đôi mươi, tuổi thật rất cao, trưởng bối.',
+    '- Nếu canon chưa nói thì viết trung tính hoặc bỏ qua; nếu hồ sơ nói rõ thì không viết ngược lại.',
+    '- Bí mật trong hồ sơ chỉ dùng để tránh mâu thuẫn, không tự tiết lộ trong văn bản nếu chưa đến lúc.',
   ].join('\n');
 
   const buildCanonRoleLocksLayer = (locks = []) => {
@@ -241,33 +241,33 @@ export function buildPromptSystemParts(taskType, context = {}) {
     if (locked.length === 0) return '';
 
     return [
-      '\n[CANON VAI TRO DA KHOA - BAT BUOC]',
-      'Cac muc duoi day la vai tro canon da duoc tac gia xac nhan. Moi dong gan mot nhan vat voi mot vai tro cu the trong truyen.',
+      '\n[CANON VAI TRÒ ĐÃ KHÓA - BẮT BUỘC]',
+      'Các mục dưới đây là vai trò canon đã được tác giả xác nhận. Mỗi dòng gắn một nhân vật với một vai trò cụ thể trong truyện.',
       '',
       locked.map((item) => '- ' + item.characterName + ': ' + item.specificRole).join('\n'),
       '',
-      'Quy tac bat buoc:',
-      '1. Neu noi dung can dung, nhac den, hoac phat trien mot vai tro da khoa, phai dung dung nhan vat dang giu vai tro do.',
-      '2. Khong tao, thay the, gan lai, hoac am chi nhan vat khac giu cung vai tro hoac vai tro tuong duong neu tac gia khong yeu cau doi canon.',
-      '3. Khong tu bien mot vai tro da khoa thanh bien the khac de lach canon. Chi phan biet bien the khi du lieu da noi ro.',
-      '4. Neu vai tro da khoa khong thuoc canh hien tai, khong tu ep nhan vat do xuat hien; chi dung nhu rang buoc canon nen.',
-      '5. Neu yeu cau cua tac gia mau thuan voi vai tro da khoa, uu tien hoi lai hoac neu ro can doi canon, khong tu sua ngam.',
-      '6. Khi chua chac mot vai tro moi co trung voi vai tro da khoa hay khong, viet trung tinh va khong tao them canon moi.',
+      'Quy tắc bắt buộc:',
+      '1. Nếu nội dung cần dùng, nhắc đến, hoặc phát triển một vai trò đã khóa, phải dùng đúng nhân vật đang giữ vai trò đó.',
+      '2. Không tạo, thay thế, gán lại, hoặc ám chỉ nhân vật khác giữ cùng vai trò hoặc vai trò tương đương nếu tác giả không yêu cầu đổi canon.',
+      '3. Không tự biến một vai trò đã khóa thành biến thể khác để lách canon. Chỉ phân biệt biến thể khi dữ liệu đã nói rõ.',
+      '4. Nếu vai trò đã khóa không thuộc cảnh hiện tại, không tự ép nhân vật đó xuất hiện; chỉ dùng như ràng buộc canon nền.',
+      '5. Nếu yêu cầu của tác giả mâu thuẫn với vai trò đã khóa, ưu tiên hỏi lại hoặc nêu rõ cần đổi canon, không tự sửa ngầm.',
+      '6. Khi chưa chắc một vai trò mới có trùng với vai trò đã khóa hay không, viết trung tính và không tạo thêm canon mới.',
     ].join('\n');
   };
 
   const PROSE_DIALOGUE_DISCIPLINE_LAYER = [
-    '\n[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]',
-    '- Viet thanh van xuoi hoan chinh, khong dan y, khong tom tat, khong bullet, khong markdown, khong heading meta trong prose.',
-    '- Tach ro hanh dong, noi tam, cau dan va thoai; doi nguoi noi thi xuong dong.',
-    '- Khong nhoi nhieu luot thoai cua nhieu nguoi vao cung mot doan.',
-    '- Moi doan chi nen co mot trong tam: hanh dong, cam giac, quan sat, noi tam, hoac mot luot thoai.',
-    '- Thoai phai tu nhien theo speech_pattern, quan he, tuoi/tang lop va cam xuc hien tai cua tung nhan vat.',
-    '- Neu age/tuoi duoc cung cap, chi dung nhu ngu canh tham khao cho xung ho, do truong thanh, nhip thoai, von song va phan ung tam ly; khong bien no thanh khuon noi cung nhac.',
-    '- Khong ngat cau may moc; cau ngan chi dung khi can tao nhip, khong lap lien tiep vo nghia.',
-    '- Khong de nhan vat noi nhu dang liet ke y.',
-    '- Khong de nhan vat tu giai thich ho so, than the, tinh cach, qua khu neu khong co dong co trong canh.',
-    '- Khong tom tat thay cho viet canh.',
+    '\n[KỶ LUẬT VĂN XUÔI VÀ THOẠI - BỔ SUNG BẮT BUỘC]',
+    '- Viết thành văn xuôi hoàn chỉnh, không dàn ý, không tóm tắt, không bullet, không markdown, không heading meta trong prose.',
+    '- Tách rõ hành động, nội tâm, câu dẫn và thoại; đổi người nói thì xuống dòng.',
+    '- Không nhồi nhiều lượt thoại của nhiều người vào cùng một đoạn.',
+    '- Mỗi đoạn chỉ nên có một trọng tâm: hành động, cảm giác, quan sát, nội tâm, hoặc một lượt thoại.',
+    '- Thoại phải tự nhiên theo speech_pattern, quan hệ, tuổi/tầng lớp và cảm xúc hiện tại của từng nhân vật.',
+    '- Nếu age/tuổi được cung cấp, chỉ dùng như ngữ cảnh tham khảo cho xưng hô, độ trưởng thành, nhịp thoại, vốn sống và phản ứng tâm lý; không biến nó thành khuôn nói cứng nhắc.',
+    '- Không ngắt câu máy móc; câu ngắn chỉ dùng khi cần tạo nhịp, không lặp liên tiếp vô nghĩa.',
+    '- Không để nhân vật nói như đang liệt kê ý.',
+    '- Không để nhân vật tự giải thích hồ sơ, thân thế, tính cách, quá khứ nếu không có động cơ trong cảnh.',
+    '- Không tóm tắt thay cho viết cảnh.',
   ].join('\n');
 
   // FREE_PROMPT: skip heavy writing layers for questions/chat
@@ -342,25 +342,25 @@ export function buildPromptSystemParts(taskType, context = {}) {
   }
 
   // Project info with POV
-  const povLabel = { first: 'Ngoi 1', third_limited: 'Ngoi 3 han che', third_omni: 'Ngoi 3 toan tri', multi_pov: 'Da goc nhin' };
-  const projectInfo = ['Truyen: ' + (projectTitle || 'Chua dat ten')];
-  if (genre) projectInfo.push('The loai: ' + genre);
+  const povLabel = { first: 'Ngôi 1', third_limited: 'Ngôi 3 hạn chế', third_omni: 'Ngôi 3 toàn tri', multi_pov: 'Đa góc nhìn' };
+  const projectInfo = ['Truyện: ' + (projectTitle || 'Chưa đặt tên')];
+  if (genre) projectInfo.push('Thể loại: ' + genre);
   if (tone) projectInfo.push('Tone: ' + tone);
-  if (povMode) projectInfo.push('Goc nhin: ' + (povLabel[povMode] || povMode));
+  if (povMode) projectInfo.push('Góc nhìn: ' + (povLabel[povMode] || povMode));
   systemParts.push('\n[' + projectInfo.join(' - ') + ']');
 
-  if (chapterTitle) systemParts.push('[Chuong hien tai: ' + chapterTitle + ']');
-  if (sceneTitle) systemParts.push('[Canh hien tai: ' + sceneTitle + ']');
+  if (chapterTitle) systemParts.push('[Chương hiện tại: ' + chapterTitle + ']');
+  if (sceneTitle) systemParts.push('[Cảnh hiện tại: ' + sceneTitle + ']');
 
   // POV instruction
   if (povMode === 'first') {
-    systemParts.push('[GOC NHIN]: Viet ngoi thu nhat (toi/ta). Chi mo ta nhung gi nhan vat POV thay, nghe, cam nhan. KHONG viet suy nghi nhan vat khac.');
+    systemParts.push('[GÓC NHÌN]: Viết ngôi thứ nhất (tôi/ta). Chỉ mô tả những gì nhân vật POV thấy, nghe, cảm nhận. KHÔNG viết suy nghĩ nhân vật khác.');
   } else if (povMode === 'third_limited') {
-    systemParts.push('[GOC NHIN]: Viet ngoi thu ba han che. Theo sat 1 nhan vat moi canh - chi biet suy nghi/cam xuc cua nhan vat do.');
+    systemParts.push('[GÓC NHÌN]: Viết ngôi thứ ba hạn chế. Theo sát 1 nhân vật mỗi cảnh - chỉ biết suy nghĩ/cảm xúc của nhân vật đó.');
   } else if (povMode === 'third_omni') {
-    systemParts.push('[GOC NHIN]: Viet ngoi thu ba toan tri. Co the vao tam tri moi nhan vat.');
+    systemParts.push('[GÓC NHÌN]: Viết ngôi thứ ba toàn tri. Có thể vào tâm trí mọi nhân vật.');
   } else if (povMode === 'multi_pov') {
-    systemParts.push('[GOC NHIN]: Da goc nhin - moi canh/chuong theo 1 nhan vat. Giu nhat quan trong cung 1 canh.');
+    systemParts.push('[GÓC NHÌN]: Đa góc nhìn - mỗi cảnh/chương theo 1 nhân vật. Giữ nhất quán trong cùng 1 cảnh.');
   }
 
   if (projectStyleRuntime.active) {
@@ -372,16 +372,16 @@ export function buildPromptSystemParts(taskType, context = {}) {
   // Dung strictness de frame: strict = khong the vi pham, relaxed = goi y.
   if (aiGuidelines && !projectStyleRuntime.active) {
     const principleHeader = aiStrictness === 'strict'
-      ? 'NGUYEN TAC SANG TAC - TUYET DOI TUAN THU'
+      ? 'NGUYÊN TẮC SÁNG TÁC - TUYỆT ĐỐI TUÂN THỦ'
       : aiStrictness === 'relaxed'
-        ? 'GOI Y SANG TAC'
-        : 'NGUYEN TAC SANG TAC';
+        ? 'GỢI Ý SÁNG TÁC'
+        : 'NGUYÊN TẮC SÁNG TÁC';
     systemParts.push('\n[' + principleHeader + ']\n' + aiGuidelines);
   }
 
   const constitutionRules = listFromTemplate(promptTemplates.constitution);
   if (constitutionRules.length > 0 && !skipWritingLayers && !projectStyleRuntime.active) {
-    systemParts.push('\n[LUAT COT LOI CUA TRUYEN - BAT BUOC TUAN THU]\n' + constitutionRules.map(function(rule, index) {
+    systemParts.push('\n[LUẬT CỐT LÕI CỦA TRUYỆN - BẮT BUỘC TUÂN THỦ]\n' + constitutionRules.map(function(rule, index) {
       return (index + 1) + '. ' + rule;
     }).join('\n'));
   }
@@ -390,7 +390,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
   const rawTaskInstruction = promptTemplates[taskType] || TASK_INSTRUCTIONS[taskType];
   const taskInstruction = composeTaskInstruction(taskType, rawTaskInstruction);
   if (taskInstruction) {
-    systemParts.push('\n[NHIEM VU]\n' + taskInstruction);
+    systemParts.push('\n[NHIỆM VỤ]\n' + taskInstruction);
   }
 
   const canonRoleLocksLayer = buildCanonRoleLocksLayer(canonRoleLocks);
@@ -405,35 +405,35 @@ export function buildPromptSystemParts(taskType, context = {}) {
   {
     const genreConstraint = GENRE_CONSTRAINTS[genreKey];
     if (genreConstraint) {
-      systemParts.push('\n[THE LOAI]\n' + genreConstraint);
+      systemParts.push('\n[THỂ LOẠI]\n' + genreConstraint);
     }
   }
 
   // Synopsis
   if (synopsis) {
-    systemParts.push('\n[COT TRUYEN CHINH]\n' + synopsis);
+    systemParts.push('\n[CỐT TRUYỆN CHÍNH]\n' + synopsis);
   }
 
   // Story structure
   const structureHints = {
-    three_act: 'Cau truc 3 Hoi: Hoi 1 thiet lap, Hoi 2 xung dot leo thang, Hoi 3 giai quyet.',
-    hero_journey: 'Hanh trinh Anh hung: The gioi binh thuong > Loi keu goi > Thu thach > Mat mat > Chien thang > Tro ve.',
-    isekai_system: 'Isekai/He Thong: Thuc tinh he thong > Kham pha > Farm/grind > Build the luc > Dinh cao.',
-    slice_of_life: 'Lat cat cuoc song: Tap trung nhan vat va cam xuc.',
-    mystery: 'Trinh tham: Vu an > Manh moi > Tinh nghi > Twist > Su that.',
+    three_act: 'Cấu trúc 3 Hồi: Hồi 1 thiết lập, Hồi 2 xung đột leo thang, Hồi 3 giải quyết.',
+    hero_journey: 'Hành trình Anh hùng: Thế giới bình thường > Lời kêu gọi > Thử thách > Mất mát > Chiến thắng > Trở về.',
+    isekai_system: 'Isekai/Hệ Thống: Thức tỉnh hệ thống > Khám phá > Farm/grind > Build thế lực > Đỉnh cao.',
+    slice_of_life: 'Lát cắt cuộc sống: Tập trung nhân vật và cảm xúc.',
+    mystery: 'Trinh thám: Vụ án > Manh mối > Tình nghi > Twist > Sự thật.',
   };
   if (storyStructure && structureHints[storyStructure]) {
-    systemParts.push('[CAU TRUC TRUYEN]: ' + structureHints[storyStructure]);
+    systemParts.push('[CẤU TRÚC TRUYỆN]: ' + structureHints[storyStructure]);
   }
 
   // Pronoun style
   if (pronounStyle && pronounStyle.default_self) {
-    systemParts.push('[XUNG HO MAC DINH - ' + pronounStyle.label + ']: Tu xung "' + pronounStyle.default_self + '", goi nguoi "' + pronounStyle.default_other + '". Tuan theo xung ho rieng cua tung nhan vat neu co.');
+    systemParts.push('[XƯNG HÔ MẶC ĐỊNH - ' + pronounStyle.label + ']: Tự xưng "' + pronounStyle.default_self + '", gọi người "' + pronounStyle.default_other + '". Tuân theo xưng hô riêng của từng nhân vật nếu có.');
   } else {
     const pronounPresetKey = GENRE_PRONOUN_MAP[genreKey];
     const pronounPreset = pronounPresetKey ? PRONOUN_PRESETS[pronounPresetKey] : null;
     if (pronounPreset) {
-      systemParts.push('[XUNG HO MAC DINH - ' + pronounPreset.label + ']: Tu xung "' + pronounPreset.default_self + '", goi nguoi "' + pronounPreset.default_other + '". Tuan theo xung ho rieng cua tung nhan vat neu co.');
+      systemParts.push('[XƯNG HÔ MẶC ĐỊNH - ' + pronounPreset.label + ']: Tự xưng "' + pronounPreset.default_self + '", gọi người "' + pronounPreset.default_other + '". Tuân theo xưng hô riêng của từng nhân vật nếu có.');
     }
   }
 
@@ -442,85 +442,85 @@ export function buildPromptSystemParts(taskType, context = {}) {
 
   // World Profile
   if (worldProfile.name || worldProfile.description || (worldProfile.rules && worldProfile.rules.length > 0)) {
-    let wpText = 'The gioi: ' + (worldProfile.name || 'Chua dat ten');
-    if (worldProfile.type) wpText += ' - Loai: ' + worldProfile.type;
-    if (worldProfile.scale) wpText += ' - Quy mo: ' + worldProfile.scale;
-    if (worldProfile.era) wpText += ' - Thoi dai: ' + worldProfile.era;
+    let wpText = 'Thế giới: ' + (worldProfile.name || 'Chưa đặt tên');
+    if (worldProfile.type) wpText += ' - Loại: ' + worldProfile.type;
+    if (worldProfile.scale) wpText += ' - Quy mô: ' + worldProfile.scale;
+    if (worldProfile.era) wpText += ' - Thời đại: ' + worldProfile.era;
     if (worldProfile.rules && worldProfile.rules.length > 0) {
-      wpText += '\nQuy tac cot loi:\n' + worldProfile.rules.map(function (r) { return '* ' + r; }).join('\n');
+      wpText += '\nQuy tắc cốt lõi:\n' + worldProfile.rules.map(function (r) { return '* ' + r; }).join('\n');
     }
     if (worldProfile.description) {
-      wpText += '\nMo ta: ' + worldProfile.description;
+      wpText += '\nMô tả: ' + worldProfile.description;
     }
     canonContextParts.push(wpText);
   }
 
   if (previousSummary) {
-    canonContextParts.push('Tom tat chuong truoc:\n' + previousSummary);
+    canonContextParts.push('Tóm tắt chương trước:\n' + previousSummary);
   }
 
   if (locations.length > 0) {
     const locInfo = locations.map(function (l) {
       const extras = [];
       if (l.description) extras.push(l.description);
-      if (l.story_function) extras.push('vai tro: ' + l.story_function);
+      if (l.story_function) extras.push('vai trò: ' + l.story_function);
       return '- ' + l.name + (extras.length > 0 ? ': ' + extras.join(' | ') : '');
     }).join('\n');
-    canonContextParts.push('Dia danh xuat hien:\n' + locInfo);
+    canonContextParts.push('Địa danh xuất hiện:\n' + locInfo);
   }
 
   if (objects.length > 0) {
     const objInfo = objects.map(function (o) {
       const extras = [];
       if (o.description) extras.push(o.description);
-      if (o.story_function) extras.push('vai tro: ' + o.story_function);
+      if (o.story_function) extras.push('vai trò: ' + o.story_function);
       return '- ' + o.name + (extras.length > 0 ? ': ' + extras.join(' | ') : '');
     }).join('\n');
-    canonContextParts.push('Vat pham:\n' + objInfo);
+    canonContextParts.push('Vật phẩm:\n' + objInfo);
   }
 
   if (factions.length > 0) {
     const factionInfo = factions.map(function (f) {
       const extras = [];
       if (f.description) extras.push(f.description);
-      if (f.story_function) extras.push('vai tro: ' + f.story_function);
+      if (f.story_function) extras.push('vai trò: ' + f.story_function);
       return '- ' + f.name + (extras.length > 0 ? ': ' + extras.join(' | ') : '');
     }).join('\n');
-    canonContextParts.push('The luc lien quan:\n' + factionInfo);
+    canonContextParts.push('Thế lực liên quan:\n' + factionInfo);
   }
 
   if (worldTerms.length > 0) {
     const termInfo = worldTerms.map(function (t) {
       const extras = [];
       if (t.definition) extras.push(t.definition);
-      if (t.story_function) extras.push('vai tro: ' + t.story_function);
+      if (t.story_function) extras.push('vai trò: ' + t.story_function);
       return '- ' + t.name + (extras.length > 0 ? ': ' + extras.join(' | ') : '');
     }).join('\n');
-    canonContextParts.push('Thuat ngu the gioi:\n' + termInfo);
+    canonContextParts.push('Thuật ngữ thế giới:\n' + termInfo);
   }
 
   if (canonContextParts.length > 0) {
-    systemParts.push('\n[BOI CANH TRUYEN]\n' + canonContextParts.join('\n\n'));
+    systemParts.push('\n[BỐI CẢNH TRUYỆN]\n' + canonContextParts.join('\n\n'));
   }
 
   if (fanficCanonContext && !skipWritingLayers) {
     const fanficParts = [];
     fanficParts.push('Canon Pack: ' + (fanficCanonContext.packTitle || 'Canon Pack'));
-    fanficParts.push('Che do: ' + (fanficCanonContext.projectMode || 'fanfic'));
-    fanficParts.push('Muc bam canon: ' + (fanficCanonContext.adherenceLevel || 'balanced'));
+    fanficParts.push('Chế độ: ' + (fanficCanonContext.projectMode || 'fanfic'));
+    fanficParts.push('Mức bám canon: ' + (fanficCanonContext.adherenceLevel || 'balanced'));
     if (fanficCanonContext.divergencePoint) {
-      fanficParts.push('Diem re nhanh co chu dich: ' + fanficCanonContext.divergencePoint);
+      fanficParts.push('Điểm rẽ nhánh có chủ đích: ' + fanficCanonContext.divergencePoint);
     }
     if (fanficCanonContext.globalCanon) {
       fanficParts.push('Global Canon:\n' + fanficCanonContext.globalCanon);
     }
     if (fanficCanonContext.characterCanon?.length > 0) {
-      fanficParts.push('Nhan vat lien quan:\n' + fanficCanonContext.characterCanon.map(function (character) {
-        return '- ' + character.name + (character.status ? ': ' + character.status : '') + (character.voice ? ' | Giong: ' + character.voice : '');
+      fanficParts.push('Nhân vật liên quan:\n' + fanficCanonContext.characterCanon.map(function (character) {
+        return '- ' + character.name + (character.status ? ': ' + character.status : '') + (character.voice ? ' | Giọng: ' + character.voice : '');
       }).join('\n'));
     }
     if (fanficCanonContext.relationshipCanon?.length > 0) {
-      fanficParts.push('Quan he lien quan:\n' + fanficCanonContext.relationshipCanon.map(function (relationship) {
+      fanficParts.push('Quan hệ liên quan:\n' + fanficCanonContext.relationshipCanon.map(function (relationship) {
         return '- ' + (relationship.characterA || relationship.charA || '?') + ' / ' + (relationship.characterB || relationship.charB || '?') + ': ' + (relationship.change || relationship.relation || '');
       }).join('\n'));
     }
@@ -528,12 +528,12 @@ export function buildPromptSystemParts(taskType, context = {}) {
       fanficParts.push('Style Canon:\n' + fanficCanonContext.styleCanon);
     }
     if (fanficCanonContext.canonRestrictions?.length > 0) {
-      fanficParts.push('Dieu cam pha canon:\n' + fanficCanonContext.canonRestrictions.map(function (item) { return '- ' + item; }).join('\n'));
+      fanficParts.push('Điều cấm phá canon:\n' + fanficCanonContext.canonRestrictions.map(function (item) { return '- ' + item; }).join('\n'));
     }
     if (fanficCanonContext.creativeGaps?.length > 0) {
-      fanficParts.push('Khoang trong co the sang tao:\n' + fanficCanonContext.creativeGaps.map(function (item) { return '- ' + item; }).join('\n'));
+      fanficParts.push('Khoảng trống có thể sáng tạo:\n' + fanficCanonContext.creativeGaps.map(function (item) { return '- ' + item; }).join('\n'));
     }
-    systemParts.push('\n[CANON PACK CHO DONG NHAN / VIET LAI]\n' + fanficParts.join('\n\n'));
+    systemParts.push('\n[CANON PACK CHO ĐỒNG NHÂN / VIẾT LẠI]\n' + fanficParts.join('\n\n'));
   }
 
   // -- Layer 4.2: Chapter Outline Context (Phase 8) --
@@ -580,26 +580,26 @@ export function buildPromptSystemParts(taskType, context = {}) {
   if (characterContextGate) {
     const characterBlocks = [
       buildPermissionedCharacterBlock(
-        'NHAN VAT DUOC XUAT HIEN TRUC TIEP TRONG CANH',
-        'QUYEN: Nhom nay duoc noi thoai, hanh dong va xuat hien truc tiep trong canh, NHUNG van phai chiu rang buoc current_status/Character Live Canon.',
+        'NHÂN VẬT ĐƯỢC XUẤT HIỆN TRỰC TIẾP TRONG CẢNH',
+        'QUYỀN: Nhóm này được nói thoại, hành động và xuất hiện trực tiếp trong cảnh, NHƯNG vẫn phải chịu ràng buộc current_status/Character Live Canon.',
         characterContextGate.sceneCast,
         15
       ),
       buildPermissionedCharacterBlock(
-        'NHAN VAT QUAN TRONG CUA CHUONG - KHONG TU DONG XUAT HIEN TRONG CANH',
-        'QUYEN: Chi dung de giu huong chuong; khong tu dua vao canh, khong cho noi thoai/hanh dong neu scene cast khong co.',
+        'NHÂN VẬT QUAN TRỌNG CỦA CHƯƠNG - KHÔNG TỰ ĐỘNG XUẤT HIỆN TRONG CẢNH',
+        'QUYỀN: Chỉ dùng để giữ hướng chương; không tự đưa vào cảnh, không cho nói thoại/hành động nếu scene cast không có.',
         characterContextGate.chapterFocusCast,
         10
       ),
       buildPermissionedCharacterBlock(
-        'CANON NHAN VAT LIEN QUAN / DUOC NHAC TOI',
-        'QUYEN: Chi lam nen canon hoac duoc nhac toi; khong tu cho xuat hien truc tiep, noi thoai, hay hanh dong.',
+        'CANON NHÂN VẬT LIÊN QUAN / ĐƯỢC NHẮC TỚI',
+        'QUYỀN: Chỉ làm nền canon hoặc được nhắc tới; không tự cho xuất hiện trực tiếp, nói thoại, hay hành động.',
         characterContextGate.referencedCanonCast,
         8
       ),
     ].filter(Boolean);
     if (characterBlocks.length > 0) {
-      systemParts.push(characterBlocks.join('\n\n') + '\n\nQUY TAC NHAN VAT: Dung ten chinh thuc o dau dong khi tham chieu nhan vat. Ten ngan, biet danh, danh xung, ho/ten dem chi la alias cua nhan vat da co; khong bien chung thanh nhan vat moi.');
+      systemParts.push(characterBlocks.join('\n\n') + '\n\nQUY TẮC NHÂN VẬT: Dùng tên chính thức ở đầu dòng khi tham chiếu nhân vật. Tên ngắn, biệt danh, danh xưng, họ/tên đệm chỉ là alias của nhân vật đã có; không biến chúng thành nhân vật mới.');
       systemParts.push(CURRENT_STATUS_LIVE_CANON_RULES);
       systemParts.push(CANON_FABRICATION_GUARDRAIL);
     }
@@ -607,7 +607,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     var cappedCharacters = characters.slice(0, 15);
     if (cappedCharacters.length > 0) {
       const charInfo = cappedCharacters.map(formatCharacterProfile).join('\n');
-      systemParts.push('\n[NHAN VAT XUAT HIEN]\n' + charInfo + '\n\nQUY TAC NHAN VAT: Dung ten chinh thuc o dau dong khi tham chieu nhan vat. Ten ngan, biet danh, danh xung, ho/ten dem chi la alias cua nhan vat da co; khong bien chung thanh nhan vat moi.');
+      systemParts.push('\n[NHÂN VẬT XUẤT HIỆN]\n' + charInfo + '\n\nQUY TẮC NHÂN VẬT: Dùng tên chính thức ở đầu dòng khi tham chiếu nhân vật. Tên ngắn, biệt danh, danh xưng, họ/tên đệm chỉ là alias của nhân vật đã có; không biến chúng thành nhân vật mới.');
       systemParts.push(CURRENT_STATUS_LIVE_CANON_RULES);
       systemParts.push(CANON_FABRICATION_GUARDRAIL);
     }
@@ -618,19 +618,19 @@ export function buildPromptSystemParts(taskType, context = {}) {
     const relInfo = relationships.map(function (r) {
       return '- ' + r.charA + ' <-> ' + r.charB + ': ' + r.label + (r.description ? ' (' + r.description + ')' : '');
     }).join('\n');
-    systemParts.push('\n[QUAN HE NHAN VAT]\n' + relInfo);
+    systemParts.push('\n[QUAN HỆ NHÂN VẬT]\n' + relInfo);
   }
 
   // Taboos - tone adjusted by ai_strictness
   if (taboos.length > 0) {
-    const tabooPrefix = aiStrictness === 'strict' ? 'TUYET DOI KHONG' :
-      aiStrictness === 'relaxed' ? 'Nen tranh' : 'Khong nen';
+    const tabooPrefix = aiStrictness === 'strict' ? 'TUYỆT ĐỐI KHÔNG' :
+      aiStrictness === 'relaxed' ? 'Nên tránh' : 'Không nên';
     const tabooLines = taboos.map(function (t) {
-      const who = t.characterName || 'Tat ca nhan vat';
+      const who = t.characterName || 'Tất cả nhân vật';
       return tabooPrefix + ': ' + who + ' - ' + t.description;
     }).join('\n');
-    const tabooHeader = aiStrictness === 'strict' ? 'CAM KY - VI PHAM LA LOI NGHIEM TRONG' :
-      aiStrictness === 'relaxed' ? 'LUU Y - NEN TRANH' : 'CAM KY';
+    const tabooHeader = aiStrictness === 'strict' ? 'CẤM KỴ - VI PHẠM LÀ LỖI NGHIÊM TRỌNG' :
+      aiStrictness === 'relaxed' ? 'LƯU Ý - NÊN TRÁNH' : 'CẤM KỴ';
     systemParts.push('\n[' + tabooHeader + ']\n' + tabooLines);
   }
 
@@ -642,24 +642,24 @@ export function buildPromptSystemParts(taskType, context = {}) {
 
   // -- Layer 6: Scene Contract (Phase 4) --
   const contractParts = [];
-  if (sceneContract.goal) contractParts.push('Muc tieu: ' + sceneContract.goal);
-  if (sceneContract.conflict) contractParts.push('Xung dot: ' + sceneContract.conflict);
+  if (sceneContract.goal) contractParts.push('Mục tiêu: ' + sceneContract.goal);
+  if (sceneContract.conflict) contractParts.push('Xung đột: ' + sceneContract.conflict);
   if (sceneContract.emotional_start || sceneContract.emotional_end) {
-    contractParts.push('Cam xuc: ' + (sceneContract.emotional_start || '?') + ' -> ' + (sceneContract.emotional_end || '?'));
+    contractParts.push('Cảm xúc: ' + (sceneContract.emotional_start || '?') + ' -> ' + (sceneContract.emotional_end || '?'));
   }
   if (sceneContract.must_happen && sceneContract.must_happen.length > 0) {
-    contractParts.push('BAT BUOC xay ra:\n' + sceneContract.must_happen.map(function (m) { return '[v] ' + m; }).join('\n'));
+    contractParts.push('BẮT BUỘC xảy ra:\n' + sceneContract.must_happen.map(function (m) { return '[v] ' + m; }).join('\n'));
   }
   if (sceneContract.must_not_happen && sceneContract.must_not_happen.length > 0) {
-    contractParts.push('CAM xay ra:\n' + sceneContract.must_not_happen.map(function (m) { return '[x] ' + m; }).join('\n'));
+    contractParts.push('CẤM xảy ra:\n' + sceneContract.must_not_happen.map(function (m) { return '[x] ' + m; }).join('\n'));
   }
   if (sceneContract.pacing) {
-    const pacingMap = { slow: 'Cham - mieu ta chi tiet', medium: 'Trung binh', fast: 'Nhanh - hanh dong lien tuc' };
-    contractParts.push('Nhip: ' + (pacingMap[sceneContract.pacing] || sceneContract.pacing));
+    const pacingMap = { slow: 'Chậm - miêu tả chi tiết', medium: 'Trung bình', fast: 'Nhanh - hành động liên tục' };
+    contractParts.push('Nhịp: ' + (pacingMap[sceneContract.pacing] || sceneContract.pacing));
   }
   if (contractParts.length > 0) {
-    const contractHeader = aiStrictness === 'strict' ? 'HOP DONG CANH - BAT BUOC TUAN THU' :
-      aiStrictness === 'relaxed' ? 'GOI Y CHO CANH' : 'HOP DONG CANH';
+    const contractHeader = aiStrictness === 'strict' ? 'HỢP ĐỒNG CẢNH - BẮT BUỘC TUÂN THỦ' :
+      aiStrictness === 'relaxed' ? 'GỢI Ý CHO CẢNH' : 'HỢP ĐỒNG CẢNH';
     systemParts.push('\n[' + contractHeader + ']\n' + contractParts.join('\n'));
   }
 
@@ -669,51 +669,51 @@ export function buildPromptSystemParts(taskType, context = {}) {
     const secrets = canonFacts.filter(function (f) { return f.status === 'active' && f.fact_type === 'secret'; });
     const rules = canonFacts.filter(function (f) { return f.status === 'active' && f.fact_type === 'rule'; });
     const cParts = [];
-    if (facts.length > 0) cParts.push('Su that:\n' + facts.map(function (f) { return '- ' + f.description; }).join('\n'));
-    if (rules.length > 0) cParts.push('Quy tac:\n' + rules.map(function (f) { return '- ' + f.description; }).join('\n'));
-    if (secrets.length > 0) cParts.push('BI MAT - CHUA TIET LO:\n' + secrets.map(function (f) { return '[x] ' + f.description; }).join('\n'));
+    if (facts.length > 0) cParts.push('Sự thật:\n' + facts.map(function (f) { return '- ' + f.description; }).join('\n'));
+    if (rules.length > 0) cParts.push('Quy tắc:\n' + rules.map(function (f) { return '- ' + f.description; }).join('\n'));
+    if (secrets.length > 0) cParts.push('BÍ MẬT - CHƯA TIẾT LỘ:\n' + secrets.map(function (f) { return '[x] ' + f.description; }).join('\n'));
     if (cParts.length > 0) systemParts.push('\n[CANON TRUYEN]\n' + cParts.join('\n\n'));
   }
 
   if (retrievalPacket && (retrievalPacket.relevantEntityStates?.length > 0 || retrievalPacket.activeThreadStates?.length > 0)) {
     const canonBits = [];
     if (retrievalPacket.relevantEntityStates?.length > 0) {
-      canonBits.push('Trang thai canon hien tai:\n' + retrievalPacket.relevantEntityStates.map(function (state) {
+      canonBits.push('Trạng thái canon hiện tại:\n' + retrievalPacket.relevantEntityStates.map(function (state) {
         const summaryParts = [];
-        if (state.alive_status === 'dead') summaryParts.push('da chet');
-        else if (state.alive_status === 'alive') summaryParts.push('con song');
-        if (state.rescued) summaryParts.push('da duoc cuu');
+        if (state.alive_status === 'dead') summaryParts.push('đã chết');
+        else if (state.alive_status === 'alive') summaryParts.push('còn sống');
+        if (state.rescued) summaryParts.push('đã được cứu');
         if (state.current_location_name) summaryParts.push('o ' + state.current_location_name);
         if (state.allegiance) summaryParts.push('phe ' + state.allegiance);
-        if (Array.isArray(state.goals_active) && state.goals_active.length > 0) summaryParts.push('muc tieu: ' + state.goals_active.join(', '));
+        if (Array.isArray(state.goals_active) && state.goals_active.length > 0) summaryParts.push('mục tiêu: ' + state.goals_active.join(', '));
         return '- Entity #' + state.entity_id + ': ' + summaryParts.join(' | ');
       }).join('\n'));
     }
     if (retrievalPacket.activeThreadStates?.length > 0) {
-      canonBits.push('Thread dang mo:\n' + retrievalPacket.activeThreadStates.map(function (threadState) {
+      canonBits.push('Thread đang mở:\n' + retrievalPacket.activeThreadStates.map(function (threadState) {
         return '- Thread #' + threadState.thread_id + ' [' + (threadState.state || 'active') + ']: ' + (threadState.summary || '');
       }).join('\n'));
     }
     if (retrievalPacket.relevantItemStates?.length > 0) {
-      canonBits.push('Vat pham / tai nguyen lien quan:\n' + retrievalPacket.relevantItemStates.map(function (state) {
+      canonBits.push('Vật phẩm / tài nguyên liên quan:\n' + retrievalPacket.relevantItemStates.map(function (state) {
         const itemBits = [];
-        itemBits.push('trang thai: ' + (state.availability || 'available'));
-        if (state.owner_character_id) itemBits.push('chu so huu #' + state.owner_character_id);
+        itemBits.push('trạng thái: ' + (state.availability || 'available'));
+        if (state.owner_character_id) itemBits.push('chủ sở hữu #' + state.owner_character_id);
         if (state.current_location_name) itemBits.push('o ' + state.current_location_name);
-        if (state.is_consumed) itemBits.push('da dung het');
-        if (state.is_damaged) itemBits.push('da hu hong');
+        if (state.is_consumed) itemBits.push('đã dùng hết');
+        if (state.is_damaged) itemBits.push('đã hư hỏng');
         if (state.summary) itemBits.push(state.summary);
-        return '- Vat pham #' + state.object_id + ': ' + itemBits.join(' | ');
+        return '- Vật phẩm #' + state.object_id + ': ' + itemBits.join(' | ');
       }).join('\n'));
     }
     if (retrievalPacket.relevantRelationshipStates?.length > 0) {
-      canonBits.push('Quan he / do than mat lien quan:\n' + retrievalPacket.relevantRelationshipStates.map(function (state) {
+      canonBits.push('Quan hệ / độ thân mật liên quan:\n' + retrievalPacket.relevantRelationshipStates.map(function (state) {
         const relBits = [];
-        if (state.relationship_type) relBits.push('quan he: ' + state.relationship_type);
-        if (state.intimacy_level && state.intimacy_level !== 'none') relBits.push('than mat: ' + state.intimacy_level);
-        if (state.secrecy_state) relBits.push('bi mat: ' + state.secrecy_state);
-        if (state.consent_state && state.consent_state !== 'unknown') relBits.push('dong thuan: ' + state.consent_state);
-        if (state.emotional_aftermath) relBits.push('du am cam xuc: ' + state.emotional_aftermath);
+        if (state.relationship_type) relBits.push('quan hệ: ' + state.relationship_type);
+        if (state.intimacy_level && state.intimacy_level !== 'none') relBits.push('thân mật: ' + state.intimacy_level);
+        if (state.secrecy_state) relBits.push('bí mật: ' + state.secrecy_state);
+        if (state.consent_state && state.consent_state !== 'unknown') relBits.push('đồng thuận: ' + state.consent_state);
+        if (state.emotional_aftermath) relBits.push('dư âm cảm xúc: ' + state.emotional_aftermath);
         if (state.summary) relBits.push(state.summary);
         return '- Cap #' + state.character_a_id + ' & #' + state.character_b_id + ': ' + relBits.join(' | ');
       }).join('\n'));
@@ -721,30 +721,30 @@ export function buildPromptSystemParts(taskType, context = {}) {
     if (retrievalPacket.criticalConstraints) {
       const constraints = [];
       if (retrievalPacket.criticalConstraints.deadCharacters?.length > 0) {
-        constraints.push('Nhan vat da chet: ' + retrievalPacket.criticalConstraints.deadCharacters.map(function (id) { return '#' + id; }).join(', '));
+        constraints.push('Nhân vật đã chết: ' + retrievalPacket.criticalConstraints.deadCharacters.map(function (id) { return '#' + id; }).join(', '));
       }
       if (retrievalPacket.criticalConstraints.unavailableItems?.length > 0) {
-        constraints.push('Vat pham khong con dung duoc: ' + retrievalPacket.criticalConstraints.unavailableItems.map(function (item) {
+        constraints.push('Vật phẩm không còn dùng được: ' + retrievalPacket.criticalConstraints.unavailableItems.map(function (item) {
           return (item.object_name || ('#' + item.object_id)) + ' (' + item.availability + ')';
         }).join(', '));
       }
       if (retrievalPacket.criticalConstraints.relationshipConstraints?.length > 0) {
-        constraints.push('Rang buoc quan he gan day:\n' + retrievalPacket.criticalConstraints.relationshipConstraints.map(function (item) {
+        constraints.push('Ràng buộc quan hệ gần đây:\n' + retrievalPacket.criticalConstraints.relationshipConstraints.map(function (item) {
           const bits = [];
-          if (item.intimacy_level && item.intimacy_level !== 'none') bits.push('than mat=' + item.intimacy_level);
-          if (item.secrecy_state) bits.push('bi mat=' + item.secrecy_state);
-          if (item.consent_state && item.consent_state !== 'unknown') bits.push('dong thuan=' + item.consent_state);
-          if (item.emotional_aftermath) bits.push('du am=' + item.emotional_aftermath);
+          if (item.intimacy_level && item.intimacy_level !== 'none') bits.push('thân mật=' + item.intimacy_level);
+          if (item.secrecy_state) bits.push('bí mật=' + item.secrecy_state);
+          if (item.consent_state && item.consent_state !== 'unknown') bits.push('đồng thuận=' + item.consent_state);
+          if (item.emotional_aftermath) bits.push('dư âm=' + item.emotional_aftermath);
           return '- ' + item.pair_key + ': ' + bits.join(' | ');
         }).join('\n'));
       }
       if (constraints.length > 0) {
-        canonBits.push('Rang buoc cung:\n' + constraints.join('\n'));
+        canonBits.push('Ràng buộc cứng:\n' + constraints.join('\n'));
       }
     }
     if (retrievalPacket.relevantEvidence?.length > 0) {
-      canonBits.push('Bang chung lien quan:\n' + retrievalPacket.relevantEvidence.map(function (item) {
-        return '- ' + (item.summary || item.evidence_text || item.target_type || 'Bang chung');
+      canonBits.push('Bằng chứng liên quan:\n' + retrievalPacket.relevantEvidence.map(function (item) {
+        return '- ' + (item.summary || item.evidence_text || item.target_type || 'Bằng chứng');
       }).join('\n'));
     }
     if (canonBits.length > 0) {
@@ -756,34 +756,34 @@ export function buildPromptSystemParts(taskType, context = {}) {
     const memoryBlock = retrievalPacket.recentChapterMemory
       .map(function (item) {
         const parts = [];
-        parts.push('[' + (item.chapter_title || ('Chuong ' + (item.chapter_order + 1))) + ']');
-        if (item.summary) parts.push('Tom tat: ' + item.summary);
-        if (item.bridge_buffer) parts.push('Nhip van noi tiep: ' + item.bridge_buffer);
+        parts.push('[' + (item.chapter_title || ('Chương ' + (item.chapter_order + 1))) + ']');
+        if (item.summary) parts.push('Tóm tắt: ' + item.summary);
+        if (item.bridge_buffer) parts.push('Nhịp văn nối tiếp: ' + item.bridge_buffer);
         if (item.emotional_state?.mood || item.emotional_state?.activeConflict || item.emotional_state?.lastAction) {
-          parts.push('Du am cam xuc: ' + JSON.stringify(item.emotional_state));
+          parts.push('Dư âm cảm xúc: ' + JSON.stringify(item.emotional_state));
         }
         if (item.events?.length > 0) {
-          parts.push('Su kien then chot:\n' + item.events.map(function (event) {
-            return '- ' + (event.summary || event.op_type || 'Su kien');
+          parts.push('Sự kiện then chốt:\n' + item.events.map(function (event) {
+            return '- ' + (event.summary || event.op_type || 'Sự kiện');
           }).join('\n'));
         }
-        if (item.prose) parts.push('Van ban chuong:\n' + item.prose);
+        if (item.prose) parts.push('Văn bản chương:\n' + item.prose);
         return parts.join('\n');
       })
       .join('\n\n-----\n\n');
-    systemParts.push(`\n[BO NHO ${retrievalPacket.recentChapterMemory.length} CHUONG GAN NHAT]\n${memoryBlock}`);
+    systemParts.push(`\n[BỘ NHỚ ${retrievalPacket.recentChapterMemory.length} CHƯƠNG GẦN NHẤT]\n${memoryBlock}`);
   }
 
   // -- Layer 6.5: Plot Threads --
   if (plotThreads.length > 0) {
     var cappedThreads = plotThreads.slice(0, 10);
     const threadInfo = cappedThreads.map(function (pt) {
-      const typeMap = { main: 'Tuyen Chinh', subplot: 'Tuyen Phu', character_arc: 'Phat Trien Nhan Vat', mystery: 'Bi An', romance: 'Tinh Cam' };
-      const ptType = typeMap[pt.type] || 'Tuyen Truyen';
-      const mark = pt.is_focus_in_scene ? '[TIEU DIEM CANH] ' : '';
+      const typeMap = { main: 'Tuyến Chính', subplot: 'Tuyến Phụ', character_arc: 'Phát Triển Nhân Vật', mystery: 'Bí Ẩn', romance: 'Tình Cảm' };
+      const ptType = typeMap[pt.type] || 'Tuyến Truyện';
+      const mark = pt.is_focus_in_scene ? '[TIÊU ĐIỂM CẢNH] ' : '';
       return '- ' + mark + '[' + ptType + '] ' + pt.title + (pt.description ? ': ' + pt.description : '');
     }).join('\n');
-    systemParts.push('\n[CAC TUYEN TRUYEN DANG MO]\n' + threadInfo);
+    systemParts.push('\n[CÁC TUYẾN TRUYỆN ĐANG MỞ]\n' + threadInfo);
   }
 
   // -- Layer 7: Style DNA --
@@ -793,7 +793,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
       systemParts.push(styleDNALayer);
       const projectStyleDNA = listFromTemplate(promptTemplates.style_dna);
       if (projectStyleDNA.length > 0) {
-        systemParts.push('\n[DNA VAN PHONG CUA TRUYEN - PROJECT OVERRIDE]\n' + projectStyleDNA.map(function(rule, index) {
+        systemParts.push('\n[DNA VĂN PHONG CỦA TRUYỆN - PROJECT OVERRIDE]\n' + projectStyleDNA.map(function(rule, index) {
           return (index + 1) + '. ' + rule;
         }).join('\n'));
       }
@@ -802,8 +802,8 @@ export function buildPromptSystemParts(taskType, context = {}) {
       if (antiAIBlock) systemParts.push(antiAIBlock);
       const projectBlacklist = listFromTemplate(promptTemplates.anti_ai_blacklist);
       if (projectBlacklist.length > 0) {
-        systemParts.push('\n[TU/CUM CAN TRANH CUA TRUYEN - PROJECT BLACKLIST]\n' + [
-          'KHONG DUOC dung cac tu/cum sau trong van ban dau ra:',
+        systemParts.push('\n[TỪ/CỤM CẦN TRÁNH CỦA TRUYỆN - PROJECT BLACKLIST]\n' + [
+          'KHÔNG ĐƯỢC dùng các từ/cụm sau trong văn bản đầu ra:',
           ...projectBlacklist.map(function(item) { return '- ' + item; }),
         ].join('\n'));
       }
@@ -824,15 +824,15 @@ export function buildPromptSystemParts(taskType, context = {}) {
 
   // -- Layer 10: Length & Rhythm Anchor (reframed: positive > negative) --
   if (WRITING_TASKS_FOR_BRIDGE.has(taskType) && !skipWritingLayers) {
-    systemParts.push('\n[DO DAI VA NHIP DO]\n' + [
-      '1. Phat trien day du moi canh truoc khi chuyen tiep - moi hanh dong nho duoc mieu ta 3-5 cau, tao hinh anh song dong.',
-      '2. Suy nghi noi tam duoc dao sau it nhat 1 doan van day du.',
-      '3. Huong toi 2000-4000 tu moi lan sinh, dong gop vao muc tieu 7000 tu cho CA CHUONG (khong phai 1 lan).',
-      '4. Duy tri nhip ke lien tuc - moi cau day chuyen tiep sang cau sau tu nhien.',
-      '5. Neu gan het do dai output: dung lai o diem kich tinh, de ngo cho phan tiep. Tot hon la de doc gia them muon doc tiep hon la cuong ket thuc.',
-      '6. CAU TRUC DOAN VAN: 30-50% doan nen la doan 1-2 cau. Thong tin quan trong tach rieng thanh doan ngan. KHONG viet khoi van dai 5-6 cau lien tuc.',
-      '7. MOI DOAN toi da 80-100 tu. Doan dai hon thi tach thanh 2. Doc gia Viet doc nhanh, doan ngan de theo doi.',
-      '8. NHIP THO: Xen ke doan ngan (1-2 cau) va doan dai (3-4 cau) - nhu nhip tho van xuoi. Tranh viet deu deu cung nhip.',
+    systemParts.push('\n[ĐỘ DÀI VÀ NHỊP ĐỘ]\n' + [
+      '1. Phát triển đầy đủ mỗi cảnh trước khi chuyển tiếp - mỗi hành động nhỏ được miêu tả 3-5 câu, tạo hình ảnh sống động.',
+      '2. Suy nghĩ nội tâm được đào sâu ít nhất 1 đoạn văn đầy đủ.',
+      '3. Tôn trọng mục tiêu độ dài trong [NHIỆM VỤ]. Nếu nhiệm vụ không nêu mục tiêu riêng, hướng tới 2000-4000 từ mỗi lần sinh để đóng góp vào mục tiêu 7000 từ cho CẢ CHƯƠNG.',
+      '4. Duy trì nhịp kể liên tục - mỗi câu đẩy chuyển tiếp sang câu sau tự nhiên.',
+      '5. Nếu gần hết độ dài output: dừng lại ở điểm kịch tính, để ngỏ cho phần tiếp. Tốt hơn là để độc giả thêm muốn đọc tiếp hơn là cưỡng kết thúc.',
+      '6. CẤU TRÚC ĐOẠN VĂN: 30-50% đoạn nên là đoạn 1-2 câu. Thông tin quan trọng tách riêng thành đoạn ngắn. KHÔNG viết khối văn dài 5-6 câu liên tục.',
+      '7. MỖI ĐOẠN tối đa 80-100 từ. Đoạn dài hơn thì tách thành 2. Độc giả Việt đọc nhanh, đoạn ngắn dễ theo dõi.',
+      '8. NHỊP THỞ: Xen kẽ đoạn ngắn (1-2 câu) và đoạn dài (3-4 câu) - như nhịp thở văn xuôi. Tránh viết đều đều cùng nhịp.',
     ].join('\n'));
   }
 

@@ -27,16 +27,30 @@ function toggleOllamaMode() {
     useOllama = toggle.checked;
 
     if (useOllama) {
+        if (typeof setActiveTranslatorProvider === 'function') {
+            setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.OLLAMA);
+        } else if (typeof activeTranslatorProvider !== 'undefined') {
+            activeTranslatorProvider = 'ollama';
+        }
         if (typeof useProxy !== 'undefined' && useProxy) {
             useProxy = false;
             const proxyToggle = document.getElementById('useProxyToggle');
             const proxySettings = document.getElementById('proxySettings');
             const proxyStatus = document.getElementById('proxyStatus');
+            const customProxyToggle = document.getElementById('customProxyToggle');
+            const customProxySettings = document.getElementById('customProxySettings');
+            const customProxyStatus = document.getElementById('customProxyStatus');
             if (proxyToggle) proxyToggle.checked = false;
             if (proxySettings) proxySettings.style.display = 'none';
             if (proxyStatus) {
                 proxyStatus.textContent = 'Tắt';
                 proxyStatus.style.background = '';
+            }
+            if (customProxyToggle) customProxyToggle.checked = false;
+            if (customProxySettings) customProxySettings.style.display = 'none';
+            if (customProxyStatus) {
+                customProxyStatus.textContent = 'Tắt';
+                customProxyStatus.style.background = '';
             }
         }
         settings.style.display = 'block';
@@ -44,6 +58,9 @@ function toggleOllamaMode() {
         badge.classList.add('active');
         showToast('🦙 Đã chuyển sang Ollama Local API!', 'success');
     } else {
+        if (typeof setActiveTranslatorProvider === 'function') {
+            setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.GEMINI_DIRECT);
+        }
         settings.style.display = 'none';
         badge.textContent = 'Tắt';
         badge.classList.remove('active');
@@ -418,6 +435,9 @@ function loadOllamaSettings() {
             if (modelInput) modelInput.value = ollamaModel;
 
             if (useOllama) {
+                if (typeof setActiveTranslatorProvider === 'function') {
+                    setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.OLLAMA);
+                }
                 if (settingsDiv) settingsDiv.style.display = 'block';
                 if (badge) {
                     badge.textContent = 'Bật';
@@ -451,6 +471,9 @@ function loadOllamaSettings() {
             if (modelInput) modelInput.value = ollamaModel;
 
             if (useOllama) {
+                if (typeof setActiveTranslatorProvider === 'function') {
+                    setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.OLLAMA);
+                }
                 if (settingsDiv) settingsDiv.style.display = 'block';
                 if (badge) {
                     badge.textContent = 'Bật';

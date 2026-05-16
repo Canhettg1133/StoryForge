@@ -14,7 +14,7 @@ let schemaReadyPromise = null;
 
 function getPool() {
   if (!DATABASE_URL) {
-    throw new Error('Missing database connection string. Set STORYFORGE_DATABASE_URL or POSTGRES_URL in Vercel.');
+    throw new Error('Thiếu chuỗi kết nối database. Hãy cấu hình STORYFORGE_DATABASE_URL hoặc POSTGRES_URL trong Vercel.');
   }
 
   if (!pool) {
@@ -138,7 +138,7 @@ async function getSnapshot(res, workspaceSlug, accessHash, projectSlug) {
   const row = result.rows[0];
 
   if (!row) {
-    sendJson(res, 404, { error: 'Cloud snapshot not found.', code: 'CLOUD_SNAPSHOT_NOT_FOUND' });
+    sendJson(res, 404, { error: 'Không tìm thấy snapshot cloud.', code: 'CLOUD_SNAPSHOT_NOT_FOUND' });
     return;
   }
 
@@ -160,13 +160,13 @@ async function upsertSnapshot(req, res, workspaceSlug, accessHash) {
   const snapshotJson = String(body?.snapshotJson || '');
 
   if (!snapshotJson) {
-    sendJson(res, 400, { error: 'Missing snapshotJson.', code: 'CLOUD_SNAPSHOT_REQUIRED' });
+    sendJson(res, 400, { error: 'Thiếu snapshotJson.', code: 'CLOUD_SNAPSHOT_REQUIRED' });
     return;
   }
 
   if (snapshotJson.length > 4_000_000) {
     sendJson(res, 413, {
-      error: 'Snapshot qua lon cho cloud function hien tai. Hay giam kich thuoc hoac doi sang Blob/Storage khac.',
+      error: 'Snapshot quá lớn cho cloud function hiện tại. Hãy giảm kích thước hoặc đổi sang Blob/Storage khác.',
       code: 'CLOUD_SNAPSHOT_TOO_LARGE',
     });
     return;
@@ -185,7 +185,7 @@ async function upsertSnapshot(req, res, workspaceSlug, accessHash) {
   const existingHash = existing.rows[0]?.access_hash;
   if (existingHash && existingHash !== accessHash) {
     sendJson(res, 403, {
-      error: 'Snapshot nay dang thuoc ve mot access key khac.',
+      error: 'Snapshot này đang thuộc về một access key khác.',
       code: 'CLOUD_SNAPSHOT_FORBIDDEN',
     });
     return;
@@ -240,7 +240,7 @@ async function deleteSnapshot(res, workspaceSlug, accessHash, projectSlug) {
   );
 
   if (result.rowCount === 0) {
-    sendJson(res, 404, { error: 'Cloud snapshot not found.', code: 'CLOUD_SNAPSHOT_NOT_FOUND' });
+    sendJson(res, 404, { error: 'Không tìm thấy snapshot cloud.', code: 'CLOUD_SNAPSHOT_NOT_FOUND' });
     return;
   }
 
@@ -252,7 +252,7 @@ export default async function handler(req, res) {
     await ensureSchema();
   } catch (error) {
     sendJson(res, 500, {
-      error: error.message || 'Cloud database initialization failed.',
+      error: error.message || 'Không khởi tạo được database cloud.',
       code: 'CLOUD_DATABASE_UNAVAILABLE',
     });
     return;
@@ -267,7 +267,7 @@ export default async function handler(req, res) {
   const credentials = readCredentials(req);
   if (!credentials) {
     sendJson(res, 400, {
-      error: 'Missing Cloud Sync credentials.',
+      error: 'Thiếu thông tin đăng nhập Cloud Sync.',
       code: 'CLOUD_SYNC_MISSING_CREDENTIALS',
     });
     return;
@@ -295,7 +295,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'DELETE') {
       if (!projectSlug) {
-        sendJson(res, 400, { error: 'Missing projectSlug.', code: 'CLOUD_PROJECT_SLUG_REQUIRED' });
+        sendJson(res, 400, { error: 'Thiếu projectSlug.', code: 'CLOUD_PROJECT_SLUG_REQUIRED' });
         return;
       }
 
@@ -303,10 +303,10 @@ export default async function handler(req, res) {
       return;
     }
 
-    sendJson(res, 405, { error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' });
+    sendJson(res, 405, { error: 'Phương thức yêu cầu không được hỗ trợ.', code: 'METHOD_NOT_ALLOWED' });
   } catch (error) {
     sendJson(res, 500, {
-      error: error.message || 'Unexpected cloud sync error.',
+      error: error.message || 'Cloud Sync gặp lỗi ngoài dự kiến.',
       code: 'CLOUD_SYNC_UNEXPECTED_ERROR',
     });
   }

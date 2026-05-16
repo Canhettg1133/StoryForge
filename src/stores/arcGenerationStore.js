@@ -61,8 +61,8 @@ function stripChapterPrefix(title) {
 function normalizeGeneratedChapterTitle(title, chapterNumber) {
     const cleanTitle = stripChapterPrefix(title);
     return cleanTitle
-        ? `Chuong ${chapterNumber}: ${cleanTitle}`
-        : `Chuong ${chapterNumber}`;
+        ? `Chương ${chapterNumber}: ${cleanTitle}`
+        : `Chương ${chapterNumber}`;
 }
 
 function normalizeGeneratedOutline(outline, startingChapterIndex) {
@@ -89,7 +89,7 @@ function buildChapterBrief(chapter, meta, fallbackNumber) {
     }
     return {
         chapterNumber,
-        title: chapter?.title || `Chuong ${chapterNumber}`,
+        title: chapter?.title || `Chương ${chapterNumber}`,
         summary: meta?.summary || chapter?.summary || '',
         purpose,
         status: chapter?.status || 'draft',
@@ -112,7 +112,7 @@ function buildPriorGeneratedBriefs(generatedOutline, upToIndex, startingChapterI
     if (!generatedOutline?.chapters || upToIndex <= 0) return [];
     return generatedOutline.chapters.slice(0, upToIndex).map((chapter, index) => ({
         chapterNumber: startingChapterIndex + index + 1,
-        title: chapter?.title || `Chuong ${startingChapterIndex + index + 1}`,
+        title: chapter?.title || `Chương ${startingChapterIndex + index + 1}`,
         summary: chapter?.summary || '',
         purpose: chapter?.purpose || (Array.isArray(chapter?.key_events) ? chapter.key_events.join('; ') : ''),
         status: 'planned',
@@ -491,7 +491,7 @@ export function buildDraftQueue(generatedOutline, selectedDraftIndexes = [], sta
         outlineIndex,
         queueIndex,
         chapterIndex: startingChapterIndex + outlineIndex,
-        title: chapters[outlineIndex]?.title || `Chuong ${startingChapterIndex + outlineIndex + 1}`,
+        title: chapters[outlineIndex]?.title || `Chương ${startingChapterIndex + outlineIndex + 1}`,
         content: '',
         wordCount: 0,
         status: 'pending',
@@ -508,6 +508,9 @@ function getNormalizedChapterText(chapter = {}) {
         chapter?.title,
         chapter?.summary,
         chapter?.purpose,
+        chapter?.opening_state,
+        chapter?.handoff_from_previous,
+        chapter?.ending_state,
         Array.isArray(chapter?.key_events) ? chapter.key_events.join(' ') : '',
     ].filter(Boolean).join(' '));
 }
@@ -522,6 +525,24 @@ function hasReadablePlanBody(chapter = {}) {
     const summaryWords = countPlanWords(chapter?.summary || '');
     const keyEventCount = Array.isArray(chapter?.key_events) ? chapter.key_events.length : 0;
     return purposeWords >= 4 && (summaryWords >= 8 || keyEventCount > 0);
+}
+
+function getChapterEndingStateText(chapter = {}) {
+    return [
+        chapter?.ending_state,
+        chapter?.state_delta,
+    ].filter(Boolean).join(' ');
+}
+
+function getHandoffKeywordCoverage(previousEndingText = '', currentHandoffText = '') {
+    const previousKeywords = normalizePlanText(previousEndingText)
+        .split(' ')
+        .filter((word) => word.length >= 4 && !OUTLINE_PROGRESS_STOPWORDS.has(word))
+        .filter((word, index, array) => array.indexOf(word) === index)
+        .slice(0, 10);
+    const normalizedHandoff = normalizePlanText(currentHandoffText);
+    const matchedKeywords = previousKeywords.filter((word) => normalizedHandoff.includes(word));
+    return { previousKeywords, matchedKeywords };
 }
 
 function getResolutionSignal(chapter = {}) {
@@ -668,8 +689,8 @@ export function buildStoryProgressBudget({
         romanceMaxStep: 1,
         mysteryRevealAllowance: nextMilestone && Number(nextMilestone.percent) - fromPercent > 5 ? '0-1 minor reveal' : '1 minor reveal',
         powerProgressionCap: remainingInMacro != null && remainingInMacro <= safeBatchCount
-            ? 'co the tang cap neu day la cuoi cot moc'
-            : 'khong vuot tier lon trong batch nay',
+            ? 'có thể tăng cấp nếu đây là cuối cột mốc'
+            : 'không vượt tier lớn trong batch này',
         requiredBeatMix: 'at least one setup/build-up/consequence chapter',
         selectedMacroArc,
         nextMilestone,
@@ -687,8 +708,8 @@ export function buildStoryProgressBudget({
         batchStartsInsideMacro: batchWindow.batchStartsInsideMacro,
         isClampedToMacroRange: batchWindow.isClampedToMacroRange,
         macroProgressCap: !batchReachesMacroEnd && batchMacroOverlapCount > 0
-            ? 'batch nay chi duoc day mot phan cot moc, khong duoc xem nhu da di tron cot moc'
-            : 'batch nay co the cham moc ket thuc neu buildup da du',
+            ? 'batch này chỉ được đẩy một phần cột mốc, không được xem như đã đi trọn cột mốc'
+            : 'batch này có thể chạm mốc kết thúc nếu buildup đã đủ',
     };
 }
 
@@ -732,51 +753,63 @@ function hasThreadAnchor(chapter = {}) {
 const OUTLINE_ISSUE_SOURCE_MAP = {
     padding: {
         inputKind: 'mixed',
-        inputLabel: 'Noi dung dang thay + metadata',
+        inputLabel: 'Nội dung đang thấy + metadata',
         relevantFields: ['purpose', 'summary', 'thread_titles', 'key_events'],
-        explanation: 'Loi nay thuong den tu purpose/summary ban dang thay, nhung cung co the do thread_titles hoac key_events dang thieu.',
+        explanation: 'Lỗi này thường đến từ purpose/summary bạn đang thấy, nhưng cũng có thể do thread_titles hoặc key_events đang thiếu.',
     },
     repetitive: {
         inputKind: 'mixed',
-        inputLabel: 'Noi dung dang thay + metadata',
+        inputLabel: 'Nội dung đang thấy + metadata',
         relevantFields: ['title', 'purpose', 'summary', 'key_events'],
-        explanation: 'He thong doi chieu tieu de, purpose, summary va key_events giua cac chuong lien nhau.',
+        explanation: 'Hệ thống đối chiếu tiêu đề, purpose, summary và key_events giữa các chương liền nhau.',
     },
     'too-fast': {
         inputKind: 'mixed',
-        inputLabel: 'Noi dung dang thay + rang buoc he thong',
+        inputLabel: 'Nội dung đang thấy + ràng buộc hệ thống',
         relevantFields: ['purpose', 'summary', 'key_events', 'state_delta', 'arc_guard_note', 'storyProgressBudget'],
-        explanation: 'Danh gia nay dua vao noi dung dang thay va rang buoc pacing/progress budget cua batch hien tai.',
+        explanation: 'Đánh giá này dựa vào nội dung đang thấy và ràng buộc pacing/progress budget của batch hiện tại.',
     },
     'premature-resolution': {
         inputKind: 'mixed',
-        inputLabel: 'Noi dung dang thay + rang buoc he thong',
+        inputLabel: 'Nội dung đang thấy + ràng buộc hệ thống',
         relevantFields: ['purpose', 'summary', 'key_events', 'state_delta', 'arc_guard_note', 'selectedMacroArc'],
-        explanation: 'He thong dang doi chieu noi dung chuong voi pham vi macro arc va moc ket thuc hien tai.',
+        explanation: 'Hệ thống đang đối chiếu nội dung chương với phạm vi macro arc và mốc kết thúc hiện tại.',
     },
     'chapter-out-of-range': {
         inputKind: 'system',
-        inputLabel: 'Rang buoc he thong',
+        inputLabel: 'Ràng buộc hệ thống',
         relevantFields: ['selectedMacroArc.chapter_from', 'selectedMacroArc.chapter_to', 'startChapterNumber'],
-        explanation: 'Loi nay den tu pham vi chapter cua macro arc/batch, khong phai chi do text chuong.',
+        explanation: 'Lỗi này đến từ phạm vi chapter của macro arc/batch, không phải chỉ do text chương.',
     },
     'macro-drift': {
         inputKind: 'mixed',
-        inputLabel: 'Noi dung dang thay + metadata dai cuc',
+        inputLabel: 'Nội dung đang thấy + metadata đại cục',
         relevantFields: ['purpose', 'summary', 'key_events', 'objective_refs', 'state_delta', 'arc_guard_note'],
-        explanation: 'Validator dang so noi dung chuong voi objective/target state cua dai cuc.',
+        explanation: 'Validator đang so nội dung chương với objective/target state của đại cục.',
     },
     'macro-state-overshoot': {
         inputKind: 'metadata',
-        inputLabel: 'Metadata/rang buoc dai cuc',
+        inputLabel: 'Metadata/ràng buộc đại cục',
         relevantFields: ['state_delta', 'arc_guard_note', 'objective_refs', 'macroArcContract'],
-        explanation: 'Loi nay thuong den tu state_delta, arc_guard_note hoac hop dong dai cuc, khong chi tu summary.',
+        explanation: 'Lỗi này thường đến từ state_delta, arc_guard_note hoặc hợp đồng đại cục, không chỉ từ summary.',
     },
     'macro-forbidden-outcome': {
         inputKind: 'metadata',
-        inputLabel: 'Metadata/rang buoc dai cuc',
+        inputLabel: 'Metadata/ràng buộc đại cục',
         relevantFields: ['summary', 'key_events', 'macroArcContract.forbidden_outcomes'],
-        explanation: 'He thong dang so noi dung outline voi forbidden_outcomes cua macro arc.',
+        explanation: 'Hệ thống đang so nội dung outline với forbidden_outcomes của macro arc.',
+    },
+    'chapter-missing-handoff': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata nối mạch chương',
+        relevantFields: ['handoff_from_previous', 'opening_state', 'ending_state', 'state_delta'],
+        explanation: 'Lỗi này đến từ việc chapter trước có ending_state/state_delta nhưng chapter sau không khai báo cầu nhân quả tiếp nối.',
+    },
+    'chapter-handoff-weak': {
+        inputKind: 'mixed',
+        inputLabel: 'Nội dung đang thấy + metadata nối mạch',
+        relevantFields: ['handoff_from_previous', 'opening_state', 'summary', 'key_events'],
+        explanation: 'Validator đối chiếu handoff của chapter sau với ending_state/state_delta của chapter trước.',
     },
 };
 
@@ -795,7 +828,7 @@ export function describeOutlineValidationIssue(issue = {}) {
             inputKind: 'metadata',
             inputLabel: 'Metadata anchor',
             relevantFields: ['anchor_refs'],
-            explanation: 'Loi nay den tu anchor_refs va metadata chapter anchor, khong nam o text summary/purpose ban dang thay.',
+            explanation: 'Lỗi này đến từ anchor_refs và metadata chapter anchor, không nằm ở text summary/purpose bạn đang thấy.',
         };
     }
 
@@ -803,9 +836,9 @@ export function describeOutlineValidationIssue(issue = {}) {
         return {
             code,
             inputKind: 'mixed',
-            inputLabel: 'Noi dung dang thay + metadata anchor',
+            inputLabel: 'Nội dung đang thấy + metadata anchor',
             relevantFields: ['summary', 'purpose', 'key_events', 'anchor_refs'],
-            explanation: 'Validator dang so text chuong voi chapter anchor va ca anchor_refs di kem.',
+            explanation: 'Validator đang so text chương với chapter anchor và cả anchor_refs đi kèm.',
         };
     }
 
@@ -815,16 +848,16 @@ export function describeOutlineValidationIssue(issue = {}) {
             inputKind: 'metadata',
             inputLabel: 'Metadata dai cuc',
             relevantFields: ['objective_refs', 'state_delta', 'arc_guard_note', 'macroArcContract'],
-            explanation: 'Loi nay den tu rang buoc macro arc va metadata di kem cua outline.',
+            explanation: 'Lỗi này đến từ ràng buộc macro arc và metadata đi kèm của outline.',
         };
     }
 
     return {
         code,
         inputKind: 'visible',
-        inputLabel: 'Noi dung dang thay',
+        inputLabel: 'Nội dung đang thấy',
         relevantFields: ['title', 'purpose', 'summary'],
-        explanation: 'Loi nay chu yeu den tu cac field dang hien tren UI cua outline.',
+        explanation: 'Lỗi này chủ yếu đến từ các field đang hiện trên UI của outline.',
     };
 }
 
@@ -904,10 +937,10 @@ export function summarizeOutlineRevisionAssessment({
         resolvedIssueCount,
         introducedIssueCount,
         message: status === 'improved'
-            ? `Outline sau revise giam tu ${beforeIssueCount} xuong ${afterIssueCount} loi (${beforeBlockingIssueCount} -> ${afterBlockingIssueCount} loi chan).`
+            ? `Outline sau revise giảm từ ${beforeIssueCount} xuống ${afterIssueCount} lỗi (${beforeBlockingIssueCount} -> ${afterBlockingIssueCount} lỗi chặn).`
             : status === 'worse'
-                ? `Outline sau revise te hon: tu ${beforeIssueCount} thanh ${afterIssueCount} loi (${beforeBlockingIssueCount} -> ${afterBlockingIssueCount} loi chan).`
-                : `Outline sau revise khong cai thien so loi (${beforeIssueCount} -> ${afterIssueCount}, loi chan ${beforeBlockingIssueCount} -> ${afterBlockingIssueCount}).`,
+                ? `Outline sau revise tệ hơn: từ ${beforeIssueCount} thành ${afterIssueCount} lỗi (${beforeBlockingIssueCount} -> ${afterBlockingIssueCount} lỗi chặn).`
+                : `Outline sau revise không cải thiện số lỗi (${beforeIssueCount} -> ${afterIssueCount}, lỗi chặn ${beforeBlockingIssueCount} -> ${afterBlockingIssueCount}).`,
     };
 }
 
@@ -960,20 +993,20 @@ export function validateGeneratedOutline(generatedOutline, {
         if (macroRangeIsValid && (chapterAbsoluteNumber < macroStartChapter || chapterAbsoluteNumber > macroEndChapter)) {
             issues.push({
                 chapterIndex: index,
-                chapterTitle: current.title || `Chuong ${chapterAbsoluteNumber}`,
+                chapterTitle: current.title || `Chương ${chapterAbsoluteNumber}`,
                 code: 'chapter-out-of-range',
                 severity: 'error',
-                message: `Chapter ${chapterAbsoluteNumber} nam ngoai range da chot cua macro arc "${selectedMacroArc?.title || ''}" (${macroStartChapter}-${macroEndChapter}).`,
+                message: `Chapter ${chapterAbsoluteNumber} nằm ngoài range đã chốt của macro arc "${selectedMacroArc?.title || ''}" (${macroStartChapter}-${macroEndChapter}).`,
             });
         }
 
         if (!hasReadablePlanBody(current) || !hasThreadAnchor(current)) {
             issues.push({
                 chapterIndex: index,
-                chapterTitle: current.title || `Chuong ${index + 1}`,
+                chapterTitle: current.title || `Chương ${index + 1}`,
                 code: 'padding',
                 severity: 'warning',
-                message: 'Chuong thieu muc tieu ro, summary qua mong, hoac khong co diem neo thread/su kien.',
+                message: 'Chương thiếu mục tiêu rõ, summary quá mỏng, hoặc không có điểm neo thread/sự kiện.',
             });
         }
 
@@ -984,6 +1017,28 @@ export function validateGeneratedOutline(generatedOutline, {
                 previous.purpose,
                 Array.isArray(previous.key_events) ? previous.key_events.join(' ') : '',
             ].filter(Boolean).join(' '));
+            const previousEndingText = getChapterEndingStateText(previous);
+            const handoffText = String(current?.handoff_from_previous || '').trim();
+            if (String(previousEndingText || '').trim() && !handoffText) {
+                issues.push({
+                    chapterIndex: index,
+                    chapterTitle: current.title || `Chương ${index + 1}`,
+                    code: 'chapter-missing-handoff',
+                    severity: 'error',
+                    message: 'Chapter trước có ending_state/state_delta nhưng chapter này thiếu handoff_from_previous để nối nhân quả.',
+                });
+            } else if (String(previousEndingText || '').trim() && handoffText) {
+                const coverage = getHandoffKeywordCoverage(previousEndingText, handoffText);
+                if (coverage.previousKeywords.length >= 3 && coverage.matchedKeywords.length === 0) {
+                    issues.push({
+                        chapterIndex: index,
+                        chapterTitle: current.title || `Chương ${index + 1}`,
+                        code: 'chapter-handoff-weak',
+                        severity: 'warning',
+                        message: 'handoff_from_previous chưa có dấu hiệu bám vào ending_state/state_delta của chapter trước.',
+                    });
+                }
+            }
             if (
                 combinedText
                 && previousCombined
@@ -996,10 +1051,10 @@ export function validateGeneratedOutline(generatedOutline, {
             ) {
                 issues.push({
                     chapterIndex: index,
-                    chapterTitle: current.title || `Chuong ${index + 1}`,
+                    chapterTitle: current.title || `Chương ${index + 1}`,
                     code: 'repetitive',
                     severity: 'warning',
-                    message: 'Chapter nay lap y/purpose/summary qua sat voi chapter truoc.',
+                    message: 'Chapter này lặp ý/purpose/summary quá sát với chapter trước.',
                 });
             }
         }
@@ -1011,12 +1066,12 @@ export function validateGeneratedOutline(generatedOutline, {
             if (severity) {
                 issues.push({
                     chapterIndex: index,
-                    chapterTitle: current.title || `Chuong ${index + 1}`,
+                    chapterTitle: current.title || `Chương ${index + 1}`,
                     code: 'too-fast',
                     severity,
                     message: severity === 'error'
-                        ? 'Chapter co dau hieu day plot/reveal qua nhanh so voi budget tien do hien tai.'
-                        : 'Chapter co tin hieu day plot/reveal nhanh hon muc an toan, nen giam toc hoac doi mot phan ket qua thanh buildup/manh moi.',
+                        ? 'Chapter có dấu hiệu đẩy plot/reveal quá nhanh so với budget tiến độ hiện tại.'
+                        : 'Chapter có tín hiệu đẩy plot/reveal nhanh hơn mức an toàn, nên giảm tốc hoặc đổi một phần kết quả thành buildup/manh mối.',
                 });
             }
         }
@@ -1028,12 +1083,12 @@ export function validateGeneratedOutline(generatedOutline, {
             if (severity) {
                 issues.push({
                     chapterIndex: index,
-                    chapterTitle: current.title || `Chuong ${index + 1}`,
+                    chapterTitle: current.title || `Chương ${index + 1}`,
                     code: 'premature-resolution',
                     severity,
                     message: severity === 'error'
-                        ? `Chapter co dau hieu resolve som truoc khi ket thuc cot moc "${selectedMacroArc.title}".`
-                        : `Chapter co tin hieu cham vao phan resolve cua cot moc "${selectedMacroArc.title}" hoi som; nen chuyen bot thanh buildup/manh moi.`,
+                        ? `Chapter có dấu hiệu resolve sớm trước khi kết thúc cột mốc "${selectedMacroArc.title}".`
+                        : `Chapter có tín hiệu chạm vào phần resolve của cột mốc "${selectedMacroArc.title}" hơi sớm; nên chuyển bớt thành buildup/manh mối.`,
                 });
             }
         }
@@ -1045,7 +1100,7 @@ export function validateGeneratedOutline(generatedOutline, {
             chapterTitle: '',
             code: 'too-fast',
             severity: 'warning',
-            message: 'Batch chua co chapter buildup/setup/consequence ro rang.',
+            message: 'Batch chưa có chapter buildup/setup/consequence rõ ràng.',
         });
     }
 
@@ -1194,6 +1249,9 @@ function buildGeneratedChapterContext(chapter = {}) {
         title: chapter?.title || '',
         summary: chapter?.summary || '',
         purpose: chapter?.purpose || '',
+        opening_state: String(chapter?.opening_state || '').trim(),
+        handoff_from_previous: String(chapter?.handoff_from_previous || '').trim(),
+        ending_state: String(chapter?.ending_state || '').trim(),
         featured_characters: normalizeGeneratedListField(chapter?.featured_characters),
         primary_location: String(chapter?.primary_location || '').trim(),
         thread_titles: normalizeGeneratedListField(chapter?.thread_titles),
@@ -1211,6 +1269,9 @@ function buildGeneratedChapterFocusText(chapter = {}, extra = '') {
         context.title,
         context.purpose,
         context.summary,
+        context.opening_state,
+        context.handoff_from_previous,
+        context.ending_state,
         context.state_delta,
         ...context.featured_characters,
         ...context.thread_titles,
@@ -1236,12 +1297,15 @@ function buildGeneratedChapterPersistencePayload({
         project_id: projectId,
         arc_id: arcId,
         order_index: orderIndex,
-        title: title || chapter?.title || `Chuong ${orderIndex + 1}`,
+        title: title || chapter?.title || `Chương ${orderIndex + 1}`,
         summary: chapter?.summary || '',
         purpose: chapter?.purpose || JSON.stringify(chapter?.key_events || []),
         status,
         word_count_target: 7000,
         actual_word_count: actualWordCount,
+        opening_state: String(chapter?.opening_state || '').trim(),
+        handoff_from_previous: String(chapter?.handoff_from_previous || '').trim(),
+        ending_state: String(chapter?.ending_state || '').trim(),
         featured_characters: normalizeGeneratedListField(chapter?.featured_characters),
         primary_location: String(chapter?.primary_location || '').trim(),
         thread_titles: normalizeGeneratedListField(chapter?.thread_titles),
@@ -1718,7 +1782,7 @@ const useArcGenStore = create((set, get) => ({
                                 normalizeOutlineResult(parsed),
                                 startingChapterIndex,
                             );
-                            if (!outline) throw new Error('Unexpected outline format');
+                            if (!outline) throw new Error('Định dạng dàn ý không đúng.');
                             const nextState = get();
                             const derived = buildOutlineDerivedState({
                                 ...nextState,
@@ -1856,7 +1920,7 @@ const useArcGenStore = create((set, get) => ({
                                 normalizeOutlineResult(parsed),
                                 startingChapterIndex,
                             );
-                            if (!outline) throw new Error('Unexpected outline format');
+                            if (!outline) throw new Error('Định dạng dàn ý không đúng.');
                             const nextState = get();
                             const derived = buildOutlineDerivedState({
                                 ...nextState,
@@ -2021,6 +2085,9 @@ const useArcGenStore = create((set, get) => ({
                         chapterOutlinePurpose: chapter.purpose || '',
                         chapterOutlineSummary: chapter.summary,
                         chapterOutlineEvents: chapter.key_events || [],
+                        chapterOutlineOpeningState: chapter.opening_state || '',
+                        chapterOutlineHandoff: chapter.handoff_from_previous || '',
+                        chapterOutlineEndingState: chapter.ending_state || '',
                         chapterOutlineObjectiveRefs: chapter.objective_refs || [],
                         chapterOutlineAnchorRefs: chapter.anchor_refs || [],
                         chapterOutlineStateDelta: chapter.state_delta || '',
@@ -2139,7 +2206,7 @@ const useArcGenStore = create((set, get) => ({
                 status: 'blocked',
                 forced: false,
                 blockingIssueCount: commitDerived.outlineValidation.issues.filter((issue) => issue.severity === 'error').length,
-                message: 'Dan y van con loi blocking. Neu ban chi muon luu outline de sua tiep, hay dung hanh dong "Luu dan y bat chap".',
+                message: 'Dàn ý vẫn còn lỗi blocking. Nếu bạn chỉ muốn lưu outline để sửa tiếp, hãy dùng hành động "Lưu dàn ý bất chấp".',
             };
             set({
                 outlineValidation: commitDerived.outlineValidation,
@@ -2173,6 +2240,9 @@ const useArcGenStore = create((set, get) => ({
                 title: ch.title,
                 summary: ch.summary || '',
                 purpose: ch.purpose || JSON.stringify(ch.key_events || []),
+                opening_state: String(ch.opening_state || '').trim(),
+                handoff_from_previous: String(ch.handoff_from_previous || '').trim(),
+                ending_state: String(ch.ending_state || '').trim(),
                 status: 'outline',
                 word_count_target: 7000,
                 actual_word_count: 0,
@@ -2214,8 +2284,8 @@ const useArcGenStore = create((set, get) => ({
             forced: commitDerived.outlineValidation.hasBlockingIssues && force,
             blockingIssueCount: commitDerived.outlineValidation.issues.filter((issue) => issue.severity === 'error').length,
             message: commitDerived.outlineValidation.hasBlockingIssues && force
-                ? 'Da luu outline du con loi blocking. Ban co the mo lai de sua tiep.'
-                : 'Da luu outline vao truyen.',
+                ? 'Đã lưu outline dù còn lỗi blocking. Bạn có thể mở lại để sửa tiếp.'
+                : 'Đã lưu outline vào truyện.',
         };
         set({
             outlineValidation: commitDerived.outlineValidation,
@@ -2265,6 +2335,9 @@ const useArcGenStore = create((set, get) => ({
                 title: draft.title,
                 summary: outlineChapter?.summary || '',
                 purpose: outlineChapter?.purpose || '',
+                opening_state: String(outlineChapter?.opening_state || '').trim(),
+                handoff_from_previous: String(outlineChapter?.handoff_from_previous || '').trim(),
+                ending_state: String(outlineChapter?.ending_state || '').trim(),
                 status: 'draft',
                 word_count_target: 7000,
                 actual_word_count: draft.wordCount,
@@ -2555,7 +2628,7 @@ const useArcGenStore = create((set, get) => ({
                         try {
                             const parsed = parseAIJsonValue(text);
                             if (!isPlainObject(parsed) || !Array.isArray(parsed.milestones)) {
-                                throw new Error('Invalid milestones format');
+                                throw new Error('Định dạng mốc truyện không đúng.');
                             }
                             set({
                                 macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed, {
@@ -2640,7 +2713,7 @@ const useArcGenStore = create((set, get) => ({
                         try {
                             const parsed = parseAIJsonValue(text);
                             if (!isPlainObject(parsed) || !Array.isArray(parsed.milestones)) {
-                                throw new Error('Invalid milestones format');
+                                throw new Error('Định dạng mốc truyện không đúng.');
                             }
                             set({
                                 macroMilestoneSuggestions: normalizeMacroMilestonePayload(parsed, {
@@ -2704,7 +2777,7 @@ const useArcGenStore = create((set, get) => ({
                             const parsed = parseAIJsonValue(text);
                             const normalized = normalizeMacroContractAnalysisPayload(parsed, macroArc);
                             if (!normalized) {
-                                throw new Error('Invalid macro contract analysis format');
+                                throw new Error('Định dạng phân tích ràng buộc macro không đúng.');
                             }
                             resolve(normalized);
                         } catch (e) {
@@ -2848,7 +2921,7 @@ const useArcGenStore = create((set, get) => ({
                     onComplete: (text) => {
                         try {
                             const parsed = parseAIJsonValue(text);
-                            if (!isPlainObject(parsed)) throw new Error('Invalid audit format');
+                            if (!isPlainObject(parsed)) throw new Error('Định dạng kết quả kiểm tra không đúng.');
                             set({ lastAuditResult: parsed, isAuditingArc: false });
                         } catch (e) {
                             console.error('[ArcGen] Failed to parse audit result:', e, text);

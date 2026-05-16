@@ -10,6 +10,10 @@ import {
   WRITING_DEBUG_TASKS,
 } from '../../services/ai/writingRequestDebugger';
 import { TASK_TYPES } from '../../services/ai/router';
+import {
+  detectChapterPromptMismatch,
+  extractRequestedChapterNumbers,
+} from '../../services/ai/chapterPromptGuard';
 
 describe('phase10 Writing Request Debugger', () => {
   it('exposes the same core writer task modes as the editor AI panel', () => {
@@ -76,6 +80,68 @@ describe('phase10 Writing Request Debugger', () => {
     expect(expandContext.selectedText).toBe('Toàn bộ cảnh cần mở rộng.');
     expect(continueContext.bridgeBuffer.split(' ')).toHaveLength(150);
     expect(continueContext.bridgeBuffer).toContain('từ179');
+  });
+
+  it('detects when a free writing prompt targets a different explicit chapter', () => {
+    expect(extractRequestedChapterNumbers('Viet Chuong 10: Loi canh bao')).toEqual([10]);
+    expect(extractRequestedChapterNumbers('Tang 5000 tu, khong nhac so chuong')).toEqual([]);
+
+    const mismatch = detectChapterPromptMismatch({
+      userPrompt: 'Viet chuong 10: Lam Phong dot pha Truc Co.',
+      chapterTitle: 'Chuong 1: Thieu Nien Voi Co Ngoc',
+      chapterIndex: 0,
+    });
+
+    expect(mismatch).toMatchObject({
+      code: 'chapter_prompt_mismatch',
+      requestedChapterNumber: 10,
+      currentChapterNumber: 1,
+    });
+    expect(detectChapterPromptMismatch({
+      userPrompt: 'Viet chuong 10: Lam Phong dot pha Truc Co.',
+      chapterTitle: 'Chuong 10: Loi Canh Bao',
+      chapterIndex: 9,
+    })).toBeNull();
+  });
+
+  it('detects when a copied outline prompt matches another chapter without naming it', () => {
+    const chapters = [
+      {
+        id: 342,
+        order_index: 0,
+        title: 'Chuong 1: Thieu Nien Voi Co Ngoc',
+        summary: 'Lam Phong gap kho khan trong Luyen Khi va duoc Tran Lao Quai dua len Thanh Van Tong.',
+        purpose: 'Gioi thieu Lam Phong va co ngoc.',
+      },
+      {
+        id: 351,
+        order_index: 9,
+        title: 'Chuong 10: Loi Canh Bao',
+        summary: 'Voi su tro giup cua Lieu Uyen va no luc cua ban than, Lam Phong cuoi cung cung dot pha len canh gioi Truc Co, gay chan dong nho trong Thanh Van Tong.',
+        purpose: 'Lam Phong dot pha canh gioi, nhung cung doi mat voi mot loi canh bao truc tiep ve so phan.',
+      },
+    ];
+
+    const mismatch = detectChapterPromptMismatch({
+      userPrompt: 'Tom tat\nVoi su tro giup cua Lieu Uyen va no luc cua ban than, Lam Phong cuoi cung cung dot pha len canh gioi Truc Co, gay chan dong nho trong Thanh Van Tong.\n\nMuc tieu\nLam Phong dot pha canh gioi, nhung cung doi mat voi mot loi canh bao truc tiep ve so phan.',
+      chapterId: 342,
+      chapterTitle: 'Chuong 1: Thieu Nien Voi Co Ngoc',
+      chapterIndex: 0,
+    }, { chapters });
+
+    expect(mismatch).toMatchObject({
+      code: 'chapter_prompt_mismatch',
+      requestedChapterNumber: 10,
+      currentChapterNumber: 1,
+      matchedBy: 'outline_content',
+    });
+
+    expect(detectChapterPromptMismatch({
+      userPrompt: 'Tom tat\nVoi su tro giup cua Lieu Uyen va no luc cua ban than, Lam Phong cuoi cung cung dot pha len canh gioi Truc Co, gay chan dong nho trong Thanh Van Tong.',
+      chapterId: 351,
+      chapterTitle: 'Chuong 10: Loi Canh Bao',
+      chapterIndex: 9,
+    }, { chapters })).toBeNull();
   });
 
   it('registers the debugger route and navigation entries', () => {

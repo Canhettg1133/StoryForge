@@ -3,7 +3,7 @@ import db from './database.js';
 export async function deleteProjectCascade(projectId) {
   const normalizedProjectId = Number(projectId);
   if (!Number.isFinite(normalizedProjectId) || normalizedProjectId <= 0) {
-    throw new Error('Project ID khong hop le de xoa.');
+  throw new Error('ID dự án không hợp lệ để xóa.');
   }
 
   const projectPlotThreads = await db.plotThreads.where('project_id').equals(normalizedProjectId).toArray();

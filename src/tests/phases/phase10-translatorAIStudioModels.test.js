@@ -12,6 +12,13 @@ function createRuntimeContext(fetchImpl) {
     modelsList: { innerHTML: '' },
     modelCount: { textContent: '', style: {} },
     presetModelSelect: { innerHTML: '' },
+    aiStudioModelPicker: { innerHTML: '', style: {} },
+    aiStudioModelSelect: {
+      innerHTML: '',
+      value: '',
+      addEventListener() {},
+    },
+    aiStudioModelStatus: { textContent: '', className: '' },
   };
 
   const context = {
@@ -59,10 +66,12 @@ describe('phase10 translator AI Studio model discovery', () => {
 
     expect(html).toContain('onclick="fetchAIStudioFreeModels()"');
     expect(html).toContain('Lấy model AI Studio');
+    expect(html).toContain('id="aiStudioModelSelect"');
     expect(initScript).toContain('window.fetchAIStudioFreeModels = fetchAIStudioFreeModels');
+    expect(initScript).toContain('window.selectAIStudioFetchedModel = selectAIStudioFetchedModel');
   });
 
-  it('fetches AI Studio text models, enables them, and persists them for Gemini Direct translation', async () => {
+  it('fetches AI Studio text models for selection without enabling every discovered model', async () => {
     let requestedUrl = '';
     const { context, stored, toastMessages, elements } = createRuntimeContext(async (url) => {
       requestedUrl = String(url);
@@ -83,42 +92,40 @@ describe('phase10 translator AI Studio model discovery', () => {
 
     vm.runInContext(`
       apiKeys = ['direct-key-for-list-models'];
-      GEMINI_MODELS = [{ name: 'gemini-2.5-flash', quota: 5, enabled: false }];
+      GEMINI_MODELS = [{ name: 'gemini-2.5-flash', quota: 5, enabled: true }];
     `, context);
 
-    const imported = await context.fetchAIStudioFreeModels();
+    const discovered = await context.fetchAIStudioFreeModels();
 
     expect(requestedUrl).toContain('https://generativelanguage.googleapis.com/v1beta/models?key=direct-key-for-list-models');
-    expect(imported.map((model) => model.name)).toEqual([
+    expect(discovered.map((model) => model.name)).toEqual([
       'gemini-3.1-flash-lite-preview',
       'gemini-2.5-pro',
       'gemma-3-27b-it',
     ]);
 
     expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual([
-      'gemini-3.1-flash-lite-preview',
-      'gemini-2.5-pro',
-      'gemma-3-27b-it',
+      'gemini-2.5-flash',
     ]);
 
-    const persisted = JSON.parse(stored.get('novelTranslatorModels'));
-    expect(persisted).toEqual(expect.arrayContaining([
-      expect.objectContaining({ name: 'gemini-3.1-flash-lite-preview', enabled: true }),
-      expect.objectContaining({ name: 'gemini-2.5-pro', enabled: true }),
-      expect.objectContaining({ name: 'gemma-3-27b-it', enabled: true }),
-    ]));
-    expect(JSON.parse(stored.get('sf-active-direct-models'))).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'gemini-3.1-flash-lite-preview' }),
-      expect.objectContaining({ id: 'gemini-2.5-pro' }),
-      expect.objectContaining({ id: 'gemma-3-27b-it' }),
-    ]));
-    expect(elements.modelCount.textContent).toContain('3/4 models');
+    expect(stored.has('sf-active-direct-models')).toBe(false);
+    expect(elements.aiStudioModelSelect.innerHTML).toContain('gemini-2.5-pro');
+    expect(elements.aiStudioModelPicker.innerHTML).toContain('selectAIStudioFetchedModel');
     expect(elements.modelsList.innerHTML).toContain('selectOnlyGeminiModel(1)');
     expect(elements.modelsList.innerHTML).toContain('Chỉ dùng');
     expect(toastMessages.at(-1)).toEqual(expect.objectContaining({
       type: 'success',
-      message: expect.stringContaining('3 model'),
+      message: expect.stringContaining('Chọn 1 model'),
     }));
+
+    context.selectAIStudioFetchedModel('gemini-2.5-pro');
+
+    expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual([
+      'gemini-2.5-pro',
+    ]);
+    expect(JSON.parse(stored.get('sf-active-direct-models'))).toEqual([
+      expect.objectContaining({ id: 'gemini-2.5-pro' }),
+    ]);
   });
 
   it('can select one discovered AI Studio model as the only active translation model', async () => {
@@ -135,7 +142,7 @@ describe('phase10 translator AI Studio model discovery', () => {
 
     vm.runInContext('apiKeys = ["direct-key-for-list-models"]; GEMINI_MODELS = [];', context);
     await context.fetchAIStudioFreeModels();
-    context.selectOnlyGeminiModel(1);
+    context.selectAIStudioFetchedModel('gemma-3-27b-it');
 
     expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual(['gemma-3-27b-it']);
     expect(JSON.parse(stored.get('sf-active-direct-models'))).toEqual([
@@ -157,5 +164,28 @@ describe('phase10 translator AI Studio model discovery', () => {
       type: 'warning',
       message: 'Thêm ít nhất 1 Gemini Direct API key trước khi lấy model từ AI Studio.',
     });
+  });
+
+  it('uses only active Gemini Direct models when selecting model/key pairs for translation', () => {
+    const { context } = createRuntimeContext(async () => {
+      throw new Error('fetch is not used by model rotation');
+    });
+
+    vm.runInContext(
+      fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/gemini/model-rotation.js'), 'utf8'),
+      context,
+      { filename: 'public/translator-runtime/js/gemini/model-rotation.js' },
+    );
+
+    vm.runInContext(`
+      apiKeys = ['direct-key'];
+      GEMINI_MODELS = [
+        { name: 'disabled-flash', quota: 5, enabled: false },
+        { name: 'active-pro', quota: 5, enabled: true }
+      ];
+    `, context);
+
+    const pair = context.getBestAvailablePair();
+    expect(pair.model).toBe('active-pro');
   });
 });

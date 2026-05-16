@@ -15,6 +15,8 @@ import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import useCanonStore from '../../stores/canonStore';
 import CanonRepairDialog from '../canon/CanonRepairDialog';
+import { getCanonReportTitle } from '../../services/canon/reportLabels';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import './ContinuityBar.css';
 
 function getOutcomeClass(outcome) {
@@ -114,7 +116,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     const chapter = chapters.find((item) => item.id === activeChapterId);
     if (!chapter) return null;
     return {
-      title: chapter.title || `Chuong ${currentChapterIndex + 1}`,
+      title: chapter.title || `Chương ${currentChapterIndex + 1}`,
       number: currentChapterIndex >= 0 ? currentChapterIndex + 1 : null,
     };
   }, [chapters, activeChapterId, currentChapterIndex]);
@@ -128,12 +130,12 @@ export default function ContinuityBar({ isMobileLayout = false }) {
 
   const canonStatusLabel = useMemo(() => {
     const status = chapterCanon?.status || 'draft';
-    if (chapterCanon?.isStale) return 'Can phan tich lai';
-    if (status === 'canonical') return 'Da phan tich';
-    if (status === 'blocked') return 'Bi chan';
-    if (status === 'invalidated') return 'Vo hieu';
-    if (status === 'has_warnings') return 'Da phan tich';
-    return 'Chua phan tich';
+    if (chapterCanon?.isStale) return 'Cần phân tích lại';
+    if (status === 'canonical') return 'Đã phân tích';
+    if (status === 'blocked') return 'Bị chặn';
+    if (status === 'invalidated') return 'Vô hiệu';
+    if (status === 'has_warnings') return 'Đã phân tích';
+    return 'Chưa phân tích';
   }, [chapterCanon?.isStale, chapterCanon?.status]);
 
   const canonStatusKey = chapterCanon?.isStale ? 'stale' : (chapterCanon?.status || 'draft');
@@ -142,8 +144,8 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     && ['canonical', 'has_warnings'].includes(chapterCanon?.status)
     && (chapterCanon?.errorCount || 0) === 0;
   const canonActionLabel = chapterCanon?.status && chapterCanon.status !== 'draft'
-    ? 'Phan tich lai'
-    : (chapterCanon?.isStale ? 'Phan tich lai' : (isMobileLayout ? 'Phan tich' : 'Phan tich su that'));
+    ? 'Phân tích lại'
+    : (chapterCanon?.isStale ? 'Phân tích lại' : (isMobileLayout ? 'Phân tích' : 'Phân tích sự thật'));
   const canonActionClass = canonIsFreshAnalyzed
     ? 'continuity-bar-btn--success'
     : chapterCanon?.isStale
@@ -161,16 +163,16 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   const scopedRepairPreview = repairPreview?.chapterId === activeChapterId ? repairPreview : null;
   const hasCanonIssues = reports.length > 0;
   const canonIssueLabel = (chapterCanon?.errorCount || 0) > 0
-    ? `${chapterCanon.errorCount} loi canon`
+    ? `${chapterCanon.errorCount} lỗi canon`
     : (chapterCanon?.warningCount || 0) > 0
-      ? `${chapterCanon.warningCount} canh bao`
-      : `${reports.length} thong bao`;
+      ? `${chapterCanon.warningCount} cảnh báo`
+      : `${reports.length} thông báo`;
   const mobileCanonStatusLabel = (chapterCanon?.errorCount || 0) > 0
-    ? `${chapterCanon.errorCount} loi canon`
+    ? `${chapterCanon.errorCount} lỗi canon`
     : (chapterCanon?.warningCount || 0) > 0
-      ? `${chapterCanon.warningCount} canh bao`
+      ? `${chapterCanon.warningCount} cảnh báo`
       : canonStatusLabel;
-  const completionLabel = chapterDone ? 'Da hoan thanh' : 'Hoan thanh chuong';
+  const completionLabel = chapterDone ? 'Đã hoàn thành' : 'Hoàn thành chương';
   const completionClass = chapterDone ? 'continuity-bar-btn--success' : '';
 
   const openIssuesDialog = (event) => {
@@ -199,15 +201,15 @@ export default function ContinuityBar({ isMobileLayout = false }) {
       const result = await runChapterCompletion(activeChapterId, { mode: 'manual' });
       if (!result) return;
       if (result.kind === 'empty') {
-        alert('Chuong chua co noi dung de hoan thanh.');
+        alert('Chương chưa có nội dung để hoàn thành.');
         return;
       }
       if (!result.ok) {
-        alert(result.message || 'Khong the hoan thanh chuong.');
+        alert(result.message || 'Không thể hoàn thành chương.');
       }
     } catch (error) {
       console.error('[ContinuityBar] Chapter completion failed:', error);
-      alert(error?.message || 'Khong the hoan thanh chuong.');
+      alert(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
     }
   };
 
@@ -284,14 +286,14 @@ export default function ContinuityBar({ isMobileLayout = false }) {
               {!isMobileLayout && (
                 <div className="continuity-bar-current">
                   {canonStatusOk ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
-                  <span className="continuity-bar-label">Chuong hien tai:</span>
-                  <span className="continuity-bar-title">{currentChapterInfo?.title || 'Chuong hien tai'}</span>
+                  <span className="continuity-bar-label">Chương hiện tại:</span>
+                  <span className="continuity-bar-title">{currentChapterInfo?.title || 'Chương hiện tại'}</span>
                   {hasCanonIssues ? (
                     <button
                       type="button"
                       className={`${canonStatusClass} continuity-bar-status--button`}
                       onClick={openIssuesDialog}
-                      title="Mo chi tiet loi canon"
+                      title="Mở chi tiết lỗi canon"
                     >
                       {canonStatusOk ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
                       {canonStatusLabel}
@@ -307,7 +309,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                       type="button"
                       className={`continuity-bar-issue-trigger ${(chapterCanon?.errorCount || 0) > 0 ? 'continuity-bar-issue-trigger--error' : ''}`}
                       onClick={openIssuesDialog}
-                      title="Mo chi tiet loi canon"
+                      title="Mở chi tiết lỗi canon"
                     >
                       {canonIssueLabel}
                     </button>
@@ -317,7 +319,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
             {prevChapterInfo && (
               <div className="continuity-bar-previous">
                 <Clock size={13} />
-                <span className="continuity-bar-label">{isMobileLayout ? 'Chuong truoc:' : 'Tom tat chuong truoc:'}</span>
+                <span className="continuity-bar-label">{isMobileLayout ? 'Chương trước:' : 'Tóm tắt chương trước:'}</span>
                 <span className="continuity-bar-title continuity-bar-title--previous">{prevChapterInfo.title}</span>
               </div>
             )}
@@ -342,7 +344,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                   type="button"
                   className={`${canonStatusClass} continuity-bar-status continuity-bar-status--button continuity-bar-status--mobile-pill`}
                   onClick={openIssuesDialog}
-                  title="Mo chi tiet loi canon"
+                  title="Mở chi tiết lỗi canon"
                 >
                   {(chapterCanon?.errorCount || 0) > 0 ? <ShieldAlert size={12} /> : <ShieldCheck size={12} />}
                   {mobileCanonStatusLabel}
@@ -385,7 +387,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
             {prevChapterInfo && (
               <div className="continuity-bar-summary-block">
                 <div className="continuity-bar-summary-heading">
-                  Tom tat de noi tiep tu {prevChapterInfo.title}
+                  Tóm tắt để nối tiếp từ {prevChapterInfo.title}
                 </div>
                 <p className="continuity-bar-summary">{prevChapterInfo.summary}</p>
               </div>
@@ -401,15 +403,15 @@ export default function ContinuityBar({ isMobileLayout = false }) {
               <div>
                 <div className="continuity-issues-dialog__eyebrow">
                   <ShieldAlert size={14} />
-                  Kiem tra canon
+                  Kiểm tra canon
                 </div>
-                <h3>Loi va canh bao cua {currentChapterInfo?.title || 'chuong hien tai'}</h3>
+                <h3>Lỗi và cảnh báo của {currentChapterInfo?.title || 'chương hiện tại'}</h3>
               </div>
               <button
                 type="button"
                 className="btn btn-ghost btn-icon btn-sm"
                 onClick={() => setIssuesOpen(false)}
-                aria-label="Dong loi canon"
+                aria-label="Đóng lỗi canon"
               >
                 <X size={16} />
               </button>
@@ -426,7 +428,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                 <div className="continuity-issues-list">
                   {reports.map((report) => (
                     <div key={report.id || `${report.rule_code}-${report.message}`} className={`continuity-issue continuity-issue--${report.severity || 'info'}`}>
-                      <div className="continuity-issue__rule">{report.rule_code || report.severity || 'CANON_REPORT'}</div>
+              <div className="continuity-issue__rule">{getCanonReportTitle(report)}</div>
                       <div className="continuity-issue__message">{report.message}</div>
                       {report.evidence && <div className="continuity-issue__evidence">{report.evidence}</div>}
                       {isSceneCastReport(report) && (
@@ -461,7 +463,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                 </div>
               ) : (
                 <div className="continuity-issues-empty">
-                  Khong con loi canon cho chuong nay.
+                  Không còn lỗi canon cho chương này.
                 </div>
               )}
             </div>
@@ -474,7 +476,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                 disabled={!activeRevisionId || reports.length === 0 || scopedRepairPreview?.loading}
               >
                 {scopedRepairPreview?.loading ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-                Goi y sua tat ca loi canon
+                Gợi ý sửa tất cả lỗi canon
               </button>
             </div>
           </div>

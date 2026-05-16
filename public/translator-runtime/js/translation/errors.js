@@ -18,6 +18,7 @@
         TRANSLATION_CANCELLED: () => 'Đã hủy dịch.',
         MISSING_PROXY_KEY: () => 'Chưa nhập API Key proxy. Hãy thêm key proxy trước khi dịch.',
         MISSING_PROXY_URL: () => 'Chưa cấu hình Proxy Base URL. Hãy nhập endpoint proxy trước khi dịch.',
+        MISSING_PROXY_MODEL: () => 'Chưa chọn model proxy. Hãy chọn model trước khi dịch.',
         PROXY_TIMEOUT: ({ timeoutSeconds = 120, model }) => `Proxy không phản hồi sau ${timeoutSeconds} giây${model ? ` với model ${model}` : ''}. Kiểm tra server proxy hoặc giảm kích thước chunk.`,
         PROXY_RATE_LIMIT: () => 'Proxy đã vượt giới hạn rate limit. Hệ thống sẽ chờ một chút rồi thử lại.',
         PROXY_BACKEND_SUSPENDED: () => 'Proxy trả lỗi 403 vì key backend bị khóa hoặc bị tạm dừng. Hệ thống sẽ thử key khác nếu còn key khả dụng.',

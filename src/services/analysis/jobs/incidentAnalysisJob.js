@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { parseAIJsonValue } from '../../../utils/aiJson.js';
+import { toVietnameseErrorMessage } from '../../../utils/errorMessages.js';
 import { normalizeConsistencyRisk } from '../models/consistencyRisk.js';
 import { runIncidentAnalysis } from '../pipeline/incidentAnalyzer.js';
 import { buildCoherencePrompt } from '../prompts/coherencePrompt.js';
@@ -351,7 +352,7 @@ export async function runIncidentAnalysisJob({
   onProgress = () => { },
 } = {}) {
   if (!corpusId) {
-    const error = new Error('Missing corpusId for incident analysis job.');
+    const error = new Error('Thiếu corpusId cho job phân tích sự kiện lớn.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
@@ -364,7 +365,7 @@ export async function runIncidentAnalysisJob({
     consistencyRisks: toArray(payload.consistencyRisks),
   };
 
-  emitProgress(onProgress, 'segmentation', 0.05, 'Running base incident pipeline');
+  emitProgress(onProgress, 'segmentation', 0.05, 'Đang chạy pipeline sự kiện lớn nền.');
 
   const heuristicResult = runIncidentAnalysis(corpusId, normalizedPayload, options);
   const aiOptions = {
@@ -556,7 +557,7 @@ export async function runIncidentAnalysisJob({
       ...heuristicResult,
       aiApplied: aiSteps.length > 0,
       aiSteps,
-      aiError: error?.message || 'Unknown AI incident pipeline error',
+      aiError: toVietnameseErrorMessage(error, 'Lỗi AI chưa xác định trong pipeline sự kiện lớn.'),
     };
   }
 }

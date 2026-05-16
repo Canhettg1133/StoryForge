@@ -384,7 +384,7 @@ export function createCorpusRouter() {
     });
 
     if (!analysis || analysis.corpusId !== req.params.id) {
-      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+      return res.status(404).json({ error: 'Không tìm thấy bản phân tích.' });
     }
 
     const graph = await analysisRepository.getStoryGraphByAnalysisAsync(req.params.analysisId);
@@ -409,7 +409,7 @@ export function createCorpusRouter() {
     });
 
     if (!analysis || analysis.corpusId !== req.params.id) {
-      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+      return res.status(404).json({ error: 'Không tìm thấy bản phân tích.' });
     }
 
     const artifact = await ensureArtifactV3({
@@ -442,7 +442,7 @@ export function createCorpusRouter() {
     });
 
     if (!analysis || analysis.corpusId !== req.params.id) {
-      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+      return res.status(404).json({ error: 'Không tìm thấy bản phân tích.' });
     }
 
     const windows = await analysisRepository.listAnalysisWindowsByAnalysisAsync(req.params.analysisId);
@@ -463,7 +463,7 @@ export function createCorpusRouter() {
     });
 
     if (!analysis || analysis.corpusId !== req.params.id) {
-      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+      return res.status(404).json({ error: 'Không tìm thấy bản phân tích.' });
     }
 
     const artifact = await ensureArtifactV3({
@@ -472,7 +472,7 @@ export function createCorpusRouter() {
     });
     if (!artifact) {
       return res.status(409).json({
-        error: 'Artifact V3 chua san sang cho rerun scope.',
+        error: 'Artifact V3 chưa sẵn sàng cho rerun scope.',
       });
     }
 
@@ -488,7 +488,7 @@ export function createCorpusRouter() {
     const activeSession = await analysisRepository.getActiveExecutionSessionByAnalysisAsync(req.params.analysisId);
     if (activeSession) {
       return res.status(409).json({
-        error: 'Analysis da co mot rerun session dang chay.',
+        error: 'Analysis đã có một rerun session đang chạy.',
         activeSession,
       });
     }
@@ -587,7 +587,7 @@ export function createCorpusRouter() {
     } catch (error) {
       await analysisRepository.updateExecutionSession(session.id, {
         status: 'failed',
-        errorMessage: error?.message || 'Failed to enqueue rerun DAG',
+          errorMessage: error?.message || 'Không xếp hàng được DAG chạy lại.',
         releasedAt: Date.now(),
         completedAt: Date.now(),
       }).catch(() => {});
@@ -623,17 +623,17 @@ export function createCorpusRouter() {
     });
 
     if (!analysis || analysis.corpusId !== req.params.id) {
-      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+      return res.status(404).json({ error: 'Không tìm thấy bản phân tích.' });
     }
 
     const nodeId = String(req.params.nodeId || '').trim();
     if (!nodeId) {
-      return res.status(404).json({ error: 'Khong tim thay provenance cho node.' });
+      return res.status(404).json({ error: 'Không tìm thấy provenance cho node.' });
     }
 
     const provenance = await analysisRepository.getStoryGraphProvenanceAsync(req.params.analysisId, nodeId);
     if (!provenance) {
-      return res.status(404).json({ error: 'Khong tim thay node provenance.' });
+      return res.status(404).json({ error: 'Không tìm thấy node provenance.' });
     }
 
     return res.json({
@@ -782,7 +782,7 @@ export function createCorpusRouter() {
   router.patch('/:id/review-queue/:itemId', async (req, res) => {
     const item = await incidentFirstRepository.getReviewQueueItemByIdAsync(req.params.itemId);
     if (!item || item.corpusId !== req.params.id) {
-      return res.status(404).json({ error: 'Khong tim thay review item.' });
+      return res.status(404).json({ error: 'Không tìm thấy mục duyệt.' });
     }
 
     const payload = req.body || {};
@@ -807,7 +807,7 @@ export function createCorpusRouter() {
   router.delete('/analysis/:analysisId', async (req, res) => {
     const analysis = await analysisService.cancel(req.params.analysisId);
     if (!analysis) {
-      return res.status(404).json({ error: 'Khong tim thay ban phan tich.' });
+      return res.status(404).json({ error: 'Không tìm thấy bản phân tích.' });
     }
 
     return res.json(analysis);
@@ -826,7 +826,7 @@ export function createCorpusRouter() {
       });
     } catch (error) {
       return res.status(503).json({
-        error: error?.message || 'Khong the doc project snapshots tu Postgres.',
+        error: error?.message || 'Không thể đọc project snapshots từ Postgres.',
       });
     }
   });
@@ -845,7 +845,7 @@ export function createCorpusRouter() {
       return res.status(201).json(saved);
     } catch (error) {
       return res.status(503).json({
-        error: error?.message || 'Khong the luu project snapshot vao Postgres.',
+        error: error?.message || 'Không thể lưu project snapshot vào Postgres.',
       });
     }
   });
@@ -856,7 +856,7 @@ export function createCorpusRouter() {
     });
 
     if (!corpus) {
-      return res.status(404).json({ error: 'Khong tim thay corpus.' });
+      return res.status(404).json({ error: 'Không tìm thấy corpus.' });
     }
 
     return res.json(corpus);
@@ -867,7 +867,7 @@ export function createCorpusRouter() {
     const updated = await updateCorpusRecord(req.params.id, updates);
 
     if (!updated) {
-      return res.status(404).json({ error: 'Khong tim thay corpus.' });
+      return res.status(404).json({ error: 'Không tìm thấy corpus.' });
     }
 
     return res.json({
@@ -880,7 +880,7 @@ export function createCorpusRouter() {
   router.delete('/:id', async (req, res) => {
     const deleted = await removeCorpusRecord(req.params.id);
     if (!deleted) {
-      return res.status(404).json({ error: 'Khong tim thay corpus.' });
+      return res.status(404).json({ error: 'Không tìm thấy corpus.' });
     }
 
     return res.json({ success: true });

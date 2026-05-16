@@ -286,7 +286,7 @@ export async function fetchOpenAIProxyModels({ profile = getActiveOpenAIProxyPro
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(text || `Model list failed with status ${response.status}`);
+    throw new Error(text || `Không lấy được danh sách model. Mã lỗi ${response.status}.`);
   }
 
   return parseOpenAIModelIds(await response.json());

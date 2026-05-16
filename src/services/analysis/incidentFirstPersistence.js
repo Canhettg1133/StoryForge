@@ -444,7 +444,7 @@ export async function persistIncidentFirstArtifacts({
   if (!corpusId || !analysisId || !result || typeof result !== 'object') {
     return {
       persisted: false,
-      reason: 'Missing corpusId/analysisId/result.',
+      reason: 'Thiếu corpusId, analysisId hoặc kết quả phân tích.',
     };
   }
 

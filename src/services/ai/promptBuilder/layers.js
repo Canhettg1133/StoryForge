@@ -61,46 +61,46 @@ export function buildGrandStrategyLayer(
   if (hasPacingInfo) {
     var progressPercent = Math.round((currentChapterIndex / targetLength) * 100);
     var progressLines = [];
-    progressLines.push('Truyen du kien dai ' + targetLength + ' chuong. Hien tai: chuong ' + (currentChapterIndex + 1) + ' (' + progressPercent + '%).');
+    progressLines.push('Truyện dự kiến dài ' + targetLength + ' chương. Hiện tại: chương ' + (currentChapterIndex + 1) + ' (' + progressPercent + '%).');
     if (milestones && milestones.length > 0) {
       var nextMs = milestones.find(function(m) { return m.percent > progressPercent; });
       if (nextMs) {
-        progressLines.push('Cot moc ke tiep (' + nextMs.percent + '%): "' + nextMs.description + '".');
+        progressLines.push('Cột mốc kế tiếp (' + nextMs.percent + '%): "' + nextMs.description + '".');
       }
     }
-    parts.push('[TIEN DO]\n' + progressLines.join('\n'));
+    parts.push('[TIẾN ĐỘ]\n' + progressLines.join('\n'));
   }
 
   // Macro Arc
   if (currentMacroArc) {
     var macroLines = [];
-    macroLines.push('Cot moc lon hien tai: ' + currentMacroArc.title);
+    macroLines.push('Cột mốc lớn hiện tại: ' + currentMacroArc.title);
     if (currentMacroArc.description) {
-      macroLines.push('Mo ta: ' + currentMacroArc.description);
+      macroLines.push('Mô tả: ' + currentMacroArc.description);
     }
     if (currentMacroArc.chapter_from && currentMacroArc.chapter_to) {
-      macroLines.push('Pham vi: Chuong ' + currentMacroArc.chapter_from + ' den Chuong ' + currentMacroArc.chapter_to);
+      macroLines.push('Phạm vi: Chương ' + currentMacroArc.chapter_from + ' đến Chương ' + currentMacroArc.chapter_to);
     }
     if (currentMacroArc.emotional_peak) {
-      macroLines.push('Cam xuc can dat khi ket thuc: ' + currentMacroArc.emotional_peak);
+      macroLines.push('Cảm xúc cần đạt khi kết thúc: ' + currentMacroArc.emotional_peak);
     }
-    parts.push('[COT MOC LON]\n' + macroLines.join('\n'));
+    parts.push('[CỘT MỐC LỚN]\n' + macroLines.join('\n'));
   }
 
   // Arc
   if (currentArc) {
     var arcLines = [];
-    arcLines.push('Hoi truyen hien tai: ' + (currentArc.title || '(chua dat ten)'));
+    arcLines.push('Hồi truyện hiện tại: ' + (currentArc.title || '(chưa đặt tên)'));
     if (currentArc.goal) {
-      arcLines.push('Muc tieu hoi nay: ' + currentArc.goal);
+      arcLines.push('Mục tiêu hồi này: ' + currentArc.goal);
     }
     if (currentArc.chapter_start && currentArc.chapter_end) {
-      arcLines.push('Pham vi: Chuong ' + currentArc.chapter_start + ' den Chuong ' + currentArc.chapter_end);
+      arcLines.push('Phạm vi: Chương ' + currentArc.chapter_start + ' đến Chương ' + currentArc.chapter_end);
     }
     if (currentArc.power_level_start || currentArc.power_level_end) {
-      arcLines.push('Cap do suc manh: ' + (currentArc.power_level_start || '?') + ' \u2192 ' + (currentArc.power_level_end || '?'));
+      arcLines.push('Cấp độ sức mạnh: ' + (currentArc.power_level_start || '?') + ' \u2192 ' + (currentArc.power_level_end || '?'));
     }
-    parts.push('[HOI TRUYEN HIEN TAI]\n' + arcLines.join('\n'));
+    parts.push('[HỒI TRUYỆN HIỆN TẠI]\n' + arcLines.join('\n'));
   }
 
   // Unified constraints (single source of truth - no duplication)
@@ -108,26 +108,26 @@ export function buildGrandStrategyLayer(
   if (currentMacroArc && currentMacroArc.chapter_to && targetLength > 0) {
     var remainingInMacro = currentMacroArc.chapter_to - (currentChapterIndex + 1);
     if (remainingInMacro > 0) {
-      constraints.push('Con ' + remainingInMacro + ' chuong nua moi ket thuc cot moc "' + currentMacroArc.title + '".');
+      constraints.push('Còn ' + remainingInMacro + ' chương nữa mới kết thúc cột mốc "' + currentMacroArc.title + '".');
     }
   }
   if (currentArc && currentArc.chapter_end) {
     var remainingInArc = currentArc.chapter_end - (currentChapterIndex + 1);
     if (remainingInArc > 0) {
-      constraints.push('Con ' + remainingInArc + ' chuong nua moi ket thuc hoi nay.');
+      constraints.push('Còn ' + remainingInArc + ' chương nữa mới kết thúc hồi này.');
     }
   }
   if (ultimateGoal) {
-    constraints.push('Muc tieu cuoi cung cua bo truyen: "' + ultimateGoal + '" \u2014 chua den luc dat duoc.');
+    constraints.push('Mục tiêu cuối cùng của bộ truyện: "' + ultimateGoal + '" \u2014 chưa đến lúc đạt được.');
   }
 
   if (constraints.length > 0) {
-    parts.push('[RANG BUOC TIEN DO]\n' + constraints.map(function(c) { return '- ' + c; }).join('\n'));
+    parts.push('[RÀNG BUỘC TIẾN ĐỘ]\n' + constraints.map(function(c) { return '- ' + c; }).join('\n'));
   }
 
   if (parts.length === 0) return '';
 
-  return '[CHIEN LUOC & TIEN DO]\n' + parts.join('\n\n');
+  return '[CHIẾN LƯỢC & TIẾN ĐỘ]\n' + parts.join('\n\n');
 }
 
 // =============================================
@@ -151,34 +151,43 @@ export function buildChapterOutlineLayer(taskType, currentChapterOutline, chapte
     || currentChapterOutline.primaryLocation
   )) {
     const cur = [];
-    if (currentChapterOutline.title) cur.push('Tieu de: ' + currentChapterOutline.title);
-    if (currentChapterOutline.summary) cur.push('Noi dung can viet: ' + currentChapterOutline.summary);
+    if (currentChapterOutline.title) cur.push('Tiêu đề: ' + currentChapterOutline.title);
+    if (currentChapterOutline.summary) cur.push('Nội dung cần viết: ' + currentChapterOutline.summary);
     if (currentChapterOutline.purpose) cur.push('Purpose: ' + currentChapterOutline.purpose);
+    if (currentChapterOutline.openingState) {
+      cur.push('Trạng thái mở chương / điểm xuất phát: ' + currentChapterOutline.openingState);
+    }
+    if (currentChapterOutline.handoffFromPrevious) {
+      cur.push('Cầu nhân quả từ chương trước: ' + currentChapterOutline.handoffFromPrevious);
+    }
+    if (currentChapterOutline.endingState) {
+      cur.push('Trạng thái kết chương dự kiến: ' + currentChapterOutline.endingState);
+    }
     if (currentChapterOutline.stateDelta) {
-      cur.push('State delta / thay doi Character Live Canon du kien: ' + currentChapterOutline.stateDelta);
+      cur.push('State delta / thay đổi Character Live Canon dự kiến: ' + currentChapterOutline.stateDelta);
     }
     if (currentChapterOutline.featuredCharacters && currentChapterOutline.featuredCharacters.length > 0) {
-      cur.push('Nhan vat bat buoc bam sat: ' + currentChapterOutline.featuredCharacters.join(', '));
+      cur.push('Nhân vật bắt buộc bám sát: ' + currentChapterOutline.featuredCharacters.join(', '));
     }
     if (currentChapterOutline.primaryLocation) {
-      cur.push('Dia diem chinh: ' + currentChapterOutline.primaryLocation);
+      cur.push('Địa điểm chính: ' + currentChapterOutline.primaryLocation);
     }
     if (currentChapterOutline.threadTitles && currentChapterOutline.threadTitles.length > 0) {
-      cur.push('Tuyen truyen phai day: ' + currentChapterOutline.threadTitles.join(', '));
+      cur.push('Tuyến truyện phải đẩy: ' + currentChapterOutline.threadTitles.join(', '));
     }
     if (currentChapterOutline.requiredFactions && currentChapterOutline.requiredFactions.length > 0) {
-      cur.push('The luc can xuat hien: ' + currentChapterOutline.requiredFactions.join(', '));
+      cur.push('Thế lực cần xuất hiện: ' + currentChapterOutline.requiredFactions.join(', '));
     }
     if (currentChapterOutline.requiredObjects && currentChapterOutline.requiredObjects.length > 0) {
-      cur.push('Vat pham can xuat hien: ' + currentChapterOutline.requiredObjects.join(', '));
+      cur.push('Vật phẩm cần xuất hiện: ' + currentChapterOutline.requiredObjects.join(', '));
     }
     if (currentChapterOutline.keyEvents && currentChapterOutline.keyEvents.length > 0) {
       cur.push(
-        'Su kien bat buoc xay ra:\n' +
+        'Sự kiện bắt buộc xảy ra:\n' +
         currentChapterOutline.keyEvents.map(function (e) { return '- ' + e; }).join('\n')
       );
     }
-    parts.push('[NHIEM VU CHUONG NAY - BAM SAT, KHONG LAC SANG CHUONG KHAC]\n' + cur.join('\n'));
+    parts.push('[NHIỆM VỤ CHƯƠNG NÀY - BÁM SÁT, KHÔNG LẠC SANG CHƯƠNG KHÁC]\n' + cur.join('\n'));
   }
 
   if (chapterBlueprintContext) {
@@ -187,38 +196,38 @@ export function buildChapterOutlineLayer(taskType, currentChapterOutline, chapte
       ? chapterBlueprintContext.featured_characters
       : [];
     if (blueprintCharacters.length > 0) {
-      whitelistLines.push('Nhan vat uu tien: ' + blueprintCharacters.join(', '));
+      whitelistLines.push('Nhân vật ưu tiên: ' + blueprintCharacters.join(', '));
     }
     if (chapterBlueprintContext.primary_location) {
-      whitelistLines.push('Dia diem uu tien: ' + chapterBlueprintContext.primary_location);
+      whitelistLines.push('Địa điểm ưu tiên: ' + chapterBlueprintContext.primary_location);
     }
     if (Array.isArray(chapterBlueprintContext.required_factions) && chapterBlueprintContext.required_factions.length > 0) {
-      whitelistLines.push('The luc duoc phep/nen su dung: ' + chapterBlueprintContext.required_factions.join(', '));
+      whitelistLines.push('Thế lực được phép/nên sử dụng: ' + chapterBlueprintContext.required_factions.join(', '));
     }
     if (Array.isArray(chapterBlueprintContext.required_objects) && chapterBlueprintContext.required_objects.length > 0) {
-      whitelistLines.push('Vat pham duoc phep/nen su dung: ' + chapterBlueprintContext.required_objects.join(', '));
+      whitelistLines.push('Vật phẩm được phép/nên sử dụng: ' + chapterBlueprintContext.required_objects.join(', '));
     }
     if (Array.isArray(chapterBlueprintContext.required_terms) && chapterBlueprintContext.required_terms.length > 0) {
-      whitelistLines.push('Thuat ngu nen bam sat: ' + chapterBlueprintContext.required_terms.join(', '));
+      whitelistLines.push('Thuật ngữ nên bám sát: ' + chapterBlueprintContext.required_terms.join(', '));
     }
     if (whitelistLines.length > 0) {
-      whitelistLines.push('Chi duoc dung entity ngoai danh sach neu summary chuong hoac canon dang co bat buoc phai goi toi.');
-      whitelistLines.push('Khong tu y them nhan vat, dia diem, vat pham, the luc, hay thuat ngu moi neu chapter blueprint va canon chua cho phep ro rang.');
-      parts.push('[WHITELIST CHO CHUONG NAY - UU TIEN DUNG DUNG ENTITY DA DUOC CHI DINH]\n' + whitelistLines.join('\n'));
+      whitelistLines.push('Chỉ được dùng entity ngoài danh sách nếu summary chương hoặc canon đang có bắt buộc phải gọi tới.');
+      whitelistLines.push('Không tự ý thêm nhân vật, địa điểm, vật phẩm, thế lực, hay thuật ngữ mới nếu chapter blueprint và canon chưa cho phép rõ ràng.');
+      parts.push('[WHITELIST CHO CHƯƠNG NÀY - ƯU TIÊN DÙNG ĐÚNG ENTITY ĐÃ ĐƯỢC CHỈ ĐỊNH]\n' + whitelistLines.join('\n'));
     }
   }
 
   if (upcomingChapters && upcomingChapters.length > 0) {
     const fence = upcomingChapters
       .map(function (c, i) {
-        return '- Chuong tiep theo ' + (i + 1) + ': "' + c.title + '"' + (c.summary ? ' - ' + c.summary : '');
+        return '- Chương tiếp theo ' + (i + 1) + ': "' + c.title + '"' + (c.summary ? ' - ' + c.summary : '');
       })
       .join('\n');
-    parts.push('[CAC CHUONG TIEP THEO - TUYET DOI KHONG VIET TRUOC NOI DUNG NAY]\n' + fence);
+    parts.push('[CÁC CHƯƠNG TIẾP THEO - TUYỆT ĐỐI KHÔNG VIẾT TRƯỚC NỘI DUNG NÀY]\n' + fence);
   }
 
   if (parts.length === 0) return '';
-  return '\n[DAN Y TRUYEN]\n' + parts.join('\n\n');
+  return '\n[DÀN Ý TRUYỆN]\n' + parts.join('\n\n');
 }
 
 export function buildPreWriteValidationLayer(taskType, preWriteValidation) {
@@ -238,17 +247,17 @@ export function buildPreWriteValidationLayer(taskType, preWriteValidation) {
 
   const parts = [];
   if (blockingIssues.length > 0) {
-    parts.push('Loi chan truoc khi viet:\n' + blockingIssues.map(function (issue) {
+    parts.push('Lỗi chặn trước khi viết:\n' + blockingIssues.map(function (issue) {
       return '- ' + issue.message;
     }).join('\n'));
   }
   if (warnings.length > 0) {
-    parts.push('Canh bao anti-hallucination:\n' + warnings.map(function (issue) {
+    parts.push('Cảnh báo anti-hallucination:\n' + warnings.map(function (issue) {
       return '- ' + issue.message;
     }).join('\n'));
   }
 
-  return '\n[KIEM TRA TRUOC KHI VIET]\n' + parts.join('\n\n');
+  return '\n[KIỂM TRA TRƯỚC KHI VIẾT]\n' + parts.join('\n\n');
 }
 
 export function formatChapterBriefList(briefs, options) {
@@ -260,8 +269,8 @@ export function formatChapterBriefList(briefs, options) {
     const chapterNumber = Number.isFinite(Number(item.chapterNumber))
       ? Number(item.chapterNumber)
       : index + 1;
-    const title = item.title || ('Chuong ' + chapterNumber);
-    const summary = item.summary || item.purpose || '(chua co tom tat)';
+    const title = item.title || ('Chương ' + chapterNumber);
+    const summary = item.summary || item.purpose || '(chưa có tóm tắt)';
     return chapterNumber + '. ' + title + ' - ' + summary;
   });
   return header ? header + '\n' + lines.join('\n') : lines.join('\n');
@@ -271,48 +280,48 @@ export function formatStoryProgressBudget(storyProgressBudget) {
   if (!storyProgressBudget) return '';
   const parts = [];
   if (Number.isFinite(Number(storyProgressBudget.currentChapterCount))) {
-    parts.push('So chuong da co hien tai: ' + storyProgressBudget.currentChapterCount);
+    parts.push('Số chương đã có hiện tại: ' + storyProgressBudget.currentChapterCount);
   }
   if (Number.isFinite(Number(storyProgressBudget.batchStartChapter)) && Number.isFinite(Number(storyProgressBudget.batchEndChapter))) {
-    parts.push('Dot nay tao tu Chuong ' + storyProgressBudget.batchStartChapter + ' den Chuong ' + storyProgressBudget.batchEndChapter);
+    parts.push('Đợt này tạo từ Chương ' + storyProgressBudget.batchStartChapter + ' đến Chương ' + storyProgressBudget.batchEndChapter);
   }
   if (Number.isFinite(Number(storyProgressBudget.fromPercent)) && Number.isFinite(Number(storyProgressBudget.toPercent))) {
-    parts.push('Pham vi tien do batch nay: ' + storyProgressBudget.fromPercent + '% -> ' + storyProgressBudget.toPercent + '%');
+    parts.push('Phạm vi tiến độ batch này: ' + storyProgressBudget.fromPercent + '% -> ' + storyProgressBudget.toPercent + '%');
   }
   if (storyProgressBudget.mainPlotMaxStep != null) {
-    parts.push('Main plot progress toi da: +' + storyProgressBudget.mainPlotMaxStep + ' nac');
+    parts.push('Main plot progress tối đa: +' + storyProgressBudget.mainPlotMaxStep + ' nấc');
   }
   if (storyProgressBudget.romanceMaxStep != null) {
-    parts.push('Romance progress toi da: +' + storyProgressBudget.romanceMaxStep + ' nac');
+    parts.push('Romance progress tối đa: +' + storyProgressBudget.romanceMaxStep + ' nấc');
   }
   if (storyProgressBudget.mysteryRevealAllowance) {
-    parts.push('Muc do reveal bi an: ' + storyProgressBudget.mysteryRevealAllowance);
+    parts.push('Mức độ reveal bí ẩn: ' + storyProgressBudget.mysteryRevealAllowance);
   }
   if (storyProgressBudget.powerProgressionCap) {
-    parts.push('Gioi han power progression: ' + storyProgressBudget.powerProgressionCap);
+    parts.push('Giới hạn power progression: ' + storyProgressBudget.powerProgressionCap);
   }
   if (storyProgressBudget.requiredBeatMix) {
-    parts.push('Beat mix bat buoc: ' + storyProgressBudget.requiredBeatMix);
+    parts.push('Beat mix bắt buộc: ' + storyProgressBudget.requiredBeatMix);
   }
   if (storyProgressBudget.remainingInMacro != null) {
-    parts.push('So chuong con lai truoc khi ket thuc macro arc: ' + storyProgressBudget.remainingInMacro);
+    parts.push('Số chương còn lại trước khi kết thúc macro arc: ' + storyProgressBudget.remainingInMacro);
   }
   if (Number.isFinite(Number(storyProgressBudget.macroStartChapter)) && Number.isFinite(Number(storyProgressBudget.macroEndChapter)) && Number(storyProgressBudget.macroEndChapter) > 0) {
-    parts.push('Pham vi macro arc dang khoa: Chuong ' + storyProgressBudget.macroStartChapter + ' -> Chuong ' + storyProgressBudget.macroEndChapter);
+    parts.push('Phạm vi macro arc đang khóa: Chương ' + storyProgressBudget.macroStartChapter + ' -> Chương ' + storyProgressBudget.macroEndChapter);
   }
   if (Number.isFinite(Number(storyProgressBudget.batchMacroOverlapCount)) && Number(storyProgressBudget.batchMacroOverlapCount) > 0) {
-    parts.push('Batch nay di qua ' + storyProgressBudget.batchMacroOverlapCount + '/' + storyProgressBudget.macroSpan + ' chuong cua macro arc (' + storyProgressBudget.macroCoveragePercent + '%)');
+    parts.push('Batch này đi qua ' + storyProgressBudget.batchMacroOverlapCount + '/' + storyProgressBudget.macroSpan + ' chương của macro arc (' + storyProgressBudget.macroCoveragePercent + '%)');
   }
   if (storyProgressBudget.chaptersRemainingAfterBatchInMacro != null) {
-    parts.push('Sau batch nay van con ' + storyProgressBudget.chaptersRemainingAfterBatchInMacro + ' chuong nua moi toi cuoi macro arc');
+    parts.push('Sau batch này vẫn còn ' + storyProgressBudget.chaptersRemainingAfterBatchInMacro + ' chương nữa mới tới cuối macro arc');
   }
   if (storyProgressBudget.macroProgressCap) {
-    parts.push('Gioi han rieng cua macro arc: ' + storyProgressBudget.macroProgressCap);
+    parts.push('Giới hạn riêng của macro arc: ' + storyProgressBudget.macroProgressCap);
   }
   if (storyProgressBudget.nextMilestone?.label || storyProgressBudget.nextMilestone?.title) {
     const label = storyProgressBudget.nextMilestone.label || storyProgressBudget.nextMilestone.title;
     const percent = storyProgressBudget.nextMilestone.percent != null ? ' (' + storyProgressBudget.nextMilestone.percent + '%)' : '';
-    parts.push('Cot moc tiep theo: ' + label + percent);
+    parts.push('Cột mốc tiếp theo: ' + label + percent);
   }
   return parts.join('\n');
 }
@@ -323,7 +332,7 @@ export function buildMacroArcContractLayer(taskType, macroArcContract) {
     return '';
   }
   return formatMacroArcContract(macroArcContract, {
-    header: '[HOP DONG DAI CUC BAT BUOC]',
+    header: '[HỢP ĐỒNG ĐẠI CỤC BẮT BUỘC]',
   });
 }
 
@@ -411,9 +420,9 @@ export function buildSingleChapterOutlineBudget({
       ? '0-1 minor reveal'
       : '1 minor reveal',
     powerProgressionCap: remainingInMacro != null && remainingInMacro > 0
-      ? 'khong vuot tier lon trong chuong nay'
-      : 'co the nhich nhe neu day la chuong sat cot moc',
-    requiredBeatMix: 'uu tien buildup / consequence / setup neu cot moc lon con xa',
+      ? 'không vượt tier lớn trong chương này'
+      : 'có thể nhích nhẹ nếu đây là chương sát cột mốc',
+    requiredBeatMix: 'ưu tiên buildup / consequence / setup nếu cột mốc lớn còn xa',
     nextMilestone,
     remainingInMacro,
   };
@@ -442,34 +451,34 @@ export function buildOutlinePlannerLayer(
   const budgetText = formatStoryProgressBudget(effectiveBudget);
 
   if (budgetText) {
-    parts.push('[STORY PROGRESS BUDGET - CHUONG NAY]\n' + budgetText);
+    parts.push('[STORY PROGRESS BUDGET - CHƯƠNG NÀY]\n' + budgetText);
   }
 
   if (chapterText || Number.isFinite(Number(chapterSceneCount))) {
     const chapterLines = [];
-    chapterLines.push('So canh dang co trong chuong: ' + (Number(chapterSceneCount) || 0));
+    chapterLines.push('Số cảnh đang có trong chương: ' + (Number(chapterSceneCount) || 0));
     chapterLines.push(chapterText
-      ? 'Chuong hien tai da co van ban. Hay uu tien doi chieu beat da viet truoc khi de xuat beat moi.'
-      : 'Chuong hien tai chua co van ban. Neu da co dan y, hay xuat phat tu dan y do; neu chua co dan y, moi lap dan y cho chinh chuong nay.');
-    parts.push('[TRANG THAI CHUONG HIEN TAI]\n' + chapterLines.join('\n'));
+      ? 'Chương hiện tại đã có văn bản. Hãy ưu tiên đối chiếu beat đã viết trước khi đề xuất beat mới.'
+      : 'Chương hiện tại chưa có văn bản. Nếu đã có dàn ý, hãy xuất phát từ dàn ý đó; nếu chưa có dàn ý, mới lập dàn ý cho chính chương này.');
+    parts.push('[TRẠNG THÁI CHƯƠNG HIỆN TẠI]\n' + chapterLines.join('\n'));
   }
 
   if (currentChapterOutline?.keyEvents?.length > 0) {
     const coverageLines = currentChapterOutline.keyEvents.map((eventText) => {
       const coverage = classifyOutlineBeatCoverage(eventText, chapterText);
       const matched = coverage.matchedKeywords.length > 0
-        ? ' | tu khoa trung: ' + coverage.matchedKeywords.join(', ')
+        ? ' | từ khóa trùng: ' + coverage.matchedKeywords.join(', ')
         : '';
       const statusLabel = coverage.status === 'covered'
-        ? 'co kha nang da viet'
+        ? 'có khả năng đã viết'
         : coverage.status === 'maybe'
-          ? 'co tin hieu mot phan'
-          : 'chua thay dau hieu ro';
+          ? 'có tín hiệu một phần'
+          : 'chưa thấy dấu hiệu rõ';
       return '- ' + statusLabel + ': ' + eventText + matched;
     });
 
     parts.push(
-      '[DOI CHIEU DAN Y VA NOI DUNG DA VIET - HEURISTIC, CHI DUNG DE DOI CHIEU]\n'
+      '[ĐỐI CHIẾU DÀN Ý VÀ NỘI DUNG ĐÃ VIẾT - HEURISTIC, CHỈ DÙNG ĐỂ ĐỐI CHIẾU]\n'
       + coverageLines.join('\n')
     );
   }
@@ -486,7 +495,7 @@ export function formatMacroMilestoneList(milestones) {
     const chapterRange = item?.chapter_from || item?.chapter_to
       ? ' [Ch.' + (item?.chapter_from || '?') + '-' + (item?.chapter_to || '?') + ']'
       : '';
-    const emotional = item?.emotional_peak ? '\nCam xuc dich: ' + item.emotional_peak : '';
+    const emotional = item?.emotional_peak ? '\nCảm xúc đích: ' + item.emotional_peak : '';
     const contract = compileMacroArcContract(item);
     const contractBits = [];
     if (contract?.objectives?.length > 0) {
@@ -504,7 +513,7 @@ export function formatMacroMilestoneList(milestones) {
       }).join(' | '));
     }
     const contractText = contractBits.length > 0 ? '\nContract: ' + contractBits.join('\n') : '';
-    return number + '. ' + (item?.title || 'Cot moc') + chapterRange + '\nMo ta: ' + (item?.description || '') + emotional + contractText;
+    return number + '. ' + (item?.title || 'Cột mốc') + chapterRange + '\nMô tả: ' + (item?.description || '') + emotional + contractText;
   }).join('\n\n');
 }
 
@@ -524,25 +533,25 @@ export function buildBridgeMemoryLayer(taskType, bridgeBuffer, emotionalState, t
 
   if (bridgeBuffer) {
     parts.push(
-      'Doan van ket thuc chuong truoc (viet tiep TU DAY, KHONG lap lai, KHONG mo dau lai tu dau):\n' +
+      'Đoạn văn kết thúc chương trước (viết tiếp TỪ ĐÂY, KHÔNG lặp lại, KHÔNG mở đầu lại từ đầu):\n' +
       '"""\n' + bridgeBuffer + '\n"""'
     );
   }
 
   if (emotionalState) {
     const stateParts = [];
-    if (emotionalState.mood) stateParts.push('Trang thai cam xuc: ' + emotionalState.mood);
-    if (emotionalState.activeConflict) stateParts.push('Xung dot dang mo: ' + emotionalState.activeConflict);
-    if (emotionalState.lastAction) stateParts.push('Hanh dong cuoi: ' + emotionalState.lastAction);
-    if (tensionLevel != null) stateParts.push('Muc do cang thang: ' + tensionLevel + '/10');
+    if (emotionalState.mood) stateParts.push('Trạng thái cảm xúc: ' + emotionalState.mood);
+    if (emotionalState.activeConflict) stateParts.push('Xung đột đang mở: ' + emotionalState.activeConflict);
+    if (emotionalState.lastAction) stateParts.push('Hành động cuối: ' + emotionalState.lastAction);
+    if (tensionLevel != null) stateParts.push('Mức độ căng thẳng: ' + tensionLevel + '/10');
     if (stateParts.length > 0) {
-      parts.push('Trang thai nhan vat khi ket thuc chuong truoc:\n' + stateParts.join('\n'));
+      parts.push('Trạng thái nhân vật khi kết thúc chương trước:\n' + stateParts.join('\n'));
     }
   }
 
   if (parts.length === 0) return '';
 
-  return '\n[DIEM NOI MACH TRUYEN - BAT BUOC DOC TRUOC KHI VIET]\n' + parts.join('\n\n');
+  return '\n[ĐIỂM NỐI MẠCH TRUYỆN - BẮT BUỘC ĐỌC TRƯỚC KHI VIẾT]\n' + parts.join('\n\n');
 }
 
 
@@ -585,40 +594,40 @@ export function buildAuthorDNALayer(taskType, writingStyle, chapterIndex, target
   const role = getAuthorRole(writingStyle || 'thuan_viet', chapterIndex, targetLength);
   const lines = [];
 
-  lines.push('[LINH HON TAC GIA]');
+  lines.push('[LINH HỒN TÁC GIẢ]');
   lines.push('');
-  lines.push('VAI TRO CUA BAN: Ban la ' + role + '.');
+  lines.push('VAI TRÒ CỦA BẠN: Bạn là ' + role + '.');
   lines.push('');
-  lines.push('TRIET LY VIET (BAT BUOC INTERNALIZE):');
-  lines.push('1. Viet bang cam xuc, khong phai thong tin.');
-  lines.push('   SAI: "Canh gioi han dot pha len Truc Co ky."');
-  lines.push('   DUNG: "Linh hai trong nguoi han bot nhien vo vun - roi tai sinh, manh liet hon gap boi."');
-  lines.push('2. Moi canh PHAI thay doi trang thai nhan vat. Truoc canh: nhan vat muon/so/nghi gi? Sau canh: con nguyen ven khong?');
-  lines.push('3. Doc gia CAM truoc, HIEU sau. Khong bao gio giai thich truoc khi de doc gia trai nghiem.');
-  lines.push('4. Moi cau phai "lam mot viec": mo ta, day chuyen, tiet lo, HOAC gay cam xuc. Cau khong lam duoc gi thi cat.');
+  lines.push('TRIẾT LÝ VIẾT (BẮT BUỘC INTERNALIZE):');
+  lines.push('1. Viết bằng cảm xúc, không phải thông tin.');
+  lines.push('   SAI: "Cảnh giới hắn đột phá lên Trúc Cơ kỳ."');
+  lines.push('   ĐÚNG: "Linh hải trong người hắn bỗng nhiên vỡ vụn - rồi tái sinh, mãnh liệt hơn gấp bội."');
+  lines.push('2. Mỗi cảnh PHẢI thay đổi trạng thái nhân vật. Trước cảnh: nhân vật muốn/sợ/nghĩ gì? Sau cảnh: còn nguyên vẹn không?');
+  lines.push('3. Độc giả CẢM trước, HIỂU sau. Không bao giờ giải thích trước khi để độc giả trải nghiệm.');
+  lines.push('4. Mỗi câu phải "làm một việc": mô tả, đẩy chuyển, tiết lộ, HOẶC gây cảm xúc. Câu không làm được gì thì cắt.');
 
     // Only add emotional goals for FULL_WRITING tasks.
   if (isFullWriting) {
     lines.push('');
-    lines.push('MUC TIEU CAM XUC CHUONG NAY:');
+    lines.push('MỤC TIÊU CẢM XÚC CHƯƠNG NÀY:');
 
     const hookEmotion = currentChapterOutline?.summary
-      ? 'Cuon hut doc gia ngay lap tuc qua: ' + currentChapterOutline.summary.substring(0, 80)
-      : 'Tao hook manh me ngay dong dau tien - doc gia phai muon doc tiep';
+      ? 'Cuốn hút độc giả ngay lập tức qua: ' + currentChapterOutline.summary.substring(0, 80)
+      : 'Tạo hook mạnh mẽ ngay dòng đầu tiên - độc giả phải muốn đọc tiếp';
     const peakEmotion = currentMacroArc?.emotional_peak
       ? currentMacroArc.emotional_peak
-      : 'Day len muc cam xuc cao nhat co the trong canh nay';
-    const cliffhanger = 'De lai it nhat mot cau hoi chua duoc tra loi - doc gia phai muon sang chuong sau';
+      : 'Đẩy lên mức cảm xúc cao nhất có thể trong cảnh này';
+    const cliffhanger = 'Để lại ít nhất một câu hỏi chưa được trả lời - độc giả phải muốn sang chương sau';
 
-    lines.push('- DAU CHUONG (hook): ' + hookEmotion);
-    lines.push('- DINH DIEM (peak): ' + peakEmotion);
-    lines.push('- CUOI CHUONG (cliffhanger): ' + cliffhanger);
+    lines.push('- ĐẦU CHƯƠNG (hook): ' + hookEmotion);
+    lines.push('- ĐỈNH ĐIỂM (peak): ' + peakEmotion);
+    lines.push('- CUỐI CHƯƠNG (cliffhanger): ' + cliffhanger);
   } else {
     // STYLE_ONLY: remind the model not to alter story direction.
     lines.push('');
-    lines.push('LUU Y QUAN TRONG (STYLE_ONLY MODE):');
-    lines.push('Ban dang lam viec voi text DA CO SAN. KHONG duoc thay doi huong cam xuc hay cot truyen.');
-    lines.push('Chi nang cap van phong, nhip dieu, tu ngu theo Style DNA ben duoi.');
+    lines.push('LƯU Ý QUAN TRỌNG (STYLE_ONLY MODE):');
+    lines.push('Bạn đang làm việc với text ĐÃ CÓ SẴN. KHÔNG được thay đổi hướng cảm xúc hay cốt truyện.');
+    lines.push('Chỉ nâng cấp văn phong, nhịp điệu, từ ngữ theo Style DNA bên dưới.');
   }
 
   return lines.join('\n');
@@ -643,89 +652,89 @@ export function buildStyleDNALayer(taskType, writingStyle) {
 
   if (writingStyle === 'han_viet') {
     return `
-[VAN PHONG DNA - HAN VIET / SANGTACVIET STYLE]
+[VĂN PHONG DNA - HÁN VIỆT / SANGTACVIET STYLE]
 
-1. TU DIEN BAT BUOC DUNG - KHONG DUOC THUAN VIET HOA:
-Xung ho: nguoi, han, nang, lao, tieu tu, dao huu, huynh, de, ty, muoi, lao phu
-Trang thai: bang bac, lanh mang, tham thuy, u am, hung hon, kinh nguoi, uy ap
-Hanh dong: thi trien, van chuyen, dot pha, ngung ket, tan loan, thu liem, tung hoanh
-Tu luyen: linh khi, dan dien, kinh mach, canh gioi, thien tu, linh hai, thien hoa
-Cam thach: van phan, thien ha vo dich, kinh thien dong dia, khung bo, bat kha tu nghi
-Cam xuc: lanh nhan bang quan, khe nhech moi, anh mat ben nhu kiem
+1. TỪ ĐIỂN BẮT BUỘC DÙNG - KHÔNG ĐƯỢC THUẦN VIỆT HÓA:
+Xưng hô: ngươi, hắn, nàng, lão, tiểu tử, đạo hữu, huynh, đệ, tỷ, muội, lão phu
+Trạng thái: bàng bạc, lãnh mang, thâm thúy, u ám, hung hồn, kinh người, uy áp
+Hành động: thi triển, vận chuyển, đột phá, ngưng kết, tán loạn, thu liễm, tung hoành
+Tu luyện: linh khí, đan điền, kinh mạch, cảnh giới, thiên tư, linh hải, thiên hỏa
+Cảm thán: vạn phần, thiên hạ vô địch, kinh thiên động địa, khủng bố, bất khả tư nghị
+Cảm xúc: lạnh nhạt bàng quan, khẽ nhếch môi, ánh mắt bén như kiếm
 
-2. CAU TRUC CAU DAC TRUNG (DAO NGU TRUNG QUOC):
-DUNG: "Han anh mat ben trong loe len mot tia lanh mang."
-SAI:  "Trong mat han loe len anh nhin lanh le."
-DUNG: "Linh khi bang bac, han ngoi ket gia, tam than sac ben nhu kiem."
-SAI:  "Han ngoi ket gia, linh khi toa ra va tam than rat sac ben."
-DUNG: "Dao huu nay... thuc su khien lao kinh so."
-SAI:  "Nguoi nay thuc su khien ong ta so hai."
+2. CẤU TRÚC CÂU ĐẶC TRƯNG (ĐẢO NGỮ TRUNG QUỐC):
+ĐÚNG: "Hắn ánh mắt bên trong lóe lên một tia lãnh mang."
+SAI:  "Trong mắt hắn lóe lên ánh nhìn lạnh lẽo."
+ĐÚNG: "Linh khí bàng bạc, hắn ngồi kết già, tâm thần sắc bén như kiếm."
+SAI:  "Hắn ngồi kết già, linh khí tỏa ra và tâm thần rất sắc bén."
+ĐÚNG: "Đạo hữu này... thực sự khiến lão kinh sợ."
+SAI:  "Người này thực sự khiến ông ta sợ hãi."
 
-3. NHIP DIEU THEO TINH HUONG:
-Hanh dong nhanh: cau 5-8 chu, lien tiep, moi cau = 1 hanh dong ro rang.
-  VD: "Han xuat thu. Kiem quang loe len. Dich nhan chua kip phan ung."
-Cam xuc / noi tam: cau dai, nhieu menh de, cham rai suy tu.
-  VD: "Han dung do, nhin vao hu khong ma trong long lai day len mot cam giac ky la..."
-Cao trao CONG THUC: 3 cau ngan + 1 cau dai bung no.
-  VD: "Linh khi rung chuyen. Dai dia run ray. Khong gian meo mo. Va roi - trong tieng gao thet kinh thien cua thien dia, canh gioi han vo toang!"
+3. NHỊP ĐIỆU THEO TÌNH HUỐNG:
+Hành động nhanh: câu 5-8 chữ, liên tiếp, mỗi câu = 1 hành động rõ ràng.
+  VD: "Hắn xuất thủ. Kiếm quang lóe lên. Địch nhân chưa kịp phản ứng."
+Cảm xúc / nội tâm: câu dài, nhiều mệnh đề, chậm rãi suy tư.
+  VD: "Hắn đứng đó, nhìn vào hư không mà trong lòng lại dấy lên một cảm giác kỳ lạ..."
+Cao trào CÔNG THỨC: 3 câu ngắn + 1 câu dài bùng nổ.
+  VD: "Linh khí rung chuyển. Đại địa run rẩy. Không gian méo mó. Và rồi - trong tiếng gào thét kinh thiên của thiên địa, cảnh giới hắn vỡ toang!"
 
-4. CONG THUC SANG DIEM (BAT BUOC NAM VUNG):
-Va mat (humiliation -> reversal):
-  Setup: ke dich kieu ngao + cong khai si nhuc truoc dong nguoi.
-  Twist: nhan vat chinh tiet lo bi an / suc manh that su.
-  Payoff: 1 cau thoai ngan, lanh, chinh xac den tan nhan.
-  Phan ung: dam dong kinh ngac -> im lang -> xon xao.
-Dot pha canh gioi:
-  Giai doan 1: co the dau don / linh hai sap vo.
-  Giai doan 2: diem bung vo - mo ta vat ly cuc ky chi tiet.
-  Giai doan 3: su yen tinh sau bao - nhan vat nhan ra minh da khac.
-Tiet lo bi mat: de doc gia nhan ra TRUOC nhan vat (dramatic irony) HOAC cung luc (shock).
+4. CÔNG THỨC SÁNG ĐIỂM (BẮT BUỘC NẮM VỮNG):
+Vả mặt (humiliation -> reversal):
+  Setup: kẻ địch kiêu ngạo + công khai sỉ nhục trước đám đông.
+  Twist: nhân vật chính tiết lộ bí ẩn / sức mạnh thật sự.
+  Payoff: 1 câu thoại ngắn, lạnh, chính xác đến tàn nhẫn.
+  Phản ứng: đám đông kinh ngạc -> im lặng -> xôn xao.
+Đột phá cảnh giới:
+  Giai đoạn 1: cơ thể đau đớn / linh hải sắp vỡ.
+  Giai đoạn 2: điểm bùng vỡ - mô tả vật lý cực kỳ chi tiết.
+  Giai đoạn 3: sự yên tĩnh sau bão - nhân vật nhận ra mình đã khác.
+Tiết lộ bí mật: để độc giả nhận ra TRƯỚC nhân vật (dramatic irony) HOẶC cùng lúc (shock).
 
-5. CAM KY TUYET DOI:
-- KHONG giai thich he thong nhu nguoi dan truyen: "Truc Co ky la canh gioi thu 2..."
-- KHONG de nhan vat binh than truoc dieu phi thuong
-- KHONG ket thuc canh ma khong co he qua cam xuc
-- KHONG dung ngoac don () tru mau sac pham cap: (luc), (lam), (tu), (hoang), (xich), (chanh), (hac), (bach), (thai sac)
-- KHONG viet "Han nghi:" - thay bang gian tiep noi tam`;
+5. CẤM KỴ TUYỆT ĐỐI:
+- KHÔNG giải thích hệ thống như người dẫn truyện: "Trúc Cơ kỳ là cảnh giới thứ 2..."
+- KHÔNG để nhân vật bình thản trước điều phi thường
+- KHÔNG kết thúc cảnh mà không có hệ quả cảm xúc
+- KHÔNG dùng ngoặc đơn () trừ màu sắc phẩm cấp: (lục), (lam), (tử), (hoàng), (xích), (chánh), (hắc), (bạch), (thải sắc)
+- KHÔNG viết "Hắn nghĩ:" - thay bằng gián tiếp nội tâm`;
   }
 
   // Thuan Viet
   return `
-[VAN PHONG DNA - THUAN VIET]
+[VĂN PHONG DNA - THUẦN VIỆT]
 
-1. NGUYEN TAC GOC:
-Moi thu phai nghe nhu nguoi Viet thuc su nghi va cam.
-Khong cung nhac, khong dich may, khong Han hoa.
-Tu nao nguoi binh thuong khong noi thi thay bang tu tu nhien hon.
+1. NGUYÊN TẮC GỐC:
+Mọi thứ phải nghe như người Việt thực sự nghĩ và cảm.
+Không cứng nhắc, không dịch máy, không Hán hóa.
+Từ nào người bình thường không nói thì thay bằng từ tự nhiên hơn.
 
-2. NHIP DIEU VA CAU TRUC:
-Hanh dong: cau ngan, dong tu manh, KHONG trang tu thua.
-  DUNG: "Anh chay. Tim dap loan. Hoi tho can."
-  SAI:  "Anh vo cung voi va chay rat nhanh."
-Noi tam: cau dai hon, chay tu nhien nhu dong y thuc.
-  DUNG: "Co khong hieu tai sao minh lai dung lai o day - chi biet rang neu buoc them mot buoc nua, co dieu gi do se vinh vien thay doi."
-Doi thoai: ngan, that, co tinh cach tung nguoi - khong ai noi dai hon 2 cau neu khong can.
+2. NHỊP ĐIỆU VÀ CẤU TRÚC:
+Hành động: câu ngắn, động từ mạnh, KHÔNG trạng từ thừa.
+  ĐÚNG: "Anh chạy. Tim đập loạn. Hơi thở cạn."
+  SAI:  "Anh vô cùng vội và chạy rất nhanh."
+Nội tâm: câu dài hơn, chảy tự nhiên như dòng ý thức.
+  ĐÚNG: "Cô không hiểu tại sao mình lại dừng lại ở đây - chỉ biết rằng nếu bước thêm một bước nữa, có điều gì đó sẽ vĩnh viễn thay đổi."
+Đối thoại: ngắn, thật, có tính cách từng người - không ai nói dài hơn 2 câu nếu không cần.
 
-3. MOI TRUONG VA GIAC QUAN:
-Mo ta = 5 giac quan, KHONG phai buc tranh.
-Mui, am thanh, ket cau, nhiet do TRUOC ve ngoai.
-  DUNG: "Khong khi am va tanh cua mua sap den"
-  SAI:  "Bau troi xam xit"
-Chi tiet cu the > tong quat:
-  DUNG: "Cai ban go som bong tron son o goc trai"
-  SAI:  "Can phong cu ky"
+3. MÔI TRƯỜNG VÀ GIÁC QUAN:
+Mô tả = 5 giác quan, KHÔNG phải bức tranh.
+Mùi, âm thanh, kết cấu, nhiệt độ TRƯỚC vẻ ngoài.
+  ĐÚNG: "Không khí ẩm và tanh của mưa sắp đến"
+  SAI:  "Bầu trời xám xịt"
+Chi tiết cụ thể > tổng quát:
+  ĐÚNG: "Cái bàn gỗ sờn bóng tróc sơn ở góc trái"
+  SAI:  "Căn phòng cũ kỹ"
 
-4. XU LY CAM XUC:
-KHONG bao gio viet cam xuc truc tiep: "Co rat buon."
-THAY BANG hanh dong the hien cam xuc:
-  "Co ngoi xuong san. Khong khoc. Chi nhin vao buc tuong trang cho den khi mat mo di."
-Cung bac cam xuc = thay doi vat ly: nhip tho, nhiet do, trong luong co the.
+4. XỬ LÝ CẢM XÚC:
+KHÔNG bao giờ viết cảm xúc trực tiếp: "Cô rất buồn."
+THAY BẰNG hành động thể hiện cảm xúc:
+  "Cô ngồi xuống sàn. Không khóc. Chỉ nhìn vào bức tường trắng cho đến khi mắt mờ đi."
+Cung bậc cảm xúc = thay đổi vật lý: nhịp thở, nhiệt độ, trọng lượng cơ thể.
 
-5. CAM KY:
-- KHONG dung: nguoi, han (? anh ay, ong ta, y, ga...), nang (? co ay, chi ay)
-- KHONG cau truc dao ngu kieu Trung Quoc
-- KHONG ket thuc canh bang tong ket nhu nguoi ke chuyen
-- KHONG mieu ta cam xuc bang tinh tu: "buon", "vui", "so" - chi hanh dong`;
+5. CẤM KỴ:
+- KHÔNG dùng: ngươi, hắn (→ anh ấy, ông ta, y, gã...), nàng (→ cô ấy, chị ấy)
+- KHÔNG cấu trúc đảo ngữ kiểu Trung Quốc
+- KHÔNG kết thúc cảnh bằng tổng kết như người kể chuyện
+- KHÔNG miêu tả cảm xúc bằng tính từ: "buồn", "vui", "sợ" - chỉ hành động`;
 }
 
 /**
@@ -755,10 +764,10 @@ export function buildAntiAIBlock(writingStyle) {
   const picked = pickRandom(pool, 12);
   if (picked.length === 0) return '';
 
-  const lines = ['\n[CHONG VAN PHONG AI - TU/CUM CAM DUNG]'];
-  lines.push('Cac cum tu sau la DAU HIEU AI - KHONG DUOC DUNG:');
+  const lines = ['\n[CHỐNG VĂN PHONG AI - TỪ/CỤM CẤM DÙNG]'];
+  lines.push('Các cụm từ sau là DẤU HIỆU AI - KHÔNG ĐƯỢC DÙNG:');
   picked.forEach(e => lines.push('  X "' + e.bad + '"  ->  V ' + e.good));
-  lines.push('Neu thay minh sap viet bat ky cum nao o tren thi dung lai, viet cach khac.');
+  lines.push('Nếu thấy mình sắp viết bất kỳ cụm nào ở trên thì dừng lại, viết cách khác.');
   return lines.join('\n');
 }
 
@@ -835,12 +844,12 @@ export function buildMoodBoardLayer(taskType, genreKey, bridgeBuffer, selectedTe
 
   if (samples.length === 0) return '';
 
-  const lines = ['[MAU VAN PHONG - DOC VA CAM NHAN TRUOC KHI VIET]'];
-  lines.push('Day la giong van va nhip dieu can dat - hoc phong cach, KHONG copy tu ngu:');
+  const lines = ['[MẪU VĂN PHONG - ĐỌC VÀ CẢM NHẬN TRƯỚC KHI VIẾT]'];
+  lines.push('Đây là giọng văn và nhịp điệu cần đạt - học phong cách, KHÔNG copy từ ngữ:');
   lines.push('');
   samples.forEach(s => lines.push('- "' + s.replace(/"/g, '\"') + '"'));
   lines.push('');
-  lines.push('Viet theo CAM GIAC nay. Khong copy tu ngu, chi can nhip dieu tuong tu.');
+  lines.push('Viết theo CẢM GIÁC này. Không copy từ ngữ, chỉ cần nhịp điệu tương tự.');
   return lines.join('\n');
 }
 
@@ -868,33 +877,33 @@ export function buildPriorityAnchorLayer(taskType, userPrompt) {
   const isFullWriting = FULL_WRITING_TASKS.has(taskType);
 
   const lines = ['---'];
-  lines.push('[NHIEM VU TOI THUONG - UU TIEN CAO NHAT]');
+  lines.push('[NHIỆM VỤ TỐI THƯỢNG - ƯU TIÊN CAO NHẤT]');
 
   if (instruction) {
     lines.push('>>> ' + instruction + ' <<<');
   } else {
     lines.push(isFullWriting
-      ? '>>> Viet tiep tu diem nay, giu nguyen mach truyen va day manh cam xuc <<< '
-      : '>>> Nang cap van phong theo Style DNA, giu nguyen noi dung va cam xuc goc <<<');
+      ? '>>> Viết tiếp từ điểm này, giữ nguyên mạch truyện và đẩy mạnh cảm xúc <<< '
+      : '>>> Nâng cấp văn phong theo Style DNA, giữ nguyên nội dung và cảm xúc gốc <<<');
   }
 
   if (isFullWriting) {
     lines.push('');
-    lines.push('DAM BAO 3 DIEU SAU THE HIEN RO TRONG BAI VIET:');
-    lines.push('- Dong dau tien phai tao cam xuc manh, cuon doc gia vao ngay lap tuc.');
-    lines.push('- Nhan vat chinh phai THAY DOI qua canh nay (cam xuc, nhan thuc, hoac vi the).');
-    lines.push('- Cuoi canh de lai tinh huong mo hoac cau hoi khien doc gia muon sang chuong tiep.');
+    lines.push('ĐẢM BẢO 3 ĐIỀU SAU THỂ HIỆN RÕ TRONG BÀI VIẾT:');
+    lines.push('- Dòng đầu tiên phải tạo cảm xúc mạnh, cuốn độc giả vào ngay lập tức.');
+    lines.push('- Nhân vật chính phải THAY ĐỔI qua cảnh này (cảm xúc, nhận thức, hoặc vị thế).');
+    lines.push('- Cuối cảnh để lại tình huống mở hoặc câu hỏi khiến độc giả muốn sang chương tiếp.');
     lines.push('');
-    lines.push('CU THE HOA - KHONG VIET TRUU TUONG:');
-    lines.push('- Thoi gian: KHONG "gan day", "lau lam" -> viet "3 ngay truoc", "nua thang", "tu sang den gio"');
-    lines.push('- So luong: KHONG "nhieu nguoi" -> viet "nam ba nguoi", "ca tram ke", "vai chuc ten"');
-    lines.push('- Cam giac: KHONG "rat dau", "vo cung lo lang" -> viet hanh dong: "han cong nguoi lai", "tay nam chat den trang bech"');
-    lines.push('- Canh vat: KHONG "can phong rat lon" -> viet 1 chi tiet: "tran nha cao gap 3 lan nguoi dung", "vach da am am nuoc"');
+    lines.push('CỤ THỂ HÓA - KHÔNG VIẾT TRỪU TƯỢNG:');
+    lines.push('- Thời gian: KHÔNG "gần đây", "lâu lắm" -> viết "3 ngày trước", "nửa tháng", "từ sáng đến giờ"');
+    lines.push('- Số lượng: KHÔNG "nhiều người" -> viết "năm ba người", "cả trăm kẻ", "vài chục tên"');
+    lines.push('- Cảm giác: KHÔNG "rất đau", "vô cùng lo lắng" -> viết hành động: "hắn cong người lại", "tay nắm chặt đến trắng bệch"');
+    lines.push('- Cảnh vật: KHÔNG "căn phòng rất lớn" -> viết 1 chi tiết: "trần nhà cao gấp 3 lần người đứng", "vách đá ẩm ẩm nước"');
   } else {
     // EXPAND / REWRITE
     lines.push('');
-    lines.push('Giu nguyen su kien, huong di, va cam xuc goc cua doan van.');
-    lines.push('Chi nang cap: nhip dieu cau, tu ngu, cau truc theo Style DNA da cho.');
+    lines.push('Giữ nguyên sự kiện, hướng đi, và cảm xúc gốc của đoạn văn.');
+    lines.push('Chỉ nâng cấp: nhịp điệu câu, từ ngữ, cấu trúc theo Style DNA đã cho.');
   }
 
   return lines.join('\n');

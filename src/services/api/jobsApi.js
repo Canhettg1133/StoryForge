@@ -1,3 +1,5 @@
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
+
 const JOB_API_BASE_URL =
   import.meta.env.VITE_JOB_SERVER_URL || 'http://localhost:3847';
 
@@ -41,7 +43,7 @@ async function request(pathname, options = {}) {
     : null;
 
   if (!response.ok) {
-    const error = new Error(payload?.error || `Request failed: ${response.status}`);
+    const error = new Error(toVietnameseErrorMessage(payload?.error || `Request failed: ${response.status}`, 'Yêu cầu Job API thất bại.'));
     error.status = response.status;
     throw error;
   }

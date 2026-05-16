@@ -5,7 +5,7 @@ function throwIfCancelled(signal) {
     return;
   }
 
-  const error = new Error('Job cancelled');
+  const error = new Error('Job đã bị hủy.');
   error.code = 'JOB_CANCELLED';
   throw error;
 }
@@ -53,7 +53,7 @@ export async function processIncidentAnalysisJob(
   const analysisId = String(inputData.analysisId || '').trim() || null;
 
   if (!corpusId) {
-    const error = new Error('Missing required inputData.corpusId');
+    const error = new Error('Thiếu inputData.corpusId bắt buộc.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
@@ -75,7 +75,7 @@ export async function processIncidentAnalysisJob(
   const mode = String(inputData.mode || inputData.runMode || 'balanced').toLowerCase();
   const payload = normalizePayload(inputData);
 
-  await emitStep(onProgress, 5, 'Preparing incident-first analysis payload', 'prepare', 20);
+  await emitStep(onProgress, 5, 'Đang chuẩn bị dữ liệu phân tích incident-first.', 'prepare', 20);
   throwIfCancelled(signal);
 
   const result = await runAnalysisJob({
@@ -100,7 +100,7 @@ export async function processIncidentAnalysisJob(
         await emitStep(
           onProgress,
           overall,
-          String(state.message || `Incident analysis: ${phase}`),
+          String(state.message || `Phân tích sự kiện lớn: ${phase}`),
           phase,
           Math.round(progress * 100),
         );
@@ -113,7 +113,7 @@ export async function processIncidentAnalysisJob(
   await emitStep(
     onProgress,
     100,
-    'Incident-first analysis completed',
+    'Đã phân tích incident-first xong.',
     'incident_analysis',
     100,
     'step_complete',

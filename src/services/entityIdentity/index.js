@@ -424,7 +424,7 @@ function resolveGenericCandidate(candidateIdentity, index) {
     return resolveMatched(candidateIdentity, aliasMatches[0], 'exact_alias', 'Exact alias match.');
   }
   if (aliasMatches.length > 1) {
-    return resolveAmbiguous(candidateIdentity, aliasMatches, 'exact_alias', 'Alias collision requires manual review.');
+  return resolveAmbiguous(candidateIdentity, aliasMatches, 'exact_alias', 'Alias bị trùng, cần duyệt thủ công.');
   }
 
   return resolveCreated(candidateIdentity, compared, 'No deterministic exact name or alias match.');
@@ -960,7 +960,7 @@ export async function applyEntityResolutionSuggestion({
 }) {
   const suggestion = await db.suggestions.get(suggestionId);
   if (!suggestion) {
-    throw new Error('Khong tim thay de xuat entity resolution.');
+    throw new Error('Không tìm thấy đề xuất gộp thực thể.');
   }
   const payload = suggestion.candidate_op
     ? JSON.parse(suggestion.candidate_op)
@@ -968,7 +968,7 @@ export async function applyEntityResolutionSuggestion({
   const kind = normalizeKind(payload.entity_kind);
   const candidateIds = Array.isArray(payload.candidate_ids) ? payload.candidate_ids : [];
   if (candidateIds.length === 0) {
-    throw new Error('De xuat entity resolution khong co candidate nao.');
+    throw new Error('Đề xuất gộp thực thể không có ứng viên nào.');
   }
 
   const candidates = await db.entity_resolution_candidates

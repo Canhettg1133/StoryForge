@@ -14,6 +14,7 @@ import {
   mergeStylePack,
 } from '../services/styleImporter/styleImporterRunner.js';
 import { STYLE_IMPORTER_ALLOWED_TARGETS } from '../services/styleImporter/projectPromptInterop.js';
+import { toVietnameseErrorMessage } from '../utils/errorMessages';
 
 const STEP_IDS = ['read', 'sample', 'analyze', 'patch'];
 
@@ -135,7 +136,7 @@ const useStyleImporterStore = create((set, get) => ({
         fileState: {
           file: fileMetaFrom(file),
           safety,
-          error: error?.message || 'Khong doc duoc file.',
+          error: toVietnameseErrorMessage(error, 'Không đọc được file.'),
         },
       });
     }
@@ -184,7 +185,7 @@ const useStyleImporterStore = create((set, get) => ({
         allowedTargets,
       });
       if (!Array.isArray(nextPatches) || nextPatches.length === 0) {
-        throw new Error('AI khong tra ve patch prompt hop le. Hay chay lai hoac them yeu cau cu the hon cho Style Importer.');
+        throw new Error('AI không trả về patch prompt hợp lệ. Hãy chạy lại hoặc thêm yêu cầu cụ thể hơn cho Style Importer.');
       }
       set({
         patches: nextPatches,
@@ -192,7 +193,7 @@ const useStyleImporterStore = create((set, get) => ({
       });
       get().setStep('patch', 'done');
     } catch (error) {
-      set({ runError: error?.message || 'Khong the phan tich tac pham mau.' });
+      set({ runError: toVietnameseErrorMessage(error, 'Không thể phân tích tác phẩm mẫu.') });
       get().setStep(currentPhase, 'error');
     } finally {
       set({ isRunning: false });

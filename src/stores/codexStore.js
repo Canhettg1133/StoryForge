@@ -538,7 +538,7 @@ const useCodexStore = create((set, get) => ({
       .map(t => ({
         ...t,
         characterName:
-          characters.find(c => c.id === t.character_id)?.name || 'Khong xac dinh',
+      characters.find(c => c.id === t.character_id)?.name || 'Không xác định',
       }));
   },
 

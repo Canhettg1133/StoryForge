@@ -41,13 +41,13 @@ describe('phase10 prompt builder coverage', () => {
     });
 
     expect(messages).toHaveLength(2);
-    expect(messages[0].content).toContain('[NHIEM VU]');
-    expect(messages[1].content).toContain('[LOAI THUC THE]');
-    expect(messages[1].content).toContain('nhan vat');
+    expect(messages[0].content).toContain('[NHIỆM VỤ]');
+    expect(messages[1].content).toContain('[LOẠI THỰC THỂ]');
+    expect(messages[1].content).toContain('nhân vật');
     expect(messages[1].content).toContain('"items"');
     expect(messages[1].content).toContain('"age"');
     expect(messages[1].content).toContain('"current_status"');
-    expect(messages[1].content).toContain('[HUONG DAN CURRENT_STATUS / CHARACTER LIVE CANON]');
+    expect(messages[1].content).toContain('[HƯỚNG DẪN CURRENT_STATUS / CHARACTER LIVE CANON]');
     expect(messages[1].content).toContain('Nhan vat da co: A, B');
   });
 
@@ -64,11 +64,11 @@ describe('phase10 prompt builder coverage', () => {
       entityContextText: 'Nhan vat da co: Lyra aliases: Phap su ky uc',
     });
 
-    expect(messages[1].content).toContain('[CHE DO TU PHAN TICH NHAN VAT CON THIEU]');
-    expect(messages[1].content).toContain('Toi da 5 muc');
+    expect(messages[1].content).toContain('[CHẾ ĐỘ TỰ PHÂN TÍCH NHÂN VẬT CÒN THIẾU]');
+    expect(messages[1].content).toContain('Tối đa 5 mục');
     expect(messages[1].content).toContain('name + aliases');
-    expect(messages[1].content).toContain('[DANH SACH CON THIEU UI GOI Y - CAN KIEM TRA LAI]');
-    expect(messages[1].content).toContain('So tac gia dang chon tren UI: 20');
+    expect(messages[1].content).toContain('[DANH SÁCH CÒN THIẾU UI GỢI Ý - CẦN KIỂM TRA LẠI]');
+    expect(messages[1].content).toContain('Số tác giả đang chọn trên UI: 20');
   });
 
   it('builds macro milestone and audit prompts with dedicated user blocks', () => {
@@ -79,8 +79,8 @@ describe('phase10 prompt builder coverage', () => {
       targetLength: 500,
       ultimateGoal: 'Pha vo loi nguyen.',
     });
-    expect(milestoneMessages[1].content).toContain('[Y TUONG TAC GIA]');
-    expect(milestoneMessages[1].content).toContain('500 chuong');
+    expect(milestoneMessages[1].content).toContain('[Ý TƯỞNG TÁC GIẢ]');
+    expect(milestoneMessages[1].content).toContain('500 chương');
 
     const auditMessages = buildPrompt(TASK_TYPES.AUDIT_ARC_ALIGNMENT, {
       projectTitle: 'Dai Truyen',
@@ -93,7 +93,7 @@ describe('phase10 prompt builder coverage', () => {
         { title: 'Chuong 12', summary: 'Main doi dau voi noi mon.' },
       ],
     });
-    expect(auditMessages[1].content).toContain('[CAC CHUONG GAN DAY]');
+    expect(auditMessages[1].content).toContain('[CÁC CHƯƠNG GẦN ĐÂY]');
     expect(auditMessages[1].content).toContain('Arc 2');
     expect(auditMessages[1].content).toContain('Khoi dong dai cuc');
   });
@@ -112,7 +112,33 @@ describe('phase10 prompt builder coverage', () => {
 
     const recomposed = composeTaskInstruction(TASK_TYPES.CONTINUITY_CHECK, editable);
     expect(recomposed).toContain('"issues"');
-    expect(recomposed).toContain('Chi tra ve JSON.');
+    expect(recomposed).toContain('Chỉ trả về JSON.');
+  });
+
+  it('still strips legacy non-accented JSON markers from saved prompt overrides', () => {
+    const editable = stripProtectedTaskInstruction(
+      TASK_TYPES.CONTINUITY_CHECK,
+      [
+        'Custom continuity rule.',
+        'Tra ve CHINH XAC JSON format sau:',
+        '{"issues":[]}',
+      ].join('\n'),
+    );
+
+    expect(editable).toBe('Custom continuity rule.');
+
+    const systemPrompt = composeStoryCreationSystemPrompt(
+      'outlineGeneration',
+      [
+        'Custom outline rule.',
+        'Tra ve CHINH XAC JSON:',
+        '{"chapters":[]}',
+      ].join('\n'),
+    );
+
+    expect(systemPrompt).toContain('Custom outline rule.');
+    expect(systemPrompt).toContain('Trả về CHÍNH XÁC JSON:');
+    expect(systemPrompt).not.toContain('Tra ve CHINH XAC JSON:\n{"chapters":[]}');
   });
 
   it('re-appends locked JSON output blocks even when project overrides omit them', () => {
@@ -123,7 +149,7 @@ describe('phase10 prompt builder coverage', () => {
       sceneText: 'Nhan vat A bi thuong nang sau tran chien.',
     });
 
-    expect(messages[0].content).toContain('[NHIEM VU]');
+    expect(messages[0].content).toContain('[NHIỆM VỤ]');
     expect(messages[0].content).toContain('"character_updates"');
     expect(messages[0].content).toContain('"new_canon_facts"');
   });
@@ -149,10 +175,10 @@ describe('phase10 prompt builder coverage', () => {
     });
 
     expect(messages[0].content).toContain('[LUẬT SÁNG THẾ TỐI THƯỢNG - CHẾ ĐỘ VÔ GIỚI HẠN]');
-    expect(messages[0].content).toContain('[BO SUNG CHO CANH THAN MAT / NOI DUNG 18+]');
-    expect(messages[0].content).toContain('KHONG duoc luot nhanh hay tom tat');
+    expect(messages[0].content).toContain('[BỔ SUNG CHO CẢNH THÂN MẬT / NỘI DUNG 18+]');
+    expect(messages[0].content).toContain('KHÔNG được lướt nhanh hay tóm tắt');
     expect(messages[0].content).toContain('Consent');
-    expect(messages[1].content).toContain('[NHAC LAI UU TIEN NSFW]');
+    expect(messages[1].content).toContain('[NHẮC LẠI ƯU TIÊN NSFW]');
   });
 
   it('uses custom nsfw system prompt as the new base and still appends supplemental rules', () => {
@@ -168,7 +194,7 @@ describe('phase10 prompt builder coverage', () => {
     });
 
     expect(messages[0].content).toContain('[NSFW BASE TÙY CHỈNH]');
-    expect(messages[0].content).toContain('[LUAT NSFW BO SUNG CUA DU AN]');
+    expect(messages[0].content).toContain('[LUẬT NSFW BỔ SUNG CỦA DỰ ÁN]');
     expect(messages[0].content).toContain('Khong duoc drift.');
   });
 
@@ -230,8 +256,8 @@ describe('phase10 prompt builder coverage', () => {
     });
 
     expect(messages[0].content).toContain('[INTIMATE TÙY CHỈNH]');
-    expect(messages[0].content).toContain('[CONTINUITY THAN MAT DANG CO HIEU LUC]');
-    expect(messages[0].content).toContain('dong_thuan=mutual');
+    expect(messages[0].content).toContain('[CONTINUITY THÂN MẬT ĐANG CÓ HIỆU LỰC]');
+    expect(messages[0].content).toContain('đồng_thuận=mutual');
   });
 
   it('injects chapter blueprint context, whitelist, factions, and pre-write warnings into writing prompts', () => {
@@ -262,18 +288,18 @@ describe('phase10 prompt builder coverage', () => {
       upcomingChapters: [{ title: 'Chuong 2', summary: 'Lan vao tong mon.' }],
     });
 
-    expect(messages[0].content).toContain('[NHIEM VU CHUONG NAY - BAM SAT, KHONG LAC SANG CHUONG KHAC]');
+    expect(messages[0].content).toContain('[NHIỆM VỤ CHƯƠNG NÀY - BÁM SÁT, KHÔNG LẠC SANG CHƯƠNG KHÁC]');
     expect(messages[0].content).toContain('Purpose: Dat neo mo dau va xac lap xung dot som');
-    expect(messages[0].content).toContain('Nhan vat bat buoc bam sat: Lan, Kha');
-    expect(messages[0].content).toContain('Dia diem chinh: Thanh Co');
-    expect(messages[0].content).toContain('Tuyen truyen phai day: Bi mat hoang toc');
-    expect(messages[0].content).toContain('The luc can xuat hien: Thanh Van Tong');
-    expect(messages[0].content).toContain('[WHITELIST CHO CHUONG NAY - UU TIEN DUNG DUNG ENTITY DA DUOC CHI DINH]');
-    expect(messages[0].content).toContain('Vat pham duoc phep/nen su dung: Ngoc boi');
-    expect(messages[0].content).toContain('Thuat ngu nen bam sat: Linh can');
-    expect(messages[0].content).toContain('Chi duoc dung entity ngoai danh sach neu summary chuong hoac canon dang co bat buoc phai goi toi.');
-    expect(messages[0].content).toContain('[KIEM TRA TRUOC KHI VIET]');
-    expect(messages[0].content).toContain('Canh bao anti-hallucination');
+    expect(messages[0].content).toContain('Nhân vật bắt buộc bám sát: Lan, Kha');
+    expect(messages[0].content).toContain('Địa điểm chính: Thanh Co');
+    expect(messages[0].content).toContain('Tuyến truyện phải đẩy: Bi mat hoang toc');
+    expect(messages[0].content).toContain('Thế lực cần xuất hiện: Thanh Van Tong');
+    expect(messages[0].content).toContain('[WHITELIST CHO CHƯƠNG NÀY - ƯU TIÊN DÙNG ĐÚNG ENTITY ĐÃ ĐƯỢC CHỈ ĐỊNH]');
+    expect(messages[0].content).toContain('Vật phẩm được phép/nên sử dụng: Ngoc boi');
+    expect(messages[0].content).toContain('Thuật ngữ nên bám sát: Linh can');
+    expect(messages[0].content).toContain('Chỉ được dùng entity ngoài danh sách nếu summary chương hoặc canon đang có bắt buộc phải gọi tới.');
+    expect(messages[0].content).toContain('[KIỂM TRA TRƯỚC KHI VIẾT]');
+    expect(messages[0].content).toContain('Cảnh báo anti-hallucination');
   });
 
   it('builds permissioned character blocks and prose discipline from the character context gate', () => {
@@ -317,25 +343,25 @@ describe('phase10 prompt builder coverage', () => {
     });
 
     const system = messages[0].content;
-    expect(system).toContain('[NHAN VAT DUOC XUAT HIEN TRUC TIEP TRONG CANH]');
-    expect(system).toContain('[NHAN VAT QUAN TRONG CUA CHUONG - KHONG TU DONG XUAT HIEN TRONG CANH]');
-    expect(system).toContain('[CANON NHAN VAT LIEN QUAN / DUOC NHAC TOI]');
-    expect(system).toContain('Muc tieu: Tim su that');
-    expect(system).toContain('Tuoi/do tuoi: ngoai hinh doi muoi, tuoi that rat cao');
-    expect(system).toContain('Khong tu bia tuoi/do tuoi');
-    expect(system).toContain('Age/tuoi chi la tin hieu mem');
-    expect(system).toContain('Bi mat canon (khong tu tiet lo neu chua den luc): La nguoi giu an tin');
-    expect(system).toContain('Ghi chu: Truc cam xuc cua canh');
-    expect(system).toContain('Vai tro truyen: Dan mach chinh');
-    expect(system).toContain('Character Live Canon / rang buoc canon dang hieu luc: Dang bi truy duoi');
-    expect(system).toContain('[RANG BUOC CURRENT_STATUS - CHARACTER LIVE CANON]');
-    expect(system).toContain('current_status la rang buoc canon hien hanh');
-    expect(system).toContain('[CAM BIA CANON NHAN VAT]');
-    expect(system).toContain('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]');
-    expect(system.indexOf('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]')).toBeGreaterThan(system.indexOf('[DNA VAN PHONG'));
-    expect(system.indexOf('[KY LUAT VAN XUOI VA THOAI - BO SUNG BAT BUOC]')).toBeLessThan(system.indexOf('[DO DAI VA NHIP DO]'));
-    expect(system).toContain('[NHIEM VU]');
-    expect(system).toContain('[THE LOAI]');
+    expect(system).toContain('[NHÂN VẬT ĐƯỢC XUẤT HIỆN TRỰC TIẾP TRONG CẢNH]');
+    expect(system).toContain('[NHÂN VẬT QUAN TRỌNG CỦA CHƯƠNG - KHÔNG TỰ ĐỘNG XUẤT HIỆN TRONG CẢNH]');
+    expect(system).toContain('[CANON NHÂN VẬT LIÊN QUAN / ĐƯỢC NHẮC TỚI]');
+    expect(system).toContain('Mục tiêu: Tim su that');
+    expect(system).toContain('Tuổi/độ tuổi: ngoai hinh doi muoi, tuoi that rat cao');
+    expect(system).toContain('Không tự bịa tuổi/độ tuổi');
+    expect(system).toContain('Age/tuổi chỉ là tín hiệu mềm');
+    expect(system).toContain('Bí mật canon (không tự tiết lộ nếu chưa đến lúc): La nguoi giu an tin');
+    expect(system).toContain('Ghi chú: Truc cam xuc cua canh');
+    expect(system).toContain('Vai trò truyện: Dan mach chinh');
+    expect(system).toContain('Character Live Canon / ràng buộc canon đang hiệu lực: Dang bi truy duoi');
+    expect(system).toContain('[RÀNG BUỘC CURRENT_STATUS - CHARACTER LIVE CANON]');
+    expect(system).toContain('current_status là ràng buộc canon hiện hành');
+    expect(system).toContain('[CẤM BỊA CANON NHÂN VẬT]');
+    expect(system).toContain('[KỶ LUẬT VĂN XUÔI VÀ THOẠI - BỔ SUNG BẮT BUỘC]');
+    expect(system.indexOf('[KỶ LUẬT VĂN XUÔI VÀ THOẠI - BỔ SUNG BẮT BUỘC]')).toBeGreaterThan(system.indexOf('[DNA VĂN PHONG'));
+    expect(system.indexOf('[KỶ LUẬT VĂN XUÔI VÀ THOẠI - BỔ SUNG BẮT BUỘC]')).toBeLessThan(system.indexOf('[ĐỘ DÀI VÀ NHỊP ĐỘ]'));
+    expect(system).toContain('[NHIỆM VỤ]');
+    expect(system).toContain('[THỂ LOẠI]');
   });
 
   it('injects generic canon role locks for writing, outline, chapter draft, and entity generation prompts', () => {
@@ -369,10 +395,10 @@ describe('phase10 prompt builder coverage', () => {
         canonRoleLocks,
       });
 
-      expect(messages[0].content).toContain('[CANON VAI TRO DA KHOA - BAT BUOC]');
+      expect(messages[0].content).toContain('[CANON VAI TRÒ ĐÃ KHÓA - BẮT BUỘC]');
       expect(messages[0].content).toContain('- Lan: nguoi giu ban do co');
       expect(messages[0].content).toContain('- Minh: nguoi tung phan boi hoi dong');
-      expect(messages[0].content).toContain('Khong tao, thay the, gan lai, hoac am chi nhan vat khac');
+      expect(messages[0].content).toContain('Không tạo, thay thế, gán lại, hoặc ám chỉ nhân vật khác');
       expect(messages[0].content).not.toContain('me cua main');
       expect(messages[0].content).not.toContain('nguoi yeu cua main');
       expect(messages[0].content).not.toContain('su phu cua main');
@@ -381,7 +407,7 @@ describe('phase10 prompt builder coverage', () => {
     const noLockMessages = buildPrompt(TASK_TYPES.CONTINUE, {
       canonRoleLocks: [],
     });
-    expect(noLockMessages[0].content).not.toContain('[CANON VAI TRO DA KHOA - BAT BUOC]');
+    expect(noLockMessages[0].content).not.toContain('[CANON VAI TRÒ ĐÃ KHÓA - BẮT BUỘC]');
   });
 
   it('includes role lock guidance in character generation user schema', () => {
@@ -400,8 +426,8 @@ describe('phase10 prompt builder coverage', () => {
 
     expect(messages[1].content).toContain('"specific_role"');
     expect(messages[1].content).toContain('"specific_role_locked"');
-    expect(messages[1].content).toContain('[HUONG DAN VAI TRO CU THE / CANON ROLE LOCK]');
-    expect(messages[1].content).toContain('Khong tao nhan vat moi co vai tro cu the trung');
+    expect(messages[1].content).toContain('[HƯỚNG DẪN VAI TRÒ CỤ THỂ / CANON ROLE LOCK]');
+    expect(messages[1].content).toContain('Không tạo nhân vật mới có vai trò cụ thể trùng');
   });
 
   it('keeps project wizard locked schema compatible with specific role locks', () => {
@@ -409,7 +435,7 @@ describe('phase10 prompt builder coverage', () => {
 
     expect(systemPrompt).toContain('"specific_role"');
     expect(systemPrompt).toContain('"specific_role_locked"');
-    expect(systemPrompt).toContain('specific_role la vai tro canon cu the');
+    expect(systemPrompt).toContain('specific_role là vai trò canon cụ thể');
     expect(systemPrompt).not.toContain('me cua main');
     expect(systemPrompt).not.toContain('nguoi yeu cua main');
     expect(systemPrompt).not.toContain('su phu cua main');
@@ -423,8 +449,8 @@ describe('phase10 prompt builder coverage', () => {
     });
 
     const system = messages[0].content;
-    expect(system).not.toContain('Tuoi/do tuoi:');
-    expect(system).toContain('Khong tu bia tuoi/do tuoi');
+    expect(system).not.toContain('Tuổi/độ tuổi:');
+    expect(system).toContain('Không tự bịa tuổi/độ tuổi');
   });
 
   it('injects the Character page roster into OUTLINE prompts before a chapter has cast anchors', () => {
@@ -457,13 +483,13 @@ describe('phase10 prompt builder coverage', () => {
     });
 
     const system = messages[0].content;
-    expect(system).toContain('[DANH SACH NHAN VAT TRONG TRANG NHAN VAT');
+    expect(system).toContain('[DANH SÁCH NHÂN VẬT TRONG TRANG NHÂN VẬT');
     expect(system).toContain('Lan');
     expect(system).toContain('A Lan');
     expect(system).toContain('Kha');
     expect(system).toContain('nguoi giu chia khoa vao noi dien');
     expect(system).toContain('featured_characters');
-    expect(system).toContain('khong bien alias thanh nhan vat moi');
+    expect(system).toContain('không biến alias thành nhân vật mới');
   });
 
   it('forces OUTLINE to stay inside the current chapter and respect future chapter fences', () => {
@@ -494,19 +520,19 @@ describe('phase10 prompt builder coverage', () => {
       ],
     });
 
-    expect(messages[0].content).toContain('[NHIEM VU CHUONG NAY - BAM SAT, KHONG LAC SANG CHUONG KHAC]');
-    expect(messages[0].content).toContain('[CAC CHUONG TIEP THEO - TUYET DOI KHONG VIET TRUOC NOI DUNG NAY]');
+    expect(messages[0].content).toContain('[NHIỆM VỤ CHƯƠNG NÀY - BÁM SÁT, KHÔNG LẠC SANG CHƯƠNG KHÁC]');
+    expect(messages[0].content).toContain('[CÁC CHƯƠNG TIẾP THEO - TUYỆT ĐỐI KHÔNG VIẾT TRƯỚC NỘI DUNG NÀY]');
     expect(messages[0].content).toContain('[OUTLINE GUARDRAILS]');
     expect(messages[0].content).toContain('Character Live Canon');
-    expect(messages[0].content).toContain('[STORY PROGRESS BUDGET - CHUONG NAY]');
-    expect(messages[0].content).toContain('[DOI CHIEU DAN Y VA NOI DUNG DA VIET - HEURISTIC, CHI DUNG DE DOI CHIEU]');
+    expect(messages[0].content).toContain('[STORY PROGRESS BUDGET - CHƯƠNG NÀY]');
+    expect(messages[0].content).toContain('[ĐỐI CHIẾU DÀN Ý VÀ NỘI DUNG ĐÃ VIẾT - HEURISTIC, CHỈ DÙNG ĐỂ ĐỐI CHIẾU]');
     expect(messages[0].content).toContain('"chapter_patch"');
     expect(messages[0].content).toContain('"next_beats"');
     expect(messages[0].content).toContain('"state_delta"');
     expect(messages[0].content).toContain('"required_terms"');
-    expect(messages[1].content).toContain('[NOI DUNG DA CO CUA CHUONG HIEN TAI]');
-    expect(messages[1].content).toContain('[GIOI HAN TIEN DO CHUONG NAY]');
-    expect(messages[1].content).toContain('Tuyet doi khong viet thay noi dung cua chuong sau da co dan y.');
+    expect(messages[1].content).toContain('[NỘI DUNG ĐÃ CÓ CỦA CHƯƠNG HIỆN TẠI]');
+    expect(messages[1].content).toContain('[GIỚI HẠN TIẾN ĐỘ CHƯƠNG NÀY]');
+    expect(messages[1].content).toContain('Tuyệt đối không viết thay nội dung của chương sau đã có dàn ý.');
   });
 
   it('marks likely covered outline beats conservatively from existing chapter text', () => {
@@ -522,9 +548,9 @@ describe('phase10 prompt builder coverage', () => {
       },
     });
 
-    expect(messages[0].content).toContain('co kha nang da viet: Lam Phong dot pha Truc Co');
-    expect(messages[0].content).toContain('co kha nang da viet: Tran Lao Quai xuat hien o son coc');
-    expect(messages[0].content).toContain('chua thay dau hieu ro: Thanh Van Tong bat dau nghi ngo');
+    expect(messages[0].content).toContain('có khả năng đã viết: Lam Phong dot pha Truc Co');
+    expect(messages[0].content).toContain('có khả năng đã viết: Tran Lao Quai xuat hien o son coc');
+    expect(messages[0].content).toContain('chưa thấy dấu hiệu rõ: Thanh Van Tong bat dau nghi ngo');
   });
 
   it('locks the OUTLINE JSON contract so parser fields are not removed by prompt edits', () => {
@@ -544,16 +570,30 @@ describe('phase10 prompt builder coverage', () => {
     const recomposed = composeTaskInstruction(TASK_TYPES.OUTLINE, editable);
     expect(recomposed).toContain('"completed_beats"');
     expect(recomposed).toContain('"required_terms"');
-    expect(recomposed).toContain('Chi tra ve JSON');
+    expect(recomposed).toContain('Chỉ trả về JSON');
   });
 
-  it('keeps project wizard locked schema aligned with chapter blueprint fields consumed by the app', () => {
-    const systemPrompt = composeStoryCreationSystemPrompt('projectWizard', 'Custom wizard prompt');
+  it('keeps Story Bible Seed locked schema free of chapter outline fields', () => {
+    const systemPrompt = composeStoryCreationSystemPrompt('storyBibleSeed', 'Custom seed prompt');
+
+    expect(systemPrompt).toContain('"title_options"');
+    expect(systemPrompt).toContain('"world_profile"');
+    expect(systemPrompt).toContain('"characters"');
+    expect(systemPrompt).toContain('"plot_threads"');
+    expect(systemPrompt).not.toContain('"chapters"');
+    expect(systemPrompt).toContain('KHÔNG lập dàn ý chương');
+  });
+
+  it('keeps Chapter Outline Pass locked schema aligned with chapter blueprint fields consumed by the app', () => {
+    const systemPrompt = composeStoryCreationSystemPrompt('chapterOutlinePass', 'Custom outline pass prompt');
 
     expect(systemPrompt).toContain('"required_factions"');
     expect(systemPrompt).toContain('"required_objects"');
     expect(systemPrompt).toContain('"required_terms"');
-    expect(systemPrompt).toContain('"featured_characters", "primary_location", "thread_titles", "required_factions", "required_objects", "required_terms"');
+    expect(systemPrompt).toContain('"opening_state"');
+    expect(systemPrompt).toContain('"handoff_from_previous"');
+    expect(systemPrompt).toContain('"ending_state"');
+    expect(systemPrompt).toContain('"proposed_entities"');
   });
 
   it('keeps OutlineBoard generation schema and persistence aligned with chapter anchors', () => {
@@ -566,7 +606,7 @@ describe('phase10 prompt builder coverage', () => {
     expect(systemPrompt).toContain('"required_factions"');
     expect(systemPrompt).toContain('"required_objects"');
     expect(systemPrompt).toContain('"required_terms"');
-    expect(systemPrompt).toContain('Ten ngan/biet danh/alias khong duoc bien thanh nhan vat moi');
+    expect(systemPrompt).toContain('Tên ngắn/biệt danh/alias không được biến thành nhân vật mới');
 
     expect(outlineBoardSource).toContain('function buildChapterAnchorPatch');
     expect(outlineBoardSource).toContain('...buildChapterAnchorPatch(nextChapters[i], { preserveMissing: true })');
@@ -574,23 +614,12 @@ describe('phase10 prompt builder coverage', () => {
     expect(outlineBoardSource).toContain('formatCharacterForOutlinePrompt');
   });
 
-  it('keeps the ProjectWizard inline prompt copy aligned with the same blueprint schema', () => {
-    const messagesStart = projectWizardSource.indexOf(
-      'const messages = [',
-      projectWizardSource.indexOf('const templateVariables'),
-    );
-    const sendStart = projectWizardSource.indexOf('aiService.send', messagesStart);
-    const inlinePromptCopy = projectWizardSource.slice(messagesStart, sendStart);
-
-    expect(inlinePromptCopy).toContain('"title_options"');
-    expect(inlinePromptCopy).toContain('"aliases"');
-    expect(inlinePromptCopy).toContain('"objects"');
-    expect(inlinePromptCopy).toContain('"story_function"');
-    expect(inlinePromptCopy).toContain('"purpose"');
-    expect(inlinePromptCopy).toContain('"featured_characters"');
-    expect(inlinePromptCopy).toContain('"required_factions"');
-    expect(inlinePromptCopy).toContain('"required_objects"');
-    expect(inlinePromptCopy).toContain('"required_terms"');
-    expect(inlinePromptCopy).toContain('"anchor_chapters"');
+  it('uses the two-pass wizard prompt groups instead of the old one-call schema', () => {
+    expect(projectWizardSource).toContain("groupKey: 'storyBibleSeed'");
+    expect(projectWizardSource).toContain("groupKey: 'chapterOutlinePass'");
+    expect(projectWizardSource).toContain('normalizeStoryBibleSeedResult');
+    expect(projectWizardSource).toContain('normalizeChapterOutlinePassResult');
+    expect(projectWizardSource).toContain('sendStoryCreationRequest');
+    expect(projectWizardSource).not.toContain('composeStoryCreationSystemPrompt(\'projectWizard\'');
   });
 });

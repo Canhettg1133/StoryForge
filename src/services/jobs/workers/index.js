@@ -62,7 +62,7 @@ export class JobWorker {
       const handler = this.queue.getHandler(job.type);
 
       if (!handler) {
-        const error = new Error(`Unsupported job type: ${job.type}`);
+        const error = new Error(`Loại job chưa được hỗ trợ: ${job.type}`);
         error.code = 'INVALID_INPUT';
         throw error;
       }
@@ -80,7 +80,7 @@ export class JobWorker {
       );
 
       if (this.abortController.signal.aborted) {
-        const cancelledError = new Error('Job cancelled');
+      const cancelledError = new Error('Job đã bị hủy.');
         cancelledError.code = 'JOB_CANCELLED';
         throw cancelledError;
       }

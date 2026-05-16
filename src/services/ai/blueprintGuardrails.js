@@ -104,7 +104,7 @@ function sanitizeWizardTitleCandidate(value) {
 }
 
 function getChapterLabel(index) {
-  return `Chuong ${index + 1}`;
+  return `Chương ${index + 1}`;
 }
 
 function splitTextIntoBeats(value) {
@@ -244,7 +244,7 @@ function buildPurposeFallback(chapter = {}, keyEvents = [], threadTitles = []) {
   if (chapter.title) {
     return `Day tien trinh cua ${chapter.title}.`;
   }
-  return 'Dat them mot neo cot truyen ro rang cho chuong nay.';
+  return 'Đặt thêm một neo cốt truyện rõ ràng cho chương này.';
 }
 
 function buildKeyEventFallback(chapter = {}, primaryLocation = '', threadTitles = []) {
@@ -255,9 +255,200 @@ function buildKeyEventFallback(chapter = {}, primaryLocation = '', threadTitles 
 
   const fallbackEvents = [];
   if (chapter.title) fallbackEvents.push(chapter.title);
-  if (threadTitles[0]) fallbackEvents.push(`Day tuyen ${threadTitles[0]}`);
-  if (primaryLocation) fallbackEvents.push(`Canh chinh tai ${primaryLocation}`);
+  if (threadTitles[0]) fallbackEvents.push(`Đẩy tuyến ${threadTitles[0]}`);
+  if (primaryLocation) fallbackEvents.push(`Cảnh chính tại ${primaryLocation}`);
   return dedupeNormalized(fallbackEvents).slice(0, 2);
+}
+
+function countBlueprintWords(value = '') {
+  const normalized = normalizeBlueprintText(value);
+  return normalized ? normalized.split(' ').filter(Boolean).length : 0;
+}
+
+function normalizeProposedEntities(rawValue = {}) {
+  const source = rawValue && typeof rawValue === 'object' ? rawValue : {};
+  const normalizeCollection = (items, fieldMap) => (
+    Array.isArray(items)
+      ? items
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => normalizeEntityRecord(item, fieldMap))
+      : []
+  );
+
+  return {
+    characters: normalizeCollection(source.characters, {
+      name: 'text',
+      role: 'text',
+      specific_role: 'text',
+      specific_role_locked: 'boolean',
+      age: 'text',
+      appearance: 'text',
+      personality: 'text',
+      personality_tags: 'text',
+      flaws: 'text',
+      goals: 'text',
+      current_status: 'text',
+      story_function: 'text',
+      reason: 'text',
+    }).map((item) => ({
+      ...item,
+      specific_role_locked: Boolean(item.specific_role_locked && item.specific_role),
+    })),
+    locations: normalizeCollection(source.locations, {
+      name: 'text',
+      description: 'text',
+      details: 'text',
+      story_function: 'text',
+      reason: 'text',
+    }),
+    objects: normalizeCollection(source.objects, {
+      name: 'text',
+      description: 'text',
+      owner: 'text',
+      story_function: 'text',
+      reason: 'text',
+    }),
+    factions: normalizeCollection(source.factions, {
+      name: 'text',
+      faction_type: 'text',
+      description: 'text',
+      notes: 'text',
+      story_function: 'text',
+      reason: 'text',
+    }),
+    terms: normalizeCollection(source.terms, {
+      name: 'text',
+      definition: 'text',
+      category: 'text',
+      story_function: 'text',
+      reason: 'text',
+    }),
+    plot_threads: normalizeCollection(source.plot_threads, {
+      title: 'text',
+      type: 'text',
+      description: 'text',
+      state: 'text',
+      opening_window: 'text',
+      anchor_chapters: 'list',
+      reason: 'text',
+    }),
+  };
+}
+
+function getCollectionRecordName(collectionKey, item = {}) {
+  return collectionKey === 'plot_threads'
+    ? String(item?.title || '').trim()
+    : getBlueprintEntityName(item);
+}
+
+function buildOutlineReferenceProposal(collectionKey, reference, chapterTitle) {
+  const reason = `Dàn ý gọi mục "${reference}" trong ${chapterTitle}, nhưng nền truyện chưa có mục này.`;
+  const storyFunction = `Được dàn ý dùng trong ${chapterTitle}.`;
+
+  if (collectionKey === 'characters') {
+    return {
+      name: reference,
+      role: 'supporting',
+      story_function: storyFunction,
+      reason,
+    };
+  }
+  if (collectionKey === 'locations') {
+    return {
+      name: reference,
+      description: '',
+      story_function: `Được dàn ý dùng làm địa điểm chính trong ${chapterTitle}.`,
+      reason,
+    };
+  }
+  if (collectionKey === 'objects') {
+    return {
+      name: reference,
+      description: '',
+      owner: '',
+      story_function: storyFunction,
+      reason,
+    };
+  }
+  if (collectionKey === 'factions') {
+    return {
+      name: reference,
+      faction_type: 'other',
+      description: '',
+      story_function: storyFunction,
+      reason,
+    };
+  }
+  if (collectionKey === 'terms') {
+    return {
+      name: reference,
+      definition: '',
+      category: 'other',
+      story_function: storyFunction,
+      reason,
+    };
+  }
+  return {
+    title: reference,
+    type: 'subplot',
+    description: '',
+    state: 'active',
+    opening_window: chapterTitle,
+    anchor_chapters: [chapterTitle],
+    reason,
+  };
+}
+
+function autoProposeMissingOutlineReferences(outline = {}, seed = {}) {
+  const proposedEntities = normalizeProposedEntities(outline.proposed_entities);
+  const allowedByCollection = new Map();
+  const seedCollections = {
+    characters: seed.characters || [],
+    locations: seed.locations || [],
+    objects: seed.objects || [],
+    factions: seed.factions || [],
+    terms: seed.terms || [],
+    plot_threads: seed.plot_threads || [],
+  };
+
+  Object.keys(proposedEntities).forEach((collectionKey) => {
+    const allowed = new Set();
+    [...(seedCollections[collectionKey] || []), ...(proposedEntities[collectionKey] || [])]
+      .forEach((item) => {
+        const normalizedName = normalizeBlueprintText(getCollectionRecordName(collectionKey, item));
+        if (normalizedName) allowed.add(normalizedName);
+      });
+    allowedByCollection.set(collectionKey, allowed);
+  });
+
+  const addMissingReference = (collectionKey, reference, chapterTitle) => {
+    const normalizedReference = normalizeBlueprintText(reference);
+    if (!normalizedReference) return;
+    const allowed = allowedByCollection.get(collectionKey);
+    if (!allowed || allowed.has(normalizedReference)) return;
+
+    proposedEntities[collectionKey].push(buildOutlineReferenceProposal(collectionKey, reference, chapterTitle));
+    allowed.add(normalizedReference);
+  };
+
+  (outline.chapters || []).forEach((chapter, index) => {
+    const chapterTitle = chapter?.title || getChapterLabel(index);
+    normalizeChapterListField(chapter?.featured_characters)
+      .forEach((reference) => addMissingReference('characters', reference, chapterTitle));
+    if (chapter?.primary_location) {
+      addMissingReference('locations', chapter.primary_location, chapterTitle);
+    }
+    normalizeChapterListField(chapter?.thread_titles)
+      .forEach((reference) => addMissingReference('plot_threads', reference, chapterTitle));
+    normalizeChapterListField(chapter?.required_factions)
+      .forEach((reference) => addMissingReference('factions', reference, chapterTitle));
+    normalizeChapterListField(chapter?.required_objects)
+      .forEach((reference) => addMissingReference('objects', reference, chapterTitle));
+    normalizeChapterListField(chapter?.required_terms)
+      .forEach((reference) => addMissingReference('terms', reference, chapterTitle));
+  });
+
+  return proposedEntities;
 }
 
 function hydrateWizardBlueprintResult(result = {}) {
@@ -287,7 +478,14 @@ function hydrateWizardBlueprintResult(result = {}) {
   );
 
   chapters.forEach((chapter, index) => {
-    const textParts = [chapter.title, chapter.summary, chapter.purpose];
+    const textParts = [
+      chapter.title,
+      chapter.summary,
+      chapter.purpose,
+      chapter.opening_state,
+      chapter.handoff_from_previous,
+      chapter.ending_state,
+    ];
     const explicitFeatured = normalizeChapterListField(chapter.featured_characters);
     const explicitThreads = normalizeChapterListField(chapter.thread_titles);
     const explicitKeyEvents = normalizeChapterListField(chapter.key_events);
@@ -359,6 +557,9 @@ function hydrateWizardBlueprintResult(result = {}) {
     chapters[index] = {
       ...chapter,
       purpose,
+      opening_state: normalizeOptionalText(chapter.opening_state),
+      handoff_from_previous: normalizeOptionalText(chapter.handoff_from_previous),
+      ending_state: normalizeOptionalText(chapter.ending_state),
       featured_characters: featuredCharacters,
       primary_location: primaryLocation,
       thread_titles: threadTitles,
@@ -411,7 +612,7 @@ function hydrateWizardBlueprintResult(result = {}) {
     targetIndexes.forEach((chapterIndex) => {
       chapters[chapterIndex].key_events = dedupeNormalized([
         ...normalizeChapterListField(chapters[chapterIndex].key_events),
-        `Canh co lien quan den ${locationName}`,
+        `Cảnh có liên quan đến ${locationName}`,
       ]);
     });
   });
@@ -475,6 +676,9 @@ function buildChapterSearchText(chapter = {}) {
     chapter.title,
     chapter.purpose,
     chapter.summary,
+    chapter.opening_state,
+    chapter.handoff_from_previous,
+    chapter.ending_state,
     ...(normalizeChapterListField(chapter.featured_characters)),
     chapter.primary_location,
     ...(normalizeChapterListField(chapter.thread_titles)),
@@ -646,6 +850,9 @@ export function normalizeWizardBlueprintResult(rawValue, fallbackTitle = '') {
         title: 'text',
         purpose: 'text',
         summary: 'text',
+        opening_state: 'text',
+        handoff_from_previous: 'text',
+        ending_state: 'text',
         state_delta: 'text',
         featured_characters: 'list',
         primary_location: 'text',
@@ -668,12 +875,50 @@ export function normalizeWizardBlueprintResult(rawValue, fallbackTitle = '') {
         anchor_chapters: 'list',
       }))
     : [];
+  nextResult.proposed_entities = normalizeProposedEntities(nextResult.proposed_entities);
 
   if (!nextResult.title && nextResult.title_options[0]) {
     nextResult.title = nextResult.title_options[0];
   }
 
   return hydrateWizardBlueprintResult(nextResult);
+}
+
+export function normalizeStoryBibleSeedResult(rawValue, fallbackTitle = '') {
+  const normalized = normalizeWizardBlueprintResult({
+    ...(rawValue && typeof rawValue === 'object' ? rawValue : {}),
+    chapters: [],
+    proposed_entities: {},
+  }, fallbackTitle);
+
+  return {
+    ...normalized,
+    chapters: [],
+    proposed_entities: normalizeProposedEntities({}),
+  };
+}
+
+export function normalizeChapterOutlinePassResult(rawValue, seed = {}) {
+  const source = Array.isArray(rawValue)
+    ? { chapters: rawValue }
+    : (rawValue && typeof rawValue === 'object' ? rawValue : {});
+  const proposedEntities = normalizeProposedEntities(source.proposed_entities);
+  const normalized = normalizeWizardBlueprintResult({
+    ...(seed && typeof seed === 'object' ? seed : {}),
+    chapters: Array.isArray(source.chapters) ? source.chapters : [],
+    plot_threads: Array.isArray(source.plot_threads) ? source.plot_threads : [],
+    proposed_entities: proposedEntities,
+  });
+
+  return {
+    chapters: normalized.chapters,
+    plot_threads: normalized.plot_threads,
+    proposed_entities: autoProposeMissingOutlineReferences({
+      chapters: normalized.chapters,
+      plot_threads: normalized.plot_threads,
+      proposed_entities: proposedEntities,
+    }, seed),
+  };
 }
 
 export function resolveWizardProjectTitle(result = {}, fallbackTitle = '') {
@@ -692,7 +937,313 @@ export function resolveWizardProjectTitle(result = {}, fallbackTitle = '') {
     .slice(0, 80)
     .trim();
 
-  return premiseFallback || 'Du an moi';
+  return premiseFallback || 'Dự án mới';
+}
+
+function getSeedCharacterLimit(chapterCount = 1) {
+  const safeChapterCount = Math.max(1, Math.round(Number(chapterCount) || 1));
+  if (safeChapterCount === 1) return 2;
+  if (safeChapterCount <= 3) return 4;
+  return 5;
+}
+
+function looksDeferredToFuture(value = '') {
+  const normalized = normalizeBlueprintText(value);
+  if (!normalized) return false;
+  return [
+    'de danh',
+    've sau',
+    'sau nay',
+    'tuong lai',
+    'chua xuat hien',
+    'phan sau',
+    'later',
+    'future',
+  ].some((marker) => normalized.includes(marker));
+}
+
+export function buildStoryBibleSeedValidation(seed = {}, options = {}) {
+  const excluded = options.excluded || new Set();
+  const chapterCount = Math.max(1, Math.round(Number(options.initialChapterCount) || 1));
+  const blockingIssues = [];
+  const warnings = [];
+  const includedCharacters = (seed.characters || []).filter((_, index) => !excluded.has(`char-${index}`));
+  const importantCharacters = includedCharacters.filter((character) => (
+    String(character?.role || '').toLowerCase() !== 'minor'
+  ));
+  const protagonists = importantCharacters.filter((character) => (
+    String(character?.role || '').toLowerCase() === 'protagonist'
+  ));
+  const characterLimit = getSeedCharacterLimit(chapterCount);
+
+  if (protagonists.length === 0) {
+    blockingIssues.push(createIssue(
+      'blocking',
+      'seed-missing-protagonist',
+      'Nền truyện phải có đúng một nhân vật chính.',
+    ));
+  } else if (protagonists.length > 1) {
+    blockingIssues.push(createIssue(
+      'blocking',
+      'seed-too-many-protagonists',
+      'Nền truyện chỉ nên có một nhân vật chính chính thức ở bước khởi tạo.',
+      { protagonistCount: protagonists.length },
+    ));
+  }
+
+  if (importantCharacters.length > characterLimit) {
+    blockingIssues.push(createIssue(
+      'blocking',
+      'seed-character-cap-exceeded',
+      `${chapterCount} chương khởi đầu chỉ nên có tối đa ${characterLimit} nhân vật quan trọng, hiện có ${importantCharacters.length}.`,
+      { characterCount: importantCharacters.length, characterLimit, chapterCount },
+    ));
+  }
+
+  if (chapterCount >= 2 && importantCharacters.length < 2) {
+    warnings.push(createIssue(
+      'warning',
+      'seed-character-count-low',
+      'Seed đang rất ít nhân vật so với số chương khởi đầu; vẫn dùng được nếu truyện mở đầu đơn tuyến.',
+      { characterCount: importantCharacters.length, chapterCount },
+    ));
+  }
+
+  importantCharacters
+    .filter((character) => String(character?.role || '').toLowerCase() !== 'protagonist')
+    .forEach((character, index) => {
+      const name = getBlueprintEntityName(character) || `Nhân vật phụ ${index + 1}`;
+      if (!normalizeOptionalText(character.story_function) || looksDeferredToFuture(character.story_function)) {
+        blockingIssues.push(createIssue(
+          'blocking',
+          'seed-deferred-character',
+          `Nhân vật "${name}" chưa có vai trò sớm rõ ràng; không tạo nhân vật để dành về sau trong nền truyện.`,
+          { entityName: name },
+        ));
+      }
+    });
+
+  if (Array.isArray(seed.chapters) && seed.chapters.length > 0) {
+    warnings.push(createIssue(
+      'warning',
+      'seed-contained-chapters',
+      'Nền truyện không nên chứa dàn ý chương; app sẽ bỏ qua phần dàn ý ở bước tạo nền truyện.',
+      { chapterCount: seed.chapters.length },
+    ));
+  }
+
+  return { blockingIssues, warnings };
+}
+
+function buildNameSet(items = [], getter = getBlueprintEntityName) {
+  return new Set(
+    items
+      .map((item) => normalizeBlueprintText(getter(item)))
+      .filter(Boolean),
+  );
+}
+
+function buildAcceptedProposalEntities(proposedEntities = {}, acceptedProposals = new Set()) {
+  const normalized = normalizeProposedEntities(proposedEntities);
+  return Object.fromEntries(
+    Object.entries(normalized).map(([collectionKey, items]) => [
+      collectionKey,
+      items.filter((_, index) => acceptedProposals.has(`proposal-${collectionKey}-${index}`)),
+    ]),
+  );
+}
+
+function hasProposalReference(proposedEntities = {}, collectionKey, reference) {
+  const normalizedReference = normalizeBlueprintText(reference);
+  if (!normalizedReference) return false;
+  const getter = collectionKey === 'plot_threads'
+    ? (item) => item?.title
+    : getBlueprintEntityName;
+  return (proposedEntities[collectionKey] || []).some((item) => (
+    normalizeBlueprintText(getter(item)) === normalizedReference
+  ));
+}
+
+function pushUnknownReferenceIssues({
+  blockingIssues,
+  warnings,
+  collectionKey,
+  allowedSet,
+  proposedEntities,
+  references,
+  chapterSignal,
+  label,
+  requireNonEmpty = false,
+}) {
+  normalizeChapterListField(references).forEach((reference) => {
+    const normalizedReference = normalizeBlueprintText(reference);
+    if (!normalizedReference || allowedSet.has(normalizedReference)) return;
+
+    if (hasProposalReference(proposedEntities, collectionKey, reference)) {
+      blockingIssues.push(createIssue(
+        'blocking',
+        'outline-proposal-pending',
+        `${chapterSignal.title} dùng ${label} "${reference}" từ Đề xuất mới nhưng đề xuất này chưa được duyệt.`,
+        { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title, entityName: reference, collectionKey },
+      ));
+      return;
+    }
+
+    blockingIssues.push(createIssue(
+      'blocking',
+      `outline-unknown-${collectionKey}`,
+      `${chapterSignal.title} gọi ${label} "${reference}" chưa có trong nền truyện và không nằm trong Đề xuất mới.`,
+      { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title, entityName: reference, collectionKey },
+    ));
+  });
+
+  if (requireNonEmpty && (!references || normalizeChapterListField(references).length === 0)) {
+    warnings.push(createIssue(
+      'warning',
+      `outline-empty-${collectionKey}`,
+      `${chapterSignal.title} chưa khai báo ${label}.`,
+      { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title, collectionKey },
+    ));
+  }
+}
+
+export function buildChapterOutlinePassValidation(outline = {}, seed = {}, options = {}) {
+  const excluded = options.excluded || new Set();
+  const acceptedProposals = options.acceptedProposals || new Set();
+  const proposedEntities = normalizeProposedEntities(outline.proposed_entities || seed.proposed_entities);
+  const acceptedEntities = buildAcceptedProposalEntities(proposedEntities, acceptedProposals);
+  const includedChapters = (outline.chapters || []).filter((_, index) => !excluded.has(`chapter-${index}`));
+  const blockingIssues = [];
+  const warnings = [];
+
+  if (includedChapters.length === 0) {
+    blockingIssues.push(createIssue(
+      'blocking',
+      'outline-missing-chapters',
+      'Dàn ý chương phải có ít nhất một chương.',
+    ));
+    return { blockingIssues, warnings, chapterSignals: [] };
+  }
+
+  const allowedCharacters = buildNameSet([...(seed.characters || []), ...(acceptedEntities.characters || [])]);
+  const allowedLocations = buildNameSet([...(seed.locations || []), ...(acceptedEntities.locations || [])]);
+  const allowedObjects = buildNameSet([...(seed.objects || []), ...(acceptedEntities.objects || [])]);
+  const allowedFactions = buildNameSet([...(seed.factions || []), ...(acceptedEntities.factions || [])]);
+  const allowedTerms = buildNameSet([...(seed.terms || []), ...(acceptedEntities.terms || [])]);
+  const allowedThreads = buildNameSet([...(seed.plot_threads || []), ...(acceptedEntities.plot_threads || [])], (item) => item?.title);
+
+  const chapterSignals = includedChapters.map((chapter, index) => ({
+    index,
+    chapter,
+    title: chapter.title || `Chương ${index + 1}`,
+    openingState: normalizeOptionalText(chapter.opening_state),
+    handoffFromPrevious: normalizeOptionalText(chapter.handoff_from_previous),
+    endingState: normalizeOptionalText(chapter.ending_state),
+    featuredCharacters: normalizeChapterListField(chapter.featured_characters),
+    primaryLocation: normalizeOptionalText(chapter.primary_location),
+    threadTitles: normalizeChapterListField(chapter.thread_titles),
+    requiredFactions: normalizeChapterListField(chapter.required_factions),
+    requiredObjects: normalizeChapterListField(chapter.required_objects),
+    requiredTerms: normalizeChapterListField(chapter.required_terms),
+  }));
+
+  chapterSignals.forEach((chapterSignal) => {
+    if (!chapterSignal.openingState) {
+      blockingIssues.push(createIssue(
+        'blocking',
+        'chapter-missing-opening-state',
+        `${chapterSignal.title} thiếu Trạng thái mở chương.`,
+        { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
+      ));
+    }
+    if (!chapterSignal.endingState) {
+      blockingIssues.push(createIssue(
+        'blocking',
+        'chapter-missing-ending-state',
+        `${chapterSignal.title} thiếu Trạng thái kết chương.`,
+        { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
+      ));
+    }
+    if (chapterSignal.index > 0 && !chapterSignal.handoffFromPrevious) {
+      blockingIssues.push(createIssue(
+        'blocking',
+        'chapter-missing-handoff',
+        `${chapterSignal.title} thiếu Cầu nối từ chương trước.`,
+        { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
+      ));
+    }
+
+    pushUnknownReferenceIssues({
+      blockingIssues,
+      warnings,
+      collectionKey: 'characters',
+      allowedSet: allowedCharacters,
+      proposedEntities,
+      references: chapterSignal.featuredCharacters,
+      chapterSignal,
+      label: 'nhân vật',
+      requireNonEmpty: true,
+    });
+
+    pushUnknownReferenceIssues({
+      blockingIssues,
+      warnings,
+      collectionKey: 'locations',
+      allowedSet: allowedLocations,
+      proposedEntities,
+      references: chapterSignal.primaryLocation ? [chapterSignal.primaryLocation] : [],
+      chapterSignal,
+      label: 'địa điểm',
+      requireNonEmpty: true,
+    });
+
+    pushUnknownReferenceIssues({
+      blockingIssues,
+      warnings,
+      collectionKey: 'plot_threads',
+      allowedSet: allowedThreads,
+      proposedEntities,
+      references: chapterSignal.threadTitles,
+      chapterSignal,
+      label: 'tuyến truyện',
+      requireNonEmpty: true,
+    });
+
+    pushUnknownReferenceIssues({
+      blockingIssues,
+      warnings,
+      collectionKey: 'factions',
+      allowedSet: allowedFactions,
+      proposedEntities,
+      references: chapterSignal.requiredFactions,
+      chapterSignal,
+      label: 'thế lực',
+    });
+
+    pushUnknownReferenceIssues({
+      blockingIssues,
+      warnings,
+      collectionKey: 'objects',
+      allowedSet: allowedObjects,
+      proposedEntities,
+      references: chapterSignal.requiredObjects,
+      chapterSignal,
+      label: 'vật phẩm',
+    });
+
+    pushUnknownReferenceIssues({
+      blockingIssues,
+      warnings,
+      collectionKey: 'terms',
+      allowedSet: allowedTerms,
+      proposedEntities,
+      references: chapterSignal.requiredTerms,
+      chapterSignal,
+      label: 'thuật ngữ',
+    });
+  });
+
+  return { blockingIssues, warnings, chapterSignals };
 }
 
 export function buildWizardValidation(result, excluded = new Set()) {
@@ -724,9 +1275,12 @@ export function buildWizardValidation(result, excluded = new Set()) {
     return {
       index,
       chapter,
-      title: chapter.title || `Chuong ${index + 1}`,
+      title: chapter.title || `Chương ${index + 1}`,
       purpose: normalizeOptionalText(chapter.purpose),
       summary: normalizeOptionalText(chapter.summary),
+      openingState: normalizeOptionalText(chapter.opening_state),
+      handoffFromPrevious: normalizeOptionalText(chapter.handoff_from_previous),
+      endingState: normalizeOptionalText(chapter.ending_state),
       featuredCharacters,
       threadTitles,
       keyEvents,
@@ -745,7 +1299,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
       blockingIssues.push(createIssue(
         'blocking',
         'chapter-missing-purpose',
-        `${chapterSignal.title} thieu purpose ro rang.`,
+        `${chapterSignal.title} thiếu mục đích rõ ràng.`,
         { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
       ));
     }
@@ -753,7 +1307,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
       blockingIssues.push(createIssue(
         'blocking',
         'chapter-missing-featured-characters',
-        `${chapterSignal.title} chua gan featured_characters.`,
+        `${chapterSignal.title} chưa gắn nhân vật xuất hiện.`,
         { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
       ));
     }
@@ -761,7 +1315,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
       blockingIssues.push(createIssue(
         'blocking',
         'chapter-missing-primary-location',
-        `${chapterSignal.title} chua co primary_location.`,
+        `${chapterSignal.title} chưa có địa điểm chính.`,
         { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
       ));
     }
@@ -769,7 +1323,38 @@ export function buildWizardValidation(result, excluded = new Set()) {
       blockingIssues.push(createIssue(
         'blocking',
         'chapter-missing-thread-anchor',
-        `${chapterSignal.title} chua co thread_titles hoac key_events de neo cot truyen.`,
+        `${chapterSignal.title} chưa có tuyến truyện hoặc sự kiện chính để neo cốt truyện.`,
+        { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
+      ));
+    }
+    if (!chapterSignal.openingState) {
+      blockingIssues.push(createIssue(
+        'blocking',
+        'chapter-missing-opening-state',
+        `${chapterSignal.title} thiếu trạng thái mở chương.`,
+        { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
+      ));
+    }
+    if (!chapterSignal.endingState) {
+      blockingIssues.push(createIssue(
+        'blocking',
+        'chapter-missing-ending-state',
+        `${chapterSignal.title} thiếu trạng thái kết chương để chương sau nối tiếp.`,
+        { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
+      ));
+    }
+    if (chapterSignal.index > 0 && !chapterSignal.handoffFromPrevious) {
+      blockingIssues.push(createIssue(
+        'blocking',
+        'chapter-missing-handoff',
+        `${chapterSignal.title} thiếu cầu nối nhân quả với chương trước.`,
+        { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
+      ));
+    } else if (chapterSignal.handoffFromPrevious && countBlueprintWords(chapterSignal.handoffFromPrevious) < 5) {
+      warnings.push(createIssue(
+        'warning',
+        'chapter-handoff-thin',
+        `${chapterSignal.title} có cầu nối chương trước quá mỏng, nên nêu rõ quan hệ nhân quả từ chương trước.`,
         { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
       ));
     }
@@ -788,7 +1373,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
       blockingIssues.push(createIssue(
         'blocking',
         'protagonist-unused',
-        `Nhan vat chinh "${name}" khong xuat hien trong chapter dau.`,
+        `Nhân vật chính "${name}" không xuất hiện trong chương đầu.`,
         { entityName: name },
       ));
     }
@@ -807,7 +1392,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
         blockingIssues.push(createIssue(
           'blocking',
           'thread-without-anchor',
-          `Tuyen truyuyen "${thread.title}" khong co chapter neo ro rang.`,
+          `Tuyến truyện "${thread.title}" không có chương neo rõ ràng.`,
           { entityName: thread.title },
         ));
       }
@@ -825,7 +1410,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
         blockingIssues.push(createIssue(
           'blocking',
           'location-unused',
-          `Dia diem "${location.name}" khong duoc chapter nao su dung.`,
+          `Địa điểm "${location.name}" không được chương nào sử dụng.`,
           { entityName: location.name },
         ));
       }
@@ -840,7 +1425,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
         blockingIssues.push(createIssue(
           'blocking',
           'faction-unused',
-          `The luc "${faction.name}" khong duoc chapter nao chạm toi.`,
+          `Thế lực "${faction.name}" không được chương nào chạm tới.`,
           { entityName: faction.name },
         ));
       }
@@ -855,7 +1440,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
         blockingIssues.push(createIssue(
           'blocking',
           'term-unused',
-          `Thuat ngu "${term.name}" khong duoc chapter nao chạm toi.`,
+          `Thuật ngữ "${term.name}" không được chương nào chạm tới.`,
           { entityName: term.name },
         ));
       }
@@ -875,7 +1460,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
         ...issue,
         type: 'warning',
         severity: 'warning',
-        message: `${issue.message} Kiem tra lai neu ban vua bo chapter co chua neo nay.`,
+        message: `${issue.message} Kiểm tra lại nếu bạn vừa bỏ chương có chứa neo này.`,
       });
       return;
     }
@@ -887,7 +1472,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
           ...issue,
           type: 'warning',
           severity: 'warning',
-          message: `The luc "${issue.entityName}" chua duoc chapter dau cham toi.`,
+          message: `Thế lực "${issue.entityName}" chưa được chương đầu chạm tới.`,
         });
         return;
       }
@@ -900,7 +1485,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
           ...issue,
           type: 'warning',
           severity: 'warning',
-          message: `Thuat ngu "${issue.entityName}" chua duoc chapter dau cham toi.`,
+          message: `Thuật ngữ "${issue.entityName}" chưa được chương đầu chạm tới.`,
         });
         return;
       }
@@ -921,7 +1506,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
     warnings.push(createIssue(
       'warning',
       'entity-density-high',
-      'So entity va tuyen dang vuot kha nang gan vao so chapter dau, de gay loang.',
+      'Số thực thể và tuyến truyện đang vượt khả năng gắn vào số chương đầu, dễ gây loãng.',
       { entityCount: totalImportantEntities, chapterCount: includedChapters.length },
     ));
   }
@@ -935,7 +1520,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
     warnings.push(createIssue(
       'warning',
       'pacing-too-fast',
-      'Blueprint mo dau co dau hieu day qua nhieu beat lon trong so chapter dau, AI de lao nhanh hon nhip mong muon.',
+      'Dàn ý mở đầu có dấu hiệu đẩy quá nhiều nhịp truyện lớn trong số chương đầu, AI dễ lao nhanh hơn nhịp mong muốn.',
       { chapterTitles: fastPacingChapters.map((item) => item.title) },
     ));
   }
@@ -952,7 +1537,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
       warnings.push(createIssue(
         'warning',
         'chapter-too-dense',
-        `${chapterSignal.title} co dau hieu nhoi qua nhieu su kien hoac tuyen trong mot chuong.`,
+        `${chapterSignal.title} có dấu hiệu nhồi quá nhiều sự kiện hoặc tuyến trong một chương.`,
         { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
       ));
     }
@@ -962,7 +1547,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
     warnings.push(createIssue(
       'warning',
       'object-density-high',
-      'So vat pham blueprint dau truyện dang nhieu hon muc can thiet.',
+      'Số vật phẩm đầu truyện đang nhiều hơn mức cần thiết.',
       { entityCount: includedObjects.length, chapterCount: includedChapters.length },
     ));
   }
@@ -1020,6 +1605,9 @@ export function buildChapterBlueprintContext({
     title: normalizeOptionalText(chapter.title),
     summary: normalizeOptionalText(chapter.summary),
     purpose: normalizeOptionalText(chapter.purpose),
+    opening_state: normalizeOptionalText(chapter.opening_state),
+    handoff_from_previous: normalizeOptionalText(chapter.handoff_from_previous),
+    ending_state: normalizeOptionalText(chapter.ending_state),
     featured_characters: featuredCharacters,
     primary_location: primaryLocation,
     thread_titles: threadTitles,
@@ -1049,25 +1637,25 @@ export function validateChapterWritingReadiness({
     warnings.push(createIssue(
       'warning',
       'missing-blueprint-context',
-      'Chuong nay chua co chapter blueprint context, AI se de bi viet lech thiet lap.',
+      'Chương này chưa có ngữ cảnh dàn ý, AI sẽ dễ viết lệch thiết lập.',
     ));
     return { blockingIssues, warnings };
   }
 
   if (!chapterBlueprintContext.purpose) {
-    blockingIssues.push(createIssue('blocking', 'missing-purpose', 'Chuong nay chua co purpose de AI bam sat.'));
+    blockingIssues.push(createIssue('blocking', 'missing-purpose', 'Chương này chưa có mục đích để AI bám sát.'));
   }
   if (!Array.isArray(chapterBlueprintContext.featured_characters) || chapterBlueprintContext.featured_characters.length === 0) {
-    blockingIssues.push(createIssue('blocking', 'missing-featured-characters', 'Chuong nay chua gan featured_characters.'));
+    blockingIssues.push(createIssue('blocking', 'missing-featured-characters', 'Chương này chưa gắn nhân vật xuất hiện.'));
   }
   if (!chapterBlueprintContext.primary_location) {
-    blockingIssues.push(createIssue('blocking', 'missing-primary-location', 'Chuong nay chua co primary_location.'));
+    blockingIssues.push(createIssue('blocking', 'missing-primary-location', 'Chương này chưa có địa điểm chính.'));
   }
   if (
     (!Array.isArray(chapterBlueprintContext.thread_titles) || chapterBlueprintContext.thread_titles.length === 0)
     && (!Array.isArray(chapterBlueprintContext.key_events) || chapterBlueprintContext.key_events.length === 0)
   ) {
-    blockingIssues.push(createIssue('blocking', 'missing-story-anchor', 'Chuong nay chua co thread_titles hoac key_events de neo cot truyen.'));
+    blockingIssues.push(createIssue('blocking', 'missing-story-anchor', 'Chương này chưa có tuyến truyện hoặc sự kiện chính để neo cốt truyện.'));
   }
 
   const anchorRichness = chapterBlueprintContext.featured_characters.length
@@ -1080,7 +1668,7 @@ export function validateChapterWritingReadiness({
     warnings.push(createIssue(
       'warning',
       'thin-blueprint-anchor',
-      'Chapter anchor hien tai con mong, AI de bi bịa them chi tiet ngoai blueprint.',
+      'Neo chương hiện tại còn mỏng, AI dễ bịa thêm chi tiết ngoài dàn ý.',
     ));
   }
 
@@ -1092,7 +1680,7 @@ export function validateChapterWritingReadiness({
       warnings.push(createIssue(
         'warning',
         'empty-scene-bootstrap-weak',
-        'Scene moi dang trong va chua du setup POV/location/characters_present, AI de bi bịa.',
+        'Scene mới đang trống và chưa đủ setup POV/location/characters_present, AI dễ bị bịa.',
       ));
     }
   }

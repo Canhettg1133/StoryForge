@@ -43,7 +43,7 @@ export async function parseCorpusFile({
   const fileType = detectFileType({ fileName, mimeType });
 
   if (!fileType) {
-    const error = new Error('Unsupported file type. Supported: TXT, EPUB, PDF, DOCX.');
+    const error = new Error('Định dạng file chưa được hỗ trợ. Chỉ hỗ trợ TXT, EPUB, PDF, DOCX.');
     error.code = 'UNSUPPORTED_FILE_TYPE';
     throw error;
   }
@@ -64,7 +64,7 @@ export async function parseCorpusFile({
       parsed = await parseDocx(buffer, { ...options, fileName });
       break;
     default: {
-      const error = new Error('Unsupported file type parser');
+      const error = new Error('Không có bộ đọc phù hợp cho định dạng file này.');
       error.code = 'UNSUPPORTED_FILE_TYPE';
       throw error;
     }

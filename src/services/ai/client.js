@@ -241,7 +241,7 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
         status: response.status,
         bodyText: errText,
       }, { provider: PROVIDERS.OPENAI_PROXY, model });
-      if (normalized.code === AI_ERROR_CODES.RATE_LIMITED) {
+      if (normalized.code === AI_ERROR_CODES.RATE_LIMITED || normalized.code === AI_ERROR_CODES.QUOTA_EXCEEDED) {
         keyManager.markRateLimited(apiKey, 60000);
       }
       throw normalized;
@@ -269,7 +269,11 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
   } catch (err) {
     if (err.name === 'AbortError') return;
     const normalized = normalizeAIError(err, { provider: PROVIDERS.OPENAI_PROXY, model });
-    if (normalized.code === AI_ERROR_CODES.RATE_LIMITED || normalized.code === AI_ERROR_CODES.MODEL_CAPACITY_EXHAUSTED) throw normalized;
+    if (
+      normalized.code === AI_ERROR_CODES.QUOTA_EXCEEDED
+      || normalized.code === AI_ERROR_CODES.RATE_LIMITED
+      || normalized.code === AI_ERROR_CODES.MODEL_CAPACITY_EXHAUSTED
+    ) throw normalized;
     onError?.(normalized);
     throw normalized;
   }
@@ -328,7 +332,7 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
         status: response.status,
         bodyText: errText,
       }, { provider: PROVIDERS.GEMINI_DIRECT, model });
-      if (normalized.code === AI_ERROR_CODES.RATE_LIMITED) {
+      if (normalized.code === AI_ERROR_CODES.RATE_LIMITED || normalized.code === AI_ERROR_CODES.QUOTA_EXCEEDED) {
         keyManager.markRateLimited(apiKey, 60000);
       }
       throw normalized;
@@ -356,7 +360,11 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
   } catch (err) {
     if (err.name === 'AbortError') return;
     const normalized = normalizeAIError(err, { provider: PROVIDERS.GEMINI_DIRECT, model });
-    if (normalized.code === AI_ERROR_CODES.RATE_LIMITED || normalized.code === AI_ERROR_CODES.MODEL_CAPACITY_EXHAUSTED) throw normalized;
+    if (
+      normalized.code === AI_ERROR_CODES.QUOTA_EXCEEDED
+      || normalized.code === AI_ERROR_CODES.RATE_LIMITED
+      || normalized.code === AI_ERROR_CODES.MODEL_CAPACITY_EXHAUSTED
+    ) throw normalized;
     onError?.(normalized);
     throw normalized;
   }
@@ -379,7 +387,7 @@ async function callOllama({ model, messages, stream = true, signal, onToken, onC
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       if (response.status === 404) throw new Error(`Model "${model}" không tìm thấy. Chạy: ollama pull ${model}`);
-      throw new Error(`Ollama error ${response.status}: ${errText}`);
+      throw new Error(`Ollama trả về lỗi ${response.status}: ${errText}`);
     }
 
     if (!stream) {
@@ -817,7 +825,7 @@ class AIService {
     try {
       if (provider === PROVIDERS.OLLAMA) {
         const res = await fetch(`${getOllamaUrl()}/api/tags`, { signal: AbortSignal.timeout(5000) });
-        if (!res.ok) throw new Error(`Status ${res.status}`);
+        if (!res.ok) throw new Error(`Yêu cầu thất bại với mã ${res.status}.`);
         const data = await res.json();
         return { success: true, models: data.models?.map(m => m.name) || [] };
       }
@@ -845,7 +853,7 @@ class AIService {
           buildGeminiDirectEndpoint(getGeminiDirectBaseUrl(), `/models?key=${apiKey}`),
           { signal: AbortSignal.timeout(8000) },
         );
-        if (!res.ok) throw new Error(`Status ${res.status}`);
+        if (!res.ok) throw new Error(`Yêu cầu thất bại với mã ${res.status}.`);
         return { success: true, models: [] };
       }
       if (provider === PROVIDERS.AI_STUDIO_RELAY) {
@@ -862,7 +870,7 @@ class AIService {
         const healthUrl = new URL(relayUrl, window.location.origin);
         healthUrl.pathname = `${healthUrl.pathname.replace(/\/+$/u, '')}/health`;
         const res = await fetch(healthUrl.toString(), { signal: AbortSignal.timeout(8000) });
-        if (!res.ok) throw new Error(`Status ${res.status}`);
+        if (!res.ok) throw new Error(`Yêu cầu thất bại với mã ${res.status}.`);
         const status = await res.json().catch(() => ({}));
         return { success: true, models: [], status };
       }

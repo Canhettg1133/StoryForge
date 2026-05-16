@@ -11,7 +11,7 @@ export function isSupabaseConfigured() {
 
 export function getSupabaseConfigError() {
   if (isSupabaseConfigured()) return '';
-  return 'Thieu VITE_SUPABASE_URL hoac VITE_SUPABASE_ANON_KEY.';
+  return 'Thiếu VITE_SUPABASE_URL hoặc VITE_SUPABASE_ANON_KEY.';
 }
 
 export function getSupabaseClient() {

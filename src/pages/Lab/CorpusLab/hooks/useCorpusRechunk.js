@@ -1,5 +1,6 @@
 ﻿import { useCallback, useState } from 'react';
 import { corpusApi } from '../../../../services/api/corpusApi';
+import { toVietnameseErrorMessage } from '../../../../utils/errorMessages.js';
 
 export default function useCorpusRechunk() {
   const [preview, setPreview] = useState(null);
@@ -30,7 +31,7 @@ export default function useCorpusRechunk() {
       setPreview(data);
       return data;
     } catch (requestError) {
-      setError(requestError?.message || 'Không thể tạo bản xem trước chunk.');
+      setError(toVietnameseErrorMessage(requestError, 'Không thể tạo bản xem trước chunk.'));
       throw requestError;
     } finally {
       setPreviewLoading(false);
@@ -69,7 +70,7 @@ export default function useCorpusRechunk() {
         phase: 'failed',
         value: 1,
       });
-      setError(requestError?.message || 'Chia lại chunk thất bại.');
+      setError(toVietnameseErrorMessage(requestError, 'Chia lại chunk thất bại.'));
       throw requestError;
     } finally {
       setRechunkLoading(false);

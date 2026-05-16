@@ -60,7 +60,7 @@ function findJsonEnd(text, startIdx) {
     if (char === '}' || char === ']') {
       const openChar = stack[stack.length - 1];
       if (!isMatchingPair(openChar, char)) {
-        throw new Error('Malformed JSON response');
+        throw new Error('Phản hồi JSON không đúng định dạng.');
       }
 
       stack.pop();
@@ -78,12 +78,12 @@ export function parseAIJsonValue(text) {
   const startIdx = findJsonStart(cleaned);
 
   if (startIdx === -1) {
-    throw new Error('No JSON found');
+    throw new Error('Không tìm thấy JSON trong phản hồi.');
   }
 
   const endIdx = findJsonEnd(cleaned, startIdx);
   if (endIdx === -1) {
-    throw new Error('Incomplete JSON');
+    throw new Error('Phản hồi JSON chưa hoàn chỉnh.');
   }
 
   return JSON.parse(cleaned.slice(startIdx, endIdx + 1));

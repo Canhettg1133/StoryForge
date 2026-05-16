@@ -15,7 +15,7 @@ function throwIfAborted(signal) {
     return;
   }
 
-  throw createError('ÄĂ£ há»§y phĂ¢n tĂ­ch', 'ANALYSIS_CANCELLED');
+  throw createError('Đã hủy phân tích', 'ANALYSIS_CANCELLED');
 }
 
 function toNumber(value, fallback = 0) {
@@ -65,7 +65,7 @@ export function buildCorpusSessionInput(chunks = [], maxWords = ANALYSIS_CONFIG.
   }
 
   if (selectedChunks.length === 0) {
-    throw createError('Corpus khong co chunk van ban de phan tich.', 'EMPTY_CORPUS_CHUNKS');
+    throw createError('Corpus không có chunk văn bản để phân tích.', 'EMPTY_CORPUS_CHUNKS');
   }
 
   const combinedText = selectedChunks
@@ -74,7 +74,7 @@ export function buildCorpusSessionInput(chunks = [], maxWords = ANALYSIS_CONFIG.
     .trim();
 
   if (!combinedText) {
-    throw createError('Van ban corpus rong sau buoc tien xu ly.', 'EMPTY_CORPUS_TEXT');
+    throw createError('Văn bản corpus rỗng sau bước tiền xử lý.', 'EMPTY_CORPUS_TEXT');
   }
 
   return {
@@ -103,7 +103,7 @@ export function buildCorpusSessionInputs(chunks = [], maxWords = ANALYSIS_CONFIG
   }
 
   if (!normalizedChunks.length) {
-    throw createError('Corpus khong co chunk van ban de phan tich.', 'EMPTY_CORPUS_CHUNKS');
+    throw createError('Corpus không có chunk văn bản để phân tích.', 'EMPTY_CORPUS_CHUNKS');
   }
 
   const sessions = [];
@@ -152,7 +152,7 @@ export function buildCorpusSessionInputs(chunks = [], maxWords = ANALYSIS_CONFIG
   flushSession();
 
   if (!sessions.length) {
-    throw createError('Van ban corpus rong sau buoc tien xu ly.', 'EMPTY_CORPUS_TEXT');
+    throw createError('Văn bản corpus rỗng sau bước tiền xử lý.', 'EMPTY_CORPUS_TEXT');
   }
 
   return sessions;
@@ -188,7 +188,7 @@ export async function analyzeWithSession({
     onProgress({
       phase: 'session_start',
       progress: 0.08,
-      message: 'Báº¯t Ä‘áº§u session phĂ¢n tĂ­ch',
+      message: 'Bắt đầu session phân tích',
       part: index,
       totalParts: maxParts,
     });
@@ -221,7 +221,7 @@ export async function analyzeWithSession({
       onProgress({
         phase: 'session_continue',
         progress: Math.min(0.95, 0.08 + (index / maxParts) * 0.84),
-        message: `Äang láº¥y pháº§n output ${index}`,
+        message: `Đang lấy phần output ${index}`,
         part: index,
         totalParts: maxParts,
       });
@@ -246,7 +246,7 @@ export async function analyzeWithSession({
 
     if (hasMore) {
       throw createError(
-        `Output phĂ¢n tĂ­ch chÆ°a Ä‘á»§ sau ${maxParts} pháº§n. HĂ£y tÄƒng maxParts vĂ  thá»­ láº¡i.`,
+        `Output phân tích chưa đủ sau ${maxParts} phần. Hãy tăng maxParts và thử lại.`,
         'ANALYSIS_OUTPUT_INCOMPLETE',
       );
     }
@@ -258,7 +258,7 @@ export async function analyzeWithSession({
     onProgress({
       phase: 'merge',
       progress: 0.98,
-      message: 'Äang ghĂ©p cĂ¡c pháº§n phĂ¢n tĂ­ch',
+      message: 'Đang ghép các phần phân tích',
       part: partResults.length,
       totalParts: partResults.length,
     });

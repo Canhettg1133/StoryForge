@@ -14,6 +14,7 @@ import {
   MoreHorizontal,
   Sparkles,
 } from 'lucide-react';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import './ChapterList.css';
 
 const CONTEXT_MENU_WIDTH = 220;
@@ -247,16 +248,16 @@ export default function ChapterList({
       const result = await runChapterCompletion(chapterId, { mode: 'manual' });
       if (!result) return;
       if (result.kind === 'empty') {
-        alert('Chuong chua co noi dung de hoan thanh.');
+        alert('Chương chưa có nội dung để hoàn thành.');
         return;
       }
       if (!result.ok) {
-        alert(result.message || 'Khong the hoan thanh chuong.');
+        alert(result.message || 'Không thể hoàn thành chương.');
       }
       return;
     } catch (error) {
       console.error('[ChapterList] Chapter completion failed:', error);
-      alert(error?.message || 'Khong the hoan thanh chuong.');
+      alert(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
       return;
     }
   };
@@ -392,7 +393,7 @@ export default function ChapterList({
                     className={`chapter-list-collapsed-item ${isActiveChapter ? 'chapter-list-collapsed-item--active' : ''} ${isDone ? 'chapter-list-collapsed-item--done' : ''} ${isAiWritingChapter ? 'chapter-list-collapsed-item--ai-writing' : ''}`}
                     onClick={() => handleSelectChapter(chapter.id)}
                     onContextMenu={(event) => handleContextMenu(event, 'chapter', chapter.id)}
-                    title={isAiWritingChapter ? `${formatStoryLabel(chapter.title)} - AI dang viet` : formatStoryLabel(chapter.title)}
+                    title={isAiWritingChapter ? `${formatStoryLabel(chapter.title)} - AI đang viết` : formatStoryLabel(chapter.title)}
                   >
                     {isAiWritingChapter ? <Sparkles size={11} /> : `Ch${index + 1}`}
                   </button>
@@ -477,7 +478,7 @@ export default function ChapterList({
                   {isThisCompleting && <Loader2 size={14} className="chapter-loading-icon" />}
                   {isAiWritingChapter && (
                     <span className="chapter-ai-writing-badge">
-                      <Sparkles size={11} /> AI dang viet
+                      <Sparkles size={11} /> AI đang viết
                     </span>
                   )}
                   <span className="chapter-scene-count">{chapterScenes.length}</span>
@@ -578,7 +579,7 @@ export default function ChapterList({
                     <div className="chapter-mobile-meta">
                       <span>{chapterScenes.length} cảnh</span>
                       {chapter.actual_word_count > 0 && <span>{chapter.actual_word_count.toLocaleString()} từ</span>}
-                      {isAiWritingChapter && <span className="chapter-mobile-ai-writing">AI dang viet</span>}
+                      {isAiWritingChapter && <span className="chapter-mobile-ai-writing">AI đang viết</span>}
                     </div>
                   </>
                 )}
@@ -621,7 +622,7 @@ export default function ChapterList({
                           <>
                             <span className="chapter-mobile-scene-title">{formatStoryLabel(scene.title)}</span>
                             <span className="chapter-mobile-scene-label">
-                              Cảnh {sceneIndex + 1}{isAiWritingScene ? ' - AI dang viet' : ''}
+                              Cảnh {sceneIndex + 1}{isAiWritingScene ? ' - AI đang viết' : ''}
                             </span>
                           </>
                         )}

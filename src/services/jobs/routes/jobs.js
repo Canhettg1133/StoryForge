@@ -42,13 +42,13 @@ export function createJobsRouter(queue) {
       if (!Object.values(JOB_TYPES).includes(type)) {
         const expectedTypes = Object.values(JOB_TYPES).join(', ');
         return res.status(400).json({
-          error: `Invalid job type. Expected one of: ${expectedTypes}.`,
+          error: `Loại job không hợp lệ. Chỉ hỗ trợ: ${expectedTypes}.`,
         });
       }
 
       if (!isObject(inputData)) {
         return res.status(400).json({
-          error: 'inputData is required and must be an object.',
+          error: 'inputData là bắt buộc và phải là object.',
         });
       }
 
@@ -78,12 +78,12 @@ export function createJobsRouter(queue) {
         error.message.includes('FOREIGN KEY')
       ) {
         return res.status(400).json({
-          error: 'One or more dependency job IDs do not exist.',
+          error: 'Một hoặc nhiều job phụ thuộc không tồn tại.',
         });
       }
 
       return res.status(500).json({
-        error: error?.message || 'Failed to create job.',
+        error: error?.message || 'Không tạo được job.',
       });
     }
   });
@@ -93,7 +93,7 @@ export function createJobsRouter(queue) {
     const job = await queue.getJobAsync(jobId);
 
     if (!job) {
-      return res.status(404).json({ error: 'Job not found.' });
+      return res.status(404).json({ error: 'Không tìm thấy job.' });
     }
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -139,7 +139,7 @@ export function createJobsRouter(queue) {
   router.get('/:id', async (req, res) => {
     const job = await queue.getJobAsync(req.params.id);
     if (!job) {
-      return res.status(404).json({ error: 'Job not found.' });
+      return res.status(404).json({ error: 'Không tìm thấy job.' });
     }
 
     return res.json(job);
@@ -160,7 +160,7 @@ export function createJobsRouter(queue) {
   router.delete('/:id', async (req, res) => {
     const job = await queue.cancelJob(req.params.id);
     if (!job) {
-      return res.status(404).json({ error: 'Job not found.' });
+      return res.status(404).json({ error: 'Không tìm thấy job.' });
     }
 
     return res.json({

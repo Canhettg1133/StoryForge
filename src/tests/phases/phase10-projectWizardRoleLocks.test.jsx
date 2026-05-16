@@ -74,7 +74,41 @@ describe('phase10 project wizard role locks', () => {
     plotState = {
       createPlotThread: vi.fn(async () => 601),
     };
-    aiService.send.mockImplementation(({ onComplete }) => {
+    aiService.send.mockImplementation(({ taskType, onComplete }) => {
+      if (taskType === 'chapter_outline_pass') {
+        onComplete(JSON.stringify({
+          chapters: [{
+            title: 'Chuong 1',
+            purpose: 'Dat neo ban do co.',
+            summary: 'Lan xuat hien tai Thanh Co va bao ve ban do.',
+            opening_state: 'Lan dang giu ban do tai Thanh Co.',
+            ending_state: 'Lan bao ve duoc ban do nhung bi theo doi.',
+            featured_characters: ['Lan'],
+            primary_location: 'Thanh Co',
+            thread_titles: ['Bi mat ban do'],
+            key_events: ['Lan bao ve ban do'],
+            state_delta: 'Lan giu duoc ban do co.',
+          }],
+          plot_threads: [{
+            title: 'Bi mat ban do',
+            type: 'mystery',
+            description: 'Truy tim nguon goc ban do.',
+            state: 'active',
+            opening_window: 'Chuong 1',
+            anchor_chapters: ['Chuong 1'],
+          }],
+          proposed_entities: {
+            characters: [],
+            locations: [],
+            objects: [],
+            factions: [],
+            terms: [],
+            plot_threads: [],
+          },
+        }));
+        return;
+      }
+
       onComplete(JSON.stringify({
         title: 'Ban Do Co',
         premise: 'Lan giu ban do co dan toi mot bi mat.',
@@ -96,19 +130,10 @@ describe('phase10 project wizard role locks', () => {
           current_status: 'Dang giu ban do',
           story_function: 'neo mo dau',
         }],
-        locations: [{ name: 'Thanh Co', description: 'Noi mo dau' }],
+        locations: [{ name: 'Thanh Co', description: 'Noi mo dau', story_function: 'xuat hien o chuong 1' }],
         objects: [],
         factions: [],
         terms: [],
-        chapters: [{
-          title: 'Chuong 1',
-          purpose: 'Dat neo ban do co.',
-          summary: 'Lan xuat hien tai Thanh Co va bao ve ban do.',
-          featured_characters: ['Lan'],
-          primary_location: 'Thanh Co',
-          thread_titles: ['Bi mat ban do'],
-          key_events: ['Lan bao ve ban do'],
-        }],
         plot_threads: [{
           title: 'Bi mat ban do',
           type: 'mystery',
@@ -142,8 +167,18 @@ describe('phase10 project wizard role locks', () => {
     });
   }
 
+  function expectWizardActionsOutsideScroll() {
+    const body = container.querySelector('.wizard-body');
+    expect(body).toBeTruthy();
+    const directChildren = Array.from(body.children);
+    expect(directChildren.some((child) => child.classList.contains('wizard-scroll'))).toBe(true);
+    expect(directChildren.some((child) => child.classList.contains('modal-actions'))).toBe(true);
+    expect(body.querySelector('.wizard-scroll > .modal-actions')).toBeNull();
+  }
+
   it('previews and saves specific role locks from wizard character output', async () => {
     await renderWizard();
+    expectWizardActionsOutsideScroll();
 
     await act(async () => {
       const textareas = container.querySelectorAll('.wizard-body textarea.textarea');
@@ -154,6 +189,21 @@ describe('phase10 project wizard role locks', () => {
     });
 
     expect(container.textContent).toContain('nguoi giu ban do co');
+    expectWizardActionsOutsideScroll();
+
+    await act(async () => {
+      container.querySelector('.wizard-review .modal-actions .btn-primary').click();
+    });
+
+    expect(container.textContent).toContain('Lan bao ve duoc ban do');
+    expect(container.textContent).toContain('Mục đích:');
+    expect(container.textContent).toContain('Sự kiện chính:');
+    expect(container.textContent).toContain('Thay đổi trạng thái:');
+    expect(container.textContent).not.toContain('Purpose:');
+    expect(container.textContent).not.toContain('Key events:');
+    expect(container.textContent).not.toContain('State delta:');
+    expect(container.textContent).not.toContain('Story Bible Seed không nên chứa chapters');
+    expectWizardActionsOutsideScroll();
 
     await act(async () => {
       container.querySelector('.wizard-review .modal-actions .btn-primary').click();

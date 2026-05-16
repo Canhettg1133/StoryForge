@@ -152,7 +152,7 @@ async function readDocText(file) {
   const arrayBuffer = await file.arrayBuffer();
   const bytes = new Uint8Array(arrayBuffer);
   if (isLegacyDocBuffer(bytes)) {
-    throw new Error('DOC cu khong doc truc tiep duoc trong browser. Hay luu lai thanh DOCX roi tai len Prompt Doctor.');
+    throw new Error('DOC cũ không đọc trực tiếp được trong browser. Hãy lưu lại thành DOCX rồi tải lên Prompt Doctor.');
   }
   return new TextDecoder('utf-8', { fatal: false }).decode(bytes).trim();
 }
@@ -160,13 +160,13 @@ async function readDocText(file) {
 async function readEpubText(file) {
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
   const containerXml = await readZipText(zip, 'META-INF/container.xml');
-  if (!containerXml) throw new Error('EPUB khong hop le: thieu META-INF/container.xml.');
+  if (!containerXml) throw new Error('EPUB không hợp lệ: thiếu META-INF/container.xml.');
 
   const opfPath = getContainerOpfPath(containerXml);
-  if (!opfPath) throw new Error('EPUB khong hop le: thieu package document.');
+  if (!opfPath) throw new Error('EPUB không hợp lệ: thiếu package document.');
 
   const packageXml = await readZipText(zip, opfPath);
-  if (!packageXml) throw new Error('EPUB khong hop le: khong tim thay package document.');
+  if (!packageXml) throw new Error('EPUB không hợp lệ: không tìm thấy package document.');
 
   const pkg = xmlParser.parse(packageXml)?.package;
   const manifestById = new Map();
@@ -196,7 +196,7 @@ async function readEpubText(file) {
   }
 
   const rawText = sanitizeWhitespace(sections.join('\n\n'));
-  if (!rawText) throw new Error('EPUB parser khong trich duoc noi dung doc duoc.');
+  if (!rawText) throw new Error('EPUB parser không trích được nội dung đọc được.');
 
   return {
     rawText,
@@ -210,10 +210,10 @@ async function readEpubText(file) {
 }
 
 export async function readStyleImporterFile(file) {
-  if (!file) throw new Error('Please choose a file.');
+  if (!file) throw new Error('Vui lòng chọn file.');
 
   const fileType = detectStyleImporterFileType(file);
-  if (!fileType) throw new Error('Prompt Doctor ho tro TXT, MD, DOCX va EPUB.');
+  if (!fileType) throw new Error('Prompt Doctor hỗ trợ TXT, MD, DOCX và EPUB.');
 
   let result;
   if (fileType === 'docx') {
@@ -227,7 +227,7 @@ export async function readStyleImporterFile(file) {
   }
 
   const rawText = sanitizeWhitespace(result.rawText);
-  if (!rawText) throw new Error('File khong co noi dung van ban de phan tich.');
+  if (!rawText) throw new Error('File không có nội dung văn bản để phân tích.');
 
   return {
     fileType,
@@ -274,7 +274,7 @@ export function buildStyleImporterSample({
       totalEstimatedTokens: 0,
       sampleEstimatedTokens: 0,
       chunks: [],
-      warnings: ['File khong co noi dung van ban de phan tich.'],
+      warnings: ['File không có nội dung văn bản để phân tích.'],
     };
   }
 

@@ -72,7 +72,7 @@ export function ensureArrayOfStrings(values = []) {
 
 export function throwIfCancelled(signal) {
   if (!signal?.aborted) return;
-  const error = new Error('Scoped rerun cancelled');
+  const error = new Error('Lượt chạy lại theo phạm vi đã bị hủy.');
   error.code = 'JOB_CANCELLED';
   throw error;
 }
@@ -611,7 +611,7 @@ export async function executeScopedRerun({
   onProgress = async () => {},
 } = {}) {
   if (!analysisId || !corpusId || !analysis || !artifact) {
-    const error = new Error('Missing analysis context for scoped rerun');
+    const error = new Error('Thiếu ngữ cảnh phân tích cho lượt chạy lại theo phạm vi.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
@@ -703,7 +703,7 @@ export async function executeScopedRerun({
         name: 'phase_a_windows',
         status: 'running',
         progress: 20,
-        message: 'Refreshing window overlap, carry packets, and boundaries',
+        message: 'Đang làm mới overlap cửa sổ, gói carry và ranh giới',
       },
     });
     throwIfCancelled(signal);
@@ -726,7 +726,7 @@ export async function executeScopedRerun({
         name: 'phase_b_workers',
         status: 'running',
         progress: 50,
-        message: 'Refreshing incident beats from scoped event sources',
+        message: 'Đang làm mới nhịp incident từ nguồn sự kiện trong phạm vi',
       },
     });
     throwIfCancelled(signal);
@@ -815,7 +815,7 @@ export async function executeScopedRerun({
         name: 'phase_d_graph',
         status: 'running',
         progress: 60,
-        message: 'Refreshing incident, causal, character-state, and location graphs',
+        message: 'Đang làm mới đồ thị incident, nhân quả, trạng thái nhân vật và địa điểm',
       },
     });
     throwIfCancelled(signal);
@@ -840,7 +840,7 @@ export async function executeScopedRerun({
       name: 'phase_e_review',
       status: 'running',
       progress: 70,
-      message: 'Recomputing review queue from scoped artifact state',
+      message: 'Đang tính lại hàng đợi duyệt từ trạng thái artifact theo phạm vi',
     },
   });
   throwIfCancelled(signal);
@@ -983,13 +983,13 @@ export async function executeScopedRerun({
     errorMessage: null,
   });
 
-  await onProgress(100, 'Scoped rerun completed', {
+  await onProgress(100, 'Đã chạy lại theo phạm vi xong.', {
     event: 'step_complete',
     step: {
       name: 'persist_scope',
       status: 'completed',
       progress: 100,
-      message: 'Scoped rerun completed',
+      message: 'Đã chạy lại theo phạm vi xong.',
     },
   });
 

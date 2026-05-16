@@ -34,7 +34,7 @@ async function requireUser() {
   const session = await getSession();
   const user = session?.user || null;
   if (!user?.id) {
-    throw new Error('Ban can dang nhap Google truoc khi dung Cloud Sync.');
+    throw new Error('Bạn cần đăng nhập Google trước khi dùng Cloud Sync.');
   }
   return user;
 }
@@ -70,7 +70,7 @@ function buildChatSlug(thread) {
 
   const normalizedId = Number(thread?.id);
   if (!Number.isFinite(normalizedId) || normalizedId <= 0) {
-    throw new Error('Khong tim thay thread chat local de backup.');
+    throw new Error('Không tìm thấy thread chat local để backup.');
   }
 
   return `chat-thread-${normalizedId}`;
@@ -123,11 +123,11 @@ function validateProjectSnapshotPayload(payloadText) {
   try {
     parsed = JSON.parse(payloadText);
   } catch {
-    throw new Error('Snapshot cloud bi loi JSON va khong the khoi phuc.');
+    throw new Error('Snapshot cloud bị lỗi JSON và không thể khôi phục.');
   }
 
   if (!parsed?._storyforge_version || !parsed?.project) {
-    throw new Error('Snapshot cloud khong dung dinh dang backup StoryForge.');
+    throw new Error('Snapshot cloud không đúng định dạng backup StoryForge.');
   }
 
   return parsed;
@@ -138,11 +138,11 @@ function validateChatSnapshotPayload(payloadText) {
   try {
     parsed = JSON.parse(payloadText);
   } catch {
-    throw new Error('Snapshot chat cloud bi loi JSON va khong the khoi phuc.');
+    throw new Error('Snapshot chat cloud bị lỗi JSON và không thể khôi phục.');
   }
 
   if (!parsed?._storyforge_version || parsed?._cloud_scope !== CHAT_SCOPE || !parsed?.thread || !Array.isArray(parsed?.messages)) {
-    throw new Error('Snapshot chat cloud khong dung dinh dang backup StoryForge.');
+    throw new Error('Snapshot chat cloud không đúng định dạng backup StoryForge.');
   }
 
   return parsed;
@@ -153,11 +153,11 @@ function validatePromptBundlePayload(payloadText) {
   try {
     parsed = JSON.parse(payloadText);
   } catch {
-    throw new Error('Snapshot prompt cloud bi loi JSON va khong the khoi phuc.');
+    throw new Error('Snapshot prompt cloud bị lỗi JSON và không thể khôi phục.');
   }
 
   if (!parsed?._storyforge_version || parsed?._cloud_scope !== PROMPT_BUNDLE_SCOPE || !parsed?.story_creation_settings) {
-    throw new Error('Snapshot prompt cloud khong dung dinh dang backup StoryForge.');
+    throw new Error('Snapshot prompt cloud không đúng định dạng backup StoryForge.');
   }
 
   return parsed;
@@ -204,7 +204,7 @@ async function getSnapshotRow(scope, itemSlug) {
 
   if (error) throw error;
   if (!data) {
-    throw new Error('Khong tim thay snapshot cloud da chon.');
+    throw new Error('Không tìm thấy snapshot cloud đã chọn.');
   }
 
   return data;
@@ -321,12 +321,12 @@ export async function listProjectBackups() {
 export async function backupProject(project) {
   const normalizedProjectId = Number(project?.id);
   if (!Number.isFinite(normalizedProjectId) || normalizedProjectId <= 0) {
-    throw new Error('Khong tim thay project local de backup.');
+    throw new Error('Không tìm thấy project local để backup.');
   }
 
   const freshProject = await db.projects.get(normalizedProjectId);
   if (!freshProject) {
-    throw new Error('Khong tim thay project local de backup.');
+    throw new Error('Không tìm thấy project local để backup.');
   }
 
   const user = await requireUser();
@@ -366,19 +366,19 @@ export async function restoreProjectBackup(itemSlug, options = {}) {
   const payloadText = String(snapshotRow.payload_text || '').trim();
 
   if (!payloadText) {
-    throw new Error('Snapshot cloud khong co du lieu de khoi phuc.');
+    throw new Error('Snapshot cloud không có dữ liệu để khôi phục.');
   }
 
   validateProjectSnapshotPayload(payloadText);
 
   if (normalizedMode === 'replace') {
     if (!Number.isFinite(normalizedTargetProjectId) || normalizedTargetProjectId <= 0) {
-      throw new Error('Hay chon project local de ghi de.');
+      throw new Error('Hãy chọn project local để ghi đè.');
     }
 
     const targetProject = await db.projects.get(normalizedTargetProjectId);
     if (!targetProject) {
-      throw new Error('Project local duoc chon de ghi de khong con ton tai.');
+      throw new Error('Project local được chọn để ghi đè không còn tồn tại.');
     }
     await deleteProjectCascade(normalizedTargetProjectId);
   }
@@ -426,7 +426,7 @@ export async function listChatBackups() {
 
 export async function backupChatThread(thread) {
   if (!thread?.id) {
-    throw new Error('Khong tim thay thread chat local de backup.');
+    throw new Error('Không tìm thấy thread chat local để backup.');
   }
 
   const user = await requireUser();
@@ -462,7 +462,7 @@ export async function restoreChatBackup(itemSlug) {
   const payloadText = String(snapshotRow.payload_text || '').trim();
 
   if (!payloadText) {
-    throw new Error('Snapshot chat cloud khong co du lieu de khoi phuc.');
+    throw new Error('Snapshot chat cloud không có dữ liệu để khôi phục.');
   }
 
   validateChatSnapshotPayload(payloadText);
@@ -523,7 +523,7 @@ export async function restorePromptBackup(itemSlug = PROMPT_BUNDLE_SLUG) {
   const payloadText = String(snapshotRow.payload_text || '').trim();
 
   if (!payloadText) {
-    throw new Error('Snapshot prompt cloud khong co du lieu de khoi phuc.');
+    throw new Error('Snapshot prompt cloud không có dữ liệu để khôi phục.');
   }
 
   validatePromptBundlePayload(payloadText);
@@ -566,7 +566,7 @@ function buildCloudExportManifest(items) {
 
 function validateCloudExportManifest(manifest) {
   if (!manifest?._cloud_export_scope || manifest._cloud_export_scope !== 'all_snapshots' || !Array.isArray(manifest?.snapshots)) {
-    throw new Error('File import cloud khong dung dinh dang StoryForge.');
+    throw new Error('File import cloud không đúng định dạng StoryForge.');
   }
 
   return manifest.snapshots
@@ -627,7 +627,7 @@ async function readCloudImportManifestFromFile(file) {
     const zip = await JSZip.loadAsync(file);
     const manifestEntry = zip.file('manifest.json');
     if (!manifestEntry) {
-      throw new Error('File zip cloud khong co manifest.json.');
+      throw new Error('File zip cloud không có manifest.json.');
     }
     const text = await manifestEntry.async('string');
     return JSON.parse(text);
@@ -639,13 +639,13 @@ async function readCloudImportManifestFromFile(file) {
 
 export async function importCloudBackups(file) {
   if (!file) {
-    throw new Error('Khong tim thay file import cloud.');
+    throw new Error('Không tìm thấy file import cloud.');
   }
 
   const manifest = await readCloudImportManifestFromFile(file);
   const items = validateCloudExportManifest(manifest);
   if (items.length === 0) {
-    throw new Error('File import cloud khong co snapshot hop le nao.');
+    throw new Error('File import cloud không có snapshot hợp lệ nào.');
   }
 
   const user = await requireUser();

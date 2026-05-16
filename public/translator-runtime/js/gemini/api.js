@@ -7,11 +7,24 @@
 // PROXY API - OpenAI Compatible (BeiJiXingXing, OpenRouter...)
 // ============================================
 async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = null) {
-    const activeKey = apiKeyOverride || proxyApiKey;
+    const activeKey = apiKeyOverride || (typeof getActiveProxyKeys === 'function' ? getActiveProxyKeys()[0] : proxyApiKey);
+    const customTarget = typeof isCustomProxyProviderActive === 'function' && isCustomProxyProviderActive() && typeof getCustomProxyRequestTarget === 'function'
+        ? getCustomProxyRequestTarget('chat')
+        : null;
+    const activeBaseUrl = customTarget?.url || (typeof getActiveProxyBaseUrl === 'function' ? getActiveProxyBaseUrl() : proxyBaseUrl);
+    const activeModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;
+    const activeProviderLabel = typeof getActiveProxyLabel === 'function' ? getActiveProxyLabel() : 'Proxy';
     if (!activeKey) throw createTranslatorError('MISSING_PROXY_KEY');
-    if (!proxyBaseUrl) throw createTranslatorError('MISSING_PROXY_URL');
+    if (!activeBaseUrl) throw createTranslatorError('MISSING_PROXY_URL');
+    if (!activeModel) {
+        throw createTranslatorError('MISSING_PROXY_MODEL', {
+            provider: activeProviderLabel,
+            rawMessage: 'Chưa chọn model proxy để dịch.',
+            retryable: false,
+        });
+    }
 
-    console.log(`[Proxy] Model: ${proxyModel} | Temp: ${temperature} | Key: ...${activeKey.slice(-6)}`);
+    console.log(`[${activeProviderLabel}] Model: ${activeModel} | Temp: ${temperature} | Key: ...${activeKey.slice(-6)}`);
 
     const controller = new AbortController();
     if (typeof registerActiveRequestController === 'function') {
@@ -21,18 +34,27 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
 
     let response;
     try {
-        response = await fetch(proxyBaseUrl, {
+        const payload = {
+            model: activeModel,
+            messages: [{ role: 'user', content: text }],
+            temperature: temperature,
+            max_tokens: 16384
+        };
+        const requestBody = customTarget?.mode === 'relay'
+            ? {
+                action: 'chat',
+                baseUrl: customTarget.profile.baseUrl,
+                chatCompletionsPath: customTarget.path,
+                payload,
+            }
+            : payload;
+        response = await fetch(activeBaseUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${activeKey}`,
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                model: proxyModel,
-                messages: [{ role: 'user', content: text }],
-                temperature: temperature,
-                max_tokens: 16384
-            }),
+            body: JSON.stringify(requestBody),
             signal: controller.signal
         });
     } catch (fetchError) {
@@ -41,15 +63,15 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
                 throw new Error('TRANSLATION_CANCELLED');
             }
             throw createTranslatorError('PROXY_TIMEOUT', {
-                provider: 'Proxy',
-                model: proxyModel,
+                provider: activeProviderLabel,
+                model: activeModel,
                 timeoutSeconds: 120,
                 retryable: true,
             });
         }
         throw normalizeTranslatorError(fetchError, {
-            provider: 'Proxy',
-            model: proxyModel,
+            provider: activeProviderLabel,
+            model: activeModel,
             retryable: true,
         });
     } finally {
@@ -70,7 +92,7 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
             console.warn('[Proxy] 403 - Backend suspended, proxy sẽ xoay key khác khi retry...');
         }
 
-        throw createProxyHttpError(response.status, errorData, { model: proxyModel });
+        throw createProxyHttpError(response.status, errorData, { model: activeModel, provider: activeProviderLabel });
     }
 
     const data = await response.json();
@@ -80,8 +102,8 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
     if (!content) {
         console.error('[Proxy ERROR] Empty response:', data);
         throw createTranslatorError('PROXY_EMPTY_RESPONSE', {
-            provider: 'Proxy',
-            model: proxyModel,
+            provider: activeProviderLabel,
+            model: activeModel,
             rawMessage: 'Proxy API: Empty response',
             retryable: true,
         });

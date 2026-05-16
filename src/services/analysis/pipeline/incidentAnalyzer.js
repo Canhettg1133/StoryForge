@@ -34,7 +34,7 @@ export class IncidentAnalyzer {
       ? payload.consistencyRisks
       : [];
 
-    this.emitProgress('segmentation', 0.1, 'Running incident segmentation');
+    this.emitProgress('segmentation', 0.1, 'Đang tách phân đoạn sự kiện lớn.');
     const segmented = globalSegmentation({
       chapters,
       incidents: inputIncidents,
@@ -91,7 +91,7 @@ export class IncidentAnalyzer {
       )
       : [];
 
-    this.emitProgress('completed', 1, 'Incident-first pipeline completed');
+    this.emitProgress('completed', 1, 'Pipeline incident-first đã hoàn tất.');
 
     return {
       success: true,

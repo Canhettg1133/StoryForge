@@ -4,8 +4,8 @@ import './MobileBibleTabs.css';
 
 const BIBLE_TABS = [
   { id: 'overview', label: 'Tong quan', path: (id) => `/project/${id}/story-bible` },
-  { id: 'characters', label: 'Nhan vat', path: (id) => `/project/${id}/characters` },
-  { id: 'world', label: 'The gioi', path: (id) => `/project/${id}/world` },
+  { id: 'characters', label: 'Nhân vật', path: (id) => `/project/${id}/characters` },
+  { id: 'world', label: 'Thế giới', path: (id) => `/project/${id}/world` },
   { id: 'canon', label: 'Canon', path: (id) => `/project/${id}/su-that` },
 ];
 

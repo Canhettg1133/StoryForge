@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { parseAIJsonValue } from '../../../utils/aiJson.js';
+import { toVietnameseErrorMessage } from '../../../utils/errorMessages.js';
 import { ANALYSIS_CONFIG } from '../analysisConfig.js';
 import { extractKnowledgeProfile, mergeKnowledgeProfile } from '../grounding/knowledgeExtraction.js';
 import { mergeOutputParts, shouldContinueOutput } from '../outputChunker.js';
@@ -150,7 +151,7 @@ function mergeUsage(left = {}, right = {}) {
 
 function throwIfAborted(signal) {
   if (!signal?.aborted) return;
-  const error = new Error('Analysis cancelled');
+  const error = new Error('Đã hủy phân tích.');
   error.code = 'ANALYSIS_CANCELLED';
   throw error;
 }
@@ -852,7 +853,7 @@ async function callStepJsonMultipart({
     }
 
     if (hasMore) {
-      const error = new Error(`AI output incomplete after ${limitParts} parts`);
+      const error = new Error(`AI chưa trả đủ nội dung sau ${limitParts} phần.`);
       error.code = 'ANALYSIS_OUTPUT_INCOMPLETE';
       throw error;
     }
@@ -1774,7 +1775,7 @@ export async function runIncidentOnly1MJob({
   onProgress = () => { },
 } = {}) {
   if (!corpusId) {
-    const error = new Error('Missing corpusId for incident_only_1m job');
+    const error = new Error('Thiếu corpusId cho job Incident-Only 1M.');
     error.code = 'INVALID_INPUT';
     throw error;
   }
@@ -1786,7 +1787,7 @@ export async function runIncidentOnly1MJob({
   const tracker = createPassTracker(options.runMode || options.mode || 'full_corpus_1m');
   const chapters = buildChaptersFromChunks(chunks);
   if (!chapters.length) {
-    const error = new Error('Corpus does not contain readable chapter text');
+    const error = new Error('Corpus không có nội dung chương đọc được.');
     error.code = 'EMPTY_CORPUS_CHUNKS';
     throw error;
   }
@@ -2211,7 +2212,7 @@ export async function runIncidentOnly1MJob({
       aiApplied: aiSteps.length > 0,
     };
   } catch (error) {
-    markPassDegraded(tracker, 'pass_a', error?.message || 'incident_only_1m_failed', {
+    markPassDegraded(tracker, 'pass_a', error?.message || 'Incident-Only 1M thất bại.', {
       fallback: 'heuristic_pipeline',
     });
     const storyGraph = buildStoryGraph({
@@ -2265,7 +2266,7 @@ export async function runIncidentOnly1MJob({
         runMode: normalizePublicRunMode(options.runMode || options.mode || 'full_corpus_1m'),
       }),
       aiApplied: aiSteps.length > 0,
-      aiError: error?.message || 'incident_only_1m_failed',
+      aiError: toVietnameseErrorMessage(error, 'Incident-Only 1M thất bại.'),
     };
   }
 }

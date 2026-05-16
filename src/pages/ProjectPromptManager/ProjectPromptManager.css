@@ -387,9 +387,34 @@
   color: var(--color-accent);
 }
 
+.prompt-card__effective {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  font-size: var(--text-sm);
+}
+
+.prompt-card__effective strong {
+  color: var(--color-text-secondary);
+}
+
+.prompt-card__effective span {
+  color: var(--color-text-tertiary);
+}
+
+.prompt-card__effective.is-override {
+  border-color: color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 9%, var(--color-bg-secondary));
+}
+
 .prompt-card__info-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
@@ -409,6 +434,11 @@
   margin: 0;
   color: var(--color-text-tertiary);
   font-size: var(--text-sm);
+}
+
+.prompt-card__info-box.is-scope {
+  border-color: color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-bg-secondary));
 }
 
 .prompt-card__columns {
@@ -679,8 +709,14 @@
   }
 
   .project-mobile-shell .prompt-card__header,
-  .project-mobile-shell .prompt-editor-block__header {
+  .project-mobile-shell .prompt-editor-block__header,
+  .project-mobile-shell .prompt-card__effective {
     gap: 10px;
+  }
+
+  .project-mobile-shell .prompt-card__effective {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .project-mobile-shell .prompt-editor-block {

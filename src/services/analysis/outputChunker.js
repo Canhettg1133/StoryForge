@@ -153,7 +153,7 @@ export function mergeOutputParts(parts = []) {
     return parsedCombined;
   }
 
-  const error = new Error('Unable to merge analysis output into valid JSON.');
+  const error = new Error('Không gộp được kết quả phân tích thành JSON hợp lệ.');
   error.code = 'INVALID_ANALYSIS_OUTPUT';
   throw error;
 }

@@ -71,17 +71,18 @@ export async function buildRetrievalPacket({
     project,
     chapters,
     chapterCommits,
-    entityStates,
-    threadStates,
+    currentEntityStates,
+    currentThreadStates,
     canonFacts,
     scenes,
     plotThreads,
     objects,
-    itemStates,
-    relationshipStates,
+    currentItemStates,
+    currentRelationshipStates,
     chapterMetas,
     memoryEvidence,
     storyEvents,
+    preChapterTruth,
   ] = await Promise.all([
     db.projects.get(projectId),
     db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
@@ -97,6 +98,7 @@ export async function buildRetrievalPacket({
     db.chapterMeta.where('project_id').equals(projectId).toArray(),
     db.memory_evidence.where('project_id').equals(projectId).toArray(),
     db.story_events.where('project_id').equals(projectId).toArray(),
+    chapterId ? loadPreChapterTruth(projectId, chapterId) : Promise.resolve(null),
   ]);
 
   const chapter = chapters.find((item) => item.id === chapterId) || null;
@@ -109,6 +111,35 @@ export async function buildRetrievalPacket({
       sceneCharacters = [];
     }
   }
+
+  const commit = chapterCommits.find((row) => row.chapter_id === chapterId) || null;
+  const snapshots = await db.chapter_snapshots.where('project_id').equals(projectId).toArray();
+  const latestSnapshot = snapshots
+    .filter((item) => {
+      const snapChapter = chapters.find((chapterItem) => chapterItem.id === item.chapter_id);
+      return snapChapter && (!chapter || snapChapter.order_index < chapter.order_index);
+    })
+    .sort((a, b) => {
+      const chapterA = chapters.find((item) => item.id === a.chapter_id);
+      const chapterB = chapters.find((item) => item.id === b.chapter_id);
+      return (chapterB?.order_index || 0) - (chapterA?.order_index || 0);
+    })[0] || null;
+
+  const usePreChapterTruth = Boolean(
+    preChapterTruth
+    && (latestSnapshot || (chapter && Number(chapter.order_index) === 0))
+  );
+  const entityStates = usePreChapterTruth ? preChapterTruth.entityStates : currentEntityStates;
+  const threadStates = usePreChapterTruth ? preChapterTruth.threadStates : currentThreadStates;
+  const itemStates = usePreChapterTruth ? preChapterTruth.itemStates : currentItemStates;
+  const relationshipStates = usePreChapterTruth ? preChapterTruth.relationshipStates : currentRelationshipStates;
+  const factStates = (usePreChapterTruth ? preChapterTruth.factStates : collectFactStatesFromSnapshot(latestSnapshot, canonFacts))
+    .map((fact) => {
+      if (fact.fact_type === 'secret' && fact.revealed_at_chapter && chapter && fact.revealed_at_chapter <= chapter.order_index + 1) {
+        return { ...fact, fact_type: 'fact' };
+      }
+      return fact;
+    });
 
   const relevantCharacterIds = uniqueList([
     ...detectedCharacterIds,
@@ -129,26 +160,6 @@ export async function buildRetrievalPacket({
     : relationshipStates.slice(0, modeConfig.relationshipCap);
 
   const activeThreadStates = threadStates.filter((threadState) => threadState.state !== 'resolved');
-  const commit = chapterCommits.find((row) => row.chapter_id === chapterId) || null;
-  const snapshots = await db.chapter_snapshots.where('project_id').equals(projectId).toArray();
-  const latestSnapshot = snapshots
-    .filter((item) => {
-      const snapChapter = chapters.find((chapterItem) => chapterItem.id === item.chapter_id);
-      return snapChapter && (!chapter || snapChapter.order_index < chapter.order_index);
-    })
-    .sort((a, b) => {
-      const chapterA = chapters.find((item) => item.id === a.chapter_id);
-      const chapterB = chapters.find((item) => item.id === b.chapter_id);
-      return (chapterB?.order_index || 0) - (chapterA?.order_index || 0);
-    })[0] || null;
-
-  const factStates = collectFactStatesFromSnapshot(latestSnapshot, canonFacts)
-    .map((fact) => {
-      if (fact.fact_type === 'secret' && fact.revealed_at_chapter && chapter && fact.revealed_at_chapter <= chapter.order_index + 1) {
-        return { ...fact, fact_type: 'fact' };
-      }
-      return fact;
-    });
 
   const previousChapters = chapter
     ? chapters.filter((item) => item.order_index < chapter.order_index).slice(-modeConfig.chapterMemoryCount)
@@ -171,7 +182,7 @@ export async function buildRetrievalPacket({
       .slice(0, modeConfig.chapterEvidenceCount);
     return {
       chapter_id: memoryChapter.id,
-      chapter_title: memoryChapter.title || `Chuong ${memoryChapter.order_index + 1}`,
+      chapter_title: memoryChapter.title || `Chương ${memoryChapter.order_index + 1}`,
       chapter_order: memoryChapter.order_index,
       summary: chapterMeta?.summary || memoryChapter.summary || '',
       bridge_buffer: chapterMeta?.last_prose_buffer || '',
@@ -385,7 +396,7 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
       const chapter = chapterMap.get(commit.chapter_id) || null;
       return {
         ...commit,
-        chapter_title: chapter?.title || `Chuong ${chapter?.order_index || commit.chapter_id}`,
+        chapter_title: chapter?.title || `Chương ${chapter?.order_index || commit.chapter_id}`,
         chapter_order: chapter?.order_index || 0,
         current_revision: revisionMap.get(commit.current_revision_id) || null,
         canonical_revision: revisionMap.get(commit.canonical_revision_id) || null,
@@ -491,14 +502,14 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
   const decoratedThreadStates = threadStates
     .map((threadState) => ({
       ...threadState,
-      thread_title: threadMap.get(threadState.thread_id)?.title || threadState.summary || `Thread ${threadState.thread_id}`,
+      thread_title: threadMap.get(threadState.thread_id)?.title || threadState.summary || `Tuyến ${threadState.thread_id}`,
     }))
     .sort((a, b) => String(a.thread_title || '').localeCompare(String(b.thread_title || '')));
 
   const decoratedItemStates = itemStates
     .map((itemState) => ({
       ...itemState,
-      object_name: objectMap.get(itemState.object_id)?.name || `Vat pham ${itemState.object_id}`,
+      object_name: objectMap.get(itemState.object_id)?.name || `Vật phẩm ${itemState.object_id}`,
     }))
     .sort((a, b) => String(a.object_name || '').localeCompare(String(b.object_name || '')));
 

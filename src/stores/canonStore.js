@@ -6,14 +6,18 @@ import {
   saveRepairDraftRevision as saveRepairDraftRevisionEngine,
 } from '../services/canon/workflow';
 import { rebuildCanonFromChapter as rebuildCanonFromChapterEngine } from '../services/canon/projection';
+import { toVietnameseErrorMessage } from '../utils/errorMessages';
 
 function normalizeCanonFailure(error) {
-  const message = error?.message || 'Khong the xu ly yeu cau canon.';
+  const message = toVietnameseErrorMessage(
+    error,
+    'Không thể xử lý canon. Hãy thử lại, đổi model/API key hoặc kiểm tra cấu hình trong Settings.',
+  );
   if (error?.code === 'API_UNREACHABLE') {
     return {
       ok: false,
       kind: 'api_unavailable',
-      message: `Phan tich su that chua hoan tat.\nKet qua: loi runtime.\nChi tiet: ${message}`,
+      message: `Phân tích sự thật chưa hoàn tất.\nKết quả: lỗi runtime.\nChi tiết: ${message}`,
       reports: [],
       revisionId: null,
     };
@@ -21,7 +25,7 @@ function normalizeCanonFailure(error) {
   return {
     ok: false,
     kind: 'runtime',
-    message: `Phan tich su that chua hoan tat.\nKet qua: loi runtime.\nChi tiet: ${message}`,
+    message: `Phân tích sự thật chưa hoàn tất.\nKết quả: lỗi runtime.\nChi tiết: ${message}`,
     reports: [],
     revisionId: null,
   };
@@ -36,9 +40,9 @@ function summarizeCanonReports(reports = []) {
 function buildBlockedCanonMessage(reports = []) {
   const { errorCount, warningCount } = summarizeCanonReports(reports);
   const lines = [
-    'Da phan tich su that xong.',
-    'Ket qua: bi chan.',
-    `Phat hien ${errorCount} loi canon${warningCount > 0 ? ` va ${warningCount} canh bao` : ''}.`,
+    'Đã phân tích sự thật xong.',
+    'Kết quả: bị chặn.',
+    `Phát hiện ${errorCount} lỗi canon${warningCount > 0 ? ` và ${warningCount} cảnh báo` : ''}.`,
   ];
   return lines.join('\n');
 }
@@ -46,11 +50,11 @@ function buildBlockedCanonMessage(reports = []) {
 function buildSuccessCanonMessage(reports = []) {
   const { warningCount } = summarizeCanonReports(reports);
   const lines = [
-    'Da phan tich su that xong.',
-    `Ket qua: ${warningCount > 0 ? 'hop le, co canh bao.' : 'hop le.'}`,
+    'Đã phân tích sự thật xong.',
+    `Kết quả: ${warningCount > 0 ? 'hợp lệ, có cảnh báo.' : 'hợp lệ.'}`,
   ];
   if (warningCount > 0) {
-    lines.push(`Co ${warningCount} canh bao canon can xem lai.`);
+    lines.push(`Có ${warningCount} cảnh báo canon cần xem lại.`);
   }
   return lines.join('\n');
 }
@@ -126,7 +130,7 @@ const useCanonStore = create((set, get) => ({
       const outcome = {
         ok: true,
         kind: 'success',
-        message: 'Da rebuild canon thanh cong.',
+        message: 'Đã rebuild canon thành công.',
         reports: [],
         revisionId: null,
         result,
@@ -182,7 +186,7 @@ const useCanonStore = create((set, get) => ({
         report: null,
         reports: [],
         loading: false,
-        error: error?.message || 'Khong the tao goi y sua.',
+        error: toVietnameseErrorMessage(error, 'Không thể tạo gợi ý sửa.'),
         savedRevisionId: null,
       };
       set({ repairPreview: preview });
@@ -205,10 +209,10 @@ const useCanonStore = create((set, get) => ({
       const remainingErrors = remainingReports.filter((report) => report?.severity === 'error').length;
       const remainingWarnings = remainingReports.filter((report) => report?.severity === 'warning').length;
       const message = remainingErrors > 0
-        ? `Da luu ban sua thanh draft moi, nhung van con ${remainingErrors} loi canon${remainingWarnings > 0 ? ` va ${remainingWarnings} canh bao` : ''}.`
+        ? `Đã lưu bản sửa thành draft mới, nhưng vẫn còn ${remainingErrors} lỗi canon${remainingWarnings > 0 ? ` và ${remainingWarnings} cảnh báo` : ''}.`
         : remainingWarnings > 0
-          ? `Da luu ban sua thanh draft moi. Khong con loi canon, con ${remainingWarnings} canh bao can xem lai.`
-          : 'Da luu ban sua thanh draft moi. Khong con loi canon.';
+          ? `Đã lưu bản sửa thành draft mới. Không còn lỗi canon, còn ${remainingWarnings} cảnh báo cần xem lại.`
+          : 'Đã lưu bản sửa thành draft mới. Không còn lỗi canon.';
       set((state) => ({
         savingRepairDraft: false,
         repairPreview: state.repairPreview

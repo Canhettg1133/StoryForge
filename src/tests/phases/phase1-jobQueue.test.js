@@ -66,7 +66,7 @@ describe('Phase 1 - Job Queue Core', () => {
     expect(stepCompleteCalls).toHaveLength(6);
     expect(onProgress).toHaveBeenCalledWith(
       100,
-      expect.stringContaining('completed'),
+      expect.stringContaining('hoàn tất'),
       expect.objectContaining({
         event: 'step_complete',
         step: expect.objectContaining({
@@ -228,7 +228,7 @@ describe('Phase 1 - Job Queue Core', () => {
     expect(Array.isArray(result.incidents)).toBe(true);
     expect(onProgress).toHaveBeenCalledWith(
       100,
-      expect.stringContaining('completed'),
+      expect.stringContaining('xong'),
       expect.objectContaining({
         event: 'step_complete',
       }),

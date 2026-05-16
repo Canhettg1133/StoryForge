@@ -1,7 +1,7 @@
 /**
  * StoryForge - AI Generate Button (Reusable)
  *
- * A floating "Tao bang AI" button with:
+ * A floating "Tạo bằng AI" button with:
  * - Prompt input popup
  * - AI request
  * - Preview -> Approve/Edit flow
@@ -18,30 +18,31 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, X, Loader2, Check, RotateCcw } from 'lucide-react';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import { buildPrompt } from '../../services/ai/promptBuilder';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import './AIGenerateButton.css';
 
 const ENTITY_PROMPTS = {
   character: {
-    placeholder: 'Vi du: Nu sat thu lanh lung, 20 tuoi; hoac tien boi ngoai hinh doi muoi...',
+    placeholder: 'Ví dụ: Nữ sát thủ lạnh lùng, 20 tuổi; hoặc tiền bối ngoại hình đôi mươi...',
   },
   location: {
-    placeholder: 'Vi du: Toa thanh co tren dinh nui, bao quanh boi suong mu...',
+    placeholder: 'Ví dụ: Tòa thành cổ trên đỉnh núi, bao quanh bởi sương mù...',
   },
   object: {
-    placeholder: 'Vi du: Thanh kiem co phat sang trong bong toi, co y chi rieng...',
+    placeholder: 'Ví dụ: Thanh kiếm cổ phát sáng trong bóng tối, có ý chí riêng...',
   },
   term: {
-    placeholder: 'Vi du: Nang luong phep thuat, he thong cap bac tu luyen...',
+    placeholder: 'Ví dụ: Năng lượng phép thuật, hệ thống cấp bậc tu luyện...',
   },
 };
 
 const ENTITY_LABELS = {
-  character: 'nhan vat',
-  location: 'dia diem',
-  object: 'vat pham',
-  term: 'thuat ngu',
+  character: 'nhân vật',
+  location: 'địa điểm',
+  object: 'vật phẩm',
+  term: 'thuật ngữ',
 };
 
 export default function AIGenerateButton({
@@ -59,7 +60,7 @@ export default function AIGenerateButton({
   const popupRef = useRef(null);
 
   const config = ENTITY_PROMPTS[entityType] || ENTITY_PROMPTS.character;
-  const label = ENTITY_LABELS[entityType] || 'muc';
+  const label = ENTITY_LABELS[entityType] || 'mục';
   const resolvedCanonRoleLocks = Array.isArray(canonRoleLocks)
     ? canonRoleLocks
     : (Array.isArray(projectContext?.canonRoleLocks) ? projectContext.canonRoleLocks : []);
@@ -116,19 +117,19 @@ export default function AIGenerateButton({
             : (isPlainObject(parsedValue) ? parsedValue : null);
 
           if (!nextResult) {
-            setError('AI tra ve sai dinh dang cho mot muc don. Thu lai?');
+            setError('AI trả về sai định dạng cho một mục đơn. Thử lại?');
             return;
           }
 
           setResult(nextResult);
         } catch (e) {
           console.error('[AIGenerate] Parse error:', e, '\nRaw text:', text);
-          setError('Khong parse duoc ket qua. Thu lai?');
+          setError('Không parse được kết quả. Thử lại?');
         }
       },
       onError: (err) => {
         setIsGenerating(false);
-        setError(err.message || 'Loi ket noi AI');
+        setError(toVietnameseErrorMessage(err, 'Lỗi kết nối AI'));
       },
     });
   };
@@ -161,16 +162,16 @@ export default function AIGenerateButton({
       <button
         className="btn btn-accent btn-sm ai-gen-trigger"
         onClick={() => setIsOpen(!isOpen)}
-        title={`Tao ${label} bang AI`}
+        title={`Tạo ${label} bằng AI`}
       >
         <Sparkles size={14} />
-        {buttonLabel || `AI tao ${label}`}
+        {buttonLabel || `AI tạo ${label}`}
       </button>
 
       {isOpen && (
         <div className="ai-gen-popup" ref={popupRef}>
           <div className="ai-gen-popup-header">
-            <h4><Sparkles size={14} /> Tao {label} bang AI</h4>
+            <h4><Sparkles size={14} /> Tạo {label} bằng AI</h4>
             <button className="btn btn-ghost btn-icon btn-sm" onClick={handleClose}>
               <X size={16} />
             </button>
@@ -199,9 +200,9 @@ export default function AIGenerateButton({
                 disabled={!prompt.trim() || isGenerating}
               >
                 {isGenerating ? (
-                  <><Loader2 size={14} className="spin" /> Dang tao...</>
+                  <><Loader2 size={14} className="spin" /> Đang tạo...</>
                 ) : (
-                  <><Sparkles size={14} /> Tao</>
+                  <><Sparkles size={14} /> Tạo</>
                 )}
               </button>
             </div>
@@ -211,7 +212,7 @@ export default function AIGenerateButton({
             <div className="ai-gen-popup-body">
               <div className="ai-gen-error">{error}</div>
               <button className="btn btn-ghost btn-sm" onClick={handleRetry}>
-                <RotateCcw size={14} /> Thu lai
+                <RotateCcw size={14} /> Thử lại
               </button>
             </div>
           )}
@@ -230,10 +231,10 @@ export default function AIGenerateButton({
               </div>
               <div className="ai-gen-actions">
                 <button className="btn btn-ghost btn-sm" onClick={handleRetry}>
-                  <RotateCcw size={14} /> Tao lai
+                  <RotateCcw size={14} /> Tạo lại
                 </button>
                 <button className="btn btn-primary btn-sm" onClick={handleApprove}>
-                  <Check size={14} /> Dung ket qua
+                  <Check size={14} /> Dùng kết quả
                 </button>
               </div>
             </div>

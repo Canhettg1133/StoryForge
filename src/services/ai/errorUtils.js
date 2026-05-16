@@ -1,6 +1,7 @@
 const AI_ERROR_CODES = {
   MISSING_API_KEY: 'MISSING_API_KEY',
   MISSING_MODEL: 'MISSING_MODEL',
+  QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
   RATE_LIMITED: 'RATE_LIMITED',
   MODEL_CAPACITY_EXHAUSTED: 'MODEL_CAPACITY_EXHAUSTED',
   SAFETY_BLOCK: 'SAFETY_BLOCK',
@@ -13,6 +14,12 @@ const AI_ERROR_CODES = {
   PROXY_ERROR: 'PROXY_ERROR',
   UNKNOWN_ERROR: 'UNKNOWN_ERROR',
 };
+
+const ACCENTED_VIETNAMESE_RE = /[À-ỹĐđ]/;
+
+function hasAccentedVietnamese(value) {
+  return ACCENTED_VIETNAMESE_RE.test(String(value || ''));
+}
 
 function tryParseJson(value) {
   if (!value || typeof value !== 'string') return null;
@@ -62,14 +69,17 @@ function extractErrorShape(input = {}) {
   const sourceError = input.error ?? input;
   const payloadError = sourceError?.error && typeof sourceError.error === 'object'
     ? sourceError.error
-    : (typeof sourceError === 'object' ? sourceError : null);
+    : null;
 
   const bodyPayload = tryParseJson(input.bodyText);
   const nestedBodyError = bodyPayload?.error && typeof bodyPayload.error === 'object'
     ? bodyPayload.error
     : (bodyPayload && typeof bodyPayload === 'object' ? bodyPayload : null);
 
-  const errorData = payloadError || nestedBodyError || null;
+  const directErrorData = sourceError && typeof sourceError === 'object' && sourceError !== input
+    ? sourceError
+    : null;
+  const errorData = payloadError || nestedBodyError || directErrorData || null;
   const details = errorData?.details || [];
 
   const message = input.rawMessage
@@ -81,8 +91,8 @@ function extractErrorShape(input = {}) {
   return {
     message: String(message || '').trim(),
     status: Number(input.status || errorData?.code || sourceError?.status || 0) || null,
-    code: String(input.code || errorData?.code || sourceError?.code || '').trim() || null,
-    reason: String(input.reason || extractReason(details) || errorData?.status || sourceError?.reason || '').trim() || null,
+    code: String(input.code || errorData?.code || errorData?.type || sourceError?.code || '').trim() || null,
+    reason: String(input.reason || extractReason(details) || errorData?.status || errorData?.type || sourceError?.reason || '').trim() || null,
     details,
     model: extractModel(details, input.model || null),
   };
@@ -119,6 +129,8 @@ export function normalizeAIError(input = {}, context = {}) {
   const model = shape.model || context.model || input.model || null;
   const rawMessage = shape.message || 'Unknown AI error';
   const lower = rawMessage.toLowerCase();
+  const codeLower = String(shape.code || '').toLowerCase();
+  const reasonLower = String(shape.reason || '').toLowerCase();
   const modelName = summarizeModel(model);
   const providerName = providerLabel(provider);
 
@@ -137,7 +149,7 @@ export function normalizeAIError(input = {}, context = {}) {
 
   if (shape.code === AI_ERROR_CODES.MISSING_MODEL || lower.includes('chua chon model')) {
     return createAIError({
-      userMessage: `Chua chon model cho ${providerName}. Vao Settings de lay models hoac nhap model thu cong.`,
+      userMessage: `Chưa chọn model cho ${providerName}. Vào Settings để lấy models hoặc nhập model thủ công.`,
       code: AI_ERROR_CODES.MISSING_MODEL,
       provider,
       model,
@@ -185,6 +197,37 @@ export function normalizeAIError(input = {}, context = {}) {
       status: shape.status || 429,
       rawMessage,
       reason: shape.reason || 'MODEL_CAPACITY_EXHAUSTED',
+      details: shape.details,
+      retryable: true,
+      shouldFallback: true,
+    });
+  }
+
+  if (
+    codeLower === 'quota_exceeded'
+    || reasonLower === 'quota_exceeded'
+    || lower.includes('quota_exceeded')
+    || lower.includes('daily limit reached')
+    || lower.includes('quota exceeded')
+    || lower.includes('resource_exhausted')
+  ) {
+    const isAgQuota = lower.includes('antigravity')
+      || lower.includes('gemini3')
+      || String(model || '').includes('真流')
+      || String(model || '').includes('星星公益站');
+    const quotaProviderName = isAgQuota ? 'Gemini Proxy/Antigravity' : providerName;
+    const quotaModelName = lower.includes('gemini3') || String(model || '').includes('gemini-3')
+      ? 'Gemini 3'
+      : modelName;
+
+    return createAIError({
+      userMessage: `${quotaProviderName} đã hết quota ngày cho ${quotaModelName}. Đây là giới hạn từ proxy/upstream, không phải lỗi prompt. Hãy đổi sang Gemini 2.5 Flash hoặc model khác, thêm key còn quota, hoặc chờ quota ngày reset.`,
+      code: AI_ERROR_CODES.QUOTA_EXCEEDED,
+      provider,
+      model,
+      status: shape.status || 429,
+      rawMessage,
+      reason: shape.reason || 'quota_exceeded',
       details: shape.details,
       retryable: true,
       shouldFallback: true,
@@ -281,7 +324,9 @@ export function normalizeAIError(input = {}, context = {}) {
   }
 
   return createAIError({
-    userMessage: rawMessage || 'Đã xảy ra lỗi AI chưa xác định.',
+    userMessage: hasAccentedVietnamese(rawMessage)
+      ? rawMessage
+      : `Đã xảy ra lỗi AI chưa xác định từ ${providerName}. Hãy thử lại hoặc đổi model/API key.`,
     code: shape.code || AI_ERROR_CODES.UNKNOWN_ERROR,
     provider,
     model,
@@ -293,7 +338,12 @@ export function normalizeAIError(input = {}, context = {}) {
 }
 
 export function shouldFallbackForError(error) {
-  return Boolean(error?.shouldFallback || error?.code === AI_ERROR_CODES.RATE_LIMITED || error?.code === AI_ERROR_CODES.MODEL_CAPACITY_EXHAUSTED);
+  return Boolean(
+    error?.shouldFallback
+    || error?.code === AI_ERROR_CODES.QUOTA_EXCEEDED
+    || error?.code === AI_ERROR_CODES.RATE_LIMITED
+    || error?.code === AI_ERROR_CODES.MODEL_CAPACITY_EXHAUSTED,
+  );
 }
 
 export { AI_ERROR_CODES };

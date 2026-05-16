@@ -65,7 +65,7 @@ export const projectSnapshotRepository = {
   } = {}) {
     requirePostgresDatabase('Project snapshot storage');
     if (!projectId || !analysisId) {
-      throw new Error('projectId and analysisId are required.');
+      throw new Error('Thiếu projectId hoặc analysisId.');
     }
 
     await bootstrapPostgres();

@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
 import useMobileLayout from '../../hooks/useMobileLayout';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
@@ -416,7 +417,7 @@ function getProxyEndpointPreview(profile, path) {
   try {
     return profile?.baseUrl ? buildOpenAIProxyEndpoint(profile.baseUrl, path) : '';
   } catch (error) {
-    return error?.message || 'URL chua hop le';
+      return toVietnameseErrorMessage(error, 'URL chưa hợp lệ');
   }
 }
 
@@ -546,7 +547,7 @@ export default function Settings() {
       } catch (error) {
         if (cancelled) return;
         setAIStudioRelayStatus(null);
-        setAIStudioRelayStatusError(error?.message || 'Không đọc được trạng thái room.');
+        setAIStudioRelayStatusError(toVietnameseErrorMessage(error, 'Không đọc được trạng thái room.'));
       }
     };
 
@@ -611,7 +612,7 @@ export default function Settings() {
         ...p,
         [PROVIDERS.AI_STUDIO_RELAY]: {
           success: false,
-          error: error.message || 'Không thể tạo room AI Studio Relay',
+          error: toVietnameseErrorMessage(error, 'Không thể tạo room AI Studio Relay.'),
         },
       }));
     } finally {
@@ -734,7 +735,7 @@ export default function Settings() {
     } catch (error) {
       setProxyModelFetchStatus({
         type: 'error',
-        text: `${error?.message || 'Không lấy được models'}. Vẫn có thể dùng preset Gemini Proxy có sẵn.`,
+        text: `${toVietnameseErrorMessage(error, 'Không lấy được danh sách model')}. Vẫn có thể dùng preset Gemini Proxy có sẵn.`,
       });
     } finally {
       setFetchingProxyModels(false);
@@ -778,7 +779,7 @@ export default function Settings() {
     } catch (error) {
       setProxyModelFetchStatus({
         type: 'error',
-        text: `${error?.message || 'Không lấy được models'}. Nếu bị CORS hoặc proxy không có /v1/models, nhập model thủ công.`,
+        text: `${toVietnameseErrorMessage(error, 'Không lấy được danh sách model')}. Nếu bị CORS hoặc proxy không có /v1/models, nhập model thủ công.`,
       });
     } finally {
       setFetchingProxyModels(false);

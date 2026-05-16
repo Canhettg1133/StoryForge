@@ -314,7 +314,7 @@ export function validatePassBOutput(raw = {}, chapterCount = 1) {
     const location = toObject(item);
     const name = normalizeText(location.name || location.location || '');
     if (!name) {
-      issues.push(createIssue(`locations[${index}].name`, 'Missing location name'));
+      issues.push(createIssue(`locations[${index}].name`, 'Thiếu tên địa điểm.'));
       continue;
     }
 
@@ -371,7 +371,7 @@ export function validatePassCOutput(raw = {}) {
     const source = toObject(item);
     const name = normalizeText(source.name || source.term || source.location || source.object || '');
     if (!name) {
-      issues.push(createIssue(`${kind}[${index}].name`, `Missing ${kind} name`));
+      issues.push(createIssue(`${kind}[${index}].name`, `Thiếu tên cho ${kind}.`));
       return null;
     }
     return {

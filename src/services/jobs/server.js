@@ -34,7 +34,7 @@ function createApp(queue) {
 
   app.use((err, _req, res, _next) => {
     res.status(500).json({
-      error: err?.message || 'Internal server error.',
+      error: err?.message || 'Lỗi máy chủ nội bộ.',
     });
   });
 

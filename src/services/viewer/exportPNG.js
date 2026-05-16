@@ -17,7 +17,7 @@ export async function exportElementAsPNG(element, options = {}) {
   } = options;
 
   if (!element) {
-    throw new Error('No element provided for export');
+    throw new Error('Chưa chọn nội dung để export.');
   }
 
   try {
@@ -52,7 +52,7 @@ export async function exportElementAsPNG(element, options = {}) {
       canvas.toBlob(
         (blob) => {
           if (!blob) {
-            reject(new Error('Failed to create image blob'));
+            reject(new Error('Không tạo được image blob.'));
             return;
           }
 
@@ -124,7 +124,7 @@ async function exportSVG(svgElement, ctx, width, height, padding) {
 
     img.onerror = (err) => {
       URL.revokeObjectURL(svgUrl);
-      reject(new Error('Failed to load SVG as image'));
+      reject(new Error('Không tải được SVG dưới dạng ảnh.'));
     };
 
     img.src = svgUrl;
@@ -176,7 +176,7 @@ async function exportDOMElement(element, ctx, width, height, padding) {
         ctx.fillRect(0, 0, width, height);
         ctx.fillStyle = '#e2e8f0';
         ctx.font = '16px system-ui';
-        ctx.fillText('Export preview not available', padding, padding + 30);
+        ctx.fillText('Không có bản xem trước export', padding, padding + 30);
         resolve();
       };
 
@@ -188,7 +188,7 @@ async function exportDOMElement(element, ctx, width, height, padding) {
     ctx.fillRect(0, 0, width, height);
     ctx.fillStyle = '#e2e8f0';
     ctx.font = '16px system-ui';
-    ctx.fillText('Visualization export', padding, padding + 30);
+    ctx.fillText('Export hình trực quan', padding, padding + 30);
   }
 }
 
@@ -201,7 +201,7 @@ export function exportSVGFile(element, options = {}) {
   } = options;
 
   if (!element) {
-    throw new Error('No element provided for export');
+    throw new Error('Chưa chọn nội dung để export.');
   }
 
   const serializer = new XMLSerializer();

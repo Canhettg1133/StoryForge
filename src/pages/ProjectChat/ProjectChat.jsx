@@ -26,6 +26,7 @@ import '../Settings/Settings.css';
 import './ProjectChat.css';
 import useProjectStore from '../../stores/projectStore';
 import aiService from '../../services/ai/client';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { buildProjectContentModeAiOptions } from '../../features/projectContentMode/projectContentMode.js';
 import { buildProjectStyleRuntimeBlockForProjectChat } from '../../services/ai/projectStyleRuntime';
 import modelRouter, {
@@ -926,7 +927,7 @@ export default function ProjectChat() {
       last_model: '',
     });
     setLiveRouteInfo(null);
-    setSaveStatus('ÄĂ£ lĂ m má»›i cuá»™c trĂ² chuyá»‡n');
+    setSaveStatus('?? l?m m?i cu?c tr? chuy?n');
   }
 
   function buildConversationMessages(nextUserMessage, thread, sourceMessages = messages) {
@@ -1063,18 +1064,14 @@ export default function ProjectChat() {
           }
         },
         onError: async (error) => {
+          const message = toVietnameseErrorMessage(error?.userMessage || error, 'AI không trả lời được cho yêu cầu này.');
           const systemMessage = await appendMessage(thread.id, {
             role: 'system',
-            content:
-              error?.userMessage ||
-              error?.message ||
-              'AI không trả lời được cho yêu cầu này.',
+            content: message,
           });
 
           replaceTempMessage(tempAssistantId, systemMessage);
-          setErrorMessage(
-            error?.userMessage || error?.message || 'AI không trả lời được cho yêu cầu này.',
-          );
+          setErrorMessage(message);
           setIsStreaming(false);
           setLiveRouteInfo(null);
           activeRunRef.current = null;
@@ -1186,18 +1183,14 @@ export default function ProjectChat() {
           }
         },
         onError: async (error) => {
+          const message = toVietnameseErrorMessage(error?.userMessage || error, 'AI không trả lời được cho yêu cầu này.');
           const systemMessage = await appendMessage(currentThread.id, {
             role: 'system',
-            content:
-              error?.userMessage ||
-              error?.message ||
-              'AI không trả lời được cho yêu cầu này.',
+            content: message,
           });
 
           replaceTempMessage(tempAssistantId, systemMessage);
-          setErrorMessage(
-            error?.userMessage || error?.message || 'AI không trả lời được cho yêu cầu này.',
-          );
+          setErrorMessage(message);
           setIsStreaming(false);
           setLiveRouteInfo(null);
           activeRunRef.current = null;

@@ -1,6 +1,7 @@
 ﻿import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { corpusApi } from '../services/api/corpusApi';
+import { toVietnameseErrorMessage } from '../utils/errorMessages';
 
 function toCorpusMap(corpuses = []) {
   const map = {};
@@ -205,7 +206,7 @@ export const useCorpusStore = create(
         } catch (error) {
           set({
             uploadState: 'error',
-            uploadError: error.message,
+            uploadError: toVietnameseErrorMessage(error, 'Upload corpus thất bại.'),
             uploadProgress: 0,
           });
           throw error;

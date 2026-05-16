@@ -58,10 +58,18 @@ function sendAiTask(taskType, messages, options = {}) {
 }
 
 function buildCanonExtractError(error, rawText = '') {
-  const baseMessage = cleanText(error?.message || 'Canon extract failed');
+  const rawMessage = cleanText(error?.message || '');
+  const lowerMessage = rawMessage.toLowerCase();
+  const baseMessage = lowerMessage.includes('no json found')
+    ? 'AI không trả về JSON canon hợp lệ.'
+    : lowerMessage.includes('incomplete json')
+      ? 'JSON canon từ AI chưa hoàn chỉnh.'
+      : lowerMessage.includes('malformed json')
+        ? 'JSON canon từ AI sai cấu trúc.'
+        : rawMessage || 'Không trích xuất được dữ liệu canon từ phản hồi AI.';
   const rawSnippet = cleanText(rawText).slice(0, 240);
   if (rawSnippet) {
-    return new Error(`${baseMessage} | Raw: ${rawSnippet}`);
+    return new Error(`${baseMessage} | Phản hồi thô: ${rawSnippet}`);
   }
   return new Error(baseMessage);
 }
@@ -237,14 +245,14 @@ function buildWarningAdjudicationMessages({
     {
       role: 'system',
       content: [
-        'Ban la bo phan adjudication cho canh bao continuity/canon cua StoryForge.',
-        'Nhiem vu: xem tung WARNING co phai loi continuity that hay false-positive cua validator.',
-        'Chi dua ket luan dua tren evidence/local_context/canon_state duoc cung cap. Khong bia them.',
-        'Neu doan van chi nho lai, dat cau hoi, so sanh, hoi tuong, nhac den vat pham/su kien thi khong xem la dung lai.',
-        'Neu warning noi ve bi mat, hay phan biet giua viec nhac/ban/rumor/hoai nghi ve bi mat voi viec thuc su tiet lo hay xac nhan bi mat do.',
-        'Neu co hanh dong ro rang dung lai/tieu hao/chuyen giao trong khi canon cam va khong co su kien mua lai/tim lai/khoi phuc/tra lai thi giu warning.',
-        'Neu thieu du lieu so luong/phan loai/chuoi su kien thi verdict needs_review, khong khang dinh loi.',
-        'Tra ve JSON hop le duy nhat.',
+        'Bạn là bộ phận adjudication cho cảnh báo continuity/canon của StoryForge.',
+        'Nhiệm vụ: xem từng WARNING có phải lỗi continuity thật hay false-positive của validator.',
+        'Chỉ đưa kết luận dựa trên evidence/local_context/canon_state được cung cấp. Không bịa thêm.',
+        'Nếu đoạn văn chỉ nhớ lại, đặt câu hỏi, so sánh, hồi tưởng, nhắc đến vật phẩm/sự kiện thì không xem là dùng lại.',
+        'Nếu warning nói về bí mật, hãy phân biệt giữa việc nhắc/bàn/rumor/hoài nghi về bí mật với việc thực sự tiết lộ hay xác nhận bí mật đó.',
+        'Nếu có hành động rõ ràng dùng lại/tiêu hao/chuyển giao trong khi canon cấm và không có sự kiện mua lại/tìm lại/khôi phục/trả lại thì giữ warning.',
+        'Nếu thiếu dữ liệu số lượng/phân loại/chuỗi sự kiện thì verdict needs_review, không khẳng định lỗi.',
+        'Trả về JSON hợp lệ duy nhất.',
       ].join('\n'),
     },
     {
@@ -429,7 +437,7 @@ export async function extractCandidateOps({
     superNsfwMode: !!project?.super_nsfw_mode,
   });
   if (!cleanText(rawText)) {
-    throw buildCanonExtractError(new Error('AI canon extract returned empty response'), rawText);
+    throw buildCanonExtractError(new Error('AI không trả về nội dung trích xuất canon.'), rawText);
   }
 
   let parsed;
@@ -462,7 +470,7 @@ export async function extractCandidateOps({
 export async function validateRevision(chapterRevisionId, mode = 'draft', options = {}) {
   const revision = await db.chapter_revisions.get(chapterRevisionId);
   if (!revision) {
-    throw new Error('Khong tim thay chapter revision de validate.');
+    throw new Error('Không tìm thấy chapter revision để validate.');
   }
 
   const scenes = await getChapterScenes(revision.chapter_id);
@@ -492,7 +500,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
       extractionFallbackReports.push(createReport({
         severity: CANON_SEVERITY.INFO,
         ruleCode: 'CANON_EXTRACT_FALLBACK',
-        message: 'AI khong trich xuat duoc canon ops, he thong da tiep tuc kiem tra heuristic va khong xem day la loi chan chuong.',
+      message: 'AI không trích xuất được canon ops, hệ thống đã tiếp tục kiểm tra heuristic và không xem đây là lỗi chặn chương.',
         projectId: revision.project_id,
         chapterId: revision.chapter_id,
         revisionId: revision.id,
@@ -790,7 +798,7 @@ export async function canonicalizeCandidateOps({
     reports.push(createReport({
       severity: CANON_SEVERITY.ERROR,
       ruleCode: 'NO_COMMITTABLE_CANON_OPS',
-      message: 'Tat ca canon ops de xuat deu bi loai, khong co op hop le de commit.',
+      message: 'Tất cả thao tác canon đề xuất đều bị loại, không có thao tác hợp lệ để lưu.',
       projectId,
       chapterId,
       revisionId: revision.id,
@@ -980,7 +988,7 @@ export async function validateSceneDraft({
 export async function repairChapterRevision({ projectId, chapterId, revisionId, reportId = null }) {
   const revision = await db.chapter_revisions.get(revisionId);
   if (!revision) {
-    throw new Error('Khong tim thay revision can repair.');
+    throw new Error('Không tìm thấy phiên bản chương cần sửa.');
   }
   const reports = await db.validator_reports
     .where('[project_id+revision_id]')
@@ -990,7 +998,7 @@ export async function repairChapterRevision({ projectId, chapterId, revisionId, 
     ? reports.filter((report) => String(report.id) === String(reportId))
     : reports;
   if (reportId && scopedReports.length === 0) {
-    throw new Error('Khong tim thay report can sua.');
+    throw new Error('Không tìm thấy báo cáo cần sửa.');
   }
   const { project, chapter } = await getChapterAndProject(projectId, chapterId);
   const messages = buildPrompt(TASK_TYPES.CANON_REPAIR, {
@@ -1022,7 +1030,7 @@ export async function saveRepairDraftRevision({
 }) {
   const trimmedText = String(chapterText || '').trim();
   if (!trimmedText) {
-    throw new Error('Khong co noi dung de luu thanh draft.');
+    throw new Error('Không có nội dung để lưu thành bản nháp.');
   }
 
   const draftRevision = await createChapterRevision({

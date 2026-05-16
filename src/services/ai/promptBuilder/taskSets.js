@@ -41,14 +41,14 @@ export const WRITING_DISCIPLINE_TASKS = new Set([
 ]);
 
 export const DEFAULT_WRITING_DISCIPLINE_LAYER = [
-  '[KY LUAT VIET TRUYEN]',
-  '- Nhat quan quan trong hon cau chu hoa my.',
-  '- Ton trong POV hien tai va gioi han thong tin cua tung nhan vat.',
-  '- Ton trong logic cam xuc: khong duoc lam nhan vat out-of-character chi de tao hieu ung.',
-  '- Khong retcon, khong tu y doi quan he, luat the gioi, moc thoi gian, hay muc suc manh neu task khong yeu cau ro rang.',
-  '- BAT BUOC ton trong logic nhan qua: timeline/dem nguoc, an phat/giam giu, thuong tich, lo tu vi/bao vat/nang luc, va phan ung cua nhan vat phu/phia doi dich phai co he qua hop ly.',
-  '- Khong AI-sounding: tranh triet ly rong, tong ket dao ly, len lop, lap y, hoac van qua pho neu khong co can cu.',
-  '- Moi doan viet ra phai co tac dung ro: day tinh tiet, dao sau cam xuc, khac hoa nhan vat, tang xung dot, hoac giai phong thong tin.',
+  '[KỶ LUẬT VIẾT TRUYỆN]',
+  '- Nhất quán quan trọng hơn câu chữ hoa mỹ.',
+  '- Tôn trọng POV hiện tại và giới hạn thông tin của từng nhân vật.',
+  '- Tôn trọng logic cảm xúc: không được làm nhân vật out-of-character chỉ để tạo hiệu ứng.',
+  '- Không retcon, không tự ý đổi quan hệ, luật thế giới, mốc thời gian, hay mức sức mạnh nếu task không yêu cầu rõ ràng.',
+  '- BẮT BUỘC tôn trọng logic nhân quả: timeline/đếm ngược, án phạt/giam giữ, thương tích, lộ tu vi/bảo vật/năng lực, và phản ứng của nhân vật phụ/phía đối địch phải có hệ quả hợp lý.',
+  '- Không AI-sounding: tránh triết lý rỗng, tổng kết đạo lý, lên lớp, lặp ý, hoặc văn quá phô nếu không có căn cứ.',
+  '- Mỗi đoạn viết ra phải có tác dụng rõ: đẩy tình tiết, đào sâu cảm xúc, khắc họa nhân vật, tăng xung đột, hoặc giải phóng thông tin.',
 ].join('\n');
 
 // =============================================

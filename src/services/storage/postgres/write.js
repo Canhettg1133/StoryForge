@@ -1368,7 +1368,7 @@ export async function pgAcquireExecutionSession({
     );
     const analysisRow = analysisResult.rows?.[0];
     if (!analysisRow) {
-      const error = new Error('Analysis not found for execution session.');
+      const error = new Error('Không tìm thấy phân tích cho phiên chạy.');
       error.code = 'INVALID_INPUT';
       throw error;
     }
@@ -1385,7 +1385,7 @@ export async function pgAcquireExecutionSession({
 
     if (activeResult.rows?.[0]) {
       const active = activeResult.rows[0];
-      const error = new Error('Analysis already has an active rerun session.');
+      const error = new Error('Phân tích này đang có phiên chạy lại khác chưa hoàn tất.');
       error.code = 'ANALYSIS_LOCKED';
       error.details = {
         sessionId: active.id,

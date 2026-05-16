@@ -274,7 +274,7 @@ describe('phase10 canon extraction fallback', () => {
 
     expect(fallbackReport).toBeTruthy();
     expect(fallbackReport.severity).toBe('info');
-    expect(fallbackReport.evidence).toContain('AI canon extract returned empty response');
+    expect(fallbackReport.evidence).toContain('AI không trả về nội dung trích xuất canon.');
     warnSpy.mockRestore();
   });
 

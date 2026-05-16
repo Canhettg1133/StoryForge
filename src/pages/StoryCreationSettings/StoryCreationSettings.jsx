@@ -37,6 +37,47 @@ function VariableChips({ variables }) {
   );
 }
 
+const STORY_CREATION_FLOW_META = {
+  writingSystemIdentity: {
+    tone: 'runtime',
+    label: 'Prompt gốc runtime',
+    description: 'Đang được engine viết truyện đọc như lớp system identity nền khi không có override khác.',
+  },
+  storyBibleSeed: {
+    tone: 'active',
+    label: 'AI Wizard mới',
+    description: 'Đang có hiệu lực ở bước tạo nền truyện. Đây là nơi nên siết các entity nền tảng như Linh Khí, Linh Thạch, Luyện Khí, tông môn.',
+  },
+  chapterOutlinePass: {
+    tone: 'active',
+    label: 'AI Wizard mới',
+    description: 'Đang có hiệu lực ở bước tạo dàn ý. Entity mới bắt buộc phải đi vào proposed_entities để bạn duyệt.',
+  },
+  projectWizard: {
+    tone: 'legacy',
+    label: 'Luồng cũ / không dùng trực tiếp bởi AI Wizard mới',
+    description: 'Giữ lại để tương thích và tra cứu. AI Wizard hiện tại dùng Story Bible Seed và Chapter Outline Pass thay cho prompt này.',
+  },
+  outlineGeneration: {
+    tone: 'board',
+    label: 'Outline Board',
+    description: 'Đang dùng trong Bảng dàn ý khi tạo hoặc bổ sung outline cho project đã tồn tại.',
+  },
+  threadSuggestion: {
+    tone: 'board',
+    label: 'Outline Board',
+    description: 'Đang dùng khi gợi ý thêm tuyến truyện từ synopsis, outline và thread hiện có.',
+  },
+};
+
+function getStoryCreationFlowMeta(groupKey) {
+  return STORY_CREATION_FLOW_META[groupKey] || {
+    tone: 'idle',
+    label: 'Prompt tổng quát',
+    description: 'Prompt này được lưu ở Global Prompts và app sẽ ghép vào đúng luồng gọi AI tương ứng.',
+  };
+}
+
 export default function StoryCreationSettings() {
   const navigate = useNavigate();
   const { projectId } = useParams();
@@ -73,21 +114,21 @@ export default function StoryCreationSettings() {
     const saved = saveStoryCreationSettings(draft);
     setDraft(saved);
     lastSavedSignatureRef.current = JSON.stringify(saved);
-    showSavedMessage('Da luu cai dat tao truyen.');
+    showSavedMessage('Đã lưu cài đặt tạo truyện.');
   };
 
   const handleResetAll = () => {
     const reset = resetStoryCreationSettings();
     setDraft(reset);
     lastSavedSignatureRef.current = JSON.stringify(reset);
-    showSavedMessage('Da khoi phuc toan bo prompt mac dinh.');
+    showSavedMessage('Đã khôi phục toàn bộ prompt mặc định.');
   };
 
   const handleResetGroup = (groupKey) => {
     const reset = resetStoryCreationGroup(groupKey);
     setDraft(reset);
     lastSavedSignatureRef.current = JSON.stringify(reset);
-    showSavedMessage('Da khoi phuc nhom prompt nay ve mac dinh.');
+    showSavedMessage('Đã khôi phục nhóm prompt này về mặc định.');
   };
 
   useEffect(() => {
@@ -100,11 +141,11 @@ export default function StoryCreationSettings() {
     if (isHydratingRef.current) return undefined;
     if (JSON.stringify(draft) === lastSavedSignatureRef.current) return undefined;
 
-    setSavedMessage('Dang tu luu...');
+    setSavedMessage('Đang tự lưu...');
     const timer = window.setTimeout(() => {
       saveStoryCreationSettings(draft);
       lastSavedSignatureRef.current = JSON.stringify(draft);
-      showSavedMessage('Da tu luu Global Prompts.');
+      showSavedMessage('Đã tự lưu Global Prompts.');
     }, 900);
 
     return () => window.clearTimeout(timer);
@@ -120,7 +161,7 @@ export default function StoryCreationSettings() {
   };
 
   return (
-    <div className="settings-page" id="global-prompt-manager-top">
+    <div className="settings-page story-creation-page" id="global-prompt-manager-top">
       {!scopedProjectId && (
         <div className="story-creation-page-actions">
           <button type="button" className="btn btn-ghost btn-sm" onClick={handleBack}>
@@ -145,14 +186,14 @@ export default function StoryCreationSettings() {
 
       <section className="settings-section card animate-slide-up story-creation-toolbar-card">
         <div className="story-creation-shortcuts">
-          <span className="story-creation-shortcuts__label">Di toi nhom prompt</span>
+          <span className="story-creation-shortcuts__label">Đi tới nhóm prompt</span>
           <div className="story-creation-shortcuts__chips">
             <button
               type="button"
               className={`story-creation-shortcuts__chip ${activeGroupKey === 'all' ? 'is-active' : ''}`}
               onClick={() => setActiveGroupKey('all')}
             >
-              Tat ca
+              Tất cả
             </button>
             {STORY_CREATION_PROMPT_GROUPS.map((group) => (
               <button
@@ -175,9 +216,9 @@ export default function StoryCreationSettings() {
       </section>
 
       <header className="settings-header animate-fade-in">
-        <h1 className="settings-title">Quan ly Prompt</h1>
+        <h1 className="settings-title">Prompt tổng quát</h1>
         <p className="settings-subtitle">
-          Day la khu vuc quan ly <strong>Global Prompts</strong> cho toan bo app, khong gan rieng voi mot truyen.
+          Đây là khu vực quản lý <strong>Global Prompts</strong> cho toàn bộ app, không gắn riêng với một truyện.
         </p>
       </header>
 
@@ -186,10 +227,10 @@ export default function StoryCreationSettings() {
           <div className="settings-section-header">
             <Sparkles size={20} />
             <div>
-              <h2>Phan biet Global Prompt va Prompt truyen</h2>
+              <h2>Phân biệt Global Prompt và Prompt truyện</h2>
               <p>
-                Trang nay danh cho cac prompt tong cua du an nhu khoi tao truyen, dung outline ban dau va goi y tuyen truyen.
-                Cac prompt rieng cua tung project nam o trang <strong>Prompt truyen</strong>.
+                Trang này dành cho các prompt tổng của dự án như khởi tạo truyện, dựng outline ban đầu và gợi ý tuyến truyện.
+                Các prompt riêng của từng project nằm ở trang <strong>Prompt truyện</strong>.
               </p>
             </div>
           </div>
@@ -199,35 +240,35 @@ export default function StoryCreationSettings() {
               <Shield size={16} />
               <div>
                 <strong>System prompt</strong>
-                <p>Dung de khoa vai tro AI, luat nen va quy tac xu ly cho tung nhom tinh nang.</p>
+                <p>Dùng để khóa vai trò AI, luật nền và quy tắc xử lý cho từng nhóm tính năng.</p>
               </div>
             </div>
             <div className="story-creation-guide">
               <MessageSquare size={16} />
               <div>
-                <strong>Prompt dau vao</strong>
-                <p>Dung de dieu chinh du lieu va cau lenh duoc bom vao moi lan goi AI.</p>
+                <strong>Prompt đầu vào</strong>
+                <p>Dùng để điều chỉnh dữ liệu và câu lệnh được bơm vào mỗi lần gọi AI.</p>
               </div>
             </div>
             <div className="story-creation-guide story-creation-guide--note">
               <Info size={16} />
               <div>
-                <strong>Luu y su dung</strong>
-                <p>Neu mot luong bat buoc AI tra JSON, schema se duoc khoa. Ban chi sua instruction, app tu ghep lai contract an toan.</p>
+                <strong>Lưu ý sử dụng</strong>
+                <p>Nếu một luồng bắt buộc AI trả JSON, schema sẽ được khóa. Bạn chỉ sửa instruction, app tự ghép lại contract an toàn.</p>
               </div>
             </div>
           </div>
 
           <div className="story-creation-toolbar">
             <button className="btn btn-primary" onClick={handleSave}>
-              <Save size={14} /> Luu cai dat
+              <Save size={14} /> Lưu cài đặt
             </button>
             <button className="btn btn-ghost" onClick={handleResetAll}>
-              <RotateCcw size={14} /> Khoi phuc mac dinh
+              <RotateCcw size={14} /> Khôi phục mặc định
             </button>
             {savedMessage && (
               <span className="story-creation-save-note">
-                {savedMessage.includes('Dang')
+                {savedMessage.includes('Đang')
                   ? <Save size={14} />
                   : <CheckCircle2 size={14} />}
                 {savedMessage}
@@ -238,6 +279,7 @@ export default function StoryCreationSettings() {
 
         {visibleGroups.map((group, index) => {
           const protection = getStoryCreationSystemPromptProtection(group.key);
+          const flowMeta = getStoryCreationFlowMeta(group.key);
 
           return (
             <section
@@ -249,38 +291,53 @@ export default function StoryCreationSettings() {
               <div className="settings-section-header">
                 <Sparkles size={20} />
                 <div>
-                  <h2>{GLOBAL_PROMPT_META[group.key]?.title || group.label}</h2>
+                  <div className="story-creation-title-row">
+                    <h2>{GLOBAL_PROMPT_META[group.key]?.title || group.label}</h2>
+                    <span className={`story-creation-status-badge is-${flowMeta.tone}`}>
+                      {flowMeta.label}
+                    </span>
+                  </div>
                   <p>{GLOBAL_PROMPT_META[group.key]?.summary || group.description}</p>
                 </div>
               </div>
 
               <div className="story-creation-info-grid">
                 <div className="story-creation-info-box">
-                  <strong>Muc tieu su dung</strong>
+                  <strong>Prompt đang có hiệu lực</strong>
+                  <p>{flowMeta.description}</p>
+                </div>
+                <div className="story-creation-info-box">
+                  <strong>Mục tiêu sử dụng</strong>
                   <p>{GLOBAL_PROMPT_META[group.key]?.purpose}</p>
                 </div>
+                {GLOBAL_PROMPT_META[group.key]?.whenToEdit && (
+                  <div className="story-creation-info-box">
+                    <strong>Khi nào sửa</strong>
+                    <p>{GLOBAL_PROMPT_META[group.key].whenToEdit}</p>
+                  </div>
+                )}
               </div>
 
               <div className="story-creation-meta">
                 <div>
-                  <div className="story-creation-meta-label">Bien dung duoc</div>
+                  <div className="story-creation-meta-label">Biến dùng được</div>
                   <VariableChips variables={group.variables} />
                 </div>
                 <button className="btn btn-ghost btn-sm" onClick={() => handleResetGroup(group.key)}>
-                  <RotateCcw size={13} /> Reset nhom nay
+                  <RotateCcw size={13} /> Reset nhóm này
                 </button>
               </div>
 
               <div className="form-group">
-                <label className="form-label">System prompt</label>
+                <label className="form-label">Phần có thể sửa - System prompt</label>
                 <div className="story-creation-field-help">
                   {group.systemHelp}
                   <br />
-                  <strong>Dung de lam gi:</strong> khoa vai tro va luat nen cua AI cho nhom tac vu nay.
+                  <strong>Dùng để làm gì:</strong> khóa vai trò và luật nền của AI cho nhóm tác vụ này.
                   {protection && (
                     <>
                       <br />
-                      <strong>Luu y:</strong> Block JSON contract ben duoi la read-only. App tu ghep lai no luc goi AI.
+                      <strong>JSON contract khóa:</strong> block bên dưới là read-only. App tự ghép lại nó lúc gọi AI.
                     </>
                   )}
                 </div>
@@ -295,7 +352,7 @@ export default function StoryCreationSettings() {
                   <div className="story-creation-locked-block">
                     <div className="story-creation-locked-block__header">
                       <strong>{protection.label}</strong>
-                      <span>Read-only</span>
+                      <span>Khóa</span>
                     </div>
                     <p>{protection.description}</p>
                     <pre className="prompt-default-preview__body">
@@ -305,13 +362,13 @@ export default function StoryCreationSettings() {
                 )}
 
                 <details className="story-creation-default">
-                  <summary>Xem phan editable mac dinh</summary>
+                  <summary>Xem phần editable mặc định</summary>
                   <pre className="prompt-default-preview__body">
                     {previewDefaults[group.key].systemPrompt}
                   </pre>
                 </details>
                 <details className="story-creation-default">
-                  <summary>Xem system prompt cuoi cung</summary>
+                  <summary>Xem prompt đang có hiệu lực</summary>
                   <pre className="prompt-default-preview__body">
                     {composeStoryCreationSystemPrompt(group.key, draft[group.key]?.systemPrompt || '')}
                   </pre>
@@ -320,11 +377,11 @@ export default function StoryCreationSettings() {
 
               {group.showUserPrompt !== false && (
                 <div className="form-group">
-                  <label className="form-label">Prompt dau vao</label>
+                  <label className="form-label">Phần có thể sửa - Prompt đầu vào</label>
                   <div className="story-creation-field-help">
                     {group.userHelp}
                     <br />
-                    <strong>Dung de lam gi:</strong> dieu chinh du lieu va cau lenh duoc bom vao tung lan goi AI.
+                    <strong>Dùng để làm gì:</strong> điều chỉnh dữ liệu và câu lệnh được bơm vào từng lần gọi AI.
                   </div>
                   <textarea
                     className="textarea story-creation-textarea"
@@ -333,7 +390,7 @@ export default function StoryCreationSettings() {
                     onChange={(e) => setField(group.key, 'userPromptTemplate', e.target.value)}
                   />
                   <details className="story-creation-default">
-                    <summary>Xem ban mac dinh</summary>
+                    <summary>Xem bản mặc định</summary>
                     <pre className="prompt-default-preview__body">
                       {previewDefaults[group.key].userPromptTemplate}
                     </pre>

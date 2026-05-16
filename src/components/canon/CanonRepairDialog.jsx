@@ -1,5 +1,6 @@
 import React from 'react';
 import { Copy, Loader2, Sparkles, X } from 'lucide-react';
+import { getCanonReportTitle } from '../../services/canon/reportLabels';
 import './CanonRepairDialog.css';
 
 export default function CanonRepairDialog({
@@ -23,13 +24,13 @@ export default function CanonRepairDialog({
           <div>
             <div className="canon-repair-dialog__eyebrow">
               <Sparkles size={14} />
-              Goi y sua
+              Gợi ý sửa
             </div>
             <h3 className="canon-repair-dialog__title">
-              {isBulkRepair ? 'Ban sua de xuat cho tat ca loi canon' : 'Ban sua de xuat cho report da chon'}
+              {isBulkRepair ? 'Bản sửa đề xuất cho tất cả lỗi canon' : 'Bản sửa đề xuất cho báo cáo đã chọn'}
             </h3>
           </div>
-          <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label="Dong goi y sua">
+          <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={onClose} aria-label="Đóng gợi ý sửa">
             <X size={16} />
           </button>
         </div>
@@ -42,7 +43,7 @@ export default function CanonRepairDialog({
                   key={report.id || `${report.rule_code}-${report.message}`}
                   className={`canon-repair-dialog__report canon-repair-dialog__report--${report.severity || 'warning'}`}
                 >
-                  <strong>{report.rule_code || report.severity || 'Bao cao'}</strong>
+                  <strong>{getCanonReportTitle(report)}</strong>
                   <p>{report.message}</p>
                 </div>
               ))}
@@ -52,7 +53,7 @@ export default function CanonRepairDialog({
           {preview.loading && (
             <div className="canon-repair-dialog__state">
               <Loader2 size={16} className="spin" />
-              Dang tao goi y sua...
+              Đang tạo gợi ý sửa...
             </div>
           )}
 
@@ -73,7 +74,7 @@ export default function CanonRepairDialog({
               <div className="modal-actions canon-repair-dialog__actions">
                 <button type="button" className="btn btn-ghost" onClick={onCopy} disabled={!preview.text}>
                   <Copy size={16} />
-                  Copy
+                  Sao chép
                 </button>
                 <button
                   type="button"
@@ -82,7 +83,7 @@ export default function CanonRepairDialog({
                   disabled={!preview.text || saving}
                 >
                   {saving ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-                  Luu thanh draft
+                  Lưu thành bản nháp
                 </button>
               </div>
             </>

@@ -334,7 +334,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                             <div className="arc-validator-message">{formatIssueMessage(issue.message)}</div>
                             {issue?.inputLabel && (
                                 <div className="arc-help-text" style={{ marginTop: '6px' }}>
-                                    Nguon loi: {getIssueSourceLabel(issue)}
+                                    Nguồn lỗi: {getIssueSourceLabel(issue)}
                                 </div>
                             )}
                             {issue?.explanation && (
@@ -537,18 +537,18 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                     <div className="arc-warning-box">
                         <strong>
                             {arcStore.outlineRevisionAssessment.status === 'improved'
-                                ? 'AI sua dan y: da cai thien'
+                                ? 'AI sửa dàn ý: đã cải thiện'
                                 : arcStore.outlineRevisionAssessment.status === 'worse'
-                                    ? 'AI sua dan y: ket qua te hon'
-                                    : 'AI sua dan y: chua cai thien'}
+                                    ? 'AI sửa dàn ý: kết quả tệ hơn'
+                                    : 'AI sửa dàn ý: chưa cải thiện'}
                         </strong>
                         <div style={{ marginTop: '6px' }}>{arcStore.outlineRevisionAssessment.message}</div>
                         <div className="arc-help-text" style={{ marginTop: '6px' }}>
-                            Loi tong: {arcStore.outlineRevisionAssessment.beforeIssueCount}{' -> '}{arcStore.outlineRevisionAssessment.afterIssueCount}
+                            Lỗi tổng: {arcStore.outlineRevisionAssessment.beforeIssueCount}{' -> '}{arcStore.outlineRevisionAssessment.afterIssueCount}
                             {' · '}
-                            Loi chan: {arcStore.outlineRevisionAssessment.beforeBlockingIssueCount}{' -> '}{arcStore.outlineRevisionAssessment.afterBlockingIssueCount}
+                            Lỗi chặn: {arcStore.outlineRevisionAssessment.beforeBlockingIssueCount}{' -> '}{arcStore.outlineRevisionAssessment.afterBlockingIssueCount}
                             {' · '}
-                            Giai quyet: {arcStore.outlineRevisionAssessment.resolvedIssueCount}
+                            Giải quyết: {arcStore.outlineRevisionAssessment.resolvedIssueCount}
                             {' · '}
                             Loi moi: {arcStore.outlineRevisionAssessment.introducedIssueCount}
                         </div>

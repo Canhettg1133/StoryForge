@@ -15,6 +15,7 @@ import {
   exportCorpusToPdf,
   exportCorpusToTxt,
 } from '../../../services/corpus/corpusCleanExport';
+import { toVietnameseErrorMessage } from '../../../utils/errorMessages.js';
 import './CorpusLab.css';
 
 function getOrderedCorpuses(corpusOrder, corpusesMap) {
@@ -166,7 +167,7 @@ export default function CorpusLab() {
       const detail = await getChapter(currentCorpus, chapter.id);
       setPreviewChapter(detail || chapter);
     } catch (error) {
-      setPreviewError(error?.message || 'Không thể tải nội dung chương.');
+      setPreviewError(toVietnameseErrorMessage(error, 'Không thể tải nội dung chương.'));
       setPreviewChapter(null);
     } finally {
       setPreviewLoading(false);
@@ -237,7 +238,7 @@ export default function CorpusLab() {
           throw new Error('Định dạng export không hợp lệ.');
       }
     } catch (error) {
-      setExportError(error?.message || 'Không thể clean export corpus này.');
+      setExportError(toVietnameseErrorMessage(error, 'Không thể clean export corpus này.'));
     } finally {
       setExportState({ busy: false, format: null });
     }

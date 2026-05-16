@@ -113,7 +113,7 @@ function parseAdaptationResponse(text) {
       }
     }
 
-    throw new Error('Could not parse JSON from response');
+    throw new Error('Không đọc được JSON từ phản hồi.');
   } catch (err) {
     // Return raw text as equivalent
     return {

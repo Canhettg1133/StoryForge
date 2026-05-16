@@ -1,28 +1,16 @@
 /**
- * StoryForge — AI Project Wizard
- * 3-step wizard: Input → AI Generate → Review & Approve
- *
- * Thay đổi so với bản cũ:
- *  - System prompt: thêm mảng `factions`, làm rõ ranh giới
- *    locations (địa điểm vật lý) / terms (khái niệm/phép thuật) / factions (thế lực/tổ chức)
- *    → Khắc phục "Bệnh 1": AI không còn nhét tông môn vào Thuật ngữ
- *  - Import createFaction từ codexStore
- *  - Review step: thêm section "Thế lực" với edit + exclude
- *  - handleApprove: tạo factions vào DB
- *
- * Phase 9:
- *  - Thêm section "Đại Cục" trong Step 0 — tác giả nhập 5-8 cột mốc lớn
- *  - handleApprove: lưu macro arcs vào bảng macro_arcs
- *
- * [UPDATE] Template Toggle:
- *  - Label mở rộng: nêu rõ Constitution + Style DNA + Anti-AI Blacklist sẽ tự động nạp
- *  - DNA được bơm vào DB ngay khi createProject() — không cần thao tác thêm
+ * StoryForge - Trợ lý AI tạo dự án
+ * Luồng hai lượt: ý tưởng -> nền truyện -> dàn ý chương -> tạo dự án.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  GENRES, TONES, POV_MODES, STORY_STRUCTURES,
-  PRONOUN_STYLE_PRESETS, GENRE_TO_PRONOUN_STYLE,
+  GENRES,
+  TONES,
+  POV_MODES,
+  STORY_STRUCTURES,
+  PRONOUN_STYLE_PRESETS,
+  GENRE_TO_PRONOUN_STYLE,
 } from '../../utils/constants';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import useProjectStore from '../../stores/projectStore';
@@ -31,6 +19,7 @@ import usePlotStore from '../../stores/plotStore';
 import db from '../../services/db/database';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import {
   composeStoryCreationSystemPrompt,
@@ -38,17 +27,40 @@ import {
   renderStoryCreationTemplate,
 } from '../../services/ai/storyCreationSettings';
 import {
+  buildChapterOutlinePassValidation,
+  buildStoryBibleSeedValidation,
   buildWizardValidation,
   normalizeChapterListField,
+  normalizeChapterOutlinePassResult,
+  normalizeStoryBibleSeedResult,
   normalizeWizardBlueprintResult,
   resolveWizardProjectTitle,
 } from '../../services/ai/blueprintGuardrails';
 import { buildMacroArcDbPayload } from '../StoryBible/utils/storyBibleHelpers';
 import {
-  Sparkles, ArrowRight, ArrowLeft, X, Loader2, Check,
-  RotateCcw, Users, MapPin, BookOpen, List, AlertCircle,
-  Trash2, Globe, Eye, MessageSquare, Plus, GitPullRequest,
-  Pencil, Landmark, Flag, TrendingUp, Dna,
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Check,
+  Dna,
+  Eye,
+  Flag,
+  GitPullRequest,
+  Globe,
+  Landmark,
+  List,
+  Loader2,
+  MapPin,
+  MessageSquare,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+  TrendingUp,
+  Users,
+  X,
 } from 'lucide-react';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import {
@@ -57,26 +69,42 @@ import {
 } from '../../features/projectContentMode/projectContentMode.js';
 import './ProjectWizard.css';
 
-const STEPS = ['Ý tưởng', 'AI đang tạo...', 'Xem & Duyệt'];
+const STEPS = ['Ý tưởng', 'Tạo nền truyện', 'Duyệt nền truyện', 'Tạo dàn ý', 'Duyệt & tạo dự án'];
 
 const VALID_THREAD_TYPES = ['main', 'subplot', 'character_arc', 'mystery', 'romance'];
 const TYPE_LABELS = {
-  main: 'Tuyến chính', subplot: 'Tuyến phụ', character_arc: 'Nhân vật',
-  mystery: 'Bí ẩn', romance: 'Tình cảm',
+  main: 'Tuyến chính',
+  subplot: 'Tuyến phụ',
+  character_arc: 'Nhân vật',
+  mystery: 'Bí ẩn',
+  romance: 'Tình cảm',
 };
 const CHAR_ROLES = ['protagonist', 'antagonist', 'supporting', 'mentor', 'minor'];
 const CHAR_ROLE_LABELS = {
   protagonist: 'Nhân vật chính',
   antagonist: 'Phản diện',
   supporting: 'Phụ trợ',
-  mentor: 'Sư phụ / Cố vấn',
+  mentor: 'Sư phụ / cố vấn',
   minor: 'Quần chúng',
 };
 const TERM_CATEGORIES = ['magic', 'race', 'technology', 'other'];
 const FACTION_TYPES = ['sect', 'kingdom', 'organization', 'other'];
 const FACTION_TYPE_LABELS = {
-  sect: 'Tông môn', kingdom: 'Vương quốc', organization: 'Tổ chức', other: 'Thế lực',
+  sect: 'Tông môn',
+  kingdom: 'Vương quốc',
+  organization: 'Tổ chức',
+  other: 'Thế lực',
 };
+const PROPOSAL_GROUPS = [
+  { key: 'characters', label: 'Nhân vật', icon: Users, nameField: 'name' },
+  { key: 'locations', label: 'Địa điểm', icon: MapPin, nameField: 'name' },
+  { key: 'objects', label: 'Vật phẩm', icon: Flag, nameField: 'name' },
+  { key: 'factions', label: 'Thế lực', icon: Landmark, nameField: 'name' },
+  { key: 'terms', label: 'Thuật ngữ', icon: BookOpen, nameField: 'name' },
+  { key: 'plot_threads', label: 'Tuyến truyện', icon: GitPullRequest, nameField: 'title' },
+];
+
+const emptyValidation = { blockingIssues: [], warnings: [] };
 
 function clampInitialChapterCount(value) {
   const numeric = Number(value);
@@ -100,10 +128,7 @@ function clampMacroArcInputRange(item = {}) {
   const chapterFrom = toPositiveInt(item?.chapter_from);
   const chapterTo = toPositiveInt(item?.chapter_to);
   if (!chapterFrom || !chapterTo || chapterTo >= chapterFrom) return item;
-  return {
-    ...item,
-    chapter_to: String(chapterFrom),
-  };
+  return { ...item, chapter_to: String(chapterFrom) };
 }
 
 function cascadeMacroArcInputStarts(items = [], oldChapterTos = []) {
@@ -134,6 +159,100 @@ function formatListField(value) {
   return normalizeChapterListField(value).join('\n');
 }
 
+function parseWizardJson(text) {
+  const parsedValue = parseAIJsonValue(text);
+  if (Array.isArray(parsedValue)) return { chapters: parsedValue };
+  if (isPlainObject(parsedValue)) return parsedValue;
+    throw new Error('Phản hồi JSON không đúng định dạng.');
+}
+
+function getRecordName(record, field = 'name') {
+  return String(record?.[field] || record?.name || record?.title || '').trim();
+}
+
+function mergeRecordsByName(baseItems = [], nextItems = [], nameField = 'name') {
+  const merged = [];
+  const indexByName = new Map();
+  [...baseItems, ...nextItems].forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const name = normalizeSearchText(getRecordName(item, nameField));
+    if (!name) return;
+    if (indexByName.has(name)) {
+      merged[indexByName.get(name)] = { ...merged[indexByName.get(name)], ...item };
+      return;
+    }
+    indexByName.set(name, merged.length);
+    merged.push(item);
+  });
+  return merged;
+}
+
+function dedupeIssues(issues = []) {
+  const seen = new Set();
+  return issues.filter((issue) => {
+    const key = [
+      issue.code,
+      issue.chapterIndex,
+      issue.entityName,
+      issue.message,
+    ].join('|');
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeProposedEntitiesForUi(proposed = {}) {
+  return {
+    characters: Array.isArray(proposed.characters) ? proposed.characters : [],
+    locations: Array.isArray(proposed.locations) ? proposed.locations : [],
+    objects: Array.isArray(proposed.objects) ? proposed.objects : [],
+    factions: Array.isArray(proposed.factions) ? proposed.factions : [],
+    terms: Array.isArray(proposed.terms) ? proposed.terms : [],
+    plot_threads: Array.isArray(proposed.plot_threads) ? proposed.plot_threads : [],
+  };
+}
+
+function proposalKey(collectionKey, index) {
+  return `proposal-${collectionKey}-${index}`;
+}
+
+function mergeAcceptedProposals(result = {}, acceptedProposals = new Set()) {
+  const proposed = normalizeProposedEntitiesForUi(result.proposed_entities);
+  const next = {
+    ...result,
+    characters: [...(result.characters || [])],
+    locations: [...(result.locations || [])],
+    objects: [...(result.objects || [])],
+    factions: [...(result.factions || [])],
+    terms: [...(result.terms || [])],
+    plot_threads: [...(result.plot_threads || [])],
+  };
+
+  PROPOSAL_GROUPS.forEach((group) => {
+    const acceptedItems = proposed[group.key].filter((_, index) => (
+      acceptedProposals.has(proposalKey(group.key, index))
+    ));
+    next[group.key] = mergeRecordsByName(next[group.key], acceptedItems, group.nameField);
+  });
+
+  return normalizeWizardBlueprintResult(next);
+}
+
+function filterApprovedSeed(result = {}, excluded = new Set()) {
+  return normalizeStoryBibleSeedResult({
+    ...result,
+    characters: (result.characters || []).filter((_, index) => !excluded.has(`char-${index}`)),
+    locations: (result.locations || []).filter((_, index) => !excluded.has(`loc-${index}`)),
+    objects: (result.objects || []).filter((_, index) => !excluded.has(`object-${index}`)),
+    factions: (result.factions || []).filter((_, index) => !excluded.has(`faction-${index}`)),
+    terms: (result.terms || []).filter((_, index) => !excluded.has(`term-${index}`)),
+    plot_threads: (result.plot_threads || []).filter((_, index) => !excluded.has(`thread-${index}`)),
+    chapters: [],
+    proposed_entities: {},
+  }, result.title || '');
+}
+
 function buildCoverageWarnings(result, excluded) {
   if (!result?.chapters?.length) return [];
 
@@ -146,24 +265,20 @@ function buildCoverageWarnings(result, excluded) {
   const chapterSignals = includedChapters.map((chapter, index) => {
     const summary = String(chapter.summary || '').trim();
     const purpose = String(chapter.purpose || '').trim();
-    const featuredCharacters = Array.isArray(chapter.featured_characters)
-      ? chapter.featured_characters.map((item) => normalizeSearchText(item)).filter(Boolean)
-      : [];
-    const threadTitles = Array.isArray(chapter.thread_titles)
-      ? chapter.thread_titles.map((item) => normalizeSearchText(item)).filter(Boolean)
-      : [];
+    const featuredCharacters = normalizeChapterListField(chapter.featured_characters).map((item) => normalizeSearchText(item));
+    const threadTitles = normalizeChapterListField(chapter.thread_titles).map((item) => normalizeSearchText(item));
     const primaryLocation = normalizeSearchText(chapter.primary_location);
     const searchableText = normalizeSearchText([
       chapter.title || '',
       purpose,
       summary,
-      ...(Array.isArray(chapter.featured_characters) ? chapter.featured_characters : []),
-      ...(Array.isArray(chapter.thread_titles) ? chapter.thread_titles : []),
+      ...normalizeChapterListField(chapter.featured_characters),
+      ...normalizeChapterListField(chapter.thread_titles),
       chapter.primary_location || '',
     ].join(' \n '));
 
     return {
-      title: chapter.title || `Chuong ${index + 1}`,
+      title: chapter.title || `Chương ${index + 1}`,
       summaryLength: summary.length,
       purposeLength: purpose.length,
       threadCount: threadTitles.length,
@@ -174,65 +289,44 @@ function buildCoverageWarnings(result, excluded) {
       searchableText,
     };
   });
-  const hasCharacterAssignments = chapterSignals.some((chapter) => chapter.featuredCharacters.size > 0);
-  const hasLocationAssignments = chapterSignals.some((chapter) => chapter.primaryLocation);
-  const hasThreadAssignments = chapterSignals.some((chapter) => chapter.threadTitles.size > 0);
 
   const missingCharacters = includedCharacters
-    .filter((item) => item?.name)
-    .filter((item) => item.role !== 'minor')
+    .filter((item) => item?.name && item.role !== 'minor')
     .filter((item) => {
       const normalizedName = normalizeSearchText(item.name);
-      if (!normalizedName) return false;
       return !chapterSignals.some((chapter) => (
-        chapter.featuredCharacters.has(normalizedName)
-        || chapter.searchableText.includes(normalizedName)
+        chapter.featuredCharacters.has(normalizedName) || chapter.searchableText.includes(normalizedName)
       ));
     })
     .map((item) => item.name);
-  if (hasCharacterAssignments && missingCharacters.length) {
-    warnings.push(`Nhân vật chưa bám vào chapter outline: ${missingCharacters.slice(0, 4).join(', ')}${missingCharacters.length > 4 ? '...' : ''}`);
+  if (missingCharacters.length) {
+    warnings.push(`Nhân vật chưa bám vào dàn ý chương: ${missingCharacters.slice(0, 4).join(', ')}${missingCharacters.length > 4 ? '...' : ''}`);
   }
 
   const missingLocations = includedLocations
     .filter((item) => item?.name)
     .filter((item) => {
       const normalizedName = normalizeSearchText(item.name);
-      if (!normalizedName) return false;
       return !chapterSignals.some((chapter) => (
-        chapter.primaryLocation === normalizedName
-        || chapter.searchableText.includes(normalizedName)
+        chapter.primaryLocation === normalizedName || chapter.searchableText.includes(normalizedName)
       ));
     })
     .map((item) => item.name);
-  if (hasLocationAssignments && missingLocations.length) {
-    warnings.push(`Địa điểm chưa xuất hiện trong tóm tắt chương: ${missingLocations.slice(0, 4).join(', ')}${missingLocations.length > 4 ? '...' : ''}`);
+  if (missingLocations.length) {
+    warnings.push(`Địa điểm chưa xuất hiện trong dàn ý chương: ${missingLocations.slice(0, 4).join(', ')}${missingLocations.length > 4 ? '...' : ''}`);
   }
 
   const looseThreads = includedThreads
     .filter((item) => item?.title)
     .filter((item) => {
       const normalizedTitle = normalizeSearchText(item.title);
-      if (!normalizedTitle) return false;
-      if (hasThreadAssignments) {
-        return !chapterSignals.some((chapter) => chapter.threadTitles.has(normalizedTitle));
-      }
-      return !chapterSignals.some((chapter) => chapter.searchableText.includes(normalizedTitle));
+      return !chapterSignals.some((chapter) => (
+        chapter.threadTitles.has(normalizedTitle) || chapter.searchableText.includes(normalizedTitle)
+      ));
     })
     .map((item) => item.title);
   if (looseThreads.length) {
-    warnings.push(`Một số tuyến truyện chưa có điểm neo rõ ở chapter summary: ${looseThreads.slice(0, 4).join(', ')}${looseThreads.length > 4 ? '...' : ''}`);
-  }
-
-  const denseChapters = includedChapters
-    .map((chapter, index) => ({
-      title: chapter.title || `Chương ${index + 1}`,
-      summaryLength: String(chapter.summary || '').trim().length,
-    }))
-    .filter((chapter) => chapter.summaryLength > 9999)
-    .map((chapter) => chapter.title);
-  if (denseChapters.length) {
-    warnings.push(`Một số chapter đang tóm tắt quá dày, dễ làm nhịp truyện nhanh: ${denseChapters.slice(0, 3).join(', ')}${denseChapters.length > 3 ? '...' : ''}`);
+    warnings.push(`Một số tuyến truyện chưa có điểm neo rõ ở chương: ${looseThreads.slice(0, 4).join(', ')}${looseThreads.length > 4 ? '...' : ''}`);
   }
 
   const strictDenseChapters = chapterSignals
@@ -246,19 +340,20 @@ function buildCoverageWarnings(result, excluded) {
       return chapter.summaryLength > 420 && overloadScore >= 3;
     })
     .map((chapter) => chapter.title);
-
-  const refinedWarnings = [...warnings];
   if (strictDenseChapters.length) {
-    refinedWarnings.push(`Mot so chapter co dau hieu nhoi qua nhieu tuyen hoac su kien cung luc: ${strictDenseChapters.slice(0, 3).join(', ')}${strictDenseChapters.length > 3 ? '...' : ''}`);
+    warnings.push(`Một số chương có dấu hiệu nhồi quá nhiều tuyến hoặc sự kiện: ${strictDenseChapters.slice(0, 3).join(', ')}${strictDenseChapters.length > 3 ? '...' : ''}`);
   }
 
-  return refinedWarnings;
+  return warnings;
 }
 
 export default function ProjectWizard({ onClose, onCreated }) {
   const { createProject, createChapter } = useProjectStore();
   const {
-    createCharacter, createLocation, createObject, createWorldTerm,
+    createCharacter,
+    createLocation,
+    createObject,
+    createWorldTerm,
     createFaction,
     saveChapterSummary,
   } = useCodexStore();
@@ -270,21 +365,65 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [tone, setTone] = useState('');
   const [useTemplate, setUseTemplate] = useState(true);
   const [povMode, setPovMode] = useState('third_omni');
-  const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE['tien_hiep'] || 'tien_hiep');
+  const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE.tien_hiep || 'tien_hiep');
   const [synopsis, setSynopsis] = useState('');
   const [storyStructure, setStoryStructure] = useState('');
   const [contentMode, setContentMode] = useState(PROJECT_CONTENT_MODES.SAFE);
-
-  // Phase 5: Pacing Fields
   const [targetLength, setTargetLength] = useState(0);
   const [targetLengthType, setTargetLengthType] = useState('unset');
   const [ultimateGoal, setUltimateGoal] = useState('');
   const [milestonesInfo, setMilestonesInfo] = useState([]);
   const [initialChapterCount, setInitialChapterCount] = useState(10);
-
-  // Phase 9: Macro Arcs (Đại Cục) — optional, tác giả nhập thủ công
   const [macroArcsInput, setMacroArcsInput] = useState([]);
   const [showMacroArcs, setShowMacroArcs] = useState(false);
+  const [autoGenerateOutline, setAutoGenerateOutline] = useState(false);
+
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [excluded, setExcluded] = useState(new Set());
+  const [editingKey, setEditingKey] = useState(null);
+  const [acceptedProposals, setAcceptedProposals] = useState(new Set());
+
+  const currentPronoun = PRONOUN_STYLE_PRESETS.find((p) => p.value === pronounStyle);
+  const currentTemplate = GENRE_TEMPLATES[genre];
+  const hasDNA = !!(currentTemplate?.constitution?.length || currentTemplate?.style_dna?.length);
+  const chapterCount = clampInitialChapterCount(initialChapterCount);
+
+  const workingResult = useMemo(
+    () => (result ? mergeAcceptedProposals(result, acceptedProposals) : null),
+    [acceptedProposals, result],
+  );
+  const seedValidationTarget = useMemo(
+    () => (workingResult ? { ...workingResult, chapters: [] } : null),
+    [workingResult],
+  );
+  const seedValidation = useMemo(
+    () => (seedValidationTarget ? buildStoryBibleSeedValidation(seedValidationTarget, { initialChapterCount: chapterCount, excluded }) : emptyValidation),
+    [chapterCount, excluded, seedValidationTarget],
+  );
+  const outlineValidation = useMemo(() => {
+    if (!workingResult?.chapters?.length) return emptyValidation;
+    const baseValidation = buildWizardValidation(workingResult, excluded);
+    const passValidation = buildChapterOutlinePassValidation(workingResult, workingResult, {
+      excluded,
+      acceptedProposals,
+    });
+    return {
+      blockingIssues: dedupeIssues([...baseValidation.blockingIssues, ...passValidation.blockingIssues]),
+      warnings: dedupeIssues([...baseValidation.warnings, ...passValidation.warnings]),
+    };
+  }, [acceptedProposals, excluded, workingResult]);
+  const blockingIssues = step >= 4
+    ? dedupeIssues([...seedValidation.blockingIssues, ...outlineValidation.blockingIssues])
+    : seedValidation.blockingIssues;
+  const coverageWarnings = step >= 4 && workingResult
+    ? [
+      ...seedValidation.warnings,
+      ...outlineValidation.warnings,
+      ...buildCoverageWarnings(workingResult, excluded).map((message) => ({ code: 'coverage-warning', message })),
+    ]
+    : seedValidation.warnings;
 
   const handleSelectNumericField = (event) => {
     const input = event.currentTarget;
@@ -298,29 +437,32 @@ export default function ProjectWizard({ onClose, onCreated }) {
     }
   };
 
-  const handleTargetLengthTypeChange = (v) => {
-    setTargetLengthType(v);
-    let newLen = targetLength;
-    if (v === 'short') newLen = 50;
-    else if (v === 'medium') newLen = 150;
-    else if (v === 'long') newLen = 400;
-    else if (v === 'epic') newLen = 800;
-    setTargetLength(newLen);
+  const handleGenreChange = (value) => {
+    setGenre(value);
+    setPronounStyle(GENRE_TO_PRONOUN_STYLE[value] || 'hien_dai');
   };
-  const addMilestone = () => setMilestonesInfo(prev => [...prev, { percent: 50, description: '' }]);
-  const updateMilestone = (idx, field, val) => {
-    const next = [...milestonesInfo];
-    next[idx] = { ...next[idx], [field]: val };
-    setMilestonesInfo(next);
-  };
-  const removeMilestone = (idx) => setMilestonesInfo(prev => prev.filter((_, i) => i !== idx));
 
-  // Phase 9: Macro Arc handlers
+  const handleTargetLengthTypeChange = (value) => {
+    setTargetLengthType(value);
+    if (value === 'short') setTargetLength(50);
+    else if (value === 'medium') setTargetLength(150);
+    else if (value === 'long') setTargetLength(400);
+    else if (value === 'epic') setTargetLength(800);
+  };
+
+  const addMilestone = () => setMilestonesInfo((prev) => [...prev, { percent: 50, description: '' }]);
+  const updateMilestone = (index, field, value) => {
+    setMilestonesInfo((prev) => prev.map((item, itemIndex) => (
+      itemIndex === index ? { ...item, [field]: value } : item
+    )));
+  };
+  const removeMilestone = (index) => setMilestonesInfo((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+
   const addMacroArc = () => {
-    setMacroArcsInput(prev => {
+    setMacroArcsInput((prev) => {
       const previousEnd = prev.reduce((max, item) => Math.max(max, toPositiveInt(item.chapter_to)), 0);
       return [...prev, {
-        title: 'Cột mốc ' + (prev.length + 1),
+        title: `Cột mốc ${prev.length + 1}`,
         description: '',
         chapter_from: previousEnd ? String(previousEnd + 1) : '',
         chapter_to: '',
@@ -328,39 +470,28 @@ export default function ProjectWizard({ onClose, onCreated }) {
       }];
     });
   };
-  const updateMacroArc = (idx, field, val) => {
-    setMacroArcsInput(prev => {
+  const updateMacroArc = (index, field, value) => {
+    setMacroArcsInput((prev) => {
       const oldChapterTos = prev.map((item) => item?.chapter_to);
       const next = prev.map((item, itemIndex) => (
-        itemIndex === idx ? { ...item, [field]: val } : item
+        itemIndex === index ? { ...item, [field]: value } : item
       ));
-      return field === 'chapter_to'
-        ? cascadeMacroArcInputStarts(next, oldChapterTos)
-        : next;
+      return field === 'chapter_to' ? cascadeMacroArcInputStarts(next, oldChapterTos) : next;
     });
   };
-  const removeMacroArc = (idx) => setMacroArcsInput(prev => prev.filter((_, i) => i !== idx));
+  const removeMacroArc = (index) => setMacroArcsInput((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
 
-  const handleGenreChange = (val) => {
-    setGenre(val);
-    setPronounStyle(GENRE_TO_PRONOUN_STYLE[val] || 'hien_dai');
-  };
-
-  const currentPronoun = PRONOUN_STYLE_PRESETS.find(p => p.value === pronounStyle);
-
-  // Kiểm tra template hiện tại có DNA không
-  const currentTemplate = GENRE_TEMPLATES[genre];
-  const hasDNA = !!(currentTemplate?.constitution?.length || currentTemplate?.style_dna?.length);
-
-  // AI result
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-
-  // Toggle items in result
-  const [excluded, setExcluded] = useState(new Set());
   const toggleExclude = (key) => {
-    setExcluded(prev => {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const toggleEdit = (key) => setEditingKey((prev) => (prev === key ? null : key));
+  const toggleProposal = (key) => {
+    setAcceptedProposals((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -368,13 +499,9 @@ export default function ProjectWizard({ onClose, onCreated }) {
     });
   };
 
-  // ── Inline edit state ──
-  const [editingKey, setEditingKey] = useState(null);
-  const toggleEdit = (key) => setEditingKey(prev => prev === key ? null : key);
-
   const updateResultItem = (section, index, field, value) => {
-    setResult(prev => {
-      const arr = [...(prev[section] || [])];
+    setResult((prev) => {
+      const arr = [...(prev?.[section] || [])];
       arr[index] = { ...arr[index], [field]: value };
       return { ...prev, [section]: arr };
     });
@@ -383,24 +510,22 @@ export default function ProjectWizard({ onClose, onCreated }) {
     updateResultItem(section, index, field, normalizeChapterListField(value));
   };
   const updateCharacterSpecificRole = (index, value) => {
-    setResult(prev => {
-      const arr = [...(prev.characters || [])];
+    setResult((prev) => {
+      const arr = [...(prev?.characters || [])];
       const current = arr[index] || {};
       const previousRole = String(current.specific_role || '').trim();
       const nextRole = String(value || '').trim();
       arr[index] = {
         ...current,
         specific_role: value,
-        specific_role_locked: nextRole
-          ? (previousRole ? Boolean(current.specific_role_locked) : true)
-          : false,
+        specific_role_locked: nextRole ? (previousRole ? Boolean(current.specific_role_locked) : true) : false,
       };
       return { ...prev, characters: arr };
     });
   };
   const updateCharacterSpecificRoleLocked = (index, checked) => {
-    setResult(prev => {
-      const arr = [...(prev.characters || [])];
+    setResult((prev) => {
+      const arr = [...(prev?.characters || [])];
       const current = arr[index] || {};
       const specificRole = String(current.specific_role || '').trim();
       arr[index] = {
@@ -410,405 +535,206 @@ export default function ProjectWizard({ onClose, onCreated }) {
       return { ...prev, characters: arr };
     });
   };
-  const validationSummary = buildWizardValidation(result, excluded);
-  const blockingIssues = validationSummary.blockingIssues;
-  const coverageWarnings = validationSummary.warnings;
 
-  // ── Mini-form renderers ──
-
-  const renderCharEdit = (c, i) => (
-    <div className="wizard-item-edit">
-      <div className="wizard-edit-row">
-        <div className="wizard-edit-field">
-          <label>Tên</label>
-          <input className="input input-sm" value={c.name || ''} onChange={e => updateResultItem('characters', i, 'name', e.target.value)} />
-        </div>
-        <div className="wizard-edit-field">
-          <label>Vai trò</label>
-          <select className="select select-sm" value={c.role || 'supporting'} onChange={e => updateResultItem('characters', i, 'role', e.target.value)}>
-            {CHAR_ROLES.map(r => <option key={r} value={r}>{CHAR_ROLE_LABELS[r] || r}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="wizard-edit-field">
-        <label>Vai trò cụ thể</label>
-        <input
-          className="input input-sm"
-          value={c.specific_role || ''}
-          onChange={e => updateCharacterSpecificRole(i, e.target.value)}
-        />
-        <label className="wizard-inline-check" title="Khi khóa, AI sẽ không tự tạo nhân vật khác thay thế hoặc trùng vai trò này.">
-          <input
-            type="checkbox"
-            checked={Boolean(c.specific_role_locked && String(c.specific_role || '').trim())}
-            disabled={!String(c.specific_role || '').trim()}
-            onChange={e => updateCharacterSpecificRoleLocked(i, e.target.checked)}
-          />
-          <span>Khóa vai trò này như canon</span>
-        </label>
-      </div>
-      <div className="wizard-edit-field">
-        <label>Tính cách</label>
-        <textarea className="textarea textarea-sm" rows={2} value={c.personality || ''} onChange={e => updateResultItem('characters', i, 'personality', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Tuổi / độ tuổi</label>
-        <input className="input input-sm" value={c.age || ''} onChange={e => updateResultItem('characters', i, 'age', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Điểm yếu</label>
-        <input className="input input-sm" value={c.flaws || ''} onChange={e => updateResultItem('characters', i, 'flaws', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Mục tiêu</label>
-        <input className="input input-sm" value={c.goals || ''} onChange={e => updateResultItem('characters', i, 'goals', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Trạng thái hiện tại / ràng buộc canon đang hiệu lực</label>
-        <textarea
-          className="textarea textarea-sm"
-          rows={2}
-          value={c.current_status || ''}
-          placeholder="Ví dụ: Đang sống dưới danh phận góa phụ trong nhà chồng; tránh điều tiếng, không dễ tin người lạ. Chưa biết chồng từng để lại thư mật. Tay trái còn đau sau trận trước."
-          onChange={e => updateResultItem('characters', i, 'current_status', e.target.value)}
-        />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Ngoại hình</label>
-        <input className="input input-sm" value={c.appearance || ''} onChange={e => updateResultItem('characters', i, 'appearance', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Vai tro trong chapter dau</label>
-        <textarea className="textarea textarea-sm" rows={2} value={c.story_function || ''} onChange={e => updateResultItem('characters', i, 'story_function', e.target.value)} />
-      </div>
-    </div>
-  );
-
-  const renderLocEdit = (l, i) => (
-    <div className="wizard-item-edit">
-      <div className="wizard-edit-field">
-        <label>Tên địa điểm</label>
-        <input className="input input-sm" value={l.name || ''} onChange={e => updateResultItem('locations', i, 'name', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Mô tả</label>
-        <textarea className="textarea textarea-sm" rows={2} value={l.description || ''} onChange={e => updateResultItem('locations', i, 'description', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Vai tro trong chapter dau</label>
-        <textarea className="textarea textarea-sm" rows={2} value={l.story_function || ''} onChange={e => updateResultItem('locations', i, 'story_function', e.target.value)} />
-      </div>
-    </div>
-  );
-
-  const renderObjectEdit = (o, i) => (
-    <div className="wizard-item-edit">
-      <div className="wizard-edit-field">
-        <label>Ten vat pham</label>
-        <input className="input input-sm" value={o.name || ''} onChange={e => updateResultItem('objects', i, 'name', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Mo ta</label>
-        <textarea className="textarea textarea-sm" rows={2} value={o.description || ''} onChange={e => updateResultItem('objects', i, 'description', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Chu so huu / nguoi gan lien</label>
-        <input className="input input-sm" value={o.owner || ''} onChange={e => updateResultItem('objects', i, 'owner', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Vai tro trong chapter dau</label>
-        <textarea className="textarea textarea-sm" rows={2} value={o.story_function || ''} onChange={e => updateResultItem('objects', i, 'story_function', e.target.value)} />
-      </div>
-    </div>
-  );
-
-  const renderTermEdit = (t, i) => (
-    <div className="wizard-item-edit">
-      <div className="wizard-edit-row">
-        <div className="wizard-edit-field">
-          <label>Thuật ngữ</label>
-          <input className="input input-sm" value={t.name || ''} onChange={e => updateResultItem('terms', i, 'name', e.target.value)} />
-        </div>
-        <div className="wizard-edit-field">
-          <label>Danh mục</label>
-          <select className="select select-sm" value={t.category || 'other'} onChange={e => updateResultItem('terms', i, 'category', e.target.value)}>
-            {TERM_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="wizard-edit-field">
-        <label>Định nghĩa</label>
-        <textarea className="textarea textarea-sm" rows={2} value={t.definition || ''} onChange={e => updateResultItem('terms', i, 'definition', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Vai trò trong chapter đầu</label>
-        <textarea className="textarea textarea-sm" rows={2} value={t.story_function || ''} onChange={e => updateResultItem('terms', i, 'story_function', e.target.value)} />
-      </div>
-    </div>
-  );
-
-  const renderFactionEdit = (f, i) => (
-    <div className="wizard-item-edit">
-      <div className="wizard-edit-row">
-        <div className="wizard-edit-field">
-          <label>Tên thế lực</label>
-          <input className="input input-sm" value={f.name || ''} onChange={e => updateResultItem('factions', i, 'name', e.target.value)} />
-        </div>
-        <div className="wizard-edit-field">
-          <label>Loại</label>
-          <select className="select select-sm" value={f.faction_type || 'sect'} onChange={e => updateResultItem('factions', i, 'faction_type', e.target.value)}>
-            {FACTION_TYPES.map(t => <option key={t} value={t}>{FACTION_TYPE_LABELS[t]}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="wizard-edit-field">
-        <label>Mô tả</label>
-        <textarea className="textarea textarea-sm" rows={2} value={f.description || ''} onChange={e => updateResultItem('factions', i, 'description', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Ghi chú</label>
-        <input className="input input-sm" value={f.notes || ''} onChange={e => updateResultItem('factions', i, 'notes', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Vai trò trong chapter đầu</label>
-        <textarea className="textarea textarea-sm" rows={2} value={f.story_function || ''} onChange={e => updateResultItem('factions', i, 'story_function', e.target.value)} />
-      </div>
-    </div>
-  );
-
-  const renderChapterEdit = (ch, i) => (
-    <div className="wizard-item-edit">
-      <div className="wizard-edit-field">
-        <label>Tiêu đề</label>
-        <input className="input input-sm" value={ch.title || ''} onChange={e => updateResultItem('chapters', i, 'title', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Purpose</label>
-        <textarea className="textarea textarea-sm" rows={2} value={ch.purpose || ''} onChange={e => updateResultItem('chapters', i, 'purpose', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Tóm tắt</label>
-        <textarea className="textarea textarea-sm" rows={3} value={ch.summary || ''} onChange={e => updateResultItem('chapters', i, 'summary', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>State delta / thay đổi Live Canon</label>
-        <textarea className="textarea textarea-sm" rows={2} value={ch.state_delta || ''} onChange={e => updateResultItem('chapters', i, 'state_delta', e.target.value)} />
-      </div>
-      <div className="wizard-edit-row">
-        <div className="wizard-edit-field">
-          <label>Featured characters</label>
-          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.featured_characters)} onChange={e => updateResultListField('chapters', i, 'featured_characters', e.target.value)} />
-        </div>
-        <div className="wizard-edit-field">
-          <label>Primary location</label>
-          <input className="input input-sm" value={ch.primary_location || ''} onChange={e => updateResultItem('chapters', i, 'primary_location', e.target.value)} />
-        </div>
-      </div>
-      <div className="wizard-edit-row">
-        <div className="wizard-edit-field">
-          <label>Thread titles</label>
-          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.thread_titles)} onChange={e => updateResultListField('chapters', i, 'thread_titles', e.target.value)} />
-        </div>
-        <div className="wizard-edit-field">
-          <label>Key events</label>
-          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.key_events)} onChange={e => updateResultListField('chapters', i, 'key_events', e.target.value)} />
-        </div>
-      </div>
-      <div className="wizard-edit-row">
-        <div className="wizard-edit-field">
-          <label>Required factions</label>
-          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.required_factions)} onChange={e => updateResultListField('chapters', i, 'required_factions', e.target.value)} />
-        </div>
-        <div className="wizard-edit-field">
-          <label>Required objects</label>
-          <textarea className="textarea textarea-sm" rows={3} value={formatListField(ch.required_objects)} onChange={e => updateResultListField('chapters', i, 'required_objects', e.target.value)} />
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderThreadEdit = (pt, i) => (
-    <div className="wizard-item-edit">
-      <div className="wizard-edit-row">
-        <div className="wizard-edit-field">
-          <label>Tên tuyến truyện</label>
-          <input className="input input-sm" value={pt.title || ''} onChange={e => updateResultItem('plot_threads', i, 'title', e.target.value)} />
-        </div>
-        <div className="wizard-edit-field">
-          <label>Loại</label>
-          <select className="select select-sm" value={pt.type || 'subplot'} onChange={e => updateResultItem('plot_threads', i, 'type', e.target.value)}>
-            {VALID_THREAD_TYPES.map(t => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="wizard-edit-field">
-        <label>Mô tả</label>
-        <textarea className="textarea textarea-sm" rows={2} value={pt.description || ''} onChange={e => updateResultItem('plot_threads', i, 'description', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Opening window</label>
-        <input className="input input-sm" value={pt.opening_window || ''} onChange={e => updateResultItem('plot_threads', i, 'opening_window', e.target.value)} />
-      </div>
-      <div className="wizard-edit-field">
-        <label>Anchor chapters</label>
-        <textarea className="textarea textarea-sm" rows={2} value={formatListField(pt.anchor_chapters)} onChange={e => updateResultListField('plot_threads', i, 'anchor_chapters', e.target.value)} />
-      </div>
-    </div>
-  );
-
-  const renderItemActions = (key) => (
-    <div style={{ display: 'flex', gap: 'var(--space-1)', flexShrink: 0 }}>
-      <button
-        className={`btn btn-ghost btn-icon btn-sm ${editingKey === key ? 'btn--active' : ''}`}
-        onClick={() => toggleEdit(key)}
-        title={editingKey === key ? 'Đóng chỉnh sửa' : 'Chỉnh sửa'}
-      >
-        <Pencil size={14} />
-      </button>
-      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => toggleExclude(key)}>
-        {excluded.has(key) ? <RotateCcw size={14} /> : <Trash2 size={14} />}
-      </button>
-    </div>
-  );
-
-  // ── Step 1 → Step 2: Generate ──
-  const handleGenerate = async () => {
-    setStep(1);
-    setIsGenerating(true);
-    setError(null);
-
+  const buildTemplateVariables = (approvedSeed = null) => {
     const template = GENRE_TEMPLATES[genre];
     const templateHint = template && useTemplate
-      ? `\n\nTham khảo template thể loại "${template.label}":\n- Quy tắc thế giới: ${template.worldRules?.join(', ')}\n- Thuật ngữ gợi ý: ${template.terms?.map(t => t.name).join(', ')}`
+      ? `\n\nTham khảo mẫu thể loại "${template.label}":\n- Quy tắc thế giới: ${template.worldRules?.join(', ')}\n- Thuật ngữ gợi ý: ${template.terms?.map((term) => term.name).join(', ')}`
       : '';
-
-    const genreLabel = GENRES.find(g => g.value === genre)?.label || genre;
-    const storyCreationSettings = getStoryCreationSettings();
-    const wizardPrompts = storyCreationSettings.projectWizard;
-    const chapterCount = clampInitialChapterCount(initialChapterCount);
+    const genreLabel = GENRES.find((item) => item.value === genre)?.label || genre;
     let pacingGuidance = '';
     if (Number(targetLength) > 100 && chapterCount < Number(targetLength)) {
       const percent = Math.round((chapterCount / Number(targetLength)) * 100);
-      pacingGuidance = `\n\nHƯỚNG DẪN PACING:\n- Đây là ${chapterCount} chương đầu trong truyện dài ${targetLength} chương, mới chiếm khoảng ${percent}% tổng chiều dài.\n- Nhịp phải chậm và ổn định, ưu tiên nền tảng thế giới, nhân vật và mâu thuẫn mở đầu.\n- Không đốt quá nhiều biến cố lớn trong mỗi chương.`;
+      pacingGuidance = `\n\nHƯỚNG DẪN PACING:\n- Đây là ${chapterCount} chương đầu trong truyện dài ${targetLength} chương, mới chiếm khoảng ${percent}% tổng chiều dài.\n- Ưu tiên nền tảng thế giới, nhân vật và mâu thuẫn mở đầu.\n- Không đốt quá nhiều biến cố lớn trong một chương.`;
     }
-    const templateVariables = {
+
+    return {
       genre: genreLabel,
       tone: tone || 'mặc định',
-      pov_label: POV_MODES.find(p => p.value === povMode)?.label || 'Ngôi 3',
+      pov_label: POV_MODES.find((item) => item.value === povMode)?.label || 'Ngôi 3',
       pronoun_label: currentPronoun?.label || 'Mặc định',
-      target_length_label: targetLength > 0 ? targetLength + ' chương' : 'Chưa xác định',
+      target_length_label: targetLength > 0 ? `${targetLength} chương` : 'Chưa xác định',
       ultimate_goal: ultimateGoal || 'Chưa có',
-      synopsis_line: synopsis ? 'Cốt truyện: ' + synopsis + '\n' : '',
-      story_structure_line: storyStructure ? 'Cấu trúc: ' + STORY_STRUCTURES.find(s => s.value === storyStructure)?.label + '\n' : '',
+      synopsis_line: synopsis ? `Cốt truyện: ${synopsis}\n` : '',
+      story_structure_line: storyStructure ? `Cấu trúc: ${STORY_STRUCTURES.find((item) => item.value === storyStructure)?.label}\n` : '',
       idea,
       template_hint: templateHint,
       initial_chapter_count: chapterCount,
       pacing_guidance: pacingGuidance,
+      approved_seed_json: approvedSeed ? JSON.stringify(approvedSeed, null, 2) : '',
     };
+  };
 
+  const sendStoryCreationRequest = ({ groupKey, taskType, variables, onComplete, onError }) => {
+    const storyCreationSettings = getStoryCreationSettings();
+    const prompts = storyCreationSettings[groupKey];
     const messages = [
       {
         role: 'system',
-        content: `Bạn là trợ lý tạo dự án truyện chữ.
-
-Trả về CHÍNH XÁC JSON format:
-{
-  "title": "Ten truyen chinh thuc",
-  "title_options": ["Ten 1", "Ten 2", "Ten 3"],
-  "premise": "Tóm tắt premise 2-3 câu",
-  "world_profile": {
-    "world_name": "Tên thế giới",
-    "world_type": "Loại: tu tiên / hiện đại / sci-fi...",
-    "world_scale": "Quy mô: 1 lục địa / nhiều giới...",
-    "world_era": "Thời đại: thượng cổ / trung cổ / hiện đại...",
-    "world_rules": ["Quy tắc 1", "Quy tắc 2", "Quy tắc 3"],
-    "world_description": "Mô tả tổng quan thế giới 2-3 câu"
-  },
-  "characters": [{"name": "...", "aliases": ["ten goi khac / biet danh neu co"], "role": "protagonist|antagonist|supporting|mentor|minor", "specific_role": "vai tro canon cu the neu tac gia yeu cau; de rong neu khong co", "specific_role_locked": false, "age": "tuoi/do tuoi tuy chon", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu / khuyết điểm lúc đầu", "goals": "...", "current_status": "Character Live Canon lúc khởi đầu; để rỗng nếu không có ràng buộc canon thật", "story_function": "vai tro trong cac chapter dau"}],
-  "locations": [{"name": "...", "description": "...", "story_function": "dia diem nay dung de lam gi trong chapter dau"}],
-  "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chi them neu chapter dau that su can vat pham nay"}],
-  "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "...", "story_function": "the luc nay dung de lam gi trong chapter dau"}],
-  "terms": [{"name": "...", "definition": "...", "category": "magic|race|technology|other", "story_function": "thuat ngu nay anh huong gi toi chapter dau"}],
-  "chapters": [{"title": "Chương 1: ...", "purpose": "muc tieu ke chuyen cua chuong", "summary": "Tóm tắt nội dung chương", "state_delta": "Thay đổi dự kiến của Character Live Canon/current_status sau chương này; để rỗng nếu không đổi", "featured_characters": ["..."], "primary_location": "...", "thread_titles": ["..."], "key_events": ["neo noi bo neu can"], "required_factions": ["..."], "required_objects": ["..."], "required_terms": ["..."]}],
-  "plot_threads": [{"title": "...", "type": "main|subplot|character_arc|mystery|romance", "description": "mô tả tuyến truyện 1-2 câu", "state": "active", "opening_window": "xuat hien tu chuong nao", "anchor_chapters": ["Chuong 1", "Chuong 3"]}]
-}
-
-PHÂN LOẠI RÕ RÀNG — RẤT QUAN TRỌNG:
-- "locations": CHỈ địa điểm VẬT LÝ có thể đến được: núi, thành phố, tòa nhà, hang động, vùng đất. KHÔNG đặt tông môn hay tổ chức vào đây.
-- "factions": Tông môn, bang phái, vương triều, tổ chức, thế lực chính trị.
-- "terms": CHỈ khái niệm trừu tượng, hệ thống tu luyện, chủng tộc, công nghệ.
-
-Tạo: world_profile chi tiết, 3-5 nhân vật, 3-5 địa điểm vật lý, 2-4 thế lực/tông môn (nếu phù hợp thể loại), 3-5 thuật ngữ, 8-12 chương, 2-4 tuyến truyện lớn.
-LƯU Ý: Bất kỳ nhân vật nào ở điểm bắt đầu cũng phải có điểm yếu (flaws) rõ ràng. Cấm tạo nhân vật hoàn mỹ ngay từ đầu.
-current_status là Character Live Canon lúc khởi đầu; chỉ điền nếu trạng thái đó thật sự ràng buộc chương đầu/bối cảnh hiện tại, không dùng trạng thái chung chung.
-specific_role la vai tro canon cu the, khac voi role la vai tro truyen. Neu specific_role trong thi specific_role_locked phai la false; neu can khoa vai tro canon cu the thi dat true.
-Chỉ trả về JSON, không thêm gì khác.`,
+        content: renderStoryCreationTemplate(
+          composeStoryCreationSystemPrompt(groupKey, prompts.systemPrompt),
+          variables,
+        ),
       },
       {
         role: 'user',
-        content: `Thể loại: ${genreLabel}\nTone: ${tone || 'mặc định'}\nGóc nhìn: ${POV_MODES.find(p => p.value === povMode)?.label || 'Ngôi 3'}\nXưng hô: ${currentPronoun?.label || 'Mặc định'}\nĐộ dài dự kiến: ${targetLength > 0 ? targetLength + ' chương' : 'Chưa xác định'}\nĐích đến tối thượng: ${ultimateGoal || 'Chưa có'}\n${synopsis ? 'Cốt truyện: ' + synopsis + '\n' : ''}${storyStructure ? 'Cấu trúc: ' + STORY_STRUCTURES.find(s => s.value === storyStructure)?.label + '\n' : ''}\nÝ tưởng: ${idea}${templateHint}`,
+        content: renderStoryCreationTemplate(prompts.userPromptTemplate, variables),
       },
     ];
 
-    messages[0].content = renderStoryCreationTemplate(
-      composeStoryCreationSystemPrompt('projectWizard', wizardPrompts.systemPrompt),
-      templateVariables,
-    );
-    messages[1].content = renderStoryCreationTemplate(wizardPrompts.userPromptTemplate, templateVariables);
-
     aiService.send({
-      taskType: TASK_TYPES.PROJECT_WIZARD,
+      taskType,
       messages,
       stream: false,
+      onComplete,
+      onError,
+    });
+  };
+
+  const requestOutline = (seedInput) => {
+    const approvedSeed = filterApprovedSeed(seedInput, excluded);
+    const validation = buildStoryBibleSeedValidation(approvedSeed, {
+      initialChapterCount: chapterCount,
+      excluded: new Set(),
+    });
+    if (validation.blockingIssues.length > 0) {
+      setError('Nền truyện còn lỗi chặn. Hãy sửa nền truyện trước khi tạo dàn ý.');
+      setStep(2);
+      setIsGenerating(false);
+      return;
+    }
+
+    setStep(3);
+    setIsGenerating(true);
+    setError(null);
+
+    sendStoryCreationRequest({
+      groupKey: 'chapterOutlinePass',
+      taskType: TASK_TYPES.CHAPTER_OUTLINE_PASS,
+      variables: buildTemplateVariables(approvedSeed),
       onComplete: (text) => {
         setIsGenerating(false);
         try {
-          const parsedValue = parseAIJsonValue(text);
-          const nextResult = Array.isArray(parsedValue)
-            ? (parsedValue.length === 1 && isPlainObject(parsedValue[0])
-              ? parsedValue[0]
-              : (parsedValue.every(isPlainObject)
-                ? { title: '', title_options: [], premise: '', characters: [], locations: [], objects: [], factions: [], terms: [], chapters: parsedValue, plot_threads: [] }
-                : null))
-            : (isPlainObject(parsedValue) ? parsedValue : null);
-
-          if (!nextResult) throw new Error('Unexpected JSON format');
-          setResult(normalizeWizardBlueprintResult(nextResult, idea));
+          const parsed = parseWizardJson(text);
+          const outline = normalizeChapterOutlinePassResult(parsed, approvedSeed);
+          const seedThreadNames = new Set((approvedSeed.plot_threads || []).map((thread) => normalizeSearchText(thread.title)));
+          const existingOutlineThreads = outline.plot_threads.filter((thread) => seedThreadNames.has(normalizeSearchText(thread.title)));
+          const proposedOutlineThreads = outline.plot_threads
+            .filter((thread) => thread.title && !seedThreadNames.has(normalizeSearchText(thread.title)))
+            .map((thread) => ({
+              ...thread,
+              reason: thread.reason || 'Dàn ý đề xuất tuyến truyện mới ngoài nền truyện đã duyệt.',
+            }));
+          const mergedPlotThreads = existingOutlineThreads.length
+            ? mergeRecordsByName(approvedSeed.plot_threads, existingOutlineThreads, 'title')
+            : approvedSeed.plot_threads;
+          const proposedEntities = {
+            ...outline.proposed_entities,
+            plot_threads: mergeRecordsByName(
+              outline.proposed_entities?.plot_threads || [],
+              proposedOutlineThreads,
+              'title',
+            ),
+          };
+          setResult((prev) => normalizeWizardBlueprintResult({
+            ...(prev || approvedSeed),
+            chapters: outline.chapters,
+            plot_threads: mergedPlotThreads,
+            proposed_entities: proposedEntities,
+          }, idea));
+          setAcceptedProposals(new Set());
+          setEditingKey(null);
+          setStep(4);
+        } catch (parseError) {
+          console.error('[Wizard] Outline parse error:', parseError, '\nRaw:', text);
+          setError('Không parse được dàn ý chương. Hãy thử tạo lại dàn ý.');
           setStep(2);
-        } catch (e) {
-          console.error('[Wizard] Parse error:', e, '\nRaw:', text);
-          setError('Không parse được kết quả. Thử lại?');
+        }
+      },
+      onError: (err) => {
+        setIsGenerating(false);
+        setError(toVietnameseErrorMessage(err, 'Lỗi kết nối AI khi tạo dàn ý.'));
+        setStep(2);
+      },
+    });
+  };
+
+  const handleGenerateSeed = async () => {
+    setStep(1);
+    setIsGenerating(true);
+    setError(null);
+    setResult(null);
+    setExcluded(new Set());
+    setAcceptedProposals(new Set());
+    setEditingKey(null);
+
+    sendStoryCreationRequest({
+      groupKey: 'storyBibleSeed',
+      taskType: TASK_TYPES.STORY_BIBLE_SEED,
+      variables: buildTemplateVariables(),
+      onComplete: (text) => {
+        try {
+          const parsed = parseWizardJson(text);
+          const seed = normalizeStoryBibleSeedResult(parsed, idea);
+          setResult(seed);
+          const validation = buildStoryBibleSeedValidation(seed, {
+            initialChapterCount: chapterCount,
+            excluded: new Set(),
+          });
+          if (autoGenerateOutline && validation.blockingIssues.length === 0) {
+            requestOutline(seed);
+            return;
+          }
+          setIsGenerating(false);
+          setStep(2);
+        } catch (parseError) {
+          console.error('[Wizard] Seed parse error:', parseError, '\nRaw:', text);
+          setIsGenerating(false);
+          setError('Không parse được nền truyện. Hãy thử lại.');
           setStep(0);
         }
       },
       onError: (err) => {
         setIsGenerating(false);
-        setError(err.message || 'Lỗi kết nối AI');
+        setError(toVietnameseErrorMessage(err, 'Lỗi kết nối AI khi tạo nền truyện.'));
         setStep(0);
       },
     });
   };
 
-  // ── Step 3: Create everything ──
   const handleApprove = async () => {
     if (!result) return;
-    if (blockingIssues.length > 0) {
-      setError('Blueprint hien tai con loi chan. Sua cac muc do truoc khi tao du an.');
+    const finalResult = mergeAcceptedProposals(result, acceptedProposals);
+    const finalSeedValidation = buildStoryBibleSeedValidation({ ...finalResult, chapters: [] }, { initialChapterCount: chapterCount, excluded });
+    const finalOutlineValidation = finalResult.chapters?.length
+      ? {
+        blockingIssues: dedupeIssues([
+          ...buildWizardValidation(finalResult, excluded).blockingIssues,
+          ...buildChapterOutlinePassValidation(finalResult, finalResult, { excluded, acceptedProposals }).blockingIssues,
+        ]),
+      }
+      : { blockingIssues: [{ code: 'missing-outline', message: 'Chưa có dàn ý chương để tạo dự án.' }] };
+    const finalBlockers = dedupeIssues([
+      ...finalSeedValidation.blockingIssues,
+      ...finalOutlineValidation.blockingIssues,
+    ]);
+
+    if (finalBlockers.length > 0) {
+      setError('Blueprint hiện tại còn lỗi chặn. Hãy sửa các mục đỏ trước khi tạo dự án.');
       return;
     }
+
     setIsGenerating(true);
+    setError(null);
 
     try {
-      // 1. Create project
-      // DNA van phong (constitution, style_dna, anti_ai_blacklist) se duoc
-      // tu dong bom vao prompt_templates boi buildInitialPromptTemplates() trong projectStore
-      const wp = result.world_profile || {};
-      const projectTitle = resolveWizardProjectTitle(result, idea);
+      const wp = finalResult.world_profile || {};
+      const projectTitle = resolveWizardProjectTitle(finalResult, idea);
       const projectId = await createProject({
         title: projectTitle,
         genre_primary: genre,
-        tone: tone,
-        description: result.premise || idea,
+        tone,
+        description: finalResult.premise || idea,
         world_name: wp.world_name || '',
         world_type: wp.world_type || '',
         world_scale: wp.world_scale || '',
@@ -817,7 +743,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
         world_description: wp.world_description || '',
         pov_mode: povMode,
         pronoun_style: pronounStyle,
-        synopsis: synopsis || result.premise || '',
+        synopsis: synopsis || finalResult.premise || '',
         story_structure: storyStructure,
         target_length: Number(targetLength) || 0,
         target_length_type: targetLengthType,
@@ -827,161 +753,134 @@ Chỉ trả về JSON, không thêm gì khác.`,
         skipFirstChapter: true,
       });
 
-      if (result.title?.trim() && result.title.trim() !== projectTitle) {
-        await db.projects.update(projectId, { title: result.title.trim() });
+      if (finalResult.title?.trim() && finalResult.title.trim() !== projectTitle) {
+        await db.projects.update(projectId, { title: finalResult.title.trim() });
       }
 
-      // 2. Create chapters with full blueprint payload
-      if (result.chapters?.length > 0) {
-        for (let i = 0; i < result.chapters.length; i++) {
-          const ch = result.chapters[i];
-          if (excluded.has(`chapter-${i}`)) continue;
-
-          const chapterData = {
-            title: ch.title || `Chuong ${i + 1}`,
-            summary: ch.summary || '',
-            purpose: ch.purpose || '',
-            featured_characters: normalizeChapterListField(ch.featured_characters),
-            primary_location: ch.primary_location || '',
-            thread_titles: normalizeChapterListField(ch.thread_titles),
-            key_events: normalizeChapterListField(ch.key_events),
-            required_factions: normalizeChapterListField(ch.required_factions),
-            required_objects: normalizeChapterListField(ch.required_objects),
-            required_terms: normalizeChapterListField(ch.required_terms),
-            state_delta: ch.state_delta || '',
-          };
-
-          const createdChapter = await createChapter(projectId, chapterData.title, chapterData);
-          if (createdChapter?.chapterId && chapterData.summary) {
-            await saveChapterSummary(createdChapter.chapterId, projectId, chapterData.summary);
-          }
-        }
-      }
-
-      // 3. Create characters
-      if (result.characters?.length > 0) {
-        for (let i = 0; i < result.characters.length; i++) {
-          const c = result.characters[i];
-          if (!excluded.has(`char-${i}`)) {
-            await createCharacter({
-              project_id: projectId,
-              name: c.name,
-              aliases: c.aliases || [],
-              role: c.role || 'supporting',
-              specific_role: String(c.specific_role || '').trim(),
-              specific_role_locked: Boolean(c.specific_role_locked && String(c.specific_role || '').trim()),
-              age: c.age || '',
-              appearance: c.appearance || '',
-              personality: (c.personality || '') + (c.flaws ? `\nDiem yeu: ${c.flaws}` : ''),
-              flaws: c.flaws || '',
-              personality_tags: c.personality_tags || '',
-              goals: c.goals || '',
-              current_status: c.current_status || '',
-              notes: c.story_function || '',
-              story_function: c.story_function || '',
-            });
-          }
-        }
-      }
-
-      // 4. Create locations
-      if (result.locations?.length > 0) {
-        for (let i = 0; i < result.locations.length; i++) {
-          const l = result.locations[i];
-          if (!excluded.has(`loc-${i}`)) {
-            await createLocation({
-              project_id: projectId,
-              name: l.name,
-              description: l.description || '',
-              details: l.story_function || '',
-              story_function: l.story_function || '',
-            });
-          }
-        }
-      }
-
-      if (result.objects?.length > 0) {
-        for (let i = 0; i < result.objects.length; i++) {
-          const o = result.objects[i];
-          if (!excluded.has(`object-${i}`) && o.name?.trim()) {
-            await createObject({
-              project_id: projectId,
-              name: o.name.trim(),
-              description: o.description || '',
-              properties: o.story_function || '',
-              story_function: o.story_function || '',
-            });
-          }
-        }
-      }
-
-      // 5. Create factions
-      if (result.factions?.length > 0) {
-        for (let i = 0; i < result.factions.length; i++) {
-          const f = result.factions[i];
-          if (!excluded.has(`faction-${i}`) && f.name?.trim()) {
-            await createFaction({
-              project_id: projectId,
-              name: f.name.trim(),
-              faction_type: FACTION_TYPES.includes(f.faction_type) ? f.faction_type : 'other',
-              description: f.description || '',
-              notes: f.notes || '',
-              story_function: f.story_function || '',
-              aliases: [],
-            });
-          }
-        }
-      }
-
-      // 6. Create terms
-      if (result.terms?.length > 0) {
-        for (let i = 0; i < result.terms.length; i++) {
-          const t = result.terms[i];
-          if (!excluded.has(`term-${i}`)) {
-            await createWorldTerm({
-              project_id: projectId,
-              name: t.name,
-              definition: t.definition || '',
-              category: t.category || 'other',
-              source_kind: t.story_function ? `wizard:${t.story_function}` : '',
-              story_function: t.story_function || '',
-            });
-          }
-        }
-      }
-
-      // 7. Create plot threads
-      const nextPlotThreads = Array.isArray(result.plot_threads)
-        ? result.plot_threads.filter(isPlainObject)
-        : [];
-
-      for (let i = 0; i < nextPlotThreads.length; i++) {
-        const pt = nextPlotThreads[i];
-        if (!pt.title?.trim() || excluded.has(`thread-${i}`)) continue;
-        await createPlotThread({
+      for (let index = 0; index < (finalResult.characters || []).length; index += 1) {
+        const character = finalResult.characters[index];
+        if (excluded.has(`char-${index}`) || !character.name?.trim()) continue;
+        await createCharacter({
           project_id: projectId,
-          title: pt.title.trim(),
-          type: VALID_THREAD_TYPES.includes(pt.type) ? pt.type : 'subplot',
-          description: pt.description || '',
-          state: pt.state === 'resolved' ? 'resolved' : 'active',
-          opening_window: pt.opening_window || '',
-          anchor_chapters: normalizeChapterListField(pt.anchor_chapters),
+          name: character.name.trim(),
+          aliases: character.aliases || [],
+          role: character.role || 'supporting',
+          specific_role: String(character.specific_role || '').trim(),
+          specific_role_locked: Boolean(character.specific_role_locked && String(character.specific_role || '').trim()),
+          age: character.age || '',
+          appearance: character.appearance || '',
+          personality: (character.personality || '') + (character.flaws ? `\nĐiểm yếu: ${character.flaws}` : ''),
+          flaws: character.flaws || '',
+          personality_tags: character.personality_tags || '',
+          goals: character.goals || '',
+          current_status: character.current_status || '',
+          notes: character.story_function || '',
+          story_function: character.story_function || '',
         });
       }
 
-      // 8. Phase 9: Save macro arcs (Dai Cuc) neu tac gia da nhap
-      const validMacroArcs = macroArcsInput.filter(m => m.title?.trim());
-      for (let i = 0; i < validMacroArcs.length; i++) {
-        const m = validMacroArcs[i];
+      for (let index = 0; index < (finalResult.locations || []).length; index += 1) {
+        const location = finalResult.locations[index];
+        if (excluded.has(`loc-${index}`) || !location.name?.trim()) continue;
+        await createLocation({
+          project_id: projectId,
+          name: location.name.trim(),
+          description: location.description || '',
+          details: location.story_function || '',
+          story_function: location.story_function || '',
+        });
+      }
+
+      for (let index = 0; index < (finalResult.objects || []).length; index += 1) {
+        const object = finalResult.objects[index];
+        if (excluded.has(`object-${index}`) || !object.name?.trim()) continue;
+        await createObject({
+          project_id: projectId,
+          name: object.name.trim(),
+          description: object.description || '',
+          properties: object.story_function || '',
+          story_function: object.story_function || '',
+        });
+      }
+
+      for (let index = 0; index < (finalResult.factions || []).length; index += 1) {
+        const faction = finalResult.factions[index];
+        if (excluded.has(`faction-${index}`) || !faction.name?.trim()) continue;
+        await createFaction({
+          project_id: projectId,
+          name: faction.name.trim(),
+          faction_type: FACTION_TYPES.includes(faction.faction_type) ? faction.faction_type : 'other',
+          description: faction.description || '',
+          notes: faction.notes || '',
+          story_function: faction.story_function || '',
+          aliases: [],
+        });
+      }
+
+      for (let index = 0; index < (finalResult.terms || []).length; index += 1) {
+        const term = finalResult.terms[index];
+        if (excluded.has(`term-${index}`) || !term.name?.trim()) continue;
+        await createWorldTerm({
+          project_id: projectId,
+          name: term.name.trim(),
+          definition: term.definition || '',
+          category: term.category || 'other',
+          source_kind: term.story_function ? `wizard:${term.story_function}` : '',
+          story_function: term.story_function || '',
+        });
+      }
+
+      for (let index = 0; index < (finalResult.plot_threads || []).length; index += 1) {
+        const thread = finalResult.plot_threads[index];
+        if (excluded.has(`thread-${index}`) || !thread.title?.trim()) continue;
+        await createPlotThread({
+          project_id: projectId,
+          title: thread.title.trim(),
+          type: VALID_THREAD_TYPES.includes(thread.type) ? thread.type : 'subplot',
+          description: thread.description || '',
+          state: thread.state === 'resolved' ? 'resolved' : 'active',
+          opening_window: thread.opening_window || '',
+          anchor_chapters: normalizeChapterListField(thread.anchor_chapters),
+        });
+      }
+
+      for (let index = 0; index < (finalResult.chapters || []).length; index += 1) {
+        const chapter = finalResult.chapters[index];
+        if (excluded.has(`chapter-${index}`)) continue;
+        const chapterData = {
+          title: chapter.title || `Chương ${index + 1}`,
+          summary: chapter.summary || '',
+          purpose: chapter.purpose || '',
+          opening_state: chapter.opening_state || '',
+          handoff_from_previous: chapter.handoff_from_previous || '',
+          ending_state: chapter.ending_state || '',
+          featured_characters: normalizeChapterListField(chapter.featured_characters),
+          primary_location: chapter.primary_location || '',
+          thread_titles: normalizeChapterListField(chapter.thread_titles),
+          key_events: normalizeChapterListField(chapter.key_events),
+          required_factions: normalizeChapterListField(chapter.required_factions),
+          required_objects: normalizeChapterListField(chapter.required_objects),
+          required_terms: normalizeChapterListField(chapter.required_terms),
+          state_delta: chapter.state_delta || '',
+        };
+        const createdChapter = await createChapter(projectId, chapterData.title, chapterData);
+        if (createdChapter?.chapterId && chapterData.summary) {
+          await saveChapterSummary(createdChapter.chapterId, projectId, chapterData.summary);
+        }
+      }
+
+      const validMacroArcs = macroArcsInput.filter((item) => item.title?.trim());
+      for (let index = 0; index < validMacroArcs.length; index += 1) {
+        const macroArc = validMacroArcs[index];
         await db.macro_arcs.add({
           project_id: projectId,
-          order_index: i,
+          order_index: index,
           ...(buildMacroArcDbPayload({
-            title: m.title.trim(),
-            description: m.description || '',
-            chapter_from: Number(m.chapter_from) || 0,
-            chapter_to: Number(m.chapter_to) || 0,
-            emotional_peak: m.emotional_peak || '',
+            title: macroArc.title.trim(),
+            description: macroArc.description || '',
+            chapter_from: Number(macroArc.chapter_from) || 0,
+            chapter_to: Number(macroArc.chapter_to) || 0,
+            emotional_peak: macroArc.emotional_peak || '',
             chapter_anchors: [],
             contract_json: '',
           }) || {}),
@@ -991,7 +890,7 @@ Chỉ trả về JSON, không thêm gì khác.`,
       onCreated(projectId);
     } catch (err) {
       console.error('[Wizard] Create error:', err);
-      setError('Loi khi tao du an: ' + err.message);
+      setError(`Lỗi khi tạo dự án: ${toVietnameseErrorMessage(err, 'Không tạo được dự án.')}`);
       setIsGenerating(false);
     }
   };
@@ -1000,703 +899,761 @@ Chỉ trả về JSON, không thêm gì khác.`,
     setStep(0);
     setResult(null);
     setExcluded(new Set());
+    setAcceptedProposals(new Set());
     setEditingKey(null);
+    setError(null);
   };
+
+  const renderItemActions = (key) => (
+    <div className="wizard-item-actions">
+      <button
+        className={`btn btn-ghost btn-icon btn-sm ${editingKey === key ? 'btn--active' : ''}`}
+        onClick={() => toggleEdit(key)}
+        title={editingKey === key ? 'Đóng chỉnh sửa' : 'Chỉnh sửa'}
+      >
+        <Pencil size={14} />
+      </button>
+      <button
+        className="btn btn-ghost btn-icon btn-sm"
+        onClick={() => toggleExclude(key)}
+        title={excluded.has(key) ? 'Khôi phục' : 'Loại khỏi dự án'}
+      >
+        {excluded.has(key) ? <RotateCcw size={14} /> : <Trash2 size={14} />}
+      </button>
+    </div>
+  );
+
+  const renderCharEdit = (character, index) => (
+    <div className="wizard-item-edit">
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Tên</label>
+          <input className="input input-sm" value={character.name || ''} onChange={(event) => updateResultItem('characters', index, 'name', event.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Vai trò</label>
+          <select className="select select-sm" value={character.role || 'supporting'} onChange={(event) => updateResultItem('characters', index, 'role', event.target.value)}>
+            {CHAR_ROLES.map((role) => <option key={role} value={role}>{CHAR_ROLE_LABELS[role] || role}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="wizard-edit-field">
+        <label>Vai trò canon cụ thể</label>
+        <input className="input input-sm" value={character.specific_role || ''} onChange={(event) => updateCharacterSpecificRole(index, event.target.value)} />
+        <label className="wizard-inline-check">
+          <input
+            type="checkbox"
+            checked={Boolean(character.specific_role_locked && String(character.specific_role || '').trim())}
+            disabled={!String(character.specific_role || '').trim()}
+            onChange={(event) => updateCharacterSpecificRoleLocked(index, event.target.checked)}
+          />
+          <span>Khóa vai trò này như canon</span>
+        </label>
+      </div>
+      <div className="wizard-edit-field">
+        <label>Tính cách</label>
+        <textarea className="textarea textarea-sm" rows={2} value={character.personality || ''} onChange={(event) => updateResultItem('characters', index, 'personality', event.target.value)} />
+      </div>
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Tuổi / độ tuổi</label>
+          <input className="input input-sm" value={character.age || ''} onChange={(event) => updateResultItem('characters', index, 'age', event.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Điểm yếu</label>
+          <input className="input input-sm" value={character.flaws || ''} onChange={(event) => updateResultItem('characters', index, 'flaws', event.target.value)} />
+        </div>
+      </div>
+      <div className="wizard-edit-field">
+        <label>Mục tiêu</label>
+        <input className="input input-sm" value={character.goals || ''} onChange={(event) => updateResultItem('characters', index, 'goals', event.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Trạng thái hiện tại / canon mở truyện</label>
+        <textarea className="textarea textarea-sm" rows={2} value={character.current_status || ''} onChange={(event) => updateResultItem('characters', index, 'current_status', event.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Ngoại hình</label>
+        <input className="input input-sm" value={character.appearance || ''} onChange={(event) => updateResultItem('characters', index, 'appearance', event.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Vai trò trong phần mở đầu</label>
+        <textarea className="textarea textarea-sm" rows={2} value={character.story_function || ''} onChange={(event) => updateResultItem('characters', index, 'story_function', event.target.value)} />
+      </div>
+    </div>
+  );
+
+  const renderSimpleEntityEdit = (section, item, index, fields) => (
+    <div className="wizard-item-edit">
+      {fields.map((field) => (
+        <div className="wizard-edit-field" key={field.key}>
+          <label>{field.label}</label>
+          {field.type === 'select' ? (
+            <select className="select select-sm" value={item[field.key] || field.defaultValue || ''} onChange={(event) => updateResultItem(section, index, field.key, event.target.value)}>
+              {field.options.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          ) : field.type === 'textarea' ? (
+            <textarea className="textarea textarea-sm" rows={field.rows || 2} value={item[field.key] || ''} onChange={(event) => updateResultItem(section, index, field.key, event.target.value)} />
+          ) : (
+            <input className="input input-sm" value={item[field.key] || ''} onChange={(event) => updateResultItem(section, index, field.key, event.target.value)} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderChapterEdit = (chapter, index) => (
+    <div className="wizard-item-edit">
+      <div className="wizard-edit-field">
+        <label>Tiêu đề</label>
+        <input className="input input-sm" value={chapter.title || ''} onChange={(event) => updateResultItem('chapters', index, 'title', event.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Mục đích</label>
+        <textarea className="textarea textarea-sm" rows={2} value={chapter.purpose || ''} onChange={(event) => updateResultItem('chapters', index, 'purpose', event.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Tóm tắt</label>
+        <textarea className="textarea textarea-sm" rows={3} value={chapter.summary || ''} onChange={(event) => updateResultItem('chapters', index, 'summary', event.target.value)} />
+      </div>
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Trạng thái mở chương</label>
+          <textarea className="textarea textarea-sm" rows={2} value={chapter.opening_state || ''} onChange={(event) => updateResultItem('chapters', index, 'opening_state', event.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Trạng thái kết chương</label>
+          <textarea className="textarea textarea-sm" rows={2} value={chapter.ending_state || ''} onChange={(event) => updateResultItem('chapters', index, 'ending_state', event.target.value)} />
+        </div>
+      </div>
+      <div className="wizard-edit-field">
+        <label>Cầu nối từ chương trước</label>
+        <textarea className="textarea textarea-sm" rows={2} value={chapter.handoff_from_previous || ''} onChange={(event) => updateResultItem('chapters', index, 'handoff_from_previous', event.target.value)} />
+      </div>
+      <div className="wizard-edit-field">
+        <label>Thay đổi trạng thái / canon sau chương</label>
+        <textarea className="textarea textarea-sm" rows={2} value={chapter.state_delta || ''} onChange={(event) => updateResultItem('chapters', index, 'state_delta', event.target.value)} />
+      </div>
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Nhân vật xuất hiện</label>
+          <textarea className="textarea textarea-sm" rows={3} value={formatListField(chapter.featured_characters)} onChange={(event) => updateResultListField('chapters', index, 'featured_characters', event.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Địa điểm chính</label>
+          <input className="input input-sm" value={chapter.primary_location || ''} onChange={(event) => updateResultItem('chapters', index, 'primary_location', event.target.value)} />
+        </div>
+      </div>
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Tuyến truyện</label>
+          <textarea className="textarea textarea-sm" rows={3} value={formatListField(chapter.thread_titles)} onChange={(event) => updateResultListField('chapters', index, 'thread_titles', event.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Sự kiện chính</label>
+          <textarea className="textarea textarea-sm" rows={3} value={formatListField(chapter.key_events)} onChange={(event) => updateResultListField('chapters', index, 'key_events', event.target.value)} />
+        </div>
+      </div>
+      <div className="wizard-edit-row">
+        <div className="wizard-edit-field">
+          <label>Thế lực cần dùng</label>
+          <textarea className="textarea textarea-sm" rows={2} value={formatListField(chapter.required_factions)} onChange={(event) => updateResultListField('chapters', index, 'required_factions', event.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Vật phẩm cần dùng</label>
+          <textarea className="textarea textarea-sm" rows={2} value={formatListField(chapter.required_objects)} onChange={(event) => updateResultListField('chapters', index, 'required_objects', event.target.value)} />
+        </div>
+        <div className="wizard-edit-field">
+          <label>Thuật ngữ cần dùng</label>
+          <textarea className="textarea textarea-sm" rows={2} value={formatListField(chapter.required_terms)} onChange={(event) => updateResultListField('chapters', index, 'required_terms', event.target.value)} />
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderIssueList = (title, issues, danger = false) => {
+    if (!issues.length) return null;
+    return (
+      <div className="wizard-section">
+        <h4><AlertCircle size={16} /> {title}</h4>
+        <div className="wizard-warning-list">
+          {issues.map((issue, index) => (
+            <div key={`${issue.code || 'issue'}-${index}`} className={`wizard-warning-item ${danger ? 'wizard-warning-item--danger' : ''}`}>
+              <AlertCircle size={14} />
+              <span>{issue.message || issue}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderWorldProfile = () => {
+    if (!result?.world_profile) return null;
+    const wp = result.world_profile;
+    return (
+      <div className="wizard-section">
+        <h4><Globe size={16} /> Thế giới: {wp.world_name || 'Chưa đặt tên'}</h4>
+        <div className="wizard-item">
+          <div className="wizard-item-content">
+            <div className="wizard-badge-row">
+              {wp.world_type && <span className="badge badge-sm">{wp.world_type}</span>}
+              {wp.world_scale && <span className="badge badge-sm">{wp.world_scale}</span>}
+              {wp.world_era && <span className="badge badge-sm">{wp.world_era}</span>}
+            </div>
+            {wp.world_rules?.length > 0 && (
+              <ul className="wizard-rule-list">
+                {wp.world_rules.map((rule, index) => <li key={`${rule}-${index}`}>{rule}</li>)}
+              </ul>
+            )}
+            {wp.world_description && <p>{wp.world_description}</p>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCharacters = () => {
+    if (!result?.characters?.length) return null;
+    return (
+      <div className="wizard-section">
+        <h4><Users size={16} /> Nhân vật ({result.characters.filter((_, index) => !excluded.has(`char-${index}`)).length})</h4>
+        <div className="wizard-items">
+          {result.characters.map((character, index) => {
+            const key = `char-${index}`;
+            return (
+              <div key={key} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
+                <div className="wizard-item-content">
+                  <strong>{character.name}</strong>
+                  <span className="badge badge-sm">{CHAR_ROLE_LABELS[character.role] || character.role}</span>
+                  {character.age && <span className="badge badge-sm">{character.age}</span>}
+                  {character.specific_role && <p className="wizard-accent-text"><strong>Vai trò canon:</strong> {character.specific_role}{character.specific_role_locked ? ' - đã khóa' : ''}</p>}
+                  {character.personality && <p>{character.personality}</p>}
+                  {character.current_status && <p className="wizard-warning-text"><strong>Canon mở truyện:</strong> {character.current_status}</p>}
+                  {character.flaws && <p className="wizard-warning-text"><strong>Điểm yếu:</strong> {character.flaws}</p>}
+                  {character.story_function && <p><strong>Vai trò mở đầu:</strong> {character.story_function}</p>}
+                </div>
+                {renderItemActions(key)}
+                {editingKey === key && renderCharEdit(character, index)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderEntitySection = ({ section, title, icon: Icon, nameField = 'name', detailField = 'description', editFields }) => {
+    const items = result?.[section] || [];
+    if (!items.length) return null;
+    return (
+      <div className="wizard-section">
+        <h4><Icon size={16} /> {title} ({items.filter((_, index) => !excluded.has(`${section === 'locations' ? 'loc' : section === 'plot_threads' ? 'thread' : section.slice(0, -1)}-${index}`)).length})</h4>
+        <div className="wizard-items">
+          {items.map((item, index) => {
+            const keyPrefix = section === 'locations' ? 'loc' : section === 'plot_threads' ? 'thread' : section.slice(0, -1);
+            const key = `${keyPrefix}-${index}`;
+            return (
+              <div key={key} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
+                <div className="wizard-item-content">
+                  <strong>{item[nameField]}</strong>
+                  {section === 'factions' && <span className="badge badge-sm">{FACTION_TYPE_LABELS[item.faction_type] || item.faction_type || 'Thế lực'}</span>}
+                  {section === 'plot_threads' && <span className="badge badge-sm">{TYPE_LABELS[item.type] || item.type}</span>}
+                  {item[detailField] && <p>{item[detailField]}</p>}
+                  {item.story_function && <p><strong>Vai trò:</strong> {item.story_function}</p>}
+                </div>
+                {renderItemActions(key)}
+                {editingKey === key && renderSimpleEntityEdit(section, item, index, editFields)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderChapters = () => {
+    if (!result?.chapters?.length) return null;
+    return (
+      <div className="wizard-section">
+        <h4><List size={16} /> Dàn ý chương ({result.chapters.filter((_, index) => !excluded.has(`chapter-${index}`)).length})</h4>
+        <div className="wizard-items wizard-items--compact">
+          {result.chapters.map((chapter, index) => {
+            const key = `chapter-${index}`;
+            return (
+              <div key={key} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
+                <div className="wizard-chapter-header">
+                  <strong className="wizard-chapter-title">{chapter.title}</strong>
+                  {renderItemActions(key)}
+                </div>
+                <div className="wizard-item-content wizard-chapter-content">
+                  {chapter.summary && <p>{chapter.summary}</p>}
+                  {chapter.purpose && <p><strong>Mục đích:</strong> {chapter.purpose}</p>}
+                  <div className="wizard-state-grid">
+                    {chapter.opening_state && <span><strong>Mở:</strong> {chapter.opening_state}</span>}
+                    {chapter.handoff_from_previous && <span><strong>Cầu nối:</strong> {chapter.handoff_from_previous}</span>}
+                    {chapter.ending_state && <span><strong>Kết:</strong> {chapter.ending_state}</span>}
+                  </div>
+                  {chapter.state_delta && <p className="wizard-warning-text"><strong>Thay đổi trạng thái:</strong> {chapter.state_delta}</p>}
+                  <p>
+                    {normalizeChapterListField(chapter.featured_characters).length > 0 ? `Nhân vật: ${normalizeChapterListField(chapter.featured_characters).join(', ')}` : ''}
+                    {normalizeChapterListField(chapter.featured_characters).length > 0 && chapter.primary_location ? ' | ' : ''}
+                    {chapter.primary_location ? `Địa điểm: ${chapter.primary_location}` : ''}
+                  </p>
+                  {(normalizeChapterListField(chapter.thread_titles).length > 0 || normalizeChapterListField(chapter.key_events).length > 0) && (
+                    <p>
+                      {normalizeChapterListField(chapter.thread_titles).length > 0 ? `Tuyến: ${normalizeChapterListField(chapter.thread_titles).join(', ')}` : ''}
+                      {normalizeChapterListField(chapter.thread_titles).length > 0 && normalizeChapterListField(chapter.key_events).length > 0 ? ' | ' : ''}
+                      {normalizeChapterListField(chapter.key_events).length > 0 ? `Sự kiện chính: ${normalizeChapterListField(chapter.key_events).join(', ')}` : ''}
+                    </p>
+                  )}
+                </div>
+                {editingKey === key && renderChapterEdit(chapter, index)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderProposals = () => {
+    const proposed = normalizeProposedEntitiesForUi(result?.proposed_entities);
+    const hasProposals = PROPOSAL_GROUPS.some((group) => proposed[group.key].length > 0);
+    if (!hasProposals) return null;
+
+    return (
+      <div className="wizard-section wizard-proposals">
+        <h4><Plus size={16} /> Đề xuất mới</h4>
+        <p className="wizard-section-note">Các mục này chưa thành canon. Chỉ những mục được duyệt mới được tạo vào dự án.</p>
+        {PROPOSAL_GROUPS.map((group) => {
+          const Icon = group.icon;
+          const items = proposed[group.key];
+          if (!items.length) return null;
+          return (
+            <div className="wizard-proposal-group" key={group.key}>
+              <h5><Icon size={14} /> {group.label}</h5>
+              <div className="wizard-items">
+                {items.map((item, index) => {
+                  const key = proposalKey(group.key, index);
+                  const accepted = acceptedProposals.has(key);
+                  return (
+                    <div key={key} className={`wizard-item wizard-proposal-item ${accepted ? 'wizard-proposal-item--accepted' : ''}`}>
+                      <div className="wizard-item-content">
+                        <strong>{getRecordName(item, group.nameField)}</strong>
+                        {item.description && <p>{item.description}</p>}
+                        {item.definition && <p>{item.definition}</p>}
+                        {item.story_function && <p><strong>Vai trò:</strong> {item.story_function}</p>}
+                        {item.reason && <p><strong>Lý do đề xuất:</strong> {item.reason}</p>}
+                      </div>
+                      <button className={`btn btn-sm ${accepted ? 'btn-primary' : 'btn-ghost'}`} onClick={() => toggleProposal(key)}>
+                        {accepted ? <><Check size={14} /> Đã duyệt</> : <><Plus size={14} /> Duyệt</>}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderSeedReview = () => (
+    <div className="wizard-review-stack">
+      {(seedValidation.blockingIssues.length > 0 || seedValidation.warnings.length > 0) && (
+        <div className="wizard-issues-grid">
+          {renderIssueList('Lỗi chặn nền truyện', seedValidation.blockingIssues, true)}
+          {renderIssueList('Cảnh báo nền truyện', seedValidation.warnings)}
+        </div>
+      )}
+      <div className="wizard-review-main">
+        <div className="wizard-section">
+          <h4><Sparkles size={16} /> Tên truyện</h4>
+          <input
+            className="input wizard-title-input"
+            value={result.title || ''}
+            onChange={(event) => setResult((prev) => ({ ...prev, title: event.target.value }))}
+            placeholder="Nhập tên truyện..."
+          />
+          {result.title_options?.length > 0 && (
+            <div className="wizard-title-options">
+              {result.title_options.map((option, index) => (
+                <button
+                  key={`${option}-${index}`}
+                  className={`wizard-title-chip ${normalizeSearchText(option) === normalizeSearchText(result.title) ? 'wizard-title-chip--active' : ''}`}
+                  onClick={() => setResult((prev) => ({ ...prev, title: option }))}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="wizard-premise">{result.premise}</p>
+        </div>
+        {renderWorldProfile()}
+        {renderCharacters()}
+        {renderEntitySection({
+          section: 'locations',
+          title: 'Địa điểm',
+          icon: MapPin,
+          editFields: [
+            { key: 'name', label: 'Tên địa điểm' },
+            { key: 'description', label: 'Mô tả', type: 'textarea' },
+            { key: 'story_function', label: 'Vai trò trong phần mở đầu', type: 'textarea' },
+          ],
+        })}
+        {renderEntitySection({
+          section: 'objects',
+          title: 'Vật phẩm',
+          icon: Flag,
+          editFields: [
+            { key: 'name', label: 'Tên vật phẩm' },
+            { key: 'description', label: 'Mô tả', type: 'textarea' },
+            { key: 'owner', label: 'Chủ sở hữu / người gắn liền' },
+            { key: 'story_function', label: 'Vai trò trong phần mở đầu', type: 'textarea' },
+          ],
+        })}
+        {renderEntitySection({
+          section: 'factions',
+          title: 'Thế lực',
+          icon: Landmark,
+          editFields: [
+            { key: 'name', label: 'Tên thế lực' },
+            {
+              key: 'faction_type',
+              label: 'Loại',
+              type: 'select',
+              defaultValue: 'sect',
+              options: FACTION_TYPES.map((value) => ({ value, label: FACTION_TYPE_LABELS[value] })),
+            },
+            { key: 'description', label: 'Mô tả', type: 'textarea' },
+            { key: 'story_function', label: 'Vai trò trong phần mở đầu', type: 'textarea' },
+          ],
+        })}
+        {renderEntitySection({
+          section: 'terms',
+          title: 'Thuật ngữ',
+          icon: BookOpen,
+          detailField: 'definition',
+          editFields: [
+            { key: 'name', label: 'Thuật ngữ' },
+            {
+              key: 'category',
+              label: 'Danh mục',
+              type: 'select',
+              defaultValue: 'other',
+              options: TERM_CATEGORIES.map((value) => ({ value, label: value })),
+            },
+            { key: 'definition', label: 'Định nghĩa', type: 'textarea' },
+            { key: 'story_function', label: 'Vai trò trong phần mở đầu', type: 'textarea' },
+          ],
+        })}
+        {renderEntitySection({
+          section: 'plot_threads',
+          title: 'Tuyến truyện',
+          icon: GitPullRequest,
+          nameField: 'title',
+          editFields: [
+            { key: 'title', label: 'Tên tuyến truyện' },
+            {
+              key: 'type',
+              label: 'Loại',
+              type: 'select',
+              defaultValue: 'subplot',
+              options: VALID_THREAD_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] })),
+            },
+            { key: 'description', label: 'Mô tả', type: 'textarea' },
+            { key: 'opening_window', label: 'Cửa sổ mở tuyến' },
+          ],
+        })}
+        <div className="wizard-side-card wizard-side-card--note">
+          <h4><Dna size={16} /> Quy tắc nền truyện</h4>
+          <p>{chapterCount} chương khởi đầu: nền truyện chỉ nên giữ dàn nhân vật tối thiểu và thực thể thật sự dùng sớm.</p>
+          <p>Chưa tạo dàn ý chương ở bước này để tránh nhảy cóc state.</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderOutlineReview = () => (
+    <div className="wizard-review-grid wizard-review-grid--with-side">
+      <div className="wizard-review-main">
+        {renderChapters()}
+        {renderProposals()}
+      </div>
+      <aside className="wizard-review-side">
+        {renderIssueList('Lỗi chặn dàn ý', blockingIssues, true)}
+        {renderIssueList('Cảnh báo khớp nội dung', coverageWarnings)}
+        <div className="wizard-side-card">
+          <h4><List size={16} /> Kiểm tra outline</h4>
+          <p>Mỗi chương cần có Trạng thái mở chương, Cầu nối từ chương trước và Trạng thái kết chương.</p>
+          <p>Entity mới phải nằm trong Đề xuất mới và được duyệt trước khi tạo dự án.</p>
+        </div>
+      </aside>
+    </div>
+  );
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal wizard-modal animate-scale-up" onClick={(e) => e.stopPropagation()}>
-
-        {/* Header */}
+      <div className="modal wizard-modal animate-scale-up" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">
             <Sparkles size={20} style={{ color: 'var(--color-accent)' }} />
-            {' '}AI Wizard — {STEPS[step]}
+            {' '}Trợ lý AI - {STEPS[step]}
           </h2>
           <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
 
-        {/* Progress */}
         <div className="wizard-progress">
-          {STEPS.map((s, i) => (
+          {STEPS.map((label, index) => (
             <div
-              key={i}
-              className={`wizard-step ${i === step ? 'wizard-step--active' : ''} ${i < step ? 'wizard-step--done' : ''}`}
+              key={label}
+              className={`wizard-step ${index === step ? 'wizard-step--active' : ''} ${index < step ? 'wizard-step--done' : ''}`}
+              title={label}
+              aria-current={index === step ? 'step' : undefined}
             >
-              <span className="wizard-step-number">{i < step ? '✓' : i + 1}</span>
-              <span className="wizard-step-label">{s}</span>
+              <span className="wizard-step-number">{index < step ? '✓' : index + 1}</span>
+              <span className="wizard-step-label">{label}</span>
             </div>
           ))}
         </div>
 
-        {/* ─── Step 0: Input ─── */}
         {step === 0 && (
           <div className="wizard-body">
-            {error && (
-              <div className="wizard-error">
-                <AlertCircle size={14} /> {error}
-              </div>
-            )}
+            <div className="wizard-scroll">
+              {error && <div className="wizard-error"><AlertCircle size={14} /> {error}</div>}
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Thể loại</label>
-                <select className="select" value={genre} onChange={(e) => handleGenreChange(e.target.value)}>
-                  {GENRES.map(g => (
-                    <option key={g.value} value={g.value}>{g.emoji} {g.label}</option>
-                  ))}
-                </select>
+              <div className="wizard-form-grid">
+                <div className="form-group">
+                  <label className="form-label">Thể loại</label>
+                  <select className="select" value={genre} onChange={(event) => handleGenreChange(event.target.value)}>
+                    {GENRES.map((item) => <option key={item.value} value={item.value}>{item.emoji} {item.label}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Tone</label>
+                  <select className="select" value={tone} onChange={(event) => setTone(event.target.value)}>
+                    <option value="">Mặc định</option>
+                    {TONES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  </select>
+                </div>
               </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label">Tone</label>
-                <select className="select" value={tone} onChange={(e) => setTone(e.target.value)}>
-                  <option value="">Mặc định</option>
-                  {TONES.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
 
-            <div className="form-group">
-              <ProjectContentModeControl
-                surface="wizard"
-                mode={contentMode}
-                onChange={setContentMode}
-              />
-            </div>
+              <ProjectContentModeControl surface="wizard" mode={contentMode} onChange={setContentMode} />
 
-            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label"><Eye size={13} /> Góc nhìn</label>
-                <select className="select" value={povMode} onChange={(e) => setPovMode(e.target.value)}>
-                  {POV_MODES.map(p => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
-                </select>
-                <span className="form-hint">{POV_MODES.find(p => p.value === povMode)?.desc}</span>
+              <div className="wizard-form-grid">
+                <div className="form-group">
+                  <label className="form-label"><Eye size={13} /> Góc nhìn</label>
+                  <select className="select" value={povMode} onChange={(event) => setPovMode(event.target.value)}>
+                    {POV_MODES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  </select>
+                  <span className="form-hint">{POV_MODES.find((item) => item.value === povMode)?.desc}</span>
+                </div>
+                <div className="form-group">
+                  <label className="form-label"><MessageSquare size={13} /> Xưng hô</label>
+                  <select className="select" value={pronounStyle} onChange={(event) => setPronounStyle(event.target.value)}>
+                    {PRONOUN_STYLE_PRESETS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  </select>
+                  {currentPronoun && currentPronoun.value !== 'custom' && (
+                    <span className="form-hint">Xưng: "{currentPronoun.default_self}" - gọi: "{currentPronoun.default_other}"</span>
+                  )}
+                </div>
               </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label"><MessageSquare size={13} /> Xưng hô</label>
-                <select className="select" value={pronounStyle} onChange={(e) => setPronounStyle(e.target.value)}>
-                  {PRONOUN_STYLE_PRESETS.map(p => (
-                    <option key={p.value} value={p.value}>{p.label}</option>
-                  ))}
+
+              <div className="form-group">
+                <label className="form-label"><BookOpen size={13} /> Cấu trúc truyện</label>
+                <select className="select" value={storyStructure} onChange={(event) => setStoryStructure(event.target.value)}>
+                  {STORY_STRUCTURES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
-                {currentPronoun && currentPronoun.value !== 'custom' && (
-                  <span className="form-hint">
-                    Xưng: "{currentPronoun.default_self}" — Gọi: "{currentPronoun.default_other}"
-                  </span>
+              </div>
+
+              <div className="wizard-form-grid wizard-form-grid--three">
+                <div className="form-group">
+                  <label className="form-label">Độ dài dự kiến</label>
+                  <select className="select" value={targetLengthType} onChange={(event) => handleTargetLengthTypeChange(event.target.value)}>
+                    <option value="unset">Chưa xác định</option>
+                    <option value="short">Truyện ngắn (30-50 chương)</option>
+                    <option value="medium">Truyện vừa (100-200 chương)</option>
+                    <option value="long">Trường thiên (300-500 chương)</option>
+                    <option value="epic">Sử thi (500+ chương)</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Số chương mục tiêu</label>
+                  <input type="text" inputMode="numeric" className="input" value={targetLength} onFocus={handleSelectNumericField} onChange={(event) => setTargetLength(event.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Số chương khởi đầu</label>
+                  <input type="text" inputMode="numeric" className="input" value={initialChapterCount} onFocus={handleSelectNumericField} onChange={(event) => setInitialChapterCount(clampInitialChapterCount(event.target.value))} />
+                  <span className="form-hint">Dùng để giới hạn số nhân vật và số chương dàn ý ban đầu.</span>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Đích đến tối thượng</label>
+                <textarea className="textarea" value={ultimateGoal} onChange={(event) => setUltimateGoal(event.target.value)} rows={2} placeholder="Ví dụ: nhân vật chính đạt cảnh giới tối cao và hóa giải lời nguyền huyết mạch." />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label wizard-row-label">
+                  Cột mốc %
+                  <button className="btn btn-ghost btn-xs" onClick={addMilestone}><Plus size={12} /> Thêm</button>
+                </label>
+                {milestonesInfo.map((milestone, index) => (
+                  <div key={index} className="wizard-inline-row">
+                    <input type="text" inputMode="numeric" className="input" value={milestone.percent} onFocus={handleSelectNumericField} onChange={(event) => updateMilestone(index, 'percent', Number(event.target.value))} />
+                    <span>%</span>
+                    <input className="input" value={milestone.description} onChange={(event) => updateMilestone(index, 'description', event.target.value)} placeholder="Mô tả cột mốc..." />
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeMilestone(index)}><X size={14} /></button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="form-group">
+                <label className="form-label wizard-row-label" onClick={() => setShowMacroArcs((value) => !value)}>
+                  <span><TrendingUp size={13} /> Đại Cục - cột mốc lớn</span>
+                  <span className="form-hint">Không bắt buộc, có thể thêm sau trong sổ tay truyện</span>
+                  <span>{showMacroArcs ? 'Ẩn' : 'Mở'}</span>
+                </label>
+                {showMacroArcs && (
+                  <div className="wizard-macro-list">
+                    {macroArcsInput.map((macroArc, index) => (
+                      <div key={index} className="wizard-macro-item">
+                        <div className="wizard-inline-row">
+                          <span className="wizard-step-number">{index + 1}</span>
+                          <input className="input input-sm" value={macroArc.title} onChange={(event) => updateMacroArc(index, 'title', event.target.value)} placeholder="Tên cột mốc" />
+                          <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeMacroArc(index)}><X size={13} /></button>
+                        </div>
+                        <div className="wizard-inline-row">
+                          <span>Ch.</span>
+                          <input type="text" inputMode="numeric" className="input input-sm" value={macroArc.chapter_from} onFocus={handleSelectNumericField} onChange={(event) => updateMacroArc(index, 'chapter_from', event.target.value)} placeholder="Từ" />
+                          <span>→</span>
+                          <input type="text" inputMode="numeric" className="input input-sm" value={macroArc.chapter_to} onFocus={handleSelectNumericField} onChange={(event) => updateMacroArc(index, 'chapter_to', event.target.value)} placeholder="Đến" />
+                        </div>
+                        <input className="input input-sm" value={macroArc.emotional_peak} onChange={(event) => updateMacroArc(index, 'emotional_peak', event.target.value)} placeholder="Cảm xúc độc giả khi kết thúc cột mốc này..." />
+                      </div>
+                    ))}
+                    <button className="btn btn-ghost btn-sm" onClick={addMacroArc}><Plus size={13} /> Thêm cột mốc</button>
+                  </div>
                 )}
               </div>
-            </div>
 
-            <div className="form-group">
-              <label className="form-label"><BookOpen size={13} /> Cấu trúc truyện</label>
-              <select className="select" value={storyStructure} onChange={(e) => setStoryStructure(e.target.value)}>
-                {STORY_STRUCTURES.map(s => (
-                  <option key={s.value} value={s.value}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label" style={{ minHeight: '2.5rem', display: 'flex', alignItems: 'flex-end' }}>Độ dài dự kiến</label>
-                <select className="select" value={targetLengthType} onChange={(e) => handleTargetLengthTypeChange(e.target.value)}>
-                  <option value="unset">Chưa xác định</option>
-                  <option value="short">Truyện ngắn (30-50 chương)</option>
-                  <option value="medium">Truyện vừa (100-200 chương)</option>
-                  <option value="long">Trường thiên (300-500 chương)</option>
-                  <option value="epic">Sử thi (500+ chương)</option>
-                </select>
+              <div className="form-group">
+                <label className="form-label">Ý tưởng truyện *</label>
+                <textarea className="textarea" placeholder="Ví dụ: thiếu niên mồ côi phát hiện huyết mạch cổ thần, gia nhập tông môn nhỏ và bị cuốn vào bí mật Thiên Đạo..." value={idea} onChange={(event) => setIdea(event.target.value)} rows={3} autoFocus />
               </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label" style={{ minHeight: '2.5rem', display: 'flex', alignItems: 'flex-end' }}>Số chương mục tiêu</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="input"
-                  value={targetLength}
-                  onFocus={handleSelectNumericField}
-                  onChange={(e) => setTargetLength(e.target.value)}
-                />
+
+              <div className="form-group">
+                <label className="form-label">Cốt truyện chính</label>
+                <textarea className="textarea" placeholder="Tóm tắt mạch truyện chính, nếu đã có." value={synopsis} onChange={(event) => setSynopsis(event.target.value)} rows={2} />
               </div>
-              <div className="form-group" style={{ flex: 1 }}>
-                <label className="form-label" style={{ minHeight: '2.5rem', display: 'flex', alignItems: 'flex-end' }}>Số chương khởi đầu</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  className="input"
-                  value={initialChapterCount}
-                  onFocus={handleSelectNumericField}
-                  onChange={(e) => setInitialChapterCount(clampInitialChapterCount(e.target.value))}
-                />
-                <span className="form-hint">Bạn tự chọn số chapter muốn tạo ban đầu, từ 1 đến 100. Mode dưới 20 chapter đang tối ưu nhất.</span>
-              </div>
-            </div>
 
-            <div className="form-group">
-              <label className="form-label">Đích đến tối thượng (Long-term Goal)</label>
-              <textarea
-                className="textarea"
-                value={ultimateGoal}
-                onChange={(e) => setUltimateGoal(e.target.value)}
-                rows={2}
-                placeholder="VD: Main đạt cảnh giới Thần Tôn và báo thù diệt tộc."
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                Cột mốc %
-                <button className="btn btn-ghost btn-xs ml-2" onClick={addMilestone}>
-                  <Plus size={12} /> Thêm
-                </button>
-              </label>
-              {milestonesInfo.map((m, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-                  <input
-                    type="text" inputMode="numeric" className="input" style={{ width: '80px' }}
-                    value={m.percent}
-                    onFocus={handleSelectNumericField}
-                    onChange={e => updateMilestone(idx, 'percent', Number(e.target.value))}
-                    placeholder="%"
-                  />
-                  <span style={{ alignSelf: 'center', fontSize: '12px' }}>%</span>
-                  <input
-                    className="input" style={{ flex: 1 }}
-                    value={m.description}
-                    onChange={e => updateMilestone(idx, 'description', e.target.value)}
-                    placeholder="Mô tả cột mốc..."
-                  />
-                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeMilestone(idx)}>
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* ─── Phase 9: Đại Cục (optional, collapsible) ─── */}
-            <div className="form-group">
-              <label
-                className="form-label"
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}
-                onClick={() => setShowMacroArcs(v => !v)}
-              >
-                <TrendingUp size={13} />
-                Đại Cục — Cột mốc lớn
-                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)', fontWeight: 'normal' }}>
-                  (không bắt buộc — có thể thêm sau trong Story Bible)
-                </span>
-                <span style={{ marginLeft: 'auto', fontSize: '11px' }}>
-                  {showMacroArcs ? '▲ Ẩn' : '▼ Mở'}
-                </span>
-              </label>
-
-              {showMacroArcs && (
-                <div style={{ marginTop: 'var(--space-2)' }}>
-                  <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)' }}>
-                    Định nghĩa 5–8 cột mốc lớn của toàn bộ truyện. AI sẽ không cho nhân vật vượt qua cột mốc hiện tại.
-                  </p>
-
-                  {macroArcsInput.map((m, idx) => (
-                    <div key={idx} style={{
-                      background: 'var(--color-surface-2)',
-                      border: '1px solid var(--color-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: 'var(--space-2) var(--space-3)',
-                      marginBottom: 'var(--space-2)',
-                    }}>
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                        <span style={{
-                          width: '20px', height: '20px', borderRadius: '50%',
-                          background: 'var(--color-accent)', color: '#fff',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '10px', fontWeight: 700, flexShrink: 0,
-                        }}>{idx + 1}</span>
-                        <input
-                          className="input input-sm"
-                          style={{ flex: 1 }}
-                          value={m.title}
-                          onChange={e => updateMacroArc(idx, 'title', e.target.value)}
-                          placeholder="Tên cột mốc (VD: Kẻ Dị Biệt)"
-                        />
-                        <button className="btn btn-ghost btn-icon btn-sm" onClick={() => removeMacroArc(idx)}>
-                          <X size={13} />
-                        </button>
-                      </div>
-                      <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-                        <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>Ch.</span>
-                        <input
-                          type="text" inputMode="numeric" className="input input-sm" style={{ width: '70px' }}
-                          value={m.chapter_from}
-                          onFocus={handleSelectNumericField}
-                          onChange={e => updateMacroArc(idx, 'chapter_from', e.target.value)}
-                          placeholder="Từ"
-                        />
-                        <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>→</span>
-                        <input
-                          type="text" inputMode="numeric" className="input input-sm" style={{ width: '70px' }}
-                          value={m.chapter_to}
-                          onFocus={handleSelectNumericField}
-                          onChange={e => updateMacroArc(idx, 'chapter_to', e.target.value)}
-                          placeholder="Đến"
-                        />
-                      </div>
-                      <input
-                        className="input input-sm"
-                        style={{ marginBottom: 'var(--space-1)' }}
-                        value={m.emotional_peak}
-                        onChange={e => updateMacroArc(idx, 'emotional_peak', e.target.value)}
-                        placeholder="Cảm xúc độc giả khi kết thúc cột mốc này..."
-                      />
-                    </div>
-                  ))}
-
-                  <button className="btn btn-ghost btn-sm" onClick={addMacroArc}>
-                    <Plus size={13} /> Thêm cột mốc
-                  </button>
+              {currentTemplate && (
+                <div className="wizard-template-card">
+                  <label className="wizard-template-toggle">
+                    <input type="checkbox" checked={useTemplate} onChange={(event) => setUseTemplate(event.target.checked)} />
+                    <span>Dùng mẫu <strong>{currentTemplate.label}</strong> làm cơ sở cho trợ lý AI</span>
+                  </label>
+                  <div className="wizard-dna-note">
+                    <Dna size={14} />
+                    <span>
+                      <strong>Bộ quy tắc văn phong sẽ tự động nạp.</strong>
+                      {hasDNA
+                        ? ` Bộ luật (${currentTemplate.constitution?.length || 0} luật), hướng dẫn văn phong (${currentTemplate.style_dna?.length || 0} mục), danh sách tránh chất AI (${currentTemplate.anti_ai_blacklist?.length || 0} mục).`
+                        : ' Có thể chỉnh sửa sau trong sổ tay truyện.'}
+                    </span>
+                  </div>
                 </div>
               )}
+
+              <label className="wizard-template-toggle wizard-auto-toggle">
+                <input type="checkbox" checked={autoGenerateOutline} onChange={(event) => setAutoGenerateOutline(event.target.checked)} />
+                <span>Tự tạo dàn ý sau khi nền truyện hợp lệ</span>
+              </label>
             </div>
-
-            <div className="form-group">
-              <label className="form-label">Ý tưởng truyện *</label>
-              <textarea
-                className="textarea"
-                placeholder="Ví dụ: Thiếu niên mồ côi phát hiện mình có huyết mạch cổ thần, gia nhập tông môn nhỏ nhưng nhanh chóng vượt qua các thiên tài..."
-                value={idea}
-                onChange={(e) => setIdea(e.target.value)}
-                rows={3}
-                autoFocus
-              />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Cốt truyện chính (Synopsis)</label>
-              <textarea
-                className="textarea"
-                placeholder="Tóm tắt mạch truyện chính... (không bắt buộc)"
-                value={synopsis}
-                onChange={(e) => setSynopsis(e.target.value)}
-                rows={2}
-              />
-            </div>
-
-            {/* ─── Template toggle — cập nhật để nêu rõ DNA sẽ được nạp ─── */}
-            {currentTemplate && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
-                <label className="wizard-template-toggle">
-                  <input
-                    type="checkbox"
-                    checked={useTemplate}
-                    onChange={(e) => setUseTemplate(e.target.checked)}
-                  />
-                  <span>Dùng template <strong>"{currentTemplate.label}"</strong> làm cơ sở cho AI Wizard</span>
-                </label>
-
-                {/* DNA auto-load notice — luôn hiển thị, không phụ thuộc useTemplate */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  gap: '6px',
-                  padding: '6px 10px',
-                  background: 'var(--color-accent-subtle, rgba(124,58,237,0.08))',
-                  border: '1px solid var(--color-accent-muted, rgba(124,58,237,0.2))',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: '11px',
-                  color: 'var(--color-text-muted)',
-                }}>
-                  <span style={{ fontSize: '13px', flexShrink: 0 }}>✨</span>
-                  <span>
-                    <strong style={{ color: 'var(--color-accent)' }}>DNA Văn phong sẽ tự động nạp</strong>
-                    {hasDNA
-                      ? ` — Constitution (${currentTemplate.constitution?.length || 0} luật), Style DNA (${currentTemplate.style_dna?.length || 0} hướng dẫn), Anti-AI Blacklist (${currentTemplate.anti_ai_blacklist?.length || 0} từ cấm) cho thể loại ${currentTemplate.label}.`
-                      : ' vào dự án. Có thể chỉnh sửa trong Story Bible → Prompt AI.'}
-                    {' '}Có thể chỉnh sửa trong Story Bible → Prompt AI.
-                  </span>
-                </div>
-              </div>
-            )}
 
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={onClose}>Huỷ</button>
-              <button
-                className="btn btn-primary"
-                onClick={handleGenerate}
-                disabled={!idea.trim()}
-              >
-                <Sparkles size={16} /> Tạo bằng AI <ArrowRight size={16} />
+              <button className="btn btn-ghost" onClick={onClose}>Hủy</button>
+              <button className="btn btn-primary" onClick={handleGenerateSeed} disabled={!idea.trim()}>
+                <Sparkles size={16} /> Tạo nền truyện <ArrowRight size={16} />
               </button>
             </div>
           </div>
         )}
 
-        {/* ─── Step 1: Generating ─── */}
         {step === 1 && (
           <div className="wizard-body wizard-loading">
             <Loader2 size={48} className="spin" />
-            <h3>AI đang xây dựng thế giới truyện...</h3>
-            <p>Premise, nhân vật, thế giới, thế lực và outline chương</p>
+            <h3>AI đang tạo nền truyện...</h3>
+            <p>Chỉ dựng nền truyện, luật thế giới, dàn nhân vật tối thiểu và tuyến truyện mở đầu.</p>
           </div>
         )}
 
-        {/* ─── Step 2: Review ─── */}
         {step === 2 && result && (
           <div className="wizard-body wizard-review">
-
-            {/* Premise */}
-            <div className="wizard-section">
-              <h4>✨ Premise</h4>
-              <h4>✨ Tên truyện</h4>
-              <input
-                className="input"
-                value={result.title || ''}
-                onChange={(e) => setResult(prev => ({ ...prev, title: e.target.value }))}
-                placeholder="Nhập tên truyện..."
-                style={{ fontWeight: 700, fontSize: '16px', marginBottom: '8px' }}
-              />
-              {result.title_options?.length > 0 && (
-                <div className="wizard-title-options">
-                  {result.title_options.map((option, index) => (
-                    <button
-                      key={`${option}-${index}`}
-                      className={`wizard-title-chip ${normalizeSearchText(option) === normalizeSearchText(result.title) ? 'wizard-title-chip--active' : ''}`}
-                      onClick={() => setResult(prev => ({ ...prev, title: option }))}
-                    >
-                      {option}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <h4>Premise</h4>
-              <p className="wizard-premise">{result.premise}</p>
+            <div className="wizard-scroll">
+              {error && <div className="wizard-error"><AlertCircle size={14} /> {error}</div>}
+              {renderSeedReview()}
             </div>
+            <div className="modal-actions">
+              <button className="btn btn-ghost" onClick={handleReset}><ArrowLeft size={16} /> Quay lại</button>
+              <button className="btn btn-ghost" onClick={handleGenerateSeed}><RotateCcw size={16} /> Tạo lại nền truyện</button>
+              <button className="btn btn-primary" onClick={() => requestOutline(result)} disabled={isGenerating || seedValidation.blockingIssues.length > 0}>
+                <List size={16} /> Tạo dàn ý <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        )}
 
-            {blockingIssues.length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <AlertCircle size={16} /> Lỗi chặn blueprint
-                </h4>
-                <div className="wizard-warning-list">
-                  {blockingIssues.map((issue, index) => (
-                    <div key={`${issue.code}-${index}`} className="wizard-warning-item" style={{ borderColor: 'var(--color-danger, #ef4444)' }}>
-                      <AlertCircle size={14} />
-                      <span>{issue.message}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+        {step === 3 && (
+          <div className="wizard-body wizard-loading">
+            <Loader2 size={48} className="spin" />
+            <h3>AI đang tạo dàn ý chương...</h3>
+            <p>Mỗi chương sẽ có trạng thái mở, cầu nối nhân quả và trạng thái kết.</p>
+          </div>
+        )}
 
-            {coverageWarnings.length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <AlertCircle size={16} /> Cảnh báo khớp nội dung
-                </h4>
-                <div className="wizard-warning-list">
-                  {coverageWarnings.map((warning, index) => (
-                    <div key={`${warning.code || 'warning'}-${index}`} className="wizard-warning-item">
-                      <AlertCircle size={14} />
-                      <span>{warning.message || warning}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* World Profile */}
-            {result.world_profile && (
-              <div className="wizard-section">
-                <h4>
-                  <Globe size={16} /> Thế giới: {result.world_profile.world_name || 'Chưa đặt tên'}
-                </h4>
-                <div className="wizard-item">
-                  <div className="wizard-item-content">
-                    {result.world_profile.world_type && (
-                      <span className="badge badge-sm">{result.world_profile.world_type}</span>
-                    )}
-                    {result.world_profile.world_scale && (
-                      <span className="badge badge-sm">{result.world_profile.world_scale}</span>
-                    )}
-                    {result.world_profile.world_era && (
-                      <span className="badge badge-sm">{result.world_profile.world_era}</span>
-                    )}
-                    {result.world_profile.world_rules?.length > 0 && (
-                      <ul style={{ margin: '6px 0 0', paddingLeft: '18px', fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                        {result.world_profile.world_rules.map((r, i) => <li key={i}>{r}</li>)}
-                      </ul>
-                    )}
-                    {result.world_profile.world_description && (
-                      <p>{result.world_profile.world_description}</p>
-                    )}
+        {step === 4 && result && (
+          <div className="wizard-body wizard-review">
+            <div className="wizard-scroll">
+              {error && <div className="wizard-error"><AlertCircle size={14} /> {error}</div>}
+              {renderOutlineReview()}
+              {macroArcsInput.filter((item) => item.title?.trim()).length > 0 && (
+                <div className="wizard-section">
+                  <h4><TrendingUp size={16} /> Đại Cục ({macroArcsInput.filter((item) => item.title?.trim()).length} cột mốc)</h4>
+                  <div className="wizard-items">
+                    {macroArcsInput.filter((item) => item.title?.trim()).map((item, index) => (
+                      <div key={`${item.title}-${index}`} className="wizard-item">
+                        <div className="wizard-item-content">
+                          <strong>{item.title}</strong>
+                          {(item.chapter_from || item.chapter_to) && <span className="badge badge-sm">Ch.{item.chapter_from}-{item.chapter_to}</span>}
+                          {item.emotional_peak && <p>{item.emotional_peak}</p>}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* Characters */}
-            {result.characters?.length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <Users size={16} /> Nhân vật ({result.characters.filter((_, i) => !excluded.has(`char-${i}`)).length})
-                </h4>
-                <div className="wizard-items">
-                  {result.characters.map((c, i) => {
-                    const key = `char-${i}`;
-                    return (
-                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
-                        <div className="wizard-item-content">
-                          <strong>{c.name}</strong>{' '}
-                          <span className="badge badge-sm">{c.role}</span>
-                          {c.age && <span className="badge badge-sm">{c.age}</span>}
-                          {c.specific_role && (
-                            <p style={{ fontSize: '13px', marginTop: '4px', color: 'var(--color-accent)' }}>
-                              <strong>Vai trò cụ thể:</strong> {c.specific_role}
-                              {c.specific_role_locked && ' · đã khóa'}
-                            </p>
-                          )}
-                          {c.personality && <p>{c.personality}</p>}
-                          {c.current_status && (
-                            <p style={{ fontSize: '13px', marginTop: '4px', color: 'var(--color-warning, #f59e0b)' }}>
-                              <strong>Live Canon:</strong> {c.current_status}
-                            </p>
-                          )}
-                          {c.flaws && (
-                            <p style={{ fontSize: '13px', marginTop: '4px', color: 'var(--color-warning, #f59e0b)' }}>
-                              <strong>Điểm yếu:</strong> {c.flaws}
-                            </p>
-                          )}
-                        </div>
-                        {renderItemActions(key)}
-                        {editingKey === key && renderCharEdit(c, i)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Locations */}
-            {result.locations?.length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <MapPin size={16} /> Địa điểm ({result.locations.filter((_, i) => !excluded.has(`loc-${i}`)).length})
-                </h4>
-                <div className="wizard-items">
-                  {result.locations.map((l, i) => {
-                    const key = `loc-${i}`;
-                    return (
-                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
-                        <div className="wizard-item-content">
-                          <strong>{l.name}</strong>
-                          {l.description && <p>{l.description}</p>}
-                        </div>
-                        {renderItemActions(key)}
-                        {editingKey === key && renderLocEdit(l, i)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {result.objects?.length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <Flag size={16} /> Vat pham ({result.objects.filter((_, i) => !excluded.has(`object-${i}`)).length})
-                </h4>
-                <div className="wizard-items">
-                  {result.objects.map((o, i) => {
-                    const key = `object-${i}`;
-                    return (
-                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
-                        <div className="wizard-item-content">
-                          <strong>{o.name}</strong>
-                          {o.description && <p>{o.description}</p>}
-                          {o.story_function && <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{o.story_function}</p>}
-                        </div>
-                        {renderItemActions(key)}
-                        {editingKey === key && renderObjectEdit(o, i)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Factions */}
-            {result.factions?.length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <Landmark size={16} /> Thế lực ({result.factions.filter((_, i) => !excluded.has(`faction-${i}`)).length})
-                </h4>
-                <div className="wizard-items">
-                  {result.factions.map((f, i) => {
-                    const key = `faction-${i}`;
-                    return (
-                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
-                        <div className="wizard-item-content">
-                          <strong>{f.name}</strong>{' '}
-                          <span className="badge badge-sm">
-                            {FACTION_TYPE_LABELS[f.faction_type] || f.faction_type || 'Thế lực'}
-                          </span>
-                          {f.description && <p>{f.description}</p>}
-                          {f.story_function && <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>{f.story_function}</p>}
-                        </div>
-                        {renderItemActions(key)}
-                        {editingKey === key && renderFactionEdit(f, i)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Terms */}
-            {result.terms?.length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <BookOpen size={16} /> Thuật ngữ ({result.terms.filter((_, i) => !excluded.has(`term-${i}`)).length})
-                </h4>
-                <div className="wizard-items">
-                  {result.terms.map((t, i) => {
-                    const key = `term-${i}`;
-                    return (
-                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
-                        <div className="wizard-item-content">
-                          <strong>{t.name}</strong>
-                          {t.definition && <p>{t.definition}</p>}
-                        </div>
-                        {renderItemActions(key)}
-                        {editingKey === key && renderTermEdit(t, i)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Chapters */}
-            {result.chapters?.length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <List size={16} /> Chapters ({result.chapters.filter((_, i) => !excluded.has(`chapter-${i}`)).length})
-                </h4>
-                <div className="wizard-items wizard-items--compact">
-                  {result.chapters.map((ch, i) => {
-                    const key = `chapter-${i}`;
-                    return (
-                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
-                        <div className="wizard-item-content">
-                          <strong>{ch.title}</strong>
-                          {ch.summary && <p>{ch.summary}</p>}
-                          {ch.purpose && (
-                            <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                              <strong>Purpose:</strong> {ch.purpose}
-                            </p>
-                          )}
-                          {ch.state_delta && (
-                            <p style={{ fontSize: '12px', color: 'var(--color-warning, #f59e0b)' }}>
-                              <strong>State delta:</strong> {ch.state_delta}
-                            </p>
-                          )}
-                          {(normalizeChapterListField(ch.featured_characters).length > 0 || ch.primary_location) && (
-                            <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                              {normalizeChapterListField(ch.featured_characters).length > 0 ? `Nhan vat: ${normalizeChapterListField(ch.featured_characters).join(', ')}` : ''}
-                              {normalizeChapterListField(ch.featured_characters).length > 0 && ch.primary_location ? ' | ' : ''}
-                              {ch.primary_location ? `Dia diem: ${ch.primary_location}` : ''}
-                            </p>
-                          )}
-                          {(normalizeChapterListField(ch.thread_titles).length > 0 || normalizeChapterListField(ch.key_events).length > 0) && (
-                            <p style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                              {normalizeChapterListField(ch.thread_titles).length > 0 ? `Threads: ${normalizeChapterListField(ch.thread_titles).join(', ')}` : ''}
-                              {normalizeChapterListField(ch.thread_titles).length > 0 && normalizeChapterListField(ch.key_events).length > 0 ? ' | ' : ''}
-                              {normalizeChapterListField(ch.key_events).length > 0 ? `Anchors: ${normalizeChapterListField(ch.key_events).join(', ')}` : ''}
-                            </p>
-                          )}
-                        </div>
-                        {renderItemActions(key)}
-                        {editingKey === key && renderChapterEdit(ch, i)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Plot Threads */}
-            {result.plot_threads?.length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <GitPullRequest size={16} /> Tuyến truyện ({result.plot_threads.filter((_, i) => !excluded.has(`thread-${i}`)).length})
-                </h4>
-                <div className="wizard-items">
-                  {result.plot_threads.map((pt, i) => {
-                    const key = `thread-${i}`;
-                    return (
-                      <div key={i} className={`wizard-item ${excluded.has(key) ? 'wizard-item--excluded' : ''}`}>
-                        <div className="wizard-item-content">
-                          <strong>{pt.title}</strong>
-                          <span className="badge badge-sm" style={{ marginLeft: '6px' }}>
-                            {TYPE_LABELS[pt.type] || pt.type}
-                          </span>
-                          {pt.description && <p>{pt.description}</p>}
-                        </div>
-                        {renderItemActions(key)}
-                        {editingKey === key && renderThreadEdit(pt, i)}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Macro Arcs preview (nếu đã nhập) */}
-            {macroArcsInput.filter(m => m.title?.trim()).length > 0 && (
-              <div className="wizard-section">
-                <h4>
-                  <TrendingUp size={16} /> Đại Cục ({macroArcsInput.filter(m => m.title?.trim()).length} cột mốc)
-                </h4>
-                <div className="wizard-items">
-                  {macroArcsInput.filter(m => m.title?.trim()).map((m, i) => (
-                    <div key={i} className="wizard-item">
-                      <div className="wizard-item-content">
-                        <strong>{m.title}</strong>
-                        {(m.chapter_from || m.chapter_to) && (
-                          <span style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginLeft: '8px' }}>
-                            Ch.{m.chapter_from}–{m.chapter_to}
-                          </span>
-                        )}
-                        {m.emotional_peak && <p style={{ fontSize: '12px', fontStyle: 'italic' }}>{m.emotional_peak}</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
+              )}
+            </div>
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={handleReset}>
-                <ArrowLeft size={16} /> Quay lại
-              </button>
-              <button className="btn btn-ghost" onClick={() => { setResult(null); setStep(0); setEditingKey(null); }}>
-                <RotateCcw size={16} /> Tạo lại
-              </button>
+              <button className="btn btn-ghost" onClick={() => setStep(2)}><ArrowLeft size={16} /> Sửa nền truyện</button>
+              <button className="btn btn-ghost" onClick={() => requestOutline(result)}><RotateCcw size={16} /> Tạo lại dàn ý</button>
               <button className="btn btn-primary" onClick={handleApprove} disabled={isGenerating || blockingIssues.length > 0}>
                 {isGenerating ? (
                   <><Loader2 size={16} className="spin" /> Đang tạo...</>
                 ) : (
-                  <><Check size={16} /> Duyệt & Tạo dự án</>
+                  <><Check size={16} /> Duyệt & tạo dự án</>
                 )}
               </button>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

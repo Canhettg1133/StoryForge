@@ -1,4 +1,6 @@
-﻿const CORPUS_API_BASE_URL =
+import { toVietnameseErrorMessage } from '../../utils/errorMessages';
+
+const CORPUS_API_BASE_URL =
   import.meta.env.VITE_JOB_SERVER_URL || 'http://localhost:3847';
 
 function buildUrl(pathname, query = {}) {
@@ -50,7 +52,7 @@ async function request(pathname, options = {}) {
     : null;
 
   if (!response.ok) {
-    const error = new Error(payload?.error || `Request failed: ${response.status}`);
+    const error = new Error(toVietnameseErrorMessage(payload?.error || `Request failed: ${response.status}`, 'Yêu cầu Corpus API thất bại.'));
     error.status = response.status;
     throw error;
   }

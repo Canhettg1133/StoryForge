@@ -508,7 +508,7 @@ export default function CanonTruth() {
       {(overview?.recentPurgeArchives || []).length > 0 && (
         <section className="bible-canon-panel">
           <div className="bible-canon-panel-header">
-            <strong>Da purge gan day</strong>
+            <strong>Đã dọn canon gần đây</strong>
             <span>{overview.recentPurgeArchives.length}</span>
           </div>
           <div className="bible-canon-list">
@@ -521,22 +521,22 @@ export default function CanonTruth() {
                 <div key={archive.id} className="bible-canon-list-item su-that-page__archive-card">
                   <div className="su-that-page__archive-row">
                     <div>
-                      <strong>{archive.chapter_title || `Chuong ${archive.chapter_id}`}</strong>
+                      <strong>{archive.chapter_title || `Chương ${archive.chapter_id}`}</strong>
                       <p>
-                        Purge {new Date(archive.created_at || Date.now()).toLocaleString()}
-                        {archive.chapter_order_index != null ? ` | Thu tu cu: ${archive.chapter_order_index + 1}` : ''}
+                        Dọn lúc {new Date(archive.created_at || Date.now()).toLocaleString()}
+                        {archive.chapter_order_index != null ? ` | Thứ tự cũ: ${archive.chapter_order_index + 1}` : ''}
                       </p>
                       <p>
                         {[
-                          removedCounts.revisions ? `${removedCounts.revisions} revision` : null,
-                          removedCounts.events ? `${removedCounts.events} su kien` : null,
-                          removedCounts.reports ? `${removedCounts.reports} report` : null,
-                          removedCounts.facts ? `${removedCounts.facts} fact` : null,
-                          removedCounts.characters ? `${removedCounts.characters} nhan vat` : null,
-                          removedCounts.locations ? `${removedCounts.locations} dia diem` : null,
-                          removedCounts.world_terms ? `${removedCounts.world_terms} world term` : null,
-                          removedCounts.objects ? `${removedCounts.objects} vat pham` : null,
-                        ].filter(Boolean).join(' | ') || 'Khong co artifact nao duoc luu.'}
+                          removedCounts.revisions ? `${removedCounts.revisions} phiên bản` : null,
+                          removedCounts.events ? `${removedCounts.events} sự kiện` : null,
+                          removedCounts.reports ? `${removedCounts.reports} báo cáo` : null,
+                          removedCounts.facts ? `${removedCounts.facts} sự thật` : null,
+                          removedCounts.characters ? `${removedCounts.characters} nhân vật` : null,
+                          removedCounts.locations ? `${removedCounts.locations} địa điểm` : null,
+                          removedCounts.world_terms ? `${removedCounts.world_terms} thuật ngữ thế giới` : null,
+                          removedCounts.objects ? `${removedCounts.objects} vật phẩm` : null,
+                        ].filter(Boolean).join(' | ') || 'Không có artifact nào được lưu.'}
                       </p>
                       {warningText && <p>{warningText}</p>}
                     </div>
@@ -980,12 +980,12 @@ export default function CanonTruth() {
 
             <div className="bible-canon-panel">
               <div className="bible-canon-panel-header">
-                <strong>Van ban revision</strong>
+                <strong>Văn bản revision</strong>
                 <span>{revisionDetail.revision.revision_number || 0}</span>
               </div>
               <div className="bible-canon-snapshot">
                 <pre className="su-that-page__revision-text">
-                  {revisionDetail.revision.chapter_text || 'Revision nay chua co chapter_text.'}
+                  {revisionDetail.revision.chapter_text || 'Revision này chưa có chapter_text.'}
                 </pre>
               </div>
             </div>

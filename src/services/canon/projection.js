@@ -305,7 +305,7 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null, optio
           entityMap.set(event.target_id, applyEventToEntityState(targetState, {
             ...event,
             subject_id: event.target_id,
-            summary: event.summary || 'Da duoc cuu',
+            summary: event.summary || 'Đã được cứu',
           }));
         }
         if (event.thread_id) {

@@ -30,10 +30,10 @@ function isRelativeProxyUrl(value) {
 function assertUsableProxyUrl(value) {
   const trimmed = String(value || '').trim();
   if (!trimmed) {
-    throw new Error('Proxy URL is required.');
+    throw new Error('Cần nhập Proxy URL.');
   }
   if (/\s/u.test(trimmed)) {
-    throw new Error('Proxy URL must not contain spaces.');
+    throw new Error('Proxy URL không được chứa khoảng trắng.');
   }
   if (isRelativeProxyUrl(trimmed)) return;
 
@@ -41,11 +41,11 @@ function assertUsableProxyUrl(value) {
   try {
     parsed = new URL(trimmed);
   } catch {
-    throw new Error('Proxy URL must be an absolute http(s) URL or a same-origin path.');
+    throw new Error('Proxy URL phải là URL http(s) đầy đủ hoặc đường dẫn cùng origin.');
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new Error('Proxy URL must use http or https.');
+    throw new Error('Proxy URL phải dùng http hoặc https.');
   }
 }
 
