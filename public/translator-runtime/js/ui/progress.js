@@ -20,6 +20,22 @@ function updateProgress(current, total, status) {
     }
 }
 
+function updateLargeFileProgress({ byteCursor = 0, fileSize = 0, completed = completedChunks, status = '' } = {}) {
+    const safeFileSize = Math.max(1, Number(fileSize) || 1);
+    const safeCursor = Math.max(0, Math.min(safeFileSize, Number(byteCursor) || 0));
+    const percentage = Math.round((safeCursor / safeFileSize) * 100);
+    document.getElementById('progressFill').style.width = `${percentage}%`;
+    document.getElementById('progressText').textContent = `${percentage}%`;
+    document.getElementById('progressDetails').textContent =
+        `Đã xử lý ${completed.toLocaleString('vi-VN')} chunk • ${percentage}% file`;
+    document.getElementById('progressStatus').textContent = status || 'Đang dịch file lớn...';
+
+    const downloadBtn = document.getElementById('downloadPartialBtn');
+    if (downloadBtn && completed > 0) {
+        downloadBtn.innerHTML = `📥 Tải ${completed.toLocaleString('vi-VN')} chunk đã dịch`;
+    }
+}
+
 function updateProgressStats(speed, activeKeys, eta) {
     document.getElementById('speedStat').textContent = speed;
     document.getElementById('activeKeysStat').textContent = activeKeys;
@@ -43,6 +59,10 @@ function formatTime(seconds) {
 // RESULT ACTIONS
 // ============================================
 function getDownloadableTranslatedText() {
+    if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE) {
+        return document.getElementById('translatedText')?.value || '';
+    }
+
     const textarea = document.getElementById('translatedText');
     const text = textarea ? textarea.value : '';
     const hasChunkData = Array.isArray(translatedChunks) && translatedChunks.length > 0;
@@ -56,7 +76,49 @@ function getDownloadableTranslatedText() {
     return text;
 }
 
+function getTranslatedBlobParts({ includePending = false } = {}) {
+    if (typeof buildBlobPartsFromChunks === 'function') {
+        return buildBlobPartsFromChunks(translatedChunks, {
+            includePending,
+            pendingLabel: '⏳ Chưa dịch',
+        });
+    }
+
+    const parts = [];
+    translatedChunks.forEach((chunk, index) => {
+        const hasText = typeof chunk === 'string' && chunk.length > 0;
+        if (!hasText && !includePending) return;
+        if (parts.length > 0) parts.push('\n\n');
+        parts.push(hasText ? chunk : `[⏳ Chưa dịch chunk ${index + 1}]`);
+    });
+    return parts;
+}
+
+function downloadBlobParts(parts, fileName, successMessage) {
+    if (!Array.isArray(parts) || parts.length === 0) {
+        showToast('Không có nội dung để tải!', 'warning');
+        return;
+    }
+
+    const blob = new Blob(parts, { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast(successMessage || 'Đã tải file thành công!', 'success');
+}
+
 function copyResult() {
+    if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE) {
+        showToast('File lớn nên tải xuống thay vì copy toàn bộ để tránh trình duyệt bị đơ.', 'warning');
+        return;
+    }
+
     const text = getDownloadableTranslatedText();
     if (!text) {
         showToast('Không có nội dung để sao chép!', 'warning');
@@ -74,6 +136,15 @@ function copyResult() {
 }
 
 function downloadResult() {
+    if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE) {
+        downloadBlobParts(
+            getTranslatedBlobParts({ includePending: false }),
+            originalFileName,
+            'Đã tải bản dịch file lớn.'
+        );
+        return;
+    }
+
     const text = getDownloadableTranslatedText();
     if (!text) {
         showToast('Không có nội dung để tải!', 'warning');
@@ -96,6 +167,16 @@ function downloadResult() {
 // Download partial - tải phần đã dịch được
 // FIX: Bỏ map+filter thừa, dùng filter trực tiếp cho gọn và đúng
 function downloadPartial() {
+    if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE) {
+        const partialFileName = originalFileName.replace('.txt', `_partial_${completedChunks}chunks.txt`);
+        downloadBlobParts(
+            getTranslatedBlobParts({ includePending: false }),
+            partialFileName,
+            `Đã tải ${completedChunks.toLocaleString('vi-VN')} chunk đã dịch.`
+        );
+        return;
+    }
+
     const translatedParts = translatedChunks.filter(c => c !== null && c !== undefined);
 
     if (translatedParts.length === 0) {

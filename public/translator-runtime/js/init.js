@@ -28,6 +28,7 @@ window.exportHistory = exportHistory;
 window.importHistory = importHistory;
 window.exportApiKeys = exportApiKeys;
 if (typeof fetchAIStudioFreeModels === 'function') window.fetchAIStudioFreeModels = fetchAIStudioFreeModels;
+if (typeof selectAIStudioFetchedModel === 'function') window.selectAIStudioFetchedModel = selectAIStudioFetchedModel;
 if (typeof selectOnlyGeminiModel === 'function') window.selectOnlyGeminiModel = selectOnlyGeminiModel;
 window.copyExportedKeys = copyExportedKeys;
 window.closeKeyModal = closeKeyModal;
@@ -52,6 +53,13 @@ if (typeof selectProxyModel === 'function') window.selectProxyModel = selectProx
 if (typeof updateProxyConfig === 'function') window.updateProxyConfig = updateProxyConfig;
 if (typeof addProxyKey === 'function') window.addProxyKey = addProxyKey;
 if (typeof removeProxyKey === 'function') window.removeProxyKey = removeProxyKey;
+if (typeof toggleCustomProxyMode === 'function') window.toggleCustomProxyMode = toggleCustomProxyMode;
+if (typeof updateCustomProxyConfig === 'function') window.updateCustomProxyConfig = updateCustomProxyConfig;
+if (typeof addCustomProxyKey === 'function') window.addCustomProxyKey = addCustomProxyKey;
+if (typeof removeCustomProxyKey === 'function') window.removeCustomProxyKey = removeCustomProxyKey;
+if (typeof fetchCustomProxyModels === 'function') window.fetchCustomProxyModels = fetchCustomProxyModels;
+if (typeof selectCustomProxyModel === 'function') window.selectCustomProxyModel = selectCustomProxyModel;
+if (typeof testCustomProxyConnection === 'function') window.testCustomProxyConnection = testCustomProxyConnection;
 if (typeof initProxyUI === 'function') initProxyUI();
 
 // Chunk tracker functions
@@ -61,5 +69,6 @@ if (typeof viewChunkDetail === 'function') window.viewChunkDetail = viewChunkDet
 if (typeof closeChunkDetail === 'function') window.closeChunkDetail = closeChunkDetail;
 if (typeof editChunkManual === 'function') window.editChunkManual = editChunkManual;
 if (typeof toggleChunkTracker === 'function') window.toggleChunkTracker = toggleChunkTracker;
+if (typeof loadMoreChunkRows === 'function') window.loadMoreChunkRows = loadMoreChunkRows;
 
 console.log('✅ All modules loaded and exposed globally');

@@ -11,6 +11,10 @@ let chunkTrackingData = []; // Array of { index, inputLen, outputLen, ratio, sta
 let originalChunksRef = []; // Reference to original chunks (raw, no prompt)
 let preparedChunksRef = []; // Reference to prepared chunks (with prompt)
 let customPromptRef = ''; // Reference to custom prompt used
+const CHUNK_TRACKER_RENDER_BATCH_SIZE = 100;
+let chunkTrackerVisibleCount = CHUNK_TRACKER_RENDER_BATCH_SIZE;
+let chunkTrackerDynamicMode = false;
+let chunkTrackerLargeFileMode = false;
 let chunkTrackerSummaryState = {
     total: 0,
     success: 0,
@@ -35,12 +39,15 @@ const CHUNK_STATUS = {
 // ============================================
 // INITIALIZE TRACKER
 // ============================================
-function initChunkTracker(chunks, preparedChunks, customPrompt) {
+function initChunkTracker(chunks, preparedChunks, customPrompt, options = {}) {
+    chunkTrackerDynamicMode = Boolean(options.dynamic);
+    chunkTrackerLargeFileMode = Boolean(options.largeFile);
+    chunkTrackerVisibleCount = CHUNK_TRACKER_RENDER_BATCH_SIZE;
     originalChunksRef = chunks;
     preparedChunksRef = Array.isArray(preparedChunks) ? preparedChunks : null;
     customPromptRef = customPrompt;
 
-    chunkTrackingData = chunks.map((chunk, i) => ({
+    chunkTrackingData = chunkTrackerDynamicMode ? [] : chunks.map((chunk, i) => ({
         index: i,
         inputLen: chunk.length,
         outputLen: 0,
@@ -67,9 +74,48 @@ function initChunkTracker(chunks, preparedChunks, customPrompt) {
     showChunkTrackerPanel();
 }
 
+function trackChunkDiscovered(chunkIndex, chunkText) {
+    const text = String(chunkText || '');
+    if (!chunkTrackingData[chunkIndex]) {
+        chunkTrackingData[chunkIndex] = {
+            index: chunkIndex,
+            inputLen: text.length,
+            outputLen: 0,
+            ratio: 0,
+            status: CHUNK_STATUS.PENDING,
+            retryCount: 0,
+            model: '',
+            keyLabel: '',
+            timeMs: 0,
+            error: '',
+            startTime: 0,
+            originalPreview: text.slice(0, 2000),
+            originalTruncated: text.length > 2000,
+        };
+        chunkTrackerSummaryState.total = Math.max(chunkTrackerSummaryState.total, chunkIndex + 1);
+        chunkTrackerSummaryState.totalInput += text.length;
+    }
+
+    if (chunkTrackerLargeFileMode) {
+        originalChunksRef[chunkIndex] = text.slice(0, 2000);
+    } else {
+        originalChunksRef[chunkIndex] = text;
+    }
+
+    if (chunkIndex < chunkTrackerVisibleCount) {
+        renderChunkTracker();
+    } else {
+        updateChunkSummary();
+    }
+}
+
 function getPreparedChunkForTracker(chunkIndex) {
     if (Array.isArray(preparedChunksRef) && preparedChunksRef[chunkIndex]) {
         return preparedChunksRef[chunkIndex];
+    }
+    if (typeof buildPromptedChunk === 'function') {
+        const sourceLang = document.getElementById('sourceLang')?.value || 'auto';
+        return buildPromptedChunk(customPromptRef || '', originalChunksRef[chunkIndex] || '', sourceLang);
     }
     return `${customPromptRef || ''}${originalChunksRef[chunkIndex] || ''}`;
 }
@@ -148,6 +194,11 @@ function trackChunkRetry(chunkIndex, attempt) {
 // RETRANSLATE SINGLE CHUNK
 // ============================================
 async function retranslateChunk(chunkIndex) {
+    if (chunkTrackerLargeFileMode) {
+        showToast('File lớn chưa hỗ trợ dịch lại từng chunk trong v1. Hãy tải phần đã dịch hoặc chạy lại file.', 'warning');
+        return;
+    }
+
     if (!originalChunksRef[chunkIndex] || isTranslating) {
         showToast('Không thể dịch lại lúc này!', 'warning');
         return;
@@ -320,6 +371,11 @@ function closeChunkDetail() {
 }
 
 function editChunkManual(chunkIndex) {
+    if (chunkTrackerLargeFileMode) {
+        showToast('File lớn chưa hỗ trợ sửa thủ công từng chunk trong v1.', 'warning');
+        return;
+    }
+
     closeChunkDetail();
     const currentText = translatedChunks[chunkIndex] || '';
     const newText = prompt(`Sửa nội dung chunk ${chunkIndex + 1}:`, currentText);
@@ -372,8 +428,18 @@ function renderChunkTracker() {
     const container = document.getElementById('chunkTrackerList');
     if (!container) return;
 
-    container.innerHTML = chunkTrackingData.map((data, i) => buildChunkRowHtml(data)).join('');
+    const rows = chunkTrackingData.filter(Boolean);
+    const visibleRows = rows.slice(0, chunkTrackerVisibleCount);
+    const loadMoreHtml = rows.length > visibleRows.length
+        ? `<button class="btn btn-small btn-secondary ct-load-more" onclick="loadMoreChunkRows()">Hiện thêm ${Math.min(CHUNK_TRACKER_RENDER_BATCH_SIZE, rows.length - visibleRows.length)} chunk</button>`
+        : '';
+    container.innerHTML = visibleRows.map((data) => buildChunkRowHtml(data)).join('') + loadMoreHtml;
     updateChunkSummary();
+}
+
+function loadMoreChunkRows() {
+    chunkTrackerVisibleCount += CHUNK_TRACKER_RENDER_BATCH_SIZE;
+    renderChunkTracker();
 }
 
 function renderChunkRow(chunkIndex) {
@@ -383,6 +449,8 @@ function renderChunkRow(chunkIndex) {
     const row = document.getElementById(`chunk-row-${chunkIndex}`);
     if (row) {
         row.outerHTML = buildChunkRowHtml(data);
+    } else if (chunkIndex < chunkTrackerVisibleCount) {
+        renderChunkTracker();
     }
 }
 
@@ -394,7 +462,8 @@ function buildChunkRowHtml(data) {
         : data.status === CHUNK_STATUS.TRANSLATING || data.status === CHUNK_STATUS.RETRYING || data.status === CHUNK_STATUS.RETRANSLATING ? 50
         : 0;
 
-    const showRetranslate = data.status === CHUNK_STATUS.FAILED || data.status === CHUNK_STATUS.WARNING;
+    const showRetranslate = !chunkTrackerLargeFileMode &&
+        (data.status === CHUNK_STATUS.FAILED || data.status === CHUNK_STATUS.WARNING);
     const retryLabel = data.retryCount > 0 ? ` (×${data.retryCount})` : '';
 
     const keyBadge = data.keyLabel ? `<span class="ct-key">🔑${data.keyLabel}</span>` : '';
@@ -457,7 +526,7 @@ function updateChunkSummary() {
         <span>📥 ${totalInput.toLocaleString()} → 📤 ${totalOutput.toLocaleString()} chữ</span>
         <span class="${ratioClass}">📊 Tỷ lệ: <strong>${totalRatio}%</strong></span>
         <span>🔄 Thử lại: ${totalRetries}</span>
-        ${(failed + warning) > 0 ? `<button class="btn btn-small btn-warning ct-retry-all-btn" onclick="retranslateAllFailed()">🔄 Dịch lại ${failed + warning} lỗi</button>` : ''}
+        ${!chunkTrackerLargeFileMode && (failed + warning) > 0 ? `<button class="btn btn-small btn-warning ct-retry-all-btn" onclick="retranslateAllFailed()">🔄 Dịch lại ${failed + warning} lỗi</button>` : ''}
     `;
 }
 

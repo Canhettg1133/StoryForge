@@ -63,6 +63,20 @@ function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto') {
     return `${directive}${prompt ? `\n\n${prompt}` : ''}\n\n[Đoạn nguồn]\n${source}`;
 }
 
+function resolveEffectiveTranslationParallel(options = {}) {
+    const requestedParallel = Math.max(1, Math.min(10, Number(options.requestedParallel) || 1));
+    const useOllamaMode = Boolean(options.useOllamaMode);
+    const useProxyMode = Boolean(options.useProxyMode);
+    const activeDirectCombinationCount = Math.max(0, Number(options.activeDirectCombinationCount) || 0);
+
+    if (useOllamaMode) return 1;
+    if (useProxyMode) return requestedParallel;
+    if (activeDirectCombinationCount > 0) {
+        return Math.max(1, Math.min(requestedParallel, activeDirectCombinationCount, 10));
+    }
+    return Math.max(1, Math.min(requestedParallel, 10));
+}
+
 function getTranslatedChunkDisplayText(chunk, index, pendingLabel) {
     return chunk !== null && chunk !== undefined
         ? String(chunk)
@@ -212,6 +226,245 @@ function buildHistoryTextSnapshotFromChunks(chunksArray) {
     return buildTranslatedTextFromChunks(chunksArray, '⏳ Chưa dịch');
 }
 
+function isLargeFileSourceActive() {
+    return currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE && currentSourceFile;
+}
+
+function setTranslationButtonsBusy(isBusy) {
+    const translateBtn = document.getElementById('translateBtn');
+    if (translateBtn) {
+        translateBtn.disabled = isBusy;
+        translateBtn.innerHTML = isBusy
+            ? '<span class="btn-icon">⏳</span><span class="btn-text">Đang dịch...</span>'
+            : '<span class="btn-icon">🚀</span><span class="btn-text">Bắt đầu dịch</span>';
+    }
+
+    const pauseBtn = document.getElementById('pauseBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (pauseBtn) {
+        pauseBtn.classList.remove('paused');
+        pauseBtn.innerHTML = '<span class="btn-icon">⏸️</span><span class="btn-text">Tạm dừng</span>';
+    }
+    if (cancelBtn) {
+        cancelBtn.disabled = false;
+        cancelBtn.classList.remove('cancelling');
+        cancelBtn.innerHTML = '<span class="btn-icon">⏹️</span><span class="btn-text">Hủy dịch</span>';
+    }
+}
+
+function resolveRuntimeParallel(parallelCount) {
+    if (useOllama) {
+        return {
+            effectiveParallel: resolveEffectiveTranslationParallel({
+                requestedParallel: parallelCount,
+                useOllamaMode: true,
+                useProxyMode: false,
+            }),
+            staggerDelayMs: 0,
+        };
+    }
+
+    if (useProxy) {
+        const effectiveParallel = resolveEffectiveTranslationParallel({
+            requestedParallel: parallelCount,
+            useOllamaMode: false,
+            useProxyMode: true,
+        });
+        return {
+            effectiveParallel,
+            staggerDelayMs: effectiveParallel > 1 ? 300 : 0,
+        };
+    }
+
+    const activeDirectCombinationCount = typeof getAllAvailableCombinations === 'function'
+        ? getAllAvailableCombinations().length
+        : (apiKeys.length * (typeof getActiveModels === 'function' ? getActiveModels().length : GEMINI_MODELS.length));
+
+    return {
+        effectiveParallel: resolveEffectiveTranslationParallel({
+            requestedParallel: parallelCount,
+            useOllamaMode: false,
+            useProxyMode: false,
+            activeDirectCombinationCount,
+        }),
+        staggerDelayMs: 500,
+    };
+}
+
+function buildLargeFileResultPreview(pendingLabel = '⏳ Đang dịch', forceMaxChars = 60000) {
+    return buildTranslatedTextPreview(translatedChunks, {
+        pendingLabel,
+        maxChars: forceMaxChars,
+    });
+}
+
+async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount, delayMs, customPrompt }) {
+    if (!currentSourceFile || typeof createLazyChunkReader !== 'function') {
+        showToast('Không tìm thấy file lớn để dịch.', 'error');
+        return;
+    }
+
+    isTranslating = true;
+    cancelRequested = false;
+    isPaused = false;
+    translatedChunks = [];
+    translatedBlobParts = [];
+    originalChunks = [];
+    completedChunks = 0;
+    totalChunksCount = 0;
+    largeFileByteCursor = 0;
+    currentHistoryId = null;
+    startTime = Date.now();
+
+    setTranslationButtonsBusy(true);
+    document.getElementById('progressSection').style.display = 'block';
+    document.getElementById('resultSection').style.display = 'none';
+    document.getElementById('translatedText').value = '';
+    updateLargeFileProgress({
+        byteCursor: 0,
+        fileSize: currentSourceFile.size,
+        completed: 0,
+        status: 'Bắt đầu dịch file lớn...',
+    });
+    updateProgressStats(0, getActiveKeyCount(), '--:--');
+
+    if (typeof initChunkTracker === 'function') {
+        initChunkTracker([], null, customPrompt, { dynamic: true, largeFile: true });
+    }
+
+    const { effectiveParallel, staggerDelayMs } = resolveRuntimeParallel(parallelCount);
+    const pendingBatch = [];
+    let lastPreviewUpdateAt = 0;
+
+    const updateLargePreview = (label = '⏳ Đang dịch', force = false) => {
+        const now = Date.now();
+        if (!force && now - lastPreviewUpdateAt < TRANSLATION_PREVIEW_UPDATE_INTERVAL_MS) return;
+        lastPreviewUpdateAt = now;
+        const resultEl = document.getElementById('translatedText');
+        if (resultEl) {
+            resultEl.value = buildLargeFileResultPreview(label);
+        }
+    };
+
+    const processBatch = async (batch) => {
+        if (!batch.length || cancelRequested) return;
+
+        batch.forEach((chunk) => {
+            if (typeof trackChunkStart === 'function') {
+                trackChunkStart(chunk.index);
+            }
+        });
+
+        const promises = batch.map((chunk, batchOffset) => (async () => {
+            await sleep(batchOffset * staggerDelayMs);
+            if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
+            const promptedChunk = buildPromptedChunk(customPrompt, chunk.text, sourceLang);
+            return translateChunkWithRetry(promptedChunk, chunk.index);
+        })());
+
+        const results = await Promise.allSettled(promises);
+        results.forEach((result, idx) => {
+            const chunk = batch[idx];
+            if (result.status === 'fulfilled') {
+                translatedChunks[chunk.index] = result.value;
+                completedChunks += 1;
+                if (typeof trackChunkSuccess === 'function') {
+                    trackChunkSuccess(chunk.index, result.value, '');
+                }
+                return;
+            }
+
+            const reasonText = String(result.reason?.message || result.reason || '');
+            if (cancelRequested || reasonText.includes('TRANSLATION_CANCELLED')) return;
+
+            const userReason = typeof formatTranslatorError === 'function'
+                ? formatTranslatorError(result.reason)
+                : reasonText;
+            translatedChunks[chunk.index] = `[LỖI CHUNK ${chunk.index + 1}]\nNguyên nhân: ${userReason}\n\n${chunk.text}`;
+            completedChunks += 1;
+            if (typeof trackChunkFailed === 'function') {
+                trackChunkFailed(chunk.index, userReason);
+            }
+        });
+
+        const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
+        const speed = completedChunks / elapsed;
+        updateLargeFileProgress({
+            byteCursor: largeFileByteCursor,
+            fileSize: currentSourceFile.size,
+            completed: completedChunks,
+            status: `Đang dịch file lớn... ${completedChunks.toLocaleString('vi-VN')} chunk đã xong`,
+        });
+        updateProgressStats(speed.toFixed(1), getActiveKeyCount(), '--:--');
+        renderRPDDashboardThrottled();
+        updateLargePreview('⏳ Đang dịch');
+    };
+
+    try {
+        const reader = createLazyChunkReader(currentSourceFile, { chunkSize });
+        for await (const chunk of reader) {
+            await waitWhilePaused();
+            if (cancelRequested) break;
+
+            largeFileByteCursor = chunk.byteEnd;
+            totalChunksCount = Math.max(totalChunksCount, chunk.index + 1);
+            if (typeof trackChunkDiscovered === 'function') {
+                trackChunkDiscovered(chunk.index, chunk.text);
+            }
+
+            pendingBatch.push(chunk);
+            if (pendingBatch.length >= effectiveParallel) {
+                const batch = pendingBatch.splice(0, pendingBatch.length);
+                await processBatch(batch);
+                if (cancelRequested) break;
+                await sleep(delayMs);
+            }
+        }
+
+        if (!cancelRequested && pendingBatch.length > 0) {
+            await processBatch(pendingBatch.splice(0, pendingBatch.length));
+        }
+
+        document.getElementById('resultSection').style.display = 'block';
+        updateLargePreview(cancelRequested ? '⏳ Chưa dịch' : '✅ Hoàn thành', true);
+
+        if (!cancelRequested) {
+            updateLargeFileProgress({
+                byteCursor: currentSourceFile.size,
+                fileSize: currentSourceFile.size,
+                completed: completedChunks,
+                status: 'Hoàn thành file lớn. Dùng Tải xuống để lấy toàn bộ bản dịch.',
+            });
+            showToast(`Dịch hoàn tất ${completedChunks.toLocaleString('vi-VN')} chunk.`, 'success');
+        } else {
+            showToast('Đã hủy dịch file lớn. Có thể tải phần đã dịch trong phiên hiện tại.', 'warning');
+        }
+
+        document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
+    } catch (error) {
+        const errorText = String(error?.message || error || '');
+        if (cancelRequested || errorText.includes('TRANSLATION_CANCELLED')) {
+            document.getElementById('resultSection').style.display = 'block';
+            updateLargePreview('⏳ Chưa dịch', true);
+            showToast('Đã hủy dịch file lớn.', 'warning');
+            return;
+        }
+
+        console.error('Large-file translation error:', error);
+        const userMessage = typeof formatTranslatorError === 'function'
+            ? formatTranslatorError(error, 'Dịch file lớn thất bại')
+            : 'Dịch file lớn thất bại. Chi tiết kỹ thuật đã được ghi trong Console.';
+        showToast(userMessage, 'error');
+    } finally {
+        isTranslating = false;
+        isPaused = false;
+        setTranslationButtonsBusy(false);
+        const cancelModal = document.getElementById('cancelModal');
+        if (cancelModal) cancelModal.style.display = 'none';
+        updateStats();
+    }
+}
+
 async function startTranslation() {
     // Validate - Ollama/Proxy không cần API keys
     if (!useOllama && !useProxy && apiKeys.length === 0) {
@@ -219,8 +472,9 @@ async function startTranslation() {
         return;
     }
 
-    const text = document.getElementById('originalText').value.trim();
-    if (!text) {
+    const largeFileSource = isLargeFileSourceActive();
+    const text = largeFileSource ? '' : document.getElementById('originalText').value.trim();
+    if (!largeFileSource && !text) {
         showToast('Vui lòng nhập hoặc tải file truyện!', 'error');
         return;
     }
@@ -256,17 +510,29 @@ async function startTranslation() {
         // ========== PROXY MODE ==========
         const proxyKeyCount = typeof getProxyKeyCount === 'function' ? getProxyKeyCount() : 1;
         console.log(`[Proxy] Mode enabled - ${proxyKeyCount} key(s) available`);
+        const activeProxyModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;
 
-        // Parallel = min(user setting, number of keys) — mỗi key gánh 1 chunk/batch
-        parallelCount = Math.min(parallelCount, proxyKeyCount);
-        parallelCount = Math.max(parallelCount, 1);
+        if (proxyKeyCount <= 0) {
+            showToast('Vui lòng thêm ít nhất 1 proxy API key trước khi dịch.', 'error');
+            return;
+        }
+
+        if (!activeProxyModel) {
+            showToast('Vui lòng chọn model proxy trước khi dịch.', 'error');
+            return;
+        }
+
+        parallelCount = Math.max(1, Math.min(parallelCount, 10));
+        if (proxyKeyCount > 0 && parallelCount > proxyKeyCount) {
+            showToast(`Proxy có ${proxyKeyCount} key nhưng đang chạy ${parallelCount} luồng; dễ gặp 429/403 nếu server giới hạn tốc độ.`, 'warning');
+        }
 
         // Delay tối thiểu 5000ms (đã test OK với 5 RPM/key)
         if (delayMs < 5000) {
             console.log(`[Proxy] Auto-increasing delay from ${delayMs}ms to 5000ms`);
             delayMs = 5000;
         }
-        console.log(`[Proxy] Using parallel=${parallelCount}, delay=${delayMs}ms, keys=${proxyKeyCount}, model=${proxyModel}`);
+        console.log(`[Proxy] Using parallel=${parallelCount}, delay=${delayMs}ms, keys=${proxyKeyCount}, model=${activeProxyModel}`);
     } else {
         // ========== GEMINI MODE: PRE-CHECK quota ==========
         const availableCombos = getAllAvailableCombinations();
@@ -303,6 +569,16 @@ async function startTranslation() {
         }
     }
 
+    if (largeFileSource) {
+        return startLargeFileTranslation({
+            sourceLang,
+            chunkSize,
+            parallelCount,
+            delayMs,
+            customPrompt,
+        });
+    }
+
     // Split text into chunks
     const chunks = splitTextIntoChunks(text, chunkSize);
 
@@ -311,11 +587,9 @@ async function startTranslation() {
         return;
     }
 
-    const preparedChunks = chunks.map(chunk => buildPromptedChunk(customPrompt, chunk, sourceLang));
-
     // Initialize chunk tracker
     if (typeof initChunkTracker === 'function') {
-        initChunkTracker(chunks, preparedChunks, customPrompt);
+        initChunkTracker(chunks, null, customPrompt);
     }
 
     // UI Setup
@@ -457,17 +731,31 @@ async function startTranslation() {
         let staggerDelayMs;
 
         if (useOllama) {
-            effectiveParallel = 1;
+            effectiveParallel = resolveEffectiveTranslationParallel({
+                requestedParallel: parallelCount,
+                useOllamaMode: true,
+                useProxyMode: false,
+            });
             staggerDelayMs = 0;
             console.log('[Ollama] Using sequential processing (parallel=1)');
         } else if (useProxy) {
-            // parallelCount đã được set ở trên = min(userSetting, proxyKeyCount)
-            effectiveParallel = parallelCount;
+            effectiveParallel = resolveEffectiveTranslationParallel({
+                requestedParallel: parallelCount,
+                useOllamaMode: false,
+                useProxyMode: true,
+            });
             staggerDelayMs = effectiveParallel > 1 ? 300 : 0; // Stagger nhẹ để tránh burst
             console.log(`[Proxy] Using parallel=${effectiveParallel}, stagger=${staggerDelayMs}ms`);
         } else {
-            const totalCombinations = apiKeys.length * GEMINI_MODELS.length;
-            effectiveParallel = Math.min(parallelCount, totalCombinations, 10);
+            const activeDirectCombinationCount = typeof getAllAvailableCombinations === 'function'
+                ? getAllAvailableCombinations().length
+                : (apiKeys.length * (typeof getActiveModels === 'function' ? getActiveModels().length : GEMINI_MODELS.length));
+            effectiveParallel = resolveEffectiveTranslationParallel({
+                requestedParallel: parallelCount,
+                useOllamaMode: false,
+                useProxyMode: false,
+                activeDirectCombinationCount,
+            });
             staggerDelayMs = 500;
         }
 
@@ -497,7 +785,8 @@ async function startTranslation() {
                         if (cancelRequested) {
                             throw new Error('TRANSLATION_CANCELLED');
                         }
-                        return translateChunkWithRetry(preparedChunks[chunkIndex], chunkIndex);
+                        const promptedChunk = buildPromptedChunk(customPrompt, chunks[chunkIndex], sourceLang);
+                        return translateChunkWithRetry(promptedChunk, chunkIndex);
                     })()
                 );
                 batchIndices.push(chunkIndex);
@@ -590,7 +879,7 @@ async function startTranslation() {
 
                         try {
                             // Sử dụng prompt tăng dần theo round
-                            let promptToUse = preparedChunks[idx] || buildPromptedChunk(customPrompt, chunks[idx], sourceLang);
+                            let promptToUse = buildPromptedChunk(customPrompt, chunks[idx], sourceLang);
                             const originalContent = chunks[idx];
 
                             if (round === 1) {

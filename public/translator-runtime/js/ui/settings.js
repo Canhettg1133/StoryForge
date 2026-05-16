@@ -6,7 +6,7 @@
 // ============================================
 // SETTINGS MANAGEMENT
 // ============================================
-const SETTINGS_GROUPS = ['gemini', 'proxy', 'ollama', 'general', 'canon-pack', 'prompt'];
+const SETTINGS_GROUPS = ['gemini', 'proxy', 'custom-proxy', 'ollama', 'general', 'canon-pack', 'prompt'];
 const STORYFORGE_KEYS_STORAGE = 'sf-api-keys-v2';
 const STORYFORGE_SETTINGS_STORAGE = 'sf-ai-settings';
 const STORYFORGE_PROVIDER_STORAGE = 'sf-preferred-provider';
@@ -47,10 +47,7 @@ function getStoryForgeProxyKeys(profileId = '') {
         return getStoryForgeKeys('openai_proxy');
     }
 
-    return [...new Set([
-        ...getStoryForgeKeys('gemini_proxy'),
-        ...getStoryForgeKeys('openai_proxy'),
-    ])];
+    return getStoryForgeKeys('gemini_proxy');
 }
 
 function normalizeStoryForgeProxyUrl(rawValue) {
@@ -71,22 +68,32 @@ function normalizeStoryForgeProxyUrl(rawValue) {
 
 function getStoryForgeOpenAIProxyProfile(appSettings) {
     const proxySettings = appSettings?.openAIProxy || {};
-    if (proxySettings.activeProfileId === 'custom-openai-proxy' && proxySettings.customProfile) {
-        const customProfile = proxySettings.customProfile;
-        const customModels = Array.isArray(customProfile.models)
-            ? customProfile.models.map((model) => String(model || '').trim()).filter(Boolean)
-            : [];
-        return {
-            profileId: 'custom-openai-proxy',
-            baseUrl: customProfile.baseUrl || '',
-            defaultModel: customProfile.defaultModel || customModels[0] || '',
-        };
-    }
-
     return {
         profileId: 'ag-gemini-proxy',
-        baseUrl: appSettings?.proxyUrl || '/api/proxy',
+        baseUrl: proxySettings.activeProfileId === 'ag-gemini-proxy'
+            ? (appSettings?.proxyUrl || proxyBaseUrl)
+            : proxyBaseUrl,
         defaultModel: localStorage.getItem(STORYFORGE_PROXY_MODEL_STORAGE) || getDefaultProxyModel(),
+    };
+}
+
+function getStoryForgeCustomProxyProfile(appSettings) {
+    const proxySettings = appSettings?.openAIProxy || {};
+    const customProfile = proxySettings.customProfile || {};
+    const customModels = Array.isArray(customProfile.models)
+        ? customProfile.models.map((model) => String(model || '').trim()).filter(Boolean)
+        : [];
+
+    return {
+        ...(typeof DEFAULT_CUSTOM_PROXY_PROFILE !== 'undefined' ? DEFAULT_CUSTOM_PROXY_PROFILE : {}),
+        ...customProfile,
+        id: 'custom-openai-proxy',
+        baseUrl: customProfile.baseUrl || '',
+        defaultModel: customProfile.defaultModel || customModels[0] || '',
+        models: customModels,
+        chatCompletionsPath: customProfile.chatCompletionsPath || '/v1/chat/completions',
+        modelsPath: customProfile.modelsPath || '/v1/models',
+        transport: customProfile.transport || 'auto',
     };
 }
 
@@ -94,9 +101,12 @@ function importStoryForgeFallbackSettings() {
     const appSettings = readStoryForgeJson(STORYFORGE_SETTINGS_STORAGE) || {};
     const preferredProvider = String(localStorage.getItem(STORYFORGE_PROVIDER_STORAGE) || '').trim();
     const directKeys = getStoryForgeKeys('gemini_direct');
-    const storyForgeProxyProfile = getStoryForgeOpenAIProxyProfile(appSettings);
-    const proxyKeys = getStoryForgeProxyKeys(storyForgeProxyProfile.profileId);
-    const hasTranslatorAiConfig = apiKeys.length > 0 || proxyApiKeys.length > 0 || Boolean(proxyApiKey);
+    const agProfile = getStoryForgeOpenAIProxyProfile(appSettings);
+    const customProfile = getStoryForgeCustomProxyProfile(appSettings);
+    const agProxyKeys = getStoryForgeProxyKeys('ag-gemini-proxy');
+    const customProxyKeys = getStoryForgeProxyKeys('custom-openai-proxy');
+    const hadAgProxyConfig = proxyApiKeys.length > 0 || Boolean(proxyApiKey) || Boolean(proxyModel && proxyModel !== getDefaultProxyModel());
+    const hadCustomProxyConfig = customProxyApiKeys.length > 0 || Boolean(customProxyApiKey) || Boolean(customProxyProfile?.baseUrl || customProxyProfile?.defaultModel);
     let imported = false;
 
     if (!apiKeys.length && directKeys.length) {
@@ -104,24 +114,62 @@ function importStoryForgeFallbackSettings() {
         imported = true;
     }
 
-    if (!proxyApiKeys.length && proxyKeys.length) {
-        proxyApiKeys = proxyKeys;
-        proxyApiKey = proxyKeys[0] || '';
+    if (!proxyApiKeys.length && agProxyKeys.length) {
+        proxyApiKeys = agProxyKeys;
+        proxyApiKey = agProxyKeys[0] || '';
         imported = true;
     }
 
-    if ((!proxyBaseUrl || proxyBaseUrl === 'https://ag.beijixingxing.com/v1/chat/completions') && storyForgeProxyProfile.baseUrl) {
-        proxyBaseUrl = normalizeStoryForgeProxyUrl(storyForgeProxyProfile.baseUrl);
+    if ((!proxyBaseUrl || proxyBaseUrl === 'https://ag.beijixingxing.com/v1/chat/completions') && agProfile.baseUrl) {
+        proxyBaseUrl = normalizeStoryForgeProxyUrl(agProfile.baseUrl);
         imported = Boolean(proxyBaseUrl) || imported;
     }
 
-    proxyModel = storyForgeProxyProfile.defaultModel || ensureProxyModelDefault();
-    imported = true;
+    if (!hadAgProxyConfig) {
+        proxyModel = agProfile.defaultModel || ensureProxyModelDefault();
+        imported = true;
+    }
 
-    if (!hasTranslatorAiConfig
-        && (preferredProvider === 'openai_proxy' || preferredProvider === 'gemini_proxy' || preferredProvider === 'gemini_direct')
-        && proxyKeys.length + directKeys.length > 0) {
-        useProxy = (preferredProvider === 'openai_proxy' || preferredProvider === 'gemini_proxy') && proxyKeys.length > 0;
+    if (!hadCustomProxyConfig && (customProfile.baseUrl || customProfile.defaultModel || customProfile.models.length)) {
+        customProxyProfile = customProfile;
+        imported = true;
+    }
+
+    if (!customProxyApiKeys.length && customProxyKeys.length) {
+        customProxyApiKeys = customProxyKeys;
+        customProxyApiKey = customProxyKeys[0] || '';
+        imported = true;
+    }
+
+    const mainActiveProxyProfile = appSettings?.openAIProxy?.activeProfileId;
+    const shouldUseCustom = preferredProvider === 'openai_proxy'
+        && mainActiveProxyProfile === 'custom-openai-proxy'
+        && (customProxyKeys.length > 0 || customProfile.defaultModel || customProfile.baseUrl);
+    const shouldUseAg = preferredProvider === 'gemini_proxy' && agProxyKeys.length > 0;
+
+    if (shouldUseCustom) {
+        useProxy = true;
+        if (typeof setActiveTranslatorProvider === 'function') {
+            setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.CUSTOM_PROXY);
+        } else {
+            activeTranslatorProvider = 'custom_proxy';
+        }
+        imported = true;
+    } else if (shouldUseAg) {
+        useProxy = true;
+        if (typeof setActiveTranslatorProvider === 'function') {
+            setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.AG_PROXY);
+        } else {
+            activeTranslatorProvider = 'ag_proxy';
+        }
+        imported = true;
+    } else if (preferredProvider === 'gemini_direct') {
+        useProxy = false;
+        if (typeof setActiveTranslatorProvider === 'function') {
+            setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.GEMINI_DIRECT);
+        } else {
+            activeTranslatorProvider = 'gemini_direct';
+        }
         imported = true;
     }
 
@@ -130,7 +178,11 @@ function importStoryForgeFallbackSettings() {
 
 function getActiveProviderLabel() {
     if (typeof useOllama !== 'undefined' && useOllama) return 'Ollama';
-    if (typeof useProxy !== 'undefined' && useProxy) return 'Gemini Proxy';
+    if (typeof useProxy !== 'undefined' && useProxy) {
+        return activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY
+            ? 'Custom Proxy'
+            : 'Gemini Proxy AG';
+    }
     return 'Gemini Direct';
 }
 
@@ -153,6 +205,9 @@ function getActiveConfigSummary() {
     }
 
     if (typeof useProxy !== 'undefined' && useProxy) {
+        if (activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY) {
+            return shortenSummary(String(customProxyProfile?.defaultModel || 'chưa chọn model Custom'));
+        }
         return shortenSummary(String(proxyModel || 'Proxy model'));
     }
 
@@ -164,12 +219,23 @@ function getGeminiAccordionSummary() {
 }
 
 function getProxyAccordionSummary() {
-    const proxyCount = typeof getProxyKeyCount === 'function' ? getProxyKeyCount() : 0;
+    const proxyCount = typeof getProxyKeyCount === 'function'
+        ? getProxyKeyCount(TRANSLATOR_PROVIDERS.AG_PROXY)
+        : 0;
     return `${proxyModel || 'chưa chọn model'} • ${proxyCount} key`;
 }
 
+function getCustomProxyAccordionSummary() {
+    const customCount = typeof getProxyKeyCount === 'function'
+        ? getProxyKeyCount(TRANSLATOR_PROVIDERS.CUSTOM_PROXY)
+        : (customProxyApiKeys?.length || 0);
+    return `${customProxyProfile?.defaultModel || 'chưa chọn model'} • ${customCount} key`;
+}
+
 function getOllamaAccordionSummary() {
-    return `${ollamaModel || 'chưa chọn model local'} • ${ollamaUrl || 'localhost'}`;
+    const model = typeof ollamaModel !== 'undefined' ? ollamaModel : '';
+    const url = typeof ollamaUrl !== 'undefined' ? ollamaUrl : '';
+    return `${model || 'chưa chọn model local'} • ${url || 'localhost'}`;
 }
 
 function getGeneralAccordionSummary() {
@@ -244,12 +310,17 @@ function closeAllConfigGroups() {
 
 function updateSettingsAccordions() {
     const isGeminiActive = !useProxy && !useOllama;
+    const isAgProxyActive = useProxy && activeTranslatorProvider === TRANSLATOR_PROVIDERS.AG_PROXY;
+    const isCustomProxyActive = useProxy && activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
 
     setAccordionStatus('geminiAccordionStatus', isGeminiActive ? 'Đang dùng' : 'Sẵn sàng', isGeminiActive);
     setAccordionSummary('geminiAccordionSummary', getGeminiAccordionSummary());
 
-    setAccordionStatus('proxyAccordionStatus', useProxy ? 'Đang dùng' : 'Tắt', useProxy);
+    setAccordionStatus('proxyAccordionStatus', isAgProxyActive ? 'Đang dùng' : 'Tắt', isAgProxyActive);
     setAccordionSummary('proxyAccordionSummary', getProxyAccordionSummary());
+
+    setAccordionStatus('customProxyAccordionStatus', isCustomProxyActive ? 'Đang dùng' : 'Tắt', isCustomProxyActive);
+    setAccordionSummary('customProxyAccordionSummary', getCustomProxyAccordionSummary());
 
     setAccordionStatus('ollamaAccordionStatus', useOllama ? 'Đang dùng' : 'Tắt', useOllama);
     setAccordionSummary('ollamaAccordionSummary', getOllamaAccordionSummary());
@@ -338,12 +409,19 @@ function saveSettings() {
         useCanonPackTranslation: typeof useCanonPackTranslation !== 'undefined' ? useCanonPackTranslation : false,
         selectedCanonPackId: typeof selectedCanonPackId !== 'undefined' ? selectedCanonPackId : '',
         useProxy: useProxy,
+        activeTranslatorProvider: activeTranslatorProvider,
         proxyBaseUrl: proxyBaseUrl,
         proxyApiKey: proxyApiKey,
         proxyApiKeys: proxyApiKeys,
-        proxyModel: proxyModel
+        proxyModel: proxyModel,
+        customProxyProfile: customProxyProfile,
+        customProxyApiKey: customProxyApiKey,
+        customProxyApiKeys: customProxyApiKeys,
     };
     localStorage.setItem('novelTranslatorProSettings', JSON.stringify(settings));
+    if (typeof persistCustomProxySharedSettings === 'function') {
+        persistCustomProxySharedSettings(activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY);
+    }
     updateWorkspaceToolbar();
 }
 
@@ -367,6 +445,15 @@ function loadSettings() {
                 selectedCanonPackId = settings.selectedCanonPackId;
             }
             if (settings.useProxy !== undefined) useProxy = settings.useProxy;
+            if (settings.activeTranslatorProvider) {
+                if (typeof setActiveTranslatorProvider === 'function') {
+                    setActiveTranslatorProvider(settings.activeTranslatorProvider);
+                } else {
+                    activeTranslatorProvider = settings.activeTranslatorProvider;
+                }
+            } else if (settings.useProxy) {
+                activeTranslatorProvider = TRANSLATOR_PROVIDERS.AG_PROXY;
+            }
             if (settings.proxyBaseUrl) proxyBaseUrl = settings.proxyBaseUrl;
             if (settings.proxyApiKey) proxyApiKey = settings.proxyApiKey;
             if (settings.proxyApiKeys) proxyApiKeys = settings.proxyApiKeys;
@@ -374,6 +461,19 @@ function loadSettings() {
                 proxyApiKeys = [proxyApiKey];
             }
             proxyModel = settings.proxyModel || getDefaultProxyModel();
+            if (settings.customProxyProfile) {
+                customProxyProfile = {
+                    ...(typeof DEFAULT_CUSTOM_PROXY_PROFILE !== 'undefined' ? DEFAULT_CUSTOM_PROXY_PROFILE : {}),
+                    ...settings.customProxyProfile,
+                    id: 'custom-openai-proxy',
+                    models: Array.isArray(settings.customProxyProfile.models) ? settings.customProxyProfile.models : [],
+                };
+            }
+            if (settings.customProxyApiKey) customProxyApiKey = settings.customProxyApiKey;
+            if (settings.customProxyApiKeys) customProxyApiKeys = settings.customProxyApiKeys;
+            if (!customProxyApiKeys.length && customProxyApiKey) {
+                customProxyApiKeys = [customProxyApiKey];
+            }
         } catch (e) {
             console.error('Error loading settings:', e);
         }
@@ -382,14 +482,23 @@ function loadSettings() {
     importStoryForgeFallbackSettings();
     ensureProxyModelDefault();
 
-    if (document.getElementById('useProxyToggle')) {
-        document.getElementById('useProxyToggle').checked = useProxy;
-        document.getElementById('proxySettings').style.display = useProxy ? 'block' : 'none';
-        document.getElementById('proxyStatus').textContent = useProxy ? 'Bật' : 'Tắt';
-        document.getElementById('proxyStatus').style.background = useProxy ? '#10b981' : '';
+    if (typeof updateProxyModeControls === 'function') {
+        updateProxyModeControls();
+    } else if (document.getElementById('useProxyToggle')) {
+        const isAgProxy = useProxy && activeTranslatorProvider !== TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+        document.getElementById('useProxyToggle').checked = isAgProxy;
+        document.getElementById('proxySettings').style.display = isAgProxy ? 'block' : 'none';
+        document.getElementById('proxyStatus').textContent = isAgProxy ? 'Bật' : 'Tắt';
+        document.getElementById('proxyStatus').style.background = isAgProxy ? '#10b981' : '';
     }
     if (document.getElementById('proxyBaseUrlInput')) {
         document.getElementById('proxyBaseUrlInput').value = proxyBaseUrl;
+    }
+    if (document.getElementById('customProxyBaseUrlInput')) {
+        document.getElementById('customProxyBaseUrlInput').value = customProxyProfile?.baseUrl || '';
+    }
+    if (document.getElementById('customProxyModelInput')) {
+        document.getElementById('customProxyModelInput').value = customProxyProfile?.defaultModel || '';
     }
     const proxyModelSelect = document.getElementById('proxyModelSelect');
     if (proxyModelSelect) {
@@ -399,6 +508,9 @@ function loadSettings() {
             proxyModelSelect.value = ensureProxyModelDefault();
         }
     }
+    if (typeof renderCustomProxyPreviews === 'function') renderCustomProxyPreviews();
+    if (typeof renderCustomProxyKeysList === 'function') renderCustomProxyKeysList();
+    if (typeof renderCustomProxyModelsDropdown === 'function') renderCustomProxyModelsDropdown();
     if (document.getElementById('useCanonPackToggle') && typeof useCanonPackTranslation !== 'undefined') {
         document.getElementById('useCanonPackToggle').checked = useCanonPackTranslation;
     }
@@ -415,13 +527,41 @@ function loadSettings() {
 // STATISTICS UPDATE
 // ============================================
 function updateStats() {
-    const text = document.getElementById('originalText').value;
-    const charCount = text.length;
     const chunkSize = parseInt(document.getElementById('chunkSize').value) || 4500;
-    const chunkCount = Math.ceil(charCount / chunkSize);
     const parallelCount = parseInt(document.getElementById('parallelCount').value) || 5;
 
-    const batches = Math.ceil(chunkCount / Math.min(parallelCount, apiKeys.length || 1));
+    if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE && largeFileMeta) {
+        if (typeof estimateChunkCountFromPreview === 'function') {
+            const estimate = estimateChunkCountFromPreview({
+                fileSize: largeFileMeta.size,
+                previewText: largeFileMeta.previewText,
+                chunkSize,
+            });
+            largeFileMeta.estimatedChunks = estimate.count;
+            if (typeof updateLargeFileNotice === 'function') updateLargeFileNotice();
+        }
+        const estimatedChunks = largeFileMeta.estimatedChunks || 1;
+        const translatedCount = completedChunks > 0 ? `${completedChunks.toLocaleString('vi-VN')} đã dịch` : 'chưa dịch';
+        document.getElementById('charCount').textContent = `${formatFileSize(largeFileMeta.size)} file nguồn`;
+        document.getElementById('chunkCount').textContent = `~${estimatedChunks.toLocaleString('vi-VN')} chunk ước tính`;
+        document.getElementById('estimatedTime').textContent = translatedCount;
+        return;
+    }
+
+    const text = document.getElementById('originalText').value;
+    const charCount = text.length;
+    const chunkCount = Math.ceil(charCount / chunkSize);
+
+    const directCombos = apiKeys.length * (typeof getActiveModels === 'function' ? getActiveModels().length : 1);
+    const effectiveParallel = typeof resolveEffectiveTranslationParallel === 'function'
+        ? resolveEffectiveTranslationParallel({
+            requestedParallel: parallelCount,
+            useProxyMode: Boolean(useProxy),
+            useOllamaMode: Boolean(typeof useOllama !== 'undefined' && useOllama),
+            activeDirectCombinationCount: directCombos,
+        })
+        : Math.min(parallelCount, apiKeys.length || 1);
+    const batches = Math.ceil(chunkCount / Math.max(1, effectiveParallel));
     const estimatedSeconds = batches * 0.8;
 
     document.getElementById('charCount').textContent = `${charCount.toLocaleString()} ký tự`;

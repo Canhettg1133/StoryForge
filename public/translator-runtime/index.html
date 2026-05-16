@@ -88,11 +88,23 @@
                     <button type="button" class="settings-accordion" data-config-toggle="proxy"
                         onclick="toggleConfigGroup('proxy')">
                         <span class="settings-accordion-main">
-                            <span class="settings-accordion-title">Gemini Proxy</span>
+                            <span class="settings-accordion-title">Gemini Proxy AG</span>
                             <span class="settings-accordion-status" id="proxyAccordionStatus">Tắt</span>
                         </span>
                         <span class="settings-accordion-meta">
                             <span class="settings-accordion-summary" id="proxyAccordionSummary">Chưa có proxy key</span>
+                            <span class="settings-accordion-caret">▾</span>
+                        </span>
+                    </button>
+
+                    <button type="button" class="settings-accordion" data-config-toggle="custom-proxy"
+                        onclick="toggleConfigGroup('custom-proxy')">
+                        <span class="settings-accordion-main">
+                            <span class="settings-accordion-title">Custom Proxy</span>
+                            <span class="settings-accordion-status" id="customProxyAccordionStatus">Tắt</span>
+                        </span>
+                        <span class="settings-accordion-meta">
+                            <span class="settings-accordion-summary" id="customProxyAccordionSummary">Chưa chọn model</span>
                             <span class="settings-accordion-caret">▾</span>
                         </span>
                     </button>
@@ -247,6 +259,15 @@
                             🔄 Reset mặc định
                         </button>
                     </div>
+                    <div class="ai-studio-model-picker" id="aiStudioModelPicker" style="display: none;">
+                        <label for="aiStudioModelSelect">Chọn 1 model AI Studio để dịch</label>
+                        <div class="ai-studio-picker-controls">
+                            <select id="aiStudioModelSelect" onchange="selectAIStudioFetchedModel(this.value)">
+                                <option value="">-- Chưa lấy danh sách model --</option>
+                            </select>
+                        </div>
+                        <div class="model-fetch-status" id="aiStudioModelStatus"></div>
+                    </div>
                 </div>
             </section>
 
@@ -277,19 +298,18 @@
                 </div>
             </section>
 
-            <!-- Proxy API Panel -->
+            <!-- Gemini Proxy AG Panel -->
             <section class="proxy-panel glass-card settings-subpanel" id="proxyPanel" data-settings-group="proxy"
                 style="display: none;">
                 <h2 class="section-title">
                     <span class="icon">🌐</span>
-                    Proxy API (BeiJiXingXing)
+                    Gemini Proxy AG
                     <span class="badge ollama-badge" id="proxyStatus">Tắt</span>
                 </h2>
 
                 <div class="ollama-info-box">
-                    <p>🔄 <strong>Proxy API:</strong> Dùng API proxy bên thứ 3 để gọi Gemini, GPT, Claude...
-                        Không cần key Google trực tiếp.</p>
-                    <p>⚠️ <strong>Lưu ý:</strong> Tốc độ phụ thuộc server proxy. RPM thường là 5/phút.</p>
+                    <p>🔄 <strong>Gemini Proxy AG:</strong> Provider preset mặc định cho AG, dùng model có sẵn và key pool riêng.</p>
+                    <p>⚠️ <strong>Lưu ý:</strong> Số luồng song song theo cài đặt chung; ít key chạy nhiều luồng dễ gặp 429/403.</p>
                 </div>
 
                 <!-- Toggle Switch -->
@@ -298,7 +318,7 @@
                         <input type="checkbox" id="useProxyToggle" onchange="toggleProxyMode()">
                         <span class="toggle-slider"></span>
                     </label>
-                    <span class="toggle-label">Sử dụng Proxy API (thay vì Gemini Direct)</span>
+                    <span class="toggle-label">Sử dụng Gemini Proxy AG</span>
                 </div>
 
                 <!-- Proxy Settings -->
@@ -318,7 +338,7 @@
                     <div class="form-group">
                         <label>
                             <span class="icon">🔑</span>
-                            Proxy API Keys
+                            Gemini Proxy AG Keys
                             <span class="badge" id="proxyKeyCount" style="font-size:0.75rem;">0 keys</span>
                         </label>
                         <div id="proxyKeysList"></div>
@@ -327,7 +347,7 @@
                                 onkeypress="if(event.key==='Enter')addProxyKey()">
                             <button class="btn btn-primary btn-small" onclick="addProxyKey()">➕ Thêm</button>
                         </div>
-                        <small class="hint">Mỗi key thêm ~5 RPM. 2 keys = dịch nhanh gấp đôi (parallel x2)</small>
+                        <small class="hint">Key dùng để xoay tua. Số luồng song song không bị khóa theo số key.</small>
                     </div>
 
                     <div class="form-group">
@@ -369,14 +389,99 @@
 
                     <!-- Tips -->
                     <div class="ollama-tips">
-                        <p>💡 <strong>Mẹo dùng Proxy:</strong></p>
+                        <p>💡 <strong>Mẹo dùng Gemini Proxy AG:</strong></p>
                         <ul>
-                            <li>1 key = parallel 1 (~7 RPM) | 2 keys = parallel 2 (~14 RPM)</li>
+                            <li>1 key vẫn có thể chạy nhiều luồng, nhưng dễ bị rate limit nếu đặt quá cao.</li>
                             <li>Delay: <strong>5000ms</strong> tự động (tránh rate limit 5 RPM/key)</li>
                             <li>Chunk size: <strong>2000-3000</strong> ký tự</li>
-                            <li>Khi bật Proxy, hệ thống sẽ <strong>bỏ qua</strong> Gemini Direct</li>
+                            <li>Khi bật Gemini Proxy AG, hệ thống sẽ <strong>bỏ qua</strong> Gemini Direct</li>
                         </ul>
                     </div>
+                </div>
+            </section>
+
+            <!-- Custom Proxy Panel -->
+            <section class="proxy-panel custom-proxy-panel glass-card settings-subpanel" id="customProxyPanel"
+                data-settings-group="custom-proxy" style="display: none;">
+                <h2 class="section-title">
+                    <span class="icon">🧩</span>
+                    Custom Proxy
+                    <span class="badge ollama-badge" id="customProxyStatus">Tắt</span>
+                </h2>
+
+                <div class="ollama-info-box">
+                    <p><strong>Custom Proxy:</strong> Dùng endpoint OpenAI-compatible riêng như one-api, NewAPI, OpenRouter hoặc proxy nội bộ.</p>
+                    <p><strong>Tách riêng:</strong> Key/model ở đây dùng pool <code>openai_proxy</code>, không trộn với Gemini Proxy AG.</p>
+                </div>
+
+                <div class="ollama-toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="customProxyToggle" onchange="toggleCustomProxyMode()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">Sử dụng Custom Proxy</span>
+                </div>
+
+                <div class="proxy-settings custom-proxy-settings" id="customProxySettings" style="display: none;">
+                    <div class="custom-proxy-grid">
+                        <div class="form-group">
+                            <label for="customProxyBaseUrlInput">
+                                <span class="icon">🔗</span>
+                                Base URL / trang web
+                            </label>
+                            <input type="text" id="customProxyBaseUrlInput"
+                                placeholder="https://proxy.example.com hoặc http://localhost:1234/v1"
+                                onchange="updateCustomProxyConfig()">
+                            <small class="hint">Có thể nhập root domain, /v1 hoặc full /v1/chat/completions.</small>
+                            <div class="custom-proxy-preview">
+                                <span>Chat</span>
+                                <code id="customProxyChatPreview">Nhập Base URL để xem endpoint Chat</code>
+                            </div>
+                            <div class="custom-proxy-preview">
+                                <span>Models</span>
+                                <code id="customProxyModelsPreview">Nhập Base URL để xem endpoint Models</code>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <span class="icon">🔑</span>
+                                Custom Proxy API Keys
+                                <span class="badge" id="customProxyKeyCount" style="font-size:0.75rem;">0 key</span>
+                            </label>
+                            <div id="customProxyKeysList"></div>
+                            <div class="input-group custom-proxy-key-row">
+                                <input type="password" id="newCustomProxyKeyInput" placeholder="sk-... hoặc key của proxy"
+                                    onkeypress="if(event.key==='Enter')addCustomProxyKey()">
+                                <button class="btn btn-primary btn-small" onclick="addCustomProxyKey()">➕ Thêm</button>
+                            </div>
+                            <small class="hint">Key này dùng riêng cho Custom Proxy và lưu cùng Settings chính.</small>
+                        </div>
+                    </div>
+
+                    <div class="form-group custom-proxy-model-block">
+                        <label for="customProxyModelSelect">
+                            <span class="icon">🤖</span>
+                            Model
+                        </label>
+                        <div class="model-actions custom-proxy-actions">
+                            <button class="btn btn-info btn-small" onclick="fetchCustomProxyModels()">Lấy models</button>
+                            <button class="btn btn-secondary btn-small" onclick="testCustomProxyConnection()">Test kết nối</button>
+                        </div>
+                        <select id="customProxyModelSelect" onchange="selectCustomProxyModel(this.value)">
+                            <option value="">-- Chưa lấy danh sách model --</option>
+                        </select>
+                        <div class="add-model-row">
+                            <input type="text" id="customProxyModelInput" placeholder="Nhập model thủ công"
+                                onchange="selectCustomProxyModel(this.value)" class="model-name-input">
+                            <button class="btn btn-primary btn-small" onclick="selectCustomProxyModel(document.getElementById('customProxyModelInput')?.value)">
+                                Dùng model này
+                            </button>
+                        </div>
+                        <div class="model-fetch-status" id="customProxyModelStatus"></div>
+                    </div>
+
+                    <div class="ollama-test-result" id="customProxyTestResult"></div>
                 </div>
             </section>
 
@@ -711,8 +816,9 @@
                             <span class="file-size" id="fileSize"></span>
                         </div>
                     </div>
-                    <button class="btn btn-danger btn-small" onclick="clearFile()">✕</button>
+                    <button class="btn btn-danger btn-small" onclick="clearFile()">×</button>
                 </div>
+                <div class="source-mode-notice" id="sourceModeNotice" style="display: none;"></div>
             </section>
 
             <!-- Text Preview -->
@@ -720,7 +826,7 @@
                 <div class="preview-header">
                     <h2 class="section-title">
                         <span class="icon">👁️</span>
-                        Nội dung gốc
+                        <span id="sourcePreviewTitle">Nội dung gốc</span>
                     </h2>
                     <div class="preview-stats">
                         <span id="charCount">0 ký tự</span>
@@ -881,6 +987,7 @@
 
     <!-- 3. Translation Engine -->
     <script src="js/translation/chunker.js?v=10"></script>
+    <script src="js/translation/source-reader.js?v=10"></script>
     <script src="js/translation/retry.js?v=10"></script>
     <script src="js/translation/engine.js?v=10"></script>
 

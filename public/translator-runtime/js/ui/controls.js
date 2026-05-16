@@ -17,7 +17,16 @@ function togglePause() {
         isPaused = false;
         pauseBtn.classList.remove('paused');
         pauseBtn.innerHTML = '<span class="btn-icon">⏸️</span><span class="btn-text">Tạm dừng</span>';
-        updateProgress(completedChunks, totalChunksCount, 'Đang tiếp tục dịch...');
+        if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE && currentSourceFile) {
+            updateLargeFileProgress({
+                byteCursor: largeFileByteCursor,
+                fileSize: currentSourceFile.size,
+                completed: completedChunks,
+                status: 'Đang tiếp tục dịch file lớn...',
+            });
+        } else {
+            updateProgress(completedChunks, totalChunksCount, 'Đang tiếp tục dịch...');
+        }
         showToast('▶️ Đã tiếp tục dịch!', 'success');
         console.log('[Pause] Resumed translation');
     } else {
@@ -25,7 +34,16 @@ function togglePause() {
         isPaused = true;
         pauseBtn.classList.add('paused');
         pauseBtn.innerHTML = '<span class="btn-icon">▶️</span><span class="btn-text">Tiếp tục</span>';
-        updateProgress(completedChunks, totalChunksCount, '⏸️ Đã tạm dừng');
+        if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE && currentSourceFile) {
+            updateLargeFileProgress({
+                byteCursor: largeFileByteCursor,
+                fileSize: currentSourceFile.size,
+                completed: completedChunks,
+                status: '⏸️ Đã tạm dừng file lớn',
+            });
+        } else {
+            updateProgress(completedChunks, totalChunksCount, '⏸️ Đã tạm dừng');
+        }
         showToast('⏸️ Đã tạm dừng dịch. Nhấn "Tiếp tục" để tiếp tục.', 'warning');
         console.log('[Pause] Paused translation');
     }
@@ -57,14 +75,23 @@ function confirmCancel() {
 
     // Update modal stats
     const statsEl = document.getElementById('cancelModalStats');
-    const percentage = totalChunksCount > 0 ? Math.round((completedChunks / totalChunksCount) * 100) : 0;
+    const isLargeFile = currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE && currentSourceFile;
+    const percentage = isLargeFile
+        ? Math.round((Math.max(0, largeFileByteCursor) / Math.max(1, currentSourceFile.size)) * 100)
+        : (totalChunksCount > 0 ? Math.round((completedChunks / totalChunksCount) * 100) : 0);
     const elapsed = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+    const progressText = isLargeFile
+        ? `${completedChunks} chunk • ${percentage}% file`
+        : `${completedChunks} / ${totalChunksCount} chunk (${percentage}%)`;
+    const cancelNote = isLargeFile
+        ? 'File lớn chỉ giữ tiến trình trong phiên hiện tại. Bạn vẫn có thể tải phần đã dịch.'
+        : 'Tiến trình sẽ được lưu vào lịch sử để bạn có thể tiếp tục sau.';
 
     statsEl.innerHTML = `
         <div class="cancel-stats">
             <div class="cancel-stats-item">
                 <span class="cancel-stats-label">📦 Đã dịch:</span>
-                <span class="cancel-stats-value">${completedChunks} / ${totalChunksCount} chunk (${percentage}%)</span>
+                <span class="cancel-stats-value">${progressText}</span>
             </div>
             <div class="cancel-stats-item">
                 <span class="cancel-stats-label">⏱️ Thời gian:</span>
@@ -73,6 +100,10 @@ function confirmCancel() {
             <div class="cancel-stats-item">
                 <span class="cancel-stats-label">📄 File:</span>
                 <span class="cancel-stats-value">${originalFileName}</span>
+            </div>
+            <div class="cancel-stats-item">
+                <span class="cancel-stats-label">Ghi chú:</span>
+                <span class="cancel-stats-value">${cancelNote}</span>
             </div>
         </div>
     `;
@@ -113,10 +144,21 @@ function executeCancel() {
         abortActiveTranslationRequests();
     }
 
-    updateProgress(completedChunks, totalChunksCount, '🛑 Đang hủy và lưu tiến trình...');
+    if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE && currentSourceFile) {
+        updateLargeFileProgress({
+            byteCursor: largeFileByteCursor,
+            fileSize: currentSourceFile.size,
+            completed: completedChunks,
+            status: '🛑 Đang hủy file lớn...',
+        });
+    } else {
+        updateProgress(completedChunks, totalChunksCount, '🛑 Đang hủy và lưu tiến trình...');
+    }
 
-    const percentage = totalChunksCount > 0 ? Math.round((completedChunks / totalChunksCount) * 100) : 0;
-    showToast(`Đã hủy. Đã lưu ${completedChunks}/${totalChunksCount} chunk (${percentage}%).`, 'warning');
+    const percentage = currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE && currentSourceFile
+        ? Math.round((Math.max(0, largeFileByteCursor) / Math.max(1, currentSourceFile.size)) * 100)
+        : (totalChunksCount > 0 ? Math.round((completedChunks / totalChunksCount) * 100) : 0);
+    showToast(`Đã hủy. Đã xử lý ${completedChunks} chunk (${percentage}%).`, 'warning');
 
     console.log(`[Cancel] Cancelled with ${completedChunks}/${totalChunksCount} chunks completed`);
 }

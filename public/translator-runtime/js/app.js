@@ -15,6 +15,15 @@ let cancelRequested = false;
 let isPaused = false;
 let translatedChunks = [];
 let originalChunks = [];
+const TRANSLATOR_SOURCE_MODES = {
+    TEXT: 'text',
+    LARGE_FILE: 'large-file',
+};
+let currentSourceMode = TRANSLATOR_SOURCE_MODES.TEXT;
+let currentSourceFile = null;
+let largeFileMeta = null;
+let translatedBlobParts = [];
+let largeFileByteCursor = 0;
 let startTime = null;
 let completedChunks = 0;
 let totalChunksCount = 0;
@@ -33,6 +42,15 @@ let keyHealthMap = {};
 
 // Active network requests for instant cancel (Gemini/Proxy/Ollama)
 const activeRequestControllers = new Set();
+const TRANSLATOR_PROVIDERS = {
+    GEMINI_DIRECT: 'gemini_direct',
+    AG_PROXY: 'ag_proxy',
+    CUSTOM_PROXY: 'custom_proxy',
+    OLLAMA: 'ollama',
+};
+
+let activeTranslatorProvider = TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
+
 const TRANSLATOR_PROMPT_SUPPLEMENTS = [
     {
         key: 'editing-boundary',
@@ -156,6 +174,20 @@ function abortActiveTranslationRequests(reason = 'cancelled-by-user') {
 // ============================================
 // PROXY API MODE (BeiJiXingXing, OpenRouter, etc.)
 // ============================================
+const AG_PROXY_PROFILE_ID = 'ag-gemini-proxy';
+const CUSTOM_PROXY_PROFILE_ID = 'custom-openai-proxy';
+const DEFAULT_PROXY_CHAT_PATH = '/v1/chat/completions';
+const DEFAULT_PROXY_MODELS_PATH = '/v1/models';
+const DEFAULT_CUSTOM_PROXY_PROFILE = {
+    id: CUSTOM_PROXY_PROFILE_ID,
+    label: 'Custom Proxy',
+    baseUrl: '',
+    defaultModel: '',
+    models: [],
+    chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
+    modelsPath: DEFAULT_PROXY_MODELS_PATH,
+    transport: 'auto',
+};
 let useProxy = false;
 let proxyBaseUrl = 'https://ag.beijixingxing.com/v1/chat/completions';
 let proxyApiKey = ''; // Legacy single key (backward compat)
@@ -163,24 +195,95 @@ let proxyApiKeys = []; // Multi-key support
 const DEFAULT_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
 let proxyModel = DEFAULT_PROXY_MODEL;
 let proxyKeyHealthMap = {};
+let customProxyProfile = { ...DEFAULT_CUSTOM_PROXY_PROFILE };
+let customProxyApiKey = '';
+let customProxyApiKeys = [];
+let customProxyKeyHealthMap = {};
 const PROXY_RATE_LIMIT_COOLDOWN_MS = 60000;
 const PROXY_FORBIDDEN_COOLDOWN_MS = 300000;
 
-function normalizeProxyKeyIndex(index, keyCount = proxyApiKeys.length) {
+function setActiveTranslatorProvider(provider) {
+    const allowedProviders = Object.values(TRANSLATOR_PROVIDERS);
+    activeTranslatorProvider = allowedProviders.includes(provider)
+        ? provider
+        : TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
+    return activeTranslatorProvider;
+}
+
+function isCustomProxyProviderActive() {
+    return useProxy && activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+}
+
+function isAgProxyProviderActive() {
+    return useProxy && activeTranslatorProvider !== TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+}
+
+function getCustomProxyProfile() {
+    customProxyProfile = {
+        ...DEFAULT_CUSTOM_PROXY_PROFILE,
+        ...(customProxyProfile || {}),
+        id: CUSTOM_PROXY_PROFILE_ID,
+        models: Array.isArray(customProxyProfile?.models)
+            ? customProxyProfile.models.map((model) => String(model || '').trim()).filter(Boolean)
+            : [],
+        chatCompletionsPath: customProxyProfile?.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
+        modelsPath: customProxyProfile?.modelsPath || DEFAULT_PROXY_MODELS_PATH,
+    };
+    return customProxyProfile;
+}
+
+function getProxyProviderId(provider = activeTranslatorProvider) {
+    return provider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY
+        ? TRANSLATOR_PROVIDERS.CUSTOM_PROXY
+        : TRANSLATOR_PROVIDERS.AG_PROXY;
+}
+
+function getActiveProxyKeyState(provider = activeTranslatorProvider) {
+    const proxyProvider = getProxyProviderId(provider);
+    if (proxyProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY) {
+        return {
+            apiKey: customProxyApiKey,
+            apiKeys: Array.isArray(customProxyApiKeys) ? customProxyApiKeys : [],
+            healthMap: customProxyKeyHealthMap,
+        };
+    }
+    return {
+        apiKey: proxyApiKey,
+        apiKeys: Array.isArray(proxyApiKeys) ? proxyApiKeys : [],
+        healthMap: proxyKeyHealthMap,
+    };
+}
+
+function getActiveProxyKeys(provider = activeTranslatorProvider) {
+    const state = getActiveProxyKeyState(provider);
+    const keys = state.apiKeys.map((key) => String(key || '').trim()).filter(Boolean);
+    const singleKey = String(state.apiKey || '').trim();
+    if (keys.length > 0) return keys;
+    return singleKey ? [singleKey] : [];
+}
+
+function getProxyKeyHealthMap(provider = activeTranslatorProvider) {
+    return getProxyProviderId(provider) === TRANSLATOR_PROVIDERS.CUSTOM_PROXY
+        ? customProxyKeyHealthMap
+        : proxyKeyHealthMap;
+}
+
+function normalizeProxyKeyIndex(index, keyCount = getActiveProxyKeys().length) {
     if (!keyCount) return 0;
     const numericIndex = Number.isFinite(Number(index)) ? Number(index) : 0;
     return ((Math.trunc(numericIndex) % keyCount) + keyCount) % keyCount;
 }
 
-function getProxyKeyIndex(proxyKey) {
-    if (!proxyKey || !Array.isArray(proxyApiKeys)) return -1;
-    return proxyApiKeys.findIndex(key => key === proxyKey);
+function getProxyKeyIndex(proxyKey, provider = activeTranslatorProvider) {
+    if (!proxyKey) return -1;
+    return getActiveProxyKeys(provider).findIndex(key => key === proxyKey);
 }
 
-function initProxyKeyHealth(keyIndex) {
+function initProxyKeyHealth(keyIndex, provider = activeTranslatorProvider) {
     if (keyIndex < 0) return null;
-    if (!proxyKeyHealthMap[keyIndex]) {
-        proxyKeyHealthMap[keyIndex] = {
+    const healthMap = getProxyKeyHealthMap(provider);
+    if (!healthMap[keyIndex]) {
+        healthMap[keyIndex] = {
             errorCount: 0,
             successCount: 0,
             disabledUntil: null,
@@ -188,11 +291,11 @@ function initProxyKeyHealth(keyIndex) {
             lastErrorTime: null,
         };
     }
-    return proxyKeyHealthMap[keyIndex];
+    return healthMap[keyIndex];
 }
 
-function isProxyKeyAvailable(keyIndex) {
-    const health = initProxyKeyHealth(keyIndex);
+function isProxyKeyAvailable(keyIndex, provider = activeTranslatorProvider) {
+    const health = initProxyKeyHealth(keyIndex, provider);
     if (!health?.disabledUntil) return true;
 
     if (Date.now() >= health.disabledUntil) {
@@ -230,27 +333,181 @@ function recordProxyKeyError(proxyKey, errorType = 'UNKNOWN', cooldownMs = PROXY
 
 // Get proxy key for a specific chunk (deterministic assignment)
 function getProxyKeyForChunk(chunkIndex) {
-    if (proxyApiKeys.length > 0) {
-        const startIndex = normalizeProxyKeyIndex(chunkIndex, proxyApiKeys.length);
+    const keys = getActiveProxyKeys();
+    if (keys.length > 0) {
+        const startIndex = normalizeProxyKeyIndex(chunkIndex, keys.length);
 
-        for (let offset = 0; offset < proxyApiKeys.length; offset++) {
-            const keyIndex = (startIndex + offset) % proxyApiKeys.length;
+        for (let offset = 0; offset < keys.length; offset++) {
+            const keyIndex = (startIndex + offset) % keys.length;
             if (isProxyKeyAvailable(keyIndex)) {
-                return proxyApiKeys[keyIndex];
+                return keys[keyIndex];
             }
         }
 
-        console.warn('[ProxyKey] Tất cả proxy key đang cooldown, dùng key gốc của chunk để chờ lỗi/timeout thật.');
-        return proxyApiKeys[startIndex];
+        const healthMap = getProxyKeyHealthMap();
+        const now = Date.now();
+        const waitMs = Object.values(healthMap)
+            .map((health) => Number(health?.disabledUntil || 0) - now)
+            .filter((value) => value > 0)
+            .sort((a, b) => a - b)[0] || PROXY_RATE_LIMIT_COOLDOWN_MS;
+        const waitSeconds = Math.ceil(waitMs / 1000);
+        throw new Error(`Tất cả proxy key đang tạm dừng cooldown. Vui lòng chờ khoảng ${waitSeconds}s rồi thử lại.`);
     }
-    return proxyApiKey; // Fallback to legacy single key
+    return '';
 }
 
 // Get total number of available proxy keys
-function getProxyKeyCount() {
-    if (proxyApiKeys.length > 0) return proxyApiKeys.length;
-    if (proxyApiKey) return 1;
-    return 0;
+function getProxyKeyCount(provider = activeTranslatorProvider) {
+    return getActiveProxyKeys(provider).length;
+}
+
+const OPENAI_PROXY_KNOWN_SUFFIXES = [
+    '/v1/chat/completions',
+    '/chat/completions',
+    '/v1/models',
+    '/models',
+    '/v1',
+];
+
+function trimProxySlash(value) {
+    return String(value || '').trim().replace(/\/+$/g, '');
+}
+
+function normalizeProxyPath(path, fallback) {
+    const rawPath = String(path || fallback || '').trim();
+    if (!rawPath) return fallback;
+    return rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+}
+
+function isRelativeProxyUrl(value) {
+    return String(value || '').trim().startsWith('/');
+}
+
+function isLocalProxyHost(hostname = '') {
+    const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/g, '');
+    if (!host) return false;
+    if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
+    if (host === '::1' || host === '0:0:0:0:0:0:0:1' || host === '0.0.0.0') return true;
+    if (host.startsWith('127.') || host.startsWith('10.') || host.startsWith('192.168.') || host.startsWith('169.254.')) return true;
+    const parts = host.split('.').map((part) => Number(part));
+    if (parts.length === 4 && parts.every((part) => Number.isInteger(part))) {
+        if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+        if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
+        if (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19)) return true;
+        if (parts[0] >= 224) return true;
+    }
+    if (host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) return true;
+    return false;
+}
+
+function isLocalProxyUrl(rawBaseUrl) {
+    const trimmed = String(rawBaseUrl || '').trim();
+    if (!trimmed || isRelativeProxyUrl(trimmed)) return false;
+    try {
+        const parsed = new URL(trimmed);
+        return isLocalProxyHost(parsed.hostname);
+    } catch {
+        return false;
+    }
+}
+
+function isRelayAllowedTarget(rawBaseUrl) {
+    const trimmed = String(rawBaseUrl || '').trim();
+    if (!trimmed || isRelativeProxyUrl(trimmed)) return false;
+    try {
+        const parsed = new URL(trimmed);
+        return parsed.protocol === 'https:' && !isLocalProxyHost(parsed.hostname);
+    } catch {
+        return false;
+    }
+}
+
+function resolveProxyTransportMode(profile = {}) {
+    const transport = String(profile.transport || 'auto').trim();
+    const baseUrl = String(profile.baseUrl || '').trim();
+    if (transport === 'direct' || transport === 'vercelRewrite') return 'direct';
+    if (transport === 'relay') return isRelayAllowedTarget(baseUrl) ? 'relay' : 'direct';
+    if (isRelativeProxyUrl(baseUrl) || isLocalProxyUrl(baseUrl)) return 'direct';
+    return isRelayAllowedTarget(baseUrl) ? 'relay' : 'direct';
+}
+
+function getOpenAIProxyRoot(rawBaseUrl) {
+    const trimmed = trimProxySlash(rawBaseUrl);
+    if (!trimmed) return '';
+    const lower = trimmed.toLowerCase();
+    const suffix = OPENAI_PROXY_KNOWN_SUFFIXES.find((item) => lower.endsWith(item));
+    const root = suffix ? trimmed.slice(0, trimmed.length - suffix.length) : trimmed;
+    return trimProxySlash(root);
+}
+
+function buildOpenAIProxyEndpoint(rawBaseUrl, path = DEFAULT_PROXY_CHAT_PATH) {
+    const safePath = normalizeProxyPath(path, DEFAULT_PROXY_CHAT_PATH);
+    const root = getOpenAIProxyRoot(rawBaseUrl);
+    if (!root && isRelativeProxyUrl(rawBaseUrl)) return safePath;
+    return `${root}${safePath}`;
+}
+
+function parseOpenAIModelIds(payload) {
+    const rawModels = Array.isArray(payload?.data)
+        ? payload.data
+        : (Array.isArray(payload?.models) ? payload.models : []);
+
+    return rawModels
+        .map((item) => {
+            if (typeof item === 'string') return item.trim();
+            return String(item?.id || item?.name || '').trim();
+        })
+        .filter(Boolean);
+}
+
+function filterGeminiModelIds(models = []) {
+    return [...new Set(
+        models
+            .map((model) => String(model || '').trim())
+            .filter((model) => /\bgemini\b|gemini-/iu.test(model))
+    )];
+}
+
+function getActiveProxyBaseUrl() {
+    if (isCustomProxyProviderActive()) {
+        const profile = getCustomProxyProfile();
+        return resolveProxyTransportMode(profile) === 'relay'
+            ? '/api/openai-proxy'
+            : buildOpenAIProxyEndpoint(profile.baseUrl, profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
+    }
+    return proxyBaseUrl;
+}
+
+function getActiveProxyModelsUrl() {
+    const profile = getCustomProxyProfile();
+    return resolveProxyTransportMode(profile) === 'relay'
+        ? '/api/openai-proxy'
+        : buildOpenAIProxyEndpoint(profile.baseUrl, profile.modelsPath || DEFAULT_PROXY_MODELS_PATH);
+}
+
+function getCustomProxyRequestTarget(action = 'chat') {
+    const profile = getCustomProxyProfile();
+    const mode = resolveProxyTransportMode(profile);
+    const path = action === 'models'
+        ? (profile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
+        : (profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
+    return {
+        mode,
+        url: mode === 'relay' ? '/api/openai-proxy' : buildOpenAIProxyEndpoint(profile.baseUrl, path),
+        path,
+        profile,
+    };
+}
+
+function getActiveProxyModel() {
+    if (isCustomProxyProviderActive()) {
+        return String(getCustomProxyProfile().defaultModel || '').trim();
+    }
+    return proxyModel;
+}
+
+function getActiveProxyLabel() {
+    return isCustomProxyProviderActive() ? 'Custom Proxy' : 'Gemini Proxy AG';
 }
 
 // Proxy model presets - BeiJiXingXing CLI渠道
@@ -513,6 +770,7 @@ const PRESET_GEMINI_MODELS = [
 
 const AI_STUDIO_MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const STORYFORGE_ACTIVE_DIRECT_MODELS_STORAGE = 'sf-active-direct-models';
+let fetchedAIStudioModels = [];
 
 // Dynamic model list - loaded from localStorage
 let GEMINI_MODELS = [];
@@ -742,6 +1000,92 @@ function mergeAIStudioModels(discoveredModels) {
     return addedModels;
 }
 
+function ensureAIStudioModelCandidate(modelName) {
+    const name = normalizeAIStudioModelId(modelName);
+    if (!name) return -1;
+
+    let index = GEMINI_MODELS.findIndex((model) => model.name === name);
+    if (index !== -1) {
+        GEMINI_MODELS[index].quota = getQuotaForAIStudioModel(name);
+        return index;
+    }
+
+    GEMINI_MODELS.push({
+        name,
+        quota: getQuotaForAIStudioModel(name),
+        enabled: false,
+    });
+    return GEMINI_MODELS.length - 1;
+}
+
+function renderAIStudioModelPicker() {
+    const picker = document.getElementById('aiStudioModelPicker');
+    const select = document.getElementById('aiStudioModelSelect');
+    const status = document.getElementById('aiStudioModelStatus');
+
+    if (select) {
+        select.innerHTML = '<option value="">-- Chọn 1 model AI Studio --</option>' + fetchedAIStudioModels
+            .map((model) => `<option value="${model.name}">${model.name}</option>`)
+            .join('');
+    }
+
+    if (picker) {
+        picker.style.display = fetchedAIStudioModels.length ? '' : 'none';
+        picker.innerHTML = fetchedAIStudioModels.length
+            ? `
+                <div class="ai-studio-picker-row">
+                    <label for="aiStudioModelSelect">Model AI Studio</label>
+                    <div class="ai-studio-picker-controls">
+                        <select id="aiStudioModelSelect" onchange="selectAIStudioFetchedModel(this.value)">
+                            <option value="">-- Chọn 1 model để dịch --</option>
+                            ${fetchedAIStudioModels.map((model) => `<option value="${model.name}">${model.name}</option>`).join('')}
+                        </select>
+                        <button class="btn btn-primary btn-small" onclick="selectAIStudioFetchedModel(document.getElementById('aiStudioModelSelect')?.value)">Chỉ dùng model này</button>
+                    </div>
+                    <div class="model-fetch-status success" id="aiStudioModelStatus">Đã lấy ${fetchedAIStudioModels.length} model. Chọn 1 model để dịch.</div>
+                </div>
+            `
+            : '';
+    }
+
+    const currentStatus = document.getElementById('aiStudioModelStatus') || status;
+    if (currentStatus) {
+        currentStatus.textContent = fetchedAIStudioModels.length
+            ? `Đã lấy ${fetchedAIStudioModels.length} model. Chọn 1 model để dịch.`
+            : '';
+        currentStatus.className = fetchedAIStudioModels.length ? 'model-fetch-status success' : '';
+    }
+}
+
+function selectAIStudioFetchedModel(modelName) {
+    const normalizedName = normalizeAIStudioModelId(modelName);
+    if (!normalizedName) {
+        showToast('Vui lòng chọn 1 model AI Studio.', 'warning');
+        return false;
+    }
+
+    const index = ensureAIStudioModelCandidate(normalizedName);
+    if (index < 0) {
+        showToast('Không tìm thấy model AI Studio để chọn.', 'error');
+        return false;
+    }
+
+    GEMINI_MODELS = GEMINI_MODELS.map((model, modelIndex) => ({
+        ...model,
+        enabled: modelIndex === index,
+    }));
+
+    saveGeminiModels();
+    renderModelsList();
+    renderAIStudioModelPicker();
+    const select = document.getElementById('aiStudioModelSelect');
+    if (select) select.value = normalizedName;
+    if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
+    if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
+    showToast(`Đã chọn ${normalizedName} làm model Gemini Direct duy nhất để dịch.`, 'success');
+    return true;
+}
+
 async function fetchAIStudioFreeModels() {
     const apiKey = String(apiKeys?.[0] || '').trim();
     if (!apiKey) {
@@ -773,14 +1117,23 @@ async function fetchAIStudioFreeModels() {
             return [];
         }
 
-        const importedModels = mergeAIStudioModels(usableModels);
-        saveGeminiModels();
+        fetchedAIStudioModels = usableModels.map((model) => {
+            const name = normalizeAIStudioModelId(model?.name || model?.id);
+            ensureAIStudioModelCandidate(name);
+            return {
+                name,
+                quota: getQuotaForAIStudioModel(name),
+                enabled: false,
+            };
+        }).filter((model) => model.name);
+
         renderModelsList();
+        renderAIStudioModelPicker();
         if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
         if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
 
-        showToast(`Đã lấy ${importedModels.length} model từ AI Studio và bật để Gemini Direct dùng khi dịch.`, 'success');
-        return importedModels.map((model) => ({ ...model }));
+        showToast(`Đã lấy ${fetchedAIStudioModels.length} model từ AI Studio. Chọn 1 model để Gemini Direct dùng khi dịch.`, 'success');
+        return fetchedAIStudioModels.map((model) => ({ ...model }));
     } catch (error) {
         const message = error?.name === 'AbortError'
             ? 'Timeout sau 30 giây khi gọi AI Studio ListModels.'
