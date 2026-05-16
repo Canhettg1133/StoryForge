@@ -164,9 +164,9 @@
 
 .wizard-side-card p {
   margin: 0 0 var(--space-2);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--color-text-muted);
+  font-size: 13.5px;
+  line-height: 1.58;
+  color: var(--color-text-secondary);
 }
 
 .wizard-side-card p:last-child {
@@ -366,8 +366,9 @@
 
 .wizard-section-note {
   margin: -2px 0 var(--space-2);
-  font-size: 12px;
-  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
 /* Items list */
@@ -407,21 +408,21 @@
 }
 
 .wizard-item-content strong {
-  font-size: 13px;
-  color: var(--color-text);
+  font-size: 14px;
+  color: var(--color-text-primary);
 }
 
 .wizard-item-content p {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  margin: 2px 0 0;
-  line-height: 1.4;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  margin: 4px 0 0;
+  line-height: 1.6;
 }
 
 .wizard-items--compact .wizard-item {
   flex-direction: column;
-  padding: 6px var(--space-2);
-  gap: 4px;
+  padding: var(--space-2) var(--space-3);
+  gap: 6px;
 }
 
 .wizard-chapter-header {
@@ -462,11 +463,11 @@
 }
 
 .wizard-rule-list {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   padding-left: 18px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--color-text-muted);
+  font-size: 14px;
+  line-height: 1.58;
+  color: var(--color-text-secondary);
 }
 
 .wizard-accent-text {
@@ -488,8 +489,8 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface-2);
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 13.5px;
+  line-height: 1.6;
   color: var(--color-text-secondary);
 }
 
@@ -730,7 +731,8 @@
 }
 
 .wizard-items--compact .wizard-item-content p {
-  font-size: 11px;
+  font-size: 13.5px;
+  line-height: 1.6;
 }
 
 /* Badge sm */
@@ -741,6 +743,11 @@
   background: var(--color-accent-muted, rgba(139, 92, 246, 0.15));
   color: var(--color-accent);
   margin-left: 6px;
+}
+
+.wizard-review-main .badge-sm {
+  font-size: 11px;
+  padding: 2px 7px;
 }
 
 /* Header actions */
