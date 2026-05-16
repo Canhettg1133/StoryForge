@@ -19,7 +19,6 @@ import {
   getProjectAnalysisSnapshots,
   saveAnalysisSnapshotToProject,
 } from '../../../../services/projects/projectGateway.js';
-import { toVietnameseErrorMessage } from '../../../../utils/errorMessages.js';
 import useCorpusAnalysis from '../hooks/useCorpusAnalysis';
 import AnalysisConfig from './AnalysisConfig';
 import AnalysisProgress from './AnalysisProgress';
@@ -71,7 +70,7 @@ function resolveAnalysisProxyUrl() {
   const stored = getProxyUrl();
   const trimmed = String(stored || '').trim();
 
-  // Đường dẫn tương đối '/api/proxy' chỉ dùng ở trình duyệt, jobs server cần URL tuyệt đối.
+  // Duong dan tuong doi '/api/proxy' chi dung o trinh duyet, jobs server can URL tuyet doi.
   if (!trimmed || trimmed.startsWith('/')) {
     return 'https://ag.beijixingxing.com';
   }
@@ -100,12 +99,12 @@ function toDefaultConfig() {
 
 function formatTime(timestamp) {
   if (!timestamp) {
-    return 'Chưa có';
+    return 'Chua co';
   }
 
   const date = new Date(Number(timestamp));
   if (Number.isNaN(date.getTime())) {
-    return 'Không hợp lệ';
+    return 'Khong hop le';
   }
 
   return date.toLocaleString('vi-VN');
@@ -115,7 +114,7 @@ function formatDuration(startedAt, completedAt) {
   const start = Number(startedAt);
   const end = Number(completedAt);
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
-    return 'Chưa rõ';
+    return 'Chua ro';
   }
 
   const totalSeconds = Math.floor((end - start) / 1000);
@@ -229,7 +228,7 @@ export default function AnalysisPanel({ corpus }) {
         }
       } catch (err) {
         if (!disposed) {
-          setSnapshotError(toVietnameseErrorMessage(err, 'Không thể tải danh sách snapshot dự án.'));
+          setSnapshotError(err?.message || 'Khong the tai danh sach snapshot du an.');
         }
       }
     };
@@ -273,7 +272,7 @@ export default function AnalysisPanel({ corpus }) {
         }
         const previewText = stringifyResult(payload);
 
-        setResultPreview(previewText || 'Không có dữ liệu output để hiển thị.');
+        setResultPreview(previewText || 'Khong co du lieu output de hien thi.');
         setResultAnalysisId(latestCompleted.id);
         setResultPreviewModeLoaded(resultViewMode);
       } catch (loadError) {
@@ -281,7 +280,7 @@ export default function AnalysisPanel({ corpus }) {
           return;
         }
 
-        setResultError(toVietnameseErrorMessage(loadError, 'Không thể tải kết quả phân tích.'));
+        setResultError(loadError?.message || 'Khong the tai ket qua phan tich.');
       } finally {
         if (!disposed) {
           setResultLoading(false);
@@ -341,10 +340,10 @@ export default function AnalysisPanel({ corpus }) {
 
       const created = await startAnalysis(payload);
       if (!created?.id) {
-        setRequestError('Máy chủ không trả về mã phân tích. Kiểm tra jobs server và thử lại.');
+        setRequestError('May chu khong tra ve ma phan tich. Kiem tra jobs server va thu lai.');
       }
     } catch (startError) {
-      setRequestError(toVietnameseErrorMessage(startError, 'Không thể bắt đầu phân tích.'));
+      setRequestError(startError?.message || 'Khong the bat dau phan tich.');
     } finally {
       setStarting(false);
     }
@@ -359,7 +358,7 @@ export default function AnalysisPanel({ corpus }) {
       setRequestError(null);
       await cancelAnalysis(activeAnalysis.id);
     } catch (cancelError) {
-      setRequestError(toVietnameseErrorMessage(cancelError, 'Không thể hủy phân tích.'));
+      setRequestError(cancelError?.message || 'Khong the huy phan tich.');
     }
   };
 
@@ -409,7 +408,7 @@ export default function AnalysisPanel({ corpus }) {
       setSnapshotSavedAt(Date.now());
     } catch (err) {
       if (!silent) {
-      setSnapshotError(toVietnameseErrorMessage(err, 'Không thể lưu kết quả phân tích vào dự án.'));
+        setSnapshotError(err?.message || 'Khong the luu ket qua phan tich vao du an.');
       }
     } finally {
       setSnapshotSaving(false);
@@ -432,9 +431,9 @@ export default function AnalysisPanel({ corpus }) {
   return (
     <div className="corpus-card analysis-panel">
       <div className="analysis-panel-header">
-        <h3>Bộ máy phân tích Narrative Pipeline V3</h3>
+        <h3>Bo may phan tich Narrative Pipeline V3</h3>
         <span className="muted">
-          Incident-first, windowed, stateful: artifact V3, review/resume, graph projections và compat projections
+          Incident-first, windowed, stateful: artifact V3, review/resume, graph projections va compat projections
         </span>
       </div>
 
@@ -459,7 +458,7 @@ export default function AnalysisPanel({ corpus }) {
             onClick={handleStart}
             disabled={loading || starting}
           >
-            {loading ? 'Đang tải...' : starting ? 'Đang khởi chạy...' : 'Bắt đầu phân tích'}
+            {loading ? 'Dang tai...' : starting ? 'Dang khoi chay...' : 'Bat dau phan tich'}
           </button>
         )}
 
@@ -469,7 +468,7 @@ export default function AnalysisPanel({ corpus }) {
             className="btn btn-secondary"
             onClick={handleCancel}
           >
-            Hủy phân tích
+            Huy phan tich
           </button>
         )}
       </div>
@@ -480,38 +479,38 @@ export default function AnalysisPanel({ corpus }) {
 
       {!isBusy && latestTerminalIssue && (
         <p className="corpus-error" role="alert">
-          {latestTerminalIssue.status === 'cancelled' ? 'Đã hủy: ' : 'Phân tích thất bại: '}
-          {latestTerminalIssue.errorMessage || 'Không có thông báo chi tiết.'}
+          {latestTerminalIssue.status === 'cancelled' ? 'Da huy: ' : 'Phan tich that bai: '}
+          {latestTerminalIssue.errorMessage || 'Khong co thong bao chi tiet.'}
         </p>
       )}
 
       {latestCompleted && (
         <div className="analysis-last-result">
-          <strong>Lần phân tích hoàn tất gần nhất</strong>
-          <span>Mô hình: {latestCompleted.model || 'Chưa có'}</span>
-          <span>Hoàn tất: {formatTime(latestCompleted.completedAt)}</span>
+          <strong>Lan phan tich hoan tat gan nhat</strong>
+          <span>Mo hinh: {latestCompleted.model || 'Chua co'}</span>
+          <span>Hoan tat: {formatTime(latestCompleted.completedAt)}</span>
           <span>
-            Tổng thời gian: {formatDuration(
+            Tong thoi gian: {formatDuration(
               latestCompleted.startedAt || latestCompleted.createdAt,
               latestCompleted.completedAt,
             )}
           </span>
-          <span>Số phần output: {latestCompleted.partsGenerated || 0}</span>
+          <span>So phan output: {latestCompleted.partsGenerated || 0}</span>
           <span>
-            Lưu vào dự án: {latestIsSavedToProject ? 'Đã lưu' : 'Chưa lưu'}
+            Luu vao du an: {latestIsSavedToProject ? 'Da luu' : 'Chua luu'}
           </span>
           {snapshotSavedAt && (
-            <span>Cập nhật: {formatTime(snapshotSavedAt)}</span>
+            <span>Cap nhat: {formatTime(snapshotSavedAt)}</span>
           )}
           {snapshotSyncStats?.materialized && (
             <span>
-              Đồng bộ dự án: +{snapshotSyncStats.materialized.charactersAdded || 0} nhân vật, +{snapshotSyncStats.materialized.locationsAdded || 0} địa điểm, +{snapshotSyncStats.materialized.objectsAdded || 0} vật phẩm, +{snapshotSyncStats.materialized.worldTermsAdded || 0} thuật ngữ
-              {snapshotSyncStats.materialized.worldUpdated ? ', đã cập nhật thế giới' : ''}
+              Dong bo du an: +{snapshotSyncStats.materialized.charactersAdded || 0} nhan vat, +{snapshotSyncStats.materialized.locationsAdded || 0} dia diem, +{snapshotSyncStats.materialized.objectsAdded || 0} vat pham, +{snapshotSyncStats.materialized.worldTermsAdded || 0} thuat ngu
+              {snapshotSyncStats.materialized.worldUpdated ? ', da cap nhat the gioi' : ''}
             </span>
           )}
           {snapshotSyncStats && !snapshotSyncStats.materialized && snapshotSyncStats.sourceOfTruth === 'postgres' && (
             <span>
-              Snapshot đã được lưu lên server. Đây là bản lưu artifact, chưa materialize entity vào project store local.
+              Snapshot da duoc luu len server. Day la ban luu artifact, chua materialize entity vao project store local.
             </span>
           )}
           {snapshotError && <p className="corpus-error">{snapshotError}</p>}
@@ -523,7 +522,7 @@ export default function AnalysisPanel({ corpus }) {
               onClick={handleOpenViewer}
               disabled={!projectId}
             >
-              Mở Analysis Viewer
+              Mo Analysis Viewer
             </button>
             <button
               type="button"
@@ -531,7 +530,7 @@ export default function AnalysisPanel({ corpus }) {
               onClick={() => handleSaveLatestToProject(false)}
               disabled={!numericProjectId || snapshotSaving}
             >
-              {snapshotSaving ? 'Đang lưu...' : 'Lưu vào dự án'}
+              {snapshotSaving ? 'Dang luu...' : 'Luu vao du an'}
             </button>
             <button
               type="button"
@@ -539,7 +538,7 @@ export default function AnalysisPanel({ corpus }) {
               onClick={() => setShowResult((prev) => !prev)}
               disabled={resultLoading}
             >
-              {showResult ? 'Ẩn kết quả' : 'Xem kết quả'}
+              {showResult ? 'An ket qua' : 'Xem ket qua'}
             </button>
           </div>
 
@@ -563,11 +562,11 @@ export default function AnalysisPanel({ corpus }) {
                   Export Full Debug
                 </button>
               </div>
-              {resultLoading && <p className="muted">Đang tải kết quả...</p>}
+              {resultLoading && <p className="muted">Dang tai ket qua...</p>}
               {resultError && <p className="corpus-error">{resultError}</p>}
               {!resultLoading && !resultError && (
                 <pre style={{ maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap' }}>
-                  {resultPreview || 'Không có dữ liệu output để hiển thị.'}
+                  {resultPreview || 'Khong co du lieu output de hien thi.'}
                 </pre>
               )}
             </div>
@@ -575,13 +574,13 @@ export default function AnalysisPanel({ corpus }) {
 
           {projectSnapshots.length > 0 && (
             <div style={{ marginTop: 8 }}>
-              <strong>Snapshot đã lưu trong dự án ({projectSnapshots.length})</strong>
+              <strong>Snapshot da luu trong du an ({projectSnapshots.length})</strong>
               <ul style={{ marginTop: 6, paddingLeft: 18 }}>
                 {projectSnapshots.slice(0, 5).map((item) => {
                   const summary = item.summary || {};
                   return (
                     <li key={item.id}>
-                      #{item.analysis_id} - {formatTime(item.updated_at || item.created_at)} - {summary.totalEvents || 0} sự kiện, {summary.locations || 0} địa điểm, {summary.incidents || 0} cụm lớn
+                      #{item.analysis_id} - {formatTime(item.updated_at || item.created_at)} - {summary.totalEvents || 0} su kien, {summary.locations || 0} dia diem, {summary.incidents || 0} cum lon
                     </li>
                   );
                 })}

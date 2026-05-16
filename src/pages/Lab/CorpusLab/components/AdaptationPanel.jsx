@@ -9,7 +9,6 @@ import {
   getAvailableFandoms,
   buildAdaptationSummary,
 } from '../../../../services/viewer/adaptationService.js';
-import { toVietnameseErrorMessage } from '../../../../utils/errorMessages.js';
 
 const TROPES = [
   'rival_meeting', 'secret_relationship', 'training_arc', 'betrayal_reveal',
@@ -44,7 +43,7 @@ export default function AdaptationPanel({ selectedEvents, corpusFandom, onClose 
 
       setResults(adaptResults);
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể tạo gợi ý chuyển thể.'));
+      setError(err.message);
     } finally {
       setAdapting(false);
       setProgress(null);

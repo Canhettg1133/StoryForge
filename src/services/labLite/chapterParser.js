@@ -10,7 +10,7 @@ function makeChapterId(corpusId, index) {
   return `${corpusId || 'lab_lite'}_chapter_${String(index).padStart(5, '0')}`;
 }
 
-export function normalizeLabLiteChapters(chapters = [], { corpusId = '', fallbackTitlePrefix = 'Chương' } = {}) {
+export function normalizeLabLiteChapters(chapters = [], { corpusId = '', fallbackTitlePrefix = 'Chapter' } = {}) {
   return chapters
     .map((chapter, arrayIndex) => {
       const index = arrayIndex + 1;
@@ -32,7 +32,7 @@ export function normalizeLabLiteChapters(chapters = [], { corpusId = '', fallbac
 }
 
 export function parseChaptersFromText(text, options = {}) {
-  const fallbackTitlePrefix = options.fallbackTitlePrefix || 'Chương';
+  const fallbackTitlePrefix = options.fallbackTitlePrefix || 'Chapter';
   const segmentation = analyzeChapterSegmentation(String(text || ''), {
     fallbackTitlePrefix,
     minWordsBeforeSplit: options.minWordsBeforeSplit,
@@ -54,7 +54,7 @@ export function renameChapter(chapters = [], chapterId, title) {
   return normalizeLabLiteChapters(
     chapters.map((chapter) => (
       chapter.id === chapterId
-        ? { ...chapter, title: normalizeTitle(title, chapter.title || `Chương ${chapter.index || 1}`) }
+        ? { ...chapter, title: normalizeTitle(title, chapter.title || `Chapter ${chapter.index || 1}`) }
         : chapter
     )),
     { corpusId: chapters[0]?.corpusId || '' },
@@ -64,20 +64,20 @@ export function renameChapter(chapters = [], chapterId, title) {
 export function splitChapterAtLine(chapters = [], chapterId, lineNumber, nextTitle = '') {
   const targetIndex = chapters.findIndex((chapter) => chapter.id === chapterId);
   if (targetIndex < 0) {
-    throw new Error('Không tìm thấy chương.');
+    throw new Error('Chapter not found.');
   }
 
   const target = chapters[targetIndex];
   const lines = String(target.content || '').split(/\n/);
   const splitAt = Math.trunc(Number(lineNumber));
   if (!Number.isFinite(splitAt) || splitAt <= 0 || splitAt >= lines.length) {
-    throw new Error('Số dòng phải nằm trong chương đã chọn.');
+    throw new Error('Line number must be inside the selected chapter.');
   }
 
   const firstContent = lines.slice(0, splitAt).join('\n').trim();
   const secondContent = lines.slice(splitAt).join('\n').trim();
   if (!firstContent || !secondContent) {
-    throw new Error('Không thể tách vì sẽ tạo ra chương rỗng.');
+    throw new Error('Split would create an empty chapter.');
   }
 
   const corpusId = target.corpusId || chapters[0]?.corpusId || '';
@@ -86,7 +86,7 @@ export function splitChapterAtLine(chapters = [], chapterId, lineNumber, nextTit
     {
       ...target,
       id: `${target.id}_split_${Date.now()}`,
-      title: normalizeTitle(nextTitle, `Chương ${(target.index || targetIndex + 1) + 1}`),
+      title: normalizeTitle(nextTitle, `Chapter ${(target.index || targetIndex + 1) + 1}`),
       content: secondContent,
       startLine: 0,
       endLine: 0,

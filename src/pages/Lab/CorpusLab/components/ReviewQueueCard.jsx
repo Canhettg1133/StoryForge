@@ -26,11 +26,11 @@ function formatScope(item) {
     : 0;
   const scopeLabelMap = {
     incident: 'sự kiện lớn',
-    reducer: 'bộ gộp sự kiện',
+    reducer: 'reducer',
     window: 'cửa sổ',
     graph_projection: 'đồ thị',
-    character_canonicalizer: 'chuẩn hóa nhân vật',
-    world_canonicalizer: 'chuẩn hóa thế giới',
+    character_canonicalizer: 'canonical hóa nhân vật',
+    world_canonicalizer: 'canonical hóa thế giới',
   };
   const scopeLabel = scopeLabelMap[rerunScope] || rerunScope;
   return `${scopeLabel}${incidentCount ? `, ${incidentCount} sự kiện lớn` : ''}${windowCount ? `, ${windowCount} cửa sổ` : ''}`;
@@ -55,7 +55,7 @@ export default function ReviewQueueCard({ item, rank, onResolve, onRerun }) {
       {(item.displayTitle || item.displayChapter) && (
         <div className="review-item-summary">
           {item.displayTitle && <strong>{item.displayTitle}</strong>}
-          {item.displayChapter && <span>Chương {item.displayChapter}</span>}
+          {item.displayChapter && <span>Ch.{item.displayChapter}</span>}
         </div>
       )}
 
@@ -116,10 +116,10 @@ export default function ReviewQueueCard({ item, rank, onResolve, onRerun }) {
               canonicalizerKinds: item.rerunScope === 'character_canonicalizer'
                 ? ['character']
                 : (item.rerunScope === 'world_canonicalizer' ? ['location', 'object', 'term'] : []),
-              reason: `Chạy lại từ hàng đợi duyệt cho ${getItemTypeLabel(item.itemType).toLowerCase()} ${item.itemId || item.id}`,
+              reason: `Rerun từ review queue cho ${item.itemType || 'item'} ${item.itemId || item.id}`,
             })}
           >
-            Chạy lại phạm vi
+            Chạy lại scope
           </button>
         </div>
       </footer>

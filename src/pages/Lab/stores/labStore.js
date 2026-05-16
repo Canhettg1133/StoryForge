@@ -11,7 +11,6 @@ import { buildLabPrompt } from '../services/labPromptBuilder';
 import { TASK_TYPES } from '../../../services/ai/router';
 import modelRouter from '../../../services/ai/router';
 import { NSFW_SUPER_PROMPT_1 } from '../../../utils/constants';
-import { toVietnameseErrorMessage } from '../../../utils/errorMessages.js';
 
 const useLabStore = create((set, get) => ({
     messages: [],
@@ -38,7 +37,7 @@ const useLabStore = create((set, get) => ({
         const { isStreaming, qualityMode } = get();
         if (isStreaming) return;
 
-        set({ isStreaming: true, streamingText: 'Đang khởi tạo persona ENI...' });
+        set({ isStreaming: true, streamingText: 'Initializing ENI Persona (Priming)...' });
 
         try {
             labAIService.setRouter(modelRouter);
@@ -52,7 +51,7 @@ const useLabStore = create((set, get) => ({
                 onToken: (chunk, full) => set({ streamingText: full }),
                 onComplete: (text) => {
                     const history = [
-                        { role: 'user', content: '[Prompt khởi tạo ENI ban đầu]' },
+                        { role: 'user', content: '[Initial ENI Priming Prompt]' },
                         { role: 'assistant', content: text }
                     ];
                     set((state) => ({
@@ -62,17 +61,17 @@ const useLabStore = create((set, get) => ({
                         eniSessionHistory: history,
                         messages: [
                             ...state.messages,
-                            { role: 'user', content: '[Prompt khởi tạo ENI ban đầu]' },
+                            { role: 'user', content: '[Initial ENI Priming Prompt]' },
                             { role: 'assistant', content: text }
                         ]
                     }));
                 },
                 onError: (err) => {
-                    set({ isStreaming: false, streamingText: `Khởi tạo ENI thất bại: ${toVietnameseErrorMessage(err, 'Lỗi không xác định.')}` });
+                    set({ isStreaming: false, streamingText: 'Priming failed: ' + err.message });
                 }
             });
         } catch (err) {
-            set({ isStreaming: false, streamingText: toVietnameseErrorMessage(err, 'Khởi tạo ENI thất bại.') });
+            set({ isStreaming: false, streamingText: err.message });
         }
     },
 
@@ -132,14 +131,14 @@ const useLabStore = create((set, get) => ({
                 onError: (err) => {
                     set({ isStreaming: false });
                     set((state) => ({
-                        messages: [...state.messages, { role: 'error', content: toVietnameseErrorMessage(err, 'AI không trả lời được.') }]
+                        messages: [...state.messages, { role: 'error', content: err.message }]
                     }));
                 }
             });
         } catch (err) {
             set({ isStreaming: false });
             set((state) => ({
-                messages: [...state.messages, { role: 'error', content: toVietnameseErrorMessage(err, 'AI không trả lời được.') }]
+                messages: [...state.messages, { role: 'error', content: err.message }]
             }));
         }
     }

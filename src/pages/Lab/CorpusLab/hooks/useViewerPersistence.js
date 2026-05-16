@@ -26,7 +26,6 @@ import {
   recordExport,
   getSavedSearches as getSavedSearchesDB,
 } from '../../services/viewer/viewerDbService.js';
-import { toVietnameseErrorMessage } from '../../../../utils/errorMessages.js';
 
 export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
   // Annotations state
@@ -63,7 +62,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
         setSearchHistory(history);
         initializedRef.current = true;
       } catch (err) {
-        setError(toVietnameseErrorMessage(err, 'Không thể tải dữ liệu viewer.'));
+        setError(err.message);
       } finally {
         setLoading(false);
       }
@@ -102,7 +101,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
         },
       }));
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể lưu ghi chú.'));
+      setError(err.message);
     }
   }, [corpusId]);
 
@@ -115,7 +114,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
         return next;
       });
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể xóa ghi chú.'));
+      setError(err.message);
     }
   }, [corpusId]);
 
@@ -132,7 +131,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
       });
       return newStarred;
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể đổi trạng thái đánh sao.'));
+      setError(err.message);
       return null;
     }
   }, [corpusId]);
@@ -148,7 +147,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
       }));
       return newCount;
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể ghi nhận lượt dùng.'));
+      setError(err.message);
       return null;
     }
   }, [corpusId]);
@@ -159,7 +158,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
       const updatedMap = await getUsageCountMap(corpusId);
       setUsageCountMap(updatedMap);
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể ghi nhận lượt dùng hàng loạt.'));
+      setError(err.message);
     }
   }, [corpusId]);
 
@@ -171,7 +170,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
       const history = await getSearchHistory(corpusId);
       setSearchHistory(history);
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể lưu lịch sử tìm kiếm.'));
+      setError(err.message);
     }
   }, [corpusId]);
 
@@ -180,7 +179,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
       await clearSearchHistory(corpusId);
       setSearchHistory([]);
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể xóa lịch sử tìm kiếm.'));
+      setError(err.message);
     }
   }, [corpusId]);
 
@@ -190,7 +189,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
       const searches = await getSavedSearchesDB(corpusId);
       setSavedSearches(searches);
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể lưu tìm kiếm.'));
+      setError(err.message);
     }
   }, [corpusId]);
 
@@ -199,7 +198,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
       await deleteSavedSearch(id);
       setSavedSearches((prev) => prev.filter((s) => s.id !== id));
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể xóa tìm kiếm đã lưu.'));
+      setError(err.message);
     }
   }, []);
 
@@ -211,7 +210,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
       const links = await getEventLinksForCorpus(corpusId);
       setLinkedEvents(links);
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể liên kết với dự án.'));
+      setError(err.message);
     }
   }, [corpusId]);
 
@@ -222,7 +221,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
         prev.filter((l) => !(l.event_id === eventId && l.project_id === projectId))
       );
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể bỏ liên kết khỏi dự án.'));
+      setError(err.message);
     }
   }, []);
 
@@ -232,7 +231,7 @@ export default function useViewerPersistence({ corpusId, displayEvents = [] }) {
       // Also track usage
       await handleBatchTrackUsage(eventIds, `export_${format}`);
     } catch (err) {
-      setError(toVietnameseErrorMessage(err, 'Không thể ghi nhận export.'));
+      setError(err.message);
     }
   }, [corpusId, handleBatchTrackUsage]);
 

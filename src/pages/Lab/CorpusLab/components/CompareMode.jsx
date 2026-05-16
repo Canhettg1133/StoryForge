@@ -5,7 +5,6 @@
 import { useEffect, useState } from 'react';
 import useCorpusStore from '../../../../stores/corpusStore.js';
 import { compareCorpora, findTropeEquivalents } from '../../../../services/viewer/comparisonEngine.js';
-import { toVietnameseErrorMessage } from '../../../../utils/errorMessages.js';
 
 export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB }) {
   const corpuses = useCorpusStore((state) => state.corpuses);
@@ -37,7 +36,7 @@ export default function CompareMode({ corpusId, compareCorpusId, onSelectCorpusB
         setTropeEquivalents(tropeResult);
       })
       .catch((err) => {
-        setError(toVietnameseErrorMessage(err, 'Không thể so sánh corpus.'));
+        setError(err.message);
       })
       .finally(() => {
         setLoading(false);

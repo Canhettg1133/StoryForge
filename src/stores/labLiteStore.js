@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { readLabLiteFile } from '../services/labLite/fileReader.js';
 import { renameChapter as renameParsedChapter, splitChapterAtLine } from '../services/labLite/chapterParser.js';
-import { toVietnameseErrorMessage } from '../utils/errorMessages';
 import {
   bulkSaveChapterCoverage,
   clearCorpusAnalysisArtifacts,
@@ -277,7 +276,7 @@ const useLabLiteStore = create((set, get) => ({
         await loadBundleIntoState(set, currentId, { projectId: activeProjectId });
       }
     } catch (error) {
-      set({ loading: false, error: toVietnameseErrorMessage(error, 'Không tải được dữ liệu Lab Lite.') });
+      set({ loading: false, error: error?.message || 'Could not load Lab Lite data.' });
     }
   },
 
@@ -328,7 +327,7 @@ const useLabLiteStore = create((set, get) => ({
       });
       return saved;
     } catch (error) {
-      set({ importState: { status: 'error', error: toVietnameseErrorMessage(error, 'Import thất bại.') } });
+      set({ importState: { status: 'error', error: error?.message || 'Import failed.' } });
       throw error;
     }
   },
@@ -341,7 +340,7 @@ const useLabLiteStore = create((set, get) => ({
       set({ loading: false });
       return bundle;
     } catch (error) {
-      set({ loading: false, error: toVietnameseErrorMessage(error, 'Không tải được corpus.') });
+      set({ loading: false, error: error?.message || 'Could not load corpus.' });
       return null;
     }
   },
@@ -385,8 +384,8 @@ const useLabLiteStore = create((set, get) => ({
       }
       return result;
     } catch (error) {
-      set({ loading: false, error: toVietnameseErrorMessage(error, 'Không xóa được dữ liệu Lab Lite.') });
-      return { deleted: false, corpusId: activeCorpusId, reason: toVietnameseErrorMessage(error, 'Xóa thất bại.'), counts: {} };
+      set({ loading: false, error: error?.message || 'Không xóa được dữ liệu Lab Lite.' });
+      return { deleted: false, corpusId: activeCorpusId, reason: error?.message || 'delete_failed', counts: {} };
     }
   },
 
@@ -407,7 +406,7 @@ const useLabLiteStore = create((set, get) => ({
       }));
       return corpus;
     } catch (error) {
-      set({ error: toVietnameseErrorMessage(error, 'Không đổi được tên dữ liệu Lab Lite.') });
+      set({ error: error?.message || 'Không đổi được tên dữ liệu Lab Lite.' });
       throw error;
     }
   },
@@ -571,7 +570,7 @@ const useLabLiteStore = create((set, get) => ({
         presetRunState: {
           ...state.presetRunState,
           status: 'error',
-          error: toVietnameseErrorMessage(error, 'Không chạy được preset phân tích.'),
+          error: error?.message || 'Không chạy được preset phân tích.',
         },
       }));
       throw error;
@@ -754,7 +753,7 @@ const useLabLiteStore = create((set, get) => ({
                   localDone: true,
                   scoutDone: false,
                   status: 'error',
-                  failedReason: toVietnameseErrorMessage(error, 'Scout thất bại.'),
+                  failedReason: error?.message || 'Scout failed.',
                 });
                 failed += 1;
               }
@@ -802,7 +801,7 @@ const useLabLiteStore = create((set, get) => ({
       set({ arcs: saved, currentArcId: saved[0]?.id || null, arcState: { status: 'complete', error: null } });
       return saved;
     } catch (error) {
-      set({ arcState: { status: 'error', error: toVietnameseErrorMessage(error, 'Arc Mapper thất bại.') } });
+      set({ arcState: { status: 'error', error: error?.message || 'Arc Mapper failed.' } });
       throw error;
     }
   },
@@ -920,7 +919,7 @@ const useLabLiteStore = create((set, get) => ({
           deepState: { ...state.deepState, completed, failed, running },
         }));
       } catch (error) {
-        const saved = await saveDeepAnalysisItem(item.id, { status: 'error', error: toVietnameseErrorMessage(error, 'Phân tích sâu thất bại.') });
+        const saved = await saveDeepAnalysisItem(item.id, { status: 'error', error: error?.message || 'Phân tích sâu thất bại.' });
         failed += 1;
         set((state) => ({
           deepAnalysisItems: state.deepAnalysisItems.map((entry) => (entry.id === item.id ? saved : entry)),
@@ -980,7 +979,7 @@ const useLabLiteStore = create((set, get) => ({
       set({ canonPacks, ingestBatches: refreshedBatches, canonPackState: { status: 'complete', error: null } });
       return saved;
     } catch (error) {
-      set({ canonPackState: { status: 'error', error: toVietnameseErrorMessage(error, 'Không dựng được Canon Pack.') } });
+      set({ canonPackState: { status: 'error', error: error?.message || 'Không dựng được Canon Pack.' } });
       throw error;
     }
   },
@@ -1026,7 +1025,7 @@ const useLabLiteStore = create((set, get) => ({
       set({ materializationPlan: saved, materializeState: { status: 'planned', error: null, appliedCount: 0 } });
       return saved;
     } catch (error) {
-      set({ materializeState: { status: 'error', error: toVietnameseErrorMessage(error, 'Không tạo được kế hoạch đưa vào dự án.'), appliedCount: 0 } });
+      set({ materializeState: { status: 'error', error: error?.message || 'Không tạo được kế hoạch đưa vào dự án.', appliedCount: 0 } });
       throw error;
     }
   },
@@ -1040,7 +1039,7 @@ const useLabLiteStore = create((set, get) => ({
       set({ materializeState: { status: 'applied', error: null, appliedCount: result.appliedCount || 0 } });
       return result;
     } catch (error) {
-      set({ materializeState: { status: 'error', error: toVietnameseErrorMessage(error, 'Không áp dụng được Canon Pack.'), appliedCount: 0 } });
+      set({ materializeState: { status: 'error', error: error?.message || 'Không áp dụng được Canon Pack.', appliedCount: 0 } });
       throw error;
     }
   },
@@ -1075,7 +1074,7 @@ const useLabLiteStore = create((set, get) => ({
       }));
       return saved;
     } catch (error) {
-      set({ canonReviewState: { status: 'error', error: toVietnameseErrorMessage(error, 'Canon Review thất bại.'), mode } });
+      set({ canonReviewState: { status: 'error', error: error?.message || 'Canon Review failed.', mode } });
       throw error;
     }
   },

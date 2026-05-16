@@ -115,7 +115,7 @@ export default function AnalysisProgress({ analysis }) {
           </span>
         )}
         {runningPass && (
-              <span>Pass đang chạy: {runningPass.title || runningPass.id}</span>
+          <span>Pass dang chay: {runningPass.title || runningPass.id}</span>
         )}
         {Object.keys(passStatus).length > 0 && (
           <span>Pass degraded: {degradedPasses}</span>

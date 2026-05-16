@@ -41,7 +41,6 @@ import {
   clearSearchHistory,
   recordExport,
 } from '../../../../services/viewer/viewerDbService.js';
-import { toVietnameseErrorMessage } from '../../../../utils/errorMessages.js';
 
 const EMPTY_ARRAY = Object.freeze([]);
 
@@ -517,7 +516,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       setSearchHistory(history);
       initializedRef.current = true;
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể tải dữ liệu viewer.'));
+      setDbError(err.message);
     } finally {
       setDbLoading(false);
     }
@@ -548,7 +547,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       setArtifactData(normalizeArtifactEnvelope(artifactResp?.artifact || null));
       setAnalysisWindows(Array.isArray(windowsResp?.windows) ? windowsResp.windows : []);
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể tải dữ liệu incident-first.'));
+      setDbError(err?.message || 'Không thể tải dữ liệu incident-first.');
     }
   }, [analysis?.id, corpusId]);
 
@@ -692,7 +691,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       setAnnotationMap(annMap);
       setAnnotatingEvent(null);
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể lưu ghi chú.'));
+      setDbError(err.message);
     } finally {
       setSavingAnnotation(false);
     }
@@ -711,7 +710,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
         };
       });
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể xóa ghi chú.'));
+      setDbError(err.message);
     }
   }, [corpusId]);
 
@@ -722,7 +721,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       const newCount = await trackEventUsage(corpusId, eventId, action);
       setUsageCountMap(prev => ({ ...prev, [eventId]: newCount }));
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể đổi trạng thái đánh sao.'));
+      setDbError(err.message);
     }
   }, [corpusId]);
 
@@ -734,7 +733,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       const searches = await getSavedSearches(corpusId);
       setSavedSearches(searches);
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể ghi nhận lượt dùng.'));
+      setDbError(err.message);
     }
   }, [corpusId, searchQuery, filters]);
 
@@ -743,7 +742,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       await deleteSavedSearch(id);
       setSavedSearches(prev => prev.filter(s => s.id !== id));
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể ghi nhận lượt dùng hàng loạt.'));
+      setDbError(err.message);
     }
   }, []);
 
@@ -763,7 +762,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       await clearSearchHistory(corpusId);
       setSearchHistory([]);
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể lưu lịch sử tìm kiếm.'));
+      setDbError(err.message);
     }
   }, [corpusId]);
 
@@ -778,7 +777,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       const usgMap = await getUsageCountMap(corpusId);
       setUsageCountMap(usgMap);
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể xóa lịch sử tìm kiếm.'));
+      setDbError(err.message);
     }
 
     setExportModalOpen(true);
@@ -794,7 +793,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       setLinkedEvents(links);
       setLinkModalEvent(null);
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể lưu tìm kiếm.'));
+      setDbError(err.message);
     }
   }, [corpusId, eventById]);
 
@@ -805,7 +804,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
         l => !(l.event_id === eventId && l.project_id === projectId)
       ));
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể xóa tìm kiếm đã lưu.'));
+      setDbError(err.message);
     }
   }, []);
 
@@ -824,7 +823,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       }));
       return updated;
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể cập nhật mục duyệt.'));
+      setDbError(err?.message || 'Không thể cập nhật review item.');
       throw err;
     }
   }, [corpusId]);
@@ -840,7 +839,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       setIncidentRecords((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       return updated;
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể cập nhật sự kiện lớn.'));
+      setDbError(err?.message || 'Không thể cập nhật incident.');
       throw err;
     }
   }, [corpusId]);
@@ -859,9 +858,9 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
             id: job.id,
             type: job.type,
             status: 'pending',
-            progressMessage: 'Đang xếp hàng',
+            progressMessage: 'Queued',
             inputData: {
-              title: job.title || 'Job phân tích truyện',
+              title: job.title || 'Narrative job',
               ...response.rerunRequest,
             },
             createdAt: response.createdAt,
@@ -872,9 +871,9 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
           id: response.jobId,
           type: response.jobType || 'scoped_rerun',
           status: 'pending',
-          progressMessage: 'Đang xếp hàng',
+          progressMessage: 'Queued',
           inputData: {
-            title: 'Chạy lại theo phạm vi',
+            title: 'Scoped rerun',
             ...response.rerunRequest,
           },
           createdAt: response.createdAt,
@@ -882,7 +881,7 @@ export default function useAnalysisViewer({ corpusId, analysisId }) {
       }
       return response;
     } catch (err) {
-      setDbError(toVietnameseErrorMessage(err, 'Không thể chạy lại theo phạm vi.'));
+      setDbError(err?.message || 'Không thể chạy scoped rerun.');
       throw err;
     }
   }, [analysis?.id, analysisId, corpusId, trackExternalJob]);
