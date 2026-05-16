@@ -596,6 +596,17 @@
   border-radius: var(--radius-md);
 }
 
+.wizard-auto-toggle--action {
+  min-height: 36px;
+  margin-left: auto;
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-2));
+  border-color: color-mix(in srgb, var(--color-accent) 24%, var(--color-border));
+}
+
+.wizard-auto-toggle--action span {
+  line-height: 1.35;
+}
+
 @container wizard-scroll (min-width: 1120px) {
   .wizard-review-grid--with-side {
     grid-template-columns: minmax(520px, 1fr) minmax(320px, 380px);
@@ -692,6 +703,14 @@
   .wizard-modal .wizard-body > .modal-actions .btn-primary {
     flex-basis: 100%;
     order: 2;
+  }
+
+  .wizard-auto-toggle--action {
+    flex: 1 1 100%;
+    order: 1;
+    margin-left: 0;
+    justify-content: center;
+    text-align: center;
   }
 
   .wizard-edit-row {

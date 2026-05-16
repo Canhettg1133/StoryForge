@@ -1572,14 +1572,14 @@ export default function ProjectWizard({ onClose, onCreated }) {
                 </div>
               )}
 
-              <label className="wizard-template-toggle wizard-auto-toggle">
-                <input type="checkbox" checked={autoGenerateOutline} onChange={(event) => setAutoGenerateOutline(event.target.checked)} />
-                <span>Tự tạo dàn ý sau khi nền truyện hợp lệ</span>
-              </label>
             </div>
 
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={onClose}>Hủy</button>
+              <label className="wizard-template-toggle wizard-auto-toggle wizard-auto-toggle--action">
+                <input type="checkbox" checked={autoGenerateOutline} onChange={(event) => setAutoGenerateOutline(event.target.checked)} />
+                <span>Tự tạo dàn ý sau khi nền truyện hợp lệ</span>
+              </label>
               <button className="btn btn-primary" onClick={handleGenerateSeed} disabled={!idea.trim()}>
                 <Sparkles size={16} /> Tạo nền truyện <ArrowRight size={16} />
               </button>
