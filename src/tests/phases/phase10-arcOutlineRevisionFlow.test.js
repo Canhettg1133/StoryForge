@@ -185,6 +185,46 @@ function buildTooFastOutline() {
   };
 }
 
+function buildCausalOutline() {
+  return {
+    arc_title: 'Arc nhan qua',
+    chapters: [
+      {
+        title: 'Chuong 11: Vet thuong trong suong',
+        purpose: 'Dat Lam Mac vao mot lua chon sinh ton co gia.',
+        summary: 'Lam Mac tinh lai trong suong doc va phai chon giua an minh hoac cuu dong doi.',
+        opening_state: 'Lam Mac bi thuong va mat phuong huong.',
+        continuity_in: { response: '' },
+        conflict: 'Lam Mac muon tranh bi truy sat nhung dong doi dang bi bao vay.',
+        key_events: ['Lam Mac an minh', 'Dong doi bi bao vay'],
+        decision_or_consequence: 'Lam Mac lo dau vet de ke dich nhan ra anh con song.',
+        state_changes: [
+          { subject: 'Lam Mac', change: 'Bi lo dau vet sinh ton va mat loi the an than.' },
+        ],
+        ending_state: 'Ke dich biet Lam Mac con song va bat dau sieu chat vong vay.',
+        continuity_out: { text: 'Vong vay sieu chat ep Lam Mac phai doi cach tron thoat.' },
+        pacing: 'slow',
+      },
+      {
+        title: 'Chuong 12: Duong lui bi khoa',
+        purpose: 'Bien he qua bi lo dau vet thanh ap luc moi.',
+        summary: 'Lam Mac tim duong lui nhung ke dich da khoa het loi ra sau dau vet chuong truoc.',
+        opening_state: 'Lam Mac bi ep vao khu rung hep.',
+        continuity_in: { response: 'Vong vay tu chuong truoc khien moi duong lui deu bi khoa.' },
+        conflict: 'Lam Mac muon thoat than nhung phai giu dong doi khong bi bat.',
+        key_events: ['phat hien loi ra bi khoa', 'danh lac huong ke dich'],
+        decision_or_consequence: 'Lam Mac hy sinh vat pham che giau than phan.',
+        state_changes: [
+          { subject: 'Vat pham che giau than phan', change: 'Bi tieu hao de doi lay mot khoang trong thoat than.' },
+        ],
+        ending_state: 'Lam Mac thoat khoi vong vay tam thoi nhung khong con vat pham che giau.',
+        continuity_out: { text: '' },
+        pacing: 'medium',
+      },
+    ],
+  };
+}
+
 function buildGuardedMacroArc() {
   return {
     id: 501,
@@ -335,6 +375,10 @@ describe('phase10 arc outline revision flow', () => {
     const nextState = useArcGenStore.getState();
     expect(nextState.outlineStatus).toBe('ready');
     expect(nextState.generatedOutline.chapters).toHaveLength(2);
+    expect(nextState.generatedOutline.chapters[1].continuity_in).toEqual({
+      response: 'Sau khi bi rang buoc voi Diep Ninh va chap nhan lam dong pham bat dac di, Lam Mac roi di trong mac cam.',
+    });
+    expect(nextState.generatedOutline.chapters[0].state_delta).toBe('Lam Mac mat duong lui va bi keo sau hon vao bi mat cua lang.');
     expect(nextState.outlineValidation.issues.some((issue) => issue.code === 'chapter-handoff-weak')).toBe(false);
   });
 
@@ -375,6 +419,84 @@ describe('phase10 arc outline revision flow', () => {
     expect(forced.forced).toBe(true);
     expect(dbMock.__rows('chapters')).toHaveLength(2);
     expect(dbMock.__rows('scenes')).toHaveLength(2);
+  });
+
+  it('persists causal outline metadata when saving outline-only chapters', async () => {
+    const generatedOutline = buildCausalOutline();
+    useArcGenStore.setState({
+      currentChapterCount: 10,
+      projectTargetLength: 120,
+      projectMilestones: [],
+      availableMacroArcs: [],
+      selectedMacroArcId: null,
+      currentMacroArcId: null,
+      arcGoal: 'Kiem tra luu metadata nhan qua.',
+      generatedOutline,
+      storyProgressBudget: buildValidationContext().storyProgressBudget,
+      outlineValidation: { issues: [], hasBlockingIssues: false },
+      batchChapterAnchors: [],
+      selectedDraftIndexes: [0],
+    });
+
+    const saved = await useArcGenStore.getState().commitOutlineOnly(1);
+    expect(saved.ok).toBe(true);
+
+    const [firstChapter] = dbMock.__rows('chapters');
+    expect(firstChapter).toEqual(expect.objectContaining({
+      conflict: 'Lam Mac muon tranh bi truy sat nhung dong doi dang bi bao vay.',
+      decision_or_consequence: 'Lam Mac lo dau vet de ke dich nhan ra anh con song.',
+      pacing: 'slow',
+      state_delta: 'Lam Mac: Bi lo dau vet sinh ton va mat loi the an than.',
+    }));
+    expect(firstChapter.continuity_in).toEqual({ response: '' });
+    expect(firstChapter.continuity_out).toEqual({ text: 'Vong vay sieu chat ep Lam Mac phai doi cach tron thoat.' });
+    expect(firstChapter.state_changes).toEqual([
+      { subject: 'Lam Mac', change: 'Bi lo dau vet sinh ton va mat loi the an than.' },
+    ]);
+  });
+
+  it('persists causal outline metadata when saving generated drafts', async () => {
+    const generatedOutline = buildCausalOutline();
+    useArcGenStore.setState({
+      currentChapterCount: 10,
+      projectTargetLength: 120,
+      projectMilestones: [],
+      availableMacroArcs: [],
+      selectedMacroArcId: null,
+      currentMacroArcId: null,
+      arcGoal: 'Kiem tra luu ban nhap nhan qua.',
+      generatedOutline,
+      storyProgressBudget: buildValidationContext().storyProgressBudget,
+      outlineValidation: { issues: [], hasBlockingIssues: false },
+      batchChapterAnchors: [],
+      selectedDraftIndexes: [0],
+      draftResults: [
+        {
+          outlineIndex: 0,
+          title: 'Chuong 11: Vet thuong trong suong',
+          status: 'done',
+          content: 'Ban nhap chuong 11.',
+          wordCount: 1200,
+        },
+      ],
+    });
+
+    const saved = await useArcGenStore.getState().commitDraftsToProject(1);
+    expect(saved).toBe(true);
+
+    const [firstChapter] = dbMock.__rows('chapters');
+    expect(firstChapter).toEqual(expect.objectContaining({
+      status: 'draft',
+      conflict: 'Lam Mac muon tranh bi truy sat nhung dong doi dang bi bao vay.',
+      decision_or_consequence: 'Lam Mac lo dau vet de ke dich nhan ra anh con song.',
+      pacing: 'slow',
+      state_delta: 'Lam Mac: Bi lo dau vet sinh ton va mat loi the an than.',
+    }));
+    expect(firstChapter.continuity_in).toEqual({ response: '' });
+    expect(firstChapter.continuity_out).toEqual({ text: 'Vong vay sieu chat ep Lam Mac phai doi cach tron thoat.' });
+    expect(firstChapter.state_changes).toEqual([
+      { subject: 'Lam Mac', change: 'Bi lo dau vet sinh ton va mat loi the an than.' },
+    ]);
   });
 
   it('revalidates revised outlines and records improved outcomes', async () => {

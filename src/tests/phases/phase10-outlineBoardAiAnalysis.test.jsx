@@ -277,6 +277,12 @@ describe('phase10 outline board AI analysis safety', () => {
       opening_state: '',
       handoff_from_previous: '',
       ending_state: '',
+      conflict: '',
+      decision_or_consequence: '',
+      continuity_in: { response: '' },
+      continuity_out: { text: '' },
+      state_changes: [],
+      pacing: '',
       arc_id: null,
     }));
     expect(updateChapter.mock.calls[0][1]).not.toHaveProperty('title');

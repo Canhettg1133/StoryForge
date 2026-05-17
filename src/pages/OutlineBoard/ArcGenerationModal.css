@@ -262,6 +262,65 @@
     display: flex;
     gap: var(--space-2);
     flex-wrap: wrap;
+    align-items: center;
+    margin-top: var(--space-2);
+}
+
+.arc-outline-summary-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+}
+
+.arc-pacing-badge--slow {
+    background: rgba(14, 165, 233, 0.14);
+    color: #38bdf8;
+}
+
+.arc-pacing-badge--medium {
+    background: rgba(99, 102, 241, 0.14);
+    color: var(--color-primary);
+}
+
+.arc-pacing-badge--fast,
+.arc-issue-badge {
+    background: rgba(245, 158, 11, 0.12);
+    color: var(--color-warning, #f59e0b);
+}
+
+.arc-outline-details {
+    margin-top: var(--space-3);
+    border-top: 1px solid var(--border-color);
+    padding-top: var(--space-3);
+}
+
+.arc-outline-details > summary {
+    cursor: pointer;
+    color: var(--color-text);
+    font-weight: 600;
+    font-size: 0.9rem;
+    list-style-position: inside;
+}
+
+.arc-outline-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+}
+
+.arc-outline-section {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.arc-outline-section h4 {
+    margin: 0 0 2px;
+    font-size: 0.9rem;
+    color: var(--color-text);
 }
 
 .arc-outline-head {
@@ -503,7 +562,9 @@
 @media (max-width: 900px) {
     .arc-batch-summary,
     .arc-mode-grid,
-    .arc-config-grid {
+    .arc-config-grid,
+    .arc-outline-summary-grid,
+    .arc-outline-detail-grid {
         grid-template-columns: 1fr;
     }
 

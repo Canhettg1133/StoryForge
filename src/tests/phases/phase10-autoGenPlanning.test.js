@@ -227,7 +227,7 @@ describe('phase10 auto-gen planning upgrade', () => {
     expect(validation.issues.some((issue) => issue.code === 'chapter-out-of-range' && issue.chapterIndex === 2)).toBe(true);
   });
 
-  it('blocks generated outlines when a chapter skips the previous ending state handoff', () => {
+  it('warns when generated outlines miss causal outline fields', () => {
     const validation = validateGeneratedOutline({
       chapters: [
         {
@@ -236,7 +236,6 @@ describe('phase10 auto-gen planning upgrade', () => {
           summary: 'Main bi thuong trong son coc va bi yeu thu bao vay.',
           key_events: ['bi yeu thu bao vay'],
           ending_state: 'Main trong thuong, bi nam yeu thu bao vay trong son coc.',
-          state_delta: 'Main dang o son coc va can song sot.',
         },
         {
           title: 'Chuong 11: Tro ve tong mon',
@@ -254,8 +253,46 @@ describe('phase10 auto-gen planning upgrade', () => {
       },
     });
 
-    expect(validation.hasBlockingIssues).toBe(true);
-    expect(validation.issues.some((issue) => issue.code === 'chapter-missing-handoff' && issue.chapterIndex === 1)).toBe(true);
+    expect(validation.hasBlockingIssues).toBe(false);
+    expect(validation.issues.some((issue) => issue.code === 'chapter-missing-continuity-in' && issue.chapterIndex === 1)).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'chapter-missing-continuity-out' && issue.chapterIndex === 0)).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'chapter-missing-conflict')).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'chapter-handoff-weak')).toBe(false);
+  });
+
+  it('warns about incomplete structured state changes without semantic handoff matching', () => {
+    const validation = validateGeneratedOutline({
+      chapters: [
+        {
+          title: 'Chuong 10: Son coc',
+          purpose: 'Dat nhan vat vao nguy co sinh ton.',
+          summary: 'Main bi thuong trong son coc va bi yeu thu bao vay.',
+          opening_state: 'Main lac vao son coc.',
+          conflict: 'Main muon thoat khoi son coc nhung yeu thu chan loi.',
+          key_events: ['bi yeu thu bao vay'],
+          decision_or_consequence: 'Main chap nhan an minh thay vi giao chien.',
+          state_changes: [{ subject: 'Main', change: '' }],
+          ending_state: 'Main trong thuong, bi nam yeu thu bao vay trong son coc.',
+          continuity_out: { text: 'Vet thuong va vong vay ep Main phai tim duong khac.' },
+        },
+        {
+          title: 'Chuong 11: Duong lui trong suong',
+          purpose: 'Cho Main tim duong thoat nhung tra gia.',
+          summary: 'Main lan theo khe nui va gap mot dau vet cua nguoi di truoc.',
+          opening_state: 'Main con trong son coc.',
+          continuity_in: { response: 'Main buoc vao khe nui vi vong vay va vet thuong tu chuong truoc.' },
+          conflict: 'Main muon thoat than nhung vet thuong lam cham moi buoc.',
+          key_events: ['tim thay khe nui', 'gap dau vet cu'],
+          decision_or_consequence: 'Main danh doi linh thach cuoi de mo duong.',
+          state_changes: [{ subject: '', change: 'Mat linh thach cuoi.' }],
+          ending_state: 'Main thoat khoi vong vay nhung mat nguon luc cuoi.',
+        },
+      ],
+    });
+
+    expect(validation.hasBlockingIssues).toBe(false);
+    expect(validation.issues.some((issue) => issue.code === 'chapter-state-change-incomplete')).toBe(true);
+    expect(validation.issues.some((issue) => issue.code === 'chapter-handoff-weak')).toBe(false);
   });
 
   it('treats beat-mix heuristics as non-blocking even when setup signals are weak', () => {
@@ -431,6 +468,24 @@ describe('phase10 auto-gen planning upgrade', () => {
     expectContentToContainAscii(messages[1].content, 'Nguon: Noi dung dang thay + rang buoc he thong');
   });
 
+  it('documents causal chapter outline schema in ARC_OUTLINE prompts', () => {
+    const messages = buildPrompt(TASK_TYPES.ARC_OUTLINE, {
+      userPrompt: 'Lap dan y 2 chuong tiep theo.',
+      startChapterNumber: 21,
+      chapterCount: 2,
+      arcPacing: 'medium',
+    });
+    const promptText = messages.map((message) => message.content).join('\n');
+
+    expect(promptText).toContain('"continuity_in"');
+    expect(promptText).toContain('"response"');
+    expect(promptText).toContain('"continuity_out"');
+    expect(promptText).toContain('"state_changes"');
+    expect(promptText).toContain('"decision_or_consequence"');
+    expect(promptText).not.toContain('"continuity_out": {"id"');
+    expect(promptText).not.toContain('"from_index"');
+  });
+
   it('injects progress budget into ARC_CHAPTER_DRAFT prompts', () => {
     const macroArcContract = compileMacroArcContract({
       title: 'Arc 1',
@@ -443,7 +498,13 @@ describe('phase10 auto-gen planning upgrade', () => {
       chapterOutlineTitle: 'Chuong 12: Thu nghiem dau tien',
       chapterOutlinePurpose: 'Cho main hieu mot quy tac nho cua tong mon.',
       chapterOutlineSummary: 'Main chi thu nghiem va va cham nho.',
+      chapterOutlineContinuityIn: 'Main buoc vao thu nghiem vi loi hua o chuong truoc.',
+      chapterOutlineConflict: 'Main muon giu than phan kin nhung doi thu ep phai ra tay.',
       chapterOutlineEvents: ['gap doi thu nho', 'thay quy tac tong mon'],
+      chapterOutlineDecisionOrConsequence: 'Main chap nhan lo mot phan nang luc de bao ve dong doi.',
+      chapterOutlineStateChanges: [{ subject: 'Ran', change: 'Tang cam giac an toan them mot nac.' }],
+      chapterOutlineContinuityOut: 'Doi thu bat dau nghi ngo nang luc that cua Main.',
+      chapterOutlinePacing: 'slow',
       chapterOutlineObjectiveRefs: ['OBJ1'],
       chapterOutlineStateDelta: 'Ran tang mot nac cam giac an toan, Sonoko chi dung o muc to mo',
       chapterOutlineGuardrail: 'Khong day sang to tinh hay cap doi',
@@ -467,6 +528,12 @@ describe('phase10 auto-gen planning upgrade', () => {
     expectContentToContainAscii(messages[1].content, '[HOP DONG DAI CUC BAT BUOC]');
     expect(messages[1].content).toContain('Objective refs: OBJ1');
     expect(messages[1].content).toContain('Purpose: Cho main hieu mot quy tac nho cua tong mon.');
+    expect(messages[1].content).toContain('Nối mạch từ hệ quả trước: Main buoc vao thu nghiem vi loi hua o chuong truoc.');
+    expect(messages[1].content).toContain('Xung đột chính: Main muon giu than phan kin nhung doi thu ep phai ra tay.');
+    expect(messages[1].content).toContain('Quyết định/hệ quả bắt buộc: Main chap nhan lo mot phan nang luc de bao ve dong doi.');
+    expect(messages[1].content).toContain('Thay đổi trạng thái dự kiến: Ran: Tang cam giac an toan them mot nac.');
+    expect(messages[1].content).toContain('Móc kéo sang chương sau: Doi thu bat dau nghi ngo nang luc that cua Main.');
+    expect(messages[1].content).toContain('Nhịp chương: slow');
     expectContentToContainAscii(messages[1].content, 'Pham vi tien do batch nay: 1.2% -> 1.4%');
     expectContentToContainAscii(messages[1].content, 'Gioi han rieng cua macro arc');
     expectContentToContainAscii(messages[1].content, 'khong resolve tuyen chinh');

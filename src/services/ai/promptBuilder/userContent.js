@@ -321,7 +321,7 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
       if (userPrompt) arcParts.push('Mục tiêu Arc: ' + userPrompt);
       arcParts.push('Chương mới phải bắt đầu từ: Chương ' + startChapterNumber);
       arcParts.push('Số lượng chương cần tạo: ' + (context.chapterCount || 10));
-      arcParts.push('Mỗi chương phải có opening_state và ending_state. Từ chương thứ 2 trong batch, handoff_from_previous phải nói rõ cầu nhân quả từ ending_state/state_delta của chương trước; không được nhảy cóc qua nguy hiểm, thương tích, giam giữ, di chuyển hoặc cliffhanger.');
+      arcParts.push('Mỗi chương phải có opening_state, continuity_in.response, conflict, key_events, decision_or_consequence, state_changes, ending_state, continuity_out.text và pacing. Từ chương thứ 2 trong batch, continuity_in.response phải nói rõ chương này phản ứng với hệ quả/câu hỏi/áp lực của chương trước; chương chưa phải cuối batch phải có continuity_out.text. Không sinh continuity id hoặc from_index.');
       if (context.arcPacing) {
         const pacingDesc = { slow: 'Chậm - xây dựng, khám phá', medium: 'Trung bình', fast: 'Nhanh - hành động, cao trào' };
         arcParts.push('Nhịp độ: ' + (pacingDesc[context.arcPacing] || context.arcPacing));
@@ -361,13 +361,23 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
           const number = startChapterNumber + index;
           const beats = Array.isArray(chapter?.key_events) && chapter.key_events.length > 0
             ? '\n  Beats: ' + chapter.key_events.join(' | ')
-          : '';
+            : '';
+          const stateChanges = Array.isArray(chapter?.state_changes) && chapter.state_changes.length > 0
+            ? '\n  State changes: ' + chapter.state_changes.map(function (item) {
+              return [item?.subject, item?.change].filter(Boolean).join(': ');
+            }).filter(Boolean).join(' | ')
+            : '';
           const continuity = [
             chapter?.opening_state ? '  Opening: ' + chapter.opening_state : '',
-            chapter?.handoff_from_previous ? '  Handoff: ' + chapter.handoff_from_previous : '',
+            chapter?.continuity_in?.response ? '  Continuity in: ' + chapter.continuity_in.response : '',
+            chapter?.handoff_from_previous && !chapter?.continuity_in?.response ? '  Handoff legacy: ' + chapter.handoff_from_previous : '',
+            chapter?.conflict ? '  Conflict: ' + chapter.conflict : '',
+            chapter?.decision_or_consequence ? '  Decision/consequence: ' + chapter.decision_or_consequence : '',
             chapter?.ending_state ? '  Ending: ' + chapter.ending_state : '',
+            chapter?.continuity_out?.text ? '  Continuity out: ' + chapter.continuity_out.text : '',
+            chapter?.pacing ? '  Pacing: ' + chapter.pacing : '',
           ].filter(Boolean).join('\n');
-          return '- Chương ' + number + ': ' + (chapter?.title || '') + '\n  Purpose: ' + (chapter?.purpose || '') + '\n  Tóm tắt: ' + (chapter?.summary || '') + (continuity ? '\n' + continuity : '') + beats;
+          return '- Chương ' + number + ': ' + (chapter?.title || '') + '\n  Purpose: ' + (chapter?.purpose || '') + '\n  Tóm tắt: ' + (chapter?.summary || '') + (continuity ? '\n' + continuity : '') + beats + stateChanges;
         }).join('\n');
         arcParts.push('[DÀN Ý HIỆN TẠI CẦN CHỈNH SỬA]\n' + currentOutlineText);
       }
@@ -409,14 +419,37 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
       if (context.chapterOutlineOpeningState) {
         userContent += 'Opening state: ' + context.chapterOutlineOpeningState + '\n';
       }
+      if (context.chapterOutlineContinuityIn) {
+        userContent += 'Nối mạch từ hệ quả trước: ' + context.chapterOutlineContinuityIn + '\n';
+      }
       if (context.chapterOutlineHandoff) {
-        userContent += 'Handoff từ chương trước: ' + context.chapterOutlineHandoff + '\n';
+        userContent += 'Handoff legacy từ chương trước: ' + context.chapterOutlineHandoff + '\n';
+      }
+      if (context.chapterOutlineConflict) {
+        userContent += 'Xung đột chính: ' + context.chapterOutlineConflict + '\n';
       }
       if (context.chapterOutlineEndingState) {
         userContent += 'Ending state dự kiến: ' + context.chapterOutlineEndingState + '\n';
       }
       if (context.chapterOutlineEvents) {
-        userContent += 'Sự kiện chính:\n' + context.chapterOutlineEvents.map(e => '- ' + e).join('\n');
+        userContent += 'Sự kiện chính:\n' + context.chapterOutlineEvents.map(e => '- ' + e).join('\n') + '\n';
+      }
+      if (context.chapterOutlineDecisionOrConsequence) {
+        userContent += '\nQuyết định/hệ quả bắt buộc: ' + context.chapterOutlineDecisionOrConsequence + '\n';
+      }
+      if (Array.isArray(context.chapterOutlineStateChanges) && context.chapterOutlineStateChanges.length > 0) {
+        const stateChangeText = context.chapterOutlineStateChanges.map(function (item) {
+          const subject = String(item?.subject || '').trim();
+          const change = String(item?.change || '').trim();
+          return subject ? subject + ': ' + change : change;
+        }).filter(Boolean).join(' | ');
+        if (stateChangeText) userContent += 'Thay đổi trạng thái dự kiến: ' + stateChangeText + '\n';
+      }
+      if (context.chapterOutlineContinuityOut) {
+        userContent += 'Móc kéo sang chương sau: ' + context.chapterOutlineContinuityOut + '\n';
+      }
+      if (context.chapterOutlinePacing) {
+        userContent += 'Nhịp chương: ' + context.chapterOutlinePacing + '\n';
       }
       if (Array.isArray(context.chapterOutlineObjectiveRefs) && context.chapterOutlineObjectiveRefs.length > 0) {
         userContent += 'Objective refs: ' + context.chapterOutlineObjectiveRefs.join(', ') + '\n';

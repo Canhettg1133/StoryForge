@@ -34,10 +34,10 @@ const OUTPUT_MODES = [
     },
 ];
 
-const PACING_LABELS = {
-    slow: 'Chậm',
-    medium: 'Vừa',
-    fast: 'Nhanh',
+const PACING_BADGE_LABELS = {
+    slow: 'Nhịp chậm',
+    medium: 'Nhịp vừa',
+    fast: 'Nhịp nhanh',
 };
 
 const ISSUE_CODE_LABELS = {
@@ -45,6 +45,16 @@ const ISSUE_CODE_LABELS = {
     repetitive: 'Lặp ý',
     'too-fast': 'Quá nhanh',
     'premature-resolution': 'Giải quyết sớm',
+    'chapter-missing-purpose': 'Thiếu mục tiêu',
+    'chapter-missing-opening-state': 'Thiếu mở chương',
+    'chapter-missing-continuity-in': 'Thiếu móc nối',
+    'chapter-missing-conflict': 'Thiếu xung đột',
+    'chapter-missing-key-events': 'Thiếu sự kiện',
+    'chapter-missing-decision': 'Thiếu hệ quả',
+    'chapter-missing-ending-state': 'Thiếu kết chương',
+    'chapter-missing-continuity-out': 'Thiếu hệ quả',
+    'chapter-state-change-incomplete': 'Thiếu trạng thái',
+    'pacing-too-fast': 'Nhịp nhanh',
 };
 
 const RESULT_STATUS_LABELS = {
@@ -120,9 +130,58 @@ function formatIssueMessage(message) {
 function getIssueSourceLabel(issue) {
     if (!issue?.inputLabel) return '';
     const fields = Array.isArray(issue?.relevantFields) && issue.relevantFields.length > 0
-        ? ` · Field lien quan: ${issue.relevantFields.join(', ')}`
+        ? ` · Field liên quan: ${issue.relevantFields.join(', ')}`
         : '';
     return `${issue.inputLabel}${fields}`;
+}
+
+function listFromTextarea(value) {
+    return String(value || '')
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function getContinuityInResponse(chapter = {}) {
+    if (chapter?.continuity_in && typeof chapter.continuity_in === 'object') {
+        return chapter.continuity_in.response || '';
+    }
+    return chapter?.handoff_from_previous || '';
+}
+
+function getContinuityOutText(chapter = {}) {
+    if (chapter?.continuity_out && typeof chapter.continuity_out === 'object') {
+        return chapter.continuity_out.text || '';
+    }
+    return typeof chapter?.continuity_out === 'string' ? chapter.continuity_out : '';
+}
+
+function formatStateChangesForTextarea(stateChanges = []) {
+    if (!Array.isArray(stateChanges)) return '';
+    return stateChanges
+        .map((item) => {
+            const subject = String(item?.subject || '').trim();
+            const change = String(item?.change || '').trim();
+            if (!subject && !change) return '';
+            return subject ? `${subject}: ${change}` : change;
+        })
+        .filter(Boolean)
+        .join('\n');
+}
+
+function parseStateChangesFromTextarea(value = '') {
+    return String(value || '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+            const separatorIndex = line.indexOf(':');
+            if (separatorIndex < 0) return { subject: '', change: line };
+            return {
+                subject: line.slice(0, separatorIndex).trim(),
+                change: line.slice(separatorIndex + 1).trim(),
+            };
+        });
 }
 
 export default function ArcGenerationModal({ projectId, genre, currentChapterCount, onClose }) {
@@ -550,7 +609,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                             {' · '}
                             Giải quyết: {arcStore.outlineRevisionAssessment.resolvedIssueCount}
                             {' · '}
-                            Loi moi: {arcStore.outlineRevisionAssessment.introducedIssueCount}
+                            Lỗi mới: {arcStore.outlineRevisionAssessment.introducedIssueCount}
                         </div>
                     </div>
                 )}
@@ -597,8 +656,19 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
 
                 <div className="arc-outline-list">
                     {arcStore.generatedOutline.chapters.map((chapter, index) => {
-                        const issueCount = validatorIssues.filter((issue) => issue.chapterIndex === index).length;
+                        const chapterIssues = validatorIssues.filter((issue) => issue.chapterIndex === index);
+                        const issueCount = chapterIssues.length;
+                        const issueLabels = [...new Set(chapterIssues.map((issue) => formatIssueCode(issue.code)))];
                         const checked = arcStore.selectedDraftIndexes.includes(index);
+                        const pacing = chapter.pacing || 'medium';
+                        const continuityInResponse = getContinuityInResponse(chapter);
+                        const continuityOutText = getContinuityOutText(chapter);
+                        const continuityInPatch = chapter.continuity_in && typeof chapter.continuity_in === 'object'
+                            ? chapter.continuity_in
+                            : {};
+                        const continuityOutPatch = chapter.continuity_out && typeof chapter.continuity_out === 'object'
+                            ? chapter.continuity_out
+                            : {};
                         return (
                             <div key={index} className="arc-outline-card">
                                 <div className="arc-outline-card-header arc-outline-card-header--top">
@@ -624,28 +694,135 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                 <input
                                     className="input input-inline font-bold"
                                     value={chapter.title}
+                                    aria-label={`Tiêu đề chương ${index + 1}`}
                                     onChange={(e) => arcStore.updateOutlineChapter(index, { title: e.target.value })}
                                 />
 
-                                <textarea
-                                    className="textarea mt-2"
-                                    rows={2}
-                                    placeholder="Mục tiêu của chương..."
-                                    value={chapter.purpose || ''}
-                                    onChange={(e) => arcStore.updateOutlineChapter(index, { purpose: e.target.value })}
-                                />
-
-                                <textarea
-                                    className="textarea mt-2"
-                                    rows={3}
-                                    value={chapter.summary}
-                                    onChange={(e) => arcStore.updateOutlineChapter(index, { summary: e.target.value })}
-                                />
-
-                                <div className="arc-outline-card-meta mt-2">
-                                    <span className="badge">Nhịp: {PACING_LABELS[chapter.pacing] || PACING_LABELS.medium}</span>
-                                    <span className="badge border">{chapter.key_events?.length || 0} sự kiện</span>
+                                <div className="arc-outline-summary-grid">
+                                    <div className="form-group">
+                                        <label className="form-label">Mục tiêu</label>
+                                        <textarea
+                                            className="textarea"
+                                            rows={2}
+                                            placeholder="Mục tiêu của chương..."
+                                            value={chapter.purpose || ''}
+                                            onChange={(e) => arcStore.updateOutlineChapter(index, { purpose: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Tóm tắt</label>
+                                        <textarea
+                                            className="textarea"
+                                            rows={2}
+                                            value={chapter.summary || ''}
+                                            onChange={(e) => arcStore.updateOutlineChapter(index, { summary: e.target.value })}
+                                        />
+                                    </div>
                                 </div>
+
+                                <div className="arc-outline-card-meta">
+                                    <span className={`badge arc-pacing-badge arc-pacing-badge--${pacing}`}>
+                                        {PACING_BADGE_LABELS[pacing] || PACING_BADGE_LABELS.medium}
+                                    </span>
+                                    <span className="badge border">{chapter.key_events?.length || 0} sự kiện</span>
+                                    {issueLabels.slice(0, 4).map((label) => (
+                                        <span key={label} className="badge border arc-issue-badge">{label}</span>
+                                    ))}
+                                </div>
+
+                                <details className="arc-outline-details">
+                                    <summary>Chi tiết nhân quả</summary>
+                                    <div className="arc-outline-detail-grid">
+                                        <section className="arc-outline-section">
+                                            <h4>Nhân quả</h4>
+                                            <label className="form-label">Trạng thái mở chương</label>
+                                            <textarea
+                                                className="textarea"
+                                                rows={2}
+                                                value={chapter.opening_state || ''}
+                                                onChange={(e) => arcStore.updateOutlineChapter(index, { opening_state: e.target.value })}
+                                            />
+                                            <label className="form-label">Móc nối từ chương trước</label>
+                                            <textarea
+                                                className="textarea"
+                                                rows={2}
+                                                value={continuityInResponse}
+                                                onChange={(e) => arcStore.updateOutlineChapter(index, {
+                                                    continuity_in: { ...continuityInPatch, response: e.target.value },
+                                                    handoff_from_previous: e.target.value,
+                                                })}
+                                            />
+                                        </section>
+
+                                        <section className="arc-outline-section">
+                                            <h4>Xung đột & sự kiện</h4>
+                                            <label className="form-label">Xung đột chính</label>
+                                            <textarea
+                                                className="textarea"
+                                                rows={2}
+                                                aria-label={`Xung đột chính chương ${index + 1}`}
+                                                value={chapter.conflict || ''}
+                                                onChange={(e) => arcStore.updateOutlineChapter(index, { conflict: e.target.value })}
+                                            />
+                                            <label className="form-label">Sự kiện chính</label>
+                                            <textarea
+                                                className="textarea"
+                                                rows={3}
+                                                value={(chapter.key_events || []).join('\n')}
+                                                onChange={(e) => arcStore.updateOutlineChapter(index, { key_events: listFromTextarea(e.target.value) })}
+                                            />
+                                            <label className="form-label">Quyết định hoặc hệ quả</label>
+                                            <textarea
+                                                className="textarea"
+                                                rows={2}
+                                                value={chapter.decision_or_consequence || ''}
+                                                onChange={(e) => arcStore.updateOutlineChapter(index, { decision_or_consequence: e.target.value })}
+                                            />
+                                        </section>
+
+                                        <section className="arc-outline-section">
+                                            <h4>Thay đổi trạng thái</h4>
+                                            <textarea
+                                                className="textarea"
+                                                rows={4}
+                                                value={formatStateChangesForTextarea(chapter.state_changes)}
+                                                onChange={(e) => arcStore.updateOutlineChapter(index, {
+                                                    state_changes: parseStateChangesFromTextarea(e.target.value),
+                                                })}
+                                            />
+                                            <label className="form-label">Nhịp chương</label>
+                                            <select
+                                                className="select"
+                                                value={pacing}
+                                                onChange={(e) => arcStore.updateOutlineChapter(index, { pacing: e.target.value })}
+                                            >
+                                                <option value="slow">Chậm</option>
+                                                <option value="medium">Vừa</option>
+                                                <option value="fast">Nhanh</option>
+                                            </select>
+                                        </section>
+
+                                        <section className="arc-outline-section">
+                                            <h4>Kết chương</h4>
+                                            <label className="form-label">Trạng thái kết chương</label>
+                                            <textarea
+                                                className="textarea"
+                                                rows={2}
+                                                value={chapter.ending_state || ''}
+                                                onChange={(e) => arcStore.updateOutlineChapter(index, { ending_state: e.target.value })}
+                                            />
+                                            <label className="form-label">Hệ quả kéo sang chương sau</label>
+                                            <textarea
+                                                className="textarea"
+                                                rows={2}
+                                                value={continuityOutText}
+                                                onChange={(e) => arcStore.updateOutlineChapter(index, {
+                                                    continuity_out: { ...continuityOutPatch, text: e.target.value },
+                                                })}
+                                            />
+                                        </section>
+                                    </div>
+                                </details>
                             </div>
                         );
                     })}
@@ -746,7 +923,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                         <div className="arc-result-actions">
                             <button
                                 className={`btn btn-sm ${result.status === 'flagged' ? 'btn-danger' : 'btn-ghost'}`}
-                                onClick={() => arcStore.flagChapter(index, result.status === 'flagged' ? '' : 'Sai logic / lech huong')}
+                                onClick={() => arcStore.flagChapter(index, result.status === 'flagged' ? '' : 'Sai logic / lệch hướng')}
                             >
                                 <Flag size={12} /> {result.status === 'flagged' ? 'Bỏ cờ' : 'Cắm cờ lỗi'}
                             </button>

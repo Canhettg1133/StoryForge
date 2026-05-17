@@ -20,10 +20,7 @@ import db from '../services/db/database';
 import useProjectStore from './projectStore';
 import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 import { buildProseBuffer } from '../utils/proseBuffer';
-import {
-    OUTLINE_PROGRESS_STOPWORDS,
-    normalizePlanningText as normalizePlanText,
-} from '../utils/planningText';
+import { normalizePlanningText as normalizePlanText } from '../utils/planningText';
 import {
     buildMacroArcPersistenceSnapshot,
     compileMacroArcContract,
@@ -69,14 +66,131 @@ function normalizeGeneratedChapterTitle(title, chapterNumber) {
         : `Chương ${chapterNumber}`;
 }
 
+const VALID_OUTLINE_PACING = new Set(['slow', 'medium', 'fast']);
+
+function normalizeGeneratedTextField(value = '') {
+    return String(value ?? '').trim();
+}
+
+function normalizeGeneratedPacing(value = '') {
+    const pacing = normalizeGeneratedTextField(value).toLowerCase();
+    return VALID_OUTLINE_PACING.has(pacing) ? pacing : 'medium';
+}
+
+function normalizeGeneratedContinuityIn(chapter = {}) {
+    const raw = chapter?.continuity_in;
+    let response = '';
+    if (isPlainObject(raw)) {
+        response = normalizeGeneratedTextField(raw.response ?? raw.text ?? raw.handoff);
+    } else if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        try {
+            const parsed = parseAIJsonValue(trimmed);
+            response = isPlainObject(parsed)
+                ? normalizeGeneratedTextField(parsed.response ?? parsed.text ?? parsed.handoff)
+                : trimmed;
+        } catch {
+            response = trimmed;
+        }
+    }
+    if (!response) {
+        response = normalizeGeneratedTextField(chapter?.handoff_from_previous);
+    }
+    return { response };
+}
+
+function normalizeGeneratedContinuityOut(chapter = {}) {
+    const raw = chapter?.continuity_out;
+    let text = '';
+    if (isPlainObject(raw)) {
+        text = normalizeGeneratedTextField(raw.text ?? raw.response ?? raw.question);
+    } else if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        try {
+            const parsed = parseAIJsonValue(trimmed);
+            text = isPlainObject(parsed)
+                ? normalizeGeneratedTextField(parsed.text ?? parsed.response ?? parsed.question)
+                : trimmed;
+        } catch {
+            text = trimmed;
+        }
+    }
+    return { text };
+}
+
+function normalizeGeneratedStateChanges(value = []) {
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return [];
+        try {
+            const parsed = parseAIJsonValue(trimmed);
+            return normalizeGeneratedStateChanges(Array.isArray(parsed) ? parsed : [parsed]);
+        } catch {
+            return [{ subject: '', change: trimmed }];
+        }
+    }
+    if (isPlainObject(value)) {
+        return normalizeGeneratedStateChanges([value]);
+    }
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((item) => {
+            if (isPlainObject(item)) {
+                const subject = normalizeGeneratedTextField(item.subject ?? item.name ?? item.entity);
+                const change = normalizeGeneratedTextField(item.change ?? item.delta ?? item.status);
+                return subject || change ? { subject, change } : null;
+            }
+            const change = normalizeGeneratedTextField(item);
+            return change ? { subject: '', change } : null;
+        })
+        .filter(Boolean);
+}
+
+function deriveStateDeltaFromChanges(stateChanges = []) {
+    return (Array.isArray(stateChanges) ? stateChanges : [])
+        .map((item) => {
+            const subject = normalizeGeneratedTextField(item?.subject);
+            const change = normalizeGeneratedTextField(item?.change);
+            if (!subject && !change) return '';
+            return subject ? `${subject}: ${change}`.trim() : change;
+        })
+        .filter(Boolean)
+        .join(' | ');
+}
+
+function getStateDeltaText(chapter = {}, normalizedStateChanges = null) {
+    const stateChanges = normalizedStateChanges ?? normalizeGeneratedStateChanges(chapter?.state_changes);
+    const derived = deriveStateDeltaFromChanges(stateChanges);
+    return derived || normalizeGeneratedTextField(chapter?.state_delta);
+}
+
 function normalizeGeneratedOutline(outline, startingChapterIndex) {
     if (!outline || !Array.isArray(outline.chapters)) return outline;
     return {
         ...outline,
-        chapters: outline.chapters.map((chapter, index) => ({
-            ...chapter,
-            title: normalizeGeneratedChapterTitle(chapter?.title, startingChapterIndex + index + 1),
-        })),
+        chapters: outline.chapters.map((chapter, index) => {
+            const continuity_in = normalizeGeneratedContinuityIn(chapter);
+            const continuity_out = normalizeGeneratedContinuityOut(chapter);
+            const state_changes = normalizeGeneratedStateChanges(chapter?.state_changes);
+            const state_delta = getStateDeltaText(chapter, state_changes);
+            return {
+                ...chapter,
+                title: normalizeGeneratedChapterTitle(chapter?.title, startingChapterIndex + index + 1),
+                purpose: normalizeGeneratedTextField(chapter?.purpose),
+                summary: normalizeGeneratedTextField(chapter?.summary),
+                opening_state: normalizeGeneratedTextField(chapter?.opening_state),
+                continuity_in,
+                handoff_from_previous: normalizeGeneratedTextField(chapter?.handoff_from_previous) || continuity_in.response,
+                conflict: normalizeGeneratedTextField(chapter?.conflict),
+                key_events: normalizeGeneratedListField(chapter?.key_events),
+                decision_or_consequence: normalizeGeneratedTextField(chapter?.decision_or_consequence),
+                state_changes,
+                ending_state: normalizeGeneratedTextField(chapter?.ending_state),
+                continuity_out,
+                pacing: normalizeGeneratedPacing(chapter?.pacing),
+                state_delta,
+            };
+        }),
     };
 }
 
@@ -498,13 +612,22 @@ const HARD_RESOLUTION_REGEX = /(ket thuc|chung ket|giai quyet thread chinh|giai 
 const SOFT_RESOLUTION_REGEX = /(giai quyet|hoa giai|pha vo|he lo|tiet lo|midpoint|dot pha canh gioi|thang cap|phi thang|dao chieu|quyet dinh lon|lo manh moi lon|su that dan lo ra)/;
 
 function getNormalizedChapterText(chapter = {}) {
+    const stateChangeText = normalizeGeneratedStateChanges(chapter?.state_changes)
+        .map((item) => `${item.subject} ${item.change}`.trim())
+        .join(' ');
     return normalizePlanText([
         chapter?.title,
         chapter?.summary,
         chapter?.purpose,
         chapter?.opening_state,
         chapter?.handoff_from_previous,
+        getContinuityInResponse(chapter),
+        chapter?.conflict,
+        chapter?.decision_or_consequence,
         chapter?.ending_state,
+        getContinuityOutText(chapter),
+        getStateDeltaText(chapter),
+        stateChangeText,
         Array.isArray(chapter?.key_events) ? chapter.key_events.join(' ') : '',
     ].filter(Boolean).join(' '));
 }
@@ -521,22 +644,24 @@ function hasReadablePlanBody(chapter = {}) {
     return purposeWords >= 4 && (summaryWords >= 8 || keyEventCount > 0);
 }
 
-function getChapterEndingStateText(chapter = {}) {
-    return [
-        chapter?.ending_state,
-        chapter?.state_delta,
-    ].filter(Boolean).join(' ');
+function getContinuityInResponse(chapter = {}) {
+    if (isPlainObject(chapter?.continuity_in)) {
+        return normalizeGeneratedTextField(chapter.continuity_in.response);
+    }
+    if (typeof chapter?.continuity_in === 'string') {
+        return normalizeGeneratedTextField(chapter.continuity_in);
+    }
+    return normalizeGeneratedTextField(chapter?.handoff_from_previous);
 }
 
-function getHandoffKeywordCoverage(previousEndingText = '', currentHandoffText = '') {
-    const previousKeywords = normalizePlanText(previousEndingText)
-        .split(' ')
-        .filter((word) => word.length >= 4 && !OUTLINE_PROGRESS_STOPWORDS.has(word))
-        .filter((word, index, array) => array.indexOf(word) === index)
-        .slice(0, 10);
-    const normalizedHandoff = normalizePlanText(currentHandoffText);
-    const matchedKeywords = previousKeywords.filter((word) => normalizedHandoff.includes(word));
-    return { previousKeywords, matchedKeywords };
+function getContinuityOutText(chapter = {}) {
+    if (isPlainObject(chapter?.continuity_out)) {
+        return normalizeGeneratedTextField(chapter.continuity_out.text);
+    }
+    if (typeof chapter?.continuity_out === 'string') {
+        return normalizeGeneratedTextField(chapter.continuity_out);
+    }
+    return '';
 }
 
 function getResolutionSignal(chapter = {}) {
@@ -805,6 +930,66 @@ const OUTLINE_ISSUE_SOURCE_MAP = {
         relevantFields: ['handoff_from_previous', 'opening_state', 'summary', 'key_events'],
         explanation: 'Validator đối chiếu handoff của chapter sau với ending_state/state_delta của chapter trước.',
     },
+    'chapter-missing-purpose': {
+        inputKind: 'visible',
+        inputLabel: 'Nội dung đang thấy',
+        relevantFields: ['purpose'],
+        explanation: 'Purpose giúp biết chương này tồn tại để làm gì trong mạch truyện.',
+    },
+    'chapter-missing-opening-state': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata nhân quả',
+        relevantFields: ['opening_state'],
+        explanation: 'Opening state là điểm xuất phát để chương không mở ra lơ lửng.',
+    },
+    'chapter-missing-continuity-in': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata nhân quả',
+        relevantFields: ['continuity_in.response'],
+        explanation: 'continuity_in.response nói chương này nối từ hệ quả trước như thế nào. Validator chỉ kiểm tra có/không, không đoán semantic.',
+    },
+    'chapter-missing-conflict': {
+        inputKind: 'visible',
+        inputLabel: 'Nội dung đang thấy',
+        relevantFields: ['conflict'],
+        explanation: 'Conflict làm rõ ai muốn gì và bị cản bởi điều gì.',
+    },
+    'chapter-missing-key-events': {
+        inputKind: 'visible',
+        inputLabel: 'Nội dung đang thấy',
+        relevantFields: ['key_events'],
+        explanation: 'key_events là xương sống để AI viết chương không lan man.',
+    },
+    'chapter-missing-decision': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata nhân quả',
+        relevantFields: ['decision_or_consequence'],
+        explanation: 'decision_or_consequence ép chương để lại quyết định hoặc hệ quả rõ.',
+    },
+    'chapter-missing-ending-state': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata nhân quả',
+        relevantFields: ['ending_state'],
+        explanation: 'Ending state là trạng thái chốt để chương sau bám vào.',
+    },
+    'chapter-missing-continuity-out': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata nhân quả',
+        relevantFields: ['continuity_out.text'],
+        explanation: 'continuity_out.text là hệ quả, câu hỏi hoặc áp lực kéo sang chương sau.',
+    },
+    'chapter-state-change-incomplete': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata trạng thái',
+        relevantFields: ['state_changes.subject', 'state_changes.change'],
+        explanation: 'state_changes cần có cả chủ thể và thay đổi để tránh ghi trạng thái mơ hồ.',
+    },
+    'pacing-too-fast': {
+        inputKind: 'metadata',
+        inputLabel: 'Metadata nhịp chương',
+        relevantFields: ['pacing'],
+        explanation: 'Validator chỉ cảnh báo khi nhiều chương fast đứng liền nhau để người viết cân lại nhịp.',
+    },
 };
 
 export function describeOutlineValidationIssue(issue = {}) {
@@ -840,7 +1025,7 @@ export function describeOutlineValidationIssue(issue = {}) {
         return {
             code,
             inputKind: 'metadata',
-            inputLabel: 'Metadata dai cuc',
+            inputLabel: 'Metadata đại cục',
             relevantFields: ['objective_refs', 'state_delta', 'arc_guard_note', 'macroArcContract'],
             explanation: 'Lỗi này đến từ ràng buộc macro arc và metadata đi kèm của outline.',
         };
@@ -879,6 +1064,14 @@ function buildOutlineComparisonSignature(outline = null) {
         purpose: chapter?.purpose || '',
         summary: chapter?.summary || '',
         key_events: Array.isArray(chapter?.key_events) ? chapter.key_events : [],
+        opening_state: chapter?.opening_state || '',
+        continuity_in: chapter?.continuity_in || null,
+        conflict: chapter?.conflict || '',
+        decision_or_consequence: chapter?.decision_or_consequence || '',
+        state_changes: Array.isArray(chapter?.state_changes) ? chapter.state_changes : [],
+        ending_state: chapter?.ending_state || '',
+        continuity_out: chapter?.continuity_out || null,
+        pacing: chapter?.pacing || '',
         objective_refs: Array.isArray(chapter?.objective_refs) ? chapter.objective_refs : [],
         anchor_refs: Array.isArray(chapter?.anchor_refs) ? chapter.anchor_refs : [],
         state_delta: chapter?.state_delta || '',
@@ -963,6 +1156,8 @@ export function validateGeneratedOutline(generatedOutline, {
     const chapterStepPercent = storyProgressBudget && chapters.length > 0
         ? (Number(storyProgressBudget.toPercent || 0) - Number(storyProgressBudget.fromPercent || 0)) / chapters.length
         : 0;
+    let currentFastStreak = 0;
+    let maxFastStreak = 0;
 
     for (let index = 0; index < chapters.length; index++) {
         const current = chapters[index] || {};
@@ -983,6 +1178,11 @@ export function validateGeneratedOutline(generatedOutline, {
         const milestoneGap = nextMilestone ? Number(nextMilestone.percent) - chapterToPercent : null;
         const isNearMilestone = milestoneGap != null ? milestoneGap <= 2 : false;
         const isFarFromPlannedResolution = !isNearMacroEnding && !isNearMilestone;
+        const keyEventCount = Array.isArray(current?.key_events) ? current.key_events.length : 0;
+        const stateChanges = normalizeGeneratedStateChanges(current?.state_changes);
+
+        currentFastStreak = current?.pacing === 'fast' ? currentFastStreak + 1 : 0;
+        maxFastStreak = Math.max(maxFastStreak, currentFastStreak);
 
         if (macroRangeIsValid && (chapterAbsoluteNumber < macroStartChapter || chapterAbsoluteNumber > macroEndChapter)) {
             issues.push({
@@ -1004,6 +1204,45 @@ export function validateGeneratedOutline(generatedOutline, {
             });
         }
 
+        const pushMissingCausalField = (code, message, relevantFields = []) => {
+            issues.push({
+                chapterIndex: index,
+                chapterTitle: current.title || `Chương ${index + 1}`,
+                code,
+                severity: 'warning',
+                message,
+                relevantFields,
+            });
+        };
+
+        if (!normalizeGeneratedTextField(current?.purpose)) {
+            pushMissingCausalField('chapter-missing-purpose', 'Chương thiếu mục tiêu kể chuyện để xác định vai trò trong đợt dàn ý.', ['purpose']);
+        }
+        if (!normalizeGeneratedTextField(current?.opening_state)) {
+            pushMissingCausalField('chapter-missing-opening-state', 'Chương thiếu trạng thái mở để biết điểm xuất phát của chương.', ['opening_state']);
+        }
+        if (!normalizeGeneratedTextField(current?.conflict)) {
+            pushMissingCausalField('chapter-missing-conflict', 'Chương thiếu xung đột chính nên lực kéo của chương còn mơ hồ.', ['conflict']);
+        }
+        if (keyEventCount === 0) {
+            pushMissingCausalField('chapter-missing-key-events', 'Chương thiếu sự kiện chính làm xương sống khi viết bản nháp.', ['key_events']);
+        }
+        if (!normalizeGeneratedTextField(current?.decision_or_consequence)) {
+            pushMissingCausalField('chapter-missing-decision', 'Chương thiếu quyết định hoặc hệ quả nên dấu vết sau chương chưa rõ.', ['decision_or_consequence']);
+        }
+        if (!normalizeGeneratedTextField(current?.ending_state)) {
+            pushMissingCausalField('chapter-missing-ending-state', 'Chương thiếu trạng thái kết để chương sau bám vào.', ['ending_state']);
+        }
+        if (index > 0 && !getContinuityInResponse(current)) {
+            pushMissingCausalField('chapter-missing-continuity-in', 'Chương thiếu móc nối để nói rõ nó phản ứng với hệ quả trước như thế nào.', ['continuity_in.response']);
+        }
+        if (index < chapters.length - 1 && !getContinuityOutText(current)) {
+            pushMissingCausalField('chapter-missing-continuity-out', 'Chương thiếu hệ quả, câu hỏi hoặc áp lực kéo sang chương sau.', ['continuity_out.text']);
+        }
+        if (stateChanges.some((item) => !normalizeGeneratedTextField(item.subject) || !normalizeGeneratedTextField(item.change))) {
+            pushMissingCausalField('chapter-state-change-incomplete', 'Thay đổi trạng thái phải có đủ chủ thể và nội dung thay đổi để không bị mơ hồ.', ['state_changes.subject', 'state_changes.change']);
+        }
+
         if (previous) {
             const previousCombined = normalizePlanText([
                 previous.title,
@@ -1011,28 +1250,6 @@ export function validateGeneratedOutline(generatedOutline, {
                 previous.purpose,
                 Array.isArray(previous.key_events) ? previous.key_events.join(' ') : '',
             ].filter(Boolean).join(' '));
-            const previousEndingText = getChapterEndingStateText(previous);
-            const handoffText = String(current?.handoff_from_previous || '').trim();
-            if (String(previousEndingText || '').trim() && !handoffText) {
-                issues.push({
-                    chapterIndex: index,
-                    chapterTitle: current.title || `Chương ${index + 1}`,
-                    code: 'chapter-missing-handoff',
-                    severity: 'error',
-                    message: 'Chapter trước có ending_state/state_delta nhưng chapter này thiếu handoff_from_previous để nối nhân quả.',
-                });
-            } else if (String(previousEndingText || '').trim() && handoffText) {
-                const coverage = getHandoffKeywordCoverage(previousEndingText, handoffText);
-                if (coverage.previousKeywords.length >= 3 && coverage.matchedKeywords.length === 0) {
-                    issues.push({
-                        chapterIndex: index,
-                        chapterTitle: current.title || `Chương ${index + 1}`,
-                        code: 'chapter-handoff-weak',
-                        severity: 'warning',
-                        message: 'handoff_from_previous chưa có dấu hiệu bám vào ending_state/state_delta của chapter trước.',
-                    });
-                }
-            }
             if (
                 combinedText
                 && previousCombined
@@ -1095,6 +1312,17 @@ export function validateGeneratedOutline(generatedOutline, {
             code: 'too-fast',
             severity: 'warning',
             message: 'Batch chưa có chapter buildup/setup/consequence rõ ràng.',
+        });
+    }
+
+    if (chapters.length > 1 && (maxFastStreak >= 3 || chapters.every((chapter) => chapter?.pacing === 'fast'))) {
+        issues.push({
+            chapterIndex: null,
+            chapterTitle: '',
+            code: 'pacing-too-fast',
+            severity: 'warning',
+            message: 'Batch có quá nhiều chương nhịp nhanh liên tiếp; nên xen một chương chậm/vừa để giữ buildup và hệ quả.',
+            relevantFields: ['pacing'],
         });
     }
 
@@ -1233,27 +1461,62 @@ function buildOutlineDerivedState(
 }
 
 function normalizeGeneratedListField(value = []) {
-    return Array.isArray(value)
-        ? value.map((item) => String(item || '').trim()).filter(Boolean)
-        : [];
+    const normalizeItem = (item) => {
+        if (isPlainObject(item)) {
+            return normalizeGeneratedTextField(item.name ?? item.title ?? item.label ?? item.value);
+        }
+        return normalizeGeneratedTextField(item);
+    };
+
+    if (Array.isArray(value)) {
+        return value.map(normalizeItem).filter(Boolean);
+    }
+
+    if (typeof value !== 'string') return [];
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+
+    try {
+        const parsed = parseAIJsonValue(trimmed);
+        if (Array.isArray(parsed)) {
+            return parsed.map(normalizeItem).filter(Boolean);
+        }
+    } catch {
+        // Fall through to loose splitting.
+    }
+
+    return trimmed
+        .split(/[\n,;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
 }
 
 function buildGeneratedChapterContext(chapter = {}) {
+    const continuity_in = normalizeGeneratedContinuityIn(chapter);
+    const continuity_out = normalizeGeneratedContinuityOut(chapter);
+    const state_changes = normalizeGeneratedStateChanges(chapter?.state_changes);
+    const state_delta = getStateDeltaText(chapter, state_changes);
     return {
-        title: chapter?.title || '',
-        summary: chapter?.summary || '',
-        purpose: chapter?.purpose || '',
-        opening_state: String(chapter?.opening_state || '').trim(),
-        handoff_from_previous: String(chapter?.handoff_from_previous || '').trim(),
-        ending_state: String(chapter?.ending_state || '').trim(),
+        title: normalizeGeneratedTextField(chapter?.title),
+        summary: normalizeGeneratedTextField(chapter?.summary),
+        purpose: normalizeGeneratedTextField(chapter?.purpose),
+        opening_state: normalizeGeneratedTextField(chapter?.opening_state),
+        continuity_in,
+        handoff_from_previous: normalizeGeneratedTextField(chapter?.handoff_from_previous) || continuity_in.response,
+        conflict: normalizeGeneratedTextField(chapter?.conflict),
+        decision_or_consequence: normalizeGeneratedTextField(chapter?.decision_or_consequence),
+        state_changes,
+        ending_state: normalizeGeneratedTextField(chapter?.ending_state),
+        continuity_out,
+        pacing: normalizeGeneratedPacing(chapter?.pacing),
         featured_characters: normalizeGeneratedListField(chapter?.featured_characters),
-        primary_location: String(chapter?.primary_location || '').trim(),
+        primary_location: normalizeGeneratedTextField(chapter?.primary_location),
         thread_titles: normalizeGeneratedListField(chapter?.thread_titles),
         key_events: normalizeGeneratedListField(chapter?.key_events),
         required_factions: normalizeGeneratedListField(chapter?.required_factions),
         required_objects: normalizeGeneratedListField(chapter?.required_objects),
         required_terms: normalizeGeneratedListField(chapter?.required_terms),
-        state_delta: String(chapter?.state_delta || '').trim(),
+        state_delta,
     };
 }
 
@@ -1265,8 +1528,14 @@ function buildGeneratedChapterFocusText(chapter = {}, extra = '') {
         context.summary,
         context.opening_state,
         context.handoff_from_previous,
+        context.continuity_in.response,
+        context.conflict,
+        context.decision_or_consequence,
         context.ending_state,
+        context.continuity_out.text,
         context.state_delta,
+        ...context.state_changes.map((item) => `${item.subject}: ${item.change}`.trim()),
+        context.pacing ? `Nhịp: ${context.pacing}` : '',
         ...context.featured_characters,
         ...context.thread_titles,
         ...context.key_events,
@@ -1278,6 +1547,32 @@ function buildGeneratedChapterFocusText(chapter = {}, extra = '') {
     ].filter(Boolean).join('\n');
 }
 
+function buildChapterDraftPromptOutlineFields(chapter = {}) {
+    const context = buildGeneratedChapterContext(chapter);
+    const rawLegacyHandoff = normalizeGeneratedTextField(chapter?.handoff_from_previous);
+    return {
+        chapterOutlineTitle: context.title,
+        chapterOutlinePurpose: context.purpose,
+        chapterOutlineSummary: context.summary,
+        chapterOutlineEvents: context.key_events,
+        chapterOutlineOpeningState: context.opening_state,
+        chapterOutlineHandoff: rawLegacyHandoff && rawLegacyHandoff !== context.continuity_in.response
+            ? rawLegacyHandoff
+            : '',
+        chapterOutlineContinuityIn: context.continuity_in.response,
+        chapterOutlineConflict: context.conflict,
+        chapterOutlineDecisionOrConsequence: context.decision_or_consequence,
+        chapterOutlineStateChanges: context.state_changes,
+        chapterOutlineEndingState: context.ending_state,
+        chapterOutlineContinuityOut: context.continuity_out.text,
+        chapterOutlinePacing: context.pacing,
+        chapterOutlineObjectiveRefs: normalizeGeneratedListField(chapter?.objective_refs),
+        chapterOutlineAnchorRefs: normalizeGeneratedListField(chapter?.anchor_refs),
+        chapterOutlineStateDelta: context.state_delta,
+        chapterOutlineGuardrail: normalizeGeneratedTextField(chapter?.arc_guard_note),
+    };
+}
+
 function buildGeneratedChapterPersistencePayload({
     projectId,
     arcId,
@@ -1287,27 +1582,34 @@ function buildGeneratedChapterPersistencePayload({
     title = '',
     actualWordCount = 0,
 }) {
+    const context = buildGeneratedChapterContext(chapter);
     return {
         project_id: projectId,
         arc_id: arcId,
         order_index: orderIndex,
-        title: title || chapter?.title || `Chương ${orderIndex + 1}`,
-        summary: chapter?.summary || '',
-        purpose: chapter?.purpose || JSON.stringify(chapter?.key_events || []),
+        title: title || context.title || `Chương ${orderIndex + 1}`,
+        summary: context.summary || '',
+        purpose: context.purpose || JSON.stringify(context.key_events || []),
         status,
         word_count_target: 7000,
         actual_word_count: actualWordCount,
-        opening_state: String(chapter?.opening_state || '').trim(),
-        handoff_from_previous: String(chapter?.handoff_from_previous || '').trim(),
-        ending_state: String(chapter?.ending_state || '').trim(),
-        featured_characters: normalizeGeneratedListField(chapter?.featured_characters),
-        primary_location: String(chapter?.primary_location || '').trim(),
-        thread_titles: normalizeGeneratedListField(chapter?.thread_titles),
-        key_events: normalizeGeneratedListField(chapter?.key_events),
-        required_factions: normalizeGeneratedListField(chapter?.required_factions),
-        required_objects: normalizeGeneratedListField(chapter?.required_objects),
-        required_terms: normalizeGeneratedListField(chapter?.required_terms),
-        state_delta: String(chapter?.state_delta || '').trim(),
+        opening_state: context.opening_state,
+        continuity_in: context.continuity_in,
+        handoff_from_previous: context.handoff_from_previous,
+        conflict: context.conflict,
+        key_events: context.key_events,
+        decision_or_consequence: context.decision_or_consequence,
+        state_changes: context.state_changes,
+        ending_state: context.ending_state,
+        continuity_out: context.continuity_out,
+        pacing: context.pacing,
+        featured_characters: context.featured_characters,
+        primary_location: context.primary_location,
+        thread_titles: context.thread_titles,
+        required_factions: context.required_factions,
+        required_objects: context.required_objects,
+        required_terms: context.required_terms,
+        state_delta: context.state_delta,
     };
 }
 
@@ -1739,10 +2041,10 @@ const useArcGenStore = create((set, get) => ({
                         : activeFacts[Math.floor(Math.random() * activeFacts.length)];
                 }
 
-                finalGoal = 'Tao 3 huong di bat ngo cho batch chuong tiep theo nhung van giu dung budget tien do.';
-                if (chosenThread) finalGoal += ' Tuyen can day tiep: "' + chosenThread.title + '".';
-                if (chosenThread?.description) finalGoal += ' Mo ta tuyen: ' + chosenThread.description + '.';
-                if (chosenFact) finalGoal += ' Su that lien quan: "' + chosenFact.description + '".';
+                finalGoal = 'Tạo 3 hướng đi bất ngờ cho batch chương tiếp theo nhưng vẫn giữ đúng budget tiến độ.';
+                if (chosenThread) finalGoal += ' Tuyến cần đẩy tiếp: "' + chosenThread.title + '".';
+                if (chosenThread?.description) finalGoal += ' Mô tả tuyến: ' + chosenThread.description + '.';
+                if (chosenFact) finalGoal += ' Sự thật liên quan: "' + chosenFact.description + '".';
             }
 
             const messages = buildPrompt(TASK_TYPES.ARC_OUTLINE, {
@@ -2071,21 +2373,12 @@ const useArcGenStore = create((set, get) => ({
                 let finished = false;
 
                 for (let attempt = 0; attempt < 2 && !finished; attempt += 1) {
+                    const outlineFields = buildChapterDraftPromptOutlineFields(chapter);
                     const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
                         ...ctx,
                         previousSummary: previousGeneratedSummary || ctx.previousSummary,
                         bridgeBuffer: generatedBridgeBuffer || ctx.bridgeBuffer,
-                        chapterOutlineTitle: chapter.title,
-                        chapterOutlinePurpose: chapter.purpose || '',
-                        chapterOutlineSummary: chapter.summary,
-                        chapterOutlineEvents: chapter.key_events || [],
-                        chapterOutlineOpeningState: chapter.opening_state || '',
-                        chapterOutlineHandoff: chapter.handoff_from_previous || '',
-                        chapterOutlineEndingState: chapter.ending_state || '',
-                        chapterOutlineObjectiveRefs: chapter.objective_refs || [],
-                        chapterOutlineAnchorRefs: chapter.anchor_refs || [],
-                        chapterOutlineStateDelta: chapter.state_delta || '',
-                        chapterOutlineGuardrail: chapter.arc_guard_note || '',
+                        ...outlineFields,
                         startChapterNumber: chapterNumber,
                         existingChapterBriefs,
                         priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(
@@ -2227,20 +2520,13 @@ const useArcGenStore = create((set, get) => ({
 
         for (let i = 0; i < chapterCount; i++) {
             const ch = state.generatedOutline.chapters[i];
-            const chapterId = await db.chapters.add({
-                project_id: projectId,
-                arc_id: arcId,        // Phase 9: gán đúng arc_id thay vì null
-                order_index: baseIndex + i,
-                title: ch.title,
-                summary: ch.summary || '',
-                purpose: ch.purpose || JSON.stringify(ch.key_events || []),
-                opening_state: String(ch.opening_state || '').trim(),
-                handoff_from_previous: String(ch.handoff_from_previous || '').trim(),
-                ending_state: String(ch.ending_state || '').trim(),
+            const chapterId = await db.chapters.add(buildGeneratedChapterPersistencePayload({
+                projectId,
+                arcId,
+                orderIndex: baseIndex + i,
+                chapter: ch,
                 status: 'outline',
-                word_count_target: 7000,
-                actual_word_count: 0,
-            });
+            }));
 
             await db.scenes.add({
                 project_id: projectId,
@@ -2322,20 +2608,15 @@ const useArcGenStore = create((set, get) => ({
             const draft = doneDrafts[di];
             const outlineChapter = state.generatedOutline?.chapters?.[draft.outlineIndex] || null;
 
-            const chapterId = await db.chapters.add({
-                project_id: projectId,
-                arc_id: arcId,        // Phase 9: gán đúng arc_id thay vì null
-                order_index: baseIndex + createdCount,
-                title: draft.title,
-                summary: outlineChapter?.summary || '',
-                purpose: outlineChapter?.purpose || '',
-                opening_state: String(outlineChapter?.opening_state || '').trim(),
-                handoff_from_previous: String(outlineChapter?.handoff_from_previous || '').trim(),
-                ending_state: String(outlineChapter?.ending_state || '').trim(),
+            const chapterId = await db.chapters.add(buildGeneratedChapterPersistencePayload({
+                projectId,
+                arcId,
+                orderIndex: baseIndex + createdCount,
+                chapter: outlineChapter || { title: draft.title },
                 status: 'draft',
-                word_count_target: 7000,
-                actual_word_count: draft.wordCount,
-            });
+                title: draft.title,
+                actualWordCount: draft.wordCount,
+            }));
             createdCount++;
 
             await db.scenes.add({
@@ -2454,18 +2735,13 @@ const useArcGenStore = create((set, get) => ({
                 let finished = false;
 
                 for (let attempt = 0; attempt < 2 && !finished; attempt += 1) {
+                    const outlineFields = buildChapterDraftPromptOutlineFields(ch);
                     const messages = buildPrompt(TASK_TYPES.ARC_CHAPTER_DRAFT, {
                         ...ctx,
                         previousSummary: previousGeneratedSummary || ctx.previousSummary,
                         bridgeBuffer: previousBridgeBuffer,
-                        chapterOutlineTitle: ch.title,
-                        chapterOutlinePurpose: ch.purpose || '',
-                        chapterOutlineSummary: ch.summary + (flagNote ? '. GHI CHU SUA DOI: ' + flagNote : ''),
-                        chapterOutlineEvents: ch.key_events || [],
-                        chapterOutlineObjectiveRefs: ch.objective_refs || [],
-                        chapterOutlineAnchorRefs: ch.anchor_refs || [],
-                        chapterOutlineStateDelta: ch.state_delta || '',
-                        chapterOutlineGuardrail: ch.arc_guard_note || '',
+                        ...outlineFields,
+                        chapterOutlineSummary: outlineFields.chapterOutlineSummary + (flagNote ? '. GHI CHÚ SỬA ĐỔI: ' + flagNote : ''),
                         startChapterNumber: chapterNumber,
                         existingChapterBriefs,
                         priorGeneratedChapterBriefs: buildPriorGeneratedBriefs(

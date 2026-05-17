@@ -161,14 +161,35 @@ export function buildChapterOutlineLayer(taskType, currentChapterOutline, chapte
     if (currentChapterOutline.openingState) {
       cur.push('Trạng thái mở chương / điểm xuất phát: ' + currentChapterOutline.openingState);
     }
-    if (currentChapterOutline.handoffFromPrevious) {
+    const continuityInResponse = currentChapterOutline.continuityIn?.response || '';
+    if (currentChapterOutline.handoffFromPrevious && currentChapterOutline.handoffFromPrevious !== continuityInResponse) {
       cur.push('Cầu nhân quả từ chương trước: ' + currentChapterOutline.handoffFromPrevious);
+    }
+    if (continuityInResponse) {
+      cur.push('Nối mạch từ hệ quả trước: ' + continuityInResponse);
+    }
+    if (currentChapterOutline.conflict) {
+      cur.push('Xung đột chính: ' + currentChapterOutline.conflict);
+    }
+    if (currentChapterOutline.decisionOrConsequence) {
+      cur.push('Quyết định/hệ quả bắt buộc: ' + currentChapterOutline.decisionOrConsequence);
     }
     if (currentChapterOutline.endingState) {
       cur.push('Trạng thái kết chương dự kiến: ' + currentChapterOutline.endingState);
     }
+    if (currentChapterOutline.continuityOut?.text) {
+      cur.push('Móc kéo sang chương sau: ' + currentChapterOutline.continuityOut.text);
+    }
     if (currentChapterOutline.stateDelta) {
       cur.push('State delta / thay đổi Character Live Canon dự kiến: ' + currentChapterOutline.stateDelta);
+    }
+    if (Array.isArray(currentChapterOutline.stateChanges) && currentChapterOutline.stateChanges.length > 0) {
+      cur.push('Thay đổi trạng thái dự kiến: ' + currentChapterOutline.stateChanges.map(function (item) {
+        return [item?.subject, item?.change].filter(Boolean).join(': ');
+      }).filter(Boolean).join(' | '));
+    }
+    if (currentChapterOutline.pacing) {
+      cur.push('Nhịp chương: ' + currentChapterOutline.pacing);
     }
     if (currentChapterOutline.featuredCharacters && currentChapterOutline.featuredCharacters.length > 0) {
       cur.push('Nhân vật bắt buộc bám sát: ' + currentChapterOutline.featuredCharacters.join(', '));

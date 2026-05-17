@@ -25,7 +25,7 @@ export const GLOBAL_PROMPT_META = {
     purpose: 'Prompt này ép outline chỉ dùng entity đã có trong seed, hoặc đưa entity mới vào proposed_entities để tác giả duyệt trước khi tạo dự án.',
     whenToEdit: 'Sửa khi bạn muốn AI nối chương chặt hơn, bắt cầu nối nhân quả rõ hơn, hoặc kiểm soát cách đề xuất entity mới như Linh Khí, Linh Thạch, Luyện Khí.',
     commonInputs: 'Seed đã duyệt, số chương khởi đầu, thể loại, tone, góc nhìn, xưng hô, độ dài dự kiến và pacing guidance.',
-    expectedOutput: 'JSON dàn ý chương có opening_state, handoff_from_previous, ending_state, required_* và proposed_entities khi cần.',
+    expectedOutput: 'JSON dàn ý chương có opening_state, continuity_in, conflict, key_events, decision_or_consequence, state_changes, ending_state, continuity_out, pacing và required_* khi cần.',
     impactArea: 'Ảnh hưởng trực tiếp đến bước 4 của AI Wizard mới: Tạo dàn ý.',
   },
   projectWizard: {
