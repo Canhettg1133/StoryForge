@@ -15,14 +15,20 @@ import PlotThreadModal from './PlotThreadModal';
 import ArcGenerationModal from './ArcGenerationModal';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import {
-  Map, Plus, Sparkles, Loader2, ChevronDown, FileText,
+  Map, Plus, Sparkles, Loader2, FileText,
   Users, MapPin, Target, Zap, PenTool, LayoutGrid, List,
-  CheckCircle2, GitPullRequest, Search, Combine, X, ArrowRight
+  CheckCircle2, GitPullRequest, Combine, X, ArrowRight,
+  AlertTriangle, Trash2
 } from 'lucide-react';
 import { SCENE_STATUSES } from '../../utils/constants';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
+import {
+  OUTLINE_METADATA_LIST_FIELDS,
+  OUTLINE_METADATA_TEXT_FIELDS,
+  buildClearOutlinePatch,
+} from './outlineMetadata';
 import {
   composeStoryCreationSystemPrompt,
   getStoryCreationSettings,
@@ -97,6 +103,112 @@ function buildChapterAnchorPatch(chapter = {}, { preserveMissing = false } = {})
   return patch;
 }
 
+function normalizeActValue(value) {
+  const numeric = Number(value);
+  return [1, 2, 3].includes(numeric) ? numeric : null;
+}
+
+function buildChapterAnalysisPatch(chapter = {}) {
+  const patch = {};
+
+  for (const key of OUTLINE_METADATA_TEXT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(chapter, key)) continue;
+    const value = normalizeOutlineTextField(chapter[key]);
+    if (value) patch[key] = value;
+  }
+
+  const anchorPatch = buildChapterAnchorPatch(chapter, { preserveMissing: true });
+  for (const key of OUTLINE_METADATA_LIST_FIELDS) {
+    if (Array.isArray(anchorPatch[key]) && anchorPatch[key].length > 0) {
+      patch[key] = anchorPatch[key];
+    }
+  }
+  if (anchorPatch.primary_location) patch.primary_location = anchorPatch.primary_location;
+  if (anchorPatch.opening_state) patch.opening_state = anchorPatch.opening_state;
+  if (anchorPatch.handoff_from_previous) patch.handoff_from_previous = anchorPatch.handoff_from_previous;
+  if (anchorPatch.ending_state) patch.ending_state = anchorPatch.ending_state;
+
+  const act = normalizeActValue(chapter.act ?? chapter.arc_id);
+  if (act) patch.arc_id = act;
+
+  return patch;
+}
+
+function stripSceneText(text = '') {
+  return String(text || '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateText(text = '', maxLength = 220) {
+  const clean = stripSceneText(text);
+  if (clean.length <= maxLength) return clean;
+  return `${clean.slice(0, maxLength).trim()}...`;
+}
+
+function buildChapterSceneExcerpt(chapterId, scenes = []) {
+  const chapterScenes = scenes
+    .filter((scene) => scene.chapter_id === chapterId)
+    .sort((left, right) => Number(left.order_index || 0) - Number(right.order_index || 0));
+
+  const excerpts = [];
+  for (let index = 0; index < chapterScenes.length; index++) {
+    const scene = chapterScenes[index];
+    const text = stripSceneText(scene.draft_text || scene.final_text || '');
+    if (!text) continue;
+    excerpts.push(`- Cảnh ${index + 1}${scene.title ? ` (${scene.title})` : ''}: ${truncateText(text, 420)}`);
+    if (excerpts.join('\n').length > 1200) break;
+  }
+
+  return excerpts.join('\n');
+}
+
+function buildExistingOutlineContext(chapters = [], scenes = []) {
+  if (chapters.length === 0) return 'Chưa có outline';
+
+  return chapters.map((ch, i) => {
+    const sceneExcerpt = buildChapterSceneExcerpt(ch.id, scenes);
+    const lines = [
+      `${i + 1}. ${ch.title}`,
+      `Purpose hiện có: ${ch.purpose || 'Chưa có'}`,
+      `Summary dàn ý hiện có: ${ch.summary || 'Chưa có'}`,
+      `Hồi hiện có: ${ch.arc_id || 'Chưa gán'}`,
+      sceneExcerpt
+        ? `Nội dung đã viết / trích đoạn scene:\n${sceneExcerpt}`
+        : 'Nội dung đã viết / trích đoạn scene: Chưa có nội dung scene.',
+    ];
+    return lines.join('\n');
+  }).join('\n\n');
+}
+
+function shallowValueEqual(left, right) {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    const leftList = Array.isArray(left) ? left : [];
+    const rightList = Array.isArray(right) ? right : [];
+    return leftList.join('\n') === rightList.join('\n');
+  }
+  return String(left ?? '') === String(right ?? '');
+}
+
+function getPatchStatus(chapter, patch) {
+  const keys = Object.keys(patch);
+  if (keys.length === 0) return 'same';
+  const hasRealChange = keys.some((key) => !shallowValueEqual(chapter[key], patch[key]));
+  if (!hasRealChange) return 'same';
+  const hadOutline = keys.some((key) => {
+    const current = chapter[key];
+    return Array.isArray(current) ? current.length > 0 : !!current;
+  });
+  return hadOutline ? 'edit' : 'new';
+}
+
+function formatActLabel(value) {
+  const act = normalizeActValue(value);
+  return act ? `Hồi ${act}` : 'Chưa gán';
+}
+
 function formatCharacterForOutlinePrompt(character = {}) {
   const name = character.name || 'Nhân vật';
   const parts = [name + ' (' + (character.role || 'nhân vật') + ')'];
@@ -122,7 +234,9 @@ export default function OutlineBoard() {
   const isMobileLayout = useMobileLayout(900);
   const [mobileTab, setMobileTab] = useState('chapters');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isApplyingAnalysis, setIsApplyingAnalysis] = useState(false);
   const [genError, setGenError] = useState(null);
+  const [outlineAnalysisPreview, setOutlineAnalysisPreview] = useState(null);
 
   // Plot Threads modal state
   const [showPlotModal, setShowPlotModal] = useState(false);
@@ -223,20 +337,19 @@ export default function OutlineBoard() {
     if (!currentProject) return;
     setIsGenerating(true);
     setGenError(null);
+    setOutlineAnalysisPreview(null);
 
     const charList = characters.map(formatCharacterForOutlinePrompt).join('\n');
     const locList = locations.map((l) => l.name).join(', ');
-    const existingOutline = chapters.length > 0
-      ? chapters.map((ch, i) => `${i + 1}. ${ch.title}${ch.purpose ? ' - ' + ch.purpose : ''}`).join('\n')
-      : 'Chưa có outline';
+    const existingOutline = buildExistingOutlineContext(chapters, scenes);
 
     const storyCreationSettings = getStoryCreationSettings();
     const outlinePrompts = storyCreationSettings.outlineGeneration;
     const outlineTaskInstruction = chapters.length > 0
-      ? 'Phân tích outline hiện tại và GỢI Ý purpose (mục tiêu) + summary (tóm tắt) cho từng chương. Gắn mỗi chương vào act (1, 2, hoặc 3). Đọc Character Live Canon/current_status trước khi gắn beat/cast.'
+      ? 'Phân tích dàn ý hiện tại DỰA TRÊN "Nội dung đã viết / trích đoạn scene" của từng chương. Chỉ được đề xuất purpose, summary, state_delta, act và anchor phản ánh nội dung đã có; không được viết lại diễn biến mới, không được bịa entity ngoài Codex, không đổi giới tính/vai trò/thân phận nếu Codex hoặc nội dung đã viết không cho phép. Đọc Character Live Canon/current_status trước khi gắn beat/cast.'
       : 'Tạo outline 10 chương theo cấu trúc 3 hồi. Mỗi chương phải có mục tiêu rõ ràng và tôn trọng Character Live Canon/current_status của nhân vật.';
     const outlineUserRequest = chapters.length > 0
-      ? 'Phân tích và bổ sung outline cho các chương hiện có.'
+      ? 'Phân tích metadata dàn ý cho các chương hiện có. Đây là bước đề xuất, không tự viết tiếp hoặc sáng tác lại nội dung.'
       : `Tạo outline 10 chương cho truyện "${currentProject.title}".`;
     const outlineTemplateVariables = {
       genre: currentProject.genre_primary || 'fantasy',
@@ -276,15 +389,33 @@ export default function OutlineBoard() {
           const nextChapters = Array.isArray(normalized.chapters) ? normalized.chapters : [];
 
           if (chapters.length > 0) {
-            for (let i = 0; i < Math.min(nextChapters.length, chapters.length); i++) {
-              await updateChapter(chapters[i].id, {
-                purpose: nextChapters[i].purpose || '',
-                summary: nextChapters[i].summary || '',
-                state_delta: nextChapters[i].state_delta || '',
-                arc_id: nextChapters[i].act || null,
-                ...buildChapterAnchorPatch(nextChapters[i], { preserveMissing: true }),
+            const rows = nextChapters
+              .slice(0, chapters.length)
+              .map((proposal, index) => {
+                const chapter = chapters[index];
+                const patch = buildChapterAnalysisPatch(proposal);
+                return {
+                  chapterId: chapter.id,
+                  title: chapter.title,
+                  index,
+                  original: chapter,
+                  patch,
+                  status: getPatchStatus(chapter, patch),
+                };
               });
+
+            if (rows.length === 0) {
+              setGenError('AI không trả về đề xuất chương hợp lệ. Dữ liệu dự án chưa thay đổi.');
+              return;
             }
+
+            setOutlineAnalysisPreview({
+              rows,
+              plotThreads: Array.isArray(normalized.plot_threads)
+                ? normalized.plot_threads.filter(isPlainObject)
+                : [],
+            });
+            return;
           } else {
             for (const ac of nextChapters) {
               await createChapter(currentProject.id, ac.title, {
@@ -295,28 +426,29 @@ export default function OutlineBoard() {
                 ...buildChapterAnchorPatch(ac),
               });
             }
+
+            const nextPlotThreads = Array.isArray(normalized.plot_threads)
+              ? normalized.plot_threads.filter(isPlainObject)
+              : [];
+
+            for (const pt of nextPlotThreads) {
+              if (!pt.title?.trim()) continue;
+              await createPlotThread({
+                project_id: currentProject.id,
+                title: pt.title.trim(),
+                type: VALID_THREAD_TYPES.includes(pt.type) ? pt.type : 'subplot',
+                description: pt.description || '',
+                state: pt.state === 'resolved' ? 'resolved' : 'active',
+              });
+            }
+
+            await loadPlotThreads(currentProject.id);
           }
 
-          const nextPlotThreads = Array.isArray(normalized.plot_threads)
-            ? normalized.plot_threads.filter(isPlainObject)
-            : [];
-
-          for (const pt of nextPlotThreads) {
-            if (!pt.title?.trim()) continue;
-            await createPlotThread({
-              project_id: currentProject.id,
-              title: pt.title.trim(),
-              type: VALID_THREAD_TYPES.includes(pt.type) ? pt.type : 'subplot',
-              description: pt.description || '',
-              state: pt.state === 'resolved' ? 'resolved' : 'active',
-            });
-          }
-
-          await loadPlotThreads(currentProject.id);
           return;
         } catch (e) {
           console.error('[OutlineBoard] AI parse error:', e);
-          setGenError('Không parse được. Thử lại?');
+          setGenError('Không parse được phản hồi AI. Dữ liệu dự án chưa thay đổi, hãy thử lại.');
         }
       },
       onError: (err) => {
@@ -324,6 +456,49 @@ export default function OutlineBoard() {
         setGenError(toVietnameseErrorMessage(err, 'Lỗi AI'));
       },
     });
+  };
+
+  const handleApplyOutlineAnalysis = async () => {
+    if (!outlineAnalysisPreview?.rows?.length || isApplyingAnalysis) return;
+    setIsApplyingAnalysis(true);
+    setGenError(null);
+
+    try {
+      for (const row of outlineAnalysisPreview.rows) {
+        if (!row.chapterId || Object.keys(row.patch || {}).length === 0) continue;
+        await updateChapter(row.chapterId, row.patch);
+      }
+      setOutlineAnalysisPreview(null);
+    } catch (err) {
+      console.error('[OutlineBoard] Apply outline analysis failed:', err);
+      setGenError(toVietnameseErrorMessage(err, 'Không áp dụng được đề xuất dàn ý.'));
+    } finally {
+      setIsApplyingAnalysis(false);
+    }
+  };
+
+  const handleDismissOutlineAnalysis = () => {
+    setOutlineAnalysisPreview(null);
+  };
+
+  const handleClearAllOutlineMetadata = async () => {
+    if (!chapters.length) return;
+    const ok = window.confirm(
+      'Xóa dàn ý AI của toàn bộ chương? Nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.',
+    );
+    if (!ok) return;
+
+    setOutlineAnalysisPreview(null);
+    setGenError(null);
+    const patch = buildClearOutlinePatch();
+    try {
+      for (const chapter of chapters) {
+        await updateChapter(chapter.id, patch);
+      }
+    } catch (err) {
+      console.error('[OutlineBoard] Clear outline metadata failed:', err);
+      setGenError(toVietnameseErrorMessage(err, 'Không xóa được dàn ý AI.'));
+    }
   };
 
   // AI Suggest Threads - nhan hint tuy chon tu tac gia
@@ -457,6 +632,100 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
     );
   }
 
+  const renderPreviewValue = (value, fallback = 'Trống') => {
+    if (Array.isArray(value)) return value.length ? value.join(', ') : fallback;
+    const text = String(value ?? '').trim();
+    return text || fallback;
+  };
+
+  const renderPreviewBadge = (status) => {
+    const labels = {
+      new: 'Mới',
+      edit: 'Sửa',
+      same: 'Không đổi',
+    };
+    return (
+      <span className={`outline-analysis-badge outline-analysis-badge--${status}`}>
+        {labels[status] || labels.same}
+      </span>
+    );
+  };
+
+  const renderPreviewField = (row, key, label, formatter = renderPreviewValue) => {
+    const hasPatch = Object.prototype.hasOwnProperty.call(row.patch || {}, key);
+    const before = key === 'arc_id' ? formatActLabel(row.original?.arc_id) : formatter(row.original?.[key]);
+    const after = hasPatch
+      ? (key === 'arc_id' ? formatActLabel(row.patch.arc_id) : formatter(row.patch[key]))
+      : before;
+    const changed = before !== after;
+
+    return (
+      <div className="outline-analysis-field">
+        <span className="outline-analysis-field__label">{label}</span>
+        <span className="outline-analysis-field__before">{truncateText(before, 110)}</span>
+        <ArrowRight size={12} />
+        <span className={changed ? 'outline-analysis-field__after' : 'outline-analysis-field__same'}>
+          {truncateText(after, 130)}
+        </span>
+      </div>
+    );
+  };
+
+  const renderOutlineAnalysisPreview = () => {
+    if (!outlineAnalysisPreview?.rows?.length) return null;
+
+    const changedCount = outlineAnalysisPreview.rows.filter((row) => Object.keys(row.patch || {}).length > 0).length;
+    const suggestedThreadCount = outlineAnalysisPreview.plotThreads?.filter((pt) => pt.title?.trim()).length || 0;
+
+    return (
+      <section className="outline-analysis-preview" aria-label="Đề xuất phân tích dàn ý">
+        <div className="outline-analysis-preview__head">
+          <div>
+            <h3><Sparkles size={16} /> Đề xuất phân tích dàn ý</h3>
+            <p>
+              {changedCount} chương có đề xuất metadata. <strong>Chưa áp dụng</strong> nên dữ liệu dự án chưa đổi.
+            </p>
+          </div>
+          <div className="outline-analysis-preview__actions">
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={handleApplyOutlineAnalysis}
+              disabled={isApplyingAnalysis || changedCount === 0}
+            >
+              {isApplyingAnalysis ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />}
+              Áp dụng tất cả
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={handleDismissOutlineAnalysis} disabled={isApplyingAnalysis}>
+              <X size={14} /> Bỏ qua
+            </button>
+          </div>
+        </div>
+
+        <div className="outline-analysis-warning">
+          <AlertTriangle size={14} />
+          AI chỉ đang đề xuất. Plot thread AI trả về không được tự lưu; nếu cần, hãy tạo thủ công ở cột Tuyến truyện.
+          {suggestedThreadCount > 0 && <span> Có {suggestedThreadCount} tuyến truyện được AI gợi ý trong phản hồi.</span>}
+        </div>
+
+        <div className="outline-analysis-rows">
+          {outlineAnalysisPreview.rows.map((row) => (
+            <div key={row.chapterId} className="outline-analysis-row">
+              <div className="outline-analysis-row__title">
+                <span>{row.index + 1}. {row.title}</span>
+                {renderPreviewBadge(row.status)}
+              </div>
+              <div className="outline-analysis-row__fields">
+                {renderPreviewField(row, 'purpose', 'Mục tiêu')}
+                {renderPreviewField(row, 'summary', 'Tóm tắt')}
+                {renderPreviewField(row, 'arc_id', 'Hồi')}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  };
+
   const renderChapterCard = (chapter) => {
     const statusObj = SCENE_STATUSES.find(s => s.value === chapter.status) || SCENE_STATUSES[0];
     const povName = getChapterPOV(chapter.id);
@@ -535,37 +804,51 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
         </div>
 
         <div className="outline-header-actions">
-          <div className="outline-view-toggle">
-            <button
-              className={`btn btn-ghost btn-sm ${viewMode === 'board' ? 'btn--active' : ''}`}
-              onClick={() => setViewMode('board')}
-            >
-              <LayoutGrid size={14} /> Dạng bảng
-            </button>
-            <button
-              className={`btn btn-ghost btn-sm ${viewMode === 'list' ? 'btn--active' : ''}`}
-              onClick={() => setViewMode('list')}
-            >
-              <List size={14} /> Dạng danh sách
-            </button>
+          <div className="outline-action-group outline-action-group--view">
+            <div className="outline-view-toggle">
+              <button
+                className={`btn btn-ghost btn-sm ${viewMode === 'board' ? 'btn--active' : ''}`}
+                onClick={() => setViewMode('board')}
+              >
+                <LayoutGrid size={14} /> Dạng bảng
+              </button>
+              <button
+                className={`btn btn-ghost btn-sm ${viewMode === 'list' ? 'btn--active' : ''}`}
+                onClick={() => setViewMode('list')}
+              >
+                <List size={14} /> Dạng danh sách
+              </button>
+            </div>
           </div>
 
-          <button
-            className="btn btn-accent btn-sm"
-            style={{ backgroundImage: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))', color: '#fff' }}
-            onClick={() => setShowArcGen(true)}
-          >
-            <Sparkles size={14} /> Tạo Chương Tự Động
-          </button>
+          <div className="outline-action-group">
+            <button
+              className="btn btn-accent btn-sm"
+              style={{ backgroundImage: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))', color: '#fff' }}
+              onClick={() => setShowArcGen(true)}
+            >
+              <Sparkles size={14} /> Tạo chương tự động
+            </button>
 
-          <button
-            className="btn btn-accent btn-sm"
-            onClick={handleAIOutline}
-            disabled={isGenerating}
-          >
-            {isGenerating ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
-            {chapters.length > 0 ? 'AI Phân tích' : 'AI Outline'}
-          </button>
+            <button
+              className="btn btn-accent btn-sm"
+              onClick={handleAIOutline}
+              disabled={isGenerating}
+            >
+              {isGenerating ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+              {chapters.length > 0 ? 'AI Phân tích' : 'AI Outline'}
+            </button>
+
+            {chapters.length > 0 && (
+              <button
+                className="btn btn-ghost btn-sm outline-clear-btn"
+                onClick={handleClearAllOutlineMetadata}
+                disabled={isGenerating || isApplyingAnalysis}
+              >
+                <Trash2 size={14} /> Xóa dàn ý AI
+              </button>
+            )}
+          </div>
 
           <button className="btn btn-primary btn-sm" onClick={() => createChapter()}>
             <Plus size={15} /> Thêm chương
@@ -613,13 +896,26 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
               <Map size={22} />
               <div>
                 <h3>AI phân tích dàn ý</h3>
-                <p>Bổ sung mục tiêu, tóm tắt và hồi cho các chương hiện tại.</p>
+                <p>Tạo đề xuất từ nội dung đã viết. Bạn xem trước rồi mới áp dụng.</p>
               </div>
               <button className="btn btn-secondary" onClick={handleAIOutline} disabled={isGenerating}>
                 {isGenerating ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
                 Chạy AI
               </button>
             </div>
+            {chapters.length > 0 && (
+              <div className="outline-mobile-auto-card">
+                <Trash2 size={22} />
+                <div>
+                  <h3>Xóa dàn ý AI</h3>
+                  <p>Gỡ metadata dàn ý sai, giữ nguyên tiêu đề, cảnh, nội dung đã viết và trạng thái.</p>
+                </div>
+                <button className="btn btn-ghost" onClick={handleClearAllOutlineMetadata} disabled={isGenerating || isApplyingAnalysis}>
+                  Xóa
+                </button>
+              </div>
+            )}
+            {renderOutlineAnalysisPreview()}
             <div className="outline-mobile-validator-note">
               Trình kiểm tra sẽ hiện cảnh báo ngắn. Nếu bản nháp bị chặn, bạn vẫn có thể lưu dàn ý để sửa tiếp.
             </div>
@@ -629,6 +925,8 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
           {genError && (
             <div className="outline-error">{genError}</div>
           )}
+
+          {!(isMobileLayout && mobileTab === 'auto') && renderOutlineAnalysisPreview()}
 
           {chapters.length === 0 ? (
             <div className="empty-state">

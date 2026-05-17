@@ -12,9 +12,10 @@ import usePlotStore from '../../stores/plotStore';
 import db from '../../services/db/database';
 import {
   X, Save, PenTool, Target, Zap, Users, MapPin, FileText,
-  ChevronDown, ChevronRight, Heart, Clock, Shield, Combine
+  ChevronDown, ChevronRight, Heart, Clock, Shield, Combine, Trash2
 } from 'lucide-react';
 import { SCENE_STATUSES } from '../../utils/constants';
+import { buildClearOutlinePatch } from './outlineMetadata';
 
 const ACTS = [
   { value: null, label: 'Chưa gán' },
@@ -147,6 +148,21 @@ export default function ChapterDetailModal({
 
     setSaving(false);
     onClose();
+  };
+
+  const handleClearChapterOutline = async () => {
+    const ok = window.confirm(
+      `Xóa dàn ý AI của "${chapter.title}"? Nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.`,
+    );
+    if (!ok) return;
+
+    await updateChapter(chapter.id, buildClearOutlinePatch());
+    setChForm((prev) => ({
+      ...prev,
+      purpose: '',
+      summary: '',
+      arc_id: null,
+    }));
   };
 
   return (
@@ -493,6 +509,9 @@ export default function ChapterDetailModal({
 
         {/* Footer */}
         <div className="codex-modal-footer">
+          <button className="btn btn-ghost" onClick={handleClearChapterOutline}>
+            <Trash2 size={15} /> Xóa dàn ý chương này
+          </button>
           <button className="btn btn-ghost" onClick={onClose}>Huỷ</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
             <Save size={15} /> {saving ? 'Đang lưu...' : 'Lưu tất cả'}

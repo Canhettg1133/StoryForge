@@ -609,7 +609,13 @@ describe('phase10 prompt builder coverage', () => {
     expect(systemPrompt).toContain('Tên ngắn/biệt danh/alias không được biến thành nhân vật mới');
 
     expect(outlineBoardSource).toContain('function buildChapterAnchorPatch');
-    expect(outlineBoardSource).toContain('...buildChapterAnchorPatch(nextChapters[i], { preserveMissing: true })');
+    expect(outlineBoardSource).toContain('function buildChapterAnalysisPatch');
+    expect(outlineBoardSource).toContain('buildExistingOutlineContext(chapters, scenes)');
+    expect(outlineBoardSource).toContain('Nội dung đã viết / trích đoạn scene');
+    expect(outlineBoardSource).toContain('không được bịa entity ngoài Codex');
+    expect(outlineBoardSource).toContain('setOutlineAnalysisPreview');
+    expect(outlineBoardSource).toContain('handleApplyOutlineAnalysis');
+    expect(outlineBoardSource).not.toContain('...buildChapterAnchorPatch(nextChapters[i], { preserveMissing: true })');
     expect(outlineBoardSource).toContain('...buildChapterAnchorPatch(ac)');
     expect(outlineBoardSource).toContain('formatCharacterForOutlinePrompt');
   });
