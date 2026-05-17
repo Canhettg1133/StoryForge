@@ -21,6 +21,10 @@ import useProjectStore from './projectStore';
 import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 import { buildProseBuffer } from '../utils/proseBuffer';
 import {
+    OUTLINE_PROGRESS_STOPWORDS,
+    normalizePlanningText as normalizePlanText,
+} from '../utils/planningText';
+import {
     buildMacroArcPersistenceSnapshot,
     compileMacroArcContract,
     getChapterAnchorsInRange,
@@ -457,16 +461,6 @@ async function createArcRecord({ projectId, macroArcId, arcTitle, arcGoal, chapt
     });
 
     return arcId;
-}
-
-function normalizePlanText(value) {
-    return String(value || '')
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
 }
 
 export function recommendArcBatchCount(targetLength) {

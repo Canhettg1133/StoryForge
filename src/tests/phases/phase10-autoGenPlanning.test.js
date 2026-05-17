@@ -28,6 +28,18 @@ import {
   updateMilestoneChapterPlanSequence,
 } from '../../pages/StoryBible/hooks/useStoryBibleMacroArcs';
 
+function normalizeVietnameseForAssert(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D');
+}
+
+function expectContentToContainAscii(content, expected) {
+  expect(normalizeVietnameseForAssert(content)).toContain(expected);
+}
+
 describe('phase10 auto-gen planning upgrade', () => {
   it('recommends safer default batch counts from target_length', () => {
     expect(recommendArcBatchCount(100)).toBe(5);
@@ -385,17 +397,17 @@ describe('phase10 auto-gen planning upgrade', () => {
     });
 
     expect(messages[0].content).toContain('"purpose"');
-    expect(messages[1].content).toContain('[MACRO ARC HIEN TAI]');
-    expect(messages[1].content).toContain('[HOP DONG DAI CUC BAT BUOC]');
+    expectContentToContainAscii(messages[1].content, '[MACRO ARC HIEN TAI]');
+    expectContentToContainAscii(messages[1].content, '[HOP DONG DAI CUC BAT BUOC]');
     expect(messages[1].content).toContain('Khoi dong tong mon');
     expect(messages[1].content).toContain('OBJ1');
     expect(messages[1].content).toContain('[STORY PROGRESS BUDGET]');
-    expect(messages[1].content).toContain('Dot nay tao tu Chuong 11 den Chuong 13');
-    expect(messages[1].content).toContain('Pham vi tien do batch nay: 1.1% -> 1.4%');
-    expect(messages[1].content).toContain('Sau batch nay van con');
-    expect(messages[1].content).toContain('[DAN Y HIEN TAI CAN CHINH SUA]');
+    expectContentToContainAscii(messages[1].content, 'Dot nay tao tu Chuong 11 den Chuong 13');
+    expectContentToContainAscii(messages[1].content, 'Pham vi tien do batch nay: 1.1% -> 1.4%');
+    expectContentToContainAscii(messages[1].content, 'Sau batch nay van con');
+    expectContentToContainAscii(messages[1].content, '[DAN Y HIEN TAI CAN CHINH SUA]');
     expect(messages[1].content).toContain('Purpose:');
-    expect(messages[1].content).toContain('[YEU CAU CHINH SUA DAN Y]');
+    expectContentToContainAscii(messages[1].content, '[YEU CAU CHINH SUA DAN Y]');
   });
 
   it('allows revision prompts to change chapter count when the instruction explicitly asks for it', () => {
@@ -415,8 +427,8 @@ describe('phase10 auto-gen planning upgrade', () => {
       outlineRevisionInstruction: 'Chen it nhat 1 chuong dem de lam cham nhip.',
     });
 
-    expect(messages[1].content).toContain('Ban duoc phep tang/giam/chia/gop so chuong');
-    expect(messages[1].content).toContain('Nguon: Noi dung dang thay + rang buoc he thong');
+    expectContentToContainAscii(messages[1].content, 'Ban duoc phep tang/giam/chia/gop so chuong');
+    expectContentToContainAscii(messages[1].content, 'Nguon: Noi dung dang thay + rang buoc he thong');
   });
 
   it('injects progress budget into ARC_CHAPTER_DRAFT prompts', () => {
@@ -452,12 +464,12 @@ describe('phase10 auto-gen planning upgrade', () => {
     });
 
     expect(messages[1].content).toContain('[STORY PROGRESS BUDGET]');
-    expect(messages[1].content).toContain('[HOP DONG DAI CUC BAT BUOC]');
+    expectContentToContainAscii(messages[1].content, '[HOP DONG DAI CUC BAT BUOC]');
     expect(messages[1].content).toContain('Objective refs: OBJ1');
     expect(messages[1].content).toContain('Purpose: Cho main hieu mot quy tac nho cua tong mon.');
-    expect(messages[1].content).toContain('Pham vi tien do batch nay: 1.2% -> 1.4%');
-    expect(messages[1].content).toContain('Gioi han rieng cua macro arc');
-    expect(messages[1].content).toContain('khong resolve tuyen chinh');
+    expectContentToContainAscii(messages[1].content, 'Pham vi tien do batch nay: 1.2% -> 1.4%');
+    expectContentToContainAscii(messages[1].content, 'Gioi han rieng cua macro arc');
+    expectContentToContainAscii(messages[1].content, 'khong resolve tuyen chinh');
   });
 
   it('blocks outlines that overshoot a low-intensity macro arc contract', () => {
@@ -536,17 +548,17 @@ describe('phase10 auto-gen planning upgrade', () => {
       macroRevisionInstruction: 'Tang buildup phan dau va day midpoint ra xa hon.',
     });
 
-    expect(messages[1].content).toContain('[DAI CUC HIEN TAI / BAN NHAP CAN CHINH SUA]');
-    expect(messages[1].content).toContain('[SO LUONG COT MOC CAN TAO]');
+    expectContentToContainAscii(messages[1].content, '[DAI CUC HIEN TAI / BAN NHAP CAN CHINH SUA]');
+    expectContentToContainAscii(messages[1].content, '[SO LUONG COT MOC CAN TAO]');
     expect(messages[1].content).toContain('6');
-    expect(messages[1].content).toContain('[TONG DO DAI TRUYEN DU KIEN]');
-    expect(messages[1].content).toContain('[PHAM VI LAP DAI CUC LAN NAY]');
-    expect(messages[1].content).toContain('Chuong 120 -> 220');
-    expect(messages[1].content).toContain('[YEU CAU RIENG]');
+    expectContentToContainAscii(messages[1].content, '[TONG DO DAI TRUYEN DU KIEN]');
+    expectContentToContainAscii(messages[1].content, '[PHAM VI LAP DAI CUC LAN NAY]');
+    expectContentToContainAscii(messages[1].content, 'Chuong 120 -> 220');
+    expectContentToContainAscii(messages[1].content, '[YEU CAU RIENG]');
     expect(messages[1].content).toContain('Nhip truyen cham');
     expect(messages[1].content).toContain('Khoi hanh');
     expect(messages[1].content).toContain('Objectives: OBJ1');
-    expect(messages[1].content).toContain('[HUONG DAN CHINH SUA]');
+    expectContentToContainAscii(messages[1].content, '[HUONG DAN CHINH SUA]');
     expect(messages[1].content).toContain('Tang buildup phan dau');
   });
 
@@ -561,12 +573,12 @@ describe('phase10 auto-gen planning upgrade', () => {
       macroMilestoneCount: 4,
     });
 
-    expect(messages[1].content).toContain('[TONG DO DAI TRUYEN DU KIEN]');
-    expect(messages[1].content).toContain('480 chuong');
-    expect(messages[1].content).toContain('[PHAM VI LAP DAI CUC LAN NAY]');
-    expect(messages[1].content).toContain('Chuong 87 -> 134');
-    expect(messages[1].content).toContain('Khong duoc tu y keo nguoc ve chuong 1');
-    expect(messages[1].content).toContain('Khong duoc ngam coi pham vi nay la toan bo truyen');
+    expectContentToContainAscii(messages[1].content, '[TONG DO DAI TRUYEN DU KIEN]');
+    expectContentToContainAscii(messages[1].content, '480 chuong');
+    expectContentToContainAscii(messages[1].content, '[PHAM VI LAP DAI CUC LAN NAY]');
+    expectContentToContainAscii(messages[1].content, 'Chuong 87 -> 134');
+    expectContentToContainAscii(messages[1].content, 'Khong duoc tu y keo nguoc ve chuong 1');
+    expectContentToContainAscii(messages[1].content, 'Khong duoc ngam coi pham vi nay la toan bo truyen');
   });
 
   it('supports optional fixed ranges for individual macro milestones and leaves blank ones on auto', () => {
@@ -586,12 +598,12 @@ describe('phase10 auto-gen planning upgrade', () => {
       ],
     });
 
-    expect(messages[1].content).toContain('[PHAM VI RIENG TUNG COT MOC]');
-    expect(messages[1].content).toContain('Cot moc 1: KHOA trong Chuong 41 -> 48');
-    expect(messages[1].content).toContain('Cot moc 2: AUTO phan bo');
-    expect(messages[1].content).toContain('Cot moc 3: KHOA trong Chuong 61 -> 70');
-    expect(messages[1].content).toContain('Cot moc 4: AUTO phan bo');
-    expect(messages[1].content).toContain('Nhung cot moc da KHOA pham vi thi phai giu dung chapter range do');
+    expectContentToContainAscii(messages[1].content, '[PHAM VI RIENG TUNG COT MOC]');
+    expectContentToContainAscii(messages[1].content, 'Cot moc 1: KHOA trong Chuong 41 -> 48');
+    expectContentToContainAscii(messages[1].content, 'Cot moc 2: AUTO phan bo');
+    expectContentToContainAscii(messages[1].content, 'Cot moc 3: KHOA trong Chuong 61 -> 70');
+    expectContentToContainAscii(messages[1].content, 'Cot moc 4: AUTO phan bo');
+    expectContentToContainAscii(messages[1].content, 'Nhung cot moc da KHOA pham vi thi phai giu dung chapter range do');
   });
 
   it('keeps manually selected macro planning start when old milestone ranges start at chapter 1', () => {
@@ -770,7 +782,7 @@ describe('phase10 auto-gen planning upgrade', () => {
     });
 
     expect(messages[0].content).toContain('"contract"');
-    expect(messages[1].content).toContain('[COT MOC DAI CUC CAN PHAN TICH]');
+    expectContentToContainAscii(messages[1].content, '[COT MOC DAI CUC CAN PHAN TICH]');
     expect(messages[1].content).toContain('Khoi dong tong mon');
     expect(messages[1].content).toContain('Gieo mam su tin cay vao A');
   });
@@ -1134,9 +1146,9 @@ describe('phase10 auto-gen planning upgrade', () => {
       ],
     });
 
-    expect(messages[1].content).toContain('[YEU CAU BAT BUOC THEO CHUONG]');
+    expectContentToContainAscii(messages[1].content, '[YEU CAU BAT BUOC THEO CHUONG]');
     expect(messages[1].content).toContain('ANCHOR1');
-    expect(messages[1].content).toContain('Chuong 25');
+    expectContentToContainAscii(messages[1].content, 'Chuong 25');
     expect(messages[1].content).toContain('Main phai gap Nu A');
   });
 
@@ -1157,9 +1169,9 @@ describe('phase10 auto-gen planning upgrade', () => {
       ],
     });
 
-    expect(messages[1].content).toContain('[CHAPTER ANCHORS BAT BUOC TRONG BATCH]');
+    expectContentToContainAscii(messages[1].content, '[CHAPTER ANCHORS BAT BUOC TRONG BATCH]');
     expect(messages[1].content).toContain('ANCHOR1');
-    expect(messages[1].content).toContain('Chuong 25');
+    expectContentToContainAscii(messages[1].content, 'Chuong 25');
   });
 
   it('injects chapter anchor refs and guard blocks into ARC_CHAPTER_DRAFT prompts', () => {
@@ -1191,8 +1203,8 @@ describe('phase10 auto-gen planning upgrade', () => {
     });
 
     expect(messages[1].content).toContain('Anchor refs: ANCHOR1');
-    expect(messages[1].content).toContain('[ANCHOR BAT BUOC CHO CHUONG NAY]');
-    expect(messages[1].content).toContain('[ANCHOR CHUA DEN HAN]');
+    expectContentToContainAscii(messages[1].content, '[ANCHOR BAT BUOC CHO CHUONG NAY]');
+    expectContentToContainAscii(messages[1].content, '[ANCHOR CHUA DEN HAN]');
   });
 
   it('blocks outlines that miss or trigger hard anchors in the wrong chapter', () => {

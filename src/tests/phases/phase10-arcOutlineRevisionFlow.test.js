@@ -283,6 +283,61 @@ describe('phase10 arc outline revision flow', () => {
     });
   });
 
+  it('keeps generated outlines ready when later chapters include handoff text', async () => {
+    dbMock.__reset({
+      projects: [{ id: 1, updated_at: 0, target_length: 120, milestones: '[]' }],
+      chapters: buildExistingChapters(52),
+      chapterMeta: [],
+      macro_arcs: [],
+    });
+    projectStoreState.chapters = buildExistingChapters(52);
+    useArcGenStore.setState({
+      currentChapterCount: 52,
+      projectTargetLength: 120,
+      projectMilestones: [],
+      availableMacroArcs: [],
+      selectedMacroArcId: null,
+      currentMacroArcId: null,
+      arcGoal: 'Tiep noi hau qua tam ly sau mot loi the bi ep buoc.',
+      arcChapterCount: 2,
+      outputMode: 'outline_review',
+    });
+
+    aiServiceMock.send.mockImplementationOnce(({ onComplete }) => {
+      onComplete(JSON.stringify({
+        arc_title: 'Vong xoay toi loi va suong mu',
+        chapters: [
+          {
+            title: 'Chuong 53: Loi the bat luc',
+            purpose: 'Lam ro hau qua tam ly cua Lam Mac sau khi bi Diep Ninh rang buoc.',
+            summary: 'Lam Mac tinh day trong mac cam va chap nhan giu bi mat cho Diep Ninh.',
+            key_events: ['Lam Mac mac cam toi loi', 'Diep Ninh ep anh giu bi mat'],
+            ending_state: 'Lam Mac bi rang buoc tam ly voi Diep Ninh va tro thanh dong pham bat dac di.',
+            state_delta: 'Lam Mac mat duong lui va bi keo sau hon vao bi mat cua lang.',
+          },
+          {
+            title: 'Chuong 54: Am anh sau loi the',
+            purpose: 'Cho Lam Mac vat lon voi loi the va su le thuoc moi.',
+            summary: 'Lam Mac roi khoi Diep Ninh, bi am anh boi bi mat va thay dan lang dang nghi ngo.',
+            key_events: ['Lam Mac bi am anh', 'Dan lang nhin anh day nghi ngo'],
+            handoff_from_previous: 'Sau khi bi rang buoc voi Diep Ninh va chap nhan lam dong pham bat dac di, Lam Mac roi di trong mac cam.',
+          },
+        ],
+      }));
+    });
+
+    await useArcGenStore.getState().generateOutline({
+      projectId: 1,
+      chapterIndex: 52,
+      genre: 'psychological horror',
+    });
+
+    const nextState = useArcGenStore.getState();
+    expect(nextState.outlineStatus).toBe('ready');
+    expect(nextState.generatedOutline.chapters).toHaveLength(2);
+    expect(nextState.outlineValidation.issues.some((issue) => issue.code === 'chapter-handoff-weak')).toBe(false);
+  });
+
   it('force-saves outline even when blocking issues remain', async () => {
     const macroArc = buildGuardedMacroArc();
     const validationContext = buildValidationContext();
