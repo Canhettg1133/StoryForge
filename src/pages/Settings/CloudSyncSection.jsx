@@ -50,11 +50,11 @@ import {
 } from '../../services/cloud/cloudSyncService.js';
 
 function formatTimestamp(value) {
-  if (!value) return 'chua dong bo';
+  if (!value) return 'chưa đồng bộ';
   try {
     return new Date(value).toLocaleString('vi-VN');
   } catch {
-    return 'chua dong bo';
+    return 'chưa đồng bộ';
   }
 }
 
@@ -116,16 +116,16 @@ export default function CloudSyncSection() {
         <div>
           <h2>Cloud Sync</h2>
           <p>
-            Mo trang rieng de dang nhap Google, sao luu du an, khoi phuc chat, quan ly prompt va theo doi trang thai dong bo tren ca PC lan dien thoai.
+            Mở trang riêng để đăng nhập Google, sao lưu dự án, khôi phục chat, quản lý prompt và theo dõi trạng thái đồng bộ trên cả PC lẫn điện thoại.
           </p>
         </div>
       </div>
 
       <div className="cloud-sync-teaser__body">
         <div className="cloud-sync-teaser__copy">
-          <strong>Trang doc lap, toi uu cho ca desktop va mobile</strong>
+          <strong>Trang độc lập, tối ưu cho cả desktop và mobile</strong>
           <p>
-            Toan bo thao tac sao luu, khoi phuc, tu dong bo, xung dot du lieu va xuat/nhap snapshot da duoc chuyen sang mot man hinh rieng de de dung hon.
+            Toàn bộ thao tác sao lưu, khôi phục, tự đồng bộ, xung đột dữ liệu và xuất/nhập snapshot đã được chuyển sang một màn hình riêng để dễ dùng hơn.
           </p>
         </div>
 
@@ -135,14 +135,14 @@ export default function CloudSyncSection() {
             className="btn btn-primary"
             onClick={openCloudSyncPage}
           >
-            <Cloud size={14} /> Mo Cloud Sync
+            <Cloud size={14} /> Mở Cloud Sync
           </button>
           <button
             type="button"
             className="btn btn-ghost"
             onClick={openCloudSyncPage}
           >
-            <Database size={14} /> Xem trang sao luu
+            <Database size={14} /> Xem trang sao lưu
           </button>
         </div>
       </div>
@@ -390,7 +390,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       setProjectItems([]);
       setChatItems([]);
       setPromptItems([]);
-      showMessage('success', 'Da dang xuat Cloud Sync.');
+      showMessage('success', 'Đã đăng xuất Cloud Sync.');
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
     }
@@ -414,8 +414,8 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
         showMessage(
           'success',
           result.uploadedCount > 0
-            ? `Da bat auto sync va day ${result.uploadedCount} snapshot len cloud.`
-            : 'Da bat auto sync. Khong co thay doi nao can day len cloud.',
+            ? `Đã bật auto sync và đẩy ${result.uploadedCount} snapshot lên cloud.`
+            : 'Đã bật auto sync. Không có thay đổi nào cần đẩy lên cloud.',
         );
       } catch (error) {
         showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
@@ -423,7 +423,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       return;
     }
 
-    showMessage('success', nextPrefs.autoSyncEnabled ? 'Da bat auto sync.' : 'Da tat auto sync.');
+    showMessage('success', nextPrefs.autoSyncEnabled ? 'Đã bật auto sync.' : 'Đã tắt auto sync.');
   };
 
   const handleRunSyncNow = async () => {
@@ -433,10 +433,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       showMessage(
         'success',
         result.uploadedCount > 0
-          ? `Da sync ${result.uploadedCount} snapshot len cloud.`
+          ? `Đã sync ${result.uploadedCount} snapshot lên cloud.`
           : result.conflicts?.length
-            ? `Khong auto sync vi co ${result.conflicts.length} conflict can xu ly.`
-            : 'Khong co thay doi nao can sync.',
+            ? `Không auto sync vì có ${result.conflicts.length} conflict cần xử lý.`
+            : 'Không có thay đổi nào cần sync.',
       );
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
@@ -447,7 +447,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
     setExportingFormat(format);
     try {
       const result = await exportCloudBackups(format);
-      showMessage('success', `Da xuat ${result.count} snapshot cloud ra file ${result.format}.`);
+      showMessage('success', `Đã xuất ${result.count} snapshot cloud ra file ${result.format}.`);
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
     } finally {
@@ -466,8 +466,8 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       showMessage(
         'success',
         result.skippedCount > 0
-          ? `Da import ${result.importedCount} snapshot, bo qua ${result.skippedCount} snapshot cloud moi hon.`
-          : `Da import ${result.importedCount} snapshot cloud.`,
+          ? `Đã import ${result.importedCount} snapshot, bỏ qua ${result.skippedCount} snapshot cloud mới hơn.`
+          : `Đã import ${result.importedCount} snapshot cloud.`,
       );
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
@@ -486,7 +486,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       await backupProject(project);
       await loadProjects();
       await refreshCloud();
-      showMessage('success', `Da backup "${project.title}" len cloud.`);
+      showMessage('success', `Đã backup "${project.title}" lên cloud.`);
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
     } finally {
@@ -500,7 +500,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
     try {
       await backupChatThread(thread);
       await refreshCloud();
-      showMessage('success', `Da backup chat "${thread.title}" len cloud.`);
+      showMessage('success', `Đã backup chat "${thread.title}" lên cloud.`);
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
     } finally {
@@ -513,7 +513,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
     try {
       await backupPromptBundle();
       await refreshCloud();
-      showMessage('success', 'Da backup Global prompt bundle len cloud.');
+      showMessage('success', 'Đã backup Global prompt bundle lên cloud.');
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
     } finally {
@@ -566,8 +566,8 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       showMessage(
         'success',
         restoreState.mode === 'replace'
-          ? `Da ghi de project local bang snapshot "${restoreState.item.itemTitle}".`
-          : `Da khoi phuc snapshot "${restoreState.item.itemTitle}" thanh project moi (#${result.newProjectId}).`,
+          ? `Đã ghi đè project local bằng snapshot "${restoreState.item.itemTitle}".`
+          : `Đã khôi phục snapshot "${restoreState.item.itemTitle}" thành project mới (#${result.newProjectId}).`,
       );
       setRestoreState(EMPTY_RESTORE_STATE);
     } catch (error) {
@@ -578,7 +578,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
   };
 
   const handleChatRestore = async (item) => {
-    if (!window.confirm(`Khoi phuc chat "${item.itemTitle}" thanh thread local moi?`)) {
+    if (!window.confirm(`Khôi phục chat "${item.itemTitle}" thành thread local mới?`)) {
       return;
     }
 
@@ -591,8 +591,8 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       showMessage(
         'success',
         result.projectId > 0
-          ? `Da khoi phuc chat "${item.itemTitle}" vao project #${result.projectId}.`
-          : `Da khoi phuc chat "${item.itemTitle}" vao khu chat tu do.`,
+          ? `Đã khôi phục chat "${item.itemTitle}" vào project #${result.projectId}.`
+          : `Đã khôi phục chat "${item.itemTitle}" vào khu chat tự do.`,
       );
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
@@ -602,7 +602,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
   };
 
   const handlePromptRestore = async (item) => {
-    if (!window.confirm('Khoi phuc prompt cloud se ghi de toan bo Global prompt hien tai. Tiep tuc?')) {
+    if (!window.confirm('Khôi phục prompt cloud sẽ ghi đè toàn bộ Global prompt hiện tại. Tiếp tục?')) {
       return;
     }
 
@@ -612,7 +612,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       await restorePromptBackup(item.itemSlug);
       refreshPromptSummary();
       await refreshCloud();
-      showMessage('success', 'Da khoi phuc Global prompt bundle tu cloud.');
+      showMessage('success', 'Đã khôi phục Global prompt bundle từ cloud.');
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
     } finally {
@@ -621,7 +621,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
   };
 
   const handleDelete = async (scope, itemSlug) => {
-    if (!window.confirm('Xoa snapshot cloud nay? Ban local se khong bi anh huong.')) {
+    if (!window.confirm('Xóa snapshot cloud này? Bản local sẽ không bị ảnh hưởng.')) {
       return;
     }
 
@@ -636,7 +636,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
         await deletePromptBackup(itemSlug);
       }
       await refreshCloud();
-      showMessage('success', `Da xoa snapshot ${itemSlug} tren cloud.`);
+      showMessage('success', `Đã xóa snapshot ${itemSlug} trên cloud.`);
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
     } finally {
@@ -649,10 +649,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       return (
         <>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleProjectBackup(item.data)}>
-            <Upload size={14} /> Luu local de cloud
+            <Upload size={14} /> Lưu local để cloud
           </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => openRestoreModal(item.cloudItem)}>
-            <Download size={14} /> Khoi phuc cloud
+            <Download size={14} /> Khôi phục cloud
           </button>
         </>
       );
@@ -662,10 +662,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       return (
         <>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleChatBackup(item.data)}>
-            <Upload size={14} /> Luu local de cloud
+            <Upload size={14} /> Lưu local để cloud
           </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleChatRestore(item.cloudItem)}>
-            <Download size={14} /> Khoi phuc cloud
+            <Download size={14} /> Khôi phục cloud
           </button>
         </>
       );
@@ -674,10 +674,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
     return (
       <>
         <button type="button" className="btn btn-secondary btn-sm" onClick={handlePromptBackup}>
-          <Upload size={14} /> Luu local de cloud
+          <Upload size={14} /> Lưu local để cloud
         </button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => handlePromptRestore(item.cloudItem)}>
-          <Download size={14} /> Khoi phuc cloud
+          <Download size={14} /> Khôi phục cloud
         </button>
       </>
     );
@@ -694,7 +694,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
           <div>
             <h2>Cloud Sync</h2>
             <p>
-              Dang nhap Google de sao luu va khoi phuc du an, chat va prompt tren Supabase. Ung dung van local-first; cloud chi la noi luu va dong bo du lieu.
+              Đăng nhập Google để sao lưu và khôi phục dự án, chat và prompt trên Supabase. Ứng dụng vẫn local-first; cloud chỉ là nơi lưu và đồng bộ dữ liệu.
             </p>
           </div>
         </div>
@@ -711,8 +711,8 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
           <div className="cloud-sync-auth-card__copy">
             <AlertTriangle size={16} />
             <div>
-            <strong>Cloud Sync chua duoc cau hinh</strong>
-              <p>Can them `VITE_SUPABASE_URL` va `VITE_SUPABASE_ANON_KEY` vao bien moi truong truoc khi dang nhap.</p>
+            <strong>Cloud Sync chưa được cấu hình</strong>
+              <p>Cần thêm `VITE_SUPABASE_URL` và `VITE_SUPABASE_ANON_KEY` vào biến môi trường trước khi đăng nhập.</p>
             </div>
           </div>
         </div>
@@ -721,13 +721,13 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
           <div className="cloud-sync-auth-card__copy">
             <UserRound size={16} />
             <div>
-              <strong>{isSignedIn ? 'Dang ket noi cloud' : 'Chua dang nhap cloud'}</strong>
+              <strong>{isSignedIn ? 'Đang kết nối cloud' : 'Chưa đăng nhập cloud'}</strong>
               <p>
                 {authLoading
-                  ? 'Dang kiem tra phien dang nhap...'
+                  ? 'Đang kiểm tra phiên đăng nhập...'
                   : isSignedIn
-                    ? `${session.user.email || session.user.user_metadata?.email || 'Tai khoan Google da ket noi'}`
-                    : 'Dang nhap Google de sao luu va khoi phuc du lieu local.'}
+                    ? `${session.user.email || session.user.user_metadata?.email || 'Tài khoản Google đã kết nối'}`
+                    : 'Đăng nhập Google để sao lưu và khôi phục dữ liệu local.'}
               </p>
             </div>
           </div>
@@ -740,18 +740,18 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                   className="btn btn-ghost btn-icon"
                   onClick={() => refreshCloud()}
                   disabled={loadingCloud}
-                  title="Tai lai danh sach snapshot"
+                  title="Tải lại danh sách snapshot"
                 >
                   {loadingCloud ? <RefreshCw size={16} className="animate-spin" /> : <Database size={16} />}
                 </button>
                 <button type="button" className="btn btn-secondary" onClick={handleSignOut}>
-                  <LogOut size={14} /> Dang xuat
+                  <LogOut size={14} /> Đăng xuất
                 </button>
               </>
             ) : (
               <button type="button" className="btn btn-primary" onClick={handleSignIn} disabled={authLoading}>
                 {authLoading ? <RefreshCw size={14} className="animate-spin" /> : <LogIn size={14} />}
-                Dang nhap Google
+                Đăng nhập Google
               </button>
             )}
           </div>
@@ -768,12 +768,12 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
 
       <div className="cloud-sync-ops">
         <div className="cloud-sync-ops__summary">
-          <strong>{autoSyncPrefs.autoSyncEnabled ? 'Tu dong bo dang bat' : 'Tu dong bo dang tat'}</strong>
+          <strong>{autoSyncPrefs.autoSyncEnabled ? 'Tự đồng bộ đang bật' : 'Tự đồng bộ đang tắt'}</strong>
           <p>
-            Cho tai len: {syncStatus.pendingUploads.length} | Xung dot: {syncStatus.conflicts.length} | Lan chay cuoi: {formatTimestamp(syncStatus.lastRunAt)}
+            Chờ tải lên: {syncStatus.pendingUploads.length} | Xung đột: {syncStatus.conflicts.length} | Lần chạy cuối: {formatTimestamp(syncStatus.lastRunAt)}
           </p>
           {syncStatus.accountMismatch ? (
-            <p>Tai khoan Google hien tai khac voi tai khoan da bat tu dong bo truoc do. Hay bat lai tu dong bo neu muon doi tai khoan.</p>
+            <p>Tài khoản Google hiện tại khác với tài khoản đã bật tự đồng bộ trước đó. Hãy bật lại tự đồng bộ nếu muốn đổi tài khoản.</p>
           ) : null}
         </div>
         <div className="cloud-sync-ops__actions">
@@ -783,22 +783,22 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
             onClick={handleToggleAutoSync}
             disabled={!isSignedIn}
           >
-            {autoSyncPrefs.autoSyncEnabled ? 'Tat tu dong bo' : 'Bat tu dong bo'}
+            {autoSyncPrefs.autoSyncEnabled ? 'Tắt tự đồng bộ' : 'Bật tự đồng bộ'}
           </button>
           <button type="button" className="btn btn-secondary" onClick={handleRunSyncNow} disabled={!isSignedIn || loadingCloud}>
-            <RefreshCw size={14} /> Chay dong bo ngay
+            <RefreshCw size={14} /> Chạy đồng bộ ngay
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => handleExportCloud('zip')} disabled={!isSignedIn || exportingFormat === 'zip' || importingCloud}>
             {exportingFormat === 'zip' ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-            Xuat .zip
+            Xuất .zip
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => handleExportCloud('json')} disabled={!isSignedIn || exportingFormat === 'json' || importingCloud}>
             {exportingFormat === 'json' ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-            Xuat .json
+            Xuất .json
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => importInputRef.current?.click()} disabled={!isSignedIn || importingCloud}>
             {importingCloud ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
-            Nhap tu cloud
+            Nhập từ cloud
           </button>
         </div>
       </div>
@@ -806,7 +806,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       {syncStatus.conflicts.length > 0 ? (
         <div className="cloud-sync-conflicts">
           <div className="cloud-sync-conflicts__header">
-            <strong>Xung dot can xu ly thu cong</strong>
+            <strong>Xung đột cần xử lý thủ công</strong>
             <span>{syncStatus.conflicts.length}</span>
           </div>
           <div className="cloud-sync-list">
@@ -834,7 +834,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
             <span>{sortedProjects.length}</span>
           </div>
           {sortedProjects.length === 0 ? (
-            <p className="settings-hint">Chua co project local nao de sao luu.</p>
+            <p className="settings-hint">Chưa có project local nào để sao lưu.</p>
           ) : (
             <div className="cloud-sync-list">
               {sortedProjects.map((project) => {
@@ -845,10 +845,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                     <div className="cloud-sync-item__body">
                       <strong>{project.title}</strong>
                       <small>
-                        slug: {project.cloud_project_slug || '(se tao luc backup)'} | sync: {formatTimestamp(project.cloud_last_synced_at)}
+                        slug: {project.cloud_project_slug || '(sẽ tạo lúc backup)'} | sync: {formatTimestamp(project.cloud_last_synced_at)}
                       </small>
                       {ownedByOtherUser ? (
-                        <small>Du lieu nay dang gan voi mot tai khoan cloud khac. Hay khoi phuc hoac nhap dung tai khoan truoc khi sao luu.</small>
+                        <small>Dữ liệu này đang gắn với một tài khoản cloud khác. Hãy khôi phục hoặc nhập đúng tài khoản trước khi sao lưu.</small>
                       ) : null}
                     </div>
                     <button
@@ -858,7 +858,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                       disabled={!isSignedIn || savingKey === actionKey || ownedByOtherUser}
                     >
                       {savingKey === actionKey ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
-                      Luu len cloud
+                      Lưu lên cloud
                     </button>
                   </div>
                 );
@@ -869,13 +869,13 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
 
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Snapshot project tren cloud</strong>
+            <strong>Snapshot project trên cloud</strong>
             <span>{projectItems.length}</span>
           </div>
           {!isSignedIn ? (
-            <p className="settings-hint">Dang nhap Google de xem snapshot tren cloud.</p>
+            <p className="settings-hint">Đăng nhập Google để xem snapshot trên cloud.</p>
           ) : projectItems.length === 0 ? (
-            <p className="settings-hint">Tai khoan nay chua co snapshot project nao.</p>
+            <p className="settings-hint">Tài khoản này chưa có snapshot project nào.</p>
           ) : (
             <div className="cloud-sync-list">
               {projectItems.map((item) => {
@@ -886,7 +886,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                     <div className="cloud-sync-item__body">
                       <strong>{item.itemTitle}</strong>
                       <small>
-                        slug: {item.itemSlug} | cap nhat: {formatTimestamp(item.updatedAt)} | {formatBytes(item.sizeBytes)}
+                        slug: {item.itemSlug} | cập nhật: {formatTimestamp(item.updatedAt)} | {formatBytes(item.sizeBytes)}
                       </small>
                     </div>
                     <div className="cloud-sync-item__actions">
@@ -897,14 +897,14 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                         disabled={!isSignedIn || restoringKey === restoreActionKey}
                       >
                         {restoringKey === restoreActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                        Khoi phuc
+                        Khôi phục
                       </button>
                       <button
                         type="button"
                         className="btn btn-ghost btn-icon btn-sm"
                         onClick={() => handleDelete('project', item.itemSlug)}
                         disabled={!isSignedIn || deletingKey === deleteActionKey}
-                        title="Xoa snapshot cloud"
+                        title="Xóa snapshot cloud"
                       >
                         {deletingKey === deleteActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                       </button>
@@ -920,11 +920,11 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       <div className="cloud-sync-grid">
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Doan chat local</strong>
+            <strong>Đoạn chat local</strong>
             <span>{localChatThreads.length}</span>
           </div>
           {localChatThreads.length === 0 ? (
-            <p className="settings-hint">Chua co doan chat local nao de sao luu.</p>
+            <p className="settings-hint">Chưa có đoạn chat local nào để sao lưu.</p>
           ) : (
             <div className="cloud-sync-list">
               {localChatThreads.map((thread) => {
@@ -935,10 +935,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                     <div className="cloud-sync-item__body">
                       <strong>{thread.title}</strong>
                       <small>
-                        {thread.projectTitle} | {thread.messageCount} tin nhan | cap nhat: {formatTimestamp(thread.updated_at)}
+                        {thread.projectTitle} | {thread.messageCount} tin nhắn | cập nhật: {formatTimestamp(thread.updated_at)}
                       </small>
                       {ownedByOtherUser ? (
-                        <small>Doan chat nay dang gan voi mot tai khoan cloud khac.</small>
+                        <small>Đoạn chat này đang gắn với một tài khoản cloud khác.</small>
                       ) : null}
                     </div>
                     <button
@@ -948,7 +948,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                       disabled={!isSignedIn || savingKey === actionKey || ownedByOtherUser}
                     >
                       {savingKey === actionKey ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
-                      Luu len cloud
+                      Lưu lên cloud
                     </button>
                   </div>
                 );
@@ -959,13 +959,13 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
 
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Snapshot chat tren cloud</strong>
+            <strong>Snapshot chat trên cloud</strong>
             <span>{chatItems.length}</span>
           </div>
           {!isSignedIn ? (
-            <p className="settings-hint">Dang nhap Google de xem snapshot chat.</p>
+            <p className="settings-hint">Đăng nhập Google để xem snapshot chat.</p>
           ) : chatItems.length === 0 ? (
-            <p className="settings-hint">Tai khoan nay chua co snapshot chat nao.</p>
+            <p className="settings-hint">Tài khoản này chưa có snapshot chat nào.</p>
           ) : (
             <div className="cloud-sync-list">
               {chatItems.map((item) => {
@@ -976,7 +976,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                     <div className="cloud-sync-item__body">
                       <strong>{item.itemTitle}</strong>
                       <small>
-                        {(item.metadata?.projectId || 0) > 0 ? `project #${item.metadata.projectId}` : 'chat tu do'} | {item.metadata?.messageCount || 0} tin nhan | {formatBytes(item.sizeBytes)}
+                        {(item.metadata?.projectId || 0) > 0 ? `project #${item.metadata.projectId}` : 'chat tự do'} | {item.metadata?.messageCount || 0} tin nhắn | {formatBytes(item.sizeBytes)}
                       </small>
                     </div>
                     <div className="cloud-sync-item__actions">
@@ -987,14 +987,14 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                         disabled={!isSignedIn || restoringKey === restoreActionKey}
                       >
                         {restoringKey === restoreActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                        Khoi phuc
+                        Khôi phục
                       </button>
                       <button
                         type="button"
                         className="btn btn-ghost btn-icon btn-sm"
                         onClick={() => handleDelete('chat', item.itemSlug)}
                         disabled={!isSignedIn || deletingKey === deleteActionKey}
-                        title="Xoa snapshot cloud"
+                        title="Xóa snapshot cloud"
                       >
                         {deletingKey === deleteActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                       </button>
@@ -1010,7 +1010,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       <div className="cloud-sync-grid">
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Bo prompt local</strong>
+            <strong>Bộ prompt local</strong>
             <span>1</span>
           </div>
           <div className="cloud-sync-list">
@@ -1018,10 +1018,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
               <div className="cloud-sync-item__body">
                 <strong>Global prompt bundle</strong>
                 <small>
-                  {promptSummary.customizedGroupCount}/{promptSummary.groupCount} nhom dang co tuy chinh local
+                  {promptSummary.customizedGroupCount}/{promptSummary.groupCount} nhóm đang có tùy chỉnh local
                 </small>
                 {promptOwnedByOtherUser ? (
-                  <small>Bo prompt local nay dang gan voi mot tai khoan cloud khac.</small>
+                  <small>Bộ prompt local này đang gắn với một tài khoản cloud khác.</small>
                 ) : null}
               </div>
               <button
@@ -1031,7 +1031,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                 disabled={!isSignedIn || savingKey === 'prompt' || promptOwnedByOtherUser}
               >
                 {savingKey === 'prompt' ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
-                Luu len cloud
+                Lưu lên cloud
               </button>
             </div>
           </div>
@@ -1039,13 +1039,13 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
 
         <div className="cloud-sync-panel">
           <div className="cloud-sync-panel__header">
-            <strong>Snapshot prompt tren cloud</strong>
+            <strong>Snapshot prompt trên cloud</strong>
             <span>{promptItems.length}</span>
           </div>
           {!isSignedIn ? (
-            <p className="settings-hint">Dang nhap Google de xem snapshot prompt.</p>
+            <p className="settings-hint">Đăng nhập Google để xem snapshot prompt.</p>
           ) : promptItems.length === 0 ? (
-            <p className="settings-hint">Tai khoan nay chua co snapshot prompt nao.</p>
+            <p className="settings-hint">Tài khoản này chưa có snapshot prompt nào.</p>
           ) : (
             <div className="cloud-sync-list">
               {promptItems.map((item) => {
@@ -1056,7 +1056,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                     <div className="cloud-sync-item__body">
                       <strong>{item.itemTitle}</strong>
                       <small>
-                        cap nhat: {formatTimestamp(item.updatedAt)} | {formatBytes(item.sizeBytes)}
+                        cập nhật: {formatTimestamp(item.updatedAt)} | {formatBytes(item.sizeBytes)}
                       </small>
                     </div>
                     <div className="cloud-sync-item__actions">
@@ -1067,14 +1067,14 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                         disabled={!isSignedIn || restoringKey === restoreActionKey}
                       >
                         {restoringKey === restoreActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                        Khoi phuc
+                        Khôi phục
                       </button>
                       <button
                         type="button"
                         className="btn btn-ghost btn-icon btn-sm"
                         onClick={() => handleDelete('prompt', item.itemSlug)}
                         disabled={!isSignedIn || deletingKey === deleteActionKey}
-                        title="Xoa snapshot cloud"
+                        title="Xóa snapshot cloud"
                       >
                         {deletingKey === deleteActionKey ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
                       </button>
@@ -1092,7 +1092,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
           <div className="modal cloud-restore-modal" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <div className="cloud-restore-modal__eyebrow">Khoi phuc cloud snapshot</div>
+                <div className="cloud-restore-modal__eyebrow">Khôi phục cloud snapshot</div>
                 <h3 className="modal-title">{restoreState.item.itemTitle}</h3>
               </div>
             </div>
@@ -1108,7 +1108,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                   />
                   <div>
                     <strong>Tao project moi</strong>
-                    <p>Khoi phuc snapshot thanh mot ban local moi, khong dung vao du lieu hien co.</p>
+                    <p>Khôi phục snapshot thành một bản local mới, không đụng vào dữ liệu hiện có.</p>
                   </div>
                 </label>
 
@@ -1121,7 +1121,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                   />
                   <div>
                     <strong>Ghi de project local</strong>
-                    <p>Xoa mot project local duoc chon roi import snapshot nay vao thay the.</p>
+                    <p>Xóa một project local được chọn rồi import snapshot này vào thay thế.</p>
                   </div>
                 </label>
               </div>
@@ -1140,7 +1140,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                       <option key={project.id} value={project.id}>{project.title}</option>
                     ))}
                   </select>
-                  <span className="settings-hint">Project duoc chon se bi xoa khoi may truoc khi import snapshot.</span>
+                  <span className="settings-hint">Project được chọn sẽ bị xóa khỏi máy trước khi import snapshot.</span>
                 </div>
               ) : null}
             </div>
@@ -1156,7 +1156,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                 disabled={Boolean(restoringKey) || (restoreState.mode === 'replace' && !restoreState.targetProjectId)}
               >
                 {restoringKey ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                {restoreState.mode === 'replace' ? 'Ghi de va khoi phuc' : 'Khoi phuc thanh project moi'}
+                {restoreState.mode === 'replace' ? 'Ghi đè và khôi phục' : 'Khôi phục thành project mới'}
               </button>
             </div>
           </div>
