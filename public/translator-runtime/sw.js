@@ -3,7 +3,7 @@
  * Enables offline functionality and caching
  */
 
-const CACHE_NAME = 'novel-translator-v1';
+const CACHE_NAME = 'novel-translator-v11';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',

@@ -552,13 +552,11 @@ function updateStats() {
     const charCount = text.length;
     const chunkCount = Math.ceil(charCount / chunkSize);
 
-    const directCombos = apiKeys.length * (typeof getActiveModels === 'function' ? getActiveModels().length : 1);
     const effectiveParallel = typeof resolveEffectiveTranslationParallel === 'function'
         ? resolveEffectiveTranslationParallel({
             requestedParallel: parallelCount,
             useProxyMode: Boolean(useProxy),
             useOllamaMode: Boolean(typeof useOllama !== 'undefined' && useOllama),
-            activeDirectCombinationCount: directCombos,
         })
         : Math.min(parallelCount, apiKeys.length || 1);
     const batches = Math.ceil(chunkCount / Math.max(1, effectiveParallel));

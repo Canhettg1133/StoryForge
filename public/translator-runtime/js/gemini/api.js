@@ -127,6 +127,21 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
 // ============================================
 // GEMINI TRANSLATE CHUNK (Direct API hoặc auto-route qua Proxy)
 // ============================================
+function getDirectGeminiThinkingConfig(modelName) {
+    const normalized = String(modelName || '').trim().toLowerCase();
+    if (!normalized) return null;
+
+    if (/^gemini-2\.5-flash(?:$|-)/.test(normalized)) {
+        return { thinkingBudget: 0 };
+    }
+
+    if (/^gemini-3(?:\.\d+)?-flash(?:-lite)?(?:$|-)/.test(normalized)) {
+        return { thinkingLevel: 'minimal' };
+    }
+
+    return null;
+}
+
 async function translateChunk(text, modelKeyPair, temperature = 0.7) {
     // ===== AUTO-ROUTE: Nếu bật proxy, gọi proxy thay vì Gemini Direct =====
     if (useProxy) {
@@ -140,6 +155,7 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
 
     console.log(`[Gemini API] ${modelName} + Key ${keyIndex + 1} (temp=${temperature})`);
 
+    const thinkingConfig = getDirectGeminiThinkingConfig(modelName);
     const body = {
         contents: [{
             parts: [{ text: text }]
@@ -148,7 +164,8 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
             temperature: temperature,
             maxOutputTokens: 16384,
             topP: 0.95,
-            topK: 40
+            topK: 40,
+            ...(thinkingConfig ? { thinkingConfig } : {})
         },
         safetySettings: [
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" },

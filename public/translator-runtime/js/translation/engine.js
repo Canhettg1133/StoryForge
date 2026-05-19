@@ -66,15 +66,9 @@ function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto') {
 function resolveEffectiveTranslationParallel(options = {}) {
     const requestedParallel = Math.max(1, Math.min(10, Number(options.requestedParallel) || 1));
     const useOllamaMode = Boolean(options.useOllamaMode);
-    const useProxyMode = Boolean(options.useProxyMode);
-    const activeDirectCombinationCount = Math.max(0, Number(options.activeDirectCombinationCount) || 0);
 
     if (useOllamaMode) return 1;
-    if (useProxyMode) return requestedParallel;
-    if (activeDirectCombinationCount > 0) {
-        return Math.max(1, Math.min(requestedParallel, activeDirectCombinationCount, 10));
-    }
-    return Math.max(1, Math.min(requestedParallel, 10));
+    return requestedParallel;
 }
 
 function getTranslatedChunkDisplayText(chunk, index, pendingLabel) {
@@ -276,16 +270,11 @@ function resolveRuntimeParallel(parallelCount) {
         };
     }
 
-    const activeDirectCombinationCount = typeof getAllAvailableCombinations === 'function'
-        ? getAllAvailableCombinations().length
-        : (apiKeys.length * (typeof getActiveModels === 'function' ? getActiveModels().length : GEMINI_MODELS.length));
-
     return {
         effectiveParallel: resolveEffectiveTranslationParallel({
             requestedParallel: parallelCount,
             useOllamaMode: false,
             useProxyMode: false,
-            activeDirectCombinationCount,
         }),
         staggerDelayMs: 500,
     };
@@ -563,9 +552,8 @@ async function startTranslation() {
         }
 
         const currentCombos = getAllAvailableCombinations();
-        if (currentCombos.length < parallelCount) {
-            console.log(`[Pre-check] Reducing parallel from ${parallelCount} to ${currentCombos.length}`);
-            parallelCount = Math.max(1, currentCombos.length);
+        if (currentCombos.length > 0 && currentCombos.length < parallelCount) {
+            console.log(`[Pre-check] Gemini Direct has ${currentCombos.length} active combo(s); running ${parallelCount} parallel request(s) as configured.`);
         }
     }
 
@@ -747,14 +735,10 @@ async function startTranslation() {
             staggerDelayMs = effectiveParallel > 1 ? 300 : 0; // Stagger nhẹ để tránh burst
             console.log(`[Proxy] Using parallel=${effectiveParallel}, stagger=${staggerDelayMs}ms`);
         } else {
-            const activeDirectCombinationCount = typeof getAllAvailableCombinations === 'function'
-                ? getAllAvailableCombinations().length
-                : (apiKeys.length * (typeof getActiveModels === 'function' ? getActiveModels().length : GEMINI_MODELS.length));
             effectiveParallel = resolveEffectiveTranslationParallel({
                 requestedParallel: parallelCount,
                 useOllamaMode: false,
                 useProxyMode: false,
-                activeDirectCombinationCount,
             });
             staggerDelayMs = 500;
         }

@@ -135,6 +135,39 @@ describe('phase10 translator proxy key rotation', () => {
     })).toBe(10);
   });
 
+  it('does not cap Gemini Direct parallel requests to active key/model combinations', () => {
+    const context = loadProxyRuntimeContext(async () => {
+      throw new Error('fetch is not used by parallel resolver');
+    });
+
+    expect(context.resolveEffectiveTranslationParallel({
+      requestedParallel: 8,
+      useProxyMode: false,
+      useOllamaMode: false,
+      activeDirectCombinationCount: 1,
+    })).toBe(8);
+
+    const engineSource = fs.readFileSync(
+      path.join(repoRoot, 'public/translator-runtime/js/translation/engine.js'),
+      'utf8'
+    );
+    expect(engineSource).not.toContain('[Pre-check] Reducing parallel');
+    expect(engineSource).not.toContain('parallelCount = Math.max(1, currentCombos.length)');
+  });
+
+  it('keeps Ollama translation sequential even when more parallel requests are requested', () => {
+    const context = loadProxyRuntimeContext(async () => {
+      throw new Error('fetch is not used by parallel resolver');
+    });
+
+    expect(context.resolveEffectiveTranslationParallel({
+      requestedParallel: 8,
+      useProxyMode: false,
+      useOllamaMode: true,
+      activeDirectCombinationCount: 8,
+    })).toBe(1);
+  });
+
   it('does not reuse a proxy key while every key is still cooling down', () => {
     const context = loadProxyRuntimeContext(async () => {
       throw new Error('fetch is not used by key selection');
@@ -234,5 +267,42 @@ describe('phase10 translator proxy key rotation', () => {
     expect(requests[0].url).toBe('http://localhost:1234/v1/chat/completions');
     expect(requests[0].options.headers.Authorization).toBe('Bearer CUSTOM_KEY');
     expect(JSON.parse(requests[0].options.body).model).toBe('custom-gemini-model');
+  });
+
+  it('disables Gemini 2.5 Flash thinking for direct translation chunks', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{
+            finishReason: 'STOP',
+            content: {
+              parts: [{
+                text: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+              }],
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY'];
+      cancelRequested = false;
+    `, context);
+
+    await context.translateChunk(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      { model: 'gemini-2.5-flash', key: 'DIRECT_KEY', keyIndex: 0 },
+      0.7
+    );
+
+    const body = JSON.parse(requests[0].options.body);
+    expect(body.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
   });
 });

@@ -130,6 +130,8 @@ describe('phase10 translator runtime performance', () => {
 
     context.showToast = () => {};
     context.isTranslating = true;
+    context.TRANSLATOR_SOURCE_MODES = { TEXT: 'text', LARGE_FILE: 'large-file' };
+    context.currentSourceMode = 'text';
     context.originalFileName = 'story.txt';
     context.translatedChunks = [
       `Chunk 1\n${'A'.repeat(199950)}`,
