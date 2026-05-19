@@ -152,6 +152,62 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[0].content).toContain('[NHIỆM VỤ]');
     expect(messages[0].content).toContain('"character_updates"');
     expect(messages[0].content).toContain('"new_canon_facts"');
+    expect(messages[0].content).toContain('"relationship_updates"');
+  });
+
+  it('builds a relationship-only batch analysis prompt with the required schema', () => {
+    const messages = buildPrompt(TASK_TYPES.RELATIONSHIP_ANALYZE_BATCH, {
+      projectTitle: 'Dự án thử',
+      characters: [
+        { id: 1, name: 'Lan', role: 'chính' },
+        { id: 2, name: 'Kha', role: 'chính' },
+      ],
+      relationships: [
+        { id: 10, character_a_id: 1, character_b_id: 2, relation_type: 'friend', description: 'Bạn cũ.' },
+      ],
+      relationshipStates: [
+        {
+          character_a_id: 1,
+          character_b_id: 2,
+          relationship_type: 'friend',
+          intimacy_level: 'medium',
+          secrecy_state: 'secret',
+          summary: 'Đang giấu một thỏa thuận.',
+        },
+      ],
+      relationshipEvents: [
+        {
+          chapter_id: 6,
+          op_type: 'RELATIONSHIP_SECRET_CHANGED',
+          subject_id: 1,
+          target_id: 2,
+          summary: 'Lan biết Kha giấu thư.',
+        },
+      ],
+      relationshipAnalysisChapters: [
+        {
+          chapterId: 7,
+          chapterTitle: 'Chương 7',
+          signature: 'abc',
+          text: '[Cảnh 1]\nLan trao thư cho Kha.',
+        },
+      ],
+    });
+
+    const system = messages[0].content;
+    const user = messages[1].content;
+    expect(system).toContain('"chapters"');
+    expect(system).toContain('"relationship_updates"');
+    expect(system).toContain('"character_a_name"');
+    expect(system).not.toContain('"character_updates"');
+    expect(system).not.toContain('"new_canon_facts"');
+
+    expect(user).toContain('[NHÂN VẬT ĐÃ BIẾT]');
+    expect(user).toContain('[QUAN HỆ NỀN DO TÁC GIẢ NHẬP]');
+    expect(user).toContain('[TRẠNG THÁI QUAN HỆ HIỆN TẠI TRƯỚC BATCH]');
+    expect(user).toContain('[CÁC CHƯƠNG CẦN PHÂN TÍCH]');
+    expect(user).toContain('[CHƯƠNG 7: Chương 7]');
+    expect(user).toContain('Lan trao thư cho Kha');
   });
 
   it('appends intimate nsfw writing guidance without removing existing nsfw rules', () => {
@@ -618,6 +674,121 @@ describe('phase10 prompt builder coverage', () => {
     expect(outlineBoardSource).not.toContain('...buildChapterAnchorPatch(nextChapters[i], { preserveMissing: true })');
     expect(outlineBoardSource).toContain('...buildChapterAnchorPatch(ac)');
     expect(outlineBoardSource).toContain('formatCharacterForOutlinePrompt');
+  });
+
+  it('renders relationshipContextPacket without leaking routing debug or legacy relationship blocks', () => {
+    const messages = buildPrompt(TASK_TYPES.CONTINUE, {
+      relationships: [
+        { charA: 'Lan', charB: 'Kha', label: 'Bạn bè', description: 'Đường cũ không nên vào prompt khi đã có packet.' },
+      ],
+      relationshipRoutingDebug: [
+        { pairKey: '1:2', selectedAs: 'mustInclude', omittedReason: 'debug-only' },
+      ],
+      relationshipContextPacket: {
+        mustIncludeEdges: [{
+          pairKey: '1:2',
+          characterAId: 1,
+          characterBId: 2,
+          characterAName: 'Lan',
+          characterBName: 'Kha',
+          label: 'Người yêu',
+          intimacyLevel: 'high',
+          secrecyState: 'secret',
+          consentState: 'mutual',
+          emotionalAftermath: 'còn day dứt',
+          summary: 'Vừa thừa nhận tình cảm nhưng chưa công khai.',
+        }],
+        supportingEdges: [],
+        warnings: [],
+        omittedSummary: {
+          count: 2,
+          topReasons: ['điểm thấp hoặc chỉ là quan hệ nền yếu: 2'],
+        },
+        budgetPressure: false,
+      },
+      retrievalPacket: {
+        relevantEntityStates: [{ entity_id: 1, alive_status: 'alive' }],
+        relevantRelationshipStates: [{
+          character_a_id: 1,
+          character_b_id: 2,
+          relationship_type: 'friend',
+          summary: 'Đường projection cũ không nên bơm song song.',
+        }],
+        criticalConstraints: {
+          relationshipConstraints: [{
+            pair_key: '1:2',
+            intimacy_level: 'high',
+          }],
+        },
+      },
+    });
+
+    const system = messages[0].content;
+    expect(system).toContain('[BỘ NHỚ QUAN HỆ LIÊN QUAN]');
+    expect(system).toContain('Quan hệ bắt buộc giữ đúng');
+    expect(system).toContain('Lan ↔ Kha');
+    expect(system).toContain('bí mật: secret');
+    expect(system).toContain('Đã cắt 2 quan hệ ngoài trọng tâm');
+    expect(system).not.toContain('debug-only');
+    expect(system).not.toContain('Lan <-> Kha');
+    expect(system).not.toContain('Quan hệ / độ thân mật liên quan');
+    expect(system).not.toContain('Ràng buộc quan hệ gần đây');
+  });
+
+  it.each([
+    ['continue direct scene', TASK_TYPES.CONTINUE, 'Lan', 'Kha', 'Quan hệ bắt buộc giữ đúng'],
+    ['continue support secret', TASK_TYPES.CONTINUE, 'Mai', 'Nam', 'Quan hệ hỗ trợ liên quan'],
+    ['scene draft direct scene', TASK_TYPES.SCENE_DRAFT, 'An', 'Bình', 'Quan hệ bắt buộc giữ đúng'],
+    ['scene draft support intimacy', TASK_TYPES.SCENE_DRAFT, 'Chi', 'Dũng', 'Quan hệ hỗ trợ liên quan'],
+    ['outline named pair', TASK_TYPES.OUTLINE, 'Hạ', 'Lâm', 'Quan hệ bắt buộc giữ đúng'],
+    ['outline support reversal', TASK_TYPES.OUTLINE, 'Mộc', 'Nhi', 'Quan hệ hỗ trợ liên quan'],
+    ['arc outline named pair', TASK_TYPES.ARC_OUTLINE, 'Sơn', 'Tú', 'Quan hệ bắt buộc giữ đúng'],
+    ['arc outline support secret', TASK_TYPES.ARC_OUTLINE, 'Uyên', 'Việt', 'Quan hệ hỗ trợ liên quan'],
+    ['arc chapter draft direct scene', TASK_TYPES.ARC_CHAPTER_DRAFT, 'Yến', 'Quân', 'Quan hệ bắt buộc giữ đúng'],
+    ['arc chapter draft budget pressure', TASK_TYPES.ARC_CHAPTER_DRAFT, 'Giang', 'Hải', 'Quan hệ bắt buộc giữ đúng'],
+  ])('uses relationshipContextPacket during migration fixture: %s', (_name, taskType, characterAName, characterBName, sectionLabel) => {
+    const edge = {
+      pairKey: `${characterAName}:${characterBName}`,
+      characterAId: 1,
+      characterBId: 2,
+      characterAName,
+      characterBName,
+      label: 'Đối thủ',
+      intimacyLevel: 'medium',
+      secrecyState: 'secret',
+      consentState: 'mutual',
+      emotionalAftermath: 'còn căng',
+      summary: 'Cần giữ đúng khi viết/dàn ý.',
+    };
+    const useMustInclude = sectionLabel.includes('bắt buộc');
+    const messages = buildPrompt(taskType, {
+      sceneText: 'Một cảnh kiểm thử quan hệ.',
+      userPrompt: `${characterAName} và ${characterBName}`,
+      relationships: [
+        { charA: 'Đường', charB: 'Cũ', label: 'Không dùng', description: 'legacy relationship block' },
+      ],
+      relationshipRoutingDebug: [
+        { pairKey: edge.pairKey, selectedAs: 'debug-only', omittedReason: 'debug-only' },
+      ],
+      relationshipContextPacket: {
+        mustIncludeEdges: useMustInclude ? [edge] : [],
+        supportingEdges: useMustInclude ? [] : [edge],
+        warnings: _name.includes('budget') ? ['Ngân sách quan hệ đang căng.'] : [],
+        omittedSummary: {
+          count: 1,
+          topReasons: ['điểm thấp hoặc chỉ là quan hệ nền yếu: 1'],
+        },
+        budgetPressure: _name.includes('budget'),
+      },
+    });
+
+    const system = messages[0].content;
+    expect(system).toContain('[BỘ NHỚ QUAN HỆ LIÊN QUAN]');
+    expect(system).toContain(sectionLabel);
+    expect(system).toContain(`${characterAName} ↔ ${characterBName}`);
+    expect(system).not.toContain('legacy relationship block');
+    expect(system).not.toContain('debug-only');
+    expect(system).not.toContain('Quan hệ / độ thân mật liên quan');
   });
 
   it('uses the two-pass wizard prompt groups instead of the old one-call schema', () => {

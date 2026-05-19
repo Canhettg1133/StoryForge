@@ -63,6 +63,8 @@ function loadProxyRuntimeContext(fetchImpl) {
     'public/translator-runtime/js/translation/errors.js',
     'public/translator-runtime/js/app.js',
     'public/translator-runtime/js/ui/settings.js',
+    'public/translator-runtime/js/gemini/rpd-tracker.js',
+    'public/translator-runtime/js/gemini/model-rotation.js',
     'public/translator-runtime/js/gemini/api.js',
     'public/translator-runtime/js/translation/retry.js',
     'public/translator-runtime/js/translation/engine.js',
@@ -304,5 +306,56 @@ describe('phase10 translator proxy key rotation', () => {
 
     const body = JSON.parse(requests[0].options.body);
     expect(body.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
+    expect(body.generationConfig).not.toHaveProperty('maxOutputTokens');
+  });
+
+  it('cooldowns a direct Gemini pair after repeated Google 500 errors and retries another pair', async () => {
+    const usedKeys = [];
+    const context = loadProxyRuntimeContext(async (url) => {
+      const key = new URL(String(url)).searchParams.get('key');
+      usedKeys.push(key);
+
+      if (key === 'DIRECT_KEY_A') {
+        return {
+          ok: false,
+          status: 500,
+          json: async () => ({ error: { status: 'INTERNAL', message: 'Internal error encountered.' } }),
+        };
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{
+            finishReason: 'STOP',
+            content: {
+              parts: [{
+                text: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+              }],
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY_A', 'DIRECT_KEY_B'];
+      GEMINI_MODELS = [{ name: 'gemma-4-31b-it', quota: 15, rpd: 1500, enabled: true }];
+      cancelRequested = false;
+      rpdData = { date: getPacificDateString(), pairs: {} };
+    `, context);
+
+    const result = await context.translateChunkWithRetry(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0,
+      3
+    );
+
+    expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
+    expect(usedKeys).toEqual(['DIRECT_KEY_A', 'DIRECT_KEY_B']);
+    expect(vm.runInContext("modelKeyHealthMap['gemma-4-31b-it|0'].disabledUntil > Date.now()", context)).toBe(true);
   });
 });

@@ -46,6 +46,10 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
     userPrompt,
     previousSummary,
     characters = [],
+    relationships = [],
+    relationshipStates = [],
+    relationshipEvents = [],
+    relationshipAnalysisChapters = [],
     canonFacts = [],
     canonRoleLocks = [],
     plotThreads = [],
@@ -520,6 +524,49 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
       userContent += '\nQuy tắc: đây là Character Live Canon đang có hiệu lực. Nếu trống thì không suy diễn; nếu có thì chỉ đề xuất đổi khi nội dung chương có bằng chứng rõ.';
       userContent += '\n\n[CANON FACTS HIỆN CÓ]\n' + (existingFacts || '(chưa có)');
       userContent += '\n\n[NỘI DUNG CHƯƠNG]\n---\n' + (sceneText || '') + '\n---';
+      break;
+    }
+
+    case TASK_TYPES.RELATIONSHIP_ANALYZE_BATCH: {
+      const knownCharacters = characters.map(function (c) {
+        const aliases = Array.isArray(c.aliases) && c.aliases.length > 0 ? ` | bí danh: ${c.aliases.join(', ')}` : '';
+        return `- #${c.id} ${c.name || '(không rõ)'}${c.role ? ` | vai trò: ${c.role}` : ''}${aliases}`;
+      }).join('\n');
+      const baselineRelationships = relationships.map(function (r) {
+        return `- #${r.id || '?'} | ${r.character_a_id} ↔ ${r.character_b_id} | ${r.relation_type || 'other'}${r.description ? ` | ${r.description}` : ''}`;
+      }).join('\n');
+      const currentRelationshipStates = relationshipStates.map(function (state) {
+        const bits = [
+          `${state.character_a_id} ↔ ${state.character_b_id}`,
+          state.relationship_type ? `quan hệ=${state.relationship_type}` : '',
+          state.intimacy_level ? `thân mật=${state.intimacy_level}` : '',
+          state.secrecy_state ? `bí mật=${state.secrecy_state}` : '',
+          state.consent_state ? `đồng thuận=${state.consent_state}` : '',
+          state.summary ? `tóm tắt=${state.summary}` : '',
+          state.emotional_aftermath ? `dư âm=${state.emotional_aftermath}` : '',
+        ].filter(Boolean);
+        return `- ${bits.join(' | ')}`;
+      }).join('\n');
+      const recentRelationshipEvents = relationshipEvents.map(function (event) {
+        return `- Chương ${event.chapter_id || '?'} | ${event.op_type} | ${event.subject_id || '?'} ↔ ${event.target_id || '?'} | ${event.summary || event.evidence || ''}`;
+      }).join('\n');
+      const chapterBlocks = relationshipAnalysisChapters.map(function (chapter) {
+        const partLabel = chapter.partCount > 1 ? ` | phần ${chapter.partIndex}/${chapter.partCount}` : '';
+        return [
+          `[CHƯƠNG ${chapter.chapterId}${partLabel}: ${chapter.chapterTitle || ''}]`,
+          `signature: ${chapter.signature || ''}`,
+          '---',
+          chapter.text || '',
+          '---',
+        ].join('\n');
+      }).join('\n\n');
+
+      userContent = '[NHÂN VẬT ĐÃ BIẾT]\n' + (knownCharacters || '(chưa có nhân vật)');
+      userContent += '\n\n[QUAN HỆ NỀN DO TÁC GIẢ NHẬP]\n' + (baselineRelationships || '(chưa có)');
+      userContent += '\n\n[TRẠNG THÁI QUAN HỆ HIỆN TẠI TRƯỚC BATCH]\n' + (currentRelationshipStates || '(chưa có)');
+      userContent += '\n\n[SỰ KIỆN QUAN HỆ GẦN ĐÂY]\n' + (recentRelationshipEvents || '(chưa có)');
+      userContent += '\n\n[CÁC CHƯƠNG CẦN PHÂN TÍCH]\n' + (chapterBlocks || '(không có chương)');
+      userContent += '\n\nYêu cầu: trả đủ một object cho mỗi chapter_id trong batch. Nếu không có thay đổi quan hệ đủ rõ, để relationship_updates là mảng rỗng.';
       break;
     }
 

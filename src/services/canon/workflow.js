@@ -1,4 +1,4 @@
-import db from '../db/database';
+import db, { scheduleBackgroundCanonRebuild } from '../db/database';
 import aiService from '../ai/client';
 import { buildPrompt } from '../ai/promptBuilder';
 import { TASK_TYPES } from '../ai/router';
@@ -72,6 +72,20 @@ function buildCanonExtractError(error, rawText = '') {
     return new Error(`${baseMessage} | Phản hồi thô: ${rawSnippet}`);
   }
   return new Error(baseMessage);
+}
+
+async function rebuildCanonProjectionAfterCommit(projectId, chapterId) {
+  try {
+    const result = await rebuildCanonFromChapter(projectId, chapterId);
+    await db.projects.update(projectId, {
+      canon_rebuild_required: false,
+      updated_at: Date.now(),
+    });
+    return result;
+  } catch (error) {
+    scheduleBackgroundCanonRebuild(db, { delayMs: 1000 });
+    throw error;
+  }
 }
 
 function normalizeAdjudicationResponse(parsed) {
@@ -702,11 +716,17 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
   const invalidatedChapterIds = await invalidateFromChapter(projectId, chapterId);
 
   await db.transaction('rw',
+    db.projects,
     db.chapter_revisions,
     db.chapter_commits,
     db.story_events,
     db.memory_evidence,
     async () => {
+      await db.projects.update(projectId, {
+        canon_rebuild_required: true,
+        updated_at: Date.now(),
+      });
+
       await db.chapter_revisions.update(revision.id, {
         status: CHAPTER_REVISION_STATUS.CANONICAL,
         candidate_ops: JSON.stringify(candidateOps),
@@ -730,7 +750,7 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
       });
     });
 
-  await rebuildCanonFromChapter(projectId, chapterId);
+  await rebuildCanonProjectionAfterCommit(projectId, chapterId);
   await db.chapter_commits.update(commit.id, {
     status: CHAPTER_COMMIT_STATUS.CANONICAL,
     updated_at: Date.now(),
@@ -851,11 +871,17 @@ export async function canonicalizeCandidateOps({
   const invalidatedChapterIds = await invalidateFromChapter(projectId, chapterId);
 
   await db.transaction('rw',
+    db.projects,
     db.chapter_revisions,
     db.chapter_commits,
     db.story_events,
     db.memory_evidence,
     async () => {
+      await db.projects.update(projectId, {
+        canon_rebuild_required: true,
+        updated_at: Date.now(),
+      });
+
       await db.chapter_revisions.update(revision.id, {
         status: CHAPTER_REVISION_STATUS.CANONICAL,
         candidate_ops: JSON.stringify(resolvedCommitReadyOps),
@@ -879,7 +905,7 @@ export async function canonicalizeCandidateOps({
       });
     });
 
-  await rebuildCanonFromChapter(projectId, chapterId);
+  await rebuildCanonProjectionAfterCommit(projectId, chapterId);
   await db.chapter_commits.update(commit.id, {
     status: CHAPTER_COMMIT_STATUS.CANONICAL,
     updated_at: Date.now(),

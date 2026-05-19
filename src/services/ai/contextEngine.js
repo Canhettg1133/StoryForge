@@ -21,6 +21,7 @@ import {
   buildCharacterContextGate,
   flattenGateCharacters,
 } from './characterContextGate';
+import { buildRelationshipContextPacket } from './relationshipContextRouter';
 import {
   buildChapterBlueprintContext,
   normalizeChapterListField,
@@ -97,6 +98,14 @@ export async function gatherContext({
       projectStyleRuntimeEnabled: false,
       projectStyleRuntimeMeta: null,
       characterContextGate: null,
+      relationshipContextPacket: {
+        mustIncludeEdges: [],
+        supportingEdges: [],
+        warnings: [],
+        omittedSummary: { count: 0, topReasons: [] },
+        budgetPressure: false,
+      },
+      relationshipRoutingDebug: [],
     };
   }
 
@@ -104,6 +113,7 @@ export async function gatherContext({
   const [
     project, allCharacters, allLocations, allObjects, allTerms, allFactions,
     allTaboos, chapterMetas, chapters, allRelationships, allCanonFacts, allThreads,
+    allRelationshipStates, allStoryEvents,
   ] = await Promise.all([
     db.projects.get(projectId),
     db.characters.where('project_id').equals(projectId).toArray(),
@@ -117,6 +127,8 @@ export async function gatherContext({
     db.relationships.where('project_id').equals(projectId).toArray(),
     db.canonFacts.where('project_id').equals(projectId).toArray(),
     db.plotThreads.where('project_id').equals(projectId).toArray(),
+    db.relationship_state_current.where('project_id').equals(projectId).toArray(),
+    db.story_events.where('project_id').equals(projectId).toArray(),
   ]);
 
   const requestedChapter = chapterId
@@ -384,6 +396,28 @@ export async function gatherContext({
       description: r.description || '',
     }));
 
+  const relationshipBudgetChars = [
+    TASK_TYPES.OUTLINE,
+    TASK_TYPES.ARC_OUTLINE,
+  ].includes(taskType) ? 4800 : 3500;
+  const {
+    relationshipContextPacket,
+    relationshipRoutingDebug,
+  } = buildRelationshipContextPacket({
+    characters: allCharacters,
+    relationships: allRelationships,
+    relationshipStates: allRelationshipStates,
+    storyEvents: allStoryEvents,
+    chapters,
+    currentChapterIndex: resolvedChapterIndex,
+    characterContextGate,
+    userPrompt,
+    currentChapterOutline,
+    currentArc,
+    currentMacroArc,
+    budgetChars: relationshipBudgetChars,
+  });
+
   // --- Scene Contract ---
   let sceneContract = {};
   if (sceneId) {
@@ -550,6 +584,8 @@ export async function gatherContext({
     projectStyleRuntimeMeta: project?.project_style_runtime_meta || null,
     characterContextGate,
     relationships,
+    relationshipContextPacket,
+    relationshipRoutingDebug,
     sceneContract,
     canonFacts: effectiveCanonFacts,
     canonRoleLocks,

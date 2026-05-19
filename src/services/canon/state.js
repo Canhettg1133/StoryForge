@@ -101,9 +101,14 @@ export function createInitialThreadState(thread = {}) {
 }
 
 export function buildRelationshipPairKey(characterAId, characterBId) {
-  const a = Number(characterAId) || characterAId;
-  const b = Number(characterBId) || characterBId;
-  return [a, b].sort((left, right) => Number(left) - Number(right)).join(':');
+  const left = String(characterAId ?? '').trim();
+  const right = String(characterBId ?? '').trim();
+  const bothNumeric = left !== '' && right !== ''
+    && Number.isFinite(Number(left))
+    && Number.isFinite(Number(right));
+  return [left, right]
+    .sort((a, b) => (bothNumeric ? Number(a) - Number(b) : a.localeCompare(b, 'en')))
+    .join(':');
 }
 
 export const ITEM_CATEGORIES = {

@@ -113,6 +113,7 @@ export const TASK_TYPES = {
   CHAPTER_OUTLINE_PASS: 'chapter_outline_pass',
   // Phase A — Suggestion Inbox
   SUGGEST_UPDATES: 'suggest_updates',
+  RELATIONSHIP_ANALYZE_BATCH: 'relationship_analyze_batch',
   CANON_EXTRACT_OPS: 'canon_extract_ops',
   CANON_ADJUDICATE_WARNINGS: 'canon_adjudicate_warnings',
   CANON_REPAIR: 'canon_repair',

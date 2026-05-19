@@ -108,6 +108,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     fanficCanonContext = null,
     characterContextGate = null,
     retrievalPacket = null,
+    relationshipContextPacket = null,
     entityType = '',
     batchCount = 0,
     entityContextText = '',
@@ -256,6 +257,49 @@ export function buildPromptSystemParts(taskType, context = {}) {
     ].join('\n');
   };
 
+  const hasRelationshipContextPacket = Boolean(
+    relationshipContextPacket
+    && (
+      relationshipContextPacket.mustIncludeEdges?.length > 0
+      || relationshipContextPacket.supportingEdges?.length > 0
+      || relationshipContextPacket.warnings?.length > 0
+      || relationshipContextPacket.omittedSummary?.count > 0
+    )
+  );
+
+  const formatRelationshipContextEdge = (edge) => {
+    const bits = [];
+    bits.push((edge.characterAName || ('#' + edge.characterAId)) + ' ↔ ' + (edge.characterBName || ('#' + edge.characterBId)));
+    bits.push(edge.label || edge.relationshipType || 'Quan hệ');
+    if (edge.intimacyLevel && edge.intimacyLevel !== 'none') bits.push('thân mật: ' + edge.intimacyLevel);
+    if (edge.secrecyState && edge.secrecyState !== 'public') bits.push('bí mật: ' + edge.secrecyState);
+    if (edge.consentState && edge.consentState !== 'unknown') bits.push('đồng thuận: ' + edge.consentState);
+    if (edge.emotionalAftermath) bits.push('dư âm: ' + edge.emotionalAftermath);
+    if (edge.summary) bits.push(edge.summary);
+    return '- ' + bits.join(' | ');
+  };
+
+  const buildRelationshipContextLayer = () => {
+    if (!hasRelationshipContextPacket) return '';
+    const parts = [];
+    if (relationshipContextPacket.mustIncludeEdges?.length > 0) {
+      parts.push('Quan hệ bắt buộc giữ đúng:\n' + relationshipContextPacket.mustIncludeEdges.map(formatRelationshipContextEdge).join('\n'));
+    }
+    if (relationshipContextPacket.supportingEdges?.length > 0) {
+      parts.push('Quan hệ hỗ trợ liên quan:\n' + relationshipContextPacket.supportingEdges.map(formatRelationshipContextEdge).join('\n'));
+    }
+    if (relationshipContextPacket.warnings?.length > 0) {
+      parts.push('Cảnh báo bộ nhớ quan hệ:\n' + relationshipContextPacket.warnings.map(function (item) { return '- ' + item; }).join('\n'));
+    }
+    if (relationshipContextPacket.omittedSummary?.count > 0) {
+      const reasons = relationshipContextPacket.omittedSummary.topReasons?.length > 0
+        ? ' Lý do chính: ' + relationshipContextPacket.omittedSummary.topReasons.join('; ')
+        : '';
+      parts.push('Đã cắt ' + relationshipContextPacket.omittedSummary.count + ' quan hệ ngoài trọng tâm để giữ ngân sách context.' + reasons);
+    }
+    return '\n[BỘ NHỚ QUAN HỆ LIÊN QUAN]\n' + parts.join('\n\n');
+  };
+
   const PROSE_DIALOGUE_DISCIPLINE_LAYER = [
     '\n[KỶ LUẬT VĂN XUÔI VÀ THOẠI - BỔ SUNG BẮT BUỘC]',
     '- Viết thành văn xuôi hoàn chỉnh, không dàn ý, không tóm tắt, không bullet, không markdown, không heading meta trong prose.',
@@ -327,6 +371,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
       sceneText,
       selectedText,
       retrievalPacket,
+      relationshipContextPacket,
       promptTemplates,
     });
     if (nsfwIntimateLayer) {
@@ -613,8 +658,13 @@ export function buildPromptSystemParts(taskType, context = {}) {
     }
   }
 
-  // Relationships (Phase 4)
-  if (relationships.length > 0) {
+  const relationshipContextLayer = buildRelationshipContextLayer();
+  if (relationshipContextLayer) {
+    systemParts.push(relationshipContextLayer);
+  }
+
+  // Legacy relationships: keep only as fallback while relationshipContextPacket is unavailable.
+  if (!hasRelationshipContextPacket && relationships.length > 0) {
     const relInfo = relationships.map(function (r) {
       return '- ' + r.charA + ' <-> ' + r.charB + ': ' + r.label + (r.description ? ' (' + r.description + ')' : '');
     }).join('\n');
@@ -706,7 +756,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
         return '- Vật phẩm #' + state.object_id + ': ' + itemBits.join(' | ');
       }).join('\n'));
     }
-    if (retrievalPacket.relevantRelationshipStates?.length > 0) {
+    if (!hasRelationshipContextPacket && retrievalPacket.relevantRelationshipStates?.length > 0) {
       canonBits.push('Quan hệ / độ thân mật liên quan:\n' + retrievalPacket.relevantRelationshipStates.map(function (state) {
         const relBits = [];
         if (state.relationship_type) relBits.push('quan hệ: ' + state.relationship_type);
@@ -728,7 +778,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
           return (item.object_name || ('#' + item.object_id)) + ' (' + item.availability + ')';
         }).join(', '));
       }
-      if (retrievalPacket.criticalConstraints.relationshipConstraints?.length > 0) {
+      if (!hasRelationshipContextPacket && retrievalPacket.criticalConstraints.relationshipConstraints?.length > 0) {
         constraints.push('Ràng buộc quan hệ gần đây:\n' + retrievalPacket.criticalConstraints.relationshipConstraints.map(function (item) {
           const bits = [];
           if (item.intimacy_level && item.intimacy_level !== 'none') bits.push('thân mật=' + item.intimacy_level);

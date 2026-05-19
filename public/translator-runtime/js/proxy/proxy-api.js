@@ -494,7 +494,7 @@ async function fetchCustomProxyModels() {
     }
 
     if (modelStatus) {
-        modelStatus.textContent = 'Đang lấy danh sách models từ Custom Proxy...';
+        modelStatus.textContent = 'Đang lấy danh sách model từ Custom Proxy...';
         modelStatus.className = 'model-fetch-status pending';
     }
 

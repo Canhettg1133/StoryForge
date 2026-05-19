@@ -28,6 +28,10 @@ import {
   repairChapterRevision as repairChapterRevisionEngine,
 } from '../services/canon/workflow';
 import { CANON_OP_TYPES } from '../services/canon/constants';
+import {
+  RELATIONSHIP_ANALYSIS_MAX_ESTIMATED_INPUT_TOKENS,
+  planRelationshipAnalysisBatches,
+} from '../services/ai/relationshipAnalysisPlanner';
 
 // Inject router into aiService (avoid circular import)
 aiService.setRouter(modelRouter);
@@ -218,10 +222,169 @@ function normalizeSuggestionResult(parsed) {
     return {
       character_updates: [],
       new_canon_facts: [],
+      relationship_updates: [],
       items: parsed,
     };
   }
   return isPlainObject(parsed) ? parsed : null;
+}
+
+function normalizeRelationshipAnalysisResult(parsed) {
+  if (Array.isArray(parsed)) return { chapters: parsed };
+  if (isPlainObject(parsed) && Array.isArray(parsed.chapters)) return parsed;
+  return null;
+}
+
+function normalizeTextKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function buildRelationshipPairKey(characterAId, characterBId) {
+  const left = String(characterAId ?? '').trim();
+  const right = String(characterBId ?? '').trim();
+  const bothNumeric = left !== '' && right !== ''
+    && Number.isFinite(Number(left))
+    && Number.isFinite(Number(right));
+  return [left, right]
+    .sort((a, b) => (bothNumeric ? Number(a) - Number(b) : a.localeCompare(b, 'en')))
+    .join(':');
+}
+
+function relationshipSuggestionFingerprint({ chapterId, characterAId, characterBId, opType, summary }) {
+  if (!chapterId || !characterAId || !characterBId || !opType) return '';
+  return [
+    chapterId,
+    buildRelationshipPairKey(characterAId, characterBId),
+    opType,
+    normalizeTextKey(summary),
+  ].join('|');
+}
+
+function parseCandidateOp(value) {
+  if (!value) return null;
+  try {
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  } catch {
+    return null;
+  }
+}
+
+function fingerprintExistingRelationshipSuggestion(suggestion) {
+  if (suggestion?.type !== 'relationship_update') return '';
+  const op = parseCandidateOp(suggestion.candidate_op);
+  if (!op) return '';
+  return relationshipSuggestionFingerprint({
+    chapterId: op.chapter_id || suggestion.source_chapter_id,
+    characterAId: op.subject_id || suggestion.target_id,
+    characterBId: op.target_id,
+    opType: op.op_type,
+    summary: op.summary || op.payload?.status_summary || suggestion.suggested_value,
+  });
+}
+
+function relationshipOpTypeFromChangeType(changeType) {
+  const normalized = String(changeType || 'status').trim().toLowerCase();
+  if (normalized === 'secret') return CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED;
+  if (normalized === 'intimacy') return CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED;
+  return CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED;
+}
+
+function buildRelationshipSuggestionFromUpdate(update, { chapterId, allCharacters }) {
+  const charA = findCharacterIdentityMatch(allCharacters, {
+    name: update.character_a_name || update.characterAName || '',
+  })?.character || null;
+  const charB = findCharacterIdentityMatch(allCharacters, {
+    name: update.character_b_name || update.characterBName || '',
+  })?.character || null;
+  if (!charA || !charB || charA.id === charB.id) return null;
+
+  const opType = relationshipOpTypeFromChangeType(update.change_type || update.type);
+  const statusSummary = update.status_summary || update.summary || update.relationship_type || '';
+  const payload = {
+    relationship_type: update.relationship_type || update.status || '',
+    status_summary: statusSummary,
+    intimacy_level: update.intimacy_level || '',
+    secrecy_state: update.secrecy_state || update.secret_state || '',
+    consent_state: update.consent_state || '',
+    emotional_aftermath: update.emotional_aftermath || '',
+  };
+  return {
+    type: 'relationship_update',
+    source_chapter_id: chapterId,
+    target_id: charA.id,
+    target_name: `${charA.name} / ${charB.name}`,
+    current_value: '',
+    suggested_value: statusSummary || `${charA.name} / ${charB.name}`,
+    reasoning: update.evidence || update.reasoning || '',
+    candidate_op: {
+      op_type: opType,
+      chapter_id: chapterId,
+      subject_id: charA.id,
+      subject_name: charA.name,
+      target_id: charB.id,
+      target_name: charB.name,
+      summary: statusSummary || update.reasoning || update.evidence || '',
+      evidence: update.evidence || update.reasoning || statusSummary || '',
+      confidence: Number.isFinite(Number(update.confidence)) ? Number(update.confidence) : 0.65,
+      payload,
+    },
+  };
+}
+
+async function upsertRelationshipAnalysisMeta({
+  projectId,
+  chapterId,
+  signature,
+  status,
+  suggestionCount = 0,
+  error = '',
+}) {
+  const now = Date.now();
+  const existing = await db.chapterMeta.where('chapter_id').equals(chapterId).first();
+  const payload = {
+    project_id: projectId,
+    chapter_id: chapterId,
+    relationship_analysis_signature: signature || '',
+    relationship_analyzed_at: now,
+    relationship_analysis_status: status,
+    relationship_suggestion_count: suggestionCount,
+    relationship_analysis_error: error,
+    updated_at: now,
+  };
+  if (existing) {
+    await db.chapterMeta.update(existing.id, payload);
+    return;
+  }
+  await db.chapterMeta.add({
+    ...payload,
+    created_at: now,
+  });
+}
+
+function sendRelationshipAnalysisBatch({ messages, routeOptions, nsfwMode, superNsfwMode }) {
+  return new Promise((resolve, reject) => {
+    try {
+      aiService.send({
+        taskType: TASK_TYPES.RELATIONSHIP_ANALYZE_BATCH,
+        messages,
+        stream: false,
+        routeOptions: routeOptions || undefined,
+        nsfwMode,
+        superNsfwMode,
+        onComplete: (text) => resolve(text),
+        onError: reject,
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 async function hydrateProjectAiContext(context = {}) {
@@ -705,6 +868,8 @@ const useAIStore = create((set, get) => ({
   // Phase A: Suggestion Inbox
   // ---------------------------------------------
   isSuggesting: false,
+  isAnalyzingRelationships: false,
+  relationshipAnalysisProgress: null,
 
   /**
    * Generate AI suggestions for character status updates & new canon facts.
@@ -844,6 +1009,55 @@ const useAIStore = create((set, get) => ({
                 }
               }
 
+              if (result.relationship_updates && Array.isArray(result.relationship_updates)) {
+                for (const update of result.relationship_updates) {
+                  const charA = findCharacterIdentityMatch(allCharacters, {
+                    name: update.character_a_name || update.characterAName || '',
+                  })?.character || null;
+                  const charB = findCharacterIdentityMatch(allCharacters, {
+                    name: update.character_b_name || update.characterBName || '',
+                  })?.character || null;
+                  if (!charA || !charB || charA.id === charB.id) continue;
+
+                  const changeType = String(update.change_type || update.type || 'status').trim().toLowerCase();
+                  const opType = changeType === 'secret'
+                    ? CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED
+                    : changeType === 'intimacy'
+                      ? CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED
+                      : CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED;
+                  const statusSummary = update.status_summary || update.summary || update.relationship_type || '';
+                  const payload = {
+                    relationship_type: update.relationship_type || update.status || '',
+                    status_summary: statusSummary,
+                    intimacy_level: update.intimacy_level || '',
+                    secrecy_state: update.secrecy_state || update.secret_state || '',
+                    consent_state: update.consent_state || '',
+                    emotional_aftermath: update.emotional_aftermath || '',
+                  };
+                  suggestionItems.push({
+                    type: 'relationship_update',
+                    source_chapter_id: chapterId,
+                    target_id: charA.id,
+                    target_name: `${charA.name} / ${charB.name}`,
+                    current_value: '',
+                    suggested_value: statusSummary || `${charA.name} / ${charB.name}`,
+                    reasoning: update.reasoning || '',
+                    candidate_op: {
+                      op_type: opType,
+                      chapter_id: chapterId,
+                      subject_id: charA.id,
+                      subject_name: charA.name,
+                      target_id: charB.id,
+                      target_name: charB.name,
+                      summary: statusSummary || update.reasoning || '',
+                      evidence: update.reasoning || statusSummary || '',
+                      confidence: Number.isFinite(Number(update.confidence)) ? Number(update.confidence) : 0.65,
+                      payload,
+                    },
+                  });
+                }
+              }
+
               // 5. Save to DB via suggestionStore
               if (suggestionItems.length > 0) {
                 await useSuggestionStore.getState().createSuggestions(projectId, suggestionItems);
@@ -874,6 +1088,320 @@ const useAIStore = create((set, get) => ({
       }
     });
   },
+
+  analyzeRelationshipChapters: (params) => {
+    const {
+      projectId,
+      chapterIds = [],
+      force = false,
+      routeOptions = null,
+      maxEstimatedInputTokens = RELATIONSHIP_ANALYSIS_MAX_ESTIMATED_INPUT_TOKENS,
+    } = params || {};
+
+    return new Promise(async (resolve) => {
+      if (!projectId) {
+        resolve({
+          status: 'empty',
+          analyzedChapterCount: 0,
+          requestCount: 0,
+          createdCount: 0,
+          skippedDuplicateCount: 0,
+          failedChapterIds: [],
+        });
+        return;
+      }
+
+      set({
+        isAnalyzingRelationships: true,
+        relationshipAnalysisProgress: {
+          status: 'loading',
+          currentRequest: 0,
+          requestCount: 0,
+          analyzedChapterCount: 0,
+          createdCount: 0,
+          message: 'Đang chuẩn bị phân tích quan hệ...',
+        },
+      });
+
+      const failedChapterIds = new Set();
+      const failedChapterErrors = new Map();
+      const successfulChapterIds = new Set();
+      const collectedSuggestions = [];
+      const suggestionCountByChapterId = new Map();
+      let skippedDuplicateCount = 0;
+
+      try {
+        const [
+          project,
+          chapters,
+          scenes,
+          chapterMetas,
+          allCharacters,
+          allRelationships,
+          relationshipStates,
+          storyEvents,
+          existingSuggestions,
+        ] = await Promise.all([
+          db.projects.get(projectId),
+          db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
+          db.scenes.where('project_id').equals(projectId).toArray(),
+          db.chapterMeta.where('project_id').equals(projectId).toArray(),
+          db.characters.where('project_id').equals(projectId).toArray(),
+          db.relationships.where('project_id').equals(projectId).toArray(),
+          db.relationship_state_current.where('project_id').equals(projectId).toArray(),
+          db.story_events.where('project_id').equals(projectId).toArray(),
+          db.suggestions.where('project_id').equals(projectId).toArray(),
+        ]);
+
+        const selectedChapterIds = (chapterIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id));
+        const chapterScope = selectedChapterIds.length > 0
+          ? chapters.filter((chapter) => selectedChapterIds.includes(Number(chapter.id)))
+          : chapters;
+        const scenesByChapterId = scenes.reduce((map, scene) => {
+          const key = Number(scene.chapter_id);
+          if (!map.has(key)) map.set(key, []);
+          map.get(key).push(scene);
+          return map;
+        }, new Map());
+        const pendingRelationshipSuggestions = existingSuggestions.filter((suggestion) =>
+          suggestion.status === 'pending' && suggestion.type === 'relationship_update'
+        );
+        const sharedContextChars = JSON.stringify({
+          characters: allCharacters.map((character) => ({
+            id: character.id,
+            name: character.name,
+            aliases: character.aliases || [],
+            role: character.role || '',
+          })),
+          relationships: allRelationships,
+          relationshipStates,
+        }).length;
+        const plan = planRelationshipAnalysisBatches({
+          chapters: chapterScope,
+          scenesByChapterId,
+          chapterMetas,
+          pendingSuggestions: pendingRelationshipSuggestions,
+          forceChapterIds: force ? selectedChapterIds : [],
+          maxEstimatedInputTokens,
+          sharedContextChars,
+        });
+
+        if (plan.oversizedItems.length > 0) {
+          for (const item of plan.oversizedItems) {
+            failedChapterIds.add(item.chapterId);
+            failedChapterErrors.set(item.chapterId, item.tooLargeReason || 'Chương vượt ngân sách phân tích quan hệ.');
+            await upsertRelationshipAnalysisMeta({
+              projectId,
+              chapterId: item.chapterId,
+              signature: item.signature,
+              status: 'failed',
+              suggestionCount: 0,
+              error: item.tooLargeReason || 'Chương vượt ngân sách phân tích quan hệ.',
+            });
+          }
+        }
+
+        if (plan.batches.length === 0) {
+          set({ isAnalyzingRelationships: false, relationshipAnalysisProgress: null });
+          resolve({
+            status: plan.oversizedItems.length > 0 ? 'failed' : 'empty',
+            analyzedChapterCount: 0,
+            requestCount: 0,
+            createdCount: 0,
+            skippedDuplicateCount: 0,
+            failedChapterIds: [...failedChapterIds],
+          });
+          return;
+        }
+
+        const recentRelationshipEvents = storyEvents
+          .filter((event) => [
+            CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED,
+            CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED,
+            CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED,
+          ].includes(event.op_type) && (!event.status || event.status === 'committed'))
+          .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+          .slice(0, 120);
+        let promptTemplates = {};
+        if (project?.prompt_templates) {
+          try {
+            promptTemplates = JSON.parse(project.prompt_templates);
+          } catch {
+            promptTemplates = {};
+          }
+        }
+
+        for (let index = 0; index < plan.batches.length; index += 1) {
+          const batch = plan.batches[index];
+          set({
+            relationshipAnalysisProgress: {
+              status: 'running',
+              currentRequest: index + 1,
+              requestCount: plan.batches.length,
+              analyzedChapterCount: successfulChapterIds.size,
+              createdCount: collectedSuggestions.length,
+              message: `Đang phân tích batch ${index + 1}/${plan.batches.length}...`,
+            },
+          });
+
+          try {
+            const messages = buildPrompt(TASK_TYPES.RELATIONSHIP_ANALYZE_BATCH, {
+              projectId,
+              genre: project?.genre_primary || '',
+              projectTitle: project?.title || '',
+              promptTemplates,
+              nsfwMode: !!project?.nsfw_mode,
+              superNsfwMode: !!project?.super_nsfw_mode,
+              characters: allCharacters,
+              relationships: allRelationships,
+              relationshipStates,
+              relationshipEvents: recentRelationshipEvents,
+              relationshipAnalysisChapters: batch.items,
+            });
+            const rawText = await sendRelationshipAnalysisBatch({
+              messages,
+              routeOptions,
+              nsfwMode: !!project?.nsfw_mode,
+              superNsfwMode: !!project?.super_nsfw_mode,
+            });
+            const parsed = normalizeRelationshipAnalysisResult(parseAIJsonValue(rawText));
+            if (!parsed) throw new Error('AI trả về JSON phân tích quan hệ sai định dạng.');
+
+            const outputByChapterId = new Map();
+            (parsed.chapters || []).forEach((chapterResult) => {
+              const chapterId = Number(chapterResult?.chapter_id);
+              if (Number.isFinite(chapterId)) outputByChapterId.set(chapterId, chapterResult);
+            });
+
+            const batchChapterIds = [...new Set(batch.items.map((item) => Number(item.chapterId)))];
+            for (const chapterId of batchChapterIds) {
+              const chapterResult = outputByChapterId.get(chapterId);
+              if (!chapterResult) {
+                failedChapterIds.add(chapterId);
+                failedChapterErrors.set(chapterId, 'AI không trả kết quả cho chương này.');
+                continue;
+              }
+              successfulChapterIds.add(chapterId);
+              const updates = Array.isArray(chapterResult.relationship_updates)
+                ? chapterResult.relationship_updates
+                : [];
+              updates.forEach((update) => {
+                const suggestion = buildRelationshipSuggestionFromUpdate(update, {
+                  chapterId: Number(update.chapter_id || chapterId),
+                  allCharacters,
+                });
+                if (suggestion) collectedSuggestions.push(suggestion);
+              });
+            }
+          } catch (error) {
+            const message = error?.message || 'Không phân tích được batch quan hệ.';
+            batch.items.forEach((item) => {
+              failedChapterIds.add(Number(item.chapterId));
+              failedChapterErrors.set(Number(item.chapterId), message);
+            });
+          }
+        }
+
+        const existingFingerprints = new Set(
+          existingSuggestions
+            .map(fingerprintExistingRelationshipSuggestion)
+            .filter(Boolean)
+        );
+        const newFingerprints = new Set();
+        const uniqueSuggestions = [];
+        collectedSuggestions.forEach((suggestion) => {
+          if (failedChapterIds.has(Number(suggestion.source_chapter_id))) return;
+          const op = suggestion.candidate_op || {};
+          const fingerprint = relationshipSuggestionFingerprint({
+            chapterId: op.chapter_id || suggestion.source_chapter_id,
+            characterAId: op.subject_id,
+            characterBId: op.target_id,
+            opType: op.op_type,
+            summary: op.summary || suggestion.suggested_value,
+          });
+          if (!fingerprint || existingFingerprints.has(fingerprint) || newFingerprints.has(fingerprint)) {
+            skippedDuplicateCount += 1;
+            return;
+          }
+          newFingerprints.add(fingerprint);
+          uniqueSuggestions.push(suggestion);
+          suggestionCountByChapterId.set(
+            Number(suggestion.source_chapter_id),
+            (suggestionCountByChapterId.get(Number(suggestion.source_chapter_id)) || 0) + 1
+          );
+        });
+
+        if (uniqueSuggestions.length > 0) {
+          await useSuggestionStore.getState().createSuggestions(projectId, uniqueSuggestions);
+        }
+
+        const planByChapterId = new Map(plan.requestedPlans.map((item) => [Number(item.chapterId), item]));
+        for (const chapterId of successfulChapterIds) {
+          const chapterPlan = planByChapterId.get(Number(chapterId));
+          if (!chapterPlan || failedChapterIds.has(Number(chapterId))) continue;
+          await upsertRelationshipAnalysisMeta({
+            projectId,
+            chapterId: Number(chapterId),
+            signature: chapterPlan.signature,
+            status: 'analyzed',
+            suggestionCount: suggestionCountByChapterId.get(Number(chapterId)) || 0,
+            error: '',
+          });
+        }
+
+        for (const chapterId of failedChapterIds) {
+          const chapterPlan = planByChapterId.get(Number(chapterId));
+          if (!chapterPlan) continue;
+          await upsertRelationshipAnalysisMeta({
+            projectId,
+            chapterId: Number(chapterId),
+            signature: chapterPlan.signature,
+            status: 'failed',
+            suggestionCount: 0,
+            error: failedChapterErrors.get(Number(chapterId)) || 'Không phân tích được quan hệ chương này.',
+          });
+        }
+
+        const analyzedChapterCount = [...successfulChapterIds]
+          .filter((chapterId) => !failedChapterIds.has(chapterId)).length;
+        const outcome = {
+          status: failedChapterIds.size > 0 && analyzedChapterCount === 0 ? 'failed' : 'completed',
+          analyzedChapterCount,
+          requestCount: plan.batches.length,
+          createdCount: uniqueSuggestions.length,
+          skippedDuplicateCount,
+          failedChapterIds: [...failedChapterIds],
+        };
+        set({
+          isAnalyzingRelationships: false,
+          relationshipAnalysisProgress: null,
+          keyCount: keyManager.getTotalKeys(),
+        });
+        resolve(outcome);
+      } catch (error) {
+        set({
+          isAnalyzingRelationships: false,
+          relationshipAnalysisProgress: null,
+          keyCount: keyManager.getTotalKeys(),
+        });
+        resolve({
+          status: 'failed',
+          analyzedChapterCount: 0,
+          requestCount: 0,
+          createdCount: 0,
+          skippedDuplicateCount,
+          failedChapterIds: [],
+          error: error?.message || 'Không phân tích được quan hệ.',
+        });
+      }
+    });
+  },
+
+  analyzeNeededRelationshipChapters: (params) => get().analyzeRelationshipChapters({
+    ...(params || {}),
+    chapterIds: [],
+    force: false,
+  }),
 
   // ---------------------------------------------
   // Phase 7 - Bridge Memory: manual emotional state update

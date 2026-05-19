@@ -209,7 +209,7 @@
                 <h2 class="section-title">
                     <span class="icon">📦</span>
                     Gemini Direct • Models
-                    <span class="badge" id="modelCount">0 models</span>
+                    <span class="badge" id="modelCount">0 model</span>
                 </h2>
 
                 <div class="models-info-box">
@@ -221,7 +221,7 @@
 
                 <!-- Models List -->
                 <div class="models-list" id="modelsList">
-                    <p class="empty-message">Đang tải models...</p>
+                    <p class="empty-message">Đang tải model...</p>
                 </div>
 
                 <!-- Add Model -->
@@ -244,6 +244,8 @@
                             class="model-name-input">
                         <input type="number" id="customModelQuota" value="15" min="1" max="100"
                             class="model-quota-input" title="RPM">
+                        <input type="number" id="customModelRpd" min="1" max="100000" placeholder="RPD tự động"
+                            class="model-rpd-input" title="RPD, để trống để tự suy luận theo model">
                         <button class="btn btn-secondary btn-small" onclick="addCustomModel()">
                             ✏️ Thêm thủ công
                         </button>
@@ -281,11 +283,11 @@
 
                 <div class="rpd-info-box">
                     <p>📅 <strong>RPD (Requests Per Day)</strong> = Số request mỗi ngày cho từng model.
-                        Free tier: 20 RPD/model/key. Reset lúc 2PM giờ VN (midnight Pacific).</p>
+                        Mỗi model có giới hạn riêng theo cấu hình đang chọn. Reset lúc 2PM giờ VN (midnight Pacific).</p>
                 </div>
 
                 <div class="rpd-dashboard" id="rpdDashboard">
-                    <p class="empty-message">Đang tải RPD data...</p>
+                    <p class="empty-message">Đang tải dữ liệu RPD...</p>
                 </div>
 
                 <div class="rpd-actions">

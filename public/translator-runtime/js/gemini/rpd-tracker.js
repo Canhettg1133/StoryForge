@@ -2,14 +2,14 @@
  * Novel Translator Pro - RPD Tracker
  * Theo dõi RPD (Requests Per Day) cho từng cặp (model, key)
  * 
- * Mỗi model có RPD riêng biệt (mặc định 20/ngày cho free tier)
+ * Mỗi model có RPD riêng biệt theo cấu hình Gemini Direct.
  * RPD reset lúc midnight Pacific Time (2PM giờ Việt Nam)
  */
 
 // ============================================
 // RPD CONSTANTS
 // ============================================
-const RPD_LIMIT_DEFAULT = 20; // Free tier: 20 RPD per model per key
+const RPD_LIMIT_DEFAULT = 20;
 const RPD_STORAGE_KEY = 'novelTranslatorRPD';
 
 // ============================================
@@ -100,9 +100,31 @@ function getRPDPairId(modelName, keyIndex) {
 }
 
 function getRPDLimit(modelName) {
-    // Lấy RPD limit từ model config nếu có, mặc định 20
-    const model = GEMINI_MODELS.find(m => m.name === modelName);
-    return (model && model.rpd) ? model.rpd : RPD_LIMIT_DEFAULT;
+    const model = Array.isArray(GEMINI_MODELS)
+        ? GEMINI_MODELS.find(m => m.name === modelName)
+        : null;
+    const fallback = typeof getDefaultRPDForGeminiModel === 'function'
+        ? getDefaultRPDForGeminiModel(modelName)
+        : RPD_LIMIT_DEFAULT;
+    const limit = model && Number(model.rpd) > 0 ? Number(model.rpd) : fallback;
+    return Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : RPD_LIMIT_DEFAULT;
+}
+
+function ensureRPDPair(modelName, keyIndex) {
+    const pairId = getRPDPairId(modelName, keyIndex);
+    const limit = getRPDLimit(modelName);
+    let changed = false;
+
+    if (!rpdData.pairs[pairId]) {
+        rpdData.pairs[pairId] = { used: 0, limit };
+        changed = true;
+    } else if (rpdData.pairs[pairId].limit !== limit) {
+        rpdData.pairs[pairId].limit = limit;
+        changed = true;
+    }
+
+    if (changed) saveRPDData();
+    return rpdData.pairs[pairId];
 }
 
 /**
@@ -116,14 +138,10 @@ function recordRPDRequest(modelName, keyIndex) {
         rpdData = { date: today, pairs: {} };
     }
 
-    const pairId = getRPDPairId(modelName, keyIndex);
-    if (!rpdData.pairs[pairId]) {
-        rpdData.pairs[pairId] = { used: 0, limit: getRPDLimit(modelName) };
-    }
-    rpdData.pairs[pairId].used++;
+    const pair = ensureRPDPair(modelName, keyIndex);
+    pair.used++;
     saveRPDData();
 
-    const pair = rpdData.pairs[pairId];
     if (pair.used >= pair.limit) {
         console.warn(`[RPD] ⚠️ ${modelName} + Key ${keyIndex + 1}: Đã hết RPD! (${pair.used}/${pair.limit})`);
     } else if (pair.used >= pair.limit * 0.8) {
@@ -146,7 +164,8 @@ function isPairRPDAvailable(modelName, keyIndex) {
     const pairId = getRPDPairId(modelName, keyIndex);
     if (!rpdData.pairs[pairId]) return true;
 
-    return rpdData.pairs[pairId].used < rpdData.pairs[pairId].limit;
+    const pair = ensureRPDPair(modelName, keyIndex);
+    return pair.used < pair.limit;
 }
 
 /**
@@ -159,7 +178,8 @@ function getRPDRemaining(modelName, keyIndex) {
     const pairId = getRPDPairId(modelName, keyIndex);
     if (!rpdData.pairs[pairId]) return getRPDLimit(modelName);
 
-    return Math.max(0, rpdData.pairs[pairId].limit - rpdData.pairs[pairId].used);
+    const pair = ensureRPDPair(modelName, keyIndex);
+    return Math.max(0, pair.limit - pair.used);
 }
 
 /**
@@ -382,7 +402,8 @@ function markPairRPDExhausted(modelName, keyIndex) {
     if (!rpdData.pairs[pairId]) {
         rpdData.pairs[pairId] = { used: limit, limit: limit };
     } else {
-        rpdData.pairs[pairId].used = rpdData.pairs[pairId].limit;
+        rpdData.pairs[pairId].limit = limit;
+        rpdData.pairs[pairId].used = limit;
     }
     saveRPDData();
     console.warn(`[RPD] Marked ${modelName} + Key ${keyIndex + 1} as EXHAUSTED`);

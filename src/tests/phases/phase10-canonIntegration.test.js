@@ -441,6 +441,50 @@ describe('phase10 canon integration', () => {
     expect(committedEvents).toHaveLength(1);
   });
 
+  it('commits relationship candidate ops through story events and clears rebuild dirty flag after projection rebuild', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Relationship suggestions', canon_rebuild_required: false }],
+      chapters: [{ id: 1, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      characters: [
+        { id: 10, project_id: 1, name: 'Lan' },
+        { id: 11, project_id: 1, name: 'Kha' },
+      ],
+      relationships: [{ id: 40, project_id: 1, character_a_id: 10, character_b_id: 11, relation_type: 'friend', description: 'Ban cu' }],
+      plotThreads: [],
+      canonFacts: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      story_events: [],
+    });
+
+    const result = await engine.canonicalizeCandidateOps({
+      projectId: 1,
+      chapterId: 1,
+      candidateOps: [{
+        op_type: 'RELATIONSHIP_STATUS_CHANGED',
+        chapter_id: 1,
+        subject_id: 10,
+        subject_name: 'Lan',
+        target_id: 11,
+        target_name: 'Kha',
+        confidence: 0.8,
+        summary: 'Lan va Kha tro thanh ke thu',
+        evidence: 'Lan rut kiem chan Kha.',
+        payload: {
+          relationship_type: 'enemy',
+          status_summary: 'Tro thanh ke thu sau man phan boi',
+        },
+      }],
+    });
+
+    expect(result.ok).toBe(true);
+    const events = await db.story_events.toArray();
+    expect(events.some((event) => event.op_type === 'RELATIONSHIP_STATUS_CHANGED')).toBe(true);
+    const state = (await db.relationship_state_current.toArray()).find((item) => item.pair_key === '10:11');
+    expect(state.relationship_type).toBe('enemy');
+    expect((await db.projects.get(1)).canon_rebuild_required).toBe(false);
+  });
+
   it('purges canon artifacts and archives deleted chapter payload without removing legacy codex rows', async () => {
     const { db, engine } = await loadModules({
       projects: [{ id: 1, title: 'Purge Test' }],

@@ -71,6 +71,18 @@ function resolveEffectiveTranslationParallel(options = {}) {
     return requestedParallel;
 }
 
+async function settleChunkPromisesIndividually(promises, onSettled) {
+    await Promise.all(promises.map((promise, index) => {
+        if (promise && typeof promise.then === 'function') {
+            return promise.then(
+                (value) => onSettled({ status: 'fulfilled', value }, index),
+                (reason) => onSettled({ status: 'rejected', reason }, index)
+            );
+        }
+        return onSettled({ status: 'fulfilled', value: promise }, index);
+    }));
+}
+
 function getTranslatedChunkDisplayText(chunk, index, pendingLabel) {
     return chunk !== null && chunk !== undefined
         ? String(chunk)
@@ -351,8 +363,21 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             return translateChunkWithRetry(promptedChunk, chunk.index);
         })());
 
-        const results = await Promise.allSettled(promises);
-        results.forEach((result, idx) => {
+        const refreshBatchProgress = () => {
+            const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
+            const speed = completedChunks / elapsed;
+            updateLargeFileProgress({
+                byteCursor: largeFileByteCursor,
+                fileSize: currentSourceFile.size,
+                completed: completedChunks,
+                status: `Đang dịch file lớn... ${completedChunks.toLocaleString('vi-VN')} chunk đã xong`,
+            });
+            updateProgressStats(speed.toFixed(1), getActiveKeyCount(), '--:--');
+            renderRPDDashboardThrottled();
+            updateLargePreview('⏳ Đang dịch');
+        };
+
+        await settleChunkPromisesIndividually(promises, (result, idx) => {
             const chunk = batch[idx];
             if (result.status === 'fulfilled') {
                 translatedChunks[chunk.index] = result.value;
@@ -360,6 +385,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
                 if (typeof trackChunkSuccess === 'function') {
                     trackChunkSuccess(chunk.index, result.value, '');
                 }
+                refreshBatchProgress();
                 return;
             }
 
@@ -374,19 +400,8 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             if (typeof trackChunkFailed === 'function') {
                 trackChunkFailed(chunk.index, userReason);
             }
+            refreshBatchProgress();
         });
-
-        const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
-        const speed = completedChunks / elapsed;
-        updateLargeFileProgress({
-            byteCursor: largeFileByteCursor,
-            fileSize: currentSourceFile.size,
-            completed: completedChunks,
-            status: `Đang dịch file lớn... ${completedChunks.toLocaleString('vi-VN')} chunk đã xong`,
-        });
-        updateProgressStats(speed.toFixed(1), getActiveKeyCount(), '--:--');
-        renderRPDDashboardThrottled();
-        updateLargePreview('⏳ Đang dịch');
     };
 
     try {
@@ -780,9 +795,21 @@ async function startTranslation() {
                 continue;
             }
 
-            const results = await Promise.allSettled(batch);
+            const refreshTextProgress = () => {
+                const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
+                const speed = completedChunks / elapsed;
+                const remaining = chunks.length - completedChunks;
+                const eta = speed > 0 ? remaining / speed : Infinity;
+                const currentActiveKeys = getActiveKeyCount();
 
-            results.forEach((result, idx) => {
+                updateProgress(completedChunks, chunks.length, `Đang dịch chunk ${completedChunks}/${chunks.length}...`);
+                updateProgressStats(speed.toFixed(1), currentActiveKeys, formatTime(eta));
+                renderRPDDashboardThrottled();
+                updateTranslatedPreview('⏳ Đang dịch');
+                persistHistoryProgress();
+            };
+
+            await settleChunkPromisesIndividually(batch, (result, idx) => {
                 const chunkIndex = batchIndices[idx];
                 if (result.status === 'fulfilled') {
                     translatedChunks[chunkIndex] = result.value;
@@ -791,6 +818,7 @@ async function startTranslation() {
                     if (typeof trackChunkSuccess === 'function') {
                         trackChunkSuccess(chunkIndex, result.value, '');
                     }
+                    refreshTextProgress();
                 } else {
                     const reasonText = String(result.reason?.message || result.reason || '');
                     if (cancelRequested || reasonText.includes('TRANSLATION_CANCELLED')) {
@@ -807,6 +835,7 @@ async function startTranslation() {
                     if (typeof trackChunkFailed === 'function') {
                         trackChunkFailed(chunkIndex, userReason);
                     }
+                    refreshTextProgress();
                 }
             });
 
@@ -814,25 +843,6 @@ async function startTranslation() {
                 persistHistoryProgress(true);
                 break;
             }
-
-            // Update progress
-            const elapsed = (Date.now() - startTime) / 1000;
-            const speed = completedChunks / elapsed;
-            const remaining = chunks.length - completedChunks;
-            const eta = remaining / speed;
-            const currentActiveKeys = getActiveKeyCount();
-
-            updateProgress(completedChunks, chunks.length, `Đang dịch chunk ${completedChunks}/${chunks.length}...`);
-            updateProgressStats(speed.toFixed(1), currentActiveKeys, formatTime(eta));
-
-            // Cập nhật RPD dashboard, nhưng không render lại quá dày khi truyện lớn.
-            renderRPDDashboardThrottled();
-
-            // Preview được giới hạn để textarea không phải giữ/render chuỗi 10MB mỗi batch.
-            updateTranslatedPreview('⏳ Đang dịch');
-
-            // Persist theo interval/chunk step để vẫn resume được mà không ghi snapshot lớn liên tục.
-            persistHistoryProgress();
 
             if (i + effectiveParallel < chunks.length && !cancelRequested) {
                 await sleep(delayMs);
@@ -915,7 +925,7 @@ async function startTranslation() {
                                 const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(idx) : proxyApiKey;
                                 result = await translateChunkViaProxy(promptToUse, highTemp, proxyKey);
                             } else {
-                                const modelKeyPair = getNextModelKeyPair();
+                                const modelKeyPair = getNextModelKeyPairWithQueue();
                                 result = await translateChunk(promptToUse, modelKeyPair, highTemp);
                                 if (result && !result.startsWith('[LỖI') && !result.startsWith('[AUTO-SPLIT]')) {
                                     recordKeySuccess(modelKeyPair.keyIndex);

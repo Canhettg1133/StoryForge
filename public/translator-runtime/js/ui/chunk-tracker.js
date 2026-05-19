@@ -222,7 +222,7 @@ async function retranslateChunk(chunkIndex) {
         } else if (useOllama) {
             result = await translateWithOllama(chunkText, 0.7);
         } else {
-            const modelKeyPair = getNextModelKeyPair();
+            const modelKeyPair = getNextModelKeyPairWithQueue();
             result = await translateChunk(chunkText, modelKeyPair, 0.7);
             if (result && !result.startsWith('[LỖI')) {
                 recordKeySuccess(modelKeyPair.keyIndex);

@@ -33,6 +33,112 @@ function isModelKeyAvailable(modelName, keyIndex) {
     return !health.disabledUntil;
 }
 
+function createGeminiRotationError(code, userMessage, options = {}) {
+    if (typeof createTranslatorError === 'function') {
+        return createTranslatorError(code, {
+            provider: 'Gemini',
+            userMessage,
+            rawMessage: userMessage,
+            retryable: options.retryable !== false,
+            shouldRotate: true,
+            retryAfterSeconds: options.retryAfterSeconds,
+        });
+    }
+
+    const error = new Error(userMessage);
+    error.code = code;
+    error.userMessage = userMessage;
+    error.retryable = options.retryable !== false;
+    error.shouldRotate = true;
+    error.retryAfterSeconds = options.retryAfterSeconds;
+    return error;
+}
+
+function getModelKeyCooldownMs(modelName, keyIndex) {
+    const pairId = `${modelName}|${keyIndex}`;
+    const health = modelKeyHealthMap[pairId];
+    if (!health?.disabledUntil) return 0;
+    return Math.max(0, health.disabledUntil - Date.now());
+}
+
+function getPairRPMWaitMs(modelName, keyIndex) {
+    const pairId = `${modelName}|${keyIndex}`;
+    if (!requestTimestamps[pairId]?.length) return 0;
+
+    const now = Date.now();
+    const oneMinuteAgo = now - 60000;
+    requestTimestamps[pairId] = requestTimestamps[pairId].filter(ts => ts > oneMinuteAgo);
+    if (!requestTimestamps[pairId].length) return 0;
+
+    const oldestRecentRequest = Math.min(...requestTimestamps[pairId]);
+    return Math.max(1000, 60000 - (now - oldestRecentRequest));
+}
+
+function getRotationUnavailableState() {
+    const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
+    const state = {
+        totalPairs: 0,
+        rpdBlocked: 0,
+        waitBlocked: 0,
+        minWaitMs: Infinity,
+    };
+
+    for (let keyIdx = 0; keyIdx < apiKeys.length; keyIdx++) {
+        for (let modelIdx = 0; modelIdx < activeModels.length; modelIdx++) {
+            const model = activeModels[modelIdx];
+            state.totalPairs++;
+
+            const cooldownMs = getModelKeyCooldownMs(model.name, keyIdx);
+            if (cooldownMs > 0) {
+                state.waitBlocked++;
+                state.minWaitMs = Math.min(state.minWaitMs, cooldownMs);
+                continue;
+            }
+
+            if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIdx)) {
+                state.rpdBlocked++;
+                continue;
+            }
+
+            if (!isPairUnderQuota(model.name, keyIdx)) {
+                const rpmWaitMs = getPairRPMWaitMs(model.name, keyIdx);
+                state.waitBlocked++;
+                state.minWaitMs = Math.min(state.minWaitMs, rpmWaitMs || 60000);
+            }
+        }
+    }
+
+    if (!Number.isFinite(state.minWaitMs)) state.minWaitMs = 30000;
+    return state;
+}
+
+function throwNoAvailableDirectPair() {
+    const state = getRotationUnavailableState();
+
+    if (state.totalPairs === 0) {
+        throw createGeminiRotationError(
+            'GEMINI_RATE_LIMIT',
+            'Chưa có cặp model/key Gemini Direct khả dụng. Hãy bật ít nhất 1 model và thêm API key.',
+            { retryable: false }
+        );
+    }
+
+    if (state.rpdBlocked > 0 && state.waitBlocked === 0) {
+        throw createGeminiRotationError(
+            'GEMINI_RPD_EXHAUSTED',
+            'Hết RPD cho toàn bộ cặp model/key Gemini Direct đang bật. Hãy đổi model/key hoặc chờ reset quota ngày.',
+            { retryable: false }
+        );
+    }
+
+    const waitSeconds = Math.max(1, Math.ceil(Math.min(state.minWaitMs, 30000) / 1000));
+    throw createGeminiRotationError(
+        'GEMINI_RATE_LIMIT',
+        `Đang chờ quota hồi lại cho Gemini Direct (${waitSeconds}s).`,
+        { retryable: true, retryAfterSeconds: waitSeconds }
+    );
+}
+
 function getAllAvailableCombinations() {
     const combinations = [];
     const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
@@ -56,30 +162,7 @@ function getAllAvailableCombinations() {
 }
 
 function getNextModelKeyPair() {
-    if (apiKeys.length === 0) {
-        throw new Error('Không có API key nào! Vui lòng thêm ít nhất 1 key.');
-    }
-
-    const availableCombinations = getAllAvailableCombinations();
-
-    if (availableCombinations.length === 0) {
-        console.warn('[Round-Robin] All combinations disabled, forcing first available');
-        const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
-        const fallbackModel = activeModels.length > 0 ? activeModels[0] : GEMINI_MODELS[0];
-        return {
-            model: fallbackModel.name,
-            keyIndex: 0,
-            key: apiKeys[0]
-        };
-    }
-
-    const index = globalRotationCounter % availableCombinations.length;
-    globalRotationCounter++;
-
-    const selected = availableCombinations[index];
-    console.log(`[Round-Robin] #${globalRotationCounter}: Key ${selected.keyIndex + 1}/${apiKeys.length}, Model ${selected.model}`);
-
-    return selected;
+    return getBestAvailablePair();
 }
 
 function resetRotationSystem() {
@@ -123,7 +206,11 @@ function isPairUnderQuota(modelName, keyIndex) {
 
 function getBestAvailablePair() {
     if (apiKeys.length === 0) {
-        throw new Error('Không có API key nào! Vui lòng thêm ít nhất 1 key.');
+        throw createGeminiRotationError(
+            'GEMINI_RATE_LIMIT',
+            'Không có API key Gemini Direct nào. Vui lòng thêm ít nhất 1 key.',
+            { retryable: false }
+        );
     }
 
     const scoredCombinations = [];
@@ -142,13 +229,14 @@ function getBestAvailablePair() {
             }
 
             const recentCount = getRecentRequestCount(model.name, keyIdx);
-            const quota = model.quota;
+            const quota = Number(model.quota) > 0 ? Number(model.quota) : getModelQuota(model.name);
             const remainingQuota = quota - recentCount;
 
             if (remainingQuota > 0) {
                 // Tính thêm RPD remaining vào score
                 const rpdRemaining = typeof getRPDRemaining === 'function' ? getRPDRemaining(model.name, keyIdx) : 20;
-                const rpdFactor = rpdRemaining / 20; // 0..1
+                const rpdLimit = typeof getRPDLimit === 'function' ? getRPDLimit(model.name) : 20;
+                const rpdFactor = rpdLimit > 0 ? rpdRemaining / rpdLimit : 0; // 0..1
 
                 scoredCombinations.push({
                     model: model.name,
@@ -163,8 +251,8 @@ function getBestAvailablePair() {
     }
 
     if (scoredCombinations.length === 0) {
-        console.warn('[Queue] All pairs at quota limit, using round-robin fallback');
-        return getNextModelKeyPair();
+        console.warn('[Queue] Không còn cặp Gemini Direct khả dụng trong quota hiện tại');
+        throwNoAvailableDirectPair();
     }
 
     scoredCombinations.sort((a, b) => b.score - a.score);

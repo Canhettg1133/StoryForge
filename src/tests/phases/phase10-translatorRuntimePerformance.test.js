@@ -152,6 +152,40 @@ describe('phase10 translator runtime performance', () => {
     );
   });
 
+  it('runs chunk settlement callbacks as each request finishes instead of waiting for the whole batch', async () => {
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/translation/engine.js',
+    ]);
+
+    expect(typeof context.settleChunkPromisesIndividually).toBe('function');
+
+    let resolveSlow;
+    const slow = new Promise((resolve) => {
+      resolveSlow = resolve;
+    });
+    const events = [];
+
+    const settling = context.settleChunkPromisesIndividually([
+      slow,
+      Promise.resolve('fast-result'),
+    ], (result, index) => {
+      events.push(`${index}:${result.status}:${result.value || ''}`);
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(events).toEqual(['1:fulfilled:fast-result']);
+
+    resolveSlow('slow-result');
+    await settling;
+
+    expect(events).toEqual([
+      '1:fulfilled:fast-result',
+      '0:fulfilled:slow-result',
+    ]);
+  });
+
   it('keeps translator runtime sources as valid UTF-8 rather than mojibake literals', () => {
     const files = [
       'public/translator-runtime/index.html',

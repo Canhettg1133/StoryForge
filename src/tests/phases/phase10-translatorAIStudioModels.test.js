@@ -67,6 +67,7 @@ describe('phase10 translator AI Studio model discovery', () => {
     expect(html).toContain('onclick="fetchAIStudioFreeModels()"');
     expect(html).toContain('Lấy model AI Studio');
     expect(html).toContain('id="aiStudioModelSelect"');
+    expect(html).toContain('id="customModelRpd"');
     expect(initScript).toContain('window.fetchAIStudioFreeModels = fetchAIStudioFreeModels');
     expect(initScript).toContain('window.selectAIStudioFetchedModel = selectAIStudioFetchedModel');
   });
@@ -82,7 +83,7 @@ describe('phase10 translator AI Studio model discovery', () => {
           models: [
             { name: 'models/gemini-3.1-flash-lite-preview', supportedGenerationMethods: ['generateContent'] },
             { name: 'models/gemini-2.5-pro', supportedGenerationMethods: ['generateContent', 'countTokens'] },
-            { name: 'models/gemma-3-27b-it', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/gemma-4-31b-it', supportedGenerationMethods: ['generateContent'] },
             { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
             { name: 'models/imagen-4.0-generate-preview', supportedGenerationMethods: ['predict'] },
           ],
@@ -101,8 +102,14 @@ describe('phase10 translator AI Studio model discovery', () => {
     expect(discovered.map((model) => model.name)).toEqual([
       'gemini-3.1-flash-lite-preview',
       'gemini-2.5-pro',
-      'gemma-3-27b-it',
+      'gemma-4-31b-it',
     ]);
+    expect(discovered.find((model) => model.name === 'gemma-4-31b-it')).toEqual(
+      expect.objectContaining({ quota: 15, rpd: 1500 })
+    );
+    expect(discovered.find((model) => model.name === 'gemini-2.5-pro')).toEqual(
+      expect.objectContaining({ quota: 15, rpd: 1500 })
+    );
 
     expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual([
       'gemini-2.5-flash',
@@ -124,7 +131,7 @@ describe('phase10 translator AI Studio model discovery', () => {
       'gemini-2.5-pro',
     ]);
     expect(JSON.parse(stored.get('sf-active-direct-models'))).toEqual([
-      expect.objectContaining({ id: 'gemini-2.5-pro' }),
+      expect.objectContaining({ id: 'gemini-2.5-pro', rpm: 15, rpd: 1500 }),
     ]);
   });
 
@@ -146,7 +153,25 @@ describe('phase10 translator AI Studio model discovery', () => {
 
     expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual(['gemma-3-27b-it']);
     expect(JSON.parse(stored.get('sf-active-direct-models'))).toEqual([
-      expect.objectContaining({ id: 'gemma-3-27b-it' }),
+      expect.objectContaining({ id: 'gemma-3-27b-it', rpm: 15, rpd: 1500 }),
+    ]);
+  });
+
+  it('hydrates legacy model records without RPD using model defaults', () => {
+    const { context, stored } = createRuntimeContext(async () => {
+      throw new Error('fetch is not used by model hydration');
+    });
+
+    stored.set('novelTranslatorModels', JSON.stringify([
+      { name: 'gemma-4-31b-it', quota: 15, enabled: true },
+      { name: 'gemini-2.5-flash', quota: 5, enabled: true },
+    ]));
+
+    context.loadGeminiModels();
+
+    expect(vm.runInContext('GEMINI_MODELS', context)).toEqual([
+      expect.objectContaining({ name: 'gemma-4-31b-it', quota: 15, rpd: 1500 }),
+      expect.objectContaining({ name: 'gemini-2.5-flash', quota: 5, rpd: 20 }),
     ]);
   });
 
@@ -187,5 +212,53 @@ describe('phase10 translator AI Studio model discovery', () => {
 
     const pair = context.getBestAvailablePair();
     expect(pair.model).toBe('active-pro');
+  });
+
+  it('does not force a Gemini Direct pair when every pair is out of RPM', () => {
+    const { context } = createRuntimeContext(async () => {
+      throw new Error('fetch is not used by model rotation');
+    });
+
+    vm.runInContext(
+      fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/gemini/model-rotation.js'), 'utf8'),
+      context,
+      { filename: 'public/translator-runtime/js/gemini/model-rotation.js' },
+    );
+
+    vm.runInContext(`
+      apiKeys = ['direct-key'];
+      GEMINI_MODELS = [{ name: 'gemma-4-31b-it', quota: 1, rpd: 1500, enabled: true }];
+      requestTimestamps = { 'gemma-4-31b-it|0': [Date.now()] };
+    `, context);
+
+    expect(() => context.getBestAvailablePair()).toThrow(/Đang chờ quota hồi lại/);
+  });
+
+  it('does not force a Gemini Direct pair when internal RPD is exhausted', () => {
+    const { context } = createRuntimeContext(async () => {
+      throw new Error('fetch is not used by model rotation');
+    });
+
+    vm.runInContext(
+      fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/gemini/rpd-tracker.js'), 'utf8'),
+      context,
+      { filename: 'public/translator-runtime/js/gemini/rpd-tracker.js' },
+    );
+    vm.runInContext(
+      fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/gemini/model-rotation.js'), 'utf8'),
+      context,
+      { filename: 'public/translator-runtime/js/gemini/model-rotation.js' },
+    );
+
+    vm.runInContext(`
+      apiKeys = ['direct-key'];
+      GEMINI_MODELS = [{ name: 'gemma-4-31b-it', quota: 15, rpd: 1500, enabled: true }];
+      rpdData = {
+        date: getPacificDateString(),
+        pairs: { 'gemma-4-31b-it|0': { used: 1500, limit: 1500 } }
+      };
+    `, context);
+
+    expect(() => context.getBestAvailablePair()).toThrow(/Hết RPD/);
   });
 });

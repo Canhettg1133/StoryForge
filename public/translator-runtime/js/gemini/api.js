@@ -162,7 +162,6 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
         }],
         generationConfig: {
             temperature: temperature,
-            maxOutputTokens: 16384,
             topP: 0.95,
             topK: 40,
             ...(thinkingConfig ? { thinkingConfig } : {})

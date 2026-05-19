@@ -76,7 +76,21 @@ const NSFW_WRITING_TASKS = new Set([
   TASK_TYPES.EXPAND,
 ]);
 
-function isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, retrievalPacket) {
+function relationshipStatesFromPacket(relationshipContextPacket) {
+  return [
+    ...(relationshipContextPacket?.mustIncludeEdges || []),
+    ...(relationshipContextPacket?.supportingEdges || []),
+  ].map((edge) => ({
+    character_a_id: edge.characterAId,
+    character_b_id: edge.characterBId,
+    intimacy_level: edge.intimacyLevel,
+    consent_state: edge.consentState,
+    secrecy_state: edge.secrecyState,
+    emotional_aftermath: edge.emotionalAftermath,
+  }));
+}
+
+function isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, retrievalPacket, relationshipContextPacket) {
   if (!NSFW_WRITING_TASKS.has(taskType)) return false;
 
   const promptText = [userPrompt, selectedText, sceneText]
@@ -94,9 +108,12 @@ function isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, 
     return true;
   }
 
-  const relationshipStates = Array.isArray(retrievalPacket?.relevantRelationshipStates)
-    ? retrievalPacket.relevantRelationshipStates
-    : [];
+  const packetStates = relationshipStatesFromPacket(relationshipContextPacket);
+  const relationshipStates = packetStates.length > 0
+    ? packetStates
+    : (Array.isArray(retrievalPacket?.relevantRelationshipStates)
+      ? retrievalPacket.relevantRelationshipStates
+      : []);
 
   return relationshipStates.some((state) =>
     ['medium', 'high'].includes(String(state.intimacy_level || '').toLowerCase())
@@ -110,9 +127,10 @@ export function buildNsfwIntimateSystemLayer(taskType, {
   sceneText = '',
   selectedText = '',
   retrievalPacket = null,
+  relationshipContextPacket = null,
   promptTemplates = {},
 }) {
-  if (!isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, retrievalPacket)) {
+  if (!isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, retrievalPacket, relationshipContextPacket)) {
     return '';
   }
 
@@ -122,9 +140,12 @@ export function buildNsfwIntimateSystemLayer(taskType, {
     : DEFAULT_NSFW_INTIMATE_PROMPT;
   const lines = [basePrompt];
 
-  const relationshipStates = Array.isArray(retrievalPacket?.relevantRelationshipStates)
-    ? retrievalPacket.relevantRelationshipStates
-    : [];
+  const packetStates = relationshipStatesFromPacket(relationshipContextPacket);
+  const relationshipStates = packetStates.length > 0
+    ? packetStates
+    : (Array.isArray(retrievalPacket?.relevantRelationshipStates)
+      ? retrievalPacket.relevantRelationshipStates
+      : []);
 
   const sensitiveStates = relationshipStates
     .filter((state) =>

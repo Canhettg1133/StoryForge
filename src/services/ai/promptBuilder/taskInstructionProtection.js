@@ -2,6 +2,7 @@ import { TASK_TYPES } from '../router';
 import { TASK_INSTRUCTIONS } from './taskInstructions';
 
 const TASK_INSTRUCTION_PROTECTION_MARKERS = {
+  [TASK_TYPES.RELATIONSHIP_ANALYZE_BATCH]: 'Trả về CHÍNH XÁC JSON format sau:',
   [TASK_TYPES.CHECK_CONFLICT]: 'Trả về CHÍNH XÁC JSON format sau:',
   [TASK_TYPES.CONTINUITY_CHECK]: 'Trả về CHÍNH XÁC JSON format sau:',
   [TASK_TYPES.OUTLINE]: 'Trả về CHÍNH XÁC JSON format sau:',
@@ -18,6 +19,7 @@ const TASK_INSTRUCTION_PROTECTION_MARKERS = {
 };
 
 const TASK_INSTRUCTION_LEGACY_PROTECTION_MARKERS = {
+  [TASK_TYPES.RELATIONSHIP_ANALYZE_BATCH]: ['Tra ve CHINH XAC JSON format sau:'],
   [TASK_TYPES.CHECK_CONFLICT]: ['Tra ve CHINH XAC JSON format sau:'],
   [TASK_TYPES.CONTINUITY_CHECK]: ['Tra ve CHINH XAC JSON format sau:'],
   [TASK_TYPES.OUTLINE]: ['Tra ve CHINH XAC JSON format sau:'],

@@ -6,6 +6,11 @@
 // ============================================
 // TRANSLATE WITH RETRY + PROGRESSIVE PROMPT
 // ============================================
+function updateTranslationRuntimeStatus(message) {
+    const statusEl = typeof document !== 'undefined' ? document.getElementById('progressStatus') : null;
+    if (statusEl) statusEl.textContent = message;
+}
+
 async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
     if (cancelRequested) {
         throw new Error('TRANSLATION_CANCELLED');
@@ -33,6 +38,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             // Track retry attempt
             if (attempt > 1 && typeof trackChunkRetry === 'function') {
                 trackChunkRetry(chunkIndex, attempt - 1);
+                updateTranslationRuntimeStatus(`Đang thử lại chunk ${chunkIndex + 1} (lần ${attempt - 1})...`);
             }
 
             // ========== OLLAMA MODE ==========
@@ -252,8 +258,48 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 combinedErrorMsg.includes('invalid api key');
             const isPermissionDenied = errorCode === 'GEMINI_PERMISSION_DENIED';
             const isModelOverloaded = errorCode === 'GEMINI_UNAVAILABLE' && combinedErrorMsg.includes('overloaded');
+            const isRPDExhausted = errorCode === 'GEMINI_RPD_EXHAUSTED' ||
+                combinedErrorMsg.includes('hết rpd');
+            const isDirectQuotaWait = !modelKeyPair &&
+                errorCode === 'GEMINI_RATE_LIMIT' &&
+                (translatorError?.retryable || combinedErrorMsg.includes('đang chờ quota hồi lại'));
 
             console.warn(`[Chunk ${chunkIndex + 1}] Attempt ${attempt}/${retries} failed: ${error.message}`);
+
+            // === HẾT RPD NỘI BỘ: KHÔNG GỬI REQUEST PHÁ QUOTA ===
+            if (isRPDExhausted) {
+                const message = typeof formatTranslatorError === 'function'
+                    ? formatTranslatorError(translatorError)
+                    : 'Hết RPD cho Gemini Direct.';
+                updateTranslationRuntimeStatus('Hết RPD Gemini Direct. Dừng chunk hiện tại.');
+                showToast(message, 'error');
+                throw translatorError;
+            }
+
+            if (!modelKeyPair && translatorError?.retryable === false) {
+                throw translatorError;
+            }
+
+            // === CHỜ RPM/COOLDOWN TRƯỚC KHI CHỌN ĐƯỢC CẶP DIRECT ===
+            if (isDirectQuotaWait) {
+                const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
+                const waitMs = Math.min(
+                    30000,
+                    Math.max(1000, Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                        ? retryAfterSeconds * 1000
+                        : 5000)
+                );
+                const waitSeconds = Math.ceil(waitMs / 1000);
+                const statusText = `Đang chờ quota hồi lại cho Gemini Direct (${waitSeconds}s)...`;
+                updateTranslationRuntimeStatus(statusText);
+                showToast(statusText, 'warning');
+                if (typeof sleepWithCountdown === 'function') {
+                    await sleepWithCountdown(waitMs, '⏳ Đang chờ quota');
+                } else {
+                    await sleep(waitMs);
+                }
+                continue;
+            }
 
             // === XỬ LÝ CONTENT BLOCKED ===
             if (isContentBlocked) {
@@ -294,6 +340,20 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 continue;
             }
 
+            // === XỬ LÝ LỖI GOOGLE 500/503/504: COOLDOWN CẶP MODEL+KEY, KHÔNG ĐÁNH DẤU KEY HỎNG ===
+            if (modelKeyPair && isServerError) {
+                const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
+                const cooldownSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                    ? Math.min(60, Math.max(5, retryAfterSeconds))
+                    : 30;
+                recordModelKeyError(modelKeyPair.model, modelKeyPair.keyIndex, cooldownSeconds);
+                updateTranslationRuntimeStatus(`Google trả lỗi ${translatorError?.status || 500}. Đang thử cặp model/key khác...`);
+                if (attempt === retries) {
+                    throw error;
+                }
+                continue;
+            }
+
             // === XỬ LÝ RATE LIMIT (429) ===
             if (modelKeyPair && (isRateLimit || isNotFound)) {
                 let cooldownSeconds = 60;
@@ -303,12 +363,13 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                         cooldownSeconds = Math.ceil(parseFloat(retryMatch[1])) + 2;
                     }
 
-                    // Kiểm tra xem có phải hết RPD không
-                    // Nếu RPD đã dùng >= 18 (gần hết 20), đánh dấu pair là hết RPD
+                    // Kiểm tra xem có phải hết RPD không theo limit của model hiện tại.
                     if (typeof getRPDUsed === 'function') {
                         const rpdUsed = getRPDUsed(modelKeyPair.model, modelKeyPair.keyIndex);
-                        if (rpdUsed >= 18) {
-                            console.warn(`[Chunk ${chunkIndex + 1}] RPD gần hết (${rpdUsed}/20), đánh dấu pair hết RPD ngày`);
+                        const rpdLimit = typeof getRPDLimit === 'function' ? getRPDLimit(modelKeyPair.model) : 20;
+                        const exhaustedThreshold = Math.max(1, Math.floor(rpdLimit * 0.9));
+                        if (rpdUsed >= exhaustedThreshold) {
+                            console.warn(`[Chunk ${chunkIndex + 1}] RPD gần hết (${rpdUsed}/${rpdLimit}), đánh dấu pair hết RPD ngày`);
                             if (typeof markPairRPDExhausted === 'function') {
                                 markPairRPDExhausted(modelKeyPair.model, modelKeyPair.keyIndex);
                             }
@@ -344,8 +405,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                     const waitSeconds = Math.ceil(minWaitTime / 1000);
 
                     console.warn(`[Chunk ${chunkIndex + 1}] ⏳ ALL COMBINATIONS DISABLED! Waiting ${waitSeconds}s...`);
-                    showToast(`Tất cả API đều hết quota. Chờ ${waitSeconds}s...`, 'warning');
-                    await sleepWithCountdown(minWaitTime, '⏳ Chờ quota reset');
+                    const statusText = `Đang chờ quota hồi lại cho Gemini Direct (${waitSeconds}s)...`;
+                    updateTranslationRuntimeStatus(statusText);
+                    showToast(statusText, 'warning');
+                    await sleepWithCountdown(minWaitTime, '⏳ Đang chờ quota');
                     console.log(`[Chunk ${chunkIndex + 1}] ✅ Resuming after wait...`);
                 }
 
@@ -409,7 +472,7 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                 const result = await translateChunkViaProxy(partText, 0.8, proxyKey);
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else {
-                const modelKeyPair = getNextModelKeyPair();
+                const modelKeyPair = getNextModelKeyPairWithQueue();
                 const result = await translateChunk(partText, modelKeyPair, 0.8);
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
                 recordKeySuccess(modelKeyPair.keyIndex);

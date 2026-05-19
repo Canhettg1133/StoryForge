@@ -58,6 +58,19 @@ function resolveRetrievalModeConfig(mode) {
   return RETRIEVAL_MODE_CONFIG[mode] || RETRIEVAL_MODE_CONFIG.standard;
 }
 
+function scoreRelationshipStateForRetrieval(state) {
+  let score = 0;
+  const intimacy = cleanText(state?.intimacy_level).toLowerCase();
+  const secrecy = cleanText(state?.secrecy_state || 'public').toLowerCase();
+  const consent = cleanText(state?.consent_state || 'unknown').toLowerCase();
+  if (['medium', 'high'].includes(intimacy)) score += 80;
+  if (secrecy && secrecy !== 'public') score += 70;
+  if (consent && consent !== 'unknown') score += 40;
+  if (cleanText(state?.emotional_aftermath)) score += 50;
+  if (cleanText(state?.summary)) score += 10;
+  return score;
+}
+
 export async function buildRetrievalPacket({
   projectId,
   chapterId,
@@ -155,9 +168,12 @@ export async function buildRetrievalPacket({
   const relevantItemStates = relevantObjectIds.length > 0
     ? itemStates.filter((state) => relevantObjectIds.includes(state.object_id))
     : itemStates.slice(0, modeConfig.itemCap);
-  const relevantRelationshipStates = relevantCharacterIds.length > 0
+  const relationshipCandidates = relevantCharacterIds.length > 0
     ? relationshipStates.filter((state) => relevantCharacterIds.includes(state.character_a_id) || relevantCharacterIds.includes(state.character_b_id))
-    : relationshipStates.slice(0, modeConfig.relationshipCap);
+    : relationshipStates;
+  const relevantRelationshipStates = [...relationshipCandidates]
+    .sort((a, b) => scoreRelationshipStateForRetrieval(b) - scoreRelationshipStateForRetrieval(a))
+    .slice(0, modeConfig.relationshipCap);
 
   const activeThreadStates = threadStates.filter((threadState) => threadState.state !== 'resolved');
 

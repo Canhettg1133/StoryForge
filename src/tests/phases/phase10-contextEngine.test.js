@@ -82,6 +82,8 @@ function createMockDb(seed = {}) {
     'arcs',
     'macro_arcs',
     'threadBeats',
+    'relationship_state_current',
+    'story_events',
   ];
   const db = {};
   tableNames.forEach((name) => {
@@ -310,6 +312,9 @@ describe('phase10 context engine blueprint injection', () => {
 
     expect(ctx.relationships.map((item) => `${item.charA}/${item.charB}`)).toContain('Lan/Kha');
     expect(ctx.relationships.map((item) => `${item.charA}/${item.charB}`)).not.toContain('Mai/Nam');
+    expect(ctx.relationshipContextPacket.mustIncludeEdges.map((item) => item.pairKey)).toContain('101:102');
+    expect(ctx.relationshipContextPacket.supportingEdges.map((item) => item.pairKey)).not.toContain('103:104');
+    expect(ctx.relationshipRoutingDebug.find((item) => item.pairKey === '103:104')?.omittedReason).toContain('không chạm scene');
   });
 
   it('collects canon role locks from the whole project even when locked characters are not in scene context', async () => {

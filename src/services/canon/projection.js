@@ -255,7 +255,10 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null, optio
   const chapters = await db.chapters.where('project_id').equals(projectId).sortBy('order_index');
   const commits = await db.chapter_commits.where('project_id').equals(projectId).toArray();
   const canonicalCommits = commits
-    .filter((commit) => commit.canonical_revision_id && commit.status === CHAPTER_COMMIT_STATUS.CANONICAL)
+    .filter((commit) => commit.canonical_revision_id && [
+      CHAPTER_COMMIT_STATUS.CANONICAL,
+      CHAPTER_COMMIT_STATUS.HAS_WARNINGS,
+    ].includes(commit.status))
     .sort((a, b) => {
       const chapterA = chapters.find((chapter) => chapter.id === a.chapter_id);
       const chapterB = chapters.find((chapter) => chapter.id === b.chapter_id);

@@ -748,24 +748,24 @@ function getFictionalPrompt(text) {
 // GEMINI MODELS - Dynamic (loadable from localStorage)
 // ============================================
 const DEFAULT_GEMINI_MODELS = [
-    { name: 'gemini-2.5-flash', quota: 5, enabled: true },
-    { name: 'gemini-2.5-flash-lite', quota: 10, enabled: true },
-    { name: 'gemini-3-flash-preview', quota: 5, enabled: true },
+    { name: 'gemini-2.5-flash', quota: 5, rpd: 20, enabled: true },
+    { name: 'gemini-2.5-flash-lite', quota: 10, rpd: 20, enabled: true },
+    { name: 'gemini-3-flash-preview', quota: 5, rpd: 20, enabled: true },
 ];
 
 // Preset models phổ biến để user chọn nhanh
 // ⚠️ Models mới (2.5-pro, 2.0-flash...) có quota cao nhưng chưa chắc API key nào cũng hỗ trợ
 const PRESET_GEMINI_MODELS = [
     // Models cũ - hoạt động với hầu hết API keys
-    { name: 'gemini-2.5-flash', quota: 5, label: '✅ Gemini 2.5 Flash (Ổn định, 20 RPD)' },
-    { name: 'gemini-2.5-flash-lite', quota: 10, label: '✅ Gemini 2.5 Flash Lite (Ổn định, 20 RPD)' },
-    { name: 'gemini-3-flash-preview', quota: 5, label: '✅ Gemini 3 Flash Preview (Ổn định, 20 RPD)' },
+    { name: 'gemini-2.5-flash', quota: 5, rpd: 20, label: '✅ Gemini 2.5 Flash (ổn định, 20 RPD)' },
+    { name: 'gemini-2.5-flash-lite', quota: 10, rpd: 20, label: '✅ Gemini 2.5 Flash Lite (ổn định, 20 RPD)' },
+    { name: 'gemini-3-flash-preview', quota: 5, rpd: 20, label: '✅ Gemini 3 Flash Preview (ổn định, 20 RPD)' },
     // Models mới - quota cao nhưng cần key hỗ trợ
-    { name: 'gemini-2.5-pro', quota: 15, label: '⭐ Gemini 2.5 Pro (1,500 RPD - cần key mới)' },
-    { name: 'gemini-2.0-flash', quota: 15, label: '⚡ Gemini 2.0 Flash (1,500 RPD - cần key mới)' },
-    { name: 'gemini-2.0-flash-lite', quota: 15, label: '🚀 Gemini 2.0 Flash Lite (1,500 RPD - cần key mới)' },
-    { name: 'gemini-2.0-flash-exp', quota: 15, label: '🧪 Gemini 2.0 Flash Exp (Experimental)' },
-    { name: 'gemini-2.0-pro-exp', quota: 15, label: '🧪 Gemini 2.0 Pro Exp (Experimental)' },
+    { name: 'gemini-2.5-pro', quota: 15, rpd: 1500, label: '⭐ Gemini 2.5 Pro (1.500 RPD - cần key hỗ trợ)' },
+    { name: 'gemini-2.0-flash', quota: 15, rpd: 1500, label: '⚡ Gemini 2.0 Flash (1.500 RPD - cần key hỗ trợ)' },
+    { name: 'gemini-2.0-flash-lite', quota: 15, rpd: 1500, label: '🚀 Gemini 2.0 Flash Lite (1.500 RPD - cần key hỗ trợ)' },
+    { name: 'gemini-2.0-flash-exp', quota: 15, rpd: 1500, label: '🧪 Gemini 2.0 Flash Exp (1.500 RPD - thử nghiệm)' },
+    { name: 'gemini-2.0-pro-exp', quota: 15, rpd: 20, label: '🧪 Gemini 2.0 Pro Exp (thử nghiệm)' },
 ];
 
 const AI_STUDIO_MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -774,6 +774,48 @@ let fetchedAIStudioModels = [];
 
 // Dynamic model list - loaded from localStorage
 let GEMINI_MODELS = [];
+
+function normalizePositiveInteger(value, fallback) {
+    const number = parseInt(value, 10);
+    return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function inferGeminiModelQuota(modelName) {
+    const normalizedName = normalizeAIStudioModelId(modelName);
+    const knownModel = [...DEFAULT_GEMINI_MODELS, ...PRESET_GEMINI_MODELS]
+        .find((model) => model.name === normalizedName);
+    if (knownModel) return normalizePositiveInteger(knownModel.quota, 15);
+
+    if (normalizedName.includes('flash-lite')) return 15;
+    if (normalizedName.includes('flash')) return 5;
+    if (normalizedName.includes('pro')) return 2;
+    if (normalizedName.startsWith('gemma-')) return 15;
+    return 15;
+}
+
+function getDefaultRPDForGeminiModel(modelName) {
+    const normalizedName = normalizeAIStudioModelId(modelName);
+    const knownModel = [...DEFAULT_GEMINI_MODELS, ...PRESET_GEMINI_MODELS]
+        .find((model) => model.name === normalizedName && Number(model.rpd) > 0);
+    if (knownModel) return normalizePositiveInteger(knownModel.rpd, 20);
+
+    if (normalizedName.startsWith('gemma-')) return 1500;
+    if (normalizedName.startsWith('gemini-2.0-flash')) return 1500;
+    if (normalizedName === 'gemini-2.5-pro') return 1500;
+    return 20;
+}
+
+function normalizeGeminiModelConfig(entry) {
+    const name = normalizeAIStudioModelId(entry?.id || entry?.name);
+    if (!name) return null;
+
+    return {
+        name,
+        quota: normalizePositiveInteger(entry?.quota ?? entry?.rpm, inferGeminiModelQuota(name)),
+        rpd: normalizePositiveInteger(entry?.rpd, getDefaultRPDForGeminiModel(name)),
+        enabled: entry?.enabled !== false,
+    };
+}
 
 function loadStoryForgeDirectModels() {
     try {
@@ -785,13 +827,13 @@ function loadStoryForgeDirectModels() {
         return parsed
             .map((entry) => {
                 const name = String(entry?.id || entry?.name || '').trim();
-                const quota = Number(entry?.rpm || entry?.quota || 15);
                 if (!name) return null;
-                return {
+                return normalizeGeminiModelConfig({
                     name,
-                    quota: Number.isFinite(quota) && quota > 0 ? quota : 15,
+                    quota: entry?.rpm ?? entry?.quota,
+                    rpd: entry?.rpd,
                     enabled: true,
-                };
+                });
             })
             .filter(Boolean);
     } catch (error) {
@@ -806,9 +848,15 @@ function loadGeminiModels() {
         try {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                GEMINI_MODELS = parsed;
-                console.log(`[Models] Loaded ${GEMINI_MODELS.length} models from localStorage`);
-                return;
+                const normalizedModels = parsed
+                    .map((model) => normalizeGeminiModelConfig(model))
+                    .filter(Boolean);
+                if (normalizedModels.length > 0) {
+                    GEMINI_MODELS = normalizedModels;
+                    saveGeminiModels();
+                    console.log(`[Models] Loaded ${GEMINI_MODELS.length} models from localStorage`);
+                    return;
+                }
             }
         } catch (e) {
             console.error('Error loading models:', e);
@@ -828,11 +876,15 @@ function loadGeminiModels() {
 }
 
 function saveGeminiModels() {
+    GEMINI_MODELS = GEMINI_MODELS
+        .map((model) => normalizeGeminiModelConfig(model))
+        .filter(Boolean);
     localStorage.setItem('novelTranslatorModels', JSON.stringify(GEMINI_MODELS));
     const activeDirectModels = getActiveModels()
         .map((model) => ({
             id: model.name,
-            rpm: Number.isFinite(Number(model.quota)) && Number(model.quota) > 0 ? Number(model.quota) : 15,
+            rpm: normalizePositiveInteger(model.quota, inferGeminiModelQuota(model.name)),
+            rpd: normalizePositiveInteger(model.rpd, getDefaultRPDForGeminiModel(model.name)),
         }));
     localStorage.setItem(STORYFORGE_ACTIVE_DIRECT_MODELS_STORAGE, JSON.stringify(activeDirectModels));
 }
@@ -841,7 +893,7 @@ function getActiveModels() {
     return GEMINI_MODELS.filter(m => m.enabled !== false);
 }
 
-function addGeminiModel(name, quota) {
+function addGeminiModel(name, quota, rpd) {
     name = name.trim().toLowerCase();
     if (!name) {
         showToast('Vui lòng nhập tên model!', 'warning');
@@ -851,7 +903,7 @@ function addGeminiModel(name, quota) {
         showToast('Model này đã tồn tại!', 'error');
         return false;
     }
-    GEMINI_MODELS.push({ name, quota: parseInt(quota) || 15, enabled: true });
+    GEMINI_MODELS.push(normalizeGeminiModelConfig({ name, quota, rpd, enabled: true }));
     saveGeminiModels();
     renderModelsList();
     showToast(`Đã thêm model: ${name}`, 'success');
@@ -882,9 +934,18 @@ function toggleGeminiModel(index) {
 }
 
 function updateModelQuota(index, newQuota) {
-    GEMINI_MODELS[index].quota = parseInt(newQuota) || 15;
+    GEMINI_MODELS[index].quota = normalizePositiveInteger(newQuota, inferGeminiModelQuota(GEMINI_MODELS[index].name));
     saveGeminiModels();
-    showToast(`Đã cập nhật quota: ${GEMINI_MODELS[index].name} = ${newQuota} RPM`, 'success');
+    renderModelsList();
+    showToast(`Đã cập nhật RPM: ${GEMINI_MODELS[index].name} = ${GEMINI_MODELS[index].quota}`, 'success');
+}
+
+function updateModelRpd(index, newRpd) {
+    GEMINI_MODELS[index].rpd = normalizePositiveInteger(newRpd, getDefaultRPDForGeminiModel(GEMINI_MODELS[index].name));
+    saveGeminiModels();
+    renderModelsList();
+    if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
+    showToast(`Đã cập nhật RPD: ${GEMINI_MODELS[index].name} = ${GEMINI_MODELS[index].rpd}`, 'success');
 }
 
 function resetGeminiModels() {
@@ -904,7 +965,7 @@ function addPresetModel() {
     }
     const preset = PRESET_GEMINI_MODELS.find(m => m.name === selectedName);
     if (preset) {
-        if (addGeminiModel(preset.name, preset.quota)) {
+        if (addGeminiModel(preset.name, preset.quota, preset.rpd)) {
             select.value = '';
         }
     }
@@ -913,9 +974,11 @@ function addPresetModel() {
 function addCustomModel() {
     const nameInput = document.getElementById('customModelName');
     const quotaInput = document.getElementById('customModelQuota');
-    if (addGeminiModel(nameInput.value, quotaInput.value)) {
+    const rpdInput = document.getElementById('customModelRpd');
+    if (addGeminiModel(nameInput.value, quotaInput.value, rpdInput?.value)) {
         nameInput.value = '';
         quotaInput.value = '15';
+        if (rpdInput) rpdInput.value = '';
     }
 }
 
@@ -958,17 +1021,16 @@ function isUsableAIStudioTextModel(model) {
 function getQuotaForAIStudioModel(modelName) {
     const normalizedName = normalizeAIStudioModelId(modelName);
     const existing = GEMINI_MODELS.find((model) => model.name === normalizedName);
-    if (existing) return parseInt(existing.quota, 10) || 15;
+    if (existing) return normalizePositiveInteger(existing.quota, inferGeminiModelQuota(normalizedName));
 
-    const knownModel = [...DEFAULT_GEMINI_MODELS, ...PRESET_GEMINI_MODELS]
-        .find((model) => model.name === normalizedName);
-    if (knownModel) return parseInt(knownModel.quota, 10) || 15;
+    return inferGeminiModelQuota(normalizedName);
+}
 
-    if (normalizedName.includes('flash-lite')) return 15;
-    if (normalizedName.includes('flash')) return 5;
-    if (normalizedName.includes('pro')) return 2;
-    if (normalizedName.startsWith('gemma-')) return 15;
-    return 15;
+function getRPDForAIStudioModel(modelName) {
+    const normalizedName = normalizeAIStudioModelId(modelName);
+    const existing = GEMINI_MODELS.find((model) => model.name === normalizedName);
+    if (existing) return normalizePositiveInteger(existing.rpd, getDefaultRPDForGeminiModel(normalizedName));
+    return getDefaultRPDForGeminiModel(normalizedName);
 }
 
 function mergeAIStudioModels(discoveredModels) {
@@ -983,6 +1045,7 @@ function mergeAIStudioModels(discoveredModels) {
         if (existing) {
             existing.enabled = true;
             existing.quota = getQuotaForAIStudioModel(name);
+            existing.rpd = getRPDForAIStudioModel(name);
             addedModels.push(existing);
             return;
         }
@@ -990,6 +1053,7 @@ function mergeAIStudioModels(discoveredModels) {
         const newModel = {
             name,
             quota: getQuotaForAIStudioModel(name),
+            rpd: getRPDForAIStudioModel(name),
             enabled: true,
         };
         GEMINI_MODELS.push(newModel);
@@ -1007,12 +1071,14 @@ function ensureAIStudioModelCandidate(modelName) {
     let index = GEMINI_MODELS.findIndex((model) => model.name === name);
     if (index !== -1) {
         GEMINI_MODELS[index].quota = getQuotaForAIStudioModel(name);
+        GEMINI_MODELS[index].rpd = getRPDForAIStudioModel(name);
         return index;
     }
 
     GEMINI_MODELS.push({
         name,
         quota: getQuotaForAIStudioModel(name),
+        rpd: getRPDForAIStudioModel(name),
         enabled: false,
     });
     return GEMINI_MODELS.length - 1;
@@ -1123,6 +1189,7 @@ async function fetchAIStudioFreeModels() {
             return {
                 name,
                 quota: getQuotaForAIStudioModel(name),
+                rpd: getRPDForAIStudioModel(name),
                 enabled: false,
             };
         }).filter((model) => model.name);
@@ -1152,7 +1219,8 @@ function renderModelsList() {
 
     const activeModels = getActiveModels();
     const totalRPM = activeModels.reduce((sum, m) => sum + m.quota, 0);
-    countBadge.textContent = `${activeModels.length}/${GEMINI_MODELS.length} models | ${totalRPM} RPM`;
+    const totalRPD = activeModels.reduce((sum, m) => sum + normalizePositiveInteger(m.rpd, getDefaultRPDForGeminiModel(m.name)), 0);
+    countBadge.textContent = `${activeModels.length}/${GEMINI_MODELS.length} model | ${totalRPM} RPM | ${totalRPD} RPD`;
 
     if (GEMINI_MODELS.length === 0) {
         container.innerHTML = '<p class="empty-message">Chưa có model nào.</p>';
@@ -1163,14 +1231,19 @@ function renderModelsList() {
         const isEnabled = model.enabled !== false;
         const statusIcon = isEnabled ? '✅' : '❌';
         const opacity = isEnabled ? '1' : '0.5';
+        const rpm = normalizePositiveInteger(model.quota, inferGeminiModelQuota(model.name));
+        const rpd = normalizePositiveInteger(model.rpd, getDefaultRPDForGeminiModel(model.name));
         return `
         <div class="model-item" style="opacity: ${opacity}">
             <button class="model-toggle-btn" onclick="toggleGeminiModel(${index})" title="${isEnabled ? 'Tắt' : 'Bật'} model">${statusIcon}</button>
             <span class="model-name">${model.name}</span>
             <button class="model-single-btn" onclick="selectOnlyGeminiModel(${index})" title="Chỉ dùng model này để dịch">Chỉ dùng</button>
-            <input type="number" class="model-quota-input" value="${model.quota}" min="1" max="100"
-                onchange="updateModelQuota(${index}, this.value)" title="RPM quota">
+            <input type="number" class="model-quota-input" value="${rpm}" min="1" max="100"
+                onchange="updateModelQuota(${index}, this.value)" title="RPM">
             <span class="model-quota-label">RPM</span>
+            <input type="number" class="model-rpd-input" value="${rpd}" min="1" max="100000"
+                onchange="updateModelRpd(${index}, this.value)" title="RPD">
+            <span class="model-quota-label">RPD</span>
             <button class="remove-btn" onclick="removeGeminiModel(${index})" title="Xóa">🗑️</button>
         </div>
     `}).join('');

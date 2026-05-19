@@ -30,6 +30,7 @@ window.exportApiKeys = exportApiKeys;
 if (typeof fetchAIStudioFreeModels === 'function') window.fetchAIStudioFreeModels = fetchAIStudioFreeModels;
 if (typeof selectAIStudioFetchedModel === 'function') window.selectAIStudioFetchedModel = selectAIStudioFetchedModel;
 if (typeof selectOnlyGeminiModel === 'function') window.selectOnlyGeminiModel = selectOnlyGeminiModel;
+if (typeof updateModelRpd === 'function') window.updateModelRpd = updateModelRpd;
 window.copyExportedKeys = copyExportedKeys;
 window.closeKeyModal = closeKeyModal;
 window.openImportApiKeysModal = openImportApiKeysModal;
