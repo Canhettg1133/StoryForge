@@ -86,14 +86,51 @@ function getGeneralAccordionSummary() {
     const sourceLangSelect = document.getElementById('sourceLang');
     const parallelInput = document.getElementById('parallelCount');
     const chunkInput = document.getElementById('chunkSize');
+    const rpmInput = document.getElementById('rpmPerKey');
 
     const sourceLangLabel = sourceLangSelect
         ? sourceLangSelect.options[sourceLangSelect.selectedIndex]?.textContent?.trim() || 'Auto'
         : 'Auto';
     const parallelCount = parallelInput?.value || '2';
     const chunkSize = chunkInput?.value || '2000';
+    const rpm = rpmInput?.value || rpmPerKey || '10';
+    return `${shortenSummary(sourceLangLabel, 18)} • ${parallelCount} luồng • ${rpm} RPM/key • ${chunkSize} ký tự`;
+}
 
-    return `${shortenSummary(sourceLangLabel, 18)} • ${parallelCount} luồng • ${chunkSize} ký tự`;
+function getActiveRateLimitUnitCount() {
+    if (typeof getTranslatorRpmKeyCount === 'function') return getTranslatorRpmKeyCount();
+    if (typeof useOllama !== 'undefined' && useOllama) return 1;
+    if (typeof useProxy !== 'undefined' && useProxy && typeof getProxyKeyCount === 'function') return getProxyKeyCount();
+    return Array.isArray(apiKeys) ? apiKeys.length : 0;
+}
+
+function getRateLimitSummaryText() {
+    const parallelInput = document.getElementById('parallelCount');
+    const rpmInput = document.getElementById('rpmPerKey');
+    const parallel = typeof normalizeTranslatorParallel === 'function'
+        ? normalizeTranslatorParallel(parallelInput?.value || 2)
+        : Math.max(1, Number(parallelInput?.value || 2));
+    const rpm = typeof normalizeTranslatorRpm === 'function'
+        ? normalizeTranslatorRpm(rpmInput?.value || rpmPerKey)
+        : Math.max(1, Number(rpmInput?.value || 10));
+    const unitCount = getActiveRateLimitUnitCount();
+
+    if (typeof useOllama !== 'undefined' && useOllama) {
+        return `Ollama chạy tuần tự; RPM chỉ giới hạn nhịp gọi local (${rpm} request/phút).`;
+    }
+
+    if (unitCount <= 0) {
+        return `Chưa có API key để chia tải. Khi dịch, hệ thống sẽ tự chờ nếu chạm ${rpm} RPM/key.`;
+    }
+
+    const maxPerMinute = unitCount * rpm;
+    const firstBatch = Math.min(parallel, maxPerMinute);
+    return `Ước tính: ${unitCount} key × ${rpm} RPM = tối đa ${maxPerMinute} request/phút. Lượt đầu có thể gửi ${firstBatch} request rồi tự chờ khi hết slot.`;
+}
+
+function updateRateLimitSummary() {
+    const summary = document.getElementById('rateLimitSummary');
+    if (summary) summary.textContent = getRateLimitSummaryText();
 }
 
 function getPromptAccordionSummary() {
@@ -248,7 +285,7 @@ function saveSettings() {
         sourceLang: document.getElementById('sourceLang').value,
         parallelCount: document.getElementById('parallelCount').value,
         chunkSize: document.getElementById('chunkSize').value,
-        delayMs: document.getElementById('delayMs').value,
+        rpmPerKey: document.getElementById('rpmPerKey')?.value || rpmPerKey,
         customPrompt: normalizedPrompt,
         useCanonPackTranslation: typeof useCanonPackTranslation !== 'undefined' ? useCanonPackTranslation : false,
         selectedCanonPackId: typeof selectedCanonPackId !== 'undefined' ? selectedCanonPackId : '',
@@ -266,6 +303,10 @@ function saveSettings() {
     if (typeof persistCustomProxySharedSettings === 'function') {
         persistCustomProxySharedSettings(activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY);
     }
+    if (typeof normalizeTranslatorRpm === 'function') {
+        rpmPerKey = normalizeTranslatorRpm(settings.rpmPerKey);
+    }
+    updateRateLimitSummary();
     updateWorkspaceToolbar();
 }
 
@@ -278,7 +319,12 @@ function loadSettings() {
             if (settings.sourceLang) document.getElementById('sourceLang').value = settings.sourceLang;
             if (settings.parallelCount) document.getElementById('parallelCount').value = settings.parallelCount;
             if (settings.chunkSize) document.getElementById('chunkSize').value = settings.chunkSize;
-            if (settings.delayMs) document.getElementById('delayMs').value = settings.delayMs;
+            if (settings.rpmPerKey !== undefined && document.getElementById('rpmPerKey')) {
+                rpmPerKey = typeof normalizeTranslatorRpm === 'function'
+                    ? normalizeTranslatorRpm(settings.rpmPerKey)
+                    : Number(settings.rpmPerKey || 10);
+                document.getElementById('rpmPerKey').value = rpmPerKey;
+            }
             if (settings.customPrompt) document.getElementById('customPrompt').value = typeof ensureCharacterNameConsistencyPrompt === 'function'
                 ? ensureCharacterNameConsistencyPrompt(settings.customPrompt)
                 : settings.customPrompt;
@@ -362,7 +408,7 @@ function loadSettings() {
     }
 
     saveSettings();
-
+    updateRateLimitSummary();
     updateWorkspaceToolbar();
 }
 

@@ -36,7 +36,7 @@ function loadRuntime({ savedSettings = null } = {}) {
     sourceLang: { value: 'auto', options: [{ textContent: 'Auto' }], selectedIndex: 0 },
     parallelCount: { value: '10' },
     chunkSize: { value: '4500' },
-    delayMs: { value: '5000' },
+    rpmPerKey: { value: '10' },
     useProxyToggle: { checked: false },
     proxySettings: { style: {} },
     proxyStatus: { textContent: '', style: {} },

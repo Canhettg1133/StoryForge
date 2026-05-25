@@ -64,7 +64,9 @@ function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto') {
 }
 
 function resolveEffectiveTranslationParallel(options = {}) {
-    const requestedParallel = Math.max(1, Math.min(10, Number(options.requestedParallel) || 1));
+    const requestedParallel = typeof normalizeTranslatorParallel === 'function'
+        ? normalizeTranslatorParallel(options.requestedParallel)
+        : Math.max(1, Math.min(50, Number(options.requestedParallel) || 1));
     const useOllamaMode = Boolean(options.useOllamaMode);
 
     if (useOllamaMode) return 1;
@@ -299,7 +301,7 @@ function buildLargeFileResultPreview(pendingLabel = '⏳ Đang dịch', forceMax
     });
 }
 
-async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount, delayMs, customPrompt }) {
+async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount, customPrompt }) {
     if (!currentSourceFile || typeof createLazyChunkReader !== 'function') {
         showToast('Không tìm thấy file lớn để dịch.', 'error');
         return;
@@ -417,16 +419,26 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             }
 
             pendingBatch.push(chunk);
-            if (pendingBatch.length >= effectiveParallel) {
-                const batch = pendingBatch.splice(0, pendingBatch.length);
+            const targetBatchSize = typeof getTranslatorRpmMaxBatchSize === 'function'
+                ? getTranslatorRpmMaxBatchSize({ requestedParallel: effectiveParallel })
+                : effectiveParallel;
+            while (pendingBatch.length >= targetBatchSize) {
+                const rpmPlan = typeof waitForTranslatorRpmBatchPlan === 'function'
+                    ? await waitForTranslatorRpmBatchPlan({ requestedParallel: effectiveParallel })
+                    : { capacity: effectiveParallel };
+                if (cancelRequested || rpmPlan.capacity <= 0) break;
+                const batch = pendingBatch.splice(0, Math.min(rpmPlan.capacity, pendingBatch.length));
                 await processBatch(batch);
                 if (cancelRequested) break;
-                await sleep(delayMs);
             }
         }
 
-        if (!cancelRequested && pendingBatch.length > 0) {
-            await processBatch(pendingBatch.splice(0, pendingBatch.length));
+        while (!cancelRequested && pendingBatch.length > 0) {
+            const rpmPlan = typeof waitForTranslatorRpmBatchPlan === 'function'
+                ? await waitForTranslatorRpmBatchPlan({ requestedParallel: effectiveParallel })
+                : { capacity: effectiveParallel };
+            if (cancelRequested || rpmPlan.capacity <= 0) break;
+            await processBatch(pendingBatch.splice(0, Math.min(rpmPlan.capacity, pendingBatch.length)));
         }
 
         document.getElementById('resultSection').style.display = 'block';
@@ -486,8 +498,12 @@ async function startTranslation() {
     // Get settings
     const sourceLang = document.getElementById('sourceLang').value;
     const chunkSize = parseInt(document.getElementById('chunkSize').value) || 4500;
-    let parallelCount = parseInt(document.getElementById('parallelCount').value) || 5;
-    let delayMs = parseInt(document.getElementById('delayMs').value) || 100;
+    let parallelCount = typeof normalizeTranslatorParallel === 'function'
+        ? normalizeTranslatorParallel(document.getElementById('parallelCount')?.value || 5)
+        : (parseInt(document.getElementById('parallelCount')?.value, 10) || 5);
+    rpmPerKey = typeof normalizeTranslatorRpm === 'function'
+        ? normalizeTranslatorRpm(document.getElementById('rpmPerKey')?.value || rpmPerKey)
+        : (parseInt(document.getElementById('rpmPerKey')?.value, 10) || 10);
     const promptInput = document.getElementById('customPrompt');
     let customPrompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
         ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '')
@@ -503,10 +519,6 @@ async function startTranslation() {
     if (useOllama) {
         console.log('[Ollama] Mode enabled - skipping Gemini quota checks');
         parallelCount = 1;
-        if (delayMs > 1000) {
-            console.log(`[Ollama] Auto-reducing delay from ${delayMs}ms to 500ms`);
-            delayMs = 500;
-        }
         if (typeof resetOllamaSpeed === 'function') {
             resetOllamaSpeed();
         }
@@ -526,17 +538,14 @@ async function startTranslation() {
             return;
         }
 
-        parallelCount = Math.max(1, Math.min(parallelCount, 10));
+        parallelCount = typeof normalizeTranslatorParallel === 'function'
+            ? normalizeTranslatorParallel(parallelCount)
+            : Math.max(1, Math.min(parallelCount, 50));
         if (proxyKeyCount > 0 && parallelCount > proxyKeyCount) {
             showToast(`Proxy có ${proxyKeyCount} key nhưng đang chạy ${parallelCount} luồng; dễ gặp 429/403 nếu server giới hạn tốc độ.`, 'warning');
         }
 
-        // Delay tối thiểu 5000ms (đã test OK với 5 RPM/key)
-        if (delayMs < 5000) {
-            console.log(`[Proxy] Auto-increasing delay from ${delayMs}ms to 5000ms`);
-            delayMs = 5000;
-        }
-        console.log(`[Proxy] Using parallel=${parallelCount}, delay=${delayMs}ms, keys=${proxyKeyCount}, model=${activeProxyModel}`);
+        console.log(`[Proxy] Using parallel=${parallelCount}, rpmPerKey=${rpmPerKey}, keys=${proxyKeyCount}, model=${activeProxyModel}`);
     } else {
         // ========== GEMINI MODE: PRE-CHECK quota ==========
         const availableCombos = getAllAvailableCombinations();
@@ -577,7 +586,6 @@ async function startTranslation() {
             sourceLang,
             chunkSize,
             parallelCount,
-            delayMs,
             customPrompt,
         });
     }
@@ -758,15 +766,22 @@ async function startTranslation() {
             staggerDelayMs = 500;
         }
 
-        for (let i = 0; i < chunks.length && !cancelRequested; i += effectiveParallel) {
+        let nextChunkIndex = 0;
+        while (nextChunkIndex < chunks.length && !cancelRequested) {
             await waitWhilePaused();
             if (cancelRequested) break;
+
+            const rpmPlan = typeof waitForTranslatorRpmBatchPlan === 'function'
+                ? await waitForTranslatorRpmBatchPlan({ requestedParallel: effectiveParallel })
+                : { capacity: effectiveParallel };
+            if (cancelRequested || rpmPlan.capacity <= 0) break;
 
             const batch = [];
             const batchIndices = [];
 
-            for (let j = 0; j < effectiveParallel && i + j < chunks.length; j++) {
-                const chunkIndex = i + j;
+            while (batch.length < rpmPlan.capacity && nextChunkIndex < chunks.length) {
+                const chunkIndex = nextChunkIndex;
+                nextChunkIndex += 1;
 
                 // Resume mode: skip chunks already translated
                 if (isChunkSuccessfullyTranslatedForResume(translatedChunks[chunkIndex])) {
@@ -780,7 +795,7 @@ async function startTranslation() {
 
                 batch.push(
                     (async () => {
-                        await sleep(j * staggerDelayMs);
+                        await sleep(batch.length * staggerDelayMs);
                         if (cancelRequested) {
                             throw new Error('TRANSLATION_CANCELLED');
                         }
@@ -842,10 +857,6 @@ async function startTranslation() {
             if (cancelRequested) {
                 persistHistoryProgress(true);
                 break;
-            }
-
-            if (i + effectiveParallel < chunks.length && !cancelRequested) {
-                await sleep(delayMs);
             }
         }
 
@@ -921,8 +932,25 @@ async function startTranslation() {
                             const highTemp = 0.7 + (round * 0.15);
 
                             let result;
-                            if (useProxy) {
+                            if (useOllama) {
+                                if (typeof waitForTranslatorProviderRpmSlot === 'function') {
+                                    await waitForTranslatorProviderRpmSlot(TRANSLATOR_PROVIDERS.OLLAMA);
+                                }
+                                if (typeof recordTranslatorRpmRequest === 'function') {
+                                    recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.OLLAMA, 0);
+                                }
+                                result = await translateWithOllama(promptToUse, highTemp);
+                            } else if (useProxy) {
+                                const proxyProvider = typeof getProxyProviderId === 'function'
+                                    ? getProxyProviderId(activeTranslatorProvider)
+                                    : activeTranslatorProvider;
+                                if (typeof waitForTranslatorProviderRpmSlot === 'function') {
+                                    await waitForTranslatorProviderRpmSlot(proxyProvider);
+                                }
                                 const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(idx) : proxyApiKey;
+                                if (typeof recordTranslatorRpmRequest === 'function' && typeof getProxyKeyIndex === 'function') {
+                                    recordTranslatorRpmRequest(proxyProvider, getProxyKeyIndex(proxyKey, proxyProvider));
+                                }
                                 result = await translateChunkViaProxy(promptToUse, highTemp, proxyKey);
                             } else {
                                 const modelKeyPair = getNextModelKeyPairWithQueue();

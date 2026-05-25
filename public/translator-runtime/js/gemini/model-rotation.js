@@ -100,6 +100,16 @@ function getRotationUnavailableState() {
                 continue;
             }
 
+            if (typeof isTranslatorRpmKeyAvailable === 'function' &&
+                !isTranslatorRpmKeyAvailable(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, keyIdx)) {
+                const rpmWaitMs = typeof getTranslatorRpmWaitMsForKey === 'function'
+                    ? getTranslatorRpmWaitMsForKey(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, keyIdx)
+                    : 60000;
+                state.waitBlocked++;
+                state.minWaitMs = Math.min(state.minWaitMs, rpmWaitMs || 60000);
+                continue;
+            }
+
             if (!isPairUnderQuota(model.name, keyIdx)) {
                 const rpmWaitMs = getPairRPMWaitMs(model.name, keyIdx);
                 state.waitBlocked++;
@@ -146,6 +156,10 @@ function getAllAvailableCombinations() {
         for (let modelIdx = 0; modelIdx < activeModels.length; modelIdx++) {
             const model = activeModels[modelIdx];
             if (isModelKeyAvailable(model.name, keyIdx)) {
+                if (typeof isTranslatorRpmKeyAvailable === 'function' &&
+                    !isTranslatorRpmKeyAvailable(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, keyIdx)) {
+                    continue;
+                }
                 // Kiểm tra RPD availability
                 if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIdx)) {
                     continue; // Bỏ qua pair đã hết RPD
@@ -222,6 +236,10 @@ function getBestAvailablePair() {
             const model = activeModels[modelIdx];
 
             if (!isModelKeyAvailable(model.name, keyIdx)) continue;
+            if (typeof isTranslatorRpmKeyAvailable === 'function' &&
+                !isTranslatorRpmKeyAvailable(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, keyIdx)) {
+                continue;
+            }
 
             // Kiểm tra RPD availability
             if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIdx)) {
@@ -230,11 +248,14 @@ function getBestAvailablePair() {
 
             const recentCount = getRecentRequestCount(model.name, keyIdx);
             const quota = Number(model.quota) > 0 ? Number(model.quota) : getModelQuota(model.name);
-            const remainingQuota = quota - recentCount;
+            const keyRemaining = typeof getTranslatorRpmRemainingForKey === 'function'
+                ? getTranslatorRpmRemainingForKey(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, keyIdx)
+                : quota;
+            const rpdRemaining = typeof getRPDRemaining === 'function' ? getRPDRemaining(model.name, keyIdx) : quota;
+            const remainingQuota = Math.min(quota - recentCount, keyRemaining, rpdRemaining);
 
             if (remainingQuota > 0) {
                 // Tính thêm RPD remaining vào score
-                const rpdRemaining = typeof getRPDRemaining === 'function' ? getRPDRemaining(model.name, keyIdx) : 20;
                 const rpdLimit = typeof getRPDLimit === 'function' ? getRPDLimit(model.name) : 20;
                 const rpdFactor = rpdLimit > 0 ? rpdRemaining / rpdLimit : 0; // 0..1
 
@@ -266,6 +287,9 @@ function getBestAvailablePair() {
 function getNextModelKeyPairWithQueue() {
     const pair = getBestAvailablePair();
     recordRequestTimestamp(pair.model, pair.keyIndex);
+    if (typeof recordTranslatorRpmRequest === 'function') {
+        recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, pair.keyIndex);
+    }
     // Ghi nhận RPD
     if (typeof recordRPDRequest === 'function') {
         recordRPDRequest(pair.model, pair.keyIndex);

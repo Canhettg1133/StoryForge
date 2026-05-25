@@ -42,6 +42,11 @@ let keyHealthMap = {};
 
 // Active network requests for instant cancel (Gemini/Proxy/Ollama)
 const activeRequestControllers = new Set();
+const DEFAULT_TRANSLATOR_RPM_PER_KEY = 10;
+const TRANSLATOR_RPM_MIN = 1;
+const TRANSLATOR_RPM_MAX = 100;
+const TRANSLATOR_MAX_PARALLEL = 50;
+const TRANSLATOR_RPM_WINDOW_MS = 60000;
 const TRANSLATOR_PROVIDERS = {
     GEMINI_DIRECT: 'gemini_direct',
     AG_PROXY: 'ag_proxy',
@@ -50,6 +55,8 @@ const TRANSLATOR_PROVIDERS = {
 };
 
 let activeTranslatorProvider = TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
+let rpmPerKey = DEFAULT_TRANSLATOR_RPM_PER_KEY;
+let translatorRpmTimestamps = {};
 
 const TRANSLATOR_PROMPT_SUPPLEMENTS = [
     {
@@ -335,23 +342,29 @@ function recordProxyKeyError(proxyKey, errorType = 'UNKNOWN', cooldownMs = PROXY
 function getProxyKeyForChunk(chunkIndex) {
     const keys = getActiveProxyKeys();
     if (keys.length > 0) {
+        const provider = getProxyProviderId(activeTranslatorProvider);
         const startIndex = normalizeProxyKeyIndex(chunkIndex, keys.length);
 
         for (let offset = 0; offset < keys.length; offset++) {
             const keyIndex = (startIndex + offset) % keys.length;
-            if (isProxyKeyAvailable(keyIndex)) {
+            if (isProxyKeyAvailable(keyIndex) && isTranslatorRpmKeyAvailable(provider, keyIndex)) {
                 return keys[keyIndex];
             }
         }
 
         const healthMap = getProxyKeyHealthMap();
         const now = Date.now();
-        const waitMs = Object.values(healthMap)
+        const healthWaitMs = Object.values(healthMap)
             .map((health) => Number(health?.disabledUntil || 0) - now)
             .filter((value) => value > 0)
-            .sort((a, b) => a - b)[0] || PROXY_RATE_LIMIT_COOLDOWN_MS;
+            .sort((a, b) => a - b)[0];
+        const rpmWaitMs = keys
+            .map((_, keyIndex) => getTranslatorRpmWaitMsForKey(provider, keyIndex))
+            .filter((value) => value > 0)
+            .sort((a, b) => a - b)[0];
+        const waitMs = healthWaitMs || rpmWaitMs || PROXY_RATE_LIMIT_COOLDOWN_MS;
         const waitSeconds = Math.ceil(waitMs / 1000);
-        throw new Error(`Tất cả proxy key đang tạm dừng cooldown. Vui lòng chờ khoảng ${waitSeconds}s rồi thử lại.`);
+        throw new Error(`Tất cả proxy key đang chờ cooldown/RPM. Vui lòng chờ khoảng ${waitSeconds}s rồi thử lại.`);
     }
     return '';
 }
@@ -359,6 +372,223 @@ function getProxyKeyForChunk(chunkIndex) {
 // Get total number of available proxy keys
 function getProxyKeyCount(provider = activeTranslatorProvider) {
     return getActiveProxyKeys(provider).length;
+}
+
+function normalizeTranslatorRpm(value = rpmPerKey) {
+    const numeric = Number(value);
+    const fallback = DEFAULT_TRANSLATOR_RPM_PER_KEY;
+    if (!Number.isFinite(numeric)) return fallback;
+    return Math.max(TRANSLATOR_RPM_MIN, Math.min(TRANSLATOR_RPM_MAX, Math.trunc(numeric)));
+}
+
+function normalizeTranslatorParallel(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 1;
+    return Math.max(1, Math.min(TRANSLATOR_MAX_PARALLEL, Math.trunc(numeric)));
+}
+
+function getActiveTranslatorProviderId() {
+    if (typeof useOllama !== 'undefined' && useOllama) return TRANSLATOR_PROVIDERS.OLLAMA;
+    if (typeof useProxy !== 'undefined' && useProxy) return getProxyProviderId(activeTranslatorProvider);
+    return TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
+}
+
+function getTranslatorRpmKeyCount(provider = getActiveTranslatorProviderId()) {
+    if (provider === TRANSLATOR_PROVIDERS.OLLAMA) return 1;
+    if (provider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY || provider === TRANSLATOR_PROVIDERS.AG_PROXY) {
+        return getActiveProxyKeys(provider).length;
+    }
+    return Array.isArray(apiKeys) ? apiKeys.filter((key) => String(key || '').trim()).length : 0;
+}
+
+function getTranslatorRpmBucketId(provider, keyIndex) {
+    const safeProvider = provider || getActiveTranslatorProviderId();
+    const safeIndex = Math.max(0, Number.isFinite(Number(keyIndex)) ? Math.trunc(Number(keyIndex)) : 0);
+    return `${safeProvider}|${safeIndex}`;
+}
+
+function pruneTranslatorRpmBucket(provider, keyIndex, now = Date.now()) {
+    const bucketId = getTranslatorRpmBucketId(provider, keyIndex);
+    const oneMinuteAgo = now - TRANSLATOR_RPM_WINDOW_MS;
+    const current = Array.isArray(translatorRpmTimestamps[bucketId])
+        ? translatorRpmTimestamps[bucketId]
+        : [];
+    translatorRpmTimestamps[bucketId] = current.filter((timestamp) => Number(timestamp) > oneMinuteAgo);
+    return translatorRpmTimestamps[bucketId];
+}
+
+function getTranslatorRpmRecentCount(provider, keyIndex) {
+    return pruneTranslatorRpmBucket(provider, keyIndex).length;
+}
+
+function getTranslatorRpmRemainingForKey(provider, keyIndex, limit = rpmPerKey) {
+    const rpmLimit = normalizeTranslatorRpm(limit);
+    return Math.max(0, rpmLimit - getTranslatorRpmRecentCount(provider, keyIndex));
+}
+
+function getTranslatorRpmWaitMsForKey(provider, keyIndex, limit = rpmPerKey) {
+    const rpmLimit = normalizeTranslatorRpm(limit);
+    const timestamps = pruneTranslatorRpmBucket(provider, keyIndex);
+    if (timestamps.length < rpmLimit) return 0;
+    const now = Date.now();
+    const oldest = Math.min(...timestamps);
+    return Math.max(1000, TRANSLATOR_RPM_WINDOW_MS - (now - oldest));
+}
+
+function getDirectModelRpmWaitMsForKey(keyIndex) {
+    const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
+    if (!Array.isArray(activeModels) || activeModels.length === 0) return 0;
+
+    let waitMs = Infinity;
+    for (const model of activeModels) {
+        if (!model?.name) continue;
+
+        const cooldownMs = typeof getModelKeyCooldownMs === 'function'
+            ? getModelKeyCooldownMs(model.name, keyIndex)
+            : 0;
+        if (cooldownMs > 0) {
+            waitMs = Math.min(waitMs, cooldownMs);
+            continue;
+        }
+
+        if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIndex)) {
+            continue;
+        }
+
+        const modelLimit = typeof getModelQuota === 'function'
+            ? getModelQuota(model.name)
+            : normalizePositiveInteger(model.quota, inferGeminiModelQuota(model.name));
+        const recent = typeof getRecentRequestCount === 'function'
+            ? getRecentRequestCount(model.name, keyIndex)
+            : 0;
+        if (recent < normalizePositiveInteger(modelLimit, 1)) return 0;
+
+        const pairWaitMs = typeof getPairRPMWaitMs === 'function'
+            ? getPairRPMWaitMs(model.name, keyIndex)
+            : TRANSLATOR_RPM_WINDOW_MS;
+        waitMs = Math.min(waitMs, pairWaitMs || TRANSLATOR_RPM_WINDOW_MS);
+    }
+
+    return Number.isFinite(waitMs) ? waitMs : 0;
+}
+
+function getDirectModelRpmRemainingForKey(keyIndex) {
+    const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
+    if (!Array.isArray(activeModels) || activeModels.length === 0) return 0;
+
+    return activeModels.reduce((total, model) => {
+        if (!model?.name) return total;
+        if (typeof isModelKeyAvailable === 'function' && !isModelKeyAvailable(model.name, keyIndex)) return total;
+        if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIndex)) return total;
+
+        const modelLimit = typeof getModelQuota === 'function'
+            ? getModelQuota(model.name)
+            : normalizePositiveInteger(model.quota, inferGeminiModelQuota(model.name));
+        const recent = typeof getRecentRequestCount === 'function'
+            ? getRecentRequestCount(model.name, keyIndex)
+            : 0;
+        const rpmRemaining = Math.max(0, normalizePositiveInteger(modelLimit, 1) - recent);
+        const rpdRemaining = typeof getRPDRemaining === 'function'
+            ? getRPDRemaining(model.name, keyIndex)
+            : rpmRemaining;
+        return total + Math.max(0, Math.min(rpmRemaining, rpdRemaining));
+    }, 0);
+}
+
+function getTranslatorRpmRemainingForProviderKey(provider, keyIndex, limit = rpmPerKey) {
+    const keyRemaining = getTranslatorRpmRemainingForKey(provider, keyIndex, limit);
+    if (provider !== TRANSLATOR_PROVIDERS.GEMINI_DIRECT) return keyRemaining;
+    return Math.min(keyRemaining, getDirectModelRpmRemainingForKey(keyIndex));
+}
+
+function getTranslatorRpmWaitMsForProviderKey(provider, keyIndex, limit = rpmPerKey) {
+    const keyWaitMs = getTranslatorRpmWaitMsForKey(provider, keyIndex, limit);
+    if (keyWaitMs > 0 || provider !== TRANSLATOR_PROVIDERS.GEMINI_DIRECT) return keyWaitMs;
+    return getDirectModelRpmWaitMsForKey(keyIndex);
+}
+
+function isTranslatorRpmKeyAvailable(provider, keyIndex, limit = rpmPerKey) {
+    return getTranslatorRpmRemainingForProviderKey(provider, keyIndex, limit) > 0;
+}
+
+function recordTranslatorRpmRequest(provider = getActiveTranslatorProviderId(), keyIndex = 0, timestamp = Date.now()) {
+    const bucketId = getTranslatorRpmBucketId(provider, keyIndex);
+    if (!Array.isArray(translatorRpmTimestamps[bucketId])) {
+        translatorRpmTimestamps[bucketId] = [];
+    }
+    pruneTranslatorRpmBucket(provider, keyIndex, timestamp);
+    translatorRpmTimestamps[bucketId].push(timestamp);
+}
+
+function getTranslatorRpmBatchPlan(options = {}) {
+    const provider = options.provider || getActiveTranslatorProviderId();
+    const rpmLimit = normalizeTranslatorRpm(options.rpmPerKey ?? rpmPerKey);
+    const requestedParallel = normalizeTranslatorParallel(options.requestedParallel);
+    const effectiveParallel = provider === TRANSLATOR_PROVIDERS.OLLAMA ? 1 : requestedParallel;
+    const keyCount = Math.max(1, Number(options.keyCount) || getTranslatorRpmKeyCount(provider));
+    let remainingSlots = 0;
+    let waitMs = Infinity;
+
+    for (let keyIndex = 0; keyIndex < keyCount; keyIndex += 1) {
+        const remaining = getTranslatorRpmRemainingForProviderKey(provider, keyIndex, rpmLimit);
+        remainingSlots += remaining;
+        if (remaining <= 0) {
+            waitMs = Math.min(waitMs, getTranslatorRpmWaitMsForProviderKey(provider, keyIndex, rpmLimit));
+        }
+    }
+
+    const capacity = Math.min(effectiveParallel, remainingSlots);
+    return {
+        provider,
+        keyCount,
+        rpmPerKey: rpmLimit,
+        requestedParallel,
+        capacity,
+        waitMs: capacity > 0 ? 0 : (Number.isFinite(waitMs) ? waitMs : TRANSLATOR_RPM_WINDOW_MS),
+        remainingSlots,
+    };
+}
+
+function getTranslatorRpmMaxBatchSize(options = {}) {
+    const provider = options.provider || getActiveTranslatorProviderId();
+    const rpmLimit = normalizeTranslatorRpm(options.rpmPerKey ?? rpmPerKey);
+    const requestedParallel = normalizeTranslatorParallel(options.requestedParallel);
+    const effectiveParallel = provider === TRANSLATOR_PROVIDERS.OLLAMA ? 1 : requestedParallel;
+    const keyCount = Math.max(1, Number(options.keyCount) || getTranslatorRpmKeyCount(provider));
+    return Math.max(1, Math.min(effectiveParallel, keyCount * rpmLimit));
+}
+
+async function waitForTranslatorRpmBatchPlan(options = {}) {
+    while (!cancelRequested) {
+        const plan = getTranslatorRpmBatchPlan(options);
+        if (plan.capacity > 0) return plan;
+
+        if (plan.waitMs <= 0) {
+            if (plan.provider === TRANSLATOR_PROVIDERS.GEMINI_DIRECT && typeof throwNoAvailableDirectPair === 'function') {
+                throwNoAvailableDirectPair();
+            }
+            return plan;
+        }
+
+        const waitSeconds = Math.max(1, Math.ceil(plan.waitMs / 1000));
+        if (typeof updateTranslationRuntimeStatus === 'function') {
+            updateTranslationRuntimeStatus(`Đang chờ giới hạn RPM (${waitSeconds}s)...`);
+        }
+        if (typeof sleepWithCountdown === 'function') {
+            await sleepWithCountdown(plan.waitMs, '⏳ Đang chờ RPM');
+        } else if (typeof sleep === 'function') {
+            await sleep(plan.waitMs);
+        }
+    }
+
+    return { capacity: 0, waitMs: 0 };
+}
+
+async function waitForTranslatorProviderRpmSlot(provider = getActiveTranslatorProviderId()) {
+    return waitForTranslatorRpmBatchPlan({
+        provider,
+        requestedParallel: 1,
+    });
 }
 
 const OPENAI_PROXY_KNOWN_SUFFIXES = [
@@ -1327,7 +1557,7 @@ function setupEventListeners() {
     if (originalText) originalText.addEventListener('input', updateStats);
 
     // Settings auto-save
-    ['sourceLang', 'parallelCount', 'chunkSize', 'delayMs'].forEach(id => {
+    ['sourceLang', 'parallelCount', 'chunkSize', 'rpmPerKey'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', saveSettings);
     });

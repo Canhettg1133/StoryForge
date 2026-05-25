@@ -63,6 +63,12 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 }
 
                 console.log(`[Ollama] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}`);
+                if (typeof waitForTranslatorProviderRpmSlot === 'function') {
+                    await waitForTranslatorProviderRpmSlot(TRANSLATOR_PROVIDERS.OLLAMA);
+                }
+                if (typeof recordTranslatorRpmRequest === 'function') {
+                    recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.OLLAMA, 0);
+                }
                 const result = await translateWithOllama(promptToUse, temperature);
 
                 // ========== VALIDATION CHO OLLAMA ==========
@@ -109,7 +115,16 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
                 const activeProxyModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;
                 console.log(`[Proxy] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}, model=${activeProxyModel}`);
+                const proxyProvider = typeof getProxyProviderId === 'function'
+                    ? getProxyProviderId(activeTranslatorProvider)
+                    : activeTranslatorProvider;
+                if (typeof waitForTranslatorProviderRpmSlot === 'function') {
+                    await waitForTranslatorProviderRpmSlot(proxyProvider);
+                }
                 const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(chunkIndex) : proxyApiKey;
+                if (typeof recordTranslatorRpmRequest === 'function' && typeof getProxyKeyIndex === 'function') {
+                    recordTranslatorRpmRequest(proxyProvider, getProxyKeyIndex(proxyKey, proxyProvider));
+                }
                 proxyKeyUsed = proxyKey;
                 const result = await translateChunkViaProxy(promptToUse, temperature, proxyKey);
                 if (typeof recordProxyKeySuccess === 'function') {
@@ -466,9 +481,27 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
         console.log(`[Chunk ${chunkIndex + 1}] Translating sub-chunk ${i + 1}/${parts.length}...`);
 
         try {
-            if (useProxy) {
+            if (useOllama) {
+                if (typeof waitForTranslatorProviderRpmSlot === 'function') {
+                    await waitForTranslatorProviderRpmSlot(TRANSLATOR_PROVIDERS.OLLAMA);
+                }
+                if (typeof recordTranslatorRpmRequest === 'function') {
+                    recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.OLLAMA, 0);
+                }
+                const result = await translateWithOllama(partText, 0.8);
+                translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
+            } else if (useProxy) {
                 // Proxy mode - gọi trực tiếp với key theo chunk
+                const proxyProvider = typeof getProxyProviderId === 'function'
+                    ? getProxyProviderId(activeTranslatorProvider)
+                    : activeTranslatorProvider;
+                if (typeof waitForTranslatorProviderRpmSlot === 'function') {
+                    await waitForTranslatorProviderRpmSlot(proxyProvider);
+                }
                 const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(chunkIndex) : proxyApiKey;
+                if (typeof recordTranslatorRpmRequest === 'function' && typeof getProxyKeyIndex === 'function') {
+                    recordTranslatorRpmRequest(proxyProvider, getProxyKeyIndex(proxyKey, proxyProvider));
+                }
                 const result = await translateChunkViaProxy(partText, 0.8, proxyKey);
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else {
