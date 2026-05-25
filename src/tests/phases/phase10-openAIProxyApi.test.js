@@ -122,6 +122,45 @@ describe('/api/openai-proxy', () => {
     vi.unstubAllGlobals();
   });
 
+  it('streams chat_stream_batch results as each upstream payload resolves', async () => {
+    const fetchMock = vi.fn(async (url, options) => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.parse(options.body).messages[0].content } }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const payloads = [
+      { model: 'custom-model', messages: [{ role: 'user', content: 'a' }] },
+      { model: 'custom-model', messages: [{ role: 'user', content: 'b' }] },
+    ];
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat_stream_batch',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+        payloads,
+      },
+      headers: { authorization: 'Bearer test-key' },
+    });
+
+    await handler(req, res);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://proxy.example.com/v1/chat/completions');
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer test-key');
+    expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify(payloads[0]));
+    expect(fetchMock.mock.calls[1][1].body).toBe(JSON.stringify(payloads[1]));
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('application/x-ndjson');
+    const lines = res.body.trim().split('\n').map((line) => JSON.parse(line));
+    expect(lines).toHaveLength(2);
+    expect(lines.map((line) => line.index).sort()).toEqual([0, 1]);
+    expect(lines.every((line) => line.ok && line.status === 200)).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
   it('does not accept Authorization from the JSON body', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       data: [],

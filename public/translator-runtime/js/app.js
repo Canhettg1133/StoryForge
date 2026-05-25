@@ -46,7 +46,7 @@ const DEFAULT_TRANSLATOR_RPM_PER_KEY = 10;
 const TRANSLATOR_RPM_MIN = 1;
 const TRANSLATOR_RPM_MAX = 100;
 const TRANSLATOR_MAX_PARALLEL = 50;
-const TRANSLATOR_RPM_WINDOW_MS = 60000;
+const TRANSLATOR_RPM_WINDOW_MS = 65000;
 const TRANSLATOR_PROVIDERS = {
     GEMINI_DIRECT: 'gemini_direct',
     AG_PROXY: 'ag_proxy',
@@ -206,8 +206,8 @@ let customProxyProfile = { ...DEFAULT_CUSTOM_PROXY_PROFILE };
 let customProxyApiKey = '';
 let customProxyApiKeys = [];
 let customProxyKeyHealthMap = {};
-const PROXY_RATE_LIMIT_COOLDOWN_MS = 60000;
-const PROXY_FORBIDDEN_COOLDOWN_MS = 300000;
+const PROXY_RATE_LIMIT_COOLDOWN_MS = 10000;
+const PROXY_FORBIDDEN_COOLDOWN_MS = 10000;
 
 function setActiveTranslatorProvider(provider) {
     const allowedProviders = Object.values(TRANSLATOR_PROVIDERS);
@@ -286,6 +286,13 @@ function getProxyKeyIndex(proxyKey, provider = activeTranslatorProvider) {
     return getActiveProxyKeys(provider).findIndex(key => key === proxyKey);
 }
 
+function getProxyPreferredKeyIndexForChunk(chunkIndex, keyCount = getActiveProxyKeys().length) {
+    if (!keyCount) return 0;
+    const numericChunkIndex = Number.isFinite(Number(chunkIndex)) ? Math.max(0, Math.trunc(Number(chunkIndex))) : 0;
+    const slotsPerKey = Math.max(1, normalizeTranslatorRpm(rpmPerKey));
+    return normalizeProxyKeyIndex(Math.floor(numericChunkIndex / slotsPerKey), keyCount);
+}
+
 function initProxyKeyHealth(keyIndex, provider = activeTranslatorProvider) {
     if (keyIndex < 0) return null;
     const healthMap = getProxyKeyHealthMap(provider);
@@ -338,35 +345,66 @@ function recordProxyKeyError(proxyKey, errorType = 'UNKNOWN', cooldownMs = PROXY
     console.warn(`[ProxyKey] Key ${keyIndex + 1} tạm dừng ${Math.ceil(safeCooldown / 1000)}s vì ${errorType}.`);
 }
 
-// Get proxy key for a specific chunk (deterministic assignment)
 function getProxyKeyForChunk(chunkIndex) {
     const keys = getActiveProxyKeys();
-    if (keys.length > 0) {
-        const provider = getProxyProviderId(activeTranslatorProvider);
-        const startIndex = normalizeProxyKeyIndex(chunkIndex, keys.length);
+    if (!keys.length) return '';
 
+    const provider = getProxyProviderId(activeTranslatorProvider);
+    const startIndex = getProxyPreferredKeyIndexForChunk(chunkIndex, keys.length);
+    const findAvailableKey = () => {
         for (let offset = 0; offset < keys.length; offset++) {
             const keyIndex = (startIndex + offset) % keys.length;
             if (isProxyKeyAvailable(keyIndex) && isTranslatorRpmKeyAvailable(provider, keyIndex)) {
                 return keys[keyIndex];
             }
         }
+        return '';
+    };
 
+    const availableKey = findAvailableKey();
+    if (availableKey) return availableKey;
+
+    return waitForProxyKeyForChunk(keys, provider, findAvailableKey);
+}
+
+async function waitForProxyKeyForChunk(keys, provider, findAvailableKey) {
+    while (true) {
         const healthMap = getProxyKeyHealthMap();
         const now = Date.now();
-        const healthWaitMs = Object.values(healthMap)
-            .map((health) => Number(health?.disabledUntil || 0) - now)
-            .filter((value) => value > 0)
-            .sort((a, b) => a - b)[0];
-        const rpmWaitMs = keys
-            .map((_, keyIndex) => getTranslatorRpmWaitMsForKey(provider, keyIndex))
-            .filter((value) => value > 0)
-            .sort((a, b) => a - b)[0];
-        const waitMs = healthWaitMs || rpmWaitMs || PROXY_RATE_LIMIT_COOLDOWN_MS;
-        const waitSeconds = Math.ceil(waitMs / 1000);
-        throw new Error(`Tất cả proxy key đang chờ cooldown/RPM. Vui lòng chờ khoảng ${waitSeconds}s rồi thử lại.`);
+        const keyWaits = keys.map((_, keyIndex) => {
+            const healthWaitMs = Math.max(0, Number(healthMap[keyIndex]?.disabledUntil || 0) - now);
+            const rpmWaitMs = Math.max(0, getTranslatorRpmWaitMsForKey(provider, keyIndex));
+            return { keyIndex, healthWaitMs, rpmWaitMs, waitMs: Math.max(healthWaitMs, rpmWaitMs) };
+        }).sort((a, b) => a.waitMs - b.waitMs);
+
+        const nextKeyWait = keyWaits[0] || { keyIndex: 0, healthWaitMs: 0, rpmWaitMs: PROXY_RATE_LIMIT_COOLDOWN_MS, waitMs: PROXY_RATE_LIMIT_COOLDOWN_MS };
+        const waitMs = nextKeyWait.waitMs || PROXY_RATE_LIMIT_COOLDOWN_MS;
+        const clampedWaitMs = Math.max(2000, Math.min(waitMs, PROXY_FORBIDDEN_COOLDOWN_MS));
+        const waitSeconds = Math.ceil(clampedWaitMs / 1000);
+
+        console.warn(`[ProxyKey] Tất cả ${keys.length} key đang cooldown/RPM. Tự động chờ ${waitSeconds}s...`);
+        if (typeof updateTranslationRuntimeStatus === 'function') {
+            updateTranslationRuntimeStatus(`Proxy key cooldown, chờ ${waitSeconds}s...`);
+        }
+
+        if (typeof sleepWithCountdown === 'function') {
+            await sleepWithCountdown(clampedWaitMs, '⏳ Chờ proxy key hồi');
+        } else if (typeof sleep === 'function') {
+            await sleep(clampedWaitMs);
+        }
+
+        const retryKey = findAvailableKey();
+        if (retryKey) return retryKey;
+
+        const forceUnlockTarget = keyWaits.find((item) => item.healthWaitMs > 0 && item.rpmWaitMs <= 0);
+        if (forceUnlockTarget) {
+            console.warn(`[ProxyKey] Ép mở khóa Key ${forceUnlockTarget.keyIndex + 1}; RPM vẫn được giữ an toàn.`);
+            const health = initProxyKeyHealth(forceUnlockTarget.keyIndex);
+            health.disabledUntil = null;
+            health.errorCount = 0;
+            return keys[forceUnlockTarget.keyIndex];
+        }
     }
-    return '';
 }
 
 // Get total number of available proxy keys
@@ -699,13 +737,13 @@ function filterGeminiModelIds(models = []) {
 }
 
 function getActiveProxyBaseUrl() {
-    if (isCustomProxyProviderActive()) {
-        const profile = getCustomProxyProfile();
-        return resolveProxyTransportMode(profile) === 'relay'
-            ? '/api/openai-proxy'
-            : buildOpenAIProxyEndpoint(profile.baseUrl, profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
-    }
-    return proxyBaseUrl;
+    const target = typeof getActiveProxyRequestTarget === 'function'
+        ? getActiveProxyRequestTarget('chat')
+        : null;
+    if (target?.url) return target.url;
+    return isCustomProxyProviderActive()
+        ? buildOpenAIProxyEndpoint(getCustomProxyProfile().baseUrl, getCustomProxyProfile().chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH)
+        : proxyBaseUrl;
 }
 
 function getActiveProxyModelsUrl() {
@@ -713,6 +751,26 @@ function getActiveProxyModelsUrl() {
     return resolveProxyTransportMode(profile) === 'relay'
         ? '/api/openai-proxy'
         : buildOpenAIProxyEndpoint(profile.baseUrl, profile.modelsPath || DEFAULT_PROXY_MODELS_PATH);
+}
+
+function getAgProxyRequestTarget(action = 'chat') {
+    const rawBaseUrl = String(proxyBaseUrl || '').trim();
+    const path = action === 'models' ? DEFAULT_PROXY_MODELS_PATH : DEFAULT_PROXY_CHAT_PATH;
+    const profile = {
+        id: AG_PROXY_PROFILE_ID,
+        label: 'Gemini Proxy AG',
+        baseUrl: getOpenAIProxyRoot(rawBaseUrl) || rawBaseUrl,
+        chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
+        modelsPath: DEFAULT_PROXY_MODELS_PATH,
+        transport: 'auto',
+    };
+    const mode = resolveProxyTransportMode(profile);
+    return {
+        mode,
+        url: mode === 'relay' ? '/api/openai-proxy' : buildOpenAIProxyEndpoint(rawBaseUrl, path),
+        path,
+        profile,
+    };
 }
 
 function getCustomProxyRequestTarget(action = 'chat') {
@@ -727,6 +785,12 @@ function getCustomProxyRequestTarget(action = 'chat') {
         path,
         profile,
     };
+}
+
+function getActiveProxyRequestTarget(action = 'chat') {
+    return isCustomProxyProviderActive()
+        ? getCustomProxyRequestTarget(action)
+        : getAgProxyRequestTarget(action);
 }
 
 function getActiveProxyModel() {
@@ -785,7 +849,7 @@ YÊU CẦU:
 ĐOẠN VĂN CẦN VIẾT LẠI:
 `,
 
-    adult: `[LỆNH BẮT BUỘC] 
+    adult: `[LỆNH BẮT BUỘC]
 OUTPUT = VĂN BẢN VIẾT LẠI. KHÔNG giải thích. KHÔNG "Dưới đây là...". BẮT ĐẦU NGAY.
 
 Vai trò: Biên tập viên văn học người lớn. Đây là TIỂU THUYẾT VĂN HỌC NGHỆ THUẬT hợp pháp.

@@ -121,9 +121,15 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 if (typeof waitForTranslatorProviderRpmSlot === 'function') {
                     await waitForTranslatorProviderRpmSlot(proxyProvider);
                 }
-                const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(chunkIndex) : proxyApiKey;
-                if (typeof recordTranslatorRpmRequest === 'function' && typeof getProxyKeyIndex === 'function') {
-                    recordTranslatorRpmRequest(proxyProvider, getProxyKeyIndex(proxyKey, proxyProvider));
+                const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
+                const proxyKeyIndex = typeof getProxyKeyIndex === 'function'
+                    ? getProxyKeyIndex(proxyKey, proxyProvider)
+                    : -1;
+                if (typeof trackChunkProxyKey === 'function') {
+                    trackChunkProxyKey(chunkIndex, proxyKeyIndex);
+                }
+                if (typeof recordTranslatorRpmRequest === 'function') {
+                    recordTranslatorRpmRequest(proxyProvider, proxyKeyIndex);
                 }
                 proxyKeyUsed = proxyKey;
                 const result = await translateChunkViaProxy(promptToUse, temperature, proxyKey);
@@ -188,8 +194,9 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 const is429 = errorCode === 'PROXY_RATE_LIMIT' || combinedErrorMsg.includes('429') || combinedErrorMsg.includes('rate limit');
 
                 if (is403 || is429) {
-                    const waitTime = is403 ? 5000 : 8000;
-                    console.warn(`[Proxy] Chunk ${chunkIndex + 1} ⚠️ ${is403 ? '403 Backend suspended' : '429 Rate limited'}, chờ ${waitTime / 1000}s rồi retry...`);
+                    // Chờ ngắn trước retry - getProxyKeyForChunk sẽ tự chờ cooldown key
+                    const waitTime = is403 ? 3000 : 5000;
+                    console.warn(`[Proxy] Chunk ${chunkIndex + 1} ⚠️ ${is403 ? '403 Backend suspended' : '429 Rate limited'}, chờ ${waitTime / 1000}s rồi xoay key retry...`);
                     if (typeof recordProxyKeyError === 'function' && proxyKeyUsed) {
                         const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
                         const cooldownMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
@@ -498,9 +505,15 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                 if (typeof waitForTranslatorProviderRpmSlot === 'function') {
                     await waitForTranslatorProviderRpmSlot(proxyProvider);
                 }
-                const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(chunkIndex) : proxyApiKey;
-                if (typeof recordTranslatorRpmRequest === 'function' && typeof getProxyKeyIndex === 'function') {
-                    recordTranslatorRpmRequest(proxyProvider, getProxyKeyIndex(proxyKey, proxyProvider));
+                const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
+                const proxyKeyIndex = typeof getProxyKeyIndex === 'function'
+                    ? getProxyKeyIndex(proxyKey, proxyProvider)
+                    : -1;
+                if (typeof trackChunkProxyKey === 'function') {
+                    trackChunkProxyKey(chunkIndex, proxyKeyIndex);
+                }
+                if (typeof recordTranslatorRpmRequest === 'function') {
+                    recordTranslatorRpmRequest(proxyProvider, proxyKeyIndex);
                 }
                 const result = await translateChunkViaProxy(partText, 0.8, proxyKey);
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));

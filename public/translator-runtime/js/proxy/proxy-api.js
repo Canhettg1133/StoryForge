@@ -142,6 +142,289 @@ function maskProxyKey(key) {
     return key.substring(0, 6) + '••••••••' + key.substring(key.length - 6);
 }
 
+function getProxyBulkKeyConfig(provider = 'ag') {
+    const normalized = provider === 'custom' ? 'custom' : 'ag';
+    if (normalized === 'custom') {
+        return {
+            provider: 'custom',
+            label: 'Custom Proxy',
+            modalId: 'customProxyKeyBulkModal',
+            importTextareaId: 'customProxyKeyImportTextarea',
+            importPreviewId: 'customProxyKeyImportPreview',
+            exportTextareaId: 'customProxyKeyExportTextarea',
+            keys: () => customProxyApiKeys,
+            setKeys: (keys) => {
+                customProxyApiKeys = keys;
+                customProxyApiKey = customProxyApiKeys[0] || '';
+                customProxyKeyHealthMap = {};
+            },
+            render: () => renderCustomProxyKeysList(),
+            isValid: (key) => key.length >= 6,
+            invalidHint: 'Key Custom Proxy phải có ít nhất 6 ký tự.',
+            placeholder: 'sk-custom-...\\nproxy-key-...\\nopenrouter-key-...',
+        };
+    }
+
+    return {
+        provider: 'ag',
+        label: 'Gemini Proxy AG',
+        modalId: 'agProxyKeyBulkModal',
+        importTextareaId: 'agProxyKeyImportTextarea',
+        importPreviewId: 'agProxyKeyImportPreview',
+        exportTextareaId: 'agProxyKeyExportTextarea',
+        keys: () => proxyApiKeys,
+        setKeys: (keys) => {
+            proxyApiKeys = keys;
+            proxyApiKey = proxyApiKeys[0] || '';
+            proxyKeyHealthMap = {};
+        },
+        render: () => renderProxyKeysList(),
+        isValid: (key) => key.startsWith('sk-') && key.length >= 10,
+        invalidHint: 'Key Gemini Proxy AG phải bắt đầu bằng "sk-" và đủ dài.',
+        placeholder: 'sk-...\\nsk-...\\nsk-...',
+    };
+}
+
+function parseProxyKeysFromText(text, provider = 'ag') {
+    const config = getProxyBulkKeyConfig(provider);
+    const rawKeys = String(text || '')
+        .split(/[\n\r,;]+/)
+        .map((key) => key.trim().replace(/^["']|["']$/g, ''))
+        .filter(Boolean);
+    const currentKeys = config.keys();
+    const validKeys = [];
+    const newKeys = [];
+    const seen = new Set();
+    let duplicates = 0;
+    let alreadyExists = 0;
+    let invalid = 0;
+
+    rawKeys.forEach((key) => {
+        if (!config.isValid(key)) {
+            invalid++;
+            return;
+        }
+        if (seen.has(key)) {
+            duplicates++;
+            return;
+        }
+        seen.add(key);
+        validKeys.push(key);
+        if (currentKeys.includes(key)) {
+            alreadyExists++;
+        } else {
+            newKeys.push(key);
+        }
+    });
+
+    return { validKeys, newKeys, duplicates, alreadyExists, invalid };
+}
+
+function openImportProxyKeysModal(provider = 'ag') {
+    const config = getProxyBulkKeyConfig(provider);
+    closeProxyImportModal(provider);
+
+    const modal = document.createElement('div');
+    modal.id = `${config.modalId}Import`;
+    modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 99999;
+    `;
+
+    modal.innerHTML = `
+        <div style="
+            background: #1a1a2e;
+            border: 1px solid #10b981;
+            border-radius: 12px;
+            padding: 20px;
+            width: 680px;
+            max-width: 92vw;
+            max-height: 84vh;
+            display: flex;
+            flex-direction: column;
+        ">
+            <h3 style="color:#fff;margin:0 0 10px 0;">📥 Nhập nhiều ${config.label} keys</h3>
+            <p style="color:#9ca3af;margin:0 0 8px 0;font-size:13px;">Dán nhiều key, mỗi dòng một key hoặc phân cách bằng dấu phẩy/dấu chấm phẩy.</p>
+            <textarea id="${config.importTextareaId}" placeholder="${config.placeholder}" style="
+                width: 100%;
+                height: 240px;
+                background: #0a0a0f;
+                color: #10b981;
+                border: 1px solid #333;
+                border-radius: 8px;
+                padding: 14px;
+                font-family: monospace;
+                font-size: 13px;
+                resize: vertical;
+            "></textarea>
+            <div id="${config.importPreviewId}" style="
+                color:#9ca3af;
+                font-size:12px;
+                margin-top:10px;
+                padding:8px;
+                background:rgba(0,0,0,0.3);
+                border-radius:6px;
+            ">Dán danh sách key để xem trước...</div>
+            <div style="display:flex;gap:10px;margin-top:15px;">
+                <button onclick="executeImportProxyKeys('${config.provider}')" style="flex:1;padding:12px;background:#10b981;color:#fff;border:none;border-radius:8px;cursor:pointer;">✅ Nhập key</button>
+                <button onclick="closeProxyImportModal('${config.provider}')" style="flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;">✕ Hủy</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    const textarea = getElement(config.importTextareaId);
+    if (textarea) {
+        textarea.addEventListener('input', () => updateProxyImportPreview(config.provider));
+        textarea.focus();
+    }
+}
+
+function updateProxyImportPreview(provider = 'ag') {
+    const config = getProxyBulkKeyConfig(provider);
+    const textarea = getElement(config.importTextareaId);
+    const preview = getElement(config.importPreviewId);
+    if (!textarea || !preview) return;
+
+    const rawText = textarea.value;
+    if (!rawText.trim()) {
+        preview.textContent = 'Dán danh sách key để xem trước...';
+        preview.style.color = '#9ca3af';
+        return;
+    }
+
+    const result = parseProxyKeysFromText(rawText, provider);
+    if (result.validKeys.length === 0) {
+        preview.innerHTML = `❌ Không tìm thấy key hợp lệ. ${config.invalidHint}`;
+        preview.style.color = '#ef4444';
+        return;
+    }
+
+    preview.innerHTML = [
+        `✅ Tìm thấy <strong style="color:#10b981">${result.validKeys.length}</strong> key hợp lệ`,
+        result.duplicates > 0 ? `⚠️ <strong style="color:#f59e0b">${result.duplicates}</strong> key trùng trong input` : '',
+        result.alreadyExists > 0 ? `📌 <strong style="color:#3b82f6">${result.alreadyExists}</strong> key đã có` : '',
+        result.invalid > 0 ? `❌ <strong style="color:#ef4444">${result.invalid}</strong> key không hợp lệ` : '',
+        `<br>Sẽ thêm: <strong style="color:#10b981">${result.newKeys.length}</strong> key mới`,
+    ].filter(Boolean).join(' | ');
+    preview.style.color = '#d1d5db';
+}
+
+function executeImportProxyKeys(provider = 'ag') {
+    const config = getProxyBulkKeyConfig(provider);
+    const textarea = getElement(config.importTextareaId);
+    const rawText = textarea?.value || '';
+    if (!rawText.trim()) {
+        showToast('Vui lòng dán danh sách key cần nhập.', 'warning');
+        return;
+    }
+
+    const result = parseProxyKeysFromText(rawText, provider);
+    if (result.newKeys.length === 0) {
+        if (result.alreadyExists > 0) {
+            showToast(`Tất cả ${result.alreadyExists} key đã có trong ${config.label}.`, 'info');
+        } else {
+            showToast(`Không có ${config.label} key hợp lệ để nhập.`, 'error');
+        }
+        return;
+    }
+
+    config.setKeys([...config.keys(), ...result.newKeys]);
+    config.render();
+    saveSettings();
+    if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
+    closeProxyImportModal(provider);
+
+    let message = `Đã nhập ${result.newKeys.length} ${config.label} key.`;
+    if (result.alreadyExists > 0) message += ` Bỏ qua ${result.alreadyExists} key đã có.`;
+    showToast(message, 'success');
+}
+
+function exportProxyKeys(provider = 'ag') {
+    const config = getProxyBulkKeyConfig(provider);
+    const keys = config.keys();
+    if (!keys.length) {
+        showToast(`${config.label} chưa có key để xuất.`, 'info');
+        return [];
+    }
+    closeProxyKeyModal(provider);
+
+    const modal = document.createElement('div');
+    modal.id = `${config.modalId}Export`;
+    modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 99999;
+    `;
+
+    modal.innerHTML = `
+        <div style="
+            background:#1a1a2e;
+            border:1px solid #6366f1;
+            border-radius:12px;
+            padding:20px;
+            width:680px;
+            max-width:92vw;
+            max-height:84vh;
+            display:flex;
+            flex-direction:column;
+        ">
+            <h3 style="color:#fff;margin:0 0 12px 0;">📋 Xuất ${config.label} keys (${keys.length} key)</h3>
+            <p style="color:#9ca3af;margin:0 0 10px 0;font-size:13px;">Mỗi dòng một key. Chỉ lưu ở nơi an toàn.</p>
+            <textarea id="${config.exportTextareaId}" readonly style="
+                width:100%;
+                height:300px;
+                background:#0a0a0f;
+                color:#10b981;
+                border:1px solid #333;
+                border-radius:8px;
+                padding:14px;
+                font-family:monospace;
+                font-size:13px;
+                resize:none;
+            ">${keys.join('\n')}</textarea>
+            <div style="display:flex;gap:10px;margin-top:15px;">
+                <button onclick="copyExportedProxyKeys('${config.provider}')" style="flex:1;padding:12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">📋 Sao chép tất cả</button>
+                <button onclick="closeProxyKeyModal('${config.provider}')" style="flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;">✕ Đóng</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+    setTimeout(() => getElement(config.exportTextareaId)?.select(), 100);
+    return keys;
+}
+
+function copyExportedProxyKeys(provider = 'ag') {
+    const config = getProxyBulkKeyConfig(provider);
+    const textarea = getElement(config.exportTextareaId);
+    if (!textarea) return;
+    textarea.select();
+    document.execCommand('copy');
+    showToast(`Đã sao chép ${config.keys().length} ${config.label} key.`, 'success');
+}
+
+function closeProxyKeyModal(provider = 'ag') {
+    const config = getProxyBulkKeyConfig(provider);
+    const modal = getElement(`${config.modalId}Export`);
+    if (modal) modal.remove();
+}
+
+function closeProxyImportModal(provider = 'ag') {
+    const config = getProxyBulkKeyConfig(provider);
+    const modal = getElement(`${config.modalId}Import`);
+    if (modal) modal.remove();
+}
+
 function updateProxyConfig() {
     proxyBaseUrl = String(getElement('proxyBaseUrlInput')?.value || '').trim();
     saveSettings();

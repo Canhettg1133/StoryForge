@@ -72,6 +72,11 @@
                     </div>
                 </div>
 
+                <div class="active-provider-alert-bar" id="activeProviderAlertBar" style="display: none;">
+                    <span class="icon">⚡</span>
+                    <span id="activeProviderAlertText">Đang sử dụng: Gemini Direct</span>
+                </div>
+
                 <div class="settings-accordion-list">
                     <button type="button" class="settings-accordion" data-config-toggle="gemini"
                         onclick="toggleConfigGroup('gemini')">
@@ -348,6 +353,8 @@
                             <input type="password" id="newProxyKeyInput" placeholder="sk-..." style="flex:1;"
                                 onkeypress="if(event.key==='Enter')addProxyKey()">
                             <button class="btn btn-primary btn-small" onclick="addProxyKey()">➕ Thêm</button>
+                            <button class="btn btn-success btn-small" onclick="openImportProxyKeysModal('ag')" title="Nhập nhiều Gemini Proxy AG keys">📥 Nhập nhiều</button>
+                            <button class="btn btn-info btn-small" onclick="exportProxyKeys('ag')" title="Xuất Gemini Proxy AG keys">📋 Xuất</button>
                         </div>
                         <small class="hint">Key dùng để xoay tua. Số luồng song song không bị khóa theo số key.</small>
                     </div>
@@ -456,6 +463,8 @@
                                 <input type="password" id="newCustomProxyKeyInput" placeholder="sk-... hoặc key của proxy"
                                     onkeypress="if(event.key==='Enter')addCustomProxyKey()">
                                 <button class="btn btn-primary btn-small" onclick="addCustomProxyKey()">➕ Thêm</button>
+                                <button class="btn btn-success btn-small" onclick="openImportProxyKeysModal('custom')" title="Nhập nhiều Custom Proxy keys">📥 Nhập nhiều</button>
+                                <button class="btn btn-info btn-small" onclick="exportProxyKeys('custom')" title="Xuất Custom Proxy keys">📋 Xuất</button>
                             </div>
                             <small class="hint">Key này dùng riêng cho Custom Proxy và lưu cùng Settings chính.</small>
                         </div>

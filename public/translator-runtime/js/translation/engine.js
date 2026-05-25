@@ -73,6 +73,33 @@ function resolveEffectiveTranslationParallel(options = {}) {
     return requestedParallel;
 }
 
+function getProxyDispatchSlot(chunkIndex) {
+    const rpmSlice = typeof normalizeTranslatorRpm === 'function'
+        ? normalizeTranslatorRpm(rpmPerKey)
+        : Math.max(1, Number(rpmPerKey) || 1);
+    const safeIndex = Number.isFinite(Number(chunkIndex)) ? Math.max(0, Math.trunc(Number(chunkIndex))) : 0;
+    return safeIndex % Math.max(1, rpmSlice);
+}
+
+function orderProxyBatchIndicesForDispatch(indices) {
+    if (!useProxy || !Array.isArray(indices) || indices.length <= 1) return indices || [];
+
+    const keyCount = typeof getProxyKeyCount === 'function' ? getProxyKeyCount() : 0;
+    if (keyCount <= 1 || typeof getProxyPreferredKeyIndexForChunk !== 'function') {
+        return indices;
+    }
+
+    return [...indices].sort((a, b) => {
+        const slotDelta = getProxyDispatchSlot(a) - getProxyDispatchSlot(b);
+        if (slotDelta !== 0) return slotDelta;
+
+        const keyDelta = getProxyPreferredKeyIndexForChunk(a, keyCount) - getProxyPreferredKeyIndexForChunk(b, keyCount);
+        if (keyDelta !== 0) return keyDelta;
+
+        return a - b;
+    });
+}
+
 async function settleChunkPromisesIndividually(promises, onSettled) {
     await Promise.all(promises.map((promise, index) => {
         if (promise && typeof promise.then === 'function') {
@@ -280,7 +307,7 @@ function resolveRuntimeParallel(parallelCount) {
         });
         return {
             effectiveParallel,
-            staggerDelayMs: effectiveParallel > 1 ? 300 : 0,
+            staggerDelayMs: 0,
         };
     }
 
@@ -290,7 +317,7 @@ function resolveRuntimeParallel(parallelCount) {
             useOllamaMode: false,
             useProxyMode: false,
         }),
-        staggerDelayMs: 500,
+        staggerDelayMs: 0,
     };
 }
 
@@ -358,7 +385,11 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             }
         });
 
-        const promises = batch.map((chunk, batchOffset) => (async () => {
+        const dispatchBatch = orderProxyBatchIndicesForDispatch(batch.map((chunk) => chunk.index))
+            .map((chunkIndex) => batch.find((chunk) => chunk.index === chunkIndex))
+            .filter(Boolean);
+
+        const promises = dispatchBatch.map((chunk, batchOffset) => (async () => {
             await sleep(batchOffset * staggerDelayMs);
             if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
             const promptedChunk = buildPromptedChunk(customPrompt, chunk.text, sourceLang);
@@ -380,7 +411,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         };
 
         await settleChunkPromisesIndividually(promises, (result, idx) => {
-            const chunk = batch[idx];
+            const chunk = dispatchBatch[idx];
             if (result.status === 'fulfilled') {
                 translatedChunks[chunk.index] = result.value;
                 completedChunks += 1;
@@ -755,7 +786,7 @@ async function startTranslation() {
                 useOllamaMode: false,
                 useProxyMode: true,
             });
-            staggerDelayMs = effectiveParallel > 1 ? 300 : 0; // Stagger nhẹ để tránh burst
+            staggerDelayMs = 0;
             console.log(`[Proxy] Using parallel=${effectiveParallel}, stagger=${staggerDelayMs}ms`);
         } else {
             effectiveParallel = resolveEffectiveTranslationParallel({
@@ -763,7 +794,7 @@ async function startTranslation() {
                 useOllamaMode: false,
                 useProxyMode: false,
             });
-            staggerDelayMs = 500;
+            staggerDelayMs = 0;
         }
 
         let nextChunkIndex = 0;
@@ -776,10 +807,9 @@ async function startTranslation() {
                 : { capacity: effectiveParallel };
             if (cancelRequested || rpmPlan.capacity <= 0) break;
 
-            const batch = [];
             const batchIndices = [];
 
-            while (batch.length < rpmPlan.capacity && nextChunkIndex < chunks.length) {
+            while (batchIndices.length < rpmPlan.capacity && nextChunkIndex < chunks.length) {
                 const chunkIndex = nextChunkIndex;
                 nextChunkIndex += 1;
 
@@ -793,22 +823,22 @@ async function startTranslation() {
                     trackChunkStart(chunkIndex);
                 }
 
-                batch.push(
-                    (async () => {
-                        await sleep(batch.length * staggerDelayMs);
-                        if (cancelRequested) {
-                            throw new Error('TRANSLATION_CANCELLED');
-                        }
-                        const promptedChunk = buildPromptedChunk(customPrompt, chunks[chunkIndex], sourceLang);
-                        return translateChunkWithRetry(promptedChunk, chunkIndex);
-                    })()
-                );
                 batchIndices.push(chunkIndex);
             }
 
-            if (batch.length === 0) {
+            if (batchIndices.length === 0) {
                 continue;
             }
+
+            const dispatchIndices = orderProxyBatchIndicesForDispatch(batchIndices);
+            const batch = dispatchIndices.map((chunkIndex, batchOffset) => (async () => {
+                await sleep(batchOffset * staggerDelayMs);
+                if (cancelRequested) {
+                    throw new Error('TRANSLATION_CANCELLED');
+                }
+                const promptedChunk = buildPromptedChunk(customPrompt, chunks[chunkIndex], sourceLang);
+                return translateChunkWithRetry(promptedChunk, chunkIndex);
+            })());
 
             const refreshTextProgress = () => {
                 const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
@@ -825,7 +855,7 @@ async function startTranslation() {
             };
 
             await settleChunkPromisesIndividually(batch, (result, idx) => {
-                const chunkIndex = batchIndices[idx];
+                const chunkIndex = dispatchIndices[idx];
                 if (result.status === 'fulfilled') {
                     translatedChunks[chunkIndex] = result.value;
                     completedChunks++;
@@ -947,9 +977,15 @@ async function startTranslation() {
                                 if (typeof waitForTranslatorProviderRpmSlot === 'function') {
                                     await waitForTranslatorProviderRpmSlot(proxyProvider);
                                 }
-                                const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(idx) : proxyApiKey;
-                                if (typeof recordTranslatorRpmRequest === 'function' && typeof getProxyKeyIndex === 'function') {
-                                    recordTranslatorRpmRequest(proxyProvider, getProxyKeyIndex(proxyKey, proxyProvider));
+                                const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(idx) : proxyApiKey;
+                                const proxyKeyIndex = typeof getProxyKeyIndex === 'function'
+                                    ? getProxyKeyIndex(proxyKey, proxyProvider)
+                                    : -1;
+                                if (typeof trackChunkProxyKey === 'function') {
+                                    trackChunkProxyKey(idx, proxyKeyIndex);
+                                }
+                                if (typeof recordTranslatorRpmRequest === 'function') {
+                                    recordTranslatorRpmRequest(proxyProvider, proxyKeyIndex);
                                 }
                                 result = await translateChunkViaProxy(promptToUse, highTemp, proxyKey);
                             } else {

@@ -3067,3 +3067,103 @@ select option {
         max-height: 90vh;
     }
 }
+
+/* ============================================
+   TRANSLATOR SETTINGS UPGRADES
+   ============================================ */
+
+/* Dynamic Active Provider Alert Bar */
+.active-provider-alert-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px dashed rgba(99, 102, 241, 0.35);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-lg);
+    color: var(--text-primary);
+    font-size: 0.92rem;
+    animation: fadeInSlideDown 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.active-provider-alert-bar .icon {
+    font-size: 1.1rem;
+    color: var(--warning);
+    animation: alertPulse 2s infinite ease-in-out;
+}
+
+.active-provider-alert-bar strong {
+    color: #6ee7b7;
+    font-weight: 600;
+}
+
+.active-provider-alert-bar span {
+    color: var(--text-secondary);
+}
+
+@keyframes fadeInSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes alertPulse {
+    0%, 100% {
+        opacity: 0.8;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.15);
+    }
+}
+
+/* Smooth transitions for settings subpanels */
+.settings-subpanel {
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.settings-subpanel.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Enhanced active state for accordion status */
+.settings-accordion-status.is-active::before {
+    content: '✓ ';
+    font-weight: 800;
+    margin-right: 2px;
+}
+
+/* Seamless connection between accordion button and its open panel */
+.settings-accordion-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.settings-accordion.is-open {
+    border-bottom-left-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    border-bottom-color: transparent !important;
+    margin-bottom: 0 !important;
+    background: rgba(99, 102, 241, 0.16) !important; /* brighter highlight when open */
+}
+
+.settings-accordion-list .settings-subpanel {
+    margin-top: calc(var(--spacing-sm) * -1) !important; /* pull it up to merge with the button */
+    border-top-left-radius: 0 !important;
+    border-top-right-radius: 0 !important;
+    border-top: 1px dashed rgba(99, 102, 241, 0.4) !important; /* subtle dash border divider instead of solid */
+    background: rgba(99, 102, 241, 0.04) !important; /* subtle highlighted background for active config panel */
+    margin-bottom: var(--spacing-md) !important;
+    box-shadow: none !important; /* no shadow inside the list container */
+}

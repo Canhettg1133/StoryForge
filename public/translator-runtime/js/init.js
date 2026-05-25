@@ -54,6 +54,13 @@ if (typeof selectProxyModel === 'function') window.selectProxyModel = selectProx
 if (typeof updateProxyConfig === 'function') window.updateProxyConfig = updateProxyConfig;
 if (typeof addProxyKey === 'function') window.addProxyKey = addProxyKey;
 if (typeof removeProxyKey === 'function') window.removeProxyKey = removeProxyKey;
+if (typeof openImportProxyKeysModal === 'function') window.openImportProxyKeysModal = openImportProxyKeysModal;
+if (typeof executeImportProxyKeys === 'function') window.executeImportProxyKeys = executeImportProxyKeys;
+if (typeof updateProxyImportPreview === 'function') window.updateProxyImportPreview = updateProxyImportPreview;
+if (typeof exportProxyKeys === 'function') window.exportProxyKeys = exportProxyKeys;
+if (typeof copyExportedProxyKeys === 'function') window.copyExportedProxyKeys = copyExportedProxyKeys;
+if (typeof closeProxyKeyModal === 'function') window.closeProxyKeyModal = closeProxyKeyModal;
+if (typeof closeProxyImportModal === 'function') window.closeProxyImportModal = closeProxyImportModal;
 if (typeof toggleCustomProxyMode === 'function') window.toggleCustomProxyMode = toggleCustomProxyMode;
 if (typeof updateCustomProxyConfig === 'function') window.updateCustomProxyConfig = updateCustomProxyConfig;
 if (typeof addCustomProxyKey === 'function') window.addCustomProxyKey = addCustomProxyKey;

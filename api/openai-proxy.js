@@ -5,7 +5,8 @@ import {
   isRelayAllowedTarget,
 } from '../src/services/ai/openAIProxyCore.js';
 
-const ALLOWED_ACTIONS = new Set(['models', 'chat']);
+const ALLOWED_ACTIONS = new Set(['models', 'chat', 'chat_stream_batch']);
+const MAX_CHAT_STREAM_BATCH_SIZE = 50;
 
 export const config = {
   maxDuration: 60,
@@ -60,6 +61,44 @@ function getForwardAuth(req) {
   return String(req.headers?.authorization || '').trim();
 }
 
+async function readUpstreamResponseBody(upstream) {
+  const contentType = upstream.headers.get('content-type') || '';
+  const text = await upstream.text().catch(() => '');
+  if (contentType.includes('application/json') && text) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  }
+  return text;
+}
+
+async function fetchChatPayload(endpoint, headers, payload) {
+  try {
+    const upstream = await fetch(endpoint, {
+      method: 'POST',
+      redirect: 'manual',
+      headers,
+      body: JSON.stringify(payload || {}),
+    });
+    return {
+      ok: upstream.ok,
+      status: upstream.status,
+      body: await readUpstreamResponseBody(upstream),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 502,
+      body: {
+        error: error?.message || 'Relay OpenAI proxy thất bại.',
+        code: 'OPENAI_PROXY_UPSTREAM_FAILED',
+      },
+    };
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
@@ -104,6 +143,29 @@ export default async function handler(req, res) {
     'Content-Type': 'application/json',
     ...(authorization ? { Authorization: authorization } : {}),
   };
+
+  if (action === 'chat_stream_batch') {
+    const payloads = Array.isArray(body?.payloads) ? body.payloads : [];
+    if (payloads.length === 0 || payloads.length > MAX_CHAT_STREAM_BATCH_SIZE) {
+      sendJson(res, 400, {
+        error: `Chat stream batch phải có từ 1 đến ${MAX_CHAT_STREAM_BATCH_SIZE} payload.`,
+        code: 'OPENAI_PROXY_BAD_BATCH',
+      });
+      return;
+    }
+
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+    await Promise.all(payloads.map(async (payload, index) => {
+      const result = await fetchChatPayload(endpoint, headers, payload);
+      res.write(`${JSON.stringify({ index, ...result })}\n`);
+    }));
+    res.end();
+    return;
+  }
 
   try {
     const upstream = await fetch(endpoint, action === 'models'

@@ -166,13 +166,53 @@ function setAccordionSummary(elementId, summary) {
     });
 }
 
+function normalizeSettingsAccordionLayout() {
+    const list = document.querySelector('.settings-accordion-list');
+    if (!list || list.dataset.normalized === 'true') return;
+
+    SETTINGS_GROUPS.forEach((group) => {
+        const toggleButton = list.querySelector(`[data-config-toggle="${group}"]`);
+        if (!toggleButton) return;
+
+        const panels = Array.from(document.querySelectorAll(`[data-settings-group="${group}"]`));
+        const inlinePanels = panels.filter((panel) => panel.parentElement === list);
+        const panelsToKeep = inlinePanels.length > 0 ? inlinePanels : panels;
+
+        if (!inlinePanels.length) {
+            [...panelsToKeep].reverse().forEach((panel) => {
+                toggleButton.insertAdjacentElement('afterend', panel);
+            });
+        }
+
+        panels.forEach((panel) => {
+            if (!panelsToKeep.includes(panel)) {
+                panel.remove();
+            }
+        });
+    });
+
+    list.dataset.normalized = 'true';
+}
+
 function getGroupPanels(group) {
+    normalizeSettingsAccordionLayout();
     return Array.from(document.querySelectorAll(`[data-settings-group="${group}"]`));
 }
 
 function setConfigGroupDisplay(group, isVisible) {
     getGroupPanels(group).forEach((panel) => {
-        panel.style.display = isVisible ? '' : 'none';
+        if (isVisible) {
+            panel.style.display = '';
+            // Force reflow for CSS transitions to work
+            panel.offsetHeight;
+            panel.classList.add('is-visible');
+        } else {
+            panel.classList.remove('is-visible');
+            if (panel._transitionTimer) clearTimeout(panel._transitionTimer);
+            panel._transitionTimer = setTimeout(() => {
+                panel.style.display = 'none';
+            }, 300); // matches the style.css transition duration
+        }
     });
 
     const toggleButton = document.querySelector(`[data-config-toggle="${group}"]`);
@@ -222,8 +262,20 @@ function updateWorkspaceToolbar() {
     const providerPill = document.getElementById('activeProviderPill');
     const configPill = document.getElementById('activeConfigPill');
 
-    if (providerPill) providerPill.textContent = getActiveProviderLabel();
-    if (configPill) configPill.textContent = getActiveConfigSummary();
+    const providerLabel = getActiveProviderLabel();
+    const configSummary = getActiveConfigSummary();
+
+    if (providerPill) providerPill.textContent = providerLabel;
+    if (configPill) configPill.textContent = configSummary;
+
+    // Cập nhật Dynamic Active Provider Alert Bar trong Cài đặt
+    const alertBar = document.getElementById('activeProviderAlertBar');
+    const alertText = document.getElementById('activeProviderAlertText');
+    if (alertBar && alertText) {
+        alertText.innerHTML = `Đang sử dụng: <strong>${providerLabel}</strong> &middot; <span>${configSummary}</span>`;
+        alertBar.style.display = 'flex';
+    }
+
     updateSettingsAccordions();
 }
 
@@ -253,8 +305,27 @@ function toggleConfigGroup(group, forceOpen) {
         ? forceOpen
         : !isConfigGroupOpen(group);
 
+    // Exclusive Accordion Mode: Đóng tất cả các nhóm khác khi mở một nhóm mới
+    if (shouldOpen) {
+        SETTINGS_GROUPS.forEach((otherGroup) => {
+            if (otherGroup !== group && isConfigGroupOpen(otherGroup)) {
+                setConfigGroupDisplay(otherGroup, false);
+            }
+        });
+    }
+
     setConfigGroupDisplay(group, shouldOpen);
     updateSettingsAccordions();
+
+    // Tự động cuộn mượt nhóm cài đặt đang mở vào tầm mắt của người dùng
+    if (shouldOpen) {
+        setTimeout(() => {
+            const toggleButton = document.querySelector(`[data-config-toggle="${group}"]`);
+            if (toggleButton && typeof toggleButton.scrollIntoView === 'function') {
+                toggleButton.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }, 150); // trễ nhẹ để các accordion khác kịp thu lại
+    }
 }
 
 function toggleHistoryPanel(forceOpen) {

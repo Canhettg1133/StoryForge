@@ -6,12 +6,231 @@
 // ============================================
 // PROXY API - OpenAI Compatible (BeiJiXingXing, OpenRouter...)
 // ============================================
+const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 50;
+let proxyRelayChatBatchQueue = [];
+let proxyRelayChatBatchTimer = null;
+
+function createProxyAbortError() {
+    const error = new Error('Request aborted');
+    error.name = 'AbortError';
+    return error;
+}
+
+function getProxyRelayBatchKey(activeBaseUrl, activeKey, proxyTarget) {
+    return [
+        activeBaseUrl,
+        activeKey,
+        proxyTarget?.profile?.baseUrl || '',
+        proxyTarget?.path || '',
+    ].join('|');
+}
+
+function createProxyRelayBatchItemResponse(entry = {}) {
+    const status = Number(entry.status) || 502;
+    const body = entry.body ?? {};
+    return {
+        ok: Boolean(entry.ok),
+        status,
+        json: async () => {
+            if (typeof body !== 'string') return body;
+            try {
+                return body ? JSON.parse(body) : {};
+            } catch {
+                return { error: body || `HTTP ${status}` };
+            }
+        },
+    };
+}
+
+function cleanupProxyRelayBatchItem(item) {
+    if (item?.signal && item.abortHandler) {
+        item.signal.removeEventListener('abort', item.abortHandler);
+    }
+}
+
+function enqueueProxyRelayChatRequest(activeBaseUrl, activeKey, proxyTarget, payload, signal) {
+    return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(createProxyAbortError());
+            return;
+        }
+
+        const item = {
+            activeBaseUrl,
+            activeKey,
+            proxyTarget,
+            payload,
+            signal,
+            resolve,
+            reject,
+            aborted: false,
+            abortHandler: null,
+        };
+        item.abortHandler = () => {
+            item.aborted = true;
+            cleanupProxyRelayBatchItem(item);
+            reject(createProxyAbortError());
+        };
+        if (signal) {
+            signal.addEventListener('abort', item.abortHandler, { once: true });
+        }
+
+        proxyRelayChatBatchQueue.push(item);
+        if (!proxyRelayChatBatchTimer) {
+            proxyRelayChatBatchTimer = setTimeout(flushProxyRelayChatBatchQueue, 0);
+        }
+    });
+}
+
+function flushProxyRelayChatBatchQueue() {
+    const queued = proxyRelayChatBatchQueue;
+    proxyRelayChatBatchQueue = [];
+    proxyRelayChatBatchTimer = null;
+
+    const groups = new Map();
+    queued.forEach((item) => {
+        if (item.aborted || item.signal?.aborted) {
+            cleanupProxyRelayBatchItem(item);
+            item.reject(createProxyAbortError());
+            return;
+        }
+        const groupKey = getProxyRelayBatchKey(item.activeBaseUrl, item.activeKey, item.proxyTarget);
+        if (!groups.has(groupKey)) groups.set(groupKey, []);
+        groups.get(groupKey).push(item);
+    });
+
+    groups.forEach((items) => {
+        for (let index = 0; index < items.length; index += PROXY_RELAY_CHAT_BATCH_MAX_SIZE) {
+            sendProxyRelayChatStreamBatchGroup(items.slice(index, index + PROXY_RELAY_CHAT_BATCH_MAX_SIZE));
+        }
+    });
+}
+
+function resolveMissingProxyRelayItems(items, resolved, reason = 'Relay stream thiếu phản hồi cho request này.') {
+    items.forEach((item, index) => {
+        if (resolved.has(index)) return;
+        item.resolve(createProxyRelayBatchItemResponse({
+            ok: false,
+            status: 502,
+            body: { error: reason },
+        }));
+    });
+}
+
+function handleProxyRelayStreamLine(line, items, resolved) {
+    if (!line.trim()) return;
+    let entry;
+    try {
+        entry = JSON.parse(line);
+    } catch {
+        return;
+    }
+    const index = Number(entry?.index);
+    if (!Number.isInteger(index) || index < 0 || index >= items.length || resolved.has(index)) return;
+    resolved.add(index);
+    items[index].resolve(createProxyRelayBatchItemResponse(entry));
+}
+
+async function resolveProxyRelayStreamResponse(response, items) {
+    const resolved = new Set();
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        items.forEach((item) => item.resolve({
+            ok: false,
+            status: response.status,
+            json: async () => errorData,
+        }));
+        return;
+    }
+
+    if (!response.body || typeof response.body.getReader !== 'function') {
+        const data = await response.json().catch(() => ({}));
+        const responses = Array.isArray(data?.responses) ? data.responses : [];
+        items.forEach((item, index) => {
+            resolved.add(index);
+            item.resolve(createProxyRelayBatchItemResponse(responses[index] || {
+                ok: false,
+                status: 502,
+                body: { error: 'Relay batch không có stream phản hồi.' },
+            }));
+        });
+        return;
+    }
+
+    const decoder = new TextDecoder();
+    const reader = response.body.getReader();
+    let buffer = '';
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        lines.forEach((line) => handleProxyRelayStreamLine(line, items, resolved));
+    }
+    buffer += decoder.decode();
+    handleProxyRelayStreamLine(buffer, items, resolved);
+    resolveMissingProxyRelayItems(items, resolved);
+}
+
+async function sendProxyRelayChatStreamBatchGroup(items) {
+    const activeItems = items.filter((item) => !item.aborted && !item.signal?.aborted);
+    if (!activeItems.length) return;
+
+    const first = activeItems[0];
+    const groupController = new AbortController();
+    const abortGroup = () => groupController.abort('request-aborted');
+    activeItems.forEach((item) => item.signal?.addEventListener('abort', abortGroup, { once: true }));
+
+    const sharedBody = {
+        baseUrl: first.proxyTarget.profile.baseUrl,
+        chatCompletionsPath: first.proxyTarget.path,
+    };
+    const requestBody = activeItems.length === 1
+        ? {
+            action: 'chat',
+            ...sharedBody,
+            payload: activeItems[0].payload,
+        }
+        : {
+            action: 'chat_stream_batch',
+            ...sharedBody,
+            payloads: activeItems.map((item) => item.payload),
+        };
+
+    try {
+        const response = await fetch(first.activeBaseUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${first.activeKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody),
+            signal: groupController.signal,
+        });
+
+        if (activeItems.length === 1) {
+            activeItems[0].resolve(response);
+            return;
+        }
+
+        await resolveProxyRelayStreamResponse(response, activeItems);
+    } catch (error) {
+        activeItems.forEach((item) => item.reject(error));
+    } finally {
+        activeItems.forEach((item) => {
+            item.signal?.removeEventListener('abort', abortGroup);
+            cleanupProxyRelayBatchItem(item);
+        });
+    }
+}
+
 async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = null) {
     const activeKey = apiKeyOverride || (typeof getActiveProxyKeys === 'function' ? getActiveProxyKeys()[0] : proxyApiKey);
-    const customTarget = typeof isCustomProxyProviderActive === 'function' && isCustomProxyProviderActive() && typeof getCustomProxyRequestTarget === 'function'
-        ? getCustomProxyRequestTarget('chat')
+    const proxyTarget = typeof getActiveProxyRequestTarget === 'function'
+        ? getActiveProxyRequestTarget('chat')
         : null;
-    const activeBaseUrl = customTarget?.url || (typeof getActiveProxyBaseUrl === 'function' ? getActiveProxyBaseUrl() : proxyBaseUrl);
+    const activeBaseUrl = proxyTarget?.url || (typeof getActiveProxyBaseUrl === 'function' ? getActiveProxyBaseUrl() : proxyBaseUrl);
     const activeModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;
     const activeProviderLabel = typeof getActiveProxyLabel === 'function' ? getActiveProxyLabel() : 'Proxy';
     if (!activeKey) throw createTranslatorError('MISSING_PROXY_KEY');
@@ -40,23 +259,25 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
             temperature: temperature,
             max_tokens: 16384
         };
-        const requestBody = customTarget?.mode === 'relay'
+        const requestBody = proxyTarget?.mode === 'relay'
             ? {
                 action: 'chat',
-                baseUrl: customTarget.profile.baseUrl,
-                chatCompletionsPath: customTarget.path,
+                baseUrl: proxyTarget.profile.baseUrl,
+                chatCompletionsPath: proxyTarget.path,
                 payload,
             }
             : payload;
-        response = await fetch(activeBaseUrl, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${activeKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestBody),
-            signal: controller.signal
-        });
+        response = proxyTarget?.mode === 'relay'
+            ? await enqueueProxyRelayChatRequest(activeBaseUrl, activeKey, proxyTarget, payload, controller.signal)
+            : await fetch(activeBaseUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${activeKey}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody),
+                signal: controller.signal
+            });
     } catch (fetchError) {
         if (fetchError.name === 'AbortError') {
             if (cancelRequested) {
@@ -146,7 +367,7 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
     // ===== AUTO-ROUTE: Nếu bật proxy, gọi proxy thay vì Gemini Direct =====
     if (useProxy) {
         // Safety net: should not normally reach here (retry.js handles proxy routing)
-        const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(0) : proxyApiKey;
+        const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(0) : proxyApiKey;
         return await translateChunkViaProxy(text, temperature, proxyKey);
     }
 

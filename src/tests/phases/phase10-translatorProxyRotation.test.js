@@ -24,6 +24,8 @@ function loadProxyRuntimeContext(fetchImpl) {
   const context = {
     AbortController,
     Date,
+    TextDecoder,
+    URL,
     setTimeout,
     clearTimeout,
     console: { log: () => {}, warn: () => {}, error: () => {} },
@@ -93,7 +95,7 @@ describe('phase10 translator proxy key rotation', () => {
       const authorization = String(options.headers?.Authorization || '');
       usedAuthHeaders.push(authorization);
 
-      if (authorization === 'Bearer KEY7') {
+      if (authorization === 'Bearer KEY1') {
         return {
           ok: false,
           status: 403,
@@ -121,7 +123,7 @@ describe('phase10 translator proxy key rotation', () => {
     );
 
     expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
-    expect(usedAuthHeaders).toEqual(['Bearer KEY7', 'Bearer KEY8']);
+    expect(usedAuthHeaders).toEqual(['Bearer KEY1', 'Bearer KEY2']);
   });
 
   it('does not cap proxy parallel requests to the number of proxy keys', () => {
@@ -170,7 +172,7 @@ describe('phase10 translator proxy key rotation', () => {
     })).toBe(1);
   });
 
-  it('does not reuse a proxy key while every key is still cooling down', () => {
+  it('waits and force-unlocks a proxy key instead of failing while every key is cooling down', async () => {
     const context = loadProxyRuntimeContext(async () => {
       throw new Error('fetch is not used by key selection');
     });
@@ -183,7 +185,120 @@ describe('phase10 translator proxy key rotation', () => {
       recordProxyKeyError('KEY_B', 'RATE_LIMIT_429', 60000);
     `, context);
 
-    expect(() => context.getProxyKeyForChunk(0)).toThrow(/cooldown|tạm dừng/i);
+    await expect(context.getProxyKeyForChunk(0)).resolves.toBe('KEY_A');
+  });
+
+  it('routes AG Proxy remote HTTPS chat requests through the same OpenAI relay transport as Custom Proxy', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'ag_proxy';
+      proxyBaseUrl = 'https://ag.beijixingxing.com/v1/chat/completions';
+      proxyModel = 'ag-gemini-model';
+      proxyApiKeys = ['AG_KEY'];
+      proxyApiKey = 'AG_KEY';
+    `, context);
+
+    await context.translateChunkViaProxy(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0.7,
+      'AG_KEY'
+    );
+
+    expect(requests[0].url).toBe('/api/openai-proxy');
+    expect(requests[0].options.headers.Authorization).toBe('Bearer AG_KEY');
+    const body = JSON.parse(requests[0].options.body);
+    expect(body.action).toBe('chat');
+    expect(body.baseUrl).toBe('https://ag.beijixingxing.com');
+    expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
+    expect(body.payload.model).toBe('ag-gemini-model');
+  });
+
+  it('streams same-key AG relay chunks through one connection per key while resolving each chunk individually', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      const body = JSON.parse(options.body);
+      requests.push({ url: String(url), options, body });
+      if (body.action === 'chat_stream_batch') {
+        const lines = body.payloads.map((_, index) => JSON.stringify({
+          index,
+          ok: true,
+          status: 200,
+          body: {
+            choices: [{
+              message: {
+                content: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+              },
+            }],
+          },
+        })).join('\n') + '\n';
+        return new Response(lines, {
+          status: 200,
+          headers: { 'content-type': 'application/x-ndjson' },
+        });
+      }
+      return new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+          },
+        }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'ag_proxy';
+      proxyBaseUrl = 'https://ag.beijixingxing.com/v1/chat/completions';
+      proxyModel = 'ag-gemini-model';
+      proxyApiKeys = ['KEY_A', 'KEY_B'];
+      proxyApiKey = 'KEY_A';
+    `, context);
+
+    await Promise.all([
+      ...Array.from({ length: 5 }, () => context.translateChunkViaProxy(
+        'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+        0.7,
+        'KEY_A'
+      )),
+      ...Array.from({ length: 5 }, () => context.translateChunkViaProxy(
+        'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+        0.7,
+        'KEY_B'
+      )),
+    ]);
+
+    expect(requests).toHaveLength(2);
+    expect(requests.map((request) => request.options.headers.Authorization).sort()).toEqual([
+      'Bearer KEY_A',
+      'Bearer KEY_B',
+    ]);
+    requests.forEach((request) => {
+      expect(request.url).toBe('/api/openai-proxy');
+      expect(request.body.action).toBe('chat_stream_batch');
+      expect(request.body.baseUrl).toBe('https://ag.beijixingxing.com');
+      expect(request.body.chatCompletionsPath).toBe('/v1/chat/completions');
+      expect(request.body.payloads).toHaveLength(5);
+      expect(request.body.payloads.every((payload) => payload.model === 'ag-gemini-model')).toBe(true);
+    });
   });
 
   it('fetches Custom Proxy Gemini models from the openai_proxy key pool without changing AG config', async () => {

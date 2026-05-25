@@ -144,6 +144,14 @@ function trackChunkStart(chunkIndex) {
     renderChunkRow(chunkIndex);
 }
 
+function trackChunkProxyKey(chunkIndex, keyIndex) {
+    if (!chunkTrackingData[chunkIndex]) return;
+    const normalizedKeyIndex = Number.isFinite(Number(keyIndex)) ? Number(keyIndex) : -1;
+    if (normalizedKeyIndex < 0) return;
+    chunkTrackingData[chunkIndex].keyLabel = String.fromCharCode(65 + normalizedKeyIndex);
+    renderChunkRow(chunkIndex);
+}
+
 function trackChunkSuccess(chunkIndex, outputText, model) {
     if (!chunkTrackingData[chunkIndex]) return;
     const data = chunkTrackingData[chunkIndex];
@@ -152,12 +160,6 @@ function trackChunkSuccess(chunkIndex, outputText, model) {
     data.ratio = data.inputLen > 0 ? Math.round((data.outputLen / data.inputLen) * 100) : 0;
     data.model = model || '';
     data.timeMs = data.startTime > 0 ? Date.now() - data.startTime : 0;
-
-    // Track which proxy key was used
-    if (useProxy && typeof getProxyKeyForChunk === 'function' && typeof getProxyKeyCount === 'function' && getProxyKeyCount() > 1) {
-        const keyIndex = chunkIndex % getProxyKeyCount();
-        data.keyLabel = String.fromCharCode(65 + keyIndex); // A, B, C...
-    }
 
     // Determine status based on ratio
     if (data.ratio < 60) {
@@ -217,7 +219,7 @@ async function retranslateChunk(chunkIndex) {
     try {
         let result;
         if (useProxy) {
-            const proxyKey = typeof getProxyKeyForChunk === 'function' ? getProxyKeyForChunk(chunkIndex) : proxyApiKey;
+            const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
             result = await translateChunkViaProxy(chunkText, 0.7, proxyKey);
         } else if (useOllama) {
             result = await translateWithOllama(chunkText, 0.7);
