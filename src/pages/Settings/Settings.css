@@ -222,6 +222,12 @@
   transition: all var(--transition-fast);
   border: 1px solid transparent;
 }
+.model-list button.model-item {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
 .model-item:hover { background: var(--color-bg-hover); }
 .model-item--active { border-color: var(--color-accent); background: var(--color-accent-muted); }
 .model-status { font-size: var(--text-sm); }

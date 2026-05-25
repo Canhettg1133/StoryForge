@@ -7,10 +7,6 @@
 // SETTINGS MANAGEMENT
 // ============================================
 const SETTINGS_GROUPS = ['gemini', 'proxy', 'custom-proxy', 'ollama', 'general', 'canon-pack', 'prompt'];
-const STORYFORGE_KEYS_STORAGE = 'sf-api-keys-v2';
-const STORYFORGE_SETTINGS_STORAGE = 'sf-ai-settings';
-const STORYFORGE_PROVIDER_STORAGE = 'sf-preferred-provider';
-const STORYFORGE_PROXY_MODEL_STORAGE = 'sf-proxy-model';
 
 function getDefaultProxyModel() {
     if (typeof DEFAULT_PROXY_MODEL !== 'undefined' && DEFAULT_PROXY_MODEL) return DEFAULT_PROXY_MODEL;
@@ -22,158 +18,6 @@ function ensureProxyModelDefault() {
     if (current) return current;
     proxyModel = getDefaultProxyModel();
     return proxyModel;
-}
-
-function readStoryForgeJson(key) {
-    try {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : null;
-    } catch (error) {
-        console.warn('[Translator] Failed to read StoryForge storage:', key, error);
-        return null;
-    }
-}
-
-function getStoryForgeKeys(provider) {
-    const pools = readStoryForgeJson(STORYFORGE_KEYS_STORAGE);
-    if (!pools || !Array.isArray(pools[provider])) return [];
-    return pools[provider]
-        .map((entry) => String(entry?.key || '').trim())
-        .filter(Boolean);
-}
-
-function getStoryForgeProxyKeys(profileId = '') {
-    if (profileId === 'custom-openai-proxy') {
-        return getStoryForgeKeys('openai_proxy');
-    }
-
-    return getStoryForgeKeys('gemini_proxy');
-}
-
-function normalizeStoryForgeProxyUrl(rawValue) {
-    const trimmed = String(rawValue || '').trim().replace(/\/+$/g, '');
-    if (!trimmed) return '';
-    const suffixes = [
-        '/v1/chat/completions',
-        '/chat/completions',
-        '/v1/models',
-        '/models',
-        '/v1',
-    ];
-    const lower = trimmed.toLowerCase();
-    const suffix = suffixes.find((item) => lower.endsWith(item));
-    const root = suffix ? trimmed.slice(0, trimmed.length - suffix.length).replace(/\/+$/g, '') : trimmed;
-    return `${root}/v1/chat/completions`;
-}
-
-function getStoryForgeOpenAIProxyProfile(appSettings) {
-    const proxySettings = appSettings?.openAIProxy || {};
-    return {
-        profileId: 'ag-gemini-proxy',
-        baseUrl: proxySettings.activeProfileId === 'ag-gemini-proxy'
-            ? (appSettings?.proxyUrl || proxyBaseUrl)
-            : proxyBaseUrl,
-        defaultModel: localStorage.getItem(STORYFORGE_PROXY_MODEL_STORAGE) || getDefaultProxyModel(),
-    };
-}
-
-function getStoryForgeCustomProxyProfile(appSettings) {
-    const proxySettings = appSettings?.openAIProxy || {};
-    const customProfile = proxySettings.customProfile || {};
-    const customModels = Array.isArray(customProfile.models)
-        ? customProfile.models.map((model) => String(model || '').trim()).filter(Boolean)
-        : [];
-
-    return {
-        ...(typeof DEFAULT_CUSTOM_PROXY_PROFILE !== 'undefined' ? DEFAULT_CUSTOM_PROXY_PROFILE : {}),
-        ...customProfile,
-        id: 'custom-openai-proxy',
-        baseUrl: customProfile.baseUrl || '',
-        defaultModel: customProfile.defaultModel || customModels[0] || '',
-        models: customModels,
-        chatCompletionsPath: customProfile.chatCompletionsPath || '/v1/chat/completions',
-        modelsPath: customProfile.modelsPath || '/v1/models',
-        transport: customProfile.transport || 'auto',
-    };
-}
-
-function importStoryForgeFallbackSettings() {
-    const appSettings = readStoryForgeJson(STORYFORGE_SETTINGS_STORAGE) || {};
-    const preferredProvider = String(localStorage.getItem(STORYFORGE_PROVIDER_STORAGE) || '').trim();
-    const directKeys = getStoryForgeKeys('gemini_direct');
-    const agProfile = getStoryForgeOpenAIProxyProfile(appSettings);
-    const customProfile = getStoryForgeCustomProxyProfile(appSettings);
-    const agProxyKeys = getStoryForgeProxyKeys('ag-gemini-proxy');
-    const customProxyKeys = getStoryForgeProxyKeys('custom-openai-proxy');
-    const hadAgProxyConfig = proxyApiKeys.length > 0 || Boolean(proxyApiKey) || Boolean(proxyModel && proxyModel !== getDefaultProxyModel());
-    const hadCustomProxyConfig = customProxyApiKeys.length > 0 || Boolean(customProxyApiKey) || Boolean(customProxyProfile?.baseUrl || customProxyProfile?.defaultModel);
-    let imported = false;
-
-    if (!apiKeys.length && directKeys.length) {
-        apiKeys = directKeys;
-        imported = true;
-    }
-
-    if (!proxyApiKeys.length && agProxyKeys.length) {
-        proxyApiKeys = agProxyKeys;
-        proxyApiKey = agProxyKeys[0] || '';
-        imported = true;
-    }
-
-    if ((!proxyBaseUrl || proxyBaseUrl === 'https://ag.beijixingxing.com/v1/chat/completions') && agProfile.baseUrl) {
-        proxyBaseUrl = normalizeStoryForgeProxyUrl(agProfile.baseUrl);
-        imported = Boolean(proxyBaseUrl) || imported;
-    }
-
-    if (!hadAgProxyConfig) {
-        proxyModel = agProfile.defaultModel || ensureProxyModelDefault();
-        imported = true;
-    }
-
-    if (!hadCustomProxyConfig && (customProfile.baseUrl || customProfile.defaultModel || customProfile.models.length)) {
-        customProxyProfile = customProfile;
-        imported = true;
-    }
-
-    if (!customProxyApiKeys.length && customProxyKeys.length) {
-        customProxyApiKeys = customProxyKeys;
-        customProxyApiKey = customProxyKeys[0] || '';
-        imported = true;
-    }
-
-    const mainActiveProxyProfile = appSettings?.openAIProxy?.activeProfileId;
-    const shouldUseCustom = preferredProvider === 'openai_proxy'
-        && mainActiveProxyProfile === 'custom-openai-proxy'
-        && (customProxyKeys.length > 0 || customProfile.defaultModel || customProfile.baseUrl);
-    const shouldUseAg = preferredProvider === 'gemini_proxy' && agProxyKeys.length > 0;
-
-    if (shouldUseCustom) {
-        useProxy = true;
-        if (typeof setActiveTranslatorProvider === 'function') {
-            setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.CUSTOM_PROXY);
-        } else {
-            activeTranslatorProvider = 'custom_proxy';
-        }
-        imported = true;
-    } else if (shouldUseAg) {
-        useProxy = true;
-        if (typeof setActiveTranslatorProvider === 'function') {
-            setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.AG_PROXY);
-        } else {
-            activeTranslatorProvider = 'ag_proxy';
-        }
-        imported = true;
-    } else if (preferredProvider === 'gemini_direct') {
-        useProxy = false;
-        if (typeof setActiveTranslatorProvider === 'function') {
-            setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.GEMINI_DIRECT);
-        } else {
-            activeTranslatorProvider = 'gemini_direct';
-        }
-        imported = true;
-    }
-
-    return imported;
 }
 
 function getActiveProviderLabel() {
@@ -479,7 +323,6 @@ function loadSettings() {
         }
     }
 
-    importStoryForgeFallbackSettings();
     ensureProxyModelDefault();
 
     if (typeof updateProxyModeControls === 'function') {

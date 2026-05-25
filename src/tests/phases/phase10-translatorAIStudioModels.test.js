@@ -130,7 +130,8 @@ describe('phase10 translator AI Studio model discovery', () => {
     expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual([
       'gemini-2.5-pro',
     ]);
-    expect(JSON.parse(stored.get('sf-active-direct-models'))).toEqual([
+    expect(stored.has('sf-active-direct-models')).toBe(false);
+    expect(JSON.parse(stored.get('novelTranslatorActiveDirectModels'))).toEqual([
       expect.objectContaining({ id: 'gemini-2.5-pro', rpm: 15, rpd: 1500 }),
     ]);
   });
@@ -152,7 +153,8 @@ describe('phase10 translator AI Studio model discovery', () => {
     context.selectAIStudioFetchedModel('gemma-3-27b-it');
 
     expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual(['gemma-3-27b-it']);
-    expect(JSON.parse(stored.get('sf-active-direct-models'))).toEqual([
+    expect(stored.has('sf-active-direct-models')).toBe(false);
+    expect(JSON.parse(stored.get('novelTranslatorActiveDirectModels'))).toEqual([
       expect.objectContaining({ id: 'gemma-3-27b-it', rpm: 15, rpd: 1500 }),
     ]);
   });

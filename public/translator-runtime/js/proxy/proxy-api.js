@@ -321,28 +321,12 @@ function normalizeCustomProxyProfile(patch = {}) {
 }
 
 function persistCustomProxySharedSettings(activate = activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY) {
-    const settings = readProxyJsonStorage('sf-ai-settings') || {};
-    const profile = normalizeCustomProxyProfile();
-    const nextOpenAIProxy = {
-        ...(settings.openAIProxy || {}),
-        activeProfileId: activate ? CUSTOM_PROXY_PROFILE_ID : ((settings.openAIProxy || {}).activeProfileId || AG_PROXY_PROFILE_ID),
-        customProfile: {
-            ...profile,
-            models: Array.isArray(profile.models) ? profile.models : [],
-        },
-    };
-
-    writeProxyJsonStorage('sf-ai-settings', {
-        ...settings,
-        openAIProxy: nextOpenAIProxy,
-        proxyUrl: activate ? profile.baseUrl : (settings.proxyUrl || proxyBaseUrl),
-    });
-
-    const keyPools = readProxyJsonStorage('sf-api-keys-v2') || {};
-    writeProxyJsonStorage('sf-api-keys-v2', {
-        ...keyPools,
-        openai_proxy: customProxyApiKeys.map((key) => ({ key })),
-    });
+    normalizeCustomProxyProfile();
+    // Translator settings are intentionally isolated from the main StoryForge
+    // settings page. The translator may import StoryForge config as a one-way
+    // fallback in ui/settings.js, but it must never write old translator state
+    // back into sf-ai-settings or sf-api-keys-v2.
+    return false;
 }
 
 function renderCustomProxyPreviews() {

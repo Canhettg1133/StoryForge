@@ -42,6 +42,8 @@ const RELATIONSHIP_OP_TYPES = new Set([
   'INTIMACY_LEVEL_CHANGED',
 ]);
 
+const ACTIVE_COMMIT_STATUSES = new Set(['canonical', 'has_warnings']);
+
 const RELATION_TYPES = [
   { value: 'ally', label: 'Đồng minh', icon: Shield, color: 'var(--color-info)' },
   { value: 'enemy', label: 'Kẻ thù', icon: Sword, color: 'var(--color-danger)' },
@@ -171,6 +173,45 @@ function formatRelationshipEnum(value, group, fallback = 'Chưa rõ') {
   return RELATIONSHIP_ENUM_LABELS[group]?.[key] || text;
 }
 
+function formatRelationshipOpType(opType) {
+  if (opType === 'RELATIONSHIP_SECRET_CHANGED') return 'Đổi bí mật';
+  if (opType === 'INTIMACY_LEVEL_CHANGED') return 'Đổi thân mật';
+  if (opType === 'RELATIONSHIP_STATUS_CHANGED') return 'Đổi trạng thái';
+  return 'Thay đổi quan hệ';
+}
+
+function parseCandidateOp(value) {
+  if (!value) return null;
+  try {
+    return typeof value === 'string' ? JSON.parse(value) : value;
+  } catch {
+    return null;
+  }
+}
+
+function getSuggestionPairKey(suggestion) {
+  const op = parseCandidateOp(suggestion?.candidate_op);
+  const subjectId = op?.subject_id || suggestion?.target_id;
+  const targetId = op?.target_id;
+  if (!subjectId || !targetId) return '';
+  return pairKey(subjectId, targetId);
+}
+
+function getSuggestionSummary(suggestion) {
+  const op = parseCandidateOp(suggestion?.candidate_op);
+  return formatStateValue(
+    op?.summary || op?.payload?.status_summary || suggestion?.suggested_value || suggestion?.reasoning,
+    'Chưa có mô tả'
+  );
+}
+
+function getRelationshipEventSummary(event) {
+  return formatStateValue(
+    event?.summary || event?.payload?.status_summary || event?.evidence,
+    'Chưa có mô tả'
+  );
+}
+
 function getRelationTypeLabel(type) {
   return RELATION_TYPES.find((item) => item.value === type)?.label || formatStateValue(type, 'Khác');
 }
@@ -274,6 +315,7 @@ export default function RelationshipMap({ onClose }) {
   const [relationships, setRelationships] = useState([]);
   const [relationshipStates, setRelationshipStates] = useState([]);
   const [storyEvents, setStoryEvents] = useState([]);
+  const [chapterCommits, setChapterCommits] = useState([]);
   const [chapterMetas, setChapterMetas] = useState([]);
   const [activeTab, setActiveTab] = useState('focus');
   const [selectedPairKey, setSelectedPairKey] = useState('');
@@ -298,16 +340,24 @@ export default function RelationshipMap({ onClose }) {
 
   const loadRelationshipData = async () => {
     if (!currentProject) return;
-    const [rels, states, events] = await Promise.all([
+    const [rels, states, events, commits] = await Promise.all([
       db.relationships.where('project_id').equals(currentProject.id).toArray(),
       db.relationship_state_current.where('project_id').equals(currentProject.id).toArray(),
       db.story_events.where('project_id').equals(currentProject.id).toArray(),
+      db.chapter_commits.where('project_id').equals(currentProject.id).toArray(),
     ]);
+    const activeRevisionIds = new Set(
+      commits
+        .filter((commit) => commit.canonical_revision_id && ACTIVE_COMMIT_STATUSES.has(commit.status))
+        .map((commit) => commit.canonical_revision_id)
+    );
     setRelationships(rels);
     setRelationshipStates(states);
+    setChapterCommits(commits);
     setStoryEvents(events.filter((event) =>
       RELATIONSHIP_OP_TYPES.has(event.op_type)
       && (!event.status || event.status === 'committed')
+      && (!event.revision_id || activeRevisionIds.size === 0 || activeRevisionIds.has(event.revision_id))
     ));
   };
 
@@ -398,6 +448,50 @@ export default function RelationshipMap({ onClose }) {
       suggestion.status === 'pending' && suggestion.type === 'relationship_update'
     )
   ), [suggestions]);
+
+  const activeRevisionIds = useMemo(() => new Set(
+    chapterCommits
+      .filter((commit) => commit.canonical_revision_id && ACTIVE_COMMIT_STATUSES.has(commit.status))
+      .map((commit) => commit.canonical_revision_id)
+  ), [chapterCommits]);
+
+  const currentPairKeys = useMemo(
+    () => new Set(relationshipRows.map((row) => row.pairKey)),
+    [relationshipRows]
+  );
+
+  const acceptedRelationshipSuggestions = useMemo(() => (
+    suggestions
+      .filter((suggestion) => suggestion.status === 'accepted' && suggestion.type === 'relationship_update')
+      .map((suggestion) => {
+        const op = parseCandidateOp(suggestion.candidate_op);
+        const key = getSuggestionPairKey(suggestion);
+        const isCurrentPair = key ? currentPairKeys.has(key) : false;
+        const hasInactiveRevision = suggestion.applied_revision_id
+          && activeRevisionIds.size > 0
+          && !activeRevisionIds.has(suggestion.applied_revision_id);
+        let statusLabel = 'Chưa vào Tập trung';
+        let tone = 'warn';
+        if (hasInactiveRevision) {
+          statusLabel = 'Revision đã thay thế';
+          tone = 'danger';
+        } else if (isCurrentPair) {
+          statusLabel = 'Đang hiện hành';
+          tone = 'ok';
+        }
+        return {
+          suggestion,
+          op,
+          pairKey: key,
+          summary: getSuggestionSummary(suggestion),
+          opLabel: formatRelationshipOpType(op?.op_type),
+          statusLabel,
+          tone,
+        };
+      })
+      .sort((a, b) => (Number(b.suggestion.applied_at || b.suggestion.created_at) || 0)
+        - (Number(a.suggestion.applied_at || a.suggestion.created_at) || 0))
+  ), [suggestions, activeRevisionIds, currentPairKeys]);
 
   const scenesByChapterId = useMemo(() => {
     const map = new Map();
@@ -645,6 +739,12 @@ export default function RelationshipMap({ onClose }) {
     setNotice(`Đã xóa trạng thái hiện hành của cặp này bằng cách bỏ ${eventsToSupersede.length} thay đổi quan hệ khỏi chuẩn truyện.`);
   };
 
+  const handleRebuildCurrentRelationships = async () => {
+    await markCanonProjectionDirty({ rebuildNow: true });
+    await loadRelationshipData();
+    setNotice('Đã dựng lại trạng thái quan hệ hiện hành từ chuẩn truyện.');
+  };
+
   const handleAcceptSuggestion = async (id) => {
     try {
       const result = await acceptSuggestion(id, currentProject.id);
@@ -770,6 +870,9 @@ export default function RelationshipMap({ onClose }) {
     const baselineType = hasBaseline ? getRelType(selectedRow.baseline?.relation_type || 'other') : null;
     const currentType = getRelType(selectedRow.current?.relationship_type || selectedRow.baseline?.relation_type || 'other');
     const CurrentIcon = currentType.icon;
+    const selectedEventRows = [...selectedEvents].sort((a, b) =>
+      (Number(a.chapter_id) || 0) - (Number(b.chapter_id) || 0) || (Number(a.id) || 0) - (Number(b.id) || 0)
+    );
 
     return (
       <div className="rel-focus-grid">
@@ -878,6 +981,24 @@ export default function RelationshipMap({ onClose }) {
               <strong>{formatStateValue(selectedRow.current?.emotional_aftermath, 'Chưa ghi nhận')}</strong>
             </div>
           </div>
+
+          {selectedEventRows.length > 0 && (
+            <div className="rel-event-panel">
+              <div className="rel-event-panel-head">
+                <strong>Thay đổi đã duyệt</strong>
+                <span>{selectedEventRows.length} thay đổi đang thuộc trạng thái hiện hành của cặp này.</span>
+              </div>
+              <div className="rel-event-list">
+                {selectedEventRows.map((event) => (
+                  <div key={event.id || `${event.chapter_id}-${event.op_type}-${event.summary}`} className="rel-event-row">
+                    <span>Chương {event.chapter_id || '?'}</span>
+                    <em>{formatRelationshipOpType(event.op_type)}</em>
+                    <p>{getRelationshipEventSummary(event)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       </div>
     );
@@ -1073,6 +1194,44 @@ export default function RelationshipMap({ onClose }) {
     </section>
   );
 
+  const renderAcceptedRelationships = () => (
+    <section className="rel-approved-panel">
+      <div className="rel-approved-head">
+        <div>
+          <strong>Đã duyệt</strong>
+          <span>
+            {acceptedRelationshipSuggestions.length > 0
+              ? `${acceptedRelationshipSuggestions.length} đề xuất quan hệ đã duyệt. Tập trung/Sơ đồ chỉ hiện cặp đang có nền hoặc trạng thái hiện hành.`
+              : 'Chưa có đề xuất quan hệ nào đã duyệt.'}
+          </span>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={handleRebuildCurrentRelationships}>
+          <RefreshCw size={13} /> Dựng lại trạng thái
+        </button>
+      </div>
+
+      {acceptedRelationshipSuggestions.length > 0 && (
+        <div className="rel-approved-list">
+          {acceptedRelationshipSuggestions.map(({ suggestion, op, summary, opLabel, statusLabel, tone }) => (
+            <div key={suggestion.id} className="rel-approved-row">
+              <div className="rel-approved-main">
+                <strong>{suggestion.target_name || 'Cặp quan hệ'}</strong>
+                <span>{suggestion.source_chapter_id ? `Chương #${suggestion.source_chapter_id}` : 'Không rõ chương'} · {opLabel}</span>
+                <p>{summary}</p>
+              </div>
+              <span className={`rel-analysis-status is-${tone}`}>
+                {statusLabel}
+              </span>
+              {!op?.subject_id || !op?.target_id ? (
+                <em>Thiếu cặp nhân vật trong thao tác đã lưu.</em>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
   const renderSuggestions = () => (
     <div className="rel-review-stack">
       {renderAnalysisPanel()}
@@ -1109,6 +1268,7 @@ export default function RelationshipMap({ onClose }) {
           </div>
         ))}
       </div>
+      {renderAcceptedRelationships()}
     </div>
   );
 

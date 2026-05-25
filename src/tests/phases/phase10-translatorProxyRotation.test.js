@@ -228,6 +228,62 @@ describe('phase10 translator proxy key rotation', () => {
     expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe('google/gemini-2.5-pro');
   });
 
+  it('does not write translator Custom Proxy state back into main StoryForge settings', () => {
+    const context = loadProxyRuntimeContext(async () => {
+      throw new Error('fetch is not used by settings persistence');
+    });
+
+    vm.runInContext(`
+      localStorage.setItem('sf-ai-settings', JSON.stringify({
+        proxyUrl: '/api/proxy',
+        openAIProxy: {
+          activeProfileId: 'ag-gemini-proxy',
+          customProfile: {
+            baseUrl: '',
+            defaultModel: '',
+            models: []
+          }
+        }
+      }));
+      localStorage.setItem('sf-api-keys-v2', JSON.stringify({
+        gemini_proxy: [{ key: 'AG_KEY' }],
+        openai_proxy: []
+      }));
+
+      useProxy = true;
+      activeTranslatorProvider = 'custom_proxy';
+      customProxyProfile = {
+        baseUrl: 'https://old-custom.example/v1',
+        defaultModel: 'old-custom-model',
+        models: ['old-custom-model'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'direct'
+      };
+      customProxyApiKeys = ['OLD_CUSTOM_KEY'];
+      customProxyApiKey = 'OLD_CUSTOM_KEY';
+      updateWorkspaceToolbar = () => {};
+
+      saveSettings();
+    `, context);
+
+    expect(JSON.parse(context.localStorage.getItem('sf-ai-settings'))).toEqual({
+      proxyUrl: '/api/proxy',
+      openAIProxy: {
+        activeProfileId: 'ag-gemini-proxy',
+        customProfile: {
+          baseUrl: '',
+          defaultModel: '',
+          models: [],
+        },
+      },
+    });
+    expect(JSON.parse(context.localStorage.getItem('sf-api-keys-v2'))).toEqual({
+      gemini_proxy: [{ key: 'AG_KEY' }],
+      openai_proxy: [],
+    });
+  });
+
   it('translates through Custom Proxy with its own URL, key, and selected model', async () => {
     const requests = [];
     const context = loadProxyRuntimeContext(async (url, options = {}) => {

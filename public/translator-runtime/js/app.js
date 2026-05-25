@@ -769,7 +769,7 @@ const PRESET_GEMINI_MODELS = [
 ];
 
 const AI_STUDIO_MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
-const STORYFORGE_ACTIVE_DIRECT_MODELS_STORAGE = 'sf-active-direct-models';
+const TRANSLATOR_ACTIVE_DIRECT_MODELS_STORAGE = 'novelTranslatorActiveDirectModels';
 let fetchedAIStudioModels = [];
 
 // Dynamic model list - loaded from localStorage
@@ -817,9 +817,9 @@ function normalizeGeminiModelConfig(entry) {
     };
 }
 
-function loadStoryForgeDirectModels() {
+function loadTranslatorDirectModels() {
     try {
-        const raw = localStorage.getItem(STORYFORGE_ACTIVE_DIRECT_MODELS_STORAGE);
+        const raw = localStorage.getItem(TRANSLATOR_ACTIVE_DIRECT_MODELS_STORAGE);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
@@ -837,7 +837,7 @@ function loadStoryForgeDirectModels() {
             })
             .filter(Boolean);
     } catch (error) {
-        console.warn('[Models] Failed to import StoryForge direct models:', error);
+        console.warn('[Models] Failed to load translator direct models:', error);
         return [];
     }
 }
@@ -862,11 +862,11 @@ function loadGeminiModels() {
             console.error('Error loading models:', e);
         }
     }
-    const imported = loadStoryForgeDirectModels();
+    const imported = loadTranslatorDirectModels();
     if (imported.length > 0) {
         GEMINI_MODELS = imported;
         saveGeminiModels();
-        console.log(`[Models] Imported ${GEMINI_MODELS.length} models from StoryForge settings`);
+        console.log(`[Models] Loaded ${GEMINI_MODELS.length} active translator models`);
         return;
     }
     // Fallback to defaults
@@ -886,7 +886,7 @@ function saveGeminiModels() {
             rpm: normalizePositiveInteger(model.quota, inferGeminiModelQuota(model.name)),
             rpd: normalizePositiveInteger(model.rpd, getDefaultRPDForGeminiModel(model.name)),
         }));
-    localStorage.setItem(STORYFORGE_ACTIVE_DIRECT_MODELS_STORAGE, JSON.stringify(activeDirectModels));
+    localStorage.setItem(TRANSLATOR_ACTIVE_DIRECT_MODELS_STORAGE, JSON.stringify(activeDirectModels));
 }
 
 function getActiveModels() {

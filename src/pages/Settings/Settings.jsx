@@ -8,7 +8,9 @@ import modelRouter, {
   PROXY_MODEL_PRESETS,
 } from '../../services/ai/router';
 import aiService, {
+  OLLAMA_MODEL_PRESETS,
   createAIStudioRelayRoom,
+  detectOllamaModelType,
   getAIStudioConnectorUrl,
   getAIStudioRelayRoomStatus,
   getAIStudioRelayRoomCode,
@@ -298,6 +300,9 @@ function DirectModelManager() {
 // ─── Main Settings Page ───
 const PROVIDER_CARD_AG_PROXY = `${PROVIDERS.OPENAI_PROXY}:${AG_PROXY_PROFILE_ID}`;
 const PROVIDER_CARD_CUSTOM_PROXY = `${PROVIDERS.OPENAI_PROXY}:${CUSTOM_PROXY_PROFILE_ID}`;
+const OLLAMA_PRESET_OPTIONS = ['qwen3', 'qwen25', 'llama3', 'gemma2', 'mistral', 'phi3']
+  .map((key) => ({ key, ...OLLAMA_MODEL_PRESETS[key] }))
+  .filter((preset) => preset.recommended);
 
 function normalizeProxyModelList(models = []) {
   return [...new Set(
@@ -497,6 +502,8 @@ export default function Settings() {
   const aiStudioConnectorConnected = Boolean(aiStudioRelayStatus?.connectorConnected);
   const aiStudioClientConnected = Boolean(aiStudioRelayStatus?.clientConnected);
   const aiStudioRelayExpired = Boolean(aiStudioRelayStatus?.expired);
+  const selectedOllamaPresetKey = detectOllamaModelType(ollamaModel);
+  const selectedOllamaPreset = selectedOllamaPresetKey ? OLLAMA_MODEL_PRESETS[selectedOllamaPresetKey] : null;
   const aiStudioRelayStatusLabel = !aiStudioRelayRoomCode
     ? 'Chưa tạo mã phòng'
     : aiStudioRelayStatusError
@@ -696,6 +703,25 @@ export default function Settings() {
     modelRouter.setProxyModel(normalized);
   };
 
+  const handleSelectOllamaModel = (model) => {
+    const normalized = String(model || '').trim();
+    setOllamaModel(normalized);
+    modelRouter.setOllamaModel(normalized);
+  };
+
+  const handleSaveOllamaSettings = () => {
+    const normalizedUrl = ollamaUrl.trim().replace(/\/+$/u, '') || 'http://localhost:11434';
+    setOllamaUrl(normalizedUrl);
+    saveSettings({ ollamaUrl: normalizedUrl });
+    if (ollamaModel.trim()) modelRouter.setOllamaModel(ollamaModel.trim());
+  };
+
+  const handleApplyOllamaPreset = (presetKey) => {
+    const preset = OLLAMA_MODEL_PRESETS[presetKey];
+    if (!preset?.recommended) return;
+    handleSelectOllamaModel(preset.recommended);
+  };
+
   const handleFetchAgProxyModels = async () => {
     setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
     setActiveProxyProfileId(AG_PROXY_PROFILE_ID);
@@ -787,6 +813,9 @@ export default function Settings() {
   };
 
   const handleTest = async (prov, resultKey = prov) => {
+    if (prov === PROVIDERS.OLLAMA) {
+      handleSaveOllamaSettings();
+    }
     if (prov === PROVIDERS.AI_STUDIO_RELAY) {
       handleSaveAIStudioRelay();
     }
@@ -803,7 +832,13 @@ export default function Settings() {
     const result = await aiService.testConnection(prov);
     setTestResults(p => ({ ...p, [resultKey]: result }));
     setTesting(p => ({ ...p, [resultKey]: false }));
-    if (prov === PROVIDERS.OLLAMA && result.success) setOllamaModels(result.models || []);
+    if (prov === PROVIDERS.OLLAMA && result.success) {
+      const models = result.models || [];
+      setOllamaModels(models);
+      if (!ollamaModel.trim() && models[0]) {
+        handleSelectOllamaModel(models[0]);
+      }
+    }
   };
 
   return (
@@ -1346,12 +1381,25 @@ export default function Settings() {
           <div className="form-group">
             <label className="form-label">Ollama URL</label>
             <div className="settings-input-row">
-              <input className="input" value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} />
-              <button className="btn btn-secondary" onClick={handleSaveUrls}>Lưu</button>
-              <button className="btn btn-ghost btn-icon" onClick={() => handleTest(PROVIDERS.OLLAMA)} disabled={testing[PROVIDERS.OLLAMA]}>
-                {testing[PROVIDERS.OLLAMA] ? <RefreshCw size={16} className="animate-spin" /> : <TestTube size={16} />}
+              <input
+                className="input"
+                value={ollamaUrl}
+                onChange={(e) => setOllamaUrl(e.target.value)}
+                placeholder="http://localhost:11434"
+              />
+              <button className="btn btn-secondary" onClick={handleSaveOllamaSettings}>Lưu</button>
+              <button className="btn btn-secondary" onClick={() => handleTest(PROVIDERS.OLLAMA)} disabled={testing[PROVIDERS.OLLAMA]}>
+                {testing[PROVIDERS.OLLAMA] ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Lấy models
+              </button>
+              <button className="btn btn-ghost" onClick={() => handleTest(PROVIDERS.OLLAMA)} disabled={testing[PROVIDERS.OLLAMA]}>
+                {testing[PROVIDERS.OLLAMA] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
+                Test
               </button>
             </div>
+            <p className="settings-hint">
+              Bấm Test hoặc Lấy models sẽ lưu URL hiện tại trước khi gọi <code>/api/tags</code>. Nếu bị lỗi, chạy <code>ollama serve</code> rồi thử lại.
+            </p>
             {testResults[PROVIDERS.OLLAMA] && (
               <div className={`settings-test-result ${testResults[PROVIDERS.OLLAMA].success ? 'success' : 'error'}`}>
                 {testResults[PROVIDERS.OLLAMA].success
@@ -1364,14 +1412,48 @@ export default function Settings() {
           <div className="form-group">
             <label className="form-label">Model mặc định</label>
             {ollamaModels.length > 0 ? (
-              <select className="select" value={ollamaModel} onChange={(e) => { setOllamaModel(e.target.value); modelRouter.setOllamaModel(e.target.value); }}>
+              <select className="select" value={ollamaModel} onChange={(e) => handleSelectOllamaModel(e.target.value)}>
                 <option value="">Chọn...</option>
                 {ollamaModels.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             ) : (
               <input className="input" placeholder="llama3, gemma2, qwen2.5..." value={ollamaModel}
-                onChange={(e) => { setOllamaModel(e.target.value); modelRouter.setOllamaModel(e.target.value); }} />
+                onChange={(e) => handleSelectOllamaModel(e.target.value)} />
             )}
+            {selectedOllamaPreset ? (
+              <p className="settings-hint">
+                Preset đang áp dụng: <strong>{selectedOllamaPreset.name}</strong>. StoryForge sẽ tự gửi options phù hợp và bật thinking mode nếu model hỗ trợ.
+              </p>
+            ) : (
+              <p className="settings-hint">
+                Có thể nhập thủ công tên model đã cài, ví dụ <code>qwen3:4b</code>, <code>llama3.2:3b</code>.
+              </p>
+            )}
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Preset nhanh như Dịch truyện</label>
+            <div className="model-list">
+              {OLLAMA_PRESET_OPTIONS.map((preset) => (
+                <button
+                  key={preset.key}
+                  type="button"
+                  className={`model-item ${selectedOllamaPresetKey === preset.key ? 'model-item--active' : ''}`}
+                  onClick={() => handleApplyOllamaPreset(preset.key)}
+                >
+                  <span className={`model-status ${selectedOllamaPresetKey === preset.key ? 'model-status--on' : ''}`}>
+                    {selectedOllamaPresetKey === preset.key ? '✓' : '○'}
+                  </span>
+                  <div className="model-info">
+                    <span className="model-name">{preset.name}</span>
+                    <span className="model-meta">{preset.recommended}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            {selectedOllamaPreset ? (
+              <p className="settings-hint">{selectedOllamaPreset.tips}</p>
+            ) : null}
           </div>
         </section>
         <CloudSyncSection />

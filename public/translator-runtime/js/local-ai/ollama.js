@@ -417,75 +417,41 @@ function saveOllamaSettings() {
 
 function loadOllamaSettings() {
     const saved = localStorage.getItem('novelTranslatorOllamaSettings');
-    if (saved) {
-        try {
-            const settings = JSON.parse(saved);
-            useOllama = settings.useOllama || false;
-            ollamaUrl = settings.ollamaUrl || 'http://localhost:11434';
-            ollamaModel = settings.ollamaModel || 'huihui_ai/qwen2.5-abliterate:72b';
+    if (!saved) return;
 
-            const toggle = document.getElementById('useOllamaToggle');
-            const settingsDiv = document.getElementById('ollamaSettings');
-            const badge = document.getElementById('ollamaStatus');
-            const urlInput = document.getElementById('ollamaUrl');
-            const modelInput = document.getElementById('ollamaModel');
+    try {
+        const settings = JSON.parse(saved);
+        useOllama = settings.useOllama || false;
+        ollamaUrl = settings.ollamaUrl || 'http://localhost:11434';
+        ollamaModel = settings.ollamaModel || 'huihui_ai/qwen2.5-abliterate:72b';
 
-            if (toggle) toggle.checked = useOllama;
-            if (urlInput) urlInput.value = ollamaUrl;
-            if (modelInput) modelInput.value = ollamaModel;
+        const toggle = document.getElementById('useOllamaToggle');
+        const settingsDiv = document.getElementById('ollamaSettings');
+        const badge = document.getElementById('ollamaStatus');
+        const urlInput = document.getElementById('ollamaUrl');
+        const modelInput = document.getElementById('ollamaModel');
 
-            if (useOllama) {
-                if (typeof setActiveTranslatorProvider === 'function') {
-                    setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.OLLAMA);
-                }
-                if (settingsDiv) settingsDiv.style.display = 'block';
-                if (badge) {
-                    badge.textContent = 'Bật';
-                    badge.classList.add('active');
-                }
+        if (toggle) toggle.checked = useOllama;
+        if (urlInput) urlInput.value = ollamaUrl;
+        if (modelInput) modelInput.value = ollamaModel;
+
+        if (useOllama) {
+            if (typeof setActiveTranslatorProvider === 'function') {
+                setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.OLLAMA);
             }
-
-            console.log('[Ollama] Settings loaded:', settings);
-            if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
-        } catch (e) {
-            console.error('[Ollama] Error loading settings:', e);
-        }
-    } else {
-        try {
-            const appSettings = JSON.parse(localStorage.getItem('sf-ai-settings') || '{}');
-            const preferredProvider = String(localStorage.getItem('sf-preferred-provider') || '').trim();
-            const appModel = String(localStorage.getItem('sf-ollama-model') || '').trim();
-
-            useOllama = preferredProvider === 'ollama';
-            ollamaUrl = String(appSettings.ollamaUrl || ollamaUrl).trim() || ollamaUrl;
-            ollamaModel = appModel || ollamaModel;
-
-            const toggle = document.getElementById('useOllamaToggle');
-            const settingsDiv = document.getElementById('ollamaSettings');
-            const badge = document.getElementById('ollamaStatus');
-            const urlInput = document.getElementById('ollamaUrl');
-            const modelInput = document.getElementById('ollamaModel');
-
-            if (toggle) toggle.checked = useOllama;
-            if (urlInput) urlInput.value = ollamaUrl;
-            if (modelInput) modelInput.value = ollamaModel;
-
-            if (useOllama) {
-                if (typeof setActiveTranslatorProvider === 'function') {
-                    setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.OLLAMA);
-                }
-                if (settingsDiv) settingsDiv.style.display = 'block';
-                if (badge) {
-                    badge.textContent = 'Bật';
-                    badge.classList.add('active');
-                }
+            if (settingsDiv) settingsDiv.style.display = 'block';
+            if (badge) {
+                badge.textContent = 'Bật';
+                badge.classList.add('active');
             }
-        } catch (error) {
-            console.warn('[Ollama] Failed to import StoryForge settings:', error);
         }
+
+        console.log('[Ollama] Settings loaded:', settings);
+        if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
+    } catch (e) {
+        console.error('[Ollama] Error loading settings:', e);
     }
 }
-
 function setupOllamaEventListeners() {
     const urlInput = document.getElementById('ollamaUrl');
     const modelInput = document.getElementById('ollamaModel');

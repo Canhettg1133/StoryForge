@@ -19,6 +19,7 @@ const {
   codexState: {},
   dbRows: {
     chapterMetas: [],
+    chapterCommits: [],
     relationships: [],
     relationshipStates: [],
     storyEvents: [],
@@ -76,6 +77,7 @@ vi.mock('../../stores/aiStore', () => ({
 vi.mock('../../services/db/database', () => ({
   default: {
     chapterMeta: makeProjectTable(() => dbRows.chapterMetas),
+    chapter_commits: makeProjectTable(() => dbRows.chapterCommits),
     relationships: makeProjectTable(() => dbRows.relationships),
     relationship_state_current: makeProjectTable(() => dbRows.relationshipStates),
     story_events: makeProjectTable(() => dbRows.storyEvents),
@@ -201,6 +203,7 @@ describe('phase10 relationship cockpit V1', () => {
         relationship_analysis_status: 'analyzed',
       },
     ];
+    dbRows.chapterCommits = [];
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -657,5 +660,87 @@ describe('phase10 relationship cockpit V1', () => {
         return text.includes('Lan') && text.includes('Mai');
       });
     expect(lanMaiPair).toBeTruthy();
+  });
+
+  it('shows approved relationship events for the selected pair instead of hiding them behind one summary row', async () => {
+    dbRows.storyEvents = [
+      {
+        id: 301,
+        project_id: 1,
+        chapter_id: 7,
+        op_type: 'RELATIONSHIP_STATUS_CHANGED',
+        subject_id: 1,
+        target_id: 2,
+        status: 'committed',
+        summary: 'Lan và Kha chính thức nghi ngờ nhau.',
+      },
+      {
+        id: 302,
+        project_id: 1,
+        chapter_id: 8,
+        op_type: 'INTIMACY_LEVEL_CHANGED',
+        subject_id: 2,
+        target_id: 1,
+        status: 'committed',
+        payload: {
+          status_summary: 'Khoảng cách giữa hai người tăng lên.',
+        },
+      },
+    ];
+
+    await renderMap();
+
+    const text = normalizedText(container);
+    expect(text).toContain('2 thay doi');
+    expect(text).toContain('Thay doi da duyet');
+    expect(text).toContain('Chuong 7');
+    expect(text).toContain('Doi trang thai');
+    expect(text).toContain('Lan va Kha chinh thuc nghi ngo nhau');
+    expect(text).toContain('Chuong 8');
+    expect(text).toContain('Doi than mat');
+    expect(text).toContain('Khoang cach giua hai nguoi tang len');
+  });
+
+  it('shows accepted relationship suggestions even when they are not in the current projection yet', async () => {
+    suggestionState.suggestions = [
+      {
+        id: 401,
+        status: 'accepted',
+        type: 'relationship_update',
+        source_chapter_id: 7,
+        target_id: 1,
+        target_name: 'Lan / Mai',
+        suggested_value: 'Lan và Mai đã thỏa thuận tạm đình chiến.',
+        candidate_op: JSON.stringify({
+          op_type: 'RELATIONSHIP_STATUS_CHANGED',
+          chapter_id: 7,
+          subject_id: 1,
+          target_id: 3,
+          summary: 'Lan và Mai đã thỏa thuận tạm đình chiến.',
+        }),
+        applied_revision_id: 700,
+        applied_at: 1234,
+      },
+    ];
+    dbRows.chapterCommits = [
+      {
+        id: 501,
+        project_id: 1,
+        chapter_id: 7,
+        status: 'canonical',
+        canonical_revision_id: 700,
+      },
+    ];
+
+    await renderMap();
+    await act(async () => {
+      findButton('Can duyet').click();
+    });
+
+    const text = normalizedText(container);
+    expect(text).toContain('Da duyet');
+    expect(text).toContain('Lan / Mai');
+    expect(text).toContain('Chua vao Tap trung');
+    expect(text).toContain('Dung lai trang thai');
   });
 });

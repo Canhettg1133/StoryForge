@@ -87,12 +87,14 @@ function loadRuntime({ savedSettings = null } = {}) {
     },
     showToast() {},
   };
+  context.window = context;
 
   vm.createContext(context);
   [
     'public/translator-runtime/js/app.js',
     'public/translator-runtime/js/ui/settings.js',
     'public/translator-runtime/js/proxy/proxy-api.js',
+    'public/translator-runtime/js/local-ai/ollama.js',
   ].forEach((file) => {
     vm.runInContext(fs.readFileSync(path.join(repoRoot, file), 'utf8'), context, { filename: file });
   });
@@ -140,7 +142,7 @@ describe('phase10 translator proxy model default', () => {
     expect(saved.proxyModel).toBe(DEFAULT_MODEL);
   });
 
-  it('imports a StoryForge custom proxy model into the Custom provider instead of the AG dropdown', () => {
+  it('ignores main StoryForge custom proxy settings when translator settings are empty', () => {
     const customModel = 'custom-gemini-model-from-main-settings';
     const { context, elements, stored } = loadRuntime();
 
@@ -163,23 +165,34 @@ describe('phase10 translator proxy model default', () => {
     context.initProxyUI();
     context.loadSettings();
 
-    expect(vm.runInContext('activeTranslatorProvider', context)).toBe('custom_proxy');
+    expect(vm.runInContext('activeTranslatorProvider', context)).toBe('gemini_direct');
     expect(vm.runInContext('proxyModel', context)).toBe(DEFAULT_MODEL);
     expect(elements.proxyModelSelect.value).toBe(DEFAULT_MODEL);
     expect(elements.proxyModelSelect.options.some((option) => option.value === customModel)).toBe(false);
-    expect(vm.runInContext('proxyApiKeys', context)).toEqual(['sk-ag-proxy-key']);
-    expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe(customModel);
-    expect(elements.customProxyModelSelect.value).toBe(customModel);
-    expect(vm.runInContext('customProxyApiKeys', context)).toEqual(['sk-custom-proxy-key']);
+    expect(vm.runInContext('proxyApiKeys', context)).toEqual([]);
+    expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe('');
+    expect(elements.customProxyModelSelect.value).toBe('');
+    expect(vm.runInContext('customProxyApiKeys', context)).toEqual([]);
   });
 
-  it('imports custom proxy profile and keys into the separate Custom provider without overwriting AG settings', () => {
+  it('keeps existing translator proxy settings instead of importing main StoryForge settings', () => {
     const customModel = 'google/gemini-custom-model';
     const { context, elements } = loadRuntime();
 
     vm.runInContext(`
+      activeTranslatorProvider = 'ag_proxy';
+      useProxy = true;
       proxyModel = 'ag-model-before-import';
       proxyApiKeys = ['sk-ag-existing'];
+      customProxyProfile = {
+        baseUrl: '',
+        defaultModel: '',
+        models: [],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'auto'
+      };
+      customProxyApiKeys = [];
     `, context);
 
     context.localStorage.setItem('sf-preferred-provider', 'openai_proxy');
@@ -201,11 +214,47 @@ describe('phase10 translator proxy model default', () => {
     context.loadSettings();
     context.initProxyUI();
 
-    expect(vm.runInContext('activeTranslatorProvider', context)).toBe('custom_proxy');
-    expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe(customModel);
-    expect(vm.runInContext('customProxyApiKeys', context)).toEqual(['sk-custom-proxy-key']);
+    expect(vm.runInContext('activeTranslatorProvider', context)).toBe('ag_proxy');
+    expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe('');
+    expect(vm.runInContext('customProxyApiKeys', context)).toEqual([]);
     expect(vm.runInContext('proxyModel', context)).toBe('ag-model-before-import');
     expect(vm.runInContext('proxyApiKeys', context)).toEqual(['sk-ag-existing']);
-    expect(elements.customProxyModelSelect.value).toBe(customModel);
+    expect(elements.customProxyModelSelect.value).toBe('');
+  });
+
+  it('does not import main StoryForge AG or Gemini Direct provider settings', () => {
+    const { context, stored } = loadRuntime();
+
+    stored.set('sf-preferred-provider', 'gemini_proxy');
+    stored.set('sf-api-keys-v2', JSON.stringify({
+      gemini_direct: [{ key: 'direct-key-from-main' }],
+      gemini_proxy: [{ key: 'ag-key-from-main' }],
+    }));
+    stored.set('sf-ai-settings', JSON.stringify({
+      proxyUrl: 'https://main-ag.example/v1/chat/completions',
+    }));
+
+    context.loadSettings();
+
+    expect(vm.runInContext('activeTranslatorProvider', context)).toBe('gemini_direct');
+    expect(vm.runInContext('apiKeys', context)).toEqual([]);
+    expect(vm.runInContext('proxyApiKeys', context)).toEqual([]);
+    expect(vm.runInContext('proxyBaseUrl', context)).not.toBe('https://main-ag.example/v1/chat/completions');
+  });
+
+  it('does not import main StoryForge Ollama settings when translator Ollama settings are empty', () => {
+    const { context, stored } = loadRuntime();
+
+    stored.set('sf-preferred-provider', 'ollama');
+    stored.set('sf-ai-settings', JSON.stringify({
+      ollamaUrl: 'http://main-ollama.local:11434',
+    }));
+    stored.set('sf-ollama-model', 'main-ollama-model');
+
+    context.loadOllamaSettings();
+
+    expect(vm.runInContext('useOllama', context)).toBe(false);
+    expect(vm.runInContext('ollamaUrl', context)).toBe('');
+    expect(vm.runInContext('ollamaModel', context)).toBe('');
   });
 });

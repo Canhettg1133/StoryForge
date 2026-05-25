@@ -30,6 +30,8 @@ import { NSFW_REBUKE_PROMPT } from '../../utils/constants';
 const SETTINGS_KEY = 'sf-ai-settings';
 const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 65000;
 const PROXY_MAX_OUTPUT_TOKENS = 65000;
+const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
+const OLLAMA_TIMEOUT_MS = 300000;
 const DEFAULT_AI_STUDIO_RELAY_URL = 'https://storyforge-ai-studio-relay.canhettg113.workers.dev';
 const DEFAULT_AI_STUDIO_CONNECTOR_URL = 'https://ai.studio/apps/685f3deb-17d8-4197-9733-a8f144543129';
 const GOOGLE_SAFETY_CATEGORIES = [
@@ -38,6 +40,66 @@ const GOOGLE_SAFETY_CATEGORIES = [
   'HARM_CATEGORY_HARASSMENT',
   'HARM_CATEGORY_DANGEROUS_CONTENT',
 ];
+const VIETNAMESE_ACCENT_RE = /[\u00c0-\u1ef9\u0110\u0111]/u;
+
+export const OLLAMA_MODEL_PRESETS = {
+  qwen25: {
+    name: 'Qwen2.5',
+    models: ['huihui_ai/qwen2.5-abliterate:72b', 'huihui_ai/qwen2.5-abliterate:32b', 'qwen2.5:14b', 'qwen2.5:32b', 'qwen2.5:72b'],
+    recommended: 'huihui_ai/qwen2.5-abliterate:72b',
+    settings: { temperature: 0.3, num_predict: 4096, num_ctx: 4096, top_p: 0.9, top_k: 40 },
+    features: [],
+    tips: 'Tot cho van tieng Viet, khong bat thinking mode.',
+  },
+  qwen3: {
+    name: 'Qwen3',
+    models: ['qwen3:4b', 'qwen3:8b', 'huihui_ai/qwen3-abliterated:4b', 'huihui_ai/qwen3-abliterated:30b'],
+    recommended: 'qwen3:4b',
+    settings: { temperature: 0.7, num_predict: 4096, num_ctx: 8192, top_p: 0.9, top_k: 40 },
+    features: ['think'],
+    tips: 'Ho tro thinking mode, hop voi viet/dich van hoc.',
+  },
+  qwen35: {
+    name: 'Qwen3.5',
+    models: ['huihui_ai/qwen3.5-abliterated:9b', 'huihui_ai/qwen3.5-abliterated:27b', 'huihui_ai/qwen3.5-abliterated:35b'],
+    recommended: 'huihui_ai/qwen3.5-abliterated:35b',
+    settings: { temperature: 0.3, num_predict: 4096, num_ctx: 32768, top_p: 0.9, top_k: 40 },
+    features: ['think', 'vision', 'tools'],
+    tips: 'Ngu canh dai, ho tro thinking.',
+  },
+  llama3: {
+    name: 'Llama3',
+    models: ['llama3.2:3b', 'llama3.2:8b', 'llama3:8b'],
+    recommended: 'llama3.2:3b',
+    settings: { temperature: 0.7, num_predict: 4096, num_ctx: 8192, top_p: 0.9, top_k: 40 },
+    features: [],
+    tips: 'Nhe, nhanh, da nang.',
+  },
+  gemma2: {
+    name: 'Gemma2',
+    models: ['gemma2:2b', 'gemma2:9b', 'gemma2:27b'],
+    recommended: 'gemma2:9b',
+    settings: { temperature: 0.7, num_predict: 4096, num_ctx: 8192, top_p: 0.95, top_k: 50 },
+    features: [],
+    tips: 'Chat luong on dinh.',
+  },
+  mistral: {
+    name: 'Mistral',
+    models: ['mistral:7b', 'mistral-nemo:12b'],
+    recommended: 'mistral:7b',
+    settings: { temperature: 0.7, num_predict: 4096, num_ctx: 8192, top_p: 0.9, top_k: 40 },
+    features: [],
+    tips: 'Nhe va nhanh.',
+  },
+  phi3: {
+    name: 'Phi3',
+    models: ['phi3:mini', 'phi3:medium'],
+    recommended: 'phi3:mini',
+    settings: { temperature: 0.7, num_predict: 4096, num_ctx: 4096, top_p: 0.9, top_k: 40 },
+    features: [],
+    tips: 'Rat nhe.',
+  },
+};
 
 function extractSSEDataValue(rawLine) {
   const trimmed = (rawLine || '').trim();
@@ -92,8 +154,13 @@ export function getGeminiDirectBaseUrl() {
   return getSettings().geminiDirectUrl || 'https://generativelanguage.googleapis.com';
 }
 
+function normalizeBaseUrl(value, fallback) {
+  const normalized = String(value || fallback || '').trim().replace(/\/+$/u, '');
+  return normalized || fallback;
+}
+
 export function getOllamaUrl() {
-  return getSettings().ollamaUrl || 'http://localhost:11434';
+  return normalizeBaseUrl(getSettings().ollamaUrl, DEFAULT_OLLAMA_URL);
 }
 
 export function getAIStudioRelayUrl() {
@@ -163,6 +230,128 @@ function extractGeminiDirectResponseText(data, errorContext = {}) {
   }
 
   return text;
+}
+
+export function detectOllamaModelType(modelName) {
+  const name = String(modelName || '').toLowerCase();
+  if (name.includes('qwen3.5') || name.includes('qwen3_5')) return 'qwen35';
+  if (name.includes('qwen2.5') || name.includes('qwen2_5') || name.includes('qwen2')) return 'qwen25';
+  if (name.includes('qwen3') || name.includes('qwen-3')) return 'qwen3';
+  if (name.includes('qwen')) return 'qwen25';
+  if (name.includes('llama')) return 'llama3';
+  if (name.includes('gemma')) return 'gemma2';
+  if (name.includes('mistral')) return 'mistral';
+  if (name.includes('phi')) return 'phi3';
+  return null;
+}
+
+export function getOllamaRuntimeConfig(modelName, temperature = 0.7) {
+  const presetKey = detectOllamaModelType(modelName);
+  const preset = presetKey ? OLLAMA_MODEL_PRESETS[presetKey] : null;
+  const settings = {
+    temperature,
+    top_p: 0.9,
+    top_k: 40,
+    num_predict: 4096,
+    num_ctx: 8192,
+    ...(preset?.settings || {}),
+    temperature,
+  };
+  return {
+    presetKey,
+    preset,
+    settings,
+    useThinking: Boolean(preset?.features?.includes('think')),
+  };
+}
+
+function cleanOllamaResponseText(value) {
+  return String(value || '')
+    .replace(/^```(?:\w+)?\s*/u, '')
+    .replace(/\s*```$/u, '')
+    .trim();
+}
+
+function extractResultFromOllamaThinking(thinkingText) {
+  if (!thinkingText) return '';
+
+  const resultMarkers = [
+    /Here(?:'s| is) the (?:rewritten|revised|translated|final)(?: version)?:?\s*/giu,
+    /(?:Final|Rewritten|Revised)(?: version)?:?\s*/giu,
+    /---+\s*/gu,
+    /\n\n(?=")/gu,
+  ];
+
+  let result = String(thinkingText || '');
+  for (const marker of resultMarkers) {
+    const matches = [...result.matchAll(marker)];
+    const last = matches[matches.length - 1];
+    if (!last) continue;
+    const afterMarker = result.slice((last.index || 0) + last[0].length).trim();
+    if (afterMarker.length > 40) {
+      result = afterMarker;
+      break;
+    }
+  }
+
+  const looksLikeEnglishReasoning = /\b(Okay|Let me|I need|I'll|First|The|So|Now|Wait|Actually|Hmm)\b/iu.test(result);
+  if (looksLikeEnglishReasoning) {
+    const vietnameseBlocks = result.split(/\n\n+/u).filter((block) => {
+      const trimmed = block.trim();
+      const startsWithEnglish = /^(Okay|Let me|I need|I'll|First|The|So|Now|Wait|Actually|Hmm)\b/iu.test(trimmed);
+      return VIETNAMESE_ACCENT_RE.test(trimmed) && !startsWithEnglish && trimmed.length > 40;
+    });
+    if (vietnameseBlocks.length > 0) result = vietnameseBlocks.join('\n\n');
+  }
+
+  return cleanOllamaResponseText(result);
+}
+
+function extractOllamaResponseText(data, errorContext = {}) {
+  if (typeof data === 'string') return cleanOllamaResponseText(data);
+
+  const message = data?.message;
+  if (typeof message === 'string') return cleanOllamaResponseText(message);
+
+  const contentResult = cleanOllamaResponseText(message?.content || '');
+  const thinkingResult = extractResultFromOllamaThinking(message?.thinking || '');
+
+  if (contentResult && thinkingResult) {
+    const contentHasVietnamese = VIETNAMESE_ACCENT_RE.test(contentResult);
+    const thinkingHasVietnamese = VIETNAMESE_ACCENT_RE.test(thinkingResult);
+    if (contentHasVietnamese && contentResult.length >= thinkingResult.length * 0.7) return contentResult;
+    if (thinkingHasVietnamese && thinkingResult.length > contentResult.length) return thinkingResult;
+    return contentResult.length >= thinkingResult.length ? contentResult : thinkingResult;
+  }
+  if (contentResult) return contentResult;
+  if (thinkingResult) return thinkingResult;
+  if (data?.response) return cleanOllamaResponseText(data.response);
+
+  throw normalizeAIError(
+    { code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'OLLAMA_INVALID_RESPONSE' },
+    errorContext,
+  );
+}
+
+function createOllamaRequestSignal(externalSignal, timeoutMs = OLLAMA_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort('request-timeout'), timeoutMs);
+  const abortFromExternal = () => controller.abort(externalSignal.reason || 'request-aborted');
+
+  if (externalSignal?.aborted) {
+    abortFromExternal();
+  } else if (externalSignal) {
+    externalSignal.addEventListener('abort', abortFromExternal, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    timedOut: () => controller.signal.aborted && !externalSignal?.aborted,
+    cleanup: () => {
+      clearTimeout(timeoutId);
+      if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternal);
+    },
+  };
 }
 
 // ================================
@@ -374,32 +563,74 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
 // Ollama
 // ================================
 async function callOllama({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode }) {
+  const normalizedModel = String(model || '').trim();
+  if (!normalizedModel) {
+    throw normalizeAIError(
+      { code: AI_ERROR_CODES.MISSING_MODEL, rawMessage: 'Chua chon model Ollama.' },
+      { provider: PROVIDERS.OLLAMA, model },
+    );
+  }
+
   const url = `${getOllamaUrl()}/api/chat`;
+  const runtimeConfig = getOllamaRuntimeConfig(normalizedModel, nsfwMode ? 0.8 : 0.7);
+  const requestSignal = createOllamaRequestSignal(signal);
+  const payload = {
+    model: normalizedModel,
+    messages,
+    stream,
+    options: runtimeConfig.settings,
+    ...(runtimeConfig.useThinking && { think: true }),
+  };
 
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, messages, stream }),
-      signal,
+      body: JSON.stringify(payload),
+      signal: requestSignal.signal,
     });
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
-      if (response.status === 404) throw new Error(`Model "${model}" không tìm thấy. Chạy: ollama pull ${model}`);
-      throw new Error(`Ollama trả về lỗi ${response.status}: ${errText}`);
+      if (response.status === 404) {
+        throw normalizeAIError({
+          status: response.status,
+          rawMessage: `Model "${normalizedModel}" khong tim thay. Chay: ollama pull ${normalizedModel}`,
+        }, { provider: PROVIDERS.OLLAMA, model: normalizedModel });
+      }
+      throw normalizeAIError({
+        status: response.status,
+        bodyText: errText,
+      }, { provider: PROVIDERS.OLLAMA, model: normalizedModel });
     }
 
     if (!stream) {
       const data = await response.json();
-      onComplete?.(data.message?.content || '');
-      return;
+      const text = extractOllamaResponseText(data, { provider: PROVIDERS.OLLAMA, model: normalizedModel });
+      onComplete?.(text);
+      return text;
     }
-    return await streamNDJSON(response, { onToken, onComplete, onError });
+    return await streamNDJSON(response, {
+      onToken,
+      onComplete,
+      onError,
+      errorContext: { provider: PROVIDERS.OLLAMA, model: normalizedModel },
+    });
   } catch (err) {
+    if (requestSignal.timedOut()) {
+      const timeoutError = normalizeAIError({
+        code: AI_ERROR_CODES.NETWORK_ERROR,
+        rawMessage: `Ollama timeout after ${Math.round(OLLAMA_TIMEOUT_MS / 1000)} seconds`,
+      }, { provider: PROVIDERS.OLLAMA, model: normalizedModel });
+      onError?.(timeoutError);
+      throw timeoutError;
+    }
     if (err.name === 'AbortError') return;
-    onError?.(err);
-    throw err;
+    const normalized = normalizeAIError(err, { provider: PROVIDERS.OLLAMA, model: normalizedModel });
+    onError?.(normalized);
+    throw normalized;
+  } finally {
+    requestSignal.cleanup();
   }
 }
 
@@ -559,10 +790,11 @@ async function streamGeminiSSE(response, { onToken, onComplete, onError, errorCo
   }
 }
 
-async function streamNDJSON(response, { onToken, onComplete, onError }) {
+async function streamNDJSON(response, { onToken, onComplete, onError, errorContext = {} }) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let fullText = '', buffer = '';
+  let lastThinking = '';
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -576,16 +808,27 @@ async function streamNDJSON(response, { onToken, onComplete, onError }) {
         try {
           const p = JSON.parse(t);
           if (p.done) continue;
-          const c = p.message?.content || '';
+          const c = p.message?.content || p.response || '';
+          const thinking = p.message?.thinking || '';
+          if (thinking) lastThinking += thinking;
           if (c) { fullText += c; onToken?.(c, fullText); }
         } catch { }
       }
     }
+    if (!fullText && lastThinking) {
+      fullText = extractResultFromOllamaThinking(lastThinking);
+      if (fullText) onToken?.(fullText, fullText);
+    }
+    if (!fullText) {
+      throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
+    }
     onComplete?.(fullText);
+    return fullText;
   } catch (err) {
     if (err.name === 'AbortError') { onComplete?.(fullText); return; }
     // Preserve partial text on error
-    if (fullText) { onComplete?.(fullText); } else { onError?.(err); }
+    if (fullText) { onComplete?.(fullText); return fullText; }
+    throw normalizeAIError(err, errorContext);
   }
 }
 
