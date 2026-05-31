@@ -83,6 +83,10 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       method: 'PATCH',
       body: { role },
     }),
+    updateCatalogPlan: (id, patch) => request(`/catalog/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: patch,
+    }),
     updateFeature: (id, patch) => request(`/features/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: patch,

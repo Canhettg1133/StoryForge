@@ -357,6 +357,28 @@ async function mutateFeature(config, actor, resource, id, body) {
   return { ok: true, item: Array.isArray(item) ? item[0] : item };
 }
 
+async function mutateCatalog(config, actor, id, body) {
+  requirePermission(actor, ADMIN_PERMISSIONS.CATALOG_WRITE);
+
+  const patch = {
+    ...body,
+    updated_at: new Date().toISOString(),
+  };
+  const item = id
+    ? await supabaseRest(config, CATALOG_TABLE, {
+      method: 'PATCH',
+      query: `id=eq.${encodeURIComponent(id)}`,
+      body: patch,
+    })
+    : await supabaseRest(config, CATALOG_TABLE, {
+      method: 'POST',
+      body: patch,
+    });
+
+  await auditMutation(config, actor, 'catalog.write', 'catalog', id || body.key || '', patch);
+  return { ok: true, item: Array.isArray(item) ? item[0] : item };
+}
+
 async function syncAuth(config, actor) {
   requirePermission(actor, ADMIN_PERMISSIONS.ADMIN_SYNC_AUTH);
   const payload = await authAdminFetch(config, '/admin/users?page=1&per_page=1000', { method: 'GET' });
@@ -425,8 +447,13 @@ async function routeRequest(request, config, actor) {
     }
   }
 
-  if (resource === 'catalog' && request.method === 'GET') {
-    return listTable(config, actor, resource, CATALOG_TABLE, url, 'select=*&order=sort_order.asc,key.asc&limit=100');
+  if (resource === 'catalog') {
+    if (request.method === 'GET') {
+      return listTable(config, actor, resource, CATALOG_TABLE, url, 'select=*&order=sort_order.asc,key.asc&limit=100');
+    }
+    if (request.method === 'POST' || request.method === 'PATCH') {
+      return mutateCatalog(config, actor, id, await readJson(request));
+    }
   }
 
   if (resource === 'audit' && request.method === 'GET') {

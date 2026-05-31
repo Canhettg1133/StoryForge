@@ -195,4 +195,41 @@ describe('phase12 admin API worker', () => {
     expect(calls.some((call) => call.url.includes('storyforge_audit_logs'))).toBe(true);
     expect(JSON.stringify(calls)).not.toContain('service-role-key');
   });
+
+  it('updates catalog plans with catalog write permission and audits the change', async () => {
+    const calls = [];
+    const fetchMock = vi.fn(async (url, init = {}) => {
+      calls.push({ url: String(url), method: init.method || 'GET', body: init.body || '' });
+      const target = String(url);
+      if (target.includes('/auth/v1/user')) {
+        return jsonResponse({
+          id: 'owner-1',
+          email: 'owner@example.com',
+          app_metadata: { role: 'owner' },
+        });
+      }
+      if (target.includes('/rest/v1/storyforge_user_access') && init.method === 'GET') {
+        return jsonResponse([{ user_id: 'owner-1', role: 'owner', status: 'active' }]);
+      }
+      if (target.includes('/rest/v1/storyforge_plan_catalog') && init.method === 'PATCH') {
+        return jsonResponse([{ id: 2, key: 'vip', enabled: false }]);
+      }
+      if (target.includes('/rest/v1/storyforge_audit_logs') && init.method === 'POST') {
+        return jsonResponse([{ id: 11, action: 'catalog.write' }], 201);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await adminWorker.fetch(authedRequest('/catalog/2', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: false }),
+    }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.item).toMatchObject({ id: 2, key: 'vip', enabled: false });
+    expect(calls.some((call) => call.url.includes('storyforge_audit_logs'))).toBe(true);
+    expect(JSON.stringify(calls)).not.toContain('service-role-key');
+  });
 });

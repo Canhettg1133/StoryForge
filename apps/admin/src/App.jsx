@@ -83,6 +83,27 @@ function getStatusLabel(status) {
   return STATUS_LABELS_VI[String(status || 'active').toLowerCase()] || String(status || 'active');
 }
 
+function getFeatureName(data, featureKey) {
+  const feature = data.features.find((item) => item.key === featureKey);
+  return feature?.name || featureKey;
+}
+
+function summarizeLimits(limits) {
+  const source = limits && typeof limits === 'object' ? limits : {};
+  const pairs = Object.entries(source).filter(([, value]) => value !== null && value !== undefined && value !== '');
+  if (pairs.length === 0) return 'Không giới hạn riêng';
+  return pairs
+    .slice(0, 3)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(' · ');
+}
+
+function getPlanFeatureRows(data, planKey) {
+  return data.planFeatures
+    .filter((item) => String(item.plan || '').toLowerCase() === String(planKey || '').toLowerCase())
+    .sort((left, right) => String(left.feature_key || '').localeCompare(String(right.feature_key || ''), 'vi'));
+}
+
 function Badge({ tone = 'neutral', children }) {
   return <span className={`admin-badge admin-badge--${tone}`}>{children}</span>;
 }
@@ -404,7 +425,9 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
   );
 }
 
-function VipPanel({ data }) {
+function VipPanel({ data, onMutation, actor }) {
+  const canWriteCatalog = hasPermission(actor, ADMIN_PERMISSIONS.CATALOG_WRITE);
+
   return (
     <section className="content-grid">
       <div className="section-header">
@@ -418,16 +441,52 @@ function VipPanel({ data }) {
           <EmptyState title="Chưa có catalog" text="Tạo dữ liệu `storyforge_plan_catalog` trong Supabase để hiển thị gói." />
         ) : (
           <div className="plan-grid">
-            {data.catalog.map((plan) => (
-              <article className="plan-tile" key={plan.id || plan.key}>
-                <header>
-                  <BookOpen size={18} />
-                  <strong>{plan.name || getPlanLabel(plan.key)}</strong>
-                </header>
-                <p>{plan.description || 'Chưa có mô tả.'}</p>
-                <Badge tone={plan.enabled === false ? 'neutral' : 'success'}>{plan.enabled === false ? 'Tắt' : 'Đang bật'}</Badge>
-              </article>
-            ))}
+            {data.catalog.map((plan) => {
+              const planKey = String(plan.key || '').toLowerCase();
+              const planFeatures = getPlanFeatureRows(data, planKey);
+              const enabledFeatureCount = planFeatures.filter((item) => item.enabled !== false).length;
+              const planEnabled = plan.enabled !== false;
+
+              return (
+                <article className="plan-tile" key={plan.id || plan.key}>
+                  <header>
+                    <BookOpen size={18} />
+                    <strong>{plan.name || getPlanLabel(plan.key)}</strong>
+                    <Badge tone={planEnabled ? 'success' : 'neutral'}>{planEnabled ? 'Đang bật' : 'Tắt'}</Badge>
+                  </header>
+                  <p>{plan.description || 'Chưa có mô tả.'}</p>
+                  <div className="plan-tile__meta">
+                    <span>{enabledFeatureCount}/{planFeatures.length} feature đang bật</span>
+                    <span>Khóa gói: {plan.key}</span>
+                  </div>
+                  {planFeatures.length === 0 ? (
+                    <EmptyState title="Chưa có feature" text="Gói này chưa được mapping feature." />
+                  ) : (
+                    <div className="plan-feature-list">
+                      {planFeatures.slice(0, 6).map((item) => (
+                        <div className="plan-feature-pill" key={item.id || `${item.plan}-${item.feature_key}`}>
+                          <span>{getFeatureName(data, item.feature_key)}</span>
+                          <Badge tone={item.enabled === false ? 'neutral' : 'info'}>{item.enabled === false ? 'Tắt' : 'Bật'}</Badge>
+                          <small>{summarizeLimits(item.limits)}</small>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className={`status-button ${planEnabled ? 'is-on' : ''}`}
+                    disabled={!canWriteCatalog}
+                    onClick={() => onMutation({
+                      title: planEnabled ? 'Tắt gói' : 'Bật gói',
+                      message: `${planEnabled ? 'Tắt' : 'Bật'} gói ${plan.name || getPlanLabel(plan.key)}?`,
+                      action: () => onMutation.api.updateCatalogPlan(plan.id, { enabled: !planEnabled }),
+                    })}
+                  >
+                    {planEnabled ? 'Đang bật' : 'Đang tắt'}
+                  </button>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>
@@ -808,7 +867,7 @@ export default function App() {
   const panel = (() => {
     if (activeView === 'overview') return <OverviewPanel data={data} actor={actor} apiBaseUrl={adminApi.baseUrl} onSelectView={setActiveView} />;
     if (activeView === 'users') return <UsersPanel data={data} selectedUserId={selectedUserId} setSelectedUserId={setSelectedUserId} onMutation={openMutationConfirm} actor={actor} />;
-    if (activeView === 'vip') return <VipPanel data={data} />;
+    if (activeView === 'vip') return <VipPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'features') return <FeaturesPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'consent') return <ConsentPanel data={data} />;
     if (activeView === 'audit') return <AuditPanel data={data} />;

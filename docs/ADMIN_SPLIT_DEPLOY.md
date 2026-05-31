@@ -44,7 +44,8 @@ Set these values for the admin Worker:
 
 The Worker verifies the Supabase user token first, resolves role from Supabase Auth metadata, rejects non-admin roles, and writes audit logs for sensitive mutations.
 
-Use `docs/supabase-admin-schema.sql` for the minimal table schema.
+Use `docs/supabase-admin-schema.sql` for the minimal table schema, then run
+`docs/supabase-admin-seed.sql` to create the default Free/VIP/Pro/Enterprise catalog and feature mapping.
 
 ## Deploy targets
 
