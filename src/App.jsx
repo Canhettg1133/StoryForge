@@ -21,13 +21,17 @@ import CloudSyncPage from './pages/CloudSync/CloudSyncPage';
 import StoryCreationSettings from './pages/StoryCreationSettings/StoryCreationSettings';
 import ProjectPromptManager from './pages/ProjectPromptManager/ProjectPromptManager';
 import StyleImporter from './pages/StyleImporter/StyleImporter';
-import WritingRequestDebugger from './pages/WritingRequestDebugger/WritingRequestDebugger';
 import ProjectChat from './pages/ProjectChat/ProjectChat';
 import Translator from './pages/Translator/Translator';
 import GeminiSetupGuide from './pages/Guide/GeminiSetupGuide';
 import GeminiProxyGuide from './pages/Guide/GeminiProxyGuide';
 import TranslatorSetupGuide from './pages/Guide/TranslatorSetupGuide';
 import ProjectLayout from './components/common/ProjectLayout';
+
+const SHOW_WRITING_DEBUG = import.meta.env.VITE_SHOW_WRITING_DEBUG === 'true';
+const WritingRequestDebugger = SHOW_WRITING_DEBUG
+  ? React.lazy(() => import('./pages/WritingRequestDebugger/WritingRequestDebugger'))
+  : null;
 
 export default function App() {
   const labFallback = <Navigate to="../editor" replace />;
@@ -63,7 +67,16 @@ export default function App() {
             <Route path="chat" element={<ProjectChat />} />
             <Route path="prompts" element={<ProjectPromptManager />} />
             <Route path="style-importer" element={<StyleImporter />} />
-            <Route path="writing-debug" element={<WritingRequestDebugger />} />
+            {SHOW_WRITING_DEBUG && WritingRequestDebugger && (
+              <Route
+                path="writing-debug"
+                element={(
+                  <React.Suspense fallback={null}>
+                    <WritingRequestDebugger />
+                  </React.Suspense>
+                )}
+              />
+            )}
             <Route path="prompt-manager" element={<StoryCreationSettings />} />
             <Route path="timeline" element={PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback} />
             <Route path="revision" element={PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback} />

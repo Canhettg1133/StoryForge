@@ -144,13 +144,17 @@ describe('phase10 Writing Request Debugger', () => {
     }, { chapters })).toBeNull();
   });
 
-  it('registers the debugger route and navigation entries', () => {
+  it('gates the debugger route and navigation entries behind a debug surface flag', () => {
     expect(appSource).toContain('WritingRequestDebugger');
+    expect(appSource).toContain('VITE_SHOW_WRITING_DEBUG');
     expect(appSource).toContain('path="writing-debug"');
     expect(sidebarSource).toContain("id: 'writing-debug'");
     expect(sidebarSource).toContain("label: 'Test prompt viết'");
+    expect(sidebarSource).toContain("surface: 'debug'");
     expect(dashboardSource).toContain("id: 'writing-debug'");
     expect(dashboardSource).toContain("title: 'Test prompt viết'");
+    expect(dashboardSource).toContain("surface: 'debug'");
     expect(sceneEditorSource).toContain("id: 'writing-debug'");
+    expect(sceneEditorSource).toContain("surface: 'debug'");
   });
 });

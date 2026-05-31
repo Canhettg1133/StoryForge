@@ -359,11 +359,16 @@ function createOllamaRequestSignal(externalSignal, timeoutMs = OLLAMA_TIMEOUT_MS
 // ================================
 async function callOpenAIProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode, proxyProfileId }) {
   const proxyProfile = getActiveOpenAIProxyProfile(proxyProfileId);
+  const proxyErrorContext = {
+    provider: PROVIDERS.OPENAI_PROXY,
+    model,
+    proxyProfileId: proxyProfile?.id || proxyProfileId || null,
+  };
   if (!proxyProfile?.baseUrl) throw new Error('Chưa cấu hình Proxy URL.');
   if (!String(model || '').trim()) {
     throw normalizeAIError(
       { code: AI_ERROR_CODES.MISSING_MODEL, rawMessage: 'Chưa chọn model cho OpenAI-compatible Proxy.' },
-      { provider: PROVIDERS.OPENAI_PROXY, model },
+      proxyErrorContext,
     );
   }
 
@@ -372,7 +377,7 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
   if (!apiKey) {
     throw normalizeAIError(
       { code: AI_ERROR_CODES.MISSING_API_KEY, rawMessage: 'MISSING_API_KEY' },
-      { provider: PROVIDERS.OPENAI_PROXY, model },
+      proxyErrorContext,
     );
   }
 
@@ -429,7 +434,7 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
       const normalized = normalizeAIError({
         status: response.status,
         bodyText: errText,
-      }, { provider: PROVIDERS.OPENAI_PROXY, model });
+      }, proxyErrorContext);
       if (normalized.code === AI_ERROR_CODES.RATE_LIMITED || normalized.code === AI_ERROR_CODES.QUOTA_EXCEEDED) {
         keyManager.markRateLimited(apiKey, 60000);
       }
@@ -440,12 +445,12 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
       throw normalizeAIError({
         status: response.status,
         bodyText: errText,
-      }, { provider: PROVIDERS.OPENAI_PROXY, model });
+      }, proxyErrorContext);
     }
 
     if (!stream) {
       const data = await response.json();
-      const text = extractProxyResponseText(data, { provider: PROVIDERS.OPENAI_PROXY, model });
+      const text = extractProxyResponseText(data, proxyErrorContext);
       onComplete?.(text);
       return text;
     }
@@ -453,11 +458,11 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
       onToken,
       onComplete,
       onError,
-      errorContext: { provider: PROVIDERS.OPENAI_PROXY, model },
+      errorContext: proxyErrorContext,
     });
   } catch (err) {
     if (err.name === 'AbortError') return;
-    const normalized = normalizeAIError(err, { provider: PROVIDERS.OPENAI_PROXY, model });
+    const normalized = normalizeAIError(err, proxyErrorContext);
     if (
       normalized.code === AI_ERROR_CODES.QUOTA_EXCEEDED
       || normalized.code === AI_ERROR_CODES.RATE_LIMITED

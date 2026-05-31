@@ -39,6 +39,36 @@ describe('OpenAI-compatible proxy client payloads', () => {
     vi.unstubAllGlobals();
   });
 
+  it('reports missing ag proxy keys as Gemini Proxy, not Custom OpenAI-compatible', async () => {
+    const {
+      aiService,
+      modelRouter,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        AG_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    try {
+      await sendOnce(aiService, routerModule);
+      throw new Error('Expected sendOnce to reject.');
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: 'MISSING_API_KEY',
+        message: expect.stringContaining('Gemini Proxy'),
+      });
+      expect(error.message).not.toContain('OpenAI-compatible Proxy');
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('does not send Gemini safety settings to custom proxy profiles', async () => {
     const {
       aiService,

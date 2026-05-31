@@ -3,6 +3,7 @@ export const PRODUCT_SURFACE = {
   showLabLite: import.meta.env.VITE_SHOW_LAB_LITE !== 'false',
   showRoadmapPages: import.meta.env.VITE_SHOW_ROADMAP_PAGES === 'true',
   showJobUi: import.meta.env.VITE_SHOW_JOB_UI === 'true',
+  showWritingDebug: import.meta.env.VITE_SHOW_WRITING_DEBUG === 'true',
   enableCloudSync: import.meta.env.VITE_ENABLE_CLOUD_SYNC !== 'false',
 };
 
@@ -20,6 +21,10 @@ export function shouldShowNavItem(item) {
   }
 
   if (item.surface === 'roadmap' && !PRODUCT_SURFACE.showRoadmapPages) {
+    return false;
+  }
+
+  if (item.surface === 'debug' && !PRODUCT_SURFACE.showWritingDebug) {
     return false;
   }
 

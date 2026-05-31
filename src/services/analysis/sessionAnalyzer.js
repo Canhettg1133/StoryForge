@@ -194,9 +194,6 @@ export async function analyzeWithSession({
     });
 
     let response = await sessionClient.startSession(text, prompt, { signal });
-    // #region agent log
-    fetch('http://127.0.0.1:7318/ingest/696724e1-b2c9-4252-acee-7b5a42d39699',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c624c'},body:JSON.stringify({sessionId:'8c624c',location:'sessionAnalyzer.js:analyzeWithSession',message:'Part 1 response received',data:{textLen:response.text.length,finishReason:response.finishReason,first200:response.text.slice(0,200)},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
     partResults.push(response);
     onPart({
       part: index,
@@ -253,7 +250,6 @@ export async function analyzeWithSession({
 
     throwIfAborted(signal);
     const merged = mergeOutputParts(partResults.map((item) => item.text));
-    console.error('[ANALYSIS-DEBUG] mergeOutputParts result keys:', Object.keys(merged));
 
     onProgress({
       phase: 'merge',

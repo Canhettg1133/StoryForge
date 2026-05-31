@@ -300,7 +300,6 @@ class CorpusAnalysisService extends EventEmitter {
       });
 
       const chunks = await analysisRepository.listCorpusChunksForAnalysisAsync(corpusId);
-      console.error('[ANALYSIS-DEBUG] chunks.length:', chunks.length, 'chunkSize:', config.chunkSize);
       if (!chunks.length) {
         throw createServiceError('EMPTY_CORPUS_CHUNKS', 'Corpus không có chunk để phân tích.');
       }
@@ -658,20 +657,6 @@ class CorpusAnalysisService extends EventEmitter {
         }
       }
 
-      console.error(
-        '[ANALYSIS-DEBUG] merged sessions:',
-        mergedResults.length,
-        'final keys:',
-        Object.keys(finalResultForStorage),
-        'grounding stats:',
-        grounding.stats,
-        'incident stats:',
-        incidentIntelligence.stats,
-        'incident-first persistence:',
-        incidentFirstPersistence,
-        'knowledge extraction:',
-        knowledgeExtraction,
-      );
       const layerResults = splitLayerResults(finalResultForStorage);
       const slimFinalResultForStorage = buildSlimFinalResult(finalResultForStorage);
 
@@ -787,7 +772,6 @@ class CorpusAnalysisService extends EventEmitter {
       });
 
       const chunks = await analysisRepository.listCorpusChunksForAnalysisAsync(corpusId);
-      console.error('[ANALYSIS-DEBUG][1M] chunks.length:', chunks.length);
       if (!chunks.length) {
         throw createServiceError('EMPTY_CORPUS_CHUNKS', 'Corpus không có chunk để phân tích.');
       }
@@ -846,13 +830,6 @@ class CorpusAnalysisService extends EventEmitter {
       const slimFinalResultForStorage = buildSlimFinalResult(finalResultForStorage);
       const layerResults = splitLayerResults(finalResultForStorage);
       let incidentFirstPersistence = null;
-
-      console.error(
-        '[ANALYSIS-DEBUG][1M] job done:',
-        'incidents:', jobResult.incidentCount || 0,
-        'aiSteps:', jobResult.aiSteps || [],
-        'partsGenerated:', jobResult.partsGenerated || 0,
-      );
 
       analysis = await analysisRepository.updateAnalysis(analysisId, {
         status: 'completed',

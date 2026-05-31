@@ -1,3 +1,8 @@
+import {
+  AG_PROXY_PROFILE_ID,
+  CUSTOM_PROXY_PROFILE_ID,
+} from './openAIProxyCore.js';
+
 const AI_ERROR_CODES = {
   MISSING_API_KEY: 'MISSING_API_KEY',
   MISSING_MODEL: 'MISSING_MODEL',
@@ -30,8 +35,12 @@ function tryParseJson(value) {
   }
 }
 
-function providerLabel(provider) {
-  if (provider === 'openai_proxy') return 'OpenAI-compatible Proxy';
+function providerLabel(provider, proxyProfileId = '') {
+  if (provider === 'openai_proxy') {
+    if (proxyProfileId === AG_PROXY_PROFILE_ID) return 'Gemini Proxy mặc định (ag)';
+    if (proxyProfileId === CUSTOM_PROXY_PROFILE_ID) return 'Custom OpenAI-compatible Proxy';
+    return 'OpenAI-compatible Proxy';
+  }
   if (provider === 'gemini_proxy') return 'Gemini Proxy';
   if (provider === 'gemini_direct') return 'Gemini Direct';
   if (provider === 'ollama') return 'Ollama';
@@ -127,12 +136,13 @@ export function normalizeAIError(input = {}, context = {}) {
   const shape = extractErrorShape(input);
   const provider = context.provider || input.provider || null;
   const model = shape.model || context.model || input.model || null;
+  const proxyProfileId = context.proxyProfileId || input.proxyProfileId || null;
   const rawMessage = shape.message || 'Unknown AI error';
   const lower = rawMessage.toLowerCase();
   const codeLower = String(shape.code || '').toLowerCase();
   const reasonLower = String(shape.reason || '').toLowerCase();
   const modelName = summarizeModel(model);
-  const providerName = providerLabel(provider);
+  const providerName = providerLabel(provider, proxyProfileId);
 
   if (shape.code === AI_ERROR_CODES.MISSING_API_KEY || lower.includes('không có api key') || lower.includes('khong co api key')) {
     return createAIError({

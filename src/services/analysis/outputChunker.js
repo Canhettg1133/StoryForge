@@ -109,10 +109,6 @@ export function shouldContinueOutput({ text, finishReason, maxOutputTokens = 655
   const lengthFallback = textLen >= Math.max(20000, Math.floor(maxOutputTokens * 0.4));
   const result = hasLengthReason || parsedHasMore || parsedComplete || lengthFallback;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7318/ingest/696724e1-b2c9-4252-acee-7b5a42d39699',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c624c'},body:JSON.stringify({sessionId:'8c624c',location:'outputChunker.js:shouldContinueOutput',message:'shouldContinueOutput result',data:{hasLengthReason,parsedHasMore,parsedComplete,lengthFallback,textLen,result,finishReason},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-  // #endregion
-
   return result;
 }
 
@@ -120,10 +116,6 @@ export function mergeOutputParts(parts = []) {
   const normalized = parts
     .map((part, index) => normalizeParsedPart(part, index))
     .filter(Boolean);
-
-  // #region agent log
-  fetch('http://127.0.0.1:7318/ingest/696724e1-b2c9-4252-acee-7b5a42d39699',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c624c'},body:JSON.stringify({sessionId:'8c624c',location:'outputChunker.js:mergeOutputParts',message:'mergeOutputParts entry',data:{totalParts:parts.length,normalizedCount:normalized.length,part0Length:String(parts[0]||'').length,part0First100:(String(parts[0]||'')).slice(0,100)},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-  // #endregion
 
   if (normalized.length > 0) {
     const merged = normalized.reduce((acc, current) => deepMerge(acc, current), {});
@@ -136,10 +128,6 @@ export function mergeOutputParts(parts = []) {
     merged.meta.hasMore = false;
     merged.meta.complete = true;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7318/ingest/696724e1-b2c9-4252-acee-7b5a42d39699',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c624c'},body:JSON.stringify({sessionId:'8c624c',location:'outputChunker.js:mergeOutputParts',message:'mergeOutputParts success',data:{layers:Object.keys(merged).filter(k=>k!=='meta'),normalizedCount:normalized.length},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
-
     return merged;
   }
 
@@ -147,9 +135,6 @@ export function mergeOutputParts(parts = []) {
   const parsedCombined = safeJsonParse(extractJsonCandidate(combinedRaw));
 
   if (parsedCombined && typeof parsedCombined === 'object') {
-    // #region agent log
-    fetch('http://127.0.0.1:7318/ingest/696724e1-b2c9-4252-acee-7b5a42d39699',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c624c'},body:JSON.stringify({sessionId:'8c624c',location:'outputChunker.js:mergeOutputParts',message:'mergeOutputParts fallback success',data:{layers:Object.keys(parsedCombined).filter(k=>k!=='meta')},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-    // #endregion
     return parsedCombined;
   }
 

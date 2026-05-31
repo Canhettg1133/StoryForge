@@ -5,17 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:admin": "vite --config apps/admin/vite.config.js --host 0.0.0.0 --port 5176",
     "db:start": "powershell -ExecutionPolicy Bypass -File scripts/start-local-postgres.ps1",
     "db:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-local-postgres.ps1",
     "backend:start": "powershell -ExecutionPolicy Bypass -File scripts/start-local-backend.ps1",
     "jobs:server": "node src/services/jobs/server.js",
     "analysis:eval:live": "node scripts/analysis-live-eval.mjs",
     "test": "vitest run",
+    "test:admin": "vitest run src/tests/phases/phase12-adminAccess.test.js src/tests/phases/phase12-adminApiWorker.test.js",
     "test:phase6b": "vitest run src/tests/phases/phase6b-incidentFirst.test.js",
     "test:phase6d": "vitest run src/tests/phases/phase6d-analysisV2.test.js",
     "test:phase6f": "vitest run src/tests/phases/phase6f-analysisLiveEval.test.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "build:admin": "vite build --config apps/admin/vite.config.js",
+    "preview": "vite preview",
+    "preview:admin": "vite preview --config apps/admin/vite.config.js --host 0.0.0.0 --port 4176",
+    "worker:admin:dry-run": "npx wrangler deploy --config apps/admin-api-worker/wrangler.toml --dry-run",
+    "worker:relay:dry-run": "npx wrangler deploy --config relay-worker/wrangler.toml --dry-run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.3",
@@ -30,7 +36,6 @@
     "dexie": "^4.0.0",
     "dexie-react-hooks": "^1.1.7",
     "docx": "^9.6.1",
-    "epubjs": "^0.3.93",
     "express": "^5.2.1",
     "fast-xml-parser": "^5.5.10",
     "file-saver": "^2.0.5",

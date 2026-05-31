@@ -1,0 +1,15 @@
+{
+  "name": "@storyforge/admin-api-worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "deploy:dry-run": "wrangler deploy --dry-run"
+  },
+  "dependencies": {
+    "@storyforge/access": "file:../../packages/access"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

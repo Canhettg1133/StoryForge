@@ -16,27 +16,28 @@ function getErrorCodeFromHttpStatus(status) {
   return 'AI_REQUEST_FAILED';
 }
 
+function readRuntimeEnv(name) {
+  if (typeof process === 'undefined' || !process?.env) {
+    return undefined;
+  }
+  return process.env[name];
+}
+
 function resolveProxyUrl(explicitUrl) {
   const trimmed = String(explicitUrl || '').trim();
 
   if (trimmed) {
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      // #region agent log
-      fetch('http://127.0.0.1:7318/ingest/696724e1-b2c9-4252-acee-7b5a42d39699',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c624c'},body:JSON.stringify({sessionId:'8c624c',location:'sessionClient.js:resolveProxyUrl',message:'Using absolute proxy URL',data:{url:trimmed},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       return trimmed;
     }
   }
 
   const fallback = (
-    process.env.STORYFORGE_GEMINI_PROXY_URL
-    || process.env.STORYFORGE_PROXY_URL
-    || process.env.PROXY_URL
+    readRuntimeEnv('STORYFORGE_GEMINI_PROXY_URL')
+    || readRuntimeEnv('STORYFORGE_PROXY_URL')
+    || readRuntimeEnv('PROXY_URL')
     || null
   );
-  // #region agent log
-  fetch('http://127.0.0.1:7318/ingest/696724e1-b2c9-4252-acee-7b5a42d39699',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8c624c'},body:JSON.stringify({sessionId:'8c624c',location:'sessionClient.js:resolveProxyUrl',message:'No explicit URL, using fallback or null',data:{fallback,explicit:trimmed||'none'},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
   return fallback;
 }
 
@@ -63,8 +64,8 @@ function resolveDirectUrl(explicitUrl) {
   }
 
   return (
-    process.env.STORYFORGE_GEMINI_DIRECT_URL
-    || process.env.GEMINI_DIRECT_URL
+    readRuntimeEnv('STORYFORGE_GEMINI_DIRECT_URL')
+    || readRuntimeEnv('GEMINI_DIRECT_URL')
     || 'https://generativelanguage.googleapis.com'
   );
 }
@@ -102,17 +103,17 @@ function resolveApiKeys(provider, explicitKeys, explicitKey) {
 
   if (provider === ANALYSIS_PROVIDERS.GEMINI_DIRECT) {
     return uniqueKeys([
-      ...parseApiKeys(process.env.STORYFORGE_GEMINI_DIRECT_API_KEYS),
-      ...parseApiKeys(process.env.STORYFORGE_GEMINI_DIRECT_API_KEY),
-      ...parseApiKeys(process.env.GEMINI_API_KEY),
+      ...parseApiKeys(readRuntimeEnv('STORYFORGE_GEMINI_DIRECT_API_KEYS')),
+      ...parseApiKeys(readRuntimeEnv('STORYFORGE_GEMINI_DIRECT_API_KEY')),
+      ...parseApiKeys(readRuntimeEnv('GEMINI_API_KEY')),
     ]);
   }
 
   return uniqueKeys([
-    ...parseApiKeys(process.env.STORYFORGE_GEMINI_PROXY_KEYS),
-    ...parseApiKeys(process.env.STORYFORGE_GEMINI_PROXY_KEY),
-    ...parseApiKeys(process.env.STORYFORGE_PROXY_API_KEY),
-    ...parseApiKeys(process.env.GEMINI_PROXY_API_KEY),
+    ...parseApiKeys(readRuntimeEnv('STORYFORGE_GEMINI_PROXY_KEYS')),
+    ...parseApiKeys(readRuntimeEnv('STORYFORGE_GEMINI_PROXY_KEY')),
+    ...parseApiKeys(readRuntimeEnv('STORYFORGE_PROXY_API_KEY')),
+    ...parseApiKeys(readRuntimeEnv('GEMINI_PROXY_API_KEY')),
   ]);
 }
 

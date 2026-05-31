@@ -77,7 +77,7 @@ const FULL_MOBILE_DRAWER_ITEMS = [
   { id: 'editor', title: 'Viết truyện', icon: PenTool, path: '/editor', needsProject: true, surface: 'core' },
   { id: 'project-chat', title: 'Chat AI', icon: MessageSquare, path: '/chat', needsProject: true, surface: 'core' },
   { id: 'project-prompts', title: 'Prompt truyện', icon: Sparkles, path: '/prompts', needsProject: true, surface: 'core' },
-  { id: 'writing-debug', title: 'Test prompt viết', icon: FileJson, path: '/writing-debug', needsProject: true, surface: 'core' },
+  { id: 'writing-debug', title: 'Test prompt viết', icon: FileJson, path: '/writing-debug', needsProject: true, surface: 'debug' },
   { divider: true },
   { id: 'lab', title: 'Narrative Lab', icon: FlaskConical, path: '/lab', needsProject: true, surface: 'lab' },
   { id: 'lab-lite', title: 'Lab Lite', icon: BookKey, path: '/lab-lite', needsProject: true, surface: 'lab-lite' },

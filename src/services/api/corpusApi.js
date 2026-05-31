@@ -1,10 +1,28 @@
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 
-const CORPUS_API_BASE_URL =
-  import.meta.env.VITE_JOB_SERVER_URL || 'http://localhost:3847';
+function isLocalHost() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
+}
+
+const CORPUS_API_BASE_URL = (
+  import.meta.env.VITE_JOB_SERVER_URL || (isLocalHost() ? 'http://localhost:3847' : '')
+).trim();
+
+function requireCorpusApiBaseUrl() {
+  if (!CORPUS_API_BASE_URL) {
+    const error = new Error('Thiếu VITE_JOB_SERVER_URL cho Corpus API.');
+    error.code = 'CORPUS_API_BASE_URL_MISSING';
+    throw error;
+  }
+  return CORPUS_API_BASE_URL;
+}
 
 function buildUrl(pathname, query = {}) {
-  const url = new URL(pathname, CORPUS_API_BASE_URL);
+  const url = new URL(pathname, requireCorpusApiBaseUrl());
 
   for (const [key, value] of Object.entries(query || {})) {
     if (value === undefined || value === null || value === '') {
