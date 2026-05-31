@@ -237,7 +237,6 @@
           <div>
             <label for="transport">Đường gọi API</label>
             <select id="transport">
-              <option value="app-proxy">Qua app /api/proxy</option>
               <option value="direct">Gọi trực tiếp AG (thường bị CORS)</option>
             </select>
           </div>
@@ -329,7 +328,6 @@
 
     function buildRequestUrl() {
       const transport = document.getElementById('transport').value;
-      if (transport === 'app-proxy') return '/api/proxy/v1/chat/completions';
       const baseUrl = normalizeBaseUrl(document.getElementById('baseUrl').value || 'https://ag.beijixingxing.com/v1');
       return `${baseUrl}/chat/completions`;
     }
@@ -338,11 +336,7 @@
       const transport = document.getElementById('transport').value;
 
       if (location.protocol === 'file:') {
-        return 'Bạn đang mở tester bằng file:// nên browser không có /api/proxy để gọi. Hãy chạy npm run dev rồi mở http://localhost:3000/ag-proxy-key-tester.html, hoặc mở file này trên bản Vercel đã deploy.';
-      }
-
-      if (transport === 'app-proxy' && !/^https?:$/u.test(location.protocol)) {
-        return 'Chế độ /api/proxy cần chạy trên origin http/https của app.';
+        return 'Bạn đang mở tester bằng file://. Hãy chạy npm run dev rồi mở http://localhost:3000/ag-proxy-key-tester.html, hoặc mở file này trên bản Vercel đã deploy.';
       }
 
       return '';
@@ -356,7 +350,7 @@
         return { code: 'OK', label: 'Hoạt động', level: 'ok', message: 'Key gọi model thành công.' };
       }
       if (status === 0) {
-        return { code: 'NETWORK', label: 'Lỗi mạng/CORS', level: 'err', message: message || 'Không gọi được endpoint. Nếu mở bằng file://, hãy chạy qua localhost/Vercel hoặc chọn /api/proxy.' };
+        return { code: 'NETWORK', label: 'Lỗi mạng/CORS', level: 'err', message: message || 'Không gọi được endpoint. Nếu mở bằng file://, hãy chạy qua localhost/Vercel; nếu vẫn lỗi nhanh, đó có thể là CORS khi gọi trực tiếp AG.' };
       }
       if (status === 401) {
         return { code: 'INVALID_KEY', label: 'Key sai', level: 'err', message: message || 'Key không hợp lệ hoặc đã bị thu hồi.' };
@@ -535,7 +529,7 @@
 
       const url = buildRequestUrl();
       if (document.getElementById('transport').value === 'direct') {
-        setLog('Đang gọi trực tiếp AG. Nếu tất cả request báo Failed to fetch rất nhanh, đó là CORS của browser; hãy đổi sang Qua app /api/proxy.', 'warn');
+        setLog('Đang gọi trực tiếp AG. Nếu tất cả request báo Failed to fetch rất nhanh, đó là CORS của browser; hãy test trong app StoryForge để đi qua relay guard.', 'warn');
       }
       const model = document.getElementById('model').value.trim();
       const prompt = document.getElementById('prompt').value.trim() || 'Trả lời ngắn bằng tiếng Việt.';

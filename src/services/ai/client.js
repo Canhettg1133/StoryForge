@@ -16,10 +16,9 @@ import {
   fetchOpenAIProxyModels,
   getActiveOpenAIProxyProfile,
   getOpenAIProxyKeyProvider,
-  resolveOpenAIProxyDirectRequest,
   resolveOpenAIProxyRequest,
-  shouldFallbackOpenAIProxyRelay,
 } from './openAIProxyConfig';
+import { getStoryForgeAccessToken } from '../access/accessClient.js';
 import {
   callAIStudioRelayTransport,
   createAIStudioRelayRoom,
@@ -173,6 +172,10 @@ export function getAIStudioConnectorUrl() {
 
 export function getAIStudioRelayRoomCode() {
   return getSettings().aiStudioRelayRoomCode || '';
+}
+
+export function getAIStudioRelayRoomSecret() {
+  return getSettings().aiStudioRelayRoomSecret || '';
 }
 
 export { createAIStudioRelayRoom, fetchOpenAIProxyModels, getAIStudioRelayRoomStatus };
@@ -391,11 +394,13 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
     }),
   };
   const target = resolveOpenAIProxyRequest(proxyProfile, 'chat');
+  const storyForgeToken = target.mode === 'relay' ? await getStoryForgeAccessToken() : '';
   const requestBody = target.mode === 'relay'
     ? {
       action: 'chat',
       baseUrl: proxyProfile.baseUrl,
       chatCompletionsPath: proxyProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
+      runtimeMode: nsfwMode ? 'adult' : 'standard',
       payload,
     }
     : payload;
@@ -405,24 +410,16 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        ...(target.mode === 'relay'
+          ? {
+            ...(storyForgeToken ? { Authorization: `Bearer ${storyForgeToken}` } : {}),
+            'X-StoryForge-Upstream-Key': apiKey,
+          }
+          : { Authorization: `Bearer ${apiKey}` }),
       },
       body: JSON.stringify(requestBody),
       signal,
     });
-
-    if (target.mode === 'relay' && shouldFallbackOpenAIProxyRelay(response)) {
-      const directTarget = resolveOpenAIProxyDirectRequest(proxyProfile, 'chat');
-      response = await fetch(directTarget.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(payload),
-        signal,
-      });
-    }
 
     if (response.status === 429) {
       const errText = await response.text().catch(() => '');
@@ -640,6 +637,7 @@ async function callOllama({ model, messages, stream = true, signal, onToken, onC
 async function callAIStudioRelay({ model, messages, stream = true, signal, onToken, onComplete, onError }) {
   const relayUrl = getAIStudioRelayUrl();
   const roomCode = getAIStudioRelayRoomCode();
+  const roomSecret = getAIStudioRelayRoomSecret();
 
   if (!relayUrl) {
     throw normalizeAIError(
@@ -658,6 +656,7 @@ async function callAIStudioRelay({ model, messages, stream = true, signal, onTok
     return await callAIStudioRelayTransport({
       relayUrl,
       roomCode,
+      roomSecret,
       model,
       messages,
       stream,
@@ -1102,9 +1101,11 @@ class AIService {
       if (provider === PROVIDERS.AI_STUDIO_RELAY) {
         const relayUrl = getAIStudioRelayUrl();
         const roomCode = getAIStudioRelayRoomCode();
+        const roomSecret = getAIStudioRelayRoomSecret();
         if (!relayUrl) return { success: false, error: 'Chưa cấu hình Relay URL' };
         if (roomCode) {
           const status = await getAIStudioRelayRoomStatus(relayUrl, roomCode, {
+            roomSecret,
             signal: AbortSignal.timeout(8000),
           });
           return { success: true, models: [], status };

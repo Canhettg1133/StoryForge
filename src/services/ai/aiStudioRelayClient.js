@@ -1,3 +1,5 @@
+import { getStoryForgeAccessToken } from '../access/accessClient.js';
+
 const DEFAULT_RELAY_TIMEOUT_MS = 12 * 60 * 1000;
 const HEARTBEAT_INTERVAL_MS = 15000;
 
@@ -8,7 +10,7 @@ function getBrowserOrigin() {
   return 'http://localhost';
 }
 
-function buildRelayUrl(relayUrl, roomCode, { websocket = false, status = false } = {}) {
+function buildRelayUrl(relayUrl, roomCode, { websocket = false, status = false, roomSecret = '' } = {}) {
   const trimmedRelayUrl = String(relayUrl || '').trim();
   const trimmedRoomCode = String(roomCode || '').trim();
 
@@ -26,8 +28,9 @@ function buildRelayUrl(relayUrl, roomCode, { websocket = false, status = false }
 
   if (websocket) {
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-    url.search = 'role=client';
+    url.searchParams.set('role', 'client');
   }
+  if (roomSecret) url.searchParams.set('secret', roomSecret);
 
   return url.toString();
 }
@@ -128,12 +131,12 @@ function isSocketOpen(socket, WebSocketImpl) {
   return socket?.readyState === openState;
 }
 
-export function toRelayWebSocketUrl(relayUrl, roomCode) {
-  return buildRelayUrl(relayUrl, roomCode, { websocket: true });
+export function toRelayWebSocketUrl(relayUrl, roomCode, roomSecret = '') {
+  return buildRelayUrl(relayUrl, roomCode, { websocket: true, roomSecret });
 }
 
-export function toRelayStatusUrl(relayUrl, roomCode) {
-  return buildRelayUrl(relayUrl, roomCode, { status: true });
+export function toRelayStatusUrl(relayUrl, roomCode, roomSecret = '') {
+  return buildRelayUrl(relayUrl, roomCode, { status: true, roomSecret });
 }
 
 export async function createAIStudioRelayRoom(relayUrl, { signal } = {}) {
@@ -145,9 +148,13 @@ export async function createAIStudioRelayRoom(relayUrl, { signal } = {}) {
   const url = new URL(trimmedRelayUrl, getBrowserOrigin());
   url.pathname = `${url.pathname.replace(/\/+$/u, '')}/rooms`;
 
+  const token = await getStoryForgeAccessToken();
   const response = await fetch(url.toString(), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     signal,
   });
 
@@ -162,8 +169,8 @@ export async function createAIStudioRelayRoom(relayUrl, { signal } = {}) {
   return payload;
 }
 
-export async function getAIStudioRelayRoomStatus(relayUrl, roomCode, { signal } = {}) {
-  const response = await fetch(toRelayStatusUrl(relayUrl, roomCode), { signal });
+export async function getAIStudioRelayRoomStatus(relayUrl, roomCode, { roomSecret = '', signal } = {}) {
+  const response = await fetch(toRelayStatusUrl(relayUrl, roomCode, roomSecret), { signal });
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -179,6 +186,7 @@ export async function getAIStudioRelayRoomStatus(relayUrl, roomCode, { signal } 
 export function callAIStudioRelayTransport({
   relayUrl,
   roomCode,
+  roomSecret = '',
   model,
   messages,
   stream = true,
@@ -299,7 +307,7 @@ export function callAIStudioRelayTransport({
     }
 
     try {
-      socket = new WebSocketImpl(toRelayWebSocketUrl(relayUrl, roomCode));
+      socket = new WebSocketImpl(toRelayWebSocketUrl(relayUrl, roomCode, roomSecret));
     } catch (error) {
       finishReject(createRelayError(error?.message || 'Không mở được kết nối AI Studio Relay.', 'AI_STUDIO_RELAY_CONNECT_FAILED'));
       return;

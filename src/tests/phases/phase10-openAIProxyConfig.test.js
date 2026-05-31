@@ -39,7 +39,25 @@ describe('openAIProxyConfig legacy settings migration', () => {
     } = await loadConfig();
 
     expect(getOpenAIProxySettings().activeProfileId).toBe(AG_PROXY_PROFILE_ID);
-    expect(getActiveOpenAIProxyProfile().baseUrl).toBe('/api/proxy');
+    expect(getActiveOpenAIProxyProfile().baseUrl).toBe('https://ag.beijixingxing.com');
+  });
+
+  it('migrates the removed /api/proxy rewrite preset back to guarded AG relay', async () => {
+    localStorage.setItem('sf-ai-settings', JSON.stringify({
+      proxyUrl: '/api/proxy',
+    }));
+
+    const {
+      AG_PROXY_PROFILE_ID,
+      getOpenAIProxySettings,
+      getActiveOpenAIProxyProfile,
+    } = await loadConfig();
+
+    expect(getOpenAIProxySettings().activeProfileId).toBe(AG_PROXY_PROFILE_ID);
+    expect(getActiveOpenAIProxyProfile()).toMatchObject({
+      baseUrl: 'https://ag.beijixingxing.com',
+      transport: 'relay',
+    });
   });
 
   it('resolves separate key pools for ag and custom proxy profiles', async () => {
@@ -107,7 +125,7 @@ describe('openAIProxyConfig legacy settings migration', () => {
     ]);
   });
 
-  it('falls back to direct model fetch when the same-origin relay route is missing', async () => {
+  it('does not bypass access guard when the same-origin relay route is missing', async () => {
     const {
       DEFAULT_PROXY_MODELS_PATH,
       fetchOpenAIProxyModels,
@@ -124,7 +142,7 @@ describe('openAIProxyConfig legacy settings migration', () => {
       }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const models = await fetchOpenAIProxyModels({
+    await expect(fetchOpenAIProxyModels({
       profile: {
         ...getDefaultCustomOpenAIProxyProfile(),
         baseUrl: 'https://proxy.example.com/v1',
@@ -132,10 +150,9 @@ describe('openAIProxyConfig legacy settings migration', () => {
         transport: 'relay',
       },
       apiKey: 'sk-custom-key',
-    });
+    })).rejects.toThrow('Not found');
 
-    expect(models).toEqual(['custom-model']);
     expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
-    expect(fetchMock.mock.calls[1][0]).toBe('https://proxy.example.com/v1/models');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -263,7 +263,7 @@
 
         <label>
           Địa chỉ API
-          <input id="baseUrl" value="https://story-forge-virid.vercel.app/api/proxy">
+          <input id="baseUrl" value="https://ag.beijixingxing.com">
         </label>
 
         <label>
@@ -334,7 +334,7 @@ gemini-2.5-pro-真流-[星星公益站-CLI渠道]</textarea>
           Với <code>Gemini Proxy</code>, trang sẽ gửi cả <code>safetySettings</code> và <code>safety_settings</code> để dễ kiểm tra proxy có nhận tham số lọc nội dung hay không.
         </div>
         <div class="hint">
-          URL <code>https://story-forge-virid.vercel.app/api/proxy</code> là đúng nếu bạn muốn kiểm tra đúng proxy web của app. Nếu mở file HTML bằng <code>file://</code>, trình duyệt vẫn có thể chặn vì CORS tùy vào header từ server.
+          Tester độc lập này gọi trực tiếp endpoint provider. StoryForge app dùng relay guard riêng nên không còn endpoint legacy <code>/api/proxy</code>.
         </div>
         <div class="hint">
           Hai nút test RPM mới sẽ giúp bạn đo xem giới hạn có vẻ tính theo <code>key chung</code> hay theo <code>từng model</code>.
@@ -943,7 +943,7 @@ gemini-2.5-pro-真流-[星星公益站-CLI渠道]</textarea>
     $('provider').addEventListener('change', () => {
       const provider = $('provider').value;
       if (provider === 'gemini_proxy') {
-        $('baseUrl').value = 'https://story-forge-virid.vercel.app/api/proxy';
+        $('baseUrl').value = 'https://ag.beijixingxing.com';
         $('model').value = 'gemini-2.5-flash-真流-[星星公益站-CLI渠道]';
         $('modelList').value = [
           'gemini-2.5-flash-真流-[星星公益站-CLI渠道]',

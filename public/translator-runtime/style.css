@@ -1891,6 +1891,9 @@ select option {
 .prompt-panel textarea {
     margin-bottom: var(--spacing-md);
     font-size: 0.9rem;
+    min-height: 128px;
+    overflow-y: hidden;
+    resize: none;
 }
 
 .prompt-templates {

@@ -59,8 +59,8 @@
     <script>
         // Lấy Config
         function getConfig() {
-            // Mặc định dùng proxy nội bộ của Vite (/api/proxy) nếu chạy ở localhost
-            let proxyUrl = window.location.hostname === 'localhost' ? '/api/proxy' : 'https://ag.beijixingxing.com';
+            // Tester độc lập gọi trực tiếp AG; StoryForge app dùng relay guard riêng.
+            let proxyUrl = 'https://ag.beijixingxing.com';
             let apiKey = '';
             try {
                 const settings = JSON.parse(localStorage.getItem('sf-ai-settings') || '{}');

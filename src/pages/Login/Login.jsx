@@ -1,0 +1,215 @@
+import React, { useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Copy,
+  Crown,
+  LogIn,
+  Mail,
+  MessageCircle,
+} from 'lucide-react';
+import {
+  isCloudAuthConfigured,
+  normalizeCloudReturnPath,
+  signInWithGoogle,
+} from '../../services/cloud/cloudAuthService.js';
+import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
+import { useUserAccess } from '../../hooks/useUserAccess.js';
+import {
+  getFeatureDisplayName,
+  getPlanDisplayName,
+} from '../AdminAccess/adminAccessLabels.js';
+import './Login.css';
+
+const FEATURE_ORDER = [
+  ACCESS_FEATURES.TRANSLATOR_ACCESS,
+  ACCESS_FEATURES.AI_CHAT_ACCESS,
+  ACCESS_FEATURES.ADULT_MODE,
+  ACCESS_FEATURES.AG_PROXY,
+  ACCESS_FEATURES.AI_STUDIO_RELAY,
+  ACCESS_FEATURES.CUSTOM_PROXY,
+  ACCESS_FEATURES.TRANSLATOR_PARALLEL_HIGH,
+  ACCESS_FEATURES.TRANSLATOR_BULK_KEYS,
+];
+
+function getReturnTo(location) {
+  const params = new URLSearchParams(location.search || '');
+  const target = normalizeCloudReturnPath(params.get('returnTo'), '/');
+  return target.startsWith('/login') ? '/' : target;
+}
+
+function formatDate(value) {
+  if (!value) return 'Không hết hạn';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Không rõ';
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function getCurrentPlanText(plan) {
+  if (!plan) return 'Chưa có VIP';
+  const name = getPlanDisplayName(plan) || 'Gói hiện tại';
+  return plan.expiresAt ? `${name} đến ${formatDate(plan.expiresAt)}` : name;
+}
+
+export default function Login() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { access, loading } = useUserAccess();
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+  const returnTo = useMemo(() => getReturnTo(location), [location]);
+
+  const email = access?.user?.email || '';
+  const enabledFeatures = FEATURE_ORDER.filter((featureKey) => access?.features?.[featureKey]?.allowed);
+  const hasVipPlan = ['vip', 'lifetime'].includes(String(access?.plan?.key || '').toLowerCase());
+  const authenticated = Boolean(access?.authenticated);
+
+  const handleGoogleLogin = async () => {
+    setError('');
+    try {
+      await signInWithGoogle({ returnPath: returnTo });
+    } catch (err) {
+      setError(err?.message || 'Không thể mở đăng nhập Google. Hãy kiểm tra cấu hình Supabase.');
+    }
+  };
+
+  const handleCopyEmail = async () => {
+    if (!email) return;
+    try {
+      await navigator.clipboard?.writeText(email);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <main className="login-page">
+      <section className="login-page__shell" aria-label="Đăng nhập và kiểm tra quyền VIP">
+        <div className="login-page__intro">
+          <button type="button" className="login-page__back" onClick={() => navigate(returnTo || '/')}>
+            <ArrowLeft size={16} />
+            Quay lại StoryForge
+          </button>
+
+          <div className="login-page__title">
+            <span className="login-page__mark" aria-hidden="true">
+              <Crown size={30} />
+            </span>
+            <div>
+              <h1>Tài khoản & VIP StoryForge</h1>
+              <p>Đăng nhập Google để StoryForge nhận đúng email tài khoản. Nếu chưa có VIP, copy email này và nhắn admin cấp quyền.</p>
+            </div>
+          </div>
+
+          <div className="login-page__quick-flow" aria-label="Cách nhận VIP">
+            <div>
+              <LogIn size={18} />
+              <strong>Đăng nhập Google</strong>
+              <span>Xác nhận đúng tài khoản đang dùng.</span>
+            </div>
+            <div>
+              <MessageCircle size={18} />
+              <strong>Nhắn admin</strong>
+              <span>Gửi email và nói: cấp VIP cho tài khoản này.</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="login-page__panel">
+          {loading ? (
+            <div className="login-page__status">
+              <Crown size={24} />
+              <h2>Đang kiểm tra tài khoản</h2>
+              <p>Đang tải trạng thái đăng nhập và quyền VIP.</p>
+            </div>
+          ) : authenticated ? (
+            <>
+              <div className="login-page__status login-page__status--success">
+                <CheckCircle2 size={24} />
+                <h2>Đã đăng nhập</h2>
+                <p>{hasVipPlan ? 'Tài khoản của bạn đã có VIP.' : 'Copy email rồi nhắn admin cấp VIP cho đúng tài khoản này.'}</p>
+              </div>
+
+              <div className="login-page__account">
+                <div>
+                  <span><Mail size={14} /> Email tài khoản</span>
+                  <strong>{email || 'Không rõ'}</strong>
+                </div>
+                <div>
+                  <span><Crown size={14} /> Gói hiện tại</span>
+                  <strong>{getCurrentPlanText(access?.plan)}</strong>
+                </div>
+              </div>
+
+              {!hasVipPlan ? (
+                <div className="login-page__notice">
+                  <MessageCircle size={18} />
+                  <p>Admin cấp VIP theo email đăng nhập. Copy email dưới đây để tránh cấp nhầm tài khoản.</p>
+                </div>
+              ) : null}
+
+              {enabledFeatures.length ? (
+                <div className="login-page__feature-list" aria-label="Quyền đang có">
+                  {enabledFeatures.map((featureKey) => (
+                    <span key={featureKey}>{getFeatureDisplayName(featureKey)}</span>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className={`login-page__actions ${hasVipPlan ? '' : 'login-page__actions--copy-first'}`}>
+                {!hasVipPlan && email ? (
+                  <button type="button" className="btn btn-primary" onClick={handleCopyEmail}>
+                    <Copy size={15} />
+                    {copied ? 'Đã copy email' : 'Copy email'}
+                  </button>
+                ) : null}
+                <button type="button" className={hasVipPlan ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => navigate(returnTo || '/')}>
+                  Tiếp tục
+                </button>
+                {hasVipPlan && email ? (
+                  <button type="button" className="btn btn-secondary" onClick={handleCopyEmail}>
+                    <Copy size={15} />
+                    {copied ? 'Đã copy email' : 'Copy email'}
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="login-page__status">
+                <LogIn size={24} />
+                <h2>Đăng nhập để kiểm tra VIP</h2>
+                <p>Admin cần email đăng nhập để cấp VIP đúng tài khoản.</p>
+              </div>
+
+              {!isCloudAuthConfigured() ? (
+                <div className="login-page__error">
+                  Supabase Auth chưa được cấu hình trong môi trường local.
+                </div>
+              ) : null}
+
+              {error ? <div className="login-page__error">{error}</div> : null}
+
+              <button
+                type="button"
+                className="btn btn-primary login-page__login-button"
+                onClick={handleGoogleLogin}
+                disabled={!isCloudAuthConfigured()}
+              >
+                <LogIn size={17} />
+                Đăng nhập bằng Google
+              </button>
+            </>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}

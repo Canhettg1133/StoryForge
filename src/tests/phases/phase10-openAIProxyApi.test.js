@@ -1,6 +1,35 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import handler from '../../../api/openai-proxy.js';
+import { createOpenAIProxyHandler } from '../../../api/openai-proxy.js';
+import { createTranslatorOpenAIProxyHandler } from '../../../api/translator-openai-proxy.js';
+
+const allowFeature = async () => ({
+  ok: true,
+  user: { id: 'user-1' },
+  decision: { allowed: true },
+});
+
+const handler = createOpenAIProxyHandler({ requireFeatureImpl: allowFeature });
+
+function createFeatureGate(allowedFeatures = []) {
+  const allowed = new Set(allowedFeatures);
+  const calls = [];
+  const requireFeatureImpl = async (req, feature, context = {}) => {
+    calls.push({ feature, context });
+    const ok = allowed.has(feature);
+    return {
+      ok,
+      user: { id: 'user-1' },
+      decision: {
+        allowed: ok,
+        status: ok ? 200 : 403,
+        reason: ok ? 'FEATURE_ALLOWED' : 'FEATURE_NOT_ALLOWED',
+        feature,
+      },
+    };
+  };
+  return { calls, requireFeatureImpl };
+}
 
 function createReqRes({ method = 'POST', body = {}, headers = {} } = {}) {
   const chunks = [];
@@ -49,6 +78,115 @@ describe('/api/openai-proxy', () => {
     expect(JSON.parse(res.body).code).toBe('OPENAI_PROXY_TARGET_BLOCKED');
   });
 
+  it('does not trust spoofed workflow/provider features from the request body', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const gate = createFeatureGate(['translator.access']);
+    const spoofHandler = createOpenAIProxyHandler({ requireFeatureImpl: gate.requireFeatureImpl });
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+        accessFeature: 'translator.access',
+        workflowFeature: 'translator.access',
+        providerFeature: 'translator.access',
+        payload: { model: 'm', messages: [{ role: 'user', content: 'hello' }] },
+      },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
+    });
+
+    await spoofHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).feature).toBe('ai_chat.access');
+    expect(gate.calls.map((call) => call.feature)).toContain('ai_chat.access');
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('infers custom proxy from parsed baseUrl even when body claims AG provider', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const gate = createFeatureGate(['ai_chat.access', 'provider.ag_proxy']);
+    const spoofHandler = createOpenAIProxyHandler({ requireFeatureImpl: gate.requireFeatureImpl });
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+        providerFeature: 'provider.ag_proxy',
+        payload: { model: 'm', messages: [{ role: 'user', content: 'hello' }] },
+      },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
+    });
+
+    await spoofHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).feature).toBe('provider.custom_proxy');
+    expect(gate.calls.map((call) => call.feature)).toEqual(['ai_chat.access', 'provider.custom_proxy']);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('does not classify crafted AG-looking hostnames as AG proxy', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const gate = createFeatureGate(['ai_chat.access', 'provider.ag_proxy']);
+    const spoofHandler = createOpenAIProxyHandler({ requireFeatureImpl: gate.requireFeatureImpl });
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://ag.beijixingxing.com.evil.com',
+        payload: { model: 'm', messages: [{ role: 'user', content: 'hello' }] },
+      },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
+    });
+
+    await spoofHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).feature).toBe('provider.custom_proxy');
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects relay targets with URL userinfo before entitlement checks', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const gate = createFeatureGate(['ai_chat.access', 'provider.custom_proxy']);
+    const spoofHandler = createOpenAIProxyHandler({ requireFeatureImpl: gate.requireFeatureImpl });
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://ag.beijixingxing.com@evil.com',
+        payload: { model: 'm', messages: [{ role: 'user', content: 'hello' }] },
+      },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
+    });
+
+    await spoofHandler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).code).toBe('OPENAI_PROXY_TARGET_BLOCKED');
+    expect(gate.calls).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('forwards model listing requests to /v1/models', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       data: [{ id: 'model-a' }],
@@ -64,7 +202,10 @@ describe('/api/openai-proxy', () => {
         baseUrl: 'https://proxy.example.com/v1',
         modelsPath: '/v1/models',
       },
-      headers: { authorization: 'Bearer test-key' },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
     });
 
     await handler(req, res);
@@ -104,7 +245,10 @@ describe('/api/openai-proxy', () => {
         chatCompletionsPath: '/v1/chat/completions',
         payload,
       },
-      headers: { authorization: 'Bearer test-key' },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
     });
 
     await handler(req, res);
@@ -142,7 +286,10 @@ describe('/api/openai-proxy', () => {
         chatCompletionsPath: '/v1/chat/completions',
         payloads,
       },
-      headers: { authorization: 'Bearer test-key' },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
     });
 
     await handler(req, res);
@@ -161,7 +308,37 @@ describe('/api/openai-proxy', () => {
     vi.unstubAllGlobals();
   });
 
-  it('does not accept Authorization from the JSON body', async () => {
+  it('uses the same workflow and provider guard for batch requests', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const gate = createFeatureGate(['ai_chat.access']);
+    const batchHandler = createOpenAIProxyHandler({ requireFeatureImpl: gate.requireFeatureImpl });
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat_stream_batch',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+        payloads: [
+          { model: 'custom-model', messages: [{ role: 'user', content: 'a' }] },
+          { model: 'custom-model', messages: [{ role: 'user', content: 'b' }] },
+        ],
+      },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
+    });
+
+    await batchHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).feature).toBe('provider.custom_proxy');
+    expect(gate.calls.map((call) => call.feature)).toEqual(['ai_chat.access', 'provider.custom_proxy']);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('does not use Authorization as the upstream provider key', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       data: [],
     }), {
@@ -176,17 +353,75 @@ describe('/api/openai-proxy', () => {
         baseUrl: 'https://proxy.example.com',
         authorization: 'Bearer body-key',
       },
+      headers: { authorization: 'Bearer storyforge-token' },
     });
     const { res } = createReqRes();
 
     await handler(req, res);
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://proxy.example.com/v1/models',
-      expect.objectContaining({
-        headers: {},
-      }),
-    );
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).code).toBe('OPENAI_PROXY_UPSTREAM_KEY_REQUIRED');
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+});
+
+describe('/api/translator-openai-proxy', () => {
+  it('requires a server-recognized translator template for chat requests', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const gate = createFeatureGate(['translator.access', 'provider.custom_proxy']);
+    const translatorHandler = createTranslatorOpenAIProxyHandler({ requireFeatureImpl: gate.requireFeatureImpl });
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        payload: { model: 'm', messages: [{ role: 'user', content: 'hello' }] },
+      },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
+    });
+
+    await translatorHandler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).code).toBe('TRANSLATOR_TEMPLATE_REQUIRED');
+    expect(gate.calls).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('requires content.adult_mode for adult templates even when adultMode is false', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const gate = createFeatureGate(['translator.access', 'provider.custom_proxy']);
+    const translatorHandler = createTranslatorOpenAIProxyHandler({ requireFeatureImpl: gate.requireFeatureImpl });
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        templateId: 'sacHiepENI',
+        adultMode: false,
+        payload: { model: 'm', messages: [{ role: 'user', content: 'hello' }] },
+      },
+      headers: {
+        authorization: 'Bearer storyforge-token',
+        'x-storyforge-upstream-key': 'test-key',
+      },
+    });
+
+    await translatorHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    expect(JSON.parse(res.body).feature).toBe('content.adult_mode');
+    expect(gate.calls.map((call) => call.feature)).toEqual([
+      'translator.access',
+      'provider.custom_proxy',
+      'content.adult_mode',
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });

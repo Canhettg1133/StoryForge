@@ -25,6 +25,28 @@ function getProxyRelayBatchKey(activeBaseUrl, activeKey, proxyTarget) {
     ].join('|');
 }
 
+function getStoryForgeTranslatorToken() {
+    const runtimeGlobal = typeof window !== 'undefined' ? window : globalThis;
+    return typeof runtimeGlobal.getStoryForgeAccessToken === 'function'
+        ? String(runtimeGlobal.getStoryForgeAccessToken() || '')
+        : '';
+}
+
+function getProxyProviderFeature(proxyTarget) {
+    return proxyTarget?.profile?.id === 'custom-openai-proxy'
+        ? 'provider.custom_proxy'
+        : 'provider.ag_proxy';
+}
+
+function buildProxyRelayHeaders(activeKey) {
+    const token = getStoryForgeTranslatorToken();
+    return {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...(activeKey ? { 'X-StoryForge-Upstream-Key': activeKey } : {}),
+    };
+}
+
 function createProxyRelayBatchItemResponse(entry = {}) {
     const status = Number(entry.status) || 502;
     const body = entry.body ?? {};
@@ -185,6 +207,7 @@ async function sendProxyRelayChatStreamBatchGroup(items) {
     const sharedBody = {
         baseUrl: first.proxyTarget.profile.baseUrl,
         chatCompletionsPath: first.proxyTarget.path,
+        templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : 'convert',
     };
     const requestBody = activeItems.length === 1
         ? {
@@ -201,10 +224,7 @@ async function sendProxyRelayChatStreamBatchGroup(items) {
     try {
         const response = await fetch(first.activeBaseUrl, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${first.activeKey}`,
-                'Content-Type': 'application/json'
-            },
+            headers: buildProxyRelayHeaders(first.activeKey),
             body: JSON.stringify(requestBody),
             signal: groupController.signal,
         });

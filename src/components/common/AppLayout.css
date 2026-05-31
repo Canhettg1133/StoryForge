@@ -54,6 +54,53 @@
   min-height: 0;
 }
 
+.translator-access-gate {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--color-bg-primary);
+}
+
+.translator-access-gate__panel {
+  width: min(460px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  box-shadow: var(--shadow-lg, 0 18px 50px rgba(0, 0, 0, 0.26));
+}
+
+.translator-access-gate__eyebrow {
+  width: max-content;
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.translator-access-gate__panel h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.translator-access-gate__panel p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+}
+
+.translator-access-gate__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .app-main--translator-active {
   overflow: hidden;
 }

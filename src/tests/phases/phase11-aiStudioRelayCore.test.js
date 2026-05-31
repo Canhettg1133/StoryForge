@@ -43,6 +43,72 @@ class FakeSocket {
   }
 }
 
+function createRelayEnv() {
+  const roomStub = {
+    fetch: vi.fn(async () => new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })),
+  };
+  return {
+    ALLOWED_ORIGINS: 'https://story-forge-virid.vercel.app',
+    SUPABASE_URL: 'https://supabase.example.test',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+    AI_STUDIO_RELAY_ROOMS: {
+      idFromName: vi.fn((code) => code),
+      get: vi.fn(() => roomStub),
+    },
+    roomStub,
+  };
+}
+
+function stubSupabaseAccess({ planKey = 'free', planFeatureEnabled = false } = {}) {
+  vi.stubGlobal('fetch', vi.fn(async (url) => {
+    const href = String(url);
+    if (href.includes('/auth/v1/user')) {
+      return new Response(JSON.stringify({ id: 'user-1', email: 'user@example.com' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (href.includes('/rest/v1/profiles')) {
+      return new Response(JSON.stringify([{
+        user_id: 'user-1',
+        email: 'user@example.com',
+        status: 'active',
+        system_role: 'user',
+      }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (href.includes('/rest/v1/features')) {
+      return new Response(JSON.stringify([
+        { key: 'provider.ai_studio_relay', active: true },
+      ]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (href.includes('/rest/v1/user_plans')) {
+      return new Response(JSON.stringify([{
+        id: 'user-plan-1',
+        plan_id: `${planKey}-plan`,
+        status: 'active',
+        plans: { key: planKey, name: planKey.toUpperCase() },
+      }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (href.includes('/rest/v1/plan_features')) {
+      return new Response(JSON.stringify(planFeatureEnabled ? [{
+        plan_id: `${planKey}-plan`,
+        feature_key: 'provider.ai_studio_relay',
+        enabled: true,
+      }] : []), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (href.includes('/rest/v1/user_entitlement_overrides')) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (href.includes('/rest/v1/consent_versions')) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(JSON.stringify([]), { status: 404, headers: { 'Content-Type': 'application/json' } });
+  }));
+}
+
 describe('AI Studio Relay room core', () => {
   it('trusts the current AI Studio app origin for connector CORS', () => {
     expect(isTrustedAIStudioOrigin('https://ai.studio')).toBe(true);
@@ -170,6 +236,49 @@ describe('AI Studio Relay room core', () => {
   it('creates readable room codes without ambiguous state', () => {
     expect(createRoomCode(() => 0)).toBe('AAA-AAA');
     expect(createRoomCode(() => 0.999999)).toMatch(/^[A-Z0-9]{3}-[A-Z0-9]{3}$/);
+  });
+
+  it('does not let a free user create an AI Studio Relay room', async () => {
+    stubSupabaseAccess({ planKey: 'free', planFeatureEnabled: false });
+    const env = createRelayEnv();
+
+    const response = await relayWorker.fetch(new Request('https://relay.example.test/rooms', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://story-forge-virid.vercel.app',
+        Authorization: 'Bearer user-token',
+      },
+    }), env);
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.code).toBe('FEATURE_NOT_ALLOWED');
+    expect(env.roomStub.fetch).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('returns a short-lived room secret when an entitled user creates a relay room', async () => {
+    stubSupabaseAccess({ planKey: 'vip', planFeatureEnabled: true });
+    const env = createRelayEnv();
+
+    const response = await relayWorker.fetch(new Request('https://relay.example.test/rooms', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://story-forge-virid.vercel.app',
+        Authorization: 'Bearer user-token',
+      },
+    }), env);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      code: expect.stringMatching(/^[A-Z0-9]{3}-[A-Z0-9]{3}$/),
+      roomSecret: expect.stringMatching(/^[a-f0-9]{48}$/),
+      expiresInMs: 30 * 60 * 1000,
+    });
+    expect(env.roomStub.fetch).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
   });
 
   it('rejects duplicate roles in the same room', () => {

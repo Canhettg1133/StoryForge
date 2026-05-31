@@ -73,10 +73,18 @@ function getCurrentReturnPath() {
   return pathname;
 }
 
+export function normalizeCloudReturnPath(value, fallback = '/cloud-sync') {
+  const normalizedFallback = String(fallback || '/cloud-sync').trim() || '/cloud-sync';
+  const raw = String(value || '').trim();
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return normalizedFallback;
+  if (/^\/\\/.test(raw) || /[\r\n]/.test(raw)) return normalizedFallback;
+  return raw;
+}
+
 export function rememberCloudAuthReturnPath(path = getCurrentReturnPath()) {
   if (typeof window === 'undefined') return;
   try {
-    window.sessionStorage?.setItem(CLOUD_AUTH_RETURN_PATH_KEY, String(path || '/cloud-sync'));
+    window.sessionStorage?.setItem(CLOUD_AUTH_RETURN_PATH_KEY, normalizeCloudReturnPath(path));
   } catch {
     // Session storage may be blocked; the root callback still completes auth.
   }
@@ -104,7 +112,7 @@ export async function getSession() {
 export async function signInWithGoogle(options = {}) {
   ensureConfigured();
   const client = getSupabaseClient();
-  rememberCloudAuthReturnPath();
+  rememberCloudAuthReturnPath(options.returnPath || options.returnTo || getCurrentReturnPath());
   const redirectTo = normalizeCloudRedirectUrl(
     options.redirectTo || getSafeCloudRedirectUrl(),
     typeof window !== 'undefined' ? window.location?.origin : '',

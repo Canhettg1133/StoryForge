@@ -172,6 +172,7 @@ async function applySelectedCanonPackToPrompt() {
     const promptInput = document.getElementById('customPrompt');
     if (!promptInput) return '';
     promptInput.value = await applyActiveCanonPackToPrompt(promptInput.value || '');
+    if (typeof autoResizePromptTextarea === 'function') autoResizePromptTextarea();
     if (typeof saveSettings === 'function') saveSettings();
     if (typeof showToast === 'function') showToast('Đã nạp Canon Pack vào prompt dịch.', 'success');
     return promptInput.value;
@@ -183,6 +184,7 @@ function handleCanonPackToggle() {
     if (!useCanonPackTranslation) {
         const promptInput = document.getElementById('customPrompt');
         if (promptInput) promptInput.value = stripCanonPackTranslationContext(promptInput.value);
+        if (typeof autoResizePromptTextarea === 'function') autoResizePromptTextarea();
     }
     if (typeof saveSettings === 'function') saveSettings();
     if (typeof updateSettingsAccordions === 'function') updateSettingsAccordions();

@@ -26,6 +26,6 @@ Khi dashboard đã có quota, vào **Key Management** -> **Create API Key**. Nê
 
 Trong StoryForge: **Settings / Cài đặt** -> **API Keys** -> **Gemini Proxy**.
 
-Dán 3 key, chọn provider **Gemini Proxy**, giữ Proxy URL `/api/proxy`, chọn chất lượng **Cân bằng**, rồi bấm **Test**.
+Dán 3 key, chọn provider **Gemini Proxy**, giữ Proxy URL mặc định `https://ag.beijixingxing.com`, chọn chất lượng **Cân bằng**, rồi bấm **Test**. Khi chạy trong StoryForge, request AG sẽ tự đi qua backend relay có kiểm tra quyền.
 
 Nếu vẫn lỗi: kiểm tra key thiếu ký tự, đúng khu Gemini Proxy, đúng provider. Nếu dịch bị dừng, giảm số luồng hoặc thêm key.

@@ -58,7 +58,11 @@ function buildTranslatorLanguageDirective(sourceLang = 'auto') {
 
 function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto') {
     const directive = buildTranslatorLanguageDirective(sourceLang);
-    const prompt = String(promptText || '').trim();
+    const prompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
+        ? ensureCharacterNameConsistencyPrompt(promptText || '', {
+            templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : undefined,
+        }).trim()
+        : String(promptText || '').trim();
     const source = String(chunkText || '').trim();
     return `${directive}${prompt ? `\n\n${prompt}` : ''}\n\n[Đoạn nguồn]\n${source}`;
 }
@@ -513,6 +517,11 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
 }
 
 async function startTranslation() {
+    if (typeof requireStoryForgeFeature === 'function') {
+        const canUseTranslator = await requireStoryForgeFeature('translator.access');
+        if (!canUseTranslator) return;
+    }
+
     // Validate - Ollama/Proxy không cần API keys
     if (!useOllama && !useProxy && apiKeys.length === 0) {
         showToast('Vui lòng thêm ít nhất 1 API Key, bật Ollama Local, hoặc bật Proxy API!', 'error');
@@ -535,15 +544,37 @@ async function startTranslation() {
     rpmPerKey = typeof normalizeTranslatorRpm === 'function'
         ? normalizeTranslatorRpm(document.getElementById('rpmPerKey')?.value || rpmPerKey)
         : (parseInt(document.getElementById('rpmPerKey')?.value, 10) || 10);
+    if (
+        parallelCount > 2
+        && typeof hasStoryForgeFeature === 'function'
+        && !hasStoryForgeFeature('translator.parallel_high')
+    ) {
+        parallelCount = 2;
+        const parallelInput = document.getElementById('parallelCount');
+        if (parallelInput) parallelInput.value = '2';
+        showToast('Tài khoản hiện tại chỉ được chạy tối đa 2 luồng dịch song song.', 'warning');
+    }
     const promptInput = document.getElementById('customPrompt');
     let customPrompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
-        ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '')
+        ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '', {
+            templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : undefined,
+        })
         : (promptInput?.value || '');
     if (typeof applyActiveCanonPackToPrompt === 'function') {
         customPrompt = await applyActiveCanonPackToPrompt(customPrompt);
     }
+    if (typeof ensureCharacterNameConsistencyPrompt === 'function') {
+        customPrompt = ensureCharacterNameConsistencyPrompt(customPrompt, {
+            templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : undefined,
+        });
+    }
     if (promptInput && promptInput.value !== customPrompt) {
         promptInput.value = customPrompt;
+        if (typeof autoResizePromptTextarea === 'function') autoResizePromptTextarea();
+    }
+    if (typeof requireStoryForgeAdultTemplateAccess === 'function') {
+        const canUseAdultTemplate = await requireStoryForgeAdultTemplateAccess();
+        if (!canUseAdultTemplate) return;
     }
 
     // ========== OLLAMA MODE ==========
@@ -555,6 +586,13 @@ async function startTranslation() {
         }
     } else if (useProxy) {
         // ========== PROXY MODE ==========
+        const providerFeature = activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY
+            ? 'provider.custom_proxy'
+            : 'provider.ag_proxy';
+        if (typeof requireStoryForgeFeature === 'function') {
+            const canUseProvider = await requireStoryForgeFeature(providerFeature);
+            if (!canUseProvider) return;
+        }
         const proxyKeyCount = typeof getProxyKeyCount === 'function' ? getProxyKeyCount() : 1;
         console.log(`[Proxy] Mode enabled - ${proxyKeyCount} key(s) available`);
         const activeProxyModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;

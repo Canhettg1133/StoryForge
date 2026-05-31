@@ -196,6 +196,11 @@ function trackChunkRetry(chunkIndex, attempt) {
 // RETRANSLATE SINGLE CHUNK
 // ============================================
 async function retranslateChunk(chunkIndex) {
+    if (typeof requireStoryForgeFeature === 'function') {
+        const canUseTranslator = await requireStoryForgeFeature('translator.access');
+        if (!canUseTranslator) return;
+    }
+
     if (chunkTrackerLargeFileMode) {
         showToast('File lớn chưa hỗ trợ dịch lại từng chunk trong v1. Hãy tải phần đã dịch hoặc chạy lại file.', 'warning');
         return;

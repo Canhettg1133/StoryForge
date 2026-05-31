@@ -1,8 +1,12 @@
 import { RelayRoomCore, createRoomCode } from './room-core.js';
+import {
+  ACCESS_FEATURES,
+  resolveFeatureDecision,
+} from '../../src/services/access/accessControl.js';
 
 const BASE_CORS_HEADERS = {
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-StoryForge-Room-Secret',
 };
 
 const DEFAULT_OAUTH_CLIENT_ID = '861823451650-heam38v432jq22s22ja09fhuo5o2hevm.apps.googleusercontent.com';
@@ -237,6 +241,121 @@ function getRoomStub(env, code) {
   return env.AI_STUDIO_RELAY_ROOMS.get(id);
 }
 
+function getBearerToken(request) {
+  const authorization = String(request.headers.get('Authorization') || '').trim();
+  const match = authorization.match(/^Bearer\s+(.+)$/iu);
+  return match ? match[1].trim() : '';
+}
+
+function getSupabaseWorkerConfig(env = {}) {
+  const url = String(env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/u, '');
+  const serviceRoleKey = String(
+    env.SUPABASE_SERVICE_ROLE_KEY
+      || env.SUPABASE_SECRET_KEY
+      || env.SUPABASE_SERVICE_KEY
+      || '',
+  ).trim();
+  return { url, serviceRoleKey, configured: Boolean(url && serviceRoleKey) };
+}
+
+async function supabaseRest(env, path) {
+  const config = getSupabaseWorkerConfig(env);
+  const response = await fetch(`${config.url}/rest/v1/${path}`, {
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${config.serviceRoleKey}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!response.ok) throw new Error(`SUPABASE_REST_${response.status}`);
+  return response.json();
+}
+
+async function verifySupabaseUserFromWorker(request, env) {
+  const config = getSupabaseWorkerConfig(env);
+  if (!config.configured) {
+    return { ok: false, status: 500, reason: 'SUPABASE_ADMIN_NOT_CONFIGURED' };
+  }
+
+  const token = getBearerToken(request);
+  if (!token) return { ok: false, status: 401, reason: 'AUTH_REQUIRED' };
+
+  const response = await fetch(`${config.url}/auth/v1/user`, {
+    headers: {
+      apikey: config.serviceRoleKey,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!response.ok) return { ok: false, status: 401, reason: 'AUTH_REQUIRED' };
+
+  const user = await response.json();
+  if (!user?.id) return { ok: false, status: 401, reason: 'AUTH_REQUIRED' };
+  return { ok: true, user };
+}
+
+async function requireWorkerFeature(request, env, featureKey) {
+  const auth = await verifySupabaseUserFromWorker(request, env);
+  if (!auth.ok) return auth;
+
+  const userId = encodeURIComponent(auth.user.id);
+  const [
+    profiles,
+    features,
+    userPlans,
+    planFeatures,
+    overrides,
+    consentVersions,
+  ] = await Promise.all([
+    supabaseRest(env, `profiles?select=*&user_id=eq.${userId}&limit=1`),
+    supabaseRest(env, 'features?select=*'),
+    supabaseRest(env, `user_plans?select=*,plans(key,name)&user_id=eq.${userId}`),
+    supabaseRest(env, 'plan_features?select=*'),
+    supabaseRest(env, `user_entitlement_overrides?select=*&user_id=eq.${userId}`),
+    supabaseRest(env, 'consent_versions?select=*&active=eq.true'),
+  ]);
+
+  const profile = profiles?.[0] || null;
+  const decision = resolveFeatureDecision({
+    authenticated: true,
+    userId: auth.user.id,
+    profile,
+    features,
+    userPlans: (userPlans || []).map((row) => ({
+      ...row,
+      plan_key: row?.plans?.key || '',
+      plan_name: row?.plans?.name || '',
+    })),
+    planFeatures,
+    overrides,
+    consentVersions,
+  }, featureKey);
+
+  return decision.allowed
+    ? { ok: true, user: auth.user, decision }
+    : { ok: false, status: decision.status, reason: decision.reason, decision };
+}
+
+function createRoomSecret() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function hashRoomSecret(secret) {
+  const input = new TextEncoder().encode(String(secret || ''));
+  const digest = await crypto.subtle.digest('SHA-256', input);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function getRequestRoomSecret(request) {
+  const url = new URL(request.url);
+  return String(
+    request.headers.get('X-StoryForge-Room-Secret')
+      || url.searchParams.get('secret')
+      || '',
+  ).trim();
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -267,12 +386,24 @@ export default {
     }
 
     if (url.pathname === '/rooms' && request.method === 'POST') {
+      const access = await requireWorkerFeature(request, env, ACCESS_FEATURES.AI_STUDIO_RELAY);
+      if (!access.ok) {
+        return json({
+          error: access.reason || 'FEATURE_NOT_ALLOWED',
+          code: access.reason || 'FEATURE_NOT_ALLOWED',
+          decision: access.decision || null,
+        }, access.status || 403, requestCorsHeaders);
+      }
+
       const code = createRoomCode();
+      const roomSecret = createRoomSecret();
+      const secretHash = await hashRoomSecret(roomSecret);
       const stub = getRoomStub(env, code);
-      await stub.fetch(new Request(`https://relay.local/init?code=${encodeURIComponent(code)}`, { method: 'POST' }));
+      await stub.fetch(new Request(`https://relay.local/init?code=${encodeURIComponent(code)}&secretHash=${encodeURIComponent(secretHash)}`, { method: 'POST' }));
       return json({
         ok: true,
         code,
+        roomSecret,
         expiresInMs: 30 * 60 * 1000,
       }, 200, requestCorsHeaders);
     }
@@ -315,9 +446,11 @@ export class AIStudioRelayRoom {
 
     if (request.method === 'POST' && url.pathname === '/init') {
       const roomCode = url.searchParams.get('code') || this.state.id.toString();
+      const secretHash = url.searchParams.get('secretHash') || '';
       const core = await this.getCore(roomCode);
       await this.state.storage.put('roomMeta', {
         code: core.roomCode,
+        secretHash,
         createdAt: core.createdAt,
         lastActivityAt: core.lastActivityAt,
       });
@@ -330,6 +463,15 @@ export class AIStudioRelayRoom {
     }
 
     const core = await this.getCore(roomPath.code);
+    const stored = await this.state.storage.get('roomMeta');
+    if (stored?.secretHash) {
+      const providedSecret = getRequestRoomSecret(request);
+      const providedHash = providedSecret ? await hashRoomSecret(providedSecret) : '';
+      if (providedHash !== stored.secretHash) {
+        return json({ error: 'Room secret không hợp lệ', code: 'ROOM_SECRET_REQUIRED' }, 403, requestCorsHeaders);
+      }
+    }
+
     if (core.isExpired()) {
       return json({ error: 'Room đã hết hạn', code: 'ROOM_EXPIRED' }, 410, requestCorsHeaders);
     }
@@ -379,6 +521,7 @@ export class AIStudioRelayRoom {
     core.connect(role, server);
     await this.state.storage.put('roomMeta', {
       code: core.roomCode,
+      secretHash: stored?.secretHash || '',
       createdAt: core.createdAt,
       lastActivityAt: core.lastActivityAt,
     });

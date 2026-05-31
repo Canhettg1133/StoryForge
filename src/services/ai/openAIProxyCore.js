@@ -2,7 +2,7 @@ export const AG_PROXY_PROFILE_ID = 'ag-gemini-proxy';
 export const CUSTOM_PROXY_PROFILE_ID = 'custom-openai-proxy';
 export const DEFAULT_PROXY_CHAT_PATH = '/v1/chat/completions';
 export const DEFAULT_PROXY_MODELS_PATH = '/v1/models';
-export const DEFAULT_AG_PROXY_BASE_URL = '/api/proxy';
+export const DEFAULT_AG_PROXY_BASE_URL = 'https://ag.beijixingxing.com';
 export const DEFAULT_AG_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
 
 const KNOWN_ENDPOINT_SUFFIXES = [
@@ -138,6 +138,7 @@ export function isRelayAllowedTarget(rawBaseUrl) {
   }
 
   if (parsed.protocol !== 'https:') return false;
+  if (parsed.username || parsed.password) return false;
   return !isLocalProxyHost(parsed.hostname);
 }
 
@@ -145,8 +146,8 @@ export function resolveProxyTransportMode(profile = {}) {
   const transport = String(profile.transport || 'auto').trim();
   const baseUrl = String(profile.baseUrl || '').trim();
 
-  if (transport === 'vercelRewrite') return 'direct';
-  if (transport === 'direct') return 'direct';
+  if (transport === 'vercelRewrite') return isRelayAllowedTarget(baseUrl) ? 'relay' : 'direct';
+  if (transport === 'direct') return isRelayAllowedTarget(baseUrl) ? 'relay' : 'direct';
   if (transport === 'relay') return isRelayAllowedTarget(baseUrl) ? 'relay' : 'direct';
   if (isRelativeProxyUrl(baseUrl) || isLocalProxyUrl(baseUrl)) return 'direct';
   return isRelayAllowedTarget(baseUrl) ? 'relay' : 'direct';

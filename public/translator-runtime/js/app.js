@@ -53,6 +53,134 @@ const TRANSLATOR_PROVIDERS = {
     CUSTOM_PROXY: 'custom_proxy',
     OLLAMA: 'ollama',
 };
+let storyForgeAccessToken = '';
+let storyForgeAccessSnapshot = null;
+const STORYFORGE_FEATURES = {
+    TRANSLATOR_ACCESS: 'translator.access',
+    AG_PROXY: 'provider.ag_proxy',
+    CUSTOM_PROXY: 'provider.custom_proxy',
+    TRANSLATOR_PARALLEL_HIGH: 'translator.parallel_high',
+    TRANSLATOR_BULK_KEYS: 'translator.bulk_keys',
+    ADULT_MODE: 'content.adult_mode',
+};
+const storyForgeRuntimeGlobal = typeof window !== 'undefined' ? window : globalThis;
+const TRANSLATOR_TEMPLATE_IDS = new Set([
+    'convert',
+    'novel',
+    'wuxia',
+    'romance',
+    'adult',
+    'sacHiep',
+    'sacHiepPro',
+    'sacHiepENI',
+]);
+const TRANSLATOR_ADULT_TEMPLATE_IDS = new Set(['adult', 'sacHiep', 'sacHiepPro', 'sacHiepENI']);
+let activeTranslatorTemplateId = 'sacHiep';
+
+storyForgeRuntimeGlobal.getStoryForgeAccessToken = () => storyForgeAccessToken;
+storyForgeRuntimeGlobal.getStoryForgeAccessSnapshot = () => storyForgeAccessSnapshot;
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin) return;
+        const payload = event.data || {};
+        if (payload.type !== 'STORYFORGE_ACCESS_CONTEXT') return;
+        storyForgeAccessToken = String(payload.token || '');
+        storyForgeAccessSnapshot = payload.access || null;
+    });
+}
+
+function getStoryForgeFeatureDecision(featureKey) {
+    return storyForgeAccessSnapshot?.features?.[featureKey] || null;
+}
+
+function hasStoryForgeFeature(featureKey) {
+    return Boolean(getStoryForgeFeatureDecision(featureKey)?.allowed);
+}
+
+function getStoryForgeDeniedMessage(featureKey) {
+    const decision = getStoryForgeFeatureDecision(featureKey);
+    switch (decision?.reason) {
+        case 'AUTH_REQUIRED':
+            return 'Bạn cần đăng nhập StoryForge để dùng tính năng này.';
+        case 'USER_BANNED':
+            return 'Tài khoản này đang bị khóa quyền truy cập.';
+        case 'FEATURE_DISABLED':
+            return 'Tính năng này đang tạm tắt trong hệ thống.';
+        case 'AGE_CONFIRMATION_REQUIRED':
+            return 'Bạn cần xác nhận đủ tuổi trước khi bật nội dung 18+.';
+        case 'ADULT_TERMS_REQUIRED':
+        case 'ADULT_TERMS_VERSION_OUTDATED':
+            return 'Bạn cần đồng ý điều khoản 18+ mới nhất.';
+        default:
+            return 'Tính năng này yêu cầu quyền VIP.';
+    }
+}
+
+async function refreshStoryForgeAccessSnapshot() {
+    if (!storyForgeAccessToken) return storyForgeAccessSnapshot;
+    const response = await fetch('/api/me/access', {
+        headers: { Authorization: `Bearer ${storyForgeAccessToken}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && payload?.access) {
+        storyForgeAccessSnapshot = payload.access;
+    }
+    return storyForgeAccessSnapshot;
+}
+
+async function requireStoryForgeFeature(featureKey) {
+    if (!getStoryForgeFeatureDecision(featureKey)) {
+        await refreshStoryForgeAccessSnapshot().catch(() => null);
+    }
+    if (hasStoryForgeFeature(featureKey)) return true;
+    const message = getStoryForgeDeniedMessage(featureKey);
+    if (typeof showToast === 'function') showToast(message, 'error');
+    return false;
+}
+
+function getActiveTranslatorTemplateId() {
+    return TRANSLATOR_TEMPLATE_IDS.has(activeTranslatorTemplateId)
+        ? activeTranslatorTemplateId
+        : 'convert';
+}
+
+function setActiveTranslatorTemplateId(templateId) {
+    const nextTemplateId = String(templateId || '').trim();
+    activeTranslatorTemplateId = TRANSLATOR_TEMPLATE_IDS.has(nextTemplateId) ? nextTemplateId : 'convert';
+    return activeTranslatorTemplateId;
+}
+
+function isTranslatorAdultTemplate(templateId) {
+    return TRANSLATOR_ADULT_TEMPLATE_IDS.has(String(templateId || '').trim());
+}
+
+function syncActiveTranslatorTemplateFromPrompt(promptText = '') {
+    if (typeof PROMPT_TEMPLATES !== 'undefined') {
+        const normalizedPrompt = String(promptText || '').trim();
+        const matchedEntry = Object.entries(PROMPT_TEMPLATES)
+            .find(([, value]) => String(value || '').trim() === normalizedPrompt);
+        if (matchedEntry) {
+            return setActiveTranslatorTemplateId(matchedEntry[0]);
+        }
+    }
+    return setActiveTranslatorTemplateId('convert');
+}
+
+async function requireStoryForgeAdultTemplateAccess(templateId = getActiveTranslatorTemplateId()) {
+    if (!isTranslatorAdultTemplate(templateId)) return true;
+    if (typeof requireStoryForgeFeature !== 'function') return true;
+    return requireStoryForgeFeature(STORYFORGE_FEATURES.ADULT_MODE);
+}
+
+storyForgeRuntimeGlobal.hasStoryForgeFeature = hasStoryForgeFeature;
+storyForgeRuntimeGlobal.requireStoryForgeFeature = requireStoryForgeFeature;
+storyForgeRuntimeGlobal.getStoryForgeDeniedMessage = getStoryForgeDeniedMessage;
+storyForgeRuntimeGlobal.getActiveTranslatorTemplateId = getActiveTranslatorTemplateId;
+storyForgeRuntimeGlobal.setActiveTranslatorTemplateId = setActiveTranslatorTemplateId;
+storyForgeRuntimeGlobal.isTranslatorAdultTemplate = isTranslatorAdultTemplate;
+storyForgeRuntimeGlobal.syncActiveTranslatorTemplateFromPrompt = syncActiveTranslatorTemplateFromPrompt;
+storyForgeRuntimeGlobal.requireStoryForgeAdultTemplateAccess = requireStoryForgeAdultTemplateAccess;
 
 let activeTranslatorProvider = TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
 let rpmPerKey = DEFAULT_TRANSLATOR_RPM_PER_KEY;
@@ -90,12 +218,63 @@ const PROMPT_SUPPLEMENT_SECTION_HEADERS = [
     'YÊU CẦU BẮT BUỘC VỀ MỨC ĐỘ BIÊN TẬP',
     'YÊU CẦU BẮT BUỘC VỀ TÊN NHÂN VẬT',
     'YÊU CẦU BẮT BUỘC VỀ TÊN NHÂN VẬT VÀ XƯNG HÔ',
+    'YÊU CẦU BẮT BUỘC VỀ TÊN RIÊNG VÀ THUẬT NGỮ',
+    'YÊU CẦU BẮT BUỘC VỀ XƯNG HÔ',
+    'YÊU CẦU BẮT BUỘC VỀ XƯNG HÔ CỔ PHONG',
+    'YÊU CẦU BẮT BUỘC VỀ XƯNG HÔ THEO NGỮ CẢNH',
     'YÊU CẦU BẮT BUỘC VỀ THUẬT NGỮ',
     'YÊU CẦU BẮT BUỘC VỀ HÁN-VIỆT VÀ THUẬT NGỮ',
     'YÊU CẦU BẮT BUỘC VỀ CẤU TRÚC',
     'YÊU CẦU BẮT BUỘC VỀ CẤU TRÚC VÀ NHỊP VĂN',
     'LỖI CẦN TRÁNH KHI LÀM MƯỢT CONVERT',
 ];
+
+const TRANSLATOR_NAME_TERM_LOCK_BLOCK = `[YÊU CẦU BẮT BUỘC VỀ TÊN RIÊNG VÀ THUẬT NGỮ]
+- Không dịch nghĩa tên riêng hoặc định danh riêng.
+- Áp dụng cho nhân vật, họ tên, biệt danh, đạo hiệu, danh xưng; địa danh, quốc gia, triều đại, thành trì, bí cảnh; tông môn, bang phái, gia tộc, tổ chức; công pháp, chiêu thức, cảnh giới, pháp bảo, vũ khí, đan dược; chức tước, cấp bậc, chủng tộc, vật phẩm/hệ thống nếu là thuật ngữ định danh.
+- Tên đã là Hán-Việt, Việt hóa hoặc Latin thì giữ nguyên chính tả và cách gọi đang dùng.
+- Nếu nguồn là raw Trung, chuyển tên riêng sang Hán-Việt nhất quán, không dịch nghĩa từng chữ.
+- Ví dụ: 夜惊堂 hoặc Dạ Kinh Đường phải ổn định là Dạ Kinh Đường, không đổi thành Đêm Kinh Đường.
+- Nếu chưa chắc, giữ theo cách xuất hiện đầu tiên trong đoạn/chapter hiện tại.`;
+
+const TRANSLATOR_PRONOUN_POLICY_BLOCKS = {
+    ancient: `[YÊU CẦU BẮT BUỘC VỀ XƯNG HÔ CỔ PHONG]
+- Với truyện tu tiên, kiếm hiệp, cổ đại hoặc sắc hiệp, ưu tiên xưng hô đúng sắc thái Trung Quốc/cổ phong: ta, ngươi, hắn, nàng, chàng, thiếp, y, lão, tiểu tử, đạo hữu, tiền bối, vãn bối, sư phụ, đệ tử.
+- Hạn chế mạnh anh, em, tôi, chị, cô, cậu trong lời thoại cổ phong; chỉ dùng khi nguồn/ngữ cảnh thật sự là hiện đại hoặc quan hệ đời thường yêu cầu.
+- Không tự đổi qua lại hệ xưng hô chỉ để câu nghe mềm hơn; chỉ đổi khi vai vế, quan hệ hoặc điểm nhìn thật sự thay đổi.`,
+    neutral: `[YÊU CẦU BẮT BUỘC VỀ XƯNG HÔ THEO NGỮ CẢNH]
+- Giữ hệ xưng hô đang có trong nguồn, không tự đổi qua lại giữa ta/ngươi/hắn/nàng và tôi/anh/em/chị nếu văn cảnh không đổi.
+- Nếu đoạn có sắc thái cổ phong, ưu tiên hắn, nàng, ta, ngươi, chàng, thiếp, y, lão; nếu đoạn là hiện đại thì giữ xưng hô hiện đại tự nhiên.
+- Chỉ đổi xưng hô khi vai vế, quan hệ hoặc điểm nhìn thật sự thay đổi.`,
+    modern: `[YÊU CẦU BẮT BUỘC VỀ XƯNG HÔ]
+- Không ép lời thoại hiện đại/ngôn tình đô thị thành ta/ngươi nếu nguồn đang dùng anh, em, tôi, chị, cô, cậu tự nhiên.
+- Vẫn phải giữ nhất quán cách xưng hô giữa cùng một cặp nhân vật trong cùng bối cảnh.
+- Chỉ đổi xưng hô khi quan hệ, vai vế hoặc cảm xúc trong nguồn thật sự thay đổi.`,
+    adult: `[YÊU CẦU BẮT BUỘC VỀ XƯNG HÔ THEO NGỮ CẢNH]
+- Giữ xưng hô theo nguồn và template đang chọn, không tự đổi để làm mềm câu hoặc làm đổi sắc thái quan hệ.
+- Nếu bối cảnh là cổ phong/sắc hiệp, ưu tiên hắn, nàng, ta, ngươi, chàng, thiếp, y, lão; hạn chế anh, em, tôi, chị, cô, cậu khi không đúng tông.
+- Chỉ đổi xưng hô khi vai vế, quan hệ hoặc điểm nhìn thật sự thay đổi.`,
+};
+
+const TRANSLATOR_ANCIENT_PRONOUN_TEMPLATE_IDS = new Set(['wuxia', 'sacHiep', 'sacHiepPro', 'sacHiepENI']);
+const TRANSLATOR_MODERN_PRONOUN_TEMPLATE_IDS = new Set(['romance']);
+const TRANSLATOR_ADULT_PRONOUN_TEMPLATE_IDS = new Set(['adult']);
+
+const TRANSLATOR_CONTEXT_SECTION_PATTERNS = [
+    /^yeu cau:?$/i,
+    /^cach xu ly:?$/i,
+    /^bat buoc 100%$/i,
+    /^===\s*EDITORIAL GUIDELINES\s*===$/i,
+    /^===\s*TRANSLATION STYLE GUIDE\s*===$/i,
+    /^editorial guidelines$/i,
+    /^translation style guide$/i,
+    /^mandatory compliance\b/i,
+    /^binding contract\b/i,
+];
+
+const TRANSLATOR_RELEVANT_RULE_LINE_PATTERN = /(giu nguyen.*ten|ten nhan vat|ten rieng|dia danh|mon phai|cong phap|canh gioi|phap bao|keep character names|place names|cultivation terms|pronouns|dai tu|xung ho)/i;
+
+const TRANSLATOR_CONTENT_MARKER_PATTERN = /^(begin (manuscript|translation)|doan van|doan van can viet lai|doan van can bien tap|van ban can bien tap|van ban:|doan nguon)/i;
 
 function foldVietnameseHeader(text) {
     return String(text || '')
@@ -105,53 +284,129 @@ function foldVietnameseHeader(text) {
         .replace(/đ/g, 'd');
 }
 
-function stripExistingPromptSupplements(promptText) {
-    let text = String(promptText || '');
-    const headerVariants = [
-        ...PROMPT_SUPPLEMENT_SECTION_HEADERS,
-        ...PROMPT_SUPPLEMENT_SECTION_HEADERS.map(foldVietnameseHeader),
-    ];
-
-    headerVariants.forEach((header) => {
-        const escapedHeader = header.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const blockRegex = new RegExp(
-            `\\n*\\[${escapedHeader}\\]\\n(?:- .*\\n?)+`,
-            'gi'
-        );
-        text = text.replace(blockRegex, '\n');
-    });
-
-    return text.replace(/\n{3,}/g, '\n\n').trimEnd();
+function normalizePromptLineForMatch(text) {
+    return foldVietnameseHeader(text)
+        .replace(/^\s*\[|\]\s*$/g, '')
+        .replace(/^\s*=+\s*|\s*=+\s*$/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
 }
 
-function ensureCharacterNameConsistencyPrompt(promptText) {
-    const originalText = String(promptText || '');
-    let text = stripExistingPromptSupplements(originalText);
-    const supplementBlock = TRANSLATOR_PROMPT_SUPPLEMENTS
-        .map((supplement) => supplement.block.trim())
-        .join('\n');
+function getPromptPatchTemplateId(options = {}) {
+    const requested = String(options.templateId || '').trim();
+    if (TRANSLATOR_TEMPLATE_IDS.has(requested)) return requested;
+    if (typeof getActiveTranslatorTemplateId === 'function') {
+        return getActiveTranslatorTemplateId();
+    }
+    return 'convert';
+}
 
-    if (!text) {
-        return `${supplementBlock}\n`;
+function getPronounPolicyBlock(templateId) {
+    if (TRANSLATOR_ANCIENT_PRONOUN_TEMPLATE_IDS.has(templateId)) {
+        return TRANSLATOR_PRONOUN_POLICY_BLOCKS.ancient;
+    }
+    if (TRANSLATOR_MODERN_PRONOUN_TEMPLATE_IDS.has(templateId)) {
+        return TRANSLATOR_PRONOUN_POLICY_BLOCKS.modern;
+    }
+    if (TRANSLATOR_ADULT_PRONOUN_TEMPLATE_IDS.has(templateId)) {
+        return TRANSLATOR_PRONOUN_POLICY_BLOCKS.adult;
+    }
+    return TRANSLATOR_PRONOUN_POLICY_BLOCKS.neutral;
+}
+
+function buildTranslatorPromptPatchBlock(templateId = 'convert') {
+    return `${TRANSLATOR_NAME_TERM_LOCK_BLOCK}\n\n${getPronounPolicyBlock(templateId)}`;
+}
+
+function isPromptSupplementHeaderLine(line) {
+    const normalizedLine = normalizePromptLineForMatch(line);
+    return PROMPT_SUPPLEMENT_SECTION_HEADERS
+        .map(normalizePromptLineForMatch)
+        .some((header) => normalizedLine === header);
+}
+
+function isPromptSupplementBodyLine(line) {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) return true;
+    return /^[-•*]\s+/.test(trimmed) || /^\d+\.\s+/.test(trimmed);
+}
+
+function stripExistingPromptSupplements(promptText) {
+    const lines = String(promptText || '').split('\n');
+    const kept = [];
+
+    for (let i = 0; i < lines.length; i += 1) {
+        if (!isPromptSupplementHeaderLine(lines[i])) {
+            kept.push(lines[i]);
+            continue;
+        }
+
+        i += 1;
+        while (i < lines.length && isPromptSupplementBodyLine(lines[i])) {
+            i += 1;
+        }
+        i -= 1;
     }
 
-    const trailingLineMatch = text.match(/([^\n]+)\s*$/);
-    const trailingLine = trailingLineMatch ? trailingLineMatch[1].trim() : '';
-    const isContentMarker = trailingLine.startsWith('[BEGIN ') || trailingLine.endsWith(':');
+    return kept.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd();
+}
 
-    if (isContentMarker && trailingLineMatch) {
-        const insertionIndex = trailingLineMatch.index;
-        const prefix = text.slice(0, insertionIndex).replace(/\s*$/, '');
-        const suffix = text.slice(insertionIndex).replace(/^\s*/, '');
-        return `${prefix}\n${supplementBlock}\n\n${suffix}\n`;
+function findPromptPatchInsertionLine(lines) {
+    const relevantLineIndex = lines.findIndex((line) =>
+        TRANSLATOR_RELEVANT_RULE_LINE_PATTERN.test(normalizePromptLineForMatch(line))
+    );
+    if (relevantLineIndex >= 0) {
+        return relevantLineIndex + 1;
     }
 
-    return text ? `${text}\n${supplementBlock}\n` : `${supplementBlock}\n`;
+    const sectionHeaderIndex = lines.findIndex((line) => {
+        const normalizedLine = normalizePromptLineForMatch(line);
+        return TRANSLATOR_CONTEXT_SECTION_PATTERNS.some((pattern) => pattern.test(normalizedLine));
+    });
+    if (sectionHeaderIndex >= 0) {
+        return sectionHeaderIndex + 1;
+    }
+
+    const contentMarkerIndex = lines.findIndex((line) =>
+        TRANSLATOR_CONTENT_MARKER_PATTERN.test(normalizePromptLineForMatch(line))
+    );
+    if (contentMarkerIndex >= 0) {
+        return contentMarkerIndex;
+    }
+
+    return lines.length;
+}
+
+function insertPromptPatchBlock(promptText, patchBlock) {
+    const text = String(promptText || '').trimEnd();
+    const block = String(patchBlock || '').trim();
+    if (!block) return text;
+    if (!text) return `${block}\n`;
+
+    const lines = text.split('\n');
+    const insertionLine = findPromptPatchInsertionLine(lines);
+    const before = lines.slice(0, insertionLine).join('\n').replace(/\s*$/, '');
+    const after = lines.slice(insertionLine).join('\n').replace(/^\s*/, '');
+
+    if (!before) {
+        return `${block}${after ? `\n\n${after}` : ''}\n`;
+    }
+    if (!after) {
+        return `${before}\n${block}\n`;
+    }
+    return `${before}\n${block}\n\n${after}\n`;
+}
+
+function ensureCharacterNameConsistencyPrompt(promptText, options = {}) {
+    const templateId = getPromptPatchTemplateId(options);
+    const text = stripExistingPromptSupplements(promptText);
+    return insertPromptPatchBlock(text, buildTranslatorPromptPatchBlock(templateId));
 }
 
 function applyPromptSupplements(promptMap) {
     Object.keys(promptMap || {}).forEach((key) => {
-        promptMap[key] = ensureCharacterNameConsistencyPrompt(promptMap[key]);
+        promptMap[key] = ensureCharacterNameConsistencyPrompt(promptMap[key], { templateId: key });
     });
 }
 
@@ -208,6 +463,14 @@ let customProxyApiKeys = [];
 let customProxyKeyHealthMap = {};
 const PROXY_RATE_LIMIT_COOLDOWN_MS = 10000;
 const PROXY_FORBIDDEN_COOLDOWN_MS = 10000;
+
+function normalizeAgProxyBaseUrl(value) {
+    const normalized = String(value || '').trim().replace(/\/+$/u, '');
+    if (normalized === '/api/proxy' || normalized.startsWith('/api/proxy/')) {
+        return 'https://ag.beijixingxing.com';
+    }
+    return String(value || '').trim();
+}
 
 function setActiveTranslatorProvider(provider) {
     const allowedProviders = Object.values(TRANSLATOR_PROVIDERS);
@@ -684,7 +947,7 @@ function isRelayAllowedTarget(rawBaseUrl) {
     if (!trimmed || isRelativeProxyUrl(trimmed)) return false;
     try {
         const parsed = new URL(trimmed);
-        return parsed.protocol === 'https:' && !isLocalProxyHost(parsed.hostname);
+        return parsed.protocol === 'https:' && !parsed.username && !parsed.password && !isLocalProxyHost(parsed.hostname);
     } catch {
         return false;
     }
@@ -693,7 +956,7 @@ function isRelayAllowedTarget(rawBaseUrl) {
 function resolveProxyTransportMode(profile = {}) {
     const transport = String(profile.transport || 'auto').trim();
     const baseUrl = String(profile.baseUrl || '').trim();
-    if (transport === 'direct' || transport === 'vercelRewrite') return 'direct';
+    if (transport === 'direct' || transport === 'vercelRewrite') return isRelayAllowedTarget(baseUrl) ? 'relay' : 'direct';
     if (transport === 'relay') return isRelayAllowedTarget(baseUrl) ? 'relay' : 'direct';
     if (isRelativeProxyUrl(baseUrl) || isLocalProxyUrl(baseUrl)) return 'direct';
     return isRelayAllowedTarget(baseUrl) ? 'relay' : 'direct';
@@ -749,12 +1012,12 @@ function getActiveProxyBaseUrl() {
 function getActiveProxyModelsUrl() {
     const profile = getCustomProxyProfile();
     return resolveProxyTransportMode(profile) === 'relay'
-        ? '/api/openai-proxy'
+        ? '/api/translator-openai-proxy'
         : buildOpenAIProxyEndpoint(profile.baseUrl, profile.modelsPath || DEFAULT_PROXY_MODELS_PATH);
 }
 
 function getAgProxyRequestTarget(action = 'chat') {
-    const rawBaseUrl = String(proxyBaseUrl || '').trim();
+    const rawBaseUrl = normalizeAgProxyBaseUrl(proxyBaseUrl);
     const path = action === 'models' ? DEFAULT_PROXY_MODELS_PATH : DEFAULT_PROXY_CHAT_PATH;
     const profile = {
         id: AG_PROXY_PROFILE_ID,
@@ -767,7 +1030,7 @@ function getAgProxyRequestTarget(action = 'chat') {
     const mode = resolveProxyTransportMode(profile);
     return {
         mode,
-        url: mode === 'relay' ? '/api/openai-proxy' : buildOpenAIProxyEndpoint(rawBaseUrl, path),
+        url: mode === 'relay' ? '/api/translator-openai-proxy' : buildOpenAIProxyEndpoint(rawBaseUrl, path),
         path,
         profile,
     };
@@ -781,7 +1044,7 @@ function getCustomProxyRequestTarget(action = 'chat') {
         : (profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
     return {
         mode,
-        url: mode === 'relay' ? '/api/openai-proxy' : buildOpenAIProxyEndpoint(profile.baseUrl, path),
+        url: mode === 'relay' ? '/api/translator-openai-proxy' : buildOpenAIProxyEndpoint(profile.baseUrl, path),
         path,
         profile,
     };
@@ -1583,7 +1846,14 @@ async function initializeApp() {
     // Set default prompt
     const promptEl = document.getElementById('customPrompt');
     if (!promptEl.value.trim()) {
-        promptEl.value = ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES.sacHiep);
+        if (typeof setActiveTranslatorTemplateId === 'function') {
+            setActiveTranslatorTemplateId('sacHiep');
+        }
+        promptEl.value = ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES.sacHiep, { templateId: 'sacHiep' });
+    }
+    if (promptEl && typeof autoResizePromptTextarea === 'function') {
+        promptEl.addEventListener('input', autoResizePromptTextarea);
+        autoResizePromptTextarea();
     }
 
     // Render RPD dashboard (after a small delay to ensure DOM is ready)

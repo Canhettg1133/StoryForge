@@ -391,8 +391,11 @@ function resetKeyHealth() {
 // ============================================
 // EXPORT API KEYS (Simple - only keys)
 // ============================================
-function exportApiKeys() {
-    console.log('========== DANH SÁCH API KEYS ==========');
+async function exportApiKeys() {
+    if (
+        typeof requireStoryForgeFeature === 'function'
+        && !(await requireStoryForgeFeature('translator.bulk_keys'))
+    ) return;
 
     if (apiKeys.length === 0) {
         showToast('Không có API key nào trong hệ thống!', 'info');
@@ -401,11 +404,6 @@ function exportApiKeys() {
 
     // Chỉ xuất danh sách keys, mỗi dòng 1 key
     const fullKeyList = apiKeys.join('\n');
-
-    // Log to console
-    apiKeys.forEach((key, index) => {
-        console.log(`Key ${index + 1}: ${key}`);
-    });
 
     const modal = document.createElement('div');
     modal.id = 'keyExportModal';
@@ -499,7 +497,12 @@ function closeKeyModal() {
 // ============================================
 // IMPORT API KEYS (Bulk import)
 // ============================================
-function openImportApiKeysModal() {
+async function openImportApiKeysModal() {
+    if (
+        typeof requireStoryForgeFeature === 'function'
+        && !(await requireStoryForgeFeature('translator.bulk_keys'))
+    ) return;
+
     const modal = document.createElement('div');
     modal.id = 'keyImportModal';
     modal.style.cssText = `
@@ -702,7 +705,7 @@ function executeImportApiKeys() {
     }
     showToast(message, 'success');
 
-    console.log(`[Import] Added ${result.newKeys.length} new keys:`, result.newKeys);
+    console.log(`[Import] Added ${result.newKeys.length} new keys.`);
 }
 
 function closeImportModal() {

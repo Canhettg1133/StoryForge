@@ -11,6 +11,16 @@ import {
   CONTENT_MODE_QUICK_ACTION_ID,
   getWriterQuickActionOrder,
 } from '../../components/ai/quickActionLayout.js';
+
+vi.mock('../../hooks/useUserAccess', () => ({
+  useUserAccess: () => ({
+    hasFeature: () => true,
+    getDecision: () => ({ allowed: true }),
+    getDeniedMessage: () => 'Tính năng này yêu cầu VIP.',
+    confirmAdultTerms: async () => ({}),
+  }),
+}));
+
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 
 describe('phase10 project content mode helpers', () => {

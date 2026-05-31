@@ -465,6 +465,32 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 // ============================================
 // SPLIT LARGE CHUNK - Chia nhỏ chunk thông minh
 // ============================================
+function splitPromptedChunkForAutoSplit(text) {
+    const source = String(text || '');
+    const marker = '[Đoạn nguồn]';
+    const markerIndex = source.lastIndexOf(marker);
+
+    if (markerIndex < 0) {
+        return {
+            promptPrefix: '',
+            sourceText: source,
+        };
+    }
+
+    const sourceStart = source.indexOf('\n', markerIndex + marker.length);
+    if (sourceStart < 0) {
+        return {
+            promptPrefix: source,
+            sourceText: '',
+        };
+    }
+
+    return {
+        promptPrefix: source.slice(0, sourceStart + 1),
+        sourceText: source.slice(sourceStart + 1),
+    };
+}
+
 async function translateLargeChunkBySplitting(text, chunkIndex) {
     if (cancelRequested) {
         throw new Error('TRANSLATION_CANCELLED');
@@ -472,9 +498,12 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
 
     console.log(`[Chunk ${chunkIndex + 1}] 📦 Splitting into smaller parts...`);
 
+    const promptedChunkParts = splitPromptedChunkForAutoSplit(text);
+    const sourceText = promptedChunkParts.sourceText || String(text || '');
+
     // Chia thành nhiều phần nhỏ hơn (4-5 phần thay vì 3)
-    const numParts = Math.max(4, Math.ceil(text.length / 800));
-    const parts = splitTextIntoSmallerParts(text, numParts);
+    const numParts = Math.max(4, Math.ceil(sourceText.length / 800));
+    const parts = splitTextIntoSmallerParts(sourceText, numParts);
     const translatedParts = [];
 
     console.log(`[Chunk ${chunkIndex + 1}] Split into ${parts.length} sub-chunks`);
@@ -484,7 +513,9 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
             throw new Error('TRANSLATION_CANCELLED');
         }
 
-        const partText = '[AUTO-SPLIT]' + parts[i];
+        const partText = promptedChunkParts.promptPrefix
+            ? `${promptedChunkParts.promptPrefix}[AUTO-SPLIT]\n${parts[i]}`
+            : `[AUTO-SPLIT]${parts[i]}`;
         console.log(`[Chunk ${chunkIndex + 1}] Translating sub-chunk ${i + 1}/${parts.length}...`);
 
         try {

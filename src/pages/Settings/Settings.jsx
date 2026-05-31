@@ -14,6 +14,7 @@ import aiService, {
   getAIStudioConnectorUrl,
   getAIStudioRelayRoomStatus,
   getAIStudioRelayRoomCode,
+  getAIStudioRelayRoomSecret,
   getAIStudioRelayUrl,
   getGeminiDirectBaseUrl,
   getOllamaUrl,
@@ -41,8 +42,11 @@ import {
   Plus, X, BookOpen, ExternalLink, ArrowLeft, ChevronsUpDown, Sparkles,
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
+import AccountAccessSummary from '../../components/access/AccountAccessSummary.jsx';
 import useMobileLayout from '../../hooks/useMobileLayout';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
+import { useUserAccess } from '../../hooks/useUserAccess';
+import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
@@ -434,12 +438,20 @@ function readSettingsKeyCounts() {
   };
 }
 
+function getSettingsProviderFeature(providerCardOrProvider) {
+  if (providerCardOrProvider === PROVIDER_CARD_AG_PROXY) return ACCESS_FEATURES.AG_PROXY;
+  if (providerCardOrProvider === PROVIDER_CARD_CUSTOM_PROXY) return ACCESS_FEATURES.CUSTOM_PROXY;
+  if (providerCardOrProvider === PROVIDERS.AI_STUDIO_RELAY) return ACCESS_FEATURES.AI_STUDIO_RELAY;
+  return '';
+}
+
 export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
   const { projectId } = useParams();
   const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
   const isMobileLayout = useMobileLayout(900);
+  const { hasFeature, getDeniedMessage } = useUserAccess();
   const initialProxySettings = getOpenAIProxySettings();
   const initialAgProxyProfile = getAgOpenAIProxyProfile();
   const [activeProxyProfileId, setActiveProxyProfileId] = useState(initialProxySettings.activeProfileId);
@@ -455,6 +467,7 @@ export default function Settings() {
   const [aiStudioRelayUrl, setAIStudioRelayUrl] = useState(getAIStudioRelayUrl());
   const [aiStudioConnectorUrl, setAIStudioConnectorUrl] = useState(getAIStudioConnectorUrl());
   const [aiStudioRelayRoomCode, setAIStudioRelayRoomCode] = useState(getAIStudioRelayRoomCode());
+  const [aiStudioRelayRoomSecret, setAIStudioRelayRoomSecret] = useState(getAIStudioRelayRoomSecret());
   const [aiStudioRelayModel, setAIStudioRelayModel] = useState(modelRouter.getAIStudioRelayModel());
   const [creatingRelayRoom, setCreatingRelayRoom] = useState(false);
   const [copiedRelayRoom, setCopiedRelayRoom] = useState(false);
@@ -535,6 +548,7 @@ export default function Settings() {
     const shouldPoll = provider === PROVIDERS.AI_STUDIO_RELAY || showAIStudioRelaySetup;
     const relay = aiStudioRelayUrl.trim();
     const code = aiStudioRelayRoomCode.trim();
+    const secret = aiStudioRelayRoomSecret.trim();
 
     if (!shouldPoll || !relay || !code) {
       setAIStudioRelayStatus(null);
@@ -546,6 +560,7 @@ export default function Settings() {
     const pollStatus = async () => {
       try {
         const status = await getAIStudioRelayRoomStatus(relay, code, {
+          roomSecret: secret,
           signal: AbortSignal.timeout(6000),
         });
         if (cancelled) return;
@@ -564,7 +579,7 @@ export default function Settings() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [aiStudioRelayUrl, aiStudioRelayRoomCode, provider, showAIStudioRelaySetup]);
+  }, [aiStudioRelayUrl, aiStudioRelayRoomCode, aiStudioRelayRoomSecret, provider, showAIStudioRelaySetup]);
 
   const handleSaveUrls = () => saveSettings({
     geminiDirectUrl: directUrl,
@@ -572,6 +587,7 @@ export default function Settings() {
     aiStudioRelayUrl,
     aiStudioConnectorUrl,
     aiStudioRelayRoomCode,
+    aiStudioRelayRoomSecret,
     aiStudioRelayModel,
   });
 
@@ -581,11 +597,22 @@ export default function Settings() {
       aiStudioRelayUrl,
       aiStudioConnectorUrl,
       aiStudioRelayRoomCode,
+      aiStudioRelayRoomSecret,
       aiStudioRelayModel,
     });
   };
 
   const handleCreateRelayRoom = async () => {
+    if (!hasFeature(ACCESS_FEATURES.AI_STUDIO_RELAY)) {
+      setTestResults(p => ({
+        ...p,
+        [PROVIDERS.AI_STUDIO_RELAY]: {
+          success: false,
+          error: getDeniedMessage(ACCESS_FEATURES.AI_STUDIO_RELAY),
+        },
+      }));
+      return;
+    }
     setCreatingRelayRoom(true);
     try {
       handleSaveAIStudioRelay();
@@ -593,7 +620,9 @@ export default function Settings() {
         signal: AbortSignal.timeout(10000),
       });
       const code = room?.code || '';
+      const roomSecret = room?.roomSecret || '';
       setAIStudioRelayRoomCode(code);
+      setAIStudioRelayRoomSecret(roomSecret);
       setAIStudioRelayStatus({
         code,
         clientConnected: false,
@@ -605,6 +634,7 @@ export default function Settings() {
         aiStudioRelayUrl,
         aiStudioConnectorUrl,
         aiStudioRelayRoomCode: code,
+        aiStudioRelayRoomSecret: roomSecret,
         aiStudioRelayModel,
       });
       setTestResults(p => ({
@@ -629,9 +659,24 @@ export default function Settings() {
 
   const handleCopyRelayRoom = async () => {
     if (!aiStudioRelayRoomCode) return;
-    await navigator.clipboard.writeText(aiStudioRelayRoomCode);
+    const value = aiStudioRelayRoomSecret
+      ? `${aiStudioRelayRoomCode}#${aiStudioRelayRoomSecret}`
+      : aiStudioRelayRoomCode;
+    await navigator.clipboard.writeText(value);
     setCopiedRelayRoom(true);
     setTimeout(() => setCopiedRelayRoom(false), 2000);
+  };
+
+  const handleRelayRoomInput = (rawValue) => {
+    const [codePart, secretPart = ''] = String(rawValue || '').split('#');
+    const code = codePart.trim().toUpperCase();
+    const secret = secretPart.trim();
+    setAIStudioRelayRoomCode(code);
+    if (secret || rawValue.includes('#')) setAIStudioRelayRoomSecret(secret);
+    saveSettings({
+      aiStudioRelayRoomCode: code,
+      aiStudioRelayRoomSecret: secret || aiStudioRelayRoomSecret,
+    });
   };
 
   const handleOpenConnector = () => {
@@ -668,6 +713,24 @@ export default function Settings() {
   };
 
   const handleProviderSelect = (nextProvider) => {
+    const feature = getSettingsProviderFeature(nextProvider);
+    if (feature && !hasFeature(feature)) {
+      setProxyModelFetchStatus({
+        type: 'error',
+        text: getDeniedMessage(feature),
+      });
+      if (nextProvider === PROVIDERS.AI_STUDIO_RELAY) {
+        setTestResults(p => ({
+          ...p,
+          [PROVIDERS.AI_STUDIO_RELAY]: {
+            success: false,
+            error: getDeniedMessage(feature),
+          },
+        }));
+      }
+      return;
+    }
+
     if (nextProvider === PROVIDER_CARD_AG_PROXY) {
       setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
       setActiveProxyProfileId(AG_PROXY_PROFILE_ID);
@@ -723,6 +786,10 @@ export default function Settings() {
   };
 
   const handleFetchAgProxyModels = async () => {
+    if (!hasFeature(ACCESS_FEATURES.AG_PROXY)) {
+      setProxyModelFetchStatus({ type: 'error', text: getDeniedMessage(ACCESS_FEATURES.AG_PROXY) });
+      return;
+    }
     setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
     setActiveProxyProfileId(AG_PROXY_PROFILE_ID);
     setProvider(PROVIDERS.OPENAI_PROXY);
@@ -769,6 +836,10 @@ export default function Settings() {
   };
 
   const handleFetchCustomProxyModels = async () => {
+    if (!hasFeature(ACCESS_FEATURES.CUSTOM_PROXY)) {
+      setProxyModelFetchStatus({ type: 'error', text: getDeniedMessage(ACCESS_FEATURES.CUSTOM_PROXY) });
+      return;
+    }
     const profile = syncCustomProxyProfile({}, { activate: true });
     if (!profile.baseUrl) {
       setProxyModelFetchStatus({ type: 'error', text: 'Nhập Base URL trước khi lấy models.' });
@@ -813,6 +884,24 @@ export default function Settings() {
   };
 
   const handleTest = async (prov, resultKey = prov) => {
+    const feature = prov === PROVIDERS.AI_STUDIO_RELAY
+      ? ACCESS_FEATURES.AI_STUDIO_RELAY
+      : prov === PROVIDERS.OPENAI_PROXY && resultKey === getProxyProfileTestKey(AG_PROXY_PROFILE_ID)
+        ? ACCESS_FEATURES.AG_PROXY
+        : prov === PROVIDERS.OPENAI_PROXY && resultKey === getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)
+          ? ACCESS_FEATURES.CUSTOM_PROXY
+          : '';
+    if (feature && !hasFeature(feature)) {
+      setTestResults(p => ({
+        ...p,
+        [resultKey]: {
+          success: false,
+          error: getDeniedMessage(feature),
+        },
+      }));
+      return;
+    }
+
     if (prov === PROVIDERS.OLLAMA) {
       handleSaveOllamaSettings();
     }
@@ -870,6 +959,8 @@ export default function Settings() {
       </header>
 
       <div className="settings-sections">
+        <AccountAccessSummary />
+
         <section className="settings-section card animate-slide-up" id="gemini-guides">
           <div className="settings-section-header">
             <BookOpen size={20} />
@@ -907,24 +998,29 @@ export default function Settings() {
 
           <div className="settings-radio-group horizontal">
             {[
-              { value: PROVIDER_CARD_AG_PROXY, icon: Server, label: 'Gemini Proxy mặc định', desc: '/api/proxy - ag' },
+              { value: PROVIDER_CARD_AG_PROXY, icon: Server, label: 'Gemini Proxy mặc định', desc: '/api/openai-proxy - ag' },
               { value: PROVIDER_CARD_CUSTOM_PROXY, icon: Server, label: 'Custom OpenAI-compatible', desc: 'one-api / NewAPI / proxy clone' },
               { value: PROVIDERS.GEMINI_DIRECT, icon: Cloud, label: 'Gemini Direct', desc: 'AI Studio (free)' },
               { value: PROVIDERS.AI_STUDIO_RELAY, icon: Cloud, label: 'AI Studio Relay', desc: 'Experimental' },
               { value: PROVIDERS.OLLAMA, icon: Cpu, label: 'Ollama', desc: 'Local AI' },
-            ].map(p => (
-              <button
-                key={p.value}
-                className={`settings-radio-card compact ${selectedProviderCard === p.value ? 'settings-radio-card--active' : ''}`}
-                onClick={() => handleProviderSelect(p.value)}
-              >
-                <p.icon size={18} />
-                <div>
-                  <div className="settings-radio-label">{p.label}</div>
-                  <div className="settings-radio-desc">{p.desc}</div>
-                </div>
-              </button>
-            ))}
+            ].map(p => {
+              const feature = getSettingsProviderFeature(p.value);
+              const locked = feature && !hasFeature(feature);
+              return (
+                <button
+                  key={p.value}
+                  className={`settings-radio-card compact ${selectedProviderCard === p.value ? 'settings-radio-card--active' : ''} ${locked ? 'settings-radio-card--locked' : ''}`}
+                  onClick={() => handleProviderSelect(p.value)}
+                  title={locked ? getDeniedMessage(feature) : undefined}
+                >
+                  <p.icon size={18} />
+                  <div>
+                    <div className="settings-radio-label">{p.label}</div>
+                    <div className="settings-radio-desc">{locked ? 'Yêu cầu VIP' : p.desc}</div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           {selectedProviderCard === PROVIDER_CARD_AG_PROXY ? (
@@ -1124,7 +1220,7 @@ export default function Settings() {
             <KeySection
               provider="gemini_proxy"
               providerLabel="Gemini Proxy mặc định (ag)"
-              description="Dùng cho preset /api/proxy trên Vercel."
+              description="Dùng cho preset /api/openai-proxy có kiểm quyền trên Vercel."
               icon={Server}
               onKeysChange={handleKeysChange}
             />
@@ -1151,14 +1247,14 @@ export default function Settings() {
             <Server size={20} />
             <div>
               <h2>Gemini Proxy mặc định</h2>
-              <p>ag.beijixingxing - OpenAI-compatible qua /api/proxy để tránh CORS trên Vercel.</p>
+              <p>ag.beijixingxing - OpenAI-compatible qua /api/openai-proxy để kiểm quyền và tránh CORS trên Vercel.</p>
             </div>
           </div>
 
           <div className="form-group">
             <label className="form-label">Proxy URL</label>
             <div className="settings-input-row">
-              <input className="input" value="/api/proxy" readOnly placeholder="/api/proxy" />
+              <input className="input" value="/api/openai-proxy" readOnly placeholder="/api/openai-proxy" />
               <button className="btn btn-secondary" onClick={() => handleProviderSelect(PROVIDER_CARD_AG_PROXY)}>Dùng preset</button>
               <button
                 className="btn btn-ghost btn-icon"
@@ -1168,7 +1264,7 @@ export default function Settings() {
                 {testing[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] ? <RefreshCw size={16} className="animate-spin" /> : <TestTube size={16} />}
               </button>
             </div>
-            <p className="settings-hint">Mặc định: <code>/api/proxy</code> (Vercel rewrite -&gt; ag.beijixingxing.com). Không cần đổi trừ khi dùng proxy khác.</p>
+            <p className="settings-hint">Mặc định: <code>/api/openai-proxy</code> đi qua guard VIP rồi mới gọi ag.beijixingxing.com.</p>
             {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] && (
               <div className={`settings-test-result ${testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
                 {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success
@@ -1333,8 +1429,7 @@ export default function Settings() {
                 className="input"
                 value={aiStudioRelayRoomCode}
                 onChange={(event) => {
-                  setAIStudioRelayRoomCode(event.target.value.toUpperCase());
-                  saveSettings({ aiStudioRelayRoomCode: event.target.value.toUpperCase() });
+                  handleRelayRoomInput(event.target.value);
                 }}
                 placeholder="ABC-123"
                 style={{ fontFamily: 'var(--font-mono)', maxWidth: '180px' }}
@@ -1870,8 +1965,7 @@ export default function Settings() {
                           className="input ai-studio-relay-room__code"
                           value={aiStudioRelayRoomCode}
                           onChange={(event) => {
-                            setAIStudioRelayRoomCode(event.target.value.toUpperCase());
-                            saveSettings({ aiStudioRelayRoomCode: event.target.value.toUpperCase() });
+                            handleRelayRoomInput(event.target.value);
                           }}
                           placeholder="ABC-123"
                         />
@@ -1887,6 +1981,9 @@ export default function Settings() {
                     <div className="ai-studio-relay-room__preview">
                       <span>Mã hiện tại</span>
                       <strong>{aiStudioRelayRoomCode || 'Chưa có room'}</strong>
+                      {aiStudioRelayRoomSecret ? (
+                        <small>Secret đã lưu. Copy sẽ kèm cả mã và secret.</small>
+                      ) : null}
                       {aiStudioRelayRoomCode ? (
                         <small>{aiStudioRelayStatusLabel}</small>
                       ) : null}

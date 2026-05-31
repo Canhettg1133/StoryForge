@@ -71,9 +71,15 @@ describe('OpenAI-compatible proxy client payloads', () => {
     await sendOnce(aiService, routerModule);
 
     const [, request] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(request.body);
-    expect(fetchMock.mock.calls[0][0]).toBe('https://proxy.example.com/v1/chat/completions');
-    expect(request.headers.Authorization).toBe('Bearer sk-test-custom-key');
+    const relayBody = JSON.parse(request.body);
+    const payload = relayBody.payload;
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
+    expect(request.headers.Authorization).toBeUndefined();
+    expect(request.headers['X-StoryForge-Upstream-Key']).toBe('sk-test-custom-key');
+    expect(relayBody).toMatchObject({
+      action: 'chat',
+      baseUrl: 'https://proxy.example.com/v1',
+    });
     expect(payload.model).toBe('custom-json-model');
     expect(payload).not.toHaveProperty('safetySettings');
     expect(payload).not.toHaveProperty('safety_settings');
@@ -104,9 +110,15 @@ describe('OpenAI-compatible proxy client payloads', () => {
     await sendOnce(aiService, routerModule);
 
     const [, request] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(request.body);
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/proxy/v1/chat/completions');
-    expect(request.headers.Authorization).toBe('Bearer sk-test-ag-key');
+    const relayBody = JSON.parse(request.body);
+    const payload = relayBody.payload;
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
+    expect(request.headers['X-StoryForge-Upstream-Key']).toBe('sk-test-ag-key');
+    expect(request.headers.Authorization).toBeUndefined();
+    expect(relayBody).toMatchObject({
+      action: 'chat',
+      baseUrl: 'https://ag.beijixingxing.com',
+    });
     expect(payload.safetySettings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ threshold: 'OFF' }),
@@ -147,7 +159,7 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to direct chat when the same-origin relay route is missing', async () => {
+  it('does not bypass access guard when the same-origin relay route is missing', async () => {
     const {
       aiService,
       modelRouter,
@@ -181,10 +193,11 @@ describe('OpenAI-compatible proxy client payloads', () => {
     setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
     modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
 
-    await sendOnce(aiService, routerModule);
+    await expect(sendOnce(aiService, routerModule)).rejects.toMatchObject({
+      status: 404,
+    });
 
     expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
-    expect(fetchMock.mock.calls[1][0]).toBe('https://proxy.example.com/v1/chat/completions');
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe('custom-json-model');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

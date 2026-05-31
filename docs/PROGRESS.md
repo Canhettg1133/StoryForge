@@ -93,7 +93,7 @@
 - JSON parser AI response greedy regex → fix balanced brace counting (AIGenerateButton + ProjectWizard)
 - API key nhập đơn không có → thêm input field + duplicate check
 - API key bulk import xóa key cũ → fix `setKeys()` thành append
-- CORS lỗi Gemini Proxy → thêm Vite proxy `/api/proxy`
+- CORS lỗi Gemini Proxy → hiện đã thay bằng backend relay có kiểm tra quyền, không dùng bypass `/api/proxy`
 - JSON parser greedy regex trong `aiStore.js:extractFromChapter` → fix balanced brace counting
 - "Hoàn thành chương" tạo entity trùng (duplicate) → thêm name-matching trước khi create
 

@@ -22,6 +22,31 @@ function setBadgeState(id, isActive) {
     }
 }
 
+function getStoryForgeProxyToken() {
+    const runtimeGlobal = typeof window !== 'undefined' ? window : globalThis;
+    return typeof runtimeGlobal.getStoryForgeAccessToken === 'function'
+        ? String(runtimeGlobal.getStoryForgeAccessToken() || '')
+        : '';
+}
+
+function buildTranslatorRelayHeaders(apiKey) {
+    const token = getStoryForgeProxyToken();
+    return {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        ...(apiKey ? { 'X-StoryForge-Upstream-Key': apiKey } : {}),
+    };
+}
+
+function buildProviderHeaders(apiKey, isRelay) {
+    return isRelay
+        ? buildTranslatorRelayHeaders(apiKey)
+        : {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+        };
+}
+
 function updateProxyModeControls() {
     const isAgActive = useProxy && activeTranslatorProvider === TRANSLATOR_PROVIDERS.AG_PROXY;
     const isCustomActive = useProxy && activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
@@ -220,7 +245,12 @@ function parseProxyKeysFromText(text, provider = 'ag') {
     return { validKeys, newKeys, duplicates, alreadyExists, invalid };
 }
 
-function openImportProxyKeysModal(provider = 'ag') {
+async function openImportProxyKeysModal(provider = 'ag') {
+    if (
+        typeof requireStoryForgeFeature === 'function'
+        && !(await requireStoryForgeFeature('translator.bulk_keys'))
+    ) return;
+
     const config = getProxyBulkKeyConfig(provider);
     closeProxyImportModal(provider);
 
@@ -345,7 +375,12 @@ function executeImportProxyKeys(provider = 'ag') {
     showToast(message, 'success');
 }
 
-function exportProxyKeys(provider = 'ag') {
+async function exportProxyKeys(provider = 'ag') {
+    if (
+        typeof requireStoryForgeFeature === 'function'
+        && !(await requireStoryForgeFeature('translator.bulk_keys'))
+    ) return [];
+
     const config = getProxyBulkKeyConfig(provider);
     const keys = config.keys();
     if (!keys.length) {
@@ -426,7 +461,10 @@ function closeProxyImportModal(provider = 'ag') {
 }
 
 function updateProxyConfig() {
-    proxyBaseUrl = String(getElement('proxyBaseUrlInput')?.value || '').trim();
+    const rawBaseUrl = String(getElement('proxyBaseUrlInput')?.value || '').trim();
+    proxyBaseUrl = typeof normalizeAgProxyBaseUrl === 'function'
+        ? normalizeAgProxyBaseUrl(rawBaseUrl)
+        : rawBaseUrl;
     saveSettings();
     if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
 }
@@ -520,18 +558,27 @@ async function testProxyConnection() {
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
-        const response = await fetch(proxyBaseUrl, {
+        const target = typeof getAgProxyRequestTarget === 'function'
+            ? getAgProxyRequestTarget('chat')
+            : { mode: 'direct', url: proxyBaseUrl, path: DEFAULT_PROXY_CHAT_PATH, profile: { baseUrl: proxyBaseUrl } };
+        const payload = {
+            model: proxyModel,
+            messages: [{ role: 'user', content: 'Xin chào! Trả lời ngắn gọn 1 câu.' }],
+            temperature: 0.5,
+            max_tokens: 100,
+        };
+        const response = await fetch(target.url, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${testKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: proxyModel,
-                messages: [{ role: 'user', content: 'Xin chào! Trả lời ngắn gọn 1 câu.' }],
-                temperature: 0.5,
-                max_tokens: 100,
-            }),
+            headers: buildProviderHeaders(testKey, target.mode === 'relay'),
+            body: JSON.stringify(target.mode === 'relay'
+                ? {
+                    action: 'chat',
+                    baseUrl: target.profile.baseUrl,
+                    chatCompletionsPath: target.path,
+                    templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : 'convert',
+                    payload,
+                }
+                : payload),
             signal: controller.signal,
         });
         clearTimeout(timeoutId);
@@ -767,10 +814,7 @@ async function fetchCustomProxyModels() {
 
     const response = await fetch(target.url, {
         method: target.mode === 'relay' ? 'POST' : 'GET',
-        headers: {
-            'Authorization': `Bearer ${key}`,
-            'Content-Type': 'application/json',
-        },
+        headers: buildProviderHeaders(key, target.mode === 'relay'),
         body: target.mode === 'relay'
             ? JSON.stringify({
                 action: 'models',
@@ -873,15 +917,13 @@ async function testCustomProxyConnection() {
         };
         const response = await fetch(target.url, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${key}`,
-                'Content-Type': 'application/json',
-            },
+            headers: buildProviderHeaders(key, target.mode === 'relay'),
             body: JSON.stringify(target.mode === 'relay'
                 ? {
                     action: 'chat',
                     baseUrl: target.profile.baseUrl,
                     chatCompletionsPath: target.path,
+                    templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : 'convert',
                     payload,
                 }
                 : payload),

@@ -90,12 +90,13 @@ function loadProxyRuntimeContext(fetchImpl) {
 
 describe('phase10 translator proxy key rotation', () => {
   it('retries a proxy chunk with a different key after the assigned key is suspended', async () => {
-    const usedAuthHeaders = [];
+    const usedUpstreamKeyHeaders = [];
     const context = loadProxyRuntimeContext(async (url, options = {}) => {
-      const authorization = String(options.headers?.Authorization || '');
-      usedAuthHeaders.push(authorization);
+      const upstreamKey = String(options.headers?.['X-StoryForge-Upstream-Key'] || '');
+      usedUpstreamKeyHeaders.push(upstreamKey);
+      expect(options.headers?.Authorization).not.toBe(`Bearer ${upstreamKey}`);
 
-      if (authorization === 'Bearer KEY1') {
+      if (upstreamKey === 'KEY1') {
         return {
           ok: false,
           status: 403,
@@ -123,7 +124,7 @@ describe('phase10 translator proxy key rotation', () => {
     );
 
     expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
-    expect(usedAuthHeaders).toEqual(['Bearer KEY1', 'Bearer KEY2']);
+    expect(usedUpstreamKeyHeaders).toEqual(['KEY1', 'KEY2']);
   });
 
   it('does not cap proxy parallel requests to the number of proxy keys', () => {
@@ -220,12 +221,14 @@ describe('phase10 translator proxy key rotation', () => {
       'AG_KEY'
     );
 
-    expect(requests[0].url).toBe('/api/openai-proxy');
-    expect(requests[0].options.headers.Authorization).toBe('Bearer AG_KEY');
+    expect(requests[0].url).toBe('/api/translator-openai-proxy');
+    expect(requests[0].options.headers.Authorization).not.toBe('Bearer AG_KEY');
+    expect(requests[0].options.headers['X-StoryForge-Upstream-Key']).toBe('AG_KEY');
     const body = JSON.parse(requests[0].options.body);
     expect(body.action).toBe('chat');
     expect(body.baseUrl).toBe('https://ag.beijixingxing.com');
     expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
+    expect(body.templateId).toBe('sacHiep');
     expect(body.payload.model).toBe('ag-gemini-model');
   });
 
@@ -287,15 +290,17 @@ describe('phase10 translator proxy key rotation', () => {
     ]);
 
     expect(requests).toHaveLength(2);
-    expect(requests.map((request) => request.options.headers.Authorization).sort()).toEqual([
-      'Bearer KEY_A',
-      'Bearer KEY_B',
+    expect(requests.map((request) => request.options.headers['X-StoryForge-Upstream-Key']).sort()).toEqual([
+      'KEY_A',
+      'KEY_B',
     ]);
     requests.forEach((request) => {
-      expect(request.url).toBe('/api/openai-proxy');
+      expect(request.options.headers.Authorization).not.toBe(`Bearer ${request.options.headers['X-StoryForge-Upstream-Key']}`);
+      expect(request.url).toBe('/api/translator-openai-proxy');
       expect(request.body.action).toBe('chat_stream_batch');
       expect(request.body.baseUrl).toBe('https://ag.beijixingxing.com');
       expect(request.body.chatCompletionsPath).toBe('/v1/chat/completions');
+      expect(request.body.templateId).toBe('sacHiep');
       expect(request.body.payloads).toHaveLength(5);
       expect(request.body.payloads.every((payload) => payload.model === 'ag-gemini-model')).toBe(true);
     });

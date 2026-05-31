@@ -36,6 +36,13 @@ function shortenSummary(text, maxLength = 42) {
     return `${normalized.slice(0, maxLength - 1)}...`;
 }
 
+function autoResizePromptTextarea() {
+    const promptInput = document.getElementById('customPrompt');
+    if (!promptInput) return;
+    promptInput.style.height = 'auto';
+    promptInput.style.height = `${Math.max(128, promptInput.scrollHeight + 2)}px`;
+}
+
 function getGeminiPrimaryModelSummary() {
     const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : [];
     if (!activeModels.length) return 'chưa có model';
@@ -206,6 +213,9 @@ function setConfigGroupDisplay(group, isVisible) {
             // Force reflow for CSS transitions to work
             panel.offsetHeight;
             panel.classList.add('is-visible');
+            if (group === 'prompt') {
+                setTimeout(autoResizePromptTextarea, 0);
+            }
         } else {
             panel.classList.remove('is-visible');
             if (panel._transitionTimer) clearTimeout(panel._transitionTimer);
@@ -344,11 +354,17 @@ function toggleHistoryPanel(forceOpen) {
 function saveSettings() {
     const promptInput = document.getElementById('customPrompt');
     const normalizedPrompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
-        ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '')
+        ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '', {
+            templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : undefined,
+        })
         : (promptInput?.value || '');
 
     if (promptInput && promptInput.value !== normalizedPrompt) {
         promptInput.value = normalizedPrompt;
+    }
+    autoResizePromptTextarea();
+    if (typeof syncActiveTranslatorTemplateFromPrompt === 'function') {
+        syncActiveTranslatorTemplateFromPrompt(normalizedPrompt);
     }
 
     const settings = {
@@ -397,8 +413,11 @@ function loadSettings() {
                 document.getElementById('rpmPerKey').value = rpmPerKey;
             }
             if (settings.customPrompt) document.getElementById('customPrompt').value = typeof ensureCharacterNameConsistencyPrompt === 'function'
-                ? ensureCharacterNameConsistencyPrompt(settings.customPrompt)
+                ? ensureCharacterNameConsistencyPrompt(settings.customPrompt, {
+                    templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : undefined,
+                })
                 : settings.customPrompt;
+            autoResizePromptTextarea();
             if (typeof useCanonPackTranslation !== 'undefined' && settings.useCanonPackTranslation !== undefined) {
                 useCanonPackTranslation = Boolean(settings.useCanonPackTranslation);
             }
@@ -415,7 +434,11 @@ function loadSettings() {
             } else if (settings.useProxy) {
                 activeTranslatorProvider = TRANSLATOR_PROVIDERS.AG_PROXY;
             }
-            if (settings.proxyBaseUrl) proxyBaseUrl = settings.proxyBaseUrl;
+            if (settings.proxyBaseUrl) {
+                proxyBaseUrl = typeof normalizeAgProxyBaseUrl === 'function'
+                    ? normalizeAgProxyBaseUrl(settings.proxyBaseUrl)
+                    : settings.proxyBaseUrl;
+            }
             if (settings.proxyApiKey) proxyApiKey = settings.proxyApiKey;
             if (settings.proxyApiKeys) proxyApiKeys = settings.proxyApiKeys;
             if (!proxyApiKeys.length && proxyApiKey) {
@@ -530,17 +553,29 @@ function updateStats() {
 // ============================================
 // PROMPT TEMPLATES
 // ============================================
-function setPromptTemplate(templateName) {
+async function setPromptTemplate(templateName) {
     if (PROMPT_TEMPLATES[templateName]) {
+        if (
+            typeof requireStoryForgeAdultTemplateAccess === 'function'
+            && !(await requireStoryForgeAdultTemplateAccess(templateName))
+        ) {
+            return;
+        }
+        if (typeof setActiveTranslatorTemplateId === 'function') {
+            setActiveTranslatorTemplateId(templateName);
+        }
         document.getElementById('customPrompt').value = typeof ensureCharacterNameConsistencyPrompt === 'function'
-            ? ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES[templateName])
+            ? ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES[templateName], { templateId: templateName })
             : PROMPT_TEMPLATES[templateName];
+        autoResizePromptTextarea();
         saveSettings();
 
         document.querySelectorAll('.template-btn').forEach((btn) => {
             btn.classList.remove('active-template');
         });
-        event.target.classList.add('active-template');
+        if (typeof event !== 'undefined' && event?.target) {
+            event.target.classList.add('active-template');
+        }
 
         showToast(`Đã chọn template: ${getTemplateName(templateName)}`, 'success');
     }
