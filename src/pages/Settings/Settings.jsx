@@ -618,6 +618,17 @@ export default function Settings() {
   };
 
   const handleCreateRelayRoom = async () => {
+    if (!hasFeature(ACCESS_FEATURES.AI_STUDIO_RELAY)) {
+      setTestResults(p => ({
+        ...p,
+        [PROVIDERS.AI_STUDIO_RELAY]: {
+          success: false,
+          error: getDeniedMessage(ACCESS_FEATURES.AI_STUDIO_RELAY),
+        },
+      }));
+      return;
+    }
+
     setCreatingRelayRoom(true);
     try {
       handleSaveAIStudioRelay();
@@ -869,6 +880,24 @@ export default function Settings() {
   };
 
   const handleTest = async (prov, resultKey = prov) => {
+    const feature = getSettingsProviderFeature(
+      resultKey === getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)
+        ? PROVIDER_CARD_CUSTOM_PROXY
+        : resultKey === getProxyProfileTestKey(AG_PROXY_PROFILE_ID)
+          ? PROVIDER_CARD_AG_PROXY
+          : prov,
+    );
+    if (feature && !hasFeature(feature)) {
+      setTestResults(p => ({
+        ...p,
+        [resultKey]: {
+          success: false,
+          error: getDeniedMessage(feature),
+        },
+      }));
+      return;
+    }
+
     if (prov === PROVIDERS.OLLAMA) {
       handleSaveOllamaSettings();
     }

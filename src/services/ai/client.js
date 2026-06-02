@@ -25,7 +25,12 @@ import {
   createAIStudioRelayRoom,
   getAIStudioRelayRoomStatus,
 } from './aiStudioRelayClient';
-import { getStoryForgeAccessToken } from '../access/accessClient';
+import {
+  ACCESS_FEATURES,
+  getCachedFeatureMessage,
+  getStoryForgeAccessToken,
+  hasCachedFeature,
+} from '../access/accessClient';
 import { NSFW_REBUKE_PROMPT } from '../../utils/constants';
 
 const SETTINGS_KEY = 'sf-ai-settings';
@@ -734,6 +739,16 @@ async function callOllama({ model, messages, stream = true, signal, onToken, onC
 // AI Studio Relay
 // ================================
 async function callAIStudioRelay({ model, messages, stream = true, signal, onToken, onComplete, onError }) {
+  if (!hasCachedFeature(ACCESS_FEATURES.AI_STUDIO_RELAY)) {
+    throw normalizeAIError(
+      {
+        code: 'FEATURE_NOT_ALLOWED',
+        rawMessage: getCachedFeatureMessage(ACCESS_FEATURES.AI_STUDIO_RELAY),
+      },
+      { provider: PROVIDERS.AI_STUDIO_RELAY, model },
+    );
+  }
+
   const relayUrl = getAIStudioRelayUrl();
   const roomCode = getAIStudioRelayRoomCode();
 

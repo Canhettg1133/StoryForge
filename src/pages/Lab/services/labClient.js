@@ -15,6 +15,7 @@ import {
     resolveOpenAIProxyRequest,
     shouldFallbackOpenAIProxyRelay,
 } from '../../../services/ai/openAIProxyConfig';
+import { getStoryForgeAccessToken } from '../../../services/access/accessClient';
 import { NSFW_REBUKE_PROMPT } from '../../../utils/constants';
 
 function isRefusal(text) {
@@ -52,6 +53,22 @@ export function getOllamaUrl() {
     return getSettings().ollamaUrl || 'http://localhost:11434';
 }
 
+async function buildProxyRequestHeaders(target, apiKey) {
+    if (target?.mode !== 'relay') {
+        return {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+        };
+    }
+
+    const storyForgeToken = await getStoryForgeAccessToken();
+    return {
+        'Content-Type': 'application/json',
+        ...(storyForgeToken ? { Authorization: `Bearer ${storyForgeToken}` } : {}),
+        'X-StoryForge-Upstream-Key': apiKey,
+    };
+}
+
 // ================================
 // Gemini Proxy (OpenAI-compatible)
 // ================================
@@ -75,10 +92,7 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
     try {
         let response = await fetch(target.url, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`,
-            },
+            headers: await buildProxyRequestHeaders(target, apiKey),
             body: JSON.stringify(body),
             signal,
         });

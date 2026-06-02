@@ -295,4 +295,24 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(result.error.toLowerCase()).toContain('credit');
     expect(fetchMock.mock.calls[0][0]).toBe('https://proxy.example.com/v1/chat/completions');
   });
+
+  it('blocks AI Studio Relay before opening a relay connection when the VIP feature is missing', async () => {
+    const {
+      aiService,
+      modelRouter,
+      routerModule,
+      routerModule: { PROVIDERS },
+    } = await loadClientStack();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('WebSocket', vi.fn());
+
+    modelRouter.setPreferredProvider(PROVIDERS.AI_STUDIO_RELAY);
+
+    await expect(sendOnce(aiService, routerModule)).rejects.toMatchObject({
+      code: 'FEATURE_NOT_ALLOWED',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(WebSocket).not.toHaveBeenCalled();
+  });
 });
