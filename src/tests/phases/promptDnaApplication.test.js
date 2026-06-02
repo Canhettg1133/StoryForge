@@ -19,11 +19,11 @@ describe('Project prompt DNA application', () => {
     const system = messages[0].content;
 
     expect(system).toContain('Tone: dark');
-    expect(system).toContain('[LUAT COT LOI CUA TRUYEN - BAT BUOC TUAN THU]');
+    expect(system).toContain('[LUẬT CỐT LÕI CỦA TRUYỆN - BẮT BUỘC TUÂN THỦ]');
     expect(system).toContain('Canh gioi khong duoc dot pha vo ly');
-    expect(system).toContain('[DNA VAN PHONG CUA TRUYEN - PROJECT OVERRIDE]');
+    expect(system).toContain('[DNA VĂN PHONG CỦA TRUYỆN - PROJECT OVERRIDE]');
     expect(system).toContain('Giu nhip van co phong, tram va sac');
-    expect(system).toContain('[TU/CUM CAN TRANH CUA TRUYEN - PROJECT BLACKLIST]');
+    expect(system).toContain('[TỪ/CỤM CẦN TRÁNH CỦA TRUYỆN - PROJECT BLACKLIST]');
     expect(system).toContain('anh mat sau tham');
   });
 });

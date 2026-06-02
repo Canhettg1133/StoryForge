@@ -220,7 +220,12 @@ function parseProxyKeysFromText(text, provider = 'ag') {
     return { validKeys, newKeys, duplicates, alreadyExists, invalid };
 }
 
-function openImportProxyKeysModal(provider = 'ag') {
+async function openImportProxyKeysModal(provider = 'ag') {
+    if (
+        typeof requireStoryForgeFeature === 'function'
+        && !(await requireStoryForgeFeature('translator.bulk_keys'))
+    ) return;
+
     const config = getProxyBulkKeyConfig(provider);
     closeProxyImportModal(provider);
 
@@ -345,7 +350,12 @@ function executeImportProxyKeys(provider = 'ag') {
     showToast(message, 'success');
 }
 
-function exportProxyKeys(provider = 'ag') {
+async function exportProxyKeys(provider = 'ag') {
+    if (
+        typeof requireStoryForgeFeature === 'function'
+        && !(await requireStoryForgeFeature('translator.bulk_keys'))
+    ) return [];
+
     const config = getProxyBulkKeyConfig(provider);
     const keys = config.keys();
     if (!keys.length) {
@@ -587,16 +597,35 @@ function writeProxyJsonStorage(key, value) {
     localStorage.setItem(key, JSON.stringify(value));
 }
 
+function getCustomProxyBaseUrlCacheKey(value) {
+    return String(value || '').trim();
+}
+
+function normalizeCustomProxyModelList(models = []) {
+    return [...new Set(
+        (Array.isArray(models) ? models : [])
+            .map((model) => String(model || '').trim())
+            .filter(Boolean)
+    )];
+}
+
 function normalizeCustomProxyProfile(patch = {}) {
     const previous = getCustomProxyProfile();
+    const hasBaseUrlPatch = Object.prototype.hasOwnProperty.call(patch, 'baseUrl');
+    const nextBaseUrl = String((hasBaseUrlPatch ? patch.baseUrl : previous.baseUrl) || '').trim();
+    const baseUrlChanged = hasBaseUrlPatch
+        && getCustomProxyBaseUrlCacheKey(nextBaseUrl) !== getCustomProxyBaseUrlCacheKey(previous.baseUrl);
+    const shouldClearModels = !nextBaseUrl || baseUrlChanged;
     customProxyProfile = {
         ...DEFAULT_CUSTOM_PROXY_PROFILE,
         ...previous,
         ...patch,
         id: CUSTOM_PROXY_PROFILE_ID,
-        models: Array.isArray(patch.models ?? previous.models)
-            ? (patch.models ?? previous.models).map((model) => String(model || '').trim()).filter(Boolean)
-            : [],
+        baseUrl: nextBaseUrl,
+        defaultModel: shouldClearModels ? '' : String((patch.defaultModel ?? previous.defaultModel) || '').trim(),
+        models: shouldClearModels
+            ? []
+            : normalizeCustomProxyModelList(patch.models ?? previous.models),
         chatCompletionsPath: patch.chatCompletionsPath || previous.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
         modelsPath: patch.modelsPath || previous.modelsPath || DEFAULT_PROXY_MODELS_PATH,
     };
@@ -791,22 +820,21 @@ async function fetchCustomProxyModels() {
         return [];
     }
 
-    const allModels = parseOpenAIModelIds(data);
-    const geminiModels = filterGeminiModelIds(allModels);
-    if (geminiModels.length === 0) {
+    const allModels = normalizeCustomProxyModelList(parseOpenAIModelIds(data));
+    if (allModels.length === 0) {
         normalizeCustomProxyProfile({ models: [] });
         renderCustomProxyModelsDropdown();
         if (modelStatus) {
-            modelStatus.textContent = `Đã lấy ${allModels.length} models nhưng không thấy model Gemini. Bạn vẫn có thể nhập model thủ công.`;
+            modelStatus.textContent = 'Custom Proxy không trả về model hợp lệ. Bạn vẫn có thể nhập model thủ công.';
             modelStatus.className = 'model-fetch-status error';
         }
         return [];
     }
 
     const currentModel = String(profile.defaultModel || '').trim();
-    const defaultModel = geminiModels.includes(currentModel) ? currentModel : geminiModels[0];
+    const defaultModel = allModels.includes(currentModel) ? currentModel : allModels[0];
     normalizeCustomProxyProfile({
-        models: geminiModels,
+        models: allModels,
         defaultModel,
     });
     renderCustomProxyModelsDropdown();
@@ -814,11 +842,11 @@ async function fetchCustomProxyModels() {
     saveSettings();
 
     if (modelStatus) {
-        modelStatus.textContent = `Đã lấy ${allModels.length} models, lọc còn ${geminiModels.length} model Gemini.`;
+        modelStatus.textContent = `Đã lấy ${allModels.length} model Custom Proxy.`;
         modelStatus.className = 'model-fetch-status success';
     }
-    showToast(`Đã lấy ${geminiModels.length} model Gemini từ Custom Proxy.`, 'success');
-    return geminiModels;
+    showToast(`Đã lấy ${allModels.length} model Custom Proxy.`, 'success');
+    return allModels;
 }
 
 function selectCustomProxyModel(modelName = '') {
@@ -882,6 +910,7 @@ async function testCustomProxyConnection() {
                     action: 'chat',
                     baseUrl: target.profile.baseUrl,
                     chatCompletionsPath: target.path,
+                    templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : 'convert',
                     payload,
                 }
                 : payload),

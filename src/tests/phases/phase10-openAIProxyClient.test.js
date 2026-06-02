@@ -134,15 +134,18 @@ describe('OpenAI-compatible proxy client payloads', () => {
     await sendOnce(aiService, routerModule);
 
     const [, request] = fetchMock.mock.calls[0];
-    const payload = JSON.parse(request.body);
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/proxy/v1/chat/completions');
+    const body = JSON.parse(request.body);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
     expect(request.headers.Authorization).toBe('Bearer sk-test-ag-key');
-    expect(payload.safetySettings).toEqual(
+    expect(body.action).toBe('chat');
+    expect(body.baseUrl).toBe('https://ag.beijixingxing.com');
+    expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
+    expect(body.payload.safetySettings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ threshold: 'OFF' }),
       ]),
     );
-    expect(payload.safety_settings).toEqual(payload.safetySettings);
+    expect(body.payload.safety_settings).toEqual(body.payload.safetySettings);
   });
 
   it('fails before fetch when a custom proxy profile has no selected model', async () => {
@@ -216,5 +219,73 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
     expect(fetchMock.mock.calls[1][0]).toBe('https://proxy.example.com/v1/chat/completions');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe('custom-json-model');
+  });
+
+  it('tests custom proxy connection with chat completions instead of the models endpoint', async () => {
+    const {
+      aiService,
+      keyManager,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        CUSTOM_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+        updateCustomOpenAIProxyProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'ket noi ok' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.OPENAI_PROXY, 'sk-test-custom-key');
+    updateCustomOpenAIProxyProfile({
+      baseUrl: 'https://proxy.example.com/v1',
+      defaultModel: 'manual-custom-model',
+      models: [],
+      transport: 'direct',
+    });
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+
+    const result = await aiService.testConnection(PROVIDERS.OPENAI_PROXY);
+
+    expect(result.success).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://proxy.example.com/v1/chat/completions');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('manual-custom-model');
+  });
+
+  it('reports insufficient custom proxy credits from the chat test response', async () => {
+    const {
+      aiService,
+      keyManager,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        CUSTOM_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+        updateCustomOpenAIProxyProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        message: 'Insufficient credits - top up your balance',
+        type: 'insufficient_quota',
+        code: 'insufficient_credits',
+      },
+    }), { status: 402, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.OPENAI_PROXY, 'sk-test-custom-key');
+    updateCustomOpenAIProxyProfile({
+      baseUrl: 'https://proxy.example.com/v1',
+      defaultModel: 'manual-custom-model',
+      transport: 'direct',
+    });
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+
+    const result = await aiService.testConnection(PROVIDERS.OPENAI_PROXY);
+
+    expect(result.success).toBe(false);
+    expect(result.error.toLowerCase()).toContain('credit');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://proxy.example.com/v1/chat/completions');
   });
 });

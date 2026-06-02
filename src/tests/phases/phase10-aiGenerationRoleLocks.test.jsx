@@ -82,7 +82,7 @@ describe('phase10 AI generation canon role locks', () => {
     });
 
     const messages = aiService.send.mock.calls[0][0].messages;
-    expect(messages[0].content).toContain('[CANON VAI TRO DA KHOA - BAT BUOC]');
+    expect(messages[0].content).toContain('[CANON VAI TRÒ ĐÃ KHÓA - BẮT BUỘC]');
     expect(messages[0].content).toContain('- Lan: nguoi giu ban do co');
     expect(messages[1].content).toContain('"specific_role"');
   });
@@ -117,9 +117,9 @@ describe('phase10 AI generation canon role locks', () => {
 
     const messages = aiService.send.mock.calls[0][0].messages;
     const combined = messages.map((message) => message.content).join('\n');
-    expect(messages[0].content).toContain('[CANON VAI TRO DA KHOA - BAT BUOC]');
+    expect(messages[0].content).toContain('[CANON VAI TRÒ ĐÃ KHÓA - BẮT BUỘC]');
     expect(messages[0].content).toContain('- Lan: nguoi giu ban do co');
     expect(combined).toContain('Vai tro cu the: nguoi giu ban do co (da khoa canon)');
-    expect(messages[1].content).toContain('Neu yeu cau can mot vai tro da khoa');
+    expect(messages[1].content).toContain('Nếu yêu cầu cần một vai trò đã khóa');
   });
 });

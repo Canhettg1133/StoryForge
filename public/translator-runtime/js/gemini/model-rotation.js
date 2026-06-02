@@ -499,7 +499,12 @@ function closeKeyModal() {
 // ============================================
 // IMPORT API KEYS (Bulk import)
 // ============================================
-function openImportApiKeysModal() {
+async function openImportApiKeysModal() {
+    if (
+        typeof requireStoryForgeFeature === 'function'
+        && !(await requireStoryForgeFeature('translator.bulk_keys'))
+    ) return;
+
     const modal = document.createElement('div');
     modal.id = 'keyImportModal';
     modal.style.cssText = `

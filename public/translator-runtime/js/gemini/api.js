@@ -190,11 +190,13 @@ async function sendProxyRelayChatStreamBatchGroup(items) {
         ? {
             action: 'chat',
             ...sharedBody,
+            templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : 'convert',
             payload: activeItems[0].payload,
         }
         : {
             action: 'chat_stream_batch',
             ...sharedBody,
+            templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : 'convert',
             payloads: activeItems.map((item) => item.payload),
         };
 
@@ -264,6 +266,7 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
                 action: 'chat',
                 baseUrl: proxyTarget.profile.baseUrl,
                 chatCompletionsPath: proxyTarget.path,
+                templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : 'convert',
                 payload,
             }
             : payload;

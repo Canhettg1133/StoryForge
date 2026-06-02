@@ -1,14 +1,56 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import fs from 'fs'
+import { pathToFileURL } from 'url'
 
-function openAIProxyDevMiddleware() {
+function loadLocalServerEnv() {
+  const envPath = path.resolve(__dirname, '.env.local')
+  if (!fs.existsSync(envPath)) return
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/u)
+  lines.forEach((line) => {
+    const match = line.match(/^\s*([^#=]+?)\s*=\s*(.*)\s*$/u)
+    if (!match) return
+    const [, key, value] = match
+    if (!process.env[key]) process.env[key] = value
+  })
+}
+
+function resolveApiRoute(pathname) {
+  const exactRoutes = {
+    '/api/openai-proxy': './api/openai-proxy.js',
+    '/api/translator-openai-proxy': './api/translator-openai-proxy.js',
+    '/api/me/access': './api/me/access.js',
+    '/api/me/adult-consent': './api/me/adult-consent.js',
+  }
+  if (exactRoutes[pathname]) return { modulePath: exactRoutes[pathname], params: {} }
+
+  return null
+}
+
+function storyForgeApiDevMiddleware() {
   return {
-    name: 'storyforge-openai-proxy-dev-middleware',
+    name: 'storyforge-api-dev-middleware',
     configureServer(server) {
-      server.middlewares.use('/api/openai-proxy', async (req, res, next) => {
+      loadLocalServerEnv()
+      server.middlewares.use('/api', async (req, res, next) => {
         try {
-          const { default: handler } = await import('./api/openai-proxy.js')
+          const parsed = new URL(req.url || '/', 'http://localhost')
+          const apiPathname = parsed.pathname.startsWith('/api')
+            ? parsed.pathname
+            : `/api${parsed.pathname}`
+          const route = resolveApiRoute(apiPathname)
+          if (!route) {
+            next()
+            return
+          }
+
+          req.query = {
+            ...Object.fromEntries(parsed.searchParams.entries()),
+            ...route.params,
+          }
+          const moduleUrl = pathToFileURL(path.resolve(__dirname, route.modulePath)).href
+          const { default: handler } = await import(`${moduleUrl}?t=${Date.now()}`)
           await handler(req, res)
         } catch (error) {
           next(error)
@@ -19,7 +61,7 @@ function openAIProxyDevMiddleware() {
 }
 
 export default defineConfig({
-  plugins: [react(), openAIProxyDevMiddleware()],
+  plugins: [react(), storyForgeApiDevMiddleware()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -41,14 +83,5 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
-    proxy: {
-      // Proxy calls to 星星 Gemini Proxy — bypass CORS
-      '/api/proxy': {
-        target: 'https://ag.beijixingxing.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/proxy/, ''),
-        secure: true,
-      },
-    },
   },
 })

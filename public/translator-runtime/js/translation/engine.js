@@ -513,6 +513,11 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
 }
 
 async function startTranslation() {
+    if (typeof requireStoryForgeFeature === 'function') {
+        const canUseTranslator = await requireStoryForgeFeature('translator.access');
+        if (!canUseTranslator) return;
+    }
+
     // Validate - Ollama/Proxy không cần API keys
     if (!useOllama && !useProxy && apiKeys.length === 0) {
         showToast('Vui lòng thêm ít nhất 1 API Key, bật Ollama Local, hoặc bật Proxy API!', 'error');
@@ -535,6 +540,14 @@ async function startTranslation() {
     rpmPerKey = typeof normalizeTranslatorRpm === 'function'
         ? normalizeTranslatorRpm(document.getElementById('rpmPerKey')?.value || rpmPerKey)
         : (parseInt(document.getElementById('rpmPerKey')?.value, 10) || 10);
+    if (
+        parallelCount > 2
+        && typeof hasStoryForgeFeature === 'function'
+        && !hasStoryForgeFeature('translator.parallel_high')
+    ) {
+        parallelCount = 2;
+        showToast('Tài khoản chưa có VIP nên giới hạn dịch song song còn 2 luồng.', 'warning');
+    }
     const promptInput = document.getElementById('customPrompt');
     let customPrompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
         ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '')
@@ -544,6 +557,13 @@ async function startTranslation() {
     }
     if (promptInput && promptInput.value !== customPrompt) {
         promptInput.value = customPrompt;
+    }
+    if (typeof syncActiveTranslatorTemplateFromPrompt === 'function') {
+        syncActiveTranslatorTemplateFromPrompt(customPrompt);
+    }
+    if (typeof requireStoryForgeAdultTemplateAccess === 'function') {
+        const canUseAdultTemplate = await requireStoryForgeAdultTemplateAccess();
+        if (!canUseAdultTemplate) return;
     }
 
     // ========== OLLAMA MODE ==========
@@ -555,6 +575,14 @@ async function startTranslation() {
         }
     } else if (useProxy) {
         // ========== PROXY MODE ==========
+        const providerFeature = activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY
+            ? 'provider.custom_proxy'
+            : 'provider.ag_proxy';
+        if (typeof requireStoryForgeFeature === 'function') {
+            const canUseProvider = await requireStoryForgeFeature(providerFeature);
+            if (!canUseProvider) return;
+        }
+
         const proxyKeyCount = typeof getProxyKeyCount === 'function' ? getProxyKeyCount() : 1;
         console.log(`[Proxy] Mode enabled - ${proxyKeyCount} key(s) available`);
         const activeProxyModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;

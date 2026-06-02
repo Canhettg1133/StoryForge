@@ -46,6 +46,9 @@ import {
 } from '../../services/ai/openAIProxyConfig';
 import db from '../../services/db/database';
 import useMobileLayout from '../../hooks/useMobileLayout';
+import { useUserAccess } from '../../hooks/useUserAccess';
+import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
+import AccessGate from '../../components/access/AccessGate.jsx';
 
 const GLOBAL_CHAT_PROJECT_ID = 0;
 const CHAT_THREAD_TITLE_FALLBACK = 'Cuộc trò chuyện mới';
@@ -115,6 +118,17 @@ function normalizeProxyProfileId(profileId) {
 
 function getProxyProviderSelectValue(profileId) {
   return `${PROVIDERS.OPENAI_PROXY}:${normalizeProxyProfileId(profileId)}`;
+}
+
+function getProviderFeature(provider, proxyProfileId = '') {
+  const normalizedProvider = normalizeOpenAIProxyProvider(provider);
+  if (normalizedProvider === PROVIDERS.AI_STUDIO_RELAY) return ACCESS_FEATURES.AI_STUDIO_RELAY;
+  if (normalizedProvider === PROVIDERS.OPENAI_PROXY) {
+    return normalizeProxyProfileId(proxyProfileId) === CUSTOM_PROXY_PROFILE_ID
+      ? ACCESS_FEATURES.CUSTOM_PROXY
+      : ACCESS_FEATURES.AG_PROXY;
+  }
+  return '';
 }
 
 export function getProviderSelectValue(thread = {}, routePreview = {}) {
@@ -549,6 +563,10 @@ export default function ProjectChat() {
   const composerMaxHeight = isMobileLayout
     ? COMPOSER_MOBILE_MAX_HEIGHT
     : COMPOSER_DESKTOP_MAX_HEIGHT;
+  const {
+    hasFeature,
+    getDeniedMessage,
+  } = useUserAccess();
 
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
@@ -591,6 +609,19 @@ export default function ProjectChat() {
     ? (routePreview.proxyProfileId || normalizeThreadOverrideValue(activeThread?.proxy_profile_id) || getActiveOpenAIProxyProfile().id)
     : '';
   const providerSelectValue = getProviderSelectValue(activeThread, routePreview);
+  const providerFeature = getProviderFeature(activeChatProvider, activeProxyProfileId);
+  const canUseChat = hasFeature(ACCESS_FEATURES.AI_CHAT_ACCESS);
+  const providerAllowed = providerFeature ? hasFeature(providerFeature) : true;
+  const projectRequiresAdultAccess = Boolean(currentProject?.nsfw_mode || currentProject?.super_nsfw_mode);
+  const adultAllowed = !projectRequiresAdultAccess || hasFeature(ACCESS_FEATURES.ADULT_MODE);
+  const chatLockedFeature = !canUseChat
+    ? ACCESS_FEATURES.AI_CHAT_ACCESS
+    : !providerAllowed
+      ? providerFeature
+      : !adultAllowed
+        ? ACCESS_FEATURES.ADULT_MODE
+        : '';
+  const chatLockedMessage = chatLockedFeature ? getDeniedMessage(chatLockedFeature) : '';
 
   function resizeComposer(textarea) {
     if (!textarea) return;
@@ -954,6 +985,19 @@ export default function ProjectChat() {
 
     const normalizedUserContent = String(userContent || '').trim();
     const { routeOptions, route: currentRoute } = getThreadRouting(thread);
+    const selectedProviderFeature = getProviderFeature(currentRoute.provider, currentRoute.proxyProfileId);
+    if (!hasFeature(ACCESS_FEATURES.AI_CHAT_ACCESS)) {
+      setErrorMessage(getDeniedMessage(ACCESS_FEATURES.AI_CHAT_ACCESS));
+      return;
+    }
+    if (selectedProviderFeature && !hasFeature(selectedProviderFeature)) {
+      setErrorMessage(getDeniedMessage(selectedProviderFeature));
+      return;
+    }
+    if (projectScopeEnabled && (currentProject?.nsfw_mode || currentProject?.super_nsfw_mode) && !hasFeature(ACCESS_FEATURES.ADULT_MODE)) {
+      setErrorMessage(getDeniedMessage(ACCESS_FEATURES.ADULT_MODE));
+      return;
+    }
     const tempAssistantId = `temp-assistant-${Date.now()}`;
     const provisionalTitle =
       !thread.title || thread.title === CHAT_THREAD_TITLE_FALLBACK
@@ -1718,6 +1762,17 @@ export default function ProjectChat() {
 
 
 
+          {chatLockedMessage ? (
+            <div className="project-chat-access-lock">
+              <AccessGate
+                feature={chatLockedFeature}
+                title="Chat AI đang bị khóa"
+                compact
+                onOpenSettings={() => navigate('/settings')}
+              />
+            </div>
+          ) : null}
+
           {errorMessage ? <div className="project-chat-error">{errorMessage}</div> : null}
 
           <div className="project-chat-messages">
@@ -1809,7 +1864,7 @@ export default function ProjectChat() {
                     type="button"
                     className="project-chat-composer__submit-button"
                     onClick={handleComposerSubmit}
-                    disabled={!draft.trim()}
+                    disabled={!draft.trim() || Boolean(chatLockedMessage)}
                     title="Gửi"
                   >
                     <Send size={18} />

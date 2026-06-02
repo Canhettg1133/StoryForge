@@ -220,7 +220,7 @@ describe('phase10 translator proxy key rotation', () => {
       'AG_KEY'
     );
 
-    expect(requests[0].url).toBe('/api/openai-proxy');
+    expect(requests[0].url).toBe('/api/translator-openai-proxy');
     expect(requests[0].options.headers.Authorization).toBe('Bearer AG_KEY');
     const body = JSON.parse(requests[0].options.body);
     expect(body.action).toBe('chat');
@@ -292,7 +292,7 @@ describe('phase10 translator proxy key rotation', () => {
       'Bearer KEY_B',
     ]);
     requests.forEach((request) => {
-      expect(request.url).toBe('/api/openai-proxy');
+      expect(request.url).toBe('/api/translator-openai-proxy');
       expect(request.body.action).toBe('chat_stream_batch');
       expect(request.body.baseUrl).toBe('https://ag.beijixingxing.com');
       expect(request.body.chatCompletionsPath).toBe('/v1/chat/completions');
@@ -301,7 +301,7 @@ describe('phase10 translator proxy key rotation', () => {
     });
   });
 
-  it('fetches Custom Proxy Gemini models from the openai_proxy key pool without changing AG config', async () => {
+  it('fetches Custom Proxy models from the openai_proxy key pool without changing AG config', async () => {
     const requests = [];
     const context = loadProxyRuntimeContext(async (url, options = {}) => {
       requests.push({ url: String(url), options });
@@ -337,10 +337,10 @@ describe('phase10 translator proxy key rotation', () => {
 
     expect(requests[0].url).toBe('http://localhost:1234/v1/models');
     expect(requests[0].options.headers.Authorization).toBe('Bearer CUSTOM_KEY');
-    expect(models).toEqual(['google/gemini-2.5-pro', 'gemini-2.5-flash']);
+    expect(models).toEqual(['openai/gpt-4.1', 'google/gemini-2.5-pro', 'gemini-2.5-flash']);
     expect(vm.runInContext('proxyModel', context)).toBe('ag-model');
     expect(vm.runInContext('proxyApiKeys', context)).toEqual(['AG_KEY']);
-    expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe('google/gemini-2.5-pro');
+    expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe('openai/gpt-4.1');
   });
 
   it('does not write translator Custom Proxy state back into main StoryForge settings', () => {

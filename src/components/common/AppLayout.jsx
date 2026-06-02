@@ -10,6 +10,9 @@ import useMobileLayout from '../../hooks/useMobileLayout';
 import CloudAutoSyncAgent from '../cloud/CloudAutoSyncAgent';
 import CloudAuthRedirectHandler from '../cloud/CloudAuthRedirectHandler';
 import PersistentTranslatorHost from '../translator/PersistentTranslatorHost';
+import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
+import { useUserAccess } from '../../hooks/useUserAccess';
+import AccessGate from '../access/AccessGate.jsx';
 import './AppLayout.css';
 
 export default function AppLayout() {
@@ -18,6 +21,8 @@ export default function AppLayout() {
   const isMobileLayout = useMobileLayout(900);
   const isProjectRoute = location.pathname.startsWith('/project/');
   const isTranslatorRoute = location.pathname === '/translator';
+  const { access, hasFeature } = useUserAccess();
+  const canUseTranslator = hasFeature(ACCESS_FEATURES.TRANSLATOR_ACCESS);
 
   const handleTranslatorBack = () => {
     if (window.history.length > 1) {
@@ -46,7 +51,16 @@ export default function AppLayout() {
             </div>
           ) : null}
           <div className="translator-shell__host">
-            <PersistentTranslatorHost active={isTranslatorRoute} />
+            <PersistentTranslatorHost active={isTranslatorRoute && canUseTranslator} access={access} />
+            {isTranslatorRoute && !canUseTranslator ? (
+              <div className="translator-access-gate">
+                <AccessGate
+                  feature={ACCESS_FEATURES.TRANSLATOR_ACCESS}
+                  title="Dịch truyện đang bị khóa"
+                  onOpenSettings={() => navigate('/settings')}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       </main>

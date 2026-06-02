@@ -53,6 +53,134 @@ const TRANSLATOR_PROVIDERS = {
     CUSTOM_PROXY: 'custom_proxy',
     OLLAMA: 'ollama',
 };
+let storyForgeAccessToken = '';
+let storyForgeAccessSnapshot = null;
+const STORYFORGE_FEATURES = {
+    TRANSLATOR_ACCESS: 'translator.access',
+    AG_PROXY: 'provider.ag_proxy',
+    CUSTOM_PROXY: 'provider.custom_proxy',
+    TRANSLATOR_PARALLEL_HIGH: 'translator.parallel_high',
+    TRANSLATOR_BULK_KEYS: 'translator.bulk_keys',
+    ADULT_MODE: 'content.adult_mode',
+};
+const storyForgeRuntimeGlobal = typeof window !== 'undefined' ? window : globalThis;
+const TRANSLATOR_TEMPLATE_IDS = new Set([
+    'convert',
+    'novel',
+    'wuxia',
+    'romance',
+    'adult',
+    'sacHiep',
+    'sacHiepPro',
+    'sacHiepENI',
+]);
+const TRANSLATOR_ADULT_TEMPLATE_IDS = new Set(['adult', 'sacHiep', 'sacHiepPro', 'sacHiepENI']);
+let activeTranslatorTemplateId = 'sacHiep';
+
+storyForgeRuntimeGlobal.getStoryForgeAccessToken = () => storyForgeAccessToken;
+storyForgeRuntimeGlobal.getStoryForgeAccessSnapshot = () => storyForgeAccessSnapshot;
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin) return;
+        const payload = event.data || {};
+        if (payload.type !== 'STORYFORGE_ACCESS_CONTEXT') return;
+        storyForgeAccessToken = String(payload.token || '');
+        storyForgeAccessSnapshot = payload.access || null;
+    });
+}
+
+function getStoryForgeFeatureDecision(featureKey) {
+    return storyForgeAccessSnapshot?.features?.[featureKey] || null;
+}
+
+function hasStoryForgeFeature(featureKey) {
+    return Boolean(getStoryForgeFeatureDecision(featureKey)?.allowed);
+}
+
+function getStoryForgeDeniedMessage(featureKey) {
+    const decision = getStoryForgeFeatureDecision(featureKey);
+    switch (decision?.reason) {
+        case 'AUTH_REQUIRED':
+            return 'Bạn cần đăng nhập StoryForge để dùng tính năng này.';
+        case 'USER_BANNED':
+            return 'Tài khoản này đang bị khóa quyền truy cập.';
+        case 'FEATURE_DISABLED':
+            return 'Tính năng này đang tạm tắt trong hệ thống.';
+        case 'AGE_CONFIRMATION_REQUIRED':
+            return 'Bạn cần xác nhận đủ tuổi trước khi bật nội dung 18+.';
+        case 'ADULT_TERMS_REQUIRED':
+        case 'ADULT_TERMS_VERSION_OUTDATED':
+            return 'Bạn cần đồng ý điều khoản 18+ mới nhất.';
+        default:
+            return 'Tính năng này yêu cầu quyền VIP.';
+    }
+}
+
+async function refreshStoryForgeAccessSnapshot() {
+    if (!storyForgeAccessToken) return storyForgeAccessSnapshot;
+    const response = await fetch('/api/me/access', {
+        headers: { Authorization: `Bearer ${storyForgeAccessToken}` },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok && payload?.access) {
+        storyForgeAccessSnapshot = payload.access;
+    }
+    return storyForgeAccessSnapshot;
+}
+
+async function requireStoryForgeFeature(featureKey) {
+    if (!getStoryForgeFeatureDecision(featureKey)) {
+        await refreshStoryForgeAccessSnapshot().catch(() => null);
+    }
+    if (hasStoryForgeFeature(featureKey)) return true;
+    const message = getStoryForgeDeniedMessage(featureKey);
+    if (typeof showToast === 'function') showToast(message, 'error');
+    return false;
+}
+
+function getActiveTranslatorTemplateId() {
+    return TRANSLATOR_TEMPLATE_IDS.has(activeTranslatorTemplateId)
+        ? activeTranslatorTemplateId
+        : 'convert';
+}
+
+function setActiveTranslatorTemplateId(templateId) {
+    const nextTemplateId = String(templateId || '').trim();
+    activeTranslatorTemplateId = TRANSLATOR_TEMPLATE_IDS.has(nextTemplateId) ? nextTemplateId : 'convert';
+    return activeTranslatorTemplateId;
+}
+
+function isTranslatorAdultTemplate(templateId) {
+    return TRANSLATOR_ADULT_TEMPLATE_IDS.has(String(templateId || '').trim());
+}
+
+function syncActiveTranslatorTemplateFromPrompt(promptText = '') {
+    if (typeof PROMPT_TEMPLATES !== 'undefined') {
+        const normalizedPrompt = String(promptText || '').trim();
+        const matchedEntry = Object.entries(PROMPT_TEMPLATES)
+            .find(([, value]) => String(value || '').trim() === normalizedPrompt);
+        if (matchedEntry) {
+            return setActiveTranslatorTemplateId(matchedEntry[0]);
+        }
+    }
+    return setActiveTranslatorTemplateId('convert');
+}
+
+async function requireStoryForgeAdultTemplateAccess(templateId = getActiveTranslatorTemplateId()) {
+    if (!isTranslatorAdultTemplate(templateId)) return true;
+    if (typeof requireStoryForgeFeature !== 'function') return true;
+    return requireStoryForgeFeature(STORYFORGE_FEATURES.ADULT_MODE);
+}
+
+storyForgeRuntimeGlobal.hasStoryForgeFeature = hasStoryForgeFeature;
+storyForgeRuntimeGlobal.requireStoryForgeFeature = requireStoryForgeFeature;
+storyForgeRuntimeGlobal.getStoryForgeDeniedMessage = getStoryForgeDeniedMessage;
+storyForgeRuntimeGlobal.getActiveTranslatorTemplateId = getActiveTranslatorTemplateId;
+storyForgeRuntimeGlobal.setActiveTranslatorTemplateId = setActiveTranslatorTemplateId;
+storyForgeRuntimeGlobal.isTranslatorAdultTemplate = isTranslatorAdultTemplate;
+storyForgeRuntimeGlobal.syncActiveTranslatorTemplateFromPrompt = syncActiveTranslatorTemplateFromPrompt;
+storyForgeRuntimeGlobal.requireStoryForgeAdultTemplateAccess = requireStoryForgeAdultTemplateAccess;
 
 let activeTranslatorProvider = TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
 let rpmPerKey = DEFAULT_TRANSLATOR_RPM_PER_KEY;
@@ -749,7 +877,7 @@ function getActiveProxyBaseUrl() {
 function getActiveProxyModelsUrl() {
     const profile = getCustomProxyProfile();
     return resolveProxyTransportMode(profile) === 'relay'
-        ? '/api/openai-proxy'
+        ? '/api/translator-openai-proxy'
         : buildOpenAIProxyEndpoint(profile.baseUrl, profile.modelsPath || DEFAULT_PROXY_MODELS_PATH);
 }
 
@@ -767,7 +895,7 @@ function getAgProxyRequestTarget(action = 'chat') {
     const mode = resolveProxyTransportMode(profile);
     return {
         mode,
-        url: mode === 'relay' ? '/api/openai-proxy' : buildOpenAIProxyEndpoint(rawBaseUrl, path),
+        url: mode === 'relay' ? '/api/translator-openai-proxy' : buildOpenAIProxyEndpoint(rawBaseUrl, path),
         path,
         profile,
     };
@@ -781,7 +909,7 @@ function getCustomProxyRequestTarget(action = 'chat') {
         : (profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
     return {
         mode,
-        url: mode === 'relay' ? '/api/openai-proxy' : buildOpenAIProxyEndpoint(profile.baseUrl, path),
+        url: mode === 'relay' ? '/api/translator-openai-proxy' : buildOpenAIProxyEndpoint(profile.baseUrl, path),
         path,
         profile,
     };

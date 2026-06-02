@@ -44,12 +44,12 @@ function loadRuntime({ savedSettings = null } = {}) {
     customProxyToggle: { checked: false },
     customProxySettings: { style: {} },
     customProxyStatus: { textContent: '', style: {}, classList: { add() {}, remove() {} } },
-    customProxyBaseUrlInput: { value: '' },
+    customProxyBaseUrlInput: { id: 'customProxyBaseUrlInput', value: '' },
     customProxyChatPreview: { textContent: '' },
     customProxyModelsPreview: { textContent: '' },
     customProxyKeysList: { innerHTML: '' },
     customProxyKeyCount: { textContent: '', style: {} },
-    customProxyModelInput: { value: '' },
+    customProxyModelInput: { id: 'customProxyModelInput', value: '' },
     customProxyModelStatus: { textContent: '', className: '' },
   };
 
@@ -220,6 +220,39 @@ describe('phase10 translator proxy model default', () => {
     expect(vm.runInContext('proxyModel', context)).toBe('ag-model-before-import');
     expect(vm.runInContext('proxyApiKeys', context)).toEqual(['sk-ag-existing']);
     expect(elements.customProxyModelSelect.value).toBe('');
+  });
+
+  it('clears stale Custom Proxy models when the Base URL is removed', () => {
+    const { context, elements } = loadRuntime({
+      savedSettings: {
+        useProxy: true,
+        activeTranslatorProvider: 'custom_proxy',
+        customProxyProfile: {
+          baseUrl: 'https://old-custom.example/v1',
+          defaultModel: 'old-custom-model',
+          models: ['old-custom-model', 'old-custom-model-2'],
+          chatCompletionsPath: '/v1/chat/completions',
+          modelsPath: '/v1/models',
+          transport: 'direct',
+        },
+        customProxyApiKeys: ['old-custom-key'],
+        customProxyApiKey: 'old-custom-key',
+      },
+    });
+
+    context.loadSettings();
+    expect(vm.runInContext('customProxyProfile.models', context)).toEqual([
+      'old-custom-model',
+      'old-custom-model-2',
+    ]);
+
+    elements.customProxyBaseUrlInput.value = '';
+    context.updateCustomProxyConfig();
+
+    expect(vm.runInContext('customProxyProfile.baseUrl', context)).toBe('');
+    expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe('');
+    expect(vm.runInContext('customProxyProfile.models', context)).toEqual([]);
+    expect(elements.customProxyModelSelect.options.some((option) => option.value === 'old-custom-model')).toBe(false);
   });
 
   it('does not import main StoryForge AG or Gemini Direct provider settings', () => {

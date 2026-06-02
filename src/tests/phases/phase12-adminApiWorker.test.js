@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import adminWorker from '../../../apps/admin-api-worker/src/index.js';
 
@@ -29,6 +31,34 @@ function authedRequest(path, init = {}) {
   });
 }
 
+function mockAuthAndActor({ role = 'admin', status = 'active', id = 'admin-1' } = {}, extraHandler = async () => {
+  throw new Error('Unexpected fetch');
+}) {
+  const calls = [];
+  const fetchMock = vi.fn(async (url, init = {}) => {
+    const target = String(url);
+    calls.push({ url: target, method: init.method || 'GET', body: init.body || '' });
+    if (target.includes('/auth/v1/user')) {
+      return jsonResponse({
+        id,
+        email: `${id}@example.com`,
+        app_metadata: { role: 'user' },
+      });
+    }
+    if (target.includes('/rest/v1/profiles') && target.includes(`user_id=eq.${id}`)) {
+      return jsonResponse([{
+        user_id: id,
+        email: `${id}@example.com`,
+        system_role: role,
+        status,
+      }]);
+    }
+    return extraHandler(target, init);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  return { calls, fetchMock };
+}
+
 describe('phase12 admin API worker', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -57,21 +87,7 @@ describe('phase12 admin API worker', () => {
   });
 
   it('rejects non-admin users before listing admin data', async () => {
-    const fetchMock = vi.fn(async (url) => {
-      const target = String(url);
-      if (target.includes('/auth/v1/user')) {
-        return jsonResponse({
-          id: 'user-1',
-          email: 'user@example.com',
-          app_metadata: { role: 'user' },
-        });
-      }
-      if (target.includes('/rest/v1/storyforge_user_access')) {
-        return jsonResponse([{ user_id: 'user-1', role: 'user', status: 'active' }]);
-      }
-      throw new Error(`Unexpected fetch ${target}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
+    const { fetchMock } = mockAuthAndActor({ role: 'user' });
 
     const response = await adminWorker.fetch(authedRequest('/users'), createEnv());
     const payload = await response.json();
@@ -81,25 +97,13 @@ describe('phase12 admin API worker', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('uses the access table role over stale auth metadata', async () => {
-    const fetchMock = vi.fn(async (url) => {
-      const target = String(url);
-      if (target.includes('/auth/v1/user')) {
-        return jsonResponse({
-          id: 'support-1',
-          email: 'support@example.com',
-          app_metadata: { role: 'user' },
-        });
-      }
-      if (target.includes('/rest/v1/storyforge_user_access') && target.includes('user_id=eq.support-1')) {
-        return jsonResponse([{ user_id: 'support-1', role: 'support', status: 'active' }]);
-      }
-      if (target.includes('/rest/v1/storyforge_audit_logs')) {
+  it('uses profiles.system_role over stale auth metadata', async () => {
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/admin_audit_logs')) {
         return jsonResponse([]);
       }
       throw new Error(`Unexpected fetch ${target}`);
     });
-    vi.stubGlobal('fetch', fetchMock);
 
     const response = await adminWorker.fetch(authedRequest('/audit'), createEnv());
     const payload = await response.json();
@@ -108,128 +112,103 @@ describe('phase12 admin API worker', () => {
     expect(payload.items).toEqual([]);
   });
 
-  it('rejects inactive access table users even when auth metadata is admin', async () => {
-    const fetchMock = vi.fn(async (url) => {
-      const target = String(url);
-      if (target.includes('/auth/v1/user')) {
-        return jsonResponse({
-          id: 'admin-locked',
-          email: 'admin@example.com',
-          app_metadata: { role: 'admin' },
-        });
+  it('creates user_plans rows for quick VIP grants and writes an audit log', async () => {
+    const { calls } = mockAuthAndActor({}, async (target, init = {}) => {
+      if (target.includes('/rest/v1/plans') && target.includes('key=eq.vip')) {
+        return jsonResponse([{ id: 'plan-vip', key: 'vip', name: 'VIP' }]);
       }
-      if (target.includes('/rest/v1/storyforge_user_access')) {
-        return jsonResponse([{ user_id: 'admin-locked', role: 'admin', status: 'suspended' }]);
+      if (target.includes('/rest/v1/user_plans') && init.method === 'POST') {
+        return jsonResponse([{ id: 'grant-1', user_id: 'user-2', plan_id: 'plan-vip', status: 'active' }], 201);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs') && init.method === 'POST') {
+        return jsonResponse([{ id: 'audit-1', action: 'users.plan.set' }], 201);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/users/user-2/plan', {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'set',
+        planKey: 'vip',
+        expiresAt: '2026-07-01T00:00:00.000Z',
+      }),
+    }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.item).toMatchObject({ user_id: 'user-2', plan_id: 'plan-vip', status: 'active' });
+    expect(calls.some((call) => call.url.includes('/rest/v1/user_plans'))).toBe(true);
+    expect(JSON.stringify(calls)).not.toContain('storyforge_');
+    expect(JSON.stringify(calls)).not.toContain('service-role-key');
+  });
+
+  it('cancels current VIP plans by updating user_plans status', async () => {
+    const { calls } = mockAuthAndActor({}, async (target, init = {}) => {
+      if (target.includes('/rest/v1/user_plans') && init.method === 'PATCH') {
+        expect(JSON.parse(init.body)).toMatchObject({ status: 'cancelled' });
+        return jsonResponse([{ id: 'grant-1', user_id: 'user-2', status: 'cancelled' }]);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs') && init.method === 'POST') {
+        return jsonResponse([{ id: 'audit-1', action: 'users.plan.cancel_current' }], 201);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/users/user-2/plan', {
+      method: 'POST',
+      body: JSON.stringify({ operation: 'cancel_current' }),
+    }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items).toEqual([{ id: 'grant-1', user_id: 'user-2', status: 'cancelled' }]);
+    expect(JSON.stringify(calls)).not.toContain('storyforge_');
+  });
+
+  it('does not grant product features just because the selected user is admin', async () => {
+    mockAuthAndActor({}, async (target) => {
+      if (target.includes('/rest/v1/profiles') && target.includes('user_id=eq.user-2')) {
+        return jsonResponse([{ user_id: 'user-2', email: 'user-2@example.com', system_role: 'admin', status: 'active' }]);
+      }
+      if (target.includes('/rest/v1/user_plans')) {
+        return jsonResponse([]);
+      }
+      if (target.includes('/rest/v1/features')) {
+        return jsonResponse([{ key: 'translator.access', name: 'Dịch truyện', active: true }]);
+      }
+      if (target.includes('/rest/v1/plan_features')) {
+        return jsonResponse([]);
+      }
+      if (target.includes('/rest/v1/user_entitlement_overrides')) {
+        return jsonResponse([]);
+      }
+      if (target.includes('/rest/v1/consent_versions')) {
+        return jsonResponse([]);
+      }
+      if (target.includes('/rest/v1/access_versions')) {
+        return jsonResponse([{ user_id: 'user-2', version: 1 }]);
       }
       throw new Error(`Unexpected fetch ${target}`);
     });
-    vi.stubGlobal('fetch', fetchMock);
 
-    const response = await adminWorker.fetch(authedRequest('/users'), createEnv());
-    const payload = await response.json();
-
-    expect(response.status).toBe(403);
-    expect(payload.code).toBe('ADMIN_ACCOUNT_INACTIVE');
-  });
-
-  it('blocks self-demotion on user access updates', async () => {
-    const fetchMock = vi.fn(async (url, init = {}) => {
-      const target = String(url);
-      if (target.includes('/auth/v1/user')) {
-        return jsonResponse({
-          id: 'owner-1',
-          email: 'owner@example.com',
-          app_metadata: { role: 'owner' },
-        });
-      }
-      if (target.includes('/rest/v1/storyforge_user_access') && init.method === 'GET') {
-        return jsonResponse([{ user_id: 'owner-1', role: 'owner' }]);
-      }
-      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const response = await adminWorker.fetch(authedRequest('/users/owner-1/access', {
-      method: 'PATCH',
-      body: JSON.stringify({ role: 'admin' }),
-    }), createEnv());
-    const payload = await response.json();
-
-    expect(response.status).toBe(400);
-    expect(payload.code).toBe('SELF_ROLE_DOWNGRADE_BLOCKED');
-  });
-
-  it('updates user plan and writes an audit log for admin mutations', async () => {
-    const calls = [];
-    const fetchMock = vi.fn(async (url, init = {}) => {
-      calls.push({ url: String(url), method: init.method || 'GET', body: init.body || '' });
-      const target = String(url);
-      if (target.includes('/auth/v1/user')) {
-        return jsonResponse({
-          id: 'admin-1',
-          email: 'admin@example.com',
-          app_metadata: { role: 'admin' },
-        });
-      }
-      if (target.includes('/rest/v1/storyforge_user_access') && init.method === 'GET') {
-        return jsonResponse([{ user_id: 'admin-1', role: 'admin', status: 'active' }]);
-      }
-      if (target.includes('/rest/v1/storyforge_user_access') && init.method === 'PATCH') {
-        return jsonResponse([{ user_id: 'user-2', plan: 'vip' }]);
-      }
-      if (target.includes('/rest/v1/storyforge_audit_logs') && init.method === 'POST') {
-        return jsonResponse([{ id: 10, action: 'users.plan.update' }], 201);
-      }
-      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
-
-    const response = await adminWorker.fetch(authedRequest('/users/user-2/plan', {
-      method: 'PATCH',
-      body: JSON.stringify({ plan: 'vip' }),
-    }), createEnv());
+    const response = await adminWorker.fetch(authedRequest('/users/user-2/access'), createEnv());
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(payload.item).toMatchObject({ user_id: 'user-2', plan: 'vip' });
-    expect(calls.some((call) => call.url.includes('storyforge_audit_logs'))).toBe(true);
-    expect(JSON.stringify(calls)).not.toContain('service-role-key');
+    expect(payload.access.admin.allowed).toBe(true);
+    expect(payload.access.features['translator.access']).toMatchObject({
+      allowed: false,
+      reason: 'FEATURE_NOT_ALLOWED',
+    });
   });
 
-  it('updates catalog plans with catalog write permission and audits the change', async () => {
-    const calls = [];
-    const fetchMock = vi.fn(async (url, init = {}) => {
-      calls.push({ url: String(url), method: init.method || 'GET', body: init.body || '' });
-      const target = String(url);
-      if (target.includes('/auth/v1/user')) {
-        return jsonResponse({
-          id: 'owner-1',
-          email: 'owner@example.com',
-          app_metadata: { role: 'owner' },
-        });
-      }
-      if (target.includes('/rest/v1/storyforge_user_access') && init.method === 'GET') {
-        return jsonResponse([{ user_id: 'owner-1', role: 'owner', status: 'active' }]);
-      }
-      if (target.includes('/rest/v1/storyforge_plan_catalog') && init.method === 'PATCH') {
-        return jsonResponse([{ id: 2, key: 'vip', enabled: false }]);
-      }
-      if (target.includes('/rest/v1/storyforge_audit_logs') && init.method === 'POST') {
-        return jsonResponse([{ id: 11, action: 'catalog.write' }], 201);
-      }
-      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
+  it('does not read or write the retired storyforge access tables', () => {
+    const workerSource = readFileSync(resolve(process.cwd(), 'apps/admin-api-worker/src/index.js'), 'utf8');
 
-    const response = await adminWorker.fetch(authedRequest('/catalog/2', {
-      method: 'PATCH',
-      body: JSON.stringify({ enabled: false }),
-    }), createEnv());
-    const payload = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(payload.item).toMatchObject({ id: 2, key: 'vip', enabled: false });
-    expect(calls.some((call) => call.url.includes('storyforge_audit_logs'))).toBe(true);
-    expect(JSON.stringify(calls)).not.toContain('service-role-key');
+    expect(workerSource).not.toContain('storyforge_user_access');
+    expect(workerSource).not.toContain('storyforge_plan_catalog');
+    expect(workerSource).not.toContain('storyforge_plan_features');
+    expect(workerSource).not.toContain('storyforge_features');
   });
 });

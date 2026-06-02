@@ -72,8 +72,15 @@ function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/gu, ' ').trim();
 }
 
+function stripVietnameseMarks(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/gu, '')
+    .replace(/đ/giu, 'd');
+}
+
 function normalizeLocationKey(value) {
-  return normalizeWhitespace(value)
+  return stripVietnameseMarks(normalizeWhitespace(value))
     .toLowerCase()
     .replace(/[\p{P}\p{S}]+/gu, ' ')
     .replace(/\s+/gu, ' ')
@@ -204,7 +211,7 @@ function extractLocationCandidatesFromSentence(sentence) {
   }
 
   // Matches patterns like "tai truong trung hoc A".
-  const prepositionPattern = /\b(?:tai|o|at|in)\s+([^,.;:!?]{4,80})/giu;
+  const prepositionPattern = /\b(?:tai|tại|o|ở|at|in)\s+([^,.;:!?]{4,80})/giu;
   for (const match of source.matchAll(prepositionPattern)) {
     const value = trimLocationPhrase(match[1]);
     if (!value) {

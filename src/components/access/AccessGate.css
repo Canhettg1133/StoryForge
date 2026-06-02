@@ -1,0 +1,73 @@
+.access-gate {
+  width: min(520px, 100%);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-elevated);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.06);
+}
+
+.access-gate--compact {
+  width: 100%;
+  padding: 14px;
+}
+
+.access-gate__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-accent);
+}
+
+.access-gate__copy {
+  min-width: 0;
+}
+
+.access-gate__copy h2,
+.access-gate__copy p {
+  margin: 0;
+}
+
+.access-gate__status {
+  display: inline-flex;
+  margin-bottom: 5px;
+  color: var(--color-accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.access-gate__copy h2 {
+  font-size: 1.05rem;
+  line-height: 1.25;
+}
+
+.access-gate__copy p {
+  margin-top: 6px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.access-gate__actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .access-gate {
+    grid-template-columns: 1fr;
+  }
+
+  .access-gate__actions {
+    grid-column: 1;
+  }
+}

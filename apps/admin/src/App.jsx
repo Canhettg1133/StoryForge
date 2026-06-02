@@ -10,7 +10,6 @@ import {
   FileClock,
   Gauge,
   KeyRound,
-  Layers3,
   LogOut,
   RefreshCw,
   Search,
@@ -23,12 +22,14 @@ import {
   X,
 } from 'lucide-react';
 import {
+  ACCESS_REASONS,
+  ADMIN_PERMISSIONS,
   ADMIN_ROLES,
+  FEATURE_LABELS_VI,
   PLAN_LABELS_VI,
   ROLE_LABELS_VI,
   STATUS_LABELS_VI,
   hasPermission,
-  ADMIN_PERMISSIONS,
 } from '@storyforge/access';
 import { createAdminApiClient } from './adminApi.js';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase.js';
@@ -53,6 +54,20 @@ const EMPTY_DATA = {
   consent: [],
 };
 
+const DEFAULT_PLAN_FORM = {
+  planKey: 'vip',
+  status: 'active',
+  startsAt: '',
+  expiresAt: '',
+};
+
+const DEFAULT_OVERRIDE_FORM = {
+  featureKey: '',
+  enabled: true,
+  reason: '',
+  expiresAt: '',
+};
+
 function formatDate(value) {
   if (!value) return 'Chưa có';
   const date = new Date(value);
@@ -63,6 +78,12 @@ function formatDate(value) {
   }).format(date);
 }
 
+function addDaysIso(days) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString();
+}
+
 function getUserId(user) {
   return user?.user_id || user?.id || '';
 }
@@ -71,8 +92,15 @@ function getUserEmail(user) {
   return user?.email || user?.user_email || 'Chưa có email';
 }
 
+function getPlanKey(value) {
+  if (!value) return 'free';
+  if (typeof value === 'string') return value.toLowerCase();
+  return String(value.key || value.plan_key || value.plans?.key || 'free').toLowerCase();
+}
+
 function getPlanLabel(plan) {
-  return PLAN_LABELS_VI[String(plan || 'free').toLowerCase()] || String(plan || 'free');
+  const key = getPlanKey(plan);
+  return PLAN_LABELS_VI[key] || key;
 }
 
 function getRoleLabel(role) {
@@ -83,9 +111,36 @@ function getStatusLabel(status) {
   return STATUS_LABELS_VI[String(status || 'active').toLowerCase()] || String(status || 'active');
 }
 
+function getFeatureKey(item) {
+  return item?.feature_key || item?.featureKey || item?.key || '';
+}
+
 function getFeatureName(data, featureKey) {
-  const feature = data.features.find((item) => item.key === featureKey);
-  return feature?.name || featureKey;
+  const feature = data.features.find((item) => getFeatureKey(item) === featureKey);
+  return feature?.name || FEATURE_LABELS_VI[featureKey] || featureKey;
+}
+
+function getPlanFeaturePlanKey(item) {
+  return String(item?.plans?.key || item?.plan_key || item?.plan || '').toLowerCase();
+}
+
+function getPlanFeatureRows(data, planKey) {
+  return data.planFeatures
+    .filter((item) => getPlanFeaturePlanKey(item) === String(planKey || '').toLowerCase())
+    .sort((left, right) => String(getFeatureKey(left)).localeCompare(String(getFeatureKey(right)), 'vi'));
+}
+
+function getActiveUserPlan(user) {
+  const plans = Array.isArray(user?.user_plans) ? user.user_plans : [];
+  const now = Date.now();
+  return plans
+    .filter((item) => String(item.status || '').toLowerCase() === 'active')
+    .filter((item) => !item.expires_at || new Date(item.expires_at).getTime() > now)
+    .sort((left, right) => new Date(right.starts_at || right.created_at || 0) - new Date(left.starts_at || left.created_at || 0))[0] || null;
+}
+
+function getCurrentUserPlanKey(user) {
+  return user?.plan || getPlanKey(getActiveUserPlan(user));
 }
 
 function summarizeLimits(limits) {
@@ -98,10 +153,32 @@ function summarizeLimits(limits) {
     .join(' · ');
 }
 
-function getPlanFeatureRows(data, planKey) {
-  return data.planFeatures
-    .filter((item) => String(item.plan || '').toLowerCase() === String(planKey || '').toLowerCase())
-    .sort((left, right) => String(left.feature_key || '').localeCompare(String(right.feature_key || ''), 'vi'));
+function explainDecision(decision) {
+  if (!decision) return 'Chưa tải quyền';
+  if (decision.allowed && decision.source === 'plan') {
+    return `Mở theo gói ${getPlanLabel(decision.detail)}`;
+  }
+  if (decision.allowed && decision.source === 'override_grant') {
+    return 'Mở bằng cấp riêng';
+  }
+  if (decision.allowed) return 'Quyền đang mở';
+
+  switch (decision.reason) {
+    case ACCESS_REASONS.AUTH_REQUIRED:
+      return 'Chưa đăng nhập';
+    case ACCESS_REASONS.USER_BANNED:
+      return 'Tài khoản đang bị khóa';
+    case ACCESS_REASONS.FEATURE_DISABLED:
+      return 'Feature tắt';
+    case ACCESS_REASONS.OVERRIDE_BLOCKED:
+      return 'Bị chặn riêng';
+    case ACCESS_REASONS.AGE_CONFIRMATION_REQUIRED:
+    case ACCESS_REASONS.ADULT_TERMS_REQUIRED:
+    case ACCESS_REASONS.ADULT_TERMS_VERSION_OUTDATED:
+      return 'Cần xác nhận 18+';
+    default:
+      return 'Thiếu VIP hoặc gói chưa mở tính năng';
+  }
 }
 
 function Badge({ tone = 'neutral', children }) {
@@ -176,7 +253,7 @@ function LoginScreen({ onLogin, authError, loading }) {
       <section className="auth-panel">
         <ShieldCheck size={34} />
         <h1>StoryForge Admin</h1>
-        <p>Đăng nhập bằng tài khoản đã được cấp role support, admin hoặc owner.</p>
+        <p>Đăng nhập bằng tài khoản đã được cấp role hỗ trợ, quản trị hoặc chủ sở hữu.</p>
         {authError ? <ErrorState message={authError} /> : null}
         <button type="button" className="button button--primary" onClick={onLogin} disabled={loading}>
           <KeyRound size={17} />
@@ -241,8 +318,8 @@ function Metric({ label, value, icon: Icon, tone = 'neutral' }) {
 
 function OverviewPanel({ data, actor, apiBaseUrl, onSelectView }) {
   const activeUsers = data.users.filter((user) => String(user.status || 'active') === 'active').length;
-  const vipUsers = data.users.filter((user) => ['vip', 'pro', 'enterprise'].includes(String(user.plan || '').toLowerCase())).length;
-  const enabledFeatures = data.features.filter((feature) => feature.enabled !== false).length;
+  const vipUsers = data.users.filter((user) => ['vip', 'lifetime'].includes(getCurrentUserPlanKey(user))).length;
+  const enabledFeatures = data.features.filter((feature) => feature.active !== false).length;
   const recentAudit = data.audit.slice(0, 5);
 
   return (
@@ -250,13 +327,13 @@ function OverviewPanel({ data, actor, apiBaseUrl, onSelectView }) {
       <div className="section-header">
         <div>
           <h1>Tổng quan</h1>
-          <p>Trạng thái quản trị người dùng, gói và tính năng của StoryForge.</p>
+          <p>Trạng thái quản trị người dùng, gói VIP và quyền truy cập của StoryForge.</p>
         </div>
         <Badge tone="info">{apiBaseUrl}</Badge>
       </div>
       <div className="metric-grid">
-        <Metric label="Người dùng active" value={activeUsers} icon={Users} tone="success" />
-        <Metric label="Tài khoản VIP+" value={vipUsers} icon={Sparkles} tone="warning" />
+        <Metric label="Người dùng hoạt động" value={activeUsers} icon={Users} tone="success" />
+        <Metric label="Tài khoản VIP" value={vipUsers} icon={Sparkles} tone="warning" />
         <Metric label="Feature đang bật" value={enabledFeatures} icon={SlidersHorizontal} tone="info" />
         <Metric label="Quyền hiện tại" value={getRoleLabel(actor?.role)} icon={ShieldCheck} tone="danger" />
       </div>
@@ -268,7 +345,7 @@ function OverviewPanel({ data, actor, apiBaseUrl, onSelectView }) {
           </button>
         </header>
         {recentAudit.length === 0 ? (
-          <EmptyState title="Chưa có nhật ký" text="Các mutation nhạy cảm sẽ xuất hiện ở đây." />
+          <EmptyState title="Chưa có nhật ký" text="Các thao tác cấp VIP, hủy gói và đổi quyền sẽ xuất hiện ở đây." />
         ) : (
           <div className="audit-list">
             {recentAudit.map((item) => (
@@ -287,33 +364,72 @@ function OverviewPanel({ data, actor, apiBaseUrl, onSelectView }) {
 
 function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor }) {
   const [query, setQuery] = useState('');
+  const [planForm, setPlanForm] = useState(DEFAULT_PLAN_FORM);
+  const [overrideForm, setOverrideForm] = useState(DEFAULT_OVERRIDE_FORM);
+  const [accessCheck, setAccessCheck] = useState(null);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessError, setAccessError] = useState('');
+
   const users = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return data.users;
     return data.users.filter((user) => [
       getUserEmail(user),
       getUserId(user),
-      user.plan,
-      user.role,
+      getCurrentUserPlanKey(user),
+      user.system_role || user.role,
       user.status,
     ].some((value) => String(value || '').toLowerCase().includes(needle)));
   }, [data.users, query]);
   const selected = users.find((user) => getUserId(user) === selectedUserId) || users[0] || null;
+  const selectedId = selected ? getUserId(selected) : '';
 
   useEffect(() => {
     if (!selectedUserId && selected) setSelectedUserId(getUserId(selected));
   }, [selected, selectedUserId, setSelectedUserId]);
 
+  useEffect(() => {
+    setAccessCheck(null);
+    setAccessError('');
+  }, [selectedId]);
+
   const canMutatePlan = hasPermission(actor, ADMIN_PERMISSIONS.USERS_PLAN_UPDATE);
   const canMutateStatus = hasPermission(actor, ADMIN_PERMISSIONS.USERS_STATUS_UPDATE);
   const canMutateAccess = hasPermission(actor, ADMIN_PERMISSIONS.USERS_ROLE_UPDATE);
+  const canMutateOverride = hasPermission(actor, ADMIN_PERMISSIONS.USERS_OVERRIDE_UPDATE);
+
+  const reloadAccess = useCallback(async () => {
+    if (!selectedId) return;
+    setAccessLoading(true);
+    setAccessError('');
+    try {
+      const payload = await onMutation.api.userAccess(selectedId);
+      setAccessCheck(payload.access || null);
+    } catch (error) {
+      setAccessError(error.message || 'Không tải được quyền người dùng.');
+    } finally {
+      setAccessLoading(false);
+    }
+  }, [onMutation.api, selectedId]);
+
+  const runPlanOperation = (title, message, body) => onMutation({
+    title,
+    message,
+    action: async () => {
+      await onMutation.api.setUserPlan(selectedId, body);
+      await reloadAccess();
+    },
+  });
+
+  const activePlan = selected ? getActiveUserPlan(selected) : null;
+  const currentPlanKey = selected ? getCurrentUserPlanKey(selected) : 'free';
 
   return (
     <section className="content-grid">
       <div className="section-header">
         <div>
           <h1>Người dùng</h1>
-          <p>Quét nhanh trạng thái, role, gói và quyền truy cập.</p>
+          <p>Quét nhanh trạng thái, role, gói và quyền truy cập. Chọn một dòng để thao tác ở panel bên phải.</p>
         </div>
         <div className="search-box">
           <Search size={16} />
@@ -323,7 +439,7 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
       <div className="split-layout">
         <section className="panel panel--table">
           {users.length === 0 ? (
-            <EmptyState title="Chưa có người dùng" text="Dùng Sync Auth ở mục Nâng cao để nhập danh sách từ Supabase Auth." />
+            <EmptyState title="Chưa có người dùng" text="Dùng đồng bộ Auth ở mục Nâng cao để nhập danh sách từ Supabase Auth." />
           ) : (
             <table className="data-table">
               <thead>
@@ -338,6 +454,7 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
               <tbody>
                 {users.map((user) => {
                   const userId = getUserId(user);
+                  const planKey = getCurrentUserPlanKey(user);
                   return (
                     <tr
                       key={userId}
@@ -348,10 +465,10 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
                         <strong>{getUserEmail(user)}</strong>
                         <span>{userId}</span>
                       </td>
-                      <td><Badge tone={user.role === 'owner' ? 'danger' : 'info'}>{getRoleLabel(user.role)}</Badge></td>
-                      <td><Badge tone={String(user.plan || 'free') === 'free' ? 'neutral' : 'warning'}>{getPlanLabel(user.plan)}</Badge></td>
+                      <td><Badge tone={(user.system_role || user.role) === 'owner' ? 'danger' : 'info'}>{getRoleLabel(user.system_role || user.role)}</Badge></td>
+                      <td><Badge tone={planKey === 'free' ? 'neutral' : 'warning'}>{getPlanLabel(planKey)}</Badge></td>
                       <td><Badge tone={String(user.status || 'active') === 'active' ? 'success' : 'danger'}>{getStatusLabel(user.status)}</Badge></td>
-                      <td>{formatDate(user.updated_at || user.access_updated_at || user.plan_updated_at)}</td>
+                      <td>{formatDate(user.updated_at || user.metadata?.auth_updated_at)}</td>
                     </tr>
                   );
                 })}
@@ -366,54 +483,240 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
                 <UserCog size={20} />
                 <div>
                   <h2>{getUserEmail(selected)}</h2>
-                  <span>{getUserId(selected)}</span>
+                  <span>{selectedId}</span>
                 </div>
               </header>
-              <label>
-                <span>Gói</span>
-                <select
-                  value={selected.plan || 'free'}
+
+              <section className="detail-section">
+                <h3>Thao tác nhanh</h3>
+                <div className="quick-actions">
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    disabled={!canMutatePlan}
+                    onClick={() => runPlanOperation(
+                      'Cấp VIP 30 ngày',
+                      `Cấp VIP 30 ngày cho ${getUserEmail(selected)}?`,
+                      { operation: 'set', planKey: 'vip', expiresAt: addDaysIso(30) },
+                    )}
+                  >
+                    Cấp VIP 30 ngày
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    disabled={!canMutatePlan}
+                    onClick={() => runPlanOperation(
+                      'Cấp VIP 90 ngày',
+                      `Cấp VIP 90 ngày cho ${getUserEmail(selected)}?`,
+                      { operation: 'set', planKey: 'vip', expiresAt: addDaysIso(90) },
+                    )}
+                  >
+                    Cấp VIP 90 ngày
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    disabled={!canMutatePlan}
+                    onClick={() => runPlanOperation(
+                      'Cấp trọn đời',
+                      `Cấp gói trọn đời cho ${getUserEmail(selected)}?`,
+                      { operation: 'set', planKey: 'lifetime' },
+                    )}
+                  >
+                    Cấp trọn đời
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--danger"
+                    disabled={!canMutatePlan}
+                    onClick={() => runPlanOperation(
+                      'Hủy gói hiện tại',
+                      `Hủy gói hiện tại của ${getUserEmail(selected)}?`,
+                      { operation: 'cancel_current' },
+                    )}
+                  >
+                    Hủy gói hiện tại
+                  </button>
+                  <button
+                    type="button"
+                    className="button button--danger"
+                    disabled={!canMutatePlan}
+                    onClick={() => runPlanOperation(
+                      'Hủy gói đã đặt lịch',
+                      `Hủy gói đã đặt lịch của ${getUserEmail(selected)}?`,
+                      { operation: 'cancel_scheduled' },
+                    )}
+                  >
+                    Hủy gói đã đặt lịch
+                  </button>
+                </div>
+              </section>
+
+              <section className="detail-section">
+                <h3>Trạng thái tài khoản</h3>
+                <div className="inline-actions">
+                  <Badge tone={selected.status === 'active' ? 'success' : 'danger'}>{getStatusLabel(selected.status)}</Badge>
+                  <button
+                    type="button"
+                    className={selected.status === 'active' ? 'button button--danger' : 'button button--primary'}
+                    disabled={!canMutateStatus}
+                    onClick={() => onMutation({
+                      title: selected.status === 'active' ? 'Khóa tài khoản' : 'Mở tài khoản',
+                      message: `${selected.status === 'active' ? 'Khóa' : 'Mở'} tài khoản ${getUserEmail(selected)}?`,
+                      action: async () => {
+                        await onMutation.api.updateUserStatus(selectedId, selected.status === 'active' ? 'banned' : 'active');
+                        await reloadAccess();
+                      },
+                    })}
+                  >
+                    {selected.status === 'active' ? 'Khóa tài khoản' : 'Mở tài khoản'}
+                  </button>
+                </div>
+              </section>
+
+              <details className="detail-section">
+                <summary>Cấp hoặc đặt lịch gói bằng form</summary>
+                <label>
+                  <span>Gói</span>
+                  <select value={planForm.planKey} onChange={(event) => setPlanForm((form) => ({ ...form, planKey: event.target.value }))}>
+                    {Object.keys(PLAN_LABELS_VI).map((plan) => <option key={plan} value={plan}>{PLAN_LABELS_VI[plan]}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Trạng thái</span>
+                  <select value={planForm.status} onChange={(event) => setPlanForm((form) => ({ ...form, status: event.target.value }))}>
+                    <option value="active">Có hiệu lực ngay</option>
+                    <option value="scheduled">Đặt lịch</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Bắt đầu</span>
+                  <input type="datetime-local" value={planForm.startsAt} onChange={(event) => setPlanForm((form) => ({ ...form, startsAt: event.target.value }))} />
+                </label>
+                <label>
+                  <span>Hết hạn</span>
+                  <input type="datetime-local" value={planForm.expiresAt} onChange={(event) => setPlanForm((form) => ({ ...form, expiresAt: event.target.value }))} />
+                </label>
+                <button
+                  type="button"
+                  className="button button--primary"
                   disabled={!canMutatePlan}
-                  onChange={(event) => onMutation({
-                    title: 'Cập nhật gói người dùng',
-                    message: `Đổi gói của ${getUserEmail(selected)} sang ${getPlanLabel(event.target.value)}?`,
-                    action: () => onMutation.api.updateUserPlan(getUserId(selected), event.target.value),
+                  onClick={() => runPlanOperation(
+                    'Cấp hoặc đặt lịch gói',
+                    `Áp dụng gói ${getPlanLabel(planForm.planKey)} cho ${getUserEmail(selected)}?`,
+                    {
+                      operation: 'set',
+                      planKey: planForm.planKey,
+                      status: planForm.status,
+                      startsAt: planForm.startsAt || undefined,
+                      expiresAt: planForm.expiresAt || undefined,
+                    },
+                  )}
+                >
+                  Áp dụng gói
+                </button>
+              </details>
+
+              <details className="detail-section">
+                <summary>Vai trò quản trị</summary>
+                <label>
+                  <span>Vai trò</span>
+                  <select
+                    value={selected.system_role || selected.role || 'user'}
+                    disabled={!canMutateAccess}
+                    onChange={(event) => onMutation({
+                      title: 'Cập nhật vai trò',
+                      message: `Đổi vai trò của ${getUserEmail(selected)} sang ${getRoleLabel(event.target.value)}?`,
+                      action: () => onMutation.api.updateUserAccess(selectedId, event.target.value),
+                    })}
+                  >
+                    {Object.values(ADMIN_ROLES).map((role) => <option key={role} value={role}>{ROLE_LABELS_VI[role]}</option>)}
+                  </select>
+                </label>
+              </details>
+
+              <details className="detail-section">
+                <summary>Cấp/chặn riêng từng feature</summary>
+                <label>
+                  <span>Tính năng</span>
+                  <select value={overrideForm.featureKey} onChange={(event) => setOverrideForm((form) => ({ ...form, featureKey: event.target.value }))}>
+                    <option value="">Chọn tính năng</option>
+                    {data.features.map((feature) => (
+                      <option key={feature.key} value={feature.key}>{feature.name || FEATURE_LABELS_VI[feature.key] || feature.key}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Quyền riêng</span>
+                  <select value={overrideForm.enabled ? 'true' : 'false'} onChange={(event) => setOverrideForm((form) => ({ ...form, enabled: event.target.value === 'true' }))}>
+                    <option value="true">Cấp riêng</option>
+                    <option value="false">Chặn riêng</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Lý do</span>
+                  <input value={overrideForm.reason} onChange={(event) => setOverrideForm((form) => ({ ...form, reason: event.target.value }))} placeholder="Ví dụ: hỗ trợ kiểm thử" />
+                </label>
+                <label>
+                  <span>Hết hạn</span>
+                  <input type="datetime-local" value={overrideForm.expiresAt} onChange={(event) => setOverrideForm((form) => ({ ...form, expiresAt: event.target.value }))} />
+                </label>
+                <button
+                  type="button"
+                  className="button button--primary"
+                  disabled={!canMutateOverride || !overrideForm.featureKey}
+                  onClick={() => onMutation({
+                    title: overrideForm.enabled ? 'Cấp riêng feature' : 'Chặn riêng feature',
+                    message: `${overrideForm.enabled ? 'Cấp' : 'Chặn'} ${getFeatureName(data, overrideForm.featureKey)} cho ${getUserEmail(selected)}?`,
+                    action: async () => {
+                      await onMutation.api.setUserFeatureOverride(selectedId, {
+                        operation: 'set',
+                        featureKey: overrideForm.featureKey,
+                        enabled: overrideForm.enabled,
+                        reason: overrideForm.reason,
+                        expiresAt: overrideForm.expiresAt || undefined,
+                      });
+                      await reloadAccess();
+                    },
                   })}
                 >
-                  {Object.keys(PLAN_LABELS_VI).map((plan) => <option key={plan} value={plan}>{PLAN_LABELS_VI[plan]}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Trạng thái</span>
-                <select
-                  value={selected.status || 'active'}
-                  disabled={!canMutateStatus}
-                  onChange={(event) => onMutation({
-                    title: 'Cập nhật trạng thái',
-                    message: `Đổi trạng thái của ${getUserEmail(selected)} sang ${getStatusLabel(event.target.value)}?`,
-                    action: () => onMutation.api.updateUserStatus(getUserId(selected), event.target.value),
-                  })}
-                >
-                  {Object.keys(STATUS_LABELS_VI).map((status) => <option key={status} value={status}>{STATUS_LABELS_VI[status]}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Vai trò</span>
-                <select
-                  value={selected.role || 'user'}
-                  disabled={!canMutateAccess}
-                  onChange={(event) => onMutation({
-                    title: 'Cập nhật quyền truy cập',
-                    message: `Đổi role của ${getUserEmail(selected)} sang ${getRoleLabel(event.target.value)}?`,
-                    action: () => onMutation.api.updateUserAccess(getUserId(selected), event.target.value),
-                  })}
-                >
-                  {Object.values(ADMIN_ROLES).map((role) => <option key={role} value={role}>{ROLE_LABELS_VI[role]}</option>)}
-                </select>
-              </label>
+                  Lưu quyền riêng
+                </button>
+              </details>
+
+              <section className="detail-section">
+                <header className="detail-section__header">
+                  <div>
+                    <h3>Tự kiểm tra quyền</h3>
+                    <span>Gói hiện tại: {getPlanLabel(currentPlanKey)} · Hết hạn: {formatDate(activePlan?.expires_at)}</span>
+                  </div>
+                  <button type="button" className="button button--ghost" onClick={reloadAccess} disabled={accessLoading}>
+                    <RefreshCw size={15} />
+                    {accessLoading ? 'Đang tải' : 'Tải lại quyền'}
+                  </button>
+                </header>
+                {accessError ? <ErrorState message={accessError} /> : null}
+                {!accessCheck ? (
+                  <EmptyState title="Chưa tải quyền" text="Bấm tải lại để xem feature nào đang mở hoặc bị khóa và lý do." />
+                ) : (
+                  <div className="access-check-list">
+                    {Object.entries(accessCheck.features || {}).map(([featureKey, decision]) => (
+                      <div className="access-check-row" key={featureKey}>
+                        <div>
+                          <strong>{getFeatureName(data, featureKey)}</strong>
+                          <span>{explainDecision(decision)}</span>
+                        </div>
+                        <Badge tone={decision.allowed ? 'success' : 'neutral'}>{decision.allowed ? 'Quyền đang mở' : 'Đang khóa'}</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
               <div className="detail-meta">
-                <span>Lần đăng nhập: {formatDate(selected.last_seen_at)}</span>
-                <span>Cập nhật auth: {formatDate(selected.auth_updated_at)}</span>
+                <span>Lần đăng nhập: {formatDate(selected.last_seen_at || selected.metadata?.last_sign_in_at)}</span>
+                <span>Cập nhật auth: {formatDate(selected.auth_updated_at || selected.metadata?.auth_updated_at)}</span>
               </div>
             </>
           ) : (
@@ -433,19 +736,19 @@ function VipPanel({ data, onMutation, actor }) {
       <div className="section-header">
         <div>
           <h1>Gói VIP</h1>
-          <p>Danh mục gói đang dùng cho cấp quyền và giới hạn tính năng.</p>
+          <p>Danh mục gói chính thức: miễn phí, VIP và trọn đời. Không thêm gói ngoài hệ này.</p>
         </div>
       </div>
       <section className="panel">
         {data.catalog.length === 0 ? (
-          <EmptyState title="Chưa có catalog" text="Tạo dữ liệu `storyforge_plan_catalog` trong Supabase để hiển thị gói." />
+          <EmptyState title="Chưa có catalog" text="Tạo dữ liệu trong bảng `plans` để hiển thị gói." />
         ) : (
           <div className="plan-grid">
             {data.catalog.map((plan) => {
-              const planKey = String(plan.key || '').toLowerCase();
+              const planKey = getPlanKey(plan);
               const planFeatures = getPlanFeatureRows(data, planKey);
               const enabledFeatureCount = planFeatures.filter((item) => item.enabled !== false).length;
-              const planEnabled = plan.enabled !== false;
+              const planEnabled = plan.active !== false;
 
               return (
                 <article className="plan-tile" key={plan.id || plan.key}>
@@ -460,16 +763,19 @@ function VipPanel({ data, onMutation, actor }) {
                     <span>Khóa gói: {plan.key}</span>
                   </div>
                   {planFeatures.length === 0 ? (
-                    <EmptyState title="Chưa có feature" text="Gói này chưa được mapping feature." />
+                    <EmptyState title="Chưa có feature" text="Gói này chưa được gắn tính năng." />
                   ) : (
                     <div className="plan-feature-list">
-                      {planFeatures.slice(0, 6).map((item) => (
-                        <div className="plan-feature-pill" key={item.id || `${item.plan}-${item.feature_key}`}>
-                          <span>{getFeatureName(data, item.feature_key)}</span>
-                          <Badge tone={item.enabled === false ? 'neutral' : 'info'}>{item.enabled === false ? 'Tắt' : 'Bật'}</Badge>
-                          <small>{summarizeLimits(item.limits)}</small>
-                        </div>
-                      ))}
+                      {planFeatures.slice(0, 6).map((item) => {
+                        const featureKey = getFeatureKey(item);
+                        return (
+                          <div className="plan-feature-pill" key={item.id || `${planKey}-${featureKey}`}>
+                            <span>{getFeatureName(data, featureKey)}</span>
+                            <Badge tone={item.enabled === false ? 'neutral' : 'info'}>{item.enabled === false ? 'Tắt' : 'Bật'}</Badge>
+                            <small>{summarizeLimits(item.limit_json)}</small>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   <button
@@ -479,7 +785,7 @@ function VipPanel({ data, onMutation, actor }) {
                     onClick={() => onMutation({
                       title: planEnabled ? 'Tắt gói' : 'Bật gói',
                       message: `${planEnabled ? 'Tắt' : 'Bật'} gói ${plan.name || getPlanLabel(plan.key)}?`,
-                      action: () => onMutation.api.updateCatalogPlan(plan.id, { enabled: !planEnabled }),
+                      action: () => onMutation.api.updateCatalogPlan(plan.id, { active: !planEnabled }),
                     })}
                   >
                     {planEnabled ? 'Đang bật' : 'Đang tắt'}
@@ -503,7 +809,7 @@ function FeaturesPanel({ data, onMutation, actor }) {
       <div className="section-header">
         <div>
           <h1>Tính năng trong gói</h1>
-          <p>Điều khiển feature flag và mapping gói theo từng capability.</p>
+          <p>Điều khiển feature flag và mapping gói theo đúng hệ VIP cũ.</p>
         </div>
       </div>
       <div className="dual-panels">
@@ -513,27 +819,27 @@ function FeaturesPanel({ data, onMutation, actor }) {
             <Badge tone="info">{data.features.length}</Badge>
           </header>
           {data.features.length === 0 ? (
-            <EmptyState title="Chưa có feature" text="Bảng `storyforge_features` chưa có dữ liệu." />
+            <EmptyState title="Chưa có feature" text="Bảng `features` chưa có dữ liệu." />
           ) : (
             <div className="feature-list">
               {data.features.map((feature) => {
-                const id = feature.id || feature.key;
-                const enabled = feature.enabled !== false;
+                const featureKey = feature.key;
+                const active = feature.active !== false;
                 return (
-                  <div className="feature-row" key={id}>
+                  <div className="feature-row" key={featureKey}>
                     <div>
-                      <strong>{feature.name || feature.key}</strong>
+                      <strong>{feature.name || FEATURE_LABELS_VI[featureKey] || featureKey}</strong>
                       <span>{feature.description || feature.category || 'Feature'}</span>
                     </div>
                     <button
                       type="button"
-                      className={`toggle ${enabled ? 'is-on' : ''}`}
+                      className={`toggle ${active ? 'is-on' : ''}`}
                       disabled={!canWriteFeature}
-                      aria-pressed={enabled}
+                      aria-pressed={active}
                       onClick={() => onMutation({
-                        title: enabled ? 'Tắt feature' : 'Bật feature',
-                        message: `${enabled ? 'Tắt' : 'Bật'} ${feature.name || feature.key}?`,
-                        action: () => onMutation.api.updateFeature(id, { enabled: !enabled }),
+                        title: active ? 'Tắt feature' : 'Bật feature',
+                        message: `${active ? 'Tắt' : 'Bật'} ${feature.name || featureKey}?`,
+                        action: () => onMutation.api.updateFeature(featureKey, { active: !active }),
                       })}
                     >
                       <span />
@@ -550,7 +856,7 @@ function FeaturesPanel({ data, onMutation, actor }) {
             <Badge tone="warning">{data.planFeatures.length}</Badge>
           </header>
           {data.planFeatures.length === 0 ? (
-            <EmptyState title="Chưa có mapping" text="Bảng `storyforge_plan_features` chưa có dữ liệu." />
+            <EmptyState title="Chưa có mapping" text="Bảng `plan_features` chưa có dữ liệu." />
           ) : (
             <table className="data-table data-table--compact">
               <thead>
@@ -562,12 +868,13 @@ function FeaturesPanel({ data, onMutation, actor }) {
               </thead>
               <tbody>
                 {data.planFeatures.map((item) => {
-                  const id = item.id || `${item.plan}-${item.feature_key}`;
+                  const featureKey = getFeatureKey(item);
+                  const planKey = getPlanFeaturePlanKey(item);
                   const enabled = item.enabled !== false;
                   return (
-                    <tr key={id}>
-                      <td>{getPlanLabel(item.plan)}</td>
-                      <td>{item.feature_key || item.featureKey}</td>
+                    <tr key={item.id || `${planKey}-${featureKey}`}>
+                      <td>{getPlanLabel(planKey)}</td>
+                      <td>{getFeatureName(data, featureKey)}</td>
                       <td>
                         <button
                           type="button"
@@ -575,8 +882,8 @@ function FeaturesPanel({ data, onMutation, actor }) {
                           disabled={!canWritePlanFeature}
                           onClick={() => onMutation({
                             title: 'Cập nhật tính năng trong gói',
-                            message: `${enabled ? 'Tắt' : 'Bật'} feature này trong gói ${getPlanLabel(item.plan)}?`,
-                            action: () => onMutation.api.updatePlanFeature(id, { enabled: !enabled }),
+                            message: `${enabled ? 'Tắt' : 'Bật'} tính năng này trong gói ${getPlanLabel(planKey)}?`,
+                            action: () => onMutation.api.setPlanFeature(featureKey, { planKey, enabled: !enabled }),
                           })}
                         >
                           {enabled ? 'Bật' : 'Tắt'}
@@ -600,31 +907,31 @@ function ConsentPanel({ data }) {
       <div className="section-header">
         <div>
           <h1>Điều khoản 18+</h1>
-          <p>Theo dõi consent, phiên bản điều khoản và trạng thái xác nhận.</p>
+          <p>Theo dõi phiên bản điều khoản 18+ đang có hiệu lực.</p>
         </div>
       </div>
       <section className="panel panel--table">
         {data.consent.length === 0 ? (
-          <EmptyState title="Chưa có consent" text="Chưa ghi nhận điều khoản nào từ người dùng." />
+          <EmptyState title="Chưa có điều khoản" text="Bảng `consent_versions` chưa có dữ liệu." />
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Người dùng</th>
-                <th>Loại</th>
+                <th>Khóa</th>
                 <th>Phiên bản</th>
+                <th>Tiêu đề</th>
                 <th>Trạng thái</th>
-                <th>Thời gian</th>
+                <th>Hiệu lực</th>
               </tr>
             </thead>
             <tbody>
               {data.consent.map((item) => (
-                <tr key={item.id || `${item.user_id}-${item.created_at}`}>
-                  <td>{item.email || item.user_id}</td>
-                  <td>{item.kind || 'adult_content'}</td>
-                  <td>{item.version || 'v1'}</td>
-                  <td><Badge tone={item.accepted ? 'success' : 'danger'}>{item.accepted ? 'Đã đồng ý' : 'Từ chối'}</Badge></td>
-                  <td>{formatDate(item.created_at)}</td>
+                <tr key={item.id || `${item.key}-${item.version}`}>
+                  <td>{item.key}</td>
+                  <td>{item.version}</td>
+                  <td>{item.title}</td>
+                  <td><Badge tone={item.active ? 'success' : 'neutral'}>{item.active ? 'Đang hiệu lực' : 'Tắt'}</Badge></td>
+                  <td>{formatDate(item.effective_at || item.created_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -641,12 +948,12 @@ function AuditPanel({ data }) {
       <div className="section-header">
         <div>
           <h1>Nhật ký</h1>
-          <p>Audit log cho mutation nhạy cảm trong admin console.</p>
+          <p>Audit log cho thao tác nhạy cảm trong admin console.</p>
         </div>
       </div>
       <section className="panel panel--table">
         {data.audit.length === 0 ? (
-          <EmptyState title="Chưa có audit log" text="Các thao tác cập nhật role, gói, feature sẽ được ghi lại." />
+          <EmptyState title="Chưa có audit log" text="Các thao tác cập nhật role, gói và feature sẽ được ghi lại." />
         ) : (
           <table className="data-table">
             <thead>
@@ -662,7 +969,7 @@ function AuditPanel({ data }) {
                 <tr key={item.id || `${item.action}-${item.created_at}`}>
                   <td><strong>{item.action}</strong></td>
                   <td>{item.actor_email || item.actor_user_id}</td>
-                  <td>{item.target_type}:{item.target_id}</td>
+                  <td>{item.target_user_id || item.target_feature_key || 'hệ thống'}</td>
                   <td>{formatDate(item.created_at)}</td>
                 </tr>
               ))}
@@ -689,12 +996,12 @@ function AdvancedPanel({ data, onMutation, apiBaseUrl, actor }) {
           disabled={!canSync}
           onClick={() => onMutation({
             title: 'Đồng bộ Supabase Auth',
-            message: 'Nhập danh sách user từ Supabase Auth vào bảng access quản trị?',
+            message: 'Nhập danh sách user từ Supabase Auth vào bảng profiles?',
             action: () => onMutation.api.syncAuth(),
           })}
         >
           <RefreshCw size={16} />
-          Sync Auth
+          Đồng bộ Auth
         </button>
       </div>
       <div className="dual-panels">
@@ -706,6 +1013,8 @@ function AdvancedPanel({ data, onMutation, apiBaseUrl, actor }) {
           <div className="key-value-list">
             <span>Route user</span>
             <strong>/users</strong>
+            <span>Route access</span>
+            <strong>/users/:id/access</strong>
             <span>Route feature</span>
             <strong>/features</strong>
             <span>Route audit</span>
@@ -718,15 +1027,15 @@ function AdvancedPanel({ data, onMutation, apiBaseUrl, actor }) {
             <Badge tone="warning">{data.usage.length}</Badge>
           </header>
           {data.usage.length === 0 ? (
-            <EmptyState title="Chưa có usage" text="Bảng usage chưa có dữ liệu để hiển thị." />
+            <EmptyState title="Chưa có usage" text="Bảng `usage_events` chưa có dữ liệu để hiển thị." />
           ) : (
             <div className="usage-list">
               {data.usage.slice(0, 8).map((item) => (
-                <div className="usage-row" key={item.id || `${item.user_id}-${item.period}`}>
+                <div className="usage-row" key={item.id || `${item.user_id}-${item.created_at}`}>
                   <Activity size={15} />
                   <strong>{item.email || item.user_id}</strong>
-                  <span>{item.requests || 0} request</span>
-                  <span>{item.tokens || 0} token</span>
+                  <span>{item.count || 0} lượt</span>
+                  <span>{item.feature_key || item.provider || 'access'}</span>
                 </div>
               ))}
             </div>
@@ -761,25 +1070,24 @@ export default function App() {
     setLoadError('');
     try {
       const me = await adminApi.me();
-      const [users, catalog, audit, usage, features, planFeatures, consent] = await Promise.all([
+      const [users, catalog, audit, usage, features, consent] = await Promise.all([
         adminApi.users(),
         adminApi.catalog(),
         adminApi.audit(),
         adminApi.usage(),
         adminApi.features(),
-        adminApi.planFeatures(),
         adminApi.consent(),
       ]);
 
       setActor(me.actor);
       setData({
-        users: users.items || [],
-        catalog: catalog.items || [],
+        users: users.users || users.items || [],
+        catalog: catalog.plans || catalog.items || [],
         audit: audit.items || [],
         usage: usage.items || [],
-        features: features.items || [],
-        planFeatures: planFeatures.items || [],
-        consent: consent.items || [],
+        features: features.items || catalog.features || [],
+        planFeatures: catalog.planFeatures || [],
+        consent: consent.items || catalog.consentVersions || [],
       });
     } catch (error) {
       setLoadError(error.message || 'Không tải được dữ liệu admin.');

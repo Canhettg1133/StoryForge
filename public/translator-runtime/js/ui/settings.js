@@ -530,8 +530,16 @@ function updateStats() {
 // ============================================
 // PROMPT TEMPLATES
 // ============================================
-function setPromptTemplate(templateName) {
+async function setPromptTemplate(templateName) {
     if (PROMPT_TEMPLATES[templateName]) {
+        const activeTemplate = typeof setActiveTranslatorTemplateId === 'function'
+            ? setActiveTranslatorTemplateId(templateName)
+            : templateName;
+        if (
+            typeof requireStoryForgeAdultTemplateAccess === 'function'
+            && !(await requireStoryForgeAdultTemplateAccess(activeTemplate))
+        ) return;
+
         document.getElementById('customPrompt').value = typeof ensureCharacterNameConsistencyPrompt === 'function'
             ? ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES[templateName])
             : PROMPT_TEMPLATES[templateName];

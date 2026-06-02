@@ -84,7 +84,7 @@ describe('Lab Lite Phase 8 - Canon Pack writer context', () => {
       },
     });
 
-    expect(messages[0].content).toContain('[CANON PACK CHO DONG NHAN / VIET LAI]');
+    expect(messages[0].content).toContain('[CANON PACK CHO ĐỒNG NHÂN / VIẾT LẠI]');
     expect(messages[0].content).toContain('Do not revive dead mentor.');
     expect(messages[0].content).toContain('Shrine history is open.');
   });

@@ -10,6 +10,7 @@ import {
   parseOpenAIModelIds,
   resolveProxyTransportMode,
 } from './openAIProxyCore.js';
+import { getStoryForgeAccessToken } from '../access/accessClient.js';
 
 const SETTINGS_KEY = 'sf-ai-settings';
 const PROXY_MODEL_KEY = 'sf-proxy-model';
@@ -55,6 +56,8 @@ function readJsonStorage(key, fallback) {
 function isLegacyAgProxyUrl(value) {
   const normalized = trimText(value).replace(/\/+$/u, '');
   return !normalized
+    || normalized === '/api/proxy'
+    || normalized.startsWith('/api/proxy/')
     || normalized === DEFAULT_AG_PROXY_BASE_URL
     || normalized === 'https://ag.beijixingxing.com'
     || normalized === 'https://ag.beijixingxing.com/v1'
@@ -117,7 +120,7 @@ export function getDefaultCustomOpenAIProxyProfile() {
 export function getAgOpenAIProxyProfile() {
   return {
     id: AG_PROXY_PROFILE_ID,
-    label: 'Gemini Proxy mac dinh',
+    label: 'Gemini Proxy mặc định',
     baseUrl: DEFAULT_AG_PROXY_BASE_URL,
     defaultModel: getAgProxyModel(),
     models: getAgProxyModels(),
@@ -126,7 +129,7 @@ export function getAgOpenAIProxyProfile() {
     authType: 'bearer',
     requiresApiKey: true,
     supportsGeminiSafetySettings: true,
-    transport: 'vercelRewrite',
+    transport: 'relay',
   };
 }
 
@@ -254,13 +257,16 @@ export function shouldFallbackOpenAIProxyRelay(response) {
 
 export async function fetchOpenAIProxyModels({ profile = getActiveOpenAIProxyProfile(), apiKey = '', signal } = {}) {
   const target = resolveOpenAIProxyRequest(profile, 'models');
+  const storyForgeToken = target.mode === 'relay' ? await getStoryForgeAccessToken() : '';
+  const providerKeyHeader = apiKey ? { 'X-StoryForge-Upstream-Key': apiKey } : {};
   const authHeader = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
   let response = target.mode === 'relay'
     ? await fetch(target.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...authHeader,
+        ...(storyForgeToken ? { Authorization: `Bearer ${storyForgeToken}` } : {}),
+        ...providerKeyHeader,
       },
       body: JSON.stringify({
         action: 'models',

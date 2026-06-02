@@ -2,33 +2,49 @@ import {
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
-  isRelayAllowedTarget,
+  isLocalProxyHost,
 } from '../src/services/ai/openAIProxyCore.js';
+import { getHeader, readJsonBody, sendJson } from './_lib/http.js';
+import {
+  ACCESS_FEATURES,
+  requireFeature,
+  requireFeatures,
+  sendAccessDenied,
+} from './_lib/access-control.js';
 
 const ALLOWED_ACTIONS = new Set(['models', 'chat', 'chat_stream_batch']);
 const MAX_CHAT_STREAM_BATCH_SIZE = 50;
+const AG_PROXY_HOSTS = new Set(['ag.beijixingxing.com']);
+const AG_PROXY_SAFE_SUFFIXES = ['.beijixingxing.com'];
+export const TRANSLATOR_TEMPLATE_IDS = new Set([
+  'convert',
+  'novel',
+  'wuxia',
+  'romance',
+  'adult',
+  'sacHiep',
+  'sacHiepPro',
+  'sacHiepENI',
+]);
+export const TRANSLATOR_ADULT_TEMPLATE_IDS = new Set([
+  'adult',
+  'sacHiep',
+  'sacHiepPro',
+  'sacHiepENI',
+]);
+const ADULT_RUNTIME_MODES = new Set([
+  'adult',
+  '18+',
+  'eni',
+  'sachiep',
+  'sachiepeni',
+  'sac-hiep',
+  'sac-hiep-eni',
+]);
 
 export const config = {
   maxDuration: 60,
 };
-
-function sendJson(res, status, payload) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(payload));
-}
-
-async function readJsonBody(req) {
-  if (req.body && typeof req.body === 'object') return req.body;
-  if (typeof req.body === 'string') return req.body ? JSON.parse(req.body) : {};
-
-  const chunks = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const raw = Buffer.concat(chunks).toString('utf8');
-  return raw ? JSON.parse(raw) : {};
-}
 
 function copyResponseHeaders(upstream, res) {
   const contentType = upstream.headers.get('content-type');
@@ -57,8 +73,141 @@ async function pipeUpstreamResponse(upstream, res) {
   }
 }
 
-function getForwardAuth(req) {
-  return String(req.headers?.authorization || '').trim();
+function getUpstreamKey(req) {
+  return getHeader(req, 'x-storyforge-upstream-key').trim();
+}
+
+function normalizeHost(hostname = '') {
+  return String(hostname || '').trim().toLowerCase().replace(/\.+$/u, '');
+}
+
+function parseRelayTarget(rawBaseUrl) {
+  const trimmed = String(rawBaseUrl || '').trim();
+  if (!trimmed || trimmed.startsWith('/')) return { ok: false, reason: 'OPENAI_PROXY_TARGET_BLOCKED' };
+
+  let parsed;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return { ok: false, reason: 'OPENAI_PROXY_TARGET_BLOCKED' };
+  }
+
+  const hostname = normalizeHost(parsed.hostname);
+  if (parsed.protocol !== 'https:') return { ok: false, reason: 'OPENAI_PROXY_TARGET_BLOCKED' };
+  if (parsed.username || parsed.password) return { ok: false, reason: 'OPENAI_PROXY_TARGET_BLOCKED' };
+  if (isLocalProxyHost(hostname)) return { ok: false, reason: 'OPENAI_PROXY_TARGET_BLOCKED' };
+
+  return { ok: true, parsed, hostname };
+}
+
+function isAgProxyHostname(hostname = '') {
+  const host = normalizeHost(hostname);
+  return AG_PROXY_HOSTS.has(host)
+    || AG_PROXY_SAFE_SUFFIXES.some((suffix) => host.endsWith(suffix));
+}
+
+function getProviderFeature(targetInfo) {
+  return isAgProxyHostname(targetInfo?.hostname)
+    ? ACCESS_FEATURES.AG_PROXY
+    : ACCESS_FEATURES.CUSTOM_PROXY;
+}
+
+function normalizeTemplateId(value) {
+  return String(value || '').trim();
+}
+
+function getTranslatorTemplateId(body = {}) {
+  const templateId = normalizeTemplateId(
+    body.templateId
+      || body.template_id
+      || body.runtimeMode
+      || body.runtime_mode
+      || body.template,
+  );
+  return TRANSLATOR_TEMPLATE_IDS.has(templateId) ? templateId : '';
+}
+
+export function isTranslatorAdultTemplate(templateId) {
+  return TRANSLATOR_ADULT_TEMPLATE_IDS.has(normalizeTemplateId(templateId));
+}
+
+function normalizeRuntimeMode(value = '') {
+  return String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/gu, '')
+    .replace(/\u0111/giu, 'd')
+    .toLowerCase()
+    .replace(/[\s_]+/gu, '-');
+}
+
+function isServerRecognizedAdultRuntime(body = {}) {
+  const candidates = [
+    body.templateId,
+    body.template_id,
+    body.runtimeMode,
+    body.runtime_mode,
+    body.contentMode,
+    body.content_mode,
+    body.projectContentMode,
+    body.project_content_mode,
+  ];
+  return candidates.some((value) => ADULT_RUNTIME_MODES.has(normalizeRuntimeMode(value)));
+}
+
+function getWorkflowFeature(action, workflowFeature = ACCESS_FEATURES.AI_CHAT_ACCESS) {
+  return action === 'models' ? '' : workflowFeature;
+}
+
+function getProviderName(providerFeature) {
+  if (providerFeature === ACCESS_FEATURES.AG_PROXY) return 'ag_proxy';
+  if (providerFeature === ACCESS_FEATURES.CUSTOM_PROXY) return 'custom_proxy';
+  return 'openai_proxy';
+}
+
+function getRequestModel(body, action) {
+  if (action === 'chat_stream_batch') {
+    return String(body?.payloads?.[0]?.model || '').trim();
+  }
+  return String(body?.payload?.model || '').trim();
+}
+
+function createUsageRequestId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `openai-proxy-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function logProxyUsage(access, { body, action, status = 'ok' } = {}) {
+  if (!access?.supabase || !access?.user?.id) return;
+  const featureKey = access.workflowFeature || access.providerFeature || null;
+  const provider = getProviderName(access.providerFeature);
+  const count = action === 'chat_stream_batch'
+    ? Math.max(1, Array.isArray(body?.payloads) ? body.payloads.length : 0)
+    : 1;
+
+  await access.supabase.from('usage_events').insert({
+    request_id: createUsageRequestId(),
+    user_id: access.user.id,
+    feature_key: featureKey,
+    provider,
+    model: getRequestModel(body, action),
+    event_type: action || 'request',
+    count,
+    status,
+    metadata: {
+      action,
+      providerFeature: access.providerFeature || '',
+      workflowFeature: access.workflowFeature || '',
+    },
+  });
+}
+
+function buildUpstreamAuthHeaders(upstreamKey) {
+  return upstreamKey
+    ? { Authorization: `Bearer ${upstreamKey}` }
+    : {};
 }
 
 async function readUpstreamResponseBody(upstream) {
@@ -99,7 +248,80 @@ async function fetchChatPayload(endpoint, headers, payload) {
   }
 }
 
-export default async function handler(req, res) {
+function createProxyAccessError(status, reason, feature = '') {
+  return {
+    ok: false,
+    status,
+    reason,
+    decision: {
+      allowed: false,
+      status,
+      reason,
+      feature,
+    },
+  };
+}
+
+async function requireProxyFeatureSequence(req, featureKeys, requireFeatureImpl) {
+  if (requireFeatureImpl === requireFeature) {
+    return requireFeatures(req, featureKeys);
+  }
+
+  let lastAccess = null;
+  for (const featureKey of featureKeys) {
+    lastAccess = await requireFeatureImpl(req, featureKey);
+    if (!lastAccess.ok) return lastAccess;
+  }
+  return lastAccess || {
+    ok: true,
+    decision: { allowed: true },
+  };
+}
+
+async function requireProxyAccess(req, {
+  body,
+  action,
+  targetInfo,
+  workflowFeature: configuredWorkflowFeature = ACCESS_FEATURES.AI_CHAT_ACCESS,
+  requireTranslatorTemplate = false,
+  requireFeatureImpl = requireFeature,
+} = {}) {
+  const workflowFeature = getWorkflowFeature(action, configuredWorkflowFeature);
+  const providerFeature = getProviderFeature(targetInfo);
+  const templateId = requireTranslatorTemplate && action !== 'models'
+    ? getTranslatorTemplateId(body)
+    : '';
+
+  if (requireTranslatorTemplate && action !== 'models' && !templateId) {
+    return createProxyAccessError(400, 'TRANSLATOR_TEMPLATE_REQUIRED', 'translator.template');
+  }
+
+  const needsAdultMode = requireTranslatorTemplate
+    ? isTranslatorAdultTemplate(templateId)
+    : isServerRecognizedAdultRuntime(body);
+  const requiredFeatures = [
+    workflowFeature,
+    providerFeature,
+    needsAdultMode ? ACCESS_FEATURES.ADULT_MODE : '',
+  ].filter(Boolean);
+  const access = await requireProxyFeatureSequence(req, requiredFeatures, requireFeatureImpl);
+  if (!access.ok) return access;
+
+  return {
+    ...access,
+    workflowFeature,
+    providerFeature,
+    adultFeature: needsAdultMode ? ACCESS_FEATURES.ADULT_MODE : '',
+    templateId,
+  };
+}
+
+export function createOpenAIProxyHandler({
+  workflowFeature = ACCESS_FEATURES.AI_CHAT_ACCESS,
+  requireTranslatorTemplate = false,
+  requireFeatureImpl = requireFeature,
+} = {}) {
+  return async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
     res.end();
@@ -126,7 +348,8 @@ export default async function handler(req, res) {
   }
 
   const baseUrl = String(body?.baseUrl || body?.targetBaseUrl || '').trim();
-  if (!isRelayAllowedTarget(baseUrl)) {
+  const targetInfo = parseRelayTarget(baseUrl);
+  if (!targetInfo.ok) {
     sendJson(res, 400, {
       error: 'Proxy target phải là URL HTTPS public.',
       code: 'OPENAI_PROXY_TARGET_BLOCKED',
@@ -134,14 +357,36 @@ export default async function handler(req, res) {
     return;
   }
 
+  const access = await requireProxyAccess(req, {
+    body,
+    action,
+    targetInfo,
+    workflowFeature,
+    requireTranslatorTemplate,
+    requireFeatureImpl,
+  });
+  if (!access.ok) {
+    sendAccessDenied(res, access);
+    return;
+  }
+
+  const upstreamKey = getUpstreamKey(req);
+  if (!upstreamKey) {
+    sendJson(res, 400, {
+      error: 'Thiếu provider key. Hãy gửi key bằng header X-StoryForge-Upstream-Key.',
+      code: 'OPENAI_PROXY_UPSTREAM_KEY_REQUIRED',
+    });
+    return;
+  }
+
   const endpoint = action === 'models'
     ? buildOpenAIProxyEndpoint(baseUrl, body?.modelsPath || DEFAULT_PROXY_MODELS_PATH)
     : buildOpenAIProxyEndpoint(baseUrl, body?.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
-  const authorization = getForwardAuth(req);
 
-  const headers = {
+  const upstreamAuthHeaders = buildUpstreamAuthHeaders(upstreamKey);
+  const chatHeaders = {
     'Content-Type': 'application/json',
-    ...(authorization ? { Authorization: authorization } : {}),
+    ...upstreamAuthHeaders,
   };
 
   if (action === 'chat_stream_batch') {
@@ -160,10 +405,11 @@ export default async function handler(req, res) {
     if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
     await Promise.all(payloads.map(async (payload, index) => {
-      const result = await fetchChatPayload(endpoint, headers, payload);
+      const result = await fetchChatPayload(endpoint, chatHeaders, payload);
       res.write(`${JSON.stringify({ index, ...result })}\n`);
     }));
     res.end();
+    await logProxyUsage(access, { body, action, status: 'ok' }).catch(() => {});
     return;
   }
 
@@ -172,20 +418,25 @@ export default async function handler(req, res) {
       ? {
         method: 'GET',
         redirect: 'manual',
-        headers: authorization ? { Authorization: authorization } : {},
+        headers: upstreamAuthHeaders,
       }
       : {
         method: 'POST',
         redirect: 'manual',
-        headers,
+        headers: chatHeaders,
         body: JSON.stringify(body?.payload || {}),
       });
 
     await pipeUpstreamResponse(upstream, res);
+    await logProxyUsage(access, { body, action, status: upstream.ok ? 'ok' : 'error' }).catch(() => {});
   } catch (error) {
+    await logProxyUsage(access, { body, action, status: 'error' }).catch(() => {});
     sendJson(res, 502, {
       error: error?.message || 'Relay OpenAI proxy thất bại.',
       code: 'OPENAI_PROXY_UPSTREAM_FAILED',
     });
   }
+  };
 }
+
+export default createOpenAIProxyHandler();

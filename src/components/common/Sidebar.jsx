@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   Clock,
   Cloud,
+  Crown,
   FileJson,
   FileSearch,
   FlaskConical,
@@ -55,6 +56,7 @@ const RAW_NAV_ITEMS = [
   { path: '/ai-chat', icon: MessageSquare, label: 'Chat tự do', id: 'global-chat', surface: 'core' },
   { path: '/translator', icon: Languages, label: 'Dịch truyện', id: 'translator', surface: 'core' },
   { path: '/prompt-manager', icon: Sparkles, label: 'Prompt tổng quát', id: 'prompt-manager', surface: 'core' },
+  { path: '/login', icon: Crown, label: 'Tài khoản & VIP', id: 'account-vip', surface: 'core' },
   { path: '/settings', icon: Settings, label: 'Cài đặt', id: 'settings', surface: 'core' },
 ];
 

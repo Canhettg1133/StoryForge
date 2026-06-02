@@ -39,7 +39,7 @@ describe('openAIProxyConfig legacy settings migration', () => {
     } = await loadConfig();
 
     expect(getOpenAIProxySettings().activeProfileId).toBe(AG_PROXY_PROFILE_ID);
-    expect(getActiveOpenAIProxyProfile().baseUrl).toBe('/api/proxy');
+    expect(getActiveOpenAIProxyProfile().baseUrl).toBe('https://ag.beijixingxing.com');
   });
 
   it('resolves separate key pools for ag and custom proxy profiles', async () => {

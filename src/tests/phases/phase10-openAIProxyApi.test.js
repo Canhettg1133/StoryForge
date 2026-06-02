@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import handler from '../../../api/openai-proxy.js';
+import { createOpenAIProxyHandler } from '../../../api/openai-proxy.js';
+
+const handler = createOpenAIProxyHandler({
+  requireFeatureImpl: async (_req, featureKey) => ({
+    ok: true,
+    decision: { allowed: true, feature: featureKey },
+    user: { id: 'test-user' },
+  }),
+});
 
 function createReqRes({ method = 'POST', body = {}, headers = {} } = {}) {
   const chunks = [];
@@ -64,7 +72,7 @@ describe('/api/openai-proxy', () => {
         baseUrl: 'https://proxy.example.com/v1',
         modelsPath: '/v1/models',
       },
-      headers: { authorization: 'Bearer test-key' },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
     });
 
     await handler(req, res);
@@ -104,7 +112,7 @@ describe('/api/openai-proxy', () => {
         chatCompletionsPath: '/v1/chat/completions',
         payload,
       },
-      headers: { authorization: 'Bearer test-key' },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
     });
 
     await handler(req, res);
@@ -142,7 +150,7 @@ describe('/api/openai-proxy', () => {
         chatCompletionsPath: '/v1/chat/completions',
         payloads,
       },
-      headers: { authorization: 'Bearer test-key' },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
     });
 
     await handler(req, res);
@@ -176,6 +184,7 @@ describe('/api/openai-proxy', () => {
         baseUrl: 'https://proxy.example.com',
         authorization: 'Bearer body-key',
       },
+      headers: { 'x-storyforge-upstream-key': 'header-key' },
     });
     const { res } = createReqRes();
 
@@ -184,7 +193,7 @@ describe('/api/openai-proxy', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       'https://proxy.example.com/v1/models',
       expect.objectContaining({
-        headers: {},
+        headers: { Authorization: 'Bearer header-key' },
       }),
     );
     vi.unstubAllGlobals();

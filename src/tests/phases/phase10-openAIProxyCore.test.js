@@ -58,6 +58,7 @@ describe('openAIProxyCore model parsing and transport policy', () => {
 
   it('uses relay for hosted HTTPS targets and direct mode for local targets', () => {
     expect(resolveProxyTransportMode({ baseUrl: 'https://proxy.example.com', transport: 'auto' })).toBe('relay');
+    expect(resolveProxyTransportMode({ baseUrl: 'https://proxy.example.com', transport: 'direct' })).toBe('direct');
     expect(resolveProxyTransportMode({ baseUrl: 'http://localhost:1234/v1', transport: 'auto' })).toBe('direct');
     expect(resolveProxyTransportMode({ baseUrl: 'http://127.0.0.1:1234/v1', transport: 'auto' })).toBe('direct');
     expect(resolveProxyTransportMode({ baseUrl: '/api/proxy', transport: 'vercelRewrite' })).toBe('direct');

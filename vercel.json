@@ -1,11 +1,7 @@
 {
     "rewrites": [
         {
-            "source": "/api/proxy/:match*",
-            "destination": "https://ag.beijixingxing.com/:match*"
-        },
-        {
-            "source": "/((?!api/|translator-runtime/).*)",
+            "source": "/((?!api/|translator-runtime/|src/|@react-refresh|@vite/|node_modules/|.*\\..*).*)",
             "destination": "/index.html"
         }
     ]

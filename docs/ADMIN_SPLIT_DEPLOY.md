@@ -32,20 +32,30 @@ Set these values for the admin Worker:
 - `SUPABASE_SERVICE_ROLE_KEY` with `wrangler secret put SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_ALLOWED_ORIGINS` with exact admin origins only
 
-## Supabase tables expected by Admin API
+## Supabase schema
 
-- `storyforge_user_access`
-- `storyforge_features`
-- `storyforge_plan_features`
-- `storyforge_plan_catalog`
-- `storyforge_usage`
-- `storyforge_consent_records`
-- `storyforge_audit_logs`
+Admin API now uses the canonical VIP/access schema:
 
-The Worker verifies the Supabase user token first, resolves role from Supabase Auth metadata, rejects non-admin roles, and writes audit logs for sensitive mutations.
+- `profiles`
+- `plans`
+- `user_plans`
+- `features`
+- `plan_features`
+- `user_entitlement_overrides`
+- `consent_versions`
+- `admin_audit_logs`
+- `usage_events`
+- `access_versions`
 
-Use `docs/supabase-admin-schema.sql` for the minimal table schema, then run
-`docs/supabase-admin-seed.sql` to create the default Free/VIP/Pro/Enterprise catalog and feature mapping.
+Run these files in order:
+
+```bash
+docs/supabase-access-control/001_access_control_schema.sql
+docs/supabase-access-control/002_access_control_seed.sql
+docs/supabase-access-control/003_access_control_v2_sync_and_union_plans.sql
+```
+
+The Worker verifies the Supabase user token first, resolves admin role from `profiles.system_role`, rejects non-admin mutations, and writes audit logs for sensitive changes.
 
 ## Deploy targets
 
@@ -87,10 +97,9 @@ Relay Worker:
 ## Checks
 
 ```bash
+npm test
+npm run test:admin
 npm run build
 npm run build:admin
-npm run test:admin
-npx vercel build --prod --yes
 npm run worker:admin:dry-run
-npm run worker:relay:dry-run
 ```

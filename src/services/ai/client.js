@@ -12,9 +12,9 @@ import { AI_ERROR_CODES, normalizeAIError, shouldFallbackForError } from './erro
 import { PROVIDERS, TASK_TYPES } from './router';
 import {
   DEFAULT_PROXY_CHAT_PATH,
-  DEFAULT_PROXY_MODELS_PATH,
   fetchOpenAIProxyModels,
   getActiveOpenAIProxyProfile,
+  getOpenAIProxyModel,
   getOpenAIProxyKeyProvider,
   resolveOpenAIProxyDirectRequest,
   resolveOpenAIProxyRequest,
@@ -471,6 +471,86 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
     onError?.(normalized);
     throw normalized;
   }
+}
+
+async function testOpenAIProxyChatConnection({ profile, apiKey = '', signal } = {}) {
+  const model = getOpenAIProxyModel(profile, '');
+  const proxyErrorContext = {
+    provider: PROVIDERS.OPENAI_PROXY,
+    model,
+    proxyProfileId: profile?.id || null,
+  };
+
+  if (!profile?.baseUrl) {
+    throw normalizeAIError(
+      { code: AI_ERROR_CODES.NETWORK_ERROR, rawMessage: 'Chua cau hinh Proxy URL.' },
+      proxyErrorContext,
+    );
+  }
+  if (!apiKey) {
+    throw normalizeAIError(
+      { code: AI_ERROR_CODES.MISSING_API_KEY, rawMessage: 'MISSING_API_KEY' },
+      proxyErrorContext,
+    );
+  }
+  if (!String(model || '').trim()) {
+    throw normalizeAIError(
+      { code: AI_ERROR_CODES.MISSING_MODEL, rawMessage: 'Chua chon model cho OpenAI-compatible Proxy.' },
+      proxyErrorContext,
+    );
+  }
+
+  const payload = {
+    model,
+    messages: [{ role: 'user', content: 'Xin chao. Tra loi ngan gon bang tieng Viet.' }],
+    stream: false,
+    temperature: 0.2,
+    max_tokens: 64,
+  };
+  const target = resolveOpenAIProxyRequest(profile, 'chat');
+  const requestBody = target.mode === 'relay'
+    ? {
+      action: 'chat',
+      baseUrl: profile.baseUrl,
+      chatCompletionsPath: profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
+      payload,
+    }
+    : payload;
+
+  let response = await fetch(target.url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(requestBody),
+    signal,
+  });
+
+  if (target.mode === 'relay' && shouldFallbackOpenAIProxyRelay(response)) {
+    const directTarget = resolveOpenAIProxyDirectRequest(profile, 'chat');
+    response = await fetch(directTarget.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  }
+
+  if (!response.ok) {
+    const errText = await response.text().catch(() => '');
+    throw normalizeAIError({
+      status: response.status,
+      bodyText: errText,
+    }, proxyErrorContext);
+  }
+
+  const data = await response.json();
+  const text = extractProxyResponseText(data, proxyErrorContext);
+  return { model, text, target };
 }
 
 // ================================
@@ -1080,17 +1160,19 @@ class AIService {
       if (provider === PROVIDERS.OPENAI_PROXY || provider === PROVIDERS.GEMINI_PROXY) {
         const profile = getActiveOpenAIProxyProfile();
         const apiKey = keyManager.getNextKey(getOpenAIProxyKeyProvider(profile)) || '';
-        const models = await fetchOpenAIProxyModels({
+        const chatCheck = await testOpenAIProxyChatConnection({
           profile,
           apiKey,
           signal: AbortSignal.timeout(8000),
         });
         return {
           success: true,
-          models,
+          models: Array.isArray(profile.models) ? profile.models : [],
           status: {
             profile: profile.label,
-            modelsPath: profile.modelsPath || DEFAULT_PROXY_MODELS_PATH,
+            model: chatCheck.model,
+            chatCompletionsPath: profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
+            transport: chatCheck.target?.mode || 'direct',
           },
         };
       }

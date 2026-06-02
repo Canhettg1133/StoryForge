@@ -26,7 +26,9 @@ import Translator from './pages/Translator/Translator';
 import GeminiSetupGuide from './pages/Guide/GeminiSetupGuide';
 import GeminiProxyGuide from './pages/Guide/GeminiProxyGuide';
 import TranslatorSetupGuide from './pages/Guide/TranslatorSetupGuide';
+import Login from './pages/Login/Login';
 import ProjectLayout from './components/common/ProjectLayout';
+import { AccessProvider } from './services/access/AccessContext.jsx';
 
 const SHOW_WRITING_DEBUG = import.meta.env.VITE_SHOW_WRITING_DEBUG === 'true';
 const WritingRequestDebugger = SHOW_WRITING_DEBUG
@@ -38,8 +40,10 @@ export default function App() {
   const roadmapFallback = <Navigate to="../story-bible" replace />;
 
   return (
-    <BrowserRouter>
-      <Routes>
+    <AccessProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
           <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/settings" element={<Settings />} />
@@ -87,7 +91,8 @@ export default function App() {
             <Route path="corpus-lab/viewer" element={PRODUCT_SURFACE.showLabs ? <AnalysisViewer /> : labFallback} />
           </Route>
         </Route>
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+    </AccessProvider>
   );
 }

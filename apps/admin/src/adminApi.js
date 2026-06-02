@@ -68,32 +68,48 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
     audit: () => request('/audit'),
     usage: () => request('/usage'),
     features: () => request('/features'),
-    planFeatures: () => request('/plan-features'),
     consent: () => request('/consent'),
-    syncAuth: () => request('/sync-auth', { method: 'POST', body: {} }),
-    updateUserPlan: (userId, plan) => request(`/users/${encodeURIComponent(userId)}/plan`, {
-      method: 'PATCH',
-      body: { plan },
-    }),
-    updateUserStatus: (userId, status) => request(`/users/${encodeURIComponent(userId)}/status`, {
-      method: 'PATCH',
-      body: { status },
-    }),
+    syncAuth: () => request('/users/sync-auth', { method: 'POST', body: {} }),
+    userAccess: (userId) => request(`/users/${encodeURIComponent(userId)}/access`),
     updateUserAccess: (userId, role) => request(`/users/${encodeURIComponent(userId)}/access`, {
       method: 'PATCH',
       body: { role },
+    }),
+    setUserPlan: (userId, body) => request(`/users/${encodeURIComponent(userId)}/plan`, {
+      method: 'POST',
+      body,
+    }),
+    updateUserPlan: (userId, planKey) => request(`/users/${encodeURIComponent(userId)}/plan`, {
+      method: 'POST',
+      body: { operation: 'set', planKey },
+    }),
+    updateUserStatus: (userId, status) => request(`/users/${encodeURIComponent(userId)}/status`, {
+      method: 'POST',
+      body: { status },
+    }),
+    setUserFeatureOverride: (userId, body) => request(`/users/${encodeURIComponent(userId)}/feature-override`, {
+      method: 'POST',
+      body,
     }),
     updateCatalogPlan: (id, patch) => request(`/catalog/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: patch,
     }),
-    updateFeature: (id, patch) => request(`/features/${encodeURIComponent(id)}`, {
+    updateFeature: (featureKey, patch) => request(`/features/${encodeURIComponent(featureKey)}`, {
       method: 'PATCH',
       body: patch,
     }),
-    updatePlanFeature: (id, patch) => request(`/plan-features/${encodeURIComponent(id)}`, {
-      method: 'PATCH',
-      body: patch,
+    createFeature: (body) => request('/features', {
+      method: 'POST',
+      body,
+    }),
+    setPlanFeature: (featureKey, body) => request(`/features/${encodeURIComponent(featureKey)}/plan`, {
+      method: 'POST',
+      body,
+    }),
+    upsertConsent: (body) => request('/consent', {
+      method: 'POST',
+      body,
     }),
   };
 }

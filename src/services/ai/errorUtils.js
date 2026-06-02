@@ -214,12 +214,20 @@ export function normalizeAIError(input = {}, context = {}) {
   }
 
   if (
-    codeLower === 'quota_exceeded'
+    shape.status === 402
+    || codeLower === 'quota_exceeded'
+    || codeLower === 'insufficient_quota'
+    || codeLower === 'insufficient_credits'
     || reasonLower === 'quota_exceeded'
+    || reasonLower === 'insufficient_quota'
+    || reasonLower === 'insufficient_credits'
     || lower.includes('quota_exceeded')
+    || lower.includes('insufficient credits')
+    || lower.includes('insufficient balance')
     || lower.includes('daily limit reached')
     || lower.includes('quota exceeded')
     || lower.includes('resource_exhausted')
+    || lower.includes('top up')
   ) {
     const isAgQuota = lower.includes('antigravity')
       || lower.includes('gemini3')
@@ -229,6 +237,29 @@ export function normalizeAIError(input = {}, context = {}) {
     const quotaModelName = lower.includes('gemini3') || String(model || '').includes('gemini-3')
       ? 'Gemini 3'
       : modelName;
+    const isInsufficientCredits = shape.status === 402
+      || codeLower === 'insufficient_credits'
+      || codeLower === 'insufficient_quota'
+      || reasonLower === 'insufficient_credits'
+      || reasonLower === 'insufficient_quota'
+      || lower.includes('insufficient credits')
+      || lower.includes('insufficient balance')
+      || lower.includes('top up');
+
+    if (isInsufficientCredits) {
+      return createAIError({
+        userMessage: `${providerName} đã hết credit/số dư cho ${quotaModelName}. Đây là giới hạn thanh toán của gateway/upstream, không phải lỗi prompt hay model list. Hãy nạp credit, đổi key có số dư, hoặc chọn provider khác.`,
+        code: AI_ERROR_CODES.QUOTA_EXCEEDED,
+        provider,
+        model,
+        status: shape.status || 402,
+        rawMessage,
+        reason: shape.reason || 'insufficient_credits',
+        details: shape.details,
+        retryable: true,
+        shouldFallback: true,
+      });
+    }
 
     return createAIError({
       userMessage: `${quotaProviderName} đã hết quota ngày cho ${quotaModelName}. Đây là giới hạn từ proxy/upstream, không phải lỗi prompt. Hãy đổi sang Gemini 2.5 Flash hoặc model khác, thêm key còn quota, hoặc chờ quota ngày reset.`,

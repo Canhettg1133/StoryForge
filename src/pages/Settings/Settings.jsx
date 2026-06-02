@@ -41,8 +41,11 @@ import {
   Plus, X, BookOpen, ExternalLink, ArrowLeft, ChevronsUpDown, Sparkles,
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
+import AccountAccessSummary from '../../components/access/AccountAccessSummary.jsx';
 import useMobileLayout from '../../hooks/useMobileLayout';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
+import { useUserAccess } from '../../hooks/useUserAccess';
+import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
@@ -306,14 +309,33 @@ const OLLAMA_PRESET_OPTIONS = ['qwen3', 'qwen25', 'llama3', 'gemma2', 'mistral',
 
 function normalizeProxyModelList(models = []) {
   return [...new Set(
-    models
+    (Array.isArray(models) ? models : [])
       .map((model) => String(model || '').trim())
       .filter(Boolean),
   )];
 }
 
+function normalizeCustomProxyModelList(models = []) {
+  return normalizeProxyModelList(models);
+}
+
 function normalizeGeminiProxyModelList(models = []) {
   return filterGeminiModelIds(normalizeProxyModelList(models));
+}
+
+function resetCustomProxyModelsOnBaseUrlChange(profile = {}, nextBaseUrl = '') {
+  const normalizedNextBaseUrl = String(nextBaseUrl || '').trim();
+  const normalizedPreviousBaseUrl = String(profile.baseUrl || '').trim();
+  if (normalizedNextBaseUrl === normalizedPreviousBaseUrl) {
+    return { ...profile, baseUrl: nextBaseUrl };
+  }
+
+  return {
+    ...profile,
+    baseUrl: nextBaseUrl,
+    defaultModel: '',
+    models: [],
+  };
 }
 
 function getAgProxyModelOption(model) {
@@ -375,7 +397,7 @@ function ModelDefaultCallout({
   );
 }
 
-function CustomProxyModelPicker({ models, selectedModel, onSelect, title = 'Model Gemini đã lấy' }) {
+function CustomProxyModelPicker({ models, selectedModel, onSelect, title = 'Model đã lấy' }) {
   if (!models.length) return null;
 
   const selected = models.includes(selectedModel) ? selectedModel : '';
@@ -385,7 +407,7 @@ function CustomProxyModelPicker({ models, selectedModel, onSelect, title = 'Mode
       <div className="custom-proxy-model-picker__header">
         <div>
           <strong>{title}</strong>
-          <span>{models.length} model Gemini</span>
+          <span>{models.length} model</span>
         </div>
       </div>
       <select
@@ -393,7 +415,7 @@ function CustomProxyModelPicker({ models, selectedModel, onSelect, title = 'Mode
         value={selected}
         onChange={(event) => onSelect(event.target.value)}
       >
-        <option value="">Chọn model Gemini...</option>
+        <option value="">Chọn model...</option>
         {models.map((model) => (
           <option key={model} value={model}>{model}</option>
         ))}
@@ -434,12 +456,20 @@ function readSettingsKeyCounts() {
   };
 }
 
+function getSettingsProviderFeature(providerCardOrProvider) {
+  if (providerCardOrProvider === PROVIDER_CARD_AG_PROXY) return ACCESS_FEATURES.AG_PROXY;
+  if (providerCardOrProvider === PROVIDER_CARD_CUSTOM_PROXY) return ACCESS_FEATURES.CUSTOM_PROXY;
+  if (providerCardOrProvider === PROVIDERS.AI_STUDIO_RELAY) return ACCESS_FEATURES.AI_STUDIO_RELAY;
+  return '';
+}
+
 export default function Settings() {
   const location = useLocation();
   const navigate = useNavigate();
   const { projectId } = useParams();
   const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
   const isMobileLayout = useMobileLayout(900);
+  const { hasFeature, getDeniedMessage } = useUserAccess();
   const initialProxySettings = getOpenAIProxySettings();
   const initialAgProxyProfile = getAgOpenAIProxyProfile();
   const [activeProxyProfileId, setActiveProxyProfileId] = useState(initialProxySettings.activeProfileId);
@@ -483,10 +513,12 @@ export default function Settings() {
   const agProxyModelOptions = agProxyFetchedModels.length > 0
     ? normalizeGeminiProxyModelList([proxyModel, ...agProxyFetchedModels]).map(getAgProxyModelOption)
     : agProxyFallbackOptions;
-  const customProxyModels = normalizeGeminiProxyModelList([
-    customProxyProfile.defaultModel,
-    ...(Array.isArray(customProxyProfile.models) ? customProxyProfile.models : []),
-  ]);
+  const customProxyModels = String(customProxyProfile.baseUrl || '').trim()
+    ? normalizeCustomProxyModelList([
+      customProxyProfile.defaultModel,
+      ...(Array.isArray(customProxyProfile.models) ? customProxyProfile.models : []),
+    ])
+    : [];
   const customProxyModelOptions = customProxyModels.map((model) => ({ id: model, label: model }));
   const customProxyTransportMode = resolveProxyTransportMode(customProxyProfile);
   const customProxyChatPreview = getProxyEndpointPreview(
@@ -639,18 +671,23 @@ export default function Settings() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
   const syncCustomProxyProfile = (patch = {}, { activate = false } = {}) => {
+    const hasBaseUrlPatch = Object.prototype.hasOwnProperty.call(patch, 'baseUrl');
+    const nextBaseUrl = String((patch.baseUrl ?? customProxyProfile.baseUrl) || '').trim();
+    const baseUrlChanged = hasBaseUrlPatch
+      && nextBaseUrl !== String(customProxyProfile.baseUrl || '').trim();
+    const shouldClearStoredModels = !nextBaseUrl || baseUrlChanged;
     const nextProfile = {
       ...customProxyProfile,
       ...patch,
       label: String((patch.label ?? customProxyProfile.label) || 'Custom OpenAI-compatible').trim(),
-      baseUrl: String((patch.baseUrl ?? customProxyProfile.baseUrl) || '').trim(),
-      defaultModel: String((patch.defaultModel ?? customProxyProfile.defaultModel) || '').trim(),
+      baseUrl: nextBaseUrl,
+      defaultModel: String((shouldClearStoredModels ? '' : (patch.defaultModel ?? customProxyProfile.defaultModel)) || '').trim(),
       chatCompletionsPath: String(
         (patch.chatCompletionsPath ?? customProxyProfile.chatCompletionsPath) || DEFAULT_PROXY_CHAT_PATH,
       ).trim() || DEFAULT_PROXY_CHAT_PATH,
       modelsPath: String((patch.modelsPath ?? customProxyProfile.modelsPath) || DEFAULT_PROXY_MODELS_PATH).trim()
         || DEFAULT_PROXY_MODELS_PATH,
-      models: normalizeProxyModelList(patch.models ?? customProxyProfile.models ?? []),
+      models: normalizeCustomProxyModelList(shouldClearStoredModels ? [] : (patch.models ?? customProxyProfile.models ?? [])),
       supportsGeminiSafetySettings: Boolean(
         patch.supportsGeminiSafetySettings ?? customProxyProfile.supportsGeminiSafetySettings,
       ),
@@ -668,6 +705,15 @@ export default function Settings() {
   };
 
   const handleProviderSelect = (nextProvider) => {
+    const feature = getSettingsProviderFeature(nextProvider);
+    if (feature && !hasFeature(feature)) {
+      setProxyModelFetchStatus({
+        type: 'error',
+        text: getDeniedMessage(feature),
+      });
+      return;
+    }
+
     if (nextProvider === PROVIDER_CARD_AG_PROXY) {
       setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
       setActiveProxyProfileId(AG_PROXY_PROFILE_ID);
@@ -723,6 +769,11 @@ export default function Settings() {
   };
 
   const handleFetchAgProxyModels = async () => {
+    if (!hasFeature(ACCESS_FEATURES.AG_PROXY)) {
+      setProxyModelFetchStatus({ type: 'error', text: getDeniedMessage(ACCESS_FEATURES.AG_PROXY) });
+      return;
+    }
+
     setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
     setActiveProxyProfileId(AG_PROXY_PROFILE_ID);
     setProvider(PROVIDERS.OPENAI_PROXY);
@@ -769,6 +820,11 @@ export default function Settings() {
   };
 
   const handleFetchCustomProxyModels = async () => {
+    if (!hasFeature(ACCESS_FEATURES.CUSTOM_PROXY)) {
+      setProxyModelFetchStatus({ type: 'error', text: getDeniedMessage(ACCESS_FEATURES.CUSTOM_PROXY) });
+      return;
+    }
+
     const profile = syncCustomProxyProfile({}, { activate: true });
     if (!profile.baseUrl) {
       setProxyModelFetchStatus({ type: 'error', text: 'Nhập Base URL trước khi lấy models.' });
@@ -784,11 +840,11 @@ export default function Settings() {
         signal: AbortSignal.timeout(15000),
       });
       const allModels = normalizeProxyModelList(models);
-      const uniqueModels = normalizeGeminiProxyModelList(allModels);
+      const uniqueModels = normalizeCustomProxyModelList(allModels);
       if (uniqueModels.length === 0) {
         setProxyModelFetchStatus({
           type: 'error',
-          text: `Đã lấy ${allModels.length} models nhưng không thấy model Gemini. Bạn vẫn có thể nhập model thủ công.`,
+          text: `Đã lấy ${allModels.length} models nhưng không thấy model hợp lệ. Bạn vẫn có thể nhập model thủ công.`,
         });
         return;
       }
@@ -800,7 +856,7 @@ export default function Settings() {
       }, { activate: true });
       setProxyModelFetchStatus({
         type: 'success',
-        text: `Đã lấy ${allModels.length} models, lọc còn ${saved.models.length} model Gemini.`,
+        text: `Đã lấy ${allModels.length} models, lưu ${saved.models.length} model Custom Proxy.`,
       });
     } catch (error) {
       setProxyModelFetchStatus({
@@ -870,6 +926,8 @@ export default function Settings() {
       </header>
 
       <div className="settings-sections">
+        <AccountAccessSummary />
+
         <section className="settings-section card animate-slide-up" id="gemini-guides">
           <div className="settings-section-header">
             <BookOpen size={20} />
@@ -912,19 +970,24 @@ export default function Settings() {
               { value: PROVIDERS.GEMINI_DIRECT, icon: Cloud, label: 'Gemini Direct', desc: 'AI Studio (free)' },
               { value: PROVIDERS.AI_STUDIO_RELAY, icon: Cloud, label: 'AI Studio Relay', desc: 'Experimental' },
               { value: PROVIDERS.OLLAMA, icon: Cpu, label: 'Ollama', desc: 'Local AI' },
-            ].map(p => (
-              <button
-                key={p.value}
-                className={`settings-radio-card compact ${selectedProviderCard === p.value ? 'settings-radio-card--active' : ''}`}
-                onClick={() => handleProviderSelect(p.value)}
-              >
-                <p.icon size={18} />
-                <div>
-                  <div className="settings-radio-label">{p.label}</div>
-                  <div className="settings-radio-desc">{p.desc}</div>
-                </div>
-              </button>
-            ))}
+            ].map((p) => {
+              const feature = getSettingsProviderFeature(p.value);
+              const locked = feature && !hasFeature(feature);
+              return (
+                <button
+                  key={p.value}
+                  className={`settings-radio-card compact ${selectedProviderCard === p.value ? 'settings-radio-card--active' : ''} ${locked ? 'settings-radio-card--locked' : ''}`}
+                  onClick={() => handleProviderSelect(p.value)}
+                  title={locked ? getDeniedMessage(feature) : undefined}
+                >
+                  <p.icon size={18} />
+                  <div>
+                    <div className="settings-radio-label">{p.label}</div>
+                    <div className="settings-radio-desc">{locked ? getDeniedMessage(feature) : p.desc}</div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           {selectedProviderCard === PROVIDER_CARD_AG_PROXY ? (
@@ -1549,7 +1612,9 @@ export default function Settings() {
                         <input
                           className="input"
                           value={customProxyProfile.baseUrl || ''}
-                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, baseUrl: event.target.value }))}
+                          onChange={(event) => setCustomProxyProfile((prev) =>
+                            resetCustomProxyModelsOnBaseUrlChange(prev, event.target.value)
+                          )}
                           placeholder="https://proxy.example.com hoặc http://localhost:1234/v1"
                         />
                         <p className="settings-hint">
@@ -1612,7 +1677,7 @@ export default function Settings() {
                       models={customProxyModels}
                       selectedModel={customProxyProfile.defaultModel || ''}
                       onSelect={(model) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: model }))}
-                      title="Danh sách model Gemini"
+                      title="Danh sách model Custom Proxy"
                     />
 
                     <div className="form-group">

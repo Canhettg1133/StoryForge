@@ -62,8 +62,8 @@ describe('phase10 canon engine', () => {
 
     expect(engine.inferAliveStatus('Da chet | Muc tieu: Giai ma cai chet bi an cua ba | Con song')).toBe('alive');
     expect(engine.inferAliveStatus('Khong con song')).toBe('dead');
-    expect(summary).toContain('Con song');
-    expect(summary).toContain('Muc tieu: Giai ma cai chet bi an cua ba');
+    expect(summary).toContain('Còn sống');
+    expect(summary).toContain('Mục tiêu: Giai ma cai chet bi an cua ba');
     expect(summary).not.toContain('Da chet');
   });
 
@@ -629,7 +629,7 @@ describe('phase10 canon engine', () => {
       summary: 'Con song | Muc tieu: Tim cho dua vung chac',
     });
 
-    expect(summary).toBe('Con song | Muc tieu: Tim cho dua vung chac');
+    expect(summary).toBe('Còn sống | Mục tiêu: Tim cho dua vung chac');
   });
 
   it('warns on sharp relationship reversal without reason', () => {

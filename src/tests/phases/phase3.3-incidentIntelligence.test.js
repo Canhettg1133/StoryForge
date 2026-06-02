@@ -14,14 +14,14 @@ describe('Incident Intelligence', () => {
         chapterId: 'ch-1',
         chapterIndex: 1,
         chunkIndex: 1,
-        text: 'Nhan vat gap quy dau tien tai truong trung hoc Hoang Cuong.',
+        text: 'Nhân vật gặp quỷ đầu tiên tại trường trung học Hoàng Cường.',
       },
       {
         id: 'chunk-2',
         chapterId: 'ch-4',
         chapterIndex: 4,
         chunkIndex: 2,
-        text: 'Vu linh di tiep theo xay ra o thon Hoang Cuong, noi dan lang bien mat.',
+        text: 'Vụ linh dị tiếp theo xảy ra ở trường trung học Hoàng Cường, nơi dân làng biến mất.',
       },
     ];
 

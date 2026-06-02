@@ -861,7 +861,7 @@ describe('Phase 6D - Analysis V3 Compat', () => {
       },
     );
 
-    expect(queue[0].reason.some((item) => item.includes('co lap trong story graph'))).toBe(true);
+    expect(queue[0].reason.some((item) => item.includes('cô lập trong story graph'))).toBe(true);
   });
 
   it('builds review queue items with related incident and window scope links', () => {

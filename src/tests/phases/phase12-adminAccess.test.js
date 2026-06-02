@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ADMIN_PERMISSIONS,
+  PLAN_LABELS_VI,
+  STATUS_LABELS_VI,
   canUpdateUserRole,
   canUpdateUserStatus,
   hasPermission,
@@ -68,13 +70,24 @@ describe('phase12 admin access package', () => {
     const result = canUpdateUserStatus({
       actor: resolveAccessSubject({ id: 'admin-1', app_metadata: { role: 'admin' } }),
       targetUserId: 'admin-1',
-      nextStatus: 'suspended',
+      nextStatus: 'banned',
     });
 
     expect(result).toMatchObject({
       ok: false,
       code: 'SELF_STATUS_LOCK_BLOCKED',
       status: 400,
+    });
+  });
+
+  it('keeps the canonical VIP catalog labels only', () => {
+    expect(Object.keys(PLAN_LABELS_VI)).toEqual(['free', 'vip', 'lifetime']);
+    expect(PLAN_LABELS_VI).not.toHaveProperty('pro');
+    expect(PLAN_LABELS_VI).not.toHaveProperty('enterprise');
+    expect(STATUS_LABELS_VI).toMatchObject({
+      active: 'Đang hoạt động',
+      banned: 'Đã khóa',
+      deleted: 'Đã xóa',
     });
   });
 });

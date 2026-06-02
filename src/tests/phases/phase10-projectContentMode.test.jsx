@@ -3,6 +3,15 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../hooks/useUserAccess.js', () => ({
+  useUserAccess: () => ({
+    hasFeature: () => true,
+    getDecision: () => ({ allowed: true }),
+    getDeniedMessage: () => '',
+    confirmAdultTerms: vi.fn(),
+  }),
+}));
+
 import {
   buildProjectContentModePatch,
   resolveProjectContentMode,
