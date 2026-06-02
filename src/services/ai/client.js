@@ -25,6 +25,7 @@ import {
   createAIStudioRelayRoom,
   getAIStudioRelayRoomStatus,
 } from './aiStudioRelayClient';
+import { getStoryForgeAccessToken } from '../access/accessClient';
 import { NSFW_REBUKE_PROMPT } from '../../utils/constants';
 
 const SETTINGS_KEY = 'sf-ai-settings';
@@ -232,6 +233,22 @@ function extractGeminiDirectResponseText(data, errorContext = {}) {
   return text;
 }
 
+async function buildOpenAIProxyRequestHeaders(target, apiKey) {
+  if (target?.mode !== 'relay') {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    };
+  }
+
+  const storyForgeToken = await getStoryForgeAccessToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(storyForgeToken ? { Authorization: `Bearer ${storyForgeToken}` } : {}),
+    'X-StoryForge-Upstream-Key': apiKey,
+  };
+}
+
 export function detectOllamaModelType(modelName) {
   const name = String(modelName || '').toLowerCase();
   if (name.includes('qwen3.5') || name.includes('qwen3_5')) return 'qwen35';
@@ -408,10 +425,7 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
   try {
     let response = await fetch(target.url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers: await buildOpenAIProxyRequestHeaders(target, apiKey),
       body: JSON.stringify(requestBody),
       signal,
     });
@@ -519,10 +533,7 @@ async function testOpenAIProxyChatConnection({ profile, apiKey = '', signal } = 
 
   let response = await fetch(target.url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
+    headers: await buildOpenAIProxyRequestHeaders(target, apiKey),
     body: JSON.stringify(requestBody),
     signal,
   });

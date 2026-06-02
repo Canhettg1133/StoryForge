@@ -772,6 +772,28 @@ function renderCustomProxyModelsDropdown() {
     select.value = profile.defaultModel || '';
 }
 
+function getTranslatorRelayHeaders(upstreamKey) {
+    const storyForgeToken = typeof getStoryForgeAccessToken === 'function'
+        ? String(getStoryForgeAccessToken() || '').trim()
+        : '';
+    return {
+        ...(storyForgeToken ? { 'Authorization': `Bearer ${storyForgeToken}` } : {}),
+        'X-StoryForge-Upstream-Key': upstreamKey,
+    };
+}
+
+function getProxyRequestHeaders(target, upstreamKey) {
+    return target?.mode === 'relay'
+        ? {
+            'Content-Type': 'application/json',
+            ...getTranslatorRelayHeaders(upstreamKey),
+        }
+        : {
+            'Authorization': `Bearer ${upstreamKey}`,
+            'Content-Type': 'application/json',
+        };
+}
+
 async function fetchCustomProxyModels() {
     const profile = updateCustomProxyConfig();
     const modelStatus = getElement('customProxyModelStatus');
@@ -796,10 +818,7 @@ async function fetchCustomProxyModels() {
 
     const response = await fetch(target.url, {
         method: target.mode === 'relay' ? 'POST' : 'GET',
-        headers: {
-            'Authorization': `Bearer ${key}`,
-            'Content-Type': 'application/json',
-        },
+        headers: getProxyRequestHeaders(target, key),
         body: target.mode === 'relay'
             ? JSON.stringify({
                 action: 'models',
@@ -901,10 +920,7 @@ async function testCustomProxyConnection() {
         };
         const response = await fetch(target.url, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${key}`,
-                'Content-Type': 'application/json',
-            },
+            headers: getProxyRequestHeaders(target, key),
             body: JSON.stringify(target.mode === 'relay'
                 ? {
                     action: 'chat',

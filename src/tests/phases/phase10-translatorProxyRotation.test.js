@@ -78,6 +78,7 @@ function loadProxyRuntimeContext(fetchImpl) {
   vm.runInContext(`
     useProxy = true;
     useOllama = false;
+    storyForgeAccessToken = 'story-token';
     proxyBaseUrl = 'https://proxy.example.test/v1/chat/completions';
     proxyModel = 'test-model';
     proxyApiKeys = ['KEY1','KEY2','KEY3','KEY4','KEY5','KEY6','KEY7','KEY8','KEY9','KEY10'];
@@ -90,12 +91,15 @@ function loadProxyRuntimeContext(fetchImpl) {
 
 describe('phase10 translator proxy key rotation', () => {
   it('retries a proxy chunk with a different key after the assigned key is suspended', async () => {
-    const usedAuthHeaders = [];
+    const usedStoryForgeAuthHeaders = [];
+    const usedUpstreamKeys = [];
     const context = loadProxyRuntimeContext(async (url, options = {}) => {
       const authorization = String(options.headers?.Authorization || '');
-      usedAuthHeaders.push(authorization);
+      const upstreamKey = String(options.headers?.['X-StoryForge-Upstream-Key'] || '');
+      usedStoryForgeAuthHeaders.push(authorization);
+      usedUpstreamKeys.push(upstreamKey);
 
-      if (authorization === 'Bearer KEY1') {
+      if (upstreamKey === 'KEY1') {
         return {
           ok: false,
           status: 403,
@@ -123,7 +127,8 @@ describe('phase10 translator proxy key rotation', () => {
     );
 
     expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
-    expect(usedAuthHeaders).toEqual(['Bearer KEY1', 'Bearer KEY2']);
+    expect(usedStoryForgeAuthHeaders).toEqual(['Bearer story-token', 'Bearer story-token']);
+    expect(usedUpstreamKeys).toEqual(['KEY1', 'KEY2']);
   });
 
   it('does not cap proxy parallel requests to the number of proxy keys', () => {
@@ -221,7 +226,8 @@ describe('phase10 translator proxy key rotation', () => {
     );
 
     expect(requests[0].url).toBe('/api/translator-openai-proxy');
-    expect(requests[0].options.headers.Authorization).toBe('Bearer AG_KEY');
+    expect(requests[0].options.headers.Authorization).toBe('Bearer story-token');
+    expect(requests[0].options.headers['X-StoryForge-Upstream-Key']).toBe('AG_KEY');
     const body = JSON.parse(requests[0].options.body);
     expect(body.action).toBe('chat');
     expect(body.baseUrl).toBe('https://ag.beijixingxing.com');
@@ -288,8 +294,12 @@ describe('phase10 translator proxy key rotation', () => {
 
     expect(requests).toHaveLength(2);
     expect(requests.map((request) => request.options.headers.Authorization).sort()).toEqual([
-      'Bearer KEY_A',
-      'Bearer KEY_B',
+      'Bearer story-token',
+      'Bearer story-token',
+    ]);
+    expect(requests.map((request) => request.options.headers['X-StoryForge-Upstream-Key']).sort()).toEqual([
+      'KEY_A',
+      'KEY_B',
     ]);
     requests.forEach((request) => {
       expect(request.url).toBe('/api/translator-openai-proxy');

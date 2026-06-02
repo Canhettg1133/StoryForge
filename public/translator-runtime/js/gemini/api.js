@@ -16,6 +16,16 @@ function createProxyAbortError() {
     return error;
 }
 
+function getStoryForgeRelayAuthHeaders(upstreamKey) {
+    const storyForgeToken = typeof getStoryForgeAccessToken === 'function'
+        ? String(getStoryForgeAccessToken() || '').trim()
+        : '';
+    return {
+        ...(storyForgeToken ? { 'Authorization': `Bearer ${storyForgeToken}` } : {}),
+        'X-StoryForge-Upstream-Key': upstreamKey,
+    };
+}
+
 function getProxyRelayBatchKey(activeBaseUrl, activeKey, proxyTarget) {
     return [
         activeBaseUrl,
@@ -204,8 +214,8 @@ async function sendProxyRelayChatStreamBatchGroup(items) {
         const response = await fetch(first.activeBaseUrl, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${first.activeKey}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...getStoryForgeRelayAuthHeaders(first.activeKey),
             },
             body: JSON.stringify(requestBody),
             signal: groupController.signal,

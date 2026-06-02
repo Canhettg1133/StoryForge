@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 async function loadClientStack() {
   vi.resetModules();
+  vi.doMock('../../services/cloud/cloudAuthService.js', () => ({
+    getSession: async () => ({ access_token: 'story-token' }),
+    subscribe: () => () => {},
+  }));
   const [clientModule, routerModule, keyManagerModule, proxyConfigModule] = await Promise.all([
     import('../../services/ai/client.js'),
     import('../../services/ai/router.js'),
@@ -136,7 +140,8 @@ describe('OpenAI-compatible proxy client payloads', () => {
     const [, request] = fetchMock.mock.calls[0];
     const body = JSON.parse(request.body);
     expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
-    expect(request.headers.Authorization).toBe('Bearer sk-test-ag-key');
+    expect(request.headers.Authorization).toBe('Bearer story-token');
+    expect(request.headers['X-StoryForge-Upstream-Key']).toBe('sk-test-ag-key');
     expect(body.action).toBe('chat');
     expect(body.baseUrl).toBe('https://ag.beijixingxing.com');
     expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
@@ -217,6 +222,8 @@ describe('OpenAI-compatible proxy client payloads', () => {
     await sendOnce(aiService, routerModule);
 
     expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer story-token');
+    expect(fetchMock.mock.calls[0][1].headers['X-StoryForge-Upstream-Key']).toBe('sk-test-custom-key');
     expect(fetchMock.mock.calls[1][0]).toBe('https://proxy.example.com/v1/chat/completions');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe('custom-json-model');
   });
