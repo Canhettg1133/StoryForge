@@ -4,6 +4,7 @@ import {
   Sparkles,
   UserCheck,
   BookKey,
+  ShieldAlert,
   Check,
   X,
   CheckCheck,
@@ -26,6 +27,44 @@ function parseCandidateOp(value) {
   } catch {
     return null;
   }
+}
+
+const CANON_OP_LABELS = {
+  CHARACTER_DIED: 'Nhân vật tử vong',
+  CHARACTER_RESCUED: 'Nhân vật được cứu',
+  SECRET_REVEALED: 'Bí mật bị lộ',
+  OBJECT_LOST: 'Vật phẩm bị mất',
+  OBJECT_CONSUMED: 'Vật phẩm bị tiêu hao',
+  OBJECT_STATUS_CHANGED: 'Đổi trạng thái vật phẩm',
+};
+
+function getCanonOpLabel(opType) {
+  return CANON_OP_LABELS[opType] || opType || 'Thay đổi canon';
+}
+
+function getCanonReviewTarget(item, op) {
+  return (
+    op?.object_name
+    || op?.subject_name
+    || op?.target_name
+    || op?.fact_description
+    || item.target_name
+    || ''
+  );
+}
+
+function getCanonReviewSummary(item, op) {
+  return (
+    item.suggested_value
+    || op?.summary
+    || op?.payload?.status_summary
+    || op?.payload?.availability
+    || getCanonOpLabel(op?.op_type)
+  );
+}
+
+function getCanonReviewEvidence(item, op) {
+  return item.reasoning || op?.evidence || '';
 }
 
 export default function SuggestionInbox({ projectId, onAccepted }) {
@@ -153,12 +192,14 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
   const typeIcon = (type) => {
     if (type === 'character_status') return <UserCheck size={14} />;
     if (type === 'entity_resolution') return <UserCheck size={14} />;
+    if (type === 'canon_op_review') return <ShieldAlert size={14} />;
     return <BookKey size={14} />;
   };
 
   const typeLabel = (type) => {
     if (type === 'character_status') return 'Trạng thái';
-    if (type === 'entity_resolution') return 'Resolve entity';
+    if (type === 'entity_resolution') return 'Gộp thực thể';
+    if (type === 'canon_op_review') return 'Canon cần duyệt';
     return 'Sự thật canon';
   };
 
@@ -268,7 +309,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                     <div className="si-card-body">
                       <div className="si-char-name">{item.target_name || resolution?.raw_name || '(Không rõ tên)'}</div>
                       <div className="si-fact-content">
-                        {item.reasoning || 'Entity này mơ hồ, cần chọn gộp vào entity có sẵn hoặc tạo mới.'}
+                        {item.reasoning || 'Thực thể này mơ hồ, cần chọn gộp vào thực thể có sẵn hoặc tạo mới.'}
                       </div>
                       <select
                         className="select"
@@ -283,8 +324,32 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                             {`Gộp vào ${option.name} (${(option.score || 0).toFixed(2)})`}
                           </option>
                         ))}
-                        <option value="__create_new__">Tao entity moi</option>
+                        <option value="__create_new__">Tạo thực thể mới</option>
                       </select>
+                    </div>
+                  );
+                })() : item.type === 'canon_op_review' ? (() => {
+                  const op = parseCandidateOp(item.candidate_op) || {};
+                  const target = getCanonReviewTarget(item, op);
+                  const summary = getCanonReviewSummary(item, op);
+                  const evidence = getCanonReviewEvidence(item, op);
+                  return (
+                    <div className="si-card-body si-canon-review">
+                      <div className="si-review-topline">
+                        <span className="si-canon-op-chip">{getCanonOpLabel(op.op_type)}</span>
+                        {op.op_type && <span className="si-canon-op-code">{op.op_type}</span>}
+                      </div>
+                      <div className="si-review-target">
+                        <span className="si-label">Đối tượng</span>
+                        <span>{target || '(chưa rõ)'}</span>
+                      </div>
+                      <div className="si-review-summary">{summary}</div>
+                      {evidence && (
+                        <div className="si-evidence">
+                          <span className="si-label">Bằng chứng</span>
+                          <span>{evidence}</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })() : (
@@ -293,7 +358,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                   </div>
                 )}
 
-                {item.reasoning && (
+                {item.reasoning && item.type !== 'canon_op_review' && (
                   <div className="si-reasoning">
                     <em>{item.reasoning}</em>
                   </div>
@@ -356,7 +421,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                     {item.type === 'character_status'
                       ? `${item.target_name}: ${item.suggested_value}`
                       : item.type === 'entity_resolution'
-                        ? `${item.target_name || 'Entity'}: ${item.suggested_value || item.reasoning}`
+                        ? `${item.target_name || 'Thực thể'}: ${item.suggested_value || item.reasoning}`
                       : item.suggested_value}
                   </span>
                 </div>

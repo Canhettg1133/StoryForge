@@ -169,6 +169,97 @@ describe('phase10 canon engine', () => {
     expect(ops[0].thread_title).toBe('Bi mat hoang toc');
   });
 
+  it('keeps risky terminal character ops at mapping time for later review', () => {
+    const refs = {
+      chapterId: 2,
+      scenes: [{ id: 11, title: 'Canh 1' }],
+      characters: [{ id: 5, name: 'Lan' }],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+    };
+
+    const ops = engine.mapAiOpsToCandidateOps([
+      {
+        op_type: CANON_OP_TYPES.CHARACTER_DIED,
+        scene_index: 1,
+        subject_name: 'Lan',
+        summary: 'Lan gia chet de qua mat ke thu.',
+        evidence: 'Lan gia chet trong man kich.',
+        confidence: 0.9,
+      },
+      {
+        op_type: CANON_OP_TYPES.CHARACTER_DIED,
+        scene_index: 1,
+        subject_name: 'Lan',
+        summary: 'Ke thu doa giet Lan.',
+        evidence: 'Ke thu noi: "Ta se giet Lan."',
+        confidence: 0.9,
+      },
+      {
+        op_type: CANON_OP_TYPES.CHARACTER_DIED,
+        scene_index: 1,
+        subject_name: 'Lan',
+        summary: 'Nhan chung noi rang Lan da chet.',
+        evidence: 'Nhan chung noi rang Lan da chet trong dem qua.',
+        confidence: 0.9,
+      },
+      {
+        op_type: CANON_OP_TYPES.CHARACTER_DIED,
+        scene_index: 1,
+        subject_name: 'Lan',
+        summary: 'Lan bien mat khoi can phong.',
+        evidence: 'Lan bien mat khoi can phong.',
+        confidence: 0.9,
+      },
+    ], refs);
+
+    expect(ops).toHaveLength(4);
+    expect(ops.every((op) => op.op_type === CANON_OP_TYPES.CHARACTER_DIED)).toBe(true);
+    expect(ops.every((op) => op.subject_id === 5)).toBe(true);
+  });
+
+  it('keeps risky terminal item ops at mapping time for later review', () => {
+    const refs = {
+      chapterId: 2,
+      scenes: [{ id: 11, title: 'Canh 1' }],
+      characters: [{ id: 5, name: 'Lan' }],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [{ id: 8, name: 'Ngoc An Hon' }],
+    };
+
+    const ops = engine.mapAiOpsToCandidateOps([
+      {
+        op_type: CANON_OP_TYPES.OBJECT_CONSUMED,
+        scene_index: 1,
+        subject_name: 'Lan',
+        object_name: 'Ngoc An Hon',
+        summary: 'Lan noi vien ngoc da dung het.',
+        evidence: 'Lan noi: "Ngoc An Hon da dung het roi."',
+        confidence: 0.9,
+      },
+      {
+        op_type: CANON_OP_TYPES.OBJECT_LOST,
+        scene_index: 1,
+        subject_name: 'Lan',
+        object_name: 'Ngoc An Hon',
+        summary: 'Anh sang cua Ngoc An Hon bien mat.',
+        evidence: 'Anh sang cua Ngoc An Hon bien mat trong khoanh khac.',
+        confidence: 0.9,
+      },
+    ], refs);
+
+    expect(ops).toHaveLength(2);
+    expect(ops.map((op) => op.op_type)).toEqual([
+      CANON_OP_TYPES.OBJECT_CONSUMED,
+      CANON_OP_TYPES.OBJECT_LOST,
+    ]);
+    expect(ops.every((op) => op.object_id === 8)).toBe(true);
+  });
+
   it('marks secret reveal on an already revealed fact as contradiction', () => {
     const reports = engine.validateCandidateOps({
       projectId: 1,

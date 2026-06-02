@@ -8,7 +8,7 @@ function cleanText(value) {
   return String(value || '').trim();
 }
 
-function buildSuggestionCandidateOp(suggestion) {
+export function buildSuggestionCandidateOp(suggestion) {
   if (!suggestion) return null;
 
   if (suggestion.candidate_op) {

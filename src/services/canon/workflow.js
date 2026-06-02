@@ -19,7 +19,7 @@ import {
   replaceValidatorReports,
   updateChapterCommitSummary,
 } from './core';
-import { dedupeCandidateOps, mapAiOpsToCandidateOps } from './opMapping';
+import { buildSemanticOpFingerprint, dedupeCandidateOps, mapAiOpsToCandidateOps } from './opMapping';
 import { invalidateFromChapter, rebuildCanonFromChapter } from './projection';
 import {
   filterCommitReadyOps,
@@ -40,6 +40,149 @@ function normalizeAiOpsResponse(parsed) {
   if (Array.isArray(parsed)) return parsed;
   if (parsed && Array.isArray(parsed.ops)) return parsed.ops;
   return [];
+}
+
+const CANON_REVIEW_SUGGESTION_TYPE = 'canon_op_review';
+
+const CANON_REVIEW_REQUIRED_OP_TYPES = new Set([
+  CANON_OP_TYPES.CHARACTER_DIED,
+  CANON_OP_TYPES.CHARACTER_RESCUED,
+  CANON_OP_TYPES.SECRET_REVEALED,
+  CANON_OP_TYPES.OBJECT_LOST,
+  CANON_OP_TYPES.OBJECT_CONSUMED,
+]);
+
+const OBJECT_REVIEW_AVAILABILITY = new Set([
+  'lost',
+  'consumed',
+  'destroyed',
+  'unavailable',
+]);
+
+const OBJECT_REVIEW_OP_TYPES = new Set([
+  CANON_OP_TYPES.OBJECT_ACQUIRED,
+  CANON_OP_TYPES.OBJECT_STATUS_CHANGED,
+  CANON_OP_TYPES.OBJECT_TRANSFERRED,
+  CANON_OP_TYPES.OBJECT_CONSUMED,
+  CANON_OP_TYPES.OBJECT_LOST,
+  CANON_OP_TYPES.OBJECT_FOUND,
+  CANON_OP_TYPES.OBJECT_RESTORED,
+  CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
+  CANON_OP_TYPES.OBJECT_SPENT,
+  CANON_OP_TYPES.OBJECT_RETURNED,
+]);
+
+function getOpPayload(op) {
+  return op?.payload && typeof op.payload === 'object' ? op.payload : {};
+}
+
+function shouldDeferForCanonReview(op) {
+  if (!op?.op_type) return false;
+  if (CANON_REVIEW_REQUIRED_OP_TYPES.has(op.op_type)) return true;
+  if (op.op_type !== CANON_OP_TYPES.OBJECT_STATUS_CHANGED) return false;
+  return OBJECT_REVIEW_AVAILABILITY.has(normalizeKey(getOpPayload(op).availability));
+}
+
+function splitCanonReviewOps(candidateOps = []) {
+  const autoCommitOps = [];
+  const deferredOps = [];
+  (candidateOps || []).forEach((op) => {
+    if (shouldDeferForCanonReview(op)) {
+      deferredOps.push(op);
+    } else {
+      autoCommitOps.push(op);
+    }
+  });
+  return { autoCommitOps, deferredOps };
+}
+
+function getCanonReviewTarget(op) {
+  if (OBJECT_REVIEW_OP_TYPES.has(op?.op_type)) {
+    return {
+      id: op.object_id || null,
+      name: cleanText(op.object_name || ''),
+    };
+  }
+  if (op?.op_type === CANON_OP_TYPES.SECRET_REVEALED) {
+    return {
+      id: op.fact_id || null,
+      name: cleanText(op.fact_description || ''),
+    };
+  }
+  return {
+    id: op?.subject_id || op?.target_id || null,
+    name: cleanText(op?.subject_name || op?.target_name || ''),
+  };
+}
+
+function summarizeCanonReviewOp(op) {
+  const payload = getOpPayload(op);
+  return cleanText(
+    op?.summary
+    || payload.status_summary
+    || payload.description
+    || payload.availability
+    || op?.op_type
+  );
+}
+
+function parseSuggestionCandidateOp(value) {
+  if (!value) return null;
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function loadPendingCanonReviewFingerprints(projectId, chapterId) {
+  const existing = await db.suggestions
+    .where('project_id').equals(projectId)
+    .filter((suggestion) => (
+      suggestion.type === CANON_REVIEW_SUGGESTION_TYPE
+      && suggestion.status === 'pending'
+      && suggestion.source_chapter_id === chapterId
+    ))
+    .toArray();
+
+  return new Set(
+    existing
+      .map((suggestion) => parseSuggestionCandidateOp(suggestion.candidate_op))
+      .filter(Boolean)
+      .map((op) => buildSemanticOpFingerprint(op))
+  );
+}
+
+async function buildCanonReviewSuggestionRecords(projectId, chapterId, deferredOps = []) {
+  if (!deferredOps.length) return [];
+  const existingFingerprints = await loadPendingCanonReviewFingerprints(projectId, chapterId);
+  const records = [];
+  const now = Date.now();
+
+  deferredOps.forEach((op) => {
+    const fingerprint = buildSemanticOpFingerprint(op);
+    if (existingFingerprints.has(fingerprint)) return;
+    existingFingerprints.add(fingerprint);
+    const target = getCanonReviewTarget(op);
+    records.push({
+      project_id: projectId,
+      type: CANON_REVIEW_SUGGESTION_TYPE,
+      status: 'pending',
+      source_chapter_id: op.chapter_id || chapterId,
+      source_scene_id: op.scene_id || null,
+      target_id: target.id,
+      target_name: target.name,
+      current_value: '',
+      suggested_value: summarizeCanonReviewOp(op),
+      fact_type: null,
+      reasoning: cleanText(op.evidence || op.summary || ''),
+      candidate_op: JSON.stringify(op),
+      created_at: now,
+    });
+  });
+
+  return records;
 }
 
 function sendAiTask(taskType, messages, options = {}) {
@@ -492,6 +635,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
   const preTruth = await loadPreChapterTruth(revision.project_id, revision.chapter_id);
   const project = await db.projects.get(revision.project_id);
   let candidateOps = loadRevisionOps(revision);
+  let deferredOps = [];
   const extractionFallbackReports = [];
   const commitReadinessReports = [];
   const shouldFailClosed = mode === 'canonicalize';
@@ -532,6 +676,11 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
     });
     candidateOps = filtered.ops;
     commitReadinessReports.push(...filtered.reports);
+    if (options.deferRiskyCanonOps) {
+      const split = splitCanonReviewOps(candidateOps);
+      candidateOps = split.autoCommitOps;
+      deferredOps = split.deferredOps;
+    }
   }
 
   const schemaReports = validateCandidateOps({
@@ -599,6 +748,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
   return {
     revision: await db.chapter_revisions.get(revision.id),
     candidateOps,
+    deferredOps,
     reports,
     hasErrors,
   };
@@ -686,6 +836,7 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
 
   const validation = await validateRevision(revision.id, 'canonicalize', {
     routeOptions: options.routeOptions || null,
+    deferRiskyCanonOps: true,
   });
   if (validation.hasErrors) {
     await updateChapterCommitSummary(projectId, chapterId, CHAPTER_COMMIT_STATUS.BLOCKED, validation.reports, revision.id);
@@ -698,6 +849,8 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
 
   const preTruth = await loadPreChapterTruth(projectId, chapterId);
   const candidateOps = resolveFactRegistrations(validation.candidateOps, preTruth.factStates);
+  const deferredOps = validation.deferredOps || [];
+  const canonReviewSuggestions = await buildCanonReviewSuggestionRecords(projectId, chapterId, deferredOps);
   const storyEvents = buildStoryEventsFromOps(projectId, revision.id, candidateOps);
   const memoryEvidence = buildEvidenceFromOps(projectId, revision.id, candidateOps);
 
@@ -721,6 +874,7 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
     db.chapter_commits,
     db.story_events,
     db.memory_evidence,
+    db.suggestions,
     async () => {
       await db.projects.update(projectId, {
         canon_rebuild_required: true,
@@ -738,6 +892,9 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
       }
       if (memoryEvidence.length > 0) {
         await db.memory_evidence.bulkAdd(memoryEvidence);
+      }
+      if (canonReviewSuggestions.length > 0) {
+        await db.suggestions.bulkAdd(canonReviewSuggestions);
       }
 
       await db.chapter_commits.update(commit.id, {
@@ -761,6 +918,8 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
     revisionId: revision.id,
     reports: validation.reports,
     invalidatedChapterIds,
+    deferredCount: deferredOps.length,
+    deferredOps,
   };
 }
 

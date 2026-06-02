@@ -1097,15 +1097,19 @@ const useProjectStore = create((set, get) => ({
       });
       await yieldToUi();
 
+      const deferredCanonCount = Number(canonResult?.deferredCount || 0);
+      const completionSuccessMessage = deferredCanonCount > 0
+        ? `Đã hoàn thành chương. Có ${deferredCanonCount} thay đổi canon lớn đang chờ duyệt.`
+        : canonReused
+          ? 'Đã hoàn thành chương. Phân tích sự thật đã có sẵn và vẫn khớp nội dung.'
+          : 'Đã hoàn thành chương.';
       const result = {
         ok: canonSucceeded,
         kind: canonProcessed
           ? (canonSucceeded ? 'success' : 'blocked')
           : 'runtime',
         message: canonSucceeded
-          ? (canonReused
-            ? 'Đã hoàn thành chương. Phân tích sự thật đã có sẵn và vẫn khớp nội dung.'
-            : 'Đã hoàn thành chương.')
+          ? completionSuccessMessage
           : canonProcessed
             ? (canonReused
               ? 'Phân tích sự thật hiện tại vẫn đang có lỗi chặn, chương chưa được đánh dấu hoàn thành.'

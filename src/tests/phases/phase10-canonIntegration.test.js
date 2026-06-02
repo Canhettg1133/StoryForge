@@ -210,12 +210,13 @@ function createMockDb(seed = {}) {
   return db;
 }
 
-async function loadModules(seed) {
+async function loadModules(seed, options = {}) {
   vi.resetModules();
   const db = createMockDb(seed);
+  const sendMock = vi.fn(options.sendImpl || (() => {}));
   vi.doMock('../../services/db/database', () => ({ default: db }));
   vi.doMock('../../services/ai/client', () => ({
-    default: { send: vi.fn(), abort: vi.fn(), setRouter: vi.fn() },
+    default: { send: sendMock, abort: vi.fn(), setRouter: vi.fn() },
   }));
   vi.doMock('../../services/ai/promptBuilder', () => ({
     buildPrompt: vi.fn(() => []),
@@ -227,12 +228,230 @@ async function loadModules(seed) {
   }));
   const engine = await import('../../services/canon/engine');
   const exportImport = await import('../../services/db/exportImport');
-  return { db, engine, exportImport };
+  return { db, engine, exportImport, sendMock };
 }
 
 describe('phase10 canon integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('defers risky character death during chapter canonicalization without blocking safe ops', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Canon review', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{
+        id: 21,
+        project_id: 1,
+        chapter_id: 11,
+        order_index: 0,
+        title: 'Canh 1',
+        draft_text: 'Lan hy sinh o cong thanh. Minh the bao ve thanh.',
+      }],
+      characters: [
+        { id: 10, project_id: 1, name: 'Lan', current_status: 'Con song' },
+        { id: 12, project_id: 1, name: 'Minh', current_status: 'Con song' },
+      ],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      story_events: [],
+      validator_reports: [],
+      memory_evidence: [],
+      chapter_snapshots: [],
+      entity_state_current: [],
+      plot_thread_state: [],
+      item_state_current: [],
+      relationship_state_current: [],
+      suggestions: [],
+    }, {
+      sendImpl: ({ onComplete }) => onComplete(JSON.stringify({
+        ops: [
+          {
+            op_type: 'CHARACTER_DIED',
+            scene_index: 1,
+            subject_name: 'Lan',
+            summary: 'Lan hy sinh ở cổng thành.',
+            evidence: 'Lan hy sinh ở cổng thành.',
+            confidence: 0.92,
+          },
+          {
+            op_type: 'GOAL_CHANGED',
+            scene_index: 1,
+            subject_name: 'Minh',
+            summary: 'Minh thề bảo vệ thành.',
+            evidence: 'Minh thề bảo vệ thành.',
+            confidence: 0.84,
+            payload: { new_goal: 'Bảo vệ thành' },
+          },
+        ],
+      })),
+    });
+
+    const result = await engine.canonicalizeChapter(1, 11);
+
+    expect(result.ok).toBe(true);
+    expect(result.deferredCount).toBe(1);
+    expect(result.deferredOps[0].op_type).toBe('CHARACTER_DIED');
+
+    const events = await db.story_events.toArray();
+    expect(events.some((event) => event.op_type === 'CHARACTER_DIED')).toBe(false);
+    expect(events.some((event) => event.op_type === 'GOAL_CHANGED')).toBe(true);
+
+    const lanState = (await db.entity_state_current.toArray()).find((state) => state.entity_id === 10);
+    expect(lanState.alive_status).toBe('alive');
+
+    const suggestions = await db.suggestions.toArray();
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]).toMatchObject({
+      type: 'canon_op_review',
+      status: 'pending',
+      source_chapter_id: 11,
+      source_scene_id: 21,
+      target_id: 10,
+      target_name: 'Lan',
+      suggested_value: 'Lan hy sinh ở cổng thành.',
+      reasoning: 'Lan hy sinh ở cổng thành.',
+    });
+    expect(JSON.parse(suggestions[0].candidate_op).op_type).toBe('CHARACTER_DIED');
+  });
+
+  it('defers consumed and risky object status ops without mutating item state', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Object review', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{
+        id: 21,
+        project_id: 1,
+        chapter_id: 11,
+        order_index: 0,
+        title: 'Canh 1',
+        draft_text: 'Lan kich hoat Ngoc An Hon va danh roi Kiem Vo Anh.',
+      }],
+      characters: [{ id: 10, project_id: 1, name: 'Lan' }],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [
+        { id: 30, project_id: 1, name: 'Ngoc An Hon', description: 'Bao vat' },
+        { id: 31, project_id: 1, name: 'Kiem Vo Anh', description: 'Kiem' },
+      ],
+      relationships: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      story_events: [],
+      validator_reports: [],
+      memory_evidence: [],
+      chapter_snapshots: [],
+      entity_state_current: [],
+      plot_thread_state: [],
+      item_state_current: [],
+      relationship_state_current: [],
+      suggestions: [],
+    }, {
+      sendImpl: ({ onComplete }) => onComplete(JSON.stringify({
+        ops: [
+          {
+            op_type: 'OBJECT_CONSUMED',
+            scene_index: 1,
+            subject_name: 'Lan',
+            object_name: 'Ngoc An Hon',
+            summary: 'Ngọc An Hồn đã dùng hết.',
+            evidence: 'Ngọc An Hồn đã dùng hết.',
+            confidence: 0.9,
+            payload: { availability: 'consumed', status_summary: 'Đã dùng hết' },
+          },
+          {
+            op_type: 'OBJECT_STATUS_CHANGED',
+            scene_index: 1,
+            subject_name: 'Lan',
+            object_name: 'Kiem Vo Anh',
+            summary: 'Kiếm Vô Ảnh bị thất lạc.',
+            evidence: 'Kiếm Vô Ảnh bị thất lạc.',
+            confidence: 0.88,
+            payload: { availability: 'lost', status_summary: 'Bị thất lạc' },
+          },
+        ],
+      })),
+    });
+
+    const result = await engine.canonicalizeChapter(1, 11);
+
+    expect(result.ok).toBe(true);
+    expect(result.deferredCount).toBe(2);
+    expect(await db.story_events.toArray()).toEqual([]);
+
+    const itemStates = await db.item_state_current.toArray();
+    expect(itemStates.find((state) => state.object_id === 30).availability).toBe('available');
+    expect(itemStates.find((state) => state.object_id === 31).availability).toBe('available');
+
+    const suggestions = await db.suggestions.toArray();
+    expect(suggestions.map((item) => JSON.parse(item.candidate_op).op_type)).toEqual([
+      'OBJECT_CONSUMED',
+      'OBJECT_STATUS_CHANGED',
+    ]);
+  });
+
+  it('does not create duplicate pending canon review suggestions for the same risky op', async () => {
+    const duplicateOp = {
+      op_type: 'CHARACTER_DIED',
+      chapter_id: 11,
+      scene_id: 21,
+      subject_id: 10,
+      subject_name: 'Lan',
+      summary: 'Lan hy sinh ở cổng thành.',
+      evidence: 'Lan hy sinh ở cổng thành.',
+      confidence: 0.92,
+      payload: {},
+      mapping_errors: [],
+    };
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Canon review dedupe', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, title: 'Canh 1', draft_text: 'Lan hy sinh o cong thanh.' }],
+      characters: [{ id: 10, project_id: 1, name: 'Lan', current_status: 'Con song' }],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      story_events: [],
+      validator_reports: [],
+      memory_evidence: [],
+      chapter_snapshots: [],
+      entity_state_current: [],
+      plot_thread_state: [],
+      item_state_current: [],
+      relationship_state_current: [],
+      suggestions: [{
+        id: 501,
+        project_id: 1,
+        type: 'canon_op_review',
+        status: 'pending',
+        source_chapter_id: 11,
+        source_scene_id: 21,
+        target_id: 10,
+        target_name: 'Lan',
+        suggested_value: 'Lan hy sinh ở cổng thành.',
+        reasoning: 'Lan hy sinh ở cổng thành.',
+        candidate_op: JSON.stringify(duplicateOp),
+        created_at: 1,
+      }],
+    }, {
+      sendImpl: ({ onComplete }) => onComplete(JSON.stringify({ ops: [duplicateOp] })),
+    });
+
+    const result = await engine.canonicalizeChapter(1, 11);
+
+    expect(result.ok).toBe(true);
+    expect(result.deferredCount).toBe(1);
+    expect(await db.suggestions.toArray()).toHaveLength(1);
   });
 
   it('invalidates downstream canon and rebuilds projection from surviving canonical chain', async () => {
