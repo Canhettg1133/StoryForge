@@ -435,6 +435,43 @@ describe('phase10 entity materialization flows', () => {
     expect((await db.chapters.get(11)).status).toBe('done');
   });
 
+  it('runs chapter canonization during completion when no fresh canon cache exists', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: {
+        characters: [],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.canonicalizeChapter).toHaveBeenCalledTimes(1);
+    expect(mocks.canonicalizeChapter).toHaveBeenCalledWith(
+      1,
+      11,
+      expect.objectContaining({
+        routeOptions: expect.any(Object),
+      }),
+    );
+    expect(result.canonResult).toMatchObject({ ok: true, revisionId: 91 });
+    expect((await db.chapters.get(11)).status).toBe('done');
+  });
+
   it('abandons chapter completion commit when chapter text changes during canonicalization', async () => {
     let releaseCanon;
     const canonStarted = new Promise((resolve) => {

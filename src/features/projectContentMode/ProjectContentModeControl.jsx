@@ -56,6 +56,7 @@ export default function ProjectContentModeControl({
     if (isAdultOption(value) && !canUseAdultMode) {
       const decision = getDecision(ACCESS_FEATURES.ADULT_MODE);
       setAdultPrompt({
+        requestedMode: value,
         message: getDeniedMessage(ACCESS_FEATURES.ADULT_MODE),
         canConfirm: ADULT_CONSENT_REASONS.has(decision?.reason || ''),
       });
@@ -67,8 +68,12 @@ export default function ProjectContentModeControl({
 
   const handleConfirmAdultTerms = async () => {
     try {
+      const requestedMode = adultPrompt?.requestedMode;
       await confirmAdultTerms();
       setAdultPrompt(null);
+      if (requestedMode) {
+        onChange?.(requestedMode);
+      }
     } catch {
       // AccessContext records the error for the account-level banner.
     }
@@ -93,7 +98,7 @@ export default function ProjectContentModeControl({
           </button>
           {adultPrompt.canConfirm ? (
             <button type="button" className="btn btn-primary" onClick={handleConfirmAdultTerms}>
-              Tôi đủ tuổi và đồng ý
+              Đồng ý và tiếp tục
             </button>
           ) : null}
         </div>

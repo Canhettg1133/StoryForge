@@ -3,13 +3,12 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const accessMock = vi.hoisted(() => ({
+  current: null,
+}));
+
 vi.mock('../../hooks/useUserAccess.js', () => ({
-  useUserAccess: () => ({
-    hasFeature: () => true,
-    getDecision: () => ({ allowed: true }),
-    getDeniedMessage: () => '',
-    confirmAdultTerms: vi.fn(),
-  }),
+  useUserAccess: () => accessMock.current,
 }));
 
 import {
@@ -77,6 +76,12 @@ describe('phase10 project content mode control', () => {
   let root;
 
   beforeEach(() => {
+    accessMock.current = {
+      hasFeature: () => true,
+      getDecision: () => ({ allowed: true }),
+      getDeniedMessage: () => '',
+      confirmAdultTerms: vi.fn(),
+    };
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -153,6 +158,46 @@ describe('phase10 project content mode control', () => {
 
     expect(onChange).toHaveBeenCalledWith('eni');
     expect(container.querySelector('.project-content-mode__writer-popover')).toBeNull();
+  });
+
+  it('applies the requested 18+ mode immediately after adult terms are accepted', async () => {
+    const onChange = vi.fn();
+    const confirmAdultTerms = vi.fn(async () => ({ ok: true }));
+    accessMock.current = {
+      hasFeature: () => false,
+      getDecision: () => ({ allowed: false, reason: 'ADULT_TERMS_REQUIRED' }),
+      getDeniedMessage: () => 'Bạn cần đồng ý điều khoản 18+ trước khi dùng tính năng này.',
+      confirmAdultTerms,
+    };
+
+    await renderControl({
+      surface: 'prompt',
+      mode: 'safe',
+      onChange,
+    });
+
+    const adultButton = Array.from(container.querySelectorAll('.project-content-mode__option'))
+      .find((node) => node.textContent?.includes('18+'));
+    expect(adultButton).toBeDefined();
+
+    await act(async () => {
+      adultButton.click();
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Bạn cần đồng ý điều khoản 18+ trước khi dùng tính năng này.');
+
+    const confirmButton = Array.from(container.querySelectorAll('button'))
+      .find((node) => node.textContent?.includes('Đồng ý và tiếp tục'));
+    expect(confirmButton).toBeDefined();
+
+    await act(async () => {
+      confirmButton.click();
+    });
+
+    expect(confirmAdultTerms).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('nsfw');
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it('renders StoryBible as a status surface with a prompt shortcut instead of editable checkboxes', async () => {
