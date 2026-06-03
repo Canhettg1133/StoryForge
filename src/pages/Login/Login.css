@@ -1,8 +1,14 @@
 .login-page {
-  min-height: 100dvh;
+  min-height: 100%;
+  height: 100%;
   display: grid;
-  place-items: center;
+  align-items: center;
+  align-items: safe center;
+  justify-items: center;
   padding: clamp(16px, 3.5vw, 40px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
 }
@@ -13,6 +19,7 @@
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.78fr);
   gap: 16px;
   align-items: stretch;
+  margin: auto 0;
 }
 
 .login-page__intro,
@@ -243,7 +250,8 @@
 
 @media (max-width: 860px) {
   .login-page {
-    place-items: center;
+    align-items: start;
+    justify-items: center;
   }
 
   .login-page__shell {
@@ -262,25 +270,83 @@
 
 @media (max-width: 520px) {
   .login-page {
-    padding: 12px;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(14px, env(safe-area-inset-bottom));
   }
 
   .login-page__title {
-    grid-template-columns: 1fr;
-    gap: 14px;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .login-page__mark {
+    width: 42px;
+    height: 42px;
+  }
+
+  .login-page__mark svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .login-page h1 {
+    font-size: 1.48rem;
+    line-height: 1.12;
+  }
+
+  .login-page__title p {
+    margin-top: 9px;
+    font-size: 0.9rem;
+    line-height: 1.45;
   }
 
   .login-page__intro,
   .login-page__panel {
-    padding: 18px;
+    padding: 16px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  }
+
+  .login-page__intro {
+    gap: 16px;
   }
 
   .login-page__quick-flow {
     grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .login-page__quick-flow > div {
+    align-items: center;
+    padding: 10px;
+  }
+
+  .login-page__quick-flow strong {
+    font-size: 0.88rem;
+  }
+
+  .login-page__quick-flow span {
+    font-size: 0.8rem;
+    line-height: 1.35;
+  }
+
+  .login-page__panel {
+    gap: 12px;
+  }
+
+  .login-page__status h2 {
+    font-size: 1.2rem;
+  }
+
+  .login-page__account > div,
+  .login-page__notice,
+  .login-page__error {
+    padding: 10px;
   }
 
   .login-page__actions .btn {
+    min-height: 42px;
     width: 100%;
     justify-content: center;
+    white-space: normal;
+    line-height: 1.2;
   }
 }
