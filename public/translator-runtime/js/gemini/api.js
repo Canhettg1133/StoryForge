@@ -330,9 +330,27 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
     }
 
     const data = await response.json();
+    const choice = data.choices?.[0] || {};
+    const finishReason = String(choice.finish_reason || '').trim();
+    const normalizedFinishReason = finishReason.toLowerCase();
+    if (
+        normalizedFinishReason === 'length'
+        || normalizedFinishReason === 'max_tokens'
+        || normalizedFinishReason === 'max-tokens'
+        || normalizedFinishReason === 'max_output_tokens'
+        || normalizedFinishReason.includes('max_token')
+    ) {
+        throw createTranslatorError('PROXY_INCOMPLETE_RESPONSE', {
+            provider: activeProviderLabel,
+            model: activeModel,
+            finishReason,
+            rawMessage: `Proxy API stopped with finish_reason=${finishReason}`,
+            retryable: true,
+        });
+    }
 
     // Extract response - OpenAI format
-    const content = data.choices?.[0]?.message?.content?.trim();
+    const content = choice.message?.content?.trim();
     if (!content) {
         console.error('[Proxy ERROR] Empty response:', data);
         throw createTranslatorError('PROXY_EMPTY_RESPONSE', {

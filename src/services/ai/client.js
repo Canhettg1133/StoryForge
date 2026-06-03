@@ -47,6 +47,17 @@ const GOOGLE_SAFETY_CATEGORIES = [
   'HARM_CATEGORY_DANGEROUS_CONTENT',
 ];
 const VIETNAMESE_ACCENT_RE = /[\u00c0-\u1ef9\u0110\u0111]/u;
+const MAX_WRITING_CONTINUATIONS = 3;
+const CONTINUATION_USER_PROMPT = 'Hãy tiếp tục ngay từ điểm đang dở của câu trả lời trước. Không lặp lại đoạn đã viết, không tóm tắt, không mở đầu lại. Viết tiếp liền mạch để hoàn tất đúng yêu cầu gốc/dàn ý gốc.';
+const WRITING_AUTO_CONTINUE_TASKS = new Set([
+  TASK_TYPES.FREE_PROMPT,
+  TASK_TYPES.CONTINUE,
+  TASK_TYPES.SCENE_DRAFT,
+  TASK_TYPES.ARC_CHAPTER_DRAFT,
+  TASK_TYPES.REWRITE,
+  TASK_TYPES.EXPAND,
+  TASK_TYPES.STYLE_WRITE,
+]);
 
 export const OLLAMA_MODEL_PRESETS = {
   qwen25: {
@@ -202,14 +213,99 @@ function getSafetyThreshold({ nsfwMode, safetyMode }) {
   return null;
 }
 
+function normalizeFinishReason(value) {
+  return String(value || '').trim();
+}
+
+function isLengthFinishReason(reason) {
+  const normalized = normalizeFinishReason(reason).toLowerCase();
+  return normalized === 'length'
+    || normalized === 'max_tokens'
+    || normalized === 'max-tokens'
+    || normalized === 'max_output_tokens'
+    || normalized.includes('max_token');
+}
+
+function isOpenAICompleteFinishReason(reason) {
+  const normalized = normalizeFinishReason(reason).toLowerCase();
+  return !normalized || normalized === 'stop';
+}
+
+function isGeminiCompleteFinishReason(reason) {
+  const normalized = normalizeFinishReason(reason).toUpperCase();
+  return !normalized || normalized === 'STOP' || normalized === 'FINISH_REASON_UNSPECIFIED';
+}
+
+function createIncompleteOutputError({
+  partialText = '',
+  finishReason = '',
+  rawMessage = 'INCOMPLETE_OUTPUT',
+  errorContext = {},
+  attempts = null,
+  maxAttempts = null,
+} = {}) {
+  const reason = normalizeFinishReason(finishReason) || 'STREAM_INTERRUPTED';
+  return normalizeAIError({
+    code: AI_ERROR_CODES.INCOMPLETE_OUTPUT,
+    rawMessage,
+    reason,
+    partialText: String(partialText || ''),
+    finishReason: reason,
+    attempts,
+    maxAttempts,
+  }, errorContext);
+}
+
+function isIncompleteOutputError(error) {
+  return error?.code === AI_ERROR_CODES.INCOMPLETE_OUTPUT;
+}
+
+function joinContinuationText(previousText, nextText) {
+  const previous = String(previousText || '');
+  const next = String(nextText || '');
+  if (!previous) return next;
+  if (!next) return previous;
+
+  const maxOverlap = Math.min(1000, previous.length, next.length);
+  for (let size = maxOverlap; size > 0; size -= 1) {
+    if (previous.endsWith(next.slice(0, size))) {
+      return previous + next.slice(size);
+    }
+  }
+  return previous + next;
+}
+
+function buildContinuationMessages(baseMessages, partialText) {
+  return [
+    ...baseMessages,
+    { role: 'assistant', content: String(partialText || '') },
+    { role: 'user', content: CONTINUATION_USER_PROMPT },
+  ];
+}
+
 function extractProxyResponseText(data, errorContext = {}) {
   const choice = data?.choices?.[0] || null;
-  const finishReason = String(choice?.finish_reason || '').toLowerCase();
-  if (finishReason === 'content_filter') {
+  const finishReason = normalizeFinishReason(choice?.finish_reason);
+  const text = String(choice?.message?.content || '').trim();
+
+  if (finishReason.toLowerCase() === 'content_filter') {
     throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
   }
-
-  const text = String(choice?.message?.content || '').trim();
+  if (isLengthFinishReason(finishReason)) {
+    throw createIncompleteOutputError({
+      partialText: text,
+      finishReason,
+      rawMessage: 'INCOMPLETE_OUTPUT',
+      errorContext,
+    });
+  }
+  if (finishReason && !isOpenAICompleteFinishReason(finishReason)) {
+    throw normalizeAIError({
+      code: AI_ERROR_CODES.PROXY_ERROR,
+      rawMessage: `Proxy stopped with finish_reason=${finishReason}`,
+      reason: finishReason,
+    }, errorContext);
+  }
   if (!text) {
     throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
   }
@@ -219,18 +315,31 @@ function extractProxyResponseText(data, errorContext = {}) {
 
 function extractGeminiDirectResponseText(data, errorContext = {}) {
   const candidate = data?.candidates?.[0] || null;
-  const finishReason = String(candidate?.finishReason || '').toUpperCase();
+  const finishReason = normalizeFinishReason(candidate?.finishReason);
   const promptBlockReason = String(data?.promptFeedback?.blockReason || '').toUpperCase();
-
-  if (finishReason === 'SAFETY' || promptBlockReason === 'SAFETY') {
-    throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
-  }
-
   const text = (candidate?.content?.parts || [])
     .map((part) => String(part?.text || ''))
     .join('')
     .trim();
 
+  if (finishReason.toUpperCase() === 'SAFETY' || promptBlockReason === 'SAFETY') {
+    throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
+  }
+  if (isLengthFinishReason(finishReason)) {
+    throw createIncompleteOutputError({
+      partialText: text,
+      finishReason,
+      rawMessage: 'INCOMPLETE_OUTPUT',
+      errorContext,
+    });
+  }
+  if (finishReason && !isGeminiCompleteFinishReason(finishReason)) {
+    throw normalizeAIError({
+      code: AI_ERROR_CODES.PROXY_ERROR,
+      rawMessage: `Gemini stopped with finishReason=${finishReason}`,
+      reason: finishReason,
+    }, errorContext);
+  }
   if (!text) {
     throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
   }
@@ -792,6 +901,8 @@ async function streamSSE(response, { onToken, onComplete, onError, errorContext 
   const decoder = new TextDecoder();
   let fullText = '', buffer = '';
   let hasToken = false;
+  let sawDone = false;
+  let finishReason = '';
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -802,10 +913,14 @@ async function streamSSE(response, { onToken, onComplete, onError, errorContext 
       for (const line of lines) {
         const d = extractSSEDataValue(line);
         if (!d) continue;
-        if (d === '[DONE]') continue;
+        if (d === '[DONE]') {
+          sawDone = true;
+          continue;
+        }
 
         try {
           const p = JSON.parse(d);
+          const choice = p.choices?.[0] || null;
           const payloadError = extractPayloadError(p);
           if (payloadError) {
             const streamError = normalizeAIError({
@@ -818,8 +933,15 @@ async function streamSSE(response, { onToken, onComplete, onError, errorContext 
             throw streamError;
           }
 
-          const delta = p.choices?.[0]?.delta?.content || '';
-          const messageContent = p.choices?.[0]?.message?.content || '';
+          if (choice?.finish_reason) {
+            finishReason = normalizeFinishReason(choice.finish_reason);
+          }
+          if (finishReason.toLowerCase() === 'content_filter') {
+            throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
+          }
+
+          const delta = choice?.delta?.content || '';
+          const messageContent = choice?.message?.content || '';
           const textChunk = delta || messageContent;
           if (textChunk) {
             hasToken = true;
@@ -832,15 +954,53 @@ async function streamSSE(response, { onToken, onComplete, onError, errorContext 
       }
     }
     if (!hasToken) throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
-    onComplete?.(fullText);
-  } catch (err) {
-    if (err.name === 'AbortError') { onComplete?.(fullText); return; }
-    if (err.code === AI_ERROR_CODES.EMPTY_STREAM || err.isPayloadError) {
-      onError?.(normalizeAIError(err, errorContext));
+    if (isLengthFinishReason(finishReason)) {
+      await onError?.(createIncompleteOutputError({
+        partialText: fullText,
+        finishReason,
+        rawMessage: 'INCOMPLETE_OUTPUT',
+        errorContext,
+      }));
       return;
     }
-    // Preserve partial text on error
-    if (fullText) { onComplete?.(fullText); } else { onError?.(normalizeAIError(err, errorContext)); }
+    if (!sawDone) {
+      await onError?.(createIncompleteOutputError({
+        partialText: fullText,
+        finishReason: finishReason || 'STREAM_INTERRUPTED',
+        rawMessage: 'INCOMPLETE_OUTPUT',
+        errorContext,
+      }));
+      return;
+    }
+    if (!isOpenAICompleteFinishReason(finishReason)) {
+      await onError?.(normalizeAIError({
+        code: AI_ERROR_CODES.PROXY_ERROR,
+        rawMessage: `Proxy stopped with finish_reason=${finishReason}`,
+        reason: finishReason,
+      }, errorContext));
+      return;
+    }
+    onComplete?.(fullText);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    if (err.code === AI_ERROR_CODES.EMPTY_STREAM || err.isPayloadError) {
+      await onError?.(normalizeAIError(err, errorContext));
+      return;
+    }
+    if (isIncompleteOutputError(err)) {
+      await onError?.(err);
+      return;
+    }
+    if (fullText) {
+      await onError?.(createIncompleteOutputError({
+        partialText: fullText,
+        finishReason: finishReason || 'STREAM_INTERRUPTED',
+        rawMessage: 'INCOMPLETE_OUTPUT',
+        errorContext,
+      }));
+      return;
+    }
+    await onError?.(normalizeAIError(err, errorContext));
   }
 }
 
@@ -849,6 +1009,7 @@ async function streamGeminiSSE(response, { onToken, onComplete, onError, errorCo
   const decoder = new TextDecoder();
   let fullText = '', buffer = '';
   let hasToken = false;
+  let finishReason = '';
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -861,6 +1022,7 @@ async function streamGeminiSSE(response, { onToken, onComplete, onError, errorCo
         if (!t || !t.startsWith('data: ')) continue;
         try {
           const p = JSON.parse(t.slice(6));
+          const candidate = p.candidates?.[0] || null;
           const payloadError = extractPayloadError(p);
           if (payloadError) {
             const streamError = normalizeAIError({
@@ -872,10 +1034,16 @@ async function streamGeminiSSE(response, { onToken, onComplete, onError, errorCo
             streamError.isPayloadError = true;
             throw streamError;
           }
-          if (p.candidates?.[0]?.finishReason === 'SAFETY') {
+
+          if (candidate?.finishReason) {
+            finishReason = normalizeFinishReason(candidate.finishReason);
+          }
+          if (finishReason.toUpperCase() === 'SAFETY') {
             throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
           }
-          const text = p.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          const text = (candidate?.content?.parts || [])
+            .map((part) => String(part?.text || ''))
+            .join('');
           if (text) {
             hasToken = true;
             fullText += text;
@@ -889,15 +1057,44 @@ async function streamGeminiSSE(response, { onToken, onComplete, onError, errorCo
     if (!hasToken) {
       throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
     }
-    onComplete?.(fullText);
-  } catch (err) {
-    if (err.name === 'AbortError') { onComplete?.(fullText); return; }
-    if (err.code === AI_ERROR_CODES.EMPTY_STREAM || err.isPayloadError) {
-      onError?.(normalizeAIError(err, errorContext));
+    if (isLengthFinishReason(finishReason)) {
+      await onError?.(createIncompleteOutputError({
+        partialText: fullText,
+        finishReason,
+        rawMessage: 'INCOMPLETE_OUTPUT',
+        errorContext,
+      }));
       return;
     }
-    // Preserve partial text on error
-    if (fullText) { onComplete?.(fullText); } else { onError?.(normalizeAIError(err, errorContext)); }
+    if (!isGeminiCompleteFinishReason(finishReason)) {
+      await onError?.(normalizeAIError({
+        code: AI_ERROR_CODES.PROXY_ERROR,
+        rawMessage: `Gemini stopped with finishReason=${finishReason}`,
+        reason: finishReason,
+      }, errorContext));
+      return;
+    }
+    onComplete?.(fullText);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    if (err.code === AI_ERROR_CODES.EMPTY_STREAM || err.isPayloadError) {
+      await onError?.(normalizeAIError(err, errorContext));
+      return;
+    }
+    if (isIncompleteOutputError(err)) {
+      await onError?.(err);
+      return;
+    }
+    if (fullText) {
+      await onError?.(createIncompleteOutputError({
+        partialText: fullText,
+        finishReason: finishReason || 'STREAM_INTERRUPTED',
+        rawMessage: 'INCOMPLETE_OUTPUT',
+        errorContext,
+      }));
+      return;
+    }
+    await onError?.(normalizeAIError(err, errorContext));
   }
 }
 
@@ -906,6 +1103,8 @@ async function streamNDJSON(response, { onToken, onComplete, onError, errorConte
   const decoder = new TextDecoder();
   let fullText = '', buffer = '';
   let lastThinking = '';
+  let sawDone = false;
+  let finishReason = '';
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -918,7 +1117,11 @@ async function streamNDJSON(response, { onToken, onComplete, onError, errorConte
         if (!t) continue;
         try {
           const p = JSON.parse(t);
-          if (p.done) continue;
+          if (p.done) {
+            sawDone = true;
+            finishReason = normalizeFinishReason(p.done_reason || p.doneReason || p.finish_reason || p.finishReason);
+            continue;
+          }
           const c = p.message?.content || p.response || '';
           const thinking = p.message?.thinking || '';
           if (thinking) lastThinking += thinking;
@@ -933,12 +1136,33 @@ async function streamNDJSON(response, { onToken, onComplete, onError, errorConte
     if (!fullText) {
       throw normalizeAIError({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, errorContext);
     }
+    if (isLengthFinishReason(finishReason) || !sawDone) {
+      const reason = isLengthFinishReason(finishReason) ? finishReason : 'STREAM_INTERRUPTED';
+      await onError?.(createIncompleteOutputError({
+        partialText: fullText,
+        finishReason: reason,
+        rawMessage: 'INCOMPLETE_OUTPUT',
+        errorContext,
+      }));
+      return fullText;
+    }
     onComplete?.(fullText);
     return fullText;
   } catch (err) {
-    if (err.name === 'AbortError') { onComplete?.(fullText); return; }
-    // Preserve partial text on error
-    if (fullText) { onComplete?.(fullText); return fullText; }
+    if (err.name === 'AbortError') return;
+    if (isIncompleteOutputError(err)) {
+      await onError?.(err);
+      return fullText;
+    }
+    if (fullText) {
+      await onError?.(createIncompleteOutputError({
+        partialText: fullText,
+        finishReason: finishReason || 'STREAM_INTERRUPTED',
+        rawMessage: 'INCOMPLETE_OUTPUT',
+        errorContext,
+      }));
+      return fullText;
+    }
     throw normalizeAIError(err, errorContext);
   }
 }
@@ -1012,7 +1236,7 @@ class AIService {
     return refusalPhrases.some(phrase => startOfProse.includes(phrase));
   }
 
-  send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false, chatSafetyOff = false, allowConcurrent = false }) {
+  send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false, chatSafetyOff = false, allowConcurrent = false, autoContinueOnIncomplete, maxContinuationAttempts = MAX_WRITING_CONTINUATIONS }) {
     if (!allowConcurrent) {
       this.abort();
     }
@@ -1021,6 +1245,80 @@ class AIService {
 
     const route = this._router.route(taskType, routeOptions);
     const startTime = Date.now();
+    const shouldAutoContinueIncomplete = autoContinueOnIncomplete ?? WRITING_AUTO_CONTINUE_TASKS.has(taskType);
+    const maxIncompleteContinuations = Math.max(0, Number(maxContinuationAttempts) || 0);
+    let incompleteContinuationStarted = false;
+
+    const runProviderCall = (routeMeta, callMessages, handlers = {}) => getCallFn(routeMeta.provider)({
+      model: routeMeta.model,
+      messages: callMessages,
+      stream,
+      signal: controller.signal,
+      proxyProfileId: routeMeta.proxyProfileId,
+      nsfwMode: nsfwMode || superNsfwMode,
+      safetyMode: chatSafetyOff ? 'off' : undefined,
+      ...handlers,
+    });
+
+    const continueIncompleteOutput = async (routeMeta, partialText, attemptIndex = 1) => {
+      const safePartialText = String(partialText || '');
+      if (!shouldAutoContinueIncomplete || !safePartialText.trim() || attemptIndex > maxIncompleteContinuations) {
+        this.releaseController(controller, allowConcurrent);
+        onError?.(createIncompleteOutputError({
+          partialText: safePartialText,
+          finishReason: 'MAX_CONTINUATIONS_EXHAUSTED',
+          rawMessage: 'INCOMPLETE_OUTPUT',
+          errorContext: routeMeta,
+          attempts: Math.max(0, attemptIndex - 1),
+          maxAttempts: maxIncompleteContinuations,
+        }));
+        return;
+      }
+
+      const continuationMessages = buildContinuationMessages(messages, safePartialText);
+      let handledContinuationError = false;
+      const handleContinuationError = async (continuationErr) => {
+        if (handledContinuationError) return;
+        handledContinuationError = true;
+
+        const normalized = normalizeAIError(continuationErr, routeMeta);
+        if (isIncompleteOutputError(normalized)) {
+          const combinedPartial = joinContinuationText(safePartialText, normalized.partialText || '');
+          if (attemptIndex < maxIncompleteContinuations && combinedPartial.trim()) {
+            await continueIncompleteOutput(routeMeta, combinedPartial, attemptIndex + 1);
+            return;
+          }
+
+          this.releaseController(controller, allowConcurrent);
+          onError?.(createIncompleteOutputError({
+            partialText: combinedPartial || safePartialText,
+            finishReason: normalized.finishReason || normalized.reason || 'MAX_CONTINUATIONS_EXHAUSTED',
+            rawMessage: 'INCOMPLETE_OUTPUT',
+            errorContext: routeMeta,
+            attempts: attemptIndex,
+            maxAttempts: maxIncompleteContinuations,
+          }));
+          return;
+        }
+
+        this.releaseController(controller, allowConcurrent);
+        onError?.(normalized);
+      };
+
+      try {
+        await runProviderCall(routeMeta, continuationMessages, {
+          onToken: (chunk, continuationFullText) => {
+            onToken?.(chunk, joinContinuationText(safePartialText, continuationFullText));
+          },
+          onComplete: (continuationText) => {
+            wrappedOnComplete(joinContinuationText(safePartialText, continuationText), routeMeta);
+          },
+          onError: handleContinuationError,
+        });
+      } catch (continuationErr) {
+        await handleContinuationError(continuationErr);
+      }
+    };
 
     const wrappedOnComplete = async (text, routeMeta = route) => {
       let processedText = text;
@@ -1099,7 +1397,26 @@ class AIService {
     };
 
     const wrappedOnError = async (err) => {
-      if (err.code === AI_ERROR_CODES.SAFETY_BLOCK && (nsfwMode || superNsfwMode)) {
+      let normalizedErr = normalizeAIError(err, route);
+
+      if (isIncompleteOutputError(normalizedErr)) {
+        if (
+          shouldAutoContinueIncomplete
+          && maxIncompleteContinuations > 0
+          && String(normalizedErr.partialText || '').trim()
+        ) {
+          if (incompleteContinuationStarted) return;
+          incompleteContinuationStarted = true;
+          await continueIncompleteOutput(route, normalizedErr.partialText, 1);
+          return;
+        }
+
+        this.releaseController(controller, allowConcurrent);
+        onError?.(normalizedErr);
+        return;
+      }
+
+      if (normalizedErr.code === AI_ERROR_CODES.SAFETY_BLOCK && (nsfwMode || superNsfwMode)) {
         // [STEALTH RETRY / REBUKE FOR SAFETY_BLOCK]
         console.log('[AI] SAFETY_BLOCK detected. Attempting Rebuke escalation...');
 
@@ -1128,11 +1445,11 @@ class AIService {
           });
           return;
         } catch (retryErr) {
-          err = retryErr;
+          normalizedErr = normalizeAIError(retryErr, route);
         }
       }
 
-      if (shouldFallbackForError(err) && this._router) {
+      if (shouldFallbackForError(normalizedErr) && this._router) {
         const fallbacks = this._router.getFallbacks(route);
         for (const fb of fallbacks) {
           try {
@@ -1150,7 +1467,7 @@ class AIService {
         }
       }
       this.releaseController(controller, allowConcurrent);
-      onError?.(normalizeAIError(err, route));
+      onError?.(normalizedErr);
     };
 
     getCallFn(route.provider)({

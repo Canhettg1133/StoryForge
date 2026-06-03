@@ -187,6 +187,48 @@ describe('AI Studio Relay client transport', () => {
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'AI_STUDIO_RELAY_EMPTY_STREAM' }));
   });
 
+  it('rejects raw proxy streams that stop at MAX_TOKENS after returning partial text', async () => {
+    resetMockSockets();
+    const onError = vi.fn();
+    const onComplete = vi.fn();
+
+    const promise = callAIStudioRelayTransport({
+      relayUrl: 'https://relay.example.com',
+      roomCode: 'ABC-123',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      WebSocketImpl: MockWebSocket,
+      onError,
+      onComplete,
+      requestId: 'req-max',
+      timeoutMs: 1000,
+    });
+
+    await waitForAssertion(() => expect(MockWebSocket.instances[0]?.sent.length).toBe(1));
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-max',
+      event_type: 'response_headers',
+      status: 200,
+    });
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-max',
+      event_type: 'chunk',
+      data: 'data: {"candidates":[{"content":{"parts":[{"text":"Xin chao"}]},"finishReason":"MAX_TOKENS"}]}\n\n',
+    });
+    MockWebSocket.instances[0].serverMessage({
+      request_id: 'req-max',
+      event_type: 'stream_close',
+    });
+
+    await expect(promise).rejects.toMatchObject({
+      code: 'AI_STUDIO_RELAY_INCOMPLETE_OUTPUT',
+      partialText: 'Xin chao',
+      finishReason: 'MAX_TOKENS',
+    });
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'AI_STUDIO_RELAY_INCOMPLETE_OUTPUT' }));
+  });
+
   it('streams chunk messages into onToken and resolves on done', async () => {
     resetMockSockets();
     const onToken = vi.fn();

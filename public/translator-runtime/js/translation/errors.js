@@ -15,6 +15,7 @@
     };
 
     const DEFAULT_ERROR_MESSAGES = {
+        PROXY_INCOMPLETE_RESPONSE: ({ finishReason }) => `Proxy dừng trước khi hoàn tất${finishReason ? ` (${finishReason})` : ''}. Hệ thống sẽ thử lại chunk này.`,
         TRANSLATION_CANCELLED: () => 'Đã hủy dịch.',
         MISSING_PROXY_KEY: () => 'Chưa nhập API Key proxy. Hãy thêm key proxy trước khi dịch.',
         MISSING_PROXY_URL: () => 'Chưa cấu hình Proxy Base URL. Hãy nhập endpoint proxy trước khi dịch.',

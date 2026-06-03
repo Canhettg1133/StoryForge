@@ -39,10 +39,41 @@ function createRequestId() {
   return `req-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-function createRelayError(message, code = 'AI_STUDIO_RELAY_ERROR') {
+function createRelayError(message, code = 'AI_STUDIO_RELAY_ERROR', details = {}) {
   const error = new Error(message || code);
   error.code = code;
+  Object.assign(error, details);
   return error;
+}
+
+function normalizeFinishReason(value) {
+  return String(value || '').trim();
+}
+
+function isLengthFinishReason(reason) {
+  const normalized = normalizeFinishReason(reason).toLowerCase();
+  return normalized === 'length'
+    || normalized === 'max_tokens'
+    || normalized === 'max-tokens'
+    || normalized === 'max_output_tokens'
+    || normalized.includes('max_token');
+}
+
+function getGeminiFinishReason(payload) {
+  return normalizeFinishReason(payload?.candidates?.[0]?.finishReason);
+}
+
+function createIncompleteRelayError({ partialText = '', finishReason = 'STREAM_INTERRUPTED' } = {}) {
+  const reason = normalizeFinishReason(finishReason) || 'STREAM_INTERRUPTED';
+  return createRelayError(
+    'AI Studio Relay bị cắt giữa chừng trước khi Gemini hoàn tất.',
+    'AI_STUDIO_RELAY_INCOMPLETE_OUTPUT',
+    {
+      partialText: String(partialText || ''),
+      finishReason: reason,
+      retryable: true,
+    },
+  );
 }
 
 function normalizeModelName(name) {
@@ -200,6 +231,7 @@ export function callAIStudioRelayTransport({
   let rawStreamBuffer = '';
   let rawResponseText = '';
   let rawResponseStatus = 200;
+  let rawIncompleteError = null;
   let timeoutId = null;
   let heartbeatId = null;
 
@@ -261,6 +293,13 @@ export function callAIStudioRelayTransport({
         try {
           const payload = JSON.parse(dataValue);
           appendText(extractGeminiPayloadText(payload));
+          const finishReason = getGeminiFinishReason(payload);
+          if (isLengthFinishReason(finishReason)) {
+            rawIncompleteError = createIncompleteRelayError({
+              partialText: fullText,
+              finishReason,
+            });
+          }
         } catch {
           // Keep buffering; malformed partial SSE lines can be completed by a later chunk.
         }
@@ -271,7 +310,15 @@ export function callAIStudioRelayTransport({
       const lastDataValue = extractSSEDataValue(rawStreamBuffer);
       if (lastDataValue && lastDataValue !== '[DONE]') {
         try {
-          appendText(extractGeminiPayloadText(JSON.parse(lastDataValue)));
+          const payload = JSON.parse(lastDataValue);
+          appendText(extractGeminiPayloadText(payload));
+          const finishReason = getGeminiFinishReason(payload);
+          if (isLengthFinishReason(finishReason)) {
+            rawIncompleteError = createIncompleteRelayError({
+              partialText: fullText,
+              finishReason,
+            });
+          }
         } catch {
           // Fall through to whole-response parsing below.
         }
@@ -281,6 +328,13 @@ export function callAIStudioRelayTransport({
 
       try {
         const payload = JSON.parse(rawResponseText);
+        const finishReason = getGeminiFinishReason(payload);
+        if (isLengthFinishReason(finishReason)) {
+          rawIncompleteError = createIncompleteRelayError({
+            partialText: extractGeminiResponseText(payload),
+            finishReason,
+          });
+        }
         return extractGeminiResponseText(payload);
       } catch {
         return '';
@@ -352,6 +406,11 @@ export function callAIStudioRelayTransport({
 
       if (payload.event_type === 'stream_close') {
         const finalText = readBufferedRawResponse();
+        if (rawIncompleteError) {
+          rawIncompleteError.partialText = finalText || rawIncompleteError.partialText || fullText;
+          finishReject(rawIncompleteError);
+          return;
+        }
         if (!finalText) {
           const code = rawResponseStatus >= 400
             ? `AI_STUDIO_RELAY_HTTP_${rawResponseStatus}`

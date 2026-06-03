@@ -43,7 +43,7 @@ const ADULT_RUNTIME_MODES = new Set([
 ]);
 
 export const config = {
-  maxDuration: 60,
+  maxDuration: 300,
 };
 
 function copyResponseHeaders(upstream, res) {
@@ -55,6 +55,7 @@ function copyResponseHeaders(upstream, res) {
 async function pipeUpstreamResponse(upstream, res) {
   res.statusCode = upstream.status;
   copyResponseHeaders(upstream, res);
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
   if (!upstream.body) {
     res.end(await upstream.text().catch(() => ''));

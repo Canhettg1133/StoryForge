@@ -11,6 +11,14 @@ describe('access control deployment config', () => {
     expect(JSON.stringify(vercelConfig)).not.toContain('ag.beijixingxing.com/:match');
   });
 
+  it('keeps VIP relay functions on Fluid Compute with a long streaming duration', () => {
+    const vercelConfig = JSON.parse(readFileSync(resolve(process.cwd(), 'vercel.json'), 'utf8'));
+
+    expect(vercelConfig.fluid).toBe(true);
+    expect(vercelConfig.functions?.['api/openai-proxy.js']?.maxDuration).toBe(300);
+    expect(vercelConfig.functions?.['api/translator-openai-proxy.js']?.maxDuration).toBe(300);
+  });
+
   it('does not expose the legacy /api/proxy dev-server bypass', () => {
     const viteConfig = readFileSync(resolve(process.cwd(), 'vite.config.js'), 'utf8');
 

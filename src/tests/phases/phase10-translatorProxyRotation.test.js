@@ -235,6 +235,31 @@ describe('phase10 translator proxy key rotation', () => {
     expect(body.payload.model).toBe('ag-gemini-model');
   });
 
+  it('rejects incomplete OpenAI-compatible proxy translations instead of accepting truncated text', async () => {
+    const context = loadProxyRuntimeContext(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        choices: [{
+          finish_reason: 'length',
+          message: {
+            content: 'Bản dịch bị cắt giữa chừng nhưng vẫn có text. '.repeat(20),
+          },
+        }],
+      }),
+    }));
+
+    await expect(context.translateChunkViaProxy(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0.7,
+      'KEY1'
+    )).rejects.toMatchObject({
+      code: 'PROXY_INCOMPLETE_RESPONSE',
+      finishReason: 'length',
+      retryable: true,
+    });
+  });
+
   it('streams same-key AG relay chunks through one connection per key while resolving each chunk individually', async () => {
     const requests = [];
     const context = loadProxyRuntimeContext(async (url, options = {}) => {

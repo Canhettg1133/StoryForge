@@ -38,6 +38,39 @@ const SETTINGS_KEY = 'sf-ai-settings';
 const GEMINI_DIRECT_MAX_OUTPUT_TOKENS = 65000;
 const PROXY_MAX_OUTPUT_TOKENS = 65000;
 
+function normalizeFinishReason(value) {
+    return String(value || '').trim();
+}
+
+function isLengthFinishReason(reason) {
+    const normalized = normalizeFinishReason(reason).toLowerCase();
+    return normalized === 'length'
+        || normalized === 'max_tokens'
+        || normalized === 'max-tokens'
+        || normalized === 'max_output_tokens'
+        || normalized.includes('max_token');
+}
+
+function isOpenAICompleteFinishReason(reason) {
+    const normalized = normalizeFinishReason(reason).toLowerCase();
+    return !normalized || normalized === 'stop';
+}
+
+function isGeminiCompleteFinishReason(reason) {
+    const normalized = normalizeFinishReason(reason).toUpperCase();
+    return !normalized || normalized === 'STOP' || normalized === 'FINISH_REASON_UNSPECIFIED';
+}
+
+function createIncompleteOutputError(partialText = '', finishReason = 'STREAM_INTERRUPTED') {
+    const reason = normalizeFinishReason(finishReason) || 'STREAM_INTERRUPTED';
+    const error = new Error('INCOMPLETE_OUTPUT');
+    error.code = 'INCOMPLETE_OUTPUT';
+    error.partialText = String(partialText || '');
+    error.finishReason = reason;
+    error.retryable = true;
+    return error;
+}
+
 function getSettings() {
     try {
         const saved = localStorage.getItem(SETTINGS_KEY);
@@ -124,7 +157,18 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
 
         if (!stream) {
             const data = await response.json();
-            const text = data.choices?.[0]?.message?.content || '';
+            const choice = data.choices?.[0] || {};
+            const finishReason = normalizeFinishReason(choice.finish_reason);
+            const text = choice.message?.content || '';
+            if (finishReason.toLowerCase() === 'content_filter') {
+                throw new Error('SAFETY_BLOCK');
+            }
+            if (isLengthFinishReason(finishReason)) {
+                throw createIncompleteOutputError(text, finishReason);
+            }
+            if (finishReason && !isOpenAICompleteFinishReason(finishReason)) {
+                throw new Error(`Proxy stopped with finish_reason=${finishReason}`);
+            }
             onComplete?.(text);
             return text;
         }
@@ -194,7 +238,20 @@ async function callGeminiDirect({ model, messages, stream = true, signal, onToke
 
         if (!stream) {
             const data = await response.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            const candidate = data.candidates?.[0] || {};
+            const finishReason = normalizeFinishReason(candidate.finishReason);
+            const text = (candidate.content?.parts || [])
+                .map((part) => String(part?.text || ''))
+                .join('');
+            if (finishReason.toUpperCase() === 'SAFETY' || String(data.promptFeedback?.blockReason || '').toUpperCase() === 'SAFETY') {
+                throw new Error('SAFETY_BLOCK');
+            }
+            if (isLengthFinishReason(finishReason)) {
+                throw createIncompleteOutputError(text, finishReason);
+            }
+            if (finishReason && !isGeminiCompleteFinishReason(finishReason)) {
+                throw new Error(`Gemini stopped with finishReason=${finishReason}`);
+            }
             onComplete?.(text);
             return text;
         }
@@ -213,6 +270,9 @@ async function streamSSE(response, { onToken, onComplete, onError }) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullText = '', buffer = '';
+    let hasToken = false;
+    let sawDone = false;
+    let finishReason = '';
     try {
         while (true) {
             const { done, value } = await reader.read();
@@ -224,12 +284,23 @@ async function streamSSE(response, { onToken, onComplete, onError }) {
                 const t = line.trim();
                 if (!t || !t.startsWith('data: ')) continue;
                 const d = t.slice(6);
-                if (d === '[DONE]') continue;
+                if (d === '[DONE]') {
+                    sawDone = true;
+                    continue;
+                }
                 try {
                     const p = JSON.parse(d);
-                    const delta = p.choices?.[0]?.delta?.content || '';
-                    if (delta) { fullText += delta; onToken?.(delta, fullText); }
-                    if (p.choices?.[0]?.finish_reason === 'content_filter') {
+                    const choice = p.choices?.[0] || {};
+                    if (choice.finish_reason) {
+                        finishReason = normalizeFinishReason(choice.finish_reason);
+                    }
+                    const delta = choice.delta?.content || choice.message?.content || '';
+                    if (delta) {
+                        hasToken = true;
+                        fullText += delta;
+                        onToken?.(delta, fullText);
+                    }
+                    if (finishReason.toLowerCase() === 'content_filter') {
                         throw new Error('SAFETY_BLOCK');
                     }
                 } catch (e) {
@@ -237,10 +308,23 @@ async function streamSSE(response, { onToken, onComplete, onError }) {
                 }
             }
         }
+        if (!hasToken) {
+            throw new Error('EMPTY_STREAM');
+        }
+        if (isLengthFinishReason(finishReason)) {
+            throw createIncompleteOutputError(fullText, finishReason);
+        }
+        if (!sawDone) {
+            throw createIncompleteOutputError(fullText, finishReason || 'STREAM_INTERRUPTED');
+        }
+        if (!isOpenAICompleteFinishReason(finishReason)) {
+            throw new Error(`Proxy stopped with finish_reason=${finishReason}`);
+        }
         onComplete?.(fullText);
     } catch (err) {
-        if (err.name === 'AbortError') { onComplete?.(fullText); return; }
-        onComplete?.(fullText);
+        if (err.name === 'AbortError') return;
+        if (err.code === 'INCOMPLETE_OUTPUT' || !fullText) throw err;
+        throw createIncompleteOutputError(fullText, finishReason || 'STREAM_INTERRUPTED');
     }
 }
 
@@ -248,6 +332,8 @@ async function streamGeminiSSE(response, { onToken, onComplete, onError }) {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullText = '', buffer = '';
+    let hasToken = false;
+    let finishReason = '';
     try {
         while (true) {
             const { done, value } = await reader.read();
@@ -260,20 +346,40 @@ async function streamGeminiSSE(response, { onToken, onComplete, onError }) {
                 if (!t || !t.startsWith('data: ')) continue;
                 try {
                     const p = JSON.parse(t.slice(6));
-                    if (p.candidates?.[0]?.finishReason === 'SAFETY') {
+                    const candidate = p.candidates?.[0] || {};
+                    if (candidate.finishReason) {
+                        finishReason = normalizeFinishReason(candidate.finishReason);
+                    }
+                    if (finishReason.toUpperCase() === 'SAFETY') {
                         throw new Error('SAFETY_BLOCK');
                     }
-                    const text = p.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                    if (text) { fullText += text; onToken?.(text, fullText); }
+                    const text = (candidate.content?.parts || [])
+                        .map((part) => String(part?.text || ''))
+                        .join('');
+                    if (text) {
+                        hasToken = true;
+                        fullText += text;
+                        onToken?.(text, fullText);
+                    }
                 } catch (e) {
                     if (e.message === 'SAFETY_BLOCK') throw e;
                 }
             }
         }
+        if (!hasToken) {
+            throw new Error('EMPTY_STREAM');
+        }
+        if (isLengthFinishReason(finishReason)) {
+            throw createIncompleteOutputError(fullText, finishReason);
+        }
+        if (!isGeminiCompleteFinishReason(finishReason)) {
+            throw new Error(`Gemini stopped with finishReason=${finishReason}`);
+        }
         onComplete?.(fullText);
     } catch (err) {
-        if (err.name === 'AbortError') { onComplete?.(fullText); return; }
-        onComplete?.(fullText);
+        if (err.name === 'AbortError') return;
+        if (err.code === 'INCOMPLETE_OUTPUT' || !fullText) throw err;
+        throw createIncompleteOutputError(fullText, finishReason || 'STREAM_INTERRUPTED');
     }
 }
 

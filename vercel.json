@@ -1,4 +1,13 @@
 {
+    "fluid": true,
+    "functions": {
+        "api/openai-proxy.js": {
+            "maxDuration": 300
+        },
+        "api/translator-openai-proxy.js": {
+            "maxDuration": 300
+        }
+    },
     "rewrites": [
         {
             "source": "/((?!api/|translator-runtime/|src/|@react-refresh|@vite/|node_modules/|.*\\..*).*)",

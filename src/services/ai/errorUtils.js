@@ -11,6 +11,7 @@ const AI_ERROR_CODES = {
   MODEL_CAPACITY_EXHAUSTED: 'MODEL_CAPACITY_EXHAUSTED',
   SAFETY_BLOCK: 'SAFETY_BLOCK',
   EMPTY_STREAM: 'EMPTY_STREAM',
+  INCOMPLETE_OUTPUT: 'INCOMPLETE_OUTPUT',
   UNAUTHORIZED: 'UNAUTHORIZED',
   FORBIDDEN: 'FORBIDDEN',
   BAD_REQUEST: 'BAD_REQUEST',
@@ -118,6 +119,10 @@ function createAIError({
   details = [],
   retryable = false,
   shouldFallback = false,
+  partialText = '',
+  finishReason = null,
+  attempts = null,
+  maxAttempts = null,
 }) {
   const error = new Error(userMessage);
   error.code = code || AI_ERROR_CODES.UNKNOWN_ERROR;
@@ -129,6 +134,10 @@ function createAIError({
   error.details = Array.isArray(details) ? details : [];
   error.retryable = retryable;
   error.shouldFallback = shouldFallback;
+  error.partialText = typeof partialText === 'string' ? partialText : '';
+  error.finishReason = finishReason || null;
+  if (attempts !== null) error.attempts = attempts;
+  if (maxAttempts !== null) error.maxAttempts = maxAttempts;
   return error;
 }
 
@@ -143,6 +152,8 @@ export function normalizeAIError(input = {}, context = {}) {
   const reasonLower = String(shape.reason || '').toLowerCase();
   const modelName = summarizeModel(model);
   const providerName = providerLabel(provider, proxyProfileId);
+  const partialText = typeof input.partialText === 'string' ? input.partialText : '';
+  const finishReason = String(input.finishReason || shape.reason || '').trim() || null;
 
   if (shape.code === AI_ERROR_CODES.MISSING_API_KEY || lower.includes('không có api key') || lower.includes('khong co api key')) {
     return createAIError({
@@ -210,6 +221,25 @@ export function normalizeAIError(input = {}, context = {}) {
       details: shape.details,
       retryable: true,
       shouldFallback: true,
+    });
+  }
+
+  if (shape.code === AI_ERROR_CODES.INCOMPLETE_OUTPUT || lower.includes('incomplete_output')) {
+    return createAIError({
+      userMessage: 'AI bị cắt giữa chừng trước khi hoàn tất. Với tác vụ viết, StoryForge sẽ tự nối tiếp; nếu lỗi này vẫn lặp lại, hãy giảm độ dài yêu cầu hoặc đổi model.',
+      code: AI_ERROR_CODES.INCOMPLETE_OUTPUT,
+      provider,
+      model,
+      status: shape.status,
+      rawMessage,
+      reason: finishReason || shape.reason,
+      details: shape.details,
+      retryable: true,
+      shouldFallback: false,
+      partialText,
+      finishReason,
+      attempts: input.attempts ?? null,
+      maxAttempts: input.maxAttempts ?? null,
     });
   }
 

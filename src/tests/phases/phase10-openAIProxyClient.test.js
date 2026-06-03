@@ -37,6 +37,31 @@ function sendOnce(aiService, routerModule) {
   });
 }
 
+function sendStreamOnce(aiService, routerModule, { taskType = routerModule.TASK_TYPES.FREE_PROMPT } = {}) {
+  return new Promise((resolve, reject) => {
+    aiService.send({
+      taskType,
+      messages: [{ role: 'user', content: 'write a long scene' }],
+      stream: true,
+      chatSafetyOff: true,
+      onComplete: resolve,
+      onError: reject,
+    });
+  });
+}
+
+function sseResponse(chunks = []) {
+  const encoder = new TextEncoder();
+  return new Response(new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(chunk));
+      }
+      controller.close();
+    },
+  }), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+}
+
 describe('OpenAI-compatible proxy client payloads', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -314,5 +339,133 @@ describe('OpenAI-compatible proxy client payloads', () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(WebSocket).not.toHaveBeenCalled();
+  });
+
+  it('auto-continues writing streams that stop because the proxy hit the output length limit', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        AG_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(sseResponse([
+        'data: {"choices":[{"delta":{"content":"Phan dau "}}]}\n\n',
+        'data: {"choices":[{"finish_reason":"length"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]))
+      .mockResolvedValueOnce(sseResponse([
+        'data: {"choices":[{"delta":{"content":"phan tiep."}}]}\n\n',
+        'data: {"choices":[{"finish_reason":"stop"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_PROXY, 'sk-test-ag-key');
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    await expect(sendStreamOnce(aiService, routerModule)).resolves.toBe('Phan dau phan tiep.');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const continuationBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    const continuationMessages = continuationBody.payload.messages;
+    expect(continuationMessages.at(-2)).toMatchObject({ role: 'assistant', content: 'Phan dau ' });
+    expect(continuationMessages.at(-1).content).toContain('tiếp tục ngay từ điểm đang dở');
+  });
+
+  it('auto-continues writing streams that close before the SSE DONE marker', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        AG_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(sseResponse([
+        'data: {"choices":[{"delta":{"content":"Dang viet do "}}]}\n\n',
+      ]))
+      .mockResolvedValueOnce(sseResponse([
+        'data: {"choices":[{"delta":{"content":"va ket thuc."}}]}\n\n',
+        'data: {"choices":[{"finish_reason":"stop"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_PROXY, 'sk-test-ag-key');
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    await expect(sendStreamOnce(aiService, routerModule)).resolves.toBe('Dang viet do va ket thuc.');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not auto-continue non-writing tasks when a stream is incomplete', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        AG_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => sseResponse([
+      'data: {"choices":[{"delta":{"content":"Mot y tuong "}}]}\n\n',
+      'data: {"choices":[{"finish_reason":"length"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_PROXY, 'sk-test-ag-key');
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    await expect(sendStreamOnce(aiService, routerModule, {
+      taskType: routerModule.TASK_TYPES.BRAINSTORM,
+    })).rejects.toMatchObject({
+      code: 'INCOMPLETE_OUTPUT',
+      partialText: 'Mot y tuong ',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('auto-continues Gemini streams that stop at MAX_TOKENS', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+    } = await loadClientStack();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(sseResponse([
+        'data: {"candidates":[{"content":{"parts":[{"text":"Mo dau "}]}}]}\n\n',
+        'data: {"candidates":[{"finishReason":"MAX_TOKENS"}]}\n\n',
+      ]))
+      .mockResolvedValueOnce(sseResponse([
+        'data: {"candidates":[{"content":{"parts":[{"text":"ket lai."}]},"finishReason":"STOP"}]}\n\n',
+      ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_DIRECT, 'gemini-direct-key');
+    modelRouter.setPreferredProvider(PROVIDERS.GEMINI_DIRECT);
+
+    await expect(sendStreamOnce(aiService, routerModule)).resolves.toBe('Mo dau ket lai.');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
