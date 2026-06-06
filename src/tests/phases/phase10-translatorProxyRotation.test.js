@@ -235,6 +235,107 @@ describe('phase10 translator proxy key rotation', () => {
     expect(body.payload.model).toBe('ag-gemini-model');
   });
 
+  it('preserves a full AG Proxy chat endpoint path instead of forcing /v1/chat/completions', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'ag_proxy';
+      proxyBaseUrl = 'https://ag.beijixingxing.com/v1beta/openai/chat/completions';
+      proxyModel = 'ag-gemini-model';
+      proxyApiKeys = ['AG_KEY'];
+      proxyApiKey = 'AG_KEY';
+    `, context);
+
+    await context.translateChunkViaProxy(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0.7,
+      'AG_KEY'
+    );
+
+    expect(requests[0].url).toBe('/api/translator-openai-proxy');
+    const body = JSON.parse(requests[0].options.body);
+    expect(body.baseUrl).toBe('https://ag.beijixingxing.com/v1beta/openai');
+    expect(body.chatCompletionsPath).toBe('/chat/completions');
+    expect(body.payload.model).toBe('ag-gemini-model');
+  });
+
+  it('tests AG Proxy through the same relay transport used by translation', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          model: 'ag-gemini-model',
+          choices: [{
+            message: { content: 'Xin chào từ Gemini Proxy AG.' },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'ag_proxy';
+      storyForgeAccessToken = 'story-token';
+      proxyBaseUrl = 'https://ag.beijixingxing.com/v1beta/openai/chat/completions';
+      proxyModel = 'ag-gemini-model';
+      proxyApiKeys = ['AG_KEY'];
+      proxyApiKey = 'AG_KEY';
+      setActiveTranslatorTemplateId('convert');
+    `, context);
+
+    await context.testProxyConnection();
+
+    expect(requests[0].url).toBe('/api/translator-openai-proxy');
+    expect(requests[0].options.headers.Authorization).toBe('Bearer story-token');
+    expect(requests[0].options.headers['X-StoryForge-Upstream-Key']).toBe('AG_KEY');
+    const body = JSON.parse(requests[0].options.body);
+    expect(body.action).toBe('chat');
+    expect(body.baseUrl).toBe('https://ag.beijixingxing.com/v1beta/openai');
+    expect(body.chatCompletionsPath).toBe('/chat/completions');
+    expect(body.payload.model).toBe('ag-gemini-model');
+  });
+
+  it('does not report a generic proxy 404 as a missing model unless the upstream error says so', () => {
+    const context = loadProxyRuntimeContext(async () => {
+      throw new Error('fetch is not used by error mapping');
+    });
+
+    const endpointError = context.createProxyHttpError(
+      404,
+      { error: { message: 'HTTP 404' } },
+      { model: 'ag-gemini-model', provider: 'Gemini Proxy AG' }
+    );
+    const modelError = context.createProxyHttpError(
+      404,
+      { error: { message: 'The model "ag-gemini-model" does not exist.' } },
+      { model: 'ag-gemini-model', provider: 'Gemini Proxy AG' }
+    );
+
+    expect(endpointError.code).toBe('PROXY_HTTP_ERROR');
+    expect(endpointError.retryable).toBe(true);
+    expect(endpointError.shouldRotate).toBe(false);
+    expect(modelError.code).toBe('PROXY_MODEL_NOT_FOUND');
+    expect(modelError.shouldRotate).toBe(true);
+  });
+
   it('rejects incomplete OpenAI-compatible proxy translations instead of accepting truncated text', async () => {
     const context = loadProxyRuntimeContext(async () => ({
       ok: true,

@@ -47,6 +47,18 @@ describe('translator runtime access gates', () => {
     expect(`${app}\n${engine}\n${settings}`).not.toContain('adultMode: false');
   });
 
+  it('lets the translator runtime ask the host UI to confirm adult terms', () => {
+    const app = read('public/translator-runtime/js/app.js');
+    const host = read('src/components/translator/PersistentTranslatorHost.jsx');
+
+    expect(app).toContain('requestStoryForgeAdultTermsConfirmation');
+    expect(app).toContain('STORYFORGE_CONFIRM_ADULT_TERMS');
+    expect(app).toContain('STORYFORGE_ADULT_TERMS_RESULT');
+    expect(host).toContain('STORYFORGE_CONFIRM_ADULT_TERMS');
+    expect(host).toContain('Xác nhận điều khoản 18+');
+    expect(host).toContain('Tôi đủ 18 tuổi và đồng ý');
+  });
+
   it('keeps new access-control UI copy in Vietnamese with accents and avoids common mojibake', () => {
     const adminUi = read('apps/admin/src/App.jsx');
     const translatorSettings = read('public/translator-runtime/js/ui/settings.js');

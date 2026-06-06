@@ -46,6 +46,8 @@ export default function ProjectContentModeControl({
   const { hasFeature, getDecision, getDeniedMessage, confirmAdultTerms } = useUserAccess();
   const [writerMenuOpen, setWriterMenuOpen] = useState(false);
   const [adultPrompt, setAdultPrompt] = useState(null);
+  const [adultConfirming, setAdultConfirming] = useState(false);
+  const [adultError, setAdultError] = useState('');
   const writerMenuRef = useRef(null);
   const canUseAdultMode = hasFeature(ACCESS_FEATURES.ADULT_MODE);
 
@@ -55,6 +57,7 @@ export default function ProjectContentModeControl({
   const handleSelectMode = async (value) => {
     if (isAdultOption(value) && !canUseAdultMode) {
       const decision = getDecision(ACCESS_FEATURES.ADULT_MODE);
+      setAdultError('');
       setAdultPrompt({
         requestedMode: value,
         message: getDeniedMessage(ACCESS_FEATURES.ADULT_MODE),
@@ -67,6 +70,9 @@ export default function ProjectContentModeControl({
   };
 
   const handleConfirmAdultTerms = async () => {
+    if (adultConfirming) return;
+    setAdultConfirming(true);
+    setAdultError('');
     try {
       const requestedMode = adultPrompt?.requestedMode;
       await confirmAdultTerms();
@@ -74,8 +80,10 @@ export default function ProjectContentModeControl({
       if (requestedMode) {
         onChange?.(requestedMode);
       }
-    } catch {
-      // AccessContext records the error for the account-level banner.
+    } catch (error) {
+      setAdultError(error?.message || 'Không thể xác nhận điều khoản 18+. Hãy thử lại.');
+    } finally {
+      setAdultConfirming(false);
     }
   };
 
@@ -92,13 +100,18 @@ export default function ProjectContentModeControl({
           {adultPrompt.canConfirm ? 'Xác nhận 18+' : 'Yêu cầu VIP'}
         </h3>
         <p>{adultPrompt.message}</p>
+        {adultError ? (
+          <div className="project-content-mode__modal-error" role="alert">
+            {adultError}
+          </div>
+        ) : null}
         <div className="project-content-mode__modal-actions">
-          <button type="button" className="btn btn-ghost" onClick={() => setAdultPrompt(null)}>
+          <button type="button" className="btn btn-ghost" onClick={() => setAdultPrompt(null)} disabled={adultConfirming}>
             Đóng
           </button>
           {adultPrompt.canConfirm ? (
-            <button type="button" className="btn btn-primary" onClick={handleConfirmAdultTerms}>
-              Đồng ý và tiếp tục
+            <button type="button" className="btn btn-primary" onClick={handleConfirmAdultTerms} disabled={adultConfirming}>
+              {adultConfirming ? 'Đang xác nhận...' : 'Đồng ý và tiếp tục'}
             </button>
           ) : null}
         </div>

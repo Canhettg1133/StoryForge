@@ -200,6 +200,46 @@ describe('phase10 project content mode control', () => {
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  it('keeps the 18+ consent modal visible and explains failures', async () => {
+    const onChange = vi.fn();
+    const confirmAdultTerms = vi.fn(async () => {
+      throw new Error('Không thể xác nhận điều khoản 18+.');
+    });
+    accessMock.current = {
+      hasFeature: () => false,
+      getDecision: () => ({ allowed: false, reason: 'ADULT_TERMS_REQUIRED' }),
+      getDeniedMessage: () => 'Bạn cần đồng ý điều khoản 18+ trước khi dùng tính năng này.',
+      confirmAdultTerms,
+    };
+
+    await renderControl({
+      surface: 'prompt',
+      mode: 'safe',
+      onChange,
+    });
+
+    const adultButton = Array.from(container.querySelectorAll('.project-content-mode__option'))
+      .find((node) => node.textContent?.includes('18+'));
+    expect(adultButton).toBeDefined();
+
+    await act(async () => {
+      adultButton.click();
+    });
+
+    const confirmButton = Array.from(container.querySelectorAll('button'))
+      .find((node) => node.textContent?.includes('Đồng ý và tiếp tục'));
+    expect(confirmButton).toBeDefined();
+
+    await act(async () => {
+      confirmButton.click();
+    });
+
+    expect(confirmAdultTerms).toHaveBeenCalledTimes(1);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(container.textContent).toContain('Không thể xác nhận điều khoản 18+.');
+  });
+
   it('renders StoryBible as a status surface with a prompt shortcut instead of editable checkboxes', async () => {
     await renderControl({
       surface: 'story-bible',

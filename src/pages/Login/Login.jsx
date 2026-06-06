@@ -89,13 +89,21 @@ export default function Login() {
     }
   };
 
+  const handleGoHome = () => {
+    navigate('/', { replace: true });
+  };
+
+  const handleContinue = () => {
+    navigate(returnTo || '/', { replace: true });
+  };
+
   return (
     <main className="login-page">
       <section className="login-page__shell" aria-label="Đăng nhập và kiểm tra quyền VIP">
         <div className="login-page__intro">
-          <button type="button" className="login-page__back" onClick={() => navigate(returnTo || '/')}>
+          <button type="button" className="login-page__back" onClick={handleGoHome}>
             <ArrowLeft size={16} />
-            Quay lại StoryForge
+            Về trang chủ
           </button>
 
           <div className="login-page__title">
@@ -170,7 +178,7 @@ export default function Login() {
                     {copied ? 'Đã copy email' : 'Copy email'}
                   </button>
                 ) : null}
-                <button type="button" className={hasVipPlan ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => navigate(returnTo || '/')}>
+                <button type="button" className={hasVipPlan ? 'btn btn-primary' : 'btn btn-secondary'} onClick={handleContinue}>
                   Tiếp tục
                 </button>
                 {hasVipPlan && email ? (

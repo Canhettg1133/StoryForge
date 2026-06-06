@@ -266,10 +266,13 @@
 
 .project-content-mode__modal {
   width: min(420px, 100%);
-  padding: 18px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-surface);
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface) 96%, white 2%), var(--color-surface));
   color: var(--color-text-primary);
   box-shadow: 0 22px 54px rgba(0, 0, 0, 0.34);
 }
@@ -281,17 +284,27 @@
 }
 
 .project-content-mode__modal p {
-  margin: 10px 0 0;
+  margin: 0;
   color: var(--color-text-muted);
   font-size: 0.92rem;
   line-height: 1.5;
+}
+
+.project-content-mode__modal-error {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #ef4444 48%, var(--color-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  color: #fecaca;
+  font-size: 0.88rem;
+  line-height: 1.45;
 }
 
 .project-content-mode__modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 18px;
+  margin-top: 4px;
 }
 
 @media (max-width: 720px) {

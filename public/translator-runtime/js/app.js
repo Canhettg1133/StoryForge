@@ -75,18 +75,42 @@ const TRANSLATOR_TEMPLATE_IDS = new Set([
     'sacHiepENI',
 ]);
 const TRANSLATOR_ADULT_TEMPLATE_IDS = new Set(['adult', 'sacHiep', 'sacHiepPro', 'sacHiepENI']);
+const STORYFORGE_ADULT_CONSENT_REASONS = new Set([
+    'AGE_CONFIRMATION_REQUIRED',
+    'ADULT_TERMS_REQUIRED',
+    'ADULT_TERMS_VERSION_OUTDATED',
+]);
 let activeTranslatorTemplateId = 'sacHiep';
+let storyForgeAdultConsentRequestCounter = 0;
+const storyForgeAdultConsentRequests = new Map();
 
 storyForgeRuntimeGlobal.getStoryForgeAccessToken = () => storyForgeAccessToken;
 storyForgeRuntimeGlobal.getStoryForgeAccessSnapshot = () => storyForgeAccessSnapshot;
+
+function handleStoryForgeAdultTermsResult(payload = {}) {
+    const requestId = String(payload.requestId || '');
+    const pending = storyForgeAdultConsentRequests.get(requestId);
+    if (!pending) return;
+    storyForgeAdultConsentRequests.delete(requestId);
+    clearTimeout(pending.timeoutId);
+    if (payload.access) {
+        storyForgeAccessSnapshot = payload.access;
+    }
+    pending.resolve(Boolean(payload.ok));
+}
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('message', (event) => {
         if (event.origin !== window.location.origin) return;
         const payload = event.data || {};
-        if (payload.type !== 'STORYFORGE_ACCESS_CONTEXT') return;
-        storyForgeAccessToken = String(payload.token || '');
-        storyForgeAccessSnapshot = payload.access || null;
+        if (payload.type === 'STORYFORGE_ACCESS_CONTEXT') {
+            storyForgeAccessToken = String(payload.token || '');
+            storyForgeAccessSnapshot = payload.access || null;
+            return;
+        }
+        if (payload.type === 'STORYFORGE_ADULT_TERMS_RESULT') {
+            handleStoryForgeAdultTermsResult(payload);
+        }
     });
 }
 
@@ -129,6 +153,33 @@ async function refreshStoryForgeAccessSnapshot() {
     return storyForgeAccessSnapshot;
 }
 
+function requestStoryForgeAdultTermsConfirmation({ templateId = getActiveTranslatorTemplateId(), message = '' } = {}) {
+    if (
+        typeof window === 'undefined'
+        || !window.parent
+        || window.parent === window
+        || typeof window.parent.postMessage !== 'function'
+    ) {
+        return Promise.resolve(false);
+    }
+
+    const requestId = `adult-terms-${Date.now()}-${storyForgeAdultConsentRequestCounter += 1}`;
+    return new Promise((resolve) => {
+        const timeoutId = setTimeout(() => {
+            storyForgeAdultConsentRequests.delete(requestId);
+            resolve(false);
+        }, 120000);
+
+        storyForgeAdultConsentRequests.set(requestId, { resolve, timeoutId });
+        window.parent.postMessage({
+            type: 'STORYFORGE_CONFIRM_ADULT_TERMS',
+            requestId,
+            templateId,
+            message,
+        }, window.location.origin);
+    });
+}
+
 async function requireStoryForgeFeature(featureKey) {
     if (!getStoryForgeFeatureDecision(featureKey)) {
         await refreshStoryForgeAccessSnapshot().catch(() => null);
@@ -169,8 +220,24 @@ function syncActiveTranslatorTemplateFromPrompt(promptText = '') {
 
 async function requireStoryForgeAdultTemplateAccess(templateId = getActiveTranslatorTemplateId()) {
     if (!isTranslatorAdultTemplate(templateId)) return true;
-    if (typeof requireStoryForgeFeature !== 'function') return true;
-    return requireStoryForgeFeature(STORYFORGE_FEATURES.ADULT_MODE);
+    if (!getStoryForgeFeatureDecision(STORYFORGE_FEATURES.ADULT_MODE)) {
+        await refreshStoryForgeAccessSnapshot().catch(() => null);
+    }
+    if (hasStoryForgeFeature(STORYFORGE_FEATURES.ADULT_MODE)) return true;
+
+    const decision = getStoryForgeFeatureDecision(STORYFORGE_FEATURES.ADULT_MODE);
+    const message = getStoryForgeDeniedMessage(STORYFORGE_FEATURES.ADULT_MODE);
+    if (STORYFORGE_ADULT_CONSENT_REASONS.has(decision?.reason || '')) {
+        const confirmed = await requestStoryForgeAdultTermsConfirmation({ templateId, message });
+        if (confirmed) {
+            if (hasStoryForgeFeature(STORYFORGE_FEATURES.ADULT_MODE)) return true;
+            await refreshStoryForgeAccessSnapshot().catch(() => null);
+            if (hasStoryForgeFeature(STORYFORGE_FEATURES.ADULT_MODE)) return true;
+        }
+    }
+
+    if (typeof showToast === 'function') showToast(message, 'error');
+    return false;
 }
 
 storyForgeRuntimeGlobal.hasStoryForgeFeature = hasStoryForgeFeature;
@@ -180,6 +247,7 @@ storyForgeRuntimeGlobal.getActiveTranslatorTemplateId = getActiveTranslatorTempl
 storyForgeRuntimeGlobal.setActiveTranslatorTemplateId = setActiveTranslatorTemplateId;
 storyForgeRuntimeGlobal.isTranslatorAdultTemplate = isTranslatorAdultTemplate;
 storyForgeRuntimeGlobal.syncActiveTranslatorTemplateFromPrompt = syncActiveTranslatorTemplateFromPrompt;
+storyForgeRuntimeGlobal.requestStoryForgeAdultTermsConfirmation = requestStoryForgeAdultTermsConfirmation;
 storyForgeRuntimeGlobal.requireStoryForgeAdultTemplateAccess = requireStoryForgeAdultTemplateAccess;
 
 let activeTranslatorProvider = TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
@@ -836,6 +904,31 @@ function getOpenAIProxyRoot(rawBaseUrl) {
     return trimProxySlash(root);
 }
 
+function inferOpenAIProxyChatTarget(rawBaseUrl) {
+    const trimmed = trimProxySlash(rawBaseUrl);
+    if (!trimmed) {
+        return {
+            baseUrl: '',
+            chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
+        };
+    }
+
+    const lower = trimmed.toLowerCase();
+    const chatSuffix = ['/v1/chat/completions', '/chat/completions']
+        .find((item) => lower.endsWith(item));
+    if (chatSuffix) {
+        return {
+            baseUrl: trimProxySlash(trimmed.slice(0, trimmed.length - chatSuffix.length)) || trimmed,
+            chatCompletionsPath: chatSuffix,
+        };
+    }
+
+    return {
+        baseUrl: getOpenAIProxyRoot(trimmed) || trimmed,
+        chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
+    };
+}
+
 function buildOpenAIProxyEndpoint(rawBaseUrl, path = DEFAULT_PROXY_CHAT_PATH) {
     const safePath = normalizeProxyPath(path, DEFAULT_PROXY_CHAT_PATH);
     const root = getOpenAIProxyRoot(rawBaseUrl);
@@ -883,19 +976,20 @@ function getActiveProxyModelsUrl() {
 
 function getAgProxyRequestTarget(action = 'chat') {
     const rawBaseUrl = String(proxyBaseUrl || '').trim();
-    const path = action === 'models' ? DEFAULT_PROXY_MODELS_PATH : DEFAULT_PROXY_CHAT_PATH;
+    const inferred = inferOpenAIProxyChatTarget(rawBaseUrl);
+    const path = action === 'models' ? DEFAULT_PROXY_MODELS_PATH : inferred.chatCompletionsPath;
     const profile = {
         id: AG_PROXY_PROFILE_ID,
         label: 'Gemini Proxy AG',
-        baseUrl: getOpenAIProxyRoot(rawBaseUrl) || rawBaseUrl,
-        chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
+        baseUrl: inferred.baseUrl,
+        chatCompletionsPath: inferred.chatCompletionsPath,
         modelsPath: DEFAULT_PROXY_MODELS_PATH,
         transport: 'auto',
     };
     const mode = resolveProxyTransportMode(profile);
     return {
         mode,
-        url: mode === 'relay' ? '/api/translator-openai-proxy' : buildOpenAIProxyEndpoint(rawBaseUrl, path),
+        url: mode === 'relay' ? '/api/translator-openai-proxy' : buildOpenAIProxyEndpoint(profile.baseUrl, path),
         path,
         profile,
     };

@@ -1846,6 +1846,30 @@ select option {
     color: #fca5a5;
 }
 
+.proxy-endpoint-preview {
+    margin-top: 0.45rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: var(--radius-sm);
+    background: rgba(15, 23, 42, 0.36);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.proxy-endpoint-preview.is-relay {
+    border-color: rgba(99, 102, 241, 0.34);
+    background: rgba(99, 102, 241, 0.08);
+    color: #c7d2fe;
+}
+
+.proxy-endpoint-preview.is-direct {
+    border-color: rgba(20, 184, 166, 0.28);
+    background: rgba(20, 184, 166, 0.08);
+    color: #99f6e4;
+}
+
 .proxy-test-card {
     display: grid;
     gap: 0.35rem;

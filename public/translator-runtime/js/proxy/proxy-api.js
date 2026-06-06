@@ -437,6 +437,7 @@ function closeProxyImportModal(provider = 'ag') {
 
 function updateProxyConfig() {
     proxyBaseUrl = String(getElement('proxyBaseUrlInput')?.value || '').trim();
+    renderAgProxyEndpointPreview();
     saveSettings();
     if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
 }
@@ -448,6 +449,33 @@ function selectProxyModel() {
         saveSettings();
         showToast(`Đã chọn model Gemini Proxy AG: ${proxyModel}`, 'success');
     }
+}
+
+function applyProxyCustomModel() {
+    const input = getElement('proxyCustomModel');
+    const nextModel = String(input?.value || '').trim();
+    if (!nextModel) {
+        showToast('Vui lòng nhập model Gemini Proxy AG.', 'warning');
+        return false;
+    }
+    proxyModel = nextModel;
+    renderProxyModelsDropdown();
+    saveSettings();
+    showToast(`Đã chọn model Gemini Proxy AG: ${proxyModel}`, 'success');
+    return true;
+}
+
+function renderAgProxyEndpointPreview() {
+    const preview = getElement('proxyEndpointPreview');
+    if (!preview || typeof getAgProxyRequestTarget !== 'function') return;
+    const target = getAgProxyRequestTarget('chat');
+    const endpoint = target?.mode === 'relay'
+        ? `${target.profile?.baseUrl || ''}${target.path || ''}`
+        : target?.url;
+    preview.textContent = target?.mode === 'relay'
+        ? `Sẽ chạy qua relay StoryForge -> ${endpoint}`
+        : `Sẽ gọi trực tiếp -> ${endpoint || 'chưa có URL'}`;
+    preview.className = `proxy-endpoint-preview ${target?.mode === 'relay' ? 'is-relay' : 'is-direct'}`;
 }
 
 function appendSelectOption(select, value, label, selected = false) {
@@ -517,31 +545,47 @@ function renderProxyModelsDropdown() {
 }
 
 async function testProxyConnection() {
+    const baseUrlInput = getElement('proxyBaseUrlInput');
+    if (baseUrlInput) proxyBaseUrl = String(baseUrlInput.value || proxyBaseUrl || '').trim();
+    renderAgProxyEndpointPreview();
     const resultDiv = getElement('proxyTestResult');
     const testKey = proxyApiKeys.length > 0 ? proxyApiKeys[0] : proxyApiKey;
+    const target = typeof getAgProxyRequestTarget === 'function'
+        ? getAgProxyRequestTarget('chat')
+        : { mode: 'direct', url: proxyBaseUrl, path: DEFAULT_PROXY_CHAT_PATH, profile: { baseUrl: proxyBaseUrl } };
     if (resultDiv) resultDiv.innerHTML = '<p style="color:#f59e0b;">Đang kiểm tra Gemini Proxy AG...</p>';
 
     if (!testKey) {
         if (resultDiv) resultDiv.innerHTML = '<p style="color:#ef4444;">Chưa nhập API key Gemini Proxy AG.</p>';
-        return;
+        return false;
+    }
+    if (!proxyModel) {
+        if (resultDiv) resultDiv.innerHTML = '<p style="color:#ef4444;">Chưa chọn model Gemini Proxy AG.</p>';
+        return false;
     }
 
     const startTime = Date.now();
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
-        const response = await fetch(proxyBaseUrl, {
+        const payload = {
+            model: proxyModel,
+            messages: [{ role: 'user', content: 'Xin chào! Trả lời ngắn gọn 1 câu.' }],
+            temperature: 0.5,
+            max_tokens: 100,
+        };
+        const response = await fetch(target.url, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${testKey}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: proxyModel,
-                messages: [{ role: 'user', content: 'Xin chào! Trả lời ngắn gọn 1 câu.' }],
-                temperature: 0.5,
-                max_tokens: 100,
-            }),
+            headers: getProxyRequestHeaders(target, testKey),
+            body: JSON.stringify(target.mode === 'relay'
+                ? {
+                    action: 'chat',
+                    baseUrl: target.profile.baseUrl,
+                    chatCompletionsPath: target.path,
+                    templateId: typeof getActiveTranslatorTemplateId === 'function' ? getActiveTranslatorTemplateId() : 'convert',
+                    payload,
+                }
+                : payload),
             signal: controller.signal,
         });
         clearTimeout(timeoutId);
@@ -554,7 +598,7 @@ async function testProxyConnection() {
                 : new Error(errorData.error?.message || `HTTP ${response.status}`);
             const errorMsg = typeof formatTranslatorError === 'function' ? formatTranslatorError(proxyError) : proxyError.message;
             if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">${errorMsg}</p><p style="color:#888;font-size:12px;">Thời gian: ${elapsed}s</p>`;
-            return;
+            return false;
         }
 
         const data = await response.json();
@@ -570,6 +614,7 @@ async function testProxyConnection() {
                 </div>`;
         }
         showToast(`Gemini Proxy AG hoạt động. Thời gian phản hồi ${elapsed}s.`, 'success');
+        return true;
     } catch (error) {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         const normalizedError = typeof normalizeTranslatorError === 'function'
@@ -577,6 +622,7 @@ async function testProxyConnection() {
             : error;
         const errorMsg = typeof formatTranslatorError === 'function' ? formatTranslatorError(normalizedError) : error.message;
         if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">${errorMsg}</p><p style="color:#888;font-size:12px;">Thời gian: ${elapsed}s</p>`;
+        return false;
     }
 }
 
@@ -983,6 +1029,7 @@ function initProxyUI() {
 
     updateProxyModeControls();
     renderProxyModelsDropdown();
+    renderAgProxyEndpointPreview();
     renderProxyKeysList();
     renderCustomProxyPreviews();
     renderCustomProxyKeysList();

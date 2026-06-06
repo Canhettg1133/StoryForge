@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TranslatorPro">
-    <link rel="manifest" href="manifest.json?v=11">
+    <link rel="manifest" href="manifest.json?v=12">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
 
     <!-- Fonts -->
@@ -21,7 +21,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=11">
+    <link rel="stylesheet" href="style.css?v=12">
 </head>
 
 <body>
@@ -338,7 +338,8 @@
                         <input type="text" id="proxyBaseUrlInput"
                             value="https://ag.beijixingxing.com/v1/chat/completions"
                             placeholder="https://proxy.example.com/v1/chat/completions" onchange="updateProxyConfig()">
-                        <small class="hint">Endpoint OpenAI-compatible (kết thúc /chat/completions)</small>
+                        <small class="hint">Có thể nhập root URL hoặc full endpoint kết thúc bằng /chat/completions.</small>
+                        <div class="proxy-endpoint-preview" id="proxyEndpointPreview"></div>
                     </div>
 
                     <!-- Multi Proxy Keys -->
@@ -380,7 +381,7 @@
                         <div class="input-group" style="display:flex;gap:8px;">
                             <input type="text" id="proxyCustomModel" placeholder="model-name-here" style="flex:1;">
                             <button class="btn btn-secondary btn-small"
-                                onclick="proxyModel=document.getElementById('proxyCustomModel').value;saveSettings();showToast('Đã set model: '+proxyModel,'success')">
+                                onclick="applyProxyCustomModel()">
                                 ✅ Dùng
                             </button>
                         </div>
@@ -985,45 +986,45 @@
     ============================================== -->
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
-    <script src="js/app.js?v=11"></script>
-    <script src="js/canon-pack.js?v=11"></script>
+    <script src="js/app.js?v=12"></script>
+    <script src="js/canon-pack.js?v=12"></script>
 
     <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
-    <script src="js/worker-timer.js?v=11"></script>
+    <script src="js/worker-timer.js?v=12"></script>
 
     <!-- 1c. Error messages (PHẢI load trước Gemini/Proxy/Ollama để chuẩn hóa lỗi) -->
-    <script src="js/translation/errors.js?v=11"></script>
+    <script src="js/translation/errors.js?v=12"></script>
 
     <!-- 2. Gemini API -->
-    <script src="js/gemini/model-rotation.js?v=11"></script>
-    <script src="js/gemini/rpd-tracker.js?v=11"></script>
-    <script src="js/gemini/api.js?v=11"></script>
+    <script src="js/gemini/model-rotation.js?v=12"></script>
+    <script src="js/gemini/rpd-tracker.js?v=12"></script>
+    <script src="js/gemini/api.js?v=12"></script>
 
     <!-- 3. Translation Engine -->
-    <script src="js/translation/chunker.js?v=11"></script>
-    <script src="js/translation/source-reader.js?v=11"></script>
-    <script src="js/translation/retry.js?v=11"></script>
-    <script src="js/translation/engine.js?v=11"></script>
+    <script src="js/translation/chunker.js?v=12"></script>
+    <script src="js/translation/source-reader.js?v=12"></script>
+    <script src="js/translation/retry.js?v=12"></script>
+    <script src="js/translation/engine.js?v=12"></script>
 
 
     <!-- 4. UI Components -->
-    <script src="js/ui/progress.js?v=11"></script>
-    <script src="js/ui/file-handler.js?v=11"></script>
-    <script src="js/ui/settings.js?v=11"></script>
-    <script src="js/ui/controls.js?v=11"></script>
-    <script src="js/ui/chunk-tracker.js?v=11"></script>
+    <script src="js/ui/progress.js?v=12"></script>
+    <script src="js/ui/file-handler.js?v=12"></script>
+    <script src="js/ui/settings.js?v=12"></script>
+    <script src="js/ui/controls.js?v=12"></script>
+    <script src="js/ui/chunk-tracker.js?v=12"></script>
 
     <!-- 5. History -->
-    <script src="js/history/history.js?v=11"></script>
+    <script src="js/history/history.js?v=12"></script>
 
     <!-- 6. Local AI (Ollama) -->
-    <script src="js/local-ai/ollama.js?v=11"></script>
+    <script src="js/local-ai/ollama.js?v=12"></script>
 
     <!-- 6b. Proxy API -->
-    <script src="js/proxy/proxy-api.js?v=11"></script>
+    <script src="js/proxy/proxy-api.js?v=12"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
-    <script src="js/init.js?v=11"></script>
+    <script src="js/init.js?v=12"></script>
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->

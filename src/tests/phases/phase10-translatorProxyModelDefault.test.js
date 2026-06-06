@@ -115,10 +115,10 @@ describe('phase10 translator proxy model default', () => {
     expect(html).toContain('id="customProxyModelSelect"');
     expect(html).toContain('Lấy models');
     expect(html).toContain('Nhập model thủ công');
-    expect(html).toContain('href="style.css?v=11"');
-    expect(html).toContain('src="js/app.js?v=11"');
-    expect(html).toContain('src="js/proxy/proxy-api.js?v=11"');
-    expect(html).toContain('src="js/init.js?v=11"');
+    expect(html).toContain('href="style.css?v=12"');
+    expect(html).toContain('src="js/app.js?v=12"');
+    expect(html).toContain('src="js/proxy/proxy-api.js?v=12"');
+    expect(html).toContain('src="js/init.js?v=12"');
   });
 
   it('defaults Gemini Proxy to Flash 3 when saved translator settings do not contain a model', () => {

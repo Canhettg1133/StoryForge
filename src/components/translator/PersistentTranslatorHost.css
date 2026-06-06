@@ -42,3 +42,90 @@
   width: 100%;
   height: 100%;
 }
+
+.persistent-translator-host__adult-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 40px);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(99, 102, 241, 0.22), transparent 34%),
+    rgba(3, 7, 18, 0.76);
+  backdrop-filter: blur(14px);
+}
+
+.persistent-translator-host__adult-dialog {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: clamp(20px, 3vw, 28px);
+  border: 1px solid color-mix(in srgb, var(--color-accent, #818cf8) 30%, rgba(255, 255, 255, 0.16));
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(20, 27, 46, 0.98), rgba(8, 13, 26, 0.98));
+  color: var(--color-text-primary, #f8fafc);
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.46);
+}
+
+.persistent-translator-host__adult-kicker {
+  width: fit-content;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent, #818cf8) 18%, transparent);
+  color: color-mix(in srgb, var(--color-accent, #a5b4fc) 82%, white);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.persistent-translator-host__adult-dialog h2,
+.persistent-translator-host__adult-dialog p {
+  margin: 0;
+}
+
+.persistent-translator-host__adult-dialog h2 {
+  font-size: clamp(1.28rem, 3vw, 1.75rem);
+  line-height: 1.15;
+}
+
+.persistent-translator-host__adult-dialog p {
+  color: var(--color-text-secondary, #cbd5e1);
+  line-height: 1.58;
+}
+
+.persistent-translator-host__adult-note,
+.persistent-translator-host__adult-error {
+  padding: 12px 13px;
+  border-radius: 14px;
+}
+
+.persistent-translator-host__adult-note {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.persistent-translator-host__adult-error {
+  border: 1px solid color-mix(in srgb, #ef4444 46%, transparent);
+  background: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #fecaca;
+  line-height: 1.5;
+}
+
+.persistent-translator-host__adult-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+@media (max-width: 560px) {
+  .persistent-translator-host__adult-actions {
+    flex-direction: column-reverse;
+  }
+
+  .persistent-translator-host__adult-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -4,8 +4,20 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 
+const accessMock = vi.hoisted(() => ({
+  current: null,
+}));
+
 vi.mock('../../hooks/useMobileLayout', () => ({
   default: () => false,
+}));
+
+vi.mock('../../hooks/useUserAccess.js', () => ({
+  useUserAccess: () => accessMock.current,
+}));
+
+vi.mock('../../services/access/accessClient.js', () => ({
+  getCachedAccessToken: () => 'story-token',
 }));
 
 vi.mock('../../components/common/Sidebar.jsx', () => ({
@@ -39,6 +51,23 @@ describe('phase10 translator route persistence', () => {
   let root;
 
   beforeEach(() => {
+    accessMock.current = {
+      access: {
+        authenticated: true,
+        features: {
+          'translator.access': { allowed: true },
+          'content.adult_mode': { allowed: false, reason: 'ADULT_TERMS_REQUIRED' },
+        },
+      },
+      hasFeature: (featureKey) => featureKey === 'translator.access',
+      confirmAdultTerms: vi.fn(async () => ({
+        authenticated: true,
+        features: {
+          'translator.access': { allowed: true },
+          'content.adult_mode': { allowed: true },
+        },
+      })),
+    };
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -89,5 +118,59 @@ describe('phase10 translator route persistence', () => {
     });
 
     expect(container.querySelector('iframe[title="StoryForge Translator"]')).toBe(iframeBefore);
+  });
+
+  it('lets the translator iframe request the 18+ consent modal and receives the confirmed access snapshot', async () => {
+    const module = await import('../../components/translator/PersistentTranslatorHost.jsx');
+    const PersistentTranslatorHost = module.default;
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<PersistentTranslatorHost active />);
+    });
+
+    const iframe = container.querySelector('iframe[title="StoryForge Translator"]');
+    expect(iframe).not.toBeNull();
+    const postMessageSpy = vi.spyOn(iframe.contentWindow, 'postMessage');
+
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: window.location.origin,
+        source: iframe.contentWindow,
+        data: {
+          type: 'STORYFORGE_CONFIRM_ADULT_TERMS',
+          requestId: 'adult-request-1',
+          templateId: 'sacHiep',
+          message: 'Bạn cần đồng ý điều khoản 18+ mới nhất.',
+        },
+      }));
+    });
+
+    expect(container.textContent).toContain('Xác nhận điều khoản 18+');
+    expect(container.textContent).toContain('Bạn cần đồng ý điều khoản 18+ mới nhất.');
+
+    const confirmButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Tôi đủ 18 tuổi và đồng ý'));
+    expect(confirmButton).toBeDefined();
+
+    await act(async () => {
+      confirmButton.click();
+    });
+
+    expect(accessMock.current.confirmAdultTerms).toHaveBeenCalledTimes(1);
+    const resultMessage = postMessageSpy.mock.calls
+      .map(([payload]) => payload)
+      .find((payload) => payload?.type === 'STORYFORGE_ADULT_TERMS_RESULT');
+    expect(resultMessage).toMatchObject({
+      type: 'STORYFORGE_ADULT_TERMS_RESULT',
+      requestId: 'adult-request-1',
+      ok: true,
+      access: {
+        features: {
+          'content.adult_mode': { allowed: true },
+        },
+      },
+    });
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
 });

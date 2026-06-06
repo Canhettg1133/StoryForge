@@ -94,7 +94,7 @@
         401: 'PROXY_INVALID_KEY',
         402: 'PROXY_QUOTA_EXHAUSTED',
         403: 'PROXY_BACKEND_SUSPENDED',
-        404: 'PROXY_MODEL_NOT_FOUND',
+        404: 'PROXY_HTTP_ERROR',
         429: 'PROXY_RATE_LIMIT',
     };
 
@@ -192,6 +192,17 @@
             normalized.includes('api key khong hop le');
     }
 
+    function isProxyModelNotFoundMessage(rawMessage, model = '') {
+        const normalized = String(rawMessage || '').toLowerCase();
+        const normalizedModel = String(model || '').trim().toLowerCase();
+        return /model[^.!?\n]*(not found|does not exist|not exist|unknown|unsupported)/i.test(rawMessage || '') ||
+            /(not found|does not exist|not exist|unknown|unsupported)[^.!?\n]*model/i.test(rawMessage || '') ||
+            normalized.includes('model_not_found') ||
+            normalized.includes('no such model') ||
+            normalized.includes('模型') ||
+            (Boolean(normalizedModel) && normalized.includes(normalizedModel) && normalized.includes('not found'));
+    }
+
     function createGeminiHttpError(status, errorData = {}, context = {}) {
         const rawMessage = errorData?.error?.message || `HTTP ${status}`;
         const googleStatus = String(errorData?.error?.status || '').toUpperCase();
@@ -220,6 +231,9 @@
 
         if (status === 403 && !/(suspended|consumer_suspended|backend|ban|blocked)/i.test(rawMessage)) {
             code = 'PROXY_HTTP_ERROR';
+        }
+        if (status === 404 && isProxyModelNotFoundMessage(rawMessage, context.model)) {
+            code = 'PROXY_MODEL_NOT_FOUND';
         }
         if (status === 429 || normalized.includes('rate limit')) {
             code = 'PROXY_RATE_LIMIT';
