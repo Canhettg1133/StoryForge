@@ -15,6 +15,19 @@ function getAdultTemplateLabel(templateId) {
   return ADULT_TEMPLATE_LABELS[String(templateId || '').trim()] || 'mẫu dịch 18+';
 }
 
+function isAccessSnapshot(value) {
+  return Boolean(
+    value
+      && typeof value === 'object'
+      && !value.nativeEvent
+      && (
+        Object.prototype.hasOwnProperty.call(value, 'authenticated')
+        || Object.prototype.hasOwnProperty.call(value, 'features')
+        || Object.prototype.hasOwnProperty.call(value, 'plans')
+      ),
+  );
+}
+
 export default function PersistentTranslatorHost({ active = false }) {
   const frameRef = useRef(null);
   const { access, confirmAdultTerms } = useUserAccess();
@@ -25,10 +38,11 @@ export default function PersistentTranslatorHost({ active = false }) {
   const sendAccessContext = useCallback((nextAccess = access) => {
     const frame = frameRef.current;
     if (!frame?.contentWindow || typeof window === 'undefined') return;
+    const accessSnapshot = isAccessSnapshot(nextAccess) ? nextAccess : access;
     frame.contentWindow.postMessage({
       type: 'STORYFORGE_ACCESS_CONTEXT',
       token: getCachedAccessToken(),
-      access: nextAccess,
+      access: accessSnapshot,
     }, window.location.origin);
   }, [access]);
 
@@ -109,7 +123,7 @@ export default function PersistentTranslatorHost({ active = false }) {
         className="persistent-translator-host__frame"
         src={TRANSLATOR_URL}
         title="StoryForge Translator"
-        onLoad={sendAccessContext}
+        onLoad={() => sendAccessContext()}
       />
       {active && adultConsentRequest ? (
         <div className="persistent-translator-host__adult-backdrop" role="presentation" onMouseDown={closeAdultConsent}>

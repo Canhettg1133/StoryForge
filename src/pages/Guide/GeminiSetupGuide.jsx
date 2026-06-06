@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
   ArrowLeft,
@@ -18,6 +18,7 @@ import {
 import keyManager from '../../services/ai/keyManager';
 import modelRouter, { DIRECT_MODELS, PROVIDERS } from '../../services/ai/router';
 import { getGeminiDirectBaseUrl } from '../../services/ai/client';
+import { navigateBackOr } from '../../utils/navigation.js';
 import '../Settings/Settings.css';
 import './GeminiSetupGuide.css';
 
@@ -64,6 +65,7 @@ function ImagePlaceholder({ title, note }) {
 
 export default function GeminiSetupGuide() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [copied, setCopied] = useState(false);
 
   const setupState = useMemo(() => {
@@ -89,12 +91,7 @@ export default function GeminiSetupGuide() {
   };
 
   const handleGoBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
-    navigate('/');
+    navigateBackOr(navigate, '/settings#gemini-guides', { location });
   };
 
   const handleCopyEndpoint = async () => {

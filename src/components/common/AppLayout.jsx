@@ -13,6 +13,7 @@ import PersistentTranslatorHost from '../translator/PersistentTranslatorHost';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import { useUserAccess } from '../../hooks/useUserAccess';
 import AccessGate from '../access/AccessGate.jsx';
+import { navigateBackOr } from '../../utils/navigation.js';
 import './AppLayout.css';
 
 export default function AppLayout() {
@@ -25,12 +26,7 @@ export default function AppLayout() {
   const canUseTranslator = hasFeature(ACCESS_FEATURES.TRANSLATOR_ACCESS);
 
   const handleTranslatorBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
-    navigate('/');
+    navigateBackOr(navigate, '/', { location });
   };
 
   return (

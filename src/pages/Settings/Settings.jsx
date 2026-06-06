@@ -46,6 +46,7 @@ import useMobileLayout from '../../hooks/useMobileLayout';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { useUserAccess } from '../../hooks/useUserAccess';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
+import { navigateBackOr } from '../../utils/navigation.js';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
@@ -745,12 +746,7 @@ export default function Settings() {
     window.open('https://aistudio.google.com/app/apikey', '_blank', 'noopener,noreferrer');
   };
   const handleGoBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
-    navigate('/');
+    navigateBackOr(navigate, '/', { location });
   };
   const handleKeysChange = () => setKeyCounts(readSettingsKeyCounts());
 

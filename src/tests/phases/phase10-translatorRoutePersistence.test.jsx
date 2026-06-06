@@ -173,4 +173,32 @@ describe('phase10 translator route persistence', () => {
     });
     expect(container.querySelector('[role="dialog"]')).toBeNull();
   });
+
+  it('sends a plain access snapshot on iframe load instead of the load event object', async () => {
+    const module = await import('../../components/translator/PersistentTranslatorHost.jsx');
+    const PersistentTranslatorHost = module.default;
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<PersistentTranslatorHost active />);
+    });
+
+    const iframe = container.querySelector('iframe[title="StoryForge Translator"]');
+    expect(iframe).not.toBeNull();
+    const postMessageSpy = vi.spyOn(iframe.contentWindow, 'postMessage');
+
+    await act(async () => {
+      iframe.dispatchEvent(new Event('load'));
+    });
+
+    const contextMessage = postMessageSpy.mock.calls
+      .map(([payload]) => payload)
+      .find((payload) => payload?.type === 'STORYFORGE_ACCESS_CONTEXT');
+    expect(contextMessage).toMatchObject({
+      type: 'STORYFORGE_ACCESS_CONTEXT',
+      token: 'story-token',
+      access: accessMock.current.access,
+    });
+    expect(contextMessage.access).not.toHaveProperty('nativeEvent');
+  });
 });

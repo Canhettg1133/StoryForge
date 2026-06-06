@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   BookMarked,
@@ -23,6 +23,7 @@ import {
   resetStoryCreationSettings,
   resetStoryCreationGroup,
 } from '../../services/ai/storyCreationSettings';
+import { navigateBackOr } from '../../utils/navigation.js';
 import { GLOBAL_PROMPT_META } from '../../services/ai/promptManagerMeta';
 
 function VariableChips({ variables }) {
@@ -80,6 +81,7 @@ function getStoryCreationFlowMeta(groupKey) {
 
 export default function StoryCreationSettings() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { projectId } = useParams();
   const [draft, setDraft] = useState(() => getStoryCreationSettings());
   const [savedMessage, setSavedMessage] = useState('');
@@ -152,12 +154,7 @@ export default function StoryCreationSettings() {
   }, [draft]);
 
   const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
-    navigate('/');
+    navigateBackOr(navigate, '/', { location });
   };
 
   return (

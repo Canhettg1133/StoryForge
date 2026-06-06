@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -21,6 +21,7 @@ import {
 import keyManager from '../../services/ai/keyManager';
 import modelRouter, { PROVIDERS, TASK_TYPES } from '../../services/ai/router';
 import { getProxyUrl } from '../../services/ai/client';
+import { navigateBackOr } from '../../utils/navigation.js';
 import '../Settings/Settings.css';
 import './GeminiSetupGuide.css';
 import './GeminiProxyGuide.css';
@@ -175,6 +176,7 @@ function ScreenshotGroup({ shots, onOpen }) {
 
 export default function GeminiProxyGuide({ focusFixCli = false }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [copied, setCopied] = useState(false);
   const [activeShot, setActiveShot] = useState(null);
 
@@ -196,12 +198,7 @@ export default function GeminiProxyGuide({ focusFixCli = false }) {
   }, []);
 
   const handleGoBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
-    navigate('/');
+    navigateBackOr(navigate, '/settings#gemini-guides', { location });
   };
 
   const handleCopyEndpoint = async () => {

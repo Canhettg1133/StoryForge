@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   BookOpen,
@@ -17,6 +17,7 @@ import {
 import keyManager from '../../services/ai/keyManager';
 import modelRouter, { PROVIDERS } from '../../services/ai/router';
 import { getGeminiDirectBaseUrl, getOllamaUrl, getProxyUrl } from '../../services/ai/client';
+import { navigateBackOr } from '../../utils/navigation.js';
 import '../Settings/Settings.css';
 import './GeminiSetupGuide.css';
 
@@ -51,6 +52,7 @@ function StepCard({ index, title, icon: Icon, children }) {
 
 export default function TranslatorSetupGuide() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const setupState = useMemo(() => {
     const preferredProvider = modelRouter.getPreferredProvider();
@@ -66,11 +68,7 @@ export default function TranslatorSetupGuide() {
   }, []);
 
   const handleGoBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-    navigate('/settings#gemini-guides');
+    navigateBackOr(navigate, '/settings#gemini-guides', { location });
   };
 
   return (

@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Bot,
@@ -49,6 +49,7 @@ import useMobileLayout from '../../hooks/useMobileLayout';
 import { useUserAccess } from '../../hooks/useUserAccess';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import AccessGate from '../../components/access/AccessGate.jsx';
+import { navigateBackOr } from '../../utils/navigation.js';
 
 const GLOBAL_CHAT_PROJECT_ID = 0;
 const CHAT_THREAD_TITLE_FALLBACK = 'Cuộc trò chuyện mới';
@@ -552,6 +553,7 @@ function MessageBubble({ message, onCopy, onEdit, onContinue, onRetry }) {
 
 export default function ProjectChat() {
   const { projectId } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const { currentProject, loadProject } = useProjectStore();
   const projectScopeEnabled = Boolean(projectId);
@@ -1455,12 +1457,7 @@ export default function ProjectChat() {
       : 'Chat tự do: không dùng ngữ cảnh truyện';
 
   const handleGoBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
-    navigate('/');
+    navigateBackOr(navigate, '/', { location });
   };
 
   if (projectScopeEnabled && !currentProject) {
