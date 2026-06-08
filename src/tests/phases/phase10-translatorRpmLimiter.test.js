@@ -275,6 +275,45 @@ describe('phase10 translator RPM limiter', () => {
     ).rejects.toThrow(/Hết RPD/i);
   });
 
+  it('does not turn long Gemini Direct cooldowns into RPM waits', async () => {
+    const context = loadRuntime();
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY'];
+      rpmPerKey = 10;
+      GEMINI_MODELS = [{ name: 'model-long-cooldown', quota: 10, rpd: 1500, enabled: true }];
+      recordModelKeyError('model-long-cooldown', 0, 3500);
+    `, context);
+
+    const plan = vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 1 })', context);
+
+    expect(plan.capacity).toBe(0);
+    expect(plan.waitMs).toBe(0);
+    await expect(
+      vm.runInContext('waitForTranslatorRpmBatchPlan({ requestedParallel: 1 })', context)
+    ).rejects.toMatchObject({
+      code: 'GEMINI_RATE_LIMIT',
+      retryAfterSeconds: 30,
+    });
+  });
+
+  it('keeps pure RPM waits bounded to the local RPM window', () => {
+    const context = loadRuntime();
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY'];
+      rpmPerKey = 1;
+      recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0);
+    `, context);
+
+    const plan = vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 1 })', context);
+
+    expect(plan.capacity).toBe(0);
+    expect(plan.waitMs).toBeLessThanOrEqual(65000);
+  });
+
   it('renders RPM controls instead of the legacy delay control', () => {
     const html = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/index.html'), 'utf8');
 

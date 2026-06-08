@@ -681,7 +681,10 @@ function getDirectModelRpmWaitMsForKey(keyIndex) {
             ? getModelKeyCooldownMs(model.name, keyIndex)
             : 0;
         if (cooldownMs > 0) {
-            waitMs = Math.min(waitMs, cooldownMs);
+            continue;
+        }
+
+        if (typeof isModelKeyAvailable === 'function' && !isModelKeyAvailable(model.name, keyIndex)) {
             continue;
         }
 
