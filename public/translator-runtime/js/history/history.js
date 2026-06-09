@@ -324,7 +324,7 @@ function renderHistoryList() {
             <div class="history-item" data-id="${item.id}">
                 <span class="status-icon">${item.isComplete ? '✅' : '⏳'}</span>
                 <div class="history-info">
-                    <div class="history-name">${escapeHtml(item.name)}</div>
+                    <div class="history-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
                     <div class="history-meta">
                         <span>📅 ${dateStr}</span>
                         <span>${statusText}</span>

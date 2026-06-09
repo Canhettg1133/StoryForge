@@ -10,6 +10,7 @@ const {
   enqueueTranslatorSession,
   getTranslatorSessionChunks,
   getTranslatorSessionOutputParts,
+  getTranslatorQueueItems,
   markTranslatorChunksBefore,
   searchTranslatorSessionChunks,
   updateTranslatorChunkResult,
@@ -119,5 +120,27 @@ describe('translator local store and queue', () => {
     await updateTranslatorQueueItemStatus(claimedFirst.id, 'completed');
     const claimedSecond = await claimNextTranslatorQueueItem();
     expect(claimedSecond.sessionId).toBe(second.id);
+  });
+
+  it('queues an uploaded txt story session with file metadata intact', async () => {
+    const file = new TrackingFile(['Noi dung truyen can dua vao hang doi.'], {
+      name: 'ten-truyen-rat-dai-de-kiem-tra-hang-doi.txt',
+      lastModified: 1710000000999,
+    });
+
+    const session = await createTranslatorSessionFromFile(file, {
+      chunkSize: 100,
+    });
+    const queueItem = await enqueueTranslatorSession(session.id);
+    const queueItems = await getTranslatorQueueItems();
+
+    expect(queueItem.status).toBe('queued');
+    expect(queueItems).toHaveLength(1);
+    expect(queueItems[0]).toMatchObject({
+      sessionId: session.id,
+      status: 'queued',
+      position: 1,
+    });
+    expect(session.fileName).toBe('ten-truyen-rat-dai-de-kiem-tra-hang-doi.txt');
   });
 });

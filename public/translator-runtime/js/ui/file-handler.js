@@ -499,6 +499,7 @@ async function renderTranslationQueue() {
     }
     const rows = await Promise.all(items.slice(0, 30).map(async (item) => {
         const session = await getTranslatorSession(item.sessionId);
+        const sessionName = session?.fileName || item.sessionId;
         const totalToTranslate = Math.max(1, (session?.totalChunks || 0) - (session?.startChunkIndex || 0));
         const progress = session?.isComplete
             ? 100
@@ -506,7 +507,7 @@ async function renderTranslationQueue() {
         return `
             <article class="translation-queue-item translation-queue-item--${item.status}">
                 <div class="translation-queue-item__main">
-                    <strong>${escapeHtml(session?.fileName || item.sessionId)}</strong>
+                    <strong title="${escapeHtml(sessionName)}">${escapeHtml(sessionName)}</strong>
                     <span>${queueStatusLabel(item.status)} • ${progress}% • ${session?.completedChunks || 0}/${totalToTranslate} chunk</span>
                 </div>
                 <div class="translation-queue-item__actions">

@@ -29,6 +29,19 @@ function getFunctionBody(source, functionName) {
   throw new Error(`Could not read body for ${functionName}`);
 }
 
+function getCssRuleBody(source, selector) {
+  const startToken = `${selector} {`;
+  const start = source.indexOf(startToken);
+  expect(start).toBeGreaterThanOrEqual(0);
+
+  const braceStart = source.indexOf('{', start);
+  expect(braceStart).toBeGreaterThanOrEqual(0);
+
+  const end = source.indexOf('\n}', braceStart);
+  expect(end).toBeGreaterThan(braceStart);
+  return source.slice(braceStart + 1, end);
+}
+
 describe('translator queue/history audit', () => {
   it('keeps history in IndexedDB and strips chunk arrays before saving', () => {
     const historySource = readRuntime('public/translator-runtime/js/history/history.js');
@@ -75,5 +88,49 @@ describe('translator queue/history audit', () => {
     expect(html).toContain('Hàng đợi');
     expect(initSource).toContain('handleStartChunkSearchInput');
     expect(initSource).toContain('toggleTranslationQueuePanel');
+  });
+
+  it('keeps long translator history and queue names inside the visible panel width', () => {
+    const css = readRuntime('public/translator-runtime/style.css');
+    const historySource = readRuntime('public/translator-runtime/js/history/history.js');
+    const fileHandlerSource = readRuntime('public/translator-runtime/js/ui/file-handler.js');
+    const historyListRule = getCssRuleBody(css, '.history-list');
+    const historyInfoRule = getCssRuleBody(css, '.history-item .history-info');
+    const historyNameRule = getCssRuleBody(css, '.history-item .history-name');
+    const queueListRule = getCssRuleBody(css, '.translation-queue-list');
+    const queueMainRule = getCssRuleBody(css, '.translation-queue-item__main');
+    const queueNameRule = getCssRuleBody(css, '.translation-queue-item__main strong');
+
+    expect(historyListRule).toContain('overflow-x: hidden;');
+    expect(historyInfoRule).toContain('flex: 1 1 0;');
+    expect(historyInfoRule).toContain('overflow: hidden;');
+    expect(historyNameRule).toContain('text-overflow: ellipsis;');
+    expect(historySource).toContain('class="history-name" title="${escapeHtml(item.name)}"');
+    expect(fileHandlerSource).toContain('<strong title="${escapeHtml(sessionName)}">${escapeHtml(sessionName)}</strong>');
+    expect(queueListRule).toContain('overflow-x: hidden;');
+    expect(queueMainRule).toContain('flex: 1 1 0;');
+    expect(queueMainRule).toContain('overflow: hidden;');
+    expect(queueNameRule).toContain('display: block;');
+    expect(queueNameRule).toContain('text-overflow: ellipsis;');
+  });
+
+  it('keeps selected and dropped story files routed into the translator queue', () => {
+    const fileHandlerSource = readRuntime('public/translator-runtime/js/ui/file-handler.js');
+    const handleFileSelectBody = getFunctionBody(fileHandlerSource, 'handleFileSelect');
+    const handleDropBody = getFunctionBody(fileHandlerSource, 'handleDrop');
+    const enqueueBody = getFunctionBody(fileHandlerSource, 'enqueueTranslatorFiles');
+
+    expect(handleFileSelectBody).toContain('if (isTranslating)');
+    expect(handleFileSelectBody).toContain("await enqueueTranslatorFiles(files)");
+    expect(handleFileSelectBody).toContain("await processFile(files[0])");
+    expect(handleFileSelectBody).toContain("await enqueueTranslatorFiles(files.slice(1))");
+    expect(handleDropBody).toContain('if (isTranslating)');
+    expect(handleDropBody).toContain("await enqueueTranslatorFiles(files)");
+    expect(handleDropBody).toContain("if (files.length > 1) await enqueueTranslatorFiles(files.slice(1));");
+    expect(enqueueBody).toContain("filter(file => /\\.txt$/i.test(file.name || ''))");
+    expect(enqueueBody).toContain('createLocalSessionForFile(file');
+    expect(enqueueBody).toContain('enqueueTranslatorSession(session.id)');
+    expect(enqueueBody).toContain('renderTranslationQueue()');
+    expect(enqueueBody).toContain('toggleTranslationQueuePanel(true)');
   });
 });
