@@ -1901,6 +1901,7 @@ function setupEventListeners() {
         uploadArea.addEventListener('dragleave', handleDragLeave);
         uploadArea.addEventListener('drop', handleDrop);
         uploadArea.addEventListener('click', (e) => {
+            if (!fileInput || fileInput.disabled) return;
             if (e.target !== fileInput) {
                 fileInput.click();
             }

@@ -6,6 +6,46 @@
 let startChunkSearchTimer = null;
 let startChunkSearchController = null;
 
+function setFileLoadState(state = 'idle', file = null) {
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const uploadStatusText = document.getElementById('uploadStatusText');
+    const uploadStatusMeta = document.getElementById('uploadStatusMeta');
+    const isBusy = state !== 'idle';
+
+    if (uploadArea) {
+        uploadArea.classList.toggle('is-loading', isBusy);
+        uploadArea.classList.remove('dragover');
+        uploadArea.setAttribute('aria-busy', String(isBusy));
+        uploadArea.setAttribute('aria-disabled', String(isBusy));
+    }
+    if (fileInput) fileInput.disabled = isBusy;
+
+    if (!uploadStatus) return;
+    uploadStatus.hidden = !isBusy;
+    if (!isBusy) {
+        if (uploadStatusText) uploadStatusText.textContent = '';
+        if (uploadStatusMeta) uploadStatusMeta.textContent = '';
+        return;
+    }
+
+    const messages = {
+        reading: 'Đang đọc file truyện...',
+        indexing: 'Đang lập chỉ mục cục bộ để có thể tìm đoạn và tiếp tục dịch...',
+        preview: 'Đang tải bản xem trước file lớn...',
+        queued: 'Đang thêm truyện vào hàng đợi dịch...',
+    };
+    if (uploadStatusText) {
+        uploadStatusText.textContent = messages[state] || 'Đang xử lý file truyện...';
+    }
+    if (uploadStatusMeta) {
+        uploadStatusMeta.textContent = file
+            ? `${file.name || 'truyen.txt'} • ${formatFileSize(Number(file.size || 0))}`
+            : 'Vui lòng chờ trong giây lát.';
+    }
+}
+
 // ============================================
 // FILE HANDLING
 // ============================================
@@ -17,8 +57,13 @@ async function handleFileSelect(event) {
     }
 
     if (isTranslating) {
-        await enqueueTranslatorFiles(files);
-        event.target.value = '';
+        setFileLoadState('queued', files[0]);
+        try {
+            await enqueueTranslatorFiles(files);
+        } finally {
+            setFileLoadState('idle');
+            event.target.value = '';
+        }
         return;
     }
 
@@ -41,7 +86,7 @@ function handleDragLeave(event) {
     document.getElementById('uploadArea').classList.remove('dragover');
 }
 
-function handleDrop(event) {
+async function handleDrop(event) {
     event.preventDefault();
     event.stopPropagation();
     document.getElementById('uploadArea').classList.remove('dragover');
@@ -53,13 +98,17 @@ function handleDrop(event) {
     }
 
     if (isTranslating) {
-        enqueueTranslatorFiles(files);
+        setFileLoadState('queued', files[0]);
+        try {
+            await enqueueTranslatorFiles(files);
+        } finally {
+            setFileLoadState('idle');
+        }
         return;
     }
 
-    processFile(files[0]).then(() => {
-        if (files.length > 1) enqueueTranslatorFiles(files.slice(1));
-    });
+    await processFile(files[0]);
+    if (files.length > 1) await enqueueTranslatorFiles(files.slice(1));
 }
 
 async function processFile(file) {
@@ -74,17 +123,20 @@ async function processFile(file) {
     translationStartChunkIndex = 0;
     translationStartByte = 0;
 
-    if (typeof isLargeFileCandidate === 'function' && isLargeFileCandidate(file)) {
-        try {
+    setFileLoadState('reading', file);
+    try {
+        if (typeof isLargeFileCandidate === 'function' && isLargeFileCandidate(file)) {
             await processLargeFile(file);
-        } catch (error) {
-            console.error('Large file load error:', error);
-            showToast('Lỗi khi đọc bản xem trước của file lớn.', 'error');
+            return;
         }
-        return;
-    }
 
-    await processTextFile(file);
+        await processTextFile(file);
+    } catch (error) {
+        console.error('File load error:', error);
+        showToast('Không thể tải file truyện. Hãy thử lại.', 'error');
+    } finally {
+        setFileLoadState('idle');
+    }
 }
 
 function resetSourceModeToText() {
@@ -138,24 +190,29 @@ function setCurrentTranslatorSession(session) {
 
 async function processTextFile(file) {
     resetSourceModeToText();
+    setFileLoadState('indexing', file);
     const session = await createLocalSessionForFile(file).catch((error) => {
         console.warn('[Translator] Không thể tạo chỉ mục local cho file nhỏ:', error);
         return null;
     });
     if (session) setCurrentTranslatorSession(session);
 
-    const reader = new FileReader();
-    reader.onload = function (event) {
-        document.getElementById('originalText').value = event.target.result;
-        updateStats();
-        showFileInfo(file, { mode: 'text' });
-        renderStartChunkPanel();
-        showToast('Đã tải file thành công.', 'success');
-    };
-    reader.onerror = function () {
-        showToast('Lỗi khi đọc file.', 'error');
-    };
-    reader.readAsText(file, 'UTF-8');
+    setFileLoadState('reading', file);
+    await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+            document.getElementById('originalText').value = event.target.result;
+            updateStats();
+            showFileInfo(file, { mode: 'text' });
+            renderStartChunkPanel();
+            showToast('Đã tải file thành công.', 'success');
+            resolve(true);
+        };
+        reader.onerror = function () {
+            reject(reader.error || new Error('Lỗi khi đọc file.'));
+        };
+        reader.readAsText(file, 'UTF-8');
+    });
 }
 
 async function processLargeFile(file) {
@@ -169,9 +226,11 @@ async function processLargeFile(file) {
     currentHistoryId = null;
 
     const chunkSize = getCurrentChunkSizeValue();
+    setFileLoadState('preview', file);
     const previewText = typeof readFilePreview === 'function'
         ? await readFilePreview(file)
         : await file.slice(0, Math.min(file.size, 64 * 1024)).text();
+    setFileLoadState('indexing', file);
     const session = await createLocalSessionForFile(file, {
         windowBytes: Math.max(256 * 1024, chunkSize * 6),
         minWindowBytes: 256 * 1024,
@@ -239,6 +298,7 @@ function showFileInfo(file, options = {}) {
 }
 
 function clearFile() {
+    setFileLoadState('idle');
     resetSourceModeToText();
     document.getElementById('fileInput').value = '';
     document.getElementById('fileInfo').style.display = 'none';

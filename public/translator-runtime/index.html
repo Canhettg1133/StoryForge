@@ -843,6 +843,11 @@
                         <p class="upload-text">Kéo thả file .txt vào đây</p>
                         <p class="upload-subtext">hoặc click để chọn file</p>
                     </div>
+                    <div class="upload-status" id="uploadStatus" role="status" aria-live="polite" hidden>
+                        <span class="upload-spinner" aria-hidden="true"></span>
+                        <span class="upload-status-main" id="uploadStatusText">Đang đọc file truyện...</span>
+                        <span class="upload-status-meta" id="uploadStatusMeta"></span>
+                    </div>
                     <input type="file" id="fileInput" accept=".txt" multiple hidden>
                 </div>
 

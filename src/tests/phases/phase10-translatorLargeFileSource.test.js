@@ -133,6 +133,25 @@ describe('translator large-file source helpers', () => {
     expect(previewReadIndex).toBeGreaterThan(textFlowCallIndex);
   });
 
+  it('shows a visible upload busy state while reading and indexing a story file', () => {
+    const html = readFileSync(resolve(process.cwd(), 'public/translator-runtime/index.html'), 'utf8');
+    const fileHandler = readFileSync(
+      resolve(process.cwd(), 'public/translator-runtime/js/ui/file-handler.js'),
+      'utf8'
+    );
+
+    expect(html).toContain('id="uploadStatus"');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('id="uploadStatusText"');
+    expect(fileHandler).toContain('function setFileLoadState');
+    expect(fileHandler).toContain("setFileLoadState('reading', file)");
+    expect(fileHandler).toContain("setFileLoadState('indexing', file)");
+    expect(fileHandler).toContain("setFileLoadState('preview', file)");
+    expect(fileHandler).toContain("setFileLoadState('idle')");
+    expect(fileHandler).toContain('fileInput.disabled = isBusy');
+    expect(fileHandler).toContain("uploadArea.setAttribute('aria-busy'");
+  });
+
   it('builds prompted chunks on demand instead of mapping the whole story first', () => {
     const engine = readFileSync(
       resolve(process.cwd(), 'public/translator-runtime/js/translation/engine.js'),
