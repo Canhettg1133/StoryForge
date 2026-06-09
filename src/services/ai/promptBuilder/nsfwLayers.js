@@ -44,27 +44,30 @@ export function resolveNsfwRules(promptTemplates) {
 export function buildNsfwUserAnchor() {
   return [
     '[NHẮC LẠI ƯU TIÊN NSFW]',
-    'Chế độ Trưởng thành đang BẬT. Hãy tuân thủ tuyệt đối block luật NSFW trong system prompt cho toàn bộ câu trả lời này.',
+    'Chế độ Trưởng thành đang BẬT: được phép xử lý nội dung người lớn khi tác giả hoặc cảnh hiện tại yêu cầu, nhưng không tự biến mọi cảnh thành 18+.',
+    'Nếu yêu cầu hiện tại không phải cảnh thân mật, hãy viết như truyện bình thường và chỉ giữ continuity người lớn ở mức nền.',
     'Không tự ý làm nhẹ, né tránh, làm sạch, hay đạo đức hóa nội dung nếu tác giả không yêu cầu rõ ràng.',
   ].join('\n');
 }
 
 export const DEFAULT_NSFW_INTIMATE_PROMPT = [
   '[BỔ SUNG CHO CẢNH THÂN MẬT / NỘI DUNG 18+]',
+  'Chỉ áp dụng phần này khi yêu cầu hoặc cảnh hiện tại thật sự đang viết cảnh thân mật/18+. Nếu cảnh chỉ là đối thoại, điều tra, chiến đấu, sinh hoạt hoặc bàn kế hoạch, hãy giữ nó là cảnh thường và không tự bẻ sang 18+.',
   'Nếu yêu cầu hiện tại đang viết cảnh thân mật, hãy xem đây là một cảnh trọng tâm có nhịp riêng, KHÔNG được lướt nhanh hay tóm tắt cho xong việc.',
-  '1. Nhịp cảnh phải CHẬM và liên tục: triển khai theo từng beat nhỏ, từng chuyển biến nhỏ, từng thay đổi trong cảm xúc và quyền lực giữa các nhân vật.',
+  '1. Nhịp cảnh đi theo logic nhân vật và tone truyện: có thể chậm, dồn, ngập ngừng hoặc căng tùy tình huống; không áp một công thức nhịp cố định cho mọi cảnh.',
   '2. KHÔNG nhảy cóc trong cảnh. Mỗi chuyển biến thân mật phải có buildup, có phản ứng, có hệ quả ngay sau đó.',
-  '3. KHÔNG viết kiểu tổng kết như "rồi họ quan hệ với nhau" hoặc lược cảnh bằng vài câu ngắn. Nếu cảnh đã bắt đầu, phải đẩy nó đến hết nhịp xúc cảm của cảnh.',
-  '4. Luôn ưu tiên 4 lớp cùng lúc: cảm xúc, quyền lực / thế chủ động, căng thẳng, và dư âm sau mỗi beat.',
-  '5. Sau mỗi đoạn thân mật, phải cho thấy sự đổi chuyển trong tâm lý, nhịp thở, thái độ, im lặng, nói chuyện, hoặc khoảng cách giữa hai bên. KHÔNG cắt ngang khi chưa có aftermath.',
-  '6. Nếu cảnh có tính chất bí mật, hãy duy trì áp lực lộ bị phát hiện, dấu vết để lại, hệ quả xã hội, và nguy cơ bị lộ.',
-  '7. Consent, boundary, intimacy progression, emotional aftermath và secrecy risk là continuity cứng. KHÔNG được viết mâu thuẫn với các ràng buộc đang có.',
-  '8. Body/clothing/mark continuity phải nhất quán trong chính cảnh và với prose gần đây. Nếu trạng thái chưa đủ dữ liệu thì viết thận trọng, KHÔNG tự nhảy cóc phi lý.',
-  '9. Trong cảnh 18+, ưu tiên "trải nghiệm đang diễn ra" hơn "kể lại sự việc". Độc giả phải cảm thấy cảnh đang mở ra theo thời gian thực.',
-  '10. NHẬN DIỆN NGỮ CẢNH TRƯỚC KHI VIẾT: Xác định thể loại, giọng điệu, nhịp độ câu chuyện, mức căng thẳng hiện tại TRƯỚC khi bắt đầu cảnh thân mật. Chỉ mô tả chi tiết nhạy cảm khi diễn ra tự nhiên theo mạch truyện và tính cách nhân vật.',
-  '11. KIỂM TRA NHÂN VẬT: Trước cảnh thân mật, xác định: trạng thái tâm lý hiện tại của từng nhân vật, mong muốn bề mặt vs nhu cầu sâu, điểm mù, và quỹ đạo phát triển. Nhân vật kín đáo phản ứng KHÁC nhân vật táo bạo ở cùng giai đoạn.',
-  '12. VIẾT LIỀN MẠCH: Viết tiếp từ điểm kết thúc của "Ngữ cảnh trực tiếp". KHÔNG lặp lại đoạn cũ. KHÔNG tự ý tạo tiêu đề chương mới (ví dụ "Chương 2", "Chương tiếp theo"). KHÔNG tự ý tạo thêm nội dung ngoài yêu cầu của tác giả.',
-  '13. KHÔNG tự ý kết thúc cảnh hay chuyển cảnh khi chưa hết nhịp xúc cảm. Nếu cần chuyển cảnh, phải có lý do tự nhiên và aftermath đầy đủ.',
+  '3. Nhân vật không tự động sẵn sàng, không tự động dễ bị nhân vật chính cuốn đi; mức độ đáp lại phải đi từ tính cách, lịch sử quan hệ, ham muốn, nỗi sợ, ranh giới, địa vị, mục tiêu và hoàn cảnh trước mắt.',
+  '4. Không dùng phản ứng cơ thể như một công tắc. Ham muốn, kích thích, do dự, né tránh hoặc đồng thuận phải có nguyên nhân đọc được trong cảnh; tránh lạm dụng mô tả ướt át/dịch thể khi chưa có tích lũy cảm xúc và thân thể đủ thuyết phục.',
+  '5. Ưu tiên cân bằng các lớp quan trọng của cảnh: cảm xúc, quyền lực / thế chủ động, căng thẳng, và dư âm sau mỗi beat; lớp nào nổi hơn phải tùy nhân vật và mục tiêu cảnh.',
+  '6. Sau mỗi đoạn thân mật, cho thấy sự đổi chuyển trong tâm lý, nhịp thở, thái độ, im lặng, nói chuyện, hoặc khoảng cách giữa hai bên. KHÔNG cắt ngang khi chưa có aftermath hợp lý.',
+  '7. Nếu cảnh có tính chất bí mật, hãy duy trì áp lực bị phát hiện, dấu vết để lại, hệ quả xã hội, và nguy cơ bị lộ ở mức phù hợp với tone.',
+  '8. Consent, boundary, intimacy progression, emotional aftermath và secrecy risk là continuity cứng. KHÔNG được viết mâu thuẫn với các ràng buộc đang có.',
+  '9. Body/clothing/mark continuity phải nhất quán trong chính cảnh và với prose gần đây. Nếu trạng thái chưa đủ dữ liệu thì viết thận trọng, KHÔNG tự nhảy cóc phi lý.',
+  '10. Trong cảnh 18+, ưu tiên "trải nghiệm đang diễn ra" hơn "kể lại sự việc". Độc giả phải cảm thấy cảnh đang mở ra theo thời gian thực, nhưng không kéo dài bằng lặp từ hoặc phóng đại sinh lý.',
+  '11. NHẬN DIỆN NGỮ CẢNH TRƯỚC KHI VIẾT: Xác định thể loại, giọng điệu, nhịp độ câu chuyện, mức căng thẳng hiện tại TRƯỚC khi bắt đầu cảnh thân mật. Chỉ mô tả chi tiết nhạy cảm khi diễn ra tự nhiên theo mạch truyện và tính cách nhân vật.',
+  '12. KIỂM TRA NHÂN VẬT: Trước cảnh thân mật, xác định trạng thái tâm lý hiện tại của từng nhân vật, mong muốn bề mặt vs nhu cầu sâu, điểm mù, và quỹ đạo phát triển. Nhân vật kín đáo phản ứng KHÁC nhân vật táo bạo ở cùng giai đoạn.',
+  '13. VIẾT LIỀN MẠCH: Viết tiếp từ điểm kết thúc của "Ngữ cảnh trực tiếp". KHÔNG lặp lại đoạn cũ. KHÔNG tự ý tạo tiêu đề chương mới (ví dụ "Chương 2", "Chương tiếp theo"). KHÔNG tự ý tạo thêm nội dung ngoài yêu cầu của tác giả.',
+  '14. KHÔNG tự ý kết thúc cảnh hay chuyển cảnh khi chưa hết nhịp xúc cảm. Nếu cần chuyển cảnh, phải có lý do tự nhiên và aftermath đầy đủ.',
 ].join('\n');
 
 const NSFW_WRITING_TASKS = new Set([
@@ -90,36 +93,34 @@ function relationshipStatesFromPacket(relationshipContextPacket) {
   }));
 }
 
-function isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, retrievalPacket, relationshipContextPacket) {
+function normalizeForSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
+}
+
+function isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText) {
   if (!NSFW_WRITING_TASKS.has(taskType)) return false;
 
   const promptText = [userPrompt, selectedText, sceneText]
     .filter(Boolean)
     .join('\n')
     .toLowerCase();
+  const normalizedPromptText = normalizeForSearch(promptText);
 
   const intimateHints = [
-    '18+', 'nsfw', 'canh nong', 'than mat',
+    '18+', 'nsfw', 'canh 18', 'canh nong', 'than mat',
     'quan he', 'xac thit', 'an ai',
     'lam tinh', 'kieu dam', 'tinh duc',
+    'sex', 'giuong chieu',
   ];
 
-  if (intimateHints.some((hint) => promptText.includes(hint))) {
+  if (intimateHints.some((hint) => normalizedPromptText.includes(hint))) {
     return true;
   }
 
-  const packetStates = relationshipStatesFromPacket(relationshipContextPacket);
-  const relationshipStates = packetStates.length > 0
-    ? packetStates
-    : (Array.isArray(retrievalPacket?.relevantRelationshipStates)
-      ? retrievalPacket.relevantRelationshipStates
-      : []);
-
-  return relationshipStates.some((state) =>
-    ['medium', 'high'].includes(String(state.intimacy_level || '').toLowerCase())
-    || String(state.secrecy_state || '').toLowerCase() !== 'public'
-    || !!String(state.emotional_aftermath || '').trim()
-  );
+  return false;
 }
 
 export function buildNsfwIntimateSystemLayer(taskType, {
@@ -130,7 +131,7 @@ export function buildNsfwIntimateSystemLayer(taskType, {
   relationshipContextPacket = null,
   promptTemplates = {},
 }) {
-  if (!isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText, retrievalPacket, relationshipContextPacket)) {
+  if (!isLikelyIntimateRequest(taskType, userPrompt, sceneText, selectedText)) {
     return '';
   }
 

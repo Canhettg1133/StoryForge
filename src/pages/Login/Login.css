@@ -188,6 +188,7 @@
 }
 
 .login-page__notice,
+.login-page__message,
 .login-page__error {
   display: flex;
   align-items: flex-start;
@@ -204,6 +205,13 @@
 .login-page__notice svg {
   flex: 0 0 auto;
   color: var(--color-accent);
+}
+
+.login-page__message {
+  border: 1px solid color-mix(in srgb, var(--color-success, #22c55e) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success, #22c55e) 10%, transparent);
+  color: var(--color-text-primary);
+  line-height: 1.45;
 }
 
 .login-page__error {
@@ -239,6 +247,16 @@
 
 .login-page__actions--copy-first .btn-primary {
   flex: 1 1 180px;
+}
+
+.login-page__logout-button {
+  border-color: color-mix(in srgb, #ef4444 28%, var(--color-border));
+  color: #fecaca;
+}
+
+.login-page__logout-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #ef4444 48%, var(--color-border));
+  background: color-mix(in srgb, #ef4444 12%, transparent);
 }
 
 .login-page__login-button {

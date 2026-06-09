@@ -11,6 +11,7 @@ import {
   STORY_STRUCTURES,
   PRONOUN_STYLE_PRESETS,
   GENRE_TO_PRONOUN_STYLE,
+  PROJECT_TAG_PRESETS,
 } from '../../utils/constants';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import useProjectStore from '../../stores/projectStore';
@@ -110,6 +111,33 @@ function clampInitialChapterCount(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 10;
   return Math.max(1, Math.min(100, Math.round(numeric)));
+}
+
+function normalizeProjectTagList(value) {
+  const seen = new Set();
+  return String(value || '')
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function formatProjectTags(tags = []) {
+  return tags.join(', ');
+}
+
+function toggleProjectTagValue(currentValue, tag) {
+  const current = normalizeProjectTagList(currentValue);
+  const key = tag.toLowerCase();
+  const exists = current.some((item) => item.toLowerCase() === key);
+  return formatProjectTags(exists
+    ? current.filter((item) => item.toLowerCase() !== key)
+    : [...current, tag]);
 }
 
 function toPositiveInt(value) {
@@ -363,6 +391,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [idea, setIdea] = useState('');
   const [genre, setGenre] = useState('tien_hiep');
   const [tone, setTone] = useState('');
+  const [projectTags, setProjectTags] = useState('');
   const [useTemplate, setUseTemplate] = useState(true);
   const [povMode, setPovMode] = useState('third_omni');
   const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE.tien_hiep || 'tien_hiep');
@@ -387,6 +416,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
   const currentPronoun = PRONOUN_STYLE_PRESETS.find((p) => p.value === pronounStyle);
   const currentTemplate = GENRE_TEMPLATES[genre];
+  const selectedProjectTags = useMemo(() => normalizeProjectTagList(projectTags), [projectTags]);
   const hasDNA = !!(currentTemplate?.constitution?.length || currentTemplate?.style_dna?.length);
   const chapterCount = clampInitialChapterCount(initialChapterCount);
 
@@ -440,6 +470,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const handleGenreChange = (value) => {
     setGenre(value);
     setPronounStyle(GENRE_TO_PRONOUN_STYLE[value] || 'hien_dai');
+  };
+
+  const handleProjectTagToggle = (tag) => {
+    setProjectTags((value) => toggleProjectTagValue(value, tag));
   };
 
   const handleTargetLengthTypeChange = (value) => {
@@ -551,6 +585,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
     return {
       genre: genreLabel,
       tone: tone || 'mặc định',
+      tags_line: projectTags ? `Tag / trope: ${projectTags}\n` : '',
       pov_label: POV_MODES.find((item) => item.value === povMode)?.label || 'Ngôi 3',
       pronoun_label: currentPronoun?.label || 'Mặc định',
       target_length_label: targetLength > 0 ? `${targetLength} chương` : 'Chưa xác định',
@@ -734,6 +769,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
         title: projectTitle,
         genre_primary: genre,
         tone,
+        project_tags: projectTags,
         description: finalResult.premise || idea,
         world_name: wp.world_name || '',
         world_type: wp.world_type || '',
@@ -1443,6 +1479,33 @@ export default function ProjectWizard({ onClose, onCreated }) {
                     {TONES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Tag / trope của truyện</label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+                  {PROJECT_TAG_PRESETS.map((tag) => {
+                    const selected = selectedProjectTags.some((item) => item.toLowerCase() === tag.value.toLowerCase());
+                    return (
+                      <button
+                        key={tag.value}
+                        type="button"
+                        className={`btn btn-xs ${selected ? 'btn-primary' : 'btn-ghost'}`}
+                        onClick={() => handleProjectTagToggle(tag.value)}
+                      >
+                        {tag.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <input
+                  className="input"
+                  style={{ marginTop: 'var(--space-2)' }}
+                  placeholder="Tag riêng, cách nhau bằng dấu phẩy..."
+                  value={projectTags}
+                  onChange={(event) => setProjectTags(event.target.value)}
+                />
+                <span className="form-hint">Tag này sẽ đi vào prompt như định hướng mềm, không ép thành luật cứng.</span>
               </div>
 
               <ProjectContentModeControl surface="wizard" mode={contentMode} onChange={setContentMode} />

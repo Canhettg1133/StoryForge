@@ -94,6 +94,7 @@ export async function gatherContext({
       fanficCanonContext: null,
       aiGuidelines: '',
       aiStrictness: 'balanced',
+      projectTags: '',
       projectStyleRuntimeBlock: '',
       projectStyleRuntimeEnabled: false,
       projectStyleRuntimeMeta: null,
@@ -166,6 +167,7 @@ export async function gatherContext({
 
   const effectiveGenre = genre || project?.genre_primary || '';
   const tone = project?.tone || '';
+  const projectTags = project?.project_tags || '';
   const aiGuidelines = project?.ai_guidelines || '';
   const aiStrictness = project?.ai_strictness || 'balanced';
   const nsfwMode = project?.nsfw_mode || false;
@@ -576,6 +578,7 @@ export async function gatherContext({
     worldProfile,
     genre: effectiveGenre,
     tone,
+    projectTags,
     allCharacters,
     aiGuidelines,
     aiStrictness,

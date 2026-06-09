@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import useProjectStore from '../../stores/projectStore';
 import {
   GENRES, TONES, POV_MODES, STORY_STRUCTURES,
-  PRONOUN_STYLE_PRESETS, GENRE_TO_PRONOUN_STYLE,
+  PRONOUN_STYLE_PRESETS, GENRE_TO_PRONOUN_STYLE, PROJECT_TAG_PRESETS,
 } from '../../utils/constants';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import { X, Sparkles, PenTool, Eye, BookOpen, MessageSquare, BookKey } from 'lucide-react';
@@ -24,6 +24,33 @@ function clampInitialChapterCount(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 10;
   return Math.max(1, Math.min(100, Math.round(numeric)));
+}
+
+function normalizeProjectTagList(value) {
+  const seen = new Set();
+  return String(value || '')
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = item.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function formatProjectTags(tags = []) {
+  return tags.join(', ');
+}
+
+function toggleProjectTagValue(currentValue, tag) {
+  const current = normalizeProjectTagList(currentValue);
+  const key = tag.toLowerCase();
+  const exists = current.some((item) => item.toLowerCase() === key);
+  return formatProjectTags(exists
+    ? current.filter((item) => item.toLowerCase() !== key)
+    : [...current, tag]);
 }
 
 const TEMPLATE_INCLUDE_DEFAULTS = {
@@ -85,6 +112,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
     title: '',
     genre_primary: 'fantasy',
     tone: '',
+    project_tags: '',
     audience: '',
     description: '',
     // New fields
@@ -192,6 +220,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
 
   // Lấy thông tin DNA của thể loại đang chọn để hiển thị hint
   const selectedTemplate = GENRE_TEMPLATES[form.genre_primary];
+  const selectedProjectTags = useMemo(() => normalizeProjectTagList(form.project_tags), [form.project_tags]);
   const dnaHint = useMemo(() => {
     if (!selectedTemplate) return null;
     const parts = [];
@@ -214,6 +243,10 @@ export default function NewProjectModal({ onClose, onCreated }) {
       target_length_type: value,
       target_length: nextLength,
     }));
+  };
+
+  const handleProjectTagToggle = (tag) => {
+    handleChange('project_tags', toggleProjectTagValue(form.project_tags, tag));
   };
 
   const handleTemplateFormChange = (field, value) => {
@@ -757,6 +790,33 @@ export default function NewProjectModal({ onClose, onCreated }) {
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label">Tag / trope của truyện</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+              {PROJECT_TAG_PRESETS.map((tag) => {
+                const selected = selectedProjectTags.some((item) => item.toLowerCase() === tag.value.toLowerCase());
+                return (
+                  <button
+                    key={tag.value}
+                    type="button"
+                    className={`btn btn-xs ${selected ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => handleProjectTagToggle(tag.value)}
+                  >
+                    {tag.label}
+                  </button>
+                );
+              })}
+            </div>
+            <input
+              className="input"
+              style={{ marginTop: 'var(--space-2)' }}
+              placeholder="Tag riêng, cách nhau bằng dấu phẩy..."
+              value={form.project_tags}
+              onChange={(e) => handleChange('project_tags', e.target.value)}
+            />
+            <span className="form-hint">Tag định hướng chất truyện, ví dụ: hài hước, đời thường, slow burn, low power.</span>
           </div>
 
           {/* Row 3: POV + Xưng hô */}

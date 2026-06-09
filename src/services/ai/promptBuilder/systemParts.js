@@ -46,6 +46,8 @@ export function buildPromptSystemParts(taskType, context = {}) {
     projectTitle,
     genre,
     tone = '',
+    projectTags = '',
+    project_tags = '',
     userPrompt,
     previousSummary,
     // Phase 3
@@ -138,6 +140,25 @@ export function buildPromptSystemParts(taskType, context = {}) {
         .filter(Boolean);
     }
     return [];
+  };
+
+  const normalizeProjectTags = (value) => {
+    const rawTags = Array.isArray(value)
+      ? value
+      : String(value || '')
+        .split(/[,;\n]/)
+        .map((item) => item.trim());
+    const seen = new Set();
+    return rawTags
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .filter((item) => {
+        const key = item.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 20);
   };
 
   const formatCharacterProfile = (character) => {
@@ -393,6 +414,13 @@ export function buildPromptSystemParts(taskType, context = {}) {
   if (tone) projectInfo.push('Tone: ' + tone);
   if (povMode) projectInfo.push('Góc nhìn: ' + (povLabel[povMode] || povMode));
   systemParts.push('\n[' + projectInfo.join(' - ') + ']');
+
+  const projectTagList = normalizeProjectTags(projectTags || project_tags);
+  if (projectTagList.length > 0 && !skipWritingLayers) {
+    systemParts.push('\n[TAG / TROPE CỦA TRUYỆN]\n'
+      + projectTagList.map((tag) => '- ' + tag).join('\n')
+      + '\nTags là định hướng mềm về chất truyện và kỳ vọng độc giả. Ưu tiên yêu cầu mới nhất, tone, outline và canon; không biến tag thành luật cứng hay motif bắt buộc.');
+  }
 
   if (chapterTitle) systemParts.push('[Chương hiện tại: ' + chapterTitle + ']');
   if (sceneTitle) systemParts.push('[Cảnh hiện tại: ' + sceneTitle + ']');
@@ -875,11 +903,11 @@ export function buildPromptSystemParts(taskType, context = {}) {
   // -- Layer 10: Length & Rhythm Anchor (reframed: positive > negative) --
   if (WRITING_TASKS_FOR_BRIDGE.has(taskType) && !skipWritingLayers) {
     systemParts.push('\n[ĐỘ DÀI VÀ NHỊP ĐỘ]\n' + [
-      '1. Phát triển đầy đủ mỗi cảnh trước khi chuyển tiếp - mỗi hành động nhỏ được miêu tả 3-5 câu, tạo hình ảnh sống động.',
-      '2. Suy nghĩ nội tâm được đào sâu ít nhất 1 đoạn văn đầy đủ.',
-      '3. Tôn trọng mục tiêu độ dài trong [NHIỆM VỤ]. Nếu nhiệm vụ không nêu mục tiêu riêng, hướng tới 2000-4000 từ mỗi lần sinh để đóng góp vào mục tiêu 7000 từ cho CẢ CHƯƠNG.',
+      '1. Phát triển đầy đủ những hành động trọng tâm trước khi chuyển tiếp; bỏ qua động tác vụn nếu không phục vụ cảnh.',
+      '2. Nội tâm chỉ đào sâu ở điểm quyết định hoặc cảm xúc thật sự quan trọng; không độc thoại dài nếu cảnh đang hài, hành động nhanh hoặc đời thường.',
+      '3. Tôn trọng mục tiêu độ dài trong [NHIỆM VỤ]. Nếu nhiệm vụ không nêu mục tiêu riêng, ưu tiên một nhịp cảnh hoàn chỉnh và không padding.',
       '4. Duy trì nhịp kể liên tục - mỗi câu đẩy chuyển tiếp sang câu sau tự nhiên.',
-      '5. Nếu gần hết độ dài output: dừng lại ở điểm kịch tính, để ngỏ cho phần tiếp. Tốt hơn là để độc giả thêm muốn đọc tiếp hơn là cưỡng kết thúc.',
+      '5. Nếu gần hết độ dài output: dừng ở điểm chuyển tự nhiên; chỉ dùng điểm kịch tính khi tone, outline hoặc yêu cầu tác giả thật sự cần.',
       '6. CẤU TRÚC ĐOẠN VĂN: 30-50% đoạn nên là đoạn 1-2 câu. Thông tin quan trọng tách riêng thành đoạn ngắn. KHÔNG viết khối văn dài 5-6 câu liên tục.',
       '7. MỖI ĐOẠN tối đa 80-100 từ. Đoạn dài hơn thì tách thành 2. Độc giả Việt đọc nhanh, đoạn ngắn dễ theo dõi.',
       '8. NHỊP THỞ: Xen kẽ đoạn ngắn (1-2 câu) và đoạn dài (3-4 câu) - như nhịp thở văn xuôi. Tránh viết đều đều cùng nhịp.',

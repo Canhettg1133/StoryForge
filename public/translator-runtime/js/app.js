@@ -24,6 +24,12 @@ let currentSourceFile = null;
 let largeFileMeta = null;
 let translatedBlobParts = [];
 let largeFileByteCursor = 0;
+let currentTranslatorSessionId = null;
+let currentTranslatorSessionMeta = null;
+let translationStartChunkIndex = 0;
+let translationStartByte = 0;
+let translatorQueueAutoRunning = false;
+let currentTranslatorQueueItemId = null;
 let startTime = null;
 let completedChunks = 0;
 let totalChunksCount = 0;
@@ -83,6 +89,9 @@ const STORYFORGE_ADULT_CONSENT_REASONS = new Set([
 let activeTranslatorTemplateId = 'sacHiep';
 let storyForgeAdultConsentRequestCounter = 0;
 const storyForgeAdultConsentRequests = new Map();
+let storyForgeAccessRefreshRequestCounter = 0;
+let storyForgeAccessRefreshPromise = null;
+const storyForgeAccessRefreshRequests = new Map();
 
 storyForgeRuntimeGlobal.getStoryForgeAccessToken = () => storyForgeAccessToken;
 storyForgeRuntimeGlobal.getStoryForgeAccessSnapshot = () => storyForgeAccessSnapshot;
@@ -99,6 +108,21 @@ function handleStoryForgeAdultTermsResult(payload = {}) {
     pending.resolve(Boolean(payload.ok));
 }
 
+function handleStoryForgeAccessRefreshResult(payload = {}) {
+    const requestId = String(payload.requestId || '');
+    const pending = storyForgeAccessRefreshRequests.get(requestId);
+    if (!pending) return;
+    storyForgeAccessRefreshRequests.delete(requestId);
+    clearTimeout(pending.timeoutId);
+    if (payload.token) {
+        storyForgeAccessToken = String(payload.token || '');
+    }
+    if (payload.access) {
+        storyForgeAccessSnapshot = payload.access;
+    }
+    pending.resolve(Boolean(payload.ok && storyForgeAccessToken));
+}
+
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('message', (event) => {
         if (event.origin !== window.location.origin) return;
@@ -110,6 +134,10 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
         }
         if (payload.type === 'STORYFORGE_ADULT_TERMS_RESULT') {
             handleStoryForgeAdultTermsResult(payload);
+            return;
+        }
+        if (payload.type === 'STORYFORGE_ACCESS_REFRESH_RESULT') {
+            handleStoryForgeAccessRefreshResult(payload);
         }
     });
 }
@@ -151,6 +179,43 @@ async function refreshStoryForgeAccessSnapshot() {
         storyForgeAccessSnapshot = payload.access;
     }
     return storyForgeAccessSnapshot;
+}
+
+function refreshStoryForgeAccessContext() {
+    if (storyForgeAccessRefreshPromise) return storyForgeAccessRefreshPromise;
+
+    if (
+        typeof window === 'undefined'
+        || !window.parent
+        || window.parent === window
+        || typeof window.parent.postMessage !== 'function'
+    ) {
+        storyForgeAccessRefreshPromise = refreshStoryForgeAccessSnapshot()
+            .then(() => Boolean(storyForgeAccessToken))
+            .catch(() => false)
+            .finally(() => {
+                storyForgeAccessRefreshPromise = null;
+            });
+        return storyForgeAccessRefreshPromise;
+    }
+
+    const requestId = `access-refresh-${Date.now()}-${storyForgeAccessRefreshRequestCounter += 1}`;
+    storyForgeAccessRefreshPromise = new Promise((resolve) => {
+        const timeoutId = setTimeout(() => {
+            storyForgeAccessRefreshRequests.delete(requestId);
+            resolve(false);
+        }, 15000);
+
+        storyForgeAccessRefreshRequests.set(requestId, { resolve, timeoutId });
+        window.parent.postMessage({
+            type: 'STORYFORGE_REFRESH_ACCESS_CONTEXT',
+            requestId,
+        }, window.location.origin);
+    }).finally(() => {
+        storyForgeAccessRefreshPromise = null;
+    });
+
+    return storyForgeAccessRefreshPromise;
 }
 
 function requestStoryForgeAdultTermsConfirmation({ templateId = getActiveTranslatorTemplateId(), message = '' } = {}) {
@@ -249,6 +314,7 @@ storyForgeRuntimeGlobal.isTranslatorAdultTemplate = isTranslatorAdultTemplate;
 storyForgeRuntimeGlobal.syncActiveTranslatorTemplateFromPrompt = syncActiveTranslatorTemplateFromPrompt;
 storyForgeRuntimeGlobal.requestStoryForgeAdultTermsConfirmation = requestStoryForgeAdultTermsConfirmation;
 storyForgeRuntimeGlobal.requireStoryForgeAdultTemplateAccess = requireStoryForgeAdultTemplateAccess;
+storyForgeRuntimeGlobal.refreshStoryForgeAccessContext = refreshStoryForgeAccessContext;
 
 let activeTranslatorProvider = TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
 let rpmPerKey = DEFAULT_TRANSLATOR_RPM_PER_KEY;

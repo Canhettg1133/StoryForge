@@ -20,7 +20,12 @@ function normalizeHistoryItems(items) {
     return Array.isArray(items) ? items.map(item => ({
         ...item,
         translatedChunksData: Array.isArray(item.translatedChunksData) ? item.translatedChunksData : null,
-        chunkSizeUsed: Number.isFinite(parseInt(item.chunkSizeUsed, 10)) ? parseInt(item.chunkSizeUsed, 10) : null
+        chunkSizeUsed: Number.isFinite(parseInt(item.chunkSizeUsed, 10)) ? parseInt(item.chunkSizeUsed, 10) : null,
+        completedChunks: Number.isFinite(parseInt(item.completedChunks, 10)) ? parseInt(item.completedChunks, 10) : 0,
+        totalChunks: Number.isFinite(parseInt(item.totalChunks, 10)) ? parseInt(item.totalChunks, 10) : 0,
+        charCount: Number.isFinite(parseInt(item.charCount, 10))
+            ? parseInt(item.charCount, 10)
+            : String(item.originalText || '').length,
     })) : [];
 }
 
@@ -184,25 +189,42 @@ function saveHistory() {
                 persistHistoryFallbackToLocalStorage(saveData);
             }
         });
+    return historyWriteQueue;
 }
 
-function addToHistory(name, originalText, translatedText, chunks, completedCount, totalCount, translatedChunksSnapshot = null, chunkSizeUsed = null) {
+function flushHistoryWrites() {
+    return historyWriteQueue.catch(() => { });
+}
+
+function isLargeHistoryItem(itemOrMetadata = {}) {
+    const largeMode = typeof TRANSLATOR_SOURCE_MODES !== 'undefined'
+        ? TRANSLATOR_SOURCE_MODES.LARGE_FILE
+        : 'large-file';
+    return itemOrMetadata.sourceMode === largeMode ||
+        itemOrMetadata.sourceMode === 'large-file';
+}
+
+function addToHistory(name, originalText, translatedText, chunks, completedCount, totalCount, translatedChunksSnapshot = null, chunkSizeUsed = null, metadata = {}) {
+    const largeHistoryItem = isLargeHistoryItem(metadata);
     const normalizedChunkData = Array.isArray(translatedChunksSnapshot)
         ? translatedChunksSnapshot.slice(0, totalCount).map(chunk => typeof chunk === 'string' ? chunk : null)
         : null;
 
     const historyItem = {
+        ...metadata,
         id: Date.now().toString(),
         name: name,
         date: new Date().toISOString(),
-        originalText: originalText,
-        translatedText: translatedText,
-        chunks: chunks,
+        originalText: largeHistoryItem ? String(originalText || '').slice(0, 60000) : originalText,
+        translatedText: largeHistoryItem ? String(translatedText || '').slice(0, 60000) : translatedText,
+        chunks: largeHistoryItem ? [] : chunks,
         completedChunks: completedCount,
         totalChunks: totalCount,
-        charCount: originalText.length,
+        charCount: Number.isFinite(parseInt(metadata.charCount, 10))
+            ? parseInt(metadata.charCount, 10)
+            : String(originalText || '').length,
         isComplete: completedCount >= totalCount,
-        translatedChunksData: completedCount < totalCount ? normalizedChunkData : null,
+        translatedChunksData: largeHistoryItem ? null : (completedCount < totalCount ? normalizedChunkData : null),
         chunkSizeUsed: Number.isFinite(parseInt(chunkSizeUsed, 10))
             ? parseInt(chunkSizeUsed, 10)
             : (Number.isFinite(parseInt(document.getElementById('chunkSize')?.value, 10))
@@ -228,15 +250,22 @@ function addToHistory(name, originalText, translatedText, chunks, completedCount
     return historyItem.id;
 }
 
-function updateHistoryProgress(id, translatedText, chunks, completedCount, translatedChunksSnapshot = null, chunkSizeUsed = null) {
+function updateHistoryProgress(id, translatedText, chunks, completedCount, translatedChunksSnapshot = null, chunkSizeUsed = null, metadata = {}) {
     const index = translationHistory.findIndex(h => h.id === id);
     if (index !== -1) {
-        translationHistory[index].translatedText = translatedText;
-        translationHistory[index].chunks = chunks;
+        const largeHistoryItem = isLargeHistoryItem({ ...translationHistory[index], ...metadata });
+        translationHistory[index] = {
+            ...translationHistory[index],
+            ...metadata,
+        };
+        translationHistory[index].translatedText = largeHistoryItem
+            ? String(translatedText || '').slice(0, 60000)
+            : translatedText;
+        translationHistory[index].chunks = largeHistoryItem ? [] : chunks;
         translationHistory[index].completedChunks = completedCount;
         translationHistory[index].isComplete = completedCount >= translationHistory[index].totalChunks;
         translationHistory[index].translatedChunksData =
-            translationHistory[index].isComplete ? null :
+            largeHistoryItem || translationHistory[index].isComplete ? null :
                 (Array.isArray(translatedChunksSnapshot)
                     ? translatedChunksSnapshot
                         .slice(0, translationHistory[index].totalChunks)
@@ -278,38 +307,66 @@ function renderHistoryList() {
     }
 
     const sorted = [...translationHistory].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const pendingItems = sorted.filter(item => !item.isComplete);
+    const completedItems = sorted.filter(item => item.isComplete);
 
-    container.innerHTML = sorted.map(item => {
-        const progress = Math.round((item.completedChunks / item.totalChunks) * 100);
-        const statusIcon = item.isComplete ? '✅' : '⏳';
+    const renderItems = (items) => items.map(item => {
+        const total = Math.max(1, Number(item.totalChunks) || 1);
+        const completed = Math.max(0, Number(item.completedChunks) || 0);
+        const progress = Math.min(100, Math.round((completed / total) * 100));
+        const statusText = item.isComplete ? 'Hoàn tất' : 'Đang/chưa xong';
         const date = new Date(item.date);
         const dateStr = date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+        const largeBadge = isLargeHistoryItem(item) ? '<span>File lớn</span>' : '';
+        const canDownload = item.isComplete || item.translatedText || item.sessionId;
 
         return `
             <div class="history-item" data-id="${item.id}">
-                <span class="status-icon">${statusIcon}</span>
+                <span class="status-icon">${item.isComplete ? '✅' : '⏳'}</span>
                 <div class="history-info">
                     <div class="history-name">${escapeHtml(item.name)}</div>
                     <div class="history-meta">
                         <span>📅 ${dateStr}</span>
-                        <span>📝 ${formatNumber(item.charCount)} chữ</span>
-                        <span>📦 ${item.completedChunks}/${item.totalChunks} chunks</span>
+                        <span>${statusText}</span>
+                        ${largeBadge}
+                        <span>📝 ${formatNumber(item.charCount)} ký tự</span>
+                        <span>📦 ${completed}/${item.totalChunks || 0} chunk</span>
                     </div>
                 </div>
                 <div class="history-progress">
                     <div class="history-progress-fill ${item.isComplete ? 'complete' : ''}" style="width: ${progress}%"></div>
                 </div>
                 <div class="history-btns">
-                    ${!item.isComplete ? `<button onclick="continueFromHistory('${item.id}')" title="Tiếp tục dịch">▶️</button>` : ''}
-                    <button onclick="loadFromHistory('${item.id}')" title="Xem/Tải về">👁️</button>
-                    <button onclick="deleteFromHistory('${item.id}')" class="btn-delete" title="Xóa">🗑️</button>
+                    ${!item.isComplete ? `<button onclick="continueFromHistory('${item.id}')" title="Tiếp tục dịch">Tiếp tục</button>` : ''}
+                    <button onclick="loadFromHistory('${item.id}')" title="Xem bản dịch">Xem</button>
+                    ${canDownload ? `<button onclick="downloadHistoryResult('${item.id}')" title="Tải bản dịch">Tải về</button>` : ''}
+                    <button onclick="deleteFromHistory('${item.id}')" class="btn-delete" title="Xóa">Xóa</button>
                 </div>
             </div>
         `;
     }).join('');
+
+    const sections = [];
+    if (pendingItems.length > 0) {
+        sections.push(`
+            <div class="history-group">
+                <h3>Đang/chưa xong</h3>
+                ${renderItems(pendingItems)}
+            </div>
+        `);
+    }
+    if (completedItems.length > 0) {
+        sections.push(`
+            <div class="history-group">
+                <h3>Đã hoàn tất</h3>
+                ${renderItems(completedItems)}
+            </div>
+        `);
+    }
+    container.innerHTML = sections.join('');
 }
 
-function continueFromHistory(id) {
+async function continueFromHistory(id) {
     const item = translationHistory.find(h => h.id === id);
     if (!item) {
         showToast('Không tìm thấy lịch sử!', 'error');
@@ -324,6 +381,34 @@ function continueFromHistory(id) {
 
     if (isTranslating) {
         showToast('Đang có bản dịch khác đang chạy!', 'warning');
+        return;
+    }
+
+    if (isLargeHistoryItem(item) && item.sessionId && typeof loadTranslatorSessionIntoWorkspace === 'function') {
+        const session = await loadTranslatorSessionIntoWorkspace(item.sessionId);
+        if (!session) return;
+        currentHistoryId = id;
+        const chunks = typeof getTranslatorSessionChunks === 'function'
+            ? await getTranslatorSessionChunks(item.sessionId)
+            : [];
+        const nextChunk = chunks.find(chunk => !['done', 'failed', 'skipped'].includes(chunk.status)) ||
+            chunks.find(chunk => chunk.chunkIndex >= (session.startChunkIndex || 0));
+        if (nextChunk) {
+            translationStartChunkIndex = Number(nextChunk.chunkIndex) || 0;
+            translationStartByte = Number(nextChunk.byteStart) || 0;
+            if (typeof updateTranslatorSession === 'function') {
+                currentTranslatorSessionMeta = await updateTranslatorSession(item.sessionId, {
+                    historyId: id,
+                    startChunkIndex: translationStartChunkIndex,
+                    startByte: translationStartByte,
+                }) || currentTranslatorSessionMeta;
+            }
+            if (typeof updateStartChunkSelection === 'function') updateStartChunkSelection();
+        }
+        document.getElementById('translatedText').value = item.translatedText || '';
+        document.getElementById('resultSection').style.display = 'block';
+        showToast(`Đã tải "${item.name}" để tiếp tục dịch.`, 'success');
+        document.getElementById('translateBtn').scrollIntoView({ behavior: 'smooth' });
         return;
     }
 
@@ -376,10 +461,22 @@ function continueFromHistory(id) {
     document.getElementById('translateBtn').scrollIntoView({ behavior: 'smooth' });
 }
 
-function loadFromHistory(id) {
+async function loadFromHistory(id) {
     const item = translationHistory.find(h => h.id === id);
     if (!item) {
         showToast('Không tìm thấy lịch sử!', 'error');
+        return;
+    }
+
+    if (isLargeHistoryItem(item) && item.sessionId && typeof loadTranslatorSessionIntoWorkspace === 'function') {
+        await loadTranslatorSessionIntoWorkspace(item.sessionId);
+        originalFileName = item.name;
+        currentHistoryId = item.id;
+        document.getElementById('translatedText').value = item.translatedText || '';
+        document.getElementById('resultSection').style.display = 'block';
+        updateStats();
+        showToast(`Đã tải "${item.name}" từ lịch sử cục bộ.`, 'success');
+        document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
         return;
     }
 
@@ -392,6 +489,27 @@ function loadFromHistory(id) {
     updateStats();
     showToast(`Đã tải "${item.name}"`, 'success');
     document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function downloadHistoryResult(id) {
+    const item = translationHistory.find(h => h.id === id);
+    if (!item) {
+        showToast('Không tìm thấy lịch sử!', 'error');
+        return;
+    }
+
+    if (item.sessionId && typeof getTranslatorSessionOutputParts === 'function') {
+        const parts = await getTranslatorSessionOutputParts(item.sessionId, { includePending: false });
+        downloadBlobParts(parts, item.name || 'translated_novel.txt', 'Đã tải bản dịch từ lịch sử.');
+        return;
+    }
+
+    if (!item.translatedText) {
+        showToast('Không có nội dung để tải!', 'warning');
+        return;
+    }
+
+    downloadBlobParts([item.translatedText], item.name || 'translated_novel.txt', 'Đã tải bản dịch từ lịch sử.');
 }
 
 function deleteFromHistory(id) {
@@ -500,7 +618,7 @@ function escapeHtml(text) {
 }
 
 function formatNumber(num) {
-    return num.toLocaleString('vi-VN');
+    return (Number(num) || 0).toLocaleString('vi-VN');
 }
 
 function isChunkSuccessfullyTranslated(chunkText) {

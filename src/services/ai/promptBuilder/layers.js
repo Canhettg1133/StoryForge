@@ -609,8 +609,8 @@ export function buildAuthorDNALayer(taskType, writingStyle, chapterIndex, target
   lines.push('TRIẾT LÝ VIẾT (BẮT BUỘC INTERNALIZE):');
   lines.push('1. Viết bằng cảm xúc, không phải thông tin.');
   lines.push('   SAI: "Cảnh giới hắn đột phá lên Trúc Cơ kỳ."');
-  lines.push('   ĐÚNG: "Linh hải trong người hắn bỗng nhiên vỡ vụn - rồi tái sinh, mãnh liệt hơn gấp bội."');
-  lines.push('2. Mỗi cảnh PHẢI thay đổi trạng thái nhân vật. Trước cảnh: nhân vật muốn/sợ/nghĩ gì? Sau cảnh: còn nguyên vẹn không?');
+  lines.push('   ĐÚNG: "Hắn thở ra rất chậm. Luồng linh khí vừa gom đủ không mạnh hơn, nhưng lần đầu tiên nó nghe lời."');
+  lines.push('2. Mỗi cảnh cần có độ chuyển động vừa đủ: cảm xúc, nhận thức, quan hệ, thông tin, nhịp hài, hoặc trạng thái. Nếu cảnh chủ đích tĩnh/hài/đời thường thì giữ nhỏ và tinh.');
   lines.push('3. Độc giả CẢM trước, HIỂU sau. Không bao giờ giải thích trước khi để độc giả trải nghiệm.');
   lines.push('4. Mỗi câu phải "làm một việc": mô tả, đẩy chuyển, tiết lộ, HOẶC gây cảm xúc. Câu không làm được gì thì cắt.');
 
@@ -624,12 +624,12 @@ export function buildAuthorDNALayer(taskType, writingStyle, chapterIndex, target
       : 'Tạo hook mạnh mẽ ngay dòng đầu tiên - độc giả phải muốn đọc tiếp';
     const peakEmotion = currentMacroArc?.emotional_peak
       ? currentMacroArc.emotional_peak
-      : 'Đẩy lên mức cảm xúc cao nhất có thể trong cảnh này';
-    const cliffhanger = 'Để lại ít nhất một câu hỏi chưa được trả lời - độc giả phải muốn sang chương sau';
+      : 'Đạt đúng mức cảm xúc/tone mà outline hoặc tác giả yêu cầu; không phóng đại nếu là hài, đời thường, ấm áp hoặc chậm rãi';
+    const endingBeat = 'Đóng cảnh bằng dư âm, hệ quả, một nhịp hài, hoặc câu hỏi nhỏ nếu phù hợp; không ép điểm bỏ lửng căng giả';
 
     lines.push('- ĐẦU CHƯƠNG (hook): ' + hookEmotion);
     lines.push('- ĐỈNH ĐIỂM (peak): ' + peakEmotion);
-    lines.push('- CUỐI CHƯƠNG (cliffhanger): ' + cliffhanger);
+    lines.push('- CUỐI CHƯƠNG (dư âm): ' + endingBeat);
   } else {
     // STYLE_ONLY: remind the model not to alter story direction.
     lines.push('');
@@ -660,15 +660,16 @@ export function buildStyleDNALayer(taskType, writingStyle) {
 
   if (writingStyle === 'han_viet') {
     return `
-[VĂN PHONG DNA - HÁN VIỆT / SANGTACVIET STYLE]
+[VĂN PHONG DNA - HÁN VIỆT CÓ KIỂM SOÁT]
 
-1. TỪ ĐIỂN BẮT BUỘC DÙNG - KHÔNG ĐƯỢC THUẦN VIỆT HÓA:
+1. TỪ VỰNG ƯU TIÊN KHI HỢP BỐI CẢNH - KHÔNG LẠM DỤNG:
 Xưng hô: ngươi, hắn, nàng, lão, tiểu tử, đạo hữu, huynh, đệ, tỷ, muội, lão phu
-Trạng thái: bàng bạc, lãnh mang, thâm thúy, u ám, hung hồn, kinh người, uy áp
+Trạng thái: bàng bạc, lãnh mang, thâm thúy, trầm mặc, hung hồn, kinh người, uy áp
 Hành động: thi triển, vận chuyển, đột phá, ngưng kết, tán loạn, thu liễm, tung hoành
 Tu luyện: linh khí, đan điền, kinh mạch, cảnh giới, thiên tư, linh hải, thiên hỏa
-Cảm thán: vạn phần, thiên hạ vô địch, kinh thiên động địa, khủng bố, bất khả tư nghị
-Cảm xúc: lạnh nhạt bàng quan, khẽ nhếch môi, ánh mắt bén như kiếm
+Cảm thán: vạn phần, khó lường, đáng gờm, vượt ngoài dự liệu, không thể xem nhẹ
+Cảm xúc: lạnh nhạt bàng quan, im lặng, dừng tay, ánh mắt bén như kiếm
+Nếu tone là hài hước, ấm áp, đời thường hoặc slow burn: ưu tiên tiết chế, không ép đối đầu công khai, tăng cấp hoặc xung đột lớn.
 
 2. CẤU TRÚC CÂU ĐẶC TRƯNG (ĐẢO NGỮ TRUNG QUỐC):
 ĐÚNG: "Hắn ánh mắt bên trong lóe lên một tia lãnh mang."
@@ -683,25 +684,19 @@ Hành động nhanh: câu 5-8 chữ, liên tiếp, mỗi câu = 1 hành động 
   VD: "Hắn xuất thủ. Kiếm quang lóe lên. Địch nhân chưa kịp phản ứng."
 Cảm xúc / nội tâm: câu dài, nhiều mệnh đề, chậm rãi suy tư.
   VD: "Hắn đứng đó, nhìn vào hư không mà trong lòng lại dấy lên một cảm giác kỳ lạ..."
-Cao trào CÔNG THỨC: 3 câu ngắn + 1 câu dài bùng nổ.
-  VD: "Linh khí rung chuyển. Đại địa run rẩy. Không gian méo mó. Và rồi - trong tiếng gào thét kinh thiên của thiên địa, cảnh giới hắn vỡ toang!"
+Điểm nhấn cảnh: dùng 2-3 câu ngắn khi cần tăng nhịp, rồi hạ xuống bằng một hệ quả cụ thể.
+  VD: "Hắn dừng tay. Lưỡi kiếm cách cổ áo đối phương nửa tấc. Đến lúc này, cả hai mới nghe thấy tiếng chuông khảo hạch."
 
-4. CÔNG THỨC SÁNG ĐIỂM (BẮT BUỘC NẮM VỮNG):
-Vả mặt (humiliation -> reversal):
-  Setup: kẻ địch kiêu ngạo + công khai sỉ nhục trước đám đông.
-  Twist: nhân vật chính tiết lộ bí ẩn / sức mạnh thật sự.
-  Payoff: 1 câu thoại ngắn, lạnh, chính xác đến tàn nhẫn.
-  Phản ứng: đám đông kinh ngạc -> im lặng -> xôn xao.
-Đột phá cảnh giới:
-  Giai đoạn 1: cơ thể đau đớn / linh hải sắp vỡ.
-  Giai đoạn 2: điểm bùng vỡ - mô tả vật lý cực kỳ chi tiết.
-  Giai đoạn 3: sự yên tĩnh sau bão - nhân vật nhận ra mình đã khác.
-Tiết lộ bí mật: để độc giả nhận ra TRƯỚC nhân vật (dramatic irony) HOẶC cùng lúc (shock).
+4. MÔ HÌNH CẢNH THƯỜNG GẶP - CHỈ DÙNG KHI OUTLINE/TÁC GIẢ YÊU CẦU:
+Tu luyện: tiến bộ đến từ tích lũy, luyện tập, quan sát hoặc ngộ ra một chi tiết nhỏ; không tự nhặt cơ duyên.
+Đối đầu: thắng/thua phải dựa trên thông tin, thế trận, cảnh giới, pháp bảo, tâm lý hoặc cái giá rõ ràng.
+Đối thoại quyền lực: người mạnh không cần gào thét; một câu ngắn hoặc một hành động nhỏ có thể đủ nặng.
+Tiết lộ bí mật: cho độc giả nhận ra qua dấu hiệu, không cần mọi nhân vật lập tức kinh ngạc.
 
 5. CẤM KỴ TUYỆT ĐỐI:
 - KHÔNG giải thích hệ thống như người dẫn truyện: "Trúc Cơ kỳ là cảnh giới thứ 2..."
-- KHÔNG để nhân vật bình thản trước điều phi thường
-- KHÔNG kết thúc cảnh mà không có hệ quả cảm xúc
+- KHÔNG biến mọi cảnh thành tranh đấu thắng thua, cơ duyên lớn hoặc tăng cấp
+- KHÔNG kết thúc cảnh bằng cao trào giả nếu cảnh đang cần hài, ấm, tĩnh hoặc quan sát đời thường
 - KHÔNG dùng ngoặc đơn () trừ màu sắc phẩm cấp: (lục), (lam), (tử), (hoàng), (xích), (chánh), (hắc), (bạch), (thải sắc)
 - KHÔNG viết "Hắn nghĩ:" - thay bằng gián tiếp nội tâm`;
   }
@@ -897,10 +892,10 @@ export function buildPriorityAnchorLayer(taskType, userPrompt) {
 
   if (isFullWriting) {
     lines.push('');
-    lines.push('ĐẢM BẢO 3 ĐIỀU SAU THỂ HIỆN RÕ TRONG BÀI VIẾT:');
-    lines.push('- Dòng đầu tiên phải tạo cảm xúc mạnh, cuốn độc giả vào ngay lập tức.');
-    lines.push('- Nhân vật chính phải THAY ĐỔI qua cảnh này (cảm xúc, nhận thức, hoặc vị thế).');
-    lines.push('- Cuối cảnh để lại tình huống mở hoặc câu hỏi khiến độc giả muốn sang chương tiếp.');
+    lines.push('TỰ KIỂM 3 ĐIỀU SAU TRƯỚC KHI TRẢ LỜI:');
+    lines.push('- Dòng đầu tiên vào đúng tone của cảnh và nối mạch tự nhiên, không cần gồng cảm xúc nếu cảnh nhẹ.');
+    lines.push('- Cảnh có độ chuyển động phù hợp với nhiệm vụ: cảm xúc, quan hệ, thông tin, nhịp hài, lựa chọn, hoặc trạng thái.');
+    lines.push('- Cuối cảnh có dư âm hoặc hệ quả tự nhiên; không ép điểm bỏ lửng căng giả nếu tone/outline không cần.');
     lines.push('');
     lines.push('CỤ THỂ HÓA - KHÔNG VIẾT TRỪU TƯỢNG:');
     lines.push('- Thời gian: KHÔNG "gần đây", "lâu lắm" -> viết "3 ngày trước", "nửa tháng", "từ sáng đến giờ"');

@@ -6,6 +6,7 @@ import {
   Copy,
   Crown,
   LogIn,
+  LogOut,
   Mail,
   MessageCircle,
 } from 'lucide-react';
@@ -13,6 +14,7 @@ import {
   isCloudAuthConfigured,
   normalizeCloudReturnPath,
   signInWithGoogle,
+  signOut,
 } from '../../services/cloud/cloudAuthService.js';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import {
@@ -61,7 +63,9 @@ export default function Login() {
   const navigate = useNavigate();
   const { access, loading } = useUserAccess();
   const [error, setError] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
   const [copied, setCopied] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const returnTo = useMemo(() => getReturnTo(location), [location]);
 
   const email = access?.user?.email || '';
@@ -71,10 +75,26 @@ export default function Login() {
 
   const handleGoogleLogin = async () => {
     setError('');
+    setStatusMessage('');
     try {
       await signInWithGoogle({ returnPath: returnTo });
     } catch (err) {
       setError(err?.message || 'Không thể mở đăng nhập Google. Hãy kiểm tra cấu hình Supabase.');
+    }
+  };
+
+  const handleSignOut = async () => {
+    setError('');
+    setStatusMessage('');
+    setSigningOut(true);
+    try {
+      await signOut();
+      setCopied(false);
+      setStatusMessage('Đã đăng xuất. Dữ liệu local vẫn được giữ trên máy này.');
+    } catch (err) {
+      setError(err?.message || 'Không thể đăng xuất. Hãy thử lại sau.');
+    } finally {
+      setSigningOut(false);
     }
   };
 
@@ -131,6 +151,13 @@ export default function Login() {
         </div>
 
         <div className="login-page__panel">
+          {statusMessage ? (
+            <div className="login-page__message login-page__message--success">
+              {statusMessage}
+            </div>
+          ) : null}
+          {error ? <div className="login-page__error">{error}</div> : null}
+
           {loading ? (
             <div className="login-page__status">
               <Crown size={24} />
@@ -187,6 +214,15 @@ export default function Login() {
                     {copied ? 'Đã copy email' : 'Copy email'}
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  className="btn btn-secondary login-page__logout-button"
+                  onClick={handleSignOut}
+                  disabled={signingOut}
+                >
+                  <LogOut size={15} />
+                  {signingOut ? 'Đang đăng xuất...' : 'Đăng xuất'}
+                </button>
               </div>
             </>
           ) : (
@@ -202,8 +238,6 @@ export default function Login() {
                   Supabase Auth chưa được cấu hình trong môi trường hiện tại.
                 </div>
               ) : null}
-
-              {error ? <div className="login-page__error">{error}</div> : null}
 
               <button
                 type="button"

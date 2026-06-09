@@ -12,7 +12,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="TranslatorPro">
-    <link rel="manifest" href="manifest.json?v=12">
+    <link rel="manifest" href="manifest.json?v=13">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
 
     <!-- Fonts -->
@@ -21,7 +21,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=12">
+    <link rel="stylesheet" href="style.css?v=13">
 </head>
 
 <body>
@@ -56,6 +56,10 @@
                     </button>
                     <button class="btn btn-secondary" id="toggleHistoryBtn" onclick="toggleHistoryPanel()">
                         📜 Lịch sử dịch
+                    </button>
+                    <button class="btn btn-secondary" id="toggleQueueBtn" onclick="toggleTranslationQueuePanel()">
+                        📚 Hàng đợi
+                        <span class="badge" id="translationQueueCount">0 mục</span>
                     </button>
 
                 </div>
@@ -647,10 +651,10 @@
                     </h2>
                     <div class="history-actions">
                         <button class="btn btn-small btn-secondary" onclick="exportHistory()" title="Xuất lịch sử">
-                            📤 Export
+                            📤 Xuất
                         </button>
                         <label class="btn btn-small btn-secondary" title="Nhập lịch sử">
-                            📥 Import
+                            📥 Nhập
                             <input type="file" id="importHistoryInput" accept=".json" hidden
                                 onchange="importHistory(event)">
                         </label>
@@ -662,6 +666,25 @@
 
                 <div class="history-list" id="historyList">
                     <p class="empty-message">Chưa có lịch sử dịch nào.</p>
+                </div>
+            </section>
+
+            <!-- Translation Queue Panel -->
+            <section class="translation-queue-panel glass-card" id="translationQueuePanel" style="display: none;">
+                <div class="translation-queue-header">
+                    <div>
+                        <h2 class="section-title">
+                            <span class="icon">📚</span>
+                            Hàng đợi dịch
+                        </h2>
+                        <p id="translationQueueSummary">Hàng đợi đang trống.</p>
+                    </div>
+                    <button class="btn btn-small btn-secondary" type="button" onclick="toggleTranslationQueuePanel(false)">
+                        Thu gọn
+                    </button>
+                </div>
+                <div class="translation-queue-list" id="translationQueueList">
+                    <p class="empty-message">Chưa có truyện nào trong hàng đợi.</p>
                 </div>
             </section>
 
@@ -820,7 +843,7 @@
                         <p class="upload-text">Kéo thả file .txt vào đây</p>
                         <p class="upload-subtext">hoặc click để chọn file</p>
                     </div>
-                    <input type="file" id="fileInput" accept=".txt" hidden>
+                    <input type="file" id="fileInput" accept=".txt" multiple hidden>
                 </div>
 
                 <div class="file-info" id="fileInfo" style="display: none;">
@@ -834,6 +857,28 @@
                     <button class="btn btn-danger btn-small" onclick="clearFile()">×</button>
                 </div>
                 <div class="source-mode-notice" id="sourceModeNotice" style="display: none;"></div>
+            </section>
+
+            <!-- Start From Chunk Panel -->
+            <section class="start-chunk-panel glass-card" id="startChunkPanel" style="display: none;">
+                <div class="start-chunk-header">
+                    <div>
+                        <h2 class="section-title">
+                            <span class="icon">🔎</span>
+                            Tìm đoạn bắt đầu
+                        </h2>
+                        <p class="panel-subtitle">Tìm một câu, tên riêng hoặc mốc chương để dịch từ đúng chunk, không cần dịch lại phần trước.</p>
+                    </div>
+                    <span class="start-chunk-context-badge" id="startChunkContextBadge">Dùng 3 chunk trước làm ngữ cảnh</span>
+                </div>
+                <div class="start-chunk-search">
+                    <input type="search" id="chunkSearchInput" placeholder="Nhập đoạn cần tìm trong truyện..."
+                        oninput="handleStartChunkSearchInput()">
+                </div>
+                <div class="start-chunk-selection" id="startChunkSelection"></div>
+                <div class="start-chunk-results" id="chunkSearchResults">
+                    <p class="empty-message">Nhập từ khóa để tìm chunk.</p>
+                </div>
             </section>
 
             <!-- Text Preview -->
@@ -986,45 +1031,46 @@
     ============================================== -->
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
-    <script src="js/app.js?v=12"></script>
-    <script src="js/canon-pack.js?v=12"></script>
+    <script src="js/app.js?v=13"></script>
+    <script src="js/canon-pack.js?v=13"></script>
 
     <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
-    <script src="js/worker-timer.js?v=12"></script>
+    <script src="js/worker-timer.js?v=13"></script>
 
     <!-- 1c. Error messages (PHẢI load trước Gemini/Proxy/Ollama để chuẩn hóa lỗi) -->
-    <script src="js/translation/errors.js?v=12"></script>
+    <script src="js/translation/errors.js?v=13"></script>
 
     <!-- 2. Gemini API -->
-    <script src="js/gemini/model-rotation.js?v=12"></script>
-    <script src="js/gemini/rpd-tracker.js?v=12"></script>
-    <script src="js/gemini/api.js?v=12"></script>
+    <script src="js/gemini/model-rotation.js?v=13"></script>
+    <script src="js/gemini/rpd-tracker.js?v=13"></script>
+    <script src="js/gemini/api.js?v=13"></script>
 
     <!-- 3. Translation Engine -->
-    <script src="js/translation/chunker.js?v=12"></script>
-    <script src="js/translation/source-reader.js?v=12"></script>
-    <script src="js/translation/retry.js?v=12"></script>
-    <script src="js/translation/engine.js?v=12"></script>
+    <script src="js/translation/chunker.js?v=13"></script>
+    <script src="js/translation/source-reader.js?v=13"></script>
+    <script src="js/translation/local-store.js?v=13"></script>
+    <script src="js/translation/retry.js?v=13"></script>
+    <script src="js/translation/engine.js?v=13"></script>
 
 
     <!-- 4. UI Components -->
-    <script src="js/ui/progress.js?v=12"></script>
-    <script src="js/ui/file-handler.js?v=12"></script>
-    <script src="js/ui/settings.js?v=12"></script>
-    <script src="js/ui/controls.js?v=12"></script>
-    <script src="js/ui/chunk-tracker.js?v=12"></script>
+    <script src="js/ui/progress.js?v=13"></script>
+    <script src="js/ui/file-handler.js?v=13"></script>
+    <script src="js/ui/settings.js?v=13"></script>
+    <script src="js/ui/controls.js?v=13"></script>
+    <script src="js/ui/chunk-tracker.js?v=13"></script>
 
     <!-- 5. History -->
-    <script src="js/history/history.js?v=12"></script>
+    <script src="js/history/history.js?v=13"></script>
 
     <!-- 6. Local AI (Ollama) -->
-    <script src="js/local-ai/ollama.js?v=12"></script>
+    <script src="js/local-ai/ollama.js?v=13"></script>
 
     <!-- 6b. Proxy API -->
-    <script src="js/proxy/proxy-api.js?v=12"></script>
+    <script src="js/proxy/proxy-api.js?v=13"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
-    <script src="js/init.js?v=12"></script>
+    <script src="js/init.js?v=13"></script>
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->

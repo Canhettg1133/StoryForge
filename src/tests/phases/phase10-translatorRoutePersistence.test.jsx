@@ -7,6 +7,9 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 const accessMock = vi.hoisted(() => ({
   current: null,
 }));
+const accessTokenMock = vi.hoisted(() => ({
+  current: 'story-token',
+}));
 
 vi.mock('../../hooks/useMobileLayout', () => ({
   default: () => false,
@@ -17,7 +20,7 @@ vi.mock('../../hooks/useUserAccess.js', () => ({
 }));
 
 vi.mock('../../services/access/accessClient.js', () => ({
-  getCachedAccessToken: () => 'story-token',
+  getCachedAccessToken: () => accessTokenMock.current,
 }));
 
 vi.mock('../../components/common/Sidebar.jsx', () => ({
@@ -51,6 +54,7 @@ describe('phase10 translator route persistence', () => {
   let root;
 
   beforeEach(() => {
+    accessTokenMock.current = 'story-token';
     accessMock.current = {
       access: {
         authenticated: true,
@@ -67,6 +71,16 @@ describe('phase10 translator route persistence', () => {
           'content.adult_mode': { allowed: true },
         },
       })),
+      refreshAccess: vi.fn(async () => {
+        accessTokenMock.current = 'fresh-story-token';
+        return {
+          authenticated: true,
+          features: {
+            'translator.access': { allowed: true },
+            'content.adult_mode': { allowed: false, reason: 'ADULT_TERMS_REQUIRED' },
+          },
+        };
+      }),
     };
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -200,5 +214,48 @@ describe('phase10 translator route persistence', () => {
       access: accessMock.current.access,
     });
     expect(contextMessage.access).not.toHaveProperty('nativeEvent');
+  });
+
+  it('refreshes and returns a new access context when the translator iframe requests it', async () => {
+    const module = await import('../../components/translator/PersistentTranslatorHost.jsx');
+    const PersistentTranslatorHost = module.default;
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<PersistentTranslatorHost active />);
+    });
+
+    const iframe = container.querySelector('iframe[title="StoryForge Translator"]');
+    expect(iframe).not.toBeNull();
+    const postMessageSpy = vi.spyOn(iframe.contentWindow, 'postMessage');
+
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: window.location.origin,
+        source: iframe.contentWindow,
+        data: {
+          type: 'STORYFORGE_REFRESH_ACCESS_CONTEXT',
+          requestId: 'refresh-request-1',
+        },
+      }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(accessMock.current.refreshAccess).toHaveBeenCalledWith({ silent: true });
+    const resultMessage = postMessageSpy.mock.calls
+      .map(([payload]) => payload)
+      .find((payload) => payload?.type === 'STORYFORGE_ACCESS_REFRESH_RESULT');
+    expect(resultMessage).toMatchObject({
+      type: 'STORYFORGE_ACCESS_REFRESH_RESULT',
+      requestId: 'refresh-request-1',
+      ok: true,
+      token: 'fresh-story-token',
+      access: {
+        features: {
+          'translator.access': { allowed: true },
+        },
+      },
+    });
   });
 });

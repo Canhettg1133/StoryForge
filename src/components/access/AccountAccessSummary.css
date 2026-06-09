@@ -79,10 +79,37 @@
   font-weight: 700;
 }
 
+.account-access-summary__message {
+  padding: 10px 12px;
+  border-radius: 8px;
+  line-height: 1.45;
+}
+
+.account-access-summary__message--success {
+  border: 1px solid color-mix(in srgb, var(--color-success, #22c55e) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success, #22c55e) 10%, transparent);
+}
+
+.account-access-summary__message--error {
+  border: 1px solid color-mix(in srgb, #ef4444 40%, var(--color-border));
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  color: #fecaca;
+}
+
 .account-access-summary__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.account-access-summary__logout {
+  border-color: color-mix(in srgb, #ef4444 28%, var(--color-border));
+  color: #fecaca;
+}
+
+.account-access-summary__logout:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #ef4444 48%, var(--color-border));
+  background: color-mix(in srgb, #ef4444 12%, transparent);
 }
 
 @media (max-width: 760px) {

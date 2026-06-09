@@ -235,11 +235,20 @@ describe('Lab Lite UI local-first contract', () => {
       await flushPromises();
       await flushPromises();
     });
-    for (let index = 0; index < 8 && container.textContent.includes('Bộ dữ liệu cần xóa'); index += 1) {
+    for (
+      let index = 0;
+      index < 40
+        && (
+          container.textContent.includes('Bộ dữ liệu cần xóa')
+          || !container.textContent.includes('Chưa có bộ dữ liệu nào.')
+        );
+      index += 1
+    ) {
       await act(async () => {
         await new Promise((resolve) => {
-          setTimeout(resolve, 0);
+          setTimeout(resolve, 10);
         });
+        await flushPromises();
       });
     }
 

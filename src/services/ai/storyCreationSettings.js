@@ -179,7 +179,7 @@ QUY TẮC THÊM:
 - "key_events", "required_factions", "required_objects", "required_terms" phải là neo cần cho chương đó; không điền cho đủ số.
 - "required_factions", "required_objects", "required_terms" phải bám entity/term đã có trong dự án nếu có; chỉ đề xuất mới khi outline thật sự bắt buộc.
 - "state_delta" phải nêu rõ nếu chương này làm đổi Character Live Canon/current_status của nhân vật; để rỗng nếu không có đổi thay rõ.
-- Mỗi chapter từ chapter thứ 2 trong batch phải có "handoff_from_previous" giải thích vì sao nó nối tiếp được chapter trước. Nếu chapter trước kết thúc bằng cliffhanger/nguy hiểm/thương tích/giam giữ/di chuyển, chapter sau phải có beat cầu nối trước khi sang mục tiêu mới.
+- Mỗi chapter từ chapter thứ 2 trong batch phải có "handoff_from_previous" giải thích vì sao nó nối tiếp được chapter trước. Nếu chapter trước kết thúc bằng điểm bỏ lửng, nguy hiểm, thương tích, giam giữ hoặc di chuyển, chapter sau phải có beat cầu nối trước khi sang mục tiêu mới.
 - BẮT BUỘC giữ timeline rõ: nếu có sự kiện đếm ngược ("3 ngày nữa", "1 tháng sau", "kỳ sát hạch"), các chapter sau phải cập nhật mốc thời gian tương ứng, không được lặp lại mốc cũ như chưa có thời gian trôi qua.
 - BẮT BUỘC mọi án phạt, giam giữ, truy nã, thương tích, cấm túc hoặc ràng buộc hành vi tạo hệ quả thật trong outline. Nếu nhân vật cần dự một sự kiện sắp tới, outline phải nêu con đường hợp pháp hoặc hợp logic để họ xuất hiện.
 - BẮT BUỘC phản ứng nhân vật theo thông tin họ đang có: khi một "phế vật" sống sót tử địa, lộ tu vi, kiếm ý, bảo vật hoặc năng lực bất thường, người xung quanh/phía đối địch phải nghi ngờ, hỏi, điều tra, che giấu, lợi dụng, hoặc đổi kế hoạch.
@@ -246,6 +246,7 @@ export const STORY_CREATION_PROMPT_GROUPS = [
     variables: [
       'genre',
       'tone',
+      'tags_line',
       'pov_label',
       'pronoun_label',
       'target_length_label',
@@ -267,6 +268,7 @@ export const STORY_CREATION_PROMPT_GROUPS = [
     variables: [
       'genre',
       'tone',
+      'tags_line',
       'pov_label',
       'pronoun_label',
       'target_length_label',
@@ -285,6 +287,7 @@ export const STORY_CREATION_PROMPT_GROUPS = [
     variables: [
       'genre',
       'tone',
+      'tags_line',
       'pov_label',
       'pronoun_label',
       'target_length_label',
@@ -358,7 +361,7 @@ NGUYÊN TẮC BẮT BUỘC:
 - Nhịp truyện phải phù hợp độ dài mục tiêu và không tăng tốc quá tay.{{pacing_guidance}}`,
     userPromptTemplate: `Thể loại: {{genre}}
 Tone: {{tone}}
-Góc nhìn: {{pov_label}}
+{{tags_line}}Góc nhìn: {{pov_label}}
 Xưng hô: {{pronoun_label}}
 Độ dài dự kiến: {{target_length_label}}
 Số chương khởi đầu: {{initial_chapter_count}}
@@ -375,7 +378,7 @@ NGUYÊN TẮC BẮT BUỘC:
 - Từ chương 2 trở đi phải có handoff_from_previous nối trực tiếp từ ending_state/state_delta của chương trước.
 - Không dùng entity ngoài seed, trừ khi đưa vào proposed_entities để tác giả duyệt.
 - Không ghi trạng thái tương lai vào current_status của nhân vật.
-- Không nhảy cóc qua thương tích, giam giữ, truy đuổi, cliffhanger hoặc thay đổi địa điểm nếu chưa có cầu nối hợp lý.
+- Không nhảy cóc qua thương tích, giam giữ, truy đuổi, điểm bỏ lửng hoặc thay đổi địa điểm nếu chưa có cầu nối hợp lý.
 
 Story Bible Seed đã duyệt:
 {{approved_seed_json}}
@@ -406,7 +409,7 @@ NGUYÊN TẮC BẮT BUỘC:
 - Nhịp truyện phải phù hợp với độ dài mục tiêu và không được tăng tốc quá tay trong giai đoạn mở đầu.{{pacing_guidance}}`,
     userPromptTemplate: `Thể loại: {{genre}}
 Tone: {{tone}}
-Góc nhìn: {{pov_label}}
+{{tags_line}}Góc nhìn: {{pov_label}}
 Xưng hô: {{pronoun_label}}
 Độ dài dự kiến: {{target_length_label}}
 Số chương khởi đầu: {{initial_chapter_count}}

@@ -233,8 +233,39 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[0].content).toContain('[LUẬT SÁNG THẾ TỐI THƯỢNG - CHẾ ĐỘ VÔ GIỚI HẠN]');
     expect(messages[0].content).toContain('[BỔ SUNG CHO CẢNH THÂN MẬT / NỘI DUNG 18+]');
     expect(messages[0].content).toContain('KHÔNG được lướt nhanh hay tóm tắt');
+    expect(messages[0].content).toContain('không tự động sẵn sàng');
+    expect(messages[0].content).toContain('Không dùng phản ứng cơ thể như một công tắc');
+    expect(messages[0].content).toContain('mức độ đáp lại phải đi từ tính cách');
     expect(messages[0].content).toContain('Consent');
     expect(messages[1].content).toContain('[NHẮC LẠI ƯU TIÊN NSFW]');
+  });
+
+  it('does not append intimate nsfw guidance for non-intimate writing just because relationship memory exists', () => {
+    const messages = buildPrompt(TASK_TYPES.CONTINUE, {
+      projectId: 1,
+      chapterId: 2,
+      userPrompt: 'Viết tiếp cảnh hai nhân vật bàn kế hoạch rời thành.',
+      nsfwMode: true,
+      relationshipContextPacket: {
+        mustIncludeEdges: [{
+          characterAId: 11,
+          characterBId: 12,
+          characterAName: 'Lan',
+          characterBName: 'Kha',
+          intimacyLevel: 'high',
+          consentState: 'mutual',
+          secrecyState: 'secret',
+          emotionalAftermath: 'vừa có lịch sử thân mật nhưng hiện tại đang bàn kế hoạch',
+        }],
+        supportingEdges: [],
+        warnings: [],
+        omittedSummary: { count: 0, topReasons: [] },
+      },
+    });
+
+    expect(messages[0].content).toContain('[LUẬT SÁNG THẾ TỐI THƯỢNG - CHẾ ĐỘ VÔ GIỚI HẠN]');
+    expect(messages[0].content).not.toContain('[BỔ SUNG CHO CẢNH THÂN MẬT / NỘI DUNG 18+]');
+    expect(messages[0].content).toContain('[BỘ NHỚ QUAN HỆ LIÊN QUAN]');
   });
 
   it('uses custom nsfw system prompt as the new base and still appends supplemental rules', () => {

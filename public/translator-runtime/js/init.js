@@ -22,6 +22,7 @@ window.setPromptTemplate = setPromptTemplate;
 window.clearFile = clearFile;
 window.continueFromHistory = continueFromHistory;
 window.loadFromHistory = loadFromHistory;
+if (typeof downloadHistoryResult === 'function') window.downloadHistoryResult = downloadHistoryResult;
 window.deleteFromHistory = deleteFromHistory;
 window.clearAllHistory = clearAllHistory;
 window.exportHistory = exportHistory;
@@ -78,5 +79,14 @@ if (typeof closeChunkDetail === 'function') window.closeChunkDetail = closeChunk
 if (typeof editChunkManual === 'function') window.editChunkManual = editChunkManual;
 if (typeof toggleChunkTracker === 'function') window.toggleChunkTracker = toggleChunkTracker;
 if (typeof loadMoreChunkRows === 'function') window.loadMoreChunkRows = loadMoreChunkRows;
+
+// Translator local session, start search, and queue functions
+if (typeof handleStartChunkSearchInput === 'function') window.handleStartChunkSearchInput = handleStartChunkSearchInput;
+if (typeof selectStartChunk === 'function') window.selectStartChunk = selectStartChunk;
+if (typeof toggleTranslationQueuePanel === 'function') window.toggleTranslationQueuePanel = toggleTranslationQueuePanel;
+if (typeof removeQueuedTranslatorItem === 'function') window.removeQueuedTranslatorItem = removeQueuedTranslatorItem;
+if (typeof pauseQueuedTranslatorItem === 'function') window.pauseQueuedTranslatorItem = pauseQueuedTranslatorItem;
+if (typeof resumeQueuedTranslatorItem === 'function') window.resumeQueuedTranslatorItem = resumeQueuedTranslatorItem;
+if (typeof downloadQueuedTranslatorResult === 'function') window.downloadQueuedTranslatorResult = downloadQueuedTranslatorResult;
 
 console.log('✅ All modules loaded and exposed globally');

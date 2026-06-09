@@ -854,6 +854,161 @@ select option {
 }
 
 /* ============================================
+   START CHUNK SEARCH
+   ============================================ */
+.start-chunk-panel,
+.translation-queue-panel {
+    border-color: rgba(99, 102, 241, 0.24);
+}
+
+.start-chunk-header,
+.translation-queue-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.start-chunk-header .section-title,
+.translation-queue-header .section-title {
+    margin-bottom: var(--spacing-xs);
+}
+
+.panel-subtitle,
+.translation-queue-header p {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+}
+
+.start-chunk-context-badge {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    border: 1px solid rgba(16, 185, 129, 0.28);
+    border-radius: var(--radius-full);
+    background: rgba(16, 185, 129, 0.1);
+    color: #86efac;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.start-chunk-search input {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+    outline: none;
+}
+
+.start-chunk-search input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.16);
+}
+
+.start-chunk-selection {
+    margin: var(--spacing-sm) 0;
+    color: var(--text-accent);
+    font-size: 0.9rem;
+}
+
+.start-chunk-results,
+.translation-queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+.start-chunk-result {
+    width: 100%;
+    display: grid;
+    gap: 4px;
+    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.start-chunk-result:hover {
+    border-color: var(--border-glow);
+    background: rgba(99, 102, 241, 0.12);
+}
+
+.start-chunk-result__title {
+    color: var(--text-accent);
+    font-weight: 700;
+}
+
+.start-chunk-result__text {
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* ============================================
+   TRANSLATION QUEUE
+   ============================================ */
+.translation-queue-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.translation-queue-item--running {
+    border-color: rgba(16, 185, 129, 0.35);
+    background: rgba(16, 185, 129, 0.08);
+}
+
+.translation-queue-item__main {
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.translation-queue-item__main strong {
+    overflow: hidden;
+    color: var(--text-primary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.translation-queue-item__main span {
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+}
+
+.translation-queue-item__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--spacing-xs);
+}
+
+@media (max-width: 720px) {
+    .start-chunk-header,
+    .translation-queue-header,
+    .translation-queue-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .start-chunk-context-badge,
+    .translation-queue-item__actions {
+        align-self: flex-start;
+    }
+}
+
+/* ============================================
    PREVIEW SECTION
    ============================================ */
 .preview-header {
@@ -2024,6 +2179,18 @@ select option {
     gap: var(--spacing-md);
     max-height: 400px;
     overflow-y: auto;
+}
+
+.history-group {
+    display: grid;
+    gap: var(--spacing-sm);
+}
+
+.history-group h3 {
+    color: var(--text-accent);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
 }
 
 .history-item {

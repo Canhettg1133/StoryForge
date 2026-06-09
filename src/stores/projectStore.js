@@ -377,6 +377,7 @@ const useProjectStore = create((set, get) => ({
       genre_primary: data.genre_primary || 'fantasy',
       genre_secondary: data.genre_secondary || '',
       tone: data.tone || '',
+      project_tags: data.project_tags || '',
       audience: data.audience || '',
       status: 'draft',
       writing_mode: 'balanced',
@@ -908,15 +909,80 @@ const useProjectStore = create((set, get) => ({
       let canonRuntimeError = '';
       const { summarizeChapter, extractFromChapter } = useAIStore.getState();
 
+      const runCanonWork = async () => {
+        let existingCanonState = null;
+        try {
+          existingCanonState = await getChapterCanonState(currentProject.id, chapterId);
+        } catch (error) {
+          console.warn('[ChapterCompletion] Read canon state failed, falling back to canonicalize:', error);
+        }
+
+        const reusableRevision = existingCanonState?.canonicalRevision || existingCanonState?.revision || null;
+        const canonFreshForCurrentText = isRevisionFreshForCanonText(reusableRevision, chapterText);
+        const canonStatus = existingCanonState?.status || CHAPTER_COMMIT_STATUS.DRAFT;
+        const canonHasBlockingErrors = canonStatus === CHAPTER_COMMIT_STATUS.BLOCKED
+          || (existingCanonState?.errorCount || 0) > 0;
+        const canonCanCompleteFromCache = canonFreshForCurrentText
+          && COMPLETION_SUCCESS_CANON_STATUSES.has(canonStatus)
+          && !canonHasBlockingErrors;
+        const canonStillBlockedFromCache = canonFreshForCurrentText && canonHasBlockingErrors;
+
+        try {
+          if (canonCanCompleteFromCache || canonStillBlockedFromCache) {
+            return {
+              canonProcessed: true,
+              canonReused: true,
+              canonSucceeded: canonCanCompleteFromCache,
+              canonRuntimeError: '',
+              canonResult: {
+                ok: canonCanCompleteFromCache,
+                reused: true,
+                status: canonStatus,
+                revisionId: reusableRevision?.id || existingCanonState?.commit?.current_revision_id || null,
+                reports: existingCanonState?.reports || [],
+              },
+            };
+          }
+
+          const nextCanonResult = await canonicalizeChapterEngine(currentProject.id, chapterId, {
+            allowConcurrent: true,
+            routeOptions: CHAPTER_COMPLETION_ROUTE_OPTIONS,
+          });
+          return {
+            canonProcessed: true,
+            canonReused: false,
+            canonSucceeded: nextCanonResult?.ok !== false,
+            canonRuntimeError: '',
+            canonResult: nextCanonResult,
+          };
+        } catch (error) {
+          console.warn('[ChapterCompletion] Canonicalize failed:', error);
+          const nextCanonRuntimeError = toVietnameseErrorMessage(error, 'Khong the canon hoa chuong.');
+          return {
+            canonProcessed: false,
+            canonReused: false,
+            canonSucceeded: false,
+            canonRuntimeError: nextCanonRuntimeError,
+            canonResult: {
+              ok: false,
+              runtime_error: nextCanonRuntimeError,
+            },
+          };
+        }
+      };
+
       get().setChapterCompletionState(chapterId, {
         phase: 'summarize_extract',
         progress: 20,
         message: 'Đang tóm tắt và trích xuất dữ liệu codex...',
       });
+      const summaryPromise = summarizeChapter(context);
+      const extractPromise = extractFromChapter(context);
+      const canonWorkPromise = runCanonWork();
       await yieldToUi();
       const [summaryResult, extractResult] = await Promise.allSettled([
-        summarizeChapter(context),
-        extractFromChapter(context),
+        summaryPromise,
+        extractPromise,
       ]);
 
       if (summaryResult.status === 'fulfilled') {
@@ -933,6 +999,14 @@ const useProjectStore = create((set, get) => ({
 
       const snapshotBeforeCanon = await loadCompletionChapterText(chapterId);
       if (snapshotBeforeCanon.chapterText !== chapterText) {
+        const earlyCanonOutcome = await canonWorkPromise;
+        if (!earlyCanonOutcome.canonReused) {
+          try {
+            await purgeChapterCanonState(currentProject.id, chapterId);
+          } catch (error) {
+            console.warn('[ChapterCompletion] Failed to purge stale canon state:', error);
+          }
+        }
         const staleResult = buildChapterCompletionResult(
           'stale',
           'Nội dung chương đã thay đổi trong lúc hoàn thành. Hãy chạy lại để tránh ghi đè dữ liệu cũ.',
@@ -954,56 +1028,12 @@ const useProjectStore = create((set, get) => ({
         message: 'Đang kiểm tra trạng thái phân tích sự thật...',
       });
       await yieldToUi();
-      let existingCanonState = null;
-      try {
-        existingCanonState = await getChapterCanonState(currentProject.id, chapterId);
-      } catch (error) {
-        console.warn('[ChapterCompletion] Read canon state failed, falling back to canonicalize:', error);
-      }
-
-      const reusableRevision = existingCanonState?.canonicalRevision || existingCanonState?.revision || null;
-      const canonFreshForCurrentText = isRevisionFreshForCanonText(reusableRevision, chapterText);
-      const canonStatus = existingCanonState?.status || CHAPTER_COMMIT_STATUS.DRAFT;
-      const canonHasBlockingErrors = canonStatus === CHAPTER_COMMIT_STATUS.BLOCKED
-        || (existingCanonState?.errorCount || 0) > 0;
-      const canonCanCompleteFromCache = canonFreshForCurrentText
-        && COMPLETION_SUCCESS_CANON_STATUSES.has(canonStatus)
-        && !canonHasBlockingErrors;
-      const canonStillBlockedFromCache = canonFreshForCurrentText && canonHasBlockingErrors;
-
-      try {
-        if (canonCanCompleteFromCache || canonStillBlockedFromCache) {
-          canonProcessed = true;
-          canonReused = true;
-          canonSucceeded = canonCanCompleteFromCache;
-          canonResult = {
-            ok: canonCanCompleteFromCache,
-            reused: true,
-            status: canonStatus,
-            revisionId: reusableRevision?.id || existingCanonState?.commit?.current_revision_id || null,
-            reports: existingCanonState?.reports || [],
-          };
-        } else {
-          get().setChapterCompletionState(chapterId, {
-            phase: 'canon',
-            progress: 76,
-            message: 'Đang phân tích sự thật và canon hóa...',
-          });
-          await yieldToUi();
-          canonResult = await canonicalizeChapterEngine(currentProject.id, chapterId, {
-            routeOptions: CHAPTER_COMPLETION_ROUTE_OPTIONS,
-          });
-          canonProcessed = true;
-          canonSucceeded = canonResult?.ok !== false;
-        }
-      } catch (error) {
-        console.warn('[ChapterCompletion] Canonicalize failed:', error);
-        canonRuntimeError = toVietnameseErrorMessage(error, 'Không thể canon hóa chương.');
-        canonResult = {
-          ok: false,
-          runtime_error: canonRuntimeError,
-        };
-      }
+      const canonOutcome = await canonWorkPromise;
+      canonResult = canonOutcome.canonResult;
+      canonProcessed = canonOutcome.canonProcessed;
+      canonSucceeded = canonOutcome.canonSucceeded;
+      canonReused = canonOutcome.canonReused;
+      canonRuntimeError = canonOutcome.canonRuntimeError;
 
       const snapshotAfterCanon = await loadCompletionChapterText(chapterId);
       if (snapshotAfterCanon.chapterText !== chapterText) {

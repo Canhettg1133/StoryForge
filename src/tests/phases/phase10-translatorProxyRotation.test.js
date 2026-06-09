@@ -131,6 +131,57 @@ describe('phase10 translator proxy key rotation', () => {
     expect(usedUpstreamKeys).toEqual(['KEY1', 'KEY2']);
   });
 
+  it('refreshes the StoryForge access token once when the relay rejects an expired token', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      const authorization = String(options.headers?.Authorization || '');
+      if (authorization === 'Bearer story-token') {
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({
+            error: 'AUTH_REQUIRED',
+            code: 'AUTH_REQUIRED',
+            decision: { reason: 'AUTH_REQUIRED' },
+          }),
+        };
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      storyForgeAccessToken = 'story-token';
+      refreshStoryForgeAccessContext = async () => {
+        storyForgeAccessToken = 'fresh-story-token';
+        return true;
+      };
+    `, context);
+
+    const result = await context.translateChunkViaProxy(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0.7,
+      'KEY1'
+    );
+
+    expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
+    expect(requests).toHaveLength(2);
+    expect(requests[0].options.headers.Authorization).toBe('Bearer story-token');
+    expect(requests[1].options.headers.Authorization).toBe('Bearer fresh-story-token');
+    expect(requests[1].options.headers['X-StoryForge-Upstream-Key']).toBe('KEY1');
+  });
+
   it('does not cap proxy parallel requests to the number of proxy keys', () => {
     const context = loadProxyRuntimeContext(async () => {
       throw new Error('fetch is not used by parallel resolver');

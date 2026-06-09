@@ -9,6 +9,7 @@
 const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 50;
 let proxyRelayChatBatchQueue = [];
 let proxyRelayChatBatchTimer = null;
+const STORYFORGE_RELAY_AUTH_CODES = new Set(['AUTH_REQUIRED']);
 
 function createProxyAbortError() {
     const error = new Error('Request aborted');
@@ -24,6 +25,33 @@ function getStoryForgeRelayAuthHeaders(upstreamKey) {
         ...(storyForgeToken ? { 'Authorization': `Bearer ${storyForgeToken}` } : {}),
         'X-StoryForge-Upstream-Key': upstreamKey,
     };
+}
+
+function getProxyResponseErrorMessage(errorData = {}, status = 0) {
+    const nestedError = errorData?.error;
+    if (nestedError && typeof nestedError === 'object') {
+        return nestedError.message || errorData?.message || errorData?.code || `HTTP ${status}`;
+    }
+    return nestedError || errorData?.message || errorData?.code || `HTTP ${status}`;
+}
+
+function getStoryForgeRelayErrorCode(errorData = {}) {
+    const nestedError = errorData?.error;
+    const candidates = [
+        errorData?.code,
+        errorData?.reason,
+        typeof nestedError === 'string' ? nestedError : nestedError?.code,
+        errorData?.decision?.reason,
+        errorData?.decision?.code,
+    ];
+    return candidates
+        .map((value) => String(value || '').trim())
+        .find((value) => STORYFORGE_RELAY_AUTH_CODES.has(value)) || '';
+}
+
+async function refreshStoryForgeRelayAuth() {
+    if (typeof refreshStoryForgeAccessContext !== 'function') return false;
+    return Boolean(await refreshStoryForgeAccessContext());
 }
 
 function getProxyRelayBatchKey(activeBaseUrl, activeKey, proxyTarget) {
@@ -237,7 +265,7 @@ async function sendProxyRelayChatStreamBatchGroup(items) {
     }
 }
 
-async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = null) {
+async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = null, allowStoryForgeAuthRefresh = true) {
     const activeKey = apiKeyOverride || (typeof getActiveProxyKeys === 'function' ? getActiveProxyKeys()[0] : proxyApiKey);
     const proxyTarget = typeof getActiveProxyRequestTarget === 'function'
         ? getActiveProxyRequestTarget('chat')
@@ -317,9 +345,21 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        const errorMsg = errorData.error?.message || `HTTP ${response.status}`;
+        const errorMsg = getProxyResponseErrorMessage(errorData, response.status);
 
         console.error(`[Proxy ERROR] Status: ${response.status} | ${errorMsg}`);
+
+        if (
+            allowStoryForgeAuthRefresh
+            && proxyTarget?.mode === 'relay'
+            && response.status === 401
+            && getStoryForgeRelayErrorCode(errorData)
+        ) {
+            const refreshed = await refreshStoryForgeRelayAuth().catch(() => false);
+            if (refreshed && !cancelRequested) {
+                return translateChunkViaProxy(text, temperature, apiKeyOverride, false);
+            }
+        }
 
         if (response.status === 403) {
             // CONSUMER_SUSPENDED - proxy backend key bị khóa, retry sẽ xoay sang key khác.

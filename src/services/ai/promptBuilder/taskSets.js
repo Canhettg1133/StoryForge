@@ -46,9 +46,9 @@ export const DEFAULT_WRITING_DISCIPLINE_LAYER = [
   '- Tôn trọng POV hiện tại và giới hạn thông tin của từng nhân vật.',
   '- Tôn trọng logic cảm xúc: không được làm nhân vật out-of-character chỉ để tạo hiệu ứng.',
   '- Không retcon, không tự ý đổi quan hệ, luật thế giới, mốc thời gian, hay mức sức mạnh nếu task không yêu cầu rõ ràng.',
-  '- BẮT BUỘC tôn trọng logic nhân quả: timeline/đếm ngược, án phạt/giam giữ, thương tích, lộ tu vi/bảo vật/năng lực, và phản ứng của nhân vật phụ/phía đối địch phải có hệ quả hợp lý.',
+  '- Cần tôn trọng logic nhân quả: timeline/đếm ngược, án phạt/giam giữ, thương tích, lộ tu vi/bảo vật/năng lực, và phản ứng của nhân vật phụ/phía đối địch phải có hệ quả hợp lý.',
   '- Không AI-sounding: tránh triết lý rỗng, tổng kết đạo lý, lên lớp, lặp ý, hoặc văn quá phô nếu không có căn cứ.',
-  '- Mỗi đoạn viết ra phải có tác dụng rõ: đẩy tình tiết, đào sâu cảm xúc, khắc họa nhân vật, tăng xung đột, hoặc giải phóng thông tin.',
+  '- Mỗi đoạn viết ra nên có tác dụng rõ: tạo chuyển động truyện phù hợp, đào sâu cảm xúc, khắc họa nhân vật, mở/giải phóng thông tin, hoặc để lại dư âm đúng tone.',
 ].join('\n');
 
 // =============================================
@@ -58,7 +58,10 @@ export const DEFAULT_WRITING_DISCIPLINE_LAYER = [
 // =============================================
 export function isWritingIntent(userPrompt) {
   if (!userPrompt) return true; // No prompt = likely continuation
-  const lower = userPrompt.toLowerCase();
+  const lower = userPrompt
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase();
   // Question patterns -> not writing
   if (lower.includes('?')) return false;
   const chatPatterns = ['la gi', 'giai thich', 'tai sao', 'the nao', 'bao nhieu',

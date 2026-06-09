@@ -28,6 +28,8 @@
         PROXY_MODEL_NOT_FOUND: ({ model }) => `Proxy không tìm thấy model${model ? ` "${model}"` : ''}. Hãy chọn model khác hoặc kiểm tra tên model.`,
         PROXY_EMPTY_RESPONSE: () => 'Proxy trả về response rỗng. Hãy thử lại hoặc đổi model/proxy.',
         PROXY_HTTP_ERROR: ({ status }) => `Proxy trả lỗi HTTP ${status || 'không xác định'}. Hãy kiểm tra endpoint, key và model proxy.`,
+        STORYFORGE_AUTH_REQUIRED: () => 'Phiên đăng nhập StoryForge đã hết hạn. Hãy đăng nhập StoryForge lại rồi tiếp tục dịch.',
+        STORYFORGE_ACCESS_DENIED: () => 'Tài khoản StoryForge chưa có quyền dùng tính năng dịch hoặc proxy này. Hãy kiểm tra gói/quyền truy cập.',
 
         INVALID_API_KEY: () => 'API Key không hợp lệ hoặc đã bị thu hồi. Hãy kiểm tra lại key trong Google AI Studio.',
         NETWORK_ERROR: ({ provider = 'dịch' }) => `Không kết nối được tới ${provider}. Kiểm tra mạng, URL proxy/Ollama hoặc cấu hình CORS.`,
@@ -97,6 +99,17 @@
         404: 'PROXY_HTTP_ERROR',
         429: 'PROXY_RATE_LIMIT',
     };
+    const STORYFORGE_ACCESS_REASONS = new Set([
+        'AUTH_REQUIRED',
+        'USER_BANNED',
+        'FEATURE_DISABLED',
+        'FEATURE_NOT_ALLOWED',
+        'OVERRIDE_BLOCKED',
+        'PLAN_REQUIRED',
+        'AGE_CONFIRMATION_REQUIRED',
+        'ADULT_TERMS_REQUIRED',
+        'ADULT_TERMS_VERSION_OUTDATED',
+    ]);
 
     const GEMINI_BLOCK_REASON_TO_CODE = {
         PROHIBITED_CONTENT: 'CONTENT_BLOCKED_PROHIBITED',
@@ -203,6 +216,28 @@
             (Boolean(normalizedModel) && normalized.includes(normalizedModel) && normalized.includes('not found'));
     }
 
+    function readErrorMessage(errorData = {}, fallback = '') {
+        const nestedError = errorData?.error;
+        if (nestedError && typeof nestedError === 'object') {
+            return nestedError.message || errorData?.message || errorData?.code || fallback;
+        }
+        return nestedError || errorData?.message || errorData?.code || fallback;
+    }
+
+    function getStoryForgeAccessReason(errorData = {}) {
+        const nestedError = errorData?.error;
+        const candidates = [
+            errorData?.code,
+            errorData?.reason,
+            typeof nestedError === 'string' ? nestedError : nestedError?.code,
+            errorData?.decision?.reason,
+            errorData?.decision?.code,
+        ];
+        return candidates
+            .map((value) => String(value || '').trim())
+            .find((value) => STORYFORGE_ACCESS_REASONS.has(value)) || '';
+    }
+
     function createGeminiHttpError(status, errorData = {}, context = {}) {
         const rawMessage = errorData?.error?.message || `HTTP ${status}`;
         const googleStatus = String(errorData?.error?.status || '').toUpperCase();
@@ -225,26 +260,35 @@
     }
 
     function createProxyHttpError(status, errorData = {}, context = {}) {
-        const rawMessage = errorData?.error?.message || errorData?.message || `HTTP ${status}`;
+        const rawMessage = readErrorMessage(errorData, `HTTP ${status}`);
         let code = PROXY_STATUS_TO_CODE[status] || 'PROXY_HTTP_ERROR';
         const normalized = String(rawMessage || '').toLowerCase();
+        const storyForgeAccessReason = getStoryForgeAccessReason(errorData);
 
-        if (status === 403 && !/(suspended|consumer_suspended|backend|ban|blocked)/i.test(rawMessage)) {
-            code = 'PROXY_HTTP_ERROR';
+        if (storyForgeAccessReason) {
+            code = storyForgeAccessReason === 'AUTH_REQUIRED'
+                ? 'STORYFORGE_AUTH_REQUIRED'
+                : 'STORYFORGE_ACCESS_DENIED';
         }
-        if (status === 404 && isProxyModelNotFoundMessage(rawMessage, context.model)) {
-            code = 'PROXY_MODEL_NOT_FOUND';
-        }
-        if (status === 429 || normalized.includes('rate limit')) {
-            code = 'PROXY_RATE_LIMIT';
-        }
-        if (status === 402 || normalized.includes('quota') || normalized.includes('balance')) {
-            code = 'PROXY_QUOTA_EXHAUSTED';
+
+        if (!storyForgeAccessReason) {
+            if (status === 403 && !/(suspended|consumer_suspended|backend|ban|blocked)/i.test(rawMessage)) {
+                code = 'PROXY_HTTP_ERROR';
+            }
+            if (status === 404 && isProxyModelNotFoundMessage(rawMessage, context.model)) {
+                code = 'PROXY_MODEL_NOT_FOUND';
+            }
+            if (status === 429 || normalized.includes('rate limit')) {
+                code = 'PROXY_RATE_LIMIT';
+            }
+            if (status === 402 || normalized.includes('quota') || normalized.includes('balance')) {
+                code = 'PROXY_QUOTA_EXHAUSTED';
+            }
         }
 
         return createTranslatorError(code, {
             ...context,
-            provider: 'Proxy',
+            provider: code.startsWith('STORYFORGE_') ? 'StoryForge' : 'Proxy',
             status,
             rawMessage,
             retryable: ['PROXY_RATE_LIMIT', 'PROXY_BACKEND_SUSPENDED', 'PROXY_HTTP_ERROR'].includes(code),

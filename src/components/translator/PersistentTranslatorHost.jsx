@@ -3,7 +3,7 @@ import { useUserAccess } from '../../hooks/useUserAccess.js';
 import { getCachedAccessToken } from '../../services/access/accessClient.js';
 import './PersistentTranslatorHost.css';
 
-const TRANSLATOR_URL = '/translator-runtime/index.html?v=12';
+const TRANSLATOR_URL = '/translator-runtime/index.html?v=13';
 const ADULT_TEMPLATE_LABELS = {
   adult: 'Truyện 18+',
   sacHiep: 'Sắc hiệp',
@@ -30,7 +30,7 @@ function isAccessSnapshot(value) {
 
 export default function PersistentTranslatorHost({ active = false }) {
   const frameRef = useRef(null);
-  const { access, confirmAdultTerms } = useUserAccess();
+  const { access, confirmAdultTerms, refreshAccess } = useUserAccess();
   const [adultConsentRequest, setAdultConsentRequest] = useState(null);
   const [adultConsentBusy, setAdultConsentBusy] = useState(false);
   const [adultConsentError, setAdultConsentError] = useState('');
@@ -52,6 +52,17 @@ export default function PersistentTranslatorHost({ active = false }) {
     frame.contentWindow.postMessage({
       type: 'STORYFORGE_ADULT_TERMS_RESULT',
       requestId: request.requestId,
+      ...result,
+    }, window.location.origin);
+  }, []);
+
+  const sendAccessRefreshResult = useCallback((requestId, result) => {
+    const frame = frameRef.current;
+    if (!requestId || !frame?.contentWindow || typeof window === 'undefined') return;
+    frame.contentWindow.postMessage({
+      type: 'STORYFORGE_ACCESS_REFRESH_RESULT',
+      requestId,
+      token: getCachedAccessToken(),
       ...result,
     }, window.location.origin);
   }, []);
@@ -98,18 +109,37 @@ export default function PersistentTranslatorHost({ active = false }) {
       const frameWindow = frameRef.current?.contentWindow;
       if (!frameWindow || event.source !== frameWindow) return;
       const payload = event.data || {};
-      if (payload.type !== 'STORYFORGE_CONFIRM_ADULT_TERMS') return;
-      setAdultConsentRequest({
-        requestId: String(payload.requestId || ''),
-        templateId: String(payload.templateId || ''),
-        message: String(payload.message || ''),
-      });
-      setAdultConsentError('');
-      setAdultConsentBusy(false);
+      if (payload.type === 'STORYFORGE_CONFIRM_ADULT_TERMS') {
+        setAdultConsentRequest({
+          requestId: String(payload.requestId || ''),
+          templateId: String(payload.templateId || ''),
+          message: String(payload.message || ''),
+        });
+        setAdultConsentError('');
+        setAdultConsentBusy(false);
+        return;
+      }
+      if (payload.type === 'STORYFORGE_REFRESH_ACCESS_CONTEXT') {
+        const requestId = String(payload.requestId || '');
+        refreshAccess({ silent: true })
+          .then((snapshot) => {
+            sendAccessContext(snapshot);
+            sendAccessRefreshResult(requestId, {
+              ok: true,
+              access: snapshot,
+            });
+          })
+          .catch((error) => {
+            sendAccessRefreshResult(requestId, {
+              ok: false,
+              reason: error?.message || 'ACCESS_REFRESH_FAILED',
+            });
+          });
+      }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [refreshAccess, sendAccessContext, sendAccessRefreshResult]);
 
   const adultTemplateLabel = getAdultTemplateLabel(adultConsentRequest?.templateId);
 

@@ -79,6 +79,33 @@ describe('phase10 translator notifications', () => {
     expect(context.formatTranslatorError(maxTokens)).toContain('đụng giới hạn token đầu ra');
   });
 
+  it('separates StoryForge auth failures from upstream proxy key failures', () => {
+    const context = loadTranslatorErrorContext();
+
+    const expiredStoryForgeToken = context.createProxyHttpError(401, {
+      error: 'AUTH_REQUIRED',
+      code: 'AUTH_REQUIRED',
+      decision: { reason: 'AUTH_REQUIRED' },
+    });
+    const invalidProviderKey = context.createProxyHttpError(401, {
+      error: { message: 'Invalid API key' },
+    });
+    const missingStoryForgePlan = context.createProxyHttpError(403, {
+      error: 'PLAN_REQUIRED',
+      code: 'PLAN_REQUIRED',
+      decision: { reason: 'PLAN_REQUIRED' },
+    });
+
+    expect(expiredStoryForgeToken.code).toBe('STORYFORGE_AUTH_REQUIRED');
+    expect(context.formatTranslatorError(expiredStoryForgeToken)).toContain('đăng nhập StoryForge');
+    expect(context.formatTranslatorError(expiredStoryForgeToken)).not.toContain('API Key proxy');
+    expect(missingStoryForgePlan.code).toBe('STORYFORGE_ACCESS_DENIED');
+    expect(context.formatTranslatorError(missingStoryForgePlan)).toContain('quyền dùng tính năng dịch');
+
+    expect(invalidProviderKey.code).toBe('PROXY_INVALID_KEY');
+    expect(context.formatTranslatorError(invalidProviderKey)).toContain('API Key proxy không hợp lệ');
+  });
+
   it('formats local validation failures without leaking machine codes to toasts', () => {
     const context = loadTranslatorErrorContext();
 

@@ -29,6 +29,24 @@ export const TONES = [
   { value: 'fast_paced', label: 'Nhịp nhanh' },
 ];
 
+export const PROJECT_TAG_PRESETS = [
+  { value: 'hài hước', label: 'Hài hước' },
+  { value: 'ấm áp', label: 'Ấm áp' },
+  { value: 'đời thường', label: 'Đời thường' },
+  { value: 'slow burn', label: 'Slow burn' },
+  { value: 'phiêu lưu', label: 'Phiêu lưu' },
+  { value: 'hành động', label: 'Hành động' },
+  { value: 'chính kịch', label: 'Chính kịch' },
+  { value: 'trinh thám', label: 'Trinh thám' },
+  { value: 'lãng mạn', label: 'Lãng mạn' },
+  { value: 'satire', label: 'Satire' },
+  { value: 'cozy', label: 'Cozy' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'gritty', label: 'Gritty' },
+  { value: 'low power', label: 'Low power' },
+  { value: 'political', label: 'Chính trị' },
+];
+
 export const SCENE_STATUSES = [
   { value: 'idea', label: 'Ý tưởng', color: 'var(--color-text-muted)' },
   { value: 'outlined', label: 'Có outline', color: 'var(--color-info)' },
@@ -290,16 +308,16 @@ export const HAN_VIET_GENRES = new Set([
 // Format: [role_opening (0-20%), role_mid (20-70%), role_climax (70-90%), role_ending (90-100%)]
 export const AUTHOR_ROLE_TABLE = {
   han_viet: [
-    'kien truc su the gioi va nhan vat — xay dung nen mong, tao an tuong dau tien manh me, TUYET DOI khong nhet thiet lap',
-    '"Dai than" chuyen tao "sang diem" (diem nhan kich tinh) trong truyen Han Viet — day manh mau thuan, tao canh "va mat" dam da, doi thoai sac ben nhu dao',
-    '"Dao dien hanh dong" chuyen viet canh cao trao va dot pha canh gioi — moi tu ngu phai gay can va bung no nhu phao hoa',
-    '"Dai than" chuyen ket thuc truyen Han Viet — de lai cam giac man nhan nhung van them doc tiep, khong bao gio ket thuc phang',
+    'kiến trúc sư thế giới và nhân vật — xây nền móng, tạo ấn tượng đầu tiên rõ nét, không nhồi thiết lập',
+    'tác giả Hán Việt biết tạo điểm nhấn đúng mức — xây biến chuyển nhân vật, mâu thuẫn khi cần, và đối thoại sắc như dao',
+    'đạo diễn cảnh cao trào có kiểm soát — chỉ dùng giao phong, đột phá hoặc bất ngờ lớn khi outline hoặc tác giả yêu cầu rõ',
+    'tác giả Hán Việt chuyên kết cảnh có dư âm — để lại hệ quả, cảm giác hoặc mốc tiếp theo tự nhiên, không ép điểm bỏ lửng căng giả',
   ],
   thuan_viet: [
-    'tac gia Viet Nam chuyen xay dung nhan vat song dong — giong van tu nhien chan thuc, doc gia thay minh trong do',
-    'bac thay tam ly nhan vat — cam xuc hien ra qua hanh dong va chi tiet nho, khong bao gio ke thang ra cam xuc',
-    '"Dao dien cam xuc" chuyen day cao trao — su cang thang tang dan khong ngung, giu doc gia khong the roi mat',
-    'nha van chuyen ket thuc lay dong — giai quyet bat ngo nhung hoan toan logic, de lai cam xuc am long',
+    'tác giả Việt Nam chuyên xây dựng nhân vật sống động — giọng văn tự nhiên, chân thực, độc giả thấy mình trong đó',
+    'bậc thầy tâm lý nhân vật — cảm xúc hiện ra qua hành động và chi tiết nhỏ, không kể thẳng cảm xúc',
+    'đạo diễn cảm xúc có tiết chế — áp lực, tiếng cười, sự ấm áp hoặc căng thẳng tăng đúng mức theo tone của cảnh',
+    'nhà văn chuyên kết thúc có dư âm — giải quyết hoặc bỏ ngỏ đúng mức, để lại cảm xúc tự nhiên',
   ],
 };
 
@@ -307,59 +325,59 @@ export const AUTHOR_ROLE_TABLE = {
 // 2-3 câu mẫu thể hiện đúng giọng văn — AI học nhịp điệu, không copy từ ngữ
 export const MOOD_BOARD_DEFAULTS = {
   tien_hiep: [
-    'Linh khi bang bac, han ngoi ket gia, mat nham ho ma tam than lai sac ben nhu kiem. Ben ngoai, gio nui rit qua khe da — vo thanh.',
-    'Lao gia khe cuoi, ngon tay go nhe len ban da — tieng dong tuy nho nhung khien khong khi trong dai dien ngung dac lai.',
-    'Han xuat thu. Kiem quang loe len. Dich nhan chua kip phan ung. Tat ca xay ra trong khoanh khac ngan hon mot nhip tho.',
+    'Linh khí bàng bạc, hàn ngọc kết giá, mắt hắn nhắm hờ mà tâm thần lại sắc bén như kiếm. Bên ngoài, gió núi rít qua khe đá — vô thanh.',
+    'Lão già khẽ cười, ngón tay gõ nhẹ lên bàn đá — tiếng động tuy nhỏ nhưng khiến không khí trong đại điện ngưng đặc lại.',
+    'Hắn xuất thủ. Kiếm quang lóe lên. Địch nhân chưa kịp phản ứng. Tất cả xảy ra trong khoảnh khắc ngắn hơn một nhịp thở.',
   ],
   huyen_huyen: [
-    'Man dem nuot chung toan bo anh sang. Chi con han, va thu dang nhin lai han tu bong toi — khong co mat, nhung han biet no dang nhin.',
-    'Linh vat cau mat nhin han, trong dong mat do ruc ay la ca mot bien cam xuc ma ngon ngu con nguoi khong du de dien dat.',
+    'Tầng mây mở ra trên đỉnh tháp, để lộ những vòng phù văn đang chậm rãi xoay như bánh răng của một cỗ máy cổ.',
+    'Linh vật cúi đầu nhìn hắn. Trong đôi mắt trong suốt ấy có trí khôn, cảnh giác, và một chút tò mò rất gần với con người.',
   ],
   vo_hiep: [
-    'Kiem chua ra khoi vo. Nhung ba nguoi dung truoc han da lui lai nua buoc — ban nang sinh ton khong bao gio noi doi.',
-    'Giang ho rong lon, nhung cho nao cung chi co ke manh va ke yeu. Han da qua lau o phia sau — gio la luc buoc ra phia truoc.',
+    'Kiếm chưa ra khỏi vỏ. Nhưng ba người đứng trước hắn đã lùi lại nửa bước — bản năng sinh tồn không bao giờ nói dối.',
+    'Giang hồ rộng lớn, nhưng chỗ nào cũng có kẻ mạnh và kẻ yếu. Hắn đã quá lâu ở phía sau — giờ là lúc bước ra phía trước.',
   ],
   co_dai: [
-    'Nang khong ngoai dau lai. Nhung got chan khe khung, chi trong mot nhip — du de han biet rang nang da nghe.',
-    'Trong hau cung nay, moi nu cuoi deu an giau con dao. Nang da hoc duoc dieu do tu rat lau — truoc ca khi hieu y nghia cua no.',
+    'Nàng không ngoái đầu lại. Nhưng gót chân khẽ khựng, chỉ trong một nhịp — đủ để hắn biết rằng nàng đã nghe.',
+    'Trong hậu cung này, mỗi nụ cười đều ẩn giấu con dao. Nàng đã học được điều đó từ rất lâu — trước cả khi hiểu ý nghĩa của nó.',
   ],
   ngon_tinh_cd: [
-    'Han nhin nang, nang nhin di cho khac. Nhung ca hai deu biet — khoang cach giua ho dang thu hep lai, khong phai vi ho buoc lai gan, ma vi the gioi dang thu nho.',
+    'Hắn nhìn nàng, nàng nhìn đi chỗ khác. Nhưng cả hai đều biết — khoảng cách giữa họ đang thu hẹp lại, không phải vì họ bước lại gần, mà vì thế giới đang thu nhỏ.',
   ],
   do_thi: [
-    'Cai tin nhan hien ra luc 2 gio sang. Ba chu thoi. Anh doc di doc lai bay lan ma van khong hieu tai sao minh lai run.',
-    'Co ngoi xuong san. Khong khoc. Chi nhin vao buc tuong trang cho den khi mat mo di.',
+    'Tin nhắn hiện lên lúc đèn đỏ còn ba mươi giây. Anh đọc xong, bỏ điện thoại vào túi, rồi quên mất mình đang định rẽ hướng nào.',
+    'Cô đặt ly cà phê xuống cạnh laptop. Bọt sữa tan dần, còn bảng kế hoạch trên màn hình vẫn trống dòng đầu tiên.',
   ],
   romance: [
-    'Co khong nho khi nao minh bat dau de y den cach anh uong ca phe. Chi biet rang gio thi khong the khong de y nua.',
-    'Anh khong noi gi. Nhung anh o lai — va doi khi, chi vay thoi cung du.',
+    'Cô không nhớ khi nào mình bắt đầu để ý đến cách anh uống cà phê. Chỉ biết rằng giờ thì không thể không để ý nữa.',
+    'Anh không nói gì. Nhưng anh ở lại — và đôi khi, chỉ vậy thôi cũng đủ.',
   ],
   mat_the: [
-    'Lon do hop cuoi cung. Anh lat di lat lai trong tay — nang hon tat ca nhung thu anh tung mang theo, nhe hon tat ca nhung gi da bo lai.',
-    'Khong co anh hung trong the gioi nay. Chi co nguoi song sot va nguoi chua song sot.',
+    'Lon đồ hộp cuối cùng. Anh lật đi lật lại trong tay — nặng hơn tất cả những thứ anh từng mang theo, nhẹ hơn tất cả những gì đã bỏ lại.',
+    'Không có anh hùng trong thế giới này. Chỉ có người sống sót và người chưa sống sót.',
   ],
   he_thong: [
-    'Con so kho can. Nhung con nguoi thi khong phai. Va day la dieu ma bat ky he thong nao cung khong the tinh toan duoc.',
+    'Con số khô cằn. Nhưng con người thì không phải. Và đây là điều mà bất kỳ hệ thống nào cũng không thể tính toán được.',
   ],
   horror: [
-    'Co gi do khong on trong can phong nay. Anh mat vai phut moi nhan ra — bong cua nguoi dung o goc tuong khong khop voi bat ky ai dang o day.',
-    'Tieng dong dung lai. Im lang con kinh hon tieng dong.',
+    'Có gì đó không ổn trong căn phòng này. Anh mất vài phút mới nhận ra — bóng của người đứng ở góc tường không khớp với bất kỳ ai đang ở đây.',
+    'Tiếng động dừng lại. Im lặng còn kinh hơn tiếng động.',
   ],
   mystery: [
-    'Co gi do khong on. Anh mat vai phut moi dat ten duoc no — khong phai la canh, ma la su vang mat cua thu le ra phai o day.',
+    'Có gì đó không ổn. Anh mất vài phút mới đặt tên được nó — không phải là cảnh, mà là sự vắng mặt của thứ lẽ ra phải ở đây.',
   ],
   scifi: [
-    'Thiet bi bip mot tieng. Mot tieng thoi — nhung trong su im lang cua tram vu tru, no vang vong nhu tieng song.',
-    'Con nguoi tao ra may moc de thay minh. Va may moc hoc duoc mot dieu con nguoi khong ngo: cam xuc.',
+    'Thiết bị bíp một tiếng. Một tiếng thôi — nhưng trong sự im lặng của trạm vũ trụ, nó vang vọng như tiếng sóng.',
+    'Con người tạo ra máy móc để thay mình. Và máy móc học được một điều con người không ngờ: cảm xúc.',
   ],
   fantasy: [
-    'Phep thuat co gia. Moi nguoi hoc phep thuat deu biet dieu nay. Nhung chi den khi that su tra gia, nguoi ta moi hieu no co nghia la gi.',
+    'Phép thuật có giá. Mọi người học phép thuật đều biết điều này. Nhưng chỉ đến khi thật sự trả giá, người ta mới hiểu nó có nghĩa là gì.',
   ],
   xuyen_khong: [
-    'Han nho tat ca — ten nguoi, ngay thang, su kien. Nhung tro thanh biet truoc moi thu hoa ra khong mang lai binh yen, ma chi them su co don.',
+    'Hắn nhớ tất cả — tên người, ngày tháng, sự kiện. Nhưng trở thành người biết trước mọi thứ hóa ra không mang lại bình yên, mà chỉ thêm sự cô đơn.',
   ],
   trong_sinh: [
-    'Lan nay han se khac. Han tu noi voi minh nhu vay — nhung trong long biet rang cai gia phai tra van con o phia truoc.',
+    'Lần này hắn sẽ khác. Hắn tự nói với mình như vậy — nhưng trong lòng biết rằng cái giá phải trả vẫn còn ở phía trước.',
   ],
 };
 

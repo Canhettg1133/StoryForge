@@ -322,7 +322,10 @@ function resolveRuntimeParallel(parallelCount) {
 }
 
 function buildLargeFileResultPreview(pendingLabel = '⏳ Đang dịch', forceMaxChars = 60000) {
-    return buildTranslatedTextPreview(translatedChunks, {
+    const previewChunks = translationStartChunkIndex > 0
+        ? translatedChunks.slice(translationStartChunkIndex)
+        : translatedChunks;
+    return buildTranslatedTextPreview(previewChunks, {
         pendingLabel,
         maxChars: forceMaxChars,
     });
@@ -334,27 +337,98 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         return;
     }
 
+    const sessionId = currentTranslatorSessionId || largeFileMeta?.sessionId || null;
+    let localSession = currentTranslatorSessionMeta || null;
+    if (!localSession && sessionId && typeof getTranslatorSession === 'function') {
+        localSession = await getTranslatorSession(sessionId);
+        currentTranslatorSessionMeta = localSession || currentTranslatorSessionMeta;
+    }
+    const startChunkIndex = Math.max(0, Number(translationStartChunkIndex || localSession?.startChunkIndex || 0) || 0);
+    const startByte = Math.max(0, Number(translationStartByte || localSession?.startByte || 0) || 0);
+    const knownTotalChunks = Math.max(0, Number(localSession?.totalChunks || largeFileMeta?.estimatedChunks || 0) || 0);
+    const historyTotalChunks = Math.max(knownTotalChunks > 0 ? knownTotalChunks - startChunkIndex : 0, 1);
+    let largeFileRunStatus = 'failed';
+    let shouldStartNextQueue = false;
+
     isTranslating = true;
     cancelRequested = false;
     isPaused = false;
-    translatedChunks = [];
+    translatedChunks = knownTotalChunks > 0 ? new Array(knownTotalChunks).fill(null) : [];
     translatedBlobParts = [];
     originalChunks = [];
     completedChunks = 0;
-    totalChunksCount = 0;
-    largeFileByteCursor = 0;
-    currentHistoryId = null;
+    totalChunksCount = knownTotalChunks;
+    largeFileByteCursor = startByte;
     startTime = Date.now();
+
+    if (sessionId && typeof getTranslatorSessionChunks === 'function') {
+        const storedChunks = await getTranslatorSessionChunks(sessionId);
+        if (storedChunks.length > translatedChunks.length) {
+            translatedChunks = new Array(storedChunks.length).fill(null);
+        }
+        storedChunks.forEach((chunk) => {
+            if (typeof chunk.outputText === 'string' && chunk.outputText.length > 0) {
+                translatedChunks[chunk.chunkIndex] = chunk.outputText;
+            }
+        });
+        completedChunks = storedChunks.filter((chunk) => chunk.status === 'done' || chunk.status === 'failed').length;
+        totalChunksCount = Math.max(totalChunksCount, storedChunks.length);
+    }
+
+    if (sessionId && startChunkIndex > 0 && typeof markTranslatorChunksBefore === 'function') {
+        await markTranslatorChunksBefore(sessionId, startChunkIndex);
+    }
+    if (sessionId && typeof updateTranslatorSession === 'function') {
+        currentTranslatorSessionMeta = await updateTranslatorSession(sessionId, {
+            status: 'running',
+            startChunkIndex,
+            startByte,
+        }) || currentTranslatorSessionMeta;
+    }
+
+    const largeHistoryMetadata = () => ({
+        sourceMode: TRANSLATOR_SOURCE_MODES.LARGE_FILE,
+        sessionId,
+        fileSize: Number(currentSourceFile.size || 0),
+        startChunkIndex,
+        startByte,
+        charCount: Number(currentSourceFile.size || 0),
+        totalChunks: Math.max(totalChunksCount > 0 ? totalChunksCount - startChunkIndex : 0, historyTotalChunks),
+    });
+
+    if (!currentHistoryId && typeof addToHistory === 'function') {
+        currentHistoryId = addToHistory(
+            originalFileName,
+            largeFileMeta?.previewText || '',
+            buildLargeFileResultPreview('⏳ Chưa dịch', 60000),
+            [],
+            completedChunks,
+            historyTotalChunks,
+            null,
+            chunkSize,
+            largeHistoryMetadata()
+        );
+    }
+    if (sessionId && currentHistoryId && typeof updateTranslatorSession === 'function') {
+        currentTranslatorSessionMeta = await updateTranslatorSession(sessionId, {
+            historyId: currentHistoryId,
+        }) || currentTranslatorSessionMeta;
+    }
+    if (typeof flushHistoryWrites === 'function') {
+        await flushHistoryWrites();
+    }
 
     setTranslationButtonsBusy(true);
     document.getElementById('progressSection').style.display = 'block';
     document.getElementById('resultSection').style.display = 'none';
-    document.getElementById('translatedText').value = '';
+    document.getElementById('translatedText').value = buildLargeFileResultPreview('⏳ Chưa dịch');
     updateLargeFileProgress({
-        byteCursor: 0,
+        byteCursor: startByte,
         fileSize: currentSourceFile.size,
-        completed: 0,
-        status: 'Bắt đầu dịch file lớn...',
+        completed: completedChunks,
+        status: startChunkIndex > 0
+            ? `Bắt đầu dịch từ chunk ${startChunkIndex + 1}...`
+            : 'Bắt đầu dịch file lớn...',
     });
     updateProgressStats(0, getActiveKeyCount(), '--:--');
 
@@ -365,6 +439,19 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
     const { effectiveParallel, staggerDelayMs } = resolveRuntimeParallel(parallelCount);
     const pendingBatch = [];
     let lastPreviewUpdateAt = 0;
+    let lastHistoryPersistAt = 0;
+    let lastHistoryPersistCompleted = -1;
+    const contextBeforeStart = sessionId && startChunkIndex > 0 && typeof getTranslatorContextBeforeChunk === 'function'
+        ? await getTranslatorContextBeforeChunk(sessionId, startChunkIndex, 3)
+        : '';
+
+    const buildPromptForLargeChunk = (chunk) => {
+        if (contextBeforeStart && chunk.index === startChunkIndex) {
+            const contextualPrompt = `${customPrompt || ''}\n\nNgữ cảnh tham khảo từ các chunk trước, chỉ dùng để giữ tên riêng, xưng hô và giọng văn. Không dịch lại phần ngữ cảnh này:\n${contextBeforeStart}\n\nChỉ dịch chunk hiện tại bên dưới.`;
+            return buildPromptedChunk(contextualPrompt, chunk.text, sourceLang);
+        }
+        return buildPromptedChunk(customPrompt, chunk.text, sourceLang);
+    };
 
     const updateLargePreview = (label = '⏳ Đang dịch', force = false) => {
         const now = Date.now();
@@ -374,6 +461,28 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         if (resultEl) {
             resultEl.value = buildLargeFileResultPreview(label);
         }
+    };
+
+    const persistLargeHistoryProgress = (force = false) => {
+        if (!currentHistoryId || typeof updateHistoryProgress !== 'function') return;
+        const now = Date.now();
+        const completedDelta = Math.abs(completedChunks - lastHistoryPersistCompleted);
+        if (!force &&
+            completedDelta < TRANSLATION_HISTORY_PERSIST_CHUNK_STEP &&
+            now - lastHistoryPersistAt < TRANSLATION_HISTORY_PERSIST_INTERVAL_MS) {
+            return;
+        }
+        lastHistoryPersistAt = now;
+        lastHistoryPersistCompleted = completedChunks;
+        updateHistoryProgress(
+            currentHistoryId,
+            buildLargeFileResultPreview(cancelRequested ? '⏳ Chưa dịch' : '⏳ Đang dịch', 60000),
+            [],
+            completedChunks,
+            null,
+            chunkSize,
+            largeHistoryMetadata()
+        );
     };
 
     const processBatch = async (batch) => {
@@ -392,7 +501,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         const promises = dispatchBatch.map((chunk, batchOffset) => (async () => {
             await sleep(batchOffset * staggerDelayMs);
             if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
-            const promptedChunk = buildPromptedChunk(customPrompt, chunk.text, sourceLang);
+            const promptedChunk = buildPromptForLargeChunk(chunk);
             return translateChunkWithRetry(promptedChunk, chunk.index);
         })());
 
@@ -408,13 +517,20 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             updateProgressStats(speed.toFixed(1), getActiveKeyCount(), '--:--');
             renderRPDDashboardThrottled();
             updateLargePreview('⏳ Đang dịch');
+            persistLargeHistoryProgress();
         };
 
-        await settleChunkPromisesIndividually(promises, (result, idx) => {
+        await settleChunkPromisesIndividually(promises, async (result, idx) => {
             const chunk = dispatchBatch[idx];
             if (result.status === 'fulfilled') {
                 translatedChunks[chunk.index] = result.value;
                 completedChunks += 1;
+                if (sessionId && typeof updateTranslatorChunkResult === 'function') {
+                    await updateTranslatorChunkResult(sessionId, chunk.index, {
+                        status: 'done',
+                        outputText: result.value,
+                    });
+                }
                 if (typeof trackChunkSuccess === 'function') {
                     trackChunkSuccess(chunk.index, result.value, '');
                 }
@@ -430,6 +546,13 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
                 : reasonText;
             translatedChunks[chunk.index] = `[LỖI CHUNK ${chunk.index + 1}]\nNguyên nhân: ${userReason}\n\n${chunk.text}`;
             completedChunks += 1;
+            if (sessionId && typeof updateTranslatorChunkResult === 'function') {
+                await updateTranslatorChunkResult(sessionId, chunk.index, {
+                    status: 'failed',
+                    outputText: translatedChunks[chunk.index],
+                    error: userReason,
+                });
+            }
             if (typeof trackChunkFailed === 'function') {
                 trackChunkFailed(chunk.index, userReason);
             }
@@ -438,7 +561,12 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
     };
 
     try {
-        const reader = createLazyChunkReader(currentSourceFile, { chunkSize });
+        persistLargeHistoryProgress(true);
+        const reader = createLazyChunkReader(currentSourceFile, {
+            chunkSize,
+            startByte,
+            startIndex: startChunkIndex,
+        });
         for await (const chunk of reader) {
             await waitWhilePaused();
             if (cancelRequested) break;
@@ -474,8 +602,10 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
 
         document.getElementById('resultSection').style.display = 'block';
         updateLargePreview(cancelRequested ? '⏳ Chưa dịch' : '✅ Hoàn thành', true);
+        persistLargeHistoryProgress(true);
 
         if (!cancelRequested) {
+            largeFileRunStatus = 'completed';
             updateLargeFileProgress({
                 byteCursor: currentSourceFile.size,
                 fileSize: currentSourceFile.size,
@@ -484,16 +614,19 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             });
             showToast(`Dịch hoàn tất ${completedChunks.toLocaleString('vi-VN')} chunk.`, 'success');
         } else {
-            showToast('Đã hủy dịch file lớn. Có thể tải phần đã dịch trong phiên hiện tại.', 'warning');
+            largeFileRunStatus = 'cancelled';
+            showToast('Đã hủy dịch file lớn. Tiến trình đã được lưu vào lịch sử cục bộ.', 'warning');
         }
 
         document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
     } catch (error) {
         const errorText = String(error?.message || error || '');
         if (cancelRequested || errorText.includes('TRANSLATION_CANCELLED')) {
+            largeFileRunStatus = 'cancelled';
             document.getElementById('resultSection').style.display = 'block';
             updateLargePreview('⏳ Chưa dịch', true);
-            showToast('Đã hủy dịch file lớn.', 'warning');
+            persistLargeHistoryProgress(true);
+            showToast('Đã hủy dịch file lớn. Tiến trình đã được lưu vào lịch sử cục bộ.', 'warning');
             return;
         }
 
@@ -503,12 +636,37 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             : 'Dịch file lớn thất bại. Chi tiết kỹ thuật đã được ghi trong Console.';
         showToast(userMessage, 'error');
     } finally {
+        persistLargeHistoryProgress(true);
+        if (typeof flushHistoryWrites === 'function') {
+            await flushHistoryWrites();
+        }
+        if (sessionId && typeof updateTranslatorSession === 'function') {
+            await updateTranslatorSession(sessionId, {
+                status: largeFileRunStatus,
+                isComplete: largeFileRunStatus === 'completed',
+                completedChunks,
+                historyId: currentHistoryId,
+            });
+        }
+        if (currentTranslatorQueueItemId && typeof updateTranslatorQueueItemStatus === 'function') {
+            await updateTranslatorQueueItemStatus(currentTranslatorQueueItemId, largeFileRunStatus);
+            currentTranslatorQueueItemId = null;
+            shouldStartNextQueue = largeFileRunStatus === 'completed';
+        } else if (largeFileRunStatus === 'completed') {
+            shouldStartNextQueue = true;
+        }
         isTranslating = false;
         isPaused = false;
         setTranslationButtonsBusy(false);
         const cancelModal = document.getElementById('cancelModal');
         if (cancelModal) cancelModal.style.display = 'none';
         updateStats();
+        if (typeof renderTranslationQueue === 'function') {
+            await renderTranslationQueue();
+        }
+        if (shouldStartNextQueue && typeof processNextTranslatorQueue === 'function') {
+            setTimeout(() => processNextTranslatorQueue(), 0);
+        }
     }
 }
 
@@ -657,6 +815,14 @@ async function startTranslation() {
         return;
     }
 
+    const textStartChunkIndex = currentTranslatorSessionId
+        ? Math.max(0, Math.min(chunks.length - 1, Number(translationStartChunkIndex) || 0))
+        : 0;
+    const textHistoryTotalChunks = Math.max(1, chunks.length - textStartChunkIndex);
+    if (textStartChunkIndex > 0 && currentTranslatorSessionId && typeof markTranslatorChunksBefore === 'function') {
+        await markTranslatorChunksBefore(currentTranslatorSessionId, textStartChunkIndex);
+    }
+
     // Initialize chunk tracker
     if (typeof initChunkTracker === 'function') {
         initChunkTracker(chunks, null, customPrompt);
@@ -704,16 +870,21 @@ async function startTranslation() {
 
     // Ensure there is a history entry while translating, so partial progress is persistable.
     if (!currentHistoryId && typeof addToHistory === 'function') {
-        const initialSnapshot = buildHistoryTextSnapshotFromChunks(translatedChunks);
+        const initialSnapshot = buildHistoryTextSnapshotFromChunks(translatedChunks.slice(textStartChunkIndex));
         currentHistoryId = addToHistory(
             originalFileName,
             text,
             initialSnapshot,
-            chunks,
+            chunks.slice(textStartChunkIndex),
             completedChunks,
-            chunks.length,
-            translatedChunks,
-            chunkSize
+            textHistoryTotalChunks,
+            translatedChunks.slice(textStartChunkIndex),
+            chunkSize,
+            {
+                sessionId: currentTranslatorSessionId,
+                startChunkIndex: textStartChunkIndex,
+                startByte: translationStartByte,
+            }
         );
     }
 
@@ -744,13 +915,13 @@ async function startTranslation() {
     document.getElementById('progressSection').style.display = 'block';
     document.getElementById('resultSection').style.display = 'none';
     document.getElementById('translatedText').value = isResumingFromHistory
-        ? buildTranslatedTextPreview(translatedChunks, { pendingLabel: '⏳ Chưa dịch' })
+        ? buildTranslatedTextPreview(translatedChunks.slice(textStartChunkIndex), { pendingLabel: '⏳ Chưa dịch' })
         : '';
 
     updateProgress(
         completedChunks,
-        chunks.length,
-        isResumingFromHistory ? `Tiếp tục dịch... (${completedChunks}/${chunks.length})` : 'Bắt đầu dịch song song...'
+        textHistoryTotalChunks,
+        isResumingFromHistory ? `Tiếp tục dịch... (${completedChunks}/${textHistoryTotalChunks})` : 'Bắt đầu dịch song song...'
     );
     updateProgressStats(0, apiKeys.length, '--:--');
 
@@ -765,7 +936,7 @@ async function startTranslation() {
         lastPreviewUpdateAt = now;
         const resultEl = document.getElementById('translatedText');
         if (resultEl) {
-            resultEl.value = buildTranslatedTextPreview(translatedChunks, { pendingLabel });
+            resultEl.value = buildTranslatedTextPreview(translatedChunks.slice(textStartChunkIndex), { pendingLabel });
         }
     };
 
@@ -774,26 +945,33 @@ async function startTranslation() {
         const now = Date.now();
         const completedDelta = Math.abs(completedChunks - lastHistoryPersistCompleted);
         if (!force &&
-            completedChunks < chunks.length &&
+            completedChunks < textHistoryTotalChunks &&
             completedDelta < TRANSLATION_HISTORY_PERSIST_CHUNK_STEP &&
             now - lastHistoryPersistAt < TRANSLATION_HISTORY_PERSIST_INTERVAL_MS) {
             return;
         }
         lastHistoryPersistAt = now;
         lastHistoryPersistCompleted = completedChunks;
-        const partialText = buildHistoryTextSnapshotFromChunks(translatedChunks);
+        const partialText = buildHistoryTextSnapshotFromChunks(translatedChunks.slice(textStartChunkIndex));
         updateHistoryProgress(
             currentHistoryId,
             partialText,
-            chunks,
+            chunks.slice(textStartChunkIndex),
             completedChunks,
-            translatedChunks,
-            chunkSize
+            translatedChunks.slice(textStartChunkIndex),
+            chunkSize,
+            {
+                sessionId: currentTranslatorSessionId,
+                startChunkIndex: textStartChunkIndex,
+                startByte: translationStartByte,
+            }
         );
     };
 
     // Persist initial state immediately.
     persistHistoryProgress(true);
+
+    let textRunCompleted = false;
 
     try {
         // Process in parallel batches
@@ -825,7 +1003,7 @@ async function startTranslation() {
             staggerDelayMs = 0;
         }
 
-        let nextChunkIndex = 0;
+        let nextChunkIndex = textStartChunkIndex;
         while (nextChunkIndex < chunks.length && !cancelRequested) {
             await waitWhilePaused();
             if (cancelRequested) break;
@@ -871,22 +1049,28 @@ async function startTranslation() {
             const refreshTextProgress = () => {
                 const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
                 const speed = completedChunks / elapsed;
-                const remaining = chunks.length - completedChunks;
+                const remaining = textHistoryTotalChunks - completedChunks;
                 const eta = speed > 0 ? remaining / speed : Infinity;
                 const currentActiveKeys = getActiveKeyCount();
 
-                updateProgress(completedChunks, chunks.length, `Đang dịch chunk ${completedChunks}/${chunks.length}...`);
+                updateProgress(completedChunks, textHistoryTotalChunks, `Đang dịch chunk ${completedChunks}/${textHistoryTotalChunks}...`);
                 updateProgressStats(speed.toFixed(1), currentActiveKeys, formatTime(eta));
                 renderRPDDashboardThrottled();
                 updateTranslatedPreview('⏳ Đang dịch');
                 persistHistoryProgress();
             };
 
-            await settleChunkPromisesIndividually(batch, (result, idx) => {
+            await settleChunkPromisesIndividually(batch, async (result, idx) => {
                 const chunkIndex = dispatchIndices[idx];
                 if (result.status === 'fulfilled') {
                     translatedChunks[chunkIndex] = result.value;
                     completedChunks++;
+                    if (currentTranslatorSessionId && typeof updateTranslatorChunkResult === 'function') {
+                        await updateTranslatorChunkResult(currentTranslatorSessionId, chunkIndex, {
+                            status: 'done',
+                            outputText: result.value,
+                        });
+                    }
                     // Track success
                     if (typeof trackChunkSuccess === 'function') {
                         trackChunkSuccess(chunkIndex, result.value, '');
@@ -903,6 +1087,13 @@ async function startTranslation() {
                     chunkFailureReasons.set(chunkIndex, userReason);
                     translatedChunks[chunkIndex] = `[LỖI CHUNK ${chunkIndex + 1}]\nNguyên nhân: ${userReason}\n\n${chunks[chunkIndex]}`;
                     completedChunks++;
+                    if (currentTranslatorSessionId && typeof updateTranslatorChunkResult === 'function') {
+                        await updateTranslatorChunkResult(currentTranslatorSessionId, chunkIndex, {
+                            status: 'failed',
+                            outputText: translatedChunks[chunkIndex],
+                            error: userReason,
+                        });
+                    }
                     console.error(`Chunk ${chunkIndex + 1} failed:`, result.reason);
                     // Track failure
                     if (typeof trackChunkFailed === 'function') {
@@ -1097,16 +1288,34 @@ ${chunks[idx]}
             }
         }
 
+        if (currentTranslatorSessionId && typeof updateTranslatorChunkResult === 'function') {
+            for (let idx = textStartChunkIndex; idx < translatedChunks.length; idx += 1) {
+                const outputText = translatedChunks[idx];
+                if (typeof outputText !== 'string' || outputText.length === 0) continue;
+                const failed = outputText.startsWith('[LỖI CHUNK') || outputText.includes('CẦN DỊCH THỦ CÔNG');
+                await updateTranslatorChunkResult(currentTranslatorSessionId, idx, {
+                    status: failed ? 'failed' : 'done',
+                    outputText,
+                });
+            }
+        }
+
         // Completion - GIỮ ĐÚNG THỨ TỰ
         const translatedText = cancelRequested
-            ? buildHistoryTextSnapshotFromChunks(translatedChunks)
+            ? buildHistoryTextSnapshotFromChunks(translatedChunks.slice(textStartChunkIndex))
             : translatedChunks
-                .map((c, i) => c !== null ? c : `[❌ Chunk ${i + 1} thất bại]`)
+                .slice(textStartChunkIndex)
+                .map((c, i) => c !== null ? c : `[❌ Chunk ${textStartChunkIndex + i + 1} thất bại]`)
                 .join('\n\n');
-        addToHistory(originalFileName, text, translatedText, chunks, completedChunks, chunks.length, translatedChunks, chunkSize);
+        addToHistory(originalFileName, text, translatedText, chunks.slice(textStartChunkIndex), completedChunks, textHistoryTotalChunks, translatedChunks.slice(textStartChunkIndex), chunkSize, {
+            sessionId: currentTranslatorSessionId,
+            startChunkIndex: textStartChunkIndex,
+            startByte: translationStartByte,
+        });
+        textRunCompleted = !cancelRequested;
 
         if (!cancelRequested) {
-            updateProgress(chunks.length, chunks.length, 'Hoàn thành!');
+            updateProgress(textHistoryTotalChunks, textHistoryTotalChunks, 'Hoàn thành!');
             document.getElementById('resultSection').style.display = 'block';
             document.getElementById('translatedText').value = translatedText;
 
@@ -1122,15 +1331,19 @@ ${chunks[idx]}
             document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
         } else {
             document.getElementById('resultSection').style.display = 'block';
-            document.getElementById('translatedText').value = buildHistoryTextSnapshotFromChunks(translatedChunks);
+            document.getElementById('translatedText').value = buildHistoryTextSnapshotFromChunks(translatedChunks.slice(textStartChunkIndex));
             showToast('Đã hủy dịch! (Lịch sử đã được lưu)', 'warning');
         }
 
     } catch (error) {
         const errorText = String(error?.message || error || '');
         if (cancelRequested || errorText.includes('TRANSLATION_CANCELLED')) {
-            const partialText = buildHistoryTextSnapshotFromChunks(translatedChunks);
-            addToHistory(originalFileName, text, partialText, chunks, completedChunks, chunks.length, translatedChunks, chunkSize);
+            const partialText = buildHistoryTextSnapshotFromChunks(translatedChunks.slice(textStartChunkIndex));
+            addToHistory(originalFileName, text, partialText, chunks.slice(textStartChunkIndex), completedChunks, textHistoryTotalChunks, translatedChunks.slice(textStartChunkIndex), chunkSize, {
+                sessionId: currentTranslatorSessionId,
+                startChunkIndex: textStartChunkIndex,
+                startByte: translationStartByte,
+            });
             document.getElementById('resultSection').style.display = 'block';
             document.getElementById('translatedText').value = partialText;
             showToast('Đã hủy dịch! (Lịch sử đã được lưu)', 'warning');
@@ -1146,9 +1359,14 @@ ${chunks[idx]}
         if (completedChunks > 0) {
             // GIỮ ĐÚNG THỨ TỰ kể cả khi có lỗi
             const translatedText = translatedChunks
-                .map((c, i) => c !== null ? c : `[❌ Chunk ${i + 1} thất bại]`)
+                .slice(textStartChunkIndex)
+                .map((c, i) => c !== null ? c : `[❌ Chunk ${textStartChunkIndex + i + 1} thất bại]`)
                 .join('\n\n');
-            addToHistory(originalFileName, text, translatedText, chunks, completedChunks, chunks.length, translatedChunks, chunkSize);
+            addToHistory(originalFileName, text, translatedText, chunks.slice(textStartChunkIndex), completedChunks, textHistoryTotalChunks, translatedChunks.slice(textStartChunkIndex), chunkSize, {
+                sessionId: currentTranslatorSessionId,
+                startChunkIndex: textStartChunkIndex,
+                startByte: translationStartByte,
+            });
         }
     } finally {
         isTranslating = false;
@@ -1171,6 +1389,15 @@ ${chunks[idx]}
         }
         if (cancelModal) {
             cancelModal.style.display = 'none';
+        }
+        if (typeof flushHistoryWrites === 'function') {
+            await flushHistoryWrites();
+        }
+        if (typeof renderTranslationQueue === 'function') {
+            await renderTranslationQueue();
+        }
+        if (textRunCompleted && typeof processNextTranslatorQueue === 'function') {
+            setTimeout(() => processNextTranslatorQueue(), 0);
         }
     }
 }

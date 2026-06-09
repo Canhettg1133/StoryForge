@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Crown, LogIn, Mail, ShieldCheck } from 'lucide-react';
+import { Crown, LogIn, LogOut, Mail, ShieldCheck } from 'lucide-react';
 import {
   ACCESS_FEATURES,
   ACCESS_REASONS,
@@ -10,6 +10,7 @@ import {
   getFeatureDisplayName,
   getPlanDisplayName,
 } from '../../services/access/accessLabels.js';
+import { signOut } from '../../services/cloud/cloudAuthService.js';
 import { useUserAccess } from '../../hooks/useUserAccess';
 import './AccountAccessSummary.css';
 
@@ -36,6 +37,9 @@ export default function AccountAccessSummary() {
   const { access, loading } = useUserAccess();
   const location = useLocation();
   const navigate = useNavigate();
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [signingOut, setSigningOut] = useState(false);
   const adultDecision = access?.features?.[ACCESS_FEATURES.ADULT_MODE];
   const enabledFeatures = Object.entries(access?.features || {})
     .filter(([, decision]) => decision.allowed)
@@ -44,6 +48,33 @@ export default function AccountAccessSummary() {
   const openLoginGuide = () => {
     navigate(`/login?returnTo=${encodeURIComponent(loginReturnTo)}`);
   };
+  const handleSignOut = async () => {
+    setMessage('');
+    setError('');
+    setSigningOut(true);
+    try {
+      await signOut();
+      setMessage('Đã đăng xuất. Dữ liệu local vẫn được giữ trên máy này.');
+    } catch (err) {
+      setError(err?.message || 'Không thể đăng xuất. Hãy thử lại sau.');
+    } finally {
+      setSigningOut(false);
+    }
+  };
+  const feedback = (
+    <>
+      {message ? (
+        <div className="account-access-summary__message account-access-summary__message--success">
+          {message}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="account-access-summary__message account-access-summary__message--error">
+          {error}
+        </div>
+      ) : null}
+    </>
+  );
 
   if (loading) {
     return (
@@ -69,6 +100,7 @@ export default function AccountAccessSummary() {
             <p>Đăng nhập Google để xem gói VIP, ngày hết hạn, quyền đang mở và trạng thái 18+.</p>
           </div>
         </div>
+        {feedback}
         <button type="button" className="btn btn-primary" onClick={openLoginGuide}>
           <LogIn size={15} />
           Mở trang đăng nhập
@@ -86,6 +118,8 @@ export default function AccountAccessSummary() {
           <p>Kiểm tra email, gói hiện tại, ngày hết hạn và các quyền VIP đang mở.</p>
         </div>
       </div>
+
+      {feedback}
 
       <div className="account-access-summary__grid">
         <div>
@@ -113,13 +147,22 @@ export default function AccountAccessSummary() {
         )}
       </div>
 
-      {!enabledFeatures.length ? (
-        <div className="account-access-summary__actions">
+      <div className="account-access-summary__actions">
+        {!enabledFeatures.length ? (
           <button type="button" className="btn btn-secondary" onClick={openLoginGuide}>
             Mở trang tài khoản & VIP
           </button>
-        </div>
-      ) : null}
+        ) : null}
+        <button
+          type="button"
+          className="btn btn-secondary account-access-summary__logout"
+          onClick={handleSignOut}
+          disabled={signingOut}
+        >
+          <LogOut size={15} />
+          {signingOut ? 'Đang đăng xuất...' : 'Đăng xuất'}
+        </button>
+      </div>
     </section>
   );
 }

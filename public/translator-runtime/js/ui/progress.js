@@ -113,6 +113,34 @@ function downloadBlobParts(parts, fileName, successMessage) {
     showToast(successMessage || 'Đã tải file thành công!', 'success');
 }
 
+async function downloadCurrentLargeFileResult({ partial = false } = {}) {
+    if (currentTranslatorSessionId && typeof getTranslatorSessionOutputParts === 'function') {
+        const parts = await getTranslatorSessionOutputParts(currentTranslatorSessionId, { includePending: false });
+        const fileName = partial
+            ? originalFileName.replace('.txt', `_partial_${completedChunks}chunks.txt`)
+            : originalFileName;
+        downloadBlobParts(
+            parts,
+            fileName,
+            partial
+                ? `Đã tải ${completedChunks.toLocaleString('vi-VN')} chunk đã dịch.`
+                : 'Đã tải bản dịch file lớn.'
+        );
+        return;
+    }
+
+    const fileName = partial
+        ? originalFileName.replace('.txt', `_partial_${completedChunks}chunks.txt`)
+        : originalFileName;
+    downloadBlobParts(
+        getTranslatedBlobParts({ includePending: false }),
+        fileName,
+        partial
+            ? `Đã tải ${completedChunks.toLocaleString('vi-VN')} chunk đã dịch.`
+            : 'Đã tải bản dịch file lớn.'
+    );
+}
+
 function copyResult() {
     if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE) {
         showToast('File lớn nên tải xuống thay vì copy toàn bộ để tránh trình duyệt bị đơ.', 'warning');
@@ -135,13 +163,9 @@ function copyResult() {
     });
 }
 
-function downloadResult() {
+async function downloadResult() {
     if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE) {
-        downloadBlobParts(
-            getTranslatedBlobParts({ includePending: false }),
-            originalFileName,
-            'Đã tải bản dịch file lớn.'
-        );
+        await downloadCurrentLargeFileResult();
         return;
     }
 
@@ -166,14 +190,9 @@ function downloadResult() {
 
 // Download partial - tải phần đã dịch được
 // FIX: Bỏ map+filter thừa, dùng filter trực tiếp cho gọn và đúng
-function downloadPartial() {
+async function downloadPartial() {
     if (currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE) {
-        const partialFileName = originalFileName.replace('.txt', `_partial_${completedChunks}chunks.txt`);
-        downloadBlobParts(
-            getTranslatedBlobParts({ includePending: false }),
-            partialFileName,
-            `Đã tải ${completedChunks.toLocaleString('vi-VN')} chunk đã dịch.`
-        );
+        await downloadCurrentLargeFileResult({ partial: true });
         return;
     }
 

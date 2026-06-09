@@ -12,6 +12,15 @@
 
 const STORAGE_KEY = 'sf-api-keys-v2';
 const RATE_LIMIT_COOLDOWN = 60000;
+const RESERVATION_WINDOW_MS = 60000;
+
+export const DEFAULT_AI_RPM_PER_KEY = 5;
+
+export function normalizeAiRpmPerKey(value = DEFAULT_AI_RPM_PER_KEY) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_AI_RPM_PER_KEY;
+  return Math.floor(parsed);
+}
 
 function normalizeProviderKey(provider) {
   const key = String(provider || '').trim();
@@ -33,6 +42,7 @@ class KeyManager {
       openai_proxy: 0,
     };
     this.rateLimited = new Map(); // key → timestamp
+    this.reservations = new Map(); // key -> request timestamps in the current minute
     this._load();
   }
 
@@ -171,6 +181,77 @@ class KeyManager {
     }
 
     return null; // All rate limited
+  }
+
+  _getPrunedReservations(key, now = Date.now()) {
+    const slots = this.reservations.get(key) || [];
+    const fresh = slots.filter((timestamp) => now - timestamp < RESERVATION_WINDOW_MS);
+    if (fresh.length > 0) {
+      this.reservations.set(key, fresh);
+    } else {
+      this.reservations.delete(key);
+    }
+    return fresh;
+  }
+
+  _reserveKey(key, now = Date.now()) {
+    const slots = this._getPrunedReservations(key, now);
+    slots.push(now);
+    this.reservations.set(key, slots);
+  }
+
+  _getNextReservableKey(poolKey, rpmPerKey, now = Date.now()) {
+    const pool = this.pools[poolKey] || [];
+    if (pool.length === 0) return null;
+
+    const startIdx = this.currentIndex[poolKey] || 0;
+    for (let i = 0; i < pool.length; i++) {
+      const idx = (startIdx + i) % pool.length;
+      const { key } = pool[idx];
+      if (this.isRateLimited(key)) continue;
+      if (this._getPrunedReservations(key, now).length >= rpmPerKey) continue;
+
+      this.currentIndex[poolKey] = (idx + 1) % pool.length;
+      this._reserveKey(key, now);
+      return key;
+    }
+
+    return null;
+  }
+
+  _getNextReservationDelay(poolKey, rpmPerKey, now = Date.now()) {
+    const pool = this.pools[poolKey] || [];
+    let delay = Infinity;
+
+    for (const { key } of pool) {
+      const rateLimitedUntil = this.rateLimited.get(key);
+      if (rateLimitedUntil && rateLimitedUntil > now) {
+        delay = Math.min(delay, rateLimitedUntil - now);
+        continue;
+      }
+
+      const slots = this._getPrunedReservations(key, now);
+      if (slots.length < rpmPerKey) return 0;
+      delay = Math.min(delay, slots[0] + RESERVATION_WINDOW_MS - now);
+    }
+
+    return Number.isFinite(delay) ? Math.max(delay, 0) : 0;
+  }
+
+  async reserveNextKey(provider, options = {}) {
+    const poolKey = normalizeProviderKey(provider);
+    const pool = this.pools[poolKey] || [];
+    if (pool.length === 0) return null;
+
+    const rpmPerKey = normalizeAiRpmPerKey(options.rpmPerKey);
+    while (true) {
+      const now = Date.now();
+      const key = this._getNextReservableKey(poolKey, rpmPerKey, now);
+      if (key) return key;
+
+      const waitMs = this._getNextReservationDelay(poolKey, rpmPerKey, now);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
   }
 
   // --- Rate Limiting ---

@@ -13,13 +13,14 @@ export const GENRE_TEMPLATES = {
     label: 'Tiên hiệp',
 
     constitution: [
-      'Hệ thống cảnh giới bất di bất dịch — đột phá PHẢI có tích lũy linh lực + cơ duyên + ngộ đạo, CẤMT đột phá vì "cảm xúc dâng trào" hay "ý chí kiên định"',
-      'Thiên Đạo tồn tại và trừng phạt — vi phạm thiên lý phải chịu Thiên Kiếp hoặc hậu quả tương ứng, không thể né vô lý',
+      'Hệ thống cảnh giới là khung tham chiếu do tác giả/canon dự án xác định — nếu dự án chưa nhập chi tiết, không tự gán thứ bậc, tuổi thọ hoặc công thức tu luyện cứng',
+      'Đột phá hoặc tăng cấp cần có chuẩn bị hợp lý theo luật dự án: tích lũy, cơ duyên, ngộ đạo, rủi ro hoặc cái giá; không chỉ vì "cảm xúc dâng trào" hay "ý chí kiên định"',
+      'Thiên Đạo, thiên kiếp hoặc luật nhân quả chỉ được dùng khi hợp canon/tone — nếu xuất hiện thì phải có hậu quả tương ứng, không thể né vô lý',
       'Tài nguyên (linh thạch, đan dược, bí kíp) có giá trị thực và khan hiếm — nhân vật không nhận "món quà trời rơi" không có lý do',
-      'Tông môn có phân cấp quyền lực thực chất: chưởng môn > trưởng lão > nội môn đệ tử > ngoại môn — mỗi tầng đều có quyền lợi và giới hạn riêng',
-      'Thọ mệnh gắn cảnh giới: Luyện Khí ~100 năm, Kim Đan ~500 năm, Nguyên Anh ~1000 năm — nhân vật thấp không thể sống vô hạn',
-      'Giang hồ tu tiên có mặt tối thực sự — giết người cướp tài nguyên là chuyện bình thường, không phải hành vi "ác nhân mới làm"',
-      'CẤMT dùng từ ngữ hiện đại trong bối cảnh tu tiên: điện thoại, internet, "serotonin", "trauma", tâm lý học hiện đại',
+      'Tông môn, gia tộc hoặc thế lực tu luyện có phân cấp quyền lực thực chất, nhưng tên cấp bậc và thứ tự do tác giả/canon dự án xác định',
+      'Thọ mệnh có thể tăng theo cảnh giới nếu canon dự án dùng luật này; không tự gán con số cứng khi tác giả chưa nhập',
+      'Giang hồ tu tiên có thể có mặt tối và tranh đoạt tài nguyên, nhưng mức độ tàn khốc nên theo tone/yêu cầu; không ép mọi cảnh thành giết chóc',
+      'Tránh dùng từ ngữ hiện đại trong bối cảnh tu tiên thuần cổ phong: điện thoại, internet, "serotonin", "trauma", tâm lý học hiện đại; chỉ dùng khi dự án cố ý pha hiện đại',
       'Pháp bảo và kỹ năng phải được tích lũy hoặc tìm kiếm — không tự dưng nhớ ra chiêu mới không có nguồn gốc',
     ],
 
@@ -45,10 +46,10 @@ export const GENRE_TEMPLATES = {
     ],
 
     worldRules: [
-      'Hệ thống cảnh giới tu tiên: Luyện Khí → Trúc Cơ → Kim Đan → Nguyên Anh → Hóa Thần → Luyện Hư → Hợp Thể → Đại Thừa → Độ Kiếp',
-      'Tu tiên tuân theo Thiên Đạo — vi phạm sẽ gặp Thiên Kiếp',
-      'Thọ mệnh tăng theo cảnh giới: Kim Đan ~500 năm, Nguyên Anh ~1000 năm',
-      'Đột phá cần tích lũy đủ linh lực + ngộ đạo, không thể vội vàng',
+      'Hệ thống cảnh giới tu tiên là khung tham chiếu; dùng đúng danh sách, tên gọi và thứ tự do tác giả/canon dự án xác định',
+      'Tu tiên có thể tuân theo Thiên Đạo, thiên kiếp, nhân quả hoặc luật riêng của thế giới; không tự ép một mô hình nếu dự án chưa đặt',
+      'Thọ mệnh và cái giá tu luyện do tác giả/canon dự án xác định; không tự bịa mốc tuổi hoặc giới hạn cứng',
+      'Đột phá cần tích lũy và lý do đủ sức thuyết phục theo luật dự án, không thể vội vàng',
       'Tài nguyên tu luyện khan hiếm — tranh đoạt là bản chất giang hồ tu tiên',
     ],
     terms: [
@@ -63,7 +64,7 @@ export const GENRE_TEMPLATES = {
     locations: [
       { name: 'Tông môn chính', description: 'Cứ điểm tu luyện, xây trên linh mạch, có cấm chế bảo hộ' },
       { name: 'Phường thị', description: 'Chợ giao dịch linh đan, pháp bảo, tài nguyên' },
-      { name: 'Bí cảnh', description: 'Không gian ẩn giấu chứa cơ duyên và nguy hiểm' },
+      { name: 'Bí cảnh', description: 'Không gian ẩn giấu có thể chứa tri thức, thử thách, di tích hoặc cơ duyên nếu truyện cần' },
     ],
     characters: [
       { name: 'Nhân vật chính', role: 'protagonist', appearance: 'Thiếu niên/thiếu nữ, vẻ ngoài bình thường nhưng có tiềm năng ẩn giấu', personality: 'Kiên định tu đạo, không khuất phục áp bức' },
@@ -128,7 +129,7 @@ export const GENRE_TEMPLATES = {
     constitution: [
       'Mỗi phép thuật có cái giá thực sự (mana cạn kiệt, kiệt sức thể chất, hiệu ứng phụ) — không có phép thuật miễn phí',
       'Các chủng tộc có văn hóa, ngôn ngữ, định kiến riêng biệt — không phải "người với tai nhọn hơn"',
-      'Hệ thống chính trị vương quốc có logic thực — vua không toàn năng,귀족 귀족 quý tộc có lợi ích riêng',
+      'Hệ thống chính trị vương quốc có logic thực — vua không toàn năng, quý tộc có lợi ích riêng',
       'Vật phẩm ma thuật mạnh phải có nguồn gốc, giá trị, và hậu quả khi sử dụng',
       'Nhân vật chết là chết thật — resurrection phải có chi phí cực lớn và hiếm gặp',
       'Thế giới có lịch sử thực — chiến tranh cũ, đế quốc sụp đổ, thần thoại có thể là thật',
@@ -139,7 +140,7 @@ export const GENRE_TEMPLATES = {
       'Mô tả chi tiết cảm giác vật lý: trọng lượng giáp, mùi máu, sức nóng lửa — immersion cao',
       'Đối thoại tự nhiên theo văn hóa từng chủng tộc — elves có thể nói khác dwarf',
       'World-building cài vào hành động và đối thoại tự nhiên, không "info-dump"',
-      'Tone có thể tối, bi kịch — anh hùng không luôn thắng, và chiến thắng luôn có cái giá',
+      'Tone có thể tối, bi kịch — anh hùng không luôn thắng, và chiến thắng thường có cái giá',
       'Câu văn tiếng Việt thuần sáng, không lai Hán-Việt quá nhiều — gần với dịch thuật fantasy phương Tây',
     ],
 
@@ -277,12 +278,12 @@ export const GENRE_TEMPLATES = {
     label: 'Ngôn tình cổ đại',
 
     constitution: [
-      'Bối cảnh phong kiến: lễ nghi, xưng hô, phân cấp giai tầng đều phải đúng thời đại — CẤMT dùng tư duy và ngôn ngữ hiện đại',
-      'Hôn nhân là chính trị và giao dịch — tình yêu tự do bị cản trở bởi gia tộc, địa vị, môn đăng hộ đối',
-      'Nữ nhân trong hậu trạch có giới hạn quyền lực thực tế — đấu đá qua mưu mô, không phải đối đầu trực tiếp',
-      'Nam chính có địa vị và quyền lực thực sự — hành vi của anh ta có hệ quả chính trị, không chỉ là "drama tình cảm"',
-      'Trạch đấu có quy tắc ngầm: không thể "out" địch thủ quá lộ liễu, phải có bằng chứng hoặc mưu lược khéo léo',
-      'Phong tục, lễ nghi cổ đại phải nhất quán: cách bái kiến, xưng hô tước vị, đồ trang phục đúng thời đại',
+      'Bối cảnh phong kiến: lễ nghi, xưng hô, phân cấp giai tầng nên đúng thời đại — tránh dùng tư duy và ngôn ngữ hiện đại nếu dự án không cố ý pha trộn',
+      'Hôn nhân thường gắn với chính trị, gia tộc và địa vị; tình yêu tự do có thể bị cản trở nhưng không ép mọi tuyến tình cảm thành bi kịch môn đăng hộ đối',
+      'Nữ nhân trong hậu trạch thường có giới hạn quyền lực thực tế — đấu đá có thể qua mưu mô, thỏa hiệp, liên minh hoặc im lặng chiến lược, không chỉ đối đầu trực tiếp',
+      'Nam chính nếu có địa vị/quyền lực thì hành vi nên có hệ quả xã hội hoặc chính trị, không chỉ là "drama tình cảm"',
+      'Trạch đấu có quy tắc ngầm: không nên "out" địch thủ quá lộ liễu nếu chưa có bằng chứng, lợi ích hoặc mưu lược đủ thuyết phục',
+      'Phong tục, lễ nghi cổ đại nên nhất quán: cách bái kiến, xưng hô tước vị, đồ trang phục theo thời đại/canon dự án',
     ],
 
     style_dna: [
@@ -329,12 +330,12 @@ export const GENRE_TEMPLATES = {
     label: 'Trinh thám',
 
     constitution: [
-      'Fair play tuyệt đối — mọi manh mối để giải đáp vụ án PHẢI được tiết lộ cho người đọc trước khi giải thích',
-      'Sự thật phải logic hoàn toàn — kết quả không được phụ thuộc vào coincidence hay thông tin "mới" cuối truyện',
-      'Quản lý "ai biết gì" nghiêm ngặt — nhân vật chỉ hành động dựa trên thông tin họ thực sự có',
-      'Red herring phải tự nhiên và có lý do tồn tại — không được tạo ra chỉ để gây nhầm lẫn vô lý',
-      'Alibi và timeline phải nhất quán — tác giả phải tracking chặt chẽ ai ở đâu lúc mấy giờ',
-      'Động cơ của hung thủ phải đủ mạnh và logic khi nhìn lại — độc giả phải gật đầu "đúng rồi" khi biết sự thật',
+      'Fair play là ưu tiên của trinh thám: manh mối quan trọng nên được cài trước khi lời giải xuất hiện',
+      'Sự thật cần logic khi nhìn lại — kết quả không nên phụ thuộc vào trùng hợp tiện lợi hay thông tin "mới" rơi xuống cuối truyện',
+      'Quản lý "ai biết gì" chặt chẽ — nhân vật chỉ hành động dựa trên thông tin họ thực sự có',
+      'Red herring nên tự nhiên và có lý do tồn tại, không tạo ra chỉ để gây nhầm lẫn vô lý',
+      'Alibi và timeline cần nhất quán — tác giả nên tracking ai ở đâu, biết gì, vào thời điểm nào',
+      'Động cơ của hung thủ cần đủ sức nặng và logic khi nhìn lại — độc giả có thể hiểu vì sao sự thật vận hành như vậy',
     ],
 
     style_dna: [
@@ -357,9 +358,9 @@ export const GENRE_TEMPLATES = {
     ],
 
     worldRules: [
-      'Mọi manh mối phải fair play — người đọc có thể tự suy luận',
+      'Manh mối nên fair play để người đọc có cơ hội tự suy luận',
       'Quản lý "ai biết gì" rất quan trọng',
-      'Red herring phải tự nhiên, không gượng ép',
+      'Red herring nên tự nhiên, không gượng ép',
     ],
     terms: [
       { name: 'Manh mối', definition: 'Thông tin dẫn đến sự thật, có thể rõ ràng hoặc ẩn giấu', category: 'other' },
@@ -379,19 +380,19 @@ export const GENRE_TEMPLATES = {
     label: 'Ngôn tình',
 
     constitution: [
-      'Cảm xúc nhân vật phải chân thực và có lý do — yêu vì lý do cụ thể, không phải "đẹp quá nên yêu"',
-      'Tension tình cảm phải được duy trì đủ lâu — giải quyết sớm = mất động lực đọc',
-      'Xung đột phải có nguồn gốc thực sự — hiểu lầm phải có lý do tồn tại, không phải chỉ vì "không chịu nói chuyện"',
-      'Nhân vật phải có cuộc sống riêng ngoài romance — công việc, bạn bè, ước mơ, mâu thuẫn nội tâm',
+      'Cảm xúc nhân vật cần chân thực và có lý do — yêu vì điều cụ thể trong con người/quan hệ, không phải "đẹp quá nên yêu"',
+      'Tension tình cảm nên được duy trì ở mức đủ cho tuyến quan hệ; giải quyết sớm chỉ ổn khi cảnh/truyện có động lực khác thay thế',
+      'Xung đột nếu có cần nguồn gốc thực sự — hiểu lầm nên có lý do tồn tại, không chỉ vì "không chịu nói chuyện"',
+      'Nhân vật nên có cuộc sống riêng ngoài romance — công việc, bạn bè, ước mơ, áp lực hoặc mâu thuẫn nội tâm',
       'Mối quan hệ phát triển qua hành động cụ thể, không phải "tự dưng yêu nhau sâu sắc hơn"',
-      'HE/BE phải xứng đáng — kết thúc happy hay sad đều phải earned, không phải gift',
+      'HE/BE nên xứng đáng với hành trình — kết thúc happy hay sad đều cần earned, không phải gift',
     ],
 
     style_dna: [
       'Viết từ góc nhìn cảm xúc — tả những gì nhân vật cảm nhận, không chỉ những gì họ thấy',
       'Câu văn linh hoạt: căng thẳng khi có conflict, mềm mại khi có khoảnh khắc ngọt ngào',
       'Chi tiết nhỏ mang giá trị lớn: cách anh ta nhớ cô thích cà phê sữa đá, cách cô ta vô tình dùng lại câu anh nói',
-      'Đối thoại romance phải subtext — những gì không nói ra đôi khi quan trọng hơn lời nói',
+      'Đối thoại romance nên có subtext — những gì không nói ra đôi khi quan trọng hơn lời nói',
       'Nhịp slow burn: cảm xúc tích lũy dần, mỗi chương thêm một lớp hiểu biết về nhau',
       'Mô tả ngôn ngữ cơ thể kỹ — nhìn nhau, né tránh ánh mắt, khoảng cách, chạm tình cờ',
     ],
@@ -409,8 +410,8 @@ export const GENRE_TEMPLATES = {
 
     worldRules: [
       'Cảm xúc nhân vật phải chân thực, tự nhiên',
-      'Nhịp tình cảm: gặp gỡ → xung đột → hiểu nhau → thử thách → HE/BE',
-      'Tension tình cảm phải duy trì đủ lâu',
+      'Nhịp tình cảm nên đi theo biến chuyển riêng của cặp nhân vật; không ép công thức gặp gỡ → xung đột → hiểu nhau → thử thách → HE/BE',
+      'Duy trì khoảng cách cảm xúc vừa đủ để độc giả thấy quan hệ đang tiến triển, không kéo tension giả',
     ],
     terms: [
       { name: 'Chemistry', definition: 'Sự hấp dẫn tự nhiên giữa hai nhân vật, thể hiện qua cử chỉ nhỏ và ánh mắt', category: 'other' },
@@ -658,6 +659,185 @@ export const GENRE_TEMPLATES = {
     ],
     characters: [
       { name: 'Nhân vật chính', role: 'protagonist', personality: 'Người trẻ với ước mơ và thử thách đời thường' },
+    ],
+  },
+
+  scifi: {
+    label: 'Sci-fi',
+    constitution: [
+      'Công nghệ phải có logic vận hành và giới hạn rõ; không dùng techno-babble để giải quyết plot.',
+      'Mỗi phát minh hoặc hệ thống lớn phải kéo theo hệ quả xã hội, kinh tế, chính trị hoặc đạo đức.',
+      'Nhân vật không hiểu mọi công nghệ ngay lập tức; chuyên môn, dữ liệu và sai số phải được tôn trọng.',
+      'Quy mô khoa học phải nhất quán: AI, du hành vũ trụ, gene, thời gian hoặc thực tại ảo không được đổi luật giữa chừng.',
+      'Cảm xúc con người vẫn là trung tâm; ý tưởng lớn phải đi qua lựa chọn, mất mát, niềm tin hoặc quan hệ cụ thể.',
+    ],
+    style_dna: [
+      'Văn phong rõ, sắc, giàu cảm giác về vật liệu, ánh sáng, âm thanh máy móc và không gian.',
+      'Giải thích công nghệ bằng hành động và hậu quả thay vì lecture dài.',
+      'Nhịp cảnh linh hoạt: chậm khi khám phá khái niệm, nhanh khi sự cố/kỹ thuật tạo áp lực.',
+      'Đối thoại có chuyên môn vừa đủ, tránh biến nhân vật thành người đọc wiki.',
+      'Tạo sense of wonder bằng chi tiết cụ thể, không chỉ dùng từ "vĩ đại" hoặc "không tưởng".',
+    ],
+    anti_ai_blacklist: [
+      'công nghệ vượt ngoài trí tưởng tượng', 'AI có cảm xúc như con người ngay lập tức',
+      'mọi hệ thống đều bị hack trong vài giây', 'năng lượng vô hạn không giải thích',
+      'nhà khoa học biết mọi lĩnh vực', 'phi thuyền tự sửa mọi lỗi',
+      'đây là bước nhảy vĩ đại của nhân loại', 'tất cả dữ liệu đều chỉ ra một điều',
+      'vũ trụ như đang trả lời', 'cỗ máy bỗng nhiên hoạt động',
+    ],
+    worldRules: [
+      'Công nghệ có quy tắc, giới hạn và hệ quả.',
+      'Dữ liệu, sai số, bảo mật và năng lượng đều quan trọng.',
+    ],
+    terms: [
+      { name: 'Giao thức', definition: 'Quy tắc vận hành hoặc trao đổi dữ liệu của hệ thống', category: 'technology' },
+      { name: 'Lõi năng lượng', definition: 'Nguồn cấp cho thiết bị hoặc trạm, có giới hạn và rủi ro', category: 'technology' },
+    ],
+    locations: [
+      { name: 'Trạm nghiên cứu', description: 'Không gian kỹ thuật nơi phát hiện hoặc sự cố chính có thể bắt đầu' },
+    ],
+    characters: [
+      { name: 'Nhân vật chính', role: 'protagonist', personality: 'Tò mò, có chuyên môn, nhưng vẫn có điểm mù con người' },
+    ],
+  },
+
+  trong_sinh: {
+    label: 'Trọng sinh',
+    constitution: [
+      'Ký ức kiếp trước là lợi thế có giới hạn; nhân vật có thể nhớ sai, thiếu dữ kiện hoặc bị butterfly effect phá vỡ kế hoạch.',
+      'Không được biến mọi người xung quanh thành ngu để nhân vật trọng sinh thắng dễ.',
+      'Mỗi lần thay đổi quá khứ phải tạo hệ quả mới, kể cả hệ quả tốt lẫn rủi ro.',
+      'Cơ thể, địa vị, quan hệ và tài nguyên ở đời này vẫn có giới hạn thực.',
+      'Trọng sinh nên tạo áp lực nội tâm: sửa sai, sợ lặp bi kịch, nợ cũ, hối tiếc, tham vọng hoặc một lựa chọn sống khác trước.',
+    ],
+    style_dna: [
+      'Hai tầng thời gian hiện diện qua chi tiết nhỏ: cảnh hiện tại gợi lại một vết cũ hoặc lựa chọn cũ.',
+      'Nội tâm tiết chế nhưng có sức nặng vì nhân vật biết cái giá của quyết định.',
+      'Pacing không được trả thù quá nhanh; mỗi thay đổi cần chuẩn bị và phản ứng.',
+      'Đối thoại có lớp che giấu: nhân vật biết nhiều hơn họ được phép nói.',
+      'Dùng ký ức kiếp trước như áp lực, không như cheat code vô hạn.',
+    ],
+    anti_ai_blacklist: [
+      'lần này ta sẽ trả thù tất cả', 'ta biết mọi chuyện sẽ xảy ra',
+      'mọi kế hoạch đều hoàn hảo', 'không ai nghi ngờ sự thay đổi của ta',
+      'kiếp trước ta quá ngu ngốc', 'tất cả đều phải trả giá',
+      'bỗng nhiên nhớ ra chi tiết quan trọng', 'trời cho ta cơ hội làm lại',
+      'mọi người kinh ngạc vì ta khác trước', 'ta sẽ đứng trên đỉnh cao',
+    ],
+    worldRules: [
+      'Ký ức tương lai không tuyệt đối đúng sau khi lịch sử đổi hướng.',
+      'Mọi can thiệp đều có hệ quả dây chuyền.',
+    ],
+    terms: [
+      { name: 'Trọng sinh', definition: 'Sống lại một mốc trước đó với ký ức kiếp cũ', category: 'other' },
+      { name: 'Butterfly effect', definition: 'Một thay đổi nhỏ làm tương lai lệch khỏi ký ức ban đầu', category: 'concept' },
+    ],
+    locations: [],
+    characters: [
+      { name: 'Người trọng sinh', role: 'protagonist', personality: 'Tỉnh táo, mang vết hối tiếc và thận trọng trước hệ quả mới' },
+    ],
+  },
+
+  slice_of_life: {
+    label: 'Slice of Life',
+    constitution: [
+      'Không ép biến cố lớn; sức hút nằm ở quan sát, quan hệ, thói quen, lựa chọn nhỏ và thay đổi tinh tế.',
+      'Mỗi cảnh vẫn cần mục đích nhỏ: hiểu thêm một người, đổi một thói quen, mở một cảm xúc, hoặc tạo một nhịp hài.',
+      'Xung đột nếu có phải đời thường và vừa sức tone: hiểu lầm nhỏ, lịch hẹn, áp lực học/làm, gia đình, tiền bạc, tự trọng.',
+      'Nhân vật không cần chiến thắng lớn; một cử chỉ đúng lúc hoặc một câu nói thật có thể là payoff.',
+      'Bối cảnh cụ thể quan trọng hơn drama: đồ ăn, thời tiết, âm thanh phố, đồ vật quen thuộc, lịch sinh hoạt.',
+    ],
+    style_dna: [
+      'Văn phong tự nhiên, ấm, quan sát tinh; tránh lên gân.',
+      'Nhịp chậm vừa phải, có khoảng lặng, có chi tiết đời thường đáng nhớ.',
+      'Đối thoại như người thật nói: ngắt, né, đùa, lạc đề nhẹ, nhưng vẫn có subtext.',
+      'Hài hước đến từ tính cách và tình huống nhỏ, không cần punchline liên tục.',
+      'Cảm xúc thể hiện qua hành động nhỏ thay vì độc thoại bi kịch.',
+    ],
+    anti_ai_blacklist: [
+      'ngày hôm đó mọi thứ thay đổi', 'cuộc đời bình yên bị phá vỡ',
+      'biến cố bất ngờ ập đến', 'cả thế giới như dừng lại',
+      'trái tim tôi đau nhói', 'nụ cười như ánh mặt trời',
+      'không khí trở nên căng thẳng', 'mọi người im lặng không ai nói gì',
+      'định mệnh đã đưa họ đến với nhau', 'bài học cuộc sống sâu sắc',
+    ],
+    worldRules: [
+      'Sức nặng nằm ở chi tiết đời thường và tiến triển nhỏ.',
+      'Không ép cao trào nếu cảnh chỉ cần ấm, hài hoặc quan sát.',
+    ],
+    terms: [
+      { name: 'Nhịp đời thường', definition: 'Chuỗi thói quen, va chạm nhỏ và khoảnh khắc gần gũi tạo chất truyện', category: 'other' },
+    ],
+    locations: [
+      { name: 'Không gian quen thuộc', description: 'Quán nhỏ, lớp học, căn hộ, văn phòng hoặc con phố nhân vật hay lui tới' },
+    ],
+    characters: [
+      { name: 'Nhân vật chính', role: 'protagonist', personality: 'Có đời sống riêng, phản ứng bằng chi tiết nhỏ hơn là tuyên ngôn lớn' },
+    ],
+  },
+
+  drama: {
+    label: 'Drama',
+    constitution: [
+      'Drama phải đến từ lựa chọn, bí mật, tổn thương, trách nhiệm hoặc mâu thuẫn giá trị; không dùng hiểu lầm rẻ tiền kéo dài vô lý.',
+      'Mỗi cảm xúc lớn cần nguyên nhân và hậu quả; không bật khóc, tức giận hoặc tha thứ chỉ để tạo cao trào.',
+      'Nhân vật nào cũng cần lý do tự bảo vệ mình, kể cả khi họ sai.',
+      'Cao trào cảm xúc phải earned qua buildup; tránh melodrama liên tục.',
+      'Khoảng lặng sau xung đột quan trọng ngang với lúc bùng nổ.',
+    ],
+    style_dna: [
+      'Văn phong sắc, gần, tập trung vào chi tiết khiến cảm xúc lộ ra ngoài.',
+      'Đối thoại nhiều subtext: nhân vật né điều thật, nói vòng, hoặc nói quá muộn.',
+      'Pacing có lên xuống: căng, lặng, va chạm, hậu quả.',
+      'Tả cảm xúc qua lựa chọn vật lý: dừng tay, đổi giọng, cất đồ, không nhìn nhau.',
+      'Không dùng nước mắt như bằng chứng duy nhất của đau khổ.',
+    ],
+    anti_ai_blacklist: [
+      'đời tôi kết thúc rồi', 'tôi không thể sống thiếu anh',
+      'nước mắt tuôn rơi không ngừng', 'mọi thứ vỡ vụn trong lòng',
+      'sự thật như lưỡi dao đâm vào tim', 'cả căn phòng im lặng đến nghẹt thở',
+      'anh/cô ấy quay đi trong đau đớn', 'từ nay chúng ta là người xa lạ',
+      'không ai hiểu nỗi đau này', 'bi kịch không thể tránh khỏi',
+    ],
+    worldRules: [
+      'Mâu thuẫn cảm xúc cần nguyên nhân, hệ quả và thời gian xử lý.',
+      'Không biến nhân vật thành công cụ để tạo drama.',
+    ],
+    terms: [
+      { name: 'Subtext', definition: 'Điều nhân vật thật sự muốn hoặc sợ nhưng không nói trực tiếp', category: 'other' },
+    ],
+    locations: [
+      { name: 'Không gian đối thoại', description: 'Nơi nhân vật buộc phải đối mặt với nhau hoặc né tránh nhau' },
+    ],
+    characters: [
+      { name: 'Nhân vật chính', role: 'protagonist', personality: 'Có vết thương cảm xúc và cách tự vệ riêng' },
+    ],
+  },
+
+  other: {
+    label: 'Khác',
+    constitution: [
+      'Ưu tiên synopsis, tag, tone và yêu cầu cụ thể của tác giả hơn mọi mặc định thể loại.',
+      'Nếu thể loại chưa rõ, không tự nhét motif tiên hiệp, romance, kinh dị hoặc hành động vào truyện.',
+      'Mỗi cảnh cần mục đích kể chuyện rõ nhưng không ép xung đột/cao trào nếu tone không cần.',
+      'Luật thế giới chỉ được thêm khi tác giả yêu cầu hoặc khi cần để tránh mơ hồ.',
+    ],
+    style_dna: [
+      'Giữ văn phong trung tính, rõ, dễ điều chỉnh theo hướng tác giả đưa ra.',
+      'Hỏi bằng văn bản thông qua giả định tối thiểu khi dữ liệu thiếu, không tự quyết định quá xa.',
+      'Ưu tiên cụ thể hóa nhân vật, bối cảnh và hệ quả thay vì dùng trope mặc định.',
+    ],
+    anti_ai_blacklist: [
+      'mọi chuyện bắt đầu thay đổi', 'định mệnh đã chọn',
+      'một thế lực bí ẩn', 'không ai biết rằng',
+      'cuộc phiêu lưu vĩ đại', 'sự thật kinh hoàng',
+      'trái tim rung động mãnh liệt', 'bóng tối bao trùm tất cả',
+    ],
+    worldRules: [],
+    terms: [],
+    locations: [],
+    characters: [
+      { name: 'Nhân vật chính', role: 'protagonist', personality: 'Được xác định theo synopsis, tag và yêu cầu tác giả' },
     ],
   },
 };
