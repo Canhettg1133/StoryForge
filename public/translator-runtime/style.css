@@ -932,6 +932,14 @@ select option {
     font-size: 0.92rem;
 }
 
+.translation-queue-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+}
+
 .start-chunk-context-badge {
     flex-shrink: 0;
     padding: 6px 10px;
@@ -1021,9 +1029,36 @@ select option {
     background: rgba(255, 255, 255, 0.05);
 }
 
+.translation-queue-item[draggable="true"] {
+    cursor: grab;
+}
+
+.translation-queue-item.is-dragging {
+    opacity: 0.55;
+}
+
+.translation-queue-item.is-drag-over {
+    border-color: rgba(99, 102, 241, 0.75);
+    background: rgba(99, 102, 241, 0.14);
+}
+
 .translation-queue-item--running {
     border-color: rgba(16, 185, 129, 0.35);
     background: rgba(16, 185, 129, 0.08);
+}
+
+.translation-queue-item__drag {
+    width: 22px;
+    flex: 0 0 22px;
+    color: var(--text-muted);
+    font-weight: 700;
+    line-height: 1;
+    text-align: center;
+    user-select: none;
+}
+
+.translation-queue-item__drag--locked {
+    opacity: 0;
 }
 
 .translation-queue-item__main {
@@ -1067,8 +1102,13 @@ select option {
     }
 
     .start-chunk-context-badge,
+    .translation-queue-actions,
     .translation-queue-item__actions {
         align-self: flex-start;
+    }
+
+    .translation-queue-item__drag {
+        display: none;
     }
 }
 

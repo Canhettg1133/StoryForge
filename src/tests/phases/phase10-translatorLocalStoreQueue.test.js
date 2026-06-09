@@ -16,6 +16,7 @@ const {
   updateTranslatorChunkResult,
   updateTranslatorQueueItemStatus,
   claimNextTranslatorQueueItem,
+  reorderTranslatorQueueItems,
 } = globalThis.TranslatorLocalStore;
 
 class TrackingFile extends Blob {
@@ -142,5 +143,29 @@ describe('translator local store and queue', () => {
       position: 1,
     });
     expect(session.fileName).toBe('ten-truyen-rat-dai-de-kiem-tra-hang-doi.txt');
+  });
+
+  it('reorders queued and paused story sessions by persisted queue position', async () => {
+    const first = await createTranslatorSessionFromFile(new TrackingFile(['Mot'], { name: 'mot.txt' }), {
+      chunkSize: 100,
+    });
+    const second = await createTranslatorSessionFromFile(new TrackingFile(['Hai'], { name: 'hai.txt' }), {
+      chunkSize: 100,
+    });
+    const third = await createTranslatorSessionFromFile(new TrackingFile(['Ba'], { name: 'ba.txt' }), {
+      chunkSize: 100,
+    });
+
+    const firstQueue = await enqueueTranslatorSession(first.id);
+    const secondQueue = await enqueueTranslatorSession(second.id);
+    const thirdQueue = await enqueueTranslatorSession(third.id);
+    await updateTranslatorQueueItemStatus(secondQueue.id, 'paused');
+
+    await reorderTranslatorQueueItems([thirdQueue.id, firstQueue.id, secondQueue.id]);
+    const reordered = await getTranslatorQueueItems();
+
+    expect(reordered.map(item => item.id)).toEqual([thirdQueue.id, firstQueue.id, secondQueue.id]);
+    expect(reordered.map(item => item.position)).toEqual([1, 2, 3]);
+    expect(reordered.map(item => item.status)).toEqual(['queued', 'queued', 'paused']);
   });
 });

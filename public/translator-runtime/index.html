@@ -679,9 +679,18 @@
                         </h2>
                         <p id="translationQueueSummary">Hàng đợi đang trống.</p>
                     </div>
-                    <button class="btn btn-small btn-secondary" type="button" onclick="toggleTranslationQueuePanel(false)">
-                        Thu gọn
-                    </button>
+                    <div class="translation-queue-actions">
+                        <button class="btn btn-small btn-secondary" id="queueFilesBtn" type="button">
+                            Thêm file
+                        </button>
+                        <button class="btn btn-small btn-primary" id="runTranslationQueueBtn" type="button">
+                            Chạy hàng đợi
+                        </button>
+                        <button class="btn btn-small btn-secondary" type="button" onclick="toggleTranslationQueuePanel(false)">
+                            Thu gọn
+                        </button>
+                        <input type="file" id="queueFileInput" accept=".txt" multiple hidden>
+                    </div>
                 </div>
                 <div class="translation-queue-list" id="translationQueueList">
                     <p class="empty-message">Chưa có truyện nào trong hàng đợi.</p>

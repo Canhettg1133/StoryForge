@@ -357,6 +357,36 @@
         return updated;
     }
 
+    async function reorderTranslatorQueueItems(orderedQueueIds = []) {
+        const rows = await getTranslatorQueueItems();
+        const rowById = new Map(rows.map((row) => [row.id, row]));
+        const seen = new Set();
+        const orderedRows = [];
+
+        for (const queueId of orderedQueueIds) {
+            if (!rowById.has(queueId) || seen.has(queueId)) continue;
+            orderedRows.push(rowById.get(queueId));
+            seen.add(queueId);
+        }
+        for (const row of rows) {
+            if (seen.has(row.id)) continue;
+            orderedRows.push(row);
+            seen.add(row.id);
+        }
+
+        const updatedRows = [];
+        for (let index = 0; index < orderedRows.length; index += 1) {
+            const updated = {
+                ...orderedRows[index],
+                position: index + 1,
+                updatedAt: nowIso(),
+            };
+            await putRecord(STORES.QUEUE, updated);
+            updatedRows.push(updated);
+        }
+        return updatedRows;
+    }
+
     async function claimNextTranslatorQueueItem() {
         const rows = await getTranslatorQueueItems();
         if (rows.some((item) => item.status === 'running')) return null;
@@ -399,6 +429,7 @@
         getTranslatorSessionOutputParts,
         markTranslatorChunksBefore,
         removeTranslatorQueueItem,
+        reorderTranslatorQueueItems,
         searchTranslatorSessionChunks,
         updateTranslatorChunkResult,
         updateTranslatorQueueItemStatus,

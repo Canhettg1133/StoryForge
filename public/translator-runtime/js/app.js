@@ -1893,6 +1893,12 @@ function setupEventListeners() {
     // File input
     const fileInput = document.getElementById('fileInput');
     if (fileInput) fileInput.addEventListener('change', handleFileSelect);
+    const queueFileInput = document.getElementById('queueFileInput');
+    if (queueFileInput) queueFileInput.addEventListener('change', handleQueueFileSelect);
+    const queueFilesBtn = document.getElementById('queueFilesBtn');
+    if (queueFilesBtn) queueFilesBtn.addEventListener('click', openQueueFilePicker);
+    const runTranslationQueueBtn = document.getElementById('runTranslationQueueBtn');
+    if (runTranslationQueueBtn) runTranslationQueueBtn.addEventListener('click', startTranslatorQueue);
 
     // Drag and drop (web only, not on mobile)
     const uploadArea = document.getElementById('uploadArea');

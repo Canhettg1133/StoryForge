@@ -83,10 +83,19 @@ if (typeof loadMoreChunkRows === 'function') window.loadMoreChunkRows = loadMore
 // Translator local session, start search, and queue functions
 if (typeof handleStartChunkSearchInput === 'function') window.handleStartChunkSearchInput = handleStartChunkSearchInput;
 if (typeof selectStartChunk === 'function') window.selectStartChunk = selectStartChunk;
+if (typeof openQueueFilePicker === 'function') window.openQueueFilePicker = openQueueFilePicker;
+if (typeof handleQueueFileSelect === 'function') window.handleQueueFileSelect = handleQueueFileSelect;
+if (typeof startTranslatorQueue === 'function') window.startTranslatorQueue = startTranslatorQueue;
 if (typeof toggleTranslationQueuePanel === 'function') window.toggleTranslationQueuePanel = toggleTranslationQueuePanel;
 if (typeof removeQueuedTranslatorItem === 'function') window.removeQueuedTranslatorItem = removeQueuedTranslatorItem;
+if (typeof cancelQueuedTranslatorItem === 'function') window.cancelQueuedTranslatorItem = cancelQueuedTranslatorItem;
 if (typeof pauseQueuedTranslatorItem === 'function') window.pauseQueuedTranslatorItem = pauseQueuedTranslatorItem;
 if (typeof resumeQueuedTranslatorItem === 'function') window.resumeQueuedTranslatorItem = resumeQueuedTranslatorItem;
 if (typeof downloadQueuedTranslatorResult === 'function') window.downloadQueuedTranslatorResult = downloadQueuedTranslatorResult;
+if (typeof handleQueueDragStart === 'function') window.handleQueueDragStart = handleQueueDragStart;
+if (typeof handleQueueDragOver === 'function') window.handleQueueDragOver = handleQueueDragOver;
+if (typeof handleQueueDragLeave === 'function') window.handleQueueDragLeave = handleQueueDragLeave;
+if (typeof handleQueueDrop === 'function') window.handleQueueDrop = handleQueueDrop;
+if (typeof handleQueueDragEnd === 'function') window.handleQueueDragEnd = handleQueueDragEnd;
 
 console.log('✅ All modules loaded and exposed globally');

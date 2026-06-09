@@ -5,10 +5,13 @@
 
 let startChunkSearchTimer = null;
 let startChunkSearchController = null;
+let draggedTranslatorQueueItemId = null;
 
 function setFileLoadState(state = 'idle', file = null) {
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
+    const queueFileInput = document.getElementById('queueFileInput');
+    const queueFilesBtn = document.getElementById('queueFilesBtn');
     const uploadStatus = document.getElementById('uploadStatus');
     const uploadStatusText = document.getElementById('uploadStatusText');
     const uploadStatusMeta = document.getElementById('uploadStatusMeta');
@@ -21,6 +24,8 @@ function setFileLoadState(state = 'idle', file = null) {
         uploadArea.setAttribute('aria-disabled', String(isBusy));
     }
     if (fileInput) fileInput.disabled = isBusy;
+    if (queueFileInput) queueFileInput.disabled = isBusy;
+    if (queueFilesBtn) queueFilesBtn.disabled = isBusy;
 
     if (!uploadStatus) return;
     uploadStatus.hidden = !isBusy;
@@ -412,6 +417,48 @@ async function selectStartChunk(chunkIndex, byteStart) {
 // ============================================
 // LOCAL TRANSLATION QUEUE
 // ============================================
+function openQueueFilePicker() {
+    const queueFileInput = document.getElementById('queueFileInput');
+    if (!queueFileInput || queueFileInput.disabled) return;
+    queueFileInput.click();
+}
+
+async function handleQueueFileSelect(event) {
+    const files = Array.from(event.target.files || []).filter(file => /\.txt$/i.test(file.name || ''));
+    if (files.length === 0) {
+        showToast('Chỉ hỗ trợ file .txt', 'error');
+        return;
+    }
+
+    setFileLoadState('queued', files[0]);
+    try {
+        await enqueueTranslatorFiles(files);
+    } finally {
+        setFileLoadState('idle');
+        event.target.value = '';
+    }
+}
+
+function isQueueReorderable(status) {
+    return status === 'queued' || status === 'paused';
+}
+
+function updateTranslationQueueControls(items = []) {
+    const runBtn = document.getElementById('runTranslationQueueBtn');
+    const queueFilesBtn = document.getElementById('queueFilesBtn');
+    const queueFileInput = document.getElementById('queueFileInput');
+    const hasQueued = items.some(item => item.status === 'queued');
+    if (runBtn) {
+        runBtn.disabled = isTranslating || translatorQueueAutoRunning || !hasQueued;
+        runBtn.title = isTranslating || translatorQueueAutoRunning
+            ? 'Đang dịch, hàng đợi sẽ tự chạy tiếp.'
+            : hasQueued ? 'Chạy truyện tiếp theo trong hàng đợi.' : 'Chưa có truyện đang chờ.';
+    }
+    if (queueFilesBtn) {
+        queueFilesBtn.disabled = Boolean(queueFileInput?.disabled);
+    }
+}
+
 async function enqueueTranslatorFiles(files) {
     const validFiles = Array.from(files || []).filter(file => /\.txt$/i.test(file.name || ''));
     const queued = [];
@@ -485,6 +532,7 @@ async function renderTranslationQueue() {
     if (!list) return;
     const items = typeof getTranslatorQueueItems === 'function' ? await getTranslatorQueueItems() : [];
     const activeItems = items.filter(item => ['queued', 'running', 'paused'].includes(item.status));
+    updateTranslationQueueControls(items);
     if (countBadge) countBadge.textContent = `${activeItems.length} mục`;
     if (summary) {
         const running = activeItems.find(item => item.status === 'running');
@@ -500,12 +548,14 @@ async function renderTranslationQueue() {
     const rows = await Promise.all(items.slice(0, 30).map(async (item) => {
         const session = await getTranslatorSession(item.sessionId);
         const sessionName = session?.fileName || item.sessionId;
+        const canReorder = isQueueReorderable(item.status);
         const totalToTranslate = Math.max(1, (session?.totalChunks || 0) - (session?.startChunkIndex || 0));
         const progress = session?.isComplete
             ? 100
             : Math.min(100, Math.round(((session?.completedChunks || 0) / totalToTranslate) * 100));
         return `
-            <article class="translation-queue-item translation-queue-item--${item.status}">
+            <article class="translation-queue-item translation-queue-item--${item.status}" data-queue-id="${item.id}" draggable="${canReorder ? 'true' : 'false'}" ondragstart="handleQueueDragStart(event, '${item.id}')" ondragover="handleQueueDragOver(event, '${item.id}')" ondragleave="handleQueueDragLeave(event)" ondrop="handleQueueDrop(event, '${item.id}')" ondragend="handleQueueDragEnd(event)">
+                <span class="translation-queue-item__drag ${canReorder ? '' : 'translation-queue-item__drag--locked'}" title="Kéo để đổi thứ tự">${canReorder ? '↕' : ''}</span>
                 <div class="translation-queue-item__main">
                     <strong title="${escapeHtml(sessionName)}">${escapeHtml(sessionName)}</strong>
                     <span>${queueStatusLabel(item.status)} • ${progress}% • ${session?.completedChunks || 0}/${totalToTranslate} chunk</span>
@@ -513,6 +563,7 @@ async function renderTranslationQueue() {
                 <div class="translation-queue-item__actions">
                     ${item.status === 'queued' ? `<button type="button" class="btn btn-small btn-secondary" onclick="pauseQueuedTranslatorItem('${item.id}')">Tạm dừng</button>` : ''}
                     ${item.status === 'paused' ? `<button type="button" class="btn btn-small btn-primary" onclick="resumeQueuedTranslatorItem('${item.id}')">Tiếp tục</button>` : ''}
+                    ${item.status === 'running' ? `<button type="button" class="btn btn-small btn-danger" onclick="cancelQueuedTranslatorItem('${item.id}')">Hủy</button>` : ''}
                     ${item.status === 'queued' || item.status === 'paused' || item.status === 'failed' || item.status === 'cancelled' || item.status === 'completed' ? `<button type="button" class="btn btn-small btn-secondary" onclick="removeQueuedTranslatorItem('${item.id}')">Xóa</button>` : ''}
                     ${item.status === 'completed' ? `<button type="button" class="btn btn-small btn-primary" onclick="downloadQueuedTranslatorResult('${item.sessionId}')">Tải về</button>` : ''}
                 </div>
@@ -542,10 +593,60 @@ function toggleTranslationQueuePanel(forceOpen) {
     if (shouldOpen) renderTranslationQueue();
 }
 
+async function startTranslatorQueue() {
+    if (isTranslating || translatorQueueAutoRunning) {
+        showToast('Đang dịch, hàng đợi sẽ tự chạy tiếp.', 'info');
+        return;
+    }
+
+    const items = typeof getTranslatorQueueItems === 'function' ? await getTranslatorQueueItems() : [];
+    const hasQueued = items.some(item => item.status === 'queued');
+    if (!hasQueued) {
+        showToast('Không có truyện nào đang chờ trong hàng đợi.', 'info');
+        updateTranslationQueueControls(items);
+        return;
+    }
+
+    toggleTranslationQueuePanel(true);
+    await processNextTranslatorQueue();
+}
+
 async function removeQueuedTranslatorItem(queueId) {
+    const items = typeof getTranslatorQueueItems === 'function' ? await getTranslatorQueueItems() : [];
+    const item = items.find(row => row.id === queueId);
+    if (item?.status === 'running') {
+        await cancelQueuedTranslatorItem(queueId);
+        return;
+    }
+
     if (typeof removeTranslatorQueueItem === 'function') {
         await removeTranslatorQueueItem(queueId);
     }
+    await renderTranslationQueue();
+}
+
+async function cancelQueuedTranslatorItem(queueId) {
+    const items = typeof getTranslatorQueueItems === 'function' ? await getTranslatorQueueItems() : [];
+    const item = items.find(row => row.id === queueId);
+    if (!item) return;
+
+    if (typeof updateTranslatorQueueItemStatus === 'function') {
+        await updateTranslatorQueueItemStatus(queueId, 'cancelled');
+    }
+
+    if (item.status === 'running' && queueId === currentTranslatorQueueItemId) {
+        if (typeof executeCancel === 'function' && !cancelRequested) {
+            executeCancel();
+        } else {
+            cancelRequested = true;
+            isPaused = false;
+            if (typeof abortActiveTranslationRequests === 'function') {
+                abortActiveTranslationRequests();
+            }
+        }
+        showToast('Đang hủy truyện đang dịch trong hàng đợi.', 'warning');
+    }
+
     await renderTranslationQueue();
 }
 
@@ -564,6 +665,68 @@ async function resumeQueuedTranslatorItem(queueId) {
     if (!isTranslating && typeof processNextTranslatorQueue === 'function') {
         setTimeout(() => processNextTranslatorQueue(), 0);
     }
+}
+
+function handleQueueDragStart(event, queueId) {
+    const row = event.currentTarget;
+    if (!row || row.getAttribute('draggable') !== 'true') return;
+    draggedTranslatorQueueItemId = queueId;
+    row.classList.add('is-dragging');
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', queueId);
+    }
+}
+
+function handleQueueDragOver(event, queueId) {
+    if (!draggedTranslatorQueueItemId || draggedTranslatorQueueItemId === queueId) return;
+    const row = event.currentTarget;
+    if (!row || row.getAttribute('draggable') !== 'true') return;
+    event.preventDefault();
+    row.classList.add('is-drag-over');
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+}
+
+function handleQueueDragLeave(event) {
+    event.currentTarget?.classList?.remove('is-drag-over');
+}
+
+function handleQueueDragEnd(event) {
+    draggedTranslatorQueueItemId = null;
+    event.currentTarget?.classList?.remove('is-dragging', 'is-drag-over');
+    document.querySelectorAll('.translation-queue-item.is-dragging, .translation-queue-item.is-drag-over').forEach(row => {
+        row.classList.remove('is-dragging', 'is-drag-over');
+    });
+}
+
+function buildReorderedQueueIds(items, draggedQueueId, targetQueueId) {
+    const reorderableIds = items
+        .filter(item => isQueueReorderable(item.status))
+        .map(item => item.id);
+    const fromIndex = reorderableIds.indexOf(draggedQueueId);
+    const toIndex = reorderableIds.indexOf(targetQueueId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) {
+        return items.map(item => item.id);
+    }
+
+    const [moved] = reorderableIds.splice(fromIndex, 1);
+    reorderableIds.splice(toIndex, 0, moved);
+    const nextReorderableIds = [...reorderableIds];
+    return items.map(item => isQueueReorderable(item.status) ? nextReorderableIds.shift() : item.id);
+}
+
+async function handleQueueDrop(event, targetQueueId) {
+    event.preventDefault();
+    const draggedQueueId = draggedTranslatorQueueItemId || event.dataTransfer?.getData('text/plain');
+    handleQueueDragEnd(event);
+    if (!draggedQueueId || draggedQueueId === targetQueueId || typeof reorderTranslatorQueueItems !== 'function') {
+        return;
+    }
+
+    const items = typeof getTranslatorQueueItems === 'function' ? await getTranslatorQueueItems() : [];
+    const nextIds = buildReorderedQueueIds(items, draggedQueueId, targetQueueId);
+    await reorderTranslatorQueueItems(nextIds);
+    await renderTranslationQueue();
 }
 
 async function downloadQueuedTranslatorResult(sessionId) {

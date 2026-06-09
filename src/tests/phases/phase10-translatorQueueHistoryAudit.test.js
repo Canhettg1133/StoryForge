@@ -133,4 +133,31 @@ describe('translator queue/history audit', () => {
     expect(enqueueBody).toContain('renderTranslationQueue()');
     expect(enqueueBody).toContain('toggleTranslationQueuePanel(true)');
   });
+
+  it('exposes direct queue controls for adding files, running, cancelling, and drag reordering', () => {
+    const html = readRuntime('public/translator-runtime/index.html');
+    const appSource = readRuntime('public/translator-runtime/js/app.js');
+    const initSource = readRuntime('public/translator-runtime/js/init.js');
+    const fileHandlerSource = readRuntime('public/translator-runtime/js/ui/file-handler.js');
+    const localStoreSource = readRuntime('public/translator-runtime/js/translation/local-store.js');
+    const renderQueueBody = getFunctionBody(fileHandlerSource, 'renderTranslationQueue');
+
+    expect(html).toContain('id="queueFileInput"');
+    expect(html).toContain('id="queueFilesBtn"');
+    expect(html).toContain('id="runTranslationQueueBtn"');
+    expect(appSource).toContain("document.getElementById('queueFileInput')");
+    expect(appSource).toContain('handleQueueFileSelect');
+    expect(fileHandlerSource).toContain('async function handleQueueFileSelect');
+    expect(fileHandlerSource).toContain('function openQueueFilePicker');
+    expect(fileHandlerSource).toContain('async function startTranslatorQueue');
+    expect(fileHandlerSource).toContain('async function cancelQueuedTranslatorItem');
+    expect(fileHandlerSource).toContain('function handleQueueDragStart');
+    expect(fileHandlerSource).toContain('async function handleQueueDrop');
+    expect(renderQueueBody).toContain('draggable="${canReorder ? \'true\' : \'false\'}"');
+    expect(renderQueueBody).toContain("onclick=\"cancelQueuedTranslatorItem('${item.id}')\"");
+    expect(localStoreSource).toContain('async function reorderTranslatorQueueItems');
+    expect(initSource).toContain('startTranslatorQueue');
+    expect(initSource).toContain('handleQueueDragStart');
+    expect(initSource).toContain('handleQueueDrop');
+  });
 });
