@@ -78,7 +78,6 @@ if (typeof viewChunkDetail === 'function') window.viewChunkDetail = viewChunkDet
 if (typeof closeChunkDetail === 'function') window.closeChunkDetail = closeChunkDetail;
 if (typeof editChunkManual === 'function') window.editChunkManual = editChunkManual;
 if (typeof toggleChunkTracker === 'function') window.toggleChunkTracker = toggleChunkTracker;
-if (typeof loadMoreChunkRows === 'function') window.loadMoreChunkRows = loadMoreChunkRows;
 
 // Translator local session, start search, and queue functions
 if (typeof handleStartChunkSearchInput === 'function') window.handleStartChunkSearchInput = handleStartChunkSearchInput;

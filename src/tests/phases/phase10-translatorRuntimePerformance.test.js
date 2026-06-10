@@ -186,6 +186,42 @@ describe('phase10 translator runtime performance', () => {
     ]);
   });
 
+  it('moves the chunk tracker through settled 100-row windows and reports the active range', () => {
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/ui/chunk-tracker.js',
+    ]);
+
+    [1, 7, 25, 50, 100].forEach((parallelCount) => {
+      const rows = Array.from({ length: 250 }, (_, index) => ({
+        index,
+        status: index < 100
+          ? 'success'
+          : (index < 100 + parallelCount ? 'translating' : 'pending'),
+      }));
+
+      expect(context.getChunkTrackerWindowState(rows)).toEqual({
+        start: 100,
+        end: 200,
+        firstChunk: 101,
+        lastChunk: 200,
+        activeFirstChunk: 101,
+        activeLastChunk: 100 + parallelCount,
+      });
+    });
+
+    const rows = Array.from({ length: 250 }, (_, index) => ({
+      index,
+      status: index < 200 ? 'success' : 'pending',
+    }));
+    rows.slice(100, 200).forEach((row) => {
+      row.status = 'success';
+    });
+    expect(context.getChunkTrackerWindowState(rows).start).toBe(200);
+
+    rows[3].status = 'retrying';
+    expect(context.getChunkTrackerWindowState(rows).start).toBe(0);
+  });
+
   it('keeps translator runtime sources as valid UTF-8 rather than mojibake literals', () => {
     const files = [
       'public/translator-runtime/index.html',

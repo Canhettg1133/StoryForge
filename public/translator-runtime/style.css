@@ -3050,10 +3050,25 @@ select option {
     scrollbar-color: var(--accent-primary) transparent;
 }
 
-.ct-load-more {
-    width: 100%;
-    margin-top: var(--spacing-sm);
-    justify-content: center;
+.ct-window-label {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.ct-window-label strong {
+    color: var(--text-accent);
+    font-weight: 600;
 }
 
 .ct-list::-webkit-scrollbar {

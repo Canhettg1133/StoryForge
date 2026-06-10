@@ -12,7 +12,7 @@ let originalChunksRef = []; // Reference to original chunks (raw, no prompt)
 let preparedChunksRef = []; // Reference to prepared chunks (with prompt)
 let customPromptRef = ''; // Reference to custom prompt used
 const CHUNK_TRACKER_RENDER_BATCH_SIZE = 100;
-let chunkTrackerVisibleCount = CHUNK_TRACKER_RENDER_BATCH_SIZE;
+let chunkTrackerWindowStart = 0;
 let chunkTrackerDynamicMode = false;
 let chunkTrackerLargeFileMode = false;
 let chunkTrackerSummaryState = {
@@ -42,7 +42,7 @@ const CHUNK_STATUS = {
 function initChunkTracker(chunks, preparedChunks, customPrompt, options = {}) {
     chunkTrackerDynamicMode = Boolean(options.dynamic);
     chunkTrackerLargeFileMode = Boolean(options.largeFile);
-    chunkTrackerVisibleCount = CHUNK_TRACKER_RENDER_BATCH_SIZE;
+    chunkTrackerWindowStart = 0;
     originalChunksRef = chunks;
     preparedChunksRef = Array.isArray(preparedChunks) ? preparedChunks : null;
     customPromptRef = customPrompt;
@@ -102,7 +102,8 @@ function trackChunkDiscovered(chunkIndex, chunkText) {
         originalChunksRef[chunkIndex] = text;
     }
 
-    if (chunkIndex < chunkTrackerVisibleCount) {
+    const windowState = getChunkTrackerWindowState(chunkTrackingData);
+    if (chunkIndex >= windowState.start && chunkIndex < windowState.end) {
         renderChunkTracker();
     } else {
         updateChunkSummary();
@@ -431,27 +432,90 @@ function renderChunkTracker() {
     if (!container) return;
 
     const rows = chunkTrackingData.filter(Boolean);
-    const visibleRows = rows.slice(0, chunkTrackerVisibleCount);
-    const loadMoreHtml = rows.length > visibleRows.length
-        ? `<button class="btn btn-small btn-secondary ct-load-more" onclick="loadMoreChunkRows()">Hiện thêm ${Math.min(CHUNK_TRACKER_RENDER_BATCH_SIZE, rows.length - visibleRows.length)} chunk</button>`
-        : '';
-    container.innerHTML = visibleRows.map((data) => buildChunkRowHtml(data)).join('') + loadMoreHtml;
+    const windowState = getChunkTrackerWindowState(rows);
+    chunkTrackerWindowStart = windowState.start;
+    const visibleRows = rows.filter((data) => data.index >= windowState.start && data.index < windowState.end);
+    container.innerHTML = buildChunkTrackerWindowLabel(windowState, rows.length) +
+        visibleRows.map((data) => buildChunkRowHtml(data)).join('');
     updateChunkSummary();
 }
 
-function loadMoreChunkRows() {
-    chunkTrackerVisibleCount += CHUNK_TRACKER_RENDER_BATCH_SIZE;
-    renderChunkTracker();
+function isChunkTrackerSettled(status) {
+    return status === CHUNK_STATUS.SUCCESS ||
+        status === CHUNK_STATUS.WARNING ||
+        status === CHUNK_STATUS.FAILED;
+}
+
+function isChunkTrackerActive(status) {
+    return status === CHUNK_STATUS.TRANSLATING ||
+        status === CHUNK_STATUS.RETRYING ||
+        status === CHUNK_STATUS.RETRANSLATING;
+}
+
+function getChunkTrackerWindowState(rows) {
+    const availableRows = Array.isArray(rows) ? rows.filter(Boolean) : [];
+    if (availableRows.length === 0) {
+        return {
+            start: 0,
+            end: CHUNK_TRACKER_RENDER_BATCH_SIZE,
+            firstChunk: 0,
+            lastChunk: 0,
+            activeFirstChunk: 0,
+            activeLastChunk: 0,
+        };
+    }
+
+    const firstUnsettled = availableRows.find((data) => !isChunkTrackerSettled(data.status));
+    const anchorIndex = firstUnsettled
+        ? firstUnsettled.index
+        : availableRows[availableRows.length - 1].index;
+    const start = Math.floor(anchorIndex / CHUNK_TRACKER_RENDER_BATCH_SIZE) * CHUNK_TRACKER_RENDER_BATCH_SIZE;
+    const end = start + CHUNK_TRACKER_RENDER_BATCH_SIZE;
+    const windowRows = availableRows.filter((data) => data.index >= start && data.index < end);
+    const activeRows = windowRows.filter((data) => isChunkTrackerActive(data.status));
+
+    return {
+        start,
+        end,
+        firstChunk: windowRows.length > 0 ? windowRows[0].index + 1 : start + 1,
+        lastChunk: windowRows.length > 0 ? windowRows[windowRows.length - 1].index + 1 : start,
+        activeFirstChunk: activeRows.length > 0 ? activeRows[0].index + 1 : 0,
+        activeLastChunk: activeRows.length > 0 ? activeRows[activeRows.length - 1].index + 1 : 0,
+    };
+}
+
+function buildChunkTrackerWindowLabel(windowState, totalRows) {
+    if (!windowState || totalRows <= 0) return '';
+
+    const activeLabel = windowState.activeFirstChunk > 0
+        ? `Đang dịch chunk ${windowState.activeFirstChunk}-${windowState.activeLastChunk}`
+        : 'Đang chờ lô tiếp theo';
+    return `
+        <div class="ct-window-label" id="chunkTrackerWindowLabel">
+            <span>Hiển thị chunk ${windowState.firstChunk}-${windowState.lastChunk}</span>
+            <strong>${activeLabel}</strong>
+        </div>
+    `;
 }
 
 function renderChunkRow(chunkIndex) {
     const data = chunkTrackingData[chunkIndex];
     if (!data) return;
 
+    const windowState = getChunkTrackerWindowState(chunkTrackingData);
+    if (windowState.start !== chunkTrackerWindowStart) {
+        renderChunkTracker();
+        return;
+    }
+
     const row = document.getElementById(`chunk-row-${chunkIndex}`);
     if (row) {
         row.outerHTML = buildChunkRowHtml(data);
-    } else if (chunkIndex < chunkTrackerVisibleCount) {
+        const label = document.getElementById('chunkTrackerWindowLabel');
+        if (label) {
+            label.outerHTML = buildChunkTrackerWindowLabel(windowState, chunkTrackingData.filter(Boolean).length);
+        }
+    } else if (chunkIndex >= windowState.start && chunkIndex < windowState.end) {
         renderChunkTracker();
     }
 }
