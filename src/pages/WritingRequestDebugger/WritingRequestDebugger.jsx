@@ -330,6 +330,12 @@ export default function WritingRequestDebugger() {
         <DebugStat label="Route AI" value={summarizeRoute(routeInfo)} />
         <DebugStat label="System prompt" value={`${formatNumber(payload?.summary?.systemChars || 0)} ký tự`} />
         <DebugStat label="User prompt" value={`${formatNumber(payload?.summary?.userChars || 0)} ký tự`} />
+        <DebugStat label="Cảnh hiện tại" value={`${formatNumber(payload?.summary?.currentSceneChars || 0)} ký tự`} />
+        <DebugStat
+          label="Bộ nhớ chương cũ"
+          value={`${formatNumber(payload?.summary?.recentChapterCount || 0)} chương · ${formatNumber(payload?.summary?.recentChapterProseChars || 0)} ký tự nguyên văn`}
+        />
+        <DebugStat label="Chế độ memory" value={payload?.summary?.retrievalMode || 'Chưa dựng'} />
         <DebugStat label="Messages" value={formatNumber(payload?.summary?.messageCount || 0)} />
         <DebugStat label="Runtime block" value={payload?.summary?.hasProjectStyleRuntime ? 'Có' : 'Không'} />
         <DebugStat label="Thời gian" value={elapsedMs ? `${(elapsedMs / 1000).toFixed(1)}s` : 'Chưa có'} />

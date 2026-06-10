@@ -9,6 +9,30 @@
  */
 
 export const GENRE_TEMPLATES = {
+  auto: {
+    label: 'Bất kỳ / AI tự chọn',
+
+    constitution: [
+      'Không mặc định bất kỳ thể loại cụ thể nào nếu tác giả chưa yêu cầu rõ',
+      'Thể loại phải được chọn từ ý tưởng, HỢP ĐỒNG TAG / TROPE và tone; nếu ý tưởng nói bất kỳ/ngẫu nhiên/tự chọn thì chủ động chọn một hướng phù hợp tag thay vì dùng mẫu đầu danh sách',
+      'Với mọi tag/trope, phải biến tag thành hợp đồng trải nghiệm chi phối bối cảnh, xung đột, kiểu nhân vật, nhịp chương và payoff',
+    ],
+
+    style_dna: [
+      'Lời kể là tiếng Việt tự nhiên, ưu tiên giọng phù hợp thể loại mà AI chọn từ tag/trope và ý tưởng',
+      'Không kéo văn sang bất kỳ công thức thể loại nào nếu công thức đó trái HỢP ĐỒNG TAG / TROPE hoặc ý tưởng tác giả',
+    ],
+
+    anti_ai_blacklist: [],
+    worldRules: [
+      'Không khóa thể loại trước khi đọc ý tưởng, tag/trope và tone',
+      'Nếu tác giả chỉ yêu cầu truyện bất kỳ, phải tạo một lựa chọn mới phù hợp tag thay vì lặp lại công thức thể loại mặc định',
+    ],
+    terms: [],
+    locations: [],
+    characters: [],
+  },
+
   tien_hiep: {
     label: 'Tiên hiệp',
 
@@ -25,7 +49,7 @@ export const GENRE_TEMPLATES = {
     ],
 
     style_dna: [
-      'Hán-Việt chiếm 30–40% từ ngữ liên quan tu luyện, cảnh giới, pháp bảo, đan dược — tạo cảm giác cổ kính trang nghiêm',
+      'dùng Hán-Việt cho thuật ngữ tu luyện, chức vị, vật phẩm và lễ nghi; lời kể vẫn là tiếng Việt tự nhiên, rõ nghĩa, không ép tỷ lệ từ cổ',
       'Câu dài-ngắn xen kẽ có chủ đích: cảnh tu luyện và âm mưu dùng câu dài trầm mặc, cảnh giao phong dùng câu ngắn dứt khoát như kiếm chém',
       'Tả cảnh thiên nhiên và linh khí bằng ngôn ngữ thơ ca — núi non, mây trời, linh thác phải có hồn, không tả khô khan',
       'Đối thoại giữ phong thái tu tiên: hàm súc, dùng ẩn dụ, nói ít hiểu nhiều — chỉ nói thẳng 100% khi đối địch hoặc lúc cần uy hiếp',
@@ -50,7 +74,7 @@ export const GENRE_TEMPLATES = {
       'Tu tiên có thể tuân theo Thiên Đạo, thiên kiếp, nhân quả hoặc luật riêng của thế giới; không tự ép một mô hình nếu dự án chưa đặt',
       'Thọ mệnh và cái giá tu luyện do tác giả/canon dự án xác định; không tự bịa mốc tuổi hoặc giới hạn cứng',
       'Đột phá cần tích lũy và lý do đủ sức thuyết phục theo luật dự án, không thể vội vàng',
-      'Tài nguyên tu luyện khan hiếm — tranh đoạt là bản chất giang hồ tu tiên',
+      'Tài nguyên tu luyện có giá trị và khan hiếm; mức tranh chấp phụ thuộc tone, mục tiêu cảnh và tag/trope của truyện',
     ],
     terms: [
       { name: 'Linh khí', definition: 'Năng lượng tự nhiên, tu sĩ hấp thụ để tăng cảnh giới', category: 'magic' },
@@ -67,7 +91,7 @@ export const GENRE_TEMPLATES = {
       { name: 'Bí cảnh', description: 'Không gian ẩn giấu có thể chứa tri thức, thử thách, di tích hoặc cơ duyên nếu truyện cần' },
     ],
     characters: [
-      { name: 'Nhân vật chính', role: 'protagonist', appearance: 'Thiếu niên/thiếu nữ, vẻ ngoài bình thường nhưng có tiềm năng ẩn giấu', personality: 'Kiên định tu đạo, không khuất phục áp bức' },
+      { name: 'Nhân vật chính', role: 'protagonist', appearance: 'Thiếu niên/thiếu nữ có dấu ấn ngoại hình do tác giả xác định', personality: 'Có mục tiêu tu đạo hoặc mục tiêu sống rõ; mức quyết liệt tùy tone và tag/trope' },
       { name: 'Sư phụ', role: 'mentor', appearance: 'Đạo nhân tu luyện lâu năm, phong thái thoát tục', personality: 'Nghiêm khắc nhưng che chở đệ tử' },
     ],
   },
@@ -288,7 +312,7 @@ export const GENRE_TEMPLATES = {
 
     style_dna: [
       'Văn phong cổ điển, uyển chuyển — câu dài nhiều tầng ý nghĩa, dùng điển tích tự nhiên',
-      'Hán-Việt chiếm đa số — xưng hô "thiếp/chàng/nàng/huynh/muội" nhất quán theo địa vị',
+      'Ưu tiên Hán-Việt cho xưng hô, lễ nghi và địa vị; lời kể vẫn cần tự nhiên, dễ đọc',
       'Nhịp tình cảm chậm rãi, tinh tế — cảm xúc thể hiện qua ánh mắt né tránh, cử chỉ nhỏ, màu sắc trang phục',
       'Miêu tả không gian cổ đại: hoa viên, tẩm điện, đình đài, hương khói — phải có hồn và thời đại',
       'Đối thoại nhiều tầng: mặt ngoài nói một chuyện, thực chất ngầm truyền đạt ý khác',
@@ -537,7 +561,7 @@ export const GENRE_TEMPLATES = {
     ],
 
     style_dna: [
-      'Văn phong cổ điển, trang trọng — Hán-Việt chiếm phần lớn, xưng hô theo đúng cấp bậc',
+      'Văn phong cổ điển, trang trọng; dùng Hán-Việt cho chức vị, lễ nghi và xưng hô theo đúng cấp bậc',
       'Miêu tả trang phục, trang sức, không gian cung đình với chi tiết cụ thể và đúng thời đại',
       'Đối thoại nhiều tầng: bề mặt lịch sự, ngầm đe dọa hoặc thăm dò — cung đình không nói thẳng',
       'Nhịp chậm, trang nghiêm — mỗi chuyển động trong cung đình đều có ý nghĩa',

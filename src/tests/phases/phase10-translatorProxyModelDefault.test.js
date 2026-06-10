@@ -136,10 +136,12 @@ describe('phase10 translator proxy model default', () => {
 
     const proxyModel = vm.runInContext('proxyModel', context);
     expect(proxyModel).toBe(DEFAULT_MODEL);
+    expect(vm.runInContext('proxyBaseUrl', context)).toBe('https://ag.beijixingxing.com/v1/chat/completions');
     expect(elements.proxyModelSelect.value).toBe(DEFAULT_MODEL);
 
     const saved = JSON.parse(stored.get('novelTranslatorProSettings'));
     expect(saved.proxyModel).toBe(DEFAULT_MODEL);
+    expect(saved.proxyBaseUrl).toBe('https://ag.beijixingxing.com/v1/chat/completions');
   });
 
   it('ignores main StoryForge custom proxy settings when translator settings are empty', () => {

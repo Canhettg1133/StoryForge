@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import outlineBoardSource from '../../pages/OutlineBoard/OutlineBoard.jsx?raw';
+import newProjectModalSource from '../../pages/Dashboard/NewProjectModal.jsx?raw';
 import projectWizardSource from '../../pages/Dashboard/ProjectWizard.jsx?raw';
+import storyCreationSettingsPageSource from '../../pages/StoryCreationSettings/StoryCreationSettings.jsx?raw';
+import promptManagerMetaSource from '../../services/ai/promptManagerMeta.js?raw';
 import {
   buildPrompt,
   TASK_INSTRUCTIONS,
@@ -10,6 +13,7 @@ import {
 } from '../../services/ai/promptBuilder';
 import { TASK_TYPES } from '../../services/ai/router';
 import { composeStoryCreationSystemPrompt } from '../../services/ai/storyCreationSettings';
+import { AUTO_GENRE_VALUE, GENRES, GENRE_TO_PRONOUN_STYLE } from '../../utils/constants';
 
 function toAsciiUpper(text) {
   return String(text || '')
@@ -669,6 +673,91 @@ describe('phase10 prompt builder coverage', () => {
     expect(systemPrompt).toContain('"plot_threads"');
     expect(systemPrompt).not.toContain('"chapters"');
     expect(systemPrompt).toContain('KHÔNG lập dàn ý chương');
+  });
+
+  it('treats tag and trope as a story creation contract instead of a soft tag line', () => {
+    const seedPrompt = composeStoryCreationSystemPrompt('storyBibleSeed', 'Custom seed prompt');
+    const outlinePrompt = composeStoryCreationSystemPrompt('chapterOutlinePass', 'Custom outline pass prompt');
+    const combined = `${seedPrompt}\n${outlinePrompt}`;
+
+    expect(combined).toContain('HỢP ĐỒNG TAG / TROPE');
+    expect(combined).toContain('mức xung đột');
+    expect(combined).toContain('kiểu nhân vật');
+    expect(combined).toContain('nhịp chương');
+    expect(combined).toContain('payoff');
+    expect(combined).toContain('ưu tiên tag/trope');
+    expect(combined).not.toContain('Tag / trope');
+  });
+
+  it('exposes the tag-first prompt profile toggle in both new project flows', () => {
+    expect(projectWizardSource).toContain('Dùng bộ prompt mới ưu tiên Tag/Trope');
+    expect(projectWizardSource).toContain('prompt_profile_version');
+    expect(newProjectModalSource).toContain('Dùng bộ prompt mới ưu tiên Tag/Trope');
+    expect(newProjectModalSource).toContain('prompt_profile_version');
+    expect(newProjectModalSource).toContain('lệnh tự do viết truyện tối thiểu 3000 từ');
+  });
+
+  it('starts the AI Wizard in auto genre instead of defaulting any request to xianxia', () => {
+    expect(GENRES[0]).toMatchObject({
+      value: AUTO_GENRE_VALUE,
+      label: 'Bất kỳ / AI tự chọn',
+    });
+    expect(GENRE_TO_PRONOUN_STYLE[AUTO_GENRE_VALUE]).toBe('hien_dai');
+    expect(projectWizardSource).toContain('useState(AUTO_GENRE_VALUE)');
+    expect(projectWizardSource).toContain('genre !== AUTO_GENRE_VALUE');
+    expect(projectWizardSource).not.toContain("useState('tien_hiep')");
+  });
+
+  it('applies the tag/trope contract across all genres and tag types', () => {
+    const seedPrompt = composeStoryCreationSystemPrompt('storyBibleSeed', 'Custom seed prompt');
+    const wizardPrompt = composeStoryCreationSystemPrompt('projectWizard', 'Custom wizard prompt');
+    const combined = `${seedPrompt}\n${wizardPrompt}`;
+
+    expect(combined).toContain('Bất kỳ / AI tự chọn');
+    expect(combined).toContain('không mặc định bất kỳ thể loại cụ thể nào');
+    expect(combined).toContain('Với mọi tag/trope');
+    expect(combined).toContain('mọi thể loại');
+    expect(combined).toContain('bối cảnh, xung đột, kiểu nhân vật, nhịp chương và payoff');
+    expect(combined).toContain('không tự sinh mô hình thể loại');
+    expect(combined).not.toContain('hài hước, ấm áp, đời thường, lãng mạn');
+  });
+
+  it('treats arbitrary requests inside a selected genre as variation, not a default opening package', () => {
+    const seedPrompt = composeStoryCreationSystemPrompt('storyBibleSeed', 'Custom seed prompt');
+    const outlinePrompt = composeStoryCreationSystemPrompt('chapterOutlinePass', 'Custom outline pass prompt');
+    const wizardPrompt = composeStoryCreationSystemPrompt('projectWizard', 'Custom wizard prompt');
+    const combined = `${seedPrompt}\n${outlinePrompt}\n${wizardPrompt}`;
+
+    expect(combined).toContain('Nếu tác giả yêu cầu bất kỳ/ngẫu nhiên/tự chọn trong một thể loại đã chọn');
+    expect(combined).toContain('không dùng gói mở đầu mặc định của thể loại');
+    expect(combined).toContain('biến thể premise riêng trong nội bộ thể loại');
+    expect(combined).toContain('áp dụng cho mọi thể loại');
+    expect(combined).toContain('không gom toàn bộ thuật ngữ/entity mẫu vào seed');
+    expect(combined).toContain('không dùng mẫu như checklist bắt buộc');
+    expect(combined).toContain('Không đưa thêm thuật ngữ/entity mẫu vào outline');
+    expect(combined).toContain('không tự lặp tạp dịch, tông môn suy tàn, linh thạch, cơ duyên nghịch mệnh');
+    expect(combined).not.toContain('Với truyện tu tiên/huyền huyễn');
+    expect(combined).not.toContain('khi một "phế vật" sống sót tử địa');
+    expect(combined).not.toContain('"factions": tông môn');
+  });
+
+  it('marks selected genre templates as dictionaries instead of story packages in wizard prompts', () => {
+    expect(projectWizardSource).toContain('Chỉ dùng mẫu như từ điển bối cảnh');
+    expect(projectWizardSource).toContain('không dùng làm gói cốt truyện');
+    expect(projectWizardSource).toContain('Thuật ngữ tham khảo, không bắt buộc dùng');
+    expect(projectWizardSource).toContain('Không gom toàn bộ thuật ngữ/entity mẫu vào seed');
+    expect(projectWizardSource).not.toContain('- Thuật ngữ gợi ý:');
+  });
+
+  it('keeps visible AI Wizard examples neutral instead of anchoring xianxia formulas', () => {
+    expect(projectWizardSource).toContain('một nhân vật có mong muốn rõ bị kéo vào biến cố đầu tiên');
+    expect(projectWizardSource).not.toContain('thiếu niên mồ côi phát hiện huyết mạch cổ thần');
+    expect(projectWizardSource).not.toContain('gia nhập tông môn nhỏ');
+    expect(projectWizardSource).not.toContain('bí mật Thiên Đạo');
+    expect(projectWizardSource).not.toContain('cảnh giới tối cao');
+    expect(storyCreationSettingsPageSource).toContain('tránh gom thuật ngữ mẫu');
+    expect(storyCreationSettingsPageSource).not.toContain('Linh Khí, Linh Thạch, Luyện Khí, tông môn');
+    expect(promptManagerMetaSource).not.toContain('Linh Khí, Linh Thạch, Luyện Khí');
   });
 
   it('keeps Chapter Outline Pass locked schema aligned with chapter blueprint fields consumed by the app', () => {

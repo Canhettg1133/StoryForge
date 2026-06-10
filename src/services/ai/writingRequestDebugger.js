@@ -191,6 +191,11 @@ export async function buildWritingDebugPayload({
   const messages = buildPrompt(taskConfig.taskType, enrichedContext);
   const systemPrompt = messages.find((message) => message.role === 'system')?.content || '';
   const userContent = messages.find((message) => message.role === 'user')?.content || '';
+  const recentChapterMemory = enrichedContext.retrievalPacket?.recentChapterMemory || [];
+  const recentChapterProseChars = recentChapterMemory.reduce(
+    (total, item) => total + String(item?.prose || '').length,
+    0,
+  );
 
   return {
     taskConfig,
@@ -206,6 +211,10 @@ export async function buildWritingDebugPayload({
       messageCount: messages.length,
       systemChars: systemPrompt.length,
       userChars: userContent.length,
+      currentSceneChars: baseContext.sceneText.length,
+      retrievalMode: enrichedContext.retrievalPacket?.retrievalMode || retrievalMode || '',
+      recentChapterCount: recentChapterMemory.length,
+      recentChapterProseChars,
       contextKeys: Object.keys(enrichedContext).sort(),
       hasProjectStyleRuntime: systemPrompt.includes('[PROJECT STYLE - BẮT BUỘC]'),
       hasPromptTask: systemPrompt.includes('[NHIEM VU]'),

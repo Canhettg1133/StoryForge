@@ -18,6 +18,10 @@ import { getChapterCanonState } from '../services/canon/queries';
 import { CHAPTER_COMMIT_STATUS } from '../services/canon/constants';
 import { isRevisionFreshForCanonText } from '../services/canon/utils';
 import { deleteProjectCascade } from '../services/db/projectDataService.js';
+import {
+  normalizePromptProfileVersion,
+  PROMPT_PROFILE_VERSIONS,
+} from '../services/ai/promptProfiles.js';
 import { toVietnameseErrorMessage } from '../utils/errorMessages';
 import useAIStore from './aiStore';
 import useCodexStore from './codexStore';
@@ -370,6 +374,10 @@ const useProjectStore = create((set, get) => ({
       genreKey,
       data.prompt_templates, // Merge caller-provided templates instead of overwriting.
     );
+    const promptProfileVersion = normalizePromptProfileVersion(
+      data.prompt_profile_version,
+      PROMPT_PROFILE_VERSIONS.TAG_FIRST_V2,
+    );
 
     const id = await db.projects.add({
       title: data.title || 'Truyện chưa đặt tên',
@@ -405,6 +413,7 @@ const useProjectStore = create((set, get) => ({
       fanfic_setup: data.fanfic_setup || '',
       canon_adherence_level: data.canon_adherence_level || '',
       divergence_point: data.divergence_point || '',
+      prompt_profile_version: promptProfileVersion,
       prompt_templates: initialPromptTemplates, // Writing DNA is injected here at project creation.
       created_at: now,
       updated_at: now,

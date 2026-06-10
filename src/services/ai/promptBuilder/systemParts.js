@@ -417,9 +417,11 @@ export function buildPromptSystemParts(taskType, context = {}) {
 
   const projectTagList = normalizeProjectTags(projectTags || project_tags);
   if (projectTagList.length > 0 && !skipWritingLayers) {
-    systemParts.push('\n[TAG / TROPE CỦA TRUYỆN]\n'
+    systemParts.push('\n[HỢP ĐỒNG TAG / TROPE]\n'
       + projectTagList.map((tag) => '- ' + tag).join('\n')
-      + '\nTags là định hướng mềm về chất truyện và kỳ vọng độc giả. Ưu tiên yêu cầu mới nhất, tone, outline và canon; không biến tag thành luật cứng hay motif bắt buộc.');
+      + '\nTag/trope là hợp đồng trải nghiệm về chất truyện và kỳ vọng độc giả, không chỉ là nhãn mềm.'
+      + '\nDiễn giải tag thành mức xung đột, kiểu nhân vật, nhịp chương, payoff và kiểu khoái cảm đọc cần giữ.'
+      + '\nNếu tag/trope xung đột với mặc định thể loại, ưu tiên tag/trope trừ khi ý tưởng tác giả nói ngược lại. Vẫn ưu tiên yêu cầu mới nhất, outline và canon.');
   }
 
   if (chapterTitle) systemParts.push('[Chương hiện tại: ' + chapterTitle + ']');
@@ -908,9 +910,8 @@ export function buildPromptSystemParts(taskType, context = {}) {
       '3. Tôn trọng mục tiêu độ dài trong [NHIỆM VỤ]. Nếu nhiệm vụ không nêu mục tiêu riêng, ưu tiên một nhịp cảnh hoàn chỉnh và không padding.',
       '4. Duy trì nhịp kể liên tục - mỗi câu đẩy chuyển tiếp sang câu sau tự nhiên.',
       '5. Nếu gần hết độ dài output: dừng ở điểm chuyển tự nhiên; chỉ dùng điểm kịch tính khi tone, outline hoặc yêu cầu tác giả thật sự cần.',
-      '6. CẤU TRÚC ĐOẠN VĂN: 30-50% đoạn nên là đoạn 1-2 câu. Thông tin quan trọng tách riêng thành đoạn ngắn. KHÔNG viết khối văn dài 5-6 câu liên tục.',
-      '7. MỖI ĐOẠN tối đa 80-100 từ. Đoạn dài hơn thì tách thành 2. Độc giả Việt đọc nhanh, đoạn ngắn dễ theo dõi.',
-      '8. NHỊP THỞ: Xen kẽ đoạn ngắn (1-2 câu) và đoạn dài (3-4 câu) - như nhịp thở văn xuôi. Tránh viết đều đều cùng nhịp.',
+      '6. Cấu trúc đoạn linh hoạt: tách đoạn theo trọng tâm hành động, cảm giác, nội tâm hoặc thoại; đoạn ngắn/dài phụ thuộc nhịp cảnh, không theo tỷ lệ cơ học.',
+      '7. Nhịp thở văn xuôi cần thay đổi tự nhiên theo cảnh; tránh đều đều cùng nhịp, nhưng không đếm số từ cứng.',
     ].join('\n'));
   }
 

@@ -12,6 +12,7 @@ import {
   createProjectFromBibleTemplate,
   getBibleTemplateSourceSummary,
 } from '../../services/projects/projectTemplateService.js';
+import { PROMPT_PROFILE_VERSIONS } from '../../services/ai/promptProfiles.js';
 import {
   CANON_ADHERENCE_LEVELS,
   FANFIC_TYPES,
@@ -113,6 +114,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
     genre_primary: 'fantasy',
     tone: '',
     project_tags: '',
+    prompt_profile_version: PROMPT_PROFILE_VERSIONS.TAG_FIRST_V2,
     audience: '',
     description: '',
     // New fields
@@ -793,7 +795,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Tag / trope của truyện</label>
+            <label className="form-label">Tag/Trope của truyện</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
               {PROJECT_TAG_PRESETS.map((tag) => {
                 const selected = selectedProjectTags.some((item) => item.toLowerCase() === tag.value.toLowerCase());
@@ -816,7 +818,24 @@ export default function NewProjectModal({ onClose, onCreated }) {
               value={form.project_tags}
               onChange={(e) => handleChange('project_tags', e.target.value)}
             />
-            <span className="form-hint">Tag định hướng chất truyện, ví dụ: hài hước, đời thường, slow burn, low power.</span>
+            <span className="form-hint">Tag/Trope là hợp đồng trải nghiệm: mức xung đột, kiểu nhân vật, nhịp chương và payoff sẽ được ưu tiên.</span>
+          </div>
+
+          <div className="form-group">
+            <label className="wizard-template-toggle">
+              <input
+                type="checkbox"
+                checked={form.prompt_profile_version === PROMPT_PROFILE_VERSIONS.TAG_FIRST_V2}
+                onChange={(event) => handleChange(
+                  'prompt_profile_version',
+                  event.target.checked
+                    ? PROMPT_PROFILE_VERSIONS.TAG_FIRST_V2
+                    : PROMPT_PROFILE_VERSIONS.LEGACY,
+                )}
+              />
+              <span>Dùng bộ prompt mới ưu tiên Tag/Trope</span>
+            </label>
+            <span className="form-hint">Prompt mới ưu tiên Tag/Trope, giảm công thức thể loại, lệnh tự do viết truyện tối thiểu 3000 từ.</span>
           </div>
 
           {/* Row 3: POV + Xưng hô */}

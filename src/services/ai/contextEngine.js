@@ -29,16 +29,18 @@ import {
 } from './blueprintGuardrails';
 import { loadFanficCanonContext } from '../labLite/canonPackContext.js';
 
-function resolveRetrievalMode(taskType, explicitMode) {
+export function resolveRetrievalMode(taskType, explicitMode) {
   if (explicitMode) return explicitMode;
   if (!taskType) return 'standard';
+  if (taskType === TASK_TYPES.FREE_PROMPT) {
+    return 'near_memory_3_compact';
+  }
   if ([
     TASK_TYPES.CONTINUE,
     TASK_TYPES.SCENE_DRAFT,
     TASK_TYPES.ARC_CHAPTER_DRAFT,
     TASK_TYPES.REWRITE,
     TASK_TYPES.EXPAND,
-    TASK_TYPES.FREE_PROMPT,
   ].includes(taskType)) {
     return 'near_memory_3';
   }

@@ -42,6 +42,16 @@ const RETRIEVAL_MODE_CONFIG = {
     relevantEvidenceCount: 10,
     includeFullProse: true,
   },
+  near_memory_3_compact: {
+    chapterMemoryCount: 3,
+    entityCap: 12,
+    itemCap: 10,
+    relationshipCap: 8,
+    chapterEventCount: 16,
+    chapterEvidenceCount: 8,
+    relevantEvidenceCount: 10,
+    includeFullProse: false,
+  },
   audit_long: {
     chapterMemoryCount: 5,
     entityCap: 20,

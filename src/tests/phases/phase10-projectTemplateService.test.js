@@ -194,6 +194,7 @@ describe('projectTemplateService', () => {
     });
     expect(newProject.cloud_project_slug).toBeUndefined();
     expect(newProject.cloud_last_synced_at).toBeUndefined();
+    expect(newProject.prompt_profile_version).toBe('legacy');
 
     const newChapters = (await db.chapters.toArray()).filter((chapter) => chapter.project_id === result.projectId);
     const newScenes = (await db.scenes.toArray()).filter((scene) => scene.project_id === result.projectId);

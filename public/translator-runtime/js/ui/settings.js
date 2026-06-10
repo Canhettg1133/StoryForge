@@ -415,7 +415,11 @@ function loadSettings() {
             } else if (settings.useProxy) {
                 activeTranslatorProvider = TRANSLATOR_PROVIDERS.AG_PROXY;
             }
-            if (settings.proxyBaseUrl) proxyBaseUrl = settings.proxyBaseUrl;
+            if (settings.proxyBaseUrl) {
+                proxyBaseUrl = typeof normalizeAgProxyBaseUrl === 'function'
+                    ? normalizeAgProxyBaseUrl(settings.proxyBaseUrl)
+                    : settings.proxyBaseUrl;
+            }
             if (settings.proxyApiKey) proxyApiKey = settings.proxyApiKey;
             if (settings.proxyApiKeys) proxyApiKeys = settings.proxyApiKeys;
             if (!proxyApiKeys.length && proxyApiKey) {

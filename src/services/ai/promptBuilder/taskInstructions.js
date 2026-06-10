@@ -146,7 +146,7 @@ export const TASK_INSTRUCTIONS = {
     '}',
     'Nếu không có vấn đề, trả về {"issues":[]}. Chỉ trả về JSON.',
   ].join('\n')),
-  [TASK_TYPES.FREE_PROMPT]: 'Thực hiện yêu cầu của tác giả. Nếu được yêu cầu viết nội dung truyện, hãy viết thành văn xuôi cụ thể với hành động, tâm lý, đối thoại và cảnh vật vừa đủ mục tiêu. Tôn trọng độ dài tác giả yêu cầu; nếu không nêu độ dài, ưu tiên hoàn chỉnh một đoạn/cảnh dùng được thay vì cố đạt số từ lớn. Nếu viết truyện, cần tôn trọng timeline, án phạt/giam giữ/thương tích, và phản ứng hợp lý của nhân vật trước các bất thường đã lộ.',
+  [TASK_TYPES.FREE_PROMPT]: 'Thực hiện yêu cầu của tác giả. Nếu được yêu cầu viết nội dung truyện, hãy viết thành văn xuôi cụ thể với hành động, tâm lý, đối thoại và cảnh vật vừa đủ mục tiêu. Tôn trọng độ dài tác giả yêu cầu; riêng FREE_PROMPT trong project, khi tác giả yêu cầu viết nội dung truyện mới và không yêu cầu ngắn hơn, hướng tới tối thiểu 3000 từ để tạo một cảnh/phần truyện đủ dùng. Nếu viết truyện, cần tôn trọng timeline, án phạt/giam giữ/thương tích, và phản ứng hợp lý của nhân vật trước các bất thường đã lộ.',
   [TASK_TYPES.CHAPTER_SUMMARY]: 'Tóm tắt chương này trong khoảng 150-200 từ. Bao gồm: sự kiện chính, thay đổi quan trọng, nhân vật xuất hiện, và trạng thái kết thúc. Chỉ trả về tóm tắt, không thêm tiêu đề hay ghi chú.',
   [TASK_TYPES.FEEDBACK_EXTRACT]: withPlanningAndCanonPrefix([
     'Phân tích đoạn văn và trích xuất thông tin mới dưới dạng JSON. Trả về CHÍNH XÁC format này:',

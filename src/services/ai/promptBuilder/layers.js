@@ -671,13 +671,13 @@ Cảm thán: vạn phần, khó lường, đáng gờm, vượt ngoài dự li�
 Cảm xúc: lạnh nhạt bàng quan, im lặng, dừng tay, ánh mắt bén như kiếm
 Nếu tone là hài hước, ấm áp, đời thường hoặc slow burn: ưu tiên tiết chế, không ép đối đầu công khai, tăng cấp hoặc xung đột lớn.
 
-2. CẤU TRÚC CÂU ĐẶC TRƯNG (ĐẢO NGỮ TRUNG QUỐC):
-ĐÚNG: "Hắn ánh mắt bên trong lóe lên một tia lãnh mang."
-SAI:  "Trong mắt hắn lóe lên ánh nhìn lạnh lẽo."
-ĐÚNG: "Linh khí bàng bạc, hắn ngồi kết già, tâm thần sắc bén như kiếm."
-SAI:  "Hắn ngồi kết già, linh khí tỏa ra và tâm thần rất sắc bén."
-ĐÚNG: "Đạo hữu này... thực sự khiến lão kinh sợ."
-SAI:  "Người này thực sự khiến ông ta sợ hãi."
+2. CÂU VĂN TIẾNG VIỆT TỰ NHIÊN:
+ĐÚNG: "Trong mắt hắn lóe lên một tia lạnh."
+SAI:  "Hắn ánh mắt bên trong lóe lên một tia lãnh mang."
+ĐÚNG: "Hắn ngồi kết già giữa linh khí bàng bạc, tâm thần sắc bén như kiếm."
+SAI:  "Linh khí bàng bạc, hắn ngồi kết già, tâm thần sắc bén như kiếm."
+ĐÚNG: "Đạo hữu này... thật sự khiến lão phải kiêng dè."
+SAI:  "Đạo hữu này... thực sự khiến lão kinh sợ."
 
 3. NHỊP ĐIỆU THEO TÌNH HUỐNG:
 Hành động nhanh: câu 5-8 chữ, liên tiếp, mỗi câu = 1 hành động rõ ràng.

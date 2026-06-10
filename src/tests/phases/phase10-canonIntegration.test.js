@@ -1154,6 +1154,18 @@ describe('phase10 canon integration', () => {
     expect(packet.recentChapterMemory).toHaveLength(3);
     expect(packet.relevantEvidence).toHaveLength(3);
     expect(packet.recentChapterMemory[0].prose).toBeTruthy();
+
+    const compactPacket = await engine.buildRetrievalPacket({
+      projectId: 1,
+      chapterId: 5,
+      sceneId: 25,
+      detectedCharacterIds: [31],
+      mode: 'near_memory_3_compact',
+    });
+
+    expect(compactPacket.retrievalMode).toBe('near_memory_3_compact');
+    expect(compactPacket.recentChapterMemory).toHaveLength(3);
+    expect(compactPacket.recentChapterMemory.every((item) => item.prose === '')).toBe(true);
   });
 
   it('filters obsolete spent-item reports from loaded canon state', async () => {

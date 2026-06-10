@@ -447,6 +447,8 @@ const AG_PROXY_PROFILE_ID = 'ag-gemini-proxy';
 const CUSTOM_PROXY_PROFILE_ID = 'custom-openai-proxy';
 const DEFAULT_PROXY_CHAT_PATH = '/v1/chat/completions';
 const DEFAULT_PROXY_MODELS_PATH = '/v1/models';
+const DEFAULT_AG_PROXY_BASE_URL = 'https://ag.beijixingxing.com';
+const DEFAULT_AG_PROXY_CHAT_ENDPOINT = `${DEFAULT_AG_PROXY_BASE_URL}${DEFAULT_PROXY_CHAT_PATH}`;
 const DEFAULT_CUSTOM_PROXY_PROFILE = {
     id: CUSTOM_PROXY_PROFILE_ID,
     label: 'Custom Proxy',
@@ -458,7 +460,7 @@ const DEFAULT_CUSTOM_PROXY_PROFILE = {
     transport: 'auto',
 };
 let useProxy = false;
-let proxyBaseUrl = 'https://ag.beijixingxing.com/v1/chat/completions';
+let proxyBaseUrl = DEFAULT_AG_PROXY_CHAT_ENDPOINT;
 let proxyApiKey = ''; // Legacy single key (backward compat)
 let proxyApiKeys = []; // Multi-key support
 const DEFAULT_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
@@ -973,8 +975,30 @@ function getOpenAIProxyRoot(rawBaseUrl) {
     return trimProxySlash(root);
 }
 
-function inferOpenAIProxyChatTarget(rawBaseUrl) {
+function isLegacyStoryForgeAgProxyUrl(rawBaseUrl) {
     const trimmed = trimProxySlash(rawBaseUrl);
+    if (!trimmed) return false;
+    if (trimmed === '/api/proxy' || trimmed.startsWith('/api/proxy/')) return true;
+    if (trimmed === 'api/proxy' || trimmed.startsWith('api/proxy/')) return true;
+
+    try {
+        const parsed = new URL(trimmed);
+        return parsed.pathname === '/api/proxy' || parsed.pathname.startsWith('/api/proxy/');
+    } catch {
+        return false;
+    }
+}
+
+function normalizeAgProxyBaseUrl(rawBaseUrl) {
+    const trimmed = String(rawBaseUrl || '').trim();
+    if (!trimmed || isLegacyStoryForgeAgProxyUrl(trimmed)) {
+        return DEFAULT_AG_PROXY_CHAT_ENDPOINT;
+    }
+    return trimmed;
+}
+
+function inferOpenAIProxyChatTarget(rawBaseUrl) {
+    const trimmed = trimProxySlash(normalizeAgProxyBaseUrl(rawBaseUrl));
     if (!trimmed) {
         return {
             baseUrl: '',
@@ -1044,7 +1068,8 @@ function getActiveProxyModelsUrl() {
 }
 
 function getAgProxyRequestTarget(action = 'chat') {
-    const rawBaseUrl = String(proxyBaseUrl || '').trim();
+    const rawBaseUrl = normalizeAgProxyBaseUrl(proxyBaseUrl);
+    proxyBaseUrl = rawBaseUrl;
     const inferred = inferOpenAIProxyChatTarget(rawBaseUrl);
     const path = action === 'models' ? DEFAULT_PROXY_MODELS_PATH : inferred.chatCompletionsPath;
     const profile = {

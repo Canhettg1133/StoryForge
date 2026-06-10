@@ -1,6 +1,11 @@
 import db from '../db/database.js';
 import { normalizeEntityIdentity } from '../entityIdentity/index.js';
 import { normalizeCanonFactRecord } from '../entityIdentity/factIdentity.js';
+import {
+  normalizePromptProfileVersion,
+  PROMPT_PROFILE_VERSIONS,
+  resolvePromptProfileVersion,
+} from '../ai/promptProfiles.js';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates.js';
 
 const DEFAULT_INCLUDE = {
@@ -30,6 +35,7 @@ const SETTINGS_FIELDS = [
   'story_structure',
   'nsfw_mode',
   'super_nsfw_mode',
+  'prompt_profile_version',
   'prompt_templates',
 ];
 
@@ -188,6 +194,11 @@ function buildProjectRecord(sourceProject, projectData, include, now) {
     genrePrimary,
     projectData.prompt_templates ?? sourceSettings.prompt_templates,
   );
+  const promptProfileVersion = projectData.prompt_profile_version !== undefined
+    ? normalizePromptProfileVersion(projectData.prompt_profile_version, PROMPT_PROFILE_VERSIONS.TAG_FIRST_V2)
+    : sourceSettings.prompt_profile_version !== undefined
+      ? resolvePromptProfileVersion(sourceSettings)
+      : PROMPT_PROFILE_VERSIONS.LEGACY;
 
   return {
     title: cleanText(projectData.title) || `${cleanText(sourceProject.title) || 'Truyện'} - Truyện mới`,
@@ -223,6 +234,7 @@ function buildProjectRecord(sourceProject, projectData, include, now) {
     fanfic_setup: '',
     canon_adherence_level: '',
     divergence_point: '',
+    prompt_profile_version: promptProfileVersion,
     prompt_templates: promptTemplates,
     created_at: now,
     updated_at: now,

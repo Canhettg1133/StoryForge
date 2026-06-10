@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PROMPT_PROFILE_VERSIONS, resolvePromptProfileVersion } from '../../services/ai/promptProfiles';
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -101,6 +102,20 @@ describe('phase10 project content mode persistence', () => {
       nsfw_mode: true,
       super_nsfw_mode: true,
     });
+  });
+
+  it('defaults new projects to the tag-first prompt profile while treating missing legacy rows as legacy', async () => {
+    const { store, db } = await loadProjectStore();
+
+    await store.getState().createProject({
+      title: 'Prompt moi',
+      genre_primary: 'tien_hiep',
+      skipFirstChapter: true,
+    });
+
+    expect(db.projects.rows[0].prompt_profile_version).toBe(PROMPT_PROFILE_VERSIONS.TAG_FIRST_V2);
+    expect(resolvePromptProfileVersion(db.projects.rows[0])).toBe(PROMPT_PROFILE_VERSIONS.TAG_FIRST_V2);
+    expect(resolvePromptProfileVersion({ title: 'Du an cu' })).toBe(PROMPT_PROFILE_VERSIONS.LEGACY);
   });
 
   it('builds ProjectChat send options from the current project content mode flags', async () => {

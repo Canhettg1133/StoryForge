@@ -364,6 +364,91 @@ describe('phase10 translator proxy key rotation', () => {
     expect(body.payload.model).toBe('ag-gemini-model');
   });
 
+  it('migrates legacy /api/proxy AG test URLs to the translator relay target', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          model: 'ag-gemini-model',
+          choices: [{
+            message: { content: 'Xin chao tu Gemini Proxy AG.' },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'ag_proxy';
+      storyForgeAccessToken = 'story-token';
+      proxyBaseUrl = '/api/proxy/v1/chat/completions';
+      proxyModel = 'ag-gemini-model';
+      proxyApiKeys = ['AG_KEY'];
+      proxyApiKey = 'AG_KEY';
+      setActiveTranslatorTemplateId('convert');
+    `, context);
+
+    await context.testProxyConnection();
+
+    expect(requests[0].url).toBe('/api/translator-openai-proxy');
+    expect(requests[0].options.headers.Authorization).toBe('Bearer story-token');
+    expect(requests[0].options.headers['X-StoryForge-Upstream-Key']).toBe('AG_KEY');
+    const body = JSON.parse(requests[0].options.body);
+    expect(body.action).toBe('chat');
+    expect(body.baseUrl).toBe('https://ag.beijixingxing.com');
+    expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
+    expect(body.payload.model).toBe('ag-gemini-model');
+    expect(vm.runInContext('proxyBaseUrl', context)).toBe('https://ag.beijixingxing.com/v1/chat/completions');
+  });
+
+  it('tests remote Custom Proxy through the translator relay transport', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          model: 'custom-gemini-model',
+          choices: [{
+            message: { content: 'Xin chao tu Custom Proxy.' },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'custom_proxy';
+      storyForgeAccessToken = 'story-token';
+      customProxyProfile = {
+        baseUrl: 'https://custom.example/v1',
+        defaultModel: 'custom-gemini-model',
+        models: ['custom-gemini-model'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'auto'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+      setActiveTranslatorTemplateId('convert');
+    `, context);
+
+    await context.testCustomProxyConnection();
+
+    expect(requests[0].url).toBe('/api/translator-openai-proxy');
+    expect(requests[0].options.headers.Authorization).toBe('Bearer story-token');
+    expect(requests[0].options.headers['X-StoryForge-Upstream-Key']).toBe('CUSTOM_KEY');
+    const body = JSON.parse(requests[0].options.body);
+    expect(body.action).toBe('chat');
+    expect(body.baseUrl).toBe('https://custom.example/v1');
+    expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
+    expect(body.payload.model).toBe('custom-gemini-model');
+  });
+
   it('does not report a generic proxy 404 as a missing model unless the upstream error says so', () => {
     const context = loadProxyRuntimeContext(async () => {
       throw new Error('fetch is not used by error mapping');

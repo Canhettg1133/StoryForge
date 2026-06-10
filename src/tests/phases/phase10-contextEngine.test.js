@@ -115,6 +115,13 @@ describe('phase10 context engine blueprint injection', () => {
     vi.clearAllMocks();
   });
 
+  it('uses compact three-chapter memory for free writing prompts', async () => {
+    const { contextEngine } = await loadContextEngine({});
+
+    expect(contextEngine.resolveRetrievalMode(TASK_TYPES.FREE_PROMPT)).toBe('near_memory_3_compact');
+    expect(contextEngine.resolveRetrievalMode(TASK_TYPES.CONTINUE)).toBe('near_memory_3');
+  });
+
   it('uses chapterId to resolve the active chapter and injects blueprint entities for empty scenes', async () => {
     const { contextEngine } = await loadContextEngine({
       projects: [{

@@ -12,6 +12,7 @@ import {
   PRONOUN_STYLE_PRESETS,
   GENRE_TO_PRONOUN_STYLE,
   PROJECT_TAG_PRESETS,
+  AUTO_GENRE_VALUE,
 } from '../../utils/constants';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import useProjectStore from '../../stores/projectStore';
@@ -27,6 +28,7 @@ import {
   getStoryCreationSettings,
   renderStoryCreationTemplate,
 } from '../../services/ai/storyCreationSettings';
+import { PROMPT_PROFILE_VERSIONS } from '../../services/ai/promptProfiles';
 import {
   buildChapterOutlinePassValidation,
   buildStoryBibleSeedValidation,
@@ -389,12 +391,13 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
   const [step, setStep] = useState(0);
   const [idea, setIdea] = useState('');
-  const [genre, setGenre] = useState('tien_hiep');
+  const [genre, setGenre] = useState(AUTO_GENRE_VALUE);
   const [tone, setTone] = useState('');
   const [projectTags, setProjectTags] = useState('');
   const [useTemplate, setUseTemplate] = useState(true);
+  const [useTagFirstPromptProfile, setUseTagFirstPromptProfile] = useState(true);
   const [povMode, setPovMode] = useState('third_omni');
-  const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE.tien_hiep || 'tien_hiep');
+  const [pronounStyle, setPronounStyle] = useState(GENRE_TO_PRONOUN_STYLE[AUTO_GENRE_VALUE] || 'hien_dai');
   const [synopsis, setSynopsis] = useState('');
   const [storyStructure, setStoryStructure] = useState('');
   const [contentMode, setContentMode] = useState(PROJECT_CONTENT_MODES.SAFE);
@@ -572,8 +575,8 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
   const buildTemplateVariables = (approvedSeed = null) => {
     const template = GENRE_TEMPLATES[genre];
-    const templateHint = template && useTemplate
-      ? `\n\nTham khảo mẫu thể loại "${template.label}":\n- Quy tắc thế giới: ${template.worldRules?.join(', ')}\n- Thuật ngữ gợi ý: ${template.terms?.map((term) => term.name).join(', ')}`
+    const templateHint = template && useTemplate && genre !== AUTO_GENRE_VALUE
+      ? `\n\nTham khảo mẫu thể loại "${template.label}" — Chỉ dùng mẫu như từ điển bối cảnh, không dùng làm gói cốt truyện:\n- Quy tắc nền tham khảo: ${template.worldRules?.join(', ')}\n- Thuật ngữ tham khảo, không bắt buộc dùng: ${template.terms?.map((term) => term.name).join(', ')}\n- Không gom toàn bộ thuật ngữ/entity mẫu vào seed; chỉ chọn yếu tố thật sự phục vụ premise, tag/trope và phần mở đầu.\n- Nếu ý tưởng là bất kỳ/ngẫu nhiên/tự chọn trong thể loại này, phải tạo biến thể premise riêng, không lặp công thức mở đầu phổ biến của thể loại.`
       : '';
     const genreLabel = GENRES.find((item) => item.value === genre)?.label || genre;
     let pacingGuidance = '';
@@ -585,7 +588,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
     return {
       genre: genreLabel,
       tone: tone || 'mặc định',
-      tags_line: projectTags ? `Tag / trope: ${projectTags}\n` : '',
+      tags_line: projectTags ? `HỢP ĐỒNG TAG / TROPE: ${projectTags}\n` : '',
       pov_label: POV_MODES.find((item) => item.value === povMode)?.label || 'Ngôi 3',
       pronoun_label: currentPronoun?.label || 'Mặc định',
       target_length_label: targetLength > 0 ? `${targetLength} chương` : 'Chưa xác định',
@@ -781,6 +784,9 @@ export default function ProjectWizard({ onClose, onCreated }) {
         pronoun_style: pronounStyle,
         synopsis: synopsis || finalResult.premise || '',
         story_structure: storyStructure,
+        prompt_profile_version: useTagFirstPromptProfile
+          ? PROMPT_PROFILE_VERSIONS.TAG_FIRST_V2
+          : PROMPT_PROFILE_VERSIONS.LEGACY,
         target_length: Number(targetLength) || 0,
         target_length_type: targetLengthType,
         ultimate_goal: ultimateGoal,
@@ -1482,7 +1488,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Tag / trope của truyện</label>
+                <label className="form-label">Tag/Trope của truyện</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
                   {PROJECT_TAG_PRESETS.map((tag) => {
                     const selected = selectedProjectTags.some((item) => item.toLowerCase() === tag.value.toLowerCase());
@@ -1505,7 +1511,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
                   value={projectTags}
                   onChange={(event) => setProjectTags(event.target.value)}
                 />
-                <span className="form-hint">Tag này sẽ đi vào prompt như định hướng mềm, không ép thành luật cứng.</span>
+                <span className="form-hint">Tag/Trope là hợp đồng trải nghiệm: mức xung đột, kiểu nhân vật, nhịp chương và payoff sẽ được ưu tiên khi tạo truyện.</span>
               </div>
 
               <ProjectContentModeControl surface="wizard" mode={contentMode} onChange={setContentMode} />
@@ -1560,7 +1566,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
               <div className="form-group">
                 <label className="form-label">Đích đến tối thượng</label>
-                <textarea className="textarea" value={ultimateGoal} onChange={(event) => setUltimateGoal(event.target.value)} rows={2} placeholder="Ví dụ: nhân vật chính đạt cảnh giới tối cao và hóa giải lời nguyền huyết mạch." />
+                <textarea className="textarea" value={ultimateGoal} onChange={(event) => setUltimateGoal(event.target.value)} rows={2} placeholder="Ví dụ: nhân vật chính đạt được điều họ thiếu nhất, nhưng phải trả một cái giá làm thay đổi quan hệ và thế giới quanh họ." />
               </div>
 
               <div className="form-group">
@@ -1609,7 +1615,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
               <div className="form-group">
                 <label className="form-label">Ý tưởng truyện *</label>
-                <textarea className="textarea" placeholder="Ví dụ: thiếu niên mồ côi phát hiện huyết mạch cổ thần, gia nhập tông môn nhỏ và bị cuốn vào bí mật Thiên Đạo..." value={idea} onChange={(event) => setIdea(event.target.value)} rows={3} autoFocus />
+                <textarea className="textarea" placeholder="Ví dụ: một nhân vật có mong muốn rõ bị kéo vào biến cố đầu tiên làm đảo nhịp đời sống, quan hệ hoặc mục tiêu của họ..." value={idea} onChange={(event) => setIdea(event.target.value)} rows={3} autoFocus />
               </div>
 
               <div className="form-group">
@@ -1631,6 +1637,18 @@ export default function ProjectWizard({ onClose, onCreated }) {
                         ? ` Bộ luật (${currentTemplate.constitution?.length || 0} luật), hướng dẫn văn phong (${currentTemplate.style_dna?.length || 0} mục), danh sách tránh chất AI (${currentTemplate.anti_ai_blacklist?.length || 0} mục).`
                         : ' Có thể chỉnh sửa sau trong sổ tay truyện.'}
                     </span>
+                  </div>
+                  <label className="wizard-template-toggle">
+                    <input
+                      type="checkbox"
+                      checked={useTagFirstPromptProfile}
+                      onChange={(event) => setUseTagFirstPromptProfile(event.target.checked)}
+                    />
+                    <span>Dùng bộ prompt mới ưu tiên Tag/Trope</span>
+                  </label>
+                  <div className="wizard-dna-note">
+                    <Dna size={14} />
+                    <span>Prompt mới ưu tiên Tag/Trope, giảm công thức thể loại, lệnh tự do viết truyện tối thiểu 3000 từ.</span>
                   </div>
                 </div>
               )}

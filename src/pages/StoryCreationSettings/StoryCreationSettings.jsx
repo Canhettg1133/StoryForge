@@ -47,7 +47,7 @@ const STORY_CREATION_FLOW_META = {
   storyBibleSeed: {
     tone: 'active',
     label: 'AI Wizard mới',
-    description: 'Đang có hiệu lực ở bước tạo nền truyện. Đây là nơi nên siết các entity nền tảng như Linh Khí, Linh Thạch, Luyện Khí, tông môn.',
+    description: 'Đang có hiệu lực ở bước tạo nền truyện. Đây là nơi siết cách chọn entity nền tảng, tránh gom thuật ngữ mẫu hoặc lặp công thức mở đầu của thể loại.',
   },
   chapterOutlinePass: {
     tone: 'active',

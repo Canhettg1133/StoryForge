@@ -436,7 +436,11 @@ function closeProxyImportModal(provider = 'ag') {
 }
 
 function updateProxyConfig() {
-    proxyBaseUrl = String(getElement('proxyBaseUrlInput')?.value || '').trim();
+    const input = getElement('proxyBaseUrlInput');
+    proxyBaseUrl = typeof normalizeAgProxyBaseUrl === 'function'
+        ? normalizeAgProxyBaseUrl(input?.value || proxyBaseUrl)
+        : String(input?.value || '').trim();
+    if (input) input.value = proxyBaseUrl;
     renderAgProxyEndpointPreview();
     saveSettings();
     if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
@@ -546,7 +550,12 @@ function renderProxyModelsDropdown() {
 
 async function testProxyConnection() {
     const baseUrlInput = getElement('proxyBaseUrlInput');
-    if (baseUrlInput) proxyBaseUrl = String(baseUrlInput.value || proxyBaseUrl || '').trim();
+    if (baseUrlInput) {
+        proxyBaseUrl = typeof normalizeAgProxyBaseUrl === 'function'
+            ? normalizeAgProxyBaseUrl(baseUrlInput.value || proxyBaseUrl)
+            : String(baseUrlInput.value || proxyBaseUrl || '').trim();
+        baseUrlInput.value = proxyBaseUrl;
+    }
     renderAgProxyEndpointPreview();
     const resultDiv = getElement('proxyTestResult');
     const testKey = proxyApiKeys.length > 0 ? proxyApiKeys[0] : proxyApiKey;

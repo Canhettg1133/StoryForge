@@ -44,7 +44,7 @@ describe('Project prompt DNA application', () => {
     expect(missing).toEqual([]);
   });
 
-  it('uses project tags as soft direction in writing prompts', () => {
+  it('uses project tags as a tag/trope contract in writing prompts', () => {
     const messages = buildPrompt(TASK_TYPES.SCENE_DRAFT, {
       projectTitle: 'Quan Tra Nua Dem',
       genre: 'slice_of_life',
@@ -55,11 +55,12 @@ describe('Project prompt DNA application', () => {
 
     const system = messages[0].content;
 
-    expect(system).toContain('[TAG / TROPE CỦA TRUYỆN]');
+    expect(system).toContain('[HỢP ĐỒNG TAG / TROPE]');
     expect(system).toContain('- hài hước');
     expect(system).toContain('- đời thường');
     expect(system).toContain('- slow burn');
-    expect(system).toContain('Tags là định hướng mềm');
+    expect(system).toContain('hợp đồng trải nghiệm');
+    expect(system).toContain('ưu tiên tag/trope');
   });
 
   it('does not force xianxia prompts into formulaic public reversals, breakthroughs, or cliffhangers', () => {
@@ -97,6 +98,25 @@ describe('Project prompt DNA application', () => {
     expect(tienHiepDna).toContain('do tác giả/canon dự án xác định');
   });
 
+  it('keeps xianxia genre templates as context dictionaries instead of story formulas', () => {
+    const tienHiepTemplate = [
+      ...GENRE_TEMPLATES.tien_hiep.constitution,
+      ...GENRE_TEMPLATES.tien_hiep.style_dna,
+      ...GENRE_TEMPLATES.tien_hiep.worldRules,
+      ...GENRE_TEMPLATES.tien_hiep.characters.map((character) => [
+        character.appearance,
+        character.personality,
+      ].filter(Boolean).join('\n')),
+    ].join('\n');
+
+    expect(tienHiepTemplate).not.toContain('tranh đoạt là bản chất');
+    expect(tienHiepTemplate).not.toContain('tiềm năng ẩn giấu');
+    expect(tienHiepTemplate).not.toContain('không khuất phục áp bức');
+    expect(tienHiepTemplate).not.toMatch(/Hán-Việt chiếm\s*(30|đa số|phần lớn)/i);
+    expect(tienHiepTemplate).toContain('dùng Hán-Việt cho thuật ngữ tu luyện, chức vị, vật phẩm và lễ nghi');
+    expect(tienHiepTemplate).toContain('lời kể vẫn là tiếng Việt tự nhiên');
+  });
+
   it('keeps built-in author role and mood prompt text in accented Vietnamese', () => {
     expect(AUTHOR_ROLE_TABLE.han_viet.join('\n')).toContain('kiến trúc sư');
     expect(AUTHOR_ROLE_TABLE.thuan_viet.join('\n')).toContain('tác giả Việt Nam');
@@ -124,5 +144,35 @@ describe('Project prompt DNA application', () => {
 
     expect(romanceDna).toContain('không ép công thức');
     expect(romanceDna).not.toContain('giải quyết sớm = mất động lực đọc');
+  });
+
+  it('removes machine-translation prose rules and targets 3000 words only for project FREE_PROMPT story writing', () => {
+    const messages = buildPrompt(TASK_TYPES.FREE_PROMPT, {
+      projectId: 1,
+      chapterId: 2,
+      projectTitle: 'Prompt v2',
+      genre: 'tien_hiep',
+      userPrompt: 'Viết mở đầu truyện mới.',
+    });
+    const system = messages[0].content;
+    const writingInstructionText = [
+      TASK_INSTRUCTIONS[TASK_TYPES.FREE_PROMPT],
+      TASK_INSTRUCTIONS[TASK_TYPES.CONTINUE],
+      TASK_INSTRUCTIONS[TASK_TYPES.REWRITE],
+      TASK_INSTRUCTIONS[TASK_TYPES.EXPAND],
+    ].join('\n');
+    const styleText = [
+      system,
+      writingInstructionText,
+    ].join('\n');
+
+    expect(styleText).not.toContain('ĐẢO NGỮ TRUNG QUỐC');
+    expect(styleText).not.toContain('30-50%');
+    expect(styleText).not.toContain('80-100');
+    expect(styleText).not.toMatch(/Hán-Việt chiếm\s*(30|đa số|phần lớn)/i);
+    expect(TASK_INSTRUCTIONS[TASK_TYPES.FREE_PROMPT]).toContain('tối thiểu 3000 từ');
+    expect(TASK_INSTRUCTIONS[TASK_TYPES.CONTINUE]).not.toContain('3000');
+    expect(TASK_INSTRUCTIONS[TASK_TYPES.REWRITE]).not.toContain('3000');
+    expect(TASK_INSTRUCTIONS[TASK_TYPES.EXPAND]).not.toContain('3000');
   });
 });

@@ -1,4 +1,7 @@
+export const AUTO_GENRE_VALUE = 'auto';
+
 export const GENRES = [
+  { value: AUTO_GENRE_VALUE, label: 'Bất kỳ / AI tự chọn', emoji: '✨' },
   { value: 'tien_hiep', label: 'Tiên hiệp', emoji: '🏔️' },
   { value: 'huyen_huyen', label: 'Huyền huyễn', emoji: '🌀' },
   { value: 'fantasy', label: 'Fantasy phương Tây', emoji: '🐉' },
@@ -152,6 +155,7 @@ export const PRONOUN_PRESETS = {
 };
 
 export const GENRE_PRONOUN_MAP = {
+  [AUTO_GENRE_VALUE]: 'modern',
   tien_hiep: 'tien_hiep',
   huyen_huyen: 'tien_hiep',
   fantasy: 'fantasy',
@@ -273,6 +277,7 @@ export const PRONOUN_STYLE_PRESETS = [
 
 // Auto-map genre → pronoun style preset
 export const GENRE_TO_PRONOUN_STYLE = {
+  [AUTO_GENRE_VALUE]: 'hien_dai',
   tien_hiep: 'tien_hiep',
   huyen_huyen: 'huyen_ao',
   fantasy: 'phuong_tay',
