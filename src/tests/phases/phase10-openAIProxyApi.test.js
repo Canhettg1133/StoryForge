@@ -15,16 +15,27 @@ function createReqRes({ method = 'POST', body = {}, headers = {} } = {}) {
   const res = {
     statusCode: 200,
     headers: {},
+    headersSent: false,
+    writableEnded: false,
     setHeader(key, value) {
+      if (this.headersSent) {
+        throw new Error('Cannot set headers after they are sent to the client');
+      }
       this.headers[key.toLowerCase()] = value;
     },
+    flushHeaders() {
+      this.headersSent = true;
+    },
     write(chunk) {
+      this.headersSent = true;
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
     },
     end(chunk) {
       if (chunk) this.write(chunk);
       this.body = Buffer.concat(chunks).toString('utf8');
       this.ended = true;
+      this.headersSent = true;
+      this.writableEnded = true;
     },
   };
 
@@ -166,6 +177,47 @@ describe('/api/openai-proxy', () => {
     expect(lines).toHaveLength(2);
     expect(lines.map((line) => line.index).sort()).toEqual([0, 1]);
     expect(lines.every((line) => line.ok && line.status === 200)).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it('does not send a second JSON error after an upstream stream already flushed headers', async () => {
+    let readCount = 0;
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      headers: {
+        get: (key) => (String(key).toLowerCase() === 'content-type' ? 'application/json' : ''),
+      },
+      body: {
+        getReader: () => ({
+          async read() {
+            readCount += 1;
+            if (readCount === 1) {
+              return { done: false, value: Buffer.from('{"partial":') };
+            }
+            throw new Error('upstream stream broke');
+          },
+        }),
+      },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+        payload: { model: 'custom-model', messages: [{ role: 'user', content: 'hello' }] },
+      },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
+    });
+
+    await expect(handler(req, res)).resolves.toBeUndefined();
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headersSent).toBe(true);
+    expect(res.writableEnded).toBe(true);
+    expect(res.body).toBe('{"partial":');
     vi.unstubAllGlobals();
   });
 

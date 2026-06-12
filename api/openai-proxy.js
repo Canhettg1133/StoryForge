@@ -432,6 +432,10 @@ export function createOpenAIProxyHandler({
     await logProxyUsage(access, { body, action, status: upstream.ok ? 'ok' : 'error' }).catch(() => {});
   } catch (error) {
     await logProxyUsage(access, { body, action, status: 'error' }).catch(() => {});
+    if (res.headersSent || res.writableEnded) {
+      if (!res.writableEnded) res.end();
+      return;
+    }
     sendJson(res, 502, {
       error: error?.message || 'Relay OpenAI proxy thất bại.',
       code: 'OPENAI_PROXY_UPSTREAM_FAILED',
