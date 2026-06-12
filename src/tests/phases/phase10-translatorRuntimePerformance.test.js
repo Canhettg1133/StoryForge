@@ -222,6 +222,38 @@ describe('phase10 translator runtime performance', () => {
     expect(context.getChunkTrackerWindowState(rows).start).toBe(0);
   });
 
+  it('expands the chunk tracker window for active ranges crossing a 100-row boundary', () => {
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/ui/chunk-tracker.js',
+    ]);
+
+    const activeAcrossBoundary = Array.from({ length: 150 }, (_, index) => ({
+      index,
+      status: index < 89
+        ? 'success'
+        : (index <= 108 ? 'translating' : 'pending'),
+    }));
+
+    const activeState = context.getChunkTrackerWindowState(activeAcrossBoundary);
+    expect(activeState.firstChunk).toBeLessThanOrEqual(90);
+    expect(activeState.lastChunk).toBeGreaterThanOrEqual(109);
+    expect(activeState.activeFirstChunk).toBe(90);
+    expect(activeState.activeLastChunk).toBe(109);
+
+    const settledThenNext = activeAcrossBoundary.map((row, index) => ({
+      ...row,
+      status: index < 109 ? 'success' : 'pending',
+    }));
+    expect(context.getChunkTrackerWindowState(settledThenNext)).toEqual({
+      start: 100,
+      end: 200,
+      firstChunk: 101,
+      lastChunk: 150,
+      activeFirstChunk: 0,
+      activeLastChunk: 0,
+    });
+  });
+
   it('keeps translator runtime sources as valid UTF-8 rather than mojibake literals', () => {
     const files = [
       'public/translator-runtime/index.html',

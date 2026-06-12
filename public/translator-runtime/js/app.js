@@ -319,6 +319,7 @@ storyForgeRuntimeGlobal.refreshStoryForgeAccessContext = refreshStoryForgeAccess
 let activeTranslatorProvider = TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
 let rpmPerKey = DEFAULT_TRANSLATOR_RPM_PER_KEY;
 let translatorRpmTimestamps = {};
+let translatorChunkKeyAssignments = {};
 
 const TRANSLATOR_PROMPT_SUPPLEMENTS = [
     {
@@ -545,6 +546,25 @@ function normalizeProxyKeyIndex(index, keyCount = getActiveProxyKeys().length) {
     return ((Math.trunc(numericIndex) % keyCount) + keyCount) % keyCount;
 }
 
+function getTranslatorChunkAssignmentId(provider, chunkIndex) {
+    const safeProvider = provider || getActiveTranslatorProviderId();
+    const safeIndex = Number.isFinite(Number(chunkIndex)) ? Math.max(0, Math.trunc(Number(chunkIndex))) : 0;
+    return `${safeProvider}|${safeIndex}`;
+}
+
+function assignTranslatorChunkKey(chunkIndex, keyIndex, provider = getActiveTranslatorProviderId()) {
+    const keyCount = getTranslatorRpmKeyCount(provider);
+    if (!keyCount) return -1;
+    const normalized = normalizeProxyKeyIndex(keyIndex, keyCount);
+    translatorChunkKeyAssignments[getTranslatorChunkAssignmentId(provider, chunkIndex)] = normalized;
+    return normalized;
+}
+
+function getAssignedTranslatorChunkKey(chunkIndex, provider = getActiveTranslatorProviderId()) {
+    const assignment = translatorChunkKeyAssignments[getTranslatorChunkAssignmentId(provider, chunkIndex)];
+    return Number.isInteger(assignment) ? assignment : null;
+}
+
 function getProxyKeyIndex(proxyKey, provider = activeTranslatorProvider) {
     if (!proxyKey) return -1;
     return getActiveProxyKeys(provider).findIndex(key => key === proxyKey);
@@ -609,15 +629,39 @@ function recordProxyKeyError(proxyKey, errorType = 'UNKNOWN', cooldownMs = PROXY
     console.warn(`[ProxyKey] Key ${keyIndex + 1} tạm dừng ${Math.ceil(safeCooldown / 1000)}s vì ${errorType}.`);
 }
 
-function getProxyKeyForChunk(chunkIndex) {
+async function getProxyKeyForChunk(chunkIndex, options = {}) {
     const keys = getActiveProxyKeys();
     if (!keys.length) return '';
 
     const provider = getProxyProviderId(activeTranslatorProvider);
-    const startIndex = getProxyPreferredKeyIndexForChunk(chunkIndex, keys.length);
+    const assignedIndex = getAssignedTranslatorChunkKey(chunkIndex, provider);
+    const preferredIndex = Number.isInteger(options.preferredKeyIndex)
+        ? normalizeProxyKeyIndex(options.preferredKeyIndex, keys.length)
+        : (assignedIndex != null ? assignedIndex : getProxyPreferredKeyIndexForChunk(chunkIndex, keys.length));
+    const waitForSpecificKeyRpm = async (keyIndex) => {
+        while (!cancelRequested && !isTranslatorRpmKeyAvailable(provider, keyIndex)) {
+            const rpmWaitMs = getTranslatorRpmWaitMsForProviderKey(provider, keyIndex);
+            const clampedWaitMs = Math.max(1000, Math.min(rpmWaitMs || TRANSLATOR_RPM_WINDOW_MS, TRANSLATOR_RPM_WINDOW_MS));
+            const waitSeconds = Math.ceil(clampedWaitMs / 1000);
+            if (typeof updateTranslationRuntimeStatus === 'function') {
+                updateTranslationRuntimeStatus(`Đang chờ RPM key ${keyIndex + 1} (${waitSeconds}s)...`);
+            }
+            if (typeof sleepWithCountdown === 'function') {
+                await sleepWithCountdown(clampedWaitMs, '⏳ Đang chờ RPM');
+            } else if (typeof sleep === 'function') {
+                await sleep(clampedWaitMs);
+            }
+        }
+    };
+
+    if (assignedIndex != null && options.stickToAssignedKey && isProxyKeyAvailable(assignedIndex)) {
+        await waitForSpecificKeyRpm(assignedIndex);
+        if (!cancelRequested) return keys[assignedIndex];
+    }
+
     const findAvailableKey = () => {
         for (let offset = 0; offset < keys.length; offset++) {
-            const keyIndex = (startIndex + offset) % keys.length;
+            const keyIndex = (preferredIndex + offset) % keys.length;
             if (isProxyKeyAvailable(keyIndex) && isTranslatorRpmKeyAvailable(provider, keyIndex)) {
                 return keys[keyIndex];
             }
@@ -709,18 +753,43 @@ function getTranslatorRpmBucketId(provider, keyIndex) {
     return `${safeProvider}|${safeIndex}`;
 }
 
+function normalizeTranslatorRpmEntry(entry) {
+    if (entry && typeof entry === 'object') {
+        const timestamp = Number(entry.timestamp ?? entry.ts ?? entry.time);
+        return {
+            timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+            kind: String(entry.kind || 'main'),
+        };
+    }
+
+    const timestamp = Number(entry);
+    return {
+        timestamp: Number.isFinite(timestamp) ? timestamp : 0,
+        kind: 'main',
+    };
+}
+
 function pruneTranslatorRpmBucket(provider, keyIndex, now = Date.now()) {
     const bucketId = getTranslatorRpmBucketId(provider, keyIndex);
     const oneMinuteAgo = now - TRANSLATOR_RPM_WINDOW_MS;
     const current = Array.isArray(translatorRpmTimestamps[bucketId])
         ? translatorRpmTimestamps[bucketId]
         : [];
-    translatorRpmTimestamps[bucketId] = current.filter((timestamp) => Number(timestamp) > oneMinuteAgo);
+    translatorRpmTimestamps[bucketId] = current
+        .map(normalizeTranslatorRpmEntry)
+        .filter((entry) => entry.timestamp > oneMinuteAgo);
     return translatorRpmTimestamps[bucketId];
 }
 
 function getTranslatorRpmRecentCount(provider, keyIndex) {
     return pruneTranslatorRpmBucket(provider, keyIndex).length;
+}
+
+function getTranslatorRpmRecentCountByKind(provider, keyIndex, kind) {
+    const expectedKind = String(kind || '');
+    return pruneTranslatorRpmBucket(provider, keyIndex)
+        .filter((entry) => entry.kind === expectedKind)
+        .length;
 }
 
 function getTranslatorRpmRemainingForKey(provider, keyIndex, limit = rpmPerKey) {
@@ -733,7 +802,7 @@ function getTranslatorRpmWaitMsForKey(provider, keyIndex, limit = rpmPerKey) {
     const timestamps = pruneTranslatorRpmBucket(provider, keyIndex);
     if (timestamps.length < rpmLimit) return 0;
     const now = Date.now();
-    const oldest = Math.min(...timestamps);
+    const oldest = Math.min(...timestamps.map((entry) => entry.timestamp));
     return Math.max(1000, TRANSLATOR_RPM_WINDOW_MS - (now - oldest));
 }
 
@@ -816,13 +885,40 @@ function isTranslatorRpmKeyAvailable(provider, keyIndex, limit = rpmPerKey) {
     return getTranslatorRpmRemainingForProviderKey(provider, keyIndex, limit) > 0;
 }
 
-function recordTranslatorRpmRequest(provider = getActiveTranslatorProviderId(), keyIndex = 0, timestamp = Date.now()) {
+function recordTranslatorRpmRequest(provider = getActiveTranslatorProviderId(), keyIndex = 0, timestamp = Date.now(), kind = 'main') {
     const bucketId = getTranslatorRpmBucketId(provider, keyIndex);
     if (!Array.isArray(translatorRpmTimestamps[bucketId])) {
         translatorRpmTimestamps[bucketId] = [];
     }
     pruneTranslatorRpmBucket(provider, keyIndex, timestamp);
-    translatorRpmTimestamps[bucketId].push(timestamp);
+    translatorRpmTimestamps[bucketId].push({
+        timestamp,
+        kind: String(kind || 'main'),
+    });
+}
+
+function distributeTranslatorWaveAcrossKeys(targetWaveSize, keyCount, rpmLimit) {
+    const safeKeyCount = Math.max(1, Number(keyCount) || 1);
+    const safeTarget = Math.max(0, Number(targetWaveSize) || 0);
+    const safeRpm = normalizeTranslatorRpm(rpmLimit);
+    const allocations = new Array(safeKeyCount).fill(0);
+    if (safeTarget <= 0) return allocations;
+
+    const base = Math.floor(safeTarget / safeKeyCount);
+    let remainder = safeTarget % safeKeyCount;
+    for (let keyIndex = 0; keyIndex < safeKeyCount; keyIndex += 1) {
+        allocations[keyIndex] = Math.min(safeRpm, base + (remainder > 0 ? 1 : 0));
+        if (remainder > 0) remainder -= 1;
+    }
+    return allocations;
+}
+
+function getTranslatorRpmMainWaitMsForKey(provider, keyIndex, now = Date.now()) {
+    const mainEntries = pruneTranslatorRpmBucket(provider, keyIndex, now)
+        .filter((entry) => entry.kind === 'main');
+    if (mainEntries.length === 0) return 0;
+    const oldestMain = Math.min(...mainEntries.map((entry) => entry.timestamp));
+    return Math.max(1000, TRANSLATOR_RPM_WINDOW_MS - (now - oldestMain));
 }
 
 function getTranslatorRpmBatchPlan(options = {}) {
@@ -831,27 +927,87 @@ function getTranslatorRpmBatchPlan(options = {}) {
     const requestedParallel = normalizeTranslatorParallel(options.requestedParallel);
     const effectiveParallel = provider === TRANSLATOR_PROVIDERS.OLLAMA ? 1 : requestedParallel;
     const keyCount = Math.max(1, Number(options.keyCount) || getTranslatorRpmKeyCount(provider));
+    const maxPerMinute = keyCount * rpmLimit;
+    const remainingChunks = Number.isFinite(Number(options.remainingChunks))
+        ? Math.max(0, Math.trunc(Number(options.remainingChunks)))
+        : effectiveParallel;
+    const targetWaveSize = Math.min(effectiveParallel, maxPerMinute, remainingChunks);
+    const targetAllocations = distributeTranslatorWaveAcrossKeys(targetWaveSize, keyCount, rpmLimit);
+    const keyAllocations = new Array(keyCount).fill(0);
     let remainingSlots = 0;
     let waitMs = Infinity;
+    let blockedByMainWave = false;
+    let retryDebtReduced = false;
 
     for (let keyIndex = 0; keyIndex < keyCount; keyIndex += 1) {
         const remaining = getTranslatorRpmRemainingForProviderKey(provider, keyIndex, rpmLimit);
+        const targetForKey = targetAllocations[keyIndex] || 0;
+        const mainUsed = getTranslatorRpmRecentCountByKind(provider, keyIndex, 'main');
+        const totalUsed = getTranslatorRpmRecentCount(provider, keyIndex);
+        const retryUsed = Math.max(0, totalUsed - mainUsed);
+        const keyCapacity = Math.min(targetForKey, remaining);
+
+        keyAllocations[keyIndex] = keyCapacity;
         remainingSlots += remaining;
-        if (remaining <= 0) {
+
+        if (targetForKey > 0 && keyCapacity < targetForKey) {
+            if (mainUsed > 0) {
+                blockedByMainWave = true;
+                waitMs = Math.min(waitMs, getTranslatorRpmMainWaitMsForKey(provider, keyIndex));
+            } else if (retryUsed > 0) {
+                retryDebtReduced = true;
+                waitMs = Math.min(waitMs, getTranslatorRpmWaitMsForProviderKey(provider, keyIndex, rpmLimit));
+            } else {
+                waitMs = Math.min(waitMs, getTranslatorRpmWaitMsForProviderKey(provider, keyIndex, rpmLimit));
+            }
+        } else if (remaining <= 0) {
             waitMs = Math.min(waitMs, getTranslatorRpmWaitMsForProviderKey(provider, keyIndex, rpmLimit));
         }
     }
 
-    const capacity = Math.min(effectiveParallel, remainingSlots);
+    const plannedCapacity = keyAllocations.reduce((sum, value) => sum + value, 0);
+    const capacity = blockedByMainWave ? 0 : plannedCapacity;
     return {
         provider,
         keyCount,
         rpmPerKey: rpmLimit,
         requestedParallel,
+        effectiveParallel,
+        targetWaveSize,
+        targetAllocations,
+        keyAllocations: blockedByMainWave ? new Array(keyCount).fill(0) : keyAllocations,
         capacity,
         waitMs: capacity > 0 ? 0 : (Number.isFinite(waitMs) ? waitMs : TRANSLATOR_RPM_WINDOW_MS),
         remainingSlots,
+        retryDebtReduced,
+        blockedByMainWave,
     };
+}
+
+function buildTranslatorWaveAssignments(indices, plan = {}) {
+    const sourceIndices = Array.isArray(indices) ? indices : [];
+    const provider = plan.provider || getActiveTranslatorProviderId();
+    const keyCount = Math.max(1, Number(plan.keyCount) || getTranslatorRpmKeyCount(provider));
+    const rawAllocations = Array.isArray(plan.keyAllocations)
+        ? plan.keyAllocations
+        : distributeTranslatorWaveAcrossKeys(sourceIndices.length, keyCount, rpmPerKey);
+    const keyAllocations = new Array(keyCount).fill(0)
+        .map((_, keyIndex) => Math.max(0, Math.trunc(Number(rawAllocations[keyIndex]) || 0)));
+    const assignments = [];
+    let cursor = 0;
+
+    while (cursor < sourceIndices.length && keyAllocations.some((count) => count > 0)) {
+        for (let keyIndex = 0; keyIndex < keyCount && cursor < sourceIndices.length; keyIndex += 1) {
+            if (keyAllocations[keyIndex] <= 0) continue;
+            const chunkIndex = sourceIndices[cursor];
+            assignTranslatorChunkKey(chunkIndex, keyIndex, provider);
+            assignments.push({ chunkIndex, keyIndex, provider });
+            keyAllocations[keyIndex] -= 1;
+            cursor += 1;
+        }
+    }
+
+    return assignments;
 }
 
 function getTranslatorRpmMaxBatchSize(options = {}) {
@@ -894,6 +1050,82 @@ async function waitForTranslatorProviderRpmSlot(provider = getActiveTranslatorPr
         provider,
         requestedParallel: 1,
     });
+}
+
+function preflightProxyTranslationAttempt(proxyKey) {
+    const provider = typeof getProxyProviderId === 'function'
+        ? getProxyProviderId(activeTranslatorProvider)
+        : activeTranslatorProvider;
+    const activeKey = proxyKey || (typeof getActiveProxyKeys === 'function' ? getActiveProxyKeys()[0] : proxyApiKey);
+    const proxyTarget = typeof getActiveProxyRequestTarget === 'function'
+        ? getActiveProxyRequestTarget('chat')
+        : null;
+    const activeBaseUrl = proxyTarget?.url || (typeof getActiveProxyBaseUrl === 'function' ? getActiveProxyBaseUrl() : proxyBaseUrl);
+    const activeModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;
+    const activeProviderLabel = typeof getActiveProxyLabel === 'function' ? getActiveProxyLabel() : 'Proxy';
+    const keyIndex = typeof getProxyKeyIndex === 'function' ? getProxyKeyIndex(activeKey, provider) : 0;
+
+    if (!activeKey) throw createTranslatorError('MISSING_PROXY_KEY');
+    if (!activeBaseUrl) throw createTranslatorError('MISSING_PROXY_URL');
+    if (!activeModel) {
+        throw createTranslatorError('MISSING_PROXY_MODEL', {
+            provider: activeProviderLabel,
+            rawMessage: 'Chưa chọn model proxy để dịch.',
+            retryable: false,
+        });
+    }
+
+    return {
+        provider,
+        proxyKey: activeKey,
+        keyIndex: keyIndex >= 0 ? keyIndex : 0,
+    };
+}
+
+async function sendProxyTranslationAttempt(options = {}) {
+    const chunkIndex = Number.isFinite(Number(options.chunkIndex))
+        ? Math.max(0, Math.trunc(Number(options.chunkIndex)))
+        : 0;
+    const text = options.text || '';
+    const temperature = Number.isFinite(Number(options.temperature)) ? Number(options.temperature) : 0.7;
+    const kind = String(options.kind || 'main');
+
+    if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
+
+    const proxyKey = typeof getProxyKeyForChunk === 'function'
+        ? await getProxyKeyForChunk(chunkIndex, {
+            preferredKeyIndex: options.preferredKeyIndex,
+            stickToAssignedKey: ['retry', 'manual_retry', 'split_retry'].includes(kind),
+        })
+        : proxyApiKey;
+    const attempt = preflightProxyTranslationAttempt(proxyKey);
+
+    if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
+
+    if (typeof recordTranslatorRpmRequest === 'function') {
+        recordTranslatorRpmRequest(attempt.provider, attempt.keyIndex, Date.now(), kind);
+    }
+    assignTranslatorChunkKey(chunkIndex, attempt.keyIndex, attempt.provider);
+    if (typeof trackChunkProxyKey === 'function') {
+        trackChunkProxyKey(chunkIndex, attempt.keyIndex);
+    }
+
+    try {
+        const result = await translateChunkViaProxy(text, temperature, attempt.proxyKey);
+        return {
+            result,
+            proxyKey: attempt.proxyKey,
+            keyIndex: attempt.keyIndex,
+            provider: attempt.provider,
+        };
+    } catch (error) {
+        if (error && typeof error === 'object') {
+            error.proxyKeyUsed = attempt.proxyKey;
+            error.proxyKeyIndex = attempt.keyIndex;
+            error.proxyProvider = attempt.provider;
+        }
+        throw error;
+    }
 }
 
 const OPENAI_PROXY_KNOWN_SUFFIXES = [

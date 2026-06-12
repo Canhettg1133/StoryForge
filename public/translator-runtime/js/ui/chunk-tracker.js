@@ -220,8 +220,18 @@ async function retranslateChunk(chunkIndex) {
     try {
         let result;
         if (useProxy) {
-            const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
-            result = await translateChunkViaProxy(chunkText, 0.7, proxyKey);
+            if (typeof sendProxyTranslationAttempt === 'function') {
+                const proxyAttempt = await sendProxyTranslationAttempt({
+                    chunkIndex,
+                    text: chunkText,
+                    temperature: 0.7,
+                    kind: 'manual_retry',
+                });
+                result = proxyAttempt.result;
+            } else {
+                const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
+                result = await translateChunkViaProxy(chunkText, 0.7, proxyKey);
+            }
         } else if (useOllama) {
             result = await translateWithOllama(chunkText, 0.7);
         } else {
@@ -282,38 +292,15 @@ async function retranslateAllFailed() {
 
     showToast(`Đang dịch lại ${toRetranslate.length} chunk...`, 'info');
 
-    if (useProxy && typeof getProxyKeyCount === 'function' && getProxyKeyCount() > 1) {
-        // Multi-key: group by key, send different-key chunks in parallel
-        const keyCount = getProxyKeyCount();
-        const byKey = {};
-        for (const data of toRetranslate) {
-            const k = data.index % keyCount;
-            if (!byKey[k]) byKey[k] = [];
-            byKey[k].push(data);
-        }
+    const parallelInput = typeof document !== 'undefined' ? Number(document.getElementById('parallelCount')?.value) : 1;
+    const manualParallel = typeof normalizeTranslatorParallel === 'function'
+        ? normalizeTranslatorParallel(parallelInput || 1)
+        : Math.max(1, Math.min(50, parallelInput || 1));
 
-        // Process round-robin: pick 1 from each key group per round
-        let done = false;
-        let round = 0;
-        while (!done) {
-            done = true;
-            const batch = [];
-            for (const k in byKey) {
-                if (round < byKey[k].length) {
-                    batch.push(byKey[k][round]);
-                    done = false;
-                }
-            }
-            if (batch.length > 0) {
-                await Promise.all(batch.map(d => retranslateChunk(d.index)));
-                await sleep(5000); // Delay between rounds
-            }
-            round++;
-        }
-    } else {
-        // Single key: sequential
-        for (const data of toRetranslate) {
-            await retranslateChunk(data.index);
+    for (let offset = 0; offset < toRetranslate.length; offset += manualParallel) {
+        const batch = toRetranslate.slice(offset, offset + manualParallel);
+        await Promise.all(batch.map(d => retranslateChunk(d.index)));
+        if (offset + manualParallel < toRetranslate.length) {
             await sleep(5000);
         }
     }
@@ -465,22 +452,25 @@ function getChunkTrackerWindowState(rows) {
         };
     }
 
+    const allActiveRows = availableRows.filter((data) => isChunkTrackerActive(data.status));
     const firstUnsettled = availableRows.find((data) => !isChunkTrackerSettled(data.status));
-    const anchorIndex = firstUnsettled
-        ? firstUnsettled.index
-        : availableRows[availableRows.length - 1].index;
+    const anchorIndex = allActiveRows.length > 0
+        ? allActiveRows[0].index
+        : (firstUnsettled ? firstUnsettled.index : availableRows[availableRows.length - 1].index);
     const start = Math.floor(anchorIndex / CHUNK_TRACKER_RENDER_BATCH_SIZE) * CHUNK_TRACKER_RENDER_BATCH_SIZE;
-    const end = start + CHUNK_TRACKER_RENDER_BATCH_SIZE;
+    const naturalEnd = start + CHUNK_TRACKER_RENDER_BATCH_SIZE;
+    const end = allActiveRows.length > 0
+        ? Math.max(naturalEnd, allActiveRows[allActiveRows.length - 1].index + 1)
+        : naturalEnd;
     const windowRows = availableRows.filter((data) => data.index >= start && data.index < end);
-    const activeRows = windowRows.filter((data) => isChunkTrackerActive(data.status));
 
     return {
         start,
         end,
         firstChunk: windowRows.length > 0 ? windowRows[0].index + 1 : start + 1,
         lastChunk: windowRows.length > 0 ? windowRows[windowRows.length - 1].index + 1 : start,
-        activeFirstChunk: activeRows.length > 0 ? activeRows[0].index + 1 : 0,
-        activeLastChunk: activeRows.length > 0 ? activeRows[activeRows.length - 1].index + 1 : 0,
+        activeFirstChunk: allActiveRows.length > 0 ? allActiveRows[0].index + 1 : 0,
+        activeLastChunk: allActiveRows.length > 0 ? allActiveRows[allActiveRows.length - 1].index + 1 : 0,
     };
 }
 

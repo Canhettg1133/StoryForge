@@ -266,7 +266,10 @@ async function sendProxyRelayChatStreamBatchGroup(items) {
 }
 
 async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = null, allowStoryForgeAuthRefresh = true) {
-    const activeKey = apiKeyOverride || (typeof getActiveProxyKeys === 'function' ? getActiveProxyKeys()[0] : proxyApiKey);
+    const resolvedApiKeyOverride = apiKeyOverride && typeof apiKeyOverride.then === 'function'
+        ? await apiKeyOverride
+        : apiKeyOverride;
+    const activeKey = resolvedApiKeyOverride || (typeof getActiveProxyKeys === 'function' ? getActiveProxyKeys()[0] : proxyApiKey);
     const proxyTarget = typeof getActiveProxyRequestTarget === 'function'
         ? getActiveProxyRequestTarget('chat')
         : null;

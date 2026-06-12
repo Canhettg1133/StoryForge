@@ -42,10 +42,12 @@ function recordProxyBatch(context, count) {
   return vm.runInContext(`
     (() => {
       const counts = {};
-      for (let index = 0; index < ${count}; index += 1) {
-        const key = getProxyKeyForChunk(index);
-        const keyIndex = getProxyKeyIndex(key);
-        recordTranslatorRpmRequest(activeTranslatorProvider, keyIndex);
+      const indices = Array.from({ length: ${count} }, (_, index) => index);
+      const plan = getTranslatorRpmBatchPlan({ requestedParallel: ${count}, remainingChunks: ${count} });
+      const assignments = buildTranslatorWaveAssignments(indices, plan);
+      for (const assignment of assignments) {
+        const keyIndex = assignment.keyIndex;
+        recordTranslatorRpmRequest(activeTranslatorProvider, keyIndex, Date.now(), 'main');
         counts[keyIndex] = (counts[keyIndex] || 0) + 1;
       }
       return counts;
@@ -56,12 +58,12 @@ function recordProxyBatch(context, count) {
 function recordProxyBatchSequence(context, count) {
   return vm.runInContext(`
     (() => {
-      const selected = [];
-      for (let index = 0; index < ${count}; index += 1) {
-        const key = getProxyKeyForChunk(index);
-        const keyIndex = getProxyKeyIndex(key);
-        recordTranslatorRpmRequest(activeTranslatorProvider, keyIndex);
-        selected.push(keyIndex);
+      const indices = Array.from({ length: ${count} }, (_, index) => index);
+      const plan = getTranslatorRpmBatchPlan({ requestedParallel: ${count}, remainingChunks: ${count} });
+      const assignments = buildTranslatorWaveAssignments(indices, plan);
+      const selected = assignments.map((assignment) => assignment.keyIndex);
+      for (const assignment of assignments) {
+        recordTranslatorRpmRequest(activeTranslatorProvider, assignment.keyIndex, Date.now(), 'main');
       }
       return selected;
     })()
@@ -69,18 +71,24 @@ function recordProxyBatchSequence(context, count) {
 }
 
 describe('phase10 translator RPM limiter', () => {
-  it('uses the remaining per-key RPM slots to size each proxy batch', () => {
+  it('waits for a full main wave instead of dispatching leftover RPM slots', () => {
     const context = loadRuntime();
     vm.runInContext(`
       useProxy = true;
       activeTranslatorProvider = TRANSLATOR_PROVIDERS.AG_PROXY;
-      proxyApiKeys = ['KEY_A', 'KEY_B'];
-      rpmPerKey = 10;
+      proxyApiKeys = ['KEY_A', 'KEY_B', 'KEY_C', 'KEY_D', 'KEY_E'];
+      rpmPerKey = 5;
     `, context);
 
-    expect(vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 16 }).capacity', context)).toBe(16);
-    expect(recordProxyBatch(context, 16)).toEqual({ 0: 10, 1: 6 });
-    expect(vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 16 }).capacity', context)).toBe(4);
+    const firstPlan = vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 20, remainingChunks: 80 })', context);
+    expect(firstPlan.capacity).toBe(20);
+    expect(firstPlan.keyAllocations).toEqual([4, 4, 4, 4, 4]);
+    expect(recordProxyBatch(context, 20)).toEqual({ 0: 4, 1: 4, 2: 4, 3: 4, 4: 4 });
+
+    const nextPlan = vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 20, remainingChunks: 60 })', context);
+    expect(nextPlan.capacity).toBe(0);
+    expect(nextPlan.remainingSlots).toBe(5);
+    expect(nextPlan.waitMs).toBeGreaterThan(0);
   });
 
   it('caps a proxy batch at key count times RPM and waits when every key is full', () => {
@@ -131,7 +139,7 @@ describe('phase10 translator RPM limiter', () => {
     expect(customFanout).toEqual(agFanout);
   });
 
-  it('fills each proxy key RPM slice before moving to the next key', () => {
+  it('balances a main proxy wave across keys instead of filling one key first', () => {
     const context = loadRuntime();
     vm.runInContext(`
       useProxy = true;
@@ -141,16 +149,15 @@ describe('phase10 translator RPM limiter', () => {
       rpmPerKey = 5;
     `, context);
 
-    expect(recordProxyBatchSequence(context, 25)).toEqual([
-      0, 0, 0, 0, 0,
-      1, 1, 1, 1, 1,
-      2, 2, 2, 2, 2,
-      3, 3, 3, 3, 3,
-      4, 4, 4, 4, 4,
+    expect(recordProxyBatchSequence(context, 20)).toEqual([
+      0, 1, 2, 3, 4,
+      0, 1, 2, 3, 4,
+      0, 1, 2, 3, 4,
+      0, 1, 2, 3, 4,
     ]);
   });
 
-  it('dispatches grouped proxy key slices in an interleaved order across keys', () => {
+  it('reduces only the key-specific main wave share consumed by retry debt', () => {
     const context = loadRuntime();
     vm.runInContext(`
       useProxy = true;
@@ -159,13 +166,47 @@ describe('phase10 translator RPM limiter', () => {
       rpmPerKey = 5;
     `, context);
 
-    expect(vm.runInContext('orderProxyBatchIndicesForDispatch(Array.from({ length: 25 }, (_, index) => index))', context)).toEqual([
-      0, 5, 10, 15, 20,
-      1, 6, 11, 16, 21,
-      2, 7, 12, 17, 22,
-      3, 8, 13, 18, 23,
-      4, 9, 14, 19, 24,
-    ]);
+    vm.runInContext(`
+      recordTranslatorRpmRequest(activeTranslatorProvider, 0, Date.now(), 'retry');
+      recordTranslatorRpmRequest(activeTranslatorProvider, 1, Date.now(), 'retry');
+    `, context);
+    const oneRetryEach = vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 20, remainingChunks: 60 })', context);
+    expect(oneRetryEach.capacity).toBe(20);
+    expect(oneRetryEach.keyAllocations).toEqual([4, 4, 4, 4, 4]);
+
+    vm.runInContext(`
+      translatorRpmTimestamps = {};
+      recordTranslatorRpmRequest(activeTranslatorProvider, 0, Date.now(), 'retry');
+      recordTranslatorRpmRequest(activeTranslatorProvider, 0, Date.now(), 'retry');
+    `, context);
+    const twoRetriesOnA = vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 20, remainingChunks: 60 })', context);
+    expect(twoRetriesOnA.capacity).toBe(19);
+    expect(twoRetriesOnA.keyAllocations).toEqual([3, 4, 4, 4, 4]);
+    expect(twoRetriesOnA.retryDebtReduced).toBe(true);
+  });
+
+  it('records Custom Proxy RPM only after a real request is ready to be sent', async () => {
+    const context = loadRuntime();
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyProfile = { ...DEFAULT_CUSTOM_PROXY_PROFILE, baseUrl: 'https://proxy.test', defaultModel: '' };
+      rpmPerKey = 5;
+      translateChunkViaProxy = async () => 'translated';
+    `, context);
+
+    await expect(
+      vm.runInContext("sendProxyTranslationAttempt({ chunkIndex: 0, text: 'source', temperature: 0.7, kind: 'manual_retry' })", context)
+    ).rejects.toMatchObject({ code: 'MISSING_PROXY_MODEL' });
+    expect(vm.runInContext('getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0)', context)).toBe(0);
+
+    const sent = await vm.runInContext(`
+      customProxyProfile.defaultModel = 'custom-model';
+      sendProxyTranslationAttempt({ chunkIndex: 0, text: 'source', temperature: 0.7, kind: 'manual_retry' })
+    `, context);
+    expect(sent).toEqual(expect.objectContaining({ result: 'translated', keyIndex: 0 }));
+    expect(vm.runInContext('getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0)', context)).toBe(1);
   });
 
   it('keeps AG Proxy and Custom Proxy RPM buckets separate', () => {

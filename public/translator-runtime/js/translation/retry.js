@@ -115,26 +115,23 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
                 const activeProxyModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;
                 console.log(`[Proxy] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}, model=${activeProxyModel}`);
-                const proxyProvider = typeof getProxyProviderId === 'function'
-                    ? getProxyProviderId(activeTranslatorProvider)
-                    : activeTranslatorProvider;
-                if (typeof waitForTranslatorProviderRpmSlot === 'function') {
-                    await waitForTranslatorProviderRpmSlot(proxyProvider);
+                let result;
+                if (typeof sendProxyTranslationAttempt === 'function') {
+                    const proxyAttempt = await sendProxyTranslationAttempt({
+                        chunkIndex,
+                        text: promptToUse,
+                        temperature,
+                        kind: attempt > 1 ? 'retry' : 'main',
+                    });
+                    proxyKeyUsed = proxyAttempt.proxyKey;
+                    result = proxyAttempt.result;
+                } else {
+                    const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
+                    proxyKeyUsed = proxyKey;
+                    result = await translateChunkViaProxy(promptToUse, temperature, proxyKey);
                 }
-                const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
-                const proxyKeyIndex = typeof getProxyKeyIndex === 'function'
-                    ? getProxyKeyIndex(proxyKey, proxyProvider)
-                    : -1;
-                if (typeof trackChunkProxyKey === 'function') {
-                    trackChunkProxyKey(chunkIndex, proxyKeyIndex);
-                }
-                if (typeof recordTranslatorRpmRequest === 'function') {
-                    recordTranslatorRpmRequest(proxyProvider, proxyKeyIndex);
-                }
-                proxyKeyUsed = proxyKey;
-                const result = await translateChunkViaProxy(promptToUse, temperature, proxyKey);
                 if (typeof recordProxyKeySuccess === 'function') {
-                    recordProxyKeySuccess(proxyKey);
+                    recordProxyKeySuccess(proxyKeyUsed);
                 }
                 return result;
             }
@@ -197,12 +194,13 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                     // Chờ ngắn trước retry - getProxyKeyForChunk sẽ tự chờ cooldown key
                     const waitTime = is403 ? 3000 : 5000;
                     console.warn(`[Proxy] Chunk ${chunkIndex + 1} ⚠️ ${is403 ? '403 Backend suspended' : '429 Rate limited'}, chờ ${waitTime / 1000}s rồi xoay key retry...`);
-                    if (typeof recordProxyKeyError === 'function' && proxyKeyUsed) {
+                    const failedProxyKey = proxyKeyUsed || error?.proxyKeyUsed;
+                    if (typeof recordProxyKeyError === 'function' && failedProxyKey) {
                         const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
                         const cooldownMs = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
                             ? retryAfterSeconds * 1000
                             : (is403 ? PROXY_FORBIDDEN_COOLDOWN_MS : PROXY_RATE_LIMIT_COOLDOWN_MS);
-                        recordProxyKeyError(proxyKeyUsed, is403 ? 'FORBIDDEN_403' : 'RATE_LIMIT_429', cooldownMs);
+                        recordProxyKeyError(failedProxyKey, is403 ? 'FORBIDDEN_403' : 'RATE_LIMIT_429', cooldownMs);
                     }
 
                     if (attempt === retries) {
@@ -499,23 +497,14 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else if (useProxy) {
                 // Proxy mode - gọi trực tiếp với key theo chunk
-                const proxyProvider = typeof getProxyProviderId === 'function'
-                    ? getProxyProviderId(activeTranslatorProvider)
-                    : activeTranslatorProvider;
-                if (typeof waitForTranslatorProviderRpmSlot === 'function') {
-                    await waitForTranslatorProviderRpmSlot(proxyProvider);
-                }
-                const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(chunkIndex) : proxyApiKey;
-                const proxyKeyIndex = typeof getProxyKeyIndex === 'function'
-                    ? getProxyKeyIndex(proxyKey, proxyProvider)
-                    : -1;
-                if (typeof trackChunkProxyKey === 'function') {
-                    trackChunkProxyKey(chunkIndex, proxyKeyIndex);
-                }
-                if (typeof recordTranslatorRpmRequest === 'function') {
-                    recordTranslatorRpmRequest(proxyProvider, proxyKeyIndex);
-                }
-                const result = await translateChunkViaProxy(partText, 0.8, proxyKey);
+                const result = typeof sendProxyTranslationAttempt === 'function'
+                    ? (await sendProxyTranslationAttempt({
+                        chunkIndex,
+                        text: partText,
+                        temperature: 0.8,
+                        kind: 'split_retry',
+                    })).result
+                    : await translateChunkViaProxy(partText, 0.8, proxyApiKey);
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else {
                 const modelKeyPair = getNextModelKeyPairWithQueue();
