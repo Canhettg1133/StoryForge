@@ -5,10 +5,14 @@ import {
   CheckCircle2,
   Copy,
   Crown,
+  ExternalLink,
+  HeartHandshake,
   LogIn,
   LogOut,
   Mail,
   MessageCircle,
+  QrCode,
+  X,
 } from 'lucide-react';
 import {
   isCloudAuthConfigured,
@@ -21,6 +25,7 @@ import {
   getFeatureDisplayName,
   getPlanDisplayName,
 } from '../../services/access/accessLabels.js';
+import { SUPPORT_CONTACT } from '../../config/supportContact.js';
 import { useUserAccess } from '../../hooks/useUserAccess.js';
 import './Login.css';
 
@@ -58,6 +63,14 @@ function getCurrentPlanText(plan) {
   return plan.expiresAt ? `${name} đến ${formatDate(plan.expiresAt)}` : name;
 }
 
+function getExternalLinkProps(url) {
+  if (!String(url || '').startsWith('http')) return {};
+  return {
+    target: '_blank',
+    rel: 'noreferrer',
+  };
+}
+
 export default function Login() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -66,6 +79,7 @@ export default function Login() {
   const [statusMessage, setStatusMessage] = useState('');
   const [copied, setCopied] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [donateOpen, setDonateOpen] = useState(false);
   const returnTo = useMemo(() => getReturnTo(location), [location]);
 
   const email = access?.user?.email || '';
@@ -146,6 +160,35 @@ export default function Login() {
               <MessageCircle size={18} />
               <strong>Nhắn admin</strong>
               <span>Gửi email để admin cấp VIP miễn phí.</span>
+            </div>
+          </div>
+
+          <div className="login-page__support" aria-label="Hỗ trợ và cộng đồng">
+            <div>
+              <h2>Hỗ trợ & cộng đồng</h2>
+              <p>Ủng hộ dự án, vào server Discord hoặc nhắn admin khi cần hỗ trợ tài khoản và VIP.</p>
+            </div>
+            <div className="login-page__support-actions">
+              <button type="button" className="btn btn-primary" onClick={() => setDonateOpen(true)}>
+                <HeartHandshake size={16} />
+                Ủng hộ dự án
+              </button>
+              <a
+                className="btn btn-secondary"
+                href={SUPPORT_CONTACT.discordUrl}
+                {...getExternalLinkProps(SUPPORT_CONTACT.discordUrl)}
+              >
+                <ExternalLink size={15} />
+                Vào Discord
+              </a>
+              <a
+                className="btn btn-secondary"
+                href={SUPPORT_CONTACT.adminMessageUrl}
+                {...getExternalLinkProps(SUPPORT_CONTACT.adminMessageUrl)}
+              >
+                <MessageCircle size={15} />
+                Nhắn admin
+              </a>
             </div>
           </div>
         </div>
@@ -252,6 +295,60 @@ export default function Login() {
           )}
         </div>
       </section>
+
+      {donateOpen ? (
+        <div className="login-page__donate-overlay" role="presentation">
+          <section
+            className="login-page__donate-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="login-donate-title"
+          >
+            <div className="login-page__donate-header">
+              <div>
+                <h2 id="login-donate-title">Thông tin ủng hộ dự án</h2>
+                <p>Quét QR hoặc chuyển khoản theo thông tin bên dưới khi bạn muốn ủng hộ StoryForge.</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon"
+                aria-label="Đóng thông tin ủng hộ"
+                onClick={() => setDonateOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="login-page__donate-body">
+              <div className="login-page__qr-frame">
+                {SUPPORT_CONTACT.donate.qrImageUrl ? (
+                  <img src={SUPPORT_CONTACT.donate.qrImageUrl} alt="QR ủng hộ StoryForge" />
+                ) : (
+                  <div className="login-page__qr-placeholder">
+                    <QrCode size={42} />
+                    <span>QR đang cập nhật</span>
+                  </div>
+                )}
+              </div>
+
+              <dl className="login-page__donate-info">
+                <div>
+                  <dt>Ngân hàng</dt>
+                  <dd>{SUPPORT_CONTACT.donate.bankName}</dd>
+                </div>
+                <div>
+                  <dt>Số tài khoản</dt>
+                  <dd>{SUPPORT_CONTACT.donate.accountNumber}</dd>
+                </div>
+                <div>
+                  <dt>Chủ tài khoản</dt>
+                  <dd>{SUPPORT_CONTACT.donate.accountHolder}</dd>
+                </div>
+              </dl>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

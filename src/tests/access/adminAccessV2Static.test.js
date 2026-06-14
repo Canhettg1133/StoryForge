@@ -53,6 +53,7 @@ describe('split admin access static contracts', () => {
     const combined = [
       read('src/components/access/AccessGate.jsx'),
       read('src/components/access/AccountAccessSummary.jsx'),
+      read('src/config/supportContact.js'),
       read('src/pages/Login/Login.jsx'),
       read('src/services/access/accessControl.js'),
       read('apps/admin/src/App.jsx'),
@@ -66,6 +67,9 @@ describe('split admin access static contracts', () => {
       'Xác nhận tuổi',
       'Quyền tài khoản',
       'Tài khoản & VIP StoryForge',
+      'Hỗ trợ & cộng đồng',
+      'Ủng hộ dự án',
+      'TRAN VAN DAT',
     ]) {
       expect(combined).toContain(text);
     }

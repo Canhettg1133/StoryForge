@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SUPPORT_CONTACT } from '../../config/supportContact.js';
 
 const accessMock = vi.hoisted(() => ({
   current: null,
@@ -138,6 +139,44 @@ describe('phase10 account page navigation', () => {
 
     expect(cloudAuthMock.signOut).toHaveBeenCalledTimes(1);
     expect(container.textContent).toContain('Đã đăng xuất. Dữ liệu local vẫn được giữ trên máy này.');
+  });
+
+  it('shows support actions and opens the donate modal only after the user clicks donate', async () => {
+    await renderLogin();
+
+    expect(container.textContent).toContain('Hỗ trợ & cộng đồng');
+    expect(container.textContent).not.toContain('Thông tin ủng hộ dự án');
+
+    const donateButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Ủng hộ dự án'));
+    expect(donateButton).toBeDefined();
+
+    const discordLink = Array.from(container.querySelectorAll('a'))
+      .find((link) => link.textContent?.includes('Vào Discord'));
+    const adminLink = Array.from(container.querySelectorAll('a'))
+      .find((link) => link.textContent?.includes('Nhắn admin'));
+
+    expect(discordLink?.getAttribute('href')).toBe(SUPPORT_CONTACT.discordUrl);
+    expect(adminLink?.getAttribute('href')).toBe(SUPPORT_CONTACT.adminMessageUrl);
+
+    await act(async () => {
+      donateButton.click();
+    });
+
+    expect(container.textContent).toContain('Thông tin ủng hộ dự án');
+    expect(container.textContent).toContain(SUPPORT_CONTACT.donate.bankName);
+    expect(container.textContent).toContain(SUPPORT_CONTACT.donate.accountNumber);
+    expect(container.textContent).toContain(SUPPORT_CONTACT.donate.accountHolder);
+
+    const closeButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.getAttribute('aria-label') === 'Đóng thông tin ủng hộ');
+    expect(closeButton).toBeDefined();
+
+    await act(async () => {
+      closeButton.click();
+    });
+
+    expect(container.textContent).not.toContain('Thông tin ủng hộ dự án');
   });
 
   it('also exposes logout inside Settings account access summary', async () => {
