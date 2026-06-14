@@ -17,6 +17,7 @@ import {
   FileSearch,
   FlaskConical,
   Globe,
+  HeartHandshake,
   LayoutDashboard,
   Languages,
   Map,
@@ -31,6 +32,7 @@ import {
 import NewProjectModal from './NewProjectModal';
 import ExportModal from '../../components/common/ExportModal';
 import MobileSheet from '../../components/mobile/MobileSheet';
+import SupportDonateModal from '../../components/support/SupportDonateModal.jsx';
 import './Dashboard.css';
 
 const UTILITY_ITEMS = [
@@ -129,6 +131,7 @@ export default function Dashboard() {
   const [exportingProject, setExportingProject] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [donateOpen, setDonateOpen] = useState(false);
   const activeProjectId = null;
 
   useEffect(() => {
@@ -251,6 +254,19 @@ export default function Dashboard() {
               );
             })}
           </div>
+          <button
+            type="button"
+            className="dashboard-support-button"
+            onClick={() => setDonateOpen(true)}
+          >
+            <span className="dashboard-support-button__icon" aria-hidden="true">
+              <HeartHandshake size={18} />
+            </span>
+            <span className="dashboard-support-button__copy">
+              <strong>Ủng hộ dự án</strong>
+              <span>Mở thông tin QR và chuyển khoản, không rời khỏi trang chủ.</span>
+            </span>
+          </button>
         </section>
 
         <section className="dashboard-projects">
@@ -388,6 +404,8 @@ export default function Dashboard() {
           onClose={() => setExportingProject(null)}
         />
       )}
+
+      <SupportDonateModal open={donateOpen} onClose={() => setDonateOpen(false)} />
     </div>
   );
 }

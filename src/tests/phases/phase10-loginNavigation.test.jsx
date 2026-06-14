@@ -168,12 +168,12 @@ describe('phase10 account page navigation', () => {
     expect(container.textContent).toContain(SUPPORT_CONTACT.donate.accountNumber);
     expect(container.textContent).toContain(SUPPORT_CONTACT.donate.accountHolder);
 
-    const closeButton = Array.from(container.querySelectorAll('button'))
-      .find((button) => button.getAttribute('aria-label') === 'Đóng thông tin ủng hộ');
-    expect(closeButton).toBeDefined();
+    const backButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Quay về'));
+    expect(backButton).toBeDefined();
 
     await act(async () => {
-      closeButton.click();
+      backButton.click();
     });
 
     expect(container.textContent).not.toContain('Thông tin ủng hộ dự án');
