@@ -33,6 +33,26 @@ describe('split admin access static contracts', () => {
     expect(`${schema}\n${seed}\n${deploy}`).not.toContain('storyforge_plan_catalog');
   });
 
+  it('keeps Gemini Direct in the access catalog, migration, admin docs, and provider UI mapping', () => {
+    const seed = read('docs/supabase-access-control/002_access_control_seed.sql');
+    const migration = read('docs/supabase-access-control/004_add_gemini_direct_feature.sql');
+    const deploy = read('docs/ADMIN_SPLIT_DEPLOY.md');
+    const settings = read('src/pages/Settings/Settings.jsx');
+
+    for (const content of [seed, migration, deploy]) {
+      expect(content).toContain('provider.gemini_direct');
+    }
+    expect(seed).toContain("'provider.gemini_direct'");
+    expect(migration).toContain("'provider.gemini_direct'");
+    expect(deploy).toContain('docs/supabase-access-control/004_add_gemini_direct_feature.sql');
+    expect(settings).toContain('PROVIDERS.GEMINI_DIRECT');
+    expect(settings).toContain('ACCESS_FEATURES.GEMINI_DIRECT');
+    expect(settings).toContain('PROVIDERS.GEMINI_DIRECT) return ACCESS_FEATURES.GEMINI_DIRECT');
+    expect(settings).toContain('AI Studio, dành cho VIP');
+    expect(settings).not.toContain('AI Studio (free)');
+    expect(settings).not.toContain('free tier');
+  });
+
   it('keeps the root app routes focused on user access while admin UI calls the worker API', () => {
     const app = read('src/App.jsx');
     const sidebar = read('src/components/common/Sidebar.jsx');

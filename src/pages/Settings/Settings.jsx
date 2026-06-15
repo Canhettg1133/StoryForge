@@ -282,7 +282,7 @@ function DirectModelManager() {
 
   return (
     <div className="model-manager">
-      <label className="form-label">Models khả dụng (free tier)</label>
+      <label className="form-label">Model Gemini Direct</label>
       <div className="model-list">
         {allModels.map(m => (
           <div key={m.id} className={`model-item ${isActive(m.id) ? 'model-item--active' : ''}`} onClick={() => toggle(m)}>
@@ -296,7 +296,7 @@ function DirectModelManager() {
           </div>
         ))}
       </div>
-      <p className="settings-hint">💡 3.1 Flash Lite có quota cao nhất (15 RPM, 500 RPD) — tốt nhất cho free tier.</p>
+      <p className="settings-hint">3.1 Flash Lite có quota cao nhất (15 RPM, 500 RPD), phù hợp khi cần xử lý nhanh.</p>
     </div>
   );
 }
@@ -461,6 +461,7 @@ function getSettingsProviderFeature(providerCardOrProvider) {
   if (providerCardOrProvider === PROVIDER_CARD_AG_PROXY) return ACCESS_FEATURES.AG_PROXY;
   if (providerCardOrProvider === PROVIDER_CARD_CUSTOM_PROXY) return ACCESS_FEATURES.CUSTOM_PROXY;
   if (providerCardOrProvider === PROVIDERS.AI_STUDIO_RELAY) return ACCESS_FEATURES.AI_STUDIO_RELAY;
+  if (providerCardOrProvider === PROVIDERS.GEMINI_DIRECT) return ACCESS_FEATURES.GEMINI_DIRECT;
   return '';
 }
 
@@ -992,7 +993,7 @@ export default function Settings() {
             {[
               { value: PROVIDER_CARD_AG_PROXY, icon: Server, label: 'Gemini Proxy mặc định', desc: '/api/proxy - ag' },
               { value: PROVIDER_CARD_CUSTOM_PROXY, icon: Server, label: 'Custom OpenAI-compatible', desc: 'one-api / NewAPI / proxy clone' },
-              { value: PROVIDERS.GEMINI_DIRECT, icon: Cloud, label: 'Gemini Direct', desc: 'AI Studio (free)' },
+              { value: PROVIDERS.GEMINI_DIRECT, icon: Cloud, label: 'Gemini Direct', desc: 'AI Studio, dành cho VIP' },
               { value: PROVIDERS.AI_STUDIO_RELAY, icon: Cloud, label: 'AI Studio Relay', desc: 'Experimental' },
               { value: PROVIDERS.OLLAMA, icon: Cpu, label: 'Ollama', desc: 'Local AI' },
             ].map((p) => {

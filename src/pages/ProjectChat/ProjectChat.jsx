@@ -121,9 +121,10 @@ function getProxyProviderSelectValue(profileId) {
   return `${PROVIDERS.OPENAI_PROXY}:${normalizeProxyProfileId(profileId)}`;
 }
 
-function getProviderFeature(provider, proxyProfileId = '') {
+export function getProviderFeature(provider, proxyProfileId = '') {
   const normalizedProvider = normalizeOpenAIProxyProvider(provider);
   if (normalizedProvider === PROVIDERS.AI_STUDIO_RELAY) return ACCESS_FEATURES.AI_STUDIO_RELAY;
+  if (normalizedProvider === PROVIDERS.GEMINI_DIRECT) return ACCESS_FEATURES.GEMINI_DIRECT;
   if (normalizedProvider === PROVIDERS.OPENAI_PROXY) {
     return normalizeProxyProfileId(proxyProfileId) === CUSTOM_PROXY_PROFILE_ID
       ? ACCESS_FEATURES.CUSTOM_PROXY

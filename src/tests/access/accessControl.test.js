@@ -25,6 +25,7 @@ function baseAccess(overrides = {}) {
       { key: ACCESS_FEATURES.AI_CHAT_ACCESS, active: true },
       { key: ACCESS_FEATURES.ADULT_MODE, active: true },
       { key: ACCESS_FEATURES.AG_PROXY, active: true },
+      { key: ACCESS_FEATURES.GEMINI_DIRECT, active: true },
     ],
     userPlans: [
       {
@@ -41,6 +42,7 @@ function baseAccess(overrides = {}) {
       { plan_id: 'vip-plan', feature_key: ACCESS_FEATURES.AI_CHAT_ACCESS, enabled: true },
       { plan_id: 'vip-plan', feature_key: ACCESS_FEATURES.ADULT_MODE, enabled: true },
       { plan_id: 'vip-plan', feature_key: ACCESS_FEATURES.AG_PROXY, enabled: true },
+      { plan_id: 'vip-plan', feature_key: ACCESS_FEATURES.GEMINI_DIRECT, enabled: true },
     ],
     overrides: [],
     consentVersions: [
@@ -75,7 +77,7 @@ describe('access control resolver', () => {
     });
   });
 
-  it('blocks free users from translator, chat, and 18+ features', () => {
+  it('blocks free users from translator, chat, 18+, and VIP provider features', () => {
     const access = baseAccess({
       userPlans: [],
       planFeatures: [],
@@ -95,6 +97,10 @@ describe('access control resolver', () => {
       reason: ACCESS_REASONS.FEATURE_NOT_ALLOWED,
     });
     expect(resolveFeatureDecision(access, ACCESS_FEATURES.ADULT_MODE)).toMatchObject({
+      allowed: false,
+      reason: ACCESS_REASONS.FEATURE_NOT_ALLOWED,
+    });
+    expect(resolveFeatureDecision(access, ACCESS_FEATURES.GEMINI_DIRECT)).toMatchObject({
       allowed: false,
       reason: ACCESS_REASONS.FEATURE_NOT_ALLOWED,
     });
@@ -120,6 +126,11 @@ describe('access control resolver', () => {
       source: 'plan',
     });
     expect(resolveFeatureDecision(access, ACCESS_FEATURES.ADULT_MODE)).toMatchObject({
+      allowed: true,
+      reason: ACCESS_REASONS.ALLOWED,
+      source: 'plan',
+    });
+    expect(resolveFeatureDecision(access, ACCESS_FEATURES.GEMINI_DIRECT)).toMatchObject({
       allowed: true,
       reason: ACCESS_REASONS.ALLOWED,
       source: 'plan',

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Crown, LogIn, LogOut, Mail, ShieldCheck } from 'lucide-react';
+import { Crown, LogIn, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
 import {
   ACCESS_FEATURES,
   ACCESS_REASONS,
@@ -34,11 +34,12 @@ function getAdultStatus(decision) {
 }
 
 export default function AccountAccessSummary() {
-  const { access, loading } = useUserAccess();
+  const { access, loading, refreshAccess } = useUserAccess();
   const location = useLocation();
   const navigate = useNavigate();
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const adultDecision = access?.features?.[ACCESS_FEATURES.ADULT_MODE];
   const enabledFeatures = Object.entries(access?.features || {})
@@ -47,6 +48,19 @@ export default function AccountAccessSummary() {
   const loginReturnTo = `${location.pathname}${location.search}${location.hash}` || '/settings';
   const openLoginGuide = () => {
     navigate(`/login?returnTo=${encodeURIComponent(loginReturnTo)}`);
+  };
+  const handleRefreshAccess = async () => {
+    setMessage('');
+    setError('');
+    setRefreshing(true);
+    try {
+      await refreshAccess({ silent: true });
+      setMessage('Đã tải lại quyền tài khoản.');
+    } catch (err) {
+      setError(err?.message || 'Không thể tải lại quyền tài khoản.');
+    } finally {
+      setRefreshing(false);
+    }
   };
   const handleSignOut = async () => {
     setMessage('');
@@ -148,6 +162,15 @@ export default function AccountAccessSummary() {
       </div>
 
       <div className="account-access-summary__actions">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={handleRefreshAccess}
+          disabled={refreshing}
+        >
+          <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+          {refreshing ? 'Đang tải lại...' : 'Tải lại quyền'}
+        </button>
         {!enabledFeatures.length ? (
           <button type="button" className="btn btn-secondary" onClick={openLoginGuide}>
             Mở trang tài khoản & VIP

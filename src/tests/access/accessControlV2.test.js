@@ -155,6 +155,59 @@ describe('access control resolver v2', () => {
     });
   });
 
+  it('distinguishes missing Gemini Direct catalog from missing plan mapping', () => {
+    expect(resolveFeatureDecision(accessData(), ACCESS_FEATURES.GEMINI_DIRECT)).toMatchObject({
+      allowed: false,
+      reason: ACCESS_REASONS.FEATURE_DISABLED,
+      source: 'catalog',
+    });
+
+    const access = accessData({
+      features: [{ key: ACCESS_FEATURES.GEMINI_DIRECT, active: true }],
+      userPlans: [
+        {
+          id: 'vip',
+          plan_id: 'vip-plan',
+          plan_key: 'vip',
+          status: PLAN_STATUSES.ACTIVE,
+          starts_at: '2026-05-01T00:00:00.000Z',
+        },
+      ],
+      planFeatures: [],
+    });
+
+    expect(resolveFeatureDecision(access, ACCESS_FEATURES.GEMINI_DIRECT)).toMatchObject({
+      allowed: false,
+      reason: ACCESS_REASONS.FEATURE_NOT_ALLOWED,
+    });
+  });
+
+  it('allows Gemini Direct for VIP and lifetime plan mappings', () => {
+    for (const planKey of ['vip', 'lifetime']) {
+      const access = accessData({
+        features: [{ key: ACCESS_FEATURES.GEMINI_DIRECT, active: true }],
+        userPlans: [
+          {
+            id: `${planKey}-user`,
+            plan_id: `${planKey}-plan`,
+            plan_key: planKey,
+            status: PLAN_STATUSES.ACTIVE,
+            starts_at: '2026-05-01T00:00:00.000Z',
+          },
+        ],
+        planFeatures: [
+          { plan_id: `${planKey}-plan`, feature_key: ACCESS_FEATURES.GEMINI_DIRECT, enabled: true },
+        ],
+      });
+
+      expect(resolveFeatureDecision(access, ACCESS_FEATURES.GEMINI_DIRECT)).toMatchObject({
+        allowed: true,
+        reason: ACCESS_REASONS.ALLOWED,
+        source: 'plan',
+      });
+    }
+  });
+
   it('keeps admin role separate from the primary active plan display', () => {
     const snapshot = resolveUserAccess(accessData({
       profile: { system_role: 'admin' },

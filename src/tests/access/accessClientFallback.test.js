@@ -30,5 +30,9 @@ describe('access client fallback snapshot', () => {
       allowed: false,
       reason: ACCESS_REASONS.AUTH_REQUIRED,
     });
+    expect(snapshot.features[ACCESS_FEATURES.GEMINI_DIRECT]).toMatchObject({
+      allowed: false,
+      reason: ACCESS_REASONS.AUTH_REQUIRED,
+    });
   });
 });

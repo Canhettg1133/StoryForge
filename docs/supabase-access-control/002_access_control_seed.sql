@@ -17,6 +17,7 @@ values
   ('content.adult_mode', 'Chế độ 18+', 'Cho phép bật nội dung 18+ sau khi xác nhận tuổi và đồng ý điều khoản.', 'content', true),
   ('provider.ag_proxy', 'Gemini Proxy AG', 'Cho phép dùng Gemini Proxy AG qua backend được kiểm quyền.', 'provider', true),
   ('provider.ai_studio_relay', 'AI Studio Relay', 'Cho phép tạo room AI Studio Relay.', 'provider', true),
+  ('provider.gemini_direct', 'Gemini Direct', 'Cho phép dùng Gemini Direct qua API key AI Studio.', 'provider', true),
   ('provider.custom_proxy', 'Custom Proxy', 'Cho phép dùng custom OpenAI-compatible proxy trong app.', 'provider', true),
   ('translator.parallel_high', 'Request song song cao', 'Cho phép dùng mức request song song cao trong dịch truyện.', 'translator', true),
   ('translator.bulk_keys', 'Nhập nhiều API key', 'Cho phép nhập/xuất nhiều API key trong trang cài đặt.', 'translator', true)
@@ -38,6 +39,7 @@ feature_map as (
     'content.adult_mode',
     'provider.ag_proxy',
     'provider.ai_studio_relay',
+    'provider.gemini_direct',
     'provider.custom_proxy',
     'translator.parallel_high',
     'translator.bulk_keys'

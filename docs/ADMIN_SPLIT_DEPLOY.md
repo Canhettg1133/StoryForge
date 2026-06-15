@@ -53,7 +53,10 @@ Run these files in order:
 docs/supabase-access-control/001_access_control_schema.sql
 docs/supabase-access-control/002_access_control_seed.sql
 docs/supabase-access-control/003_access_control_v2_sync_and_union_plans.sql
+docs/supabase-access-control/004_add_gemini_direct_feature.sql
 ```
+
+Existing production databases that already ran `001`, `002`, and `003` only need to run `004_add_gemini_direct_feature.sql` before or alongside the code deploy. This adds `provider.gemini_direct` to the VIP/lifetime access catalog.
 
 The Worker verifies the Supabase user token first, resolves admin role from `profiles.system_role`, rejects non-admin mutations, and writes audit logs for sensitive changes.
 

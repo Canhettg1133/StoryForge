@@ -4,6 +4,7 @@ export const ACCESS_FEATURES = {
   ADULT_MODE: 'content.adult_mode',
   AG_PROXY: 'provider.ag_proxy',
   AI_STUDIO_RELAY: 'provider.ai_studio_relay',
+  GEMINI_DIRECT: 'provider.gemini_direct',
   CUSTOM_PROXY: 'provider.custom_proxy',
   TRANSLATOR_PARALLEL_HIGH: 'translator.parallel_high',
   TRANSLATOR_BULK_KEYS: 'translator.bulk_keys',
@@ -90,6 +91,7 @@ export const FEATURE_LABELS_VI = {
   [ACCESS_FEATURES.ADULT_MODE]: 'Chế độ 18+',
   [ACCESS_FEATURES.AG_PROXY]: 'Gemini Proxy AG',
   [ACCESS_FEATURES.AI_STUDIO_RELAY]: 'AI Studio Relay',
+  [ACCESS_FEATURES.GEMINI_DIRECT]: 'Gemini Direct',
   [ACCESS_FEATURES.CUSTOM_PROXY]: 'Proxy tùy chỉnh',
   [ACCESS_FEATURES.TRANSLATOR_PARALLEL_HIGH]: 'Dịch song song tốc độ cao',
   [ACCESS_FEATURES.TRANSLATOR_BULK_KEYS]: 'Nhập nhiều API key',
@@ -479,7 +481,7 @@ export function getAccessDeniedMessage(decision) {
     case ACCESS_REASONS.RATE_LIMITED:
       return 'Bạn đang dùng quá nhanh. Hãy chờ một chút rồi thử lại.';
     default:
-      return 'Tính năng này yêu cầu tài khoản VIP. Bạn có thể nhắn admin để được cấp VIP miễn phí.';
+      return 'Tính năng này yêu cầu tài khoản VIP. Bạn có thể nhắn admin để mua và kích hoạt VIP.';
   }
 }
 

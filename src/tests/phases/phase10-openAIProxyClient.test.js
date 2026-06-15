@@ -6,11 +6,12 @@ async function loadClientStack() {
     getSession: async () => ({ access_token: 'story-token' }),
     subscribe: () => () => {},
   }));
-  const [clientModule, routerModule, keyManagerModule, proxyConfigModule] = await Promise.all([
+  const [clientModule, routerModule, keyManagerModule, proxyConfigModule, accessClientModule] = await Promise.all([
     import('../../services/ai/client.js'),
     import('../../services/ai/router.js'),
     import('../../services/ai/keyManager.js'),
     import('../../services/ai/openAIProxyConfig.js'),
+    import('../../services/access/accessClient.js'),
   ]);
 
   clientModule.default.setRouter(routerModule.default);
@@ -21,7 +22,40 @@ async function loadClientStack() {
     keyManager: keyManagerModule.default,
     routerModule,
     proxyConfigModule,
+    accessClientModule,
   };
+}
+
+function cacheFeatureDecision(accessClientModule, featureKey, decision = {}) {
+  accessClientModule.setCachedAccessSnapshot({
+    authenticated: true,
+    user: {
+      id: 'user-1',
+      email: 'user@example.com',
+      displayName: 'StoryForge User',
+      systemRole: 'user',
+      status: 'active',
+    },
+    plan: null,
+    features: {
+      [featureKey]: {
+        allowed: false,
+        status: 403,
+        reason: accessClientModule.ACCESS_REASONS.FEATURE_NOT_ALLOWED,
+        feature: featureKey,
+        limits: {},
+        ...decision,
+      },
+    },
+    admin: {
+      allowed: false,
+      status: 403,
+      reason: accessClientModule.ACCESS_REASONS.ADMIN_REQUIRED,
+      feature: 'admin',
+      limits: {},
+    },
+    accessVersion: 1,
+  }, 'story-token');
 }
 
 function sendOnce(aiService, routerModule) {
@@ -341,6 +375,62 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(WebSocket).not.toHaveBeenCalled();
   });
 
+  it('blocks Gemini Direct before fetch when the VIP feature is not mapped to the user', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      accessClientModule,
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: 'should not run' }] } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_DIRECT, 'gemini-direct-key');
+    modelRouter.setPreferredProvider(PROVIDERS.GEMINI_DIRECT);
+    cacheFeatureDecision(
+      accessClientModule,
+      accessClientModule.ACCESS_FEATURES.GEMINI_DIRECT,
+      { reason: accessClientModule.ACCESS_REASONS.FEATURE_NOT_ALLOWED },
+    );
+
+    await expect(sendOnce(aiService, routerModule)).rejects.toMatchObject({
+      code: accessClientModule.ACCESS_REASONS.FEATURE_NOT_ALLOWED,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('surfaces disabled Gemini Direct catalog before fetch', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      accessClientModule,
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: 'should not run' }] } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_DIRECT, 'gemini-direct-key');
+    modelRouter.setPreferredProvider(PROVIDERS.GEMINI_DIRECT);
+    cacheFeatureDecision(
+      accessClientModule,
+      accessClientModule.ACCESS_FEATURES.GEMINI_DIRECT,
+      { reason: accessClientModule.ACCESS_REASONS.FEATURE_DISABLED },
+    );
+
+    await expect(sendOnce(aiService, routerModule)).rejects.toMatchObject({
+      code: accessClientModule.ACCESS_REASONS.FEATURE_DISABLED,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('auto-continues writing streams that stop because the proxy hit the output length limit', async () => {
     const {
       aiService,
@@ -450,6 +540,7 @@ describe('OpenAI-compatible proxy client payloads', () => {
       keyManager,
       routerModule,
       routerModule: { PROVIDERS },
+      accessClientModule,
     } = await loadClientStack();
     const fetchMock = vi
       .fn()
@@ -464,6 +555,15 @@ describe('OpenAI-compatible proxy client payloads', () => {
 
     keyManager.addKey(PROVIDERS.GEMINI_DIRECT, 'gemini-direct-key');
     modelRouter.setPreferredProvider(PROVIDERS.GEMINI_DIRECT);
+    cacheFeatureDecision(
+      accessClientModule,
+      accessClientModule.ACCESS_FEATURES.GEMINI_DIRECT,
+      {
+        allowed: true,
+        status: 200,
+        reason: accessClientModule.ACCESS_REASONS.ALLOWED,
+      },
+    );
 
     await expect(sendStreamOnce(aiService, routerModule)).resolves.toBe('Mo dau ket lai.');
     expect(fetchMock).toHaveBeenCalledTimes(2);

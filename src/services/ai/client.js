@@ -27,6 +27,7 @@ import {
 } from './aiStudioRelayClient';
 import {
   ACCESS_FEATURES,
+  getCachedFeatureDecision,
   getCachedFeatureMessage,
   getStoryForgeAccessToken,
   hasCachedFeature,
@@ -682,6 +683,17 @@ async function testOpenAIProxyChatConnection({ profile, apiKey = '', signal } = 
 // Gemini Direct (Google AI Studio)
 // ================================
 async function callGeminiDirect({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode }) {
+  const accessDecision = getCachedFeatureDecision(ACCESS_FEATURES.GEMINI_DIRECT);
+  if (!accessDecision.allowed) {
+    throw normalizeAIError(
+      {
+        code: accessDecision.reason || 'FEATURE_NOT_ALLOWED',
+        rawMessage: getCachedFeatureMessage(ACCESS_FEATURES.GEMINI_DIRECT),
+      },
+      { provider: PROVIDERS.GEMINI_DIRECT, model },
+    );
+  }
+
   const apiKey = keyManager.getNextKey('gemini_direct');
   if (!apiKey) {
     throw normalizeAIError(

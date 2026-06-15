@@ -532,4 +532,14 @@ describe('phase10 ProjectChat routing inheritance', () => {
     );
     expect(options.every((option) => option.meta.includes('Relay'))).toBe(true);
   });
+
+  it('maps Gemini Direct to the dedicated VIP provider feature', async () => {
+    const {
+      getProviderFeature,
+      routerModule: { PROVIDERS },
+    } = await loadProjectChatHelpers();
+    const { ACCESS_FEATURES } = await import('../../services/access/accessControl.js');
+
+    expect(getProviderFeature(PROVIDERS.GEMINI_DIRECT)).toBe(ACCESS_FEATURES.GEMINI_DIRECT);
+  });
 });
