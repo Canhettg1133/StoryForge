@@ -145,7 +145,7 @@ export default function Login() {
             </span>
             <div>
               <h1>Tài khoản & VIP StoryForge</h1>
-              <p>Đăng nhập Google để xác nhận email. Chưa có VIP? Liên hệ admin để được cấp VIP miễn phí.</p>
+              <p>Do lượng người dùng tăng khá nhanh, chi phí duy trì web hiện tại không còn đủ để admin cấp VIP miễn phí như trước. Vì vậy VIP sẽ chuyển sang mức 50.000đ để tiếp tục duy trì StoryForge ổn định hơn.</p>
             </div>
           </div>
 
@@ -157,8 +157,8 @@ export default function Login() {
             </div>
             <div>
               <MessageCircle size={18} />
-              <strong>Nhắn admin</strong>
-              <span>Gửi email để admin cấp VIP miễn phí.</span>
+              <strong>Liên hệ admin</strong>
+              <span>Gửi email tài khoản để mua và kích hoạt VIP.</span>
             </div>
           </div>
 
@@ -211,7 +211,7 @@ export default function Login() {
               <div className="login-page__status login-page__status--success">
                 <CheckCircle2 size={24} />
                 <h2>Đã đăng nhập</h2>
-                <p>{hasVipPlan ? 'Tài khoản của bạn đã có VIP.' : 'Copy email rồi liên hệ admin cấp VIP miễn phí.'}</p>
+                <p>{hasVipPlan ? 'Tài khoản của bạn đã có VIP.' : 'Copy email bên dưới rồi gửi admin để kích hoạt VIP.'}</p>
               </div>
 
               <div className="login-page__account">
@@ -228,7 +228,7 @@ export default function Login() {
               {!hasVipPlan ? (
                 <div className="login-page__notice">
                   <MessageCircle size={18} />
-                  <p>Admin cấp VIP miễn phí theo email đăng nhập. Copy email dưới đây để gửi đúng tài khoản.</p>
+                  <p>VIP 50.000đ. Sau khi thanh toán, admin sẽ kích hoạt VIP theo đúng email Google đã đăng nhập.</p>
                 </div>
               ) : null}
 
@@ -272,7 +272,7 @@ export default function Login() {
               <div className="login-page__status">
                 <LogIn size={24} />
                 <h2>Đăng nhập để kiểm tra VIP</h2>
-                <p>Đăng nhập Google để lấy email gửi admin cấp VIP miễn phí.</p>
+                <p>Đăng nhập Google để lấy email gửi admin mua và kích hoạt VIP.</p>
               </div>
 
               {!isCloudAuthConfigured() ? (
