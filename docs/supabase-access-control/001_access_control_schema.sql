@@ -281,7 +281,8 @@ as $$
 begin
   update public.access_versions
   set version = version + 1,
-      updated_at = now();
+      updated_at = now()
+  where true;
   if tg_op = 'DELETE' then
     return old;
   end if;

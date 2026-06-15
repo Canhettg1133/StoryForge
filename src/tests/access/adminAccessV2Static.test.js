@@ -44,6 +44,8 @@ describe('split admin access static contracts', () => {
     }
     expect(seed).toContain("'provider.gemini_direct'");
     expect(migration).toContain("'provider.gemini_direct'");
+    expect(migration).toContain('create or replace function public.bump_all_access_versions()');
+    expect(migration).toContain('where true');
     expect(deploy).toContain('docs/supabase-access-control/004_add_gemini_direct_feature.sql');
     expect(settings).toContain('PROVIDERS.GEMINI_DIRECT');
     expect(settings).toContain('ACCESS_FEATURES.GEMINI_DIRECT');

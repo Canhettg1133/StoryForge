@@ -1,6 +1,24 @@
 -- Add Gemini Direct to the VIP/access catalog.
 -- Safe to run more than once.
 
+create or replace function public.bump_all_access_versions()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.access_versions
+  set version = version + 1,
+      updated_at = now()
+  where true;
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
+end;
+$$;
+
 insert into public.features(key, name, description, category, active)
 values (
   'provider.gemini_direct',
