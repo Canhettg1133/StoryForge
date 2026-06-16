@@ -30,6 +30,17 @@ describe('admin split UI contract', () => {
       expect(app).toContain(label);
     }
 
+    for (const label of [
+      'Chỉnh nội dung trang VIP',
+      'Giá VIP',
+      'Đoạn giới thiệu',
+      'Thông báo thanh toán',
+      'Xem trước trên trang tài khoản',
+      'Lưu nội dung VIP',
+    ]) {
+      expect(app).toContain(label);
+    }
+
     expect(app).toContain('admin-sidebar');
     expect(app).toContain('topbar');
     expect(app).toContain('metric-grid');
@@ -37,6 +48,8 @@ describe('admin split UI contract', () => {
     expect(app).toContain('detail-panel');
     expect(css).toContain('.quick-actions');
     expect(css).toContain('.access-check-list');
+    expect(css).toContain('.vip-settings-grid');
+    expect(css).toContain('.vip-page-preview');
   });
 
   it('does not expose new plan or feature names in the admin UI source', () => {
@@ -60,6 +73,7 @@ describe('admin split UI contract', () => {
       read('apps/admin/src/adminApi.js'),
       read('apps/admin-api-worker/src/index.js'),
       read('packages/access/src/index.js'),
+      read('packages/access/src/vipPageContent.js'),
     ].join('\n');
 
     for (const label of [

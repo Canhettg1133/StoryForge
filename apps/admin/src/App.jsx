@@ -29,7 +29,9 @@ import {
   PLAN_LABELS_VI,
   ROLE_LABELS_VI,
   STATUS_LABELS_VI,
+  createDefaultVipPageContent,
   hasPermission,
+  normalizeVipPageContent,
 } from '@storyforge/access';
 import { createAdminApiClient } from './adminApi.js';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase.js';
@@ -151,6 +153,16 @@ function summarizeLimits(limits) {
     .slice(0, 3)
     .map(([key, value]) => `${key}: ${value}`)
     .join(' · ');
+}
+
+function getPlanMetadata(plan) {
+  return plan?.metadata && typeof plan.metadata === 'object' && !Array.isArray(plan.metadata)
+    ? plan.metadata
+    : {};
+}
+
+function getPlanVipPageContent(plan) {
+  return normalizeVipPageContent(getPlanMetadata(plan).vipPage);
 }
 
 function explainDecision(decision) {
@@ -728,8 +740,167 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
   );
 }
 
+function VipPageSettingsPanel({ plan, canWriteCatalog, onMutation }) {
+  const [form, setForm] = useState(() => getPlanVipPageContent(plan));
+
+  useEffect(() => {
+    setForm(getPlanVipPageContent(plan));
+  }, [plan?.id, plan?.updated_at]);
+
+  if (!plan) {
+    return (
+      <section className="panel">
+        <EmptyState title="Chưa có gói VIP" text="Cần có plan `vip` trong bảng `plans` trước khi chỉnh nội dung trang VIP." />
+      </section>
+    );
+  }
+
+  const updateField = (field, value) => {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const updatePriceLabel = (value) => {
+    setForm((current) => {
+      const oldDefault = createDefaultVipPageContent(current.priceLabel);
+      const nextDefault = createDefaultVipPageContent(value);
+      return {
+        ...current,
+        priceLabel: value,
+        introText: current.introText === oldDefault.introText ? nextDefault.introText : current.introText,
+        paymentNotice: current.paymentNotice === oldDefault.paymentNotice ? nextDefault.paymentNotice : current.paymentNotice,
+      };
+    });
+  };
+
+  const preview = normalizeVipPageContent(form);
+  const saveContent = () => {
+    const vipPage = normalizeVipPageContent(form);
+    setForm(vipPage);
+    onMutation({
+      title: 'Lưu nội dung trang VIP',
+      message: 'Cập nhật nội dung hiển thị trên trang Tài khoản & VIP?',
+      action: () => onMutation.api.updateCatalogPlan(plan.id, { vipPage }),
+    });
+  };
+
+  return (
+    <section className="panel vip-page-settings">
+      <header className="panel-header">
+        <div>
+          <h2>Chỉnh nội dung trang VIP</h2>
+          <span>Chỉnh giá và nội dung người dùng thấy ở trang Tài khoản & VIP. Layout và nút hành động vẫn cố định.</span>
+        </div>
+        <Badge tone={canWriteCatalog ? 'info' : 'neutral'}>{canWriteCatalog ? 'Có quyền sửa' : 'Chỉ xem'}</Badge>
+      </header>
+
+      <div className="vip-settings-grid">
+        <div className="vip-page-form">
+          <label>
+            <span>Tiêu đề</span>
+            <input
+              value={form.title}
+              onChange={(event) => updateField('title', event.target.value)}
+              disabled={!canWriteCatalog}
+            />
+          </label>
+          <label>
+            <span>Giá VIP</span>
+            <input
+              value={form.priceLabel}
+              onChange={(event) => updatePriceLabel(event.target.value)}
+              disabled={!canWriteCatalog}
+              placeholder="50.000đ"
+            />
+          </label>
+          <label className="vip-page-field--wide">
+            <span>Đoạn giới thiệu</span>
+            <textarea
+              rows={4}
+              value={form.introText}
+              onChange={(event) => updateField('introText', event.target.value)}
+              disabled={!canWriteCatalog}
+            />
+          </label>
+          <label className="vip-page-field--wide">
+            <span>Thông báo thanh toán</span>
+            <textarea
+              rows={3}
+              value={form.paymentNotice}
+              onChange={(event) => updateField('paymentNotice', event.target.value)}
+              disabled={!canWriteCatalog}
+            />
+          </label>
+          <label className="vip-page-field--wide">
+            <span>Hỗ trợ & cộng đồng</span>
+            <textarea
+              rows={2}
+              value={form.supportText}
+              onChange={(event) => updateField('supportText', event.target.value)}
+              disabled={!canWriteCatalog}
+            />
+          </label>
+          <label>
+            <span>Khi đã có VIP</span>
+            <input
+              value={form.signedInVipText}
+              onChange={(event) => updateField('signedInVipText', event.target.value)}
+              disabled={!canWriteCatalog}
+            />
+          </label>
+          <label>
+            <span>Khi chưa có VIP</span>
+            <input
+              value={form.signedInFreeText}
+              onChange={(event) => updateField('signedInFreeText', event.target.value)}
+              disabled={!canWriteCatalog}
+            />
+          </label>
+          <label className="vip-page-field--wide">
+            <span>Khi chưa đăng nhập</span>
+            <input
+              value={form.signedOutText}
+              onChange={(event) => updateField('signedOutText', event.target.value)}
+              disabled={!canWriteCatalog}
+            />
+          </label>
+        </div>
+
+        <aside className="vip-page-preview" aria-label="Xem trước trên trang tài khoản">
+          <span>Xem trước trên trang tài khoản</span>
+          <h3>{preview.title}</h3>
+          <p>{preview.introText}</p>
+          <div className="vip-page-preview__steps">
+            <strong>Đăng nhập Google</strong>
+            <strong>Liên hệ admin</strong>
+          </div>
+          <div className="vip-page-preview__notice">
+            {preview.paymentNotice}
+          </div>
+          <small>{preview.supportText}</small>
+        </aside>
+      </div>
+
+      <footer className="vip-page-settings__actions">
+        <button
+          type="button"
+          className="button button--primary"
+          onClick={saveContent}
+          disabled={!canWriteCatalog}
+        >
+          <Check size={16} />
+          Lưu nội dung VIP
+        </button>
+      </footer>
+    </section>
+  );
+}
+
 function VipPanel({ data, onMutation, actor }) {
   const canWriteCatalog = hasPermission(actor, ADMIN_PERMISSIONS.CATALOG_WRITE);
+  const vipPlan = data.catalog.find((plan) => getPlanKey(plan) === 'vip') || null;
 
   return (
     <section className="content-grid">
@@ -739,6 +910,7 @@ function VipPanel({ data, onMutation, actor }) {
           <p>Danh mục gói chính thức: miễn phí, VIP và trọn đời. Không thêm gói ngoài hệ này.</p>
         </div>
       </div>
+      <VipPageSettingsPanel plan={vipPlan} canWriteCatalog={canWriteCatalog} onMutation={onMutation} />
       <section className="panel">
         {data.catalog.length === 0 ? (
           <EmptyState title="Chưa có catalog" text="Tạo dữ liệu trong bảng `plans` để hiển thị gói." />

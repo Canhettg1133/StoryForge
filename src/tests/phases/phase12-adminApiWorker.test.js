@@ -112,6 +112,59 @@ describe('phase12 admin API worker', () => {
     expect(payload.items).toEqual([]);
   });
 
+  it('updates VIP page metadata without replacing other plan metadata', async () => {
+    mockAuthAndActor({}, async (target, init = {}) => {
+      if (target.includes('/rest/v1/plans') && target.includes('id=eq.plan-vip') && init.method === 'GET') {
+        return jsonResponse([{
+          id: 'plan-vip',
+          key: 'vip',
+          metadata: {
+            existingKey: 'keep',
+            vipPage: {
+              priceLabel: '50.000đ',
+            },
+          },
+        }]);
+      }
+      if (target.includes('/rest/v1/plans') && target.includes('id=eq.plan-vip') && init.method === 'PATCH') {
+        const body = JSON.parse(init.body);
+        expect(body.metadata).toMatchObject({
+          existingKey: 'keep',
+          vipPage: {
+            priceLabel: '80.000đ',
+            paymentNotice: 'VIP 80.000đ. Admin kích hoạt theo email Google.',
+          },
+        });
+        expect(body.metadata.vipPage.internalNote).toBeUndefined();
+        return jsonResponse([{ id: 'plan-vip', key: 'vip', metadata: body.metadata }]);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs') && init.method === 'POST') {
+        const body = JSON.parse(init.body);
+        expect(body.action).toBe('plans.update');
+        expect(body.before_json.metadata.existingKey).toBe('keep');
+        expect(body.after_json.metadata.vipPage.priceLabel).toBe('80.000đ');
+        return jsonResponse([{ id: 'audit-1', action: body.action }], 201);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/catalog/plan-vip', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        vipPage: {
+          priceLabel: '80.000đ',
+          paymentNotice: 'VIP 80.000đ. Admin kích hoạt theo email Google.',
+          internalNote: 'không được lưu',
+        },
+      }),
+    }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.item.metadata.existingKey).toBe('keep');
+    expect(payload.item.metadata.vipPage.priceLabel).toBe('80.000đ');
+  });
+
   it('creates user_plans rows for quick VIP grants and writes an audit log', async () => {
     const { calls } = mockAuthAndActor({}, async (target, init = {}) => {
       if (target.includes('/rest/v1/plans') && target.includes('key=eq.vip')) {

@@ -610,3 +610,11 @@ export function canUpdateUserStatus({
 export function accessDenied(permission) {
   return denial(403, 'ADMIN_PERMISSION_DENIED', `Bạn thiếu quyền ${permission}.`);
 }
+
+export {
+  DEFAULT_VIP_PAGE_CONTENT,
+  VIP_PAGE_CONTENT_FIELDS,
+  createDefaultVipPageContent,
+  getVipPageContentFromPlan,
+  normalizeVipPageContent,
+} from './vipPageContent.js';

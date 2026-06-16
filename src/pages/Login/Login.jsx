@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -24,6 +24,10 @@ import {
   getPlanDisplayName,
 } from '../../services/access/accessLabels.js';
 import { SUPPORT_CONTACT } from '../../config/supportContact.js';
+import {
+  DEFAULT_VIP_PAGE_CONTENT,
+  normalizeVipPageContent,
+} from '../../config/vipPageContent.js';
 import SupportDonateModal from '../../components/support/SupportDonateModal.jsx';
 import { useUserAccess } from '../../hooks/useUserAccess.js';
 import './Login.css';
@@ -71,6 +75,13 @@ function getExternalLinkProps(url) {
   };
 }
 
+async function fetchVipPageContent() {
+  const response = await fetch('/api/vip-page-content');
+  if (!response.ok) return DEFAULT_VIP_PAGE_CONTENT;
+  const payload = await response.json().catch(() => ({}));
+  return normalizeVipPageContent(payload?.vipPage);
+}
+
 export default function Login() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -80,12 +91,27 @@ export default function Login() {
   const [copied, setCopied] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [donateOpen, setDonateOpen] = useState(false);
+  const [vipPageContent, setVipPageContent] = useState(DEFAULT_VIP_PAGE_CONTENT);
   const returnTo = useMemo(() => getReturnTo(location), [location]);
 
   const email = access?.user?.email || '';
   const enabledFeatures = FEATURE_ORDER.filter((featureKey) => access?.features?.[featureKey]?.allowed);
   const hasVipPlan = ['vip', 'lifetime'].includes(String(access?.plan?.key || '').toLowerCase());
   const authenticated = Boolean(access?.authenticated);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchVipPageContent()
+      .then((content) => {
+        if (mounted) setVipPageContent(content);
+      })
+      .catch(() => {
+        if (mounted) setVipPageContent(DEFAULT_VIP_PAGE_CONTENT);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleGoogleLogin = async () => {
     setError('');
@@ -145,8 +171,8 @@ export default function Login() {
               <Crown size={30} />
             </span>
             <div>
-              <h1>Tài khoản & VIP StoryForge</h1>
-              <p>Do lượng người dùng tăng khá nhanh, chi phí duy trì web hiện tại không còn đủ để admin cấp VIP miễn phí như trước. Vì vậy VIP sẽ chuyển sang mức 50.000đ để tiếp tục duy trì StoryForge ổn định hơn.</p>
+              <h1>{vipPageContent.title}</h1>
+              <p>{vipPageContent.introText}</p>
             </div>
           </div>
 
@@ -166,7 +192,7 @@ export default function Login() {
           <div className="login-page__support" aria-label="Hỗ trợ và cộng đồng">
             <div>
               <h2>Hỗ trợ & cộng đồng</h2>
-              <p>Ủng hộ dự án, vào server Discord hoặc nhắn admin khi cần hỗ trợ tài khoản và VIP.</p>
+              <p>{vipPageContent.supportText}</p>
             </div>
             <div className="login-page__support-actions">
               <button type="button" className="btn btn-primary" onClick={() => setDonateOpen(true)}>
@@ -212,7 +238,7 @@ export default function Login() {
               <div className="login-page__status login-page__status--success">
                 <CheckCircle2 size={24} />
                 <h2>Đã đăng nhập</h2>
-                <p>{hasVipPlan ? 'Tài khoản của bạn đã có VIP.' : 'Copy email bên dưới rồi gửi admin để kích hoạt VIP.'}</p>
+                <p>{hasVipPlan ? vipPageContent.signedInVipText : vipPageContent.signedInFreeText}</p>
               </div>
 
               <div className="login-page__account">
@@ -229,7 +255,7 @@ export default function Login() {
               {!hasVipPlan ? (
                 <div className="login-page__notice">
                   <MessageCircle size={18} />
-                  <p>VIP 50.000đ. Sau khi thanh toán, admin sẽ kích hoạt VIP theo đúng email Google đã đăng nhập.</p>
+                  <p>{vipPageContent.paymentNotice}</p>
                 </div>
               ) : null}
 
@@ -273,7 +299,7 @@ export default function Login() {
               <div className="login-page__status">
                 <LogIn size={24} />
                 <h2>Đăng nhập để kiểm tra VIP</h2>
-                <p>Đăng nhập Google để lấy email gửi admin mua và kích hoạt VIP.</p>
+                <p>{vipPageContent.signedOutText}</p>
               </div>
 
               {!isCloudAuthConfigured() ? (

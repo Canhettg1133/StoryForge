@@ -80,6 +80,7 @@ describe('split admin access static contracts', () => {
       read('src/pages/Dashboard/Dashboard.jsx'),
       read('src/pages/Login/Login.jsx'),
       read('src/services/access/accessControl.js'),
+      read('packages/access/src/vipPageContent.js'),
       read('apps/admin/src/App.jsx'),
       read('apps/admin-api-worker/src/index.js'),
     ].join('\n');

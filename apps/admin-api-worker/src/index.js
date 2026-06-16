@@ -11,6 +11,7 @@ import {
   normalizePlan,
   normalizeRole,
   normalizeStatus,
+  normalizeVipPageContent,
   resolveAccessSubject,
   resolveUserAccess,
 } from '../../../packages/access/src/index.js';
@@ -352,6 +353,14 @@ async function findPlanByKey(config, planKeyInput) {
   return plan;
 }
 
+async function findPlanById(config, id) {
+  const rows = await supabaseRest(config, PLANS_TABLE, {
+    query: `select=*&id=eq.${encodeURIComponent(id)}&limit=1`,
+    prefer: '',
+  });
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
 async function countOwners(config) {
   const rows = await supabaseRest(config, PROFILES_TABLE, {
     query: `select=user_id&${filterEq('system_role', SYSTEM_ROLES.OWNER)}`,
@@ -610,12 +619,25 @@ async function getCatalog(config, actor) {
 
 async function mutateCatalogPlan(config, request, actor, id, body) {
   requirePermission(actor, ADMIN_PERMISSIONS.CATALOG_WRITE);
+  const currentPlan = body.vipPage !== undefined ? await findPlanById(config, id) : null;
+  if (body.vipPage !== undefined && !currentPlan) {
+    throw makeError(404, 'ADMIN_PLAN_NOT_FOUND', 'Không tìm thấy gói cần cập nhật.');
+  }
+  const currentMetadata = currentPlan?.metadata && typeof currentPlan.metadata === 'object'
+    ? currentPlan.metadata
+    : {};
   const patch = {
     ...(body.name !== undefined ? { name: String(body.name) } : {}),
     ...(body.description !== undefined ? { description: String(body.description) } : {}),
     ...(body.active !== undefined || body.enabled !== undefined ? { active: normalizeBoolean(body.active ?? body.enabled, true) } : {}),
     ...(body.sortOrder !== undefined || body.sort_order !== undefined ? { sort_order: Number(body.sortOrder ?? body.sort_order) || 100 } : {}),
     ...(body.metadata !== undefined ? { metadata: body.metadata || {} } : {}),
+    ...(body.vipPage !== undefined ? {
+      metadata: {
+        ...currentMetadata,
+        vipPage: normalizeVipPageContent(body.vipPage),
+      },
+    } : {}),
   };
   const rows = await supabaseRest(config, PLANS_TABLE, {
     method: 'PATCH',
@@ -624,6 +646,7 @@ async function mutateCatalogPlan(config, request, actor, id, body) {
   });
   const item = Array.isArray(rows) ? rows[0] : rows;
   await auditMutation(config, request, actor, 'plans.update', {
+    ...(currentPlan ? { before: currentPlan } : {}),
     after: item || patch,
   });
   return { ok: true, item };

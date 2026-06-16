@@ -73,6 +73,7 @@ describe('phase10 account page navigation', () => {
     }
     container.remove();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   async function renderLogin(initialPath = '/login?returnTo=%2Fsettings') {
@@ -177,6 +178,41 @@ describe('phase10 account page navigation', () => {
     });
 
     expect(container.textContent).not.toContain('Thông tin ủng hộ dự án');
+  });
+
+  it('uses editable VIP page content instead of hard-coded pricing copy', async () => {
+    accessMock.current = {
+      access: {
+        authenticated: true,
+        user: { email: 'free@example.com' },
+        plan: null,
+        features: {},
+      },
+      loading: false,
+    };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      ok: true,
+      vipPage: {
+        title: 'Tài khoản VIP StoryForge',
+        priceLabel: '80.000đ',
+        introText: 'VIP hiện tại là 80.000đ để duy trì hệ thống ổn định.',
+        supportText: 'Nhắn admin hoặc vào Discord khi cần hỗ trợ VIP.',
+        signedInFreeText: 'Copy email rồi gửi admin để kích hoạt VIP.',
+        paymentNotice: 'VIP 80.000đ. Admin sẽ kích hoạt theo email Google.',
+      },
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    })));
+
+    await renderLogin('/login');
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(container.textContent).toContain('VIP hiện tại là 80.000đ');
+    expect(container.textContent).toContain('VIP 80.000đ. Admin sẽ kích hoạt theo email Google.');
+    expect(container.textContent).not.toContain('VIP 50.000đ');
   });
 
   it('also exposes logout inside Settings account access summary', async () => {
