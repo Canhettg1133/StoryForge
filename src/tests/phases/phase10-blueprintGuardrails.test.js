@@ -113,6 +113,39 @@ describe('phase10 blueprint guardrails', () => {
     expect(validation.blockingIssues.map((item) => item.code)).toContain('seed-missing-protagonist');
   });
 
+  it('allows two protagonists in a story bible seed', () => {
+    const validation = buildStoryBibleSeedValidation({
+      characters: [
+        { name: 'Lan', role: 'protagonist' },
+        { name: 'Kha', role: 'protagonist' },
+      ],
+    }, { initialChapterCount: 2 });
+
+    expect(validation.blockingIssues.map((item) => item.code)).not.toContain('seed-too-many-protagonists');
+  });
+
+  it('treats deuteragonist as a central seed role', () => {
+    const validation = buildStoryBibleSeedValidation({
+      characters: [{ name: 'Kha', role: 'deuteragonist' }],
+    }, { initialChapterCount: 1 });
+
+    expect(validation.blockingIssues.map((item) => item.code)).not.toContain('seed-missing-protagonist');
+    expect(validation.blockingIssues.map((item) => item.code)).not.toContain('seed-deferred-character');
+  });
+
+  it('warns instead of blocking when a seed has more than two protagonists', () => {
+    const validation = buildStoryBibleSeedValidation({
+      characters: [
+        { name: 'Lan', role: 'protagonist' },
+        { name: 'Kha', role: 'protagonist' },
+        { name: 'Minh', role: 'protagonist' },
+      ],
+    }, { initialChapterCount: 3 });
+
+    expect(validation.blockingIssues.map((item) => item.code)).not.toContain('seed-too-many-protagonists');
+    expect(validation.warnings.map((item) => item.code)).toContain('seed-too-many-protagonists');
+  });
+
   it('blocks supporting characters reserved for later instead of early story use', () => {
     const validation = buildStoryBibleSeedValidation({
       characters: [

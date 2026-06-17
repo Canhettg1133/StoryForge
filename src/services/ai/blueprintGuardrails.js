@@ -8,6 +8,12 @@ function normalizeBlueprintText(value) {
     .trim();
 }
 
+const CENTRAL_CHARACTER_ROLES = new Set(['protagonist', 'deuteragonist']);
+
+function isCentralCharacterRole(role) {
+  return CENTRAL_CHARACTER_ROLES.has(String(role || '').toLowerCase());
+}
+
 function parseLooseList(value) {
   if (Array.isArray(value)) {
     return value
@@ -464,7 +470,7 @@ function hydrateWizardBlueprintResult(result = {}) {
     ? result.plot_threads.map((thread) => ({ ...thread }))
     : [];
 
-  const protagonistNames = buildEntityNamePool(characters, (item) => String(item?.role || '').toLowerCase() === 'protagonist');
+  const protagonistNames = buildEntityNamePool(characters, (item) => isCentralCharacterRole(item?.role));
   const supportingNames = buildEntityNamePool(characters, (item) => String(item?.role || '').toLowerCase() !== 'minor');
   const characterPool = protagonistNames.length > 0 ? protagonistNames : supportingNames;
   const locationPool = buildEntityNamePool(locations);
@@ -972,7 +978,7 @@ export function buildStoryBibleSeedValidation(seed = {}, options = {}) {
     String(character?.role || '').toLowerCase() !== 'minor'
   ));
   const protagonists = importantCharacters.filter((character) => (
-    String(character?.role || '').toLowerCase() === 'protagonist'
+    isCentralCharacterRole(character?.role)
   ));
   const characterLimit = getSeedCharacterLimit(chapterCount);
 
@@ -980,13 +986,13 @@ export function buildStoryBibleSeedValidation(seed = {}, options = {}) {
     blockingIssues.push(createIssue(
       'blocking',
       'seed-missing-protagonist',
-      'Nền truyện phải có đúng một nhân vật chính.',
+      'Nền truyện phải có ít nhất một nhân vật chính hoặc trung tâm.',
     ));
-  } else if (protagonists.length > 1) {
-    blockingIssues.push(createIssue(
-      'blocking',
+  } else if (protagonists.length > 2) {
+    warnings.push(createIssue(
+      'warning',
       'seed-too-many-protagonists',
-      'Nền truyện chỉ nên có một nhân vật chính chính thức ở bước khởi tạo.',
+      'Nền truyện có hơn hai nhân vật chính; vẫn dùng được nhưng nên giữ tuyến mở đầu thật tập trung.',
       { protagonistCount: protagonists.length },
     ));
   }
@@ -1010,7 +1016,7 @@ export function buildStoryBibleSeedValidation(seed = {}, options = {}) {
   }
 
   importantCharacters
-    .filter((character) => String(character?.role || '').toLowerCase() !== 'protagonist')
+    .filter((character) => !isCentralCharacterRole(character?.role))
     .forEach((character, index) => {
       const name = getBlueprintEntityName(character) || `Nhân vật phụ ${index + 1}`;
       if (!normalizeOptionalText(character.story_function) || looksDeferredToFuture(character.story_function)) {
@@ -1361,7 +1367,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
   });
 
   const protagonistNames = includedCharacters
-    .filter((character) => character?.name && String(character.role || '').toLowerCase() === 'protagonist')
+    .filter((character) => character?.name && isCentralCharacterRole(character.role))
     .map((character) => character.name);
   protagonistNames.forEach((name) => {
     const normalized = normalizeBlueprintText(name);
@@ -1373,7 +1379,7 @@ export function buildWizardValidation(result, excluded = new Set()) {
       blockingIssues.push(createIssue(
         'blocking',
         'protagonist-unused',
-        `Nhân vật chính "${name}" không xuất hiện trong chương đầu.`,
+        `Nhân vật chính/trung tâm "${name}" không xuất hiện trong chương đầu.`,
         { entityName: name },
       ));
     }

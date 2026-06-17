@@ -14,7 +14,7 @@ const STORY_BIBLE_SEED_SYSTEM_PROMPT_LOCKED = `Trả về CHÍNH XÁC JSON forma
     "world_rules": ["Quy tắc 1", "Quy tắc 2", "Quy tắc 3"],
     "world_description": "Mô tả tổng quan thế giới 2-3 câu"
   },
-  "characters": [{"name": "...", "aliases": ["tên gọi khác / biệt danh nếu có"], "role": "protagonist|antagonist|supporting|mentor|minor", "specific_role": "vai trò canon cụ thể nếu cần khóa; để rỗng nếu không có", "specific_role_locked": false, "age": "tuổi/độ tuổi tùy chọn", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu lúc đầu", "goals": "...", "current_status": "Live Canon tại lúc mở truyện/chương 1; không ghi trạng thái tương lai", "story_function": "vai trò cụ thể trong phần mở đầu"}],
+  "characters": [{"name": "...", "aliases": ["tên gọi khác / biệt danh nếu có"], "role": "protagonist|deuteragonist|antagonist|supporting|mentor|love_interest|minor", "specific_role": "vai trò canon cụ thể nếu cần khóa; để rỗng nếu không có", "specific_role_locked": false, "age": "tuổi/độ tuổi tùy chọn", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu lúc đầu", "goals": "...", "current_status": "Live Canon tại lúc mở truyện/chương 1; không ghi trạng thái tương lai", "story_function": "vai trò cụ thể trong phần mở đầu"}],
   "locations": [{"name": "...", "description": "...", "story_function": "địa điểm này dùng để làm gì ở phần mở đầu"}],
   "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chỉ thêm nếu phần mở đầu thật sự cần vật phẩm này"}],
   "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "...", "story_function": "thế lực này dùng để làm gì ở phần mở đầu"}],
@@ -32,7 +32,7 @@ QUY TẮC SEED:
 - Nếu tác giả yêu cầu bất kỳ/ngẫu nhiên/tự chọn trong một thể loại đã chọn, vẫn giữ thể loại đó nhưng không dùng gói mở đầu mặc định của thể loại; phải tạo biến thể premise riêng trong nội bộ thể loại dựa trên tag/trope, tone, POV và một điểm khác biệt cụ thể. Quy tắc này áp dụng cho mọi thể loại.
 - Ví dụ với Tiên hiệp: không tự lặp tạp dịch, tông môn suy tàn, linh thạch, cơ duyên nghịch mệnh, phế vật bị áp bức hoặc cheat mở đầu trừ khi tác giả yêu cầu rõ.
 - Đây chỉ là Story Bible Seed, KHÔNG lập dàn ý chương ở bước này.
-- Số nhân vật phải tỉ lệ với {{initial_chapter_count}} chương khởi đầu: 1 chương = 1 protagonist + tối đa 1 nhân vật phụ thật sự cần xuất hiện; 2-3 chương = 2-4 nhân vật; 4+ chương = 3-5 nhân vật.
+- Số nhân vật phải tỉ lệ với {{initial_chapter_count}} chương khởi đầu: 1 chương thường là 1 protagonist + tối đa 1 nhân vật phụ thật sự cần xuất hiện; nếu premise xoay quanh song nhân vật chính thì dùng tối đa 2 nhân vật trung tâm, trong đó ít nhất 1 protagonist và nhân vật còn lại có thể là protagonist hoặc deuteragonist; 2-3 chương = 2-4 nhân vật; 4+ chương = 3-5 nhân vật.
 - Không tạo nhân vật, địa điểm, vật phẩm, thế lực, thuật ngữ "để dành về sau".
 - Mỗi entity phải có story_function cụ thể trong phần mở đầu hoặc premise. Nếu chưa dùng sớm thì không tạo.
 - Chỉ tạo thuật ngữ, vật phẩm, thế lực, địa điểm khi chúng thật sự phục vụ premise hoặc phần mở đầu; không tạo chỉ vì chúng là mặc định của thể loại.
@@ -116,7 +116,7 @@ const PROJECT_WIZARD_SYSTEM_PROMPT_LOCKED = `Trả về CHÍNH XÁC JSON format:
     "world_rules": ["Quy tắc 1", "Quy tắc 2", "Quy tắc 3"],
     "world_description": "Mô tả tổng quan thế giới 2-3 câu"
   },
-  "characters": [{"name": "...", "aliases": ["tên gọi khác / biệt danh nếu có"], "role": "protagonist|antagonist|supporting|mentor|minor", "specific_role": "vai trò canon cụ thể nếu tác giả yêu cầu; để rỗng nếu không có", "specific_role_locked": false, "age": "tuổi/độ tuổi tùy chọn, chỉ điền khi phù hợp thể loại hoặc hữu ích cho giọng thoại", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu / khuyết điểm lúc đầu", "goals": "...", "current_status": "Character Live Canon lúc khởi đầu; để rỗng nếu không có ràng buộc canon thật", "story_function": "vai trò trong các chapter đầu"}],
+  "characters": [{"name": "...", "aliases": ["tên gọi khác / biệt danh nếu có"], "role": "protagonist|deuteragonist|antagonist|supporting|mentor|love_interest|minor", "specific_role": "vai trò canon cụ thể nếu tác giả yêu cầu; để rỗng nếu không có", "specific_role_locked": false, "age": "tuổi/độ tuổi tùy chọn, chỉ điền khi phù hợp thể loại hoặc hữu ích cho giọng thoại", "appearance": "...", "personality": "...", "personality_tags": "tag1, tag2", "flaws": "điểm yếu / khuyết điểm lúc đầu", "goals": "...", "current_status": "Character Live Canon lúc khởi đầu; để rỗng nếu không có ràng buộc canon thật", "story_function": "vai trò trong các chapter đầu"}],
   "locations": [{"name": "...", "description": "...", "story_function": "địa điểm này dùng để làm gì trong chapter đầu"}],
   "objects": [{"name": "...", "description": "...", "owner": "...", "story_function": "chỉ thêm nếu chapter đầu thật sự cần vật phẩm này"}],
   "factions": [{"name": "...", "faction_type": "sect|kingdom|organization|other", "description": "...", "notes": "...", "story_function": "thế lực này dùng để làm gì trong chapter đầu"}],
@@ -411,7 +411,7 @@ Nhiệm vụ của bạn là tạo một blueprint ban đầu cho dự án, vừ
 NGUYÊN TẮC BẮT BUỘC:
 - Số chapter trong "chapters" PHẢI đúng bằng {{initial_chapter_count}}.
 - Mỗi entity được tạo ra phải có chức năng rõ trong phần chapter đầu; nếu không cần cho {{initial_chapter_count}} chapter đầu thì KHÔNG tạo.
-- Số nhân vật phải tỉ lệ với {{initial_chapter_count}} chapter đầu: nếu chỉ 1 chapter thì thường chỉ 1 protagonist + tối đa 1 nhân vật phụ thật sự xuất hiện; nếu 2-3 chapter thì 2-4 nhân vật; chỉ khi 4+ chapter mới cần 3-5 nhân vật. Không tạo nhân vật "để dành về sau" trong wizard khởi đầu.
+- Số nhân vật phải tỉ lệ với {{initial_chapter_count}} chapter đầu: nếu chỉ 1 chapter thì thường chỉ 1 protagonist + tối đa 1 nhân vật phụ thật sự xuất hiện; nếu premise xoay quanh song nhân vật chính thì dùng tối đa 2 nhân vật trung tâm, trong đó ít nhất 1 protagonist và nhân vật còn lại có thể là protagonist hoặc deuteragonist; nếu 2-3 chapter thì 2-4 nhân vật; chỉ khi 4+ chapter mới cần 3-5 nhân vật. Không tạo nhân vật "để dành về sau" trong wizard khởi đầu.
 - Nhân vật, địa điểm, thuật ngữ, và plot thread phải bám sát premise và phải được nhắc đến trong chapter outline.
 - Mỗi nhân vật chỉ có 1 record chính thức. Tên ngắn, biệt danh, danh xưng, họ/tên đệm, hoặc biến thể chính tả phải nằm trong aliases của record đó, KHÔNG tạo thành nhân vật mới.
 - Nếu một nhân vật đã có trong danh sách, mọi chi tiết mới liên quan đến người đó phải cập nhật vào chính nhân vật đó.

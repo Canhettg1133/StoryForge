@@ -793,6 +793,11 @@
   flex: 1;
 }
 
+.wizard-edit-row .wizard-edit-field--role {
+  flex: 1.25;
+  min-width: min(100%, 240px);
+}
+
 /* Label + input trong form */
 .wizard-edit-field {
   display: flex;

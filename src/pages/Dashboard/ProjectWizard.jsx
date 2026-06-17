@@ -13,6 +13,7 @@ import {
   GENRE_TO_PRONOUN_STYLE,
   PROJECT_TAG_PRESETS,
   AUTO_GENRE_VALUE,
+  CHARACTER_ROLES,
 } from '../../utils/constants';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import useProjectStore from '../../stores/projectStore';
@@ -82,14 +83,8 @@ const TYPE_LABELS = {
   mystery: 'Bí ẩn',
   romance: 'Tình cảm',
 };
-const CHAR_ROLES = ['protagonist', 'antagonist', 'supporting', 'mentor', 'minor'];
-const CHAR_ROLE_LABELS = {
-  protagonist: 'Nhân vật chính',
-  antagonist: 'Phản diện',
-  supporting: 'Phụ trợ',
-  mentor: 'Sư phụ / cố vấn',
-  minor: 'Quần chúng',
-};
+const CHAR_ROLES = CHARACTER_ROLES.map((role) => role.value);
+const CHAR_ROLE_LABELS = Object.fromEntries(CHARACTER_ROLES.map((role) => [role.value, role.label]));
 const TERM_CATEGORIES = ['magic', 'race', 'technology', 'other'];
 const FACTION_TYPES = ['sect', 'kingdom', 'organization', 'other'];
 const FACTION_TYPE_LABELS = {
@@ -972,9 +967,9 @@ export default function ProjectWizard({ onClose, onCreated }) {
           <label>Tên</label>
           <input className="input input-sm" value={character.name || ''} onChange={(event) => updateResultItem('characters', index, 'name', event.target.value)} />
         </div>
-        <div className="wizard-edit-field">
+        <div className="wizard-edit-field wizard-edit-field--role">
           <label>Vai trò</label>
-          <select className="select select-sm" value={character.role || 'supporting'} onChange={(event) => updateResultItem('characters', index, 'role', event.target.value)}>
+          <select className="select select-sm wizard-role-select" value={character.role || 'supporting'} onChange={(event) => updateResultItem('characters', index, 'role', event.target.value)}>
             {CHAR_ROLES.map((role) => <option key={role} value={role}>{CHAR_ROLE_LABELS[role] || role}</option>)}
           </select>
         </div>

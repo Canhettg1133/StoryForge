@@ -94,7 +94,7 @@ export function countWords(text) {
 
 export const CHARACTER_ROLES = [
   { value: 'protagonist', label: 'Nhân vật chính' },
-  { value: 'deuteragonist', label: 'Nhân vật phụ chính' },
+  { value: 'deuteragonist', label: 'Đồng nhân vật chính' },
   { value: 'antagonist', label: 'Phản diện' },
   { value: 'supporting', label: 'Phụ trợ' },
   { value: 'mentor', label: 'Sư phụ / Cố vấn' },
