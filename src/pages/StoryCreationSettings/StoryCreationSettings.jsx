@@ -25,6 +25,7 @@ import {
 } from '../../services/ai/storyCreationSettings';
 import { navigateBackOr } from '../../utils/navigation.js';
 import { GLOBAL_PROMPT_META } from '../../services/ai/promptManagerMeta';
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
 
 function VariableChips({ variables }) {
   return (
@@ -338,7 +339,7 @@ export default function StoryCreationSettings() {
                     </>
                   )}
                 </div>
-                <textarea
+                <AutoResizeTextarea
                   className="textarea story-creation-textarea"
                   rows={16}
                   value={draft[group.key]?.systemPrompt || ''}
@@ -380,7 +381,7 @@ export default function StoryCreationSettings() {
                     <br />
                     <strong>Dùng để làm gì:</strong> điều chỉnh dữ liệu và câu lệnh được bơm vào từng lần gọi AI.
                   </div>
-                  <textarea
+                  <AutoResizeTextarea
                     className="textarea story-creation-textarea"
                     rows={10}
                     value={draft[group.key]?.userPromptTemplate || ''}

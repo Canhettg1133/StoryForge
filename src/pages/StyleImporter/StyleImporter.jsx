@@ -25,6 +25,7 @@ import {
 } from '../../services/styleImporter/projectPromptInterop.js';
 import { buildPromptPatchCoverage } from '../../services/styleImporter/promptPatchCoverage.js';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
 
 
 const STYLE_FIELDS = [
@@ -419,7 +420,7 @@ export default function StyleImporter() {
             <p>Yêu cầu này sẽ được ưu tiên khi tạo Style Pack và patch prompt.</p>
           </div>
         </div>
-        <textarea
+        <AutoResizeTextarea
           className="textarea style-importer-instruction"
           value={userInstruction}
           onChange={(event) => setUserInstruction(event.target.value)}

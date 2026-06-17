@@ -150,7 +150,7 @@
 
 .style-importer-instruction {
   min-height: 112px;
-  resize: vertical;
+  max-height: min(48dvh, 420px);
 }
 
 .style-importer-progress {

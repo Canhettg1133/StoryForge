@@ -37,6 +37,7 @@ import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
 
 function parsePromptTemplates(rawValue) {
   if (!rawValue) return {};
@@ -469,7 +470,7 @@ function PromptEditorCard({
             </div>
           </div>
 
-          <textarea
+          <AutoResizeTextarea
             className={`textarea prompt-editor-block__textarea ${coreEditable ? '' : 'is-readonly'}`}
             rows={item.type === 'list' ? 8 : 12}
             value={coreDraft}
@@ -507,7 +508,7 @@ function PromptEditorCard({
             </div>
           </div>
 
-          <textarea
+          <AutoResizeTextarea
             className="textarea prompt-editor-block__textarea"
             rows={item.type === 'list' ? 8 : 12}
             value={overrideDraft}

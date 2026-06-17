@@ -151,6 +151,11 @@
   line-height: var(--leading-normal);
 }
 
+.auto-resize-textarea {
+  resize: none;
+  overflow-y: hidden;
+}
+
 .select {
   height: 36px;
   cursor: pointer;

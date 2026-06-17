@@ -66,6 +66,11 @@
   overflow-wrap: anywhere;
 }
 
+.writing-debug-prompt-textarea {
+  min-height: 128px;
+  max-height: min(58dvh, 520px);
+}
+
 .writing-debug-summary {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -234,6 +239,11 @@
 
   .writing-debug-tab {
     white-space: normal;
+  }
+
+  .writing-debug-prompt-textarea {
+    min-height: 120px;
+    max-height: 50dvh;
   }
 
   .writing-debug-pre,

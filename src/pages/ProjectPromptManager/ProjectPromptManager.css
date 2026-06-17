@@ -517,7 +517,8 @@
 }
 
 .prompt-editor-block__textarea {
-  min-height: 220px;
+  min-height: 180px;
+  max-height: min(68dvh, 720px);
   font-family: var(--font-mono, monospace);
   font-size: 12px;
 }
@@ -737,7 +738,8 @@
   .prompt-editor-block__textarea {
     width: 100%;
     max-width: 100%;
-    min-height: 52dvh;
+    min-height: 160px;
+    max-height: 64dvh;
     overflow-x: hidden;
     white-space: pre-wrap;
     overflow-wrap: anywhere;

@@ -22,6 +22,7 @@ import {
   WRITING_DEBUG_TASKS,
 } from '../../services/ai/writingRequestDebugger';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
 
 const VIEW_TABS = [
   { id: 'system', label: 'System prompt' },
@@ -300,8 +301,8 @@ export default function WritingRequestDebugger() {
 
         <label className="writing-debug-field">
           <span>Yêu cầu / chỉ dẫn thêm</span>
-          <textarea
-            className="textarea"
+          <AutoResizeTextarea
+            className="textarea writing-debug-prompt-textarea"
             rows={5}
             value={userPrompt}
             onChange={(event) => setUserPrompt(event.target.value)}
@@ -311,8 +312,8 @@ export default function WritingRequestDebugger() {
 
         <label className="writing-debug-field">
           <span>Đoạn chọn thủ công cho Viết lại / Mở rộng</span>
-          <textarea
-            className="textarea"
+          <AutoResizeTextarea
+            className="textarea writing-debug-prompt-textarea"
             rows={5}
             value={selectedText}
             onChange={(event) => setSelectedText(event.target.value)}
