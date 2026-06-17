@@ -194,6 +194,7 @@ function sendAiTask(taskType, messages, options = {}) {
       routeOptions: options.routeOptions,
       nsfwMode: options.nsfwMode,
       superNsfwMode: options.superNsfwMode,
+      allowConcurrent: !!options.allowConcurrent,
       onComplete: (text) => resolve(text),
       onError: reject,
     });
@@ -247,6 +248,7 @@ function clampAdjudicationConfidence(value) {
 }
 
 const AI_ADJUDICATABLE_WARNING_RULES = new Set([
+  'DEAD_CHARACTER_ACTIVE',
   'DRAFT_TOUCHES_HIDDEN_SECRET',
   'DRAFT_REFERENCES_SPENT_ITEM',
   'ITEM_REUSE_NEEDS_REVIEW',
@@ -449,6 +451,7 @@ async function adjudicateWarningReports({
   candidateOps,
   preTruth,
   routeOptions = null,
+  allowConcurrent = false,
 }) {
   const warningReports = reports.filter((report) => shouldAdjudicateWarning(report));
   if (warningReports.length === 0) return reports;
@@ -467,6 +470,7 @@ async function adjudicateWarningReports({
       routeOptions: routeOptions || undefined,
       nsfwMode: !!project?.nsfw_mode,
       superNsfwMode: !!project?.super_nsfw_mode,
+      allowConcurrent,
     });
     const decisions = normalizeAdjudicationResponse(parseAIJsonValue(rawText));
     const decisionByIndex = new Map();
@@ -546,6 +550,7 @@ export async function extractCandidateOps({
   chapterText = '',
   scenes = [],
   routeOptions = null,
+  allowConcurrent = false,
 }) {
   const { project } = await getChapterAndProject(projectId, chapterId);
   const [characters, locations, plotThreads, canonFacts, objects, relationships] = await Promise.all([
@@ -592,6 +597,7 @@ export async function extractCandidateOps({
     routeOptions: routeOptions || undefined,
     nsfwMode: !!project?.nsfw_mode,
     superNsfwMode: !!project?.super_nsfw_mode,
+    allowConcurrent,
   });
   if (!cleanText(rawText)) {
     throw buildCanonExtractError(new Error('AI không trả về nội dung trích xuất canon.'), rawText);
@@ -651,6 +657,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
         chapterText: revision.chapter_text,
         scenes,
         routeOptions: options.routeOptions || null,
+        allowConcurrent: !!options.allowConcurrent,
       });
     } catch (error) {
       console.warn('[Canon] extractCandidateOps failed, falling back to heuristic-only validation:', error);
@@ -718,6 +725,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
     candidateOps,
     preTruth,
     routeOptions: options.routeOptions || null,
+    allowConcurrent: !!options.allowConcurrent,
   });
   await replaceValidatorReports(revision.project_id, revision.id, reports);
 
@@ -837,6 +845,7 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
   const validation = await validateRevision(revision.id, 'canonicalize', {
     routeOptions: options.routeOptions || null,
     deferRiskyCanonOps: true,
+    allowConcurrent: !!options.allowConcurrent,
   });
   if (validation.hasErrors) {
     await updateChapterCommitSummary(projectId, chapterId, CHAPTER_COMMIT_STATUS.BLOCKED, validation.reports, revision.id);
@@ -929,6 +938,7 @@ export async function canonicalizeCandidateOps({
   candidateOps = [],
   chapterText = '',
   sourceType = 'manual_review',
+  allowConcurrent = false,
 }) {
   const scenes = await getChapterScenes(chapterId);
   const commit = await getOrCreateChapterCommit(projectId, chapterId);
@@ -991,6 +1001,7 @@ export async function canonicalizeCandidateOps({
     reports,
     candidateOps: resolvedCommitReadyOps,
     preTruth,
+    allowConcurrent,
   });
 
   await replaceValidatorReports(projectId, revision.id, reports);
@@ -1085,6 +1096,7 @@ export async function validateSceneDraft({
   sceneText = '',
   sceneCast = [],
   characterContextGate = null,
+  allowConcurrent = false,
 }) {
   const [preTruth, project] = await Promise.all([
     loadPreChapterTruth(projectId, chapterId),
@@ -1153,6 +1165,7 @@ export async function validateSceneDraft({
     reports,
     candidateOps: [],
     preTruth,
+    allowConcurrent,
   });
   const scopedReports = reports.map((report) => ({ ...report, scene_id: sceneId || report.scene_id }));
   await replaceValidatorReports(projectId, revision.id, scopedReports);

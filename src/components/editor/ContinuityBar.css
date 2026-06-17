@@ -151,6 +151,12 @@
   background: transparent;
 }
 
+.continuity-bar-btn--completion {
+  border-color: color-mix(in srgb, var(--color-accent) 42%, var(--color-border));
+  background: var(--color-accent-muted);
+  color: var(--color-accent-hover);
+}
+
 .continuity-bar-btn--success {
   border-color: color-mix(in srgb, var(--color-success) 48%, var(--color-border));
   background: color-mix(in srgb, var(--color-success) 14%, var(--color-bg-tertiary));
@@ -189,6 +195,24 @@
 
 .continuity-bar-status--button:hover {
   filter: brightness(1.08);
+}
+
+.continuity-bar-status--button:disabled {
+  opacity: 0.6;
+  cursor: default;
+  filter: none;
+}
+
+.continuity-bar-status--completion {
+  border-color: color-mix(in srgb, var(--color-accent) 48%, var(--color-border));
+  background: var(--color-accent-muted);
+  color: var(--color-accent-hover);
+}
+
+.continuity-bar-status--completed {
+  border-color: color-mix(in srgb, var(--color-success) 48%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 14%, var(--color-bg-tertiary));
+  color: var(--color-success);
 }
 
 .continuity-bar-status--canonical {

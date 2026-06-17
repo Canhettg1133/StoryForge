@@ -18,6 +18,7 @@ const AI_ERROR_CODES = {
   NETWORK_ERROR: 'NETWORK_ERROR',
   SERVER_ERROR: 'SERVER_ERROR',
   PROXY_ERROR: 'PROXY_ERROR',
+  REQUEST_ABORTED: 'REQUEST_ABORTED',
   UNKNOWN_ERROR: 'UNKNOWN_ERROR',
 };
 
@@ -154,6 +155,25 @@ export function normalizeAIError(input = {}, context = {}) {
   const providerName = providerLabel(provider, proxyProfileId);
   const partialText = typeof input.partialText === 'string' ? input.partialText : '';
   const finishReason = String(input.finishReason || shape.reason || '').trim() || null;
+
+  if (
+    shape.code === AI_ERROR_CODES.REQUEST_ABORTED
+    || input?.name === 'AbortError'
+    || lower.includes('request_aborted')
+    || lower.includes('request aborted')
+    || lower.includes('aborted')
+  ) {
+    return createAIError({
+      userMessage: 'Yêu cầu AI đã bị hủy.',
+      code: AI_ERROR_CODES.REQUEST_ABORTED,
+      provider,
+      model,
+      status: shape.status,
+      rawMessage,
+      reason: shape.reason || 'request_aborted',
+      details: shape.details,
+    });
+  }
 
   if (shape.code === AI_ERROR_CODES.MISSING_API_KEY || lower.includes('không có api key') || lower.includes('khong co api key')) {
     return createAIError({

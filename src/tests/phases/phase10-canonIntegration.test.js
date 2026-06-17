@@ -222,7 +222,7 @@ async function loadModules(seed, options = {}) {
     buildPrompt: vi.fn(() => []),
   }));
   vi.doMock('../../services/ai/router', () => ({
-    TASK_TYPES: {},
+    TASK_TYPES: options.taskTypes || {},
     QUALITY_MODES: {},
     PROVIDERS: {},
   }));
@@ -236,9 +236,54 @@ describe('phase10 canon integration', () => {
     vi.clearAllMocks();
   });
 
-  it('defers risky character death during chapter canonicalization without blocking safe ops', async () => {
-    const { db, engine } = await loadModules({
-      projects: [{ id: 1, title: 'Canon review', genre_primary: 'fantasy' }],
+  it('passes allowConcurrent from chapter canonicalization to canon extraction', async () => {
+    const { engine, sendMock } = await loadModules({
+      projects: [{ id: 1, title: 'Concurrent canon', genre_primary: 'fantasy' }],
+      chapters: [
+        { id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' },
+        { id: 12, project_id: 1, order_index: 1, title: 'Chuong 2' },
+      ],
+      scenes: [{
+        id: 21,
+        project_id: 1,
+        chapter_id: 11,
+        order_index: 0,
+        title: 'Canh 1',
+        draft_text: 'Lan buoc vao thanh.',
+      }],
+      characters: [],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      story_events: [],
+      validator_reports: [],
+      memory_evidence: [],
+      chapter_snapshots: [],
+      entity_state_current: [],
+      plot_thread_state: [],
+      item_state_current: [],
+      relationship_state_current: [],
+      suggestions: [],
+    }, {
+      taskTypes: { CANON_EXTRACT_OPS: 'canon_extract_ops' },
+      sendImpl: ({ onComplete }) => onComplete('{"ops":[]}'),
+    });
+
+    await engine.canonicalizeChapter(1, 11, { allowConcurrent: true });
+
+    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({
+      taskType: 'canon_extract_ops',
+      allowConcurrent: true,
+    }));
+  });
+
+  it('passes allowConcurrent from revision validation to canon extraction', async () => {
+    const { engine, sendMock } = await loadModules({
+      projects: [{ id: 1, title: 'Concurrent validation', genre_primary: 'fantasy' }],
       chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
       scenes: [{
         id: 21,
@@ -246,8 +291,216 @@ describe('phase10 canon integration', () => {
         chapter_id: 11,
         order_index: 0,
         title: 'Canh 1',
-        draft_text: 'Lan hy sinh o cong thanh. Minh the bao ve thanh.',
+        draft_text: 'Lan buoc vao thanh.',
       }],
+      chapter_revisions: [{
+        id: 31,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'draft',
+        chapter_text: 'Lan buoc vao thanh.',
+        candidate_ops: '[]',
+      }],
+      characters: [],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_commits: [],
+      story_events: [],
+      validator_reports: [],
+      memory_evidence: [],
+      chapter_snapshots: [],
+      entity_state_current: [],
+      plot_thread_state: [],
+      item_state_current: [],
+      relationship_state_current: [],
+      suggestions: [],
+    }, {
+      taskTypes: { CANON_EXTRACT_OPS: 'canon_extract_ops' },
+      sendImpl: ({ onComplete }) => onComplete('{"ops":[]}'),
+    });
+
+    await engine.validateRevision(31, 'draft', { allowConcurrent: true });
+
+    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({
+      taskType: 'canon_extract_ops',
+      allowConcurrent: true,
+    }));
+  });
+
+  it('passes allowConcurrent from candidate canonicalization to warning adjudication', async () => {
+    const { engine, sendMock } = await loadModules({
+      projects: [{ id: 1, title: 'Concurrent candidate ops', genre_primary: 'fantasy' }],
+      chapters: [
+        { id: 10, project_id: 1, order_index: 0, title: 'Chuong 0' },
+        { id: 11, project_id: 1, order_index: 1, title: 'Chuong 1' },
+      ],
+      scenes: [{
+        id: 21,
+        project_id: 1,
+        chapter_id: 11,
+        order_index: 0,
+        title: 'Canh 1',
+        draft_text: 'Lan dung lai Ngoc An Hon.',
+      }],
+      characters: [{ id: 10, project_id: 1, name: 'Lan' }],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [{ id: 30, project_id: 1, name: 'Ngoc An Hon', description: 'Bao vat' }],
+      relationships: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      story_events: [],
+      validator_reports: [],
+      memory_evidence: [],
+      chapter_snapshots: [{
+        id: 51,
+        project_id: 1,
+        chapter_id: 10,
+        snapshot_json: JSON.stringify({
+          itemStates: [{
+            project_id: 1,
+            object_id: 30,
+            availability: 'lost',
+            item_category: '',
+            is_consumed: false,
+          }],
+        }),
+      }],
+      entity_state_current: [],
+      plot_thread_state: [],
+      item_state_current: [],
+      relationship_state_current: [],
+      suggestions: [],
+    }, {
+      taskTypes: { CANON_ADJUDICATE_WARNINGS: 'canon_adjudicate_warnings' },
+      sendImpl: ({ taskType, onComplete }) => {
+        if (taskType === 'canon_adjudicate_warnings') {
+          onComplete(JSON.stringify({
+            decisions: [{
+              warning_index: 0,
+              verdict: 'needs_review',
+              confidence: 0.8,
+              reason: 'Can nguoi doc xac nhan vat pham co duoc tim lai hay khong.',
+              suggested_action: 'keep_warning',
+            }],
+          }));
+        }
+      },
+    });
+
+    await engine.canonicalizeCandidateOps({
+      projectId: 1,
+      chapterId: 11,
+      allowConcurrent: true,
+      candidateOps: [{
+        op_type: 'OBJECT_CONSUMED',
+        chapter_id: 11,
+        scene_id: 21,
+        subject_id: 10,
+        subject_name: 'Lan',
+        object_id: 30,
+        object_name: 'Ngoc An Hon',
+        confidence: 0.8,
+        evidence: 'Lan dung lai Ngoc An Hon.',
+      }],
+    });
+
+    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({
+      taskType: 'canon_adjudicate_warnings',
+      allowConcurrent: true,
+    }));
+  });
+
+  it('passes allowConcurrent from scene draft validation to warning adjudication', async () => {
+    const { engine, sendMock } = await loadModules({
+      projects: [{ id: 1, title: 'Concurrent scene validation', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{
+        id: 21,
+        project_id: 1,
+        chapter_id: 11,
+        order_index: 0,
+        title: 'Canh 1',
+        draft_text: '',
+      }],
+      characters: [],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [{ id: 7, project_id: 1, description: 'than phan that cua hoang toc', fact_type: 'secret' }],
+      objects: [],
+      relationships: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      story_events: [],
+      validator_reports: [],
+      memory_evidence: [],
+      chapter_snapshots: [],
+      entity_state_current: [],
+      plot_thread_state: [],
+      item_state_current: [],
+      relationship_state_current: [],
+      suggestions: [],
+    }, {
+      taskTypes: { CANON_ADJUDICATE_WARNINGS: 'canon_adjudicate_warnings' },
+      sendImpl: ({ taskType, onComplete }) => {
+        if (taskType === 'canon_adjudicate_warnings') {
+          onComplete(JSON.stringify({
+            decisions: [{
+              warning_index: 0,
+              verdict: 'needs_review',
+              confidence: 0.8,
+              reason: 'Doan van co nhac toi bi mat can kiem tra.',
+              suggested_action: 'keep_warning',
+            }],
+          }));
+        }
+      },
+    });
+
+    await engine.validateSceneDraft({
+      projectId: 1,
+      chapterId: 11,
+      sceneId: 21,
+      sceneText: 'Lan noi ve than phan that cua hoang toc.',
+      allowConcurrent: true,
+    });
+
+    expect(sendMock).toHaveBeenCalledWith(expect.objectContaining({
+      taskType: 'canon_adjudicate_warnings',
+      allowConcurrent: true,
+    }));
+  });
+
+  it('defers risky character death during chapter canonicalization without blocking safe ops', async () => {
+    const { db, engine } = await loadModules({
+      projects: [{ id: 1, title: 'Canon review', genre_primary: 'fantasy' }],
+      chapters: [
+        { id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' },
+        { id: 12, project_id: 1, order_index: 1, title: 'Chuong 2' },
+      ],
+      scenes: [
+        {
+          id: 21,
+          project_id: 1,
+          chapter_id: 11,
+          order_index: 0,
+          title: 'Canh 1',
+          draft_text: 'Lan hy sinh o cong thanh. Minh the bao ve thanh.',
+        },
+        {
+          id: 22,
+          project_id: 1,
+          chapter_id: 12,
+          order_index: 0,
+          title: 'Canh 2',
+          draft_text: '',
+        },
+      ],
       characters: [
         { id: 10, project_id: 1, name: 'Lan', current_status: 'Con song' },
         { id: 12, project_id: 1, name: 'Minh', current_status: 'Con song' },
@@ -303,7 +556,7 @@ describe('phase10 canon integration', () => {
     expect(events.some((event) => event.op_type === 'GOAL_CHANGED')).toBe(true);
 
     const lanState = (await db.entity_state_current.toArray()).find((state) => state.entity_id === 10);
-    expect(lanState.alive_status).toBe('alive');
+    expect(lanState.alive_status).toBe('unknown');
 
     const suggestions = await db.suggestions.toArray();
     expect(suggestions).toHaveLength(1);
@@ -318,6 +571,25 @@ describe('phase10 canon integration', () => {
       reasoning: 'Lan hy sinh ở cổng thành.',
     });
     expect(JSON.parse(suggestions[0].candidate_op).op_type).toBe('CHARACTER_DIED');
+
+    const accepted = await engine.canonicalizeCandidateOps({
+      projectId: 1,
+      chapterId: 11,
+      candidateOps: [JSON.parse(suggestions[0].candidate_op)],
+      sourceType: 'suggestion_inbox',
+    });
+
+    expect(accepted.ok).toBe(true);
+    const committedLanState = (await db.entity_state_current.toArray()).find((state) => state.entity_id === 10);
+    expect(committedLanState.alive_status).toBe('dead');
+
+    const packet = await engine.buildRetrievalPacket({
+      projectId: 1,
+      chapterId: 12,
+      sceneId: 22,
+      detectedCharacterIds: [10],
+    });
+    expect(packet.criticalConstraints.deadCharacters).toContain(10);
   });
 
   it('defers consumed and risky object status ops without mutating item state', async () => {
@@ -560,7 +832,7 @@ describe('phase10 canon integration', () => {
     expect(await db.canonFacts.toArray()).toEqual([]);
   });
 
-  it('cleans only conflicting legacy character projection summaries when requested', async () => {
+  it('rebuilds legacy inferred-dead projection as unknown without changing character text', async () => {
     const { db, engine } = await loadModules({
       projects: [{ id: 1, title: 'Legacy cleanup' }],
       chapters: [],
@@ -573,15 +845,22 @@ describe('phase10 canon integration', () => {
       chapter_revisions: [],
       chapter_commits: [],
       story_events: [],
+      entity_state_current: [
+        { id: 301, project_id: 1, entity_id: 10, entity_type: 'character', alive_status: 'dead' },
+        { id: 302, project_id: 1, entity_id: 11, entity_type: 'character', alive_status: 'dead' },
+      ],
     });
 
-    await engine.rebuildCanonFromChapter(1, null, { cleanLegacyProjection: true });
+    const rebuild = await engine.rebuildCanonFromChapter(1, null, { cleanLegacyProjection: true });
 
     const ngocAnh = await db.characters.get(10);
     const ba = await db.characters.get(11);
+    expect(rebuild.entityStates.find((state) => state.entity_id === 10).alive_status).toBe('unknown');
+    expect(rebuild.entityStates.find((state) => state.entity_id === 11).alive_status).toBe('unknown');
+    expect((await db.entity_state_current.toArray()).every((state) => state.alive_status === 'unknown')).toBe(true);
     expect(ngocAnh.current_status).toContain('Con song');
     expect(ngocAnh.current_status).toContain('Giai ma cai chet cua ba');
-    expect(ngocAnh.current_status).not.toContain('Da chet');
+    expect(ngocAnh.current_status).toContain('Da chet');
     expect(ba.current_status).toBe('Da chet');
   });
 

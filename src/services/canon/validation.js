@@ -543,9 +543,9 @@ export function validateCandidateOps({
     if (op.subject_id) {
       const subjectState = entityMap.get(op.subject_id);
       if (subjectState?.alive_status === 'dead'
-        && ![CANON_OP_TYPES.CHARACTER_DIED].includes(op.op_type)) {
+        && ![CANON_OP_TYPES.CHARACTER_DIED, CANON_OP_TYPES.CHARACTER_RESCUED].includes(op.op_type)) {
         reports.push(createReport({
-          severity: CANON_SEVERITY.ERROR,
+          severity: CANON_SEVERITY.WARNING,
           ruleCode: 'DEAD_CHARACTER_ACTIVE',
           message: `${op.subject_name || 'Nhân vật'} đã chết nhưng vẫn phát sinh hành động ${describeCanonOp(op.op_type)}.`,
           projectId,
@@ -1182,33 +1182,9 @@ function paragraphHasMechanicalShortSentences(paragraph) {
   return shortCount >= 5;
 }
 
-function isUnavailableCharacter(character, entityStates = []) {
+function isCommittedDeadCharacter(character, entityStates = []) {
   const state = entityStates.find((item) => String(item.entity_id) === String(character?.id));
-  const statusText = normalizeKey([
-    character?.current_status,
-    character?.status,
-    state?.alive_status,
-    state?.summary,
-  ].join(' '));
-  if (state?.alive_status === 'dead') return true;
-  return [
-    'da chet',
-    'chet',
-    'dead',
-    'mat tich',
-    'mất tích',
-    'missing',
-    'khong ro tung tich',
-    'bi giam',
-    'dang bi giam',
-    'giam giu',
-    'bi nhot',
-    'dang bi nhot',
-    'phong an',
-    'bi phong an',
-    'dang lan tron',
-    'lan tron',
-  ].some((marker) => statusText.includes(normalizeKey(marker)));
+  return state?.alive_status === 'dead';
 }
 
 function findCharacterLiveCanonActionConstraint(paragraphs = [], character = {}, entityStates = []) {
@@ -1333,7 +1309,7 @@ export function validateGeneratedProseDiscipline({
   }
 
   characters
-    .filter((character) => isUnavailableCharacter(character, entityStates) && hasCharacterNameInText(text, character))
+    .filter((character) => isCommittedDeadCharacter(character, entityStates) && hasCharacterNameInText(text, character))
     .forEach((character) => {
       const activeParagraph = paragraphs.find((paragraph) => (
         paragraphHasDialogueForCharacter(paragraph, character)
@@ -1342,8 +1318,8 @@ export function validateGeneratedProseDiscipline({
       if (!activeParagraph) return;
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
-        ruleCode: 'UNAVAILABLE_CHARACTER_ACTIVE',
-        message: `Nhân vật ${character.name || 'không rõ'} đang chết/mất tích theo canon nhưng có dấu hiệu xuất hiện hoặc hành động trực tiếp.`,
+        ruleCode: 'DEAD_CHARACTER_ACTIVE',
+        message: `Nhân vật ${character.name || 'không rõ'} đã chết theo canon đã duyệt nhưng có dấu hiệu xuất hiện hoặc hành động trực tiếp.`,
         projectId,
         chapterId,
         revisionId,

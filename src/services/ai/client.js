@@ -1260,6 +1260,39 @@ class AIService {
     const shouldAutoContinueIncomplete = autoContinueOnIncomplete ?? WRITING_AUTO_CONTINUE_TASKS.has(taskType);
     const maxIncompleteContinuations = Math.max(0, Number(maxContinuationAttempts) || 0);
     let incompleteContinuationStarted = false;
+    let settled = false;
+
+    const buildAbortError = () => ({
+      name: 'AbortError',
+      code: AI_ERROR_CODES.REQUEST_ABORTED,
+      rawMessage: 'REQUEST_ABORTED',
+    });
+
+    const cleanupAbortListener = () => {
+      controller.signal.removeEventListener('abort', handleAbort);
+    };
+
+    const settleErrorOnce = (err, routeMeta = route) => {
+      if (settled) return;
+      settled = true;
+      cleanupAbortListener();
+      this.releaseController(controller, allowConcurrent);
+      onError?.(normalizeAIError(err, routeMeta));
+    };
+
+    const settleCompleteOnce = (text, meta) => {
+      if (settled) return;
+      settled = true;
+      cleanupAbortListener();
+      this.releaseController(controller, allowConcurrent);
+      onComplete?.(text, meta);
+    };
+
+    function handleAbort() {
+      settleErrorOnce(buildAbortError(), route);
+    }
+
+    controller.signal.addEventListener('abort', handleAbort, { once: true });
 
     const runProviderCall = (routeMeta, callMessages, handlers = {}) => getCallFn(routeMeta.provider)({
       model: routeMeta.model,
@@ -1273,17 +1306,17 @@ class AIService {
     });
 
     const continueIncompleteOutput = async (routeMeta, partialText, attemptIndex = 1) => {
+      if (settled) return;
       const safePartialText = String(partialText || '');
       if (!shouldAutoContinueIncomplete || !safePartialText.trim() || attemptIndex > maxIncompleteContinuations) {
-        this.releaseController(controller, allowConcurrent);
-        onError?.(createIncompleteOutputError({
+        settleErrorOnce(createIncompleteOutputError({
           partialText: safePartialText,
           finishReason: 'MAX_CONTINUATIONS_EXHAUSTED',
           rawMessage: 'INCOMPLETE_OUTPUT',
           errorContext: routeMeta,
           attempts: Math.max(0, attemptIndex - 1),
           maxAttempts: maxIncompleteContinuations,
-        }));
+        }), routeMeta);
         return;
       }
 
@@ -1301,20 +1334,18 @@ class AIService {
             return;
           }
 
-          this.releaseController(controller, allowConcurrent);
-          onError?.(createIncompleteOutputError({
+          settleErrorOnce(createIncompleteOutputError({
             partialText: combinedPartial || safePartialText,
             finishReason: normalized.finishReason || normalized.reason || 'MAX_CONTINUATIONS_EXHAUSTED',
             rawMessage: 'INCOMPLETE_OUTPUT',
             errorContext: routeMeta,
             attempts: attemptIndex,
             maxAttempts: maxIncompleteContinuations,
-          }));
+          }), routeMeta);
           return;
         }
 
-        this.releaseController(controller, allowConcurrent);
-        onError?.(normalized);
+        settleErrorOnce(normalized, routeMeta);
       };
 
       try {
@@ -1333,6 +1364,7 @@ class AIService {
     };
 
     const wrappedOnComplete = async (text, routeMeta = route) => {
+      if (settled) return;
       let processedText = text;
 
       // Post-processing: Remove internal thinking and metadata tags
@@ -1348,8 +1380,7 @@ class AIService {
         // Ensure we don't loop infinitely
         if (messages.some(m => m.content === NSFW_REBUKE_PROMPT)) {
           console.warn('[AI] Already rebuked in this chain. Aborting to avoid loop.');
-          this.releaseController(controller, allowConcurrent);
-          onComplete?.(processedText, { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
+          settleCompleteOnce(processedText, { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
           return;
         }
 
@@ -1390,11 +1421,10 @@ class AIService {
               onToken?.(chunk, clean);
             },
             onComplete: (finalText) => {
-              this.releaseController(controller, allowConcurrent);
               // Clean final text
-              onComplete?.(cleanMetadata(cleanThoughts(finalText)), { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
+              settleCompleteOnce(cleanMetadata(cleanThoughts(finalText)), { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
             },
-            onError: (e) => { this.releaseController(controller, allowConcurrent); onError?.(e); },
+            onError: (e) => settleErrorOnce(e, routeMeta),
             nsfwMode: true
           });
           return;
@@ -1404,12 +1434,17 @@ class AIService {
         }
       }
 
-      this.releaseController(controller, allowConcurrent);
-      onComplete?.(processedText, { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
+      settleCompleteOnce(processedText, { model: routeMeta.model, provider: routeMeta.provider, elapsed: Date.now() - startTime });
     };
 
     const wrappedOnError = async (err) => {
+      if (settled) return;
       let normalizedErr = normalizeAIError(err, route);
+
+      if (normalizedErr.code === AI_ERROR_CODES.REQUEST_ABORTED) {
+        settleErrorOnce(normalizedErr, route);
+        return;
+      }
 
       if (isIncompleteOutputError(normalizedErr)) {
         if (
@@ -1423,8 +1458,7 @@ class AIService {
           return;
         }
 
-        this.releaseController(controller, allowConcurrent);
-        onError?.(normalizedErr);
+        settleErrorOnce(normalizedErr, route);
         return;
       }
 
@@ -1452,11 +1486,12 @@ class AIService {
               const cleanFinal = superNsfwMode ? finalText.replace(/^\[.*?\]\n*/gm, '').trim() : finalText;
               wrappedOnComplete(cleanFinal);
             },
-            onError: (e) => { this.releaseController(controller, allowConcurrent); onError?.(e); },
+            onError: (e) => settleErrorOnce(e, route),
             nsfwMode: true
           });
           return;
         } catch (retryErr) {
+          if (settled) return;
           normalizedErr = normalizeAIError(retryErr, route);
         }
       }
@@ -1470,16 +1505,18 @@ class AIService {
               model: fb.model, messages, stream, signal: controller.signal,
               proxyProfileId: fb.proxyProfileId,
               onToken, onComplete: (text) => wrappedOnComplete(text, fb),
-              onError: (e) => { this.releaseController(controller, allowConcurrent); onError?.(normalizeAIError(e, fb)); },
+              onError: (e) => settleErrorOnce(normalizeAIError(e, fb), fb),
               nsfwMode,
               safetyMode: chatSafetyOff ? 'off' : undefined,
             });
             return;
-          } catch { continue; }
+          } catch {
+            if (settled) return;
+            continue;
+          }
         }
       }
-      this.releaseController(controller, allowConcurrent);
-      onError?.(normalizedErr);
+      settleErrorOnce(normalizedErr, route);
     };
 
     getCallFn(route.provider)({

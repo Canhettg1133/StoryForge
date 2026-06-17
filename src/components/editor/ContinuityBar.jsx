@@ -172,8 +172,16 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     : (chapterCanon?.warningCount || 0) > 0
       ? `${chapterCanon.warningCount} cảnh báo`
       : canonStatusLabel;
-  const completionLabel = chapterDone ? 'Đã hoàn thành' : 'Hoàn thành chương';
-  const completionClass = chapterDone ? 'continuity-bar-btn--success' : '';
+  const completionLabel = isCompletingChapter
+    ? 'Đang hoàn thành'
+    : (chapterDone ? 'Đã hoàn thành' : 'Hoàn thành chương');
+  const desktopCompletionClass = chapterDone
+    ? 'continuity-bar-status--completed'
+    : 'continuity-bar-status--completion';
+  const mobileCompletionClass = chapterDone
+    ? 'continuity-bar-btn--success'
+    : 'continuity-bar-btn--completion';
+  const canCompleteChapter = !!activeChapterId && !canonicalizing && !rebuilding && !isCompletingChapter && !chapterDone;
 
   const openIssuesDialog = (event) => {
     event.stopPropagation();
@@ -288,6 +296,23 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                   {canonStatusOk ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
                   <span className="continuity-bar-label">Chương hiện tại:</span>
                   <span className="continuity-bar-title">{currentChapterInfo?.title || 'Chương hiện tại'}</span>
+                  {activeChapterId && (chapterDone ? (
+                    <span className={`continuity-bar-status ${desktopCompletionClass}`} title="Chương đã hoàn thành">
+                      <CheckCircle2 size={12} />
+                      {completionLabel}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className={`continuity-bar-status continuity-bar-status--button ${desktopCompletionClass}`}
+                      onClick={handleCompleteChapter}
+                      disabled={!canCompleteChapter}
+                      title="Hoàn thành chương và chạy phân tích sự thật"
+                    >
+                      {isCompletingChapter ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
+                      {completionLabel}
+                    </button>
+                  ))}
                   {hasCanonIssues ? (
                     <button
                       type="button"
@@ -330,11 +355,11 @@ export default function ContinuityBar({ isMobileLayout = false }) {
             {isMobileLayout && (
               <button
                 type="button"
-                className={`continuity-bar-btn ${completionClass}`}
+                className={`continuity-bar-btn ${mobileCompletionClass}`}
                 onClick={handleCompleteChapter}
-                disabled={!activeChapterId || canonicalizing || rebuilding || isCompletingChapter || chapterDone}
+                disabled={!canCompleteChapter}
               >
-                {isCompletingChapter ? <Loader2 size={12} className="spin" /> : <CheckCircle2 size={12} />}
+                {isCompletingChapter ? <Loader2 size={12} className="spin" /> : (chapterDone ? <CheckCircle2 size={12} /> : <Sparkles size={12} />)}
                 {completionLabel}
               </button>
             )}

@@ -35,39 +35,43 @@ describe('phase10 canon engine', () => {
       payload: { status_summary: 'Duoc cuu song' },
     });
 
+    expect(start.alive_status).toBe('unknown');
     expect(dead.alive_status).toBe('dead');
     expect(rescued.alive_status).toBe('alive');
     expect(rescued.rescued).toBe(true);
   });
 
-  it('does not mark a character dead from goals about another death', () => {
-    const status = 'Con song | Muc tieu: Giai ma cai chet bi an cua ba va loi nguyen cua lang';
+  it('does not infer liveness from free-text character status', () => {
+    const status = 'Thoat chet sau tran truoc, hien con song | Muc tieu: Giai ma cai chet bi an cua ba';
     const state = engine.createInitialEntityState({
       id: 1,
       project_id: 99,
       current_status: status,
       goals: 'Giai ma cai chet bi an cua ba',
     });
+    const changed = engine.applyEventToEntityState(state, {
+      op_type: CANON_OP_TYPES.CHARACTER_STATUS_CHANGED,
+      payload: { status_summary: 'Khong con song trong loi don cua dan lang' },
+    });
 
-    expect(engine.inferAliveStatus(status)).toBe('alive');
-    expect(state.alive_status).toBe('alive');
+    expect(state.alive_status).toBe('unknown');
+    expect(changed.alive_status).toBe('unknown');
+    expect(changed.summary).toBe('Khong con song trong loi don cua dan lang');
   });
 
-  it('cleans conflicting liveness labels from projected character summaries', () => {
+  it('keeps liveness-looking summary text when state is unknown', () => {
     const summary = engine.buildCharacterStateSummary({
-      alive_status: 'alive',
+      alive_status: 'unknown',
       goals_active: ['Giai ma cai chet bi an cua ba'],
       summary: 'Da chet | Muc tieu: Giai ma cai chet bi an cua ba | Con song',
     });
 
-    expect(engine.inferAliveStatus('Da chet | Muc tieu: Giai ma cai chet bi an cua ba | Con song')).toBe('alive');
-    expect(engine.inferAliveStatus('Khong con song')).toBe('dead');
-    expect(summary).toContain('Còn sống');
+    expect(summary).toContain('Da chet');
+    expect(summary).toContain('Con song');
     expect(summary).toContain('Mục tiêu: Giai ma cai chet bi an cua ba');
-    expect(summary).not.toContain('Da chet');
   });
 
-  it('validates dead character acting again as hard error', () => {
+  it('warns without blocking when a committed-dead character has new ops', () => {
     const reports = engine.validateCandidateOps({
       projectId: 1,
       chapterId: 2,
@@ -88,8 +92,23 @@ describe('phase10 canon engine', () => {
       factStates: [],
     });
 
-    expect(reports.some((report) => report.rule_code === 'DEAD_CHARACTER_ACTIVE')).toBe(true);
-    expect(engine.reportsHaveErrors(reports)).toBe(true);
+    const report = reports.find((item) => item.rule_code === 'DEAD_CHARACTER_ACTIVE');
+    expect(report?.severity).toBe('warning');
+    expect(engine.reportsHaveErrors(reports)).toBe(false);
+  });
+
+  it('warns without blocking when a committed-dead character acts in prose', () => {
+    const reports = engine.validateGeneratedProseDiscipline({
+      projectId: 1,
+      chapterId: 2,
+      sceneText: 'Lam buoc vao dien va noi: "Ta da tro lai."',
+      characters: [{ id: 5, name: 'Lam' }],
+      entityStates: [{ entity_id: 5, alive_status: 'dead' }],
+    });
+
+    const report = reports.find((item) => item.rule_code === 'DEAD_CHARACTER_ACTIVE');
+    expect(report?.severity).toBe('warning');
+    expect(reports.some((item) => item.rule_code === 'UNAVAILABLE_CHARACTER_ACTIVE')).toBe(false);
   });
 
   it('flags resolved thread progress as contradiction', () => {

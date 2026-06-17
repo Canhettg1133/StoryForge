@@ -546,7 +546,7 @@ describe('phase10 canon extraction fallback', () => {
     expect(ruleCodes).toContain('MECHANICAL_SHORT_SENTENCES');
   });
 
-  it('warns when a dead or missing character appears actively in prose', async () => {
+  it('does not warn from unavailable-looking free-text status in prose', async () => {
     const { engine } = await loadCanonEngine({
       projects: [{ id: 1, title: 'Unavailable character', genre_primary: 'fantasy' }],
       chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
@@ -578,7 +578,8 @@ describe('phase10 canon extraction fallback', () => {
       },
     });
 
-    expect(validation.reports.some((item) => item.rule_code === 'UNAVAILABLE_CHARACTER_ACTIVE')).toBe(true);
+    expect(validation.reports.some((item) => item.rule_code === 'UNAVAILABLE_CHARACTER_ACTIVE')).toBe(false);
+    expect(validation.reports.some((item) => item.rule_code === 'DEAD_CHARACTER_ACTIVE')).toBe(false);
   });
 
   it('warns when current_status live canon constraints are ignored', async () => {
@@ -625,6 +626,6 @@ describe('phase10 canon extraction fallback', () => {
     const ruleCodes = validation.reports.map((item) => item.rule_code);
     expect(ruleCodes).toContain('LIVE_CANON_ACTION_CONSTRAINT');
     expect(ruleCodes).toContain('LIVE_CANON_KNOWLEDGE_CONSTRAINT');
-    expect(ruleCodes).toContain('UNAVAILABLE_CHARACTER_ACTIVE');
+    expect(ruleCodes).not.toContain('UNAVAILABLE_CHARACTER_ACTIVE');
   });
 });

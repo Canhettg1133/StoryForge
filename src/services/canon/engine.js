@@ -1,5 +1,4 @@
 export {
-  inferAliveStatus,
   buildCharacterStateSummary,
   createInitialEntityState,
   createInitialThreadState,

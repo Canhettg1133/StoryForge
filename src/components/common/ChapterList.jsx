@@ -711,11 +711,11 @@ export default function ChapterList({
             const chapter = chapters.find((item) => item.id === contextMenu.id);
             return chapter && chapter.status !== 'done' && (
               <button
-                className="context-menu-item context-menu-item--success"
+                className="context-menu-item context-menu-item--action"
                 onClick={() => handleCompleteChapter(contextMenu.id)}
                 disabled={Boolean(getCompletionState(contextMenu.id).running)}
               >
-                {getCompletionState(contextMenu.id).running ? <Loader2 size={14} className="chapter-loading-icon" /> : <CheckCircle2 size={14} />}
+                {getCompletionState(contextMenu.id).running ? <Loader2 size={14} className="chapter-loading-icon" /> : <Sparkles size={14} />}
                 Hoàn thành chương
               </button>
             );
@@ -743,11 +743,11 @@ export default function ChapterList({
 
               {mobileActionMenu.type === 'chapter' && mobileActionItem.status !== 'done' && (
                 <button
-                  className="chapter-mobile-sheet-btn chapter-mobile-sheet-btn--success"
+                  className="chapter-mobile-sheet-btn chapter-mobile-sheet-btn--action"
                   onClick={() => handleCompleteChapter(mobileActionMenu.id)}
                   disabled={Boolean(getCompletionState(mobileActionMenu.id).running)}
                 >
-                  {getCompletionState(mobileActionMenu.id).running ? <Loader2 size={16} className="chapter-loading-icon" /> : <CheckCircle2 size={16} />}
+                  {getCompletionState(mobileActionMenu.id).running ? <Loader2 size={16} className="chapter-loading-icon" /> : <Sparkles size={16} />}
                   Hoàn thành chương
                 </button>
               )}

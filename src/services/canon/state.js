@@ -13,40 +13,9 @@ import {
   uniqueSummaryParts,
 } from './utils';
 
-export function inferAliveStatus(summary = '') {
-  const normalized = normalizeKey(summary);
-  if (!normalized) return 'alive';
-  const deadMatch = normalized.match(/(da chet|tu vong|tu tran|hy sinh|mat mang|qua doi|khong con song|bi giet chet|chet tai|chet o|chet trong|chet vi|chet do|chet sau|chet roi)/);
-  const rawAliveMatch = normalized.match(/(song sot|duoc cuu song|duoc cuu|binh an|con song|van song|thoat chet)/);
-  const aliveMatch = rawAliveMatch
-    && !(rawAliveMatch[0] === 'con song' && normalized.slice(Math.max(0, rawAliveMatch.index - 6), rawAliveMatch.index) === 'khong ')
-    ? rawAliveMatch
-    : null;
-  if (deadMatch && aliveMatch) {
-    return aliveMatch.index > deadMatch.index ? 'alive' : 'dead';
-  }
-  if (deadMatch) return 'dead';
-  if (aliveMatch) return 'alive';
-  return 'alive';
-}
-
-export function isLivenessSummaryChunk(value, aliveStatus) {
-  const normalized = normalizeKey(value);
-  if (!normalized) return false;
-  if (aliveStatus === 'alive') {
-    return /^(da chet|tu vong|tu tran|hy sinh|mat mang|qua doi|khong con song)$/.test(normalized);
-  }
-  if (aliveStatus === 'dead') {
-    return /^(con song|van song|song sot|binh an|duoc cuu|duoc cuu song|thoat chet)$/.test(normalized);
-  }
-  return false;
-}
-
-function appendStateSummaryChunks(parts, summary, aliveStatus) {
+function appendStateSummaryChunks(parts, summary) {
   uniqueSummaryParts([summary]).forEach((chunk) => {
-    if (!isLivenessSummaryChunk(chunk, aliveStatus)) {
-      parts.push(chunk);
-    }
+    parts.push(chunk);
   });
 }
 
@@ -61,8 +30,8 @@ export function buildCharacterStateSummary(state, fallbackSummary = '') {
   if (Array.isArray(state?.goals_active) && state.goals_active.length > 0) {
     parts.push(`Mục tiêu: ${state.goals_active.join(', ')}`);
   }
-  if (state?.summary) appendStateSummaryChunks(parts, state.summary, state?.alive_status);
-  if (parts.length === 0 && fallbackSummary) appendStateSummaryChunks(parts, fallbackSummary, state?.alive_status);
+  if (state?.summary) appendStateSummaryChunks(parts, state.summary);
+  if (parts.length === 0 && fallbackSummary) appendStateSummaryChunks(parts, fallbackSummary);
   return uniqueSummaryParts(parts).join(' | ');
 }
 
@@ -71,7 +40,7 @@ export function createInitialEntityState(character = {}) {
     project_id: character.project_id,
     entity_id: character.id,
     entity_type: 'character',
-    alive_status: inferAliveStatus(character.current_status || ''),
+    alive_status: 'unknown',
     current_location_id: null,
     current_location_name: '',
     injury_level: 'none',
@@ -200,7 +169,6 @@ export function applyEventToEntityState(prevState, event) {
   switch (event.op_type) {
     case CANON_OP_TYPES.CHARACTER_STATUS_CHANGED:
       next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
-      next.alive_status = inferAliveStatus(next.summary || payload.status_summary);
       break;
     case CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED:
       next.current_location_id = event.location_id || payload.location_id || null;

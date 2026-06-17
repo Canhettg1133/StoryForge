@@ -12,10 +12,8 @@ import {
   createInitialItemState,
   createInitialRelationshipState,
   createInitialThreadState,
-  inferAliveStatus,
-  isLivenessSummaryChunk,
 } from './state';
-import { cleanText, cloneValue, uniqueSummaryParts } from './utils';
+import { cleanText, cloneValue } from './utils';
 
 function buildStateMaps(entityStates, threadStates) {
   const entityMap = new Map(entityStates.map((state) => [state.entity_id, cloneValue(state)]));
@@ -36,32 +34,6 @@ function toThreadStateRecords(projectId, threadMap) {
     ...state,
     project_id: projectId,
     updated_at: Date.now(),
-  }));
-}
-
-function cleanLegacyProjectionStatus(value) {
-  const parts = uniqueSummaryParts([value]);
-  if (parts.length === 0) return cleanText(value);
-  const hasAliveLabel = parts.some((part) => isLivenessSummaryChunk(part, 'dead'));
-  const hasDeadLabel = parts.some((part) => isLivenessSummaryChunk(part, 'alive'));
-  if (!hasAliveLabel || !hasDeadLabel) {
-    return cleanText(value);
-  }
-  const aliveStatus = inferAliveStatus(value);
-  return uniqueSummaryParts(parts.filter((part) => !isLivenessSummaryChunk(part, aliveStatus))).join(' | ');
-}
-
-async function cleanLegacyCharacterProjection(projectId) {
-  const characters = await db.characters.where('project_id').equals(projectId).toArray();
-  await Promise.all(characters.map((character) => {
-    const currentStatus = cleanText(character.current_status || '');
-    if (!currentStatus) return Promise.resolve();
-    const cleanedStatus = cleanLegacyProjectionStatus(currentStatus);
-    if (!cleanedStatus || cleanedStatus === currentStatus) return Promise.resolve();
-    return db.characters.update(character.id, {
-      current_status: cleanedStatus,
-      updated_at: Date.now(),
-    });
   }));
 }
 
@@ -367,10 +339,6 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null, optio
   if (timelineEvents.length > 0) {
     await db.entityTimeline.bulkAdd(timelineEvents);
   }
-  if (options.cleanLegacyProjection) {
-    await cleanLegacyCharacterProjection(projectId);
-  }
-
   return {
     entityStates: finalEntityStates,
     threadStates: finalThreadStates,
