@@ -7,6 +7,7 @@ import {
   isRelayAllowedTarget,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
+  upgradeMixedContentProxyUrl,
 } from '../../services/ai/openAIProxyCore.js';
 
 describe('openAIProxyCore URL handling', () => {
@@ -85,5 +86,13 @@ describe('openAIProxyCore model parsing and transport policy', () => {
     expect(isMixedContentBlockedProxyUrl('http://proxy.example.com/v1', 'http:')).toBe(false);
     expect(isMixedContentBlockedProxyUrl('https://proxy.example.com/v1', 'https:')).toBe(false);
     expect(isMixedContentBlockedProxyUrl('/api/proxy', 'https:')).toBe(false);
+  });
+
+  it('upgrades public HTTP proxy targets to HTTPS on HTTPS pages', () => {
+    expect(upgradeMixedContentProxyUrl('http://proxy.example.com/v1', 'https:')).toBe('https://proxy.example.com/v1');
+    expect(upgradeMixedContentProxyUrl('http://localhost:1234/v1', 'https:')).toBe('http://localhost:1234/v1');
+    expect(upgradeMixedContentProxyUrl('http://proxy.example.com/v1', 'http:')).toBe('http://proxy.example.com/v1');
+    expect(upgradeMixedContentProxyUrl('https://proxy.example.com/v1', 'https:')).toBe('https://proxy.example.com/v1');
+    expect(upgradeMixedContentProxyUrl('/api/proxy', 'https:')).toBe('/api/proxy');
   });
 });

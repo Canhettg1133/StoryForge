@@ -116,7 +116,7 @@ async function callGeminiProxy({ model, messages, stream = true, signal, onToken
     const body = target.mode === 'relay'
         ? {
             action: 'chat',
-            baseUrl: proxyProfile.baseUrl,
+            baseUrl: target.baseUrl,
             chatCompletionsPath: proxyProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
             payload,
         }

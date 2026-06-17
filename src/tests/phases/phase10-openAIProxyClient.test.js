@@ -287,6 +287,51 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body).model).toBe('custom-json-model');
   });
 
+  it('upgrades public HTTP custom proxy chat requests to HTTPS on hosted pages', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        CUSTOM_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+        updateCustomOpenAIProxyProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const locationDescriptor = Object.getOwnPropertyDescriptor(window, 'location');
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { protocol: 'https:' },
+    });
+
+    try {
+      keyManager.addKey(PROVIDERS.OPENAI_PROXY, 'sk-test-custom-key');
+      updateCustomOpenAIProxyProfile({
+        baseUrl: 'http://proxy.example.com/v1',
+        defaultModel: 'custom-json-model',
+        models: ['custom-json-model'],
+        transport: 'auto',
+      });
+      setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+      modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+      await sendOnce(aiService, routerModule);
+
+      expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.baseUrl).toBe('https://proxy.example.com/v1');
+      expect(body.payload.model).toBe('custom-json-model');
+    } finally {
+      Object.defineProperty(window, 'location', locationDescriptor);
+    }
+  });
+
   it('tests custom proxy connection with chat completions instead of the models endpoint', async () => {
     const {
       aiService,

@@ -154,6 +154,20 @@ export function isMixedContentBlockedProxyUrl(rawBaseUrl, pageProtocol = getCurr
     && isPublicHttpProxyUrl(rawBaseUrl);
 }
 
+export function upgradeMixedContentProxyUrl(rawBaseUrl, pageProtocol = getCurrentPageProtocol()) {
+  const trimmed = String(rawBaseUrl || '').trim();
+  if (!isMixedContentBlockedProxyUrl(trimmed, pageProtocol)) return trimmed;
+
+  try {
+    const parsed = new URL(trimmed);
+    parsed.protocol = 'https:';
+    const upgraded = parsed.toString();
+    return trimmed.endsWith('/') ? upgraded : upgraded.replace(/\/$/u, '');
+  } catch {
+    return trimmed;
+  }
+}
+
 export function assertNoMixedContentProxyUrl(rawBaseUrl, pageProtocol) {
   if (!isMixedContentBlockedProxyUrl(rawBaseUrl, pageProtocol)) return;
   throw new Error(

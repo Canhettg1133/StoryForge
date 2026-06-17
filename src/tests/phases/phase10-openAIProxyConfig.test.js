@@ -139,16 +139,21 @@ describe('openAIProxyConfig legacy settings migration', () => {
     expect(fetchMock.mock.calls[1][0]).toBe('https://proxy.example.com/v1/models');
   });
 
-  it('blocks public HTTP model fetches before the browser can hit mixed content', async () => {
+  it('upgrades public HTTP model fetches to HTTPS before the browser can hit mixed content', async () => {
     const {
       DEFAULT_PROXY_MODELS_PATH,
       fetchOpenAIProxyModels,
       getDefaultCustomOpenAIProxyProfile,
     } = await loadConfig();
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: 'upgraded-model' }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(fetchOpenAIProxyModels({
+    const models = await fetchOpenAIProxyModels({
       profile: {
         ...getDefaultCustomOpenAIProxyProfile(),
         baseUrl: 'http://proxy.example.com/v1',
@@ -157,8 +162,11 @@ describe('openAIProxyConfig legacy settings migration', () => {
       },
       apiKey: 'sk-custom-key',
       pageProtocol: 'https:',
-    })).rejects.toThrow(/OPENAI_PROXY_MIXED_CONTENT_BLOCKED/);
+    });
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(models).toEqual(['upgraded-model']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).baseUrl).toBe('https://proxy.example.com/v1');
   });
 });

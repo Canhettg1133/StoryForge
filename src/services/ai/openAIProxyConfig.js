@@ -5,12 +5,12 @@ import {
   DEFAULT_AG_PROXY_MODEL,
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_MODELS_PATH,
-  assertNoMixedContentProxyUrl,
   buildOpenAIProxyEndpoint,
   filterGeminiModelIds,
   isMixedContentBlockedProxyUrl,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
+  upgradeMixedContentProxyUrl,
 } from './openAIProxyCore.js';
 import { getStoryForgeAccessToken } from '../access/accessClient.js';
 
@@ -218,37 +218,47 @@ export function getOpenAIProxyKeyProvider(profileOrId = getActiveOpenAIProxyProf
   return profileId === AG_PROXY_PROFILE_ID ? 'gemini_proxy' : 'openai_proxy';
 }
 
+function getRequestSafeProxyProfile(profile = {}, options = {}) {
+  const safeBaseUrl = upgradeMixedContentProxyUrl(profile.baseUrl, options.pageProtocol);
+  return safeBaseUrl === profile.baseUrl
+    ? profile
+    : { ...profile, baseUrl: safeBaseUrl };
+}
+
 export function resolveOpenAIProxyRequest(profile, action, options = {}) {
-  const mode = resolveProxyTransportMode(profile);
+  const safeProfile = getRequestSafeProxyProfile(profile, options);
+  const mode = resolveProxyTransportMode(safeProfile);
   const path = action === 'models'
-    ? (profile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
-    : (profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
+    ? (safeProfile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
+    : (safeProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
 
   if (mode === 'relay') {
     return {
       mode,
       url: '/api/openai-proxy',
       path,
+      baseUrl: safeProfile.baseUrl,
     };
   }
 
-  assertNoMixedContentProxyUrl(profile.baseUrl, options.pageProtocol);
   return {
     mode,
-    url: buildOpenAIProxyEndpoint(profile.baseUrl, path),
+    url: buildOpenAIProxyEndpoint(safeProfile.baseUrl, path),
     path,
+    baseUrl: safeProfile.baseUrl,
   };
 }
 
 export function resolveOpenAIProxyDirectRequest(profile, action, options = {}) {
+  const safeProfile = getRequestSafeProxyProfile(profile, options);
   const path = action === 'models'
-    ? (profile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
-    : (profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
-  assertNoMixedContentProxyUrl(profile.baseUrl, options.pageProtocol);
+    ? (safeProfile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
+    : (safeProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
   return {
     mode: 'direct',
-    url: buildOpenAIProxyEndpoint(profile.baseUrl, path),
+    url: buildOpenAIProxyEndpoint(safeProfile.baseUrl, path),
     path,
+    baseUrl: safeProfile.baseUrl,
   };
 }
 
@@ -279,7 +289,7 @@ export async function fetchOpenAIProxyModels({
       },
       body: JSON.stringify({
         action: 'models',
-        baseUrl: profile.baseUrl,
+        baseUrl: target.baseUrl,
         modelsPath: profile.modelsPath || DEFAULT_PROXY_MODELS_PATH,
       }),
       signal,
@@ -319,4 +329,5 @@ export {
   isMixedContentBlockedProxyUrl,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
+  upgradeMixedContentProxyUrl,
 };

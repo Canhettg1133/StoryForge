@@ -531,7 +531,7 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
   const requestBody = target.mode === 'relay'
     ? {
       action: 'chat',
-      baseUrl: proxyProfile.baseUrl,
+      baseUrl: target.baseUrl,
       chatCompletionsPath: proxyProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
       payload,
     }
@@ -640,7 +640,7 @@ async function testOpenAIProxyChatConnection({ profile, apiKey = '', signal } = 
   const requestBody = target.mode === 'relay'
     ? {
       action: 'chat',
-      baseUrl: profile.baseUrl,
+      baseUrl: target.baseUrl,
       chatCompletionsPath: profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
       payload,
     }
