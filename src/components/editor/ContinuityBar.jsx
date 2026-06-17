@@ -5,7 +5,6 @@ import {
   ChevronUp,
   Clock,
   Loader2,
-  RotateCcw,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
@@ -54,7 +53,6 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     chapterCanon,
     loadChapterCanon,
     canonicalizeChapter,
-    rebuildCanonFromChapter,
     canonicalizing,
     rebuilding,
     repairPreview,
@@ -194,12 +192,6 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     event.stopPropagation();
     if (!currentProject?.id || !activeChapterId) return;
     await canonicalizeChapter(currentProject.id, activeChapterId);
-  };
-
-  const handleRebuild = async (event) => {
-    event.stopPropagation();
-    if (!currentProject?.id || !activeChapterId) return;
-    await rebuildCanonFromChapter(currentProject.id, activeChapterId);
   };
 
   const handleCompleteChapter = async (event) => {
@@ -391,12 +383,6 @@ export default function ContinuityBar({ isMobileLayout = false }) {
               {canonicalizing ? <Loader2 size={12} className="spin" /> : <ShieldCheck size={12} />}
               {canonActionLabel}
             </button>}
-            {!isMobileLayout && (
-              <button type="button" className="continuity-bar-btn continuity-bar-btn--ghost continuity-bar-btn--rebuild" onClick={handleRebuild} disabled={canonicalizing || rebuilding || !activeChapterId}>
-                {rebuilding ? <Loader2 size={12} className="spin" /> : <RotateCcw size={12} />}
-                Rebuild
-              </button>
-            )}
           </div>
 
           {(!isMobileLayout || prevChapterInfo) && (expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}

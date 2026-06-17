@@ -126,6 +126,19 @@ describe('phase10 continuity bar completion shortcut', () => {
     expect(runChapterCompletion).toHaveBeenCalledWith(11, { mode: 'manual' });
   });
 
+  it('does not render the desktop rebuild button', async () => {
+    const ContinuityBar = await loadContinuityBar();
+    setStoreState({ canonStatus: 'canonical', canonIsFresh: true });
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<ContinuityBar isMobileLayout={false} />);
+    });
+
+    expect(container.textContent).not.toContain('Rebuild');
+    expect(container.querySelector('.continuity-bar-btn--rebuild')).toBeNull();
+  });
+
   it('keeps the desktop completion action visible after canon analysis when the chapter is not done', async () => {
     const ContinuityBar = await loadContinuityBar();
     setStoreState({ canonStatus: 'canonical', canonIsFresh: true });
