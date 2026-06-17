@@ -3,6 +3,7 @@ export const CUSTOM_PROXY_PROFILE_ID = 'custom-openai-proxy';
 export const DEFAULT_PROXY_CHAT_PATH = '/v1/chat/completions';
 export const DEFAULT_PROXY_MODELS_PATH = '/v1/models';
 export const DEFAULT_AG_PROXY_BASE_URL = 'https://ag.beijixingxing.com';
+export const OPENAI_PROXY_MIXED_CONTENT_BLOCKED = 'OPENAI_PROXY_MIXED_CONTENT_BLOCKED';
 export const DEFAULT_AG_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
 
 const KNOWN_ENDPOINT_SUFFIXES = [
@@ -25,6 +26,16 @@ function normalizePath(path, fallback) {
 
 function isRelativeProxyUrl(value) {
   return String(value || '').trim().startsWith('/');
+}
+
+function getCurrentPageProtocol() {
+  if (typeof window !== 'undefined' && window?.location?.protocol) {
+    return window.location.protocol;
+  }
+  if (typeof globalThis !== 'undefined' && globalThis.location?.protocol) {
+    return globalThis.location.protocol;
+  }
+  return '';
 }
 
 function assertUsableProxyUrl(value) {
@@ -124,6 +135,30 @@ export function isLocalProxyUrl(rawBaseUrl) {
   } catch {
     return false;
   }
+}
+
+export function isPublicHttpProxyUrl(rawBaseUrl) {
+  const trimmed = String(rawBaseUrl || '').trim();
+  if (!trimmed || isRelativeProxyUrl(trimmed)) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' && !isLocalProxyHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function isMixedContentBlockedProxyUrl(rawBaseUrl, pageProtocol = getCurrentPageProtocol()) {
+  return String(pageProtocol || '').toLowerCase() === 'https:'
+    && isPublicHttpProxyUrl(rawBaseUrl);
+}
+
+export function assertNoMixedContentProxyUrl(rawBaseUrl, pageProtocol) {
+  if (!isMixedContentBlockedProxyUrl(rawBaseUrl, pageProtocol)) return;
+  throw new Error(
+    `${OPENAI_PROXY_MIXED_CONTENT_BLOCKED}: Proxy URL uses public HTTP on an HTTPS page. Use an HTTPS Base URL or a local HTTP URL.`,
+  );
 }
 
 export function isRelayAllowedTarget(rawBaseUrl) {

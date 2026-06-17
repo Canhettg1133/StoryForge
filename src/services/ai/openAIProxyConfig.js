@@ -5,8 +5,10 @@ import {
   DEFAULT_AG_PROXY_MODEL,
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_MODELS_PATH,
+  assertNoMixedContentProxyUrl,
   buildOpenAIProxyEndpoint,
   filterGeminiModelIds,
+  isMixedContentBlockedProxyUrl,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
 } from './openAIProxyCore.js';
@@ -216,7 +218,7 @@ export function getOpenAIProxyKeyProvider(profileOrId = getActiveOpenAIProxyProf
   return profileId === AG_PROXY_PROFILE_ID ? 'gemini_proxy' : 'openai_proxy';
 }
 
-export function resolveOpenAIProxyRequest(profile, action) {
+export function resolveOpenAIProxyRequest(profile, action, options = {}) {
   const mode = resolveProxyTransportMode(profile);
   const path = action === 'models'
     ? (profile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
@@ -230,6 +232,7 @@ export function resolveOpenAIProxyRequest(profile, action) {
     };
   }
 
+  assertNoMixedContentProxyUrl(profile.baseUrl, options.pageProtocol);
   return {
     mode,
     url: buildOpenAIProxyEndpoint(profile.baseUrl, path),
@@ -237,10 +240,11 @@ export function resolveOpenAIProxyRequest(profile, action) {
   };
 }
 
-export function resolveOpenAIProxyDirectRequest(profile, action) {
+export function resolveOpenAIProxyDirectRequest(profile, action, options = {}) {
   const path = action === 'models'
     ? (profile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
     : (profile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
+  assertNoMixedContentProxyUrl(profile.baseUrl, options.pageProtocol);
   return {
     mode: 'direct',
     url: buildOpenAIProxyEndpoint(profile.baseUrl, path),
@@ -255,8 +259,13 @@ export function shouldFallbackOpenAIProxyRelay(response) {
   return response.ok && contentType.includes('text/html');
 }
 
-export async function fetchOpenAIProxyModels({ profile = getActiveOpenAIProxyProfile(), apiKey = '', signal } = {}) {
-  const target = resolveOpenAIProxyRequest(profile, 'models');
+export async function fetchOpenAIProxyModels({
+  profile = getActiveOpenAIProxyProfile(),
+  apiKey = '',
+  signal,
+  pageProtocol,
+} = {}) {
+  const target = resolveOpenAIProxyRequest(profile, 'models', { pageProtocol });
   const storyForgeToken = target.mode === 'relay' ? await getStoryForgeAccessToken() : '';
   const providerKeyHeader = apiKey ? { 'X-StoryForge-Upstream-Key': apiKey } : {};
   const authHeader = apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
@@ -282,7 +291,7 @@ export async function fetchOpenAIProxyModels({ profile = getActiveOpenAIProxyPro
     });
 
   if (target.mode === 'relay' && shouldFallbackOpenAIProxyRelay(response)) {
-    const directTarget = resolveOpenAIProxyDirectRequest(profile, 'models');
+    const directTarget = resolveOpenAIProxyDirectRequest(profile, 'models', { pageProtocol });
     response = await fetch(directTarget.url, {
       method: 'GET',
       headers: authHeader,
@@ -307,6 +316,7 @@ export {
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
   filterGeminiModelIds,
+  isMixedContentBlockedProxyUrl,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
 };

@@ -78,4 +78,19 @@ describe('AI error normalization', () => {
     expect(error.message).toContain('hết quota ngày');
     expect(error.rawMessage).toBe(rawMessage);
   });
+
+  it('normalizes mixed-content proxy URL errors with a specific fix hint', () => {
+    const error = normalizeAIError({
+      rawMessage: 'OPENAI_PROXY_MIXED_CONTENT_BLOCKED: Proxy URL uses public HTTP on an HTTPS page.',
+    }, {
+      provider: 'openai_proxy',
+      proxyProfileId: CUSTOM_PROXY_PROFILE_ID,
+      model: 'custom-model',
+    });
+
+    expect(error.code).toBe(AI_ERROR_CODES.NETWORK_ERROR);
+    expect(error.message).toContain('Proxy URL');
+    expect(error.message).toContain('HTTPS');
+    expect(error.message).toContain('Mixed Content');
+  });
 });

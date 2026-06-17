@@ -6,6 +6,8 @@ describe('user-facing error messages', () => {
     expect(toVietnameseErrorMessage(new Error('Request failed: 500'))).toBe('Yêu cầu thất bại với mã 500.');
     expect(toVietnameseErrorMessage(new Error('Malformed JSON response'))).toBe('Phản hồi JSON không đúng định dạng.');
     expect(toVietnameseErrorMessage(new Error('Failed to fetch'))).toBe('Không thể kết nối mạng hoặc dịch vụ đang không phản hồi.');
+    expect(toVietnameseErrorMessage(new Error('OPENAI_PROXY_MIXED_CONTENT_BLOCKED: Proxy URL uses public HTTP'))).toContain('HTTPS');
+    expect(toVietnameseErrorMessage(new Error('OPENAI_PROXY_MIXED_CONTENT_BLOCKED: Proxy URL uses public HTTP'))).toContain('Mixed Content');
   });
 
   it('keeps existing accented Vietnamese messages and hides unknown English fallback detail', () => {

@@ -16,6 +16,10 @@ function translateKnownError(message) {
 
   if (!raw) return '';
 
+  if (lower.includes('openai_proxy_mixed_content_blocked') || lower.includes('mixed content')) {
+    return 'Proxy URL đang dùng HTTP public. Trang HTTPS sẽ chặn Mixed Content. Hãy đổi Base URL sang HTTPS hoặc dùng endpoint HTTPS.';
+  }
+
   if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed') || lower.includes('network error')) {
     return 'Không thể kết nối mạng hoặc dịch vụ đang không phản hồi.';
   }

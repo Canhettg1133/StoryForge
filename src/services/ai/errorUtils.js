@@ -201,6 +201,19 @@ export function normalizeAIError(input = {}, context = {}) {
     });
   }
 
+  if (lower.includes('openai_proxy_mixed_content_blocked') || lower.includes('mixed content')) {
+    return createAIError({
+      userMessage: 'Proxy URL đang dùng HTTP public. Trang StoryForge đang chạy HTTPS nên trình duyệt sẽ chặn Mixed Content. Hãy đổi Base URL sang HTTPS hoặc dùng endpoint HTTPS.',
+      code: AI_ERROR_CODES.NETWORK_ERROR,
+      provider,
+      model,
+      status: shape.status,
+      rawMessage,
+      reason: shape.reason || 'mixed_content',
+      details: shape.details,
+    });
+  }
+
   if (shape.code === AI_ERROR_CODES.EMPTY_STREAM || lower.includes('empty_stream')) {
     return createAIError({
       userMessage: 'AI không trả nội dung. Thử lại hoặc đổi model/chất lượng trong Settings.',

@@ -138,4 +138,27 @@ describe('openAIProxyConfig legacy settings migration', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
     expect(fetchMock.mock.calls[1][0]).toBe('https://proxy.example.com/v1/models');
   });
+
+  it('blocks public HTTP model fetches before the browser can hit mixed content', async () => {
+    const {
+      DEFAULT_PROXY_MODELS_PATH,
+      fetchOpenAIProxyModels,
+      getDefaultCustomOpenAIProxyProfile,
+    } = await loadConfig();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(fetchOpenAIProxyModels({
+      profile: {
+        ...getDefaultCustomOpenAIProxyProfile(),
+        baseUrl: 'http://proxy.example.com/v1',
+        modelsPath: DEFAULT_PROXY_MODELS_PATH,
+        transport: 'auto',
+      },
+      apiKey: 'sk-custom-key',
+      pageProtocol: 'https:',
+    })).rejects.toThrow(/OPENAI_PROXY_MIXED_CONTENT_BLOCKED/);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

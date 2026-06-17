@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildOpenAIProxyEndpoint,
   filterGeminiModelIds,
+  isMixedContentBlockedProxyUrl,
   isRelayAllowedTarget,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
@@ -75,5 +76,14 @@ describe('openAIProxyCore model parsing and transport policy', () => {
     expect(isRelayAllowedTarget('https://100.64.0.4')).toBe(false);
     expect(isRelayAllowedTarget('https://224.0.0.1')).toBe(false);
     expect(isRelayAllowedTarget('/api/proxy')).toBe(false);
+  });
+
+  it('detects public HTTP proxy targets that HTTPS pages would block as mixed content', () => {
+    expect(isMixedContentBlockedProxyUrl('http://proxy.example.com/v1', 'https:')).toBe(true);
+    expect(isMixedContentBlockedProxyUrl('http://localhost:1234/v1', 'https:')).toBe(false);
+    expect(isMixedContentBlockedProxyUrl('http://127.0.0.1:1234/v1', 'https:')).toBe(false);
+    expect(isMixedContentBlockedProxyUrl('http://proxy.example.com/v1', 'http:')).toBe(false);
+    expect(isMixedContentBlockedProxyUrl('https://proxy.example.com/v1', 'https:')).toBe(false);
+    expect(isMixedContentBlockedProxyUrl('/api/proxy', 'https:')).toBe(false);
   });
 });
