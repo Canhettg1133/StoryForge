@@ -69,6 +69,7 @@ export default function SceneEditor() {
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
   const isMobileLayout = useMobileLayout(1180);
+  const hasMobileProjectShell = useMobileLayout(900);
   const [mobilePanel, setMobilePanel] = useState(null);
   const [mobileAITab, setMobileAITab] = useState('ai');
   const [aiDraftPreview, setAiDraftPreview] = useState(null);
@@ -76,6 +77,14 @@ export default function SceneEditor() {
   const clearAIOutput = useAIStore((state) => state.clearOutput);
   const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useUIStore((state) => state.toggleSidebar);
+  const storyEditorViewMode = useUIStore((state) => state.storyEditorViewMode);
+  const setStoryEditorViewMode = useUIStore((state) => state.setStoryEditorViewMode);
+  const isReaderMode = storyEditorViewMode === 'reader';
+
+  useEffect(() => {
+    setStoryEditorViewMode('scene');
+    return () => setStoryEditorViewMode('scene');
+  }, [currentProject?.id, setStoryEditorViewMode]);
 
   const openMobilePanel = useCallback((panel) => {
     setMobilePanel(panel);
@@ -83,6 +92,11 @@ export default function SceneEditor() {
       setMobileAITab((current) => current || 'ai');
     }
   }, []);
+
+  const handleViewModeChange = useCallback((mode) => {
+    setMobilePanel(null);
+    setStoryEditorViewMode(mode);
+  }, [setStoryEditorViewMode]);
 
   useEffect(() => {
     if (!isMobileLayout) {
@@ -204,7 +218,7 @@ export default function SceneEditor() {
   }
 
   return (
-    <div className={`scene-editor-layout ${isMobileLayout ? 'scene-editor-layout--mobile' : ''}`}>
+    <div className={`scene-editor-layout ${isMobileLayout ? 'scene-editor-layout--mobile' : ''} ${isReaderMode ? 'scene-editor-layout--reader' : ''}`}>
       {isMobileLayout && mobilePanel && (
         <button className="scene-editor-overlay" onClick={closeMobilePanel} aria-label="Đóng panel đang mở" />
       )}
@@ -294,11 +308,21 @@ export default function SceneEditor() {
             <span>Menu</span>
           </button>
         )}
-        {isMobileLayout && (
-          <div className="scene-editor-mobile-actions" aria-label="C\u00f4ng c\u1ee5 vi\u1ebft truy\u1ec7n">
-            <button className="scene-editor-mobile-action" type="button" onClick={() => openMobilePanel('chapters')}>
-              <PanelLeft size={16} />
-              <span>{'Ch\u01b0\u01a1ng'}</span>
+        {isMobileLayout && !isReaderMode && (
+          <div className={`scene-editor-mobile-actions ${!hasMobileProjectShell ? 'scene-editor-mobile-actions--tablet' : ''}`} aria-label="Công cụ viết truyện">
+            {!hasMobileProjectShell && (
+              <button className="scene-editor-mobile-action" type="button" onClick={() => openMobilePanel('chapters')}>
+                <PanelLeft size={16} />
+                <span>Chương</span>
+              </button>
+            )}
+            <button
+              className="scene-editor-mobile-action scene-editor-mobile-action--reader"
+              type="button"
+              onClick={() => handleViewModeChange('reader')}
+            >
+              <BookOpen size={16} />
+              <span>Đọc liền</span>
             </button>
             <button
               className={`scene-editor-mobile-action ${mobilePanel === 'ai' ? 'scene-editor-mobile-action--open' : ''} ${hasAiActivity ? 'scene-editor-mobile-action--working' : ''} ${hasAiDraftPreview ? 'scene-editor-mobile-action--has-draft' : ''}`}
@@ -316,14 +340,19 @@ export default function SceneEditor() {
         <StoryEditor
           onEditorReady={handleEditorReady}
           isMobileLayout={isMobileLayout}
+          hasMobileProjectShell={hasMobileProjectShell}
+          viewMode={storyEditorViewMode}
+          onViewModeChange={handleViewModeChange}
+          onOpenChapters={() => openMobilePanel('chapters')}
           aiDraftPreview={scopedAiDraftPreview}
           onAiDraftSaved={handleAiDraftSaved}
         />
       </div>
 
-      <aside
-        className={`scene-editor-side scene-editor-side--ai ${isMobileLayout ? 'scene-editor-side--sheet scene-editor-side--sheet-full' : ''} ${mobilePanel === 'ai' ? 'is-open' : ''}`}
-      >
+      {!isReaderMode && (
+        <aside
+          className={`scene-editor-side scene-editor-side--ai ${isMobileLayout ? 'scene-editor-side--sheet scene-editor-side--sheet-full' : ''} ${mobilePanel === 'ai' ? 'is-open' : ''}`}
+        >
         {isMobileLayout && (
           <div className="scene-editor-sheet-header scene-editor-sheet-header--ai">
             <div>
@@ -345,7 +374,8 @@ export default function SceneEditor() {
             onAiActivityChange={handleAiActivityChange}
           />
         </div>
-      </aside>
+        </aside>
+      )}
     </div>
   );
 }

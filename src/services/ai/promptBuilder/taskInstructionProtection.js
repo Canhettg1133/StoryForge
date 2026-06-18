@@ -64,9 +64,9 @@ export function getTaskInstructionProtection(taskType) {
 }
 
 export function stripProtectedTaskInstruction(taskType, value) {
-  const raw = String(value || '').trim();
+  const raw = String(value || '');
   const protection = getTaskInstructionProtection(taskType);
-  if (!protection || !raw) return raw;
+  if (!protection || !raw.trim()) return raw;
 
   const markerIndex = getTaskInstructionProtectionMarkers(taskType)
     .map((marker) => raw.indexOf(marker))
@@ -76,8 +76,9 @@ export function stripProtectedTaskInstruction(taskType, value) {
     return raw.slice(0, markerIndex).trimEnd();
   }
 
-  if (protection.lockedPrompt && raw.endsWith(protection.lockedPrompt)) {
-    return raw.slice(0, raw.length - protection.lockedPrompt.length).trimEnd();
+  const rawEndTrimmed = raw.trimEnd();
+  if (protection.lockedPrompt && rawEndTrimmed.endsWith(protection.lockedPrompt)) {
+    return rawEndTrimmed.slice(0, rawEndTrimmed.length - protection.lockedPrompt.length).trimEnd();
   }
 
   return raw;

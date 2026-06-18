@@ -2,6 +2,11 @@
   max-width: 1220px;
 }
 
+.prompt-manager-page .animate-fade-in,
+.prompt-manager-page .animate-slide-up {
+  animation: none;
+}
+
 .prompt-manager-content-mode-card {
   position: relative;
   overflow: hidden;
@@ -148,8 +153,13 @@
   gap: 8px;
   margin-top: var(--space-4);
   padding: var(--space-2) var(--space-3);
+  min-height: 34px;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
+}
+
+.prompt-manager-status.is-empty {
+  visibility: hidden;
 }
 
 .prompt-manager-status.is-success {

@@ -12,9 +12,10 @@ import useUIStore, {
 import { countWords } from '../../utils/constants';
 import ContinuityBar from './ContinuityBar';
 import SceneDetailPanel from './SceneDetailPanel';
+import ChapterReader from './ChapterReader';
 import db from '../../services/db/database';
 import { createSceneAutosaveController } from './storyEditorAutosave';
-import { ChevronDown, ChevronRight, BookOpen, ListChecks, Pencil, Check, X, Settings, Copy, Type, Minus, Plus, RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronRight, BookOpen, FileText, ListChecks, Pencil, Check, X, Settings, Copy, Type, Minus, Plus, RotateCcw, PanelLeft } from 'lucide-react';
 import './StoryEditor.css';
 
 function isContentEmpty(html = '') {
@@ -47,6 +48,10 @@ function textToHtml(text = '') {
 export default function StoryEditor({
   onEditorReady,
   isMobileLayout = false,
+  hasMobileProjectShell = false,
+  viewMode = 'scene',
+  onViewModeChange,
+  onOpenChapters,
   aiDraftPreview = null,
   onAiDraftSaved,
 }) {
@@ -57,6 +62,8 @@ export default function StoryEditor({
 
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
+  const isReaderMode = viewMode === 'reader';
+  const activeChapterSceneCount = scenes.filter((scene) => scene.chapter_id === activeChapterId).length;
   const contentFontSize = useUIStore((state) => state.contentFontSize);
   const setContentFontSize = useUIStore((state) => state.setContentFontSize);
   const resetContentFontSize = useUIStore((state) => state.resetContentFontSize);
@@ -400,7 +407,13 @@ export default function StoryEditor({
     };
   }, []);
 
-  if (!activeScene) {
+  useEffect(() => {
+    if (isReaderMode) {
+      void autosaveControllerRef.current?.flush();
+    }
+  }, [isReaderMode]);
+
+  if (!activeScene && !isReaderMode) {
     return (
       <div className="story-editor-empty">
         <div className="empty-state">
@@ -416,13 +429,22 @@ export default function StoryEditor({
 
   return (
     <div
-      className={`story-editor ${isMobileLayout ? 'story-editor--mobile' : ''}`}
+      className={`story-editor ${isMobileLayout ? 'story-editor--mobile' : ''} ${hasMobileProjectShell ? 'story-editor--mobile-shell' : ''} ${isReaderMode ? 'story-editor--reader' : ''}`}
       style={contentTypographyStyle}
     >
-      {/* Scene title */}
-      <div className="story-editor-header">
-        <div className="story-editor-header-main">
-          {!isMobileLayout && (
+      <div className={`story-editor-header ${isReaderMode ? 'story-editor-header--reader' : ''}`}>
+        <div className={`story-editor-header-main ${!isMobileLayout ? 'story-editor-header-main--desktop' : ''}`}>
+          {isReaderMode && !hasMobileProjectShell && (
+            <div className="story-editor-heading">
+              <div className="story-editor-scene-meta">
+                Đọc liền · {activeChapterSceneCount.toLocaleString('vi-VN')} cảnh
+              </div>
+              <div className="story-editor-reader-title">
+                {activeChapter?.title || 'Chương chưa có tiêu đề'}
+              </div>
+            </div>
+          )}
+          {!isReaderMode && !isMobileLayout && (
             <div className="story-editor-heading">
               <div className="story-editor-scene-meta">
                 {activeChapter?.title || `Chương ${chapters.findIndex((chapter) => chapter.id === activeChapterId) + 1}`}
@@ -436,14 +458,59 @@ export default function StoryEditor({
             </div>
           )}
           <div className="story-editor-header-actions" ref={fontControlRef}>
-          <button
-            className="story-editor-detail-trigger"
-            onClick={() => setSceneDetailOpen(true)}
-            title="Mở chi tiết cảnh"
-          >
-            <Settings size={14} />
-            <span>Chi tiết cảnh</span>
-          </button>
+          {!isMobileLayout && (
+            <div className="story-editor-view-switch" aria-label="Chế độ hiển thị nội dung">
+              <button
+                type="button"
+                className={`story-editor-view-switch__btn ${!isReaderMode ? 'is-active' : ''}`}
+                onClick={() => onViewModeChange?.('scene')}
+                aria-pressed={!isReaderMode}
+              >
+                <FileText size={14} />
+                <span>Từng cảnh</span>
+              </button>
+              <button
+                type="button"
+                className={`story-editor-view-switch__btn ${isReaderMode ? 'is-active' : ''}`}
+                onClick={() => onViewModeChange?.('reader')}
+                aria-pressed={isReaderMode}
+              >
+                <BookOpen size={14} />
+                <span>Đọc liền</span>
+              </button>
+            </div>
+          )}
+          {isReaderMode && isMobileLayout && !hasMobileProjectShell && (
+            <button
+              type="button"
+              className="story-editor-reader-action"
+              onClick={onOpenChapters}
+            >
+              <PanelLeft size={14} />
+              <span>Chương</span>
+            </button>
+          )}
+          {isReaderMode && isMobileLayout && (
+            <button
+              type="button"
+              className="story-editor-reader-action story-editor-reader-action--active"
+              onClick={() => onViewModeChange?.('scene')}
+              title="Trở về chế độ từng cảnh"
+            >
+              <FileText size={14} />
+              <span>Từng cảnh</span>
+            </button>
+          )}
+          {!isReaderMode && (
+            <button
+              className="story-editor-detail-trigger"
+              onClick={() => setSceneDetailOpen(true)}
+              title="Mở chi tiết cảnh"
+            >
+              <Settings size={14} />
+              <span>Chi tiết cảnh</span>
+            </button>
+          )}
           <button
             type="button"
             className={`story-editor-font-trigger ${fontPopoverOpen ? 'story-editor-font-trigger--active' : ''}`}
@@ -452,7 +519,7 @@ export default function StoryEditor({
             aria-expanded={fontPopoverOpen}
           >
             <Type size={14} />
-            <span>Chỉnh cỡ chữ</span>
+            <span>{isReaderMode && isMobileLayout ? 'Cỡ chữ' : 'Chỉnh cỡ chữ'}</span>
           </button>
           <div className={`story-editor-font-control ${fontPopoverOpen ? 'story-editor-font-control--open' : ''}`} aria-label="Cỡ chữ nội dung">
             <Type size={14} />
@@ -493,7 +560,7 @@ export default function StoryEditor({
       </div>
 
       {/* Scene Detail Drawer */}
-      {sceneDetailOpen && (
+      {!isReaderMode && sceneDetailOpen && (
         <SceneDetailPanel
           scene={activeScene}
           characters={allCharacters}
@@ -506,7 +573,7 @@ export default function StoryEditor({
       )}
 
       {/* Chapter Outline Panel — Dàn Ý Chương */}
-      {chapterOutline !== null && (
+      {!isReaderMode && chapterOutline !== null && (
         <div className={`chapter-outline-panel ${outlinePanelOpen ? 'chapter-outline-panel--open' : ''}`}>
           <div className="chapter-outline-toggle-row">
             <button
@@ -666,13 +733,16 @@ export default function StoryEditor({
       )}
 
       {/* Continuity Bar */}
-      <ContinuityBar isMobileLayout={isMobileLayout} />
+      {!isReaderMode && <ContinuityBar isMobileLayout={isMobileLayout} />}
 
-      {/* Editor */}
-      <div
-        className={`story-editor-wrapper ${useAiDraftFocus ? 'story-editor-wrapper--ai-draft-focus' : ''}`}
-        ref={editorWrapperRef}
-      >
+      {isReaderMode ? (
+        <ChapterReader chapterId={activeChapterId} scenes={scenes} />
+      ) : (
+        <>
+        <div
+          className={`story-editor-wrapper ${useAiDraftFocus ? 'story-editor-wrapper--ai-draft-focus' : ''}`}
+          ref={editorWrapperRef}
+        >
         {aiDraft && (
           <div
             className={`story-editor-ai-draft ${aiDraft.isStreaming ? 'story-editor-ai-draft--streaming' : ''}`}
@@ -712,10 +782,9 @@ export default function StoryEditor({
           </div>
         )}
         <EditorContent editor={editor} />
-      </div>
+        </div>
 
-      {/* Footer */}
-      <div className="story-editor-footer">
+        <div className="story-editor-footer">
         <div className="story-editor-stats">
           <span>{wordCount.toLocaleString()} từ</span>
           <span className="story-editor-stats-divider">·</span>
@@ -747,7 +816,9 @@ export default function StoryEditor({
           <span className="story-editor-mobile-word-count">{wordCount.toLocaleString()} từ</span>
           <span className="story-editor-autosave">Tự động lưu</span>
         </div>
-      </div>
+        </div>
+        </>
+      )}
     </div>
   );
 }

@@ -65,6 +65,23 @@
   white-space: nowrap;
 }
 
+.project-mobile-title__main-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.project-mobile-title__main-row .project-mobile-title__main {
+  min-width: 0;
+}
+
+.project-mobile-title__disclosure {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+}
+
 .project-mobile-title__kicker {
   font-size: 10px;
   font-weight: 700;

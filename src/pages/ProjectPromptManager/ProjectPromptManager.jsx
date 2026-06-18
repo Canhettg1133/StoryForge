@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   AlertCircle,
@@ -109,6 +109,7 @@ function toCoreEditorValue(item, sourceValue, genreKey) {
 function toOverrideEditorValue(item, sourceValue) {
   if (item.type === 'list') {
     if (Array.isArray(sourceValue)) return stringifyList(sourceValue);
+    if (typeof sourceValue === 'string') return sourceValue;
     return '';
   }
 
@@ -146,9 +147,12 @@ function cleanPromptTemplates(definitions, draft) {
 }
 
 function getProjectPromptSignature(draft) {
+  const promptTemplates = cleanPromptTemplates(PROJECT_PROMPT_GROUPS, draft || {});
+  const aiGuidelines = String(draft?.ai_guidelines || '').trim();
+
   return JSON.stringify({
-    prompt_templates: draft || {},
-    ai_guidelines: draft?.ai_guidelines || '',
+    prompt_templates: promptTemplates,
+    ai_guidelines: aiGuidelines,
   });
 }
 
@@ -233,7 +237,6 @@ function ProjectStyleRuntimeCard({
   runtimeMessage,
   isGeneratingRuntime,
   isSaving,
-  isPromptDraftDirty,
   onGenerate,
   onSavePreview,
   onToggleEnabled,
@@ -288,13 +291,6 @@ function ProjectStyleRuntimeCard({
           <span key={section.number}>{section.number}. {section.label}</span>
         ))}
       </div>
-
-      {isPromptDraftDirty && (
-        <div className="project-style-runtime-note is-warning">
-          <AlertCircle size={14} />
-          Prompt truyện đang có thay đổi chưa lưu. Khi lưu block, hệ thống sẽ lưu kèm các thay đổi prompt hiện tại để hash không bị lệch.
-        </div>
-      )}
 
       {previewSourceChanged && (
         <div className="project-style-runtime-note is-warning">
@@ -387,7 +383,7 @@ function PromptInfoGrid({ item }) {
   );
 }
 
-function PromptEditorCard({
+const PromptEditorCard = memo(function PromptEditorCard({
   item,
   genreKey,
   coreDraft,
@@ -539,7 +535,7 @@ function PromptEditorCard({
       </div>
     </article>
   );
-}
+});
 
 export default function ProjectPromptManager() {
   const { projectId } = useParams();
@@ -562,6 +558,8 @@ export default function ProjectPromptManager() {
   const [isGeneratingRuntime, setIsGeneratingRuntime] = useState(false);
   const isHydratingRef = useRef(true);
   const lastSavedSignatureRef = useRef('');
+  const pendingSavedSignatureRef = useRef('');
+  const lastHydratedProjectKeyRef = useRef('');
 
   useEffect(() => {
     if (!projectId) return;
@@ -575,6 +573,7 @@ export default function ProjectPromptManager() {
   useEffect(() => {
     if (!currentProject) return;
 
+    const projectContextKey = `${currentProject.id || ''}:${genreKey}`;
     const parsedTemplates = parsePromptTemplates(currentProject.prompt_templates);
     PROJECT_PROMPT_GROUPS.forEach((group) => {
       group.items.forEach((item) => {
@@ -586,8 +585,18 @@ export default function ProjectPromptManager() {
     if (typeof currentProject.ai_guidelines === 'string') {
       parsedTemplates.ai_guidelines = currentProject.ai_guidelines;
     }
+    const savedSignature = getProjectPromptSignature(parsedTemplates);
+    const isSameProjectContext = lastHydratedProjectKeyRef.current === projectContextKey;
+    const isKnownSavedState = savedSignature === lastSavedSignatureRef.current
+      || savedSignature === pendingSavedSignatureRef.current;
+    if (isSameProjectContext && isKnownSavedState) {
+      return;
+    }
+
     setOverrideDraft(parsedTemplates);
-    lastSavedSignatureRef.current = getProjectPromptSignature(parsedTemplates);
+    lastSavedSignatureRef.current = savedSignature;
+    pendingSavedSignatureRef.current = '';
+    lastHydratedProjectKeyRef.current = projectContextKey;
 
     const nextCoreDrafts = {};
     PROJECT_PROMPT_GROUPS.forEach((group) => {
@@ -676,7 +685,7 @@ export default function ProjectPromptManager() {
       .filter((group) => group.items.length > 0);
   }, [activeGroupKey, searchTerm]);
 
-  const handleGroupShortcut = (groupKey) => {
+  const handleGroupShortcut = useCallback((groupKey) => {
     setActiveGroupKey(groupKey);
 
     window.requestAnimationFrame(() => {
@@ -686,78 +695,86 @@ export default function ProjectPromptManager() {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     });
-  };
+  }, []);
 
-  const handleCoreChange = (item, value) => {
+  const handleCoreChange = useCallback((item, value) => {
     setCoreDrafts((prev) => ({
       ...prev,
       [item.key]: value,
     }));
-  };
+  }, []);
 
-  const handleOverrideChange = (item, value) => {
+  const handleOverrideChange = useCallback((item, value) => {
     setOverrideDraft((prev) => ({
       ...prev,
-      [item.key]: item.type === 'list' ? parseListText(value) : value,
+      [item.key]: value,
     }));
     setSaveMessage(null);
-  };
+  }, []);
 
-  const handleResetCore = (item) => {
+  const handleResetCore = useCallback((item) => {
     setCoreDrafts((prev) => ({
       ...prev,
       [item.key]: buildDefaultValue(item, genreKey),
     }));
-  };
+  }, [genreKey]);
 
-  const handleApplyCore = (item) => {
+  const handleApplyCore = useCallback((item) => {
     const coreValue = coreDrafts[item.key] || '';
     setOverrideDraft((prev) => ({
       ...prev,
-      [item.key]: item.type === 'list' ? parseListText(coreValue) : coreValue,
+      [item.key]: coreValue,
     }));
     setSaveMessage(null);
-  };
+  }, [coreDrafts]);
 
-  const handleClearOverride = (item) => {
+  const handleClearOverride = useCallback((item) => {
     setOverrideDraft((prev) => {
       const next = { ...prev };
       delete next[item.key];
       return next;
     });
     setSaveMessage(null);
-  };
+  }, []);
 
   const persistOverrideDraft = async (mode = 'manual') => {
     if (!currentProject) return;
 
+    const isAutoSave = mode === 'auto';
     const cleaned = cleanPromptTemplates(PROJECT_PROMPT_GROUPS, overrideDraft);
     const aiGuidelines = String(overrideDraft.ai_guidelines || '').trim();
-    setIsSaving(true);
+    const savedDraft = {
+      ...cleaned,
+      ai_guidelines: aiGuidelines,
+    };
+    const savedSignature = getProjectPromptSignature(savedDraft);
+    pendingSavedSignatureRef.current = savedSignature;
+    if (!isAutoSave) {
+      setIsSaving(true);
+    }
     try {
       await updateProjectSettings({
         prompt_templates: JSON.stringify(cleaned),
         ai_guidelines: aiGuidelines,
       });
-      setOverrideDraft({
-        ...cleaned,
-        ai_guidelines: aiGuidelines,
-      });
-      lastSavedSignatureRef.current = getProjectPromptSignature({
-        ...cleaned,
-        ai_guidelines: aiGuidelines,
-      });
-      setSaveMessage({
-        type: 'success',
-        text: mode === 'auto' ? 'Đã tự lưu Prompt truyện.' : 'Đã lưu Prompt truyện.',
-      });
+      lastSavedSignatureRef.current = savedSignature;
+      pendingSavedSignatureRef.current = '';
+      if (!isAutoSave) {
+        setSaveMessage({
+          type: 'success',
+          text: 'Đã lưu Prompt truyện.',
+        });
+      }
     } catch (error) {
+      pendingSavedSignatureRef.current = '';
       setSaveMessage({
         type: 'error',
         text: toVietnameseErrorMessage(error, 'Không thể lưu Prompt truyện.'),
       });
     } finally {
-      setIsSaving(false);
+      if (!isAutoSave) {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -809,6 +826,12 @@ export default function ProjectPromptManager() {
       return;
     }
 
+    const savedDraft = {
+      ...runtimeDraftSource.promptTemplates,
+      ai_guidelines: runtimeDraftSource.aiGuidelines,
+    };
+    const savedSignature = getProjectPromptSignature(savedDraft);
+    pendingSavedSignatureRef.current = savedSignature;
     setIsSaving(true);
     setRuntimeMessage(null);
     try {
@@ -824,18 +847,16 @@ export default function ProjectPromptManager() {
         },
       });
 
-      const savedDraft = {
-        ...runtimeDraftSource.promptTemplates,
-        ai_guidelines: runtimeDraftSource.aiGuidelines,
-      };
       setOverrideDraft(savedDraft);
-      lastSavedSignatureRef.current = getProjectPromptSignature(savedDraft);
+      lastSavedSignatureRef.current = savedSignature;
+      pendingSavedSignatureRef.current = '';
       setRuntimePreview(null);
       setRuntimeMessage({
         type: 'success',
         text: 'Đã lưu Project Style Runtime. Block sẽ được dùng ngay cho các luồng viết của truyện.',
       });
     } catch (error) {
+      pendingSavedSignatureRef.current = '';
       setRuntimeMessage({
         type: 'error',
         text: toVietnameseErrorMessage(error, 'Không thể lưu Project Style Runtime.'),
@@ -899,26 +920,21 @@ export default function ProjectPromptManager() {
 
   useEffect(() => {
     if (!currentProject || isHydratingRef.current) return undefined;
-    if (getProjectPromptSignature(overrideDraft) === lastSavedSignatureRef.current) return undefined;
-
-    setSaveMessage({
-      type: 'pending',
-      text: 'Đang tự lưu Prompt truyện...',
-    });
+    if (!promptDraftDirty) return undefined;
 
     const timer = window.setTimeout(() => {
       persistOverrideDraft('auto');
     }, 900);
 
     return () => window.clearTimeout(timer);
-  }, [overrideDraft, currentProject]);
+  }, [overrideDraft, currentProject, promptDraftDirty]);
 
-  const handleToggleCoreEditable = (item) => {
+  const handleToggleCoreEditable = useCallback((item) => {
     setEditableCoreKeys((prev) => ({
       ...prev,
       [item.key]: !prev[item.key],
     }));
-  };
+  }, []);
 
   if (!currentProject) {
     return (
@@ -1017,22 +1033,30 @@ export default function ProjectPromptManager() {
           </div>
         </div>
 
-        {saveMessage && (
-          <div className={`prompt-manager-status ${
-            saveMessage.type === 'success'
-              ? 'is-success'
-              : saveMessage.type === 'pending'
-                ? 'is-pending'
-                : 'is-error'
-          }`}>
-            {saveMessage.type === 'success'
-              ? <CheckCircle2 size={14} />
-              : saveMessage.type === 'pending'
-                ? <RefreshCw size={14} className="animate-spin" />
-                : <AlertCircle size={14} />}
-            {saveMessage.text}
-          </div>
-        )}
+        <div
+          className={`prompt-manager-status ${
+            saveMessage
+              ? saveMessage.type === 'success'
+                ? 'is-success'
+                : saveMessage.type === 'pending'
+                  ? 'is-pending'
+                  : 'is-error'
+              : 'is-empty'
+          }`}
+          aria-live="polite"
+          aria-hidden={saveMessage ? undefined : true}
+        >
+          {saveMessage && (
+            <>
+              {saveMessage.type === 'success'
+                ? <CheckCircle2 size={14} />
+                : saveMessage.type === 'pending'
+                  ? <RefreshCw size={14} className="animate-spin" />
+                  : <AlertCircle size={14} />}
+              {saveMessage.text}
+            </>
+          )}
+        </div>
       </section>
 
       <ProjectStyleRuntimeCard
@@ -1044,7 +1068,6 @@ export default function ProjectPromptManager() {
         runtimeMessage={runtimeMessage}
         isGeneratingRuntime={isGeneratingRuntime}
         isSaving={isSaving}
-        isPromptDraftDirty={promptDraftDirty}
         onGenerate={handleGenerateRuntimeBlock}
         onSavePreview={handleSaveRuntimePreview}
         onToggleEnabled={handleToggleRuntimeEnabled}

@@ -146,7 +146,7 @@ describe('Project prompt DNA application', () => {
     expect(romanceDna).not.toContain('giải quyết sớm = mất động lực đọc');
   });
 
-  it('removes machine-translation prose rules and targets 3000 words only for project FREE_PROMPT story writing', () => {
+  it('removes machine-translation prose rules and targets 3000 words only for default FREE_PROMPT story writing', () => {
     const messages = buildPrompt(TASK_TYPES.FREE_PROMPT, {
       projectId: 1,
       chapterId: 2,
@@ -171,6 +171,10 @@ describe('Project prompt DNA application', () => {
     expect(styleText).not.toContain('80-100');
     expect(styleText).not.toMatch(/Hán-Việt chiếm\s*(30|đa số|phần lớn)/i);
     expect(TASK_INSTRUCTIONS[TASK_TYPES.FREE_PROMPT]).toContain('tối thiểu 3000 từ');
+    expect(TASK_INSTRUCTIONS[TASK_TYPES.FREE_PROMPT]).toContain('một câu trả lời duy nhất');
+    expect(TASK_INSTRUCTIONS[TASK_TYPES.FREE_PROMPT]).toContain('Không chia thành nhiều phần');
+    expect(TASK_INSTRUCTIONS[TASK_TYPES.FREE_PROMPT]).toContain('không thay thế cảnh truyện bằng tóm tắt hoặc dàn ý');
+    expect(TASK_INSTRUCTIONS[TASK_TYPES.FREE_PROMPT]).not.toContain('FREE_PROMPT');
     expect(TASK_INSTRUCTIONS[TASK_TYPES.CONTINUE]).not.toContain('3000');
     expect(TASK_INSTRUCTIONS[TASK_TYPES.REWRITE]).not.toContain('3000');
     expect(TASK_INSTRUCTIONS[TASK_TYPES.EXPAND]).not.toContain('3000');

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { PRODUCT_SURFACE, shouldShowNavItem } from '../../config/productSurface';
 import useProjectStore from '../../stores/projectStore';
+import useUIStore from '../../stores/uiStore';
 import MobileSheet from './MobileSheet';
 import MobileProjectTopBar from './MobileProjectTopBar';
 import './MobileProjectShell.css';
@@ -86,17 +87,24 @@ export default function MobileProjectShell({ children }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { currentProject, chapters, scenes, activeChapterId, activeSceneId } = useProjectStore();
+  const storyEditorViewMode = useUIStore((state) => state.storyEditorViewMode);
   const [moreOpen, setMoreOpen] = useState(false);
 
   const numericProjectId = Number(projectId || currentProject?.id);
   const isEditorRoute = location.pathname.includes('/editor');
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
   const activeScene = scenes.find((scene) => scene.id === activeSceneId) || null;
-  const pageTitle = getPageTitle(location.pathname);
+  const isReaderMode = isEditorRoute && storyEditorViewMode === 'reader';
+  const activeChapterSceneCount = scenes.filter((scene) => scene.chapter_id === activeChapterId).length;
+  const pageTitle = isReaderMode
+    ? `Đọc liền · ${activeChapterSceneCount.toLocaleString('vi-VN')} cảnh`
+    : getPageTitle(location.pathname);
   const displaySceneTitle = formatStoryLabel(activeScene?.title);
   const displayChapterTitle = formatStoryLabel(activeChapter?.title);
   const editorTitle = [displayChapterTitle, displaySceneTitle].filter(Boolean).join(' · ');
-  const mobileTitle = isEditorRoute
+  const mobileTitle = isReaderMode
+    ? (displayChapterTitle || currentProject?.title || 'StoryForge')
+    : isEditorRoute
     ? (editorTitle || displaySceneTitle || displayChapterTitle || currentProject?.title || 'StoryForge')
     : (currentProject?.title || 'StoryForge');
   const backLabel = isEditorRoute ? 'V\u1ec1 Dashboard' : 'V\u1ec1 m\u00e0n vi\u1ebft';

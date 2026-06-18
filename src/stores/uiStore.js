@@ -43,6 +43,7 @@ const useUIStore = create((set, get) => ({
   theme: localStorage.getItem('sf-theme') || 'dark',
   sidebarCollapsed: readSidebarCollapsedPreference(),
   contentFontSize: readContentFontSizePreference(),
+  storyEditorViewMode: 'scene',
   rightPanelOpen: false,
   activePage: 'dashboard',
 
@@ -76,6 +77,10 @@ const useUIStore = create((set, get) => ({
     persistContentFontSizePreference(null);
     set({ contentFontSize: null });
   },
+
+  setStoryEditorViewMode: (mode) => set({
+    storyEditorViewMode: mode === 'reader' ? 'reader' : 'scene',
+  }),
 
   toggleRightPanel: () => set(s => ({ rightPanelOpen: !s.rightPanelOpen })),
   setRightPanelOpen: (v) => set({ rightPanelOpen: v }),

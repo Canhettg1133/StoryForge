@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronDown, ChevronLeft } from 'lucide-react';
 
 export default function MobileProjectTopBar({
   pageTitle,
@@ -14,7 +14,10 @@ export default function MobileProjectTopBar({
   const titleContent = (
     <>
       <span className="project-mobile-title__kicker">{pageTitle}</span>
-      <span className="project-mobile-title__main">{title}</span>
+      <span className="project-mobile-title__main-row">
+        <span className="project-mobile-title__main">{title}</span>
+        {titleIsAction && <ChevronDown className="project-mobile-title__disclosure" size={13} aria-hidden="true" />}
+      </span>
     </>
   );
 

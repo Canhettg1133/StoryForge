@@ -111,6 +111,10 @@
     flex-shrink: 0;
   }
 
+  .scene-editor-layout--mobile .scene-editor-mobile-actions--tablet {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .scene-editor-desktop-menu-trigger {
     display: none;
   }
