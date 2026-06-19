@@ -123,6 +123,7 @@ function classifyProxyModelChannel(normalizedModelId, context = {}) {
   if (
     normalizedModelId.includes('antigravity')
     || normalizedModelId.includes('antygravity')
+    || normalizedModelId.includes('反重力渠道')
     || hasToken(normalizedModelId, 'agy')
   ) {
     return 'Antigravity';

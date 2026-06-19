@@ -73,6 +73,10 @@ describe('openAIProxyCore model parsing and transport policy', () => {
     });
     expect(classifyProxyModel('agy-gemini-3.1-flash-lite', { profileId: CUSTOM_PROXY_PROFILE_ID }))
       .toMatchObject({ channel: 'Antigravity', family: 'Gemini', confidence: 'high' });
+    expect(classifyProxyModel('gemini-3-flash-preview-[星星公益站-反重力渠道]', { profileId: AG_PROXY_PROFILE_ID }))
+      .toMatchObject({ channel: 'Antigravity', family: 'Gemini', confidence: 'high' });
+    expect(classifyProxyModel('claude-sonnet-4-6-[星星公益站-反重力渠道]', { profileId: AG_PROXY_PROFILE_ID }))
+      .toMatchObject({ channel: 'Antigravity', family: 'Claude', confidence: 'high' });
 
     expect(classifyProxyModel('anthropic/claude-3-5-sonnet', { profileId: AG_PROXY_PROFILE_ID }))
       .toMatchObject({ channel: 'AG Proxy', family: 'Claude', confidence: 'high' });

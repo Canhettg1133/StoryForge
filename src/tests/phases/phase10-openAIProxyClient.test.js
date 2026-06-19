@@ -263,13 +263,13 @@ describe('OpenAI-compatible proxy client payloads', () => {
 
     keyManager.addKey(PROVIDERS.GEMINI_PROXY, 'sk-test-ag-key');
     setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
-    setAgProxyModel('agy-gemini-3.1-flash-lite');
+    setAgProxyModel('gemini-3-flash-preview-[星星公益站-反重力渠道]');
     modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
 
     await sendOnce(aiService, routerModule);
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.payload.model).toBe('agy-gemini-3.1-flash-lite');
+    expect(body.payload.model).toBe('gemini-3-flash-preview-[星星公益站-反重力渠道]');
     expect(body.payload).not.toHaveProperty('safetySettings');
     expect(body.payload).not.toHaveProperty('safety_settings');
   });
