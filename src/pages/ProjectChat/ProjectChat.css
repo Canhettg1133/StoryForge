@@ -282,6 +282,12 @@
   min-width: 0;
 }
 
+.project-chat-topbar__control .select {
+  width: 100%;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
 .project-chat-topbar__control--mode {
   min-width: 0;
 }

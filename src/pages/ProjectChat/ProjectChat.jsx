@@ -42,6 +42,7 @@ import {
   CUSTOM_PROXY_PROFILE_ID,
   getActiveOpenAIProxyProfile,
   getOpenAIProxyModel,
+  groupProxyModelsForDisplay,
   normalizeOpenAIProxyProvider,
 } from '../../services/ai/openAIProxyConfig';
 import db from '../../services/db/database';
@@ -310,16 +311,37 @@ function normalizeModelList(models = []) {
   )];
 }
 
-function getProxyModelOption(model, profile) {
-  const preset = PROXY_MODEL_PRESETS.find((item) => item.id === model)
-    || PROXY_MODELS.find((item) => item.id === model);
+function getProxyModelConfidenceLabel(confidence) {
+  if (confidence === 'low' || confidence === 'medium') return 'Chưa chắc';
+  if (confidence === 'unknown') return 'Chưa rõ';
+  return '';
+}
+
+function getGroupedProxyModelOptions(modelIds, profile) {
+  return groupProxyModelsForDisplay(modelIds, {
+    profileId: profile.id,
+    profileLabel: profile.label,
+  }).flatMap((group) => group.models.map((model) => getProxyModelOption(model.id, profile, model)));
+}
+
+function getProxyModelOption(model, profile, classification = null) {
+  const preset = profile.id === AG_PROXY_PROFILE_ID
+    ? PROXY_MODEL_PRESETS.find((item) => item.id === model)
+      || PROXY_MODELS.find((item) => item.id === model)
+    : null;
+  const family = classification?.family || '';
+  const channel = classification?.channel || '';
+  const confidence = classification?.confidence || 'high';
   return {
     id: model,
     label: preset?.label || model,
     meta: preset
       ? (preset.tier === 'pro' ? 'Proxy - Pro' : 'Proxy - Flash')
-      : (profile?.label || 'Proxy - fetched'),
+      : [channel, family].filter(Boolean).join(' - ') || (profile?.label || 'Proxy - fetched'),
     providerProfileId: profile.id,
+    channel,
+    family,
+    confidence,
   };
 }
 
@@ -334,7 +356,7 @@ function getAgProxyModelOptions(profile) {
       ...presetModels,
     ]);
 
-  return modelIds.map((model) => getProxyModelOption(model, profile));
+  return getGroupedProxyModelOptions(modelIds, profile);
 }
 
 export function getThreadRouting(thread) {
@@ -359,12 +381,7 @@ export function getAvailableModelOptions(provider, { proxyProfileId = '' } = {})
       ...(Array.isArray(profile.models) ? profile.models : []),
     ]);
 
-    return models.map((model) => ({
-      id: model,
-      label: model,
-      meta: profile.label || 'OpenAI-compatible',
-      providerProfileId: profile.id,
-    }));
+    return getGroupedProxyModelOptions(models, profile);
   }
 
   if (normalizedProvider === PROVIDERS.AI_STUDIO_RELAY) {
@@ -392,6 +409,31 @@ export function getAvailableModelOptions(provider, { proxyProfileId = '' } = {})
   }
 
   return [];
+}
+
+function groupModelOptionsByChannel(options = []) {
+  const groups = [];
+  const groupByChannel = new Map();
+
+  options.forEach((option) => {
+    const channel = option.channel || '';
+    if (!channel) return;
+    if (!groupByChannel.has(channel)) {
+      const group = { channel, options: [] };
+      groupByChannel.set(channel, group);
+      groups.push(group);
+    }
+    groupByChannel.get(channel).options.push(option);
+  });
+
+  return groups;
+}
+
+function getModelOptionSelectLabel(option) {
+  const confidenceLabel = getProxyModelConfidenceLabel(option.confidence);
+  const detail = [option.family, confidenceLabel].filter(Boolean).join(' - ');
+  const meta = detail || option.meta;
+  return meta ? `${option.label} · ${meta}` : option.label;
 }
 
 export function normalizeThread(thread, projectScopeEnabled, project) {
@@ -657,6 +699,10 @@ export default function ProjectChat() {
   const providerOptions = useMemo(
     () => getAvailableModelOptions(activeChatProvider, { proxyProfileId: activeProxyProfileId }),
     [activeChatProvider, activeProxyProfileId, routingConfigStamp],
+  );
+  const groupedProviderOptions = useMemo(
+    () => groupModelOptionsByChannel(providerOptions),
+    [providerOptions],
   );
 
   const defaultSystemPrompt = buildDefaultSystemPrompt(
@@ -1747,9 +1793,17 @@ export default function ProjectChat() {
                   disabled={!activeThread || isStreaming}
                 >
                   <option value="">Theo Settings hiện tại</option>
-                  {providerOptions.map((option) => (
+                  {groupedProviderOptions.length > 0 ? groupedProviderOptions.map((group) => (
+                    <optgroup key={group.channel} label={group.channel}>
+                      {group.options.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {getModelOptionSelectLabel(option)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )) : providerOptions.map((option) => (
                     <option key={option.id} value={option.id}>
-                      {option.label} · {option.meta}
+                      {getModelOptionSelectLabel(option)}
                     </option>
                   ))}
                 </select>

@@ -103,6 +103,128 @@ export function filterGeminiModelIds(models = []) {
   )];
 }
 
+const PROXY_MODEL_CHANNEL_ORDER = ['Google CLI', 'Antigravity', 'AG Proxy', 'Custom Proxy', 'Không rõ kênh'];
+const PROXY_MODEL_FAMILY_ORDER = ['Gemini', 'Claude', 'OpenAI', 'Qwen', 'DeepSeek', 'Llama', 'Mistral', 'Mimo/MiniMax', 'JJ', 'Khác'];
+
+function orderIndex(order, value) {
+  const index = order.indexOf(value);
+  return index === -1 ? order.length : index;
+}
+
+function hasToken(value, token) {
+  return new RegExp(`(^|[^a-z0-9])${token}([^a-z0-9]|$)`, 'iu').test(value);
+}
+
+function normalizeModelIdForMatch(modelId) {
+  return String(modelId || '').trim().toLowerCase();
+}
+
+function classifyProxyModelChannel(normalizedModelId, context = {}) {
+  if (
+    normalizedModelId.includes('antigravity')
+    || normalizedModelId.includes('antygravity')
+    || hasToken(normalizedModelId, 'agy')
+  ) {
+    return 'Antigravity';
+  }
+  if (
+    normalizedModelId.includes('cli渠道')
+    || normalizedModelId.includes('cli channel')
+    || normalizedModelId.includes('gcli')
+  ) {
+    return 'Google CLI';
+  }
+  if (context.profileId === AG_PROXY_PROFILE_ID) return 'AG Proxy';
+  if (context.profileId === CUSTOM_PROXY_PROFILE_ID) return 'Custom Proxy';
+  return 'Không rõ kênh';
+}
+
+function isKnownGoogleLikeChannel(channel) {
+  return channel === 'Google CLI' || channel === 'Antigravity' || channel === 'AG Proxy';
+}
+
+function classifyProxyModelFamily(normalizedModelId, channel) {
+  if (normalizedModelId.includes('anthropic/') || normalizedModelId.startsWith('claude') || normalizedModelId.includes('/claude')) {
+    return { family: 'Claude', confidence: 'high' };
+  }
+  if (/(^|[/:._-])(sonnet|opus|haiku)([-/:._]|$)/iu.test(normalizedModelId)) {
+    return { family: 'Claude', confidence: 'low' };
+  }
+  if (
+    normalizedModelId.includes('openai/')
+    || normalizedModelId.startsWith('gpt-')
+    || normalizedModelId.includes('/gpt-')
+    || hasToken(normalizedModelId, 'o3')
+    || hasToken(normalizedModelId, 'o4')
+  ) {
+    return { family: 'OpenAI', confidence: 'high' };
+  }
+  if (normalizedModelId.includes('google/gemini') || hasToken(normalizedModelId, 'gemini')) {
+    return { family: 'Gemini', confidence: 'high' };
+  }
+  if (normalizedModelId.includes('qwen')) return { family: 'Qwen', confidence: 'high' };
+  if (normalizedModelId.includes('deepseek')) return { family: 'DeepSeek', confidence: 'high' };
+  if (normalizedModelId.includes('meta-llama') || normalizedModelId.includes('llama')) return { family: 'Llama', confidence: 'high' };
+  if (normalizedModelId.includes('mistral') || normalizedModelId.includes('mixtral')) return { family: 'Mistral', confidence: 'high' };
+  if (normalizedModelId.includes('minimax') || normalizedModelId.includes('mimo') || normalizedModelId.includes('abab')) {
+    return { family: 'Mimo/MiniMax', confidence: 'high' };
+  }
+  if (/(^|[/:._-])jj([/:._-]|$)/iu.test(normalizedModelId)) return { family: 'JJ', confidence: 'high' };
+  if (isKnownGoogleLikeChannel(channel) && (hasToken(normalizedModelId, 'flash') || hasToken(normalizedModelId, 'pro'))) {
+    return { family: 'Gemini', confidence: 'low' };
+  }
+  return { family: 'Khác', confidence: 'unknown' };
+}
+
+export function classifyProxyModel(modelId, context = {}) {
+  const id = String(modelId || '').trim();
+  const normalizedModelId = normalizeModelIdForMatch(id);
+  const channel = classifyProxyModelChannel(normalizedModelId, context);
+  const familyResult = classifyProxyModelFamily(normalizedModelId, channel);
+  return {
+    id,
+    channel,
+    family: familyResult.family,
+    confidence: familyResult.confidence,
+  };
+}
+
+export function groupProxyModelsForDisplay(models = [], context = {}) {
+  const items = [...new Set(
+    (Array.isArray(models) ? models : [])
+      .map((model) => String(model || '').trim())
+      .filter(Boolean),
+  )]
+    .map((model) => classifyProxyModel(model, context))
+    .sort((a, b) => (
+      orderIndex(PROXY_MODEL_CHANNEL_ORDER, a.channel) - orderIndex(PROXY_MODEL_CHANNEL_ORDER, b.channel)
+      || orderIndex(PROXY_MODEL_FAMILY_ORDER, a.family) - orderIndex(PROXY_MODEL_FAMILY_ORDER, b.family)
+      || a.id.localeCompare(b.id)
+    ));
+
+  const groupsByChannel = new Map();
+  items.forEach((item) => {
+    if (!groupsByChannel.has(item.channel)) {
+      groupsByChannel.set(item.channel, { channel: item.channel, models: [] });
+    }
+    groupsByChannel.get(item.channel).models.push(item);
+  });
+
+  return Array.from(groupsByChannel.values()).map((group) => {
+    const familyMap = new Map();
+    group.models.forEach((item) => {
+      if (!familyMap.has(item.family)) {
+        familyMap.set(item.family, { family: item.family, models: [] });
+      }
+      familyMap.get(item.family).models.push(item);
+    });
+    return {
+      ...group,
+      families: Array.from(familyMap.values()),
+    };
+  });
+}
+
 export function isLocalProxyHost(hostname = '') {
   const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/gu, '').replace(/\.+$/u, '');
   if (!host) return false;

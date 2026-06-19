@@ -25,11 +25,12 @@ import {
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
+  classifyProxyModel,
   fetchOpenAIProxyModels,
-  filterGeminiModelIds,
   getAgOpenAIProxyProfile,
   getOpenAIProxySettings,
   getOpenAIProxyKeyProvider,
+  groupProxyModelsForDisplay,
   resolveProxyTransportMode,
   setAgProxyModels,
   setOpenAIProxyActiveProfile,
@@ -320,8 +321,8 @@ function normalizeCustomProxyModelList(models = []) {
   return normalizeProxyModelList(models);
 }
 
-function normalizeGeminiProxyModelList(models = []) {
-  return filterGeminiModelIds(normalizeProxyModelList(models));
+function normalizeAgProxyModelList(models = []) {
+  return normalizeProxyModelList(models);
 }
 
 function resetCustomProxyModelsOnBaseUrlChange(profile = {}, nextBaseUrl = '') {
@@ -347,16 +348,33 @@ function getAgProxyModelOption(model) {
   };
 }
 
+function groupProxyModelOptionsForSelect(options = [], context = {}) {
+  const optionById = new Map(options.map((option) => [option.id, option]));
+  return groupProxyModelsForDisplay(options.map((option) => option.id), context)
+    .map((group) => ({
+      channel: group.channel,
+      options: group.models.map((model) => ({
+        ...(optionById.get(model.id) || { id: model.id, label: model.id }),
+        channel: model.channel,
+        family: model.family,
+        confidence: model.confidence,
+      })),
+    }));
+}
+
 function ModelDefaultCallout({
   eyebrow,
   value,
   hint,
   selectLabel,
   selectValue,
-  options,
+  options = [],
+  optionGroups = [],
   onChange,
   disabled = false,
 }) {
+  const hasOptionGroups = optionGroups.some((group) => group.options.length > 0);
+
   return (
     <div className="model-default-block">
       <div className="model-default-block__eyebrow">{eyebrow}</div>
@@ -384,13 +402,21 @@ function ModelDefaultCallout({
             {options.length === 0 ? (
               <option value="">Chưa có model</option>
             ) : null}
-            {options.map((model) => (
+            {hasOptionGroups ? optionGroups.map((group) => (
+              <optgroup key={group.channel} label={group.channel}>
+                {group.options.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.label}
+                  </option>
+                ))}
+              </optgroup>
+            )) : options.map((model) => (
               <option key={model.id} value={model.id}>
                 {model.label}
               </option>
             ))}
           </select>
-          <span className="settings-select-shell__prompt">Click để đổi model</span>
+          <span className="settings-select-shell__prompt">Bấm để đổi model</span>
           <ChevronsUpDown size={16} className="settings-select-shell__icon" />
         </div>
       </div>
@@ -398,10 +424,42 @@ function ModelDefaultCallout({
   );
 }
 
-function CustomProxyModelPicker({ models, selectedModel, onSelect, title = 'Model đã lấy' }) {
+const PROXY_MODEL_FAMILY_FILTERS = ['Tất cả', 'Gemini', 'Claude', 'OpenAI', 'Khác'];
+const PRIMARY_PROXY_MODEL_FAMILIES = ['Gemini', 'Claude', 'OpenAI'];
+
+function getProxyModelConfidenceLabel(confidence) {
+  if (confidence === 'low' || confidence === 'medium') return 'Chưa chắc';
+  if (confidence === 'unknown') return 'Chưa rõ';
+  return '';
+}
+
+function CustomProxyModelPicker({
+  models = [],
+  selectedModel,
+  onSelect,
+  title = 'Model đã lấy',
+  profileId = '',
+  profileLabel = '',
+}) {
+  const [searchText, setSearchText] = useState('');
+  const [familyFilter, setFamilyFilter] = useState('Tất cả');
   if (!models.length) return null;
 
-  const selected = models.includes(selectedModel) ? selectedModel : '';
+  const context = { profileId, profileLabel };
+  const normalizedSearch = searchText.trim().toLowerCase();
+  const filteredModels = models.filter((model) => {
+    const meta = classifyProxyModel(model, context);
+    const matchesSearch = !normalizedSearch
+      || meta.id.toLowerCase().includes(normalizedSearch)
+      || meta.channel.toLowerCase().includes(normalizedSearch)
+      || meta.family.toLowerCase().includes(normalizedSearch);
+    const matchesFamily = familyFilter === 'Tất cả'
+      || (familyFilter === 'Khác'
+        ? !PRIMARY_PROXY_MODEL_FAMILIES.includes(meta.family)
+        : meta.family === familyFilter);
+    return matchesSearch && matchesFamily;
+  });
+  const filteredGroups = groupProxyModelsForDisplay(filteredModels, context);
 
   return (
     <div className="custom-proxy-model-picker">
@@ -411,27 +469,62 @@ function CustomProxyModelPicker({ models, selectedModel, onSelect, title = 'Mode
           <span>{models.length} model</span>
         </div>
       </div>
-      <select
-        className="select"
-        value={selected}
-        onChange={(event) => onSelect(event.target.value)}
-      >
-        <option value="">Chọn model...</option>
-        {models.map((model) => (
-          <option key={model} value={model}>{model}</option>
-        ))}
-      </select>
+      <div className="custom-proxy-model-tools">
+        <input
+          className="input custom-proxy-model-search"
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          placeholder="Tìm model..."
+        />
+        <div className="custom-proxy-model-filters" role="group" aria-label="Lọc theo họ model">
+          {PROXY_MODEL_FAMILY_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              className={`custom-proxy-model-filter ${familyFilter === filter ? 'is-active' : ''}`}
+              onClick={() => setFamilyFilter(filter)}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="custom-proxy-model-list">
-        {models.map((model) => (
-          <button
-            key={model}
-            type="button"
-            className={`custom-proxy-model-item ${selectedModel === model ? 'is-active' : ''}`}
-            onClick={() => onSelect(model)}
-          >
-            {model}
-          </button>
-        ))}
+        {filteredGroups.length > 0 ? filteredGroups.map((group) => (
+          <div className="custom-proxy-model-group" key={group.channel}>
+            <div className="custom-proxy-model-group__header">
+              <span>{group.channel}</span>
+              <small>{group.models.length} model</small>
+            </div>
+            {group.families.map((familyGroup) => (
+              <div className="custom-proxy-model-family" key={`${group.channel}:${familyGroup.family}`}>
+                <div className="custom-proxy-model-family__label">{familyGroup.family}</div>
+                {familyGroup.models.map((model) => {
+                  const confidenceLabel = getProxyModelConfidenceLabel(model.confidence);
+                  return (
+                    <button
+                      key={model.id}
+                      type="button"
+                      className={`custom-proxy-model-item ${selectedModel === model.id ? 'is-active' : ''}`}
+                      onClick={() => onSelect(model.id)}
+                    >
+                      <span className="custom-proxy-model-item__id">{model.id}</span>
+                      <span className="custom-proxy-model-item__badges">
+                        <span className="custom-proxy-model-badge">{model.family}</span>
+                        <span className="custom-proxy-model-badge custom-proxy-model-badge--muted">{model.channel}</span>
+                        {confidenceLabel ? (
+                          <span className="custom-proxy-model-badge custom-proxy-model-badge--warning">{confidenceLabel}</span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )) : (
+          <div className="custom-proxy-model-empty">Không có model phù hợp.</div>
+        )}
       </div>
     </div>
   );
@@ -505,7 +598,7 @@ export default function Settings() {
   const selectedProviderCard = provider === PROVIDERS.OPENAI_PROXY
     ? (activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? PROVIDER_CARD_CUSTOM_PROXY : PROVIDER_CARD_AG_PROXY)
     : provider;
-  const agProxyFetchedModels = normalizeGeminiProxyModelList(agProxyModels);
+  const agProxyFetchedModels = normalizeAgProxyModelList(agProxyModels);
   const agProxyFallbackOptions = [
     ...(!PROXY_MODEL_PRESETS.some((model) => model.id === proxyModel) && proxyModel
       ? [getAgProxyModelOption(proxyModel)]
@@ -513,8 +606,12 @@ export default function Settings() {
     ...PROXY_MODEL_PRESETS,
   ];
   const agProxyModelOptions = agProxyFetchedModels.length > 0
-    ? normalizeGeminiProxyModelList([proxyModel, ...agProxyFetchedModels]).map(getAgProxyModelOption)
+    ? normalizeAgProxyModelList([proxyModel, ...agProxyFetchedModels]).map(getAgProxyModelOption)
     : agProxyFallbackOptions;
+  const agProxyModelOptionGroups = groupProxyModelOptionsForSelect(agProxyModelOptions, {
+    profileId: AG_PROXY_PROFILE_ID,
+    profileLabel: 'AG Proxy',
+  });
   const customProxyModels = String(customProxyProfile.baseUrl || '').trim()
     ? normalizeCustomProxyModelList([
       customProxyProfile.defaultModel,
@@ -522,6 +619,10 @@ export default function Settings() {
     ])
     : [];
   const customProxyModelOptions = customProxyModels.map((model) => ({ id: model, label: model }));
+  const customProxyModelOptionGroups = groupProxyModelOptionsForSelect(customProxyModelOptions, {
+    profileId: CUSTOM_PROXY_PROFILE_ID,
+    profileLabel: customProxyProfile.label || 'Custom Proxy',
+  });
   const customProxyTransportMode = resolveProxyTransportMode(customProxyProfile);
   const customProxyChatPreview = getProxyEndpointPreview(
     customProxyProfile,
@@ -797,11 +898,11 @@ export default function Settings() {
         signal: AbortSignal.timeout(15000),
       });
       const allModels = normalizeProxyModelList(models);
-      const uniqueModels = normalizeGeminiProxyModelList(allModels);
+      const uniqueModels = normalizeAgProxyModelList(allModels);
       if (uniqueModels.length === 0) {
         setProxyModelFetchStatus({
           type: 'error',
-          text: `Đã lấy ${allModels.length} models nhưng không thấy model Gemini. Vẫn giữ danh sách preset có sẵn.`,
+          text: `Đã lấy ${allModels.length} models nhưng không thấy model hợp lệ. Vẫn giữ danh sách preset có sẵn.`,
         });
         return;
       }
@@ -815,7 +916,7 @@ export default function Settings() {
       handleSelectAgProxyModel(nextModel);
       setProxyModelFetchStatus({
         type: 'success',
-        text: `Đã lấy ${allModels.length} models, lọc còn ${savedModels.length} model Gemini cho ag.`,
+        text: `Đã lấy ${allModels.length} models, lưu ${savedModels.length} model cho ag.`,
       });
     } catch (error) {
       setProxyModelFetchStatus({
@@ -1019,12 +1120,13 @@ export default function Settings() {
           {selectedProviderCard === PROVIDER_CARD_AG_PROXY ? (
             <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
               <ModelDefaultCallout
-                eyebrow="Model Gemini Proxy"
+                eyebrow="Model AG Proxy"
                 value={selectedProxyPreset?.label || 'Chưa chọn model'}
-                hint="Bấm vào hộp bên dưới để đổi model mặc định cho toàn bộ tác vụ Gemini Proxy."
-                selectLabel="Chọn model Gemini Proxy mặc định"
+                hint="Bấm vào hộp bên dưới để đổi model mặc định cho toàn bộ tác vụ AG Proxy."
+                selectLabel="Chọn model AG mặc định"
                 selectValue={proxyModel}
                 options={agProxyModelOptions}
+                optionGroups={agProxyModelOptionGroups}
                 onChange={handleSelectAgProxyModel}
               />
               <div className="settings-action-row settings-action-row--spaced">
@@ -1049,7 +1151,9 @@ export default function Settings() {
                 models={agProxyFetchedModels}
                 selectedModel={proxyModel}
                 onSelect={handleSelectAgProxyModel}
-                title="Danh sách model Gemini Proxy ag"
+                title="Danh sách model AG"
+                profileId={AG_PROXY_PROFILE_ID}
+                profileLabel="AG Proxy"
               />
               {proxyModelFetchStatus ? (
                 <div className={`settings-test-result ${proxyModelFetchStatus.type === 'success' ? 'success' : proxyModelFetchStatus.type === 'pending' ? 'pending' : 'error'}`}>
@@ -1092,6 +1196,7 @@ export default function Settings() {
                 selectLabel="Chọn model Custom Proxy mặc định"
                 selectValue={customProxyProfile.defaultModel || ''}
                 options={customProxyModelOptions}
+                optionGroups={customProxyModelOptionGroups}
                 onChange={(model) => syncCustomProxyProfile({ defaultModel: model }, { activate: true })}
                 disabled={customProxyModelOptions.length === 0}
               />
@@ -1704,6 +1809,8 @@ export default function Settings() {
                       selectedModel={customProxyProfile.defaultModel || ''}
                       onSelect={(model) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: model }))}
                       title="Danh sách model Custom Proxy"
+                      profileId={CUSTOM_PROXY_PROFILE_ID}
+                      profileLabel={customProxyProfile.label || 'Custom Proxy'}
                     />
 
                     <div className="form-group">

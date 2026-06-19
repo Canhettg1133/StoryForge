@@ -274,11 +274,19 @@ describe('phase10 ProjectChat routing inheritance', () => {
     const options = getAvailableModelOptions(PROVIDERS.OPENAI_PROXY);
 
     expect(options.map((option) => option.id)).toEqual([
-      'llama-3.1-proxy',
       'gemini-custom',
       'qwen-custom',
+      'llama-3.1-proxy',
     ]);
     expect(options.every((option) => option.providerProfileId === CUSTOM_PROXY_PROFILE_ID)).toBe(true);
+    expect(options.find((option) => option.id === 'gemini-custom')).toMatchObject({
+      channel: 'Custom Proxy',
+      family: 'Gemini',
+    });
+    expect(options.find((option) => option.id === 'llama-3.1-proxy')).toMatchObject({
+      channel: 'Custom Proxy',
+      family: 'Llama',
+    });
     expect(options.some((option) => PROXY_MODELS.some((preset) => preset.id === option.id))).toBe(false);
   });
 
@@ -295,6 +303,8 @@ describe('phase10 ProjectChat routing inheritance', () => {
 
     setAgProxyModels([
       'gcli-gemini-3.1-pro-preview-live',
+      'anthropic/claude-3-5-sonnet',
+      'agy-gemini-3.1-flash-lite',
       'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
     ]);
     setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
@@ -302,10 +312,57 @@ describe('phase10 ProjectChat routing inheritance', () => {
     const options = getAvailableModelOptions(PROVIDERS.OPENAI_PROXY);
 
     expect(options.map((option) => option.id)).toEqual([
-      'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
       'gcli-gemini-3.1-pro-preview-live',
+      'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
+      'agy-gemini-3.1-flash-lite',
+      'anthropic/claude-3-5-sonnet',
     ]);
+    expect(options.find((option) => option.id === 'gcli-gemini-3.1-pro-preview-live')).toMatchObject({
+      channel: 'Google CLI',
+      family: 'Gemini',
+    });
+    expect(options.find((option) => option.id === 'anthropic/claude-3-5-sonnet')).toMatchObject({
+      channel: 'AG Proxy',
+      family: 'Claude',
+    });
+    expect(options.find((option) => option.id === 'agy-gemini-3.1-flash-lite')).toMatchObject({
+      channel: 'Antigravity',
+      family: 'Gemini',
+    });
     expect(options.every((option) => option.providerProfileId === AG_PROXY_PROFILE_ID)).toBe(true);
+  });
+
+  it('keeps custom proxy preset-matching ids bound to the custom profile', async () => {
+    const {
+      getAvailableModelOptions,
+      routerModule: { PROVIDERS, PROXY_MODEL_PRESETS },
+    } = await loadProjectChatHelpers();
+    const {
+      CUSTOM_PROXY_PROFILE_ID,
+      setOpenAIProxyActiveProfile,
+      updateCustomOpenAIProxyProfile,
+    } = await import('../../services/ai/openAIProxyConfig.js');
+    const customPresetLikeModel = PROXY_MODEL_PRESETS[0].id;
+
+    updateCustomOpenAIProxyProfile({
+      label: 'My proxy',
+      baseUrl: 'https://proxy.example.com',
+      defaultModel: customPresetLikeModel,
+      models: [customPresetLikeModel],
+    });
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+
+    const options = getAvailableModelOptions(PROVIDERS.OPENAI_PROXY);
+
+    expect(options).toHaveLength(1);
+    expect(options[0]).toMatchObject({
+      id: customPresetLikeModel,
+      label: customPresetLikeModel,
+      meta: 'Google CLI - Gemini',
+      providerProfileId: CUSTOM_PROXY_PROFILE_ID,
+      channel: 'Google CLI',
+      family: 'Gemini',
+    });
   });
 
   it('keeps ag and custom proxy model lists separated by proxy profile id', async () => {
@@ -368,8 +425,10 @@ describe('phase10 ProjectChat routing inheritance', () => {
     });
     const optionIds = options.map((option) => option.id);
 
-    expect(optionIds).toEqual(PROXY_MODEL_PRESETS.map((model) => model.id));
+    expect(new Set(optionIds)).toEqual(new Set(PROXY_MODEL_PRESETS.map((model) => model.id)));
     expect(optionIds.length).toBeLessThan(PROXY_MODELS.length);
+    expect(options.every((option) => option.channel === 'Google CLI')).toBe(true);
+    expect(options.every((option) => option.family === 'Gemini')).toBe(true);
   });
 
   it('builds separate chat provider values for ag and custom proxy profiles', async () => {

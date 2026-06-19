@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 
 async function loadConfig() {
   vi.resetModules();
@@ -105,6 +107,20 @@ describe('openAIProxyConfig legacy settings migration', () => {
       'gcli-gemini-3.1-pro-preview-live',
       'gemini-3-flash-high-真流-[星星公益站-CLI渠道]',
     ]);
+  });
+
+  it('keeps fetched ag proxy models provider-agnostic because ag can expose Claude', () => {
+    const settingsSource = fs.readFileSync(
+      path.join(process.cwd(), 'src/pages/Settings/Settings.jsx'),
+      'utf8',
+    );
+    const agFetchStart = settingsSource.indexOf('const handleFetchAgProxyModels');
+    const customFetchStart = settingsSource.indexOf('const handleFetchCustomProxyModels');
+    const agFetchBody = settingsSource.slice(agFetchStart, customFetchStart);
+
+    expect(agFetchBody).toContain('normalizeAgProxyModelList(allModels)');
+    expect(agFetchBody).not.toContain('normalizeGeminiProxyModelList(allModels)');
+    expect(agFetchBody).not.toContain('filterGeminiModelIds');
   });
 
   it('falls back to direct model fetch when the same-origin relay route is missing', async () => {
