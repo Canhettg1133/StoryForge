@@ -110,6 +110,15 @@ function getChatModeLabel(mode) {
   return mode === CHAT_MODES.STORY ? 'AI của truyện' : 'Tự do hỏi đáp';
 }
 
+export function getEffectiveChatModelLabel({ liveRouteInfo, activeThread, routePreview } = {}) {
+  return String(
+    liveRouteInfo?.model
+    || activeThread?.model_override
+    || routePreview?.model
+    || '',
+  ).trim();
+}
+
 function normalizeThreadOverrideValue(value) {
   return String(value || '').trim();
 }
@@ -690,10 +699,11 @@ export default function ProjectChat() {
     composerTextareaRef.current.style.overflowY = 'hidden';
   }
 
-  const effectiveModelLabel =
-    liveRouteInfo?.model
-    || activeThread?.model_override
-    || routePreview.model;
+  const effectiveModelLabel = getEffectiveChatModelLabel({
+    liveRouteInfo,
+    activeThread,
+    routePreview,
+  });
   const hasManualModelOverride = Boolean(activeThread?.model_override);
 
   const providerOptions = useMemo(
@@ -1668,11 +1678,6 @@ export default function ProjectChat() {
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', fontSize: '10.5px', fontWeight: 600, color: 'var(--color-text-secondary)' }} title={effectiveModelLabel}>
                     <Zap size={12} /> {effectiveModelLabel.split('·')[0].trim()}
                   </span>
-                  {liveRouteInfo ? (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: 'color-mix(in srgb, var(--color-accent) 15%, transparent)', color: 'var(--color-accent)', border: '1px solid color-mix(in srgb, var(--color-accent) 30%, transparent)', fontSize: '10.5px', fontWeight: 600 }}>
-                      <Zap size={12} /> {liveRouteInfo.model}
-                    </span>
-                  ) : null}
                   {saveStatus ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', fontSize: '10.5px', fontWeight: 600, color: 'var(--color-success)' }}>
                       <Save size={12} /> {saveStatus}

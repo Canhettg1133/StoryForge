@@ -61,6 +61,20 @@ describe('phase10 ProjectChat routing inheritance', () => {
     expect(payload.proxy_profile_id).toBe('');
   });
 
+  it('resolves one effective topbar model label while a live route is active', async () => {
+    const { getEffectiveChatModelLabel } = await loadProjectChatHelpers();
+
+    expect(getEffectiveChatModelLabel({
+      liveRouteInfo: { model: 'live-model' },
+      activeThread: { model_override: 'thread-model' },
+      routePreview: { model: 'router-model' },
+    })).toBe('live-model');
+    expect(getEffectiveChatModelLabel({
+      activeThread: { model_override: 'thread-model' },
+      routePreview: { model: 'router-model' },
+    })).toBe('thread-model');
+  });
+
   it('builds the free chat default system prompt with role identity, anti-refusal, and responsibility displacement', async () => {
     const { buildThreadPayload } = await loadProjectChatHelpers();
 
