@@ -11,6 +11,7 @@ import keyManager from './keyManager';
 import { AI_ERROR_CODES, normalizeAIError, shouldFallbackForError } from './errorUtils';
 import { PROVIDERS, TASK_TYPES } from './router';
 import {
+  classifyProxyModel,
   DEFAULT_PROXY_CHAT_PATH,
   fetchOpenAIProxyModels,
   getActiveOpenAIProxyProfile,
@@ -514,7 +515,10 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
   }
 
   const safetyThreshold = getSafetyThreshold({ nsfwMode, safetyMode });
+  const modelClassification = classifyProxyModel(model, { profileId: proxyProfile.id });
   const safetySettings = proxyProfile.supportsGeminiSafetySettings
+    && modelClassification.family === 'Gemini'
+    && modelClassification.channel !== 'Antigravity'
     ? buildGoogleSafetySettings(safetyThreshold)
     : null;
   const payload = {

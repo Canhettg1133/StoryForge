@@ -212,6 +212,68 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(body.payload.safety_settings).toEqual(body.payload.safetySettings);
   });
 
+  it('does not send Gemini safety settings to Claude models through the ag preset', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        AG_PROXY_PROFILE_ID,
+        setAgProxyModel,
+        setOpenAIProxyActiveProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_PROXY, 'sk-test-ag-key');
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    setAgProxyModel('anthropic/claude-3-5-sonnet');
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    await sendOnce(aiService, routerModule);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.payload.model).toBe('anthropic/claude-3-5-sonnet');
+    expect(body.payload).not.toHaveProperty('safetySettings');
+    expect(body.payload).not.toHaveProperty('safety_settings');
+  });
+
+  it('does not send Gemini safety settings to Antigravity Gemini models through the ag preset', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        AG_PROXY_PROFILE_ID,
+        setAgProxyModel,
+        setOpenAIProxyActiveProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_PROXY, 'sk-test-ag-key');
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    setAgProxyModel('agy-gemini-3.1-flash-lite');
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    await sendOnce(aiService, routerModule);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.payload.model).toBe('agy-gemini-3.1-flash-lite');
+    expect(body.payload).not.toHaveProperty('safetySettings');
+    expect(body.payload).not.toHaveProperty('safety_settings');
+  });
+
   it('fails before fetch when a custom proxy profile has no selected model', async () => {
     const {
       aiService,
