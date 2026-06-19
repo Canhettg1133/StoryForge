@@ -126,6 +126,15 @@ function extractSSEDataValue(rawLine) {
   return trimmed.slice(5).trimStart();
 }
 
+function extractOpenAIContentText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map(extractOpenAIContentText).join('');
+  if (!content || typeof content !== 'object') return '';
+  if (typeof content.text === 'string') return content.text;
+  if (typeof content.content === 'string') return content.content;
+  return '';
+}
+
 function extractPayloadError(payload) {
   if (!payload || typeof payload !== 'object') return null;
 
@@ -288,7 +297,7 @@ function buildContinuationMessages(baseMessages, partialText) {
 function extractProxyResponseText(data, errorContext = {}) {
   const choice = data?.choices?.[0] || null;
   const finishReason = normalizeFinishReason(choice?.finish_reason);
-  const text = String(choice?.message?.content || '').trim();
+  const text = extractOpenAIContentText(choice?.message?.content).trim();
 
   if (finishReason.toLowerCase() === 'content_filter') {
     throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
@@ -956,8 +965,8 @@ async function streamSSE(response, { onToken, onComplete, onError, errorContext 
             throw normalizeAIError({ code: AI_ERROR_CODES.SAFETY_BLOCK, rawMessage: 'SAFETY_BLOCK' }, errorContext);
           }
 
-          const delta = choice?.delta?.content || '';
-          const messageContent = choice?.message?.content || '';
+          const delta = extractOpenAIContentText(choice?.delta?.content);
+          const messageContent = extractOpenAIContentText(choice?.message?.content);
           const textChunk = delta || messageContent;
           if (textChunk) {
             hasToken = true;
@@ -1376,6 +1385,11 @@ class AIService {
       const cleanMetadata = (t) => t.replace(/^\[.*?\]\n*/gm, '').trim();
 
       processedText = cleanMetadata(cleanThoughts(processedText));
+
+      if (!processedText) {
+        settleErrorOnce({ code: AI_ERROR_CODES.EMPTY_STREAM, rawMessage: 'EMPTY_STREAM' }, routeMeta);
+        return;
+      }
 
       // Detect textual refusal for Super NSFW - Trigger Rebuke logic
       if (superNsfwMode && !skipRefusal && taskType !== TASK_TYPES.CHAPTER_SUMMARY && this.isRefusal(processedText)) {

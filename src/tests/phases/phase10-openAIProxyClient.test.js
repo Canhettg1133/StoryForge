@@ -608,6 +608,94 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('reads Claude-style text parts from OpenAI-compatible stream content arrays', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        AG_PROXY_PROFILE_ID,
+        setAgProxyModel,
+        setOpenAIProxyActiveProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => sseResponse([
+      'data: {"choices":[{"delta":{"content":[{"type":"text","text":"Xin chào"}]},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_PROXY, 'sk-test-ag-key');
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    setAgProxyModel('claude-sonnet-4-6');
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    await expect(sendStreamOnce(aiService, routerModule)).resolves.toBe('Xin chào');
+  });
+
+  it('reports invalid proxy stream content instead of completing with an empty answer', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        AG_PROXY_PROFILE_ID,
+        setAgProxyModel,
+        setOpenAIProxyActiveProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => sseResponse([
+      'data: {"choices":[{"delta":{"content":{"unexpected":"value"}}}]}\n\n',
+      'data: {"choices":[{"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_PROXY, 'sk-test-ag-key');
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    setAgProxyModel('claude-sonnet-4-6');
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    await expect(sendStreamOnce(aiService, routerModule)).rejects.toMatchObject({
+      code: 'EMPTY_STREAM',
+      message: expect.stringContaining('AI không trả nội dung'),
+    });
+  });
+
+  it('reports content removed by post-processing instead of storing an empty answer', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        AG_PROXY_PROFILE_ID,
+        setAgProxyModel,
+        setOpenAIProxyActiveProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => sseResponse([
+      'data: {"choices":[{"delta":{"content":"[Location: unknown]"},"finish_reason":"stop"}]}\n\n',
+      'data: [DONE]\n\n',
+    ]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.GEMINI_PROXY, 'sk-test-ag-key');
+    setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
+    setAgProxyModel('claude-sonnet-4-6');
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    await expect(sendStreamOnce(aiService, routerModule)).rejects.toMatchObject({
+      code: 'EMPTY_STREAM',
+      message: expect.stringContaining('AI không trả nội dung'),
+    });
+  });
+
   it('does not auto-continue non-writing tasks when a stream is incomplete', async () => {
     const {
       aiService,
