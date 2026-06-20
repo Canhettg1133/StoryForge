@@ -235,8 +235,14 @@ async function retranslateChunk(chunkIndex) {
         } else if (useOllama) {
             result = await translateWithOllama(chunkText, 0.7);
         } else {
-            const modelKeyPair = getNextModelKeyPairWithQueue();
-            result = await translateChunk(chunkText, modelKeyPair, 0.7);
+            const directAttempt = await sendDirectTranslationAttempt({
+                chunkIndex,
+                text: chunkText,
+                temperature: 0.7,
+                kind: 'manual_retry',
+            });
+            const modelKeyPair = directAttempt.modelKeyPair;
+            result = directAttempt.result;
             if (result && !result.startsWith('[LỖI')) {
                 recordKeySuccess(modelKeyPair.keyIndex);
             }

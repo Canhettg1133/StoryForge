@@ -307,7 +307,7 @@ describe('phase10 translator RPM limiter', () => {
     expect(vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 1 }).capacity', context)).toBe(1);
   });
 
-  it('does not turn long Gemini Direct cooldowns into RPM waits', async () => {
+  it('keeps Gemini Direct cooldown handling outside the shared RPM batch plan', () => {
     const context = loadRuntime();
     vm.runInContext(`
       useProxy = false;
@@ -320,14 +320,9 @@ describe('phase10 translator RPM limiter', () => {
 
     const plan = vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 1 })', context);
 
-    expect(plan.capacity).toBe(0);
+    expect(plan.capacity).toBe(1);
     expect(plan.waitMs).toBe(0);
-    await expect(
-      vm.runInContext('waitForTranslatorRpmBatchPlan({ requestedParallel: 1 })', context)
-    ).rejects.toMatchObject({
-      code: 'GEMINI_RATE_LIMIT',
-      retryAfterSeconds: 30,
-    });
+    expect(plan.remainingSlots).toBe(10);
   });
 
   it('keeps pure RPM waits bounded to the local RPM window', () => {

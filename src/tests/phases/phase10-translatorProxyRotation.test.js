@@ -212,6 +212,8 @@ describe('phase10 translator proxy key rotation', () => {
     );
     expect(engineSource).not.toContain('[Pre-check] Reducing parallel');
     expect(engineSource).not.toContain('parallelCount = Math.max(1, currentCombos.length)');
+    expect(engineSource).not.toContain('[Pre-check] All combinations disabled');
+    expect(engineSource).not.toContain('modelKeyHealthMap = {};');
   });
 
   it('keeps Ollama translation sequential even when more parallel requests are requested', () => {
@@ -798,5 +800,225 @@ describe('phase10 translator proxy key rotation', () => {
     expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
     expect(usedKeys).toEqual(['DIRECT_KEY_A', 'DIRECT_KEY_B']);
     expect(vm.runInContext("modelKeyHealthMap['gemma-4-31b-it|0'].disabledUntil > Date.now()", context)).toBe(true);
+    expect(vm.runInContext(`
+      getTranslatorRpmRecentCountByKind(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0, 'main')
+      + getTranslatorRpmRecentCountByKind(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 1, 'main')
+    `, context)).toBe(1);
+    expect(vm.runInContext(`
+      getTranslatorRpmRecentCountByKind(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0, 'retry')
+      + getTranslatorRpmRecentCountByKind(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 1, 'retry')
+    `, context)).toBe(1);
+  });
+
+  it('records a Direct 429 cooldown once before retrying another key', async () => {
+    const usedKeys = [];
+    const context = loadProxyRuntimeContext(async (url) => {
+      const key = new URL(url).searchParams.get('key');
+      usedKeys.push(key);
+      if (key === 'DIRECT_KEY_A') {
+        return {
+          ok: false,
+          status: 429,
+          json: async () => ({ error: { status: 'RESOURCE_EXHAUSTED', message: 'Please retry in 20s.' } }),
+        };
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{
+            finishReason: 'STOP',
+            content: {
+              parts: [{
+                text: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+              }],
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY_A', 'DIRECT_KEY_B'];
+      GEMINI_MODELS = [{ name: 'gemini-2.5-flash', enabled: true }];
+      cancelRequested = false;
+    `, context);
+
+    const result = await context.translateChunkWithRetry(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0,
+      2
+    );
+
+    expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
+    expect(usedKeys).toEqual(['DIRECT_KEY_A', 'DIRECT_KEY_B']);
+    expect(vm.runInContext(
+      "modelKeyHealthMap['gemini-2.5-flash|0'].errorCount",
+      context
+    )).toBe(1);
+  });
+
+  it('throws the final Direct API error instead of returning undefined', async () => {
+    const context = loadProxyRuntimeContext(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { status: 'UNAUTHENTICATED', message: 'API key not valid.' } }),
+    }));
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['INVALID_DIRECT_KEY'];
+      GEMINI_MODELS = [{ name: 'gemini-2.5-flash', enabled: true }];
+      cancelRequested = false;
+    `, context);
+
+    await expect(context.translateChunkWithRetry(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0,
+      1
+    )).rejects.toMatchObject({
+      code: 'INVALID_API_KEY',
+    });
+  });
+
+  it('allows the first ten Direct requests with one key configured at 10 RPM', () => {
+    const context = loadProxyRuntimeContext(async () => {
+      throw new Error('fetch is not used by pair selection');
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY'];
+      rpmPerKey = 10;
+      GEMINI_MODELS = [{ name: 'gemini-2.5-flash', enabled: true }];
+      cancelRequested = false;
+    `, context);
+
+    const selectedPairs = vm.runInContext(
+      'Array.from({ length: 10 }, () => getNextModelKeyPairWithQueue())',
+      context
+    );
+
+    expect(selectedPairs).toHaveLength(10);
+    expect(selectedPairs.every((pair) => pair.key === 'DIRECT_KEY')).toBe(true);
+    expect(vm.runInContext(
+      'getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0)',
+      context
+    )).toBe(10);
+    expect(() => vm.runInContext('getNextModelKeyPairWithQueue()', context)).toThrow(/RPM/i);
+  });
+
+  it('does not consume a Gemini Direct retry while waiting for the shared RPM slot', async () => {
+    let requestCount = 0;
+    const context = loadProxyRuntimeContext(async () => {
+      requestCount += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{
+            finishReason: 'STOP',
+            content: {
+              parts: [{
+                text: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+              }],
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY'];
+      rpmPerKey = 1;
+      GEMINI_MODELS = [{ name: 'gemini-2.5-flash', enabled: true }];
+      cancelRequested = false;
+      recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0);
+      sleep = async () => { translatorRpmTimestamps = {}; };
+    `, context);
+
+    const result = await context.translateChunkWithRetry(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0,
+      1
+    );
+
+    expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
+    expect(requestCount).toBe(1);
+  });
+
+  it('stops immediately when every Gemini Direct API key is invalid', async () => {
+    const context = loadProxyRuntimeContext(async () => {
+      throw new Error('fetch is not used when all keys are already invalid');
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['INVALID_DIRECT_KEY'];
+      GEMINI_MODELS = [{ name: 'gemini-2.5-flash', enabled: true }];
+      cancelRequested = false;
+      recordKeyError(0, 'INVALID_KEY', 86400);
+      recordModelKeyError('gemini-2.5-flash', 0, 86400);
+      sleep = async () => { throw new Error('Direct must not wait for an invalid key'); };
+    `, context);
+
+    await expect(context.sendDirectTranslationAttempt({
+      text: 'Đoạn nguồn cần dịch.',
+      kind: 'retry',
+    })).rejects.toMatchObject({
+      code: 'INVALID_API_KEY',
+      retryable: false,
+    });
+  });
+
+  it('does not silently keep source sub-chunks when Direct split retry is waiting for RPM', async () => {
+    let requestCount = 0;
+    const context = loadProxyRuntimeContext(async () => {
+      requestCount += 1;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{
+            finishReason: 'STOP',
+            content: {
+              parts: [{
+                text: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(40),
+              }],
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY'];
+      rpmPerKey = 1;
+      GEMINI_MODELS = [{ name: 'gemini-2.5-flash', enabled: true }];
+      cancelRequested = false;
+      recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0);
+      sleep = async () => { translatorRpmTimestamps = {}; };
+    `, context);
+
+    const sourceLines = [
+      'SOURCE_PART_ONE',
+      'SOURCE_PART_TWO',
+      'SOURCE_PART_THREE',
+      'SOURCE_PART_FOUR',
+    ];
+    const result = await context.translateLargeChunkBySplitting(sourceLines.join('\n'), 0);
+
+    expect(requestCount).toBe(4);
+    sourceLines.forEach((sourceLine) => expect(result).not.toContain(sourceLine));
   });
 });

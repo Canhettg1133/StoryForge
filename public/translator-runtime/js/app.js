@@ -801,11 +801,6 @@ function getTranslatorRpmWaitMsForKey(provider, keyIndex, limit = rpmPerKey) {
 }
 
 function getTranslatorRpmRemainingForProviderKey(provider, keyIndex, limit = rpmPerKey) {
-    if (provider === TRANSLATOR_PROVIDERS.GEMINI_DIRECT && typeof isModelKeyAvailable === 'function') {
-        const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
-        const hasAvailableModel = activeModels.some((model) => isModelKeyAvailable(model.name, keyIndex));
-        if (!hasAvailableModel) return 0;
-    }
     return getTranslatorRpmRemainingForKey(provider, keyIndex, limit);
 }
 

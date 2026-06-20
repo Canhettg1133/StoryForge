@@ -741,38 +741,23 @@ async function startTranslation() {
 
         console.log(`[Proxy] Using parallel=${parallelCount}, rpmPerKey=${rpmPerKey}, keys=${proxyKeyCount}, model=${activeProxyModel}`);
     } else {
-        // ========== GEMINI MODE: PRE-CHECK quota ==========
-        const availableCombos = getAllAvailableCombinations();
-        if (availableCombos.length === 0) {
-            const now = Date.now();
-            let minWaitTime = 60000;
+        // ========== GEMINI DIRECT MODE ==========
+        const directKeyCount = Array.isArray(apiKeys)
+            ? apiKeys.filter(key => String(key || '').trim()).length
+            : 0;
+        const activeDirectModels = typeof getActiveModels === 'function' ? getActiveModels() : [];
 
-            for (const pairId in modelKeyHealthMap) {
-                const health = modelKeyHealthMap[pairId];
-                if (health.disabledUntil) {
-                    const waitTime = health.disabledUntil - now;
-                    if (waitTime > 0 && waitTime < minWaitTime) {
-                        minWaitTime = waitTime;
-                    }
-                }
-            }
-
-            const maxWaitMs = 30000;
-            minWaitTime = Math.min(minWaitTime, maxWaitMs);
-            const waitSeconds = Math.ceil(minWaitTime / 1000);
-
-            showToast(`Tất cả API đang cooldown. Tự động chờ ${waitSeconds}s...`, 'warning');
-            console.warn(`[Pre-check] All combinations disabled. Waiting ${waitSeconds}s...`);
-
-            document.getElementById('progressSection').style.display = 'block';
-            await sleepWithCountdown(minWaitTime, '⏳ Chờ API sẵn sàng');
-            modelKeyHealthMap = {};
+        if (directKeyCount <= 0) {
+            showToast('Vui lòng thêm ít nhất 1 API key Gemini Direct trước khi dịch.', 'error');
+            return;
         }
 
-        const currentCombos = getAllAvailableCombinations();
-        if (currentCombos.length > 0 && currentCombos.length < parallelCount) {
-            console.log(`[Pre-check] Gemini Direct has ${currentCombos.length} active combo(s); running ${parallelCount} parallel request(s) as configured.`);
+        if (activeDirectModels.length === 0) {
+            showToast('Vui lòng chọn model Gemini Direct trước khi dịch.', 'error');
+            return;
         }
+
+        console.log(`[Gemini Direct] Using parallel=${parallelCount}, rpmPerKey=${rpmPerKey}, keys=${directKeyCount}, model=${activeDirectModels[0].name}`);
     }
 
     if (largeFileSource) {
@@ -1180,8 +1165,14 @@ async function startTranslation() {
                                     result = await translateChunkViaProxy(promptToUse, highTemp, proxyApiKey);
                                 }
                             } else {
-                                const modelKeyPair = getNextModelKeyPairWithQueue();
-                                result = await translateChunk(promptToUse, modelKeyPair, highTemp);
+                                const directAttempt = await sendDirectTranslationAttempt({
+                                    chunkIndex: idx,
+                                    text: promptToUse,
+                                    temperature: highTemp,
+                                    kind: 'retry',
+                                });
+                                const modelKeyPair = directAttempt.modelKeyPair;
+                                result = directAttempt.result;
                                 if (result && !result.startsWith('[LỖI') && !result.startsWith('[AUTO-SPLIT]')) {
                                     recordKeySuccess(modelKeyPair.keyIndex);
                                 }

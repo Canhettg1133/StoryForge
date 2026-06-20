@@ -100,7 +100,27 @@ function getRotationUnavailableState() {
     return state;
 }
 
+function getAllInvalidDirectKeysError() {
+    if (!Array.isArray(apiKeys) || apiKeys.length === 0) return null;
+
+    const now = Date.now();
+    const allKeysInvalid = apiKeys.every((_, keyIndex) => {
+        const health = keyHealthMap[keyIndex];
+        return health?.lastError === 'INVALID_KEY' && Number(health.disabledUntil || 0) > now;
+    });
+
+    if (!allKeysInvalid) return null;
+    return createGeminiRotationError(
+        'INVALID_API_KEY',
+        'Tất cả API key Gemini Direct đều không hợp lệ. Hãy kiểm tra hoặc thay API key.',
+        { retryable: false }
+    );
+}
+
 function throwNoAvailableDirectPair() {
+    const invalidKeysError = getAllInvalidDirectKeysError();
+    if (invalidKeysError) throw invalidKeysError;
+
     const state = getRotationUnavailableState();
 
     if (state.totalPairs === 0) {
@@ -205,12 +225,105 @@ function getBestAvailablePair() {
     return selected;
 }
 
-function getNextModelKeyPairWithQueue() {
+function getNextModelKeyPairWithQueue(kind = 'main') {
     const pair = getBestAvailablePair();
     if (typeof recordTranslatorRpmRequest === 'function') {
-        recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, pair.keyIndex);
+        recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, pair.keyIndex, Date.now(), kind);
     }
     return pair;
+}
+
+async function waitForNextModelKeyPairWithQueue(kind = 'main') {
+    while (!cancelRequested) {
+        try {
+            return getNextModelKeyPairWithQueue(kind);
+        } catch (error) {
+            if (error?.code !== 'GEMINI_RATE_LIMIT' || error?.retryable === false) throw error;
+
+            const retryAfterSeconds = Number(error?.retryAfterSeconds);
+            const waitMs = Math.min(
+                30000,
+                Math.max(1000, Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                    ? retryAfterSeconds * 1000
+                    : 5000)
+            );
+            const waitSeconds = Math.ceil(waitMs / 1000);
+            if (typeof updateTranslationRuntimeStatus === 'function') {
+                updateTranslationRuntimeStatus(`Đang chờ RPM hoặc cooldown Gemini Direct (${waitSeconds}s)...`);
+            }
+            if (typeof sleepWithCountdown === 'function') {
+                await sleepWithCountdown(waitMs, '⏳ Đang chờ Gemini Direct');
+            } else if (typeof sleep === 'function') {
+                await sleep(waitMs);
+            }
+        }
+    }
+
+    throw new Error('TRANSLATION_CANCELLED');
+}
+
+function recordDirectAttemptFailure(error, modelKeyPair) {
+    if (!modelKeyPair || error?.directHealthRecorded) return;
+
+    const translatorError = typeof normalizeTranslatorError === 'function'
+        ? normalizeTranslatorError(error)
+        : error;
+    const errorCode = String(translatorError?.code || '');
+    const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
+    const rawMessage = String(translatorError?.rawMessage || error?.message || '');
+    const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
+
+    if (errorCode === 'INVALID_API_KEY' || errorCode === 'GEMINI_PERMISSION_DENIED') {
+        const cooldownSeconds = errorCode === 'INVALID_API_KEY' ? 86400 : 300;
+        activeModels.forEach(model => recordModelKeyError(model.name, modelKeyPair.keyIndex, cooldownSeconds));
+        recordKeyError(
+            modelKeyPair.keyIndex,
+            errorCode === 'INVALID_API_KEY' ? 'INVALID_KEY' : 'PERMISSION_DENIED',
+            cooldownSeconds
+        );
+    } else if (errorCode === 'GEMINI_RATE_LIMIT' || errorCode === 'GEMINI_NOT_FOUND') {
+        let cooldownSeconds = errorCode === 'GEMINI_NOT_FOUND' ? 300 : 60;
+        if (errorCode === 'GEMINI_RATE_LIMIT') {
+            const retryMatch = rawMessage.match(/retry in ([\d.]+)s/i);
+            if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+                cooldownSeconds = Math.ceil(retryAfterSeconds) + 2;
+            } else if (retryMatch) {
+                cooldownSeconds = Math.ceil(parseFloat(retryMatch[1])) + 2;
+            }
+        }
+        recordModelKeyError(modelKeyPair.model, modelKeyPair.keyIndex, cooldownSeconds);
+        recordKeyError(
+            modelKeyPair.keyIndex,
+            errorCode === 'GEMINI_RATE_LIMIT' ? 'RATE_LIMIT' : 'NOT_FOUND',
+            cooldownSeconds
+        );
+    } else if (['GEMINI_INTERNAL', 'GEMINI_UNAVAILABLE', 'GEMINI_DEADLINE'].includes(errorCode)) {
+        const cooldownSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+            ? Math.min(60, Math.max(5, retryAfterSeconds))
+            : 30;
+        recordModelKeyError(modelKeyPair.model, modelKeyPair.keyIndex, cooldownSeconds);
+    }
+
+    if (error && typeof error === 'object') error.directHealthRecorded = true;
+}
+
+async function sendDirectTranslationAttempt(options = {}) {
+    const text = options.text || '';
+    const temperature = Number.isFinite(Number(options.temperature)) ? Number(options.temperature) : 0.7;
+    const kind = String(options.kind || 'main');
+
+    if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
+    const modelKeyPair = await waitForNextModelKeyPairWithQueue(kind);
+    if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
+
+    try {
+        const result = await translateChunk(text, modelKeyPair, temperature);
+        return { result, modelKeyPair };
+    } catch (error) {
+        recordDirectAttemptFailure(error, modelKeyPair);
+        if (error && typeof error === 'object') error.modelKeyPairUsed = modelKeyPair;
+        throw error;
+    }
 }
 
 // ============================================

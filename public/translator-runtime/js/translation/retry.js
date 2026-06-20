@@ -136,9 +136,6 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 return result;
             }
 
-            // ========== GEMINI MODE ==========
-            modelKeyPair = getNextModelKeyPairWithQueue();
-
             // ========== PROGRESSIVE PROMPT ==========
             let promptToUse = text;
 
@@ -168,7 +165,14 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             console.log(`[Gemini] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}`);
-            const result = await translateChunk(promptToUse, modelKeyPair, temperature);
+            const directAttempt = await sendDirectTranslationAttempt({
+                chunkIndex,
+                text: promptToUse,
+                temperature,
+                kind: attempt > 1 ? 'retry' : 'main',
+            });
+            modelKeyPair = directAttempt.modelKeyPair;
+            const result = directAttempt.result;
             recordKeySuccess(modelKeyPair.keyIndex);
             return result;
 
@@ -176,6 +180,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             if (cancelRequested || (error && String(error.message || '').includes('TRANSLATION_CANCELLED'))) {
                 throw new Error('TRANSLATION_CANCELLED');
             }
+            modelKeyPair = modelKeyPair || error?.modelKeyPairUsed || null;
 
             const translatorError = typeof normalizeTranslatorError === 'function'
                 ? normalizeTranslatorError(error)
@@ -278,35 +283,11 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 combinedErrorMsg.includes('invalid api key');
             const isPermissionDenied = errorCode === 'GEMINI_PERMISSION_DENIED';
             const isModelOverloaded = errorCode === 'GEMINI_UNAVAILABLE' && combinedErrorMsg.includes('overloaded');
-            const isDirectLimitWait = !modelKeyPair &&
-                errorCode === 'GEMINI_RATE_LIMIT' &&
-                (translatorError?.retryable || combinedErrorMsg.includes('đang chờ giới hạn rpm'));
 
             console.warn(`[Chunk ${chunkIndex + 1}] Attempt ${attempt}/${retries} failed: ${error.message}`);
 
             if (!modelKeyPair && translatorError?.retryable === false) {
                 throw translatorError;
-            }
-
-            // === CHỜ RPM/COOLDOWN TRƯỚC KHI CHỌN ĐƯỢC CẶP DIRECT ===
-            if (isDirectLimitWait) {
-                const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
-                const waitMs = Math.min(
-                    30000,
-                    Math.max(1000, Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-                        ? retryAfterSeconds * 1000
-                        : 5000)
-                );
-                const waitSeconds = Math.ceil(waitMs / 1000);
-                const statusText = `Đang chờ giới hạn hoặc cooldown Gemini Direct (${waitSeconds}s)...`;
-                updateTranslationRuntimeStatus(statusText);
-                showToast(statusText, 'warning');
-                if (typeof sleepWithCountdown === 'function') {
-                    await sleepWithCountdown(waitMs, '⏳ Đang chờ Gemini Direct');
-                } else {
-                    await sleep(waitMs);
-                }
-                continue;
             }
 
             // === XỬ LÝ CONTENT BLOCKED ===
@@ -330,31 +311,23 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             // === XỬ LÝ API KEY KHÔNG HỢP LỆ ===
             if (modelKeyPair && (isInvalidKey || isPermissionDenied)) {
                 console.error(`[Chunk ${chunkIndex + 1}] ❌ INVALID API KEY: Key ${modelKeyPair.keyIndex + 1}`);
-                GEMINI_MODELS.forEach(model => {
-                    recordModelKeyError(model.name, modelKeyPair.keyIndex, isPermissionDenied ? 300 : 86400);
-                });
-                recordKeyError(modelKeyPair.keyIndex, isPermissionDenied ? 'PERMISSION_DENIED' : 'INVALID_KEY', isPermissionDenied ? 300 : 86400);
                 const message = typeof formatTranslatorError === 'function'
                     ? formatTranslatorError(translatorError)
                     : `API Key ${modelKeyPair.keyIndex + 1} không hợp lệ!`;
                 showToast(message, 'error');
+                if (attempt === retries) throw error;
                 continue;
             }
 
             // === XỬ LÝ MODEL OVERLOADED (503) ===
             if (modelKeyPair && isModelOverloaded) {
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ Model ${modelKeyPair.model} overloaded`);
-                recordModelKeyError(modelKeyPair.model, modelKeyPair.keyIndex, 30);
+                if (attempt === retries) throw error;
                 continue;
             }
 
             // === XỬ LÝ LỖI GOOGLE 500/503/504: COOLDOWN CẶP MODEL+KEY, KHÔNG ĐÁNH DẤU KEY HỎNG ===
             if (modelKeyPair && isServerError) {
-                const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
-                const cooldownSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-                    ? Math.min(60, Math.max(5, retryAfterSeconds))
-                    : 30;
-                recordModelKeyError(modelKeyPair.model, modelKeyPair.keyIndex, cooldownSeconds);
                 updateTranslationRuntimeStatus(`Google trả lỗi ${translatorError?.status || 500}. Đang thử cặp model/key khác...`);
                 if (attempt === retries) {
                     throw error;
@@ -364,49 +337,8 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
             // === XỬ LÝ RATE LIMIT (429) ===
             if (modelKeyPair && (isRateLimit || isNotFound)) {
-                let cooldownSeconds = 60;
-                if (isRateLimit) {
-                    const retryMatch = String(translatorError?.rawMessage || error.message).match(/retry in ([\d.]+)s/i);
-                    if (retryMatch) {
-                        cooldownSeconds = Math.ceil(parseFloat(retryMatch[1])) + 2;
-                    }
-
-                } else if (isNotFound) {
-                    cooldownSeconds = 300;
-                }
-
-                recordModelKeyError(modelKeyPair.model, modelKeyPair.keyIndex, cooldownSeconds);
-                recordKeyError(modelKeyPair.keyIndex, isRateLimit ? 'RATE_LIMIT' : 'NOT_FOUND', cooldownSeconds);
-                console.log(`[Chunk ${chunkIndex + 1}] Disabled ${modelKeyPair.model} + Key ${modelKeyPair.keyIndex + 1} for ${cooldownSeconds}s`);
-
-                // === SMART WAIT ===
-                const availableCombos = getAllAvailableCombinations();
-                if (availableCombos.length === 0) {
-                    const now = Date.now();
-                    let minWaitTime = cooldownSeconds * 1000;
-
-                    for (const pairId in modelKeyHealthMap) {
-                        const health = modelKeyHealthMap[pairId];
-                        if (health.disabledUntil) {
-                            const waitTime = health.disabledUntil - now;
-                            if (waitTime > 0 && waitTime < minWaitTime) {
-                                minWaitTime = waitTime;
-                            }
-                        }
-                    }
-
-                    const maxWaitMs = 30000;
-                    minWaitTime = Math.min(minWaitTime, maxWaitMs);
-                    const waitSeconds = Math.ceil(minWaitTime / 1000);
-
-                    console.warn(`[Chunk ${chunkIndex + 1}] ⏳ ALL COMBINATIONS DISABLED! Waiting ${waitSeconds}s...`);
-                    const statusText = `Đang chờ giới hạn hoặc cooldown Gemini Direct (${waitSeconds}s)...`;
-                    updateTranslationRuntimeStatus(statusText);
-                    showToast(statusText, 'warning');
-                    await sleepWithCountdown(minWaitTime, '⏳ Đang chờ Gemini Direct');
-                    console.log(`[Chunk ${chunkIndex + 1}] ✅ Resuming after wait...`);
-                }
-
+                console.log(`[Chunk ${chunkIndex + 1}] Đang xoay cặp Gemini Direct sau lỗi ${isRateLimit ? '429' : '404'}`);
+                if (attempt === retries) throw error;
                 continue;
             }
 
@@ -482,8 +414,13 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                     : await translateChunkViaProxy(partText, 0.8, proxyApiKey);
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else {
-                const modelKeyPair = getNextModelKeyPairWithQueue();
-                const result = await translateChunk(partText, modelKeyPair, 0.8);
+                const directAttempt = await sendDirectTranslationAttempt({
+                    chunkIndex,
+                    text: partText,
+                    temperature: 0.8,
+                    kind: 'split_retry',
+                });
+                const { result, modelKeyPair } = directAttempt;
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
                 recordKeySuccess(modelKeyPair.keyIndex);
             }
@@ -492,6 +429,7 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                 throw new Error('TRANSLATION_CANCELLED');
             }
             console.warn(`[Chunk ${chunkIndex + 1}] Sub-chunk ${i + 1} failed: ${e.message}`);
+            if (!useProxy && !useOllama) throw e;
             // Giữ nguyên text gốc nếu sub-chunk fail
             translatedParts.push(parts[i]);
         }

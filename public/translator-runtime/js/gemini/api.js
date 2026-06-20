@@ -522,15 +522,6 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
             keyIndex,
         });
 
-        if (response.status === 429) {
-            recordModelKeyError(modelName, keyIndex);
-            throw geminiError;
-        }
-        if (response.status === 404) {
-            recordModelKeyError(modelName, keyIndex);
-            throw geminiError;
-        }
-
         throw geminiError;
     }
 
