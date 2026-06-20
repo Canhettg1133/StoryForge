@@ -2209,11 +2209,6 @@ function addApiKey() {
         return;
     }
 
-    if (!key.startsWith('AIza') || key.length < 30) {
-        showToast('API Key không hợp lệ! Key phải bắt đầu bằng "AIza"', 'error');
-        return;
-    }
-
     apiKeys.push(key);
     input.value = '';
     renderApiKeysList();

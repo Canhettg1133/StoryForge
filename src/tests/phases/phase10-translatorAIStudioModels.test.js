@@ -9,6 +9,9 @@ function createRuntimeContext(fetchImpl) {
   const stored = new Map();
   const toastMessages = [];
   const elements = {
+    newApiKey: { value: '', focus() {} },
+    apiKeysList: { innerHTML: '' },
+    apiCount: { textContent: '', style: {} },
     modelsList: { innerHTML: '' },
     modelCount: { textContent: '', style: {} },
     presetModelSelect: { innerHTML: '' },
@@ -45,6 +48,7 @@ function createRuntimeContext(fetchImpl) {
     showToast(message, type) {
       toastMessages.push({ message, type });
     },
+    saveSettings() {},
     updateWorkspaceToolbar() {},
     renderRPDDashboard() {},
   };
@@ -60,6 +64,27 @@ function createRuntimeContext(fetchImpl) {
 }
 
 describe('phase10 translator AI Studio model discovery', () => {
+  it('accepts Gemini Direct keys without assuming an AIza prefix', () => {
+    const { context, elements } = createRuntimeContext(async () => {
+      throw new Error('fetch is not used by key import');
+    });
+
+    vm.runInContext(
+      fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/gemini/model-rotation.js'), 'utf8'),
+      context,
+      { filename: 'public/translator-runtime/js/gemini/model-rotation.js' },
+    );
+
+    elements.newApiKey.value = 'new-key';
+    context.addApiKey();
+
+    expect(vm.runInContext('apiKeys', context)).toEqual(['new-key']);
+    expect(context.parseApiKeysFromText('next-format\nAIza-legacy').validKeys).toEqual([
+      'next-format',
+      'AIza-legacy',
+    ]);
+  });
+
   it('exposes a button in the translator model panel to fetch AI Studio models', () => {
     const html = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/index.html'), 'utf8');
     const initScript = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/init.js'), 'utf8');

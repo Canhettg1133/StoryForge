@@ -91,7 +91,7 @@ class KeyManager {
     let skipped = 0;
     for (const raw of keys) {
       const key = raw.trim();
-      if (!key || key.length < 10) continue;
+      if (!key || (poolKey !== 'gemini_direct' && key.length < 10)) continue;
       if (existing.has(key)) {
         skipped++;
         continue;
@@ -114,6 +114,7 @@ class KeyManager {
     const poolKey = normalizeProviderKey(provider);
     if (!this.pools[poolKey]) this.pools[poolKey] = [];
     const trimmed = key.trim();
+    if (!trimmed) return false;
     if (this.pools[poolKey].some(k => k.key === trimmed)) {
       return false; // duplicate
     }

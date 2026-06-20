@@ -75,7 +75,7 @@ function KeySection({ provider, providerLabel, description = '', icon: Icon, onK
   const parseKeysFromText = (value) => String(value || '')
     .split(/[\s,;]+/u)
     .map((item) => item.trim())
-    .filter((item) => item.length > 10);
+    .filter((item) => item && (provider === PROVIDERS.GEMINI_DIRECT || item.length > 10));
 
   const addKeys = (rawValue, { closeBulk = false } = {}) => {
     const candidates = parseKeysFromText(rawValue);
@@ -109,7 +109,11 @@ function KeySection({ provider, providerLabel, description = '', icon: Icon, onK
       showFeedback('warn', 'Ô này chỉ thêm 1 key. Dán nhiều key vào ô "Nhập nhiều key" bên dưới.');
       return;
     }
-    if (!key || key.length < 10) {
+    if (!key) {
+      showFeedback('error', 'Vui lòng nhập API key');
+      return;
+    }
+    if (provider !== PROVIDERS.GEMINI_DIRECT && key.length < 10) {
       showFeedback('error', 'Key quá ngắn (cần ít nhất 10 ký tự)');
       return;
     }

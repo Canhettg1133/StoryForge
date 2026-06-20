@@ -40,6 +40,22 @@ describe('keyManager provider pools', () => {
     expect(keyManager.getNextKey('openai_proxy')).toBe('sk-custom-proxy-key');
   });
 
+  it('accepts Gemini Direct keys without assuming a prefix or minimum length', async () => {
+    const keyManager = await loadKeyManager();
+
+    expect(keyManager.setKeys('gemini_direct', ['new-key', ' ', 'next-format'])).toEqual({
+      added: 2,
+      skipped: 0,
+    });
+    expect(keyManager.addKey('gemini_direct', 'another')).toBe(true);
+    expect(keyManager.addKey('gemini_direct', '   ')).toBe(false);
+    expect(keyManager.getKeys('gemini_direct').map((item) => item.key)).toEqual([
+      'new-key',
+      'next-format',
+      'another',
+    ]);
+  });
+
   it('defaults AI request reservations to 5 RPM per API key', async () => {
     const { DEFAULT_AI_RPM_PER_KEY, normalizeAiRpmPerKey } = await loadKeyManagerModule();
 

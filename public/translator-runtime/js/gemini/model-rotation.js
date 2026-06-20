@@ -538,7 +538,7 @@ async function openImportApiKeysModal() {
                 <li>Key phân cách bằng dấu phẩy (,)</li>
                 <li>Key phân cách bằng dấu chấm phẩy (;)</li>
             </ul>
-            <textarea id="keyImportTextarea" placeholder="AIzaSyB...&#10;AIzaSyC...&#10;AIzaSyD...&#10;&#10;hoặc: AIzaSyB..., AIzaSyC..., AIzaSyD..." style="
+            <textarea id="keyImportTextarea" placeholder="API key 1&#10;API key 2&#10;API key 3" style="
                 width: 600px;
                 max-width: 100%;
                 height: 250px;
@@ -606,7 +606,7 @@ function updateImportPreview() {
     const result = parseApiKeysFromText(rawText);
 
     if (result.validKeys.length === 0) {
-        previewDiv.innerHTML = `❌ Không tìm thấy API key hợp lệ nào!<br>Key phải bắt đầu bằng "AIza" và dài hơn 30 ký tự.`;
+        previewDiv.innerHTML = `❌ Không tìm thấy API key nào. Hãy nhập ít nhất 1 key không rỗng.`;
         previewDiv.style.color = '#ef4444';
     } else {
         let html = `✅ Tìm thấy <strong style="color:#10b981">${result.validKeys.length}</strong> key hợp lệ`;
@@ -617,10 +617,6 @@ function updateImportPreview() {
 
         if (result.alreadyExists > 0) {
             html += ` | 📌 <strong style="color:#3b82f6">${result.alreadyExists}</strong> key đã tồn tại`;
-        }
-
-        if (result.invalid > 0) {
-            html += ` | ❌ <strong style="color:#ef4444">${result.invalid}</strong> key không hợp lệ`;
         }
 
         html += `<br>Sẽ thêm: <strong style="color:#10b981">${result.newKeys.length}</strong> key mới`;
@@ -639,17 +635,9 @@ function parseApiKeysFromText(text) {
     const newKeys = [];
     let duplicates = 0;
     let alreadyExists = 0;
-    let invalid = 0;
-
     const seen = new Set();
 
     for (const key of rawKeys) {
-        // Validate key format
-        if (!key.startsWith('AIza') || key.length < 30) {
-            invalid++;
-            continue;
-        }
-
         // Check duplicate trong input
         if (seen.has(key)) {
             duplicates++;
@@ -667,7 +655,7 @@ function parseApiKeysFromText(text) {
         }
     }
 
-    return { validKeys, newKeys, duplicates, alreadyExists, invalid };
+    return { validKeys, newKeys, duplicates, alreadyExists };
 }
 
 function executeImportApiKeys() {
