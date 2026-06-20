@@ -29,9 +29,8 @@ window.exportHistory = exportHistory;
 window.importHistory = importHistory;
 window.exportApiKeys = exportApiKeys;
 if (typeof fetchAIStudioFreeModels === 'function') window.fetchAIStudioFreeModels = fetchAIStudioFreeModels;
-if (typeof selectAIStudioFetchedModel === 'function') window.selectAIStudioFetchedModel = selectAIStudioFetchedModel;
-if (typeof selectOnlyGeminiModel === 'function') window.selectOnlyGeminiModel = selectOnlyGeminiModel;
-if (typeof updateModelRpd === 'function') window.updateModelRpd = updateModelRpd;
+if (typeof selectGeminiModel === 'function') window.selectGeminiModel = selectGeminiModel;
+if (typeof useCustomGeminiModel === 'function') window.useCustomGeminiModel = useCustomGeminiModel;
 window.copyExportedKeys = copyExportedKeys;
 window.closeKeyModal = closeKeyModal;
 window.openImportApiKeysModal = openImportApiKeysModal;
@@ -50,6 +49,7 @@ if (typeof selectOllamaModel === 'function') window.selectOllamaModel = selectOl
 
 // Proxy functions
 if (typeof toggleProxyMode === 'function') window.toggleProxyMode = toggleProxyMode;
+if (typeof activateGeminiDirect === 'function') window.activateGeminiDirect = activateGeminiDirect;
 if (typeof testProxyConnection === 'function') window.testProxyConnection = testProxyConnection;
 if (typeof selectProxyModel === 'function') window.selectProxyModel = selectProxyModel;
 if (typeof updateProxyConfig === 'function') window.updateProxyConfig = updateProxyConfig;

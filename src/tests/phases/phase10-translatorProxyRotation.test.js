@@ -65,7 +65,6 @@ function loadProxyRuntimeContext(fetchImpl) {
     'public/translator-runtime/js/translation/errors.js',
     'public/translator-runtime/js/app.js',
     'public/translator-runtime/js/ui/settings.js',
-    'public/translator-runtime/js/gemini/rpd-tracker.js',
     'public/translator-runtime/js/gemini/model-rotation.js',
     'public/translator-runtime/js/gemini/api.js',
     'public/translator-runtime/js/translation/retry.js',
@@ -788,7 +787,6 @@ describe('phase10 translator proxy key rotation', () => {
       apiKeys = ['DIRECT_KEY_A', 'DIRECT_KEY_B'];
       GEMINI_MODELS = [{ name: 'gemma-4-31b-it', quota: 15, rpd: 1500, enabled: true }];
       cancelRequested = false;
-      rpdData = { date: getPacificDateString(), pairs: {} };
     `, context);
 
     const result = await context.translateChunkWithRetry(

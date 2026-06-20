@@ -21,7 +21,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=13">
+    <link rel="stylesheet" href="style.css?v=14">
 </head>
 
 <body>
@@ -168,144 +168,89 @@
                 </div>
             </section>
 
-            <!-- API Keys Panel -->
-            <section class="api-panel glass-card settings-subpanel" data-settings-group="gemini" style="display: none;">
-                <h2 class="section-title">
-                    <span class="icon">🔑</span>
-                    Gemini Direct • API Keys
-                    <span class="badge" id="apiCount">0 keys</span>
-                </h2>
-
-                <div class="api-info-box">
-                    <p>⚠️ <strong>Quan trọng:</strong> Rate limit tính theo <strong>MODEL</strong> trong mỗi project.
-                        Mỗi model có RPM + RPD riêng (vd: flash=5RPM/20RPD, flash-lite=10RPM/20RPD).</p>
-                    <p>✅ <strong>Cách tối ưu:</strong> Dùng nhiều tài khoản Google → mỗi tài khoản = quota riêng!</p>
-                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="link">
-                        👉 Lấy Gemini API Key (đăng nhập từng tài khoản)
-                    </a>
-                </div>
-
-                <!-- Add API Key Form -->
-                <div class="add-api-form">
-                    <div class="input-group">
-                        <input type="text" id="newApiKey" placeholder="Nhập API Key mới..." autocomplete="off">
-                        <button class="btn btn-primary" onclick="addApiKey()">
-                            ➕ Thêm
-                        </button>
-                        <button class="btn btn-success btn-small" onclick="openImportApiKeysModal()"
-                            title="Nhập nhiều API Keys cùng lúc">
-                            📥 Nhập nhiều
-                        </button>
-                        <button class="btn btn-secondary btn-small" onclick="resetRotationAndRefresh()"
-                            title="Reset rotation system (model + key)">
-                            🔄
-                        </button>
-                        <button class="btn btn-info btn-small" onclick="exportApiKeys()"
-                            title="Xuất danh sách API Keys">
-                            📋 Xuất
-                        </button>
+            <!-- Gemini Direct -->
+            <section class="gemini-direct-panel glass-card settings-subpanel" data-settings-group="gemini"
+                style="display: none;">
+                <div class="gemini-direct-header">
+                    <div>
+                        <h2 class="section-title">
+                            <span class="icon">✨</span>
+                            Gemini Direct
+                        </h2>
+                        <p>Dùng API key Google AI Studio với số luồng và RPM/key trong Cài đặt chung.</p>
                     </div>
+                    <button class="btn btn-primary provider-activate-button" id="activateGeminiDirectButton"
+                        type="button" onclick="activateGeminiDirect()" aria-pressed="false">
+                        Dùng Gemini Direct
+                    </button>
                 </div>
 
-                <!-- API Keys List -->
-                <div class="api-keys-list" id="apiKeysList">
-                    <p class="empty-message">Chưa có API key nào. Thêm ít nhất 1 key để bắt đầu dịch.</p>
-                </div>
-            </section>
+                <div class="gemini-direct-grid">
+                    <div class="gemini-direct-section">
+                        <div class="gemini-direct-section-header">
+                            <div>
+                                <h3>🔑 API key</h3>
+                                <p>Mỗi key có một giới hạn RPM riêng theo Cài đặt chung.</p>
+                            </div>
+                            <span class="badge" id="apiCount">0 key</span>
+                        </div>
 
-            <!-- Gemini Models Management Panel -->
-            <section class="models-panel glass-card settings-subpanel" data-settings-group="gemini" style="display: none;">
-                <h2 class="section-title">
-                    <span class="icon">📦</span>
-                    Gemini Direct • Models
-                    <span class="badge" id="modelCount">0 model</span>
-                </h2>
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer"
+                            class="link gemini-key-link">Lấy API key từ Google AI Studio</a>
 
-                <div class="models-info-box">
-                    <p>✅ <strong>Models ổn định (hoạt động với mọi key):</strong> gemini-2.5-flash,
-                        gemini-2.5-flash-lite, gemini-3-flash-preview</p>
-                    <p>⚠️ <strong>Models quota cao (cần key hỗ trợ):</strong> gemini-2.5-pro, gemini-2.0-flash,
-                        gemini-2.0-flash-lite (15 RPM, 1,500 RPD)</p>
-                </div>
+                        <div class="gemini-key-entry">
+                            <input type="text" id="newApiKey" placeholder="Nhập API key mới" autocomplete="off">
+                            <button class="btn btn-primary" type="button" onclick="addApiKey()">Thêm key</button>
+                        </div>
 
-                <!-- Models List -->
-                <div class="models-list" id="modelsList">
-                    <p class="empty-message">Đang tải model...</p>
-                </div>
+                        <div class="gemini-key-actions">
+                            <button class="btn btn-success btn-small" type="button" onclick="openImportApiKeysModal()">
+                                📥 Nhập nhiều
+                            </button>
+                            <button class="btn btn-info btn-small" type="button" onclick="exportApiKeys()">
+                                📋 Xuất key
+                            </button>
+                            <button class="btn btn-secondary btn-small" type="button" onclick="resetRotationAndRefresh()">
+                                🔄 Đặt lại xoay key
+                            </button>
+                        </div>
 
-                <!-- Add Model -->
-                <div class="add-model-section">
-                    <h4>➕ Thêm model</h4>
+                        <div class="api-keys-list" id="apiKeysList">
+                            <p class="empty-message">Chưa có API key. Thêm ít nhất một key để bắt đầu dịch.</p>
+                        </div>
+                    </div>
 
-                    <!-- Preset Selection -->
-                    <div class="add-model-row">
-                        <select id="presetModelSelect" class="model-select">
-                            <option value="">-- Chọn model --</option>
+                    <div class="gemini-direct-section">
+                        <div class="gemini-direct-section-header">
+                            <div>
+                                <h3>🤖 Model dịch</h3>
+                                <p>Chọn đúng một model, giống cách chọn model của AG và Custom Proxy.</p>
+                            </div>
+                            <span class="badge" id="modelCount">1 model</span>
+                        </div>
+
+                        <label class="gemini-model-label" for="geminiModelSelect">Model đang dùng</label>
+                        <select id="geminiModelSelect" onchange="selectGeminiModel(this.value)">
+                            <option value="">-- Chọn model Gemini Direct --</option>
                         </select>
-                        <button class="btn btn-primary btn-small" onclick="addPresetModel()">
-                            ➕ Thêm
-                        </button>
-                    </div>
 
-                    <!-- Custom Model -->
-                    <div class="add-model-row">
-                        <input type="text" id="customModelName" placeholder="Tên model (vd: gemini-2.0-flash)"
-                            class="model-name-input">
-                        <input type="number" id="customModelQuota" value="15" min="1" max="100"
-                            class="model-quota-input" title="RPM">
-                        <input type="number" id="customModelRpd" min="1" max="100000" placeholder="RPD tự động"
-                            class="model-rpd-input" title="RPD, để trống để tự suy luận theo model">
-                        <button class="btn btn-secondary btn-small" onclick="addCustomModel()">
-                            ✏️ Thêm thủ công
-                        </button>
-                    </div>
+                        <div class="gemini-model-actions">
+                            <button class="btn btn-info btn-small" type="button" onclick="fetchAIStudioFreeModels()">
+                                📡 Lấy model từ AI Studio
+                            </button>
+                            <button class="btn btn-warning btn-small" type="button" onclick="resetGeminiModels()">
+                                🔄 Đặt lại mặc định
+                            </button>
+                        </div>
 
-                    <!-- Actions -->
-                    <div class="model-actions">
-                        <button class="btn btn-info btn-small" onclick="fetchAIStudioFreeModels()"
-                            title="Dùng Gemini Direct API key đầu tiên để lấy danh sách model text từ AI Studio">
-                            📡 Lấy model AI Studio
-                        </button>
-                        <button class="btn btn-warning btn-small" onclick="resetGeminiModels()">
-                            🔄 Reset mặc định
-                        </button>
-                    </div>
-                    <div class="ai-studio-model-picker" id="aiStudioModelPicker" style="display: none;">
-                        <label for="aiStudioModelSelect">Chọn 1 model AI Studio để dịch</label>
-                        <div class="ai-studio-picker-controls">
-                            <select id="aiStudioModelSelect" onchange="selectAIStudioFetchedModel(this.value)">
-                                <option value="">-- Chưa lấy danh sách model --</option>
-                            </select>
+                        <div class="gemini-manual-model">
+                            <input type="text" id="customModelName" placeholder="Nhập model ID thủ công">
+                            <button class="btn btn-secondary btn-small" type="button" onclick="useCustomGeminiModel()">
+                                Dùng model này
+                            </button>
                         </div>
                         <div class="model-fetch-status" id="aiStudioModelStatus"></div>
                     </div>
-                </div>
-            </section>
-
-            <!-- RPD Dashboard Panel -->
-            <section class="rpd-panel glass-card settings-subpanel" data-settings-group="gemini" style="display: none;">
-                <h2 class="section-title">
-                    <span class="icon">📊</span>
-                    Gemini Direct • RPM / RPD
-                    <span class="badge" id="rpdBadge" style="background:#10b981;">-- còn lại</span>
-                </h2>
-
-                <div class="rpd-info-box">
-                    <p>📅 <strong>RPD (Requests Per Day)</strong> = Số request mỗi ngày cho từng model.
-                        Mỗi model có giới hạn riêng theo cấu hình đang chọn. Reset lúc 2PM giờ VN (midnight Pacific).</p>
-                </div>
-
-                <div class="rpd-dashboard" id="rpdDashboard">
-                    <p class="empty-message">Đang tải dữ liệu RPD...</p>
-                </div>
-
-                <div class="rpd-actions">
-                    <button class="btn btn-secondary btn-small" onclick="renderRPDDashboard()" title="Refresh RPD">
-                        🔄 Refresh
-                    </button>
-                    <button class="btn btn-warning btn-small" onclick="resetRPDData()" title="Reset bộ đếm RPD">
-                        🗑️ Reset RPD
-                    </button>
                 </div>
             </section>
 
@@ -1045,7 +990,7 @@
     ============================================== -->
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
-    <script src="js/app.js?v=13"></script>
+    <script src="js/app.js?v=14"></script>
     <script src="js/canon-pack.js?v=13"></script>
 
     <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
@@ -1055,16 +1000,15 @@
     <script src="js/translation/errors.js?v=13"></script>
 
     <!-- 2. Gemini API -->
-    <script src="js/gemini/model-rotation.js?v=13"></script>
-    <script src="js/gemini/rpd-tracker.js?v=13"></script>
+    <script src="js/gemini/model-rotation.js?v=14"></script>
     <script src="js/gemini/api.js?v=13"></script>
 
     <!-- 3. Translation Engine -->
     <script src="js/translation/chunker.js?v=13"></script>
     <script src="js/translation/source-reader.js?v=13"></script>
     <script src="js/translation/local-store.js?v=13"></script>
-    <script src="js/translation/retry.js?v=13"></script>
-    <script src="js/translation/engine.js?v=13"></script>
+    <script src="js/translation/retry.js?v=14"></script>
+    <script src="js/translation/engine.js?v=14"></script>
 
 
     <!-- 4. UI Components -->
@@ -1078,13 +1022,13 @@
     <script src="js/history/history.js?v=13"></script>
 
     <!-- 6. Local AI (Ollama) -->
-    <script src="js/local-ai/ollama.js?v=13"></script>
+    <script src="js/local-ai/ollama.js?v=14"></script>
 
     <!-- 6b. Proxy API -->
-    <script src="js/proxy/proxy-api.js?v=13"></script>
+    <script src="js/proxy/proxy-api.js?v=14"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
-    <script src="js/init.js?v=13"></script>
+    <script src="js/init.js?v=14"></script>
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->

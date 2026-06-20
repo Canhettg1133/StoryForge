@@ -68,6 +68,7 @@ function toggleOllamaMode() {
     }
 
     saveOllamaSettings();
+    if (typeof updateProxyModeControls === 'function') updateProxyModeControls();
     if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
 }
 
@@ -447,6 +448,7 @@ function loadOllamaSettings() {
         }
 
         console.log('[Ollama] Settings loaded:', settings);
+        if (typeof updateProxyModeControls === 'function') updateProxyModeControls();
         if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
     } catch (e) {
         console.error('[Ollama] Error loading settings:', e);

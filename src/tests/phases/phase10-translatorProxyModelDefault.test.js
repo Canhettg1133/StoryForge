@@ -26,6 +26,10 @@ function createSelectElement() {
   return select;
 }
 
+function createClassList() {
+  return { add() {}, remove() {}, toggle() {} };
+}
+
 function loadRuntime({ savedSettings = null } = {}) {
   const proxyModelSelect = createSelectElement();
   const customProxyModelSelect = createSelectElement();
@@ -51,6 +55,12 @@ function loadRuntime({ savedSettings = null } = {}) {
     customProxyKeyCount: { textContent: '', style: {} },
     customProxyModelInput: { id: 'customProxyModelInput', value: '' },
     customProxyModelStatus: { textContent: '', className: '' },
+    activateGeminiDirectButton: { textContent: '', disabled: false, classList: createClassList(), setAttribute() {} },
+    useOllamaToggle: { checked: false },
+    ollamaSettings: { style: {} },
+    ollamaStatus: { textContent: '', style: {}, classList: createClassList() },
+    ollamaUrl: { value: 'http://localhost:11434' },
+    ollamaModel: { value: 'local-model' },
   };
 
   const stored = new Map();
@@ -115,10 +125,10 @@ describe('phase10 translator proxy model default', () => {
     expect(html).toContain('id="customProxyModelSelect"');
     expect(html).toContain('Lấy models');
     expect(html).toContain('Nhập model thủ công');
-    expect(html).toContain('href="style.css?v=13"');
-    expect(html).toContain('src="js/app.js?v=13"');
-    expect(html).toContain('src="js/proxy/proxy-api.js?v=13"');
-    expect(html).toContain('src="js/init.js?v=13"');
+    expect(html).toContain('href="style.css?v=14"');
+    expect(html).toContain('src="js/app.js?v=14"');
+    expect(html).toContain('src="js/proxy/proxy-api.js?v=14"');
+    expect(html).toContain('src="js/init.js?v=14"');
   });
 
   it('defaults Gemini Proxy to Flash 3 when saved translator settings do not contain a model', () => {
@@ -142,6 +152,34 @@ describe('phase10 translator proxy model default', () => {
     const saved = JSON.parse(stored.get('novelTranslatorProSettings'));
     expect(saved.proxyModel).toBe(DEFAULT_MODEL);
     expect(saved.proxyBaseUrl).toBe('https://ag.beijixingxing.com/v1/chat/completions');
+  });
+
+  it('activates Gemini Direct directly and disables every other provider', () => {
+    const { context, elements, stored } = loadRuntime();
+
+    vm.runInContext(`
+      useProxy = true;
+      useOllama = true;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+    `, context);
+    elements.customProxyToggle.checked = true;
+    elements.useOllamaToggle.checked = true;
+
+    context.activateGeminiDirect();
+
+    expect(vm.runInContext('useProxy', context)).toBe(false);
+    expect(vm.runInContext('useOllama', context)).toBe(false);
+    expect(vm.runInContext('activeTranslatorProvider', context)).toBe('gemini_direct');
+    expect(elements.customProxyToggle.checked).toBe(false);
+    expect(elements.useOllamaToggle.checked).toBe(false);
+    expect(elements.activateGeminiDirectButton.disabled).toBe(true);
+    expect(elements.activateGeminiDirectButton.textContent).toBe('Đang dùng Gemini Direct');
+    expect(JSON.parse(stored.get('novelTranslatorProSettings'))).toEqual(
+      expect.objectContaining({ useProxy: false, activeTranslatorProvider: 'gemini_direct' }),
+    );
+    expect(JSON.parse(stored.get('novelTranslatorOllamaSettings'))).toEqual(
+      expect.objectContaining({ useOllama: false }),
+    );
   });
 
   it('ignores main StoryForge custom proxy settings when translator settings are empty', () => {

@@ -25,6 +25,9 @@ function setBadgeState(id, isActive) {
 function updateProxyModeControls() {
     const isAgActive = useProxy && activeTranslatorProvider === TRANSLATOR_PROVIDERS.AG_PROXY;
     const isCustomActive = useProxy && activeTranslatorProvider === TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+    const isDirectActive = !useProxy
+        && (typeof useOllama === 'undefined' || !useOllama)
+        && activeTranslatorProvider === TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
 
     const agToggle = getElement('useProxyToggle');
     const customToggle = getElement('customProxyToggle');
@@ -35,6 +38,14 @@ function updateProxyModeControls() {
     setElementDisplay('customProxySettings', isCustomActive);
     setBadgeState('proxyStatus', isAgActive);
     setBadgeState('customProxyStatus', isCustomActive);
+
+    const directButton = getElement('activateGeminiDirectButton');
+    if (directButton) {
+        directButton.disabled = isDirectActive;
+        directButton.textContent = isDirectActive ? 'Đang dùng Gemini Direct' : 'Dùng Gemini Direct';
+        directButton.setAttribute('aria-pressed', String(isDirectActive));
+        directButton.classList?.toggle('active', isDirectActive);
+    }
 }
 
 function disableOllamaProvider() {
@@ -444,6 +455,17 @@ function updateProxyConfig() {
     renderAgProxyEndpointPreview();
     saveSettings();
     if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
+}
+
+function activateGeminiDirect() {
+    disableOllamaProvider();
+    useProxy = false;
+    setActiveTranslatorProvider(TRANSLATOR_PROVIDERS.GEMINI_DIRECT);
+    updateProxyModeControls();
+    saveSettings();
+    if (typeof saveOllamaSettings === 'function') saveOllamaSettings();
+    if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
+    showToast('Đã chuyển sang Gemini Direct. AG, Custom Proxy và Ollama đã được tắt.', 'success');
 }
 
 function selectProxyModel() {

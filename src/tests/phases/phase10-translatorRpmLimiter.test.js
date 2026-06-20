@@ -28,7 +28,6 @@ function loadRuntime() {
   [
     'public/translator-runtime/js/translation/errors.js',
     'public/translator-runtime/js/app.js',
-    'public/translator-runtime/js/gemini/rpd-tracker.js',
     'public/translator-runtime/js/gemini/model-rotation.js',
     'public/translator-runtime/js/translation/engine.js',
   ].forEach((file) => {
@@ -265,7 +264,7 @@ describe('phase10 translator RPM limiter', () => {
     });
   });
 
-  it('limits Gemini Direct by both per-key RPM and model RPM', () => {
+  it('limits Gemini Direct only by the shared per-key RPM setting', () => {
     const context = loadRuntime();
     vm.runInContext(`
       useProxy = false;
@@ -275,7 +274,7 @@ describe('phase10 translator RPM limiter', () => {
       GEMINI_MODELS = [{ name: 'model-low-rpm', quota: 5, rpd: 1500, enabled: true }];
     `, context);
 
-    expect(vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 50 }).capacity', context)).toBe(5);
+    expect(vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 50 }).capacity', context)).toBe(10);
   });
 
   it('does not let one Gemini Direct key exceed the user RPM across multiple models', () => {
@@ -295,7 +294,7 @@ describe('phase10 translator RPM limiter', () => {
     expect(() => vm.runInContext('getNextModelKeyPairWithQueue()', context)).toThrow(/quota|RPM|hồi lại/i);
   });
 
-  it('does not spin-wait when Gemini Direct is blocked by RPD instead of RPM', async () => {
+  it('ignores legacy model RPD counters when planning Gemini Direct work', () => {
     const context = loadRuntime();
     vm.runInContext(`
       useProxy = false;
@@ -303,17 +302,9 @@ describe('phase10 translator RPM limiter', () => {
       apiKeys = ['DIRECT_KEY'];
       rpmPerKey = 10;
       GEMINI_MODELS = [{ name: 'model-rpd-full', quota: 10, rpd: 1, enabled: true }];
-      rpdData = {
-        date: getPacificDateString(),
-        pairs: {
-          'model-rpd-full|0': { used: 1, limit: 1 },
-        },
-      };
     `, context);
 
-    await expect(
-      vm.runInContext('waitForTranslatorRpmBatchPlan({ requestedParallel: 1 })', context)
-    ).rejects.toThrow(/Hết RPD/i);
+    expect(vm.runInContext('getTranslatorRpmBatchPlan({ requestedParallel: 1 }).capacity', context)).toBe(1);
   });
 
   it('does not turn long Gemini Direct cooldowns into RPM waits', async () => {

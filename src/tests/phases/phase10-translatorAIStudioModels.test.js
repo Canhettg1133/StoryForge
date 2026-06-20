@@ -14,6 +14,7 @@ function createRuntimeContext(fetchImpl) {
     apiCount: { textContent: '', style: {} },
     modelsList: { innerHTML: '' },
     modelCount: { textContent: '', style: {} },
+    geminiModelSelect: { innerHTML: '', value: '' },
     presetModelSelect: { innerHTML: '' },
     aiStudioModelPicker: { innerHTML: '', style: {} },
     aiStudioModelSelect: {
@@ -50,7 +51,6 @@ function createRuntimeContext(fetchImpl) {
     },
     saveSettings() {},
     updateWorkspaceToolbar() {},
-    renderRPDDashboard() {},
   };
 
   vm.createContext(context);
@@ -85,16 +85,25 @@ describe('phase10 translator AI Studio model discovery', () => {
     ]);
   });
 
-  it('exposes a button in the translator model panel to fetch AI Studio models', () => {
+  it('renders the compact Gemini Direct controls without per-model quota UI', () => {
     const html = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/style.css'), 'utf8');
     const initScript = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/init.js'), 'utf8');
 
+    expect(html).toContain('id="activateGeminiDirectButton"');
     expect(html).toContain('onclick="fetchAIStudioFreeModels()"');
-    expect(html).toContain('Lấy model AI Studio');
-    expect(html).toContain('id="aiStudioModelSelect"');
-    expect(html).toContain('id="customModelRpd"');
+    expect(html).toContain('Lấy model từ AI Studio');
+    expect(html).toContain('id="geminiModelSelect"');
+    expect(html).toContain('class="gemini-direct-grid"');
+    expect(html).not.toContain('id="rpdDashboard"');
+    expect(html).not.toContain('Gemini Direct • RPM / RPD');
+    expect(html).not.toContain('model-quota-input');
+    expect(html).not.toContain('model-rpd-input');
+    expect(html).not.toContain('js/gemini/rpd-tracker.js');
+    expect(css).toMatch(/\.gemini-direct-grid\s*\{[\s\S]*?grid-template-columns:/u);
+    expect(css).toMatch(/@media \(max-width: 760px\)[\s\S]*?\.gemini-direct-grid\s*\{[\s\S]*?grid-template-columns:\s*1fr/u);
     expect(initScript).toContain('window.fetchAIStudioFreeModels = fetchAIStudioFreeModels');
-    expect(initScript).toContain('window.selectAIStudioFetchedModel = selectAIStudioFetchedModel');
+    expect(initScript).toContain('window.selectGeminiModel = selectGeminiModel');
   });
 
   it('fetches AI Studio text models for selection without enabling every discovered model', async () => {
@@ -129,35 +138,25 @@ describe('phase10 translator AI Studio model discovery', () => {
       'gemini-2.5-pro',
       'gemma-4-31b-it',
     ]);
-    expect(discovered.find((model) => model.name === 'gemma-4-31b-it')).toEqual(
-      expect.objectContaining({ quota: 15, rpd: 1500 })
-    );
-    expect(discovered.find((model) => model.name === 'gemini-2.5-pro')).toEqual(
-      expect.objectContaining({ quota: 15, rpd: 1500 })
-    );
-
     expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual([
       'gemini-2.5-flash',
     ]);
 
     expect(stored.has('sf-active-direct-models')).toBe(false);
-    expect(elements.aiStudioModelSelect.innerHTML).toContain('gemini-2.5-pro');
-    expect(elements.aiStudioModelPicker.innerHTML).toContain('selectAIStudioFetchedModel');
-    expect(elements.modelsList.innerHTML).toContain('selectOnlyGeminiModel(1)');
-    expect(elements.modelsList.innerHTML).toContain('Chỉ dùng');
+    expect(elements.geminiModelSelect.innerHTML).toContain('gemini-2.5-pro');
     expect(toastMessages.at(-1)).toEqual(expect.objectContaining({
       type: 'success',
       message: expect.stringContaining('Chọn 1 model'),
     }));
 
-    context.selectAIStudioFetchedModel('gemini-2.5-pro');
+    context.selectGeminiModel('gemini-2.5-pro');
 
     expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual([
       'gemini-2.5-pro',
     ]);
     expect(stored.has('sf-active-direct-models')).toBe(false);
     expect(JSON.parse(stored.get('novelTranslatorActiveDirectModels'))).toEqual([
-      expect.objectContaining({ id: 'gemini-2.5-pro', rpm: 15, rpd: 1500 }),
+      { id: 'gemini-2.5-pro' },
     ]);
   });
 
@@ -175,16 +174,16 @@ describe('phase10 translator AI Studio model discovery', () => {
 
     vm.runInContext('apiKeys = ["direct-key-for-list-models"]; GEMINI_MODELS = [];', context);
     await context.fetchAIStudioFreeModels();
-    context.selectAIStudioFetchedModel('gemma-3-27b-it');
+    context.selectGeminiModel('gemma-3-27b-it');
 
     expect(vm.runInContext('getActiveModels().map((model) => model.name)', context)).toEqual(['gemma-3-27b-it']);
     expect(stored.has('sf-active-direct-models')).toBe(false);
     expect(JSON.parse(stored.get('novelTranslatorActiveDirectModels'))).toEqual([
-      expect.objectContaining({ id: 'gemma-3-27b-it', rpm: 15, rpd: 1500 }),
+      { id: 'gemma-3-27b-it' },
     ]);
   });
 
-  it('hydrates legacy model records without RPD using model defaults', () => {
+  it('migrates legacy multi-model records to one selected model without quota fields', () => {
     const { context, stored } = createRuntimeContext(async () => {
       throw new Error('fetch is not used by model hydration');
     });
@@ -197,8 +196,8 @@ describe('phase10 translator AI Studio model discovery', () => {
     context.loadGeminiModels();
 
     expect(vm.runInContext('GEMINI_MODELS', context)).toEqual([
-      expect.objectContaining({ name: 'gemma-4-31b-it', quota: 15, rpd: 1500 }),
-      expect.objectContaining({ name: 'gemini-2.5-flash', quota: 5, rpd: 20 }),
+      { name: 'gemma-4-31b-it', enabled: true },
+      { name: 'gemini-2.5-flash', enabled: false },
     ]);
   });
 
@@ -241,7 +240,7 @@ describe('phase10 translator AI Studio model discovery', () => {
     expect(pair.model).toBe('active-pro');
   });
 
-  it('does not force a Gemini Direct pair when every pair is out of RPM', () => {
+  it('does not force a Gemini Direct pair when its key is out of shared RPM', () => {
     const { context } = createRuntimeContext(async () => {
       throw new Error('fetch is not used by model rotation');
     });
@@ -254,38 +253,11 @@ describe('phase10 translator AI Studio model discovery', () => {
 
     vm.runInContext(`
       apiKeys = ['direct-key'];
-      GEMINI_MODELS = [{ name: 'gemma-4-31b-it', quota: 1, rpd: 1500, enabled: true }];
-      requestTimestamps = { 'gemma-4-31b-it|0': [Date.now()] };
+      rpmPerKey = 1;
+      GEMINI_MODELS = [{ name: 'gemma-4-31b-it', enabled: true }];
+      recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0);
     `, context);
 
-    expect(() => context.getBestAvailablePair()).toThrow(/Đang chờ quota hồi lại/);
-  });
-
-  it('does not force a Gemini Direct pair when internal RPD is exhausted', () => {
-    const { context } = createRuntimeContext(async () => {
-      throw new Error('fetch is not used by model rotation');
-    });
-
-    vm.runInContext(
-      fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/gemini/rpd-tracker.js'), 'utf8'),
-      context,
-      { filename: 'public/translator-runtime/js/gemini/rpd-tracker.js' },
-    );
-    vm.runInContext(
-      fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/gemini/model-rotation.js'), 'utf8'),
-      context,
-      { filename: 'public/translator-runtime/js/gemini/model-rotation.js' },
-    );
-
-    vm.runInContext(`
-      apiKeys = ['direct-key'];
-      GEMINI_MODELS = [{ name: 'gemma-4-31b-it', quota: 15, rpd: 1500, enabled: true }];
-      rpdData = {
-        date: getPacificDateString(),
-        pairs: { 'gemma-4-31b-it|0': { used: 1500, limit: 1500 } }
-      };
-    `, context);
-
-    expect(() => context.getBestAvailablePair()).toThrow(/Hết RPD/);
+    expect(() => context.getBestAvailablePair()).toThrow(/giới hạn RPM chung/);
   });
 });

@@ -278,30 +278,18 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 combinedErrorMsg.includes('invalid api key');
             const isPermissionDenied = errorCode === 'GEMINI_PERMISSION_DENIED';
             const isModelOverloaded = errorCode === 'GEMINI_UNAVAILABLE' && combinedErrorMsg.includes('overloaded');
-            const isRPDExhausted = errorCode === 'GEMINI_RPD_EXHAUSTED' ||
-                combinedErrorMsg.includes('hết rpd');
-            const isDirectQuotaWait = !modelKeyPair &&
+            const isDirectLimitWait = !modelKeyPair &&
                 errorCode === 'GEMINI_RATE_LIMIT' &&
-                (translatorError?.retryable || combinedErrorMsg.includes('đang chờ quota hồi lại'));
+                (translatorError?.retryable || combinedErrorMsg.includes('đang chờ giới hạn rpm'));
 
             console.warn(`[Chunk ${chunkIndex + 1}] Attempt ${attempt}/${retries} failed: ${error.message}`);
-
-            // === HẾT RPD NỘI BỘ: KHÔNG GỬI REQUEST PHÁ QUOTA ===
-            if (isRPDExhausted) {
-                const message = typeof formatTranslatorError === 'function'
-                    ? formatTranslatorError(translatorError)
-                    : 'Hết RPD cho Gemini Direct.';
-                updateTranslationRuntimeStatus('Hết RPD Gemini Direct. Dừng chunk hiện tại.');
-                showToast(message, 'error');
-                throw translatorError;
-            }
 
             if (!modelKeyPair && translatorError?.retryable === false) {
                 throw translatorError;
             }
 
             // === CHỜ RPM/COOLDOWN TRƯỚC KHI CHỌN ĐƯỢC CẶP DIRECT ===
-            if (isDirectQuotaWait) {
+            if (isDirectLimitWait) {
                 const retryAfterSeconds = Number(translatorError?.retryAfterSeconds);
                 const waitMs = Math.min(
                     30000,
@@ -310,11 +298,11 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                         : 5000)
                 );
                 const waitSeconds = Math.ceil(waitMs / 1000);
-                const statusText = `Đang chờ quota hồi lại cho Gemini Direct (${waitSeconds}s)...`;
+                const statusText = `Đang chờ giới hạn hoặc cooldown Gemini Direct (${waitSeconds}s)...`;
                 updateTranslationRuntimeStatus(statusText);
                 showToast(statusText, 'warning');
                 if (typeof sleepWithCountdown === 'function') {
-                    await sleepWithCountdown(waitMs, '⏳ Đang chờ quota');
+                    await sleepWithCountdown(waitMs, '⏳ Đang chờ Gemini Direct');
                 } else {
                     await sleep(waitMs);
                 }
@@ -383,19 +371,6 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                         cooldownSeconds = Math.ceil(parseFloat(retryMatch[1])) + 2;
                     }
 
-                    // Kiểm tra xem có phải hết RPD không theo limit của model hiện tại.
-                    if (typeof getRPDUsed === 'function') {
-                        const rpdUsed = getRPDUsed(modelKeyPair.model, modelKeyPair.keyIndex);
-                        const rpdLimit = typeof getRPDLimit === 'function' ? getRPDLimit(modelKeyPair.model) : 20;
-                        const exhaustedThreshold = Math.max(1, Math.floor(rpdLimit * 0.9));
-                        if (rpdUsed >= exhaustedThreshold) {
-                            console.warn(`[Chunk ${chunkIndex + 1}] RPD gần hết (${rpdUsed}/${rpdLimit}), đánh dấu pair hết RPD ngày`);
-                            if (typeof markPairRPDExhausted === 'function') {
-                                markPairRPDExhausted(modelKeyPair.model, modelKeyPair.keyIndex);
-                            }
-                            cooldownSeconds = 3600; // Disable 1 giờ thay vì 60s
-                        }
-                    }
                 } else if (isNotFound) {
                     cooldownSeconds = 300;
                 }
@@ -425,10 +400,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                     const waitSeconds = Math.ceil(minWaitTime / 1000);
 
                     console.warn(`[Chunk ${chunkIndex + 1}] ⏳ ALL COMBINATIONS DISABLED! Waiting ${waitSeconds}s...`);
-                    const statusText = `Đang chờ quota hồi lại cho Gemini Direct (${waitSeconds}s)...`;
+                    const statusText = `Đang chờ giới hạn hoặc cooldown Gemini Direct (${waitSeconds}s)...`;
                     updateTranslationRuntimeStatus(statusText);
                     showToast(statusText, 'warning');
-                    await sleepWithCountdown(minWaitTime, '⏳ Đang chờ quota');
+                    await sleepWithCountdown(minWaitTime, '⏳ Đang chờ Gemini Direct');
                     console.log(`[Chunk ${chunkIndex + 1}] ✅ Resuming after wait...`);
                 }
 

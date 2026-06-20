@@ -10,10 +10,8 @@ const TRANSLATION_PREVIEW_MAX_CHARS = 200000;
 const TRANSLATION_PREVIEW_UPDATE_INTERVAL_MS = 500;
 const TRANSLATION_HISTORY_PERSIST_INTERVAL_MS = 5000;
 const TRANSLATION_HISTORY_PERSIST_CHUNK_STEP = 10;
-const RPD_DASHBOARD_RENDER_INTERVAL_MS = 2000;
 const TRANSLATION_PREVIEW_TAIL_RATIO = 0.35;
 const TRANSLATION_PREVIEW_NOTICE_RESERVED_CHARS = 240;
-let lastRPDDashboardRenderAt = 0;
 
 const TRANSLATOR_SOURCE_LANGUAGE_LABELS = {
     auto: 'Tự động phát hiện',
@@ -218,14 +216,6 @@ function buildTranslatedTextPreview(chunksArray, options = {}) {
 
     parts.push(...tailPreview.parts);
     return parts.join('\n\n');
-}
-
-function renderRPDDashboardThrottled(force = false) {
-    if (typeof renderRPDDashboard !== 'function') return;
-    const now = Date.now();
-    if (!force && now - lastRPDDashboardRenderAt < RPD_DASHBOARD_RENDER_INTERVAL_MS) return;
-    lastRPDDashboardRenderAt = now;
-    renderRPDDashboard();
 }
 
 function isChunkSuccessfullyTranslatedForResume(chunkText) {
@@ -503,7 +493,6 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
                 status: `Đang dịch file lớn... ${completedChunks.toLocaleString('vi-VN')} chunk đã xong`,
             });
             updateProgressStats(speed.toFixed(1), getActiveKeyCount(), '--:--');
-            renderRPDDashboardThrottled();
             updateLargePreview('⏳ Đang dịch');
             persistLargeHistoryProgress();
         };
@@ -1045,7 +1034,6 @@ async function startTranslation() {
 
                 updateProgress(completedChunks, textHistoryTotalChunks, `Đang dịch chunk ${completedChunks}/${textHistoryTotalChunks}...`);
                 updateProgressStats(speed.toFixed(1), currentActiveKeys, formatTime(eta));
-                renderRPDDashboardThrottled();
                 updateTranslatedPreview('⏳ Đang dịch');
                 persistHistoryProgress();
             };

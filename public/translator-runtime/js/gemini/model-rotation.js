@@ -61,24 +61,12 @@ function getModelKeyCooldownMs(modelName, keyIndex) {
     return Math.max(0, health.disabledUntil - Date.now());
 }
 
-function getPairRPMWaitMs(modelName, keyIndex) {
-    const pairId = `${modelName}|${keyIndex}`;
-    if (!requestTimestamps[pairId]?.length) return 0;
-
-    const now = Date.now();
-    const oneMinuteAgo = now - 60000;
-    requestTimestamps[pairId] = requestTimestamps[pairId].filter(ts => ts > oneMinuteAgo);
-    if (!requestTimestamps[pairId].length) return 0;
-
-    const oldestRecentRequest = Math.min(...requestTimestamps[pairId]);
-    return Math.max(1000, 60000 - (now - oldestRecentRequest));
-}
-
 function getRotationUnavailableState() {
     const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
     const state = {
         totalPairs: 0,
-        rpdBlocked: 0,
+        cooldownBlocked: 0,
+        rpmBlocked: 0,
         waitBlocked: 0,
         minWaitMs: Infinity,
     };
@@ -90,13 +78,9 @@ function getRotationUnavailableState() {
 
             const cooldownMs = getModelKeyCooldownMs(model.name, keyIdx);
             if (cooldownMs > 0) {
+                state.cooldownBlocked++;
                 state.waitBlocked++;
                 state.minWaitMs = Math.min(state.minWaitMs, cooldownMs);
-                continue;
-            }
-
-            if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIdx)) {
-                state.rpdBlocked++;
                 continue;
             }
 
@@ -105,13 +89,7 @@ function getRotationUnavailableState() {
                 const rpmWaitMs = typeof getTranslatorRpmWaitMsForKey === 'function'
                     ? getTranslatorRpmWaitMsForKey(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, keyIdx)
                     : 60000;
-                state.waitBlocked++;
-                state.minWaitMs = Math.min(state.minWaitMs, rpmWaitMs || 60000);
-                continue;
-            }
-
-            if (!isPairUnderQuota(model.name, keyIdx)) {
-                const rpmWaitMs = getPairRPMWaitMs(model.name, keyIdx);
+                state.rpmBlocked++;
                 state.waitBlocked++;
                 state.minWaitMs = Math.min(state.minWaitMs, rpmWaitMs || 60000);
             }
@@ -128,23 +106,18 @@ function throwNoAvailableDirectPair() {
     if (state.totalPairs === 0) {
         throw createGeminiRotationError(
             'GEMINI_RATE_LIMIT',
-            'Chưa có cặp model/key Gemini Direct khả dụng. Hãy bật ít nhất 1 model và thêm API key.',
-            { retryable: false }
-        );
-    }
-
-    if (state.rpdBlocked > 0 && state.waitBlocked === 0) {
-        throw createGeminiRotationError(
-            'GEMINI_RPD_EXHAUSTED',
-            'Hết RPD cho toàn bộ cặp model/key Gemini Direct đang bật. Hãy đổi model/key hoặc chờ reset quota ngày.',
+            'Chưa có cặp model/key Gemini Direct khả dụng. Hãy chọn model và thêm API key.',
             { retryable: false }
         );
     }
 
     const waitSeconds = Math.max(1, Math.ceil(Math.min(state.minWaitMs, 30000) / 1000));
+    const waitReason = state.cooldownBlocked > 0 && state.rpmBlocked === 0
+        ? 'cooldown của Gemini Direct'
+        : 'giới hạn RPM chung của Gemini Direct';
     throw createGeminiRotationError(
         'GEMINI_RATE_LIMIT',
-        `Đang chờ quota hồi lại cho Gemini Direct (${waitSeconds}s).`,
+        `Đang chờ ${waitReason} (${waitSeconds}s).`,
         { retryable: true, retryAfterSeconds: waitSeconds }
     );
 }
@@ -159,10 +132,6 @@ function getAllAvailableCombinations() {
                 if (typeof isTranslatorRpmKeyAvailable === 'function' &&
                     !isTranslatorRpmKeyAvailable(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, keyIdx)) {
                     continue;
-                }
-                // Kiểm tra RPD availability
-                if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIdx)) {
-                    continue; // Bỏ qua pair đã hết RPD
                 }
                 combinations.push({
                     model: model.name,
@@ -180,42 +149,8 @@ function getNextModelKeyPair() {
 }
 
 function resetRotationSystem() {
-    globalRotationCounter = 0;
     modelKeyHealthMap = {};
-    requestTimestamps = {};
-    console.log('[Round-Robin] Full rotation system reset');
-}
-
-// ============================================
-// REQUEST QUEUE WITH RATE LIMITING
-// ============================================
-function getRecentRequestCount(modelName, keyIndex) {
-    const pairId = `${modelName}|${keyIndex}`;
-    if (!requestTimestamps[pairId]) return 0;
-
-    const oneMinuteAgo = Date.now() - 60000;
-    requestTimestamps[pairId] = requestTimestamps[pairId].filter(ts => ts > oneMinuteAgo);
-    return requestTimestamps[pairId].length;
-}
-
-function recordRequestTimestamp(modelName, keyIndex) {
-    const pairId = `${modelName}|${keyIndex}`;
-    if (!requestTimestamps[pairId]) {
-        requestTimestamps[pairId] = [];
-    }
-    requestTimestamps[pairId].push(Date.now());
-}
-
-function getModelQuota(modelName) {
-    const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : [];
-    const model = activeModels.find(m => m.name === modelName) || GEMINI_MODELS.find(m => m.name === modelName);
-    return model ? model.quota : 5;
-}
-
-function isPairUnderQuota(modelName, keyIndex) {
-    const recentCount = getRecentRequestCount(modelName, keyIndex);
-    const quota = getModelQuota(modelName);
-    return recentCount < quota;
+    console.log('[Round-Robin] Đã đặt lại cooldown model/key');
 }
 
 function getBestAvailablePair() {
@@ -241,58 +176,39 @@ function getBestAvailablePair() {
                 continue;
             }
 
-            // Kiểm tra RPD availability
-            if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIdx)) {
-                continue; // Bỏ qua pair đã hết RPD ngày
-            }
-
-            const recentCount = getRecentRequestCount(model.name, keyIdx);
-            const quota = Number(model.quota) > 0 ? Number(model.quota) : getModelQuota(model.name);
             const keyRemaining = typeof getTranslatorRpmRemainingForKey === 'function'
                 ? getTranslatorRpmRemainingForKey(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, keyIdx)
-                : quota;
-            const rpdRemaining = typeof getRPDRemaining === 'function' ? getRPDRemaining(model.name, keyIdx) : quota;
-            const remainingQuota = Math.min(quota - recentCount, keyRemaining, rpdRemaining);
+                : 1;
 
-            if (remainingQuota > 0) {
-                // Tính thêm RPD remaining vào score
-                const rpdLimit = typeof getRPDLimit === 'function' ? getRPDLimit(model.name) : 20;
-                const rpdFactor = rpdLimit > 0 ? rpdRemaining / rpdLimit : 0; // 0..1
-
+            if (keyRemaining > 0) {
                 scoredCombinations.push({
                     model: model.name,
                     keyIndex: keyIdx,
                     key: apiKeys[keyIdx],
-                    remainingQuota: remainingQuota,
-                    rpdRemaining: rpdRemaining,
-                    score: (remainingQuota / quota) * 0.5 + rpdFactor * 0.5 // Cân bằng RPM + RPD
+                    remainingRpm: keyRemaining,
+                    score: keyRemaining,
                 });
             }
         }
     }
 
     if (scoredCombinations.length === 0) {
-        console.warn('[Queue] Không còn cặp Gemini Direct khả dụng trong quota hiện tại');
+        console.warn('[Queue] Không còn cặp Gemini Direct khả dụng theo giới hạn RPM chung');
         throwNoAvailableDirectPair();
     }
 
     scoredCombinations.sort((a, b) => b.score - a.score);
 
     const selected = scoredCombinations[0];
-    console.log(`[Queue] Selected: Key ${selected.keyIndex + 1}, Model ${selected.model} (RPM: ${selected.remainingQuota}, RPD: ${selected.rpdRemaining})`);
+    console.log(`[Queue] Selected: Key ${selected.keyIndex + 1}, Model ${selected.model} (RPM còn lại: ${selected.remainingRpm})`);
 
     return selected;
 }
 
 function getNextModelKeyPairWithQueue() {
     const pair = getBestAvailablePair();
-    recordRequestTimestamp(pair.model, pair.keyIndex);
     if (typeof recordTranslatorRpmRequest === 'function') {
         recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, pair.keyIndex);
-    }
-    // Ghi nhận RPD
-    if (typeof recordRPDRequest === 'function') {
-        recordRPDRequest(pair.model, pair.keyIndex);
     }
     return pair;
 }

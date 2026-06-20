@@ -37,12 +37,6 @@ let totalChunksCount = 0;
 // Track health của từng (model + key) pair
 let modelKeyHealthMap = {};
 
-// Round-robin counter
-let globalRotationCounter = 0;
-
-// Request timestamps cho rate limiting
-let requestTimestamps = {};
-
 // Key health tracking
 let keyHealthMap = {};
 
@@ -806,79 +800,17 @@ function getTranslatorRpmWaitMsForKey(provider, keyIndex, limit = rpmPerKey) {
     return Math.max(1000, TRANSLATOR_RPM_WINDOW_MS - (now - oldest));
 }
 
-function getDirectModelRpmWaitMsForKey(keyIndex) {
-    const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
-    if (!Array.isArray(activeModels) || activeModels.length === 0) return 0;
-
-    let waitMs = Infinity;
-    for (const model of activeModels) {
-        if (!model?.name) continue;
-
-        const cooldownMs = typeof getModelKeyCooldownMs === 'function'
-            ? getModelKeyCooldownMs(model.name, keyIndex)
-            : 0;
-        if (cooldownMs > 0) {
-            continue;
-        }
-
-        if (typeof isModelKeyAvailable === 'function' && !isModelKeyAvailable(model.name, keyIndex)) {
-            continue;
-        }
-
-        if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIndex)) {
-            continue;
-        }
-
-        const modelLimit = typeof getModelQuota === 'function'
-            ? getModelQuota(model.name)
-            : normalizePositiveInteger(model.quota, inferGeminiModelQuota(model.name));
-        const recent = typeof getRecentRequestCount === 'function'
-            ? getRecentRequestCount(model.name, keyIndex)
-            : 0;
-        if (recent < normalizePositiveInteger(modelLimit, 1)) return 0;
-
-        const pairWaitMs = typeof getPairRPMWaitMs === 'function'
-            ? getPairRPMWaitMs(model.name, keyIndex)
-            : TRANSLATOR_RPM_WINDOW_MS;
-        waitMs = Math.min(waitMs, pairWaitMs || TRANSLATOR_RPM_WINDOW_MS);
-    }
-
-    return Number.isFinite(waitMs) ? waitMs : 0;
-}
-
-function getDirectModelRpmRemainingForKey(keyIndex) {
-    const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
-    if (!Array.isArray(activeModels) || activeModels.length === 0) return 0;
-
-    return activeModels.reduce((total, model) => {
-        if (!model?.name) return total;
-        if (typeof isModelKeyAvailable === 'function' && !isModelKeyAvailable(model.name, keyIndex)) return total;
-        if (typeof isPairRPDAvailable === 'function' && !isPairRPDAvailable(model.name, keyIndex)) return total;
-
-        const modelLimit = typeof getModelQuota === 'function'
-            ? getModelQuota(model.name)
-            : normalizePositiveInteger(model.quota, inferGeminiModelQuota(model.name));
-        const recent = typeof getRecentRequestCount === 'function'
-            ? getRecentRequestCount(model.name, keyIndex)
-            : 0;
-        const rpmRemaining = Math.max(0, normalizePositiveInteger(modelLimit, 1) - recent);
-        const rpdRemaining = typeof getRPDRemaining === 'function'
-            ? getRPDRemaining(model.name, keyIndex)
-            : rpmRemaining;
-        return total + Math.max(0, Math.min(rpmRemaining, rpdRemaining));
-    }, 0);
-}
-
 function getTranslatorRpmRemainingForProviderKey(provider, keyIndex, limit = rpmPerKey) {
-    const keyRemaining = getTranslatorRpmRemainingForKey(provider, keyIndex, limit);
-    if (provider !== TRANSLATOR_PROVIDERS.GEMINI_DIRECT) return keyRemaining;
-    return Math.min(keyRemaining, getDirectModelRpmRemainingForKey(keyIndex));
+    if (provider === TRANSLATOR_PROVIDERS.GEMINI_DIRECT && typeof isModelKeyAvailable === 'function') {
+        const activeModels = typeof getActiveModels === 'function' ? getActiveModels() : GEMINI_MODELS;
+        const hasAvailableModel = activeModels.some((model) => isModelKeyAvailable(model.name, keyIndex));
+        if (!hasAvailableModel) return 0;
+    }
+    return getTranslatorRpmRemainingForKey(provider, keyIndex, limit);
 }
 
 function getTranslatorRpmWaitMsForProviderKey(provider, keyIndex, limit = rpmPerKey) {
-    const keyWaitMs = getTranslatorRpmWaitMsForKey(provider, keyIndex, limit);
-    if (keyWaitMs > 0 || provider !== TRANSLATOR_PROVIDERS.GEMINI_DIRECT) return keyWaitMs;
-    return getDirectModelRpmWaitMsForKey(keyIndex);
+    return getTranslatorRpmWaitMsForKey(provider, keyIndex, limit);
 }
 
 function isTranslatorRpmKeyAvailable(provider, keyIndex, limit = rpmPerKey) {
@@ -1590,24 +1522,9 @@ function getFictionalPrompt(text) {
 // GEMINI MODELS - Dynamic (loadable from localStorage)
 // ============================================
 const DEFAULT_GEMINI_MODELS = [
-    { name: 'gemini-2.5-flash', quota: 5, rpd: 20, enabled: true },
-    { name: 'gemini-2.5-flash-lite', quota: 10, rpd: 20, enabled: true },
-    { name: 'gemini-3-flash-preview', quota: 5, rpd: 20, enabled: true },
-];
-
-// Preset models phổ biến để user chọn nhanh
-// ⚠️ Models mới (2.5-pro, 2.0-flash...) có quota cao nhưng chưa chắc API key nào cũng hỗ trợ
-const PRESET_GEMINI_MODELS = [
-    // Models cũ - hoạt động với hầu hết API keys
-    { name: 'gemini-2.5-flash', quota: 5, rpd: 20, label: '✅ Gemini 2.5 Flash (ổn định, 20 RPD)' },
-    { name: 'gemini-2.5-flash-lite', quota: 10, rpd: 20, label: '✅ Gemini 2.5 Flash Lite (ổn định, 20 RPD)' },
-    { name: 'gemini-3-flash-preview', quota: 5, rpd: 20, label: '✅ Gemini 3 Flash Preview (ổn định, 20 RPD)' },
-    // Models mới - quota cao nhưng cần key hỗ trợ
-    { name: 'gemini-2.5-pro', quota: 15, rpd: 1500, label: '⭐ Gemini 2.5 Pro (1.500 RPD - cần key hỗ trợ)' },
-    { name: 'gemini-2.0-flash', quota: 15, rpd: 1500, label: '⚡ Gemini 2.0 Flash (1.500 RPD - cần key hỗ trợ)' },
-    { name: 'gemini-2.0-flash-lite', quota: 15, rpd: 1500, label: '🚀 Gemini 2.0 Flash Lite (1.500 RPD - cần key hỗ trợ)' },
-    { name: 'gemini-2.0-flash-exp', quota: 15, rpd: 1500, label: '🧪 Gemini 2.0 Flash Exp (1.500 RPD - thử nghiệm)' },
-    { name: 'gemini-2.0-pro-exp', quota: 15, rpd: 20, label: '🧪 Gemini 2.0 Pro Exp (thử nghiệm)' },
+    { name: 'gemini-2.5-flash', enabled: true },
+    { name: 'gemini-2.5-flash-lite', enabled: false },
+    { name: 'gemini-3-flash-preview', enabled: false },
 ];
 
 const AI_STUDIO_MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
@@ -1622,41 +1539,28 @@ function normalizePositiveInteger(value, fallback) {
     return Number.isFinite(number) && number > 0 ? number : fallback;
 }
 
-function inferGeminiModelQuota(modelName) {
-    const normalizedName = normalizeAIStudioModelId(modelName);
-    const knownModel = [...DEFAULT_GEMINI_MODELS, ...PRESET_GEMINI_MODELS]
-        .find((model) => model.name === normalizedName);
-    if (knownModel) return normalizePositiveInteger(knownModel.quota, 15);
-
-    if (normalizedName.includes('flash-lite')) return 15;
-    if (normalizedName.includes('flash')) return 5;
-    if (normalizedName.includes('pro')) return 2;
-    if (normalizedName.startsWith('gemma-')) return 15;
-    return 15;
-}
-
-function getDefaultRPDForGeminiModel(modelName) {
-    const normalizedName = normalizeAIStudioModelId(modelName);
-    const knownModel = [...DEFAULT_GEMINI_MODELS, ...PRESET_GEMINI_MODELS]
-        .find((model) => model.name === normalizedName && Number(model.rpd) > 0);
-    if (knownModel) return normalizePositiveInteger(knownModel.rpd, 20);
-
-    if (normalizedName.startsWith('gemma-')) return 1500;
-    if (normalizedName.startsWith('gemini-2.0-flash')) return 1500;
-    if (normalizedName === 'gemini-2.5-pro') return 1500;
-    return 20;
-}
-
 function normalizeGeminiModelConfig(entry) {
     const name = normalizeAIStudioModelId(entry?.id || entry?.name);
     if (!name) return null;
 
     return {
         name,
-        quota: normalizePositiveInteger(entry?.quota ?? entry?.rpm, inferGeminiModelQuota(name)),
-        rpd: normalizePositiveInteger(entry?.rpd, getDefaultRPDForGeminiModel(name)),
         enabled: entry?.enabled !== false,
     };
+}
+
+function normalizeSingleSelectedGeminiModels(models) {
+    const normalized = models
+        .map((model) => normalizeGeminiModelConfig(model))
+        .filter(Boolean);
+    if (normalized.length === 0) return [];
+
+    const selectedIndex = normalized.findIndex((model) => model.enabled);
+    const activeIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    return normalized.map((model, index) => ({
+        name: model.name,
+        enabled: index === activeIndex,
+    }));
 }
 
 function loadTranslatorDirectModels() {
@@ -1666,18 +1570,10 @@ function loadTranslatorDirectModels() {
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return [];
 
-        return parsed
-            .map((entry) => {
-                const name = String(entry?.id || entry?.name || '').trim();
-                if (!name) return null;
-                return normalizeGeminiModelConfig({
-                    name,
-                    quota: entry?.rpm ?? entry?.quota,
-                    rpd: entry?.rpd,
-                    enabled: true,
-                });
-            })
-            .filter(Boolean);
+        return normalizeSingleSelectedGeminiModels(parsed.map((entry) => ({
+            name: entry?.id || entry?.name,
+            enabled: true,
+        })));
     } catch (error) {
         console.warn('[Models] Failed to load translator direct models:', error);
         return [];
@@ -1690,9 +1586,7 @@ function loadGeminiModels() {
         try {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed) && parsed.length > 0) {
-                const normalizedModels = parsed
-                    .map((model) => normalizeGeminiModelConfig(model))
-                    .filter(Boolean);
+                const normalizedModels = normalizeSingleSelectedGeminiModels(parsed);
                 if (normalizedModels.length > 0) {
                     GEMINI_MODELS = normalizedModels;
                     saveGeminiModels();
@@ -1718,16 +1612,10 @@ function loadGeminiModels() {
 }
 
 function saveGeminiModels() {
-    GEMINI_MODELS = GEMINI_MODELS
-        .map((model) => normalizeGeminiModelConfig(model))
-        .filter(Boolean);
+    GEMINI_MODELS = normalizeSingleSelectedGeminiModels(GEMINI_MODELS);
     localStorage.setItem('novelTranslatorModels', JSON.stringify(GEMINI_MODELS));
     const activeDirectModels = getActiveModels()
-        .map((model) => ({
-            id: model.name,
-            rpm: normalizePositiveInteger(model.quota, inferGeminiModelQuota(model.name)),
-            rpd: normalizePositiveInteger(model.rpd, getDefaultRPDForGeminiModel(model.name)),
-        }));
+        .map((model) => ({ id: model.name }));
     localStorage.setItem(TRANSLATOR_ACTIVE_DIRECT_MODELS_STORAGE, JSON.stringify(activeDirectModels));
 }
 
@@ -1735,110 +1623,19 @@ function getActiveModels() {
     return GEMINI_MODELS.filter(m => m.enabled !== false);
 }
 
-function addGeminiModel(name, quota, rpd) {
-    name = name.trim().toLowerCase();
-    if (!name) {
-        showToast('Vui lòng nhập tên model!', 'warning');
-        return false;
-    }
-    if (GEMINI_MODELS.some(m => m.name === name)) {
-        showToast('Model này đã tồn tại!', 'error');
-        return false;
-    }
-    GEMINI_MODELS.push(normalizeGeminiModelConfig({ name, quota, rpd, enabled: true }));
-    saveGeminiModels();
-    renderModelsList();
-    showToast(`Đã thêm model: ${name}`, 'success');
-    return true;
-}
-
-function removeGeminiModel(index) {
-    if (getActiveModels().length <= 1 && GEMINI_MODELS[index].enabled !== false) {
-        showToast('Phải giữ ít nhất 1 model hoạt động!', 'warning');
-        return;
-    }
-    const removed = GEMINI_MODELS.splice(index, 1)[0];
-    saveGeminiModels();
-    renderModelsList();
-    showToast(`Đã xóa model: ${removed.name}`, 'info');
-}
-
-function toggleGeminiModel(index) {
-    const model = GEMINI_MODELS[index];
-    if (model.enabled !== false && getActiveModels().length <= 1) {
-        showToast('Phải giữ ít nhất 1 model hoạt động!', 'warning');
-        return;
-    }
-    model.enabled = model.enabled === false ? true : false;
-    saveGeminiModels();
-    renderModelsList();
-    showToast(`${model.name}: ${model.enabled ? '✅ Đã bật' : '❌ Đã tắt'}`, 'info');
-}
-
-function updateModelQuota(index, newQuota) {
-    GEMINI_MODELS[index].quota = normalizePositiveInteger(newQuota, inferGeminiModelQuota(GEMINI_MODELS[index].name));
-    saveGeminiModels();
-    renderModelsList();
-    showToast(`Đã cập nhật RPM: ${GEMINI_MODELS[index].name} = ${GEMINI_MODELS[index].quota}`, 'success');
-}
-
-function updateModelRpd(index, newRpd) {
-    GEMINI_MODELS[index].rpd = normalizePositiveInteger(newRpd, getDefaultRPDForGeminiModel(GEMINI_MODELS[index].name));
-    saveGeminiModels();
-    renderModelsList();
-    if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
-    showToast(`Đã cập nhật RPD: ${GEMINI_MODELS[index].name} = ${GEMINI_MODELS[index].rpd}`, 'success');
-}
-
 function resetGeminiModels() {
     if (!confirm('Reset về danh sách model mặc định?')) return;
     GEMINI_MODELS = JSON.parse(JSON.stringify(DEFAULT_GEMINI_MODELS));
     saveGeminiModels();
     renderModelsList();
-    showToast('Đã reset về models mặc định!', 'success');
+    showToast('Đã đặt lại model Gemini Direct mặc định.', 'success');
 }
 
-function addPresetModel() {
-    const select = document.getElementById('presetModelSelect');
-    const selectedName = select.value;
-    if (!selectedName) {
-        showToast('Vui lòng chọn model từ danh sách!', 'warning');
-        return;
-    }
-    const preset = PRESET_GEMINI_MODELS.find(m => m.name === selectedName);
-    if (preset) {
-        if (addGeminiModel(preset.name, preset.quota, preset.rpd)) {
-            select.value = '';
-        }
-    }
-}
-
-function addCustomModel() {
+function useCustomGeminiModel() {
     const nameInput = document.getElementById('customModelName');
-    const quotaInput = document.getElementById('customModelQuota');
-    const rpdInput = document.getElementById('customModelRpd');
-    if (addGeminiModel(nameInput.value, quotaInput.value, rpdInput?.value)) {
-        nameInput.value = '';
-        quotaInput.value = '15';
-        if (rpdInput) rpdInput.value = '';
-    }
-}
-
-function selectOnlyGeminiModel(index) {
-    if (!GEMINI_MODELS[index]) {
-        showToast('Không tìm thấy model để chọn!', 'error');
-        return;
-    }
-
-    GEMINI_MODELS = GEMINI_MODELS.map((model, modelIndex) => ({
-        ...model,
-        enabled: modelIndex === index,
-    }));
-    saveGeminiModels();
-    renderModelsList();
-    if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
-    if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
-    showToast(`Đã chọn chỉ dùng model: ${GEMINI_MODELS[index].name}`, 'success');
+    const selected = selectGeminiModel(nameInput?.value);
+    if (selected && nameInput) nameInput.value = '';
+    return selected;
 }
 
 function normalizeAIStudioModelId(rawName) {
@@ -1860,137 +1657,37 @@ function isUsableAIStudioTextModel(model) {
     return !/(embedding|embed|imagen|veo|tts|aqa)/i.test(name);
 }
 
-function getQuotaForAIStudioModel(modelName) {
-    const normalizedName = normalizeAIStudioModelId(modelName);
-    const existing = GEMINI_MODELS.find((model) => model.name === normalizedName);
-    if (existing) return normalizePositiveInteger(existing.quota, inferGeminiModelQuota(normalizedName));
-
-    return inferGeminiModelQuota(normalizedName);
-}
-
-function getRPDForAIStudioModel(modelName) {
-    const normalizedName = normalizeAIStudioModelId(modelName);
-    const existing = GEMINI_MODELS.find((model) => model.name === normalizedName);
-    if (existing) return normalizePositiveInteger(existing.rpd, getDefaultRPDForGeminiModel(normalizedName));
-    return getDefaultRPDForGeminiModel(normalizedName);
-}
-
-function mergeAIStudioModels(discoveredModels) {
-    const existingByName = new Map(GEMINI_MODELS.map((model) => [model.name, model]));
-    const addedModels = [];
-
-    discoveredModels.forEach((model) => {
-        const name = normalizeAIStudioModelId(model?.name || model?.id);
-        if (!name) return;
-
-        const existing = existingByName.get(name);
-        if (existing) {
-            existing.enabled = true;
-            existing.quota = getQuotaForAIStudioModel(name);
-            existing.rpd = getRPDForAIStudioModel(name);
-            addedModels.push(existing);
-            return;
-        }
-
-        const newModel = {
-            name,
-            quota: getQuotaForAIStudioModel(name),
-            rpd: getRPDForAIStudioModel(name),
-            enabled: true,
-        };
-        GEMINI_MODELS.push(newModel);
-        existingByName.set(name, newModel);
-        addedModels.push(newModel);
-    });
-
-    return addedModels;
-}
-
 function ensureAIStudioModelCandidate(modelName) {
     const name = normalizeAIStudioModelId(modelName);
     if (!name) return -1;
 
-    let index = GEMINI_MODELS.findIndex((model) => model.name === name);
-    if (index !== -1) {
-        GEMINI_MODELS[index].quota = getQuotaForAIStudioModel(name);
-        GEMINI_MODELS[index].rpd = getRPDForAIStudioModel(name);
-        return index;
-    }
+    const index = GEMINI_MODELS.findIndex((model) => model.name === name);
+    if (index !== -1) return index;
 
     GEMINI_MODELS.push({
         name,
-        quota: getQuotaForAIStudioModel(name),
-        rpd: getRPDForAIStudioModel(name),
         enabled: false,
     });
     return GEMINI_MODELS.length - 1;
 }
 
-function renderAIStudioModelPicker() {
-    const picker = document.getElementById('aiStudioModelPicker');
-    const select = document.getElementById('aiStudioModelSelect');
-    const status = document.getElementById('aiStudioModelStatus');
-
-    if (select) {
-        select.innerHTML = '<option value="">-- Chọn 1 model AI Studio --</option>' + fetchedAIStudioModels
-            .map((model) => `<option value="${model.name}">${model.name}</option>`)
-            .join('');
-    }
-
-    if (picker) {
-        picker.style.display = fetchedAIStudioModels.length ? '' : 'none';
-        picker.innerHTML = fetchedAIStudioModels.length
-            ? `
-                <div class="ai-studio-picker-row">
-                    <label for="aiStudioModelSelect">Model AI Studio</label>
-                    <div class="ai-studio-picker-controls">
-                        <select id="aiStudioModelSelect" onchange="selectAIStudioFetchedModel(this.value)">
-                            <option value="">-- Chọn 1 model để dịch --</option>
-                            ${fetchedAIStudioModels.map((model) => `<option value="${model.name}">${model.name}</option>`).join('')}
-                        </select>
-                        <button class="btn btn-primary btn-small" onclick="selectAIStudioFetchedModel(document.getElementById('aiStudioModelSelect')?.value)">Chỉ dùng model này</button>
-                    </div>
-                    <div class="model-fetch-status success" id="aiStudioModelStatus">Đã lấy ${fetchedAIStudioModels.length} model. Chọn 1 model để dịch.</div>
-                </div>
-            `
-            : '';
-    }
-
-    const currentStatus = document.getElementById('aiStudioModelStatus') || status;
-    if (currentStatus) {
-        currentStatus.textContent = fetchedAIStudioModels.length
-            ? `Đã lấy ${fetchedAIStudioModels.length} model. Chọn 1 model để dịch.`
-            : '';
-        currentStatus.className = fetchedAIStudioModels.length ? 'model-fetch-status success' : '';
-    }
-}
-
-function selectAIStudioFetchedModel(modelName) {
+function selectGeminiModel(modelName) {
     const normalizedName = normalizeAIStudioModelId(modelName);
     if (!normalizedName) {
-        showToast('Vui lòng chọn 1 model AI Studio.', 'warning');
+        showToast('Vui lòng chọn hoặc nhập model Gemini Direct.', 'warning');
         return false;
     }
 
     const index = ensureAIStudioModelCandidate(normalizedName);
-    if (index < 0) {
-        showToast('Không tìm thấy model AI Studio để chọn.', 'error');
-        return false;
-    }
-
     GEMINI_MODELS = GEMINI_MODELS.map((model, modelIndex) => ({
-        ...model,
+        name: model.name,
         enabled: modelIndex === index,
     }));
 
     saveGeminiModels();
     renderModelsList();
-    renderAIStudioModelPicker();
-    const select = document.getElementById('aiStudioModelSelect');
-    if (select) select.value = normalizedName;
-    if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
     if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
-    showToast(`Đã chọn ${normalizedName} làm model Gemini Direct duy nhất để dịch.`, 'success');
+    showToast(`Đã chọn model Gemini Direct: ${normalizedName}.`, 'success');
     return true;
 }
 
@@ -2028,17 +1725,10 @@ async function fetchAIStudioFreeModels() {
         fetchedAIStudioModels = usableModels.map((model) => {
             const name = normalizeAIStudioModelId(model?.name || model?.id);
             ensureAIStudioModelCandidate(name);
-            return {
-                name,
-                quota: getQuotaForAIStudioModel(name),
-                rpd: getRPDForAIStudioModel(name),
-                enabled: false,
-            };
+            return { name, enabled: false };
         }).filter((model) => model.name);
 
         renderModelsList();
-        renderAIStudioModelPicker();
-        if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
         if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
 
         showToast(`Đã lấy ${fetchedAIStudioModels.length} model từ AI Studio. Chọn 1 model để Gemini Direct dùng khi dịch.`, 'success');
@@ -2055,50 +1745,30 @@ async function fetchAIStudioFreeModels() {
 }
 
 function renderModelsList() {
-    const container = document.getElementById('modelsList');
+    const select = document.getElementById('geminiModelSelect');
     const countBadge = document.getElementById('modelCount');
-    if (!container || !countBadge) return;
-
+    const status = document.getElementById('aiStudioModelStatus');
     const activeModels = getActiveModels();
-    const totalRPM = activeModels.reduce((sum, m) => sum + m.quota, 0);
-    const totalRPD = activeModels.reduce((sum, m) => sum + normalizePositiveInteger(m.rpd, getDefaultRPDForGeminiModel(m.name)), 0);
-    countBadge.textContent = `${activeModels.length}/${GEMINI_MODELS.length} model | ${totalRPM} RPM | ${totalRPD} RPD`;
-
-    if (GEMINI_MODELS.length === 0) {
-        container.innerHTML = '<p class="empty-message">Chưa có model nào.</p>';
-        return;
+    if (countBadge) countBadge.textContent = activeModels.length ? '1 model' : 'Chưa chọn';
+    if (status) {
+        status.textContent = activeModels.length
+            ? `Đang dùng: ${activeModels[0].name}`
+            : 'Chưa chọn model Gemini Direct.';
+        status.className = activeModels.length ? 'model-fetch-status success' : 'model-fetch-status error';
     }
-
-    container.innerHTML = GEMINI_MODELS.map((model, index) => {
-        const isEnabled = model.enabled !== false;
-        const statusIcon = isEnabled ? '✅' : '❌';
-        const opacity = isEnabled ? '1' : '0.5';
-        const rpm = normalizePositiveInteger(model.quota, inferGeminiModelQuota(model.name));
-        const rpd = normalizePositiveInteger(model.rpd, getDefaultRPDForGeminiModel(model.name));
-        return `
-        <div class="model-item" style="opacity: ${opacity}">
-            <button class="model-toggle-btn" onclick="toggleGeminiModel(${index})" title="${isEnabled ? 'Tắt' : 'Bật'} model">${statusIcon}</button>
-            <span class="model-name">${model.name}</span>
-            <button class="model-single-btn" onclick="selectOnlyGeminiModel(${index})" title="Chỉ dùng model này để dịch">Chỉ dùng</button>
-            <input type="number" class="model-quota-input" value="${rpm}" min="1" max="100"
-                onchange="updateModelQuota(${index}, this.value)" title="RPM">
-            <span class="model-quota-label">RPM</span>
-            <input type="number" class="model-rpd-input" value="${rpd}" min="1" max="100000"
-                onchange="updateModelRpd(${index}, this.value)" title="RPD">
-            <span class="model-quota-label">RPD</span>
-            <button class="remove-btn" onclick="removeGeminiModel(${index})" title="Xóa">🗑️</button>
-        </div>
-    `}).join('');
-
-    // Update preset dropdown - hide already added models
-    const presetSelect = document.getElementById('presetModelSelect');
-    if (presetSelect) {
-        const currentNames = GEMINI_MODELS.map(m => m.name);
-        presetSelect.innerHTML = '<option value="">-- Chọn model --</option>' +
-            PRESET_GEMINI_MODELS
-                .filter(p => !currentNames.includes(p.name))
-                .map(p => `<option value="${p.name}">${p.label}</option>`)
-                .join('');
+    if (select) {
+        const escapeModelName = (value) => String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        select.innerHTML = '<option value="">-- Chọn model Gemini Direct --</option>' + GEMINI_MODELS
+            .map((model) => {
+                const name = escapeModelName(model.name);
+                return `<option value="${name}">${name}</option>`;
+            })
+            .join('');
+        select.value = activeModels[0]?.name || '';
     }
     if (typeof updateWorkspaceToolbar === 'function') {
         updateWorkspaceToolbar();
@@ -2123,23 +1793,11 @@ async function initializeApp() {
     renderModelsList();
     if (typeof renderProxyKeysList === 'function') renderProxyKeysList();
 
-    // Init RPD tracker
-    if (typeof initRPDTracker === 'function') {
-        initRPDTracker();
-    }
-
     // Set default prompt
     const promptEl = document.getElementById('customPrompt');
     if (!promptEl.value.trim()) {
         promptEl.value = ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES.sacHiep);
     }
-
-    // Render RPD dashboard (after a small delay to ensure DOM is ready)
-    setTimeout(() => {
-        if (typeof renderRPDDashboard === 'function') {
-            renderRPDDashboard();
-        }
-    }, 100);
 
     if (typeof updateWorkspaceToolbar === 'function') {
         updateWorkspaceToolbar();
@@ -2213,7 +1871,6 @@ function addApiKey() {
     input.value = '';
     renderApiKeysList();
     saveSettings();
-    if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
     showToast('Đã thêm API Key thành công!', 'success');
 }
 
@@ -2230,7 +1887,6 @@ function removeApiKey(index) {
 
     renderApiKeysList();
     saveSettings();
-    if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
     showToast('Đã xóa API Key!', 'info');
 }
 
@@ -2238,7 +1894,6 @@ function resetRotationAndRefresh() {
     resetRotationSystem();
     resetKeyHealth();
     renderApiKeysList();
-    if (typeof renderRPDDashboard === 'function') renderRPDDashboard();
     showToast('Đã reset toàn bộ rotation system!', 'success');
 }
 
@@ -2248,7 +1903,7 @@ function renderApiKeysList() {
     const activeCount = getActiveKeyCount();
 
     if (countBadge) {
-        countBadge.textContent = `${activeCount}/${apiKeys.length} keys`;
+        countBadge.textContent = `${activeCount}/${apiKeys.length} key`;
         countBadge.style.background = activeCount === apiKeys.length ? 'var(--success)' : 'var(--warning)';
     }
 
@@ -2265,7 +1920,7 @@ function renderApiKeysList() {
         <div class="api-key-item">
             <span class="key-index" style="background: ${statusColor}">${index + 1}</span>
             <span class="key-value">${maskApiKey(key)}</span>
-            <span class="key-status" style="color: ${statusColor}; font-size: 0.75rem;">${status.message}</span>
+            <span class="key-status" style="color: ${statusColor};">${status.message}</span>
             <button class="remove-btn" onclick="removeApiKey(${index})" title="Xóa">🗑️</button>
         </div>
     `}).join('');

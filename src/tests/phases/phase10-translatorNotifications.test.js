@@ -131,7 +131,6 @@ describe('phase10 translator notifications', () => {
       'public/translator-runtime/js/ui/progress.js',
       'public/translator-runtime/js/ui/controls.js',
       'public/translator-runtime/js/gemini/model-rotation.js',
-      'public/translator-runtime/js/gemini/rpd-tracker.js',
       'public/translator-runtime/js/gemini/api.js',
       'public/translator-runtime/js/translation/errors.js',
     ];
