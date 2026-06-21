@@ -47,10 +47,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 let promptToUse = text;
 
                 if (shortOutputCount > 0) {
-                    const rawBasePrompt = document.getElementById('customPrompt')?.value || '';
-                    const basePrompt = typeof sanitizeTranslatorPromptText === 'function'
-                        ? sanitizeTranslatorPromptText(rawBasePrompt)
-                        : rawBasePrompt;
+                    const basePrompt = document.getElementById('customPrompt')?.value || '';
                     const contentOnly = originalText.replace(basePrompt, '').trim();
 
                     if (shortOutputCount === 1) {
@@ -97,10 +94,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 let promptToUse = text;
 
                 if (shortOutputCount > 0) {
-                    const rawBasePrompt = document.getElementById('customPrompt')?.value || '';
-                    const basePrompt = typeof sanitizeTranslatorPromptText === 'function'
-                        ? sanitizeTranslatorPromptText(rawBasePrompt)
-                        : rawBasePrompt;
+                    const basePrompt = document.getElementById('customPrompt')?.value || '';
                     const contentOnly = originalText.replace(basePrompt, '').trim();
 
                     if (shortOutputCount === 1) {
@@ -147,10 +141,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
             // Nếu đã bị OUTPUT_TOO_SHORT, sử dụng progressive prompt
             if (shortOutputCount > 0) {
-                const rawBasePrompt = document.getElementById('customPrompt')?.value || '';
-                const basePrompt = typeof sanitizeTranslatorPromptText === 'function'
-                    ? sanitizeTranslatorPromptText(rawBasePrompt)
-                    : rawBasePrompt;
+                const basePrompt = document.getElementById('customPrompt')?.value || '';
                 // Tách prompt và nội dung thực
                 const contentOnly = originalText.replace(basePrompt, '').trim();
 
@@ -166,9 +157,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                     console.log(`[Chunk ${chunkIndex + 1}] 🔄 Using LITERARY prompt (attempt ${attempt})`);
                 } else {
                     // Lần 4+: Fictional prompt (fallback cuối)
-                    promptToUse = typeof getFictionalPrompt === 'function' ?
-                        getFictionalPrompt(contentOnly) :
-                        contentOnly;
+                    const fictionalPrompt = typeof getFictionalPrompt === 'function'
+                        ? getFictionalPrompt(contentOnly)
+                        : contentOnly;
+                    promptToUse = `${basePrompt}\n\n${fictionalPrompt}`;
                     console.log(`[Chunk ${chunkIndex + 1}] 🔄 Using FICTIONAL prompt (attempt ${attempt})`);
                 }
             }

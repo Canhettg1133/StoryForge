@@ -54,19 +54,9 @@ function buildTranslatorLanguageDirective(sourceLang = 'auto') {
 - Chỉ trả về bản tiếng Việt cuối cùng, không giải thích, không giữ nguyên tiếng nguồn nếu không phải tên riêng/thuật ngữ.`;
 }
 
-function getTranslatorLegacyEditTextMarker() {
-    return ['VĂN BẢN CẦN', 'BIÊN TẬP:'].join(' ');
-}
-
-function sanitizeTranslatorPromptText(promptText = '') {
-    return String(promptText || '')
-        .replaceAll(getTranslatorLegacyEditTextMarker(), '')
-        .trim();
-}
-
 function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto') {
     const directive = buildTranslatorLanguageDirective(sourceLang);
-    const prompt = sanitizeTranslatorPromptText(promptText);
+    const prompt = String(promptText || '').trim();
     const source = String(chunkText || '').trim();
     return `${directive}${prompt ? `\n\n${prompt}` : ''}\n\n[Đoạn nguồn]\n${source}`;
 }

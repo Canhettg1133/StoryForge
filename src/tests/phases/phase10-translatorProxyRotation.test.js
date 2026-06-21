@@ -849,11 +849,11 @@ describe('phase10 translator proxy key rotation', () => {
     expect(requestTexts[0]).toContain('PROMPT_SENTINEL');
     expect(requestTexts[0]).toContain('CHUNK_ONE_SENTINEL');
     expect(requestTexts[0]).not.toContain('CHUNK_TWO_SENTINEL');
-    expect(requestTexts[0]).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
+    expect(requestTexts[0]).toContain('VĂN BẢN CẦN BIÊN TẬP:');
     expect(requestTexts[1]).toContain('PROMPT_SENTINEL');
     expect(requestTexts[1]).toContain('CHUNK_TWO_SENTINEL');
     expect(requestTexts[1]).not.toContain('CHUNK_ONE_SENTINEL');
-    expect(requestTexts[1]).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
+    expect(requestTexts[1]).toContain('VĂN BẢN CẦN BIÊN TẬP:');
 
     const systemTexts = requests.map((body) => body.systemInstruction.parts[0].text);
     expect(systemTexts[0]).toContain('PROMPT_SENTINEL');
@@ -1123,16 +1123,24 @@ describe('phase10 translator proxy key rotation', () => {
       translatorRpmTimestamps = {};
       sleepDurations = [];
       sleep = async (ms) => { sleepDurations.push(ms); };
+      document.getElementById('customPrompt').value = 'RETRY_PROMPT_SENTINEL\\n\\nVĂN BẢN CẦN BIÊN TẬP:';
     `, context);
 
     const result = await context.translateChunkWithRetry(
-      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      context.buildPromptedChunk(
+        'RETRY_PROMPT_SENTINEL\n\nVĂN BẢN CẦN BIÊN TẬP:',
+        'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(5),
+        'auto'
+      ),
       0,
       5
     );
 
     expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
     expect(requests).toHaveLength(5);
+    expect(requests.every(({ body }) => body.contents[0].parts[0].text.includes('VĂN BẢN CẦN BIÊN TẬP:'))).toBe(true);
+    expect(requests.every(({ body }) => body.systemInstruction.parts[0].text.includes('RETRY_PROMPT_SENTINEL'))).toBe(true);
+    expect(requests.every(({ body }) => !body.systemInstruction.parts[0].text.includes('VĂN BẢN CẦN BIÊN TẬP:'))).toBe(true);
     expect(requests.map(({ body }) => body.generationConfig.temperature)).toEqual([0.7, 0.9, 0.5, 1.0, 0.3]);
     expect(vm.runInContext('sleepDurations', context)).toEqual([500, 500, 500, 500]);
     expect(vm.runInContext(

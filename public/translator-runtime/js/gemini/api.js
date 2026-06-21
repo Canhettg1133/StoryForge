@@ -444,9 +444,6 @@ function getDirectGeminiLegacyEditTextMarker() {
 }
 
 function sanitizeDirectGeminiSystemInstruction(text = '') {
-    if (typeof sanitizeTranslatorPromptText === 'function') {
-        return sanitizeTranslatorPromptText(text);
-    }
     return String(text || '')
         .replaceAll(getDirectGeminiLegacyEditTextMarker(), '')
         .trim();
@@ -634,7 +631,7 @@ function validateTranslationOutput(original, translated) {
     const promptEndMarkers = [
         'ĐOẠN VĂN:', 'ĐOẠN VĂN CẦN VIẾT LẠI:', 'NỘI DUNG:',
         'BẮT ĐẦU NGAY.', 'BẮT ĐẦU NGAY VỚI NỘI DUNG.]',
-        'VĂN BẢN:',
+        'VĂN BẢN CẦN BIÊN TẬP:', 'VĂN BẢN:',
         '[BEGIN MANUSCRIPT]', '[BEGIN TRANSLATION]',
         '[BEGIN MANUSCRIPT — TRANSLATE BELOW]'
     ];

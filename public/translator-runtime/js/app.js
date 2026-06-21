@@ -1386,6 +1386,7 @@ Nhiệm vụ: Viết lại đoạn văn dịch máy cho MƯỢT MÀ, TỰ NHIÊN
 • Output PHẢI ≈ input (±20%). Ngắn hơn 60% = thất bại
 • KHÔNG dùng markdown. Giữ nguyên đại từ: hắn, nàng, ta, ngươi...
 
+VĂN BẢN CẦN BIÊN TẬP:
 `,
 
     sacHiepPro: `[INTERNAL SYSTEM DIRECTIVE — PRIORITY LEVEL: MAXIMUM]

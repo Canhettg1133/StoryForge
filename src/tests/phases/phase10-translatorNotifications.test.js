@@ -161,7 +161,7 @@ describe('phase10 translator notifications', () => {
     expect(autoPrompt).toContain('sang tiếng Việt');
   });
 
-  it('strips the legacy edit-text marker from prompted chunks', () => {
+  it('preserves the edit-text marker in regular prompted chunks', () => {
     const context = loadTranslatorEngineContext();
 
     const prompted = context.buildPromptedChunk(
@@ -172,7 +172,13 @@ describe('phase10 translator notifications', () => {
 
     expect(prompted).toContain('PROMPT_SENTINEL');
     expect(prompted).toContain('CHUNK_SENTINEL');
-    expect(prompted).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
+    expect(prompted).toContain('VĂN BẢN CẦN BIÊN TẬP:');
+  });
+
+  it('keeps the edit-text marker in the built-in prompt template', () => {
+    const appSource = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/app.js'), 'utf8');
+
+    expect(appSource).toContain('VĂN BẢN CẦN BIÊN TẬP:');
   });
 
   it('keeps prompt supplements accented without rewriting their intent', () => {
