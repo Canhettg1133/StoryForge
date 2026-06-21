@@ -69,6 +69,15 @@ function recordProxyBatchSequence(context, count) {
   `, context);
 }
 
+function recordDirectBatchSequence(context, count) {
+  return vm.runInContext(`
+    (() => {
+      const selected = Array.from({ length: ${count} }, () => getNextModelKeyPairWithQueue('main'));
+      return selected.map((pair) => pair.keyIndex);
+    })()
+  `, context);
+}
+
 describe('phase10 translator RPM limiter', () => {
   it('waits for a full main wave instead of dispatching leftover RPM slots', () => {
     const context = loadRuntime();
@@ -154,6 +163,46 @@ describe('phase10 translator RPM limiter', () => {
       0, 1, 2, 3, 4,
       0, 1, 2, 3, 4,
     ]);
+  });
+
+  it('uses preassigned proxy wave keys but lazy Gemini Direct key selection', () => {
+    const context = loadRuntime();
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.AG_PROXY;
+      proxyApiKeys = ['PROXY_A', 'PROXY_B'];
+      translatorRpmTimestamps = {};
+      translatorChunkKeyAssignments = {};
+      rpmPerKey = 10;
+    `, context);
+
+    expect(recordProxyBatchSequence(context, 20)).toEqual([
+      0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
+      0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
+    ]);
+    expect(vm.runInContext('Object.keys(translatorChunkKeyAssignments).length', context)).toBe(20);
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_A', 'DIRECT_B'];
+      GEMINI_MODELS = [{ name: 'gemini-3.1-flash-lite', enabled: true }];
+      translatorRpmTimestamps = {};
+      translatorChunkKeyAssignments = {};
+      rpmPerKey = 10;
+    `, context);
+
+    expect(recordDirectBatchSequence(context, 20)).toEqual([
+      0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
+      0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
+    ]);
+    expect(vm.runInContext('Object.keys(translatorChunkKeyAssignments).length', context)).toBe(0);
+    expect(vm.runInContext(`
+      [
+        getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0),
+        getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 1),
+      ]
+    `, context)).toEqual([10, 10]);
   });
 
   it('reduces only the key-specific main wave share consumed by retry debt', () => {

@@ -285,6 +285,8 @@ describe('phase10 translator proxy key rotation', () => {
     expect(body.baseUrl).toBe('https://ag.beijixingxing.com');
     expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
     expect(body.payload.model).toBe('ag-gemini-model');
+    expect(body.payload).not.toHaveProperty('safetySettings');
+    expect(body.payload).not.toHaveProperty('safety_settings');
   });
 
   it('preserves a full AG Proxy chat endpoint path instead of forcing /v1/chat/completions', async () => {
@@ -713,6 +715,8 @@ describe('phase10 translator proxy key rotation', () => {
     expect(requests[0].url).toBe('http://localhost:1234/v1/chat/completions');
     expect(requests[0].options.headers.Authorization).toBe('Bearer CUSTOM_KEY');
     expect(JSON.parse(requests[0].options.body).model).toBe('custom-gemini-model');
+    expect(JSON.parse(requests[0].options.body)).not.toHaveProperty('safetySettings');
+    expect(JSON.parse(requests[0].options.body)).not.toHaveProperty('safety_settings');
   });
 
   it('disables Gemini 2.5 Flash thinking for direct translation chunks', async () => {
@@ -751,6 +755,231 @@ describe('phase10 translator proxy key rotation', () => {
     const body = JSON.parse(requests[0].options.body);
     expect(body.generationConfig.thinkingConfig).toEqual({ thinkingBudget: 0 });
     expect(body.generationConfig).not.toHaveProperty('maxOutputTokens');
+  });
+
+  it('sends OFF safety settings for Gemini Direct translation chunks', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{
+            finishReason: 'STOP',
+            content: {
+              parts: [{
+                text: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90),
+              }],
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY'];
+      cancelRequested = false;
+    `, context);
+
+    await context.translateChunk(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      { model: 'gemini-3.1-flash-lite', key: 'DIRECT_KEY', keyIndex: 0 },
+      0.7
+    );
+
+    const body = JSON.parse(requests[0].options.body);
+    expect(body.safetySettings).toEqual([
+      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'OFF' },
+      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'OFF' },
+      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'OFF' },
+      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'OFF' },
+    ]);
+  });
+
+  it('sends the prompted source text for each Gemini Direct chunk request', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      const body = JSON.parse(options.body);
+      requests.push(body);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{
+            finishReason: 'STOP',
+            content: {
+              parts: [{
+                text: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(120),
+              }],
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY_A', 'DIRECT_KEY_B'];
+      rpmPerKey = 10;
+      GEMINI_MODELS = [{ name: 'gemini-3.1-flash-lite', enabled: true }];
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+    `, context);
+
+    const prompt = 'PROMPT_SENTINEL: translate every line and keep names.\n\nVĂN BẢN CẦN BIÊN TẬP:';
+    const chunks = [
+      'CHUNK_ONE_SENTINEL: Alice opened the bronze gate.',
+      'CHUNK_TWO_SENTINEL: Bob crossed the frozen river.',
+    ];
+
+    for (let index = 0; index < chunks.length; index += 1) {
+      await context.translateChunkWithRetry(
+        context.buildPromptedChunk(prompt, chunks[index], 'en'),
+        index,
+        1
+      );
+    }
+
+    expect(requests).toHaveLength(2);
+    const requestTexts = requests.map((body) => body.contents[0].parts[0].text);
+    expect(requestTexts[0]).toContain('PROMPT_SENTINEL');
+    expect(requestTexts[0]).toContain('CHUNK_ONE_SENTINEL');
+    expect(requestTexts[0]).not.toContain('CHUNK_TWO_SENTINEL');
+    expect(requestTexts[0]).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
+    expect(requestTexts[1]).toContain('PROMPT_SENTINEL');
+    expect(requestTexts[1]).toContain('CHUNK_TWO_SENTINEL');
+    expect(requestTexts[1]).not.toContain('CHUNK_ONE_SENTINEL');
+    expect(requestTexts[1]).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
+
+    const systemTexts = requests.map((body) => body.systemInstruction.parts[0].text);
+    expect(systemTexts[0]).toContain('PROMPT_SENTINEL');
+    expect(systemTexts[0]).not.toContain('CHUNK_ONE_SENTINEL');
+    expect(systemTexts[0]).not.toContain('CHUNK_TWO_SENTINEL');
+    expect(systemTexts[0]).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
+    expect(systemTexts[1]).toContain('PROMPT_SENTINEL');
+    expect(systemTexts[1]).not.toContain('CHUNK_ONE_SENTINEL');
+    expect(systemTexts[1]).not.toContain('CHUNK_TWO_SENTINEL');
+    expect(systemTexts[1]).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
+  });
+
+  it('sends the prompted source text for each Custom Proxy chunk request', async () => {
+    const requestTexts = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      const body = JSON.parse(options.body);
+      requestTexts.push(body.messages[0].content);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(120),
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      useOllama = false;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyProfile = {
+        baseUrl: 'http://localhost:1234/v1',
+        defaultModel: 'custom-gemini-model',
+        models: ['custom-gemini-model'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'direct'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY_A', 'CUSTOM_KEY_B'];
+      customProxyApiKey = 'CUSTOM_KEY_A';
+      rpmPerKey = 10;
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+    `, context);
+
+    const prompt = 'PROMPT_SENTINEL: translate every line and keep names.';
+    const chunks = [
+      'CHUNK_ONE_SENTINEL: Alice opened the bronze gate.',
+      'CHUNK_TWO_SENTINEL: Bob crossed the frozen river.',
+    ];
+
+    for (let index = 0; index < chunks.length; index += 1) {
+      await context.translateChunkWithRetry(
+        context.buildPromptedChunk(prompt, chunks[index], 'en'),
+        index,
+        1
+      );
+    }
+
+    expect(requestTexts).toHaveLength(2);
+    expect(requestTexts[0]).toContain('PROMPT_SENTINEL');
+    expect(requestTexts[0]).toContain('CHUNK_ONE_SENTINEL');
+    expect(requestTexts[0]).not.toContain('CHUNK_TWO_SENTINEL');
+    expect(requestTexts[1]).toContain('PROMPT_SENTINEL');
+    expect(requestTexts[1]).toContain('CHUNK_TWO_SENTINEL');
+    expect(requestTexts[1]).not.toContain('CHUNK_ONE_SENTINEL');
+  });
+
+  it('sends the prompted source text for each AG Proxy relay chunk request', async () => {
+    const requestTexts = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      const body = JSON.parse(options.body);
+      requestTexts.push(body.payload.messages[0].content);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(120),
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      useOllama = false;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.AG_PROXY;
+      storyForgeAccessToken = 'story-token';
+      proxyBaseUrl = 'https://ag.beijixingxing.com/v1/chat/completions';
+      proxyModel = 'ag-gemini-model';
+      proxyApiKeys = ['AG_KEY_A', 'AG_KEY_B'];
+      proxyApiKey = 'AG_KEY_A';
+      rpmPerKey = 10;
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+      setActiveTranslatorTemplateId('convert');
+    `, context);
+
+    const prompt = 'PROMPT_SENTINEL: translate every line and keep names.';
+    const chunks = [
+      'CHUNK_ONE_SENTINEL: Alice opened the bronze gate.',
+      'CHUNK_TWO_SENTINEL: Bob crossed the frozen river.',
+    ];
+
+    for (let index = 0; index < chunks.length; index += 1) {
+      await context.translateChunkWithRetry(
+        context.buildPromptedChunk(prompt, chunks[index], 'en'),
+        index,
+        1
+      );
+    }
+
+    expect(requestTexts).toHaveLength(2);
+    expect(requestTexts[0]).toContain('PROMPT_SENTINEL');
+    expect(requestTexts[0]).toContain('CHUNK_ONE_SENTINEL');
+    expect(requestTexts[0]).not.toContain('CHUNK_TWO_SENTINEL');
+    expect(requestTexts[1]).toContain('PROMPT_SENTINEL');
+    expect(requestTexts[1]).toContain('CHUNK_TWO_SENTINEL');
+    expect(requestTexts[1]).not.toContain('CHUNK_ONE_SENTINEL');
   });
 
   it('cooldowns a direct Gemini pair after repeated Google 500 errors and retries another pair', async () => {
@@ -859,6 +1088,166 @@ describe('phase10 translator proxy key rotation', () => {
       "modelKeyHealthMap['gemini-2.5-flash|0'].errorCount",
       context
     )).toBe(1);
+  });
+
+  it('spends a real Gemini Direct request for each short-output retry', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), body: JSON.parse(options.body) });
+      const isFinalAttempt = requests.length === 5;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{
+            finishReason: 'STOP',
+            content: {
+              parts: [{
+                text: isFinalAttempt
+                  ? 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90)
+                  : 'Ngắn.',
+              }],
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY'];
+      rpmPerKey = 10;
+      GEMINI_MODELS = [{ name: 'gemini-3.1-flash-lite', enabled: true }];
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+      sleepDurations = [];
+      sleep = async (ms) => { sleepDurations.push(ms); };
+    `, context);
+
+    const result = await context.translateChunkWithRetry(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0,
+      5
+    );
+
+    expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
+    expect(requests).toHaveLength(5);
+    expect(requests.map(({ body }) => body.generationConfig.temperature)).toEqual([0.7, 0.9, 0.5, 1.0, 0.3]);
+    expect(vm.runInContext('sleepDurations', context)).toEqual([500, 500, 500, 500]);
+    expect(vm.runInContext(
+      "getTranslatorRpmRecentCountByKind(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0, 'main')",
+      context
+    )).toBe(1);
+    expect(vm.runInContext(
+      "getTranslatorRpmRecentCountByKind(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0, 'retry')",
+      context
+    )).toBe(4);
+  });
+
+  it('spends a real Custom Proxy request for each short-output retry', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), body: JSON.parse(options.body) });
+      const isFinalAttempt = requests.length === 5;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: isFinalAttempt
+                ? 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(90)
+                : 'Ngắn.',
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      useOllama = false;
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyProfile = {
+        baseUrl: 'http://localhost:1234/v1',
+        defaultModel: 'custom-gemini-model',
+        models: ['custom-gemini-model'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'direct'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+      rpmPerKey = 10;
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+      sleepDurations = [];
+      sleep = async (ms) => { sleepDurations.push(ms); };
+    `, context);
+
+    const result = await context.translateChunkWithRetry(
+      'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+      0,
+      5
+    );
+
+    expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
+    expect(requests).toHaveLength(5);
+    expect(requests.map(({ body }) => body.temperature)).toEqual([0.7, 0.9, 0.5, 1.0, 0.3]);
+    expect(vm.runInContext('sleepDurations', context)).toEqual([500, 500, 500, 500]);
+    expect(vm.runInContext(
+      "getTranslatorRpmRecentCountByKind(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0, 'main')",
+      context
+    )).toBe(1);
+    expect(vm.runInContext(
+      "getTranslatorRpmRecentCountByKind(TRANSLATOR_PROVIDERS.CUSTOM_PROXY, 0, 'retry')",
+      context
+    )).toBe(4);
+  });
+
+  it('sends a clean 20-request Gemini Direct wave across two keys', async () => {
+    const usedKeys = [];
+    const context = loadProxyRuntimeContext(async (url) => {
+      usedKeys.push(new URL(String(url)).searchParams.get('key'));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          candidates: [{
+            finishReason: 'STOP',
+            content: {
+              parts: [{
+                text: 'Bản dịch tiếng Việt hợp lệ, đủ dài và có dấu. '.repeat(120),
+              }],
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_KEY_A', 'DIRECT_KEY_B'];
+      rpmPerKey = 10;
+      GEMINI_MODELS = [{ name: 'gemini-3.1-flash-lite', enabled: true }];
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+      modelKeyHealthMap = {};
+    `, context);
+
+    await Promise.all(Array.from({ length: 20 }, (_, chunkIndex) => (
+      context.sendDirectTranslationAttempt({
+        chunkIndex,
+        text: 'Đoạn nguồn cần dịch sang tiếng Việt. '.repeat(20),
+        kind: 'main',
+      })
+    )));
+
+    expect(usedKeys).toHaveLength(20);
+    expect(usedKeys.filter((key) => key === 'DIRECT_KEY_A')).toHaveLength(10);
+    expect(usedKeys.filter((key) => key === 'DIRECT_KEY_B')).toHaveLength(10);
   });
 
   it('throws the final Direct API error instead of returning undefined', async () => {

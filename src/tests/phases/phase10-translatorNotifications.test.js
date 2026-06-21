@@ -161,6 +161,20 @@ describe('phase10 translator notifications', () => {
     expect(autoPrompt).toContain('sang tiếng Việt');
   });
 
+  it('strips the legacy edit-text marker from prompted chunks', () => {
+    const context = loadTranslatorEngineContext();
+
+    const prompted = context.buildPromptedChunk(
+      'PROMPT_SENTINEL\n\nVĂN BẢN CẦN BIÊN TẬP:',
+      'CHUNK_SENTINEL',
+      'auto'
+    );
+
+    expect(prompted).toContain('PROMPT_SENTINEL');
+    expect(prompted).toContain('CHUNK_SENTINEL');
+    expect(prompted).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
+  });
+
   it('keeps prompt supplements accented without rewriting their intent', () => {
     const appSource = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/app.js'), 'utf8');
 

@@ -437,6 +437,28 @@ function getDirectGeminiThinkingConfig(modelName) {
     return null;
 }
 
+const DIRECT_GEMINI_SOURCE_MARKER = '[Đoạn nguồn]';
+
+function getDirectGeminiLegacyEditTextMarker() {
+    return ['VĂN BẢN CẦN', 'BIÊN TẬP:'].join(' ');
+}
+
+function sanitizeDirectGeminiSystemInstruction(text = '') {
+    if (typeof sanitizeTranslatorPromptText === 'function') {
+        return sanitizeTranslatorPromptText(text);
+    }
+    return String(text || '')
+        .replaceAll(getDirectGeminiLegacyEditTextMarker(), '')
+        .trim();
+}
+
+function getDirectGeminiSystemInstructionText(text = '') {
+    const rawText = String(text || '');
+    const markerIndex = rawText.indexOf(DIRECT_GEMINI_SOURCE_MARKER);
+    if (markerIndex <= 0) return '';
+    return sanitizeDirectGeminiSystemInstruction(rawText.slice(0, markerIndex));
+}
+
 async function translateChunk(text, modelKeyPair, temperature = 0.7) {
     // ===== AUTO-ROUTE: Nếu bật proxy, gọi proxy thay vì Gemini Direct =====
     if (useProxy) {
@@ -451,7 +473,13 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
     console.log(`[Gemini API] ${modelName} + Key ${keyIndex + 1} (temp=${temperature})`);
 
     const thinkingConfig = getDirectGeminiThinkingConfig(modelName);
+    const systemInstructionText = getDirectGeminiSystemInstructionText(text);
     const body = {
+        ...(systemInstructionText ? {
+            systemInstruction: {
+                parts: [{ text: systemInstructionText }]
+            }
+        } : {}),
         contents: [{
             parts: [{ text: text }]
         }],
@@ -606,7 +634,7 @@ function validateTranslationOutput(original, translated) {
     const promptEndMarkers = [
         'ĐOẠN VĂN:', 'ĐOẠN VĂN CẦN VIẾT LẠI:', 'NỘI DUNG:',
         'BẮT ĐẦU NGAY.', 'BẮT ĐẦU NGAY VỚI NỘI DUNG.]',
-        'VĂN BẢN CẦN BIÊN TẬP:', 'VĂN BẢN:',
+        'VĂN BẢN:',
         '[BEGIN MANUSCRIPT]', '[BEGIN TRANSLATION]',
         '[BEGIN MANUSCRIPT — TRANSLATE BELOW]'
     ];

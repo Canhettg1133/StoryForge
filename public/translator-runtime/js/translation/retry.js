@@ -47,7 +47,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 let promptToUse = text;
 
                 if (shortOutputCount > 0) {
-                    const basePrompt = document.getElementById('customPrompt')?.value || '';
+                    const rawBasePrompt = document.getElementById('customPrompt')?.value || '';
+                    const basePrompt = typeof sanitizeTranslatorPromptText === 'function'
+                        ? sanitizeTranslatorPromptText(rawBasePrompt)
+                        : rawBasePrompt;
                     const contentOnly = originalText.replace(basePrompt, '').trim();
 
                     if (shortOutputCount === 1) {
@@ -94,7 +97,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 let promptToUse = text;
 
                 if (shortOutputCount > 0) {
-                    const basePrompt = document.getElementById('customPrompt')?.value || '';
+                    const rawBasePrompt = document.getElementById('customPrompt')?.value || '';
+                    const basePrompt = typeof sanitizeTranslatorPromptText === 'function'
+                        ? sanitizeTranslatorPromptText(rawBasePrompt)
+                        : rawBasePrompt;
                     const contentOnly = originalText.replace(basePrompt, '').trim();
 
                     if (shortOutputCount === 1) {
@@ -141,7 +147,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
             // Nếu đã bị OUTPUT_TOO_SHORT, sử dụng progressive prompt
             if (shortOutputCount > 0) {
-                const basePrompt = document.getElementById('customPrompt')?.value || '';
+                const rawBasePrompt = document.getElementById('customPrompt')?.value || '';
+                const basePrompt = typeof sanitizeTranslatorPromptText === 'function'
+                    ? sanitizeTranslatorPromptText(rawBasePrompt)
+                    : rawBasePrompt;
                 // Tách prompt và nội dung thực
                 const contentOnly = originalText.replace(basePrompt, '').trim();
 
