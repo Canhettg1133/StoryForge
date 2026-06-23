@@ -148,21 +148,7 @@ export default function Sidebar() {
     const next = items[index + 1];
     return !!prev && !!next && !prev.divider && !next.divider;
   });
-  const visibleNavItems = (() => {
-    if (!activeProjectId) return baseVisibleNavItems;
-
-    const items = [...baseVisibleNavItems];
-    const globalPromptIndex = items.findIndex((item) => item.id === 'prompt-manager');
-    const projectPromptIndex = items.findIndex((item) => item.id === 'project-prompts');
-
-    if (globalPromptIndex === -1 || projectPromptIndex === -1 || globalPromptIndex === projectPromptIndex + 1) {
-      return items;
-    }
-
-    const [globalPromptItem] = items.splice(globalPromptIndex, 1);
-    items.splice(projectPromptIndex + 1, 0, globalPromptItem);
-    return items;
-  })();
+  const visibleNavItems = baseVisibleNavItems;
   const isAutoCollapsed = isNarrowViewport;
   const isCollapsed = isAutoCollapsed || sidebarCollapsed;
 
