@@ -15,8 +15,12 @@ export const CHAT_ATTACHMENT_STATUSES = Object.freeze({
 });
 
 export const MAX_CHAT_ATTACHMENT_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_CHAT_IMAGE_FILE_BYTES = 8 * 1024 * 1024;
+export const MAX_CHAT_IMAGE_ATTACHMENTS_PER_TURN = 4;
+export const MAX_CHAT_IMAGE_CONTEXT_BYTES = 12 * 1024 * 1024;
 export const MAX_CHAT_ATTACHMENT_ZIP_ENTRIES = 3500;
 export const MAX_CHAT_ATTACHMENT_ZIP_UNCOMPRESSED_BYTES = 80 * 1024 * 1024;
+export const CHAT_ATTACHMENT_ACCEPT = '.txt,.md,.docx,.epub,.pdf,.png,.jpg,.jpeg,.webp';
 
 const EXTENSION_TO_TYPE = new Map([
   ['.txt', 'txt'],
@@ -24,9 +28,21 @@ const EXTENSION_TO_TYPE = new Map([
   ['.docx', 'docx'],
   ['.epub', 'epub'],
   ['.pdf', 'pdf'],
+  ['.png', 'image'],
+  ['.jpg', 'image'],
+  ['.jpeg', 'image'],
+  ['.webp', 'image'],
 ]);
 
 const ZIP_CONTAINER_EXTENSIONS = new Set(['.docx', '.epub']);
+const IMAGE_EXTENSION_TO_MIME = new Map([
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.webp', 'image/webp'],
+]);
+const IMAGE_MIME_TYPES = new Set(IMAGE_EXTENSION_TO_MIME.values());
+const LOOSE_BINARY_MIME_TYPES = new Set(['', 'application/octet-stream']);
 const UNSAFE_EXTENSIONS = new Set([
   '.exe',
   '.js',
@@ -147,6 +163,55 @@ function hasUnsafeMagicBytes(bytes, extension) {
 function hasPdfMagicBytes(bytes) {
   if (!bytes || bytes.length < 5) return false;
   return asciiPrefix(bytes).startsWith('%pdf-');
+}
+
+function detectImageMimeFromMagicBytes(bytes) {
+  if (!bytes || bytes.length < 4) return '';
+  if (
+    bytes[0] === 0x89
+    && bytes[1] === 0x50
+    && bytes[2] === 0x4e
+    && bytes[3] === 0x47
+    && bytes[4] === 0x0d
+    && bytes[5] === 0x0a
+    && bytes[6] === 0x1a
+    && bytes[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (
+    bytes[0] === 0x52
+    && bytes[1] === 0x49
+    && bytes[2] === 0x46
+    && bytes[3] === 0x46
+    && bytes[8] === 0x57
+    && bytes[9] === 0x45
+    && bytes[10] === 0x42
+    && bytes[11] === 0x50
+  ) {
+    return 'image/webp';
+  }
+  return '';
+}
+
+function validateImageAttachment({ extension, mimeType, magicBytes }) {
+  const expectedMime = IMAGE_EXTENSION_TO_MIME.get(extension) || '';
+  const hasStrictMime = !LOOSE_BINARY_MIME_TYPES.has(mimeType);
+  if (hasStrictMime && (!IMAGE_MIME_TYPES.has(mimeType) || mimeType !== expectedMime)) {
+    return makeResult(false, 'IMAGE_MIME_MISMATCH', 'MIME type của ảnh không khớp với phần mở rộng.');
+  }
+
+  const actualMime = detectImageMimeFromMagicBytes(magicBytes);
+  if (!actualMime) {
+    return makeResult(false, 'IMAGE_INVALID_SIGNATURE', 'Magic bytes không khớp định dạng ảnh được hỗ trợ.');
+  }
+  if (actualMime !== expectedMime) {
+    return makeResult(false, 'IMAGE_MIME_MISMATCH', 'Magic bytes của ảnh không khớp với phần mở rộng.');
+  }
+  return makeResult(true, 'IMAGE_SAFE', 'Ảnh hợp lệ để gửi vào chat.');
 }
 
 function isUnsafeZipPath(name = '') {
@@ -285,7 +350,7 @@ export async function validateChatAttachmentFile(file) {
   }
 
   if (!fileType) {
-    return makeResult(false, 'UNSUPPORTED_EXTENSION', 'Chỉ hỗ trợ TXT, MD, DOCX, EPUB và PDF.', {
+    return makeResult(false, 'UNSUPPORTED_EXTENSION', 'Chỉ hỗ trợ TXT, MD, DOCX, EPUB, PDF, PNG, JPEG và WEBP.', {
       extension,
       fileType,
       mimeType,
@@ -293,7 +358,16 @@ export async function validateChatAttachmentFile(file) {
     });
   }
 
-  if (size > MAX_CHAT_ATTACHMENT_FILE_BYTES) {
+  if (fileType === 'image' && size > MAX_CHAT_IMAGE_FILE_BYTES) {
+    return makeResult(false, 'IMAGE_TOO_LARGE', 'Ảnh vượt giới hạn 8 MB cho chat.', {
+      extension,
+      fileType,
+      mimeType,
+      size,
+    });
+  }
+
+  if (fileType !== 'image' && size > MAX_CHAT_ATTACHMENT_FILE_BYTES) {
     return makeResult(false, 'FILE_TOO_LARGE', 'Tệp vượt giới hạn 25 MB cho chat.', {
       extension,
       fileType,
@@ -314,7 +388,7 @@ export async function validateChatAttachmentFile(file) {
     });
   }
 
-  if (!ALLOWED_MIME_TYPES.has(mimeType) && !mimeType.startsWith('text/')) {
+  if (fileType !== 'image' && !ALLOWED_MIME_TYPES.has(mimeType) && !mimeType.startsWith('text/')) {
     return makeResult(false, 'UNSUPPORTED_MIME', 'MIME type không khớp với định dạng được hỗ trợ.', {
       extension,
       fileType,
@@ -329,6 +403,25 @@ export async function validateChatAttachmentFile(file) {
       extension,
       fileType,
       mimeType,
+      size,
+    });
+  }
+
+  if (fileType === 'image') {
+    const imageResult = validateImageAttachment({ extension, mimeType, magicBytes });
+    if (!imageResult.ok) {
+      return {
+        ...imageResult,
+        extension,
+        fileType,
+        mimeType,
+        size,
+      };
+    }
+    return makeResult(true, 'SAFE_ATTACHMENT_FILE', 'Ảnh hợp lệ để gửi vào chat.', {
+      extension,
+      fileType,
+      mimeType: mimeType || IMAGE_EXTENSION_TO_MIME.get(extension) || '',
       size,
     });
   }

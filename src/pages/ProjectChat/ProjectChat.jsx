@@ -58,6 +58,9 @@ import { navigateBackOr } from '../../utils/navigation.js';
 import {
   CHAT_ATTACHMENT_SCOPES,
   CHAT_ATTACHMENT_STATUSES,
+  CHAT_ATTACHMENT_ACCEPT,
+  MAX_CHAT_IMAGE_ATTACHMENTS_PER_TURN,
+  detectChatAttachmentFileType,
 } from '../../services/chatAttachments/fileSafety.js';
 import {
   ingestChatAttachmentFile,
@@ -78,15 +81,19 @@ import {
 } from '../../services/chatAttachments/chunker.js';
 import {
   buildAttachmentAwareMessages,
+  buildImageAwareMessages,
+  CHAT_IMAGE_PAYLOAD_FORMATS,
   buildFullReadChunkMessages,
   buildFullReadMergeMessages,
   buildUsedSourcesBlock,
+  isChatImageAttachment,
   shouldUseChatAttachmentForPrompt,
 } from '../../services/chatAttachments/promptBuilder.js';
 import chatAttachmentsApi from '../../services/api/chatAttachmentsApi.js';
 import {
   ChatAttachmentChips,
   ChatAttachmentDrawer,
+  ChatMessageImageGrid,
   ChatAttachmentReadingStatus,
 } from './ChatAttachmentUi.jsx';
 import {
@@ -108,8 +115,8 @@ const COMPOSER_DESKTOP_MIN_HEIGHT = 58;
 const COMPOSER_MOBILE_MIN_HEIGHT = 48;
 const COMPOSER_DESKTOP_MAX_HEIGHT = 220;
 const COMPOSER_MOBILE_MAX_HEIGHT = 180;
-const CHAT_ATTACHMENT_ACCEPT = '.txt,.md,.docx,.epub,.pdf';
 const DEFAULT_ATTACHMENT_PROMPT = 'Hãy đọc các tệp đính kèm và cho biết nội dung chính.';
+const DEFAULT_IMAGE_ATTACHMENT_PROMPT = 'Hãy mô tả ảnh đính kèm.';
 
 const sortThreadsDesc = (threads) =>
   [...threads].sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0));
@@ -549,6 +556,26 @@ export function buildChatRequestOptions({ routeOptions = {}, project } = {}) {
   });
 }
 
+export function getChatImagePayloadFormat(proxyProfileId = '') {
+  return proxyProfileId === AG_PROXY_PROFILE_ID
+    ? CHAT_IMAGE_PAYLOAD_FORMATS.AG
+    : CHAT_IMAGE_PAYLOAD_FORMATS.OPENAI;
+}
+
+export function routeSupportsChatImages(route = {}) {
+  return route.provider === PROVIDERS.OPENAI_PROXY;
+}
+
+function hasReusableHistoryImages(historyMessages = []) {
+  return (historyMessages || []).some((message) =>
+    message?.role === 'user'
+    && (message.attachments || []).some((attachment) =>
+      isChatImageAttachment(attachment)
+      && !attachment.turn_only
+    )
+  );
+}
+
 function getRoutingConfigStamp() {
   return JSON.stringify({
     preferredProvider: modelRouter.getPreferredProvider(),
@@ -567,6 +594,8 @@ function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetr
       : message.role === 'assistant'
         ? 'is-assistant'
         : 'is-system';
+  const imageAttachments = (message.attachments || []).filter(isChatImageAttachment);
+  const fileAttachments = (message.attachments || []).filter((attachment) => !isChatImageAttachment(attachment));
 
   return (
     <article
@@ -646,8 +675,9 @@ function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetr
       <div className={`project-chat-message__content ${message.is_streaming && !message.content ? 'is-waiting' : ''}`}>
         {message.content || (message.is_streaming ? '...' : '')}
       </div>
-      {message.attachments?.length ? (
-        <ChatAttachmentChips attachments={message.attachments} compact />
+      <ChatMessageImageGrid attachments={imageAttachments} />
+      {fileAttachments.length ? (
+        <ChatAttachmentChips attachments={fileAttachments} compact />
       ) : null}
     </article>
   );
@@ -1301,10 +1331,23 @@ export default function ProjectChat() {
     return contexts;
   }
 
-  function buildConversationMessages(nextUserMessage, thread, sourceMessages = messages, attachmentContexts = []) {
+  function buildConversationMessages(nextUserMessage, thread, sourceMessages = messages, attachmentContexts = [], options = {}) {
     const systemPrompt =
       String(thread.system_prompt || '').trim() ||
       buildDefaultSystemPrompt(thread.chat_mode || activeThreadMode, projectScopeEnabled ? currentProject : null);
+
+    const currentImageAttachments = options.currentImageAttachments || [];
+    const imagePayloadFormat = options.imagePayloadFormat || CHAT_IMAGE_PAYLOAD_FORMATS.OPENAI;
+    if (currentImageAttachments.length > 0 || hasReusableHistoryImages(sourceMessages)) {
+      return buildImageAwareMessages({
+        systemPrompt,
+        historyMessages: sourceMessages,
+        userText: nextUserMessage,
+        attachmentContexts,
+        currentImageAttachments,
+        imagePayloadFormat,
+      });
+    }
 
     if (attachmentContexts.length > 0) {
       return buildAttachmentAwareMessages({
@@ -1355,7 +1398,7 @@ export default function ProjectChat() {
       const tempAttachment = {
         temp_id: tempId,
         file_name: file.name || 'Tệp đính kèm',
-        file_type: '',
+        file_type: detectChatAttachmentFileType(file) || '',
         size_bytes: Number(file.size || 0),
         status: CHAT_ATTACHMENT_STATUSES.VALIDATING,
       };
@@ -1474,6 +1517,7 @@ export default function ProjectChat() {
   function handleAskAttachmentSample(attachment) {
     if (!attachment) return;
     if (isReadingAttachment) return;
+    const isImage = isChatImageAttachment(attachment);
     if (attachment.id) {
       setPendingAttachments((prev) =>
         prev.some((item) => Number(item.id) === Number(attachment.id))
@@ -1481,7 +1525,9 @@ export default function ProjectChat() {
           : [attachment, ...prev],
       );
     }
-    setDraft(`Hãy tóm tắt và chỉ ra các chi tiết quan trọng trong tệp "${attachment.file_name}".`);
+    setDraft(isImage
+      ? `Hãy mô tả và chỉ ra các chi tiết quan trọng trong ảnh "${attachment.file_name}".`
+      : `Hãy tóm tắt và chỉ ra các chi tiết quan trọng trong tệp "${attachment.file_name}".`);
     setShowAttachmentDrawer(false);
     window.setTimeout(() => {
       inputRef.current?.focus();
@@ -1517,28 +1563,55 @@ export default function ProjectChat() {
     attachmentIds = [],
     focusUserMessage = true,
   }) {
-    if (!thread || isStreaming) return;
-    if ((thread.chat_mode || activeThreadMode) === CHAT_MODES.STORY && !projectScopeEnabled) return;
+    if (!thread || isStreaming) return false;
+    if ((thread.chat_mode || activeThreadMode) === CHAT_MODES.STORY && !projectScopeEnabled) return false;
 
     const normalizedUserContent = String(userContent || '').trim() || DEFAULT_ATTACHMENT_PROMPT;
     const currentAttachmentIds = attachmentIds.length > 0
       ? attachmentIds
       : (existingUserMessage?.attachments || []).map((attachment) => attachment.id).filter(Boolean);
-    if (!normalizedUserContent && currentAttachmentIds.length === 0) return;
+    if (!normalizedUserContent && currentAttachmentIds.length === 0) return false;
+    const currentAttachments = currentAttachmentIds.length > 0
+      ? await Promise.all(
+        currentAttachmentIds.map((id) => db.ai_chat_attachments.get(Number(id))),
+      ).then((items) => items.filter(Boolean))
+      : [];
+    const currentImageAttachments = currentAttachments.filter(isChatImageAttachment);
+    if (currentImageAttachments.length > MAX_CHAT_IMAGE_ATTACHMENTS_PER_TURN) {
+      setErrorMessage(`Mỗi lượt chat chỉ gửi tối đa ${MAX_CHAT_IMAGE_ATTACHMENTS_PER_TURN} ảnh. Hãy gỡ bớt ảnh rồi gửi lại.`);
+      return false;
+    }
     const attachmentContexts = await buildAttachmentPromptContexts(normalizedUserContent, currentAttachmentIds);
     const { routeOptions, route: currentRoute } = getThreadRouting(thread);
+    const hasImageContext = currentImageAttachments.length > 0 || hasReusableHistoryImages(historyMessages);
+    if (hasImageContext && !routeSupportsChatImages(currentRoute)) {
+      setErrorMessage('Provider hiện tại chưa hỗ trợ gửi ảnh. Hãy đổi sang AG/OpenAI-compatible hoặc gỡ ảnh.');
+      return false;
+    }
+    let callMessages;
+    try {
+      callMessages = buildConversationMessages(normalizedUserContent, thread, historyMessages, attachmentContexts, {
+        currentImageAttachments,
+        imagePayloadFormat: getChatImagePayloadFormat(
+          currentRoute.proxyProfileId || routeOptions.proxyProfileId || activeProxyProfileId,
+        ),
+      });
+    } catch (error) {
+      setErrorMessage(toVietnameseErrorMessage(error?.userMessage || error, 'Không thể chuẩn bị ảnh để gửi AI.'));
+      return false;
+    }
     const selectedProviderFeature = getProviderFeature(currentRoute.provider, currentRoute.proxyProfileId);
     if (!hasFeature(ACCESS_FEATURES.AI_CHAT_ACCESS)) {
       setErrorMessage(getDeniedMessage(ACCESS_FEATURES.AI_CHAT_ACCESS));
-      return;
+      return false;
     }
     if (selectedProviderFeature && !hasFeature(selectedProviderFeature)) {
       setErrorMessage(getDeniedMessage(selectedProviderFeature));
-      return;
+      return false;
     }
     if (projectScopeEnabled && (currentProject?.nsfw_mode || currentProject?.super_nsfw_mode) && !hasFeature(ACCESS_FEATURES.ADULT_MODE)) {
       setErrorMessage(getDeniedMessage(ACCESS_FEATURES.ADULT_MODE));
-      return;
+      return false;
     }
     const tempAssistantId = `temp-assistant-${Date.now()}`;
     const provisionalTitle =
@@ -1553,9 +1626,7 @@ export default function ProjectChat() {
       }));
     if (!existingUserMessage && currentAttachmentIds.length > 0) {
       await linkMessageAttachments({ messageId: userMessage.id, attachmentIds: currentAttachmentIds });
-      userMessage.attachments = await Promise.all(
-        currentAttachmentIds.map((id) => db.ai_chat_attachments.get(Number(id))),
-      ).then((items) => items.filter(Boolean));
+      userMessage.attachments = currentAttachments;
     }
 
     if (focusUserMessage) {
@@ -1608,7 +1679,7 @@ export default function ProjectChat() {
 
     aiService.send({
         taskType: TASK_TYPES.FREE_PROMPT,
-        messages: buildConversationMessages(normalizedUserContent, thread, historyMessages, attachmentContexts),
+        messages: callMessages,
         stream: true,
         ...buildChatRequestOptions({
           routeOptions,
@@ -1667,6 +1738,7 @@ export default function ProjectChat() {
           activeRunRef.current = null;
         },
       });
+    return true;
   }
 
   async function handleSendMessage() {
@@ -1822,9 +1894,16 @@ export default function ProjectChat() {
     }
 
     const attachmentIds = readyPendingAttachments.map((attachment) => attachment.id);
-    await sendChatTurn({ userContent: draft.trim() || DEFAULT_ATTACHMENT_PROMPT, attachmentIds });
-    setPendingAttachments([]);
-    await refreshAvailableAttachments();
+    const hasReadyImages = readyPendingAttachments.some(isChatImageAttachment);
+    const hasReadyDocuments = readyPendingAttachments.some((attachment) => !isChatImageAttachment(attachment));
+    const fallbackPrompt = hasReadyImages && !hasReadyDocuments
+      ? DEFAULT_IMAGE_ATTACHMENT_PROMPT
+      : DEFAULT_ATTACHMENT_PROMPT;
+    const submitted = await sendChatTurn({ userContent: draft.trim() || fallbackPrompt, attachmentIds });
+    if (submitted) {
+      setPendingAttachments([]);
+      await refreshAvailableAttachments();
+    }
   }
 
   async function handleStopStreaming() {
@@ -2404,7 +2483,7 @@ export default function ProjectChat() {
                 disabled={isStreaming || isReadingAttachment || Boolean(chatLockedMessage)}
               >
                 <Paperclip size={14} />
-                Thêm tệp
+                Thêm tệp/ảnh
               </button>
               {availableAttachments.length > 0 ? (
                 <button
@@ -2413,7 +2492,7 @@ export default function ProjectChat() {
                   onClick={() => setShowAttachmentDrawer(true)}
                 >
                   <FileText size={14} />
-                  {`Xem ${availableAttachments.length} tệp trong chat`}
+                  {`Xem ${availableAttachments.length} tệp/ảnh trong chat`}
                 </button>
               ) : null}
               {directReadStoredAttachment ? (

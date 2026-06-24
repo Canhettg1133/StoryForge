@@ -16,6 +16,8 @@ import {
 import {
   CHAT_ATTACHMENT_SCOPES,
   CHAT_ATTACHMENT_STATUSES,
+  CHAT_ATTACHMENT_ACCEPT,
+  MAX_CHAT_IMAGE_FILE_BYTES,
   validateChatAttachmentFile,
 } from '../../services/chatAttachments/fileSafety.js';
 import {
@@ -24,11 +26,14 @@ import {
 } from '../../services/chatAttachments/chunker.js';
 import {
   buildAttachmentAwareMessages,
+  buildImageAwareMessages,
+  CHAT_IMAGE_PAYLOAD_FORMATS,
   buildFullReadChunkMessages,
   buildFullReadMergeMessages,
   shouldUseChatAttachmentForPrompt,
 } from '../../services/chatAttachments/promptBuilder.js';
 import { parseChatAttachmentFile } from '../../services/chatAttachments/parser.js';
+import { ingestChatAttachmentFile } from '../../services/chatAttachments/ingest.js';
 import {
   deleteChatThreadAttachmentData,
   listMessageAttachmentSummaries,
@@ -100,6 +105,62 @@ describe('phase13 chat attachments', () => {
     await expect(validateChatAttachmentFile(docx)).resolves.toMatchObject({ ok: true, fileType: 'docx' });
     await expect(validateChatAttachmentFile(epub)).resolves.toMatchObject({ ok: true, fileType: 'epub' });
     await expect(validateChatAttachmentFile(pdf)).resolves.toMatchObject({ ok: true, fileType: 'pdf' });
+  });
+
+  it('accepts PNG, JPEG, and WEBP chat image uploads as multimodal attachments', async () => {
+    const png = makeFile('screen.png', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), 'image/png');
+    const jpeg = makeFile('photo.jpg', new Uint8Array([0xff, 0xd8, 0xff, 0xdb]), 'image/jpeg');
+    const webp = makeFile('panel.webp', new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x08, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50]), 'image/webp');
+
+    await expect(validateChatAttachmentFile(png)).resolves.toMatchObject({ ok: true, fileType: 'image' });
+    await expect(validateChatAttachmentFile(jpeg)).resolves.toMatchObject({ ok: true, fileType: 'image' });
+    await expect(validateChatAttachmentFile(webp)).resolves.toMatchObject({ ok: true, fileType: 'image' });
+  });
+
+  it('rejects unsafe or spoofed chat image uploads', async () => {
+    const svg = makeFile('icon.svg', '<svg><script>alert(1)</script></svg>', 'image/svg+xml');
+    const fakePng = makeFile('fake.png', 'không phải ảnh', 'image/png');
+    const mismatched = makeFile('photo.jpg', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), 'image/png');
+    const tooLarge = {
+      name: 'large.png',
+      type: 'image/png',
+      size: MAX_CHAT_IMAGE_FILE_BYTES + 1,
+      slice() {
+        return {
+          async arrayBuffer() {
+            return new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).buffer;
+          },
+        };
+      },
+    };
+
+    await expect(validateChatAttachmentFile(svg)).resolves.toMatchObject({ ok: false, code: 'UNSUPPORTED_EXTENSION' });
+    await expect(validateChatAttachmentFile(fakePng)).resolves.toMatchObject({ ok: false, code: 'IMAGE_INVALID_SIGNATURE' });
+    await expect(validateChatAttachmentFile(mismatched)).resolves.toMatchObject({ ok: false, code: 'IMAGE_MIME_MISMATCH' });
+    await expect(validateChatAttachmentFile(tooLarge)).resolves.toMatchObject({ ok: false, code: 'IMAGE_TOO_LARGE' });
+  });
+
+  it('stores image attachments as data URLs without creating text chunks', async () => {
+    const png = makeFile('screen.png', new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), 'image/png');
+
+    const saved = await ingestChatAttachmentFile({
+      file: png,
+      projectId: 0,
+      threadId: 1,
+      scope: CHAT_ATTACHMENT_SCOPES.THREAD,
+      turnOnly: true,
+    });
+
+    expect(saved).toMatchObject({
+      file_name: 'screen.png',
+      file_type: 'image',
+      mime_type: 'image/png',
+      status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+      chunk_count: 0,
+      turn_only: true,
+    });
+    expect(saved.data_url).toMatch(/^data:image\/png;base64,/u);
+    await expect(db.ai_chat_attachment_chunks.where('attachment_id').equals(saved.id).count()).resolves.toBe(0);
   });
 
   it('reads large TXT files in slices without calling full-file text readers', async () => {
@@ -202,6 +263,116 @@ describe('phase13 chat attachments', () => {
     expect(shouldUseChatAttachmentForPrompt(turnOnly, { currentAttachmentIds: [10] })).toBe(true);
     expect(shouldUseChatAttachmentForPrompt(projectKnowledge, { currentAttachmentIds: [] })).toBe(true);
     expect(shouldUseChatAttachmentForPrompt({ ...projectKnowledge, status: CHAT_ATTACHMENT_STATUSES.FAILED })).toBe(false);
+    expect(shouldUseChatAttachmentForPrompt({ ...projectKnowledge, file_type: 'image', data_url: 'data:image/png;base64,abc' })).toBe(false);
+  });
+
+  it('builds multimodal messages with reusable thread images and current images first', () => {
+    const reusableImage = {
+      id: 20,
+      file_name: 'ảnh-cũ.png',
+      file_type: 'image',
+      mime_type: 'image/png',
+      size_bytes: 8,
+      data_url: 'data:image/png;base64,b2xk',
+      status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+    };
+    const turnOnlyImage = {
+      ...reusableImage,
+      id: 21,
+      file_name: 'chỉ-lượt-này.png',
+      data_url: 'data:image/png;base64,c2tpcA==',
+      turn_only: true,
+    };
+    const currentImage = {
+      id: 22,
+      file_name: 'ảnh-mới.webp',
+      file_type: 'image',
+      mime_type: 'image/webp',
+      size_bytes: 9,
+      data_url: 'data:image/webp;base64,bmV3',
+      status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+    };
+
+    const messages = buildImageAwareMessages({
+      systemPrompt: 'Bạn là AI.',
+      historyMessages: [
+        { id: 1, role: 'user', content: 'Ảnh trước là gì?', attachments: [reusableImage, turnOnlyImage] },
+        { id: 2, role: 'assistant', content: 'Mình đã xem.' },
+      ],
+      userText: 'So sánh với ảnh mới.',
+      currentImageAttachments: [currentImage],
+      imagePayloadFormat: CHAT_IMAGE_PAYLOAD_FORMATS.AG,
+      maxImageContextBytes: 64,
+    });
+
+    expect(messages[1].content).toEqual([
+      { type: 'text', text: 'Ảnh trước là gì?' },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/png',
+          data: 'b2xk',
+        },
+      },
+    ]);
+    expect(messages[3].content).toEqual([
+      { type: 'text', text: 'So sánh với ảnh mới.' },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/webp',
+          data: 'bmV3',
+        },
+      },
+    ]);
+  });
+
+  it('builds OpenAI-compatible image_url parts for custom proxy profiles', () => {
+    const image = {
+      id: 30,
+      file_name: 'ảnh.png',
+      file_type: 'image',
+      mime_type: 'image/png',
+      size_bytes: 8,
+      data_url: 'data:image/png;base64,aW1n',
+      status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+    };
+
+    const messages = buildImageAwareMessages({
+      systemPrompt: 'Bạn là AI.',
+      historyMessages: [],
+      userText: 'Mô tả ảnh.',
+      currentImageAttachments: [image],
+      imagePayloadFormat: CHAT_IMAGE_PAYLOAD_FORMATS.OPENAI,
+    });
+
+    expect(messages[1].content).toEqual([
+      { type: 'text', text: 'Mô tả ảnh.' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,aW1n' } },
+    ]);
+  });
+
+  it('fails before sending when image context exceeds the chat payload limit', () => {
+    const image = {
+      id: 40,
+      file_name: 'quá-lớn.png',
+      file_type: 'image',
+      mime_type: 'image/png',
+      size_bytes: 20,
+      data_url: 'data:image/png;base64,aW1n',
+      status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+    };
+
+    expect(() => buildImageAwareMessages({
+      systemPrompt: 'Bạn là AI.',
+      historyMessages: [],
+      userText: 'Mô tả ảnh.',
+      currentImageAttachments: [image],
+      imagePayloadFormat: CHAT_IMAGE_PAYLOAD_FORMATS.OPENAI,
+      maxImageContextBytes: 8,
+    })).toThrow('Ảnh đính kèm vượt giới hạn');
   });
 
   it('builds full-read prompts for every chunk before merging the attachment profile', () => {
@@ -368,6 +539,14 @@ describe('phase13 chat attachments', () => {
       status: CHAT_ATTACHMENT_STATUSES.INDEXED,
       chunk_count: 4,
       turn_only: true,
+    }, {
+      id: 2,
+      file_name: 'ảnh minh họa.png',
+      file_type: 'image',
+      mime_type: 'image/png',
+      size_bytes: 1024,
+      status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+      data_url: 'data:image/png;base64,aW1n',
     }];
 
     await act(async () => {
@@ -397,12 +576,15 @@ describe('phase13 chat attachments', () => {
     });
 
     expect(container.textContent).toContain('truyện mẫu.docx');
-    expect(container.textContent).toContain('Tệp trong chat');
+    expect(container.textContent).toContain('ảnh minh họa.png');
+    expect(container.textContent).toContain('Tệp/ảnh trong chat');
     expect(container.textContent).toContain('Đang đọc kỹ toàn bộ tệp');
     expect(container.textContent).toContain('2/4 đoạn');
     expect(container.textContent).toContain('Đọc kỹ');
     expect(container.textContent).toContain('Đọc kỹ toàn bộ');
     expect(container.textContent).toContain('Chỉ lượt này');
+    expect(container.querySelector('img[alt="ảnh minh họa.png"]')).not.toBeNull();
+    expect(CHAT_ATTACHMENT_ACCEPT).toBe('.txt,.md,.docx,.epub,.pdf,.png,.jpg,.jpeg,.webp');
     expect(CHAT_ATTACHMENT_COPY.join('\n')).not.toMatch(/Ă|Ä|á»|áº|Æ|�/u);
 
     const readButton = container.querySelector('.project-chat-attachment-chip__read');

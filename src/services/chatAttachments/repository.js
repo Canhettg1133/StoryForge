@@ -30,6 +30,7 @@ function normalizeAttachmentInput(attachment = {}) {
     error_message: attachment.error_message || '',
     chunk_count: Number(attachment.chunk_count || 0),
     profile_text: attachment.profile_text || '',
+    data_url: attachment.data_url || attachment.dataUrl || '',
     read_at: attachment.read_at || null,
     created_at: attachment.created_at || timestamp,
     updated_at: attachment.updated_at || timestamp,
