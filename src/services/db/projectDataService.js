@@ -8,6 +8,18 @@ export async function deleteProjectCascade(projectId) {
 
   const projectPlotThreads = await db.plotThreads.where('project_id').equals(normalizedProjectId).toArray();
   const plotThreadIds = projectPlotThreads.map((item) => item.id);
+  const projectChatAttachments = await db.ai_chat_attachments
+    .where('project_id')
+    .equals(normalizedProjectId)
+    .toArray();
+  const projectChatAttachmentIds = projectChatAttachments.map((attachment) => attachment.id);
+
+  if (projectChatAttachmentIds.length > 0) {
+    await Promise.all([
+      db.ai_chat_attachment_chunks.where('attachment_id').anyOf(projectChatAttachmentIds).delete(),
+      db.ai_chat_message_attachments.where('attachment_id').anyOf(projectChatAttachmentIds).delete(),
+    ]);
+  }
 
   await Promise.all([
     db.projects.delete(normalizedProjectId),
@@ -46,6 +58,7 @@ export async function deleteProjectCascade(projectId) {
     db.canon_purge_archives.where('project_id').equals(normalizedProjectId).delete(),
     db.ai_chat_threads.where('project_id').equals(normalizedProjectId).delete(),
     db.ai_chat_messages.where('project_id').equals(normalizedProjectId).delete(),
+    db.ai_chat_attachments.where('project_id').equals(normalizedProjectId).delete(),
     ...(plotThreadIds.length > 0
       ? [db.threadBeats.where('plot_thread_id').anyOf(plotThreadIds).delete()]
       : []),

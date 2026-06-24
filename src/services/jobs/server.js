@@ -4,6 +4,7 @@ import cors from 'cors';
 import express from 'express';
 import { analysisRepository } from '../analysis/repositories/analysisRepository.js';
 import { createCorpusRouter } from '../corpus/routes/corpus.js';
+import { createChatAttachmentsRouter } from '../chatAttachments/routes/chatAttachments.js';
 import { bootstrapPostgres } from '../storage/postgres/bootstrap.js';
 import { requirePostgresDatabase } from '../storage/postgres/client.js';
 import { JOB_CONFIG } from './config.js';
@@ -31,6 +32,7 @@ function createApp(queue) {
 
   app.use('/api/jobs', createJobsRouter(queue));
   app.use('/api/corpus', createCorpusRouter());
+  app.use('/api/chat-attachments', createChatAttachmentsRouter());
 
   app.use((err, _req, res, _next) => {
     res.status(500).json({

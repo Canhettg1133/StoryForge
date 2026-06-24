@@ -1,16 +1,20 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
+  ArrowDown,
   ArrowLeft,
+  BookOpen,
   Bot,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   Copy,
+  FileText,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
+  Paperclip,
   Plus,
   RotateCcw,
   Save,
@@ -51,6 +55,46 @@ import { useUserAccess } from '../../hooks/useUserAccess';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import AccessGate from '../../components/access/AccessGate.jsx';
 import { navigateBackOr } from '../../utils/navigation.js';
+import {
+  CHAT_ATTACHMENT_SCOPES,
+  CHAT_ATTACHMENT_STATUSES,
+} from '../../services/chatAttachments/fileSafety.js';
+import {
+  ingestChatAttachmentFile,
+} from '../../services/chatAttachments/ingest.js';
+import {
+  getChatAttachmentChunks,
+  hydrateMessagesWithAttachmentSummaries,
+  deleteChatAttachment,
+  deleteChatThreadAttachmentData,
+  linkMessageAttachments,
+  listChatAttachmentsForProject,
+  listChatAttachmentsForThread,
+  updateChatAttachment,
+  updateChatAttachmentChunk,
+} from '../../services/chatAttachments/repository.js';
+import {
+  selectRelevantAttachmentChunks,
+} from '../../services/chatAttachments/chunker.js';
+import {
+  buildAttachmentAwareMessages,
+  buildFullReadChunkMessages,
+  buildFullReadMergeMessages,
+  buildUsedSourcesBlock,
+  shouldUseChatAttachmentForPrompt,
+} from '../../services/chatAttachments/promptBuilder.js';
+import chatAttachmentsApi from '../../services/api/chatAttachmentsApi.js';
+import {
+  ChatAttachmentChips,
+  ChatAttachmentDrawer,
+  ChatAttachmentReadingStatus,
+} from './ChatAttachmentUi.jsx';
+import {
+  isChatScrollNearBottom,
+  scrollChatMessageToTop,
+  scrollChatToBottom,
+  createRafTextBatcher,
+} from './chatScroll.js';
 
 const GLOBAL_CHAT_PROJECT_ID = 0;
 const CHAT_THREAD_TITLE_FALLBACK = 'Cuộc trò chuyện mới';
@@ -64,6 +108,8 @@ const COMPOSER_DESKTOP_MIN_HEIGHT = 58;
 const COMPOSER_MOBILE_MIN_HEIGHT = 48;
 const COMPOSER_DESKTOP_MAX_HEIGHT = 220;
 const COMPOSER_MOBILE_MAX_HEIGHT = 180;
+const CHAT_ATTACHMENT_ACCEPT = '.txt,.md,.docx,.epub,.pdf';
+const DEFAULT_ATTACHMENT_PROMPT = 'Hãy đọc các tệp đính kèm và cho biết nội dung chính.';
 
 const sortThreadsDesc = (threads) =>
   [...threads].sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0));
@@ -514,7 +560,7 @@ function getRoutingConfigStamp() {
   });
 }
 
-function MessageBubble({ message, onCopy, onEdit, onContinue, onRetry }) {
+function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetry }) {
   const roleClass =
     message.role === 'user'
       ? 'is-user'
@@ -524,6 +570,7 @@ function MessageBubble({ message, onCopy, onEdit, onContinue, onRetry }) {
 
   return (
     <article
+      ref={messageRef}
       className={[
         'project-chat-message',
         roleClass,
@@ -596,9 +643,12 @@ function MessageBubble({ message, onCopy, onEdit, onContinue, onRetry }) {
           ) : null}
         </div>
       </div>
-      <div className="project-chat-message__content">
+      <div className={`project-chat-message__content ${message.is_streaming && !message.content ? 'is-waiting' : ''}`}>
         {message.content || (message.is_streaming ? '...' : '')}
       </div>
+      {message.attachments?.length ? (
+        <ChatAttachmentChips attachments={message.attachments} compact />
+      ) : null}
     </article>
   );
 }
@@ -638,10 +688,21 @@ export default function ProjectChat() {
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [liveRouteInfo, setLiveRouteInfo] = useState(null);
   const [routingConfigStamp, setRoutingConfigStamp] = useState(() => getRoutingConfigStamp());
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [availableAttachments, setAvailableAttachments] = useState([]);
+  const [showAttachmentDrawer, setShowAttachmentDrawer] = useState(false);
+  const [readingAttachmentJob, setReadingAttachmentJob] = useState(null);
+  const [turnOnlyAttachmentScope, setTurnOnlyAttachmentScope] = useState(false);
+  const [isAttachmentDragOver, setIsAttachmentDragOver] = useState(false);
+  const [showScrollToLatest, setShowScrollToLatest] = useState(false);
 
   const inputRef = useRef(null);
   const composerTextareaRef = useRef(null);
-  const threadEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const messagesScrollRef = useRef(null);
+  const messageRefs = useRef(new Map());
+  const pendingQuestionScrollRef = useRef(null);
+  const pendingInitialBottomScrollRef = useRef(false);
   const isHydratingThreadRef = useRef(false);
   const activeRunRef = useRef(null);
   const isComposingRef = useRef(false);
@@ -658,6 +719,30 @@ export default function ProjectChat() {
 
   const activeThreadMode =
     activeThread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
+  const defaultAttachmentScope =
+    projectScopeEnabled && activeThreadMode === CHAT_MODES.STORY && !turnOnlyAttachmentScope
+      ? CHAT_ATTACHMENT_SCOPES.PROJECT
+      : CHAT_ATTACHMENT_SCOPES.THREAD;
+  const readyPendingAttachments = pendingAttachments.filter(
+    (attachment) =>
+      attachment?.id
+      && attachment.status !== CHAT_ATTACHMENT_STATUSES.FAILED
+      && attachment.status !== CHAT_ATTACHMENT_STATUSES.VALIDATING
+      && attachment.status !== CHAT_ATTACHMENT_STATUSES.EXTRACTING,
+  );
+  const pendingAttachmentIds = new Set(
+    pendingAttachments.map((attachment) => Number(attachment?.id)).filter(Boolean),
+  );
+  const indexedStoredAttachments = availableAttachments.filter(
+    (attachment) =>
+      attachment?.id
+      && attachment.status === CHAT_ATTACHMENT_STATUSES.INDEXED
+      && !pendingAttachmentIds.has(Number(attachment.id)),
+  );
+  const directReadStoredAttachment =
+    indexedStoredAttachments.length === 1 ? indexedStoredAttachments[0] : null;
+  const isReadingAttachment = Boolean(readingAttachmentJob);
+  const hasSubmittableDraft = Boolean(draft.trim() || readyPendingAttachments.length > 0);
   const activeChatProvider = routePreview.provider;
   const activeProxyProfileId = activeChatProvider === PROVIDERS.OPENAI_PROXY
     ? (routePreview.proxyProfileId || normalizeThreadOverrideValue(activeThread?.proxy_profile_id) || getActiveOpenAIProxyProfile().id)
@@ -743,9 +828,114 @@ export default function ProjectChat() {
     }
   }, [currentProject, loadProject, navigate, projectId, projectScopeEnabled]);
 
-  useEffect(() => {
-    threadEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  function updateScrollToLatestVisibility() {
+    const container = messagesScrollRef.current;
+    if (!container) {
+      setShowScrollToLatest(false);
+      return;
+    }
+    const shouldShow = !isChatScrollNearBottom(container);
+    setShowScrollToLatest((current) => (current === shouldShow ? current : shouldShow));
+  }
+
+  function queueQuestionScroll(messageId) {
+    if (!messageId) return;
+    pendingQuestionScrollRef.current = String(messageId);
+  }
+
+  function handleMessagesScroll() {
+    updateScrollToLatestVisibility();
+  }
+
+  function handleScrollToLatest() {
+    scrollChatToBottom(messagesScrollRef.current, { behavior: 'smooth' });
+    setShowScrollToLatest(false);
+  }
+
+  function buildStreamingAssistantMessage(tempAssistantId, threadId, route, content) {
+    return {
+      id: tempAssistantId,
+      project_id: scopedProjectId,
+      thread_id: threadId,
+      role: 'assistant',
+      content,
+      provider: route.provider,
+      model: route.model,
+      is_streaming: true,
+      created_at: Date.now(),
+    };
+  }
+
+  function createStreamingMessageBatcher(tempAssistantId, threadId) {
+    return createRafTextBatcher(
+      (full) => {
+        const route = activeRunRef.current?.route || {};
+        replaceTempMessage(
+          tempAssistantId,
+          buildStreamingAssistantMessage(tempAssistantId, threadId, route, full),
+        );
+      },
+      {
+        requestFrame: (callback) =>
+          typeof window.requestAnimationFrame === 'function'
+            ? window.requestAnimationFrame(callback)
+            : window.setTimeout(callback, 16),
+        cancelFrame: (frameId) =>
+          typeof window.cancelAnimationFrame === 'function'
+            ? window.cancelAnimationFrame(frameId)
+            : window.clearTimeout(frameId),
+      },
+    );
+  }
+
+  function beginStreamingRun({ threadId, tempAssistantId, route }) {
+    const streamBatcher = createStreamingMessageBatcher(tempAssistantId, threadId);
+    activeRunRef.current = {
+      threadId,
+      tempAssistantId,
+      route,
+      latestText: '',
+      streamBatcher,
+    };
+  }
+
+  function pushStreamingText(tempAssistantId, full) {
+    const run = activeRunRef.current;
+    if (!run || String(run.tempAssistantId) !== String(tempAssistantId)) return;
+    run.latestText = String(full || '');
+    run.streamBatcher?.push(run.latestText);
+  }
+
+  function cancelStreamingBatcher(tempAssistantId) {
+    const run = activeRunRef.current;
+    if (!run || String(run.tempAssistantId) !== String(tempAssistantId)) return;
+    run.streamBatcher?.cancel();
+  }
+
+  useLayoutEffect(() => {
+    const container = messagesScrollRef.current;
+    if (!container) return;
+
+    const targetMessageId = pendingQuestionScrollRef.current;
+    if (targetMessageId) {
+      const targetNode = messageRefs.current.get(targetMessageId);
+      if (targetNode) {
+        scrollChatMessageToTop(container, targetNode, { behavior: 'smooth' });
+        pendingQuestionScrollRef.current = null;
+        setShowScrollToLatest(true);
+        return;
+      }
+    }
+
+    if (pendingInitialBottomScrollRef.current) {
+      scrollChatToBottom(container, { behavior: 'auto' });
+      pendingInitialBottomScrollRef.current = false;
+      setShowScrollToLatest(false);
+      return;
+    }
+
+    updateScrollToLatestVisibility();
+  }, [messages, isStreaming]);
 
   useLayoutEffect(() => {
     resizeComposer(composerTextareaRef.current);
@@ -836,7 +1026,10 @@ export default function ProjectChat() {
         .sortBy('created_at');
 
       if (cancelled) return;
-      setMessages(threadMessages);
+      const hydratedMessages = await hydrateMessagesWithAttachmentSummaries(threadMessages);
+      if (cancelled) return;
+      pendingInitialBottomScrollRef.current = hydratedMessages.length > 0;
+      setMessages(hydratedMessages);
       setIsLoadingMessages(false);
     }
 
@@ -850,6 +1043,47 @@ export default function ProjectChat() {
       cancelled = true;
     };
   }, [activeThreadId]);
+
+  useEffect(() => {
+    if (!activeThreadId) {
+      setAvailableAttachments([]);
+      setPendingAttachments([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAttachmentsForChat() {
+      const threadItems = await listChatAttachmentsForThread(activeThreadId);
+      const projectItems = projectScopeEnabled
+        ? await listChatAttachmentsForProject(scopedProjectId)
+        : [];
+      if (cancelled) return;
+
+      const byId = new Map();
+      [...projectItems, ...threadItems].forEach((attachment) => {
+        if (attachment?.id) byId.set(Number(attachment.id), attachment);
+      });
+      setAvailableAttachments(
+        Array.from(byId.values())
+          .sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0)),
+      );
+      setPendingAttachments((prev) =>
+        prev.filter((attachment) =>
+          !attachment.id || byId.has(Number(attachment.id)) || attachment.status === CHAT_ATTACHMENT_STATUSES.FAILED,
+        ),
+      );
+    }
+
+    loadAttachmentsForChat().catch((error) => {
+      console.error('Failed to load chat attachments:', error);
+      setErrorMessage('Không thể tải danh sách tệp đã đọc.');
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeThreadId, scopedProjectId, projectScopeEnabled]);
 
   useEffect(() => {
     if (!activeThread || isHydratingThreadRef.current) return undefined;
@@ -927,6 +1161,29 @@ export default function ProjectChat() {
     await db.ai_chat_threads.update(Number(threadId), patch);
   }
 
+  function mergeAttachmentLists(...lists) {
+    const byId = new Map();
+    lists.flat().forEach((attachment) => {
+      if (attachment?.id) byId.set(Number(attachment.id), attachment);
+    });
+    return Array.from(byId.values())
+      .sort((a, b) => Number(b.updated_at || 0) - Number(a.updated_at || 0));
+  }
+
+  async function refreshAvailableAttachments() {
+    if (!activeThreadId) {
+      setAvailableAttachments([]);
+      return [];
+    }
+    const threadItems = await listChatAttachmentsForThread(activeThreadId);
+    const projectItems = projectScopeEnabled
+      ? await listChatAttachmentsForProject(scopedProjectId)
+      : [];
+    const merged = mergeAttachmentLists(projectItems, threadItems);
+    setAvailableAttachments(merged);
+    return merged;
+  }
+
   async function appendMessage(threadId, message) {
     const payload = {
       project_id: scopedProjectId,
@@ -956,6 +1213,7 @@ export default function ProjectChat() {
     const confirmed = window.confirm(`Xóa cuộc trò chuyện "${target.title}"?`);
     if (!confirmed) return;
 
+    await deleteChatThreadAttachmentData(threadId);
     await db.ai_chat_messages.where('thread_id').equals(Number(threadId)).delete();
     await db.ai_chat_threads.delete(Number(threadId));
 
@@ -995,6 +1253,10 @@ export default function ProjectChat() {
 
     const resetMode = activeThread.chat_mode || activeThreadMode;
 
+    const messageIds = messages.map((message) => Number(message.id)).filter(Boolean);
+    if (messageIds.length > 0) {
+      await db.ai_chat_message_attachments.where('message_id').anyOf(messageIds).delete();
+    }
     await db.ai_chat_messages.where('thread_id').equals(Number(activeThread.id)).delete();
     setMessages([]);
     setDraft('');
@@ -1017,13 +1279,41 @@ export default function ProjectChat() {
       last_model: '',
     });
     setLiveRouteInfo(null);
-    setSaveStatus('?? l?m m?i cu?c tr? chuy?n');
+    setSaveStatus('Đã làm mới cuộc trò chuyện');
   }
 
-  function buildConversationMessages(nextUserMessage, thread, sourceMessages = messages) {
+  async function buildAttachmentPromptContexts(userText, currentAttachmentIds = []) {
+    const promptAttachments = mergeAttachmentLists(availableAttachments, pendingAttachments)
+      .filter((attachment) => shouldUseChatAttachmentForPrompt(attachment, { currentAttachmentIds }));
+    const selectedAttachments = promptAttachments;
+
+    const contexts = [];
+    for (const attachment of selectedAttachments) {
+      const chunks = await getChatAttachmentChunks(attachment.id);
+      const selectedChunks = selectRelevantAttachmentChunks({
+        query: userText,
+        chunks,
+      });
+      if (selectedChunks.length > 0 || attachment.profile_text) {
+        contexts.push({ attachment, chunks: selectedChunks });
+      }
+    }
+    return contexts;
+  }
+
+  function buildConversationMessages(nextUserMessage, thread, sourceMessages = messages, attachmentContexts = []) {
     const systemPrompt =
       String(thread.system_prompt || '').trim() ||
       buildDefaultSystemPrompt(thread.chat_mode || activeThreadMode, projectScopeEnabled ? currentProject : null);
+
+    if (attachmentContexts.length > 0) {
+      return buildAttachmentAwareMessages({
+        systemPrompt,
+        historyMessages: sourceMessages,
+        userText: nextUserMessage,
+        attachmentContexts,
+      });
+    }
 
     const apiMessages = [{ role: 'system', content: systemPrompt }];
     sourceMessages
@@ -1033,16 +1323,209 @@ export default function ProjectChat() {
     return apiMessages;
   }
 
+  function runAttachmentAiCall(callMessages, thread = activeThread) {
+    return new Promise((resolve, reject) => {
+      if (!thread) {
+        reject(new Error('Chưa có cuộc chat để đọc tệp.'));
+        return;
+      }
+      const { routeOptions } = getThreadRouting(thread);
+      aiService.send({
+        taskType: TASK_TYPES.FREE_PROMPT,
+        messages: callMessages,
+        stream: false,
+        allowConcurrent: true,
+        ...buildChatRequestOptions({
+          routeOptions,
+          project: projectScopeEnabled ? currentProject : null,
+        }),
+        onComplete: (text) => resolve(text),
+        onError: (error) => reject(error),
+      });
+    });
+  }
+
+  async function handleAttachmentFiles(fileList) {
+    if (!activeThread || isStreaming || isReadingAttachment) return;
+    const files = Array.from(fileList || []).filter(Boolean);
+    if (files.length === 0) return;
+
+    for (const file of files) {
+      const tempId = `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const tempAttachment = {
+        temp_id: tempId,
+        file_name: file.name || 'Tệp đính kèm',
+        file_type: '',
+        size_bytes: Number(file.size || 0),
+        status: CHAT_ATTACHMENT_STATUSES.VALIDATING,
+      };
+      setPendingAttachments((prev) => [...prev, tempAttachment]);
+
+      try {
+        const saved = await ingestChatAttachmentFile({
+          file,
+          projectId: scopedProjectId,
+          threadId: activeThread.id,
+          scope: defaultAttachmentScope,
+          turnOnly: projectScopeEnabled && activeThreadMode === CHAT_MODES.STORY && turnOnlyAttachmentScope,
+          parsePdfFile: chatAttachmentsApi.parseFile,
+        });
+        setPendingAttachments((prev) =>
+          prev.map((attachment) => attachment.temp_id === tempId ? saved : attachment),
+        );
+        await refreshAvailableAttachments();
+      } catch (error) {
+        const failedAttachment = {
+          ...tempAttachment,
+          status: CHAT_ATTACHMENT_STATUSES.FAILED,
+          error_message: error?.message || 'Không thể đọc tệp đính kèm.',
+        };
+        setPendingAttachments((prev) =>
+          prev.map((attachment) => attachment.temp_id === tempId ? failedAttachment : attachment),
+        );
+      }
+    }
+  }
+
+  async function handleRemoveAttachment(attachment) {
+    if (!attachment) return;
+    if (readingAttachmentJob?.attachmentId && Number(readingAttachmentJob.attachmentId) === Number(attachment.id)) {
+      setErrorMessage('Tệp này đang được đọc kỹ. Hãy chờ hoàn tất rồi xóa.');
+      return;
+    }
+    setPendingAttachments((prev) =>
+      prev.filter((item) =>
+        item.temp_id !== attachment.temp_id
+        && (!item.id || !attachment.id || Number(item.id) !== Number(attachment.id)),
+      ),
+    );
+    if (attachment.id) {
+      await deleteChatAttachment(attachment.id);
+      await refreshAvailableAttachments();
+    }
+  }
+
+  async function handleReadFullAttachment(attachment) {
+    if (!attachment?.id || isStreaming || isReadingAttachment) return;
+    try {
+      setErrorMessage('');
+      await updateChatAttachment(attachment.id, {
+        status: CHAT_ATTACHMENT_STATUSES.READING,
+        error_message: '',
+      });
+      await refreshAvailableAttachments();
+
+      const chunks = await getChatAttachmentChunks(attachment.id);
+      if (chunks.length === 0) {
+        throw new Error('Tệp chưa có đoạn văn bản để AI đọc.');
+      }
+
+      setReadingAttachmentJob({
+        attachmentId: attachment.id,
+        fileName: attachment.file_name || attachment.fileName || 'Tệp đính kèm',
+        currentChunk: 0,
+        totalChunks: chunks.length,
+        phase: 'reading',
+      });
+
+      const chunkNotes = [];
+      for (const [index, chunk] of chunks.entries()) {
+        setReadingAttachmentJob((current) => current ? {
+          ...current,
+          currentChunk: index + 1,
+          phase: 'reading',
+        } : current);
+        const note = await runAttachmentAiCall(
+          buildFullReadChunkMessages({ attachment, chunk, totalChunks: chunks.length }),
+        );
+        chunkNotes.push(note);
+        await updateChatAttachmentChunk(chunk.id, { ai_notes: note });
+      }
+
+      setReadingAttachmentJob((current) => current ? {
+        ...current,
+        currentChunk: chunks.length,
+        phase: 'merging',
+      } : current);
+      const profileText = await runAttachmentAiCall(
+        buildFullReadMergeMessages({ attachment, chunkNotes }),
+      );
+      await updateChatAttachment(attachment.id, {
+        status: CHAT_ATTACHMENT_STATUSES.READY,
+        profile_text: profileText,
+        read_at: Date.now(),
+        error_message: '',
+      });
+      await refreshAvailableAttachments();
+      setSaveStatus('Đã đọc kỹ toàn bộ tệp');
+    } catch (error) {
+      const message = toVietnameseErrorMessage(error?.userMessage || error, 'Không thể đọc kỹ toàn bộ tệp.');
+      await updateChatAttachment(attachment.id, {
+        status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+        error_message: message,
+      });
+      await refreshAvailableAttachments();
+      setErrorMessage(message);
+    } finally {
+      setReadingAttachmentJob(null);
+    }
+  }
+
+  function handleAskAttachmentSample(attachment) {
+    if (!attachment) return;
+    if (isReadingAttachment) return;
+    if (attachment.id) {
+      setPendingAttachments((prev) =>
+        prev.some((item) => Number(item.id) === Number(attachment.id))
+          ? prev
+          : [attachment, ...prev],
+      );
+    }
+    setDraft(`Hãy tóm tắt và chỉ ra các chi tiết quan trọng trong tệp "${attachment.file_name}".`);
+    setShowAttachmentDrawer(false);
+    window.setTimeout(() => {
+      inputRef.current?.focus();
+      resizeComposer(composerTextareaRef.current);
+    }, 0);
+  }
+
+  function handleFileInputChange(event) {
+    const files = event.target.files;
+    handleAttachmentFiles(files);
+    event.target.value = '';
+  }
+
+  function handleComposerDrop(event) {
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    setIsAttachmentDragOver(false);
+    handleAttachmentFiles(files);
+  }
+
+  function handleComposerPaste(event) {
+    const files = Array.from(event.clipboardData?.files || []);
+    if (files.length === 0) return;
+    handleAttachmentFiles(files);
+  }
+
   async function sendChatTurn({
     userContent,
     thread = activeThread,
     historyMessages = messages,
     existingUserMessage = null,
+    attachmentIds = [],
+    focusUserMessage = true,
   }) {
-    if (!thread || !String(userContent || '').trim() || isStreaming) return;
+    if (!thread || isStreaming) return;
     if ((thread.chat_mode || activeThreadMode) === CHAT_MODES.STORY && !projectScopeEnabled) return;
 
-    const normalizedUserContent = String(userContent || '').trim();
+    const normalizedUserContent = String(userContent || '').trim() || DEFAULT_ATTACHMENT_PROMPT;
+    const currentAttachmentIds = attachmentIds.length > 0
+      ? attachmentIds
+      : (existingUserMessage?.attachments || []).map((attachment) => attachment.id).filter(Boolean);
+    if (!normalizedUserContent && currentAttachmentIds.length === 0) return;
+    const attachmentContexts = await buildAttachmentPromptContexts(normalizedUserContent, currentAttachmentIds);
     const { routeOptions, route: currentRoute } = getThreadRouting(thread);
     const selectedProviderFeature = getProviderFeature(currentRoute.provider, currentRoute.proxyProfileId);
     if (!hasFeature(ACCESS_FEATURES.AI_CHAT_ACCESS)) {
@@ -1068,6 +1551,16 @@ export default function ProjectChat() {
         role: 'user',
         content: normalizedUserContent,
       }));
+    if (!existingUserMessage && currentAttachmentIds.length > 0) {
+      await linkMessageAttachments({ messageId: userMessage.id, attachmentIds: currentAttachmentIds });
+      userMessage.attachments = await Promise.all(
+        currentAttachmentIds.map((id) => db.ai_chat_attachments.get(Number(id))),
+      ).then((items) => items.filter(Boolean));
+    }
+
+    if (focusUserMessage) {
+      queueQuestionScroll(userMessage.id);
+    }
 
     setMessages((prev) => {
       const baseWithoutTemp = prev.filter(
@@ -1102,7 +1595,7 @@ export default function ProjectChat() {
     setErrorMessage('');
     setIsStreaming(true);
     setLiveRouteInfo(currentRoute);
-    activeRunRef.current = { threadId: thread.id, tempAssistantId, route: currentRoute };
+    beginStreamingRun({ threadId: thread.id, tempAssistantId, route: currentRoute });
 
     await db.ai_chat_threads.update(thread.id, {
       title: provisionalTitle,
@@ -1115,31 +1608,24 @@ export default function ProjectChat() {
 
     aiService.send({
         taskType: TASK_TYPES.FREE_PROMPT,
-        messages: buildConversationMessages(normalizedUserContent, thread, historyMessages),
+        messages: buildConversationMessages(normalizedUserContent, thread, historyMessages, attachmentContexts),
         stream: true,
         ...buildChatRequestOptions({
           routeOptions,
           project: projectScopeEnabled ? currentProject : null,
         }),
         onToken: (_chunk, full) => {
-          replaceTempMessage(tempAssistantId, {
-            id: tempAssistantId,
-            project_id: scopedProjectId,
-            thread_id: thread.id,
-            role: 'assistant',
-            content: full,
-            provider: currentRoute.provider,
-            model: currentRoute.model,
-            is_streaming: true,
-            created_at: Date.now(),
-          });
+          pushStreamingText(tempAssistantId, full);
         },
         onComplete: async (text, meta) => {
+          cancelStreamingBatcher(tempAssistantId);
           const actualProvider = meta?.provider || currentRoute.provider;
           const actualModel = meta?.model || currentRoute.model;
+          const usedSourcesBlock = buildUsedSourcesBlock(attachmentContexts);
+          const finalText = usedSourcesBlock ? `${text}\n\n${usedSourcesBlock}` : text;
           const assistantMessage = await appendMessage(thread.id, {
             role: 'assistant',
-            content: text,
+            content: finalText,
             provider: actualProvider,
             model: actualModel,
             elapsed_ms: meta?.elapsed || null,
@@ -1167,6 +1653,7 @@ export default function ProjectChat() {
           }
         },
         onError: async (error) => {
+          cancelStreamingBatcher(tempAssistantId);
           const message = toVietnameseErrorMessage(error?.userMessage || error, 'AI không trả lời được cho yêu cầu này.');
           const systemMessage = await appendMessage(thread.id, {
             role: 'system',
@@ -1200,6 +1687,8 @@ export default function ProjectChat() {
       content: userContent,
     });
 
+    queueQuestionScroll(userMessage.id);
+
     setMessages((prev) => [
       ...prev,
       userMessage,
@@ -1221,7 +1710,7 @@ export default function ProjectChat() {
     setErrorMessage('');
     setIsStreaming(true);
     setLiveRouteInfo(currentRoute);
-    activeRunRef.current = { threadId: currentThread.id, tempAssistantId, route: currentRoute };
+    beginStreamingRun({ threadId: currentThread.id, tempAssistantId, route: currentRoute });
 
     await db.ai_chat_threads.update(currentThread.id, {
       title: provisionalTitle,
@@ -1241,19 +1730,10 @@ export default function ProjectChat() {
           project: projectScopeEnabled ? currentProject : null,
         }),
         onToken: (_chunk, full) => {
-          replaceTempMessage(tempAssistantId, {
-            id: tempAssistantId,
-            project_id: scopedProjectId,
-            thread_id: currentThread.id,
-            role: 'assistant',
-            content: full,
-            provider: currentRoute.provider,
-            model: currentRoute.model,
-            is_streaming: true,
-            created_at: Date.now(),
-          });
+          pushStreamingText(tempAssistantId, full);
         },
         onComplete: async (text, meta) => {
+          cancelStreamingBatcher(tempAssistantId);
           const actualProvider = meta?.provider || currentRoute.provider;
           const actualModel = meta?.model || currentRoute.model;
           const assistantMessage = await appendMessage(currentThread.id, {
@@ -1286,6 +1766,7 @@ export default function ProjectChat() {
           }
         },
         onError: async (error) => {
+          cancelStreamingBatcher(tempAssistantId);
           const message = toVietnameseErrorMessage(error?.userMessage || error, 'AI không trả lời được cho yêu cầu này.');
           const systemMessage = await appendMessage(currentThread.id, {
             role: 'system',
@@ -1302,7 +1783,11 @@ export default function ProjectChat() {
   }
 
   async function handleComposerSubmit() {
-    if (!activeThread || !draft.trim() || isStreaming) return;
+    if (!activeThread || !hasSubmittableDraft || isStreaming) return;
+    if (isReadingAttachment) {
+      setErrorMessage('Đang đọc kỹ toàn bộ tệp. Hãy chờ hoàn tất rồi gửi tin nhắn tiếp.');
+      return;
+    }
     if (activeThreadMode === CHAT_MODES.STORY && !projectScopeEnabled) return;
 
     if (editingMessageId) {
@@ -1336,20 +1821,25 @@ export default function ProjectChat() {
       return;
     }
 
-    await sendChatTurn({ userContent: draft.trim() });
+    const attachmentIds = readyPendingAttachments.map((attachment) => attachment.id);
+    await sendChatTurn({ userContent: draft.trim() || DEFAULT_ATTACHMENT_PROMPT, attachmentIds });
+    setPendingAttachments([]);
+    await refreshAvailableAttachments();
   }
 
   async function handleStopStreaming() {
     if (!isStreaming || !activeRunRef.current) return;
 
     aiService.abort();
-    const { tempAssistantId, threadId, route } = activeRunRef.current;
+    activeRunRef.current.streamBatcher?.flush();
+    const { tempAssistantId, threadId, route, latestText } = activeRunRef.current;
     const tempMessage = messages.find((message) => String(message.id) === String(tempAssistantId));
+    const partialText = String(latestText || tempMessage?.content || '').trim();
 
-    if (tempMessage?.content?.trim()) {
+    if (partialText) {
       const partialMessage = await appendMessage(threadId, {
         role: 'assistant',
-        content: tempMessage.content.trim(),
+        content: partialText,
         provider: route.provider,
         model: route.model,
         is_partial: true,
@@ -1397,6 +1887,7 @@ export default function ProjectChat() {
     await sendChatTurn({
       userContent: 'Viết tiếp câu trả lời trước từ đúng đoạn đang dở, không lặp lại phần đã viết.',
       historyMessages: messages.slice(0, targetIndex + 1),
+      focusUserMessage: false,
     });
   }
 
@@ -1534,7 +2025,7 @@ export default function ProjectChat() {
             type="button"
             className="project-chat-mobile-backdrop"
             onClick={() => setMobileThreadsOpen(false)}
-            aria-label="Dong danh sach chat"
+            aria-label="Đóng danh sách chat"
           />
         ) : null}
 
@@ -1549,7 +2040,7 @@ export default function ProjectChat() {
                 type="button"
                 className="btn btn-ghost btn-icon project-chat-sidebar__mobile-close"
                 onClick={() => setMobileThreadsOpen(false)}
-                title="Dong danh sach chat"
+                title="Đóng danh sách chat"
               >
                 <X size={16} />
               </button>
@@ -1832,35 +2323,68 @@ export default function ProjectChat() {
 
           {errorMessage ? <div className="project-chat-error">{errorMessage}</div> : null}
 
-          <div className="project-chat-messages">
-            {isLoadingMessages ? (
-              <div className="project-chat-messages__empty">Đang tải tin nhắn...</div>
-            ) : messages.length === 0 ? (
-              <div className="project-chat-messages__empty">
-                <Bot size={28} />
-                <h3>Cuộc trò chuyện đang trống</h3>
-                <p>
-                  {activeThreadMode === CHAT_MODES.STORY
-                    ? 'Đặt câu hỏi về truyện, nhân vật, outline, canon hoặc nhờ AI cùng phát triển dự án.'
-                    : 'Dùng như một khung chat tự do. Nó vẫn dùng đúng model và API key của hệ thống.'}
-                </p>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  onCopy={handleCopy}
-                  onEdit={handleEditMessage}
-                  onContinue={handleContinueFromMessage}
-                  onRetry={handleRetryFromSystemMessage}
-                />
-              ))
-            )}
-            <div ref={threadEndRef} />
+          <div className="project-chat-messages-shell">
+            <div
+              ref={messagesScrollRef}
+              className="project-chat-messages"
+              onScroll={handleMessagesScroll}
+            >
+              {isLoadingMessages ? (
+                <div className="project-chat-messages__empty">Đang tải tin nhắn...</div>
+              ) : messages.length === 0 ? (
+                <div className="project-chat-messages__empty">
+                  <Bot size={28} />
+                  <h3>Cuộc trò chuyện đang trống</h3>
+                  <p>
+                    {activeThreadMode === CHAT_MODES.STORY
+                      ? 'Đặt câu hỏi về truyện, nhân vật, outline, canon hoặc nhờ AI cùng phát triển dự án.'
+                      : 'Dùng như một khung chat tự do. Nó vẫn dùng đúng model và API key của hệ thống.'}
+                  </p>
+                </div>
+              ) : (
+                messages.map((message) => (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    messageRef={(node) => {
+                      const key = String(message.id);
+                      if (node) {
+                        messageRefs.current.set(key, node);
+                      } else {
+                        messageRefs.current.delete(key);
+                      }
+                    }}
+                    onCopy={handleCopy}
+                    onEdit={handleEditMessage}
+                    onContinue={handleContinueFromMessage}
+                    onRetry={handleRetryFromSystemMessage}
+                  />
+                ))
+              )}
+              <ChatAttachmentReadingStatus job={readingAttachmentJob} />
+            </div>
+            {showScrollToLatest ? (
+              <button
+                type="button"
+                className="project-chat-scroll-bottom"
+                onClick={handleScrollToLatest}
+                aria-label="Cuộn xuống cuối"
+                title="Cuộn xuống cuối"
+              >
+                <ArrowDown size={18} />
+              </button>
+            ) : null}
           </div>
 
           <div className="project-chat-composer">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={CHAT_ATTACHMENT_ACCEPT}
+              multiple
+              hidden
+              onChange={handleFileInputChange}
+            />
             {editingMessageId ? (
               <div className="project-chat-composer__actions">
                 <div className="project-chat-composer__edit-state">
@@ -1872,7 +2396,76 @@ export default function ProjectChat() {
               </div>
             ) : null}
 
-            <div className="project-chat-composer__input">
+            <div className="project-chat-composer__actions">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm project-chat-composer__file-command"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isStreaming || isReadingAttachment || Boolean(chatLockedMessage)}
+              >
+                <Paperclip size={14} />
+                Thêm tệp
+              </button>
+              {availableAttachments.length > 0 ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm project-chat-composer__file-command"
+                  onClick={() => setShowAttachmentDrawer(true)}
+                >
+                  <FileText size={14} />
+                  {`Xem ${availableAttachments.length} tệp trong chat`}
+                </button>
+              ) : null}
+              {directReadStoredAttachment ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm project-chat-composer__file-command"
+                  onClick={() => handleReadFullAttachment(directReadStoredAttachment)}
+                  disabled={isStreaming || isReadingAttachment}
+                >
+                  <BookOpen size={14} />
+                  Đọc kỹ toàn bộ
+                </button>
+              ) : indexedStoredAttachments.length > 1 ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm project-chat-composer__file-command"
+                  onClick={() => setShowAttachmentDrawer(true)}
+                  disabled={isStreaming || isReadingAttachment}
+                >
+                  <BookOpen size={14} />
+                  Chọn tệp đọc kỹ
+                </button>
+              ) : null}
+              <ChatAttachmentChips
+                attachments={pendingAttachments}
+                onReadFull={handleReadFullAttachment}
+                onRemove={handleRemoveAttachment}
+                disabled={isStreaming || isReadingAttachment}
+              />
+              {projectScopeEnabled && activeThreadMode === CHAT_MODES.STORY ? (
+                <label className="project-chat-attachment-scope-toggle">
+                  <input
+                    type="checkbox"
+                    checked={turnOnlyAttachmentScope}
+                    onChange={(event) => setTurnOnlyAttachmentScope(event.target.checked)}
+                  />
+                  Chỉ gửi lượt này
+                </label>
+              ) : null}
+            </div>
+
+            <div
+              className={`project-chat-composer__input ${isAttachmentDragOver ? 'is-drag-over' : ''}`}
+              onDrop={handleComposerDrop}
+              onDragOver={(event) => {
+                if (event.dataTransfer?.types?.includes('Files')) {
+                  event.preventDefault();
+                  setIsAttachmentDragOver(true);
+                }
+              }}
+              onDragLeave={() => setIsAttachmentDragOver(false)}
+            >
               <textarea
                 ref={(node) => {
                   inputRef.current = node;
@@ -1884,6 +2477,7 @@ export default function ProjectChat() {
                 spellCheck={false}
                 autoCorrect="off"
                 autoCapitalize="off"
+                onPaste={handleComposerPaste}
                 onCompositionStart={() => {
                   isComposingRef.current = true;
                 }}
@@ -1921,7 +2515,7 @@ export default function ProjectChat() {
                     type="button"
                     className="project-chat-composer__submit-button"
                     onClick={handleComposerSubmit}
-                    disabled={!draft.trim() || Boolean(chatLockedMessage)}
+                    disabled={!hasSubmittableDraft || isReadingAttachment || Boolean(chatLockedMessage)}
                     title="Gửi"
                   >
                     <Send size={18} />
@@ -1932,6 +2526,16 @@ export default function ProjectChat() {
           </div>
         </section>
       </div>
+
+      <ChatAttachmentDrawer
+        open={showAttachmentDrawer}
+        attachments={availableAttachments}
+        onClose={() => setShowAttachmentDrawer(false)}
+        onAskSample={handleAskAttachmentSample}
+        onReadFull={handleReadFullAttachment}
+        onRemove={handleRemoveAttachment}
+        disabled={isStreaming || isReadingAttachment}
+      />
 
       {showSystemPromptDrawer && activeThread ? (
         <>

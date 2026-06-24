@@ -243,9 +243,10 @@ export async function exportChatThread(threadId) {
     throw new Error('Không tìm thấy cuộc chat để sao lưu.');
   }
 
-  const [thread, messages] = await Promise.all([
+  const [thread, messages, attachments] = await Promise.all([
     db.ai_chat_threads.get(normalizedThreadId),
     db.ai_chat_messages.where('thread_id').equals(normalizedThreadId).sortBy('created_at'),
+    db.ai_chat_attachments.where('thread_id').equals(normalizedThreadId).toArray(),
   ]);
 
   if (!thread) {
@@ -260,16 +261,28 @@ export async function exportChatThread(threadId) {
     projectCloudSlug = String(project?.cloud_project_slug || '').trim();
   }
 
+  const attachmentIds = attachments.map((attachment) => attachment.id);
+  const [attachmentChunks, messageAttachments] = attachmentIds.length > 0
+    ? await Promise.all([
+      db.ai_chat_attachment_chunks.where('attachment_id').anyOf(attachmentIds).toArray(),
+      db.ai_chat_message_attachments.where('attachment_id').anyOf(attachmentIds).toArray(),
+    ])
+    : [[], []];
+
   const data = {
     _storyforge_version: 1,
     _cloud_scope: 'chat',
     _exported_at: new Date().toISOString(),
     thread,
     messages,
+    attachments,
+    attachment_chunks: attachmentChunks,
+    message_attachments: messageAttachments,
     metadata: {
       project_title: projectTitle,
       project_cloud_slug: projectCloudSlug,
       message_count: messages.length,
+      attachment_count: attachments.length,
     },
   };
 
@@ -751,6 +764,9 @@ export async function importChatThread(jsonString, options = {}) {
   const preserveCloudMetadata = options.preserveCloudMetadata !== false;
   const originalThread = data.thread || {};
   const originalMessages = Array.isArray(data.messages) ? data.messages : [];
+  const originalAttachments = Array.isArray(data.attachments) ? data.attachments : [];
+  const originalAttachmentChunks = Array.isArray(data.attachment_chunks) ? data.attachment_chunks : [];
+  const originalMessageAttachments = Array.isArray(data.message_attachments) ? data.message_attachments : [];
   const requestedProjectCloudSlug = String(data?.metadata?.project_cloud_slug || '').trim();
 
   let targetProjectId = 0;
@@ -789,14 +805,51 @@ export async function importChatThread(jsonString, options = {}) {
   });
 
   const baseCreatedAt = now;
+  const messageIdMap = {};
   for (let index = 0; index < originalMessages.length; index += 1) {
     const message = originalMessages[index];
     const { id: _oldMessageId, thread_id: _oldMessageThreadId, ...messageData } = message;
-    await db.ai_chat_messages.add({
+    const newMessageId = await db.ai_chat_messages.add({
       ...messageData,
       project_id: targetProjectId,
       thread_id: newThreadId,
       created_at: baseCreatedAt + index,
+    });
+    if (_oldMessageId != null) messageIdMap[_oldMessageId] = newMessageId;
+  }
+
+  const attachmentIdMap = {};
+  for (const attachment of originalAttachments) {
+    const { id: oldAttachmentId, thread_id: _oldAttachmentThreadId, project_id: _oldAttachmentProjectId, ...attachmentData } = attachment;
+    const newAttachmentId = await db.ai_chat_attachments.add({
+      ...attachmentData,
+      project_id: targetProjectId,
+      thread_id: newThreadId,
+      created_at: now,
+      updated_at: now,
+    });
+    if (oldAttachmentId != null) attachmentIdMap[oldAttachmentId] = newAttachmentId;
+  }
+
+  for (const chunk of originalAttachmentChunks) {
+    const { id: _oldChunkId, attachment_id: oldAttachmentId, ...chunkData } = chunk;
+    const newAttachmentId = attachmentIdMap[oldAttachmentId];
+    if (!newAttachmentId) continue;
+    await db.ai_chat_attachment_chunks.add({
+      ...chunkData,
+      attachment_id: newAttachmentId,
+    });
+  }
+
+  for (const link of originalMessageAttachments) {
+    const { id: _oldLinkId, message_id: oldMessageId, attachment_id: oldAttachmentId, ...linkData } = link;
+    const newMessageId = messageIdMap[oldMessageId];
+    const newAttachmentId = attachmentIdMap[oldAttachmentId];
+    if (!newMessageId || !newAttachmentId) continue;
+    await db.ai_chat_message_attachments.add({
+      ...linkData,
+      message_id: newMessageId,
+      attachment_id: newAttachmentId,
     });
   }
 
@@ -804,6 +857,7 @@ export async function importChatThread(jsonString, options = {}) {
     newThreadId,
     projectId: targetProjectId,
     messageCount: originalMessages.length,
+    attachmentCount: originalAttachments.length,
   };
 }
 
