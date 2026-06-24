@@ -93,6 +93,7 @@ import chatAttachmentsApi from '../../services/api/chatAttachmentsApi.js';
 import {
   ChatAttachmentChips,
   ChatAttachmentDrawer,
+  ChatImageViewer,
   ChatMessageImageGrid,
   ChatAttachmentReadingStatus,
 } from './ChatAttachmentUi.jsx';
@@ -587,7 +588,7 @@ function getRoutingConfigStamp() {
   });
 }
 
-function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetry }) {
+function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetry, onPreviewImage }) {
   const roleClass =
     message.role === 'user'
       ? 'is-user'
@@ -675,7 +676,7 @@ function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetr
       <div className={`project-chat-message__content ${message.is_streaming && !message.content ? 'is-waiting' : ''}`}>
         {message.content || (message.is_streaming ? '...' : '')}
       </div>
-      <ChatMessageImageGrid attachments={imageAttachments} />
+      <ChatMessageImageGrid attachments={imageAttachments} onPreview={onPreviewImage} />
       {fileAttachments.length ? (
         <ChatAttachmentChips attachments={fileAttachments} compact />
       ) : null}
@@ -721,6 +722,7 @@ export default function ProjectChat() {
   const [pendingAttachments, setPendingAttachments] = useState([]);
   const [availableAttachments, setAvailableAttachments] = useState([]);
   const [showAttachmentDrawer, setShowAttachmentDrawer] = useState(false);
+  const [previewImageAttachment, setPreviewImageAttachment] = useState(null);
   const [readingAttachmentJob, setReadingAttachmentJob] = useState(null);
   const [turnOnlyAttachmentScope, setTurnOnlyAttachmentScope] = useState(false);
   const [isAttachmentDragOver, setIsAttachmentDragOver] = useState(false);
@@ -760,6 +762,8 @@ export default function ProjectChat() {
       && attachment.status !== CHAT_ATTACHMENT_STATUSES.VALIDATING
       && attachment.status !== CHAT_ATTACHMENT_STATUSES.EXTRACTING,
   );
+  const pendingImageAttachments = pendingAttachments.filter(isChatImageAttachment);
+  const pendingFileAttachments = pendingAttachments.filter((attachment) => !isChatImageAttachment(attachment));
   const pendingAttachmentIds = new Set(
     pendingAttachments.map((attachment) => Number(attachment?.id)).filter(Boolean),
   );
@@ -850,6 +854,17 @@ export default function ProjectChat() {
     window.addEventListener('focus', sync);
     return () => window.removeEventListener('focus', sync);
   }, []);
+
+  useEffect(() => {
+    if (!previewImageAttachment) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setPreviewImageAttachment(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [previewImageAttachment]);
 
   useEffect(() => {
     if (!projectScopeEnabled) return;
@@ -1430,6 +1445,11 @@ export default function ProjectChat() {
     }
   }
 
+  function handlePreviewImage(attachment) {
+    if (!attachment || !isChatImageAttachment(attachment) || !(attachment.data_url || attachment.dataUrl)) return;
+    setPreviewImageAttachment(attachment);
+  }
+
   async function handleRemoveAttachment(attachment) {
     if (!attachment) return;
     if (readingAttachmentJob?.attachmentId && Number(readingAttachmentJob.attachmentId) === Number(attachment.id)) {
@@ -1442,6 +1462,15 @@ export default function ProjectChat() {
         && (!item.id || !attachment.id || Number(item.id) !== Number(attachment.id)),
       ),
     );
+    if (
+      previewImageAttachment
+      && (
+        (attachment.id && Number(previewImageAttachment.id) === Number(attachment.id))
+        || (attachment.temp_id && previewImageAttachment.temp_id === attachment.temp_id)
+      )
+    ) {
+      setPreviewImageAttachment(null);
+    }
     if (attachment.id) {
       await deleteChatAttachment(attachment.id);
       await refreshAvailableAttachments();
@@ -2437,6 +2466,7 @@ export default function ProjectChat() {
                     onEdit={handleEditMessage}
                     onContinue={handleContinueFromMessage}
                     onRetry={handleRetryFromSystemMessage}
+                    onPreviewImage={handlePreviewImage}
                   />
                 ))
               )}
@@ -2485,16 +2515,6 @@ export default function ProjectChat() {
                 <Paperclip size={14} />
                 Thêm tệp/ảnh
               </button>
-              {availableAttachments.length > 0 ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm project-chat-composer__file-command"
-                  onClick={() => setShowAttachmentDrawer(true)}
-                >
-                  <FileText size={14} />
-                  {`Xem ${availableAttachments.length} tệp/ảnh trong chat`}
-                </button>
-              ) : null}
               {directReadStoredAttachment ? (
                 <button
                   type="button"
@@ -2516,10 +2536,21 @@ export default function ProjectChat() {
                   Chọn tệp đọc kỹ
                 </button>
               ) : null}
+              {availableAttachments.length > 0 ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm project-chat-composer__file-command"
+                  onClick={() => setShowAttachmentDrawer(true)}
+                >
+                  <FileText size={14} />
+                  {`Xem ${availableAttachments.length} tệp/ảnh trong chat`}
+                </button>
+              ) : null}
               <ChatAttachmentChips
-                attachments={pendingAttachments}
+                attachments={pendingFileAttachments}
                 onReadFull={handleReadFullAttachment}
                 onRemove={handleRemoveAttachment}
+                onPreview={handlePreviewImage}
                 disabled={isStreaming || isReadingAttachment}
               />
               {projectScopeEnabled && activeThreadMode === CHAT_MODES.STORY ? (
@@ -2545,6 +2576,12 @@ export default function ProjectChat() {
               }}
               onDragLeave={() => setIsAttachmentDragOver(false)}
             >
+              <ChatAttachmentChips
+                attachments={pendingImageAttachments}
+                onRemove={handleRemoveAttachment}
+                onPreview={handlePreviewImage}
+                disabled={isStreaming || isReadingAttachment}
+              />
               <textarea
                 ref={(node) => {
                   inputRef.current = node;
@@ -2613,7 +2650,13 @@ export default function ProjectChat() {
         onAskSample={handleAskAttachmentSample}
         onReadFull={handleReadFullAttachment}
         onRemove={handleRemoveAttachment}
+        onPreview={handlePreviewImage}
         disabled={isStreaming || isReadingAttachment}
+      />
+
+      <ChatImageViewer
+        attachment={previewImageAttachment}
+        onClose={() => setPreviewImageAttachment(null)}
       />
 
       {showSystemPromptDrawer && activeThread ? (

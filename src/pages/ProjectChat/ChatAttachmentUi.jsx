@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ArrowLeft,
   BookOpen,
   FileText,
   Image as ImageIcon,
@@ -82,10 +83,19 @@ function getFullReadActionLabel(status = '') {
   return 'Đọc kỹ toàn bộ';
 }
 
+function getAttachmentFileName(attachment = {}, fallback = 'Tệp đính kèm') {
+  return attachment.file_name || attachment.fileName || fallback;
+}
+
+function getAttachmentDataUrl(attachment = {}) {
+  return attachment.data_url || attachment.dataUrl || '';
+}
+
 export function ChatAttachmentChips({
   attachments = [],
   onReadFull,
   onRemove,
+  onPreview,
   compact = false,
   disabled = false,
 }) {
@@ -96,7 +106,56 @@ export function ChatAttachmentChips({
     <div className={`project-chat-attachments ${compact ? 'is-compact' : ''}`}>
       {items.map((attachment) => {
         const isImage = isChatImageAttachment(attachment);
-        const fileName = attachment.file_name || attachment.fileName || (isImage ? 'Ảnh đính kèm' : 'Tệp đính kèm');
+        const dataUrl = getAttachmentDataUrl(attachment);
+        const fileName = getAttachmentFileName(attachment, isImage ? 'Ảnh đính kèm' : 'Tệp đính kèm');
+        if (isImage && !compact) {
+          return (
+            <div
+              key={attachment.id || attachment.temp_id || attachment.file_name}
+              className={[
+                'project-chat-image-preview-card',
+                attachment.status === CHAT_ATTACHMENT_STATUSES.FAILED ? 'is-error' : '',
+              ].filter(Boolean).join(' ')}
+              title={attachment.error_message || fileName}
+            >
+              <button
+                type="button"
+                className="project-chat-image-preview-card__thumb"
+                onClick={() => onPreview?.(attachment)}
+                disabled={disabled || !dataUrl || !onPreview}
+                aria-label={`Xem ảnh ${fileName}`.trim()}
+              >
+                {dataUrl ? (
+                  <img src={dataUrl} alt={fileName} />
+                ) : (
+                  <ImageIcon size={24} />
+                )}
+              </button>
+              {onRemove ? (
+                <button
+                  type="button"
+                  className="project-chat-image-preview-card__remove"
+                  onClick={() => onRemove(attachment)}
+                  disabled={disabled || isExtracting(attachment.status)}
+                  title="Gỡ ảnh"
+                  aria-label={`Gỡ ảnh ${fileName}`.trim()}
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
+              <div className="project-chat-image-preview-card__meta">
+                <strong>{fileName}</strong>
+                <span>
+                  Ảnh · {formatAttachmentSize(attachment.size_bytes || attachment.sizeBytes)}
+                </span>
+                <span className="project-chat-image-preview-card__status">
+                  {isBusy(attachment.status) ? <Loader2 size={12} className="project-chat-attachment-spin" /> : null}
+                  {getAttachmentStatusLabel(attachment.status, attachment)}
+                </span>
+              </div>
+            </div>
+          );
+        }
         return (
           <div
             key={attachment.id || attachment.temp_id || attachment.file_name}
@@ -107,10 +166,10 @@ export function ChatAttachmentChips({
             ].filter(Boolean).join(' ')}
             title={attachment.error_message || fileName}
           >
-            {isImage && attachment.data_url ? (
+            {isImage && dataUrl ? (
               <img
                 className="project-chat-attachment-chip__thumb"
-                src={attachment.data_url}
+                src={dataUrl}
                 alt={fileName}
               />
             ) : isImage ? (
@@ -159,7 +218,7 @@ export function ChatAttachmentChips({
   );
 }
 
-export function ChatMessageImageGrid({ attachments = [] }) {
+export function ChatMessageImageGrid({ attachments = [], onPreview }) {
   const images = (attachments || []).filter((attachment) =>
     isChatImageAttachment(attachment)
     && (attachment.data_url || attachment.dataUrl)
@@ -171,19 +230,51 @@ export function ChatMessageImageGrid({ attachments = [] }) {
       {images.map((attachment) => {
         const fileName = attachment.file_name || attachment.fileName || 'Ảnh đính kèm';
         return (
-          <a
+          <button
+            type="button"
             key={attachment.id || attachment.temp_id || fileName}
             className="project-chat-message-image"
-            href={attachment.data_url}
-            target="_blank"
-            rel="noreferrer"
+            onClick={() => onPreview?.(attachment)}
+            disabled={!onPreview}
             title={fileName}
           >
-            <img src={attachment.data_url} alt={fileName} />
+            <img src={attachment.data_url || attachment.dataUrl} alt={fileName} />
             <span>{fileName}</span>
-          </a>
+          </button>
         );
       })}
+    </div>
+  );
+}
+
+export function ChatImageViewer({ attachment = null, onClose }) {
+  const dataUrl = getAttachmentDataUrl(attachment || {});
+  if (!attachment || !dataUrl) return null;
+  const fileName = getAttachmentFileName(attachment, 'Ảnh đính kèm');
+
+  return (
+    <div className="project-chat-image-viewer" role="dialog" aria-modal="true" aria-label={`Xem ảnh ${fileName}`}>
+      <button
+        type="button"
+        className="project-chat-image-viewer__backdrop"
+        onClick={onClose}
+        aria-label="Đóng xem ảnh"
+      />
+      <div className="project-chat-image-viewer__toolbar">
+        <button
+          type="button"
+          className="project-chat-image-viewer__close"
+          onClick={onClose}
+          aria-label="Đóng xem ảnh"
+          title="Đóng"
+        >
+          <ArrowLeft size={22} />
+        </button>
+        <span>{fileName}</span>
+      </div>
+      <div className="project-chat-image-viewer__stage">
+        <img src={dataUrl} alt={fileName} />
+      </div>
     </div>
   );
 }
@@ -215,6 +306,7 @@ export function ChatAttachmentDrawer({
   onReadFull,
   onAskSample,
   onRemove,
+  onPreview,
   disabled = false,
 }) {
   if (!open) return null;
@@ -250,6 +342,7 @@ export function ChatAttachmentDrawer({
             </div>
           ) : items.map((attachment) => {
             const isImage = isChatImageAttachment(attachment);
+            const dataUrl = getAttachmentDataUrl(attachment);
             const readDisabled = disabled || isImage || !canStartFullRead(attachment.status);
             const askDisabled = disabled || attachment.status === CHAT_ATTACHMENT_STATUSES.FAILED;
             const removeDisabled = disabled || isExtracting(attachment.status);
@@ -266,8 +359,16 @@ export function ChatAttachmentDrawer({
             return (
               <article key={attachment.id} className="project-chat-attachment-row">
                 <div className="project-chat-attachment-row__icon">
-                  {isImage && attachment.data_url ? (
-                    <img src={attachment.data_url} alt={attachment.file_name || 'Ảnh đính kèm'} />
+                  {isImage && dataUrl ? (
+                    <button
+                      type="button"
+                      className="project-chat-attachment-row__image"
+                      onClick={() => onPreview?.(attachment)}
+                      disabled={!onPreview}
+                      aria-label={`Xem ảnh ${attachment.file_name || ''}`.trim()}
+                    >
+                      <img src={dataUrl} alt={attachment.file_name || 'Ảnh đính kèm'} />
+                    </button>
                   ) : isImage ? (
                     <ImageIcon size={18} />
                   ) : (

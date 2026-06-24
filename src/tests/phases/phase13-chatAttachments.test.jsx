@@ -11,6 +11,8 @@ import {
   CHAT_ATTACHMENT_COPY,
   ChatAttachmentChips,
   ChatAttachmentDrawer,
+  ChatImageViewer,
+  ChatMessageImageGrid,
   ChatAttachmentReadingStatus,
 } from '../../pages/ProjectChat/ChatAttachmentUi.jsx';
 import {
@@ -47,6 +49,7 @@ import {
 import { deleteProjectCascade } from '../../services/db/projectDataService.js';
 
 const projectChatStyles = readFileSync('src/pages/ProjectChat/ProjectChat.css', 'utf8');
+const projectChatSource = readFileSync('src/pages/ProjectChat/ProjectChat.jsx', 'utf8');
 
 function makeFile(name, content, type = 'text/plain') {
   return new File([content], name, { type });
@@ -633,6 +636,67 @@ describe('phase13 chat attachments', () => {
     });
   });
 
+  it('renders Gemini-like image previews and opens images in an in-app viewer', async () => {
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const onPreview = vi.fn();
+    const onRemove = vi.fn();
+    const onClose = vi.fn();
+    const attachment = {
+      id: 12,
+      file_name: 'ảnh kiểm tra.png',
+      file_type: 'image',
+      mime_type: 'image/png',
+      size_bytes: 2048,
+      status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+      data_url: 'data:image/png;base64,aW1n',
+    };
+
+    await act(async () => {
+      root.render(
+        <>
+          <ChatAttachmentChips
+            attachments={[attachment]}
+            onPreview={onPreview}
+            onRemove={onRemove}
+          />
+          <ChatMessageImageGrid attachments={[attachment]} onPreview={onPreview} />
+          <ChatImageViewer attachment={attachment} onClose={onClose} />
+        </>,
+      );
+    });
+
+    expect(container.querySelector('.project-chat-image-preview-card')).not.toBeNull();
+    expect(container.querySelector('.project-chat-image-preview-card img')?.getAttribute('alt')).toBe('ảnh kiểm tra.png');
+    expect(container.querySelector('a.project-chat-message-image')).toBeNull();
+    expect(container.querySelector('button.project-chat-message-image')).not.toBeNull();
+    expect(container.querySelector('.project-chat-image-viewer')).not.toBeNull();
+    expect(container.textContent).toContain('ảnh kiểm tra.png');
+
+    const previewButton = container.querySelector('.project-chat-image-preview-card__thumb');
+    const messageImageButton = container.querySelector('button.project-chat-message-image');
+    const removeButton = container.querySelector('.project-chat-image-preview-card__remove');
+    const closeButton = container.querySelector('.project-chat-image-viewer__close');
+    const backdropButton = container.querySelector('.project-chat-image-viewer__backdrop');
+
+    await act(async () => {
+      previewButton.click();
+      messageImageButton.click();
+      removeButton.click();
+      closeButton.click();
+      backdropButton.click();
+    });
+
+    expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ id: 12 }));
+    expect(onPreview).toHaveBeenCalledTimes(2);
+    expect(onRemove).toHaveBeenCalledWith(expect.objectContaining({ id: 12 }));
+    expect(onClose).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
   it('keeps stale reading attachments actionable and labels drawer buttons clearly', async () => {
     const container = document.createElement('div');
     const root = createRoot(container);
@@ -686,8 +750,21 @@ describe('phase13 chat attachments', () => {
   });
 
   it('keeps streaming placeholder and mobile file actions compact', () => {
+    const addFileIndex = projectChatSource.indexOf('Thêm tệp/ảnh');
+    const readFullIndex = projectChatSource.indexOf('Đọc kỹ toàn bộ');
+    const chooseReadIndex = projectChatSource.indexOf('Chọn tệp đọc kỹ');
+    const viewFilesIndex = projectChatSource.indexOf('Xem ${availableAttachments.length} tệp/ảnh trong chat');
+
     expect(projectChatStyles).toContain('.project-chat-message__content.is-waiting');
     expect(projectChatStyles).toContain('grid-template-columns: repeat(2, minmax(0, 1fr))');
     expect(projectChatStyles).toContain('.project-chat-composer__file-command');
+    expect(projectChatStyles).toContain('.project-chat-image-viewer__backdrop');
+    expect(projectChatStyles).toContain('max-height: calc(100dvh - 96px)');
+    expect(projectChatStyles).toContain('env(safe-area-inset-bottom, 0px)');
+    expect(addFileIndex).toBeGreaterThan(-1);
+    expect(readFullIndex).toBeGreaterThan(addFileIndex);
+    expect(chooseReadIndex).toBeGreaterThan(addFileIndex);
+    expect(viewFilesIndex).toBeGreaterThan(readFullIndex);
+    expect(viewFilesIndex).toBeGreaterThan(chooseReadIndex);
   });
 });
