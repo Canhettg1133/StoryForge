@@ -93,4 +93,26 @@ describe('AI error normalization', () => {
     expect(error.message).toContain('HTTPS');
     expect(error.message).toContain('Mixed Content');
   });
+
+  it('explains that DeepSeek API cannot read image_url payloads directly', () => {
+    const error = normalizeAIError({
+      status: 400,
+      bodyText: JSON.stringify({
+        error: {
+          message: 'Failed to deserialize the JSON body into the target type: messages[0]: unknown variant `image_url`, expected `text` at line 1 column 302',
+          type: 'invalid_request_error',
+          code: 'invalid_request_error',
+        },
+      }),
+    }, {
+      provider: 'openai_proxy',
+      proxyProfileId: CUSTOM_PROXY_PROFILE_ID,
+      model: 'deepseek-v4-flash',
+    });
+
+    expect(error.code).toBe(AI_ERROR_CODES.BAD_REQUEST);
+    expect(error.message).toContain('DeepSeek API');
+    expect(error.message).toContain('không hỗ trợ đọc ảnh trực tiếp');
+    expect(error.message).toContain('Gemini');
+  });
 });

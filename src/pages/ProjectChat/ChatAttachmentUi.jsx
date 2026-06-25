@@ -251,6 +251,9 @@ export function ChatImageViewer({ attachment = null, onClose }) {
   const dataUrl = getAttachmentDataUrl(attachment || {});
   if (!attachment || !dataUrl) return null;
   const fileName = getAttachmentFileName(attachment, 'Ảnh đính kèm');
+  const handleStageClick = (event) => {
+    if (event.target === event.currentTarget) onClose?.();
+  };
 
   return (
     <div className="project-chat-image-viewer" role="dialog" aria-modal="true" aria-label={`Xem ảnh ${fileName}`}>
@@ -272,7 +275,7 @@ export function ChatImageViewer({ attachment = null, onClose }) {
         </button>
         <span>{fileName}</span>
       </div>
-      <div className="project-chat-image-viewer__stage">
+      <div className="project-chat-image-viewer__stage" onClick={handleStageClick}>
         <img src={dataUrl} alt={fileName} />
       </div>
     </div>

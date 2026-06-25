@@ -731,6 +731,8 @@ describe('phase13 chat attachments', () => {
     const removeButton = container.querySelector('.project-chat-image-preview-card__remove');
     const closeButton = container.querySelector('.project-chat-image-viewer__close');
     const backdropButton = container.querySelector('.project-chat-image-viewer__backdrop');
+    const stage = container.querySelector('.project-chat-image-viewer__stage');
+    const stageImage = container.querySelector('.project-chat-image-viewer__stage img');
 
     await act(async () => {
       previewButton.click();
@@ -738,12 +740,14 @@ describe('phase13 chat attachments', () => {
       removeButton.click();
       closeButton.click();
       backdropButton.click();
+      stage.click();
+      stageImage.click();
     });
 
     expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ id: 12 }));
     expect(onPreview).toHaveBeenCalledTimes(2);
     expect(onRemove).toHaveBeenCalledWith(expect.objectContaining({ id: 12 }));
-    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(onClose).toHaveBeenCalledTimes(3);
 
     await act(async () => {
       root.unmount();

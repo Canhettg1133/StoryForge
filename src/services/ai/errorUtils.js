@@ -59,6 +59,24 @@ function summarizeModel(model) {
   return model;
 }
 
+function isDeepSeekImagePayloadError(rawMessage = '', model = '') {
+  const lower = String(rawMessage || '').toLowerCase();
+  const normalizedModel = String(model || '').toLowerCase();
+  return normalizedModel.includes('deepseek')
+    && (
+      (
+        lower.includes('unknown variant')
+        && lower.includes('image_url')
+        && lower.includes('expected')
+        && lower.includes('text')
+      )
+      || (
+        lower.includes('type="image"')
+        && lower.includes('not supported')
+      )
+    );
+}
+
 function extractReason(details = []) {
   if (!Array.isArray(details)) return null;
   for (const item of details) {
@@ -375,6 +393,19 @@ export function normalizeAIError(input = {}, context = {}) {
       status: shape.status || 403,
       rawMessage,
       reason: shape.reason,
+      details: shape.details,
+    });
+  }
+
+  if (isDeepSeekImagePayloadError(rawMessage, model)) {
+    return createAIError({
+      userMessage: 'DeepSeek API hiện không hỗ trợ đọc ảnh trực tiếp. Hãy gỡ ảnh, đổi sang Gemini/model vision, hoặc dùng bước OCR/mô tả ảnh rồi gửi text cho DeepSeek.',
+      code: AI_ERROR_CODES.BAD_REQUEST,
+      provider,
+      model,
+      status: shape.status || 400,
+      rawMessage,
+      reason: shape.reason || 'deepseek_image_not_supported',
       details: shape.details,
     });
   }
