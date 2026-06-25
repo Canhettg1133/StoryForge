@@ -317,14 +317,7 @@ describe('phase13 chat attachments', () => {
           'Chỉ dùng ảnh đính kèm trong lượt này cho câu hỏi hiện tại; không suy diễn từ mô tả hoặc ảnh cũ trong lịch sử nếu mâu thuẫn.',
         ].join('\n\n'),
       },
-      {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: 'image/webp',
-          data: 'bmV3',
-        },
-      },
+      { type: 'image_url', image_url: { url: 'data:image/webp;base64,bmV3' } },
     ]);
     expect(JSON.stringify(messages)).not.toContain('b2xk');
     expect(JSON.stringify(messages)).not.toContain('c2tpcA==');
@@ -380,14 +373,7 @@ describe('phase13 chat attachments', () => {
           'Không có ảnh mới trong lượt này; ảnh đính kèm dưới đây là ảnh gần nhất đã gửi trong cuộc chat.',
         ].join('\n\n'),
       },
-      {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: 'image/webp',
-          data: 'bGF0ZXN0',
-        },
-      },
+      { type: 'image_url', image_url: { url: 'data:image/webp;base64,bGF0ZXN0' } },
     ]);
     expect(JSON.stringify(messages)).not.toContain('b2xk');
     expect(JSON.stringify(messages)).not.toContain('c2tpcA==');

@@ -557,10 +557,8 @@ export function buildChatRequestOptions({ routeOptions = {}, project } = {}) {
   });
 }
 
-export function getChatImagePayloadFormat(proxyProfileId = '') {
-  return proxyProfileId === AG_PROXY_PROFILE_ID
-    ? CHAT_IMAGE_PAYLOAD_FORMATS.AG
-    : CHAT_IMAGE_PAYLOAD_FORMATS.OPENAI;
+export function getChatImagePayloadFormat() {
+  return CHAT_IMAGE_PAYLOAD_FORMATS.OPENAI;
 }
 
 export function routeSupportsChatImages(route = {}) {
@@ -1621,9 +1619,7 @@ export default function ProjectChat() {
     try {
       callMessages = buildConversationMessages(normalizedUserContent, thread, historyMessages, attachmentContexts, {
         currentImageAttachments,
-        imagePayloadFormat: getChatImagePayloadFormat(
-          currentRoute.proxyProfileId || routeOptions.proxyProfileId || activeProxyProfileId,
-        ),
+        imagePayloadFormat: getChatImagePayloadFormat(),
       });
     } catch (error) {
       setErrorMessage(toVietnameseErrorMessage(error?.userMessage || error, 'Không thể chuẩn bị ảnh để gửi AI.'));

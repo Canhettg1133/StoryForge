@@ -34,11 +34,6 @@ function getImageDataUrl(attachment = {}) {
   return String(attachment.data_url || attachment.dataUrl || '').trim();
 }
 
-function getImageBase64Data(dataUrl = '') {
-  const match = String(dataUrl || '').match(/^data:[^;]+;base64,(.+)$/u);
-  return match?.[1] || '';
-}
-
 function getImageMimeType(attachment = {}) {
   const fromAttachment = String(attachment.mime_type || attachment.mimeType || '').trim();
   if (fromAttachment) return fromAttachment;
@@ -78,18 +73,8 @@ export function buildChatImageContentPart(attachment = {}, imagePayloadFormat = 
   if (!dataUrl || !mimeType) {
     throw new Error('Ảnh đính kèm thiếu dữ liệu ảnh hợp lệ.');
   }
-
-  if (imagePayloadFormat === CHAT_IMAGE_PAYLOAD_FORMATS.AG) {
-    const base64Data = getImageBase64Data(dataUrl);
-    if (!base64Data) throw new Error('Ảnh đính kèm thiếu dữ liệu base64 hợp lệ.');
-    return {
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: mimeType,
-        data: base64Data,
-      },
-    };
+  if (imagePayloadFormat !== CHAT_IMAGE_PAYLOAD_FORMATS.AG && imagePayloadFormat !== CHAT_IMAGE_PAYLOAD_FORMATS.OPENAI) {
+    throw new Error('Định dạng ảnh gửi AI không được hỗ trợ.');
   }
 
   return {

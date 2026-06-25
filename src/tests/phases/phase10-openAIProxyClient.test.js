@@ -212,7 +212,7 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(body.payload.safety_settings).toEqual(body.payload.safetySettings);
   });
 
-  it('forwards multimodal image message parts to the ag proxy unchanged', async () => {
+  it('forwards OpenAI-compatible image_url message parts to the ag proxy unchanged', async () => {
     const {
       aiService,
       modelRouter,
@@ -235,14 +235,7 @@ describe('OpenAI-compatible proxy client payloads', () => {
 
     const imageContent = [
       { type: 'text', text: 'Describe this image.' },
-      {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: 'image/png',
-          data: 'iVBORw0KGgo=',
-        },
-      },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' } },
     ];
 
     const result = await new Promise((resolve, reject) => {
@@ -259,6 +252,7 @@ describe('OpenAI-compatible proxy client payloads', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(result).toBe('IMG_OK');
     expect(body.payload.messages[0].content).toEqual(imageContent);
+    expect(JSON.stringify(body.payload.messages[0].content)).not.toContain('"source"');
   });
 
   it('forwards OpenAI image_url message parts to custom proxy profiles unchanged', async () => {
