@@ -269,7 +269,7 @@ describe('phase13 chat attachments', () => {
     expect(shouldUseChatAttachmentForPrompt({ ...projectKnowledge, file_type: 'image', data_url: 'data:image/png;base64,abc' })).toBe(false);
   });
 
-  it('builds multimodal messages with reusable thread images and current images first', () => {
+  it('sends only current images when a new image is attached', () => {
     const reusableImage = {
       id: 20,
       file_name: 'ảnh-cũ.png',
@@ -308,19 +308,15 @@ describe('phase13 chat attachments', () => {
       maxImageContextBytes: 64,
     });
 
-    expect(messages[1].content).toEqual([
-      { type: 'text', text: 'Ảnh trước là gì?' },
-      {
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: 'image/png',
-          data: 'b2xk',
-        },
-      },
-    ]);
+    expect(messages[1].content).toBe('Ảnh trước là gì?');
     expect(messages[3].content).toEqual([
-      { type: 'text', text: 'So sánh với ảnh mới.' },
+      {
+        type: 'text',
+        text: [
+          'So sánh với ảnh mới.',
+          'Chỉ dùng ảnh đính kèm trong lượt này cho câu hỏi hiện tại; không suy diễn từ mô tả hoặc ảnh cũ trong lịch sử nếu mâu thuẫn.',
+        ].join('\n\n'),
+      },
       {
         type: 'image',
         source: {
@@ -330,6 +326,71 @@ describe('phase13 chat attachments', () => {
         },
       },
     ]);
+    expect(JSON.stringify(messages)).not.toContain('b2xk');
+    expect(JSON.stringify(messages)).not.toContain('c2tpcA==');
+  });
+
+  it('uses only the latest reusable image for image follow-up turns without a new upload', () => {
+    const olderImage = {
+      id: 20,
+      file_name: 'ảnh-cũ.png',
+      file_type: 'image',
+      mime_type: 'image/png',
+      size_bytes: 8,
+      data_url: 'data:image/png;base64,b2xk',
+      status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+    };
+    const latestImage = {
+      id: 22,
+      file_name: 'ảnh-gần-nhất.webp',
+      file_type: 'image',
+      mime_type: 'image/webp',
+      size_bytes: 9,
+      data_url: 'data:image/webp;base64,bGF0ZXN0',
+      status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+    };
+    const turnOnlyImage = {
+      ...latestImage,
+      id: 23,
+      file_name: 'chỉ-lượt-này.webp',
+      data_url: 'data:image/webp;base64,c2tpcA==',
+      turn_only: true,
+    };
+
+    const messages = buildImageAwareMessages({
+      systemPrompt: 'Bạn là AI.',
+      historyMessages: [
+        { id: 1, role: 'user', content: 'Ảnh đầu là gì?', attachments: [olderImage] },
+        { id: 2, role: 'assistant', content: 'Mình đã xem ảnh đầu.' },
+        { id: 3, role: 'user', content: 'Ảnh mới hơn là gì?', attachments: [latestImage, turnOnlyImage] },
+      ],
+      userText: 'Bạn có nhận được ảnh tôi gửi không?',
+      currentImageAttachments: [],
+      imagePayloadFormat: CHAT_IMAGE_PAYLOAD_FORMATS.AG,
+      maxImageContextBytes: 64,
+    });
+
+    expect(messages[1].content).toBe('Ảnh đầu là gì?');
+    expect(messages[3].content).toBe('Ảnh mới hơn là gì?');
+    expect(messages[4].content).toEqual([
+      {
+        type: 'text',
+        text: [
+          'Bạn có nhận được ảnh tôi gửi không?',
+          'Không có ảnh mới trong lượt này; ảnh đính kèm dưới đây là ảnh gần nhất đã gửi trong cuộc chat.',
+        ].join('\n\n'),
+      },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/webp',
+          data: 'bGF0ZXN0',
+        },
+      },
+    ]);
+    expect(JSON.stringify(messages)).not.toContain('b2xk');
+    expect(JSON.stringify(messages)).not.toContain('c2tpcA==');
   });
 
   it('builds OpenAI-compatible image_url parts for custom proxy profiles', () => {
@@ -352,7 +413,13 @@ describe('phase13 chat attachments', () => {
     });
 
     expect(messages[1].content).toEqual([
-      { type: 'text', text: 'Mô tả ảnh.' },
+      {
+        type: 'text',
+        text: [
+          'Mô tả ảnh.',
+          'Chỉ dùng ảnh đính kèm trong lượt này cho câu hỏi hiện tại; không suy diễn từ mô tả hoặc ảnh cũ trong lịch sử nếu mâu thuẫn.',
+        ].join('\n\n'),
+      },
       { type: 'image_url', image_url: { url: 'data:image/png;base64,aW1n' } },
     ]);
   });

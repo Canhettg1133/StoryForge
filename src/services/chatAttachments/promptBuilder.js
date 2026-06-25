@@ -55,6 +55,16 @@ function normalizeImageAttachments(attachments = [], { includeTurnOnly = true } 
   );
 }
 
+function getLatestReusableHistoryImages(historyMessages = []) {
+  for (let index = historyMessages.length - 1; index >= 0; index -= 1) {
+    const item = historyMessages[index];
+    if (item?.role !== 'user') continue;
+    const images = normalizeImageAttachments(item.attachments || [], { includeTurnOnly: false });
+    if (images.length > 0) return images;
+  }
+  return [];
+}
+
 function assertImageContextBudget(imageAttachments = [], maxImageContextBytes = MAX_CHAT_IMAGE_CONTEXT_BYTES) {
   const totalBytes = imageAttachments.reduce((sum, attachment) => sum + Number(attachment.size_bytes || attachment.sizeBytes || 0), 0);
   if (totalBytes > maxImageContextBytes) {
@@ -160,15 +170,11 @@ export function buildImageAwareMessages({
 } = {}) {
   const history = (historyMessages || [])
     .filter((item) => item.role === 'user' || item.role === 'assistant');
-  const historyImages = history.flatMap((item) =>
-    item.role === 'user'
-      ? normalizeImageAttachments(item.attachments || [], { includeTurnOnly: false })
-      : []
-  );
   const currentImages = normalizeImageAttachments(currentImageAttachments, { includeTurnOnly: true });
-  const allImages = [...currentImages, ...historyImages];
+  const followUpImages = currentImages.length > 0 ? [] : getLatestReusableHistoryImages(history);
+  const promptImages = currentImages.length > 0 ? currentImages : followUpImages;
   const hasTextContexts = (attachmentContexts || []).length > 0;
-  const hasImages = allImages.length > 0;
+  const hasImages = promptImages.length > 0;
 
   if (!hasTextContexts && !hasImages) {
     const messages = [{ role: 'system', content: cleanText(systemPrompt) }];
@@ -177,7 +183,7 @@ export function buildImageAwareMessages({
     return messages;
   }
 
-  assertImageContextBudget(allImages, maxImageContextBytes);
+  assertImageContextBudget(promptImages, maxImageContextBytes);
 
   const system = [
     cleanText(systemPrompt),
@@ -186,27 +192,27 @@ export function buildImageAwareMessages({
   const apiMessages = [{ role: 'system', content: system }];
 
   history.forEach((item) => {
-    const images = item.role === 'user'
-      ? normalizeImageAttachments(item.attachments || [], { includeTurnOnly: false })
-      : [];
-    apiMessages.push({
-      role: item.role,
-      content: buildContentWithImages(item.content || '', images, imagePayloadFormat),
-    });
+    apiMessages.push({ role: item.role, content: String(item.content || '') });
   });
 
   const attachmentBlocks = (attachmentContexts || [])
     .map(renderAttachmentContext)
     .filter(Boolean);
+  const imageScopeHint = currentImages.length > 0
+    ? 'Chỉ dùng ảnh đính kèm trong lượt này cho câu hỏi hiện tại; không suy diễn từ mô tả hoặc ảnh cũ trong lịch sử nếu mâu thuẫn.'
+    : followUpImages.length > 0
+      ? 'Không có ảnh mới trong lượt này; ảnh đính kèm dưới đây là ảnh gần nhất đã gửi trong cuộc chat.'
+      : '';
   const currentText = [
     cleanText(userText) || (hasImages ? 'Hãy mô tả ảnh đính kèm.' : 'Hãy đọc tệp đính kèm và cho biết nội dung chính.'),
+    imageScopeHint,
     attachmentBlocks.length > 0 ? '# Tệp đính kèm đã chọn' : '',
     ...attachmentBlocks,
   ].filter(Boolean).join('\n\n');
 
   apiMessages.push({
     role: 'user',
-    content: buildContentWithImages(currentText, currentImages, imagePayloadFormat),
+    content: buildContentWithImages(currentText, promptImages, imagePayloadFormat),
   });
   return apiMessages;
 }
