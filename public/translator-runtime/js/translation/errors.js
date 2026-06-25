@@ -216,6 +216,10 @@
             (Boolean(normalizedModel) && normalized.includes(normalizedModel) && normalized.includes('not found'));
     }
 
+    function isProxyProviderContext(context = {}) {
+        return String(context?.provider || '').toLowerCase().includes('proxy');
+    }
+
     function readErrorMessage(errorData = {}, fallback = '') {
         const nestedError = errorData?.error;
         if (nestedError && typeof nestedError === 'object') {
@@ -275,7 +279,7 @@
             if (status === 403 && !/(suspended|consumer_suspended|backend|ban|blocked)/i.test(rawMessage)) {
                 code = 'PROXY_HTTP_ERROR';
             }
-            if (status === 404 && isProxyModelNotFoundMessage(rawMessage, context.model)) {
+            if ((status === 400 || status === 404) && isProxyModelNotFoundMessage(rawMessage, context.model)) {
                 code = 'PROXY_MODEL_NOT_FOUND';
             }
             if (status === 429 || normalized.includes('rate limit')) {
@@ -361,6 +365,23 @@
         }
         if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('load failed')) {
             return createTranslatorError('NETWORK_ERROR', { ...context, rawMessage, retryable: true });
+        }
+        if (isProxyProviderContext(context)) {
+            if (isInvalidApiKeyMessage(rawMessage)) {
+                return createTranslatorError('PROXY_INVALID_KEY', { ...context, rawMessage, shouldRotate: true });
+            }
+            if (lower.includes('quota') || lower.includes('balance')) {
+                return createTranslatorError('PROXY_QUOTA_EXHAUSTED', { ...context, rawMessage, retryable: true, shouldRotate: true, retryAfterSeconds: parseRetryAfter(rawMessage) });
+            }
+            if (lower.includes('rate limit') || rawMessage.startsWith('429')) {
+                return createTranslatorError('PROXY_RATE_LIMIT', { ...context, rawMessage, retryable: true, shouldRotate: true, retryAfterSeconds: parseRetryAfter(rawMessage) });
+            }
+            if (isProxyModelNotFoundMessage(rawMessage, context.model)) {
+                return createTranslatorError('PROXY_MODEL_NOT_FOUND', { ...context, rawMessage, shouldRotate: true });
+            }
+            if (rawMessage.startsWith('404')) {
+                return createTranslatorError('PROXY_HTTP_ERROR', { ...context, status: 404, rawMessage, retryable: true });
+            }
         }
         if (isInvalidApiKeyMessage(rawMessage)) {
             return createTranslatorError('INVALID_API_KEY', { ...context, rawMessage, shouldRotate: true });

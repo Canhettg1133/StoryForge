@@ -9,8 +9,10 @@ const AI_ERROR_CODES = {
   QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
   RATE_LIMITED: 'RATE_LIMITED',
   MODEL_CAPACITY_EXHAUSTED: 'MODEL_CAPACITY_EXHAUSTED',
+  MODEL_NOT_FOUND: 'MODEL_NOT_FOUND',
   SAFETY_BLOCK: 'SAFETY_BLOCK',
   EMPTY_STREAM: 'EMPTY_STREAM',
+  OLLAMA_INVALID_RESPONSE: 'OLLAMA_INVALID_RESPONSE',
   INCOMPLETE_OUTPUT: 'INCOMPLETE_OUTPUT',
   UNAUTHORIZED: 'UNAUTHORIZED',
   FORBIDDEN: 'FORBIDDEN',
@@ -74,6 +76,35 @@ function isDeepSeekImagePayloadError(rawMessage = '', model = '') {
         lower.includes('type="image"')
         && lower.includes('not supported')
       )
+    );
+}
+
+function isSafetyBlockMessage(rawMessage = '') {
+  const lower = String(rawMessage || '').toLowerCase();
+  return lower.includes('safety_block')
+    || lower.includes('content_filter')
+    || lower.includes('safety filter')
+    || lower.includes('safety policy')
+    || lower.includes('blocked by safety')
+    || lower.includes('finishreason=safety')
+    || lower.includes('finish_reason=safety')
+    || /finish\s*reason[^a-z0-9]+safety/u.test(lower)
+    || /blocked[^.!?\n]*(safety|safe)/u.test(lower);
+}
+
+function isModelNotFoundMessage(rawMessage = '', code = '', model = '') {
+  const lower = String(rawMessage || '').toLowerCase();
+  const codeLower = String(code || '').toLowerCase();
+  const normalizedModel = String(model || '').trim().toLowerCase();
+  return codeLower.includes('model_not_found')
+    || lower.includes('model_not_found')
+    || lower.includes('no such model')
+    || /model[^.!?\n]*(not found|does not exist|not exist|unknown)/iu.test(rawMessage || '')
+    || /(not found|does not exist|not exist|unknown)[^.!?\n]*model/iu.test(rawMessage || '')
+    || (
+      Boolean(normalizedModel)
+      && lower.includes(normalizedModel)
+      && (lower.includes('not found') || lower.includes('does not exist') || lower.includes('not exist'))
     );
 }
 
@@ -232,6 +263,47 @@ export function normalizeAIError(input = {}, context = {}) {
     });
   }
 
+  if (lower.includes('ai_studio_relay_url_required')) {
+    return createAIError({
+      userMessage: 'Thiếu URL AI Studio Relay. Vào Settings để nhập Relay URL rồi thử lại.',
+      code: AI_ERROR_CODES.NETWORK_ERROR,
+      provider,
+      model,
+      status: shape.status,
+      rawMessage,
+      reason: shape.reason || 'ai_studio_relay_url_required',
+      details: shape.details,
+    });
+  }
+
+  if (lower.includes('ai_studio_relay_room_required')) {
+    return createAIError({
+      userMessage: 'Thiếu mã room AI Studio Relay. Vào Settings để tạo hoặc nhập mã room rồi thử lại.',
+      code: AI_ERROR_CODES.NETWORK_ERROR,
+      provider,
+      model,
+      status: shape.status,
+      rawMessage,
+      reason: shape.reason || 'ai_studio_relay_room_required',
+      details: shape.details,
+    });
+  }
+
+  if (lower.includes('ollama_invalid_response')) {
+    return createAIError({
+      userMessage: 'Ollama trả về response không đúng định dạng chat/generate mong đợi. Hãy kiểm tra server local hoặc đổi model Ollama.',
+      code: AI_ERROR_CODES.OLLAMA_INVALID_RESPONSE,
+      provider,
+      model,
+      status: shape.status,
+      rawMessage,
+      reason: shape.reason || 'ollama_invalid_response',
+      details: shape.details,
+      retryable: true,
+      shouldFallback: true,
+    });
+  }
+
   if (shape.code === AI_ERROR_CODES.EMPTY_STREAM || lower.includes('empty_stream')) {
     return createAIError({
       userMessage: 'AI không trả nội dung. Thử lại hoặc đổi model/chất lượng trong Settings.',
@@ -247,7 +319,7 @@ export function normalizeAIError(input = {}, context = {}) {
     });
   }
 
-  if (shape.code === AI_ERROR_CODES.SAFETY_BLOCK || lower.includes('safety_block') || lower.includes('safety')) {
+  if (shape.code === AI_ERROR_CODES.SAFETY_BLOCK || isSafetyBlockMessage(rawMessage)) {
     return createAIError({
       userMessage: 'Nội dung bị chặn bởi bộ lọc an toàn của model hiện tại.',
       code: AI_ERROR_CODES.SAFETY_BLOCK,
@@ -296,9 +368,11 @@ export function normalizeAIError(input = {}, context = {}) {
 
   if (
     shape.status === 402
+    || codeLower === 'quota'
     || codeLower === 'quota_exceeded'
     || codeLower === 'insufficient_quota'
     || codeLower === 'insufficient_credits'
+    || reasonLower === 'quota'
     || reasonLower === 'quota_exceeded'
     || reasonLower === 'insufficient_quota'
     || reasonLower === 'insufficient_credits'
@@ -307,6 +381,7 @@ export function normalizeAIError(input = {}, context = {}) {
     || lower.includes('insufficient balance')
     || lower.includes('daily limit reached')
     || lower.includes('quota exceeded')
+    || lower.includes('quota hit')
     || lower.includes('resource_exhausted')
     || lower.includes('top up')
   ) {
@@ -353,6 +428,19 @@ export function normalizeAIError(input = {}, context = {}) {
       details: shape.details,
       retryable: true,
       shouldFallback: true,
+    });
+  }
+
+  if (isModelNotFoundMessage(rawMessage, shape.code, model)) {
+    return createAIError({
+      userMessage: `${providerName} không tìm thấy hoặc không có quyền dùng ${modelName}. Kiểm tra lại model ID, quyền của API key, hoặc chọn model khác.`,
+      code: AI_ERROR_CODES.MODEL_NOT_FOUND,
+      provider,
+      model,
+      status: shape.status || 404,
+      rawMessage,
+      reason: shape.reason || 'model_not_found',
+      details: shape.details,
     });
   }
 

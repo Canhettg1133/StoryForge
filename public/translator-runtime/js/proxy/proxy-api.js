@@ -907,9 +907,12 @@ async function fetchCustomProxyModels() {
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-        const message = data?.error?.message || data?.error || `HTTP ${response.status}`;
+        const proxyError = typeof createProxyHttpError === 'function'
+            ? createProxyHttpError(response.status, data, { model: profile.defaultModel, provider: 'Custom Proxy' })
+            : new Error(data?.error?.message || data?.error || `HTTP ${response.status}`);
+        const message = typeof formatTranslatorError === 'function' ? formatTranslatorError(proxyError) : proxyError.message;
         if (modelStatus) {
-            modelStatus.textContent = `Không lấy được models: ${message}`;
+            modelStatus.textContent = `Không lấy được models Custom Proxy: ${message}`;
             modelStatus.className = 'model-fetch-status error';
         }
         showToast(`Không lấy được models Custom Proxy: ${message}`, 'error');
@@ -1014,7 +1017,10 @@ async function testCustomProxyConnection() {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            const message = errorData?.error?.message || errorData?.error || `HTTP ${response.status}`;
+            const proxyError = typeof createProxyHttpError === 'function'
+                ? createProxyHttpError(response.status, errorData, { model, provider: 'Custom Proxy' })
+                : new Error(errorData?.error?.message || errorData?.error || `HTTP ${response.status}`);
+            const message = typeof formatTranslatorError === 'function' ? formatTranslatorError(proxyError) : proxyError.message;
             if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">Không kết nối được Custom Proxy: ${message}</p>`;
             return false;
         }
@@ -1034,9 +1040,19 @@ async function testCustomProxyConnection() {
         showToast(`Custom Proxy hoạt động. Thời gian phản hồi ${elapsed}s.`, 'success');
         return true;
     } catch (error) {
-        const message = error?.name === 'AbortError'
-            ? 'Timeout sau 30 giây.'
-            : (error?.message || 'Lỗi mạng/CORS khi test Custom Proxy.');
+        const proxyError = error?.name === 'AbortError' && typeof createTranslatorError === 'function'
+            ? createTranslatorError('PROXY_TIMEOUT', {
+                provider: 'Custom Proxy',
+                model,
+                timeoutSeconds: 30,
+                retryable: true,
+            })
+            : (typeof normalizeTranslatorError === 'function'
+                ? normalizeTranslatorError(error, { provider: 'Custom Proxy', model })
+                : error);
+        const message = typeof formatTranslatorError === 'function'
+            ? formatTranslatorError(proxyError)
+            : (proxyError?.message || 'Lỗi mạng/CORS khi test Custom Proxy.');
         if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">${message}</p>`;
         return false;
     }

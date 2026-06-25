@@ -243,8 +243,12 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
+  line-height: 1.45;
   margin-top: var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
+.settings-test-result svg { flex: 0 0 auto; }
 .settings-test-result.success { background: var(--color-success-muted); color: var(--color-success); }
 .settings-test-result.error { background: var(--color-danger-muted); color: var(--color-danger); }
 .settings-test-result.pending { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }

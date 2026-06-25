@@ -692,6 +692,27 @@ async function testOpenAIProxyChatConnection({ profile, apiKey = '', signal } = 
   return { model, text, target };
 }
 
+function getTestConnectionErrorContext(provider) {
+  if (provider === PROVIDERS.OPENAI_PROXY || provider === PROVIDERS.GEMINI_PROXY) {
+    const profile = getActiveOpenAIProxyProfile();
+    return {
+      provider: PROVIDERS.OPENAI_PROXY,
+      model: getOpenAIProxyModel(profile, ''),
+      proxyProfileId: profile?.id || null,
+    };
+  }
+  if (provider === PROVIDERS.GEMINI_DIRECT) return { provider: PROVIDERS.GEMINI_DIRECT };
+  if (provider === PROVIDERS.AI_STUDIO_RELAY) return { provider: PROVIDERS.AI_STUDIO_RELAY };
+  if (provider === PROVIDERS.OLLAMA) return { provider: PROVIDERS.OLLAMA };
+  return { provider };
+}
+
+function formatTestConnectionError(error, provider) {
+  if (error?.userMessage) return error.userMessage;
+  const normalized = normalizeAIError(error, getTestConnectionErrorContext(provider));
+  return normalized.userMessage || normalized.message;
+}
+
 // ================================
 // Gemini Direct (Google AI Studio)
 // ================================
@@ -1616,7 +1637,7 @@ class AIService {
       }
       return { success: false, error: 'Unknown provider' };
     } catch (err) {
-      return { success: false, error: err.message };
+      return { success: false, error: formatTestConnectionError(err, provider) };
     }
   }
 }

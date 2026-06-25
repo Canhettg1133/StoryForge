@@ -452,6 +452,69 @@ describe('phase10 translator proxy key rotation', () => {
     expect(body.payload.model).toBe('custom-gemini-model');
   });
 
+  it('formats Custom Proxy model fetch errors with Vietnamese proxy messages', async () => {
+    const context = loadProxyRuntimeContext(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { message: 'Invalid API key' } }),
+    }));
+
+    vm.runInContext(`
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyProfile = {
+        baseUrl: 'http://localhost:1234/v1',
+        defaultModel: 'custom-model',
+        models: [],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'direct'
+      };
+      customProxyApiKeys = ['BAD_CUSTOM_KEY'];
+      customProxyApiKey = 'BAD_CUSTOM_KEY';
+    `, context);
+
+    const models = await context.fetchCustomProxyModels();
+    const status = context.document.getElementById('customProxyModelStatus');
+
+    expect(models).toEqual([]);
+    expect(status.textContent).toContain('API Key proxy không hợp lệ');
+    expect(status.textContent).not.toContain('Invalid API key');
+  });
+
+  it('formats Custom Proxy test errors with Vietnamese proxy messages', async () => {
+    const context = loadProxyRuntimeContext(async () => ({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: {
+          message: 'The model "custom-missing-model" does not exist.',
+          code: 'model_not_found',
+        },
+      }),
+    }));
+
+    vm.runInContext(`
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyProfile = {
+        baseUrl: 'http://localhost:1234/v1',
+        defaultModel: 'custom-missing-model',
+        models: ['custom-missing-model'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'direct'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+    `, context);
+
+    await context.testCustomProxyConnection();
+    const result = context.document.getElementById('customProxyTestResult');
+
+    expect(result.innerHTML).toContain('Proxy không tìm thấy model');
+    expect(result.innerHTML).toContain('custom-missing-model');
+    expect(result.innerHTML).not.toContain('does not exist');
+  });
+
   it('does not report a generic proxy 404 as a missing model unless the upstream error says so', () => {
     const context = loadProxyRuntimeContext(async () => {
       throw new Error('fetch is not used by error mapping');

@@ -608,6 +608,74 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('https://proxy.example.com/v1/chat/completions');
   });
 
+  it('normalizes custom proxy model-not-found errors from the chat test response', async () => {
+    const {
+      aiService,
+      keyManager,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        CUSTOM_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+        updateCustomOpenAIProxyProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        message: 'The model "manual-missing-model" does not exist or you do not have access to it.',
+        type: 'invalid_request_error',
+        code: 'model_not_found',
+      },
+    }), { status: 400, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.OPENAI_PROXY, 'sk-test-custom-key');
+    updateCustomOpenAIProxyProfile({
+      baseUrl: 'https://proxy.example.com/v1',
+      defaultModel: 'manual-missing-model',
+      transport: 'direct',
+    });
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+
+    const result = await aiService.testConnection(PROVIDERS.OPENAI_PROXY);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('không tìm thấy');
+    expect(result.error).toContain('không có quyền');
+    expect(result.error).not.toContain('does not exist');
+    expect(fetchMock.mock.calls[0][0]).toBe('https://proxy.example.com/v1/chat/completions');
+  });
+
+  it('normalizes custom proxy network errors from the connection test', async () => {
+    const {
+      aiService,
+      keyManager,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        CUSTOM_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+        updateCustomOpenAIProxyProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => {
+      throw new Error('Failed to fetch');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.OPENAI_PROXY, 'sk-test-custom-key');
+    updateCustomOpenAIProxyProfile({
+      baseUrl: 'https://proxy.example.com/v1',
+      defaultModel: 'manual-custom-model',
+      transport: 'direct',
+    });
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+
+    const result = await aiService.testConnection(PROVIDERS.OPENAI_PROXY);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Không thể kết nối tới Custom OpenAI-compatible Proxy');
+    expect(result.error).not.toContain('Failed to fetch');
+  });
+
   it('blocks AI Studio Relay before opening a relay connection when the VIP feature is missing', async () => {
     const {
       aiService,

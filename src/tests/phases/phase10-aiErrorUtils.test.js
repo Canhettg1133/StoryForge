@@ -115,4 +115,119 @@ describe('AI error normalization', () => {
     expect(error.message).toContain('không hỗ trợ đọc ảnh trực tiếp');
     expect(error.message).toContain('Gemini');
   });
+
+  it('keeps invalid safety settings as a request/config error instead of a safety block', () => {
+    const geminiError = normalizeAIError({
+      status: 400,
+      bodyText: JSON.stringify({
+        error: {
+          message: 'Invalid JSON payload received. Unknown name "safetySettings" at request: Cannot find field.',
+          status: 'INVALID_ARGUMENT',
+          code: 400,
+        },
+      }),
+    }, {
+      provider: 'gemini_direct',
+      model: 'gemini-2.5-flash',
+    });
+    const customProxyError = normalizeAIError({
+      status: 400,
+      bodyText: JSON.stringify({
+        error: {
+          message: 'Unrecognized request argument supplied: safety_settings',
+          type: 'invalid_request_error',
+          code: 'invalid_request_error',
+        },
+      }),
+    }, {
+      provider: 'openai_proxy',
+      proxyProfileId: CUSTOM_PROXY_PROFILE_ID,
+      model: 'custom-model',
+    });
+
+    expect(geminiError.code).toBe(AI_ERROR_CODES.BAD_REQUEST);
+    expect(geminiError.message).toContain('không hợp lệ');
+    expect(geminiError.message).not.toContain('bộ lọc an toàn');
+    expect(customProxyError.code).toBe(AI_ERROR_CODES.BAD_REQUEST);
+    expect(customProxyError.message).toContain('Custom OpenAI-compatible Proxy');
+    expect(customProxyError.message).not.toContain('bộ lọc an toàn');
+  });
+
+  it('reports OpenAI-compatible model_not_found errors as a model access problem', () => {
+    const body = {
+      error: {
+        message: 'The model "custom-missing-model" does not exist or you do not have access to it.',
+        type: 'invalid_request_error',
+        code: 'model_not_found',
+      },
+    };
+
+    const badRequestError = normalizeAIError({
+      status: 400,
+      bodyText: JSON.stringify(body),
+    }, {
+      provider: 'openai_proxy',
+      proxyProfileId: CUSTOM_PROXY_PROFILE_ID,
+      model: 'custom-missing-model',
+    });
+    const notFoundError = normalizeAIError({
+      status: 404,
+      bodyText: JSON.stringify(body),
+    }, {
+      provider: 'openai_proxy',
+      proxyProfileId: CUSTOM_PROXY_PROFILE_ID,
+      model: 'custom-missing-model',
+    });
+
+    expect(badRequestError.code).toBe(AI_ERROR_CODES.MODEL_NOT_FOUND);
+    expect(badRequestError.message).toContain('không tìm thấy');
+    expect(badRequestError.message).toContain('không có quyền');
+    expect(badRequestError.message).toContain('custom-missing-model');
+    expect(notFoundError.code).toBe(AI_ERROR_CODES.MODEL_NOT_FOUND);
+    expect(notFoundError.message).not.toContain('chưa xác định');
+  });
+
+  it('normalizes AI Studio Relay quota and missing config errors with specific messages', () => {
+    const quotaError = normalizeAIError({
+      code: 'QUOTA',
+      rawMessage: 'quota hit',
+    }, {
+      provider: 'ai_studio_relay',
+      model: 'gemini-2.5-pro',
+    });
+    const missingUrlError = normalizeAIError({
+      code: AI_ERROR_CODES.NETWORK_ERROR,
+      rawMessage: 'AI_STUDIO_RELAY_URL_REQUIRED',
+    }, {
+      provider: 'ai_studio_relay',
+      model: 'gemini-2.5-pro',
+    });
+    const missingRoomError = normalizeAIError({
+      code: AI_ERROR_CODES.NETWORK_ERROR,
+      rawMessage: 'AI_STUDIO_RELAY_ROOM_REQUIRED',
+    }, {
+      provider: 'ai_studio_relay',
+      model: 'gemini-2.5-pro',
+    });
+
+    expect(quotaError.code).toBe(AI_ERROR_CODES.QUOTA_EXCEEDED);
+    expect(quotaError.message).toContain('quota');
+    expect(shouldFallbackForError(quotaError)).toBe(true);
+    expect(missingUrlError.message).toContain('Thiếu URL AI Studio Relay');
+    expect(missingRoomError.message).toContain('Thiếu mã room AI Studio Relay');
+  });
+
+  it('reports Ollama invalid response format instead of a generic empty response', () => {
+    const error = normalizeAIError({
+      code: AI_ERROR_CODES.EMPTY_STREAM,
+      rawMessage: 'OLLAMA_INVALID_RESPONSE',
+    }, {
+      provider: 'ollama',
+      model: 'qwen3:4b',
+    });
+
+    expect(error.code).toBe(AI_ERROR_CODES.OLLAMA_INVALID_RESPONSE);
+    expect(error.message).toContain('response không đúng định dạng');
+    expect(error.message).not.toContain('AI không trả nội dung');
+  });
 });

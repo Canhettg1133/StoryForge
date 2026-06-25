@@ -106,6 +106,31 @@ describe('phase10 translator notifications', () => {
     expect(context.formatTranslatorError(invalidProviderKey)).toContain('API Key proxy không hợp lệ');
   });
 
+  it('keeps generic proxy quota and model errors under Proxy instead of Gemini', () => {
+    const context = loadTranslatorErrorContext();
+
+    const proxyQuota = context.normalizeTranslatorError(new Error('quota exceeded'), {
+      provider: 'Custom Proxy',
+      model: 'custom-model',
+    });
+    const proxyModelMissing = context.normalizeTranslatorError(new Error('404 model not found'), {
+      provider: 'Custom Proxy',
+      model: 'custom-model',
+    });
+    const geminiModelMissing = context.normalizeTranslatorError(new Error('404 model not found'), {
+      provider: 'Gemini',
+      model: 'gemini-missing-model',
+    });
+
+    expect(proxyQuota.code).toBe('PROXY_QUOTA_EXHAUSTED');
+    expect(context.formatTranslatorError(proxyQuota)).toContain('Proxy đã hết quota');
+    expect(context.formatTranslatorError(proxyQuota)).not.toContain('Gemini đã vượt giới hạn');
+    expect(proxyModelMissing.code).toBe('PROXY_MODEL_NOT_FOUND');
+    expect(context.formatTranslatorError(proxyModelMissing)).toContain('Proxy không tìm thấy model');
+    expect(context.formatTranslatorError(proxyModelMissing)).not.toContain('Gemini');
+    expect(geminiModelMissing.code).toBe('GEMINI_NOT_FOUND');
+  });
+
   it('formats local validation failures without leaking machine codes to toasts', () => {
     const context = loadTranslatorErrorContext();
 
