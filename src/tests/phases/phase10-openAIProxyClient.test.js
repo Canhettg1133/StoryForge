@@ -306,6 +306,58 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(payload.messages[0].content).toEqual(imageContent);
   });
 
+  it('forwards OpenAI image_url message parts to custom proxy relay profiles unchanged', async () => {
+    const {
+      aiService,
+      modelRouter,
+      keyManager,
+      routerModule,
+      routerModule: { PROVIDERS },
+      proxyConfigModule: {
+        CUSTOM_PROXY_PROFILE_ID,
+        setOpenAIProxyActiveProfile,
+        updateCustomOpenAIProxyProfile,
+      },
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: [{ type: 'text', text: 'IMG_OK' }] } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    keyManager.addKey(PROVIDERS.OPENAI_PROXY, 'sk-test-custom-key');
+    updateCustomOpenAIProxyProfile({
+      baseUrl: 'https://proxy.example.com/v1',
+      defaultModel: 'custom-vision-model',
+      models: ['custom-vision-model'],
+      supportsGeminiSafetySettings: false,
+      transport: 'relay',
+    });
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+
+    const imageContent = [
+      { type: 'text', text: 'Mô tả ảnh này.' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,aW1n' } },
+    ];
+
+    const result = await new Promise((resolve, reject) => {
+      aiService.send({
+        taskType: routerModule.TASK_TYPES.FREE_PROMPT,
+        messages: [{ role: 'user', content: imageContent }],
+        stream: false,
+        chatSafetyOff: true,
+        onComplete: resolve,
+        onError: reject,
+      });
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(result).toBe('IMG_OK');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
+    expect(body.payload.messages[0].content).toEqual(imageContent);
+    expect(JSON.stringify(body.payload.messages[0].content)).not.toContain('"source"');
+  });
+
   it('does not send Gemini safety settings to Claude models through the ag preset', async () => {
     const {
       aiService,

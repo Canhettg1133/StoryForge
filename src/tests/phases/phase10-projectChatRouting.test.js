@@ -262,6 +262,22 @@ describe('phase10 ProjectChat routing inheritance', () => {
     expect(routing.route.model).toBe('legacy-thread-model');
   });
 
+  it('enables chat images only for OpenAI-compatible web proxy routes', async () => {
+    const {
+      getChatImagePayloadFormat,
+      routeSupportsChatImages,
+      routerModule: { PROVIDERS },
+    } = await loadProjectChatHelpers();
+
+    expect(getChatImagePayloadFormat()).toBe('openai');
+    expect(routeSupportsChatImages({ provider: PROVIDERS.OPENAI_PROXY, proxyProfileId: 'ag-gemini-proxy' })).toBe(true);
+    expect(routeSupportsChatImages({ provider: PROVIDERS.OPENAI_PROXY, proxyProfileId: 'custom-openai-proxy' })).toBe(true);
+    expect(routeSupportsChatImages({ provider: PROVIDERS.GEMINI_PROXY })).toBe(false);
+    expect(routeSupportsChatImages({ provider: PROVIDERS.GEMINI_DIRECT })).toBe(false);
+    expect(routeSupportsChatImages({ provider: PROVIDERS.AI_STUDIO_RELAY })).toBe(false);
+    expect(routeSupportsChatImages({ provider: PROVIDERS.OLLAMA })).toBe(false);
+  });
+
   it('lists custom proxy profile models without inferring provider from model names', async () => {
     const {
       getAvailableModelOptions,
