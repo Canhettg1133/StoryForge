@@ -618,3 +618,15 @@ export {
   getVipPageContentFromPlan,
   normalizeVipPageContent,
 } from './vipPageContent.js';
+
+export {
+  DEFAULT_SITE_ANNOUNCEMENT,
+  DEFAULT_SITE_ANNOUNCEMENT_URL,
+  SITE_ANNOUNCEMENT_KEY,
+  createDefaultSiteAnnouncement,
+  getSiteAnnouncementDismissKey,
+  hasSiteAnnouncementContentChanged,
+  normalizeHttpsUrl,
+  normalizeSiteAnnouncement,
+  toPublicSiteAnnouncement,
+} from './siteAnnouncement.js';

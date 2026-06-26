@@ -26,8 +26,10 @@ import Translator from './pages/Translator/Translator';
 import GeminiSetupGuide from './pages/Guide/GeminiSetupGuide';
 import GeminiProxyGuide from './pages/Guide/GeminiProxyGuide';
 import TranslatorSetupGuide from './pages/Guide/TranslatorSetupGuide';
+import Notifications from './pages/Notifications/Notifications';
 import Login from './pages/Login/Login';
 import ProjectLayout from './components/common/ProjectLayout';
+import SiteAnnouncementCenter from './components/siteAnnouncement/SiteAnnouncementCenter';
 import { AccessProvider } from './services/access/AccessContext.jsx';
 
 const SHOW_WRITING_DEBUG = import.meta.env.VITE_SHOW_WRITING_DEBUG === 'true';
@@ -46,6 +48,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route element={<AppLayout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/thong-bao" element={<Notifications />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/cloud-sync" element={<CloudSyncPage />} />
           <Route path="/guide" element={<GeminiSetupGuide />} />
@@ -92,6 +95,7 @@ export default function App() {
           </Route>
         </Route>
         </Routes>
+        <SiteAnnouncementCenter />
       </BrowserRouter>
     </AccessProvider>
   );

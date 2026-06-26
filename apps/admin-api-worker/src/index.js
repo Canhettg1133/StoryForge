@@ -10,10 +10,14 @@ import {
   hasPermission,
   normalizePlan,
   normalizeRole,
+  normalizeSiteAnnouncement,
   normalizeStatus,
   normalizeVipPageContent,
   resolveAccessSubject,
   resolveUserAccess,
+  hasSiteAnnouncementContentChanged,
+  SITE_ANNOUNCEMENT_KEY,
+  toPublicSiteAnnouncement,
 } from '../../../packages/access/src/index.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
@@ -27,6 +31,7 @@ const CONSENT_TABLE = 'consent_versions';
 const AUDIT_TABLE = 'admin_audit_logs';
 const USAGE_TABLE = 'usage_events';
 const ACCESS_VERSIONS_TABLE = 'access_versions';
+const SITE_SETTINGS_TABLE = 'site_settings';
 
 const ROUTE_PERMISSIONS = {
   users: ADMIN_PERMISSIONS.USERS_READ,
@@ -617,6 +622,74 @@ async function getCatalog(config, actor) {
   };
 }
 
+async function getSiteAnnouncementSetting(config) {
+  const rows = await supabaseRest(config, SITE_SETTINGS_TABLE, {
+    query: `select=key,value_json,revision&${filterEq('key', SITE_ANNOUNCEMENT_KEY)}&limit=1`,
+    prefer: '',
+  });
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function getSiteAnnouncement(config, actor) {
+  requirePermission(actor, ADMIN_PERMISSIONS.CATALOG_READ);
+  const row = await getSiteAnnouncementSetting(config);
+  return {
+    ok: true,
+    announcement: toPublicSiteAnnouncement(row),
+  };
+}
+
+function createSiteAnnouncementPatch(current, body = {}) {
+  return normalizeSiteAnnouncement({
+    enabled: body.enabled ?? current.enabled,
+    revision: current.revision,
+    title: body.title ?? current.title,
+    body: body.body ?? current.body,
+    primaryActionLabel: body.primaryActionLabel ?? current.primaryActionLabel,
+    primaryActionUrl: body.primaryActionUrl ?? current.primaryActionUrl,
+  });
+}
+
+async function upsertSiteAnnouncement(config, valueJson, contentChanged, actor) {
+  const rows = await supabaseRest(config, 'rpc/upsert_site_announcement', {
+    method: 'POST',
+    query: '',
+    body: {
+      p_value_json: {
+        enabled: valueJson.enabled,
+        title: valueJson.title,
+        body: valueJson.body,
+        primaryActionLabel: valueJson.primaryActionLabel,
+        primaryActionUrl: valueJson.primaryActionUrl,
+      },
+      p_content_changed: contentChanged,
+      p_updated_by: actor.id || null,
+    },
+  });
+  return Array.isArray(rows) ? rows[0] || null : rows;
+}
+
+async function mutateSiteAnnouncement(config, request, actor, body) {
+  requirePermission(actor, ADMIN_PERMISSIONS.CATALOG_WRITE);
+  const currentRow = await getSiteAnnouncementSetting(config);
+  const current = toPublicSiteAnnouncement(currentRow);
+  const next = createSiteAnnouncementPatch(current, body);
+  const contentChanged = hasSiteAnnouncementContentChanged(current, next);
+  const savedRow = await upsertSiteAnnouncement(config, next, contentChanged, actor);
+  const announcement = toPublicSiteAnnouncement(savedRow || {
+    key: SITE_ANNOUNCEMENT_KEY,
+    revision: next.revision,
+    value_json: next,
+  });
+
+  await auditMutation(config, request, actor, 'site_announcement.update', {
+    before: current,
+    after: announcement,
+  });
+
+  return { ok: true, announcement };
+}
+
 async function mutateCatalogPlan(config, request, actor, id, body) {
   requirePermission(actor, ADMIN_PERMISSIONS.CATALOG_WRITE);
   const currentPlan = body.vipPage !== undefined ? await findPlanById(config, id) : null;
@@ -811,6 +884,13 @@ async function routeRequest(request, config, actor) {
     if (request.method === 'GET' && !id) return getCatalog(config, actor);
     if ((request.method === 'PATCH' || request.method === 'POST') && id) {
       return mutateCatalogPlan(config, request, actor, id, await readJson(request));
+    }
+  }
+
+  if (resource === 'announcement') {
+    if (request.method === 'GET' && !id) return getSiteAnnouncement(config, actor);
+    if ((request.method === 'PATCH' || request.method === 'POST') && !id) {
+      return mutateSiteAnnouncement(config, request, actor, await readJson(request));
     }
   }
 

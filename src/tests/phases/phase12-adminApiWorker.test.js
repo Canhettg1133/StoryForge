@@ -2,6 +2,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import adminWorker from '../../../apps/admin-api-worker/src/index.js';
+import {
+  DEFAULT_SITE_ANNOUNCEMENT_URL,
+  SITE_ANNOUNCEMENT_KEY,
+} from '../../../packages/access/src/index.js';
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -163,6 +167,139 @@ describe('phase12 admin API worker', () => {
     expect(response.status).toBe(200);
     expect(payload.item.metadata.existingKey).toBe('keep');
     expect(payload.item.metadata.vipPage.priceLabel).toBe('80.000đ');
+  });
+
+  it('returns the public site announcement without leaking site_settings metadata', async () => {
+    mockAuthAndActor({}, async (target) => {
+      if (target.includes('/rest/v1/site_settings') && target.includes(`key=eq.${SITE_ANNOUNCEMENT_KEY}`)) {
+        return jsonResponse([{
+          key: SITE_ANNOUNCEMENT_KEY,
+          revision: 7,
+          updated_by: 'admin-1',
+          value_json: {
+            enabled: true,
+            title: 'Thông báo hệ thống',
+            body: 'Nếu web lỗi, hãy dùng bản dự phòng.',
+            primaryActionLabel: 'Mở bản dự phòng',
+            primaryActionUrl: DEFAULT_SITE_ANNOUNCEMENT_URL,
+            privateNote: 'không được lộ',
+          },
+        }]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/announcement'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.announcement).toMatchObject({
+      key: SITE_ANNOUNCEMENT_KEY,
+      enabled: true,
+      revision: 7,
+      primaryActionUrl: DEFAULT_SITE_ANNOUNCEMENT_URL,
+    });
+    expect(JSON.stringify(payload)).not.toContain('privateNote');
+    expect(JSON.stringify(payload)).not.toContain('updated_by');
+  });
+
+  it('validates announcement URLs at write time and does not bump revision for enabled-only changes', async () => {
+    mockAuthAndActor({}, async (target, init = {}) => {
+      if (target.includes('/rest/v1/site_settings') && target.includes(`key=eq.${SITE_ANNOUNCEMENT_KEY}`)) {
+        return jsonResponse([{
+          key: SITE_ANNOUNCEMENT_KEY,
+          revision: 3,
+          value_json: {
+            enabled: true,
+            title: 'Thông báo hệ thống',
+            body: 'Nếu web lỗi, hãy dùng bản dự phòng.',
+            primaryActionLabel: 'Mở bản dự phòng',
+            primaryActionUrl: DEFAULT_SITE_ANNOUNCEMENT_URL,
+          },
+        }]);
+      }
+      if (target.includes('/rest/v1/rpc/upsert_site_announcement') && init.method === 'POST') {
+        const body = JSON.parse(init.body);
+        expect(body.p_content_changed).toBe(false);
+        expect(body.p_updated_by).toBe('admin-1');
+        expect(body.p_value_json).toMatchObject({
+          enabled: false,
+          primaryActionUrl: DEFAULT_SITE_ANNOUNCEMENT_URL,
+        });
+        return jsonResponse([{
+          key: SITE_ANNOUNCEMENT_KEY,
+          revision: 3,
+          value_json: body.p_value_json,
+        }]);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs') && init.method === 'POST') {
+        const body = JSON.parse(init.body);
+        expect(body.action).toBe('site_announcement.update');
+        expect(body.before_json.revision).toBe(3);
+        expect(body.after_json.revision).toBe(3);
+        return jsonResponse([{ id: 'audit-1', action: body.action }], 201);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/announcement', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        enabled: false,
+        title: 'Thông báo hệ thống',
+        body: 'Nếu web lỗi, hãy dùng bản dự phòng.',
+        primaryActionLabel: 'Mở bản dự phòng',
+        primaryActionUrl: 'javascript:alert(1)',
+      }),
+    }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.announcement.revision).toBe(3);
+    expect(payload.announcement.primaryActionUrl).toBe(DEFAULT_SITE_ANNOUNCEMENT_URL);
+  });
+
+  it('marks content changes so the site announcement revision can be bumped atomically', async () => {
+    mockAuthAndActor({}, async (target, init = {}) => {
+      if (target.includes('/rest/v1/site_settings') && target.includes(`key=eq.${SITE_ANNOUNCEMENT_KEY}`)) {
+        return jsonResponse([{
+          key: SITE_ANNOUNCEMENT_KEY,
+          revision: 3,
+          value_json: {
+            enabled: true,
+            title: 'Thông báo hệ thống',
+            body: 'Nếu web lỗi, hãy dùng bản dự phòng.',
+            primaryActionLabel: 'Mở bản dự phòng',
+            primaryActionUrl: DEFAULT_SITE_ANNOUNCEMENT_URL,
+          },
+        }]);
+      }
+      if (target.includes('/rest/v1/rpc/upsert_site_announcement') && init.method === 'POST') {
+        const body = JSON.parse(init.body);
+        expect(body.p_content_changed).toBe(true);
+        return jsonResponse([{
+          key: SITE_ANNOUNCEMENT_KEY,
+          revision: 4,
+          value_json: body.p_value_json,
+        }]);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs') && init.method === 'POST') {
+        return jsonResponse([{ id: 'audit-1', action: 'site_announcement.update' }], 201);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/announcement', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        title: 'Thông báo mới',
+      }),
+    }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.announcement.revision).toBe(4);
+    expect(payload.announcement.title).toBe('Thông báo mới');
   });
 
   it('creates user_plans rows for quick VIP grants and writes an audit log', async () => {

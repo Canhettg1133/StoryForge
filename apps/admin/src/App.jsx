@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
+  Bell,
   BookOpen,
   Check,
   ChevronRight,
@@ -31,6 +32,7 @@ import {
   STATUS_LABELS_VI,
   createDefaultVipPageContent,
   hasPermission,
+  normalizeSiteAnnouncement,
   normalizeVipPageContent,
 } from '@storyforge/access';
 import { createAdminApiClient } from './adminApi.js';
@@ -40,6 +42,7 @@ const NAV_ITEMS = [
   { id: 'overview', label: 'Tổng quan', icon: Gauge },
   { id: 'users', label: 'Người dùng', icon: Users },
   { id: 'vip', label: 'Gói VIP', icon: Sparkles },
+  { id: 'announcement', label: 'Thông báo', icon: Bell },
   { id: 'features', label: 'Tính năng trong gói', icon: SlidersHorizontal },
   { id: 'consent', label: 'Điều khoản 18+', icon: ShieldCheck },
   { id: 'audit', label: 'Nhật ký', icon: FileClock },
@@ -54,6 +57,7 @@ const EMPTY_DATA = {
   features: [],
   planFeatures: [],
   consent: [],
+  announcement: null,
 };
 
 const DEFAULT_PLAN_FORM = {
@@ -972,6 +976,131 @@ function VipPanel({ data, onMutation, actor }) {
   );
 }
 
+function AnnouncementPanel({ data, onMutation, actor }) {
+  const canWriteCatalog = hasPermission(actor, ADMIN_PERMISSIONS.CATALOG_WRITE);
+  const [form, setForm] = useState(() => normalizeSiteAnnouncement(data.announcement));
+
+  useEffect(() => {
+    setForm(normalizeSiteAnnouncement(data.announcement));
+  }, [data.announcement]);
+
+  const updateField = (field, value) => {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const preview = normalizeSiteAnnouncement(form);
+  const saveContent = () => {
+    const announcement = normalizeSiteAnnouncement(form);
+    setForm(announcement);
+    onMutation({
+      title: 'Lưu thông báo',
+      message: 'Cập nhật thông báo hệ thống hiển thị cho người dùng?',
+      action: () => onMutation.api.updateAnnouncement(announcement),
+    });
+  };
+
+  return (
+    <section className="content-grid">
+      <div className="section-header">
+        <div>
+          <h1>Thông báo</h1>
+          <p>Chỉnh một thông báo hệ thống công khai. Người dùng sẽ thấy lại khi nội dung chính thay đổi phiên bản.</p>
+        </div>
+        <Badge tone={preview.enabled ? 'success' : 'neutral'}>{preview.enabled ? 'Đang bật' : 'Đang tắt'}</Badge>
+      </div>
+
+      <section className="panel announcement-settings">
+        <header className="panel-header">
+          <div>
+            <h2>Chỉnh thông báo hệ thống</h2>
+            <span>Nội dung là plain text. Link nút chính chỉ chấp nhận HTTPS để an toàn.</span>
+          </div>
+          <Badge tone={canWriteCatalog ? 'info' : 'neutral'}>{canWriteCatalog ? 'Có quyền sửa' : 'Chỉ xem'}</Badge>
+        </header>
+
+        <div className="announcement-settings-grid">
+          <div className="announcement-form">
+            <label className="announcement-toggle-row">
+              <span>Bật thông báo</span>
+              <button
+                type="button"
+                className={`toggle ${form.enabled ? 'is-on' : ''}`}
+                aria-pressed={form.enabled}
+                disabled={!canWriteCatalog}
+                onClick={() => updateField('enabled', !form.enabled)}
+              >
+                <span />
+              </button>
+            </label>
+            <label>
+              <span>Tiêu đề</span>
+              <input
+                value={form.title}
+                onChange={(event) => updateField('title', event.target.value)}
+                disabled={!canWriteCatalog}
+              />
+            </label>
+            <label className="announcement-field--wide">
+              <span>Nội dung thông báo</span>
+              <textarea
+                rows={6}
+                value={form.body}
+                onChange={(event) => updateField('body', event.target.value)}
+                disabled={!canWriteCatalog}
+              />
+            </label>
+            <label>
+              <span>Nhãn nút</span>
+              <input
+                value={form.primaryActionLabel}
+                onChange={(event) => updateField('primaryActionLabel', event.target.value)}
+                disabled={!canWriteCatalog}
+              />
+            </label>
+            <label>
+              <span>Link nút chính</span>
+              <input
+                value={form.primaryActionUrl}
+                onChange={(event) => updateField('primaryActionUrl', event.target.value)}
+                disabled={!canWriteCatalog}
+                placeholder="https://story-forge-kohl.vercel.app/"
+              />
+            </label>
+          </div>
+
+          <aside className="announcement-preview" aria-label="Xem trước thông báo">
+            <span>Xem trước thông báo</span>
+            <div className="announcement-preview__header">
+              <Bell size={18} />
+              <h3>{preview.title}</h3>
+            </div>
+            <p>{preview.body}</p>
+            <a href={preview.primaryActionUrl} target="_blank" rel="noreferrer">
+              {preview.primaryActionLabel}
+            </a>
+            <small>Phiên bản {preview.revision}</small>
+          </aside>
+        </div>
+
+        <footer className="vip-page-settings__actions">
+          <button
+            type="button"
+            className="button button--primary"
+            onClick={saveContent}
+            disabled={!canWriteCatalog}
+          >
+            <Check size={16} />
+            Lưu thông báo
+          </button>
+        </footer>
+      </section>
+    </section>
+  );
+}
+
 function FeaturesPanel({ data, onMutation, actor }) {
   const canWriteFeature = hasPermission(actor, ADMIN_PERMISSIONS.FEATURES_WRITE);
   const canWritePlanFeature = hasPermission(actor, ADMIN_PERMISSIONS.PLAN_FEATURES_WRITE);
@@ -1242,13 +1371,14 @@ export default function App() {
     setLoadError('');
     try {
       const me = await adminApi.me();
-      const [users, catalog, audit, usage, features, consent] = await Promise.all([
+      const [users, catalog, audit, usage, features, consent, announcement] = await Promise.all([
         adminApi.users(),
         adminApi.catalog(),
         adminApi.audit(),
         adminApi.usage(),
         adminApi.features(),
         adminApi.consent(),
+        adminApi.announcement(),
       ]);
 
       setActor(me.actor);
@@ -1260,6 +1390,7 @@ export default function App() {
         features: features.items || catalog.features || [],
         planFeatures: catalog.planFeatures || [],
         consent: consent.items || catalog.consentVersions || [],
+        announcement: announcement.announcement || null,
       });
     } catch (error) {
       setLoadError(error.message || 'Không tải được dữ liệu admin.');
@@ -1348,6 +1479,7 @@ export default function App() {
     if (activeView === 'overview') return <OverviewPanel data={data} actor={actor} apiBaseUrl={adminApi.baseUrl} onSelectView={setActiveView} />;
     if (activeView === 'users') return <UsersPanel data={data} selectedUserId={selectedUserId} setSelectedUserId={setSelectedUserId} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'vip') return <VipPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
+    if (activeView === 'announcement') return <AnnouncementPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'features') return <FeaturesPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'consent') return <ConsentPanel data={data} />;
     if (activeView === 'audit') return <AuditPanel data={data} />;

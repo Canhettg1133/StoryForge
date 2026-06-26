@@ -69,6 +69,7 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
     usage: () => request('/usage'),
     features: () => request('/features'),
     consent: () => request('/consent'),
+    announcement: () => request('/announcement'),
     syncAuth: () => request('/users/sync-auth', { method: 'POST', body: {} }),
     userAccess: (userId) => request(`/users/${encodeURIComponent(userId)}/access`),
     updateUserAccess: (userId, role) => request(`/users/${encodeURIComponent(userId)}/access`, {
@@ -109,6 +110,10 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
     }),
     upsertConsent: (body) => request('/consent', {
       method: 'POST',
+      body,
+    }),
+    updateAnnouncement: (body) => request('/announcement', {
+      method: 'PATCH',
       body,
     }),
   };
