@@ -256,6 +256,8 @@
 
 @media (max-width: 900px) {
   .project-mobile-shell .world-lore {
+    display: flex;
+    flex-direction: column;
     width: 100%;
     max-width: none;
     min-width: 0;
@@ -271,29 +273,132 @@
     box-sizing: border-box;
   }
 
-  .project-mobile-shell .world-lore .codex-header {
+  .project-mobile-shell .world-lore > .mobile-bible-tabs {
+    order: 0;
+  }
+
+  .project-mobile-shell .world-lore > .codex-header {
+    order: 1;
     display: grid;
     grid-template-columns: 1fr;
     gap: 12px;
     margin-bottom: 14px;
   }
 
+  .project-mobile-shell .world-lore > .world-profile-section {
+    order: 2;
+    margin-bottom: 12px;
+  }
+
+  .project-mobile-shell .world-lore > .world-search {
+    order: 3;
+  }
+
+  .project-mobile-shell .world-lore > .world-list,
+  .project-mobile-shell .world-lore > .empty-state {
+    order: 4;
+  }
+
   .project-mobile-shell .world-lore .codex-header-left {
     min-width: 0;
     justify-content: space-between;
+    align-items: flex-start;
+    gap: 8px;
   }
 
-  .project-mobile-shell .world-lore .codex-tabs {
+  .project-mobile-shell .world-lore .codex-header-left h2 {
+    min-width: 0;
+    font-size: 18px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .project-mobile-shell .world-lore > .codex-header .codex-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
-    flex-wrap: wrap;
     overflow-x: visible;
-    border-radius: 8px;
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--color-surface-1) 84%, var(--color-bg-primary));
   }
 
-  .project-mobile-shell .world-lore .codex-tab {
-    flex: 1 1 calc(50% - 4px);
+  .project-mobile-shell .world-lore > .codex-header .codex-tab {
+    width: 100%;
+    justify-content: center;
     border-radius: 8px;
     white-space: normal;
+    line-height: 1.2;
+    min-height: 42px;
+    padding: 7px 6px;
+    border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+    background: color-mix(in srgb, var(--color-surface-2) 82%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  .project-mobile-shell .world-lore > .codex-header .codex-tab--active {
+    border-color: color-mix(in srgb, var(--color-accent) 46%, var(--color-border));
+    background: color-mix(in srgb, var(--color-accent) 17%, var(--color-surface-2));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+
+  .project-mobile-shell .world-lore > .codex-header .codex-tab-count {
+    margin-left: 0;
+    padding: 1px 6px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-bg-primary) 70%, transparent);
+    color: var(--color-text-secondary);
+    font-weight: 700;
+  }
+
+  .project-mobile-shell .world-lore > .codex-header .codex-tab--active .codex-tab-count {
+    color: var(--color-accent);
+  }
+
+  .project-mobile-shell .world-lore .codex-header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+
+  .project-mobile-shell .world-lore .codex-header-actions .btn,
+  .project-mobile-shell .world-lore .ai-gen-wrapper,
+  .project-mobile-shell .world-lore .ai-gen-trigger {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .project-mobile-shell .world-lore .codex-header-actions .btn {
+    min-height: 38px;
+    height: auto;
+    padding: 8px;
+    line-height: 1.2;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .project-mobile-shell .world-lore .codex-header-actions .btn svg {
+    flex-shrink: 0;
+  }
+
+  .project-mobile-shell .world-lore .codex-header-actions .btn-primary {
+    order: -1;
+    grid-column: 1 / -1;
+    min-height: 40px;
+  }
+
+  .project-mobile-shell .world-lore .ai-gen-popup {
+    position: fixed;
+    left: 14px;
+    right: 14px;
+    top: auto;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    max-height: min(72dvh, 560px);
+    overflow-y: auto;
   }
 
   .project-mobile-shell .world-search,
@@ -304,12 +409,27 @@
     border-radius: 8px;
   }
 
+  .project-mobile-shell .world-profile-header {
+    padding: 10px 12px;
+  }
+
+  .project-mobile-shell .world-profile-header h3 {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+
   .project-mobile-shell .world-list {
     gap: 10px;
   }
 
   .project-mobile-shell .world-card {
+    gap: 10px;
     padding: 12px;
+  }
+
+  .project-mobile-shell .world-card-icon {
+    width: 32px;
+    height: 32px;
   }
 
   .project-mobile-shell .world-card:hover {
@@ -318,12 +438,30 @@
 
   .project-mobile-shell .world-card-actions {
     opacity: 1;
+    align-self: flex-start;
+  }
+
+  .project-mobile-shell .world-card-actions .btn-icon {
+    width: 32px;
+    height: 32px;
   }
 
   .project-mobile-shell .world-profile-card,
   .project-mobile-shell .world-profile-empty {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .project-mobile-shell .world-profile-info h4 {
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  .project-mobile-shell .world-profile-card .btn,
+  .project-mobile-shell .world-profile-empty .btn {
+    width: 100%;
   }
 
   .project-mobile-shell .world-profile-grid {

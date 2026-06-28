@@ -23,6 +23,11 @@ const TABS = [
   { id: 'terms', icon: BookOpen, label: 'Thuật ngữ' },
 ];
 
+function getInitialWorldExpanded() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return true;
+  return !window.matchMedia('(max-width: 900px)').matches;
+}
+
 export default function WorldLore() {
   const { currentProject } = useProjectStore();
   const {
@@ -42,7 +47,7 @@ export default function WorldLore() {
 
   // Form state
   const [form, setForm] = useState({});
-  const [worldExpanded, setWorldExpanded] = useState(true);
+  const [worldExpanded, setWorldExpanded] = useState(getInitialWorldExpanded);
   const [editingWorld, setEditingWorld] = useState(false);
   const [worldForm, setWorldForm] = useState({});
   const { updateWorldProfile } = useProjectStore();
