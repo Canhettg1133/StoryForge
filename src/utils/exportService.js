@@ -20,6 +20,115 @@ function stripHtmlToText(html) {
     return textArray.join('\n\n');
 }
 
+const CHAPTER_HEADING_PATTERN = /^(?:#{1,6}\s*)?(?:chương|chuong|chapter)\s+([0-9]+|[ivxlcdm]+)\s*(?:(?:[:.\-\u2013\u2014])\s*(.*))?$/iu;
+
+function cleanHeadingLine(value) {
+    return String(value || '').trim().replace(/^#{1,6}\s*/, '').trim();
+}
+
+function normalizeChapterNumber(value) {
+    const numberText = String(value || '').trim();
+    if (/^\d+$/.test(numberText)) {
+        return String(Number(numberText));
+    }
+    return numberText.toLowerCase();
+}
+
+function parseChapterHeading(value) {
+    const line = cleanHeadingLine(value);
+    const match = line.match(CHAPTER_HEADING_PATTERN);
+    if (!match) return null;
+
+    const numberText = normalizeChapterNumber(match[1]);
+    let subtitle = String(match[2] || '').trim();
+
+    while (subtitle) {
+        const nested = parseChapterHeading(subtitle);
+        if (!nested || nested.numberText !== numberText) break;
+        subtitle = nested.subtitle;
+    }
+
+    return { numberText, subtitle };
+}
+
+function buildChapterHeadingText(parsedHeading) {
+    if (!parsedHeading) return '';
+    const prefix = `Chương ${parsedHeading.numberText}`;
+    return parsedHeading.subtitle ? `${prefix}: ${parsedHeading.subtitle}` : prefix;
+}
+
+function normalizeHeadingForCompare(value) {
+    const parsed = parseChapterHeading(value);
+    const heading = parsed ? buildChapterHeadingText(parsed) : cleanHeadingLine(value);
+    return heading.toLocaleLowerCase('vi-VN').replace(/\s+/g, ' ').trim();
+}
+
+function headingsMatch(left, right) {
+    return normalizeHeadingForCompare(left) === normalizeHeadingForCompare(right);
+}
+
+export function extractLeadingChapterHeading(text) {
+    const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+    const firstLine = lines.find(line => line.trim().length > 0);
+    const parsed = parseChapterHeading(firstLine || '');
+    return parsed ? buildChapterHeadingText(parsed) : '';
+}
+
+export function formatChapterExportTitle(chapterTitle, arrayIndex, leadingContentHeading = '') {
+    const title = cleanHeadingLine(chapterTitle);
+    const titleHeading = parseChapterHeading(title);
+    const contentHeading = parseChapterHeading(leadingContentHeading);
+
+    if (titleHeading) {
+        if (
+            !titleHeading.subtitle
+            && contentHeading?.subtitle
+            && contentHeading.numberText === titleHeading.numberText
+        ) {
+            return buildChapterHeadingText(contentHeading);
+        }
+        return buildChapterHeadingText(titleHeading);
+    }
+
+    if (!title && contentHeading) {
+        return buildChapterHeadingText(contentHeading);
+    }
+
+    const fallbackPrefix = `Chương ${arrayIndex + 1}`;
+    return title ? `${fallbackPrefix}: ${title}` : fallbackPrefix;
+}
+
+export function stripLeadingDuplicateChapterHeading(text, chapterHeading) {
+    const value = String(text || '');
+    const lines = value.replace(/\r\n/g, '\n').split('\n');
+    const firstContentLineIndex = lines.findIndex(line => line.trim().length > 0);
+
+    if (firstContentLineIndex === -1) return '';
+    if (!headingsMatch(lines[firstContentLineIndex], chapterHeading)) return value;
+
+    lines.splice(firstContentLineIndex, 1);
+    return lines.join('\n').replace(/^\s+/, '');
+}
+
+export function buildChapterExportSection(section, arrayIndex) {
+    const rawSceneTexts = (section.scenes || [])
+        .map(sceneHtml => stripHtmlToText(sceneHtml))
+        .filter(text => text.trim().length > 0);
+    const leadingContentHeading = rawSceneTexts
+        .map(text => extractLeadingChapterHeading(text))
+        .find(Boolean) || '';
+    const chapterHeading = formatChapterExportTitle(
+        section.chapterTitle,
+        arrayIndex,
+        leadingContentHeading
+    );
+    const sceneTexts = rawSceneTexts
+        .map(text => stripLeadingDuplicateChapterHeading(text, chapterHeading).trim())
+        .filter(Boolean);
+
+    return { chapterHeading, sceneTexts };
+}
+
 // Lấy toàn bộ dữ liệu truyện theo ID
 async function getProjectData(projectId) {
     const project = await db.projects.get(projectId);
@@ -37,7 +146,7 @@ async function getProjectData(projectId) {
             .sortBy('order_index');
 
         sections.push({
-            chapterTitle: chapter.title || 'Chương không tên',
+            chapterTitle: chapter.title || '',
             scenes: scenes.map(s => s.draft_text || '')
         });
     }
@@ -55,14 +164,13 @@ export async function exportToTxt(projectId) {
     content += `=\n\n`;
 
     sections.forEach((sec, idx) => {
-        content += `Chương ${idx + 1}: ${sec.chapterTitle}\n`;
+        const { chapterHeading, sceneTexts } = buildChapterExportSection(sec, idx);
+
+        content += `${chapterHeading}\n`;
         content += `-\n\n`;
 
-        sec.scenes.forEach(sceneHtml => {
-            const text = stripHtmlToText(sceneHtml);
-            if (text) {
-                content += text + '\n\n';
-            }
+        sceneTexts.forEach(text => {
+            content += text + '\n\n';
         });
 
         content += `\n\n`;
@@ -90,25 +198,22 @@ export async function exportToDocx(projectId) {
     );
 
     sections.forEach((sec, idx) => {
+        const { chapterHeading, sceneTexts } = buildChapterExportSection(sec, idx);
+
         // Tên chương
         docChildren.push(
             new Paragraph({
-                text: `Chương ${idx + 1}: ${sec.chapterTitle}`,
+                text: chapterHeading,
                 heading: HeadingLevel.HEADING_1,
                 spacing: { before: 400, after: 200 }
             })
         );
 
         // Nội dung các cảnh
-        sec.scenes.forEach(sceneHtml => {
-            if (!sceneHtml) return;
-
-            // Xử lý nới lỏng HTML thành các paragraph riêng biệt
-            const paragraphs = sceneHtml.split(/<\/p>/i);
+        sceneTexts.forEach(sceneText => {
+            const paragraphs = sceneText.split(/\n{2,}/);
             paragraphs.forEach(p => {
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = p;
-                const text = (tempDiv.textContent || tempDiv.innerText || '').trim();
+                const text = p.trim();
 
                 if (text) {
                     docChildren.push(
