@@ -71,6 +71,7 @@ import {
   buildProjectContentModePatch,
   PROJECT_CONTENT_MODES,
 } from '../../features/projectContentMode/projectContentMode.js';
+import NumberStepper from '../../components/common/NumberStepper.jsx';
 import './ProjectWizard.css';
 
 const STEPS = ['Ý tưởng', 'Tạo nền truyện', 'Duyệt nền truyện', 'Tạo dàn ý', 'Duyệt & tạo dự án'];
@@ -1550,11 +1551,25 @@ export default function ProjectWizard({ onClose, onCreated }) {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Số chương mục tiêu</label>
-                  <input type="text" inputMode="numeric" className="input" value={targetLength} onFocus={handleSelectNumericField} onChange={(event) => setTargetLength(event.target.value)} />
+                  <NumberStepper
+                    value={targetLength}
+                    min={0}
+                    max={10000}
+                    fallback={0}
+                    ariaLabel="Số chương mục tiêu"
+                    onChange={setTargetLength}
+                  />
                 </div>
                 <div className="form-group">
                   <label className="form-label">Số chương khởi đầu</label>
-                  <input type="text" inputMode="numeric" className="input" value={initialChapterCount} onFocus={handleSelectNumericField} onChange={(event) => setInitialChapterCount(clampInitialChapterCount(event.target.value))} />
+                  <NumberStepper
+                    value={initialChapterCount}
+                    min={1}
+                    max={100}
+                    fallback={10}
+                    ariaLabel="Số chương khởi đầu"
+                    onChange={setInitialChapterCount}
+                  />
                   <span className="form-hint">Dùng để giới hạn số nhân vật và số chương dàn ý ban đầu.</span>
                 </div>
               </div>

@@ -40,6 +40,21 @@ function setTextareaValue(textarea, value) {
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
+function setInputValue(input, value) {
+  const valueSetter = Object.getOwnPropertyDescriptor(input, 'value')?.set;
+  const prototypeValueSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLInputElement.prototype,
+    'value',
+  )?.set;
+
+  if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+    prototypeValueSetter.call(input, value);
+  } else {
+    input.value = value;
+  }
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function resetArcStoreState() {
   Object.keys(arcStoreState).forEach((key) => delete arcStoreState[key]);
   Object.assign(arcStoreState, {
@@ -170,5 +185,42 @@ describe('phase10 arc generation modal causal outline UI', () => {
     expect(arcStoreState.updateOutlineChapter).toHaveBeenCalledWith(0, {
       conflict: 'Lam Mạc muốn thoát thân nhưng phải cứu đồng đội trước.',
     });
+  });
+
+  it('lets chapter-count input be cleared before committing a new arc batch size', async () => {
+    await act(async () => {
+      root.render(
+        <ArcGenerationModal
+          projectId={1}
+          genre="fantasy"
+          currentChapterCount={10}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+
+    const chapterCountInput = container.querySelector('input[aria-label="Số chương muốn tạo"]')
+      || container.querySelector('input[type="number"]');
+    expect(chapterCountInput).toBeTruthy();
+
+    arcStoreState.setArcConfig.mockClear();
+    chapterCountInput.focus();
+    await act(async () => {
+      setInputValue(chapterCountInput, '');
+    });
+
+    expect(chapterCountInput.value).toBe('');
+    expect(arcStoreState.setArcConfig).not.toHaveBeenCalledWith({ arcChapterCount: 1 });
+
+    await act(async () => {
+      setInputValue(chapterCountInput, '5');
+    });
+    expect(chapterCountInput.value).toBe('5');
+    expect(arcStoreState.setArcConfig).not.toHaveBeenCalledWith({ arcChapterCount: 5 });
+
+    await act(async () => {
+      chapterCountInput.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    });
+    expect(arcStoreState.setArcConfig).toHaveBeenCalledWith({ arcChapterCount: 5 });
   });
 });

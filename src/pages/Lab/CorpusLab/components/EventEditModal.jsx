@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import NumberStepper, { clampNumberStepperValue } from '../../../../components/common/NumberStepper.jsx';
 
 const SEVERITY_OPTIONS = ['crucial', 'major', 'moderate', 'minor'];
 const POSITION_OPTIONS = ['start', 'middle', 'end'];
@@ -47,6 +48,7 @@ export default function EventEditModal({ event, onSave, onClose }) {
       await onSave({
         ...event,
         ...form,
+        chapter: clampNumberStepperValue(form.chapter, { min: 1, fallback: 1 }),
         rarity: { score: form.rarity, label: form.rarity },
         canonOrFanon: { type: form.canonOrFanon },
       });
@@ -102,11 +104,12 @@ export default function EventEditModal({ event, onSave, onClose }) {
           <div className="form-row">
             <label className="form-group">
               <span>Chương</span>
-              <input
-                type="number"
-                min="1"
+              <NumberStepper
                 value={form.chapter}
-                onChange={(e) => setForm((f) => ({ ...f, chapter: parseInt(e.target.value, 10) || 1 }))}
+                min={1}
+                fallback={1}
+                ariaLabel="Chương"
+                onChange={(value) => setForm((f) => ({ ...f, chapter: value }))}
               />
             </label>
             <label className="form-group">

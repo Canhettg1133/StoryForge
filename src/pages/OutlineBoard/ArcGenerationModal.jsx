@@ -4,6 +4,7 @@ import {
     Bot, Sparkles, Wand2, X, Play, Loader2, CheckCircle2,
     AlertTriangle, Flag, RotateCcw, Save, Trash2, BookmarkPlus
 } from 'lucide-react';
+import NumberStepper from '../../components/common/NumberStepper.jsx';
 import './ArcGenerationModal.css';
 
 const QUICK_ACTIONS = [
@@ -188,6 +189,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
     const arcStore = useArcGenStore();
     const [step, setStep] = useState(1);
     const [activeTab, setActiveTab] = useState('guided');
+    const [arcChapterCountInput, setArcChapterCountInput] = useState(() => String(arcStore.arcChapterCount || 1));
 
     useEffect(() => {
         let ignore = false;
@@ -205,6 +207,10 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
     useEffect(() => {
         arcStore.setArcConfig({ arcMode: activeTab });
     }, [activeTab]);
+
+    useEffect(() => {
+        setArcChapterCountInput(String(arcStore.arcChapterCount || 1));
+    }, [arcStore.arcChapterCount]);
 
     const selectedMacroArc = useMemo(
         () => arcStore.availableMacroArcs.find((item) => item.id === arcStore.selectedMacroArcId) || null,
@@ -464,13 +470,14 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                 <div className="arc-config-grid">
                     <div className="form-group">
                         <label className="form-label">Số chương muốn tạo</label>
-                        <input
-                            type="number"
-                            className="input"
-                            min="1"
-                            max="20"
-                            value={arcStore.arcChapterCount}
-                            onChange={(e) => arcStore.setArcConfig({ arcChapterCount: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                        <NumberStepper
+                            value={arcChapterCountInput}
+                            min={1}
+                            max={20}
+                            fallback={1}
+                            ariaLabel="Số chương muốn tạo"
+                            onChange={setArcChapterCountInput}
+                            onCommit={(value) => arcStore.setArcConfig({ arcChapterCount: value })}
                         />
                         <div className="arc-help-text">
                             Đề xuất hiện tại: {arcStore.recommendedBatchCount} chương cho tổng độ dài {arcStore.projectTargetLength || 'chưa đặt'}.

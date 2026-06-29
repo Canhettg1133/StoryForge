@@ -20,10 +20,11 @@ import {
   generateFanficProjectSeed,
 } from '../../services/labLite/fanficProjectSetup.js';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
+import NumberStepper from '../../components/common/NumberStepper.jsx';
 
-function clampInitialChapterCount(value) {
+function clampInitialChapterCount(value, fallback = 10) {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 10;
+  if (!Number.isFinite(numeric)) return fallback;
   return Math.max(1, Math.min(100, Math.round(numeric)));
 }
 
@@ -298,7 +299,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
           synopsis: templateForm.synopsis,
         },
         include: templateInclude,
-        initialChapterCount: clampInitialChapterCount(templateForm.initial_chapter_count),
+        initialChapterCount: clampInitialChapterCount(templateForm.initial_chapter_count, 1),
       });
       await loadProjects();
       onCreated(result.projectId, { path: `/project/${result.projectId}/story-bible` });
@@ -537,13 +538,13 @@ export default function NewProjectModal({ onClose, onCreated }) {
                 </div>
                 <div className="form-group" style={{ margin: 0 }}>
                   <label className="form-label" style={{ fontWeight: 600 }}>Chương trống</label>
-                  <input
-                    type="number"
-                    className="input"
+                  <NumberStepper
                     value={templateForm.initial_chapter_count}
                     min={1}
                     max={100}
-                    onChange={(event) => handleTemplateFormChange('initial_chapter_count', clampInitialChapterCount(event.target.value))}
+                    fallback={1}
+                    ariaLabel="Chương trống"
+                    onChange={(value) => handleTemplateFormChange('initial_chapter_count', value)}
                   />
                   <span className="form-hint" style={{ marginTop: '8px', fontSize: '13px' }}>Mặc định 1 chương mới.</span>
                 </div>
@@ -921,22 +922,24 @@ export default function NewProjectModal({ onClose, onCreated }) {
             </div>
             <div className="form-group" style={{ flex: 1 }}>
               <label className="form-label">Số chương mục tiêu</label>
-              <input
-                type="number"
-                className="input"
+              <NumberStepper
                 value={form.target_length}
-                onChange={(e) => handleChange('target_length', e.target.value)}
+                min={0}
+                max={10000}
+                fallback={0}
+                ariaLabel="Số chương mục tiêu"
+                onChange={(value) => handleChange('target_length', value)}
               />
             </div>
             <div className="form-group" style={{ flex: 1 }}>
               <label className="form-label">Số chương khởi đầu</label>
-              <input
-                type="number"
-                className="input"
+              <NumberStepper
                 value={form.initial_chapter_count}
                 min={1}
                 max={100}
-                onChange={(e) => handleChange('initial_chapter_count', clampInitialChapterCount(e.target.value))}
+                fallback={10}
+                ariaLabel="Số chương khởi đầu"
+                onChange={(value) => handleChange('initial_chapter_count', value)}
               />
               <span className="form-hint">Tạo sẵn chapter trống ban đầu, từ 1 đến 100.</span>
             </div>
