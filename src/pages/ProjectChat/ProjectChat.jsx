@@ -103,6 +103,14 @@ import {
   scrollChatToBottom,
   createRafTextBatcher,
 } from './chatScroll.js';
+import {
+  buildChatTurnContent,
+  buildCollapsedMessagePreview,
+  formatLongTextStats,
+  getLongTextStats,
+  isLongComposerPaste,
+  shouldCollapseUserMessage,
+} from './chatLongText.js';
 
 const GLOBAL_CHAT_PROJECT_ID = 0;
 const CHAT_THREAD_TITLE_FALLBACK = 'Cuộc trò chuyện mới';
@@ -586,7 +594,17 @@ function getRoutingConfigStamp() {
   });
 }
 
-function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetry, onPreviewImage }) {
+function MessageBubble({
+  message,
+  messageRef,
+  isExpanded = false,
+  onToggleExpanded,
+  onCopy,
+  onEdit,
+  onContinue,
+  onRetry,
+  onPreviewImage,
+}) {
   const roleClass =
     message.role === 'user'
       ? 'is-user'
@@ -595,6 +613,15 @@ function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetr
         : 'is-system';
   const imageAttachments = (message.attachments || []).filter(isChatImageAttachment);
   const fileAttachments = (message.attachments || []).filter((attachment) => !isChatImageAttachment(attachment));
+  const canCollapseContent =
+    message.role === 'user'
+    && !message.is_streaming
+    && shouldCollapseUserMessage(message.content);
+  const isCollapsed = canCollapseContent && !isExpanded;
+  const longTextStats = canCollapseContent ? getLongTextStats(message.content) : null;
+  const renderedContent = isCollapsed
+    ? buildCollapsedMessagePreview(message.content)
+    : (message.content || (message.is_streaming ? '...' : ''));
 
   return (
     <article
@@ -604,6 +631,7 @@ function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetr
         roleClass,
         message.is_partial ? 'is-partial' : '',
         message.is_streaming ? 'is-streaming' : '',
+        isCollapsed ? 'is-collapsed-long-text' : '',
       ]
         .filter(Boolean)
         .join(' ')}
@@ -647,6 +675,17 @@ function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetr
               <Pencil size={14} />
             </button>
           ) : null}
+          {canCollapseContent && isExpanded ? (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => onToggleExpanded?.(message.id, false)}
+              title="Thu gọn tin nhắn"
+            >
+              <ChevronUp size={14} />
+              Thu gọn
+            </button>
+          ) : null}
           {message.role === 'assistant' && message.is_partial ? (
             <button
               type="button"
@@ -672,13 +711,103 @@ function MessageBubble({ message, messageRef, onCopy, onEdit, onContinue, onRetr
         </div>
       </div>
       <div className={`project-chat-message__content ${message.is_streaming && !message.content ? 'is-waiting' : ''}`}>
-        {message.content || (message.is_streaming ? '...' : '')}
+        {renderedContent}
       </div>
+      {canCollapseContent ? (
+        <div className="project-chat-message__long-text-control">
+          <span>
+            {isCollapsed ? 'Đã thu gọn' : 'Đang mở rộng'} · {formatLongTextStats(longTextStats)}
+          </span>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => onToggleExpanded?.(message.id, isCollapsed)}
+          >
+            {isCollapsed ? (
+              <>
+                <ChevronDown size={14} />
+                Mở rộng
+              </>
+            ) : (
+              <>
+                <ChevronUp size={14} />
+                Thu gọn
+              </>
+            )}
+          </button>
+        </div>
+      ) : null}
       <ChatMessageImageGrid attachments={imageAttachments} onPreview={onPreviewImage} />
       {fileAttachments.length ? (
         <ChatAttachmentChips attachments={fileAttachments} compact />
       ) : null}
     </article>
+  );
+}
+
+function PendingPastedTextChips({
+  items = [],
+  expandedIds = new Set(),
+  onTogglePreview,
+  onRestore,
+  onRemove,
+  disabled = false,
+}) {
+  const normalizedItems = (items || []).filter(Boolean);
+  if (normalizedItems.length === 0) return null;
+
+  return (
+    <div className="project-chat-paste-list">
+      {normalizedItems.map((item) => {
+        const key = String(item.id);
+        const isExpanded = expandedIds.has(key);
+        return (
+          <div key={key} className="project-chat-paste-chip">
+            <div className="project-chat-paste-chip__icon">
+              <FileText size={16} />
+            </div>
+            <div className="project-chat-paste-chip__body">
+              <strong>Văn bản đã dán</strong>
+              <span>{formatLongTextStats(item)}</span>
+              {isExpanded ? (
+                <pre className="project-chat-paste-chip__preview">
+                  {buildCollapsedMessagePreview(item.text)}
+                </pre>
+              ) : null}
+            </div>
+            <div className="project-chat-paste-chip__actions">
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => onTogglePreview?.(item.id)}
+                disabled={disabled}
+              >
+                <FileText size={14} />
+                {isExpanded ? 'Ẩn' : 'Xem'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => onRestore?.(item)}
+                disabled={disabled}
+              >
+                <Pencil size={14} />
+                Hiện trong ô nhập
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm project-chat-paste-chip__delete"
+                onClick={() => onRemove?.(item.id)}
+                disabled={disabled}
+              >
+                <X size={14} />
+                Xóa
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -718,6 +847,9 @@ export default function ProjectChat() {
   const [liveRouteInfo, setLiveRouteInfo] = useState(null);
   const [routingConfigStamp, setRoutingConfigStamp] = useState(() => getRoutingConfigStamp());
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [pendingPastedTexts, setPendingPastedTexts] = useState([]);
+  const [expandedPastedTextIds, setExpandedPastedTextIds] = useState(() => new Set());
+  const [expandedMessageIds, setExpandedMessageIds] = useState(() => new Set());
   const [availableAttachments, setAvailableAttachments] = useState([]);
   const [showAttachmentDrawer, setShowAttachmentDrawer] = useState(false);
   const [previewImageAttachment, setPreviewImageAttachment] = useState(null);
@@ -774,7 +906,11 @@ export default function ProjectChat() {
   const directReadStoredAttachment =
     indexedStoredAttachments.length === 1 ? indexedStoredAttachments[0] : null;
   const isReadingAttachment = Boolean(readingAttachmentJob);
-  const hasSubmittableDraft = Boolean(draft.trim() || readyPendingAttachments.length > 0);
+  const hasSubmittableDraft = Boolean(
+    draft.trim()
+    || pendingPastedTexts.length > 0
+    || readyPendingAttachments.length > 0,
+  );
   const activeChatProvider = routePreview.provider;
   const activeProxyProfileId = activeChatProvider === PROVIDERS.OPENAI_PROXY
     ? (routePreview.proxyProfileId || normalizeThreadOverrideValue(activeThread?.proxy_profile_id) || getActiveOpenAIProxyProfile().id)
@@ -893,6 +1029,39 @@ export default function ProjectChat() {
   function handleScrollToLatest() {
     scrollChatToBottom(messagesScrollRef.current, { behavior: 'smooth' });
     setShowScrollToLatest(false);
+  }
+
+  function clearPendingPastedTexts() {
+    setPendingPastedTexts([]);
+    setExpandedPastedTextIds(new Set());
+  }
+
+  function handleToggleMessageExpanded(messageId, expanded) {
+    const key = String(messageId);
+    setExpandedMessageIds((current) => {
+      const next = new Set(current);
+      if (expanded) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+
+    if (expanded) {
+      const scrollToMessage = () => {
+        scrollChatMessageToTop(
+          messagesScrollRef.current,
+          messageRefs.current.get(key),
+          { behavior: 'smooth' },
+        );
+      };
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(scrollToMessage);
+      } else {
+        window.setTimeout(scrollToMessage, 0);
+      }
+    }
   }
 
   function buildStreamingAssistantMessage(tempAssistantId, threadId, route, content) {
@@ -1181,6 +1350,7 @@ export default function ProjectChat() {
       setActiveThreadId(id);
       setMessages([]);
       setDraft('');
+      clearPendingPastedTexts();
       resetComposerHeight();
       setShowSystemPromptDrawer(false);
       window.setTimeout(() => inputRef.current?.focus(), 0);
@@ -1305,6 +1475,7 @@ export default function ProjectChat() {
     setDraft('');
     setEditingMessageId(null);
     setErrorMessage('');
+    clearPendingPastedTexts();
     resetComposerHeight();
     await persistThreadUpdate(activeThread.id, {
       title: CHAT_THREAD_TITLE_FALLBACK,
@@ -1576,10 +1747,66 @@ export default function ProjectChat() {
     handleAttachmentFiles(files);
   }
 
+  function createPendingPastedText(text) {
+    const stats = getLongTextStats(text);
+    return {
+      id: `paste-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      text: String(text || ''),
+      charCount: stats.charCount,
+      lineCount: stats.lineCount,
+      estimatedTokens: stats.estimatedTokens,
+      createdAt: Date.now(),
+    };
+  }
+
+  function handleTogglePastedTextPreview(itemId) {
+    const key = String(itemId);
+    setExpandedPastedTextIds((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  function handleRemovePastedText(itemId) {
+    const key = String(itemId);
+    setPendingPastedTexts((current) => current.filter((item) => String(item.id) !== key));
+    setExpandedPastedTextIds((current) => {
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+  }
+
+  function handleRestorePastedTextToDraft(item) {
+    if (!item) return;
+    setDraft((current) => (
+      String(current || '').length > 0 ? `${current}\n\n${item.text}` : item.text
+    ));
+    handleRemovePastedText(item.id);
+    window.setTimeout(() => {
+      inputRef.current?.focus();
+      resizeComposer(composerTextareaRef.current);
+    }, 0);
+  }
+
   function handleComposerPaste(event) {
     const files = Array.from(event.clipboardData?.files || []);
-    if (files.length === 0) return;
-    handleAttachmentFiles(files);
+    if (files.length > 0) {
+      handleAttachmentFiles(files);
+      return;
+    }
+
+    const pastedText = event.clipboardData?.getData?.('text/plain') || '';
+    if (!isLongComposerPaste(pastedText)) return;
+
+    event.preventDefault();
+    setPendingPastedTexts((current) => [...current, createPendingPastedText(pastedText)]);
+    setSaveStatus('Đã chuyển văn bản dài thành khối gọn');
   }
 
   async function sendChatTurn({
@@ -1898,7 +2125,10 @@ export default function ProjectChat() {
       }
 
       const targetMessage = messages[targetIndex];
-      const trimmedDraft = draft.trim();
+      const trimmedDraft = buildChatTurnContent({
+        draft,
+        pastedTexts: pendingPastedTexts,
+      });
       const staleMessages = messages.slice(targetIndex + 1);
 
       if (staleMessages.length > 0) {
@@ -1910,11 +2140,14 @@ export default function ProjectChat() {
       const historyMessages = messages.slice(0, targetIndex);
       setMessages([...historyMessages, updatedUserMessage]);
 
-      await sendChatTurn({
+      const submitted = await sendChatTurn({
         userContent: trimmedDraft,
         historyMessages,
         existingUserMessage: updatedUserMessage,
       });
+      if (submitted) {
+        clearPendingPastedTexts();
+      }
       return;
     }
 
@@ -1924,9 +2157,17 @@ export default function ProjectChat() {
     const fallbackPrompt = hasReadyImages && !hasReadyDocuments
       ? DEFAULT_IMAGE_ATTACHMENT_PROMPT
       : DEFAULT_ATTACHMENT_PROMPT;
-    const submitted = await sendChatTurn({ userContent: draft.trim() || fallbackPrompt, attachmentIds });
+    const submitted = await sendChatTurn({
+      userContent: buildChatTurnContent({
+        draft,
+        pastedTexts: pendingPastedTexts,
+        fallback: fallbackPrompt,
+      }),
+      attachmentIds,
+    });
     if (submitted) {
       setPendingAttachments([]);
+      clearPendingPastedTexts();
       await refreshAvailableAttachments();
     }
   }
@@ -2035,6 +2276,7 @@ export default function ProjectChat() {
   function handleCancelEditing() {
     setEditingMessageId(null);
     setDraft('');
+    clearPendingPastedTexts();
     resetComposerHeight();
   }
 
@@ -2450,6 +2692,7 @@ export default function ProjectChat() {
                   <MessageBubble
                     key={message.id}
                     message={message}
+                    isExpanded={expandedMessageIds.has(String(message.id))}
                     messageRef={(node) => {
                       const key = String(message.id);
                       if (node) {
@@ -2458,6 +2701,7 @@ export default function ProjectChat() {
                         messageRefs.current.delete(key);
                       }
                     }}
+                    onToggleExpanded={handleToggleMessageExpanded}
                     onCopy={handleCopy}
                     onEdit={handleEditMessage}
                     onContinue={handleContinueFromMessage}
@@ -2576,6 +2820,14 @@ export default function ProjectChat() {
                 attachments={pendingImageAttachments}
                 onRemove={handleRemoveAttachment}
                 onPreview={handlePreviewImage}
+                disabled={isStreaming || isReadingAttachment}
+              />
+              <PendingPastedTextChips
+                items={pendingPastedTexts}
+                expandedIds={expandedPastedTextIds}
+                onTogglePreview={handleTogglePastedTextPreview}
+                onRestore={handleRestorePastedTextToDraft}
+                onRemove={handleRemovePastedText}
                 disabled={isStreaming || isReadingAttachment}
               />
               <textarea
