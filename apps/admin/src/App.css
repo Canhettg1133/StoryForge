@@ -1119,35 +1119,6 @@ textarea:disabled {
   font-weight: 800;
 }
 
-.admin-activity-tabs {
-  width: fit-content;
-  display: inline-flex;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface);
-}
-
-.admin-activity-tabs button {
-  min-height: 36px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 12px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ink-soft);
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.admin-activity-tabs button.is-active {
-  background: var(--surface-muted);
-  color: var(--ink);
-}
-
 .activity-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -1169,6 +1140,66 @@ textarea:disabled {
 .table-toolbar .search-box {
   width: min(420px, 100%);
   background: var(--surface);
+}
+
+.table-toolbar--split {
+  align-items: stretch;
+}
+
+.table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.usage-page-size {
+  min-height: 38px;
+  display: inline-grid;
+  grid-template-columns: auto 84px;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.usage-page-size select {
+  min-height: 36px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 0 9px;
+  font-size: 14px;
+}
+
+.usage-page-summary,
+.usage-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.usage-page-summary strong {
+  color: var(--ink);
+}
+
+.usage-pagination {
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  background: #fbfcfa;
+}
+
+.usage-pagination span {
+  color: var(--ink);
+  font-weight: 800;
 }
 
 .announcement-form textarea {
@@ -1402,18 +1433,26 @@ textarea:disabled {
     grid-template-columns: 1fr;
   }
 
-  .admin-activity-tabs {
-    width: 100%;
-  }
-
-  .admin-activity-tabs button {
-    flex: 1;
-    justify-content: center;
-  }
-
   .table-toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .table-actions,
+  .usage-page-summary,
+  .usage-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .table-actions .button,
+  .usage-pagination .button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .usage-page-size {
+    grid-template-columns: 1fr;
   }
 
   .panel--table {

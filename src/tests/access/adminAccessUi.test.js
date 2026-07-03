@@ -66,14 +66,12 @@ describe('admin split UI contract', () => {
     expect(css).toContain('.admin-user-filters');
   });
 
-  it('renders a readable audit and usage workspace for non-technical admins', () => {
+  it('renders a readable audit workspace for non-technical admins', () => {
     const app = read('apps/admin/src/App.jsx');
     const css = read('apps/admin/src/App.css');
 
     for (const label of [
-      'Nhật ký & hoạt động',
       'Nhật ký quản trị',
-      'Hoạt động người dùng',
       'Người thực hiện',
       'Người bị tác động',
       'Hành động',
@@ -88,19 +86,13 @@ describe('admin split UI contract', () => {
     }
 
     for (const sourceContract of [
-      'const [activityTab',
       'const [selectedAuditId',
       'audit-detail-drawer',
-      'admin-activity-tabs',
-      'taskLabel',
-      'providerLabel',
-      'statusLabel',
     ]) {
       expect(app).toContain(sourceContract);
     }
 
     for (const className of [
-      '.admin-activity-tabs',
       '.audit-detail-drawer',
       '.audit-table__primary',
       '.filter-chip',
@@ -108,6 +100,50 @@ describe('admin split UI contract', () => {
     ]) {
       expect(css).toContain(className);
     }
+  });
+
+  it('separates user activity into its own menu page with server pagination', () => {
+    const app = read('apps/admin/src/App.jsx');
+    const api = read('apps/admin/src/adminApi.js');
+    const css = read('apps/admin/src/App.css');
+
+    for (const label of [
+      'Hoạt động người dùng',
+      'Tất cả hoạt động người dùng',
+      'Tìm toàn bộ lịch sử',
+      'Provider',
+      'Dòng mỗi trang',
+      'Trang',
+      'Áp dụng lọc',
+      'Tải lại hoạt động',
+      'Không tải toàn bộ usage cùng lúc',
+    ]) {
+      expect(app).toContain(label);
+    }
+
+    for (const sourceContract of [
+      "id: 'audit', label: 'Nhật ký quản trị'",
+      "id: 'usage', label: 'Hoạt động người dùng'",
+      'function UsagePanel',
+      'usagePagination',
+      'usagePageCursors',
+      'loadUsagePage',
+      'setUsagePageSize',
+      'hasNextPage',
+      'hasPreviousPage',
+      'nextCursor',
+    ]) {
+      expect(app).toContain(sourceContract);
+    }
+
+    expect(api).toContain('cursor =');
+    expect(api).toContain('knownTotal =');
+    expect(api).toContain("query.set('q', q)");
+    expect(api).toContain("request(`/usage?${query.toString()}`)");
+    expect(app).not.toContain('const [activityTab');
+    expect(app).not.toContain('admin-activity-tabs');
+    expect(css).toContain('.usage-pagination');
+    expect(css).toContain('.usage-page-summary');
   });
 
   it('does not expose new plan or feature names in the admin UI source', () => {

@@ -66,7 +66,26 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
     users: () => request('/users'),
     catalog: () => request('/catalog'),
     audit: () => request('/audit'),
-    usage: () => request('/usage'),
+    usage: ({
+      page = 1,
+      pageSize = 100,
+      q = '',
+      provider = '',
+      status = '',
+      cursor = '',
+      knownTotal = '',
+    } = {}) => {
+      const query = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (q) query.set('q', q);
+      if (provider && provider !== 'all') query.set('provider', provider);
+      if (status && status !== 'all') query.set('status', status);
+      if (cursor) query.set('cursor', cursor);
+      if (knownTotal !== '' && knownTotal !== null && knownTotal !== undefined) query.set('knownTotal', String(knownTotal));
+      return request(`/usage?${query.toString()}`);
+    },
     features: () => request('/features'),
     consent: () => request('/consent'),
     announcement: () => request('/announcement'),

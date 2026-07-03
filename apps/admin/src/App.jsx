@@ -5,6 +5,7 @@ import {
   Bell,
   BookOpen,
   Check,
+  ChevronLeft,
   ChevronRight,
   ClipboardList,
   Database,
@@ -63,7 +64,8 @@ const NAV_GROUPS = [
   {
     label: 'Giám sát',
     items: [
-      { id: 'audit', label: 'Nhật ký & hoạt động', icon: FileClock },
+      { id: 'audit', label: 'Nhật ký quản trị', icon: FileClock },
+      { id: 'usage', label: 'Hoạt động người dùng', icon: Activity },
       { id: 'advanced', label: 'Nâng cao', icon: Database },
     ],
   },
@@ -79,6 +81,19 @@ const EMPTY_DATA = {
   consent: [],
   announcement: null,
 };
+
+const DEFAULT_USAGE_PAGE_SIZE = 100;
+
+const EMPTY_USAGE_PAGINATION = {
+  page: 1,
+  pageSize: DEFAULT_USAGE_PAGE_SIZE,
+  total: 0,
+  totalPages: 0,
+  hasNextPage: false,
+  hasPreviousPage: false,
+};
+
+const EMPTY_USAGE_PAGE_CURSORS = { 1: '' };
 
 const DEFAULT_PLAN_FORM = {
   planKey: 'vip',
@@ -1402,10 +1417,8 @@ function ConsentPanel({ data }) {
 }
 
 function AuditPanel({ data }) {
-  const [activityTab, setActivityTab] = useState('audit');
   const [selectedAuditId, setSelectedAuditId] = useState('');
   const [auditQuery, setAuditQuery] = useState('');
-  const [usageQuery, setUsageQuery] = useState('');
 
   const auditItems = useMemo(() => {
     const needle = auditQuery.trim().toLowerCase();
@@ -1420,203 +1433,311 @@ function AuditPanel({ data }) {
     ].some((value) => String(value || '').toLowerCase().includes(needle)));
   }, [auditQuery, data, data.audit]);
 
-  const usageItems = useMemo(() => {
-    const needle = usageQuery.trim().toLowerCase();
-    if (!needle) return data.usage;
-    return data.usage.filter((item) => [
-      getUsageUserLabel(item),
-      getUsageTaskLabel(item),
-      getUsageProviderLabel(item),
-      getUsageStatusLabel(item),
-      item.model,
-      item.feature_key,
-    ].some((value) => String(value || '').toLowerCase().includes(needle)));
-  }, [data.usage, usageQuery]);
-
   const selectedAudit = auditItems.find((item) => getAuditKey(item) === selectedAuditId) || auditItems[0] || null;
 
   useEffect(() => {
-    if (activityTab !== 'audit') return;
     if (selectedAudit && selectedAuditId !== getAuditKey(selectedAudit)) {
       setSelectedAuditId(getAuditKey(selectedAudit));
     }
-  }, [activityTab, selectedAudit, selectedAuditId]);
+  }, [selectedAudit, selectedAuditId]);
 
   return (
     <section className="content-grid">
       <div className="section-header">
         <div>
-          <h1>Nhật ký & hoạt động</h1>
-          <p>Theo dõi thao tác quản trị nhạy cảm và hoạt động AI của người dùng bằng ngôn ngữ dễ hiểu.</p>
+          <h1>Nhật ký quản trị</h1>
+          <p>Theo dõi thao tác quản trị nhạy cảm: cấp gói, đổi vai trò, sửa feature, đồng bộ Auth và thay đổi hệ thống.</p>
         </div>
-        <Badge tone="info">{data.audit.length + data.usage.length} bản ghi</Badge>
+        <Badge tone="info">{data.audit.length} nhật ký</Badge>
       </div>
 
-      <div className="admin-activity-tabs" role="tablist" aria-label="Nhật ký và hoạt động">
-        <button
-          type="button"
-          className={activityTab === 'audit' ? 'is-active' : ''}
-          onClick={() => setActivityTab('audit')}
-        >
-          <FileClock size={16} />
-          Nhật ký quản trị
-        </button>
-        <button
-          type="button"
-          className={activityTab === 'usage' ? 'is-active' : ''}
-          onClick={() => setActivityTab('usage')}
-        >
-          <Activity size={16} />
-          Hoạt động người dùng
-        </button>
-      </div>
-
-      {activityTab === 'audit' ? (
-        <div className="activity-layout">
-          <section className="panel panel--table">
-            <div className="table-toolbar">
-              <div className="search-box">
-                <Search size={16} />
-                <input value={auditQuery} onChange={(event) => setAuditQuery(event.target.value)} placeholder="Tìm người, hành động, chi tiết" />
-              </div>
-              <Badge tone="neutral">{auditItems.length} nhật ký</Badge>
-            </div>
-            {auditItems.length === 0 ? (
-              <EmptyState title="Chưa có audit log" text="Các thao tác cập nhật role, gói và feature sẽ được ghi lại." />
-            ) : (
-              <table className="data-table audit-table">
-                <thead>
-                  <tr>
-                    <th>Thời gian</th>
-                    <th>Người thực hiện</th>
-                    <th>Hành động</th>
-                    <th>Người bị tác động</th>
-                    <th>Chi tiết</th>
-                    <th>Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {auditItems.map((item) => {
-                    const key = getAuditKey(item);
-                    return (
-                      <tr
-                        key={key}
-                        className={selectedAudit && getAuditKey(selectedAudit) === key ? 'is-selected' : ''}
-                        onClick={() => setSelectedAuditId(key)}
-                      >
-                        <td>{formatDate(item.created_at)}</td>
-                        <td className="audit-table__primary">
-                          <strong>{getAuditActorLabel(item)}</strong>
-                          <span>{getIdentityMeta(item.actor) || 'Admin'}</span>
-                        </td>
-                        <td><strong>{getAuditSummary(item)}</strong></td>
-                        <td>{getAuditTargetLabel(data, item)}</td>
-                        <td>{getAuditDetails(item)}</td>
-                        <td><Badge tone="success">{getAuditStatusLabel(item)}</Badge></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </section>
-
-          <aside className="audit-detail-drawer">
-            {selectedAudit ? (
-              <>
-                <header>
-                  <FileClock size={20} />
-                  <div>
-                    <h2>{getAuditSummary(selectedAudit)}</h2>
-                    <span>{formatDate(selectedAudit.created_at)}</span>
-                  </div>
-                </header>
-                <section className="detail-section">
-                  <h3>Người thực hiện</h3>
-                  <strong>{getAuditActorLabel(selectedAudit)}</strong>
-                  <span>{getIdentityMeta(selectedAudit.actor) || 'Không có metadata vai trò'}</span>
-                </section>
-                <section className="detail-section">
-                  <h3>Người bị tác động</h3>
-                  <strong>{getAuditTargetLabel(data, selectedAudit)}</strong>
-                  <span>{getIdentityMeta(selectedAudit.target) || selectedAudit.resource_label || 'Hệ thống'}</span>
-                </section>
-                <section className="detail-section">
-                  <h3>Chi tiết</h3>
-                  <p>{getAuditDetails(selectedAudit)}</p>
-                </section>
-                <details className="detail-section">
-                  <summary>Kỹ thuật</summary>
-                  <div className="key-value-list key-value-list--wide">
-                    <span>Actor ID</span>
-                    <strong>{selectedAudit.actor_user_id || 'Không có'}</strong>
-                    <span>Target ID</span>
-                    <strong>{selectedAudit.target_user_id || selectedAudit.target_feature_key || 'Không có'}</strong>
-                    <span>Action</span>
-                    <strong>{selectedAudit.action || 'Không có'}</strong>
-                    <span>IP</span>
-                    <strong>{selectedAudit.security?.ip || selectedAudit.ip_address || 'Không có'}</strong>
-                    <span>User-agent</span>
-                    <strong>{selectedAudit.security?.userAgent || selectedAudit.user_agent || 'Không có'}</strong>
-                  </div>
-                  <details className="technical-json">
-                    <summary>Raw JSON</summary>
-                    <pre>{toPrettyJson({
-                      before: selectedAudit.change?.before ?? selectedAudit.before_json,
-                      after: selectedAudit.change?.after ?? selectedAudit.after_json,
-                    })}</pre>
-                  </details>
-                </details>
-              </>
-            ) : (
-              <EmptyState title="Chưa chọn nhật ký" text="Chọn một dòng để xem chi tiết kỹ thuật." />
-            )}
-          </aside>
-        </div>
-      ) : (
+      <div className="activity-layout">
         <section className="panel panel--table">
           <div className="table-toolbar">
             <div className="search-box">
               <Search size={16} />
-              <input value={usageQuery} onChange={(event) => setUsageQuery(event.target.value)} placeholder="Tìm user, tác vụ, model" />
+              <input value={auditQuery} onChange={(event) => setAuditQuery(event.target.value)} placeholder="Tìm người, hành động, chi tiết" />
             </div>
-            <Badge tone="neutral">{usageItems.length} hoạt động</Badge>
+            <Badge tone="neutral">{auditItems.length} nhật ký</Badge>
           </div>
-          {usageItems.length === 0 ? (
-            <EmptyState title="Chưa có hoạt động người dùng" text="Bảng `usage_events` chưa có dữ liệu để hiển thị." />
+          {auditItems.length === 0 ? (
+            <EmptyState title="Chưa có audit log" text="Các thao tác cập nhật role, gói và feature sẽ được ghi lại." />
           ) : (
-            <table className="data-table">
+            <table className="data-table audit-table">
               <thead>
                 <tr>
                   <th>Thời gian</th>
-                  <th>Người dùng</th>
-                  <th>Tác vụ</th>
-                  <th>Provider</th>
-                  <th>Model</th>
-                  <th>Số lượt</th>
+                  <th>Người thực hiện</th>
+                  <th>Hành động</th>
+                  <th>Người bị tác động</th>
+                  <th>Chi tiết</th>
                   <th>Trạng thái</th>
                 </tr>
               </thead>
               <tbody>
-                {usageItems.map((item) => (
-                  <tr key={item.id || `${item.user_id}-${item.created_at}`}>
-                    <td>{formatDate(item.created_at)}</td>
-                    <td className="audit-table__primary">
-                      <strong>{getUsageUserLabel(item)}</strong>
-                      <span>{getIdentityMeta(item.user) || 'Người dùng'}</span>
-                    </td>
-                    <td>{getUsageTaskLabel(item)}</td>
-                    <td>{getUsageProviderLabel(item)}</td>
-                    <td>{item.model || 'Không rõ'}</td>
-                    <td>{item.count || 0}</td>
-                    <td><Badge tone={String(item.status || '').toLowerCase() === 'error' ? 'danger' : 'success'}>{getUsageStatusLabel(item)}</Badge></td>
-                  </tr>
-                ))}
+                {auditItems.map((item) => {
+                  const key = getAuditKey(item);
+                  return (
+                    <tr
+                      key={key}
+                      className={selectedAudit && getAuditKey(selectedAudit) === key ? 'is-selected' : ''}
+                      onClick={() => setSelectedAuditId(key)}
+                    >
+                      <td>{formatDate(item.created_at)}</td>
+                      <td className="audit-table__primary">
+                        <strong>{getAuditActorLabel(item)}</strong>
+                        <span>{getIdentityMeta(item.actor) || 'Admin'}</span>
+                      </td>
+                      <td><strong>{getAuditSummary(item)}</strong></td>
+                      <td>{getAuditTargetLabel(data, item)}</td>
+                      <td>{getAuditDetails(item)}</td>
+                      <td><Badge tone="success">{getAuditStatusLabel(item)}</Badge></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
         </section>
-      )}
+
+        <aside className="audit-detail-drawer">
+          {selectedAudit ? (
+            <>
+              <header>
+                <FileClock size={20} />
+                <div>
+                  <h2>{getAuditSummary(selectedAudit)}</h2>
+                  <span>{formatDate(selectedAudit.created_at)}</span>
+                </div>
+              </header>
+              <section className="detail-section">
+                <h3>Người thực hiện</h3>
+                <strong>{getAuditActorLabel(selectedAudit)}</strong>
+                <span>{getIdentityMeta(selectedAudit.actor) || 'Không có metadata vai trò'}</span>
+              </section>
+              <section className="detail-section">
+                <h3>Người bị tác động</h3>
+                <strong>{getAuditTargetLabel(data, selectedAudit)}</strong>
+                <span>{getIdentityMeta(selectedAudit.target) || selectedAudit.resource_label || 'Hệ thống'}</span>
+              </section>
+              <section className="detail-section">
+                <h3>Chi tiết</h3>
+                <p>{getAuditDetails(selectedAudit)}</p>
+              </section>
+              <details className="detail-section">
+                <summary>Kỹ thuật</summary>
+                <div className="key-value-list key-value-list--wide">
+                  <span>Actor ID</span>
+                  <strong>{selectedAudit.actor_user_id || 'Không có'}</strong>
+                  <span>Target ID</span>
+                  <strong>{selectedAudit.target_user_id || selectedAudit.target_feature_key || 'Không có'}</strong>
+                  <span>Action</span>
+                  <strong>{selectedAudit.action || 'Không có'}</strong>
+                  <span>IP</span>
+                  <strong>{selectedAudit.security?.ip || selectedAudit.ip_address || 'Không có'}</strong>
+                  <span>User-agent</span>
+                  <strong>{selectedAudit.security?.userAgent || selectedAudit.user_agent || 'Không có'}</strong>
+                </div>
+                <details className="technical-json">
+                  <summary>Raw JSON</summary>
+                  <pre>{toPrettyJson({
+                    before: selectedAudit.change?.before ?? selectedAudit.before_json,
+                    after: selectedAudit.change?.after ?? selectedAudit.after_json,
+                  })}</pre>
+                </details>
+              </details>
+            </>
+          ) : (
+            <EmptyState title="Chưa chọn nhật ký" text="Chọn một dòng để xem chi tiết kỹ thuật." />
+          )}
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function UsagePanel({
+  data,
+  pagination,
+  loading,
+  error,
+  onLoadPage,
+  setUsagePageSize,
+}) {
+  const [usageQuery, setUsageQuery] = useState('');
+  const [providerFilter, setProviderFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const page = pagination?.page || 1;
+  const pageSize = pagination?.pageSize || DEFAULT_USAGE_PAGE_SIZE;
+  const total = pagination?.total || 0;
+  const totalPages = pagination?.totalPages || 0;
+  const displayTotalPages = Math.max(1, totalPages);
+  const formatter = useMemo(() => new Intl.NumberFormat('vi-VN'), []);
+  const hasUsageSearch = Boolean(usageQuery.trim());
+  const hasActiveUsageFilters = hasUsageSearch || providerFilter !== 'all' || statusFilter !== 'all';
+  const usageItems = data.usage;
+  const currentFilters = {
+    q: usageQuery.trim(),
+    provider: providerFilter,
+    status: statusFilter,
+  };
+
+  const startRow = total === 0 ? 0 : ((page - 1) * pageSize) + 1;
+  const endRow = total === 0 ? 0 : Math.min(total, ((page - 1) * pageSize) + data.usage.length);
+
+  const applyUsageFilters = () => {
+    onLoadPage({
+      page: 1,
+      pageSize,
+      ...currentFilters,
+      resetCursor: true,
+    });
+  };
+
+  return (
+    <section className="content-grid">
+      <div className="section-header">
+        <div>
+          <h1>Hoạt động người dùng</h1>
+          <p>Tất cả hoạt động người dùng được đọc từ usage_events theo phân trang server. Không tải toàn bộ usage cùng lúc để admin vẫn nhanh khi dữ liệu lớn.</p>
+        </div>
+        <Badge tone="info">{formatter.format(total)} hoạt động</Badge>
+      </div>
+
+      <section className="panel panel--table">
+        <div className="table-toolbar table-toolbar--split">
+          <div className="search-box">
+            <Search size={16} />
+            <input
+              value={usageQuery}
+              onChange={(event) => setUsageQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') applyUsageFilters();
+              }}
+              placeholder="Tìm toàn bộ lịch sử: email, user id, tác vụ, model"
+            />
+          </div>
+          <div className="table-actions">
+            <label className="usage-page-size">
+              <span>Provider</span>
+              <select value={providerFilter} disabled={loading} onChange={(event) => setProviderFilter(event.target.value)}>
+                <option value="all">Tất cả provider</option>
+                <option value="custom_proxy">Proxy tùy chỉnh</option>
+                <option value="ag_proxy">Gemini Proxy AG</option>
+                <option value="gemini_direct">Gemini Direct</option>
+                <option value="openai_proxy">OpenAI Proxy</option>
+              </select>
+            </label>
+            <label className="usage-page-size">
+              <span>Trạng thái</span>
+              <select value={statusFilter} disabled={loading} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="all">Tất cả trạng thái</option>
+                <option value="ok">Thành công</option>
+                <option value="error">Lỗi</option>
+                <option value="blocked">Bị chặn</option>
+              </select>
+            </label>
+            <label className="usage-page-size">
+              <span>Dòng mỗi trang</span>
+              <select
+                value={pageSize}
+                disabled={loading}
+                onChange={(event) => setUsagePageSize(Number(event.target.value), currentFilters)}
+              >
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={200}>200</option>
+              </select>
+            </label>
+            <button type="button" className="button button--primary" disabled={loading} onClick={applyUsageFilters}>
+              <Search size={15} />
+              Áp dụng lọc
+            </button>
+            <button type="button" className="button button--ghost" disabled={loading} onClick={() => onLoadPage({ page, pageSize, ...currentFilters })}>
+              <RefreshCw size={15} />
+              Tải lại hoạt động
+            </button>
+          </div>
+        </div>
+
+        {error ? <ErrorState message={error} onRetry={() => onLoadPage({ page, pageSize })} /> : null}
+
+        <div className="usage-page-summary">
+          <span>
+            {hasActiveUsageFilters
+              ? `Kết quả phù hợp: ${formatter.format(total)} hoạt động`
+              : `Hiển thị ${formatter.format(startRow)}-${formatter.format(endRow)} trong ${formatter.format(total)} hoạt động`}
+          </span>
+          <strong>Trang {formatter.format(page)} / {formatter.format(displayTotalPages)}</strong>
+        </div>
+
+        {usageItems.length === 0 ? (
+          <EmptyState title="Chưa có hoạt động người dùng" text="Bảng `usage_events` chưa có dữ liệu ở trang hiện tại." />
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Thời gian</th>
+                <th>Người dùng</th>
+                <th>Tác vụ</th>
+                <th>Provider</th>
+                <th>Model</th>
+                <th>Số lượt</th>
+                <th>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              {usageItems.map((item) => (
+                <tr key={item.id || `${item.user_id}-${item.created_at}`}>
+                  <td>{formatDate(item.created_at)}</td>
+                  <td className="audit-table__primary">
+                    <strong>{getUsageUserLabel(item)}</strong>
+                    <span>{getIdentityMeta(item.user) || 'Người dùng'}</span>
+                  </td>
+                  <td>{getUsageTaskLabel(item)}</td>
+                  <td>{getUsageProviderLabel(item)}</td>
+                  <td>{item.model || 'Không rõ'}</td>
+                  <td>{item.count || 0}</td>
+                  <td><Badge tone={String(item.status || '').toLowerCase() === 'error' ? 'danger' : 'success'}>{getUsageStatusLabel(item)}</Badge></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div className="usage-pagination" aria-label="Phân trang hoạt động người dùng">
+          <button
+            type="button"
+            className="button button--ghost"
+            disabled={loading || !pagination?.hasPreviousPage}
+            onClick={() => onLoadPage({
+              page: page - 1,
+              pageSize,
+              knownTotal: total,
+              ...currentFilters,
+            })}
+          >
+            <ChevronLeft size={16} />
+            Trang trước
+          </button>
+          <span>Trang {formatter.format(page)} / {formatter.format(displayTotalPages)}</span>
+          <button
+            type="button"
+            className="button button--ghost"
+            disabled={loading || !pagination?.hasNextPage}
+            onClick={() => onLoadPage({
+              page: page + 1,
+              pageSize,
+              cursor: pagination?.nextCursor || '',
+              knownTotal: total,
+              ...currentFilters,
+            })}
+          >
+            Trang sau
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </section>
     </section>
   );
 }
@@ -1692,6 +1813,10 @@ export default function App() {
   const [authError, setAuthError] = useState('');
   const [actor, setActor] = useState(null);
   const [data, setData] = useState(EMPTY_DATA);
+  const [usagePagination, setUsagePagination] = useState(EMPTY_USAGE_PAGINATION);
+  const [usagePageCursors, setUsagePageCursors] = useState(EMPTY_USAGE_PAGE_CURSORS);
+  const [usageLoading, setUsageLoading] = useState(false);
+  const [usageError, setUsageError] = useState('');
   const [activeView, setActiveView] = useState('overview');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1714,7 +1839,7 @@ export default function App() {
         adminApi.users(),
         adminApi.catalog(),
         adminApi.audit(),
-        adminApi.usage(),
+        adminApi.usage({ page: 1, pageSize: DEFAULT_USAGE_PAGE_SIZE }),
         adminApi.features(),
         adminApi.consent(),
         adminApi.announcement(),
@@ -1731,6 +1856,9 @@ export default function App() {
         consent: consent.items || catalog.consentVersions || [],
         announcement: announcement.announcement || null,
       });
+      setUsagePagination(usage.pagination || EMPTY_USAGE_PAGINATION);
+      setUsagePageCursors(EMPTY_USAGE_PAGE_CURSORS);
+      setUsageError('');
     } catch (error) {
       setLoadError(error.message || 'Không tải được dữ liệu admin.');
       setActor(null);
@@ -1738,6 +1866,58 @@ export default function App() {
       setLoading(false);
     }
   }, [adminApi]);
+
+  const loadUsagePage = useCallback(async ({
+    page = 1,
+    pageSize = DEFAULT_USAGE_PAGE_SIZE,
+    q = '',
+    provider = 'all',
+    status = 'all',
+    cursor,
+    knownTotal = usagePagination.total,
+    resetCursor = false,
+  } = {}) => {
+    setUsageLoading(true);
+    setUsageError('');
+    const nextCursor = page <= 1 || resetCursor
+      ? ''
+      : (cursor ?? usagePageCursors[page] ?? '');
+    try {
+      const usage = await adminApi.usage({
+        page,
+        pageSize,
+        q,
+        provider,
+        status,
+        cursor: nextCursor,
+        knownTotal,
+      });
+      setData((current) => ({
+        ...current,
+        usage: usage.items || [],
+      }));
+      const pagination = usage.pagination || {
+        ...EMPTY_USAGE_PAGINATION,
+        page,
+        pageSize,
+      };
+      setUsagePagination(pagination);
+      setUsagePageCursors((current) => {
+        const base = resetCursor || page <= 1 ? { ...EMPTY_USAGE_PAGE_CURSORS } : { ...current };
+        base[page] = nextCursor;
+        if (pagination.nextCursor) base[page + 1] = pagination.nextCursor;
+        return base;
+      });
+    } catch (error) {
+      setUsageError(error.message || 'Không tải được hoạt động người dùng.');
+    } finally {
+      setUsageLoading(false);
+    }
+  }, [adminApi, usagePageCursors, usagePagination.total]);
+
+  const setUsagePageSize = useCallback((pageSize, filters = {}) => {
+    loadUsagePage({ page: 1, pageSize, ...filters, resetCursor: true });
+  }, [loadUsagePage]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return undefined;
@@ -1788,6 +1968,9 @@ export default function App() {
     await getSupabaseClient().auth.signOut();
     setActor(null);
     setData(EMPTY_DATA);
+    setUsagePagination(EMPTY_USAGE_PAGINATION);
+    setUsagePageCursors(EMPTY_USAGE_PAGE_CURSORS);
+    setUsageError('');
   };
 
   const openMutationConfirm = (config) => {
@@ -1822,6 +2005,18 @@ export default function App() {
     if (activeView === 'features') return <FeaturesPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'consent') return <ConsentPanel data={data} />;
     if (activeView === 'audit') return <AuditPanel data={data} />;
+    if (activeView === 'usage') {
+      return (
+        <UsagePanel
+          data={data}
+          pagination={usagePagination}
+          loading={usageLoading}
+          error={usageError}
+          onLoadPage={loadUsagePage}
+          setUsagePageSize={setUsagePageSize}
+        />
+      );
+    }
     return <AdvancedPanel data={data} onMutation={openMutationConfirm} apiBaseUrl={adminApi.baseUrl} actor={actor} />;
   })();
 

@@ -37,6 +37,9 @@ const AUDIT_TABLE = 'admin_audit_logs';
 const USAGE_TABLE = 'usage_events';
 const ACCESS_VERSIONS_TABLE = 'access_versions';
 const SITE_SETTINGS_TABLE = 'site_settings';
+const DEFAULT_USAGE_PAGE_SIZE = 100;
+const MAX_USAGE_PAGE_SIZE = 200;
+const MAX_USAGE_OFFSET_WITHOUT_CURSOR = 10000;
 
 const ROUTE_PERMISSIONS = {
   users: ADMIN_PERMISSIONS.USERS_READ,
@@ -149,6 +152,21 @@ async function supabaseRest(config, table, {
   body,
   prefer = 'return=representation',
 } = {}) {
+  const { payload } = await supabaseRestResult(config, table, {
+    method,
+    query,
+    body,
+    prefer,
+  });
+  return payload;
+}
+
+async function supabaseRestResult(config, table, {
+  method = 'GET',
+  query = 'select=*',
+  body,
+  prefer = 'return=representation',
+} = {}) {
   const response = await fetch(restUrl(config, table, query), {
     method,
     headers: supabaseHeaders(config, {
@@ -161,7 +179,7 @@ async function supabaseRest(config, table, {
   if (!response.ok) {
     throw makeError(response.status || 500, 'ADMIN_SUPABASE_REST_FAILED', payload?.message || payload?.error || 'Supabase REST trả về lỗi.');
   }
-  return payload;
+  return { payload, headers: response.headers };
 }
 
 async function authAdminFetch(config, path, init = {}) {
@@ -197,6 +215,76 @@ function queryWithSelect(defaultQuery, url) {
     query.set(key, value);
   }
   return query.toString();
+}
+
+function toBoundedInteger(value, fallback, { min = 1, max = 200 } = {}) {
+  if (value === undefined || value === null || String(value).trim() === '') return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function getPaginationFromUrl(url, { defaultPageSize = DEFAULT_USAGE_PAGE_SIZE, maxPageSize = MAX_USAGE_PAGE_SIZE } = {}) {
+  const pageSize = toBoundedInteger(url.searchParams.get('pageSize'), defaultPageSize, {
+    min: 1,
+    max: maxPageSize,
+  });
+  const page = toBoundedInteger(url.searchParams.get('page'), 1, {
+    min: 1,
+    max: 1000000,
+  });
+  return {
+    page,
+    pageSize,
+    offset: (page - 1) * pageSize,
+  };
+}
+
+function normalizeUsageSearch(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[*,(){}]/gu, ' ')
+    .replace(/\s+/gu, '*')
+    .slice(0, 80);
+}
+
+function normalizeUsageFilter(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized || normalized === 'all') return '';
+  return normalized.replace(/[^a-z0-9_.-]/gu, '').slice(0, 80);
+}
+
+function looksLikeUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(String(value || '').trim());
+}
+
+function encodeUsageCursor(row) {
+  if (!row?.created_at || !row?.id) return '';
+  const payload = JSON.stringify({ createdAt: row.created_at, id: row.id });
+  return btoa(payload).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '');
+}
+
+function decodeUsageCursor(value) {
+  if (!value) return null;
+  try {
+    const padded = String(value).replace(/-/gu, '+').replace(/_/gu, '/').padEnd(Math.ceil(String(value).length / 4) * 4, '=');
+    const payload = JSON.parse(atob(padded));
+    if (!payload?.createdAt || !payload?.id) return null;
+    return {
+      createdAt: String(payload.createdAt),
+      id: String(payload.id),
+    };
+  } catch {
+    throw makeError(400, 'ADMIN_USAGE_CURSOR_INVALID', 'Cursor hoạt động người dùng không hợp lệ.');
+  }
+}
+
+function parseContentRangeTotal(headers, fallback) {
+  const contentRange = headers?.get?.('content-range') || headers?.get?.('Content-Range') || '';
+  const match = String(contentRange).match(/\/(\d+|\*)$/u);
+  if (!match || match[1] === '*') return fallback;
+  const total = Number.parseInt(match[1], 10);
+  return Number.isFinite(total) ? total : fallback;
 }
 
 function cleanPath(url) {
@@ -584,6 +672,29 @@ async function getProfilesMapForRows(config, rows, fields) {
   }
 }
 
+async function getUsageSearchProfileIds(config, rawSearch) {
+  const search = normalizeUsageSearch(rawSearch);
+  if (!search) return [];
+  const filters = [
+    `email.ilike.*${search}*`,
+    `display_name.ilike.*${search}*`,
+  ];
+  if (looksLikeUuid(rawSearch)) {
+    filters.push(`user_id.eq.${String(rawSearch).trim()}`);
+  }
+  try {
+    const rows = await supabaseRest(config, PROFILES_TABLE, {
+      query: `select=user_id&or=(${filters.join(',')})&limit=100`,
+      prefer: '',
+    });
+    return [...new Set((Array.isArray(rows) ? rows : [])
+      .map((row) => String(row.user_id || '').trim())
+      .filter(Boolean))];
+  } catch {
+    return looksLikeUuid(rawSearch) ? [String(rawSearch).trim()] : [];
+  }
+}
+
 function identityFromSnapshotOrProfile(snapshotValue, profileMap, fallbackId) {
   const snapshot = profileToSnapshot(snapshotValue, fallbackId);
   if (snapshot.email || snapshot.displayName || snapshot.role || snapshot.status) return snapshot;
@@ -705,16 +816,106 @@ function enrichUsageEvent(row, profileMap) {
   };
 }
 
+function appendUsageLogicalFilters(query, groups) {
+  const activeGroups = groups.filter((group) => Array.isArray(group) && group.length > 0);
+  if (activeGroups.length === 0) return;
+  if (activeGroups.length === 1) {
+    query.set('or', `(${activeGroups[0].join(',')})`);
+    return;
+  }
+  query.set('and', `(${activeGroups.map((group) => `or(${group.join(',')})`).join(',')})`);
+}
+
+async function buildUsageQuery(config, url, pagination) {
+  const query = new URLSearchParams({
+    select: '*',
+    order: 'created_at.desc,id.desc',
+  });
+  const rawCursor = String(url.searchParams.get('cursor') || '').trim();
+  const cursor = decodeUsageCursor(rawCursor);
+  const provider = normalizeUsageFilter(url.searchParams.get('provider'));
+  const status = normalizeUsageFilter(url.searchParams.get('status'));
+  const search = normalizeUsageSearch(url.searchParams.get('q'));
+  const logicalGroups = [];
+
+  if (provider) query.set('provider', `eq.${provider}`);
+  if (status) query.set('status', `eq.${status}`);
+
+  if (search) {
+    const profileIds = await getUsageSearchProfileIds(config, url.searchParams.get('q'));
+    const searchGroup = [
+      `request_id.ilike.*${search}*`,
+      `feature_key.ilike.*${search}*`,
+      `provider.ilike.*${search}*`,
+      `model.ilike.*${search}*`,
+      `event_type.ilike.*${search}*`,
+      `status.ilike.*${search}*`,
+      `metadata->>action.ilike.*${search}*`,
+      `metadata->>workflowFeature.ilike.*${search}*`,
+      `metadata->>providerFeature.ilike.*${search}*`,
+    ];
+    if (profileIds.length > 0) {
+      searchGroup.push(`user_id.in.(${profileIds.join(',')})`);
+    } else if (looksLikeUuid(url.searchParams.get('q'))) {
+      searchGroup.push(`user_id.eq.${String(url.searchParams.get('q')).trim()}`);
+    }
+    logicalGroups.push(searchGroup);
+  }
+
+  if (cursor) {
+    logicalGroups.push([
+      `created_at.lt.${cursor.createdAt}`,
+      `and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`,
+    ]);
+  } else if (pagination.offset > 0) {
+    if (pagination.offset > MAX_USAGE_OFFSET_WITHOUT_CURSOR) {
+      throw makeError(
+        400,
+        'ADMIN_USAGE_DEEP_PAGE_REQUIRES_CURSOR',
+        'Trang quá sâu. Hãy đi tiếp bằng nút Trang sau hoặc lọc/tìm kiếm để tránh truy vấn offset lớn.',
+      );
+    }
+    query.set('offset', String(pagination.offset));
+  }
+
+  appendUsageLogicalFilters(query, logicalGroups);
+  query.set('limit', String(pagination.pageSize + 1));
+  return {
+    query,
+    cursorMode: Boolean(cursor),
+  };
+}
+
 async function listUsageEvents(config, actor, url) {
   requirePermission(actor, ROUTE_PERMISSIONS.usage);
-  const rows = await supabaseRest(config, USAGE_TABLE, {
-    query: queryWithSelect('select=*&order=created_at.desc&limit=200', url),
-    prefer: '',
+  const pagination = getPaginationFromUrl(url);
+  const { query, cursorMode } = await buildUsageQuery(config, url, pagination);
+  const knownTotal = toBoundedInteger(url.searchParams.get('knownTotal'), 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
+  const { payload: rows, headers } = await supabaseRestResult(config, USAGE_TABLE, {
+    query: query.toString(),
+    prefer: cursorMode && knownTotal > 0 ? '' : 'count=exact',
   });
-  const items = Array.isArray(rows) ? rows : [];
+  const fetchedItems = Array.isArray(rows) ? rows : [];
+  const items = fetchedItems.slice(0, pagination.pageSize);
   const profileMap = await getProfilesMapForRows(config, items, ['user_id']);
+  const total = cursorMode && knownTotal > 0
+    ? knownTotal
+    : parseContentRangeTotal(headers, pagination.offset + items.length);
+  const totalPages = total > 0 ? Math.ceil(total / pagination.pageSize) : 0;
+  const hasExtraRow = fetchedItems.length > items.length;
+  const nextCursor = hasExtraRow && items.length > 0 ? encodeUsageCursor(items[items.length - 1]) : '';
   return {
     items: items.map((row) => enrichUsageEvent(row, profileMap)),
+    pagination: {
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      total,
+      totalPages,
+      mode: cursorMode ? 'cursor' : 'offset',
+      nextCursor,
+      hasNextPage: hasExtraRow || (totalPages > 0 && pagination.page < totalPages),
+      hasPreviousPage: pagination.page > 1,
+    },
   };
 }
 

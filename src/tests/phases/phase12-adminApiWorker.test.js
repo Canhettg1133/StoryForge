@@ -35,6 +35,14 @@ function authedRequest(path, init = {}) {
   });
 }
 
+function encodeUsageCursor(payload) {
+  return Buffer.from(JSON.stringify(payload), 'utf8')
+    .toString('base64')
+    .replace(/\+/gu, '-')
+    .replace(/\//gu, '_')
+    .replace(/=+$/u, '');
+}
+
 function mockAuthAndActor({ role = 'admin', status = 'active', id = 'admin-1' } = {}, extraHandler = async () => {
   throw new Error('Unexpected fetch');
 }) {
@@ -275,6 +283,222 @@ describe('phase12 admin API worker', () => {
       },
     });
     expect(JSON.stringify(payload)).not.toContain('service-role-key');
+  });
+
+  it('paginates usage events and returns total count metadata', async () => {
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target, init = {}) => {
+      if (target.includes('/rest/v1/usage_events')) {
+        expect(target).toContain('limit=51');
+        expect(target).toContain('offset=100');
+        expect(target).toContain('order=created_at.desc%2Cid.desc');
+        expect(init.headers?.Prefer).toBe('count=exact');
+        return new Response(JSON.stringify([
+          {
+            id: 'usage-page-3',
+            request_id: 'request-page-3',
+            user_id: 'user-2',
+            feature_key: 'translator.access',
+            provider: 'custom_proxy',
+            model: 'gemini-2.5-pro',
+            event_type: 'chat',
+            count: 1,
+            status: 'ok',
+            metadata: { action: 'chat' },
+            created_at: '2026-07-03T12:30:00.000Z',
+          },
+        ]), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Range': '100-149/33463',
+          },
+        });
+      }
+      if (target.includes('/rest/v1/profiles') && target.includes('user_id=in.')) {
+        return jsonResponse([
+          {
+            user_id: 'user-2',
+            email: 'reader@example.com',
+            display_name: 'Reader',
+            system_role: 'user',
+            status: 'active',
+          },
+        ]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/usage?page=3&pageSize=50'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items).toHaveLength(1);
+    expect(payload.pagination).toMatchObject({
+      page: 3,
+      pageSize: 50,
+      total: 33463,
+      totalPages: 670,
+      hasPreviousPage: true,
+      mode: 'offset',
+    });
+    expect(payload.pagination.hasNextPage).toBe(true);
+  });
+
+  it('uses cursor pagination for deeper usage pages without offset', async () => {
+    const cursor = encodeUsageCursor({
+      createdAt: '2026-07-03T12:30:00.000Z',
+      id: 'usage-cursor',
+    });
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target, init = {}) => {
+      if (target.includes('/rest/v1/usage_events')) {
+        const query = new URL(target).searchParams;
+        expect(query.get('limit')).toBe('3');
+        expect(query.get('offset')).toBeNull();
+        expect(query.get('order')).toBe('created_at.desc,id.desc');
+        expect(query.get('or')).toContain('created_at.lt.2026-07-03T12:30:00.000Z');
+        expect(init.headers?.Prefer).toBeUndefined();
+        return new Response(JSON.stringify([
+          {
+            id: 'usage-older-1',
+            request_id: 'request-older-1',
+            user_id: 'user-2',
+            feature_key: 'translator.access',
+            provider: 'custom_proxy',
+            model: 'gemini-2.5-pro',
+            event_type: 'chat',
+            count: 1,
+            status: 'ok',
+            metadata: { action: 'chat' },
+            created_at: '2026-07-03T12:20:00.000Z',
+          },
+          {
+            id: 'usage-older-2',
+            request_id: 'request-older-2',
+            user_id: 'user-2',
+            feature_key: 'translator.access',
+            provider: 'custom_proxy',
+            model: 'gemini-2.5-pro',
+            event_type: 'chat',
+            count: 1,
+            status: 'ok',
+            metadata: { action: 'chat' },
+            created_at: '2026-07-03T12:19:00.000Z',
+          },
+          {
+            id: 'usage-extra',
+            request_id: 'request-extra',
+            user_id: 'user-2',
+            feature_key: 'translator.access',
+            provider: 'custom_proxy',
+            model: 'gemini-2.5-pro',
+            event_type: 'chat',
+            count: 1,
+            status: 'ok',
+            metadata: { action: 'chat' },
+            created_at: '2026-07-03T12:18:00.000Z',
+          },
+        ]), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Content-Range': '0-2/33000',
+          },
+        });
+      }
+      if (target.includes('/rest/v1/profiles') && target.includes('user_id=in.')) {
+        return jsonResponse([{
+          user_id: 'user-2',
+          email: 'reader@example.com',
+          display_name: 'Reader',
+          system_role: 'user',
+          status: 'active',
+        }]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest(`/usage?page=6&pageSize=2&knownTotal=33463&cursor=${cursor}`), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items.map((item) => item.id)).toEqual(['usage-older-1', 'usage-older-2']);
+    expect(payload.pagination).toMatchObject({
+      page: 6,
+      pageSize: 2,
+      total: 33463,
+      mode: 'cursor',
+      hasNextPage: true,
+      hasPreviousPage: true,
+    });
+    expect(payload.pagination.nextCursor).toEqual(expect.any(String));
+  });
+
+  it('rejects generic deep usage page jumps that do not use a cursor', async () => {
+    const { fetchMock } = mockAuthAndActor({ role: 'support', id: 'support-1' });
+
+    const response = await adminWorker.fetch(authedRequest('/usage?page=200&pageSize=100'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.code).toBe('ADMIN_USAGE_DEEP_PAGE_REQUIRES_CURSOR');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('filters usage events on the server before paginating', async () => {
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/profiles') && target.includes('or=')) {
+        const query = new URL(target).searchParams;
+        expect(query.get('or')).toContain('email.ilike.*reader@example.com*');
+        return jsonResponse([{
+          user_id: 'user-2',
+          email: 'reader@example.com',
+          display_name: 'Reader',
+          system_role: 'user',
+          status: 'active',
+        }]);
+      }
+      if (target.includes('/rest/v1/usage_events')) {
+        const query = new URL(target).searchParams;
+        expect(query.get('provider')).toBe('eq.custom_proxy');
+        expect(query.get('status')).toBe('eq.ok');
+        expect(query.get('or')).toContain('user_id.in.(user-2)');
+        expect(query.get('or')).toContain('model.ilike.*reader@example.com*');
+        return jsonResponse([
+          {
+            id: 'usage-filtered',
+            request_id: 'request-filtered',
+            user_id: 'user-2',
+            feature_key: 'translator.access',
+            provider: 'custom_proxy',
+            model: 'gemini-2.5-pro',
+            event_type: 'chat',
+            count: 1,
+            status: 'ok',
+            metadata: { action: 'chat' },
+            created_at: '2026-07-03T12:30:00.000Z',
+          },
+        ], 200);
+      }
+      if (target.includes('/rest/v1/profiles') && target.includes('user_id=in.')) {
+        return jsonResponse([{
+          user_id: 'user-2',
+          email: 'reader@example.com',
+          display_name: 'Reader',
+          system_role: 'user',
+          status: 'active',
+        }]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/usage?page=1&pageSize=50&q=reader@example.com&provider=custom_proxy&status=ok'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items[0]).toMatchObject({
+      id: 'usage-filtered',
+      email: 'reader@example.com',
+    });
   });
 
   it('preserves existing privileged roles when syncing Supabase Auth users', async () => {
