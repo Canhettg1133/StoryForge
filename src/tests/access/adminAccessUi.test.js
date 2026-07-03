@@ -52,6 +52,64 @@ describe('admin split UI contract', () => {
     expect(css).toContain('.vip-page-preview');
   });
 
+  it('keeps dedicated user-list filters for role, plan, and status', () => {
+    const app = read('apps/admin/src/App.jsx');
+    const css = read('apps/admin/src/App.css');
+
+    expect(app).toContain('const [roleFilter');
+    expect(app).toContain('const [planFilter');
+    expect(app).toContain('const [statusFilter');
+    expect(app).toContain('admin-user-filters');
+    expect(app).toContain('Lọc vai trò');
+    expect(app).toContain('Lọc gói');
+    expect(app).toContain('Lọc trạng thái');
+    expect(css).toContain('.admin-user-filters');
+  });
+
+  it('renders a readable audit and usage workspace for non-technical admins', () => {
+    const app = read('apps/admin/src/App.jsx');
+    const css = read('apps/admin/src/App.css');
+
+    for (const label of [
+      'Nhật ký & hoạt động',
+      'Nhật ký quản trị',
+      'Hoạt động người dùng',
+      'Người thực hiện',
+      'Người bị tác động',
+      'Hành động',
+      'Chi tiết',
+      'Trạng thái',
+      'Kỹ thuật',
+      'Raw JSON',
+      'IP',
+      'User-agent',
+    ]) {
+      expect(app).toContain(label);
+    }
+
+    for (const sourceContract of [
+      'const [activityTab',
+      'const [selectedAuditId',
+      'audit-detail-drawer',
+      'admin-activity-tabs',
+      'taskLabel',
+      'providerLabel',
+      'statusLabel',
+    ]) {
+      expect(app).toContain(sourceContract);
+    }
+
+    for (const className of [
+      '.admin-activity-tabs',
+      '.audit-detail-drawer',
+      '.audit-table__primary',
+      '.filter-chip',
+      '.technical-json',
+    ]) {
+      expect(css).toContain(className);
+    }
+  });
+
   it('does not expose new plan or feature names in the admin UI source', () => {
     const combined = [
       read('apps/admin/src/App.jsx'),

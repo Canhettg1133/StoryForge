@@ -147,6 +147,11 @@ create table if not exists public.admin_audit_logs (
   target_feature_key text references public.features(key) on delete set null,
   before_json jsonb not null default '{}'::jsonb,
   after_json jsonb not null default '{}'::jsonb,
+  actor_snapshot jsonb not null default '{}'::jsonb,
+  target_snapshot jsonb not null default '{}'::jsonb,
+  action_summary text not null default '',
+  change_summary text not null default '',
+  resource_label text not null default '',
   ip_address text not null default '',
   user_agent text not null default '',
   created_at timestamptz not null default now()

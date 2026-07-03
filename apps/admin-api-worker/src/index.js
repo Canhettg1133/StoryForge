@@ -1,8 +1,12 @@
 import {
   ACCESS_FEATURES,
   ADMIN_PERMISSIONS,
+  FEATURE_LABELS_VI,
+  PLAN_LABELS_VI,
   PLAN_STATUSES,
+  ROLE_LABELS_VI,
   SYSTEM_ROLES,
+  STATUS_LABELS_VI,
   USER_STATUSES,
   accessDenied,
   canUpdateUserRole,
@@ -13,6 +17,7 @@ import {
   normalizeSiteAnnouncement,
   normalizeStatus,
   normalizeVipPageContent,
+  roleRank,
   resolveAccessSubject,
   resolveUserAccess,
   hasSiteAnnouncementContentChanged,
@@ -178,6 +183,10 @@ function filterEq(column, value) {
   return `${column}=eq.${encodeURIComponent(String(value))}`;
 }
 
+function filterIn(column, values) {
+  return `${column}=in.(${values.map((value) => encodeURIComponent(String(value))).join(',')})`;
+}
+
 function filterIsNull(column) {
   return `${column}=is.null`;
 }
@@ -225,6 +234,176 @@ function resolvePlanStatus(body = {}) {
   return isFuture(body.startsAt || body.starts_at) ? PLAN_STATUSES.SCHEDULED : PLAN_STATUSES.ACTIVE;
 }
 
+function asObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function getRoleLabel(role) {
+  return ROLE_LABELS_VI[normalizeRole(role)] || ROLE_LABELS_VI[SYSTEM_ROLES.USER];
+}
+
+function getStatusLabel(status) {
+  return STATUS_LABELS_VI[normalizeStatus(status)] || String(status || USER_STATUSES.ACTIVE);
+}
+
+function getPlanLabel(planKey) {
+  const key = normalizePlan(planKey);
+  return PLAN_LABELS_VI[key] || key;
+}
+
+function getPlanKeyFromChange(value) {
+  const source = asObject(value);
+  return source.planKey || source.plan_key || source.plan || source.plans?.key || '';
+}
+
+function getPlanLabelFromChange(value) {
+  const source = asObject(value);
+  const key = getPlanKeyFromChange(source);
+  if (key) return getPlanLabel(key);
+  return String(source.planName || source.plan_name || source.plans?.name || '').trim();
+}
+
+function getFeatureLabel(featureKey) {
+  const key = normalizeFeatureKey(featureKey);
+  return FEATURE_LABELS_VI[key] || key || 'Hệ thống';
+}
+
+function formatAuditDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }).format(date);
+}
+
+function normalizeIdentitySnapshot(value = {}, fallbackId = '') {
+  const source = asObject(value);
+  const id = String(source.id || source.user_id || fallbackId || '').trim();
+  const email = String(source.email || '').trim();
+  const displayName = String(source.displayName || source.display_name || source.name || '').trim();
+  const role = source.role || source.system_role ? normalizeRole(source.role || source.system_role) : '';
+  const status = source.status ? normalizeStatus(source.status) : '';
+
+  return {
+    id,
+    email,
+    displayName,
+    role,
+    status,
+    label: email || displayName || id || 'Hệ thống',
+    roleLabel: role ? getRoleLabel(role) : '',
+    statusLabel: status ? getStatusLabel(status) : '',
+  };
+}
+
+function profileToSnapshot(profile, fallbackId = '') {
+  const snapshot = normalizeIdentitySnapshot(profile || {}, fallbackId);
+  if (!snapshot.id && !snapshot.email && !snapshot.displayName) return {};
+  return snapshot;
+}
+
+function actorToSnapshot(actor) {
+  return profileToSnapshot({
+    ...(actor?.profile || {}),
+    id: actor?.id || actor?.profile?.user_id,
+    email: actor?.email || actor?.profile?.email,
+    role: actor?.role || actor?.profile?.system_role,
+    status: actor?.profile?.status || USER_STATUSES.ACTIVE,
+  }, actor?.id);
+}
+
+async function getProfileForSnapshot(config, userId) {
+  if (!userId) return null;
+  try {
+    return await getProfile(config, userId);
+  } catch {
+    return null;
+  }
+}
+
+function getAuditActionSummary(action, before = {}, after = {}, targetFeatureKey = '') {
+  const afterObject = asObject(after);
+  const beforeObject = asObject(before);
+  switch (action) {
+    case 'users.plan.set':
+      return `Cấp gói${getPlanLabelFromChange(afterObject) ? ` ${getPlanLabelFromChange(afterObject)}` : ''}`;
+    case 'users.plan.cancel_current':
+      return 'Hủy gói hiện tại';
+    case 'users.plan.cancel_scheduled':
+      return 'Hủy gói đã đặt lịch';
+    case 'users.status.update':
+      if (normalizeStatus(afterObject.status) === USER_STATUSES.BANNED) return 'Khóa tài khoản';
+      if (normalizeStatus(afterObject.status) === USER_STATUSES.ACTIVE) return 'Mở tài khoản';
+      return 'Đổi trạng thái tài khoản';
+    case 'users.role.update':
+      return 'Đổi vai trò';
+    case 'users.feature_override.set':
+      return afterObject.enabled === false ? `Chặn riêng ${getFeatureLabel(targetFeatureKey)}` : `Cấp riêng ${getFeatureLabel(targetFeatureKey)}`;
+    case 'users.feature_override.revoke':
+      return `Gỡ quyền riêng ${getFeatureLabel(targetFeatureKey)}`;
+    case 'site_announcement.update':
+      return 'Cập nhật thông báo hệ thống';
+    case 'plans.update':
+      return 'Cập nhật gói';
+    case 'features.create':
+      return 'Tạo tính năng';
+    case 'features.update':
+      return `Cập nhật tính năng ${getFeatureLabel(targetFeatureKey)}`;
+    case 'plan_features.upsert':
+      return `Cập nhật tính năng trong gói`;
+    case 'consent.create':
+      return 'Tạo điều khoản 18+';
+    case 'users.sync_auth':
+      return 'Đồng bộ Supabase Auth';
+    default:
+      return String(action || beforeObject.action || 'Thao tác quản trị');
+  }
+}
+
+function getAuditChangeSummary(action, before = {}, after = {}, targetFeatureKey = '') {
+  const beforeObject = asObject(before);
+  const afterObject = asObject(after);
+  switch (action) {
+    case 'users.role.update':
+      return `Vai trò: ${getRoleLabel(beforeObject.system_role || beforeObject.role)} → ${getRoleLabel(afterObject.system_role || afterObject.role)}`;
+    case 'users.status.update':
+      return `Trạng thái: ${getStatusLabel(beforeObject.status)} → ${getStatusLabel(afterObject.status)}`;
+    case 'users.plan.set': {
+      const expiresAt = afterObject.expires_at || afterObject.expiresAt;
+      return `Gói: ${getPlanLabelFromChange(afterObject) || 'chưa rõ'}. Hết hạn: ${expiresAt ? formatAuditDate(expiresAt) : 'không giới hạn'}`;
+    }
+    case 'users.plan.cancel_current':
+    case 'users.plan.cancel_scheduled':
+      return `Số dòng bị ảnh hưởng: ${Number(afterObject.count || 0)}`;
+    case 'users.feature_override.set':
+      return `${afterObject.enabled === false ? 'Chặn' : 'Cấp'} ${getFeatureLabel(targetFeatureKey)}${afterObject.reason ? `, lý do: ${afterObject.reason}` : ''}`;
+    case 'users.feature_override.revoke':
+      return `Gỡ quyền riêng ${getFeatureLabel(targetFeatureKey)}`;
+    case 'plan_features.upsert':
+      return `${afterObject.enabled === false ? 'Tắt' : 'Bật'} ${getFeatureLabel(targetFeatureKey)} trong gói ${getPlanLabel(afterObject.planKey || afterObject.plan_key)}`;
+    case 'site_announcement.update':
+      return `Phiên bản: ${beforeObject.revision || 1} → ${afterObject.revision || 1}`;
+    case 'users.sync_auth':
+      return `Đồng bộ ${Number(afterObject.count || 0)} người dùng`;
+    default:
+      if (targetFeatureKey) return `Tính năng: ${getFeatureLabel(targetFeatureKey)}`;
+      return '';
+  }
+}
+
+function getResourceLabel({ targetSnapshot = {}, targetFeatureKey = '', action = '' } = {}) {
+  const target = normalizeIdentitySnapshot(targetSnapshot);
+  if (target.label && target.label !== 'Hệ thống') return target.label;
+  if (targetFeatureKey) return getFeatureLabel(targetFeatureKey);
+  if (String(action || '').startsWith('site_announcement')) return 'Thông báo hệ thống';
+  if (String(action || '').startsWith('plans')) return 'Danh mục gói';
+  if (String(action || '').startsWith('consent')) return 'Điều khoản 18+';
+  return 'Hệ thống';
+}
+
 function buildActorFromProfile(authUser, profile) {
   return resolveAccessSubject({
     id: authUser.id,
@@ -239,6 +418,47 @@ async function getProfile(config, userId) {
     prefer: '',
   });
   return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function getProfilesByUserIds(config, userIds) {
+  const ids = [...new Set(userIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  const profiles = [];
+  for (let index = 0; index < ids.length; index += 100) {
+    const chunk = ids.slice(index, index + 100);
+    const rows = await supabaseRest(config, PROFILES_TABLE, {
+      query: `select=user_id,email,display_name,system_role,status,metadata&${filterIn('user_id', chunk)}`,
+      prefer: '',
+    });
+    if (Array.isArray(rows)) profiles.push(...rows);
+  }
+  return new Map(profiles.map((profile) => [String(profile.user_id), profile]));
+}
+
+function strongestRole(...roles) {
+  return roles
+    .map(normalizeRole)
+    .sort((left, right) => roleRank(right) - roleRank(left))[0] || SYSTEM_ROLES.USER;
+}
+
+function resolveSyncedUserStatus(authUser, existingProfile) {
+  const authStatus = authUser.banned_until ? USER_STATUSES.BANNED : USER_STATUSES.ACTIVE;
+  const existingStatus = existingProfile ? normalizeStatus(existingProfile.status) : '';
+  if ([USER_STATUSES.BANNED, USER_STATUSES.DELETED].includes(existingStatus)) {
+    return existingStatus;
+  }
+  return authStatus;
+}
+
+function mergeAuthMetadata(existingProfile, authUser) {
+  const current = existingProfile?.metadata && typeof existingProfile.metadata === 'object'
+    ? existingProfile.metadata
+    : {};
+  return {
+    ...current,
+    auth_created_at: authUser.created_at || null,
+    auth_updated_at: authUser.updated_at || null,
+    last_sign_in_at: authUser.last_sign_in_at || null,
+  };
 }
 
 async function insertProfileFromAuth(config, authUser) {
@@ -319,6 +539,13 @@ async function auditMutation(config, request, actor, action, {
   before = {},
   after = {},
 } = {}) {
+  const targetProfile = targetUserId ? await getProfileForSnapshot(config, targetUserId) : null;
+  const actorSnapshot = actorToSnapshot(actor);
+  const targetSnapshot = targetUserId ? profileToSnapshot(targetProfile, targetUserId) : {};
+  const actionSummary = getAuditActionSummary(action, before, after, targetFeatureKey);
+  const changeSummary = getAuditChangeSummary(action, before, after, targetFeatureKey);
+  const resourceLabel = getResourceLabel({ targetSnapshot, targetFeatureKey, action });
+
   const rows = await supabaseRest(config, AUDIT_TABLE, {
     method: 'POST',
     body: {
@@ -328,11 +555,167 @@ async function auditMutation(config, request, actor, action, {
       target_feature_key: targetFeatureKey,
       before_json: before || {},
       after_json: after || {},
+      actor_snapshot: actorSnapshot,
+      target_snapshot: targetSnapshot,
+      action_summary: actionSummary,
+      change_summary: changeSummary,
+      resource_label: resourceLabel,
       ip_address: getClientIp(request),
       user_agent: request.headers.get('User-Agent') || '',
     },
   });
   return Array.isArray(rows) ? rows[0] : rows;
+}
+
+function getProfileIdsFromRows(rows, fields) {
+  return [...new Set(rows
+    .flatMap((row) => fields.map((field) => row?.[field]))
+    .map((id) => String(id || '').trim())
+    .filter(Boolean))];
+}
+
+async function getProfilesMapForRows(config, rows, fields) {
+  const ids = getProfileIdsFromRows(rows, fields);
+  if (ids.length === 0) return new Map();
+  try {
+    return await getProfilesByUserIds(config, ids);
+  } catch {
+    return new Map();
+  }
+}
+
+function identityFromSnapshotOrProfile(snapshotValue, profileMap, fallbackId) {
+  const snapshot = profileToSnapshot(snapshotValue, fallbackId);
+  if (snapshot.email || snapshot.displayName || snapshot.role || snapshot.status) return snapshot;
+  const profile = profileMap.get(String(fallbackId || ''));
+  return profileToSnapshot(profile, fallbackId);
+}
+
+function enrichAuditLog(row, profileMap) {
+  const before = row.before_json || {};
+  const after = row.after_json || {};
+  const actor = identityFromSnapshotOrProfile(row.actor_snapshot, profileMap, row.actor_user_id);
+  const target = row.target_user_id
+    ? identityFromSnapshotOrProfile(row.target_snapshot, profileMap, row.target_user_id)
+    : {
+      id: row.target_feature_key || '',
+      email: '',
+      displayName: '',
+      role: '',
+      status: '',
+      label: row.target_feature_key ? getFeatureLabel(row.target_feature_key) : 'Hệ thống',
+      roleLabel: '',
+      statusLabel: '',
+    };
+  const summary = row.action_summary || getAuditActionSummary(row.action, before, after, row.target_feature_key);
+  const details = row.change_summary || getAuditChangeSummary(row.action, before, after, row.target_feature_key);
+  const resourceLabel = row.resource_label || getResourceLabel({
+    targetSnapshot: target,
+    targetFeatureKey: row.target_feature_key,
+    action: row.action,
+  });
+
+  return {
+    ...row,
+    actor,
+    target,
+    actor_email: row.actor_email || actor.email || '',
+    target_email: row.target_email || target.email || '',
+    summary,
+    details,
+    resource_label: resourceLabel,
+    change: { before, after },
+    security: {
+      ip: row.ip_address || '',
+      userAgent: row.user_agent || '',
+    },
+  };
+}
+
+async function listAuditLogs(config, actor, url) {
+  requirePermission(actor, ROUTE_PERMISSIONS.audit);
+  const rows = await supabaseRest(config, AUDIT_TABLE, {
+    query: queryWithSelect('select=*&order=created_at.desc&limit=200', url),
+    prefer: '',
+  });
+  const items = Array.isArray(rows) ? rows : [];
+  const profileMap = await getProfilesMapForRows(config, items, ['actor_user_id', 'target_user_id']);
+  return {
+    items: items.map((row) => enrichAuditLog(row, profileMap)),
+  };
+}
+
+function getProviderLabel(provider) {
+  const value = String(provider || '').trim().toLowerCase();
+  const labels = {
+    ag_proxy: 'Gemini Proxy AG',
+    ai_studio_relay: 'AI Studio Relay',
+    custom_proxy: 'Proxy tùy chỉnh',
+    gemini_direct: 'Gemini Direct',
+    openai: 'OpenAI',
+  };
+  if (labels[value]) return labels[value];
+  if (!value) return 'Không rõ provider';
+  return value
+    .split(/[_\s-]+/u)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function getUsageStatusLabel(status) {
+  const value = String(status || '').trim().toLowerCase();
+  if (value === 'ok' || value === 'success') return 'Thành công';
+  if (value === 'error' || value === 'failed') return 'Lỗi';
+  if (value === 'blocked' || value === 'denied') return 'Bị chặn';
+  return value || 'Không rõ';
+}
+
+function getUsageTaskLabel(row) {
+  const metadata = asObject(row.metadata);
+  const featureKey = row.feature_key || metadata.workflowFeature || metadata.providerFeature;
+  if (featureKey) return getFeatureLabel(featureKey);
+  const action = String(metadata.action || '').trim();
+  if (action === 'models') return 'Xem danh sách model';
+  if (action === 'chat_stream_batch') return 'Chat AI theo batch';
+  if (action === 'chat') return 'Chat AI';
+  return 'Tác vụ AI';
+}
+
+function enrichUsageEvent(row, profileMap) {
+  const user = row.user_id
+    ? identityFromSnapshotOrProfile(null, profileMap, row.user_id)
+    : {
+      id: '',
+      email: '',
+      displayName: '',
+      role: '',
+      status: '',
+      label: 'Ẩn danh',
+      roleLabel: '',
+      statusLabel: '',
+    };
+  return {
+    ...row,
+    user,
+    email: row.email || user.email || '',
+    taskLabel: getUsageTaskLabel(row),
+    providerLabel: getProviderLabel(row.provider),
+    statusLabel: getUsageStatusLabel(row.status),
+  };
+}
+
+async function listUsageEvents(config, actor, url) {
+  requirePermission(actor, ROUTE_PERMISSIONS.usage);
+  const rows = await supabaseRest(config, USAGE_TABLE, {
+    query: queryWithSelect('select=*&order=created_at.desc&limit=200', url),
+    prefer: '',
+  });
+  const items = Array.isArray(rows) ? rows : [];
+  const profileMap = await getProfilesMapForRows(config, items, ['user_id']);
+  return {
+    items: items.map((row) => enrichUsageEvent(row, profileMap)),
+  };
 }
 
 async function listTable(config, actor, resource, table, url, defaultQuery) {
@@ -484,7 +867,7 @@ async function mutateUserPlan(config, request, actor, userId, body) {
     const saved = Array.isArray(rows) ? rows[0] : rows;
     await auditMutation(config, request, actor, 'users.plan.set', {
       targetUserId: userId,
-      after: saved || item,
+      after: { ...(saved || item), planKey: plan.key, planName: plan.name },
     });
     return { ok: true, item: saved };
   }
@@ -779,7 +1162,7 @@ async function mutatePlanFeature(config, request, actor, featureKeyInput, body) 
   const saved = Array.isArray(rows) ? rows[0] : rows;
   await auditMutation(config, request, actor, 'plan_features.upsert', {
     targetFeatureKey: featureKey,
-    after: saved || item,
+    after: { ...(saved || item), planKey: plan.key },
   });
   return { ok: true, item: saved };
 }
@@ -811,19 +1194,17 @@ async function syncAuth(config, request, actor) {
   requirePermission(actor, ADMIN_PERMISSIONS.ADMIN_SYNC_AUTH);
   const payload = await authAdminFetch(config, '/admin/users?page=1&per_page=1000', { method: 'GET' });
   const users = Array.isArray(payload?.users) ? payload.users : [];
+  const existingProfiles = await getProfilesByUserIds(config, users.map((user) => user.id));
   const rows = users.map((user) => {
     const subject = resolveAccessSubject(user);
+    const existingProfile = existingProfiles.get(String(user.id));
     return {
       user_id: user.id,
       email: user.email || '',
       display_name: user.user_metadata?.name || user.user_metadata?.full_name || user.email || '',
-      system_role: subject.role,
-      status: user.banned_until ? USER_STATUSES.BANNED : USER_STATUSES.ACTIVE,
-      metadata: {
-        auth_created_at: user.created_at || null,
-        auth_updated_at: user.updated_at || null,
-        last_sign_in_at: user.last_sign_in_at || null,
-      },
+      system_role: strongestRole(existingProfile?.system_role, subject.role),
+      status: resolveSyncedUserStatus(user, existingProfile),
+      metadata: mergeAuthMetadata(existingProfile, user),
     };
   });
 
@@ -914,11 +1295,11 @@ async function routeRequest(request, config, actor) {
   }
 
   if (resource === 'audit' && request.method === 'GET') {
-    return listTable(config, actor, resource, AUDIT_TABLE, url, 'select=*&order=created_at.desc&limit=200');
+    return listAuditLogs(config, actor, url);
   }
 
   if (resource === 'usage' && request.method === 'GET') {
-    return listTable(config, actor, resource, USAGE_TABLE, url, 'select=*&order=created_at.desc&limit=200');
+    return listUsageEvents(config, actor, url);
   }
 
   throw makeError(404, 'ADMIN_ROUTE_NOT_FOUND', 'Không tìm thấy route Admin API.');

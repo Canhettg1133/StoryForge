@@ -90,6 +90,12 @@ describe('phase12 admin API worker', () => {
     expect(payload.code).toBe('ADMIN_CORS_WILDCARD_BLOCKED');
   });
 
+  it('keeps the deployed admin frontend origin in the checked-in worker config', () => {
+    const wranglerConfig = readFileSync(resolve(process.cwd(), 'apps/admin-api-worker/wrangler.toml'), 'utf8');
+
+    expect(wranglerConfig).toContain('https://storyforge-admin.canhettg113.workers.dev');
+  });
+
   it('rejects non-admin users before listing admin data', async () => {
     const { fetchMock } = mockAuthAndActor({ role: 'user' });
 
@@ -114,6 +120,224 @@ describe('phase12 admin API worker', () => {
 
     expect(response.status).toBe(200);
     expect(payload.items).toEqual([]);
+  });
+
+  it('enriches audit logs with readable actor, target, summary, and security details', async () => {
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/admin_audit_logs')) {
+        return jsonResponse([
+          {
+            id: 'audit-new',
+            actor_user_id: 'admin-1',
+            action: 'users.plan.set',
+            target_user_id: 'user-2',
+            actor_snapshot: {
+              id: 'admin-1',
+              email: 'snapshot-admin@example.com',
+              displayName: 'Admin Snapshot',
+              role: 'admin',
+              status: 'active',
+            },
+            target_snapshot: {
+              id: 'user-2',
+              email: 'snapshot-user@example.com',
+              displayName: 'User Snapshot',
+              role: 'user',
+              status: 'active',
+            },
+            action_summary: 'Cấp gói VIP',
+            change_summary: 'Cấp gói VIP đến 01/07/2026',
+            resource_label: 'snapshot-user@example.com',
+            before_json: {},
+            after_json: { planKey: 'vip' },
+            ip_address: '203.0.113.10',
+            user_agent: 'Admin Browser',
+            created_at: '2026-06-30T12:00:00.000Z',
+          },
+          {
+            id: 'audit-old',
+            actor_user_id: 'support-2',
+            action: 'users.role.update',
+            target_user_id: 'user-3',
+            before_json: { system_role: 'user' },
+            after_json: { system_role: 'admin' },
+            ip_address: '',
+            user_agent: '',
+            created_at: '2026-06-29T12:00:00.000Z',
+          },
+        ]);
+      }
+      if (target.includes('/rest/v1/profiles') && target.includes('user_id=in.')) {
+        return jsonResponse([
+          {
+            user_id: 'support-2',
+            email: 'support@example.com',
+            display_name: 'Support One',
+            system_role: 'support',
+            status: 'active',
+          },
+          {
+            user_id: 'user-3',
+            email: 'target@example.com',
+            display_name: 'Target User',
+            system_role: 'user',
+            status: 'active',
+          },
+        ]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/audit'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items[0]).toMatchObject({
+      actor_user_id: 'admin-1',
+      actor_email: 'snapshot-admin@example.com',
+      target_email: 'snapshot-user@example.com',
+      summary: 'Cấp gói VIP',
+      details: 'Cấp gói VIP đến 01/07/2026',
+      resource_label: 'snapshot-user@example.com',
+      actor: {
+        email: 'snapshot-admin@example.com',
+        displayName: 'Admin Snapshot',
+        role: 'admin',
+      },
+      target: {
+        email: 'snapshot-user@example.com',
+        displayName: 'User Snapshot',
+        role: 'user',
+      },
+      security: {
+        ip: '203.0.113.10',
+        userAgent: 'Admin Browser',
+      },
+    });
+    expect(payload.items[1]).toMatchObject({
+      actor_email: 'support@example.com',
+      target_email: 'target@example.com',
+      summary: 'Đổi vai trò',
+      details: 'Vai trò: Người dùng → Quản trị',
+    });
+    expect(JSON.stringify(payload)).not.toContain('service-role-key');
+  });
+
+  it('enriches usage events with user, task, provider, and status labels', async () => {
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/usage_events')) {
+        return jsonResponse([
+          {
+            id: 'usage-1',
+            request_id: 'request-1',
+            user_id: 'user-2',
+            feature_key: 'translator.access',
+            provider: 'gemini_direct',
+            model: 'gemini-2.5-pro',
+            event_type: 'request',
+            count: 3,
+            status: 'ok',
+            metadata: {
+              action: 'chat_stream_batch',
+              workflowFeature: 'translator.access',
+            },
+            created_at: '2026-06-30T12:30:00.000Z',
+          },
+        ]);
+      }
+      if (target.includes('/rest/v1/profiles') && target.includes('user_id=in.')) {
+        return jsonResponse([
+          {
+            user_id: 'user-2',
+            email: 'reader@example.com',
+            display_name: 'Reader',
+            system_role: 'user',
+            status: 'active',
+          },
+        ]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/usage'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items[0]).toMatchObject({
+      email: 'reader@example.com',
+      taskLabel: 'Dịch truyện',
+      providerLabel: 'Gemini Direct',
+      statusLabel: 'Thành công',
+      user: {
+        id: 'user-2',
+        email: 'reader@example.com',
+        displayName: 'Reader',
+      },
+    });
+    expect(JSON.stringify(payload)).not.toContain('service-role-key');
+  });
+
+  it('preserves existing privileged roles when syncing Supabase Auth users', async () => {
+    mockAuthAndActor({ role: 'admin', id: 'admin-1' }, async (target, init = {}) => {
+      if (target.includes('/auth/v1/admin/users')) {
+        return jsonResponse({
+          users: [
+            {
+              id: 'admin-1',
+              email: 'admin@example.com',
+              app_metadata: {},
+              user_metadata: {},
+              created_at: '2026-06-01T00:00:00.000Z',
+              updated_at: '2026-06-23T01:00:00.000Z',
+              last_sign_in_at: '2026-06-23T01:00:00.000Z',
+            },
+            {
+              id: 'user-2',
+              email: 'user@example.com',
+              app_metadata: {},
+              user_metadata: {},
+              created_at: '2026-06-02T00:00:00.000Z',
+              updated_at: '2026-06-23T01:05:00.000Z',
+              last_sign_in_at: '2026-06-23T01:05:00.000Z',
+            },
+          ],
+        });
+      }
+      if (target.includes('/rest/v1/profiles') && target.includes('user_id=in.')) {
+        return jsonResponse([{
+          user_id: 'admin-1',
+          system_role: 'admin',
+          status: 'active',
+          metadata: { keep: 'this' },
+        }]);
+      }
+      if (target.includes('/rest/v1/profiles') && init.method === 'POST') {
+        const body = JSON.parse(init.body);
+        const adminRow = body.find((row) => row.user_id === 'admin-1');
+        const userRow = body.find((row) => row.user_id === 'user-2');
+
+        expect(adminRow).toMatchObject({
+          system_role: 'admin',
+          status: 'active',
+          metadata: { keep: 'this' },
+        });
+        expect(userRow).toMatchObject({
+          system_role: 'user',
+          status: 'active',
+        });
+        return jsonResponse(body);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs') && init.method === 'POST') {
+        return jsonResponse([{ id: 'audit-1', action: 'users.sync_auth' }], 201);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/users/sync-auth', { method: 'POST' }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.count).toBe(2);
   });
 
   it('updates VIP page metadata without replacing other plan metadata', async () => {
@@ -310,7 +534,38 @@ describe('phase12 admin API worker', () => {
       if (target.includes('/rest/v1/user_plans') && init.method === 'POST') {
         return jsonResponse([{ id: 'grant-1', user_id: 'user-2', plan_id: 'plan-vip', status: 'active' }], 201);
       }
+      if (target.includes('/rest/v1/profiles') && target.includes('user_id=eq.user-2')) {
+        return jsonResponse([{
+          user_id: 'user-2',
+          email: 'vip-user@example.com',
+          display_name: 'VIP User',
+          system_role: 'user',
+          status: 'active',
+        }]);
+      }
       if (target.includes('/rest/v1/admin_audit_logs') && init.method === 'POST') {
+        const body = JSON.parse(init.body);
+        expect(body).toMatchObject({
+          action: 'users.plan.set',
+          actor_user_id: 'admin-1',
+          target_user_id: 'user-2',
+          actor_snapshot: {
+            id: 'admin-1',
+            email: 'admin-1@example.com',
+            role: 'admin',
+            status: 'active',
+          },
+          target_snapshot: {
+            id: 'user-2',
+            email: 'vip-user@example.com',
+            displayName: 'VIP User',
+            role: 'user',
+            status: 'active',
+          },
+          action_summary: 'Cấp gói VIP',
+          resource_label: 'vip-user@example.com',
+        });
+        expect(body.change_summary).toContain('VIP');
         return jsonResponse([{ id: 'audit-1', action: 'users.plan.set' }], 201);
       }
       throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
@@ -400,5 +655,23 @@ describe('phase12 admin API worker', () => {
     expect(workerSource).not.toContain('storyforge_plan_catalog');
     expect(workerSource).not.toContain('storyforge_plan_features');
     expect(workerSource).not.toContain('storyforge_features');
+  });
+
+  it('keeps a forward migration for audit snapshots and readable summaries', () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), 'docs/supabase-access-control/006_admin_audit_snapshots.sql'),
+      'utf8',
+    );
+
+    for (const column of [
+      'actor_snapshot',
+      'target_snapshot',
+      'action_summary',
+      'change_summary',
+      'resource_label',
+    ]) {
+      expect(migration).toContain(column);
+    }
+    expect(migration).toContain('jsonb');
   });
 });
