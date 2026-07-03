@@ -66,6 +66,54 @@ describe('admin split UI contract', () => {
     expect(css).toContain('.admin-user-filters');
   });
 
+  it('shows a modern user management workspace with visible VIP expiry and scrollable details', () => {
+    const app = read('apps/admin/src/App.jsx');
+    const css = read('apps/admin/src/App.css');
+
+    for (const label of [
+      'Tổng người dùng',
+      'Đang hiển thị',
+      'VIP/Trọn đời',
+      'Sắp hết hạn',
+      'Đang bị khóa',
+      'Đang chọn',
+      'Đồng bộ Auth',
+      'Hết hạn',
+      'Tình trạng gói',
+      'Gói hiện tại',
+      'Ngày hết hạn',
+      'Cập nhật lần cuối',
+      'Lịch sử gói gần đây',
+      'Chưa có gói VIP đang hoạt động',
+    ]) {
+      expect(app).toContain(label);
+    }
+
+    for (const sourceContract of [
+      'getUserPlanExpiryLabel',
+      'getUserPlanStatusTone',
+      'user-summary-strip',
+      'user-list-scroll',
+      'user-plan-card',
+      'user-plan-table',
+      'user-detail-scroll',
+      'getUserManagementStats',
+      'isActivePlanExpiringSoon',
+    ]) {
+      expect(app).toContain(sourceContract);
+    }
+
+    for (const className of [
+      '.user-summary-strip',
+      '.user-list-scroll',
+      '.user-detail-scroll',
+      '.user-plan-card',
+      '.user-plan-table',
+    ]) {
+      expect(css).toContain(className);
+    }
+  });
+
   it('renders a readable audit workspace for non-technical admins', () => {
     const app = read('apps/admin/src/App.jsx');
     const css = read('apps/admin/src/App.css');
@@ -127,6 +175,8 @@ describe('admin split UI contract', () => {
       'function UsagePanel',
       'usagePagination',
       'usagePageCursors',
+      'usage-filter-grid',
+      'usage-filter-control',
       'loadUsagePage',
       'setUsagePageSize',
       'hasNextPage',
@@ -144,6 +194,8 @@ describe('admin split UI contract', () => {
     expect(app).not.toContain('admin-activity-tabs');
     expect(css).toContain('.usage-pagination');
     expect(css).toContain('.usage-page-summary');
+    expect(css).toContain('.usage-filter-grid');
+    expect(css).toContain('minmax(150px, 1fr)');
   });
 
   it('does not expose new plan or feature names in the admin UI source', () => {

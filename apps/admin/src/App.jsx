@@ -154,6 +154,70 @@ function getPlanLabel(plan) {
   return PLAN_LABELS_VI[key] || key;
 }
 
+function getUserPlans(user) {
+  return Array.isArray(user?.user_plans) ? user.user_plans : [];
+}
+
+function getPlanTimestamp(plan) {
+  const value = plan?.starts_at || plan?.created_at || plan?.expires_at;
+  const time = value ? new Date(value).getTime() : 0;
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function getVisibleUserPlans(user) {
+  return [...getUserPlans(user)]
+    .sort((left, right) => getPlanTimestamp(right) - getPlanTimestamp(left))
+    .slice(0, 5);
+}
+
+function getUserPlanStatusLabel(plan) {
+  if (!plan) return 'Free';
+  const status = String(plan.status || 'active').toLowerCase();
+  const expiresAt = plan.expires_at ? new Date(plan.expires_at).getTime() : null;
+  if (status === 'active' && expiresAt && expiresAt <= Date.now()) return 'Đã hết hạn';
+  if (status === 'active') return 'Đang hiệu lực';
+  if (status === 'scheduled') return 'Đã đặt lịch';
+  if (status === 'canceled' || status === 'cancelled') return 'Đã hủy';
+  return getStatusLabel(status);
+}
+
+function getUserPlanStatusTone(plan) {
+  if (!plan) return 'neutral';
+  const status = String(plan.status || 'active').toLowerCase();
+  const expiresAt = plan.expires_at ? new Date(plan.expires_at).getTime() : null;
+  if (status === 'active' && expiresAt && expiresAt <= Date.now()) return 'danger';
+  if (status === 'active') return 'success';
+  if (status === 'scheduled') return 'info';
+  if (status === 'canceled' || status === 'cancelled') return 'danger';
+  return 'neutral';
+}
+
+function getUserPlanExpiryLabel(plan) {
+  if (!plan) return 'Chưa có gói VIP đang hoạt động';
+  if (!plan.expires_at) return 'Không hết hạn';
+  const expiresAt = new Date(plan.expires_at).getTime();
+  if (Number.isNaN(expiresAt)) return String(plan.expires_at);
+  const label = formatDate(plan.expires_at);
+  return expiresAt <= Date.now() ? `Đã hết hạn ${label}` : label;
+}
+
+function isActivePlanExpiringSoon(plan, days = 7) {
+  if (!plan?.expires_at) return false;
+  const expiresAt = new Date(plan.expires_at).getTime();
+  if (Number.isNaN(expiresAt)) return false;
+  const now = Date.now();
+  return expiresAt > now && expiresAt <= now + (days * 24 * 60 * 60 * 1000);
+}
+
+function getUserManagementStats(users) {
+  const source = Array.isArray(users) ? users : [];
+  return {
+    vip: source.filter((user) => ['vip', 'lifetime'].includes(getCurrentUserPlanKey(user))).length,
+    expiringSoon: source.filter((user) => isActivePlanExpiringSoon(getActiveUserPlan(user))).length,
+    locked: source.filter((user) => String(user.status || 'active').toLowerCase() !== 'active').length,
+  };
+}
+
 function getRoleLabel(role) {
   return ROLE_LABELS_VI[String(role || 'user').toLowerCase()] || 'Người dùng';
 }
@@ -182,7 +246,7 @@ function getPlanFeatureRows(data, planKey) {
 }
 
 function getActiveUserPlan(user) {
-  const plans = Array.isArray(user?.user_plans) ? user.user_plans : [];
+  const plans = getUserPlans(user);
   const now = Date.now();
   return plans
     .filter((item) => String(item.status || '').toLowerCase() === 'active')
@@ -529,6 +593,7 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
   const selected = users.find((user) => getUserId(user) === selectedUserId) || users[0] || null;
   const selectedId = selected ? getUserId(selected) : '';
   const hasUserFilters = Boolean(query.trim()) || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all';
+  const userStats = useMemo(() => getUserManagementStats(data.users), [data.users]);
 
   useEffect(() => {
     if (selected && selectedUserId !== getUserId(selected)) setSelectedUserId(getUserId(selected));
@@ -543,6 +608,7 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
   const canMutateStatus = hasPermission(actor, ADMIN_PERMISSIONS.USERS_STATUS_UPDATE);
   const canMutateAccess = hasPermission(actor, ADMIN_PERMISSIONS.USERS_ROLE_UPDATE);
   const canMutateOverride = hasPermission(actor, ADMIN_PERMISSIONS.USERS_OVERRIDE_UPDATE);
+  const canSyncAuth = hasPermission(actor, ADMIN_PERMISSIONS.ADMIN_SYNC_AUTH);
 
   const reloadAccess = useCallback(async () => {
     if (!selectedId) return;
@@ -569,6 +635,8 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
 
   const activePlan = selected ? getActiveUserPlan(selected) : null;
   const currentPlanKey = selected ? getCurrentUserPlanKey(selected) : 'free';
+  const selectedPlans = selected ? getVisibleUserPlans(selected) : [];
+  const selectedEmail = selected ? getUserEmail(selected) : 'Chưa chọn';
 
   return (
     <section className="content-grid">
@@ -577,9 +645,24 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
           <h1>Người dùng</h1>
           <p>Quét nhanh trạng thái, role, gói và quyền truy cập. Chọn một dòng để thao tác ở panel bên phải.</p>
         </div>
-        <div className="search-box">
-          <Search size={16} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm email, id, tên" />
+        <div className="section-header__actions">
+          <div className="search-box">
+            <Search size={16} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm email, id, tên" />
+          </div>
+          <button
+            type="button"
+            className="button button--ghost"
+            disabled={!canSyncAuth}
+            onClick={() => onMutation({
+              title: 'Đồng bộ Auth',
+              message: 'Đồng bộ tài khoản Supabase Auth còn thiếu vào danh sách người dùng admin?',
+              action: () => onMutation.api.syncAuth(),
+            })}
+          >
+            <RefreshCw size={15} />
+            Đồng bộ Auth
+          </button>
         </div>
       </div>
       <div className="admin-user-filters">
@@ -625,47 +708,78 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
           </button>
         ) : null}
       </div>
+      <div className="user-summary-strip">
+        <div>
+          <span>Tổng người dùng</span>
+          <strong>{data.users.length}</strong>
+        </div>
+        <div>
+          <span>Đang hiển thị</span>
+          <strong>{users.length}</strong>
+        </div>
+        <div>
+          <span>VIP/Trọn đời</span>
+          <strong>{userStats.vip}</strong>
+        </div>
+        <div>
+          <span>Sắp hết hạn</span>
+          <strong>{userStats.expiringSoon}</strong>
+        </div>
+        <div>
+          <span>Đang bị khóa</span>
+          <strong>{userStats.locked}</strong>
+        </div>
+        <div>
+          <span>Đang chọn</span>
+          <strong>{selectedEmail}</strong>
+        </div>
+      </div>
       <div className="split-layout">
         <section className="panel panel--table">
           {users.length === 0 ? (
-            <EmptyState title="Chưa có người dùng" text="Dùng đồng bộ Auth ở mục Nâng cao để nhập danh sách từ Supabase Auth." />
+            <EmptyState title="Chưa có người dùng" text="Bấm Đồng bộ Auth để nhập danh sách từ Supabase Auth." />
           ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Gói</th>
-                  <th>Trạng thái</th>
-                  <th>Cập nhật</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => {
-                  const userId = getUserId(user);
-                  const planKey = getCurrentUserPlanKey(user);
-                  return (
-                    <tr
-                      key={userId}
-                      className={selected && getUserId(selected) === userId ? 'is-selected' : ''}
-                      onClick={() => setSelectedUserId(userId)}
-                    >
-                      <td>
-                        <strong>{getUserEmail(user)}</strong>
-                        <span>{userId}</span>
-                      </td>
-                      <td><Badge tone={(user.system_role || user.role) === 'owner' ? 'danger' : 'info'}>{getRoleLabel(user.system_role || user.role)}</Badge></td>
-                      <td><Badge tone={planKey === 'free' ? 'neutral' : 'warning'}>{getPlanLabel(planKey)}</Badge></td>
-                      <td><Badge tone={String(user.status || 'active') === 'active' ? 'success' : 'danger'}>{getStatusLabel(user.status)}</Badge></td>
-                      <td>{formatDate(user.updated_at || user.metadata?.auth_updated_at)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="user-list-scroll">
+              <table className="data-table user-table">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Gói</th>
+                    <th>Hết hạn</th>
+                    <th>Trạng thái</th>
+                    <th>Cập nhật</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => {
+                    const userId = getUserId(user);
+                    const planKey = getCurrentUserPlanKey(user);
+                    const userActivePlan = getActiveUserPlan(user);
+                    return (
+                      <tr
+                        key={userId}
+                        className={selected && getUserId(selected) === userId ? 'is-selected' : ''}
+                        onClick={() => setSelectedUserId(userId)}
+                      >
+                        <td>
+                          <strong>{getUserEmail(user)}</strong>
+                          <span>{userId}</span>
+                        </td>
+                        <td><Badge tone={(user.system_role || user.role) === 'owner' ? 'danger' : 'info'}>{getRoleLabel(user.system_role || user.role)}</Badge></td>
+                        <td><Badge tone={getUserPlanStatusTone(userActivePlan)}>{getPlanLabel(planKey)}</Badge></td>
+                        <td>{getUserPlanExpiryLabel(userActivePlan)}</td>
+                        <td><Badge tone={String(user.status || 'active') === 'active' ? 'success' : 'danger'}>{getStatusLabel(user.status)}</Badge></td>
+                        <td>{formatDate(user.updated_at || user.metadata?.auth_updated_at)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
-        <aside className="detail-panel">
+        <aside className="detail-panel user-detail-scroll">
           {selected ? (
             <>
               <header>
@@ -676,8 +790,56 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
                 </div>
               </header>
 
+              <section className="detail-section user-plan-card">
+                <div className="user-plan-card__header">
+                  <div>
+                    <h3>Tình trạng gói</h3>
+                    <span>Thông tin gói và ngày hết hạn của người dùng đang chọn.</span>
+                  </div>
+                  <Badge tone={getUserPlanStatusTone(activePlan)}>{getUserPlanStatusLabel(activePlan)}</Badge>
+                </div>
+                <div className="user-plan-card__grid">
+                  <div>
+                    <span>Gói hiện tại</span>
+                    <strong>{getPlanLabel(currentPlanKey)}</strong>
+                  </div>
+                  <div>
+                    <span>Ngày hết hạn</span>
+                    <strong>{getUserPlanExpiryLabel(activePlan)}</strong>
+                  </div>
+                  <div>
+                    <span>Bắt đầu</span>
+                    <strong>{activePlan ? formatDate(activePlan.starts_at || activePlan.created_at) : 'Chưa có'}</strong>
+                  </div>
+                  <div>
+                    <span>Cập nhật lần cuối</span>
+                    <strong>{formatDate(selected.updated_at || selected.auth_updated_at || selected.metadata?.auth_updated_at)}</strong>
+                  </div>
+                </div>
+                <div className="user-plan-table" aria-label="Lịch sử gói gần đây">
+                  <strong>Lịch sử gói gần đây</strong>
+                  {selectedPlans.length === 0 ? (
+                    <span>Chưa có gói VIP đang hoạt động</span>
+                  ) : (
+                    selectedPlans.map((plan, index) => (
+                      <div className="user-plan-row" key={plan.id || `${getPlanKey(plan)}-${plan.starts_at || plan.created_at || index}`}>
+                        <div>
+                          <strong>{getPlanLabel(plan)}</strong>
+                          <span>{getUserPlanStatusLabel(plan)} · Bắt đầu {formatDate(plan.starts_at || plan.created_at)}</span>
+                        </div>
+                        <div>
+                          <span>Hết hạn</span>
+                          <strong>{getUserPlanExpiryLabel(plan)}</strong>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+
               <section className="detail-section">
                 <h3>Thao tác nhanh</h3>
+                <p className="detail-section__note">Luồng chính cho vận hành hằng ngày: cấp VIP, cấp trọn đời hoặc hủy gói mà không cần mở form nâng cao.</p>
                 <div className="quick-actions">
                   <button
                     type="button"
@@ -1617,8 +1779,8 @@ function UsagePanel({
               placeholder="Tìm toàn bộ lịch sử: email, user id, tác vụ, model"
             />
           </div>
-          <div className="table-actions">
-            <label className="usage-page-size">
+          <div className="usage-filter-grid">
+            <label className="usage-filter-control">
               <span>Provider</span>
               <select value={providerFilter} disabled={loading} onChange={(event) => setProviderFilter(event.target.value)}>
                 <option value="all">Tất cả provider</option>
@@ -1628,7 +1790,7 @@ function UsagePanel({
                 <option value="openai_proxy">OpenAI Proxy</option>
               </select>
             </label>
-            <label className="usage-page-size">
+            <label className="usage-filter-control">
               <span>Trạng thái</span>
               <select value={statusFilter} disabled={loading} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option value="all">Tất cả trạng thái</option>
@@ -1637,7 +1799,7 @@ function UsagePanel({
                 <option value="blocked">Bị chặn</option>
               </select>
             </label>
-            <label className="usage-page-size">
+            <label className="usage-filter-control">
               <span>Dòng mỗi trang</span>
               <select
                 value={pageSize}
