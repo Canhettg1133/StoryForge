@@ -201,6 +201,15 @@ function getUserPlanExpiryLabel(plan) {
   return expiresAt <= Date.now() ? `Đã hết hạn ${label}` : label;
 }
 
+function getUserPlanExpiryShortLabel(plan) {
+  if (!plan) return 'Chưa có VIP';
+  if (!plan.expires_at) return 'Không hết hạn';
+  const expiresAt = new Date(plan.expires_at).getTime();
+  if (Number.isNaN(expiresAt)) return String(plan.expires_at);
+  const label = formatDate(plan.expires_at);
+  return expiresAt <= Date.now() ? `Đã hết hạn ${label}` : label;
+}
+
 function isActivePlanExpiringSoon(plan, days = 7) {
   if (!plan?.expires_at) return false;
   const expiresAt = new Date(plan.expires_at).getTime();
@@ -639,17 +648,13 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
   const selectedEmail = selected ? getUserEmail(selected) : 'Chưa chọn';
 
   return (
-    <section className="content-grid">
-      <div className="section-header">
+    <section className="content-grid user-page">
+      <div className="section-header user-page-header">
         <div>
           <h1>Người dùng</h1>
-          <p>Quét nhanh trạng thái, role, gói và quyền truy cập. Chọn một dòng để thao tác ở panel bên phải.</p>
+          <p>Quản lý tài khoản, gói VIP, trạng thái và quyền riêng của người dùng.</p>
         </div>
         <div className="section-header__actions">
-          <div className="search-box">
-            <Search size={16} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm email, id, tên" />
-          </div>
           <button
             type="button"
             className="button button--ghost"
@@ -665,38 +670,49 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
           </button>
         </div>
       </div>
-      <div className="admin-user-filters">
-        <label>
-          <span>Lọc vai trò</span>
-          <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
-            <option value="all">Tất cả vai trò</option>
-            {Object.entries(ROLE_LABELS_VI).map(([role, label]) => (
-              <option key={role} value={role}>{label}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Lọc gói</span>
-          <select value={planFilter} onChange={(event) => setPlanFilter(event.target.value)}>
-            <option value="all">Tất cả gói</option>
-            {Object.entries(PLAN_LABELS_VI).map(([plan, label]) => (
-              <option key={plan} value={plan}>{label}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Lọc trạng thái</span>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="all">Tất cả trạng thái</option>
-            {Object.entries(STATUS_LABELS_VI).map(([status, label]) => (
-              <option key={status} value={status}>{label}</option>
-            ))}
-          </select>
-        </label>
-        {hasUserFilters ? (
+      <section className="user-control-surface" aria-label="Bộ lọc người dùng">
+        <div className="user-control-surface__top">
+          <div className="user-control-surface__title">
+            <h2>Bộ lọc người dùng</h2>
+            <span>{users.length} kết quả phù hợp</span>
+          </div>
+          <div className="search-box user-search-box">
+            <Search size={16} />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm email, id, tên" />
+          </div>
+        </div>
+        <div className="admin-user-filters user-filter-grid">
+          <label>
+            <span>Lọc vai trò</span>
+            <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}>
+              <option value="all">Tất cả vai trò</option>
+              {Object.entries(ROLE_LABELS_VI).map(([role, label]) => (
+                <option key={role} value={role}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Lọc gói</span>
+            <select value={planFilter} onChange={(event) => setPlanFilter(event.target.value)}>
+              <option value="all">Tất cả gói</option>
+              {Object.entries(PLAN_LABELS_VI).map(([plan, label]) => (
+                <option key={plan} value={plan}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Lọc trạng thái</span>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">Tất cả trạng thái</option>
+              {Object.entries(STATUS_LABELS_VI).map(([status, label]) => (
+                <option key={status} value={status}>{label}</option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             className="filter-chip"
+            disabled={!hasUserFilters}
             onClick={() => {
               setQuery('');
               setRoleFilter('all');
@@ -706,36 +722,43 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
           >
             Xóa bộ lọc
           </button>
-        ) : null}
-      </div>
-      <div className="user-summary-strip">
-        <div>
-          <span>Tổng người dùng</span>
-          <strong>{data.users.length}</strong>
         </div>
-        <div>
-          <span>Đang hiển thị</span>
-          <strong>{users.length}</strong>
+        <div className="user-summary-strip user-insight-strip">
+          <div>
+            <span>Tổng người dùng</span>
+            <strong>{data.users.length}</strong>
+          </div>
+          <div>
+            <span>Đang hiển thị</span>
+            <strong>{users.length}</strong>
+          </div>
+          <div>
+            <span>VIP/Trọn đời</span>
+            <strong>{userStats.vip}</strong>
+          </div>
+          <div>
+            <span>Sắp hết hạn</span>
+            <strong>{userStats.expiringSoon}</strong>
+          </div>
+          <div>
+            <span>Đang bị khóa</span>
+            <strong>{userStats.locked}</strong>
+          </div>
+          <div className="user-selected-stat" title={selectedEmail}>
+            <span>Đang chọn</span>
+            <strong>{selectedEmail}</strong>
+          </div>
         </div>
-        <div>
-          <span>VIP/Trọn đời</span>
-          <strong>{userStats.vip}</strong>
-        </div>
-        <div>
-          <span>Sắp hết hạn</span>
-          <strong>{userStats.expiringSoon}</strong>
-        </div>
-        <div>
-          <span>Đang bị khóa</span>
-          <strong>{userStats.locked}</strong>
-        </div>
-        <div>
-          <span>Đang chọn</span>
-          <strong>{selectedEmail}</strong>
-        </div>
-      </div>
-      <div className="split-layout">
-        <section className="panel panel--table">
+      </section>
+      <div className="split-layout user-workspace">
+        <section className="panel panel--table user-table-panel">
+          <div className="user-table-toolbar">
+            <div>
+              <h2>Danh sách người dùng</h2>
+              <span>{users.length} tài khoản trong bộ lọc hiện tại</span>
+            </div>
+            <Badge tone="info">{selected ? 'Đã chọn 1 người dùng' : 'Chưa chọn'}</Badge>
+          </div>
           {users.length === 0 ? (
             <EmptyState title="Chưa có người dùng" text="Bấm Đồng bộ Auth để nhập danh sách từ Supabase Auth." />
           ) : (
@@ -744,7 +767,7 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
                 <thead>
                   <tr>
                     <th>Email</th>
-                    <th>Role</th>
+                    <th>Vai trò</th>
                     <th>Gói</th>
                     <th>Hết hạn</th>
                     <th>Trạng thái</th>
@@ -762,15 +785,18 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
                         className={selected && getUserId(selected) === userId ? 'is-selected' : ''}
                         onClick={() => setSelectedUserId(userId)}
                       >
-                        <td>
+                        <td className="user-email-cell">
                           <strong>{getUserEmail(user)}</strong>
                           <span>{userId}</span>
                         </td>
                         <td><Badge tone={(user.system_role || user.role) === 'owner' ? 'danger' : 'info'}>{getRoleLabel(user.system_role || user.role)}</Badge></td>
                         <td><Badge tone={getUserPlanStatusTone(userActivePlan)}>{getPlanLabel(planKey)}</Badge></td>
-                        <td>{getUserPlanExpiryLabel(userActivePlan)}</td>
+                        <td className="user-expiry-cell">
+                          <strong>{getUserPlanExpiryShortLabel(userActivePlan)}</strong>
+                          <span>{getUserPlanStatusLabel(userActivePlan)}</span>
+                        </td>
                         <td><Badge tone={String(user.status || 'active') === 'active' ? 'success' : 'danger'}>{getStatusLabel(user.status)}</Badge></td>
-                        <td>{formatDate(user.updated_at || user.metadata?.auth_updated_at)}</td>
+                        <td className="user-updated-cell">{formatDate(user.updated_at || user.metadata?.auth_updated_at)}</td>
                       </tr>
                     );
                   })}
@@ -779,7 +805,7 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
             </div>
           )}
         </section>
-        <aside className="detail-panel user-detail-scroll">
+        <aside className="detail-panel user-detail-scroll user-detail-panel">
           {selected ? (
             <>
               <header>
@@ -790,56 +816,11 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
                 </div>
               </header>
 
-              <section className="detail-section user-plan-card">
-                <div className="user-plan-card__header">
-                  <div>
-                    <h3>Tình trạng gói</h3>
-                    <span>Thông tin gói và ngày hết hạn của người dùng đang chọn.</span>
-                  </div>
-                  <Badge tone={getUserPlanStatusTone(activePlan)}>{getUserPlanStatusLabel(activePlan)}</Badge>
+              <section className="detail-section user-quick-actions-card">
+                <div className="detail-section__header">
+                  <h3>Thao tác nhanh</h3>
+                  <Badge tone={getUserPlanStatusTone(activePlan)}>{getPlanLabel(currentPlanKey)}</Badge>
                 </div>
-                <div className="user-plan-card__grid">
-                  <div>
-                    <span>Gói hiện tại</span>
-                    <strong>{getPlanLabel(currentPlanKey)}</strong>
-                  </div>
-                  <div>
-                    <span>Ngày hết hạn</span>
-                    <strong>{getUserPlanExpiryLabel(activePlan)}</strong>
-                  </div>
-                  <div>
-                    <span>Bắt đầu</span>
-                    <strong>{activePlan ? formatDate(activePlan.starts_at || activePlan.created_at) : 'Chưa có'}</strong>
-                  </div>
-                  <div>
-                    <span>Cập nhật lần cuối</span>
-                    <strong>{formatDate(selected.updated_at || selected.auth_updated_at || selected.metadata?.auth_updated_at)}</strong>
-                  </div>
-                </div>
-                <div className="user-plan-table" aria-label="Lịch sử gói gần đây">
-                  <strong>Lịch sử gói gần đây</strong>
-                  {selectedPlans.length === 0 ? (
-                    <span>Chưa có gói VIP đang hoạt động</span>
-                  ) : (
-                    selectedPlans.map((plan, index) => (
-                      <div className="user-plan-row" key={plan.id || `${getPlanKey(plan)}-${plan.starts_at || plan.created_at || index}`}>
-                        <div>
-                          <strong>{getPlanLabel(plan)}</strong>
-                          <span>{getUserPlanStatusLabel(plan)} · Bắt đầu {formatDate(plan.starts_at || plan.created_at)}</span>
-                        </div>
-                        <div>
-                          <span>Hết hạn</span>
-                          <strong>{getUserPlanExpiryLabel(plan)}</strong>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
-
-              <section className="detail-section">
-                <h3>Thao tác nhanh</h3>
-                <p className="detail-section__note">Luồng chính cho vận hành hằng ngày: cấp VIP, cấp trọn đời hoặc hủy gói mà không cần mở form nâng cao.</p>
                 <div className="quick-actions">
                   <button
                     type="button"
@@ -902,6 +883,48 @@ function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation, actor
                     Hủy gói đã đặt lịch
                   </button>
                 </div>
+              </section>
+
+              <section className="detail-section user-plan-card">
+                <div className="user-plan-card__header">
+                  <h3>Tình trạng gói</h3>
+                  <Badge tone={getUserPlanStatusTone(activePlan)}>{getUserPlanStatusLabel(activePlan)}</Badge>
+                </div>
+                <div className="user-plan-card__grid">
+                  <div>
+                    <span>Gói hiện tại</span>
+                    <strong>{getPlanLabel(currentPlanKey)}</strong>
+                  </div>
+                  <div>
+                    <span>Ngày hết hạn</span>
+                    <strong>{getUserPlanExpiryLabel(activePlan)}</strong>
+                  </div>
+                  <div>
+                    <span>Cập nhật lần cuối</span>
+                    <strong>{formatDate(selected.updated_at || selected.auth_updated_at || selected.metadata?.auth_updated_at)}</strong>
+                  </div>
+                </div>
+                <details className="user-plan-history">
+                  <summary>Lịch sử gói gần đây</summary>
+                  <div className="user-plan-table" aria-label="Lịch sử gói gần đây">
+                    {selectedPlans.length === 0 ? (
+                      <span>Chưa có gói VIP đang hoạt động</span>
+                    ) : (
+                      selectedPlans.map((plan, index) => (
+                        <div className="user-plan-row" key={plan.id || `${getPlanKey(plan)}-${plan.starts_at || plan.created_at || index}`}>
+                          <div>
+                            <strong>{getPlanLabel(plan)}</strong>
+                            <span>{getUserPlanStatusLabel(plan)} · Bắt đầu {formatDate(plan.starts_at || plan.created_at)}</span>
+                          </div>
+                          <div>
+                            <span>Hết hạn</span>
+                            <strong>{getUserPlanExpiryLabel(plan)}</strong>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </details>
               </section>
 
               <section className="detail-section">

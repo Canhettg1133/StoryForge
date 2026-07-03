@@ -78,6 +78,9 @@ describe('admin split UI contract', () => {
       'Đang bị khóa',
       'Đang chọn',
       'Đồng bộ Auth',
+      'Bộ lọc người dùng',
+      'Danh sách người dùng',
+      'Chưa có VIP',
       'Hết hạn',
       'Tình trạng gói',
       'Gói hiện tại',
@@ -85,6 +88,7 @@ describe('admin split UI contract', () => {
       'Cập nhật lần cuối',
       'Lịch sử gói gần đây',
       'Chưa có gói VIP đang hoạt động',
+      'Thao tác nhanh',
     ]) {
       expect(app).toContain(label);
     }
@@ -97,6 +101,19 @@ describe('admin split UI contract', () => {
       'user-plan-card',
       'user-plan-table',
       'user-detail-scroll',
+      'user-control-surface',
+      'user-control-surface__title',
+      'user-filter-grid',
+      'user-workspace',
+      'user-table-panel',
+      'user-table-toolbar',
+      'user-selected-stat',
+      'user-email-cell',
+      'user-expiry-cell',
+      'user-updated-cell',
+      'user-quick-actions-card',
+      'user-plan-history',
+      'getUserPlanExpiryShortLabel',
       'getUserManagementStats',
       'isActivePlanExpiringSoon',
     ]) {
@@ -109,9 +126,27 @@ describe('admin split UI contract', () => {
       '.user-detail-scroll',
       '.user-plan-card',
       '.user-plan-table',
+      '.user-control-surface',
+      '.user-control-surface__title',
+      '.user-workspace',
+      '.user-table-panel',
+      '.user-table-toolbar',
+      '.user-selected-stat',
+      '.user-email-cell',
+      '.user-expiry-cell',
+      '.user-updated-cell',
+      '.user-quick-actions-card',
+      '.user-plan-history',
     ]) {
       expect(css).toContain(className);
     }
+    expect(app.indexOf('user-quick-actions-card')).toBeLessThan(app.indexOf('user-plan-card'));
+    expect(app).not.toContain('Luồng chính cho vận hành hằng ngày');
+    expect(css).toContain('position: sticky');
+    expect(css).toContain('min-width: 0;');
+    expect(css).toContain('width: 100%;');
+    expect(css).toContain('minmax(210px, 1.6fr)');
+    expect(css).toContain('min-height: clamp(520px');
   });
 
   it('renders a readable audit workspace for non-technical admins', () => {
