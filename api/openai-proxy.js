@@ -404,6 +404,12 @@ export function createOpenAIProxyHandler({
     'Content-Type': 'application/json',
     ...upstreamAuthHeaders,
   };
+  let usageLogged = false;
+  const logUsageOnce = async (usageStatus) => {
+    if (usageLogged) return;
+    usageLogged = true;
+    await logProxyUsage(access, { body, action, status: usageStatus }).catch(() => {});
+  };
 
   if (action === 'chat_stream_batch') {
     const payloads = Array.isArray(body?.payloads) ? body.payloads : [];
@@ -420,12 +426,12 @@ export function createOpenAIProxyHandler({
     res.setHeader('Cache-Control', 'no-store');
     if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
+    await logUsageOnce('ok');
     await Promise.all(payloads.map(async (payload, index) => {
       const result = await fetchChatPayload(endpoint, chatHeaders, payload);
       res.write(`${JSON.stringify({ index, ...result })}\n`);
     }));
     res.end();
-    await logProxyUsage(access, { body, action, status: 'ok' }).catch(() => {});
     return;
   }
 
@@ -443,10 +449,10 @@ export function createOpenAIProxyHandler({
         body: JSON.stringify(body?.payload || {}),
       });
 
+    await logUsageOnce(upstream.ok ? 'ok' : 'error');
     await pipeUpstreamResponse(upstream, res);
-    await logProxyUsage(access, { body, action, status: upstream.ok ? 'ok' : 'error' }).catch(() => {});
   } catch (error) {
-    await logProxyUsage(access, { body, action, status: 'error' }).catch(() => {});
+    await logUsageOnce('error');
     if (res.headersSent || res.writableEnded) {
       if (!res.writableEnded) res.end();
       return;

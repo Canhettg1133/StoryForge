@@ -208,6 +208,72 @@ describe('/api/openai-proxy', () => {
     vi.unstubAllGlobals();
   });
 
+  it('records chat usage before streaming chunks to the client', async () => {
+    const insertMock = vi.fn(async () => ({ error: null }));
+    const loggingHandler = createOpenAIProxyHandler({
+      requireFeatureImpl: async (_req, featureKey) => ({
+        ok: true,
+        decision: { allowed: true, feature: featureKey },
+        user: { id: 'stream-user' },
+        supabase: {
+          from: (table) => {
+            expect(table).toBe('usage_events');
+            return { insert: insertMock };
+          },
+        },
+      }),
+    });
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"content":"a"}}]}\n\n'));
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+        usage: {
+          taskType: 'arc_chapter_draft',
+          taskGroup: 'story_writing',
+          taskLabel: 'Viết truyện',
+          surface: 'writer',
+        },
+        payload: {
+          model: 'custom-model',
+          messages: [{ role: 'user', content: 'write chapter' }],
+          stream: true,
+        },
+      },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
+    });
+    const write = res.write.bind(res);
+    res.write = (chunk) => {
+      expect(insertMock).toHaveBeenCalledTimes(1);
+      return write(chunk);
+    };
+
+    await loggingHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(insertMock).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'stream-user',
+      status: 'ok',
+      metadata: expect.objectContaining({
+        taskType: 'arc_chapter_draft',
+        taskLabel: 'Viết truyện',
+      }),
+    }));
+    vi.unstubAllGlobals();
+  });
+
   it('streams chat_stream_batch results as each upstream payload resolves', async () => {
     const fetchMock = vi.fn(async (url, options) => new Response(JSON.stringify({
       choices: [{ message: { content: JSON.parse(options.body).messages[0].content } }],
