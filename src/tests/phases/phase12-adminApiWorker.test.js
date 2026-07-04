@@ -98,6 +98,24 @@ describe('phase12 admin API worker', () => {
     expect(payload.code).toBe('ADMIN_CORS_WILDCARD_BLOCKED');
   });
 
+  it('allows admin delete requests through CORS preflight', async () => {
+    const response = await adminWorker.fetch(
+      new Request('https://admin-api.storyforge.test/story-mirror/projects/project-1', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://admin.storyforge.test',
+          'Access-Control-Request-Method': 'DELETE',
+          'Access-Control-Request-Headers': 'Authorization,Content-Type',
+        },
+      }),
+      createEnv(),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://admin.storyforge.test');
+    expect(response.headers.get('Access-Control-Allow-Methods')).toContain('DELETE');
+  });
+
   it('keeps the deployed admin frontend origin in the checked-in worker config', () => {
     const wranglerConfig = readFileSync(resolve(process.cwd(), 'apps/admin-api-worker/wrangler.toml'), 'utf8');
 

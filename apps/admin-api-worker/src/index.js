@@ -92,7 +92,7 @@ function isOriginAllowed(request, config) {
 function corsHeaders(request, config) {
   const origin = request.headers.get('Origin');
   const headers = {
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization,Content-Type',
     Vary: 'Origin',
   };
