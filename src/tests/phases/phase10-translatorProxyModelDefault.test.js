@@ -161,6 +161,29 @@ describe('phase10 translator proxy model default', () => {
     expect(css).toContain('-webkit-line-clamp: 2;');
   });
 
+  it('keeps the manual Custom Proxy model input compact on mobile', () => {
+    const css = fs
+      .readFileSync(path.join(repoRoot, 'public/translator-runtime/style.css'), 'utf8')
+      .replace(/\r\n/gu, '\n');
+
+    expect(css).toContain('.add-model-row {\n        display: grid;');
+    expect(css).toContain('background: rgba(99, 102, 241, 0.08);');
+    expect(css).toContain('.add-model-row .model-name-input {\n        flex: 0 0 auto;');
+    expect(css).toContain('height: 38px;');
+    expect(css).toContain('.add-model-row .btn {\n        width: 100%;');
+  });
+
+  it('keeps Custom Proxy model list items readable and highlighted on mobile', () => {
+    const css = fs
+      .readFileSync(path.join(repoRoot, 'public/translator-runtime/style.css'), 'utf8')
+      .replace(/\r\n/gu, '\n');
+
+    expect(css).toContain('.model-picker-item {\n        min-height: 54px;');
+    expect(css).toContain('.model-picker-item__id {\n        font-size: 0.8rem;');
+    expect(css).toContain('.model-picker-item.is-active {\n        border-color: rgba(16, 185, 129, 0.72);');
+    expect(css).toContain('.model-picker-badge {\n        min-height: 21px;');
+  });
+
   it('defaults Gemini Proxy to Flash 3 when saved translator settings do not contain a model', () => {
     const { context, elements, stored } = loadRuntime({
       savedSettings: {
