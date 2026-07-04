@@ -23,6 +23,7 @@ import {
   PROMPT_PROFILE_VERSIONS,
 } from '../services/ai/promptProfiles.js';
 import { toVietnameseErrorMessage } from '../utils/errorMessages';
+import { enqueueSceneMirror } from '../services/storyMirror/outbox.js';
 import useAIStore from './aiStore';
 import useCodexStore from './codexStore';
 
@@ -765,6 +766,7 @@ const useProjectStore = create((set, get) => ({
 
     if ('draft_text' in data || 'final_text' in data) {
       await get().refreshChapterWordCount(scene.chapter_id);
+      void enqueueSceneMirror(id).catch(() => {});
     }
   },
 

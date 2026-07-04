@@ -135,5 +135,32 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       method: 'PATCH',
       body,
     }),
+    storyMirrorHealth: () => request('/story-mirror/health'),
+    storyMirrorSmokeTest: () => request('/story-mirror/health/r2-smoke', {
+      method: 'POST',
+      body: {},
+    }),
+    storyMirrorSettings: () => request('/story-mirror/settings'),
+    updateStoryMirrorSettings: (body) => request('/story-mirror/settings', {
+      method: 'PATCH',
+      body,
+    }),
+    storyMirrorUsers: () => request('/story-mirror/users'),
+    storyMirrorProjects: ({ userId = '' } = {}) => {
+      const query = new URLSearchParams();
+      if (userId) query.set('userId', userId);
+      const suffix = query.toString() ? `?${query.toString()}` : '';
+      return request(`/story-mirror/projects${suffix}`);
+    },
+    storyMirrorProjectScenes: (projectId) => request(`/story-mirror/projects/${encodeURIComponent(projectId)}/scenes`),
+    storyMirrorScene: (sceneId) => request(`/story-mirror/scenes/${encodeURIComponent(sceneId)}`),
+    exportStoryMirrorProject: (projectId) => request(`/story-mirror/projects/${encodeURIComponent(projectId)}/export`, {
+      method: 'POST',
+      body: {},
+    }),
+    deleteStoryMirrorProject: (projectId) => request(`/story-mirror/projects/${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+    }),
+    storyMirrorAudit: () => request('/story-mirror/audit'),
   };
 }

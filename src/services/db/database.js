@@ -1276,6 +1276,11 @@ db.version(22).stores({
   entity_resolution_candidates: '++id, project_id, chapter_id, revision_id, session_key, entity_kind, resolution_status, normalized_name, identity_key, matched_entity_id, created_at, updated_at',
 });
 
+db.version(23).stores({
+  storyMirrorOutbox: 'id, status, project_id, scene_id, next_attempt_at, updated_at, content_hash',
+  storyMirrorStatus: 'id, project_id, status, updated_at',
+});
+
 db.getPlotSuggestions = (chapterId) =>
   db.suggestions
     .where('source_chapter_id').equals(chapterId)

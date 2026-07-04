@@ -55,9 +55,10 @@ docs/supabase-access-control/002_access_control_seed.sql
 docs/supabase-access-control/003_access_control_v2_sync_and_union_plans.sql
 docs/supabase-access-control/004_add_gemini_direct_feature.sql
 docs/supabase-access-control/005_site_settings.sql
+docs/supabase-access-control/006_story_mirror.sql
 ```
 
-Existing production databases that already ran `001`, `002`, and `003` only need to run `004_add_gemini_direct_feature.sql` and `005_site_settings.sql` before or alongside the code deploy. `004` adds `provider.gemini_direct` to the VIP/lifetime access catalog. `005` adds the system announcement setting used by the public app and Admin API.
+Existing production databases that already ran `001`, `002`, and `003` need to run `004_add_gemini_direct_feature.sql`, `005_site_settings.sql`, and `006_story_mirror.sql` before or alongside the code deploy. `004` adds `provider.gemini_direct` to the VIP/lifetime access catalog. `005` adds the system announcement setting used by the public app and Admin API. `006` adds Story Mirror metadata/settings/audit tables for R2 latest-only storage.
 
 The Worker verifies the Supabase user token first, resolves admin role from `profiles.system_role`, rejects non-admin mutations, and writes audit logs for sensitive changes.
 
@@ -123,8 +124,23 @@ Admin API Worker:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY` as a Worker secret.
+- R2 bucket binding `STORY_MIRROR_BUCKET` to private bucket `storyforge-story-mirror`.
 - `ADMIN_ALLOWED_ORIGINS` with the exact admin frontend origin, for example `https://admin.example.com`.
   For the current Workers Static Assets deploy, include `https://storyforge-admin.canhettg113.workers.dev`.
+
+Story Mirror Worker:
+
+- Deploy from `apps/story-mirror-worker/wrangler.toml`.
+- R2 bucket binding `STORY_MIRROR_BUCKET` to private bucket `storyforge-story-mirror`.
+- `SUPABASE_URL`.
+- `SUPABASE_SERVICE_ROLE_KEY` as a Worker secret.
+- `STORY_MIRROR_ALLOWED_ORIGINS` with exact user app origins only.
+- `STORY_MIRROR_USER_QUOTA_BYTES=104857600` for the initial 100 MB/user quota.
+
+User app on Vercel:
+
+- `VITE_ENABLE_STORY_MIRROR=true` only after the admin smoke test passes.
+- `VITE_STORY_MIRROR_BASE_URL` pointing to the deployed Story Mirror Worker.
 
 Relay Worker:
 
@@ -138,4 +154,5 @@ npm run test:admin
 npm run build
 npm run build:admin
 npm run worker:admin:dry-run
+npx wrangler deploy --config apps/story-mirror-worker/wrangler.toml --dry-run
 ```

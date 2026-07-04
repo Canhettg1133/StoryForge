@@ -38,6 +38,7 @@ import {
 } from '@storyforge/access';
 import { createAdminApiClient } from './adminApi.js';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase.js';
+import StoryMirrorPage from './features/storyMirror/StoryMirrorPage.jsx';
 
 const NAV_GROUPS = [
   {
@@ -59,6 +60,7 @@ const NAV_GROUPS = [
     label: 'Nội dung hệ thống',
     items: [
       { id: 'announcement', label: 'Thông báo', icon: Bell },
+      { id: 'story-mirror', label: 'Kho truyện', icon: BookOpen },
     ],
   },
   {
@@ -2187,6 +2189,7 @@ export default function App() {
     if (activeView === 'users') return <UsersPanel data={data} selectedUserId={selectedUserId} setSelectedUserId={setSelectedUserId} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'vip') return <VipPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'announcement') return <AnnouncementPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
+    if (activeView === 'story-mirror') return <StoryMirrorPage adminApi={adminApi} actor={actor} />;
     if (activeView === 'features') return <FeaturesPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'consent') return <ConsentPanel data={data} />;
     if (activeView === 'audit') return <AuditPanel data={data} />;

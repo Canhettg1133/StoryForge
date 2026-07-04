@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { inject } from '@vercel/analytics';
 import App from './App';
 import { initStorage } from './services/db/storage';
+import { initStoryMirrorRuntime } from './services/storyMirror/runtime.js';
 
 // Styles
 import './styles/index.css';
@@ -17,6 +18,7 @@ document.documentElement.setAttribute('data-theme', savedTheme);
 
 // Initialize persistent storage for IndexedDB (200MB+ support)
 initStorage().catch(() => {});
+initStoryMirrorRuntime();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

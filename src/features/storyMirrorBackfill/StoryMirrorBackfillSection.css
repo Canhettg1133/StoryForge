@@ -1,0 +1,82 @@
+.story-mirror-backfill {
+  scroll-margin-top: 24px;
+}
+
+.story-mirror-backfill__header p {
+  max-width: 760px;
+}
+
+.story-mirror-backfill__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.story-mirror-backfill__status {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 12px 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.story-mirror-backfill__status svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.story-mirror-backfill__status strong,
+.story-mirror-backfill__status span {
+  display: block;
+}
+
+.story-mirror-backfill__status span {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+}
+
+.story-mirror-backfill__status--success svg {
+  color: var(--color-success);
+}
+
+.story-mirror-backfill__status--warning svg {
+  color: var(--color-warning);
+}
+
+.story-mirror-backfill__status--info svg {
+  color: var(--color-accent);
+}
+
+.story-mirror-backfill__status--muted svg {
+  color: var(--color-text-muted);
+}
+
+.story-mirror-backfill__metrics {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.story-mirror-backfill__metrics strong {
+  color: var(--color-text-primary);
+}
+
+.story-mirror-backfill__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .story-mirror-backfill__actions {
+    justify-content: stretch;
+  }
+
+  .story-mirror-backfill__actions .btn {
+    width: 100%;
+  }
+}

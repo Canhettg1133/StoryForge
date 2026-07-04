@@ -1,0 +1,16 @@
+name = "storyforge-story-mirror"
+main = "src/index.js"
+compatibility_date = "2026-05-31"
+
+[[r2_buckets]]
+binding = "STORY_MIRROR_BUCKET"
+bucket_name = "storyforge-story-mirror"
+
+[vars]
+# Exact user app origins only. Do not use "*".
+STORY_MIRROR_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,https://story-forge-virid.vercel.app"
+SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
+STORY_MIRROR_USER_QUOTA_BYTES = "104857600"
+
+# Keep SUPABASE_SERVICE_ROLE_KEY as a Worker secret:
+# wrangler secret put SUPABASE_SERVICE_ROLE_KEY

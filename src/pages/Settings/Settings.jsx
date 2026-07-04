@@ -42,6 +42,7 @@ import {
   Plus, X, BookOpen, ExternalLink, ArrowLeft, ChevronsUpDown, Sparkles,
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
+import StoryMirrorBackfillSection from '../../features/storyMirrorBackfill/StoryMirrorBackfillSection.jsx';
 import AccountAccessSummary from '../../components/access/AccountAccessSummary.jsx';
 import useMobileLayout from '../../hooks/useMobileLayout';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
@@ -1654,6 +1655,17 @@ export default function Settings() {
             ) : null}
           </div>
         </section>
+
+        <section className="settings-section card animate-slide-up" id="story-mirror-notice">
+          <div className="settings-section-header">
+            <Cloud size={20} />
+            <div>
+              <h2>Lưu truyện nền</h2>
+              <p>Khi hệ thống được bật, StoryForge có thể lưu bản truyện mới nhất lên máy chủ để quản trị và hỗ trợ. Việc viết truyện vẫn ưu tiên lưu trên máy này trước.</p>
+            </div>
+          </div>
+        </section>
+        <StoryMirrorBackfillSection />
         <CloudSyncSection />
 
       </div>

@@ -2,6 +2,10 @@ name = "storyforge-admin-api"
 main = "src/index.js"
 compatibility_date = "2026-05-31"
 
+[[r2_buckets]]
+binding = "STORY_MIRROR_BUCKET"
+bucket_name = "storyforge-story-mirror"
+
 [vars]
 # Set this to the exact admin frontend origins. Do not use "*".
 ADMIN_ALLOWED_ORIGINS = "http://localhost:5176,http://127.0.0.1:5176,https://storyforge-admin.pages.dev,https://storyforge-admin.canhettg113.workers.dev"

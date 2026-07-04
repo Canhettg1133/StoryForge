@@ -24,6 +24,7 @@ import {
   SITE_ANNOUNCEMENT_KEY,
   toPublicSiteAnnouncement,
 } from '../../../packages/access/src/index.js';
+import { routeStoryMirrorAdmin } from './storyMirror/index.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
 const PROFILES_TABLE = 'profiles';
@@ -1423,9 +1424,10 @@ async function syncAuth(config, request, actor) {
   return { ok: true, count: rows.length, items };
 }
 
-async function routeRequest(request, config, actor) {
+async function routeRequest(request, config, actor, env = {}) {
   const url = new URL(request.url);
-  const [resource, id, action] = cleanPath(url);
+  const segments = cleanPath(url);
+  const [resource, id, action] = segments;
 
   if (!resource) {
     return { ok: true, service: 'storyforge-admin-api', actor };
@@ -1433,6 +1435,23 @@ async function routeRequest(request, config, actor) {
 
   if (resource === 'me') {
     return { ok: true, actor };
+  }
+
+  if (resource === 'story-mirror') {
+    return routeStoryMirrorAdmin({
+      request,
+      env,
+      config,
+      actor,
+      segments: segments.slice(1),
+      url,
+      helpers: {
+        supabaseRest,
+        requirePermission,
+        readJson,
+        getClientIp,
+      },
+    });
   }
 
   if (resource === 'users' && id === 'sync-auth' && request.method === 'POST') {
@@ -1530,7 +1549,7 @@ async function handle(request, env = {}) {
 
   try {
     const actor = await authenticate(request, config);
-    const payload = await routeRequest(request, config, actor);
+    const payload = await routeRequest(request, config, actor, env);
     return json(payload, 200, cors);
   } catch (error) {
     return json({
