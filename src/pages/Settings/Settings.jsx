@@ -428,8 +428,21 @@ function ModelDefaultCallout({
   );
 }
 
-const PROXY_MODEL_FAMILY_FILTERS = ['Tất cả', 'Gemini', 'Claude', 'OpenAI', 'Khác'];
-const PRIMARY_PROXY_MODEL_FAMILIES = ['Gemini', 'Claude', 'OpenAI'];
+const PROXY_MODEL_FAMILY_FILTERS = [
+  'Tất cả',
+  'Gemini',
+  'Claude',
+  'OpenAI',
+  'DeepSeek',
+  'Kimi',
+  'MiniMax',
+  'Qwen',
+  'Llama',
+  'Mistral',
+  'Grok',
+  'Khác',
+];
+const PRIMARY_PROXY_MODEL_FAMILIES = PROXY_MODEL_FAMILY_FILTERS.filter((family) => family !== 'Tất cả' && family !== 'Khác');
 
 function getProxyModelConfidenceLabel(confidence) {
   if (confidence === 'low' || confidence === 'medium') return 'Chưa chắc';

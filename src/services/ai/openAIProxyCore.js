@@ -104,7 +104,27 @@ export function filterGeminiModelIds(models = []) {
 }
 
 const PROXY_MODEL_CHANNEL_ORDER = ['Google CLI', 'Antigravity', 'AG Proxy', 'Custom Proxy', 'Không rõ kênh'];
-const PROXY_MODEL_FAMILY_ORDER = ['Gemini', 'Claude', 'OpenAI', 'Qwen', 'DeepSeek', 'Llama', 'Mistral', 'Mimo/MiniMax', 'JJ', 'Khác'];
+const PROXY_MODEL_FAMILY_ORDER = [
+  'Gemini',
+  'Claude',
+  'OpenAI',
+  'DeepSeek',
+  'Kimi',
+  'MiniMax',
+  'Qwen',
+  'Llama',
+  'Mistral',
+  'Grok',
+  'Yi',
+  'GLM',
+  'Doubao/Seed',
+  'Cohere',
+  'AI21',
+  'Databricks',
+  'Code/Embedding',
+  'JJ',
+  'Khác',
+];
 
 function orderIndex(order, value) {
   const index = order.indexOf(value);
@@ -163,13 +183,22 @@ function classifyProxyModelFamily(normalizedModelId, channel) {
   if (normalizedModelId.includes('google/gemini') || hasToken(normalizedModelId, 'gemini')) {
     return { family: 'Gemini', confidence: 'high' };
   }
-  if (normalizedModelId.includes('qwen')) return { family: 'Qwen', confidence: 'high' };
   if (normalizedModelId.includes('deepseek')) return { family: 'DeepSeek', confidence: 'high' };
+  if (normalizedModelId.includes('kimi') || normalizedModelId.includes('moonshot')) return { family: 'Kimi', confidence: 'high' };
+  if (normalizedModelId.includes('minimax') || normalizedModelId.includes('abab')) {
+    return { family: 'MiniMax', confidence: 'high' };
+  }
+  if (normalizedModelId.includes('qwen')) return { family: 'Qwen', confidence: 'high' };
   if (normalizedModelId.includes('meta-llama') || normalizedModelId.includes('llama')) return { family: 'Llama', confidence: 'high' };
   if (normalizedModelId.includes('mistral') || normalizedModelId.includes('mixtral')) return { family: 'Mistral', confidence: 'high' };
-  if (normalizedModelId.includes('minimax') || normalizedModelId.includes('mimo') || normalizedModelId.includes('abab')) {
-    return { family: 'Mimo/MiniMax', confidence: 'high' };
-  }
+  if (normalizedModelId.includes('grok') || normalizedModelId.includes('x-ai/') || normalizedModelId.includes('xai/')) return { family: 'Grok', confidence: 'high' };
+  if (normalizedModelId.includes('01-ai/') || hasToken(normalizedModelId, 'yi')) return { family: 'Yi', confidence: 'high' };
+  if (normalizedModelId.includes('zhipu') || hasToken(normalizedModelId, 'glm')) return { family: 'GLM', confidence: 'high' };
+  if (normalizedModelId.includes('doubao') || normalizedModelId.includes('bytedance') || hasToken(normalizedModelId, 'seed')) return { family: 'Doubao/Seed', confidence: 'high' };
+  if (normalizedModelId.includes('cohere') || hasToken(normalizedModelId, 'command')) return { family: 'Cohere', confidence: 'medium' };
+  if (normalizedModelId.includes('ai21') || hasToken(normalizedModelId, 'jamba')) return { family: 'AI21', confidence: 'high' };
+  if (normalizedModelId.includes('databricks') || hasToken(normalizedModelId, 'dbrx')) return { family: 'Databricks', confidence: 'high' };
+  if (normalizedModelId.includes('starcoder') || normalizedModelId.includes('codestral') || normalizedModelId.includes('/bge-')) return { family: 'Code/Embedding', confidence: 'medium' };
   if (/(^|[/:._-])jj([/:._-]|$)/iu.test(normalizedModelId)) return { family: 'JJ', confidence: 'high' };
   if (isKnownGoogleLikeChannel(channel) && (hasToken(normalizedModelId, 'flash') || hasToken(normalizedModelId, 'pro'))) {
     return { family: 'Gemini', confidence: 'low' };

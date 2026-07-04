@@ -686,6 +686,230 @@ function normalizeCustomProxyModelList(models = []) {
     )];
 }
 
+const TRANSLATOR_PROXY_MODEL_CHANNEL_ORDER = ['Google CLI', 'Antigravity', 'AG Proxy', 'Custom Proxy', 'Không rõ kênh'];
+const TRANSLATOR_PROXY_MODEL_FAMILY_ORDER = [
+    'Gemini',
+    'Claude',
+    'OpenAI',
+    'DeepSeek',
+    'Kimi',
+    'MiniMax',
+    'Qwen',
+    'Llama',
+    'Mistral',
+    'Grok',
+    'Yi',
+    'GLM',
+    'Doubao/Seed',
+    'Cohere',
+    'AI21',
+    'Databricks',
+    'Code/Embedding',
+    'JJ',
+    'Khác',
+];
+const TRANSLATOR_PROXY_MODEL_FAMILY_FILTERS = [
+    'Tất cả',
+    'Gemini',
+    'Claude',
+    'OpenAI',
+    'DeepSeek',
+    'Kimi',
+    'MiniMax',
+    'Qwen',
+    'Llama',
+    'Mistral',
+    'Grok',
+    'Khác',
+];
+const TRANSLATOR_PROXY_MODEL_PRIMARY_FAMILIES = TRANSLATOR_PROXY_MODEL_FAMILY_FILTERS
+    .filter((family) => family !== 'Tất cả' && family !== 'Khác');
+let customProxyModelSearchText = '';
+let customProxyModelFamilyFilter = 'Tất cả';
+
+function getProxyModelOrderIndex(order, value) {
+    const index = order.indexOf(value);
+    return index === -1 ? order.length : index;
+}
+
+function hasProxyModelToken(value, token) {
+    return new RegExp(`(^|[^a-z0-9])${token}([^a-z0-9]|$)`, 'iu').test(value);
+}
+
+function normalizeProxyModelIdForMatch(modelId) {
+    return String(modelId || '').trim().toLowerCase();
+}
+
+function classifyTranslatorProxyModelChannel(normalizedModelId, context = {}) {
+    if (
+        normalizedModelId.includes('antigravity')
+        || normalizedModelId.includes('antygravity')
+        || normalizedModelId.includes('反重力渠道')
+        || hasProxyModelToken(normalizedModelId, 'agy')
+    ) {
+        return 'Antigravity';
+    }
+    if (
+        normalizedModelId.includes('cli渠道')
+        || normalizedModelId.includes('cli channel')
+        || normalizedModelId.includes('gcli')
+    ) {
+        return 'Google CLI';
+    }
+    if (context.profileId === AG_PROXY_PROFILE_ID) return 'AG Proxy';
+    if (context.profileId === CUSTOM_PROXY_PROFILE_ID) return 'Custom Proxy';
+    return 'Không rõ kênh';
+}
+
+function isKnownTranslatorGoogleChannel(channel) {
+    return channel === 'Google CLI' || channel === 'Antigravity' || channel === 'AG Proxy';
+}
+
+function classifyTranslatorProxyModelFamily(normalizedModelId, channel) {
+    if (normalizedModelId.includes('anthropic/') || normalizedModelId.startsWith('claude') || normalizedModelId.includes('/claude')) {
+        return { family: 'Claude', confidence: 'high' };
+    }
+    if (/(^|[/:._-])(sonnet|opus|haiku)([-/:._]|$)/iu.test(normalizedModelId)) {
+        return { family: 'Claude', confidence: 'low' };
+    }
+    if (
+        normalizedModelId.includes('openai/')
+        || normalizedModelId.startsWith('gpt-')
+        || normalizedModelId.includes('/gpt-')
+        || hasProxyModelToken(normalizedModelId, 'o3')
+        || hasProxyModelToken(normalizedModelId, 'o4')
+    ) {
+        return { family: 'OpenAI', confidence: 'high' };
+    }
+    if (normalizedModelId.includes('google/gemini') || hasProxyModelToken(normalizedModelId, 'gemini')) {
+        return { family: 'Gemini', confidence: 'high' };
+    }
+    if (normalizedModelId.includes('deepseek')) return { family: 'DeepSeek', confidence: 'high' };
+    if (normalizedModelId.includes('kimi') || normalizedModelId.includes('moonshot')) return { family: 'Kimi', confidence: 'high' };
+    if (normalizedModelId.includes('minimax') || normalizedModelId.includes('abab')) {
+        return { family: 'MiniMax', confidence: 'high' };
+    }
+    if (normalizedModelId.includes('qwen')) return { family: 'Qwen', confidence: 'high' };
+    if (normalizedModelId.includes('meta-llama') || normalizedModelId.includes('llama')) return { family: 'Llama', confidence: 'high' };
+    if (normalizedModelId.includes('mistral') || normalizedModelId.includes('mixtral')) return { family: 'Mistral', confidence: 'high' };
+    if (normalizedModelId.includes('grok') || normalizedModelId.includes('x-ai/') || normalizedModelId.includes('xai/')) return { family: 'Grok', confidence: 'high' };
+    if (normalizedModelId.includes('01-ai/') || hasProxyModelToken(normalizedModelId, 'yi')) return { family: 'Yi', confidence: 'high' };
+    if (normalizedModelId.includes('zhipu') || hasProxyModelToken(normalizedModelId, 'glm')) return { family: 'GLM', confidence: 'high' };
+    if (normalizedModelId.includes('doubao') || normalizedModelId.includes('bytedance') || hasProxyModelToken(normalizedModelId, 'seed')) return { family: 'Doubao/Seed', confidence: 'high' };
+    if (normalizedModelId.includes('cohere') || hasProxyModelToken(normalizedModelId, 'command')) return { family: 'Cohere', confidence: 'medium' };
+    if (normalizedModelId.includes('ai21') || hasProxyModelToken(normalizedModelId, 'jamba')) return { family: 'AI21', confidence: 'high' };
+    if (normalizedModelId.includes('databricks') || hasProxyModelToken(normalizedModelId, 'dbrx')) return { family: 'Databricks', confidence: 'high' };
+    if (normalizedModelId.includes('starcoder') || normalizedModelId.includes('codestral') || normalizedModelId.includes('/bge-')) return { family: 'Code/Embedding', confidence: 'medium' };
+    if (/(^|[/:._-])jj([/:._-]|$)/iu.test(normalizedModelId)) return { family: 'JJ', confidence: 'high' };
+    if (isKnownTranslatorGoogleChannel(channel) && (hasProxyModelToken(normalizedModelId, 'flash') || hasProxyModelToken(normalizedModelId, 'pro'))) {
+        return { family: 'Gemini', confidence: 'low' };
+    }
+    return { family: 'Khác', confidence: 'unknown' };
+}
+
+function classifyTranslatorProxyModel(modelId, context = {}) {
+    const id = String(modelId || '').trim();
+    const normalizedModelId = normalizeProxyModelIdForMatch(id);
+    const channel = classifyTranslatorProxyModelChannel(normalizedModelId, context);
+    const familyResult = classifyTranslatorProxyModelFamily(normalizedModelId, channel);
+    return {
+        id,
+        channel,
+        family: familyResult.family,
+        confidence: familyResult.confidence,
+    };
+}
+
+function groupTranslatorProxyModelsForDisplay(models = [], context = {}) {
+    const items = normalizeCustomProxyModelList(models)
+        .map((model) => classifyTranslatorProxyModel(model, context))
+        .sort((a, b) => (
+            getProxyModelOrderIndex(TRANSLATOR_PROXY_MODEL_CHANNEL_ORDER, a.channel) - getProxyModelOrderIndex(TRANSLATOR_PROXY_MODEL_CHANNEL_ORDER, b.channel)
+            || getProxyModelOrderIndex(TRANSLATOR_PROXY_MODEL_FAMILY_ORDER, a.family) - getProxyModelOrderIndex(TRANSLATOR_PROXY_MODEL_FAMILY_ORDER, b.family)
+            || a.id.localeCompare(b.id)
+        ));
+
+    const groupsByChannel = new Map();
+    items.forEach((item) => {
+        if (!groupsByChannel.has(item.channel)) {
+            groupsByChannel.set(item.channel, { channel: item.channel, models: [] });
+        }
+        groupsByChannel.get(item.channel).models.push(item);
+    });
+
+    return Array.from(groupsByChannel.values()).map((group) => {
+        const familyMap = new Map();
+        group.models.forEach((item) => {
+            if (!familyMap.has(item.family)) {
+                familyMap.set(item.family, { family: item.family, models: [] });
+            }
+            familyMap.get(item.family).models.push(item);
+        });
+        return {
+            ...group,
+            families: Array.from(familyMap.values()),
+        };
+    });
+}
+
+function getProxyModelConfidenceLabel(confidence) {
+    if (confidence === 'low' || confidence === 'medium') return 'Chưa chắc';
+    if (confidence === 'unknown') return 'Chưa rõ';
+    return '';
+}
+
+function getCustomProxyPickerModels(profile = customProxyProfile) {
+    return normalizeCustomProxyModelList([
+        profile.defaultModel,
+        ...(Array.isArray(profile.models) ? profile.models : []),
+    ]);
+}
+
+function clearModelPickerElement(element) {
+    if (!element) return;
+    while (element.firstChild && typeof element.removeChild === 'function') {
+        element.removeChild(element.firstChild);
+    }
+    element.textContent = '';
+}
+
+function canAppendModelPickerChildren(element) {
+    return Boolean(element && typeof element.appendChild === 'function' && typeof document.createElement === 'function');
+}
+
+function appendModelPickerBadge(container, text, extraClass = '') {
+    const badge = document.createElement('span');
+    badge.className = `model-picker-badge${extraClass ? ` ${extraClass}` : ''}`;
+    badge.textContent = text;
+    container.appendChild(badge);
+}
+
+function renderCustomProxyModelFilters() {
+    const container = getElement('customProxyModelFilters');
+    if (!container) return;
+    clearModelPickerElement(container);
+    if (!canAppendModelPickerChildren(container)) return;
+
+    TRANSLATOR_PROXY_MODEL_FAMILY_FILTERS.forEach((filter) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `model-family-filter ${customProxyModelFamilyFilter === filter ? 'is-active' : ''}`;
+        button.textContent = filter;
+        button.onclick = () => setCustomProxyModelFamilyFilter(filter);
+        container.appendChild(button);
+    });
+}
+
+function setCustomProxyModelFamilyFilter(filter = 'Tất cả') {
+    customProxyModelFamilyFilter = TRANSLATOR_PROXY_MODEL_FAMILY_FILTERS.includes(filter) ? filter : 'Tất cả';
+    renderCustomProxyModelsDropdown();
+}
+
+function setCustomProxyModelSearch(value = '') {
+    customProxyModelSearchText = String(value || '').trim();
+    renderCustomProxyModelPicker(normalizeCustomProxyProfile());
+}
+
 function normalizeCustomProxyProfile(patch = {}) {
     const previous = getCustomProxyProfile();
     const hasBaseUrlPatch = Object.prototype.hasOwnProperty.call(patch, 'baseUrl');
@@ -824,6 +1048,118 @@ function renderCustomProxyKeysList() {
     `).join('');
 }
 
+function renderCustomProxyModelPicker(profile = normalizeCustomProxyProfile()) {
+    const searchInput = getElement('customProxyModelSearch');
+    const selectedCard = getElement('customProxySelectedModel');
+    const picker = getElement('customProxyModelPicker');
+    const context = { profileId: CUSTOM_PROXY_PROFILE_ID, profileLabel: profile.label || 'Custom Proxy' };
+    const allModels = getCustomProxyPickerModels(profile);
+    const normalizedSearch = customProxyModelSearchText.toLowerCase();
+
+    if (searchInput && searchInput.value !== customProxyModelSearchText) {
+        searchInput.value = customProxyModelSearchText;
+    }
+
+    renderCustomProxyModelFilters();
+
+    if (selectedCard) {
+        selectedCard.textContent = profile.defaultModel
+            ? `Đang dùng: ${profile.defaultModel}`
+            : 'Chưa chọn model Custom Proxy.';
+        selectedCard.classList?.toggle('is-active', Boolean(profile.defaultModel));
+    }
+
+    if (!picker) return;
+    clearModelPickerElement(picker);
+    if (!canAppendModelPickerChildren(picker)) return;
+
+    if (!allModels.length) {
+        const empty = document.createElement('div');
+        empty.className = 'model-picker-empty';
+        empty.textContent = profile.baseUrl
+            ? 'Chưa có danh sách model. Bấm Lấy models hoặc nhập model thủ công bên dưới.'
+            : 'Nhập Base URL và API key trước, sau đó bấm Lấy models.';
+        picker.appendChild(empty);
+        return;
+    }
+
+    const filteredModels = allModels.filter((model) => {
+        const meta = classifyTranslatorProxyModel(model, context);
+        const matchesSearch = !normalizedSearch
+            || meta.id.toLowerCase().includes(normalizedSearch)
+            || meta.channel.toLowerCase().includes(normalizedSearch)
+            || meta.family.toLowerCase().includes(normalizedSearch);
+        const matchesFamily = customProxyModelFamilyFilter === 'Tất cả'
+            || (customProxyModelFamilyFilter === 'Khác'
+                ? !TRANSLATOR_PROXY_MODEL_PRIMARY_FAMILIES.includes(meta.family)
+                : meta.family === customProxyModelFamilyFilter);
+        return matchesSearch && matchesFamily;
+    });
+
+    if (!filteredModels.length) {
+        const empty = document.createElement('div');
+        empty.className = 'model-picker-empty';
+        empty.textContent = 'Không có model khớp bộ lọc hiện tại.';
+        picker.appendChild(empty);
+        return;
+    }
+
+    groupTranslatorProxyModelsForDisplay(filteredModels, context).forEach((group) => {
+        const groupElement = document.createElement('section');
+        groupElement.className = 'model-picker-group';
+
+        const groupHeader = document.createElement('div');
+        groupHeader.className = 'model-picker-group__header';
+        const groupTitle = document.createElement('span');
+        groupTitle.textContent = group.channel;
+        const groupCount = document.createElement('small');
+        groupCount.textContent = `${group.models.length} model`;
+        groupHeader.appendChild(groupTitle);
+        groupHeader.appendChild(groupCount);
+        groupElement.appendChild(groupHeader);
+
+        group.families.forEach((familyGroup) => {
+            const familyElement = document.createElement('div');
+            familyElement.className = 'model-picker-family';
+
+            const familyLabel = document.createElement('div');
+            familyLabel.className = 'model-picker-family__label';
+            familyLabel.textContent = familyGroup.family;
+            familyElement.appendChild(familyLabel);
+
+            familyGroup.models.forEach((model) => {
+                const button = document.createElement('button');
+                const isSelected = model.id === profile.defaultModel;
+                button.type = 'button';
+                button.className = `model-picker-item ${isSelected ? 'is-active' : ''}`;
+                button.onclick = () => selectCustomProxyModel(model.id);
+                button.setAttribute('role', 'option');
+                button.setAttribute('aria-selected', String(isSelected));
+
+                const idText = document.createElement('span');
+                idText.className = 'model-picker-item__id';
+                idText.textContent = model.id;
+                button.appendChild(idText);
+
+                const badges = document.createElement('span');
+                badges.className = 'model-picker-item__badges';
+                appendModelPickerBadge(badges, model.family);
+                appendModelPickerBadge(badges, model.channel, 'model-picker-badge--muted');
+                const confidenceLabel = getProxyModelConfidenceLabel(model.confidence);
+                if (confidenceLabel) {
+                    appendModelPickerBadge(badges, confidenceLabel, 'model-picker-badge--warning');
+                }
+                button.appendChild(badges);
+                familyElement.appendChild(button);
+            });
+
+            groupElement.appendChild(familyElement);
+        });
+
+        picker.appendChild(groupElement);
+    });
+}
+
 function renderCustomProxyModelsDropdown() {
     const select = getElement('customProxyModelSelect');
     const input = getElement('customProxyModelInput');
@@ -837,6 +1173,7 @@ function renderCustomProxyModelsDropdown() {
             : 'Chưa chọn model Custom Proxy.';
         status.className = profile.defaultModel ? 'model-fetch-status success' : 'model-fetch-status';
     }
+    renderCustomProxyModelPicker(profile);
     if (!select) return;
 
     select.innerHTML = '<option value="">-- Chọn model đã lấy --</option>';

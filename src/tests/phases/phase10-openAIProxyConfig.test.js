@@ -109,6 +109,34 @@ describe('openAIProxyConfig legacy settings migration', () => {
     ]);
   });
 
+  it('classifies current proxy model families for search and filtering', async () => {
+    const {
+      CUSTOM_PROXY_PROFILE_ID,
+      classifyProxyModel,
+    } = await loadConfig();
+    const context = { profileId: CUSTOM_PROXY_PROFILE_ID };
+
+    expect(classifyProxyModel('deepseek-ai/deepseek-v4-flash', context).family).toBe('DeepSeek');
+    expect(classifyProxyModel('moonshotai/kimi-k2-instruct', context).family).toBe('Kimi');
+    expect(classifyProxyModel('kimi-k2-thinking', context).family).toBe('Kimi');
+    expect(classifyProxyModel('MiniMax-M3', context).family).toBe('MiniMax');
+    expect(classifyProxyModel('abab6.5s-chat', context).family).toBe('MiniMax');
+    expect(classifyProxyModel('x-ai/grok-4.3', context).family).toBe('Grok');
+    expect(classifyProxyModel('01-ai/yi-large', context).family).toBe('Yi');
+    expect(classifyProxyModel('bytedance/seed-oss-36b-instruct', context).family).toBe('Doubao/Seed');
+  });
+
+  it('keeps the Settings model picker filters aligned with current proxy families', () => {
+    const settingsSource = fs.readFileSync(
+      path.join(process.cwd(), 'src/pages/Settings/Settings.jsx'),
+      'utf8',
+    );
+
+    ['DeepSeek', 'Kimi', 'MiniMax', 'Qwen', 'Grok'].forEach((family) => {
+      expect(settingsSource).toContain(`'${family}'`);
+    });
+  });
+
   it('keeps fetched ag proxy models provider-agnostic because ag can expose Claude', () => {
     const settingsSource = fs.readFileSync(
       path.join(process.cwd(), 'src/pages/Settings/Settings.jsx'),

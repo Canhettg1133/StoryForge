@@ -21,7 +21,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=14">
+    <link rel="stylesheet" href="style.css?v=15">
 </head>
 
 <body>
@@ -421,7 +421,7 @@
                     </div>
 
                     <div class="form-group custom-proxy-model-block">
-                        <label for="customProxyModelSelect">
+                        <label for="customProxyModelSearch">
                             <span class="icon">🤖</span>
                             Model
                         </label>
@@ -429,7 +429,21 @@
                             <button class="btn btn-info btn-small" onclick="fetchCustomProxyModels()">Lấy models</button>
                             <button class="btn btn-secondary btn-small" onclick="testCustomProxyConnection()">Test kết nối</button>
                         </div>
-                        <select id="customProxyModelSelect" onchange="selectCustomProxyModel(this.value)">
+                        <div class="model-picker-toolbar custom-proxy-model-toolbar">
+                            <input type="search" id="customProxyModelSearch" class="model-picker-search"
+                                aria-label="Tìm model Custom Proxy"
+                                placeholder="Tìm model: deepseek, kimi, minimax, gemini..."
+                                oninput="setCustomProxyModelSearch(this.value)">
+                            <div class="model-family-filters" id="customProxyModelFilters" role="group"
+                                aria-label="Lọc theo họ model"></div>
+                        </div>
+                        <div class="selected-model-card" id="customProxySelectedModel">
+                            Chưa chọn model Custom Proxy.
+                        </div>
+                        <div class="model-picker-list" id="customProxyModelPicker" role="listbox"
+                            aria-label="Danh sách model Custom Proxy"></div>
+                        <select id="customProxyModelSelect" class="custom-proxy-native-select"
+                            onchange="selectCustomProxyModel(this.value)" aria-hidden="true" tabindex="-1">
                             <option value="">-- Chưa lấy danh sách model --</option>
                         </select>
                         <div class="add-model-row">
@@ -1025,7 +1039,7 @@
     <script src="js/local-ai/ollama.js?v=14"></script>
 
     <!-- 6b. Proxy API -->
-    <script src="js/proxy/proxy-api.js?v=14"></script>
+    <script src="js/proxy/proxy-api.js?v=15"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
     <script src="js/init.js?v=14"></script>
