@@ -48,6 +48,25 @@ export function isWritingOutputTaskType(taskType) {
   return WRITING_TASK_TYPES.has(taskType);
 }
 
+function mergeUsageContextIntoRouteOptions(routeOptions = {}, usageContext = {}) {
+  return {
+    ...(routeOptions || {}),
+    usageContext: {
+      ...((routeOptions && typeof routeOptions.usageContext === 'object') ? routeOptions.usageContext : {}),
+      ...usageContext,
+    },
+  };
+}
+
+function buildWriterUsageContext(taskType) {
+  const context = { surface: 'writer' };
+  if (taskType === TASK_TYPES.FREE_PROMPT) {
+    context.taskGroup = 'story_writing';
+    context.taskLabel = 'Viết truyện';
+  }
+  return context;
+}
+
 const PRE_WRITE_GUARD_TASKS = new Set([
   TASK_TYPES.CONTINUE,
   TASK_TYPES.SCENE_DRAFT,
@@ -542,6 +561,11 @@ const useAIStore = create((set, get) => ({
             taskType: TASK_TYPES.FREE_PROMPT,
             messages: [{ role: 'user', content: NSFW_SUPER_PROMPT_1 }],
             stream: false,
+            routeOptions: mergeUsageContextIntoRouteOptions({}, {
+              surface: 'writer',
+              taskGroup: 'story_setup',
+              taskLabel: 'Khởi tạo chế độ viết',
+            }),
             nsfwMode: true,
             superNsfwMode: true, // Pass this so it can Rebuke during priming if needed
             skipRefusal: true,   // Optimization: Don't Rebuke the persona instructions
@@ -617,7 +641,7 @@ const useAIStore = create((set, get) => ({
       taskType,
       messages,
       stream: true,
-      routeOptions,
+      routeOptions: mergeUsageContextIntoRouteOptions(routeOptions, buildWriterUsageContext(taskType)),
       nsfwMode: enrichedContext.nsfwMode,
       superNsfwMode: enrichedContext.superNsfwMode,
       onToken: (chunk, fullText) => {

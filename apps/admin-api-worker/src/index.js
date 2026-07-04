@@ -783,9 +783,58 @@ function getUsageStatusLabel(status) {
   return value || 'Không rõ';
 }
 
+const USAGE_TASK_LABELS_VI = {
+  story_writing: 'Viết truyện',
+  story_chat: 'Chat của truyện',
+  free_chat: 'Chat tự do',
+  story_planning: 'Lên kế hoạch truyện',
+  story_analysis: 'Phân tích truyện',
+  story_data: 'Dữ liệu truyện',
+  story_setup: 'Thiết lập truyện',
+};
+
+const USAGE_TASK_TYPE_LABELS_VI = {
+  continue: 'Viết truyện',
+  scene_draft: 'Viết truyện',
+  arc_chapter_draft: 'Viết truyện',
+  rewrite: 'Chỉnh sửa truyện',
+  expand: 'Mở rộng truyện',
+  style_write: 'Viết theo văn phong',
+  free_prompt: 'Yêu cầu AI tự do',
+  brainstorm: 'Lên ý tưởng truyện',
+  outline: 'Lập dàn ý truyện',
+  plot_suggest: 'Gợi ý cốt truyện',
+  arc_outline: 'Lập dàn ý arc',
+  chapter_summary: 'Tóm tắt chương',
+  check_conflict: 'Kiểm tra mâu thuẫn',
+  extract_terms: 'Rút trích thuật ngữ',
+  relationship_analyze_batch: 'Phân tích quan hệ nhân vật',
+  canon_extract_ops: 'Rút trích canon',
+  canon_repair: 'Sửa canon',
+  canon_review: 'Rà soát canon',
+  project_wizard: 'Tạo truyện mới',
+};
+
+function usageMetadataText(metadata, key) {
+  return String(metadata?.[key] || '').trim();
+}
+
+function getUsageMetadataTaskLabel(metadata) {
+  const explicitLabel = usageMetadataText(metadata, 'taskLabel');
+  if (explicitLabel) return explicitLabel;
+  const taskType = usageMetadataText(metadata, 'taskType');
+  if (taskType && USAGE_TASK_TYPE_LABELS_VI[taskType]) return USAGE_TASK_TYPE_LABELS_VI[taskType];
+  const taskGroup = usageMetadataText(metadata, 'taskGroup');
+  if (taskGroup && USAGE_TASK_LABELS_VI[taskGroup]) return USAGE_TASK_LABELS_VI[taskGroup];
+  return '';
+}
+
 function getUsageTaskLabel(row) {
   const metadata = asObject(row.metadata);
   const featureKey = row.feature_key || metadata.workflowFeature || metadata.providerFeature;
+  if (featureKey && featureKey !== ACCESS_FEATURES.AI_CHAT_ACCESS) return getFeatureLabel(featureKey);
+  const metadataLabel = getUsageMetadataTaskLabel(metadata);
+  if (metadataLabel) return metadataLabel;
   if (featureKey) return getFeatureLabel(featureKey);
   const action = String(metadata.action || '').trim();
   if (action === 'models') return 'Xem danh sách model';
@@ -854,6 +903,11 @@ async function buildUsageQuery(config, url, pagination) {
       `metadata->>action.ilike.*${search}*`,
       `metadata->>workflowFeature.ilike.*${search}*`,
       `metadata->>providerFeature.ilike.*${search}*`,
+      `metadata->>taskType.ilike.*${search}*`,
+      `metadata->>taskGroup.ilike.*${search}*`,
+      `metadata->>taskLabel.ilike.*${search}*`,
+      `metadata->>surface.ilike.*${search}*`,
+      `metadata->>chatMode.ilike.*${search}*`,
     ];
     if (profileIds.length > 0) {
       searchGroup.push(`user_id.in.(${profileIds.join(',')})`);

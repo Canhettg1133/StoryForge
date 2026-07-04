@@ -270,6 +270,26 @@ describe('phase12 admin API worker', () => {
             },
             created_at: '2026-06-30T12:30:00.000Z',
           },
+          {
+            id: 'usage-2',
+            request_id: 'request-2',
+            user_id: 'user-3',
+            feature_key: 'ai_chat.access',
+            provider: 'custom_proxy',
+            model: 'gemini-3-pro',
+            event_type: 'chat',
+            count: 1,
+            status: 'ok',
+            metadata: {
+              action: 'chat',
+              workflowFeature: 'ai_chat.access',
+              taskType: 'continue',
+              taskGroup: 'story_writing',
+              taskLabel: 'Viết truyện',
+              surface: 'writer',
+            },
+            created_at: '2026-06-30T12:29:00.000Z',
+          },
         ]);
       }
       if (target.includes('/rest/v1/profiles') && target.includes('user_id=in.')) {
@@ -278,6 +298,13 @@ describe('phase12 admin API worker', () => {
             user_id: 'user-2',
             email: 'reader@example.com',
             display_name: 'Reader',
+            system_role: 'user',
+            status: 'active',
+          },
+          {
+            user_id: 'user-3',
+            email: 'writer@example.com',
+            display_name: 'Writer',
             system_role: 'user',
             status: 'active',
           },
@@ -300,6 +327,10 @@ describe('phase12 admin API worker', () => {
         email: 'reader@example.com',
         displayName: 'Reader',
       },
+    });
+    expect(payload.items[1]).toMatchObject({
+      email: 'writer@example.com',
+      taskLabel: 'Viết truyện',
     });
     expect(JSON.stringify(payload)).not.toContain('service-role-key');
   });

@@ -60,6 +60,68 @@ const WRITING_AUTO_CONTINUE_TASKS = new Set([
   TASK_TYPES.EXPAND,
   TASK_TYPES.STYLE_WRITE,
 ]);
+const USAGE_CONTEXT_TEXT_LIMIT = 80;
+const USAGE_TASK_METADATA = {
+  [TASK_TYPES.CONTINUE]: { taskGroup: 'story_writing', taskLabel: 'Viết truyện' },
+  [TASK_TYPES.SCENE_DRAFT]: { taskGroup: 'story_writing', taskLabel: 'Viết truyện' },
+  [TASK_TYPES.ARC_CHAPTER_DRAFT]: { taskGroup: 'story_writing', taskLabel: 'Viết truyện' },
+  [TASK_TYPES.REWRITE]: { taskGroup: 'story_writing', taskLabel: 'Chỉnh sửa truyện' },
+  [TASK_TYPES.EXPAND]: { taskGroup: 'story_writing', taskLabel: 'Mở rộng truyện' },
+  [TASK_TYPES.STYLE_WRITE]: { taskGroup: 'story_writing', taskLabel: 'Viết theo văn phong' },
+  [TASK_TYPES.FREE_PROMPT]: { taskGroup: 'free_prompt', taskLabel: 'Yêu cầu AI tự do' },
+  [TASK_TYPES.BRAINSTORM]: { taskGroup: 'story_planning', taskLabel: 'Lên ý tưởng truyện' },
+  [TASK_TYPES.OUTLINE]: { taskGroup: 'story_planning', taskLabel: 'Lập dàn ý truyện' },
+  [TASK_TYPES.PLOT_SUGGEST]: { taskGroup: 'story_planning', taskLabel: 'Gợi ý cốt truyện' },
+  [TASK_TYPES.ARC_OUTLINE]: { taskGroup: 'story_planning', taskLabel: 'Lập dàn ý arc' },
+  [TASK_TYPES.GENERATE_MACRO_MILESTONES]: { taskGroup: 'story_planning', taskLabel: 'Lập mốc truyện' },
+  [TASK_TYPES.ANALYZE_MACRO_CONTRACT]: { taskGroup: 'story_analysis', taskLabel: 'Phân tích đại cục' },
+  [TASK_TYPES.AUDIT_ARC_ALIGNMENT]: { taskGroup: 'story_analysis', taskLabel: 'Kiểm tra arc truyện' },
+  [TASK_TYPES.SUMMARIZE]: { taskGroup: 'story_analysis', taskLabel: 'Tóm tắt truyện' },
+  [TASK_TYPES.CHAPTER_SUMMARY]: { taskGroup: 'story_analysis', taskLabel: 'Tóm tắt chương' },
+  [TASK_TYPES.CONTINUITY_CHECK]: { taskGroup: 'story_analysis', taskLabel: 'Kiểm tra liên tục truyện' },
+  [TASK_TYPES.CHECK_CONFLICT]: { taskGroup: 'story_analysis', taskLabel: 'Kiểm tra mâu thuẫn' },
+  [TASK_TYPES.QA_CHECK]: { taskGroup: 'story_analysis', taskLabel: 'Kiểm tra chất lượng truyện' },
+  [TASK_TYPES.EXTRACT_TERMS]: { taskGroup: 'story_analysis', taskLabel: 'Rút trích thuật ngữ' },
+  [TASK_TYPES.FEEDBACK_EXTRACT]: { taskGroup: 'story_analysis', taskLabel: 'Rút trích phản hồi' },
+  [TASK_TYPES.SUGGEST_UPDATES]: { taskGroup: 'story_analysis', taskLabel: 'Gợi ý cập nhật truyện' },
+  [TASK_TYPES.RELATIONSHIP_ANALYZE_BATCH]: { taskGroup: 'story_analysis', taskLabel: 'Phân tích quan hệ nhân vật' },
+  [TASK_TYPES.CANON_EXTRACT_OPS]: { taskGroup: 'story_analysis', taskLabel: 'Rút trích canon' },
+  [TASK_TYPES.CANON_ADJUDICATE_WARNINGS]: { taskGroup: 'story_analysis', taskLabel: 'Kiểm tra cảnh báo canon' },
+  [TASK_TYPES.CANON_REPAIR]: { taskGroup: 'story_analysis', taskLabel: 'Sửa canon' },
+  [TASK_TYPES.CANON_REVIEW]: { taskGroup: 'story_analysis', taskLabel: 'Rà soát canon' },
+  [TASK_TYPES.AI_GENERATE_ENTITY]: { taskGroup: 'story_data', taskLabel: 'Tạo dữ liệu truyện' },
+  [TASK_TYPES.PROJECT_WIZARD]: { taskGroup: 'story_setup', taskLabel: 'Tạo truyện mới' },
+  [TASK_TYPES.STORY_BIBLE_SEED]: { taskGroup: 'story_setup', taskLabel: 'Tạo sổ tay truyện' },
+  [TASK_TYPES.CHAPTER_OUTLINE_PASS]: { taskGroup: 'story_planning', taskLabel: 'Lập dàn ý chương' },
+};
+
+function sanitizeUsageContextText(value, maxLength = USAGE_CONTEXT_TEXT_LIMIT) {
+  const text = String(value || '').trim().replace(/\s+/gu, ' ');
+  return text ? text.slice(0, maxLength) : '';
+}
+
+function sanitizeUsageContext(input = {}) {
+  if (!input || typeof input !== 'object') return {};
+  return ['taskType', 'taskGroup', 'taskLabel', 'surface', 'chatMode']
+    .reduce((acc, key) => {
+      const value = sanitizeUsageContextText(input[key]);
+      if (value) acc[key] = value;
+      return acc;
+    }, {});
+}
+
+function buildUsageContext(taskType, routeOptions = {}) {
+  const normalizedTaskType = sanitizeUsageContextText(taskType);
+  const inferred = {
+    taskType: normalizedTaskType,
+    ...(USAGE_TASK_METADATA[normalizedTaskType] || { taskGroup: 'ai_task', taskLabel: 'Tác vụ AI' }),
+  };
+  return {
+    ...inferred,
+    ...sanitizeUsageContext(routeOptions?.usageContext),
+    taskType: normalizedTaskType,
+  };
+}
 
 export const OLLAMA_MODEL_PRESETS = {
   qwen25: {
@@ -499,7 +561,7 @@ function createOllamaRequestSignal(externalSignal, timeoutMs = OLLAMA_TIMEOUT_MS
 // ================================
 // Gemini Proxy (OpenAI-compatible)
 // ================================
-async function callOpenAIProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode, proxyProfileId }) {
+async function callOpenAIProxy({ model, messages, stream = true, signal, onToken, onComplete, onError, nsfwMode, safetyMode, proxyProfileId, usageContext }) {
   const proxyProfile = getActiveOpenAIProxyProfile(proxyProfileId);
   const proxyErrorContext = {
     provider: PROVIDERS.OPENAI_PROXY,
@@ -546,6 +608,7 @@ async function callOpenAIProxy({ model, messages, stream = true, signal, onToken
       action: 'chat',
       baseUrl: target.baseUrl,
       chatCompletionsPath: proxyProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
+      usage: usageContext,
       payload,
     }
     : payload;
@@ -1290,6 +1353,7 @@ class AIService {
     this.trackController(controller, allowConcurrent);
 
     const route = this._router.route(taskType, routeOptions);
+    const usageContext = buildUsageContext(taskType, routeOptions);
     const startTime = Date.now();
     const shouldAutoContinueIncomplete = autoContinueOnIncomplete ?? WRITING_AUTO_CONTINUE_TASKS.has(taskType);
     const maxIncompleteContinuations = Math.max(0, Number(maxContinuationAttempts) || 0);
@@ -1334,6 +1398,7 @@ class AIService {
       stream,
       signal: controller.signal,
       proxyProfileId: routeMeta.proxyProfileId,
+      usageContext,
       nsfwMode: nsfwMode || superNsfwMode,
       safetyMode: chatSafetyOff ? 'off' : undefined,
       ...handlers,
@@ -1439,6 +1504,7 @@ class AIService {
             model: route.model, messages: rebukeMessages, stream: false, signal: controller.signal,
             nsfwMode: true,
             proxyProfileId: route.proxyProfileId,
+            usageContext,
           });
 
           // Turn 6 (Final request after apology)
@@ -1454,6 +1520,7 @@ class AIService {
           await getCallFn(route.provider)({
             model: route.model, messages: finalMessages, stream, signal: controller.signal,
             proxyProfileId: route.proxyProfileId,
+            usageContext,
             onToken: (chunk, full) => {
               // Ensure cleanup on the final streaming output too
               const clean = cleanMetadata(cleanThoughts(full));
@@ -1521,6 +1588,7 @@ class AIService {
           await getCallFn(route.provider)({
             model: route.model, messages: rebukeMessages, stream, signal: controller.signal,
             proxyProfileId: route.proxyProfileId,
+            usageContext,
             onToken, onComplete: (finalText) => {
               const cleanFinal = superNsfwMode ? finalText.replace(/^\[.*?\]\n*/gm, '').trim() : finalText;
               wrappedOnComplete(cleanFinal);
@@ -1543,6 +1611,7 @@ class AIService {
             await getCallFn(fb.provider)({
               model: fb.model, messages, stream, signal: controller.signal,
               proxyProfileId: fb.proxyProfileId,
+              usageContext,
               onToken, onComplete: (text) => wrappedOnComplete(text, fb),
               onError: (e) => settleErrorOnce(normalizeAIError(e, fb), fb),
               nsfwMode,
@@ -1561,6 +1630,7 @@ class AIService {
     getCallFn(route.provider)({
       model: route.model, messages, stream, signal: controller.signal,
       proxyProfileId: route.proxyProfileId,
+      usageContext,
       onToken, onComplete: wrappedOnComplete, onError: wrappedOnError,
       nsfwMode: nsfwMode || superNsfwMode,
       safetyMode: chatSafetyOff ? 'off' : undefined,

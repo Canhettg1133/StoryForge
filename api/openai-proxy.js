@@ -180,6 +180,20 @@ function createUsageRequestId() {
   return `openai-proxy-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+const USAGE_METADATA_KEYS = ['taskType', 'taskGroup', 'taskLabel', 'surface', 'chatMode'];
+
+function sanitizeUsageMetadata(body) {
+  const source = body?.usage && typeof body.usage === 'object'
+    ? body.usage
+    : body?.usageContext;
+  if (!source || typeof source !== 'object') return {};
+  return USAGE_METADATA_KEYS.reduce((acc, key) => {
+    const value = String(source[key] || '').trim().replace(/\s+/gu, ' ');
+    if (value) acc[key] = value.slice(0, 80);
+    return acc;
+  }, {});
+}
+
 async function logProxyUsage(access, { body, action, status = 'ok' } = {}) {
   if (!access?.supabase || !access?.user?.id) return;
   const featureKey = access.workflowFeature || access.providerFeature || null;
@@ -201,6 +215,7 @@ async function logProxyUsage(access, { body, action, status = 'ok' } = {}) {
       action,
       providerFeature: access.providerFeature || '',
       workflowFeature: access.workflowFeature || '',
+      ...sanitizeUsageMetadata(body),
     },
   });
 }

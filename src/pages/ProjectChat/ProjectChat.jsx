@@ -558,9 +558,32 @@ export function buildThreadConfigPatch(thread = {}, {
   };
 }
 
-export function buildChatRequestOptions({ routeOptions = {}, project } = {}) {
+function getChatUsageContext(chatMode) {
+  return chatMode === CHAT_MODES.STORY
+    ? {
+      surface: 'project_chat',
+      chatMode: CHAT_MODES.STORY,
+      taskGroup: 'story_chat',
+      taskLabel: 'Chat của truyện',
+    }
+    : {
+      surface: 'global_chat',
+      chatMode: CHAT_MODES.FREE,
+      taskGroup: 'free_chat',
+      taskLabel: 'Chat tự do',
+    };
+}
+
+export function buildChatRequestOptions({ routeOptions = {}, project, chatMode } = {}) {
+  const usageContext = {
+    ...getChatUsageContext(chatMode),
+    ...((routeOptions && typeof routeOptions.usageContext === 'object') ? routeOptions.usageContext : {}),
+  };
   return buildProjectContentModeAiOptions(project, {
-    routeOptions,
+    routeOptions: {
+      ...routeOptions,
+      usageContext,
+    },
     chatSafetyOff: true,
   });
 }
@@ -1564,6 +1587,7 @@ export default function ProjectChat() {
         allowConcurrent: true,
         ...buildChatRequestOptions({
           routeOptions,
+          chatMode: thread.chat_mode || activeThreadMode,
           project: projectScopeEnabled ? currentProject : null,
         }),
         onComplete: (text) => resolve(text),
@@ -1935,6 +1959,7 @@ export default function ProjectChat() {
         stream: true,
         ...buildChatRequestOptions({
           routeOptions,
+          chatMode: thread.chat_mode || activeThreadMode,
           project: projectScopeEnabled ? currentProject : null,
         }),
         onToken: (_chunk, full) => {
@@ -2051,6 +2076,7 @@ export default function ProjectChat() {
         stream: true,
         ...buildChatRequestOptions({
           routeOptions,
+          chatMode: currentThread.chat_mode || activeThreadMode,
           project: projectScopeEnabled ? currentProject : null,
         }),
         onToken: (_chunk, full) => {

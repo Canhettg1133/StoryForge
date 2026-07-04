@@ -141,6 +141,73 @@ describe('/api/openai-proxy', () => {
     vi.unstubAllGlobals();
   });
 
+  it('logs only allowlisted usage metadata for admin activity labels', async () => {
+    const insertMock = vi.fn(async () => ({ error: null }));
+    const loggingHandler = createOpenAIProxyHandler({
+      requireFeatureImpl: async (_req, featureKey) => ({
+        ok: true,
+        decision: { allowed: true, feature: featureKey },
+        user: { id: 'usage-user' },
+        supabase: {
+          from: (table) => {
+            expect(table).toBe('usage_events');
+            return { insert: insertMock };
+          },
+        },
+      }),
+    });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok' } }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+        usage: {
+          taskType: 'continue',
+          taskGroup: 'story_writing',
+          taskLabel: 'Viết truyện',
+          surface: 'writer',
+          chatMode: 'story',
+          prompt: 'khong duoc luu',
+          messages: [{ content: 'khong duoc luu' }],
+        },
+        payload: {
+          model: 'custom-model',
+          messages: [{ role: 'user', content: 'hello' }],
+          stream: false,
+        },
+      },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
+    });
+
+    await loggingHandler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(insertMock).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'usage-user',
+      feature_key: 'ai_chat.access',
+      metadata: expect.objectContaining({
+        action: 'chat',
+        taskType: 'continue',
+        taskGroup: 'story_writing',
+        taskLabel: 'Viết truyện',
+        surface: 'writer',
+        chatMode: 'story',
+      }),
+    }));
+    const inserted = insertMock.mock.calls[0][0];
+    expect(JSON.stringify(inserted.metadata)).not.toContain('prompt');
+    expect(JSON.stringify(inserted.metadata)).not.toContain('khong duoc luu');
+    vi.unstubAllGlobals();
+  });
+
   it('streams chat_stream_batch results as each upstream payload resolves', async () => {
     const fetchMock = vi.fn(async (url, options) => new Response(JSON.stringify({
       choices: [{ message: { content: JSON.parse(options.body).messages[0].content } }],
