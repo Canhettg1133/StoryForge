@@ -42,7 +42,6 @@ import {
   Plus, X, BookOpen, ExternalLink, ArrowLeft, ChevronsUpDown, Sparkles,
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
-import StoryMirrorBackfillSection from '../../features/storyMirrorBackfill/StoryMirrorBackfillSection.jsx';
 import AccountAccessSummary from '../../components/access/AccountAccessSummary.jsx';
 import useMobileLayout from '../../hooks/useMobileLayout';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
@@ -1665,7 +1664,6 @@ export default function Settings() {
             </div>
           </div>
         </section>
-        <StoryMirrorBackfillSection />
         <CloudSyncSection />
 
       </div>

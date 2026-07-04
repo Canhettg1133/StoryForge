@@ -8,8 +8,6 @@ const TEXT_FILES = [
   'apps/admin/src/adminApi.js',
   'apps/story-mirror-worker/src/index.js',
   'apps/admin-api-worker/src/storyMirror/index.js',
-  'src/features/storyMirrorBackfill/StoryMirrorBackfillSection.jsx',
-  'src/features/storyMirrorBackfill/StoryMirrorBackfillSection.css',
   'src/services/storyMirror/backfill.js',
   'src/services/storyMirror/identity.js',
   'src/services/storyMirror/outbox.js',
@@ -21,8 +19,6 @@ describe('story mirror static safety', () => {
     const frontendFiles = [
       'apps/admin/src/features/storyMirror/StoryMirrorPage.jsx',
       'apps/admin/src/features/storyMirror/storyMirror.css',
-      'src/features/storyMirrorBackfill/StoryMirrorBackfillSection.jsx',
-      'src/features/storyMirrorBackfill/StoryMirrorBackfillSection.css',
       'src/services/storyMirror/backfill.js',
       'src/services/storyMirror/identity.js',
       'src/services/storyMirror/outbox.js',
@@ -46,14 +42,13 @@ describe('story mirror static safety', () => {
     }
   });
 
-  it('keeps the old-story backfill controls in Vietnamese with the expected labels', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/features/storyMirrorBackfill/StoryMirrorBackfillSection.jsx'), 'utf8');
-    expect(source).toContain('Đồng bộ truyện cũ');
-    expect(source).toContain('Đang quét');
-    expect(source).toContain('Đã xếp hàng');
-    expect(source).toContain('Hoàn tất');
-    expect(source).toContain('Tạm dừng');
-    expect(source).toContain('Chạy đồng bộ truyện cũ');
-    expect(source).toContain('Thử lại');
+  it('keeps old-story backfill automatic instead of rendering Settings test controls', () => {
+    const settingsSource = readFileSync(resolve(process.cwd(), 'src/pages/Settings/Settings.jsx'), 'utf8');
+    const runtimeSource = readFileSync(resolve(process.cwd(), 'src/services/storyMirror/runtime.js'), 'utf8');
+
+    expect(settingsSource).not.toContain('StoryMirrorBackfillSection');
+    expect(settingsSource).not.toContain('Đồng bộ truyện cũ');
+    expect(settingsSource).not.toContain('Chạy đồng bộ truyện cũ');
+    expect(runtimeSource).toContain('scheduleStoryMirrorBackfill');
   });
 });
