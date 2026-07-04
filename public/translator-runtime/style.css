@@ -2350,6 +2350,20 @@ select option {
         overflow-wrap: anywhere;
     }
 
+    #geminiModelSelect,
+    #proxyModelSelect,
+    #ollamaModelSelect,
+    #ollamaModel,
+    #proxyCustomModel,
+    .model-name-input {
+        min-height: 38px;
+        padding: 0 0.65rem !important;
+        border-color: rgba(129, 140, 248, 0.4) !important;
+        background: rgba(2, 6, 23, 0.42) !important;
+        font-size: 0.78rem !important;
+        line-height: 1.2;
+    }
+
     .selected-model-card {
         min-height: 0;
         max-height: 3.2rem;
@@ -2363,7 +2377,8 @@ select option {
     }
 
     .model-picker-list {
-        max-height: 240px;
+        max-height: min(48vh, 380px);
+        min-height: 300px;
         padding: 0.45rem;
     }
 

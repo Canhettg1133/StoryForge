@@ -1406,9 +1406,55 @@
     border-radius: 8px;
   }
 
+  .settings-select-shell {
+    min-height: 58px;
+    border-radius: 8px;
+  }
+
   .settings-select-shell__control {
-    min-height: 68px;
-    padding-right: 48px;
+    min-height: 58px;
+    padding: 24px 42px 10px var(--space-3);
+    font-size: var(--text-sm);
+  }
+
+  .settings-select-shell__prompt {
+    top: 9px;
+    left: var(--space-3);
+  }
+
+  .model-list {
+    max-height: min(44vh, 360px);
+    overflow: auto;
+    gap: 8px;
+    padding: 6px;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg-secondary));
+  }
+
+  .model-list .model-item {
+    min-height: 48px;
+    padding: 10px 12px;
+    border-color: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    background: var(--color-bg-secondary);
+  }
+
+  .model-list .model-item--active {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 18%, var(--color-bg-secondary));
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--color-accent) 14%, transparent);
+  }
+
+  .model-default-block .input,
+  .model-default-block .select,
+  .openai-proxy-config .input,
+  .openai-proxy-config .select {
+    min-height: 40px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border-color: color-mix(in srgb, var(--color-accent) 26%, var(--color-border));
+    background: var(--color-bg-secondary);
+    font-size: var(--text-sm);
   }
 
   .custom-proxy-model-picker {
@@ -1438,8 +1484,33 @@
     overflow-wrap: anywhere;
   }
 
+  .custom-proxy-model-list {
+    max-height: min(48vh, 380px);
+    min-height: 300px;
+    gap: 8px;
+    padding: 6px;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-border));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-accent) 6%, var(--color-bg-secondary));
+  }
+
   .custom-proxy-model-item {
-    padding: 10px;
+    min-height: 54px;
+    padding: 11px 12px;
+    gap: 8px;
+    border-color: color-mix(in srgb, var(--color-accent) 18%, var(--color-border));
+    background: var(--color-bg-secondary);
+    font-size: 12px;
+  }
+
+  .custom-proxy-model-item.is-active {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 20%, var(--color-bg-secondary));
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
+
+  .custom-proxy-model-badge {
+    min-height: 21px;
   }
 }
 

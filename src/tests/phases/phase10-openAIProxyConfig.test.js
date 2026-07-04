@@ -169,6 +169,20 @@ describe('openAIProxyConfig legacy settings migration', () => {
     expect(css).toContain('.custom-proxy-model-filter {\n    width: 100%;');
   });
 
+  it('keeps Settings mobile model lists taller and model controls compact across providers', () => {
+    const css = fs.readFileSync(
+      path.join(process.cwd(), 'src/pages/Settings/Settings.css'),
+      'utf8',
+    ).replace(/\r\n/gu, '\n');
+
+    expect(css).toContain('.model-list {\n    max-height: min(44vh, 360px);');
+    expect(css).toContain('.model-list .model-item {\n    min-height: 48px;');
+    expect(css).toContain('.custom-proxy-model-list {\n    max-height: min(48vh, 380px);');
+    expect(css).toContain('min-height: 300px;');
+    expect(css).toContain('.custom-proxy-model-item {\n    min-height: 54px;');
+    expect(css).toContain('.model-default-block .input,\n  .model-default-block .select,\n  .openai-proxy-config .input,\n  .openai-proxy-config .select');
+  });
+
   it('keeps fetched ag proxy models provider-agnostic because ag can expose Claude', () => {
     const settingsSource = fs.readFileSync(
       path.join(process.cwd(), 'src/pages/Settings/Settings.jsx'),

@@ -173,11 +173,24 @@ describe('phase10 translator proxy model default', () => {
     expect(css).toContain('.add-model-row .btn {\n        width: 100%;');
   });
 
+  it('keeps every translator provider model control compact on mobile', () => {
+    const css = fs
+      .readFileSync(path.join(repoRoot, 'public/translator-runtime/style.css'), 'utf8')
+      .replace(/\r\n/gu, '\n');
+
+    expect(css).toContain('#geminiModelSelect,\n    #proxyModelSelect,\n    #ollamaModelSelect,\n    #ollamaModel,\n    #proxyCustomModel,\n    .model-name-input {');
+    expect(css).toContain('min-height: 38px;');
+    expect(css).toContain('background: rgba(2, 6, 23, 0.42) !important;');
+    expect(css).toContain('border-color: rgba(129, 140, 248, 0.4) !important;');
+  });
+
   it('keeps Custom Proxy model list items readable and highlighted on mobile', () => {
     const css = fs
       .readFileSync(path.join(repoRoot, 'public/translator-runtime/style.css'), 'utf8')
       .replace(/\r\n/gu, '\n');
 
+    expect(css).toContain('.model-picker-list {\n        max-height: min(48vh, 380px);');
+    expect(css).toContain('min-height: 300px;');
     expect(css).toContain('.model-picker-item {\n        min-height: 54px;');
     expect(css).toContain('.model-picker-item__id {\n        font-size: 0.8rem;');
     expect(css).toContain('.model-picker-item.is-active {\n        border-color: rgba(16, 185, 129, 0.72);');
