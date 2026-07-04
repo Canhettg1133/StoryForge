@@ -126,7 +126,8 @@ Admin API Worker:
 - `SUPABASE_SERVICE_ROLE_KEY` as a Worker secret.
 - R2 bucket binding `STORY_MIRROR_BUCKET` to private bucket `storyforge-story-mirror`.
 - `ADMIN_ALLOWED_ORIGINS` with the exact admin frontend origin, for example `https://admin.example.com`.
-  For the current Workers Static Assets deploy, include `https://storyforge-admin.canhettg113.workers.dev`.
+  For the current Cloudflare Pages deploy, include `https://storyforge-admin.pages.dev`.
+  Add a Workers Static Assets origin only if that admin frontend is actually deployed.
 
 Story Mirror Worker:
 

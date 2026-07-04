@@ -8,7 +8,7 @@ bucket_name = "storyforge-story-mirror"
 
 [vars]
 # Set this to the exact admin frontend origins. Do not use "*".
-ADMIN_ALLOWED_ORIGINS = "http://localhost:5176,http://127.0.0.1:5176,https://storyforge-admin.pages.dev,https://storyforge-admin.canhettg113.workers.dev"
+ADMIN_ALLOWED_ORIGINS = "http://localhost:5176,http://127.0.0.1:5176,https://storyforge-admin.pages.dev"
 # SUPABASE_URL is safe as a plain variable. Keep SUPABASE_SERVICE_ROLE_KEY as a secret:
 # wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"

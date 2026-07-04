@@ -119,7 +119,8 @@ describe('phase12 admin API worker', () => {
   it('keeps the deployed admin frontend origin in the checked-in worker config', () => {
     const wranglerConfig = readFileSync(resolve(process.cwd(), 'apps/admin-api-worker/wrangler.toml'), 'utf8');
 
-    expect(wranglerConfig).toContain('https://storyforge-admin.canhettg113.workers.dev');
+    expect(wranglerConfig).toContain('https://storyforge-admin.pages.dev');
+    expect(wranglerConfig).not.toContain('https://storyforge-admin.canhettg113.workers.dev');
   });
 
   it('rejects non-admin users before listing admin data', async () => {
