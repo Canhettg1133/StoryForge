@@ -150,6 +150,17 @@ describe('phase10 translator proxy model default', () => {
     expect(css).toContain('.model-family-filter {\n        width: 100%;');
   });
 
+  it('keeps the selected Custom Proxy model card compact on mobile', () => {
+    const css = fs
+      .readFileSync(path.join(repoRoot, 'public/translator-runtime/style.css'), 'utf8')
+      .replace(/\r\n/gu, '\n');
+
+    expect(css).toContain('.selected-model-card {\n        min-height: 0;');
+    expect(css).toContain('max-height: 3.2rem;');
+    expect(css).toContain('display: -webkit-box;');
+    expect(css).toContain('-webkit-line-clamp: 2;');
+  });
+
   it('defaults Gemini Proxy to Flash 3 when saved translator settings do not contain a model', () => {
     const { context, elements, stored } = loadRuntime({
       savedSettings: {

@@ -2350,6 +2350,23 @@ select option {
         overflow-wrap: anywhere;
     }
 
+    .selected-model-card {
+        min-height: 0;
+        max-height: 3.2rem;
+        padding: 0.45rem 0.6rem;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        font-size: 0.72rem;
+        line-height: 1.25;
+    }
+
+    .model-picker-list {
+        max-height: 240px;
+        padding: 0.45rem;
+    }
+
     .custom-proxy-preview {
         grid-template-columns: 1fr;
     }
