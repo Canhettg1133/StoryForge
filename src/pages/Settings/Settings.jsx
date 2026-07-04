@@ -802,7 +802,11 @@ export default function Settings() {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
   const syncCustomProxyProfile = (patch = {}, { activate = false } = {}) => {
+    const hasLabelPatch = Object.prototype.hasOwnProperty.call(patch, 'label');
     const hasBaseUrlPatch = Object.prototype.hasOwnProperty.call(patch, 'baseUrl');
+    const nextLabel = hasLabelPatch
+      ? String(patch.label ?? '')
+      : String(customProxyProfile.label || '');
     const nextBaseUrl = String((patch.baseUrl ?? customProxyProfile.baseUrl) || '').trim();
     const baseUrlChanged = hasBaseUrlPatch
       && nextBaseUrl !== String(customProxyProfile.baseUrl || '').trim();
@@ -810,7 +814,7 @@ export default function Settings() {
     const nextProfile = {
       ...customProxyProfile,
       ...patch,
-      label: String((patch.label ?? customProxyProfile.label) || 'Custom OpenAI-compatible').trim(),
+      label: nextLabel.trim() ? nextLabel : 'Custom OpenAI-compatible',
       baseUrl: nextBaseUrl,
       defaultModel: String((shouldClearStoredModels ? '' : (patch.defaultModel ?? customProxyProfile.defaultModel)) || '').trim(),
       chatCompletionsPath: String(
@@ -1732,7 +1736,7 @@ export default function Settings() {
                       ['Nhập Base URL', 'Dán root domain, /v1 hoặc full /v1/chat/completions. StoryForge sẽ tự chuẩn hóa endpoint.'],
                       ['Thêm key riêng', 'Key ở đây chỉ dùng cho Custom Proxy, không trộn với key Gemini Proxy mặc định ag.'],
                       ['Lấy hoặc nhập model', 'Bấm Lấy models nếu proxy có /v1/models. Nếu fail, nhập model thủ công vẫn dùng được.'],
-                      ['Test rồi dùng', 'Bấm Test để kiểm tra kết nối, sau đó bấm Lưu và dùng để áp dụng toàn app.'],
+                      ['Test rồi dùng', 'Đổi cấu hình sẽ được lưu ngay. Bấm Test để kiểm tra kết nối, hoặc bấm Lưu và dùng để đóng setup.'],
                     ].map(([title, detail], index) => (
                       <div className="ai-studio-relay-step" key={title}>
                         <span>{index + 1}</span>
@@ -1761,7 +1765,7 @@ export default function Settings() {
                         <input
                           className="input"
                           value={customProxyProfile.label || ''}
-                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, label: event.target.value }))}
+                          onChange={(event) => syncCustomProxyProfile({ label: event.target.value }, { activate: true })}
                           placeholder="Custom OpenAI-compatible"
                         />
                       </div>
@@ -1770,8 +1774,9 @@ export default function Settings() {
                         <input
                           className="input"
                           value={customProxyProfile.baseUrl || ''}
-                          onChange={(event) => setCustomProxyProfile((prev) =>
-                            resetCustomProxyModelsOnBaseUrlChange(prev, event.target.value)
+                          onChange={(event) => syncCustomProxyProfile(
+                            resetCustomProxyModelsOnBaseUrlChange(customProxyProfile, event.target.value),
+                            { activate: true },
                           )}
                           placeholder="https://proxy.example.com hoặc http://localhost:1234/v1"
                         />
@@ -1834,7 +1839,7 @@ export default function Settings() {
                     <CustomProxyModelPicker
                       models={customProxyModels}
                       selectedModel={customProxyProfile.defaultModel || ''}
-                      onSelect={(model) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: model }))}
+                      onSelect={(model) => syncCustomProxyProfile({ defaultModel: model }, { activate: true })}
                       title="Danh sách model Custom Proxy"
                       profileId={CUSTOM_PROXY_PROFILE_ID}
                       profileLabel={customProxyProfile.label || 'Custom Proxy'}
@@ -1845,7 +1850,7 @@ export default function Settings() {
                       <input
                         className="input"
                         value={customProxyProfile.defaultModel || ''}
-                        onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, defaultModel: event.target.value }))}
+                        onChange={(event) => syncCustomProxyProfile({ defaultModel: event.target.value }, { activate: true })}
                         placeholder="gemini-2.5-flash, openai/gpt-4.1, llama3..."
                       />
                     </div>
@@ -1892,7 +1897,7 @@ export default function Settings() {
                         <input
                           className="input"
                           value={customProxyProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH}
-                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, chatCompletionsPath: event.target.value }))}
+                          onChange={(event) => syncCustomProxyProfile({ chatCompletionsPath: event.target.value }, { activate: true })}
                         />
                       </label>
                       <label>
@@ -1900,7 +1905,7 @@ export default function Settings() {
                         <input
                           className="input"
                           value={customProxyProfile.modelsPath || DEFAULT_PROXY_MODELS_PATH}
-                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, modelsPath: event.target.value }))}
+                          onChange={(event) => syncCustomProxyProfile({ modelsPath: event.target.value }, { activate: true })}
                         />
                       </label>
                       <label>
@@ -1908,7 +1913,7 @@ export default function Settings() {
                         <select
                           className="select"
                           value={customProxyProfile.transport || 'auto'}
-                          onChange={(event) => setCustomProxyProfile((prev) => ({ ...prev, transport: event.target.value }))}
+                          onChange={(event) => syncCustomProxyProfile({ transport: event.target.value }, { activate: true })}
                         >
                           <option value="auto">Auto</option>
                           <option value="relay">Vercel relay</option>
@@ -1919,10 +1924,9 @@ export default function Settings() {
                         <input
                           type="checkbox"
                           checked={Boolean(customProxyProfile.supportsGeminiSafetySettings)}
-                          onChange={(event) => setCustomProxyProfile((prev) => ({
-                            ...prev,
+                          onChange={(event) => syncCustomProxyProfile({
                             supportsGeminiSafetySettings: event.target.checked,
-                          }))}
+                          }, { activate: true })}
                         />
                         <span>Gửi Gemini safety settings</span>
                       </label>

@@ -137,6 +137,38 @@ describe('openAIProxyConfig legacy settings migration', () => {
     });
   });
 
+  it('saves Custom setup profile edits immediately instead of keeping temporary modal-only state', () => {
+    const settingsSource = fs.readFileSync(
+      path.join(process.cwd(), 'src/pages/Settings/Settings.jsx'),
+      'utf8',
+    );
+    const setupStart = settingsSource.indexOf('{showCustomProxySetup ? (');
+    const setupEnd = settingsSource.indexOf('{showAIStudioRelaySetup ? (');
+    const setupSource = settingsSource.slice(setupStart, setupEnd);
+
+    expect(setupStart).toBeGreaterThan(-1);
+    expect(setupEnd).toBeGreaterThan(setupStart);
+    expect(setupSource).not.toContain('setCustomProxyProfile((prev)');
+    expect(setupSource).toContain("syncCustomProxyProfile({ defaultModel: model }, { activate: true })");
+    expect(setupSource).toContain("syncCustomProxyProfile({ defaultModel: event.target.value }, { activate: true })");
+    expect(setupSource).toContain("syncCustomProxyProfile({ chatCompletionsPath: event.target.value }, { activate: true })");
+    expect(setupSource).toContain("syncCustomProxyProfile({ modelsPath: event.target.value }, { activate: true })");
+    expect(setupSource).toContain("syncCustomProxyProfile({ transport: event.target.value }, { activate: true })");
+    expect(setupSource).toContain("supportsGeminiSafetySettings: event.target.checked");
+  });
+
+  it('lets Settings model filters wrap into compact columns on mobile', () => {
+    const css = fs.readFileSync(
+      path.join(process.cwd(), 'src/pages/Settings/Settings.css'),
+      'utf8',
+    ).replace(/\r\n/gu, '\n');
+
+    expect(css).toContain('.custom-proxy-model-filters {\n    display: grid;');
+    expect(css).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
+    expect(css).toContain('overflow-x: visible;');
+    expect(css).toContain('.custom-proxy-model-filter {\n    width: 100%;');
+  });
+
   it('keeps fetched ag proxy models provider-agnostic because ag can expose Claude', () => {
     const settingsSource = fs.readFileSync(
       path.join(process.cwd(), 'src/pages/Settings/Settings.jsx'),

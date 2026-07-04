@@ -354,6 +354,9 @@
 }
 
 .custom-proxy-model-filter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 30px;
   padding: 0 10px;
   border: 1px solid var(--color-border);
@@ -1418,16 +1421,30 @@
   }
 
   .custom-proxy-model-filters {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow-x: visible;
+    padding-bottom: 0;
   }
 
   .custom-proxy-model-filter {
-    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    padding: 4px 8px;
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .custom-proxy-model-item {
     padding: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .custom-proxy-model-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

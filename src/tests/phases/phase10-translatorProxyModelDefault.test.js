@@ -139,6 +139,17 @@ describe('phase10 translator proxy model default', () => {
     expect(html).toContain('src="js/init.js?v=14"');
   });
 
+  it('keeps translator model filters visible on mobile without a one-line horizontal scroller', () => {
+    const css = fs
+      .readFileSync(path.join(repoRoot, 'public/translator-runtime/style.css'), 'utf8')
+      .replace(/\r\n/gu, '\n');
+
+    expect(css).toContain('.model-family-filters {\n        display: grid;');
+    expect(css).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
+    expect(css).toContain('overflow-x: visible;');
+    expect(css).toContain('.model-family-filter {\n        width: 100%;');
+  });
+
   it('defaults Gemini Proxy to Flash 3 when saved translator settings do not contain a model', () => {
     const { context, elements, stored } = loadRuntime({
       savedSettings: {
