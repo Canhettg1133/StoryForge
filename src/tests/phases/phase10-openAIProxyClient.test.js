@@ -452,6 +452,49 @@ describe('OpenAI-compatible proxy client payloads', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('uses legacy custom proxy keys from storage after a page refresh', async () => {
+    localStorage.setItem('sf-api-keys-v2', JSON.stringify({
+      gemini_proxy: [],
+      openai_proxy: [],
+      custom_openai_proxy: [{ key: 'sk-legacy-custom-key', label: 'legacy custom' }],
+    }));
+    localStorage.setItem('sf-preferred-provider', 'openai_proxy');
+    localStorage.setItem('sf-ai-settings', JSON.stringify({
+      openAIProxy: {
+        activeProfileId: 'custom-openai-proxy',
+        customProfile: {
+          id: 'custom-openai-proxy',
+          label: 'Custom OpenAI-compatible',
+          baseUrl: 'https://proxy.example.com/v1',
+          defaultModel: 'custom-refresh-model',
+          models: ['custom-refresh-model'],
+          chatCompletionsPath: '/v1/chat/completions',
+          modelsPath: '/v1/models',
+          authType: 'bearer',
+          requiresApiKey: true,
+          supportsGeminiSafetySettings: false,
+          transport: 'direct',
+        },
+      },
+      proxyUrl: 'https://proxy.example.com/v1',
+    }));
+
+    const {
+      aiService,
+      routerModule,
+    } = await loadClientStack();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok after refresh' } }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(sendOnce(aiService, routerModule)).resolves.toBe('ok after refresh');
+
+    const [, request] = fetchMock.mock.calls[0];
+    expect(fetchMock.mock.calls[0][0]).toBe('https://proxy.example.com/v1/chat/completions');
+    expect(request.headers.Authorization).toBe('Bearer sk-legacy-custom-key');
+  });
+
   it('falls back to direct chat when the same-origin relay route is missing', async () => {
     const {
       aiService,

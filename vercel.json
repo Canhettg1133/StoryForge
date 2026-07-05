@@ -4,6 +4,9 @@
         "api/openai-proxy.js": {
             "maxDuration": 300
         },
+        "api/cloudflare-workers-ai.js": {
+            "maxDuration": 300
+        },
         "api/translator-openai-proxy.js": {
             "maxDuration": 300
         }

@@ -2,6 +2,7 @@ export const AG_PROXY_PROFILE_ID = 'ag-gemini-proxy';
 export const CUSTOM_PROXY_PROFILE_ID = 'custom-openai-proxy';
 export const DEFAULT_PROXY_CHAT_PATH = '/v1/chat/completions';
 export const DEFAULT_PROXY_MODELS_PATH = '/v1/models';
+export const DEFAULT_PROXY_IMAGE_GENERATIONS_PATH = '/v1/images/generations';
 export const DEFAULT_AG_PROXY_BASE_URL = 'https://ag.beijixingxing.com';
 export const OPENAI_PROXY_MIXED_CONTENT_BLOCKED = 'OPENAI_PROXY_MIXED_CONTENT_BLOCKED';
 export const DEFAULT_AG_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
@@ -9,6 +10,8 @@ export const DEFAULT_AG_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益�
 const KNOWN_ENDPOINT_SUFFIXES = [
   '/v1/chat/completions',
   '/chat/completions',
+  '/v1/images/generations',
+  '/images/generations',
   '/v1/models',
   '/models',
   '/v1',
@@ -83,14 +86,18 @@ export function buildOpenAIProxyEndpoint(rawBaseUrl, path = DEFAULT_PROXY_CHAT_P
 }
 
 export function parseOpenAIModelIds(payload) {
-  const rawModels = Array.isArray(payload?.data)
-    ? payload.data
-    : (Array.isArray(payload?.models) ? payload.models : []);
+  const rawCollection = payload?.data ?? payload?.models ?? [];
+  const rawModels = Array.isArray(rawCollection)
+    ? rawCollection
+    : Object.entries(rawCollection || {}).map(([id, meta]) => ({
+      id,
+      ...(meta && typeof meta === 'object' ? meta : {}),
+    }));
 
   return rawModels
     .map((item) => {
       if (typeof item === 'string') return item.trim();
-      return String(item?.id || item?.name || '').trim();
+      return String(item?.id || item?.name || item?.model || item?.slug || item?.value || '').trim();
     })
     .filter(Boolean);
 }

@@ -22,6 +22,7 @@ export const PROVIDERS = {
   OPENAI_PROXY: 'openai_proxy',
   GEMINI_PROXY: 'gemini_proxy',
   GEMINI_DIRECT: 'gemini_direct',
+  CLOUDFLARE_WORKERS_AI: 'cloudflare_workers_ai',
   OLLAMA: 'ollama',
   AI_STUDIO_RELAY: 'ai_studio_relay',
 };

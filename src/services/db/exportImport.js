@@ -162,7 +162,7 @@ export async function exportProject(projectId) {
     plotThreads, factions, suggestions, entityTimeline, macroArcs, arcs,
     storyEvents, entityStateCurrent, plotThreadState, validatorReports,
     memoryEvidence, chapterRevisions, chapterCommits, chapterSnapshots,
-    itemStateCurrent, relationshipStateCurrent,
+    itemStateCurrent, relationshipStateCurrent, projectAssets,
   ] = await Promise.all([
     db.projects.get(projectId),
     db.chapters.where('project_id').equals(projectId).toArray(),
@@ -191,6 +191,7 @@ export async function exportProject(projectId) {
     db.chapter_snapshots.where('project_id').equals(projectId).toArray(),
     db.item_state_current.where('project_id').equals(projectId).toArray(),
     db.relationship_state_current.where('project_id').equals(projectId).toArray(),
+    db.project_assets.where('project_id').equals(projectId).toArray(),
   ]);
 
   if (!project) throw new Error('Không tìm thấy dự án');
@@ -202,7 +203,7 @@ export async function exportProject(projectId) {
     : [];
 
   const data = {
-    _storyforge_version: 6,
+    _storyforge_version: 7,
     _exported_at: new Date().toISOString(),
     project,
     chapters,
@@ -232,6 +233,7 @@ export async function exportProject(projectId) {
     chapter_snapshots: chapterSnapshots,
     item_state_current: itemStateCurrent,
     relationship_state_current: relationshipStateCurrent,
+    project_assets: projectAssets,
   };
 
   return JSON.stringify(data, null, 2);
@@ -350,7 +352,12 @@ export async function importProject(jsonString, options = {}) {
   // ═══════════════════════════════════════════
   // 1. Create new project (strip old ID)
   // ═══════════════════════════════════════════
-  const { id: _oldProjectId, ...projectData } = data.project;
+  const {
+    id: _oldProjectId,
+    cover_asset_id: oldCoverAssetId,
+    cover_thumbnail_data_url: _oldCoverThumbnailDataUrl,
+    ...projectData
+  } = data.project;
   const normalizedProjectData = { ...projectData };
   if (!preserveCloudMetadata) {
     delete normalizedProjectData.cloud_project_slug;
@@ -365,6 +372,30 @@ export async function importProject(jsonString, options = {}) {
     created_at: now,
     updated_at: now,
   });
+
+  const projectAssetIdMap = {};
+  let firstCoverAssetId = null;
+  for (const asset of (data.project_assets || [])) {
+    const { id: oldAssetId, project_id: _oldAssetProjectId, ...assetData } = asset;
+    const newAssetId = await db.project_assets.add({
+      ...assetData,
+      project_id: newProjectId,
+      created_at: assetData.created_at || now,
+      updated_at: assetData.updated_at || now,
+    });
+    if (oldAssetId != null) projectAssetIdMap[oldAssetId] = newAssetId;
+    if (!firstCoverAssetId && assetData.role === 'cover') firstCoverAssetId = newAssetId;
+  }
+
+  const mappedCoverAssetId = projectAssetIdMap[oldCoverAssetId] || firstCoverAssetId;
+  if (mappedCoverAssetId) {
+    const mappedCoverAsset = await db.project_assets.get(mappedCoverAssetId);
+    await db.projects.update(newProjectId, {
+      cover_asset_id: mappedCoverAssetId,
+      cover_thumbnail_data_url: mappedCoverAsset?.thumbnail_data_url || mappedCoverAsset?.data_url || '',
+      updated_at: now,
+    });
+  }
 
   // ═══════════════════════════════════════════
   // 2. macro_arcs → macroArcIdMap

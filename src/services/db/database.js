@@ -1281,6 +1281,10 @@ db.version(23).stores({
   storyMirrorStatus: 'id, project_id, status, updated_at',
 });
 
+db.version(24).stores({
+  project_assets: '++id, project_id, role, source, mime_type, updated_at, created_at, [project_id+role]',
+});
+
 db.getPlotSuggestions = (chapterId) =>
   db.suggestions
     .where('source_chapter_id').equals(chapterId)

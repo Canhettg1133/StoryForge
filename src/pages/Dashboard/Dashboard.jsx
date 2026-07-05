@@ -11,29 +11,19 @@ import {
   Trash2,
   MoreVertical,
   Download,
-  Clock,
   Cloud,
-  Crown,
-  FileJson,
-  FileSearch,
-  FlaskConical,
-  Globe,
   HeartHandshake,
-  LayoutDashboard,
+  Image as ImageIcon,
   Languages,
-  Map,
   MessageSquare,
   Menu,
-  Palette,
-  PenTool,
-  Sparkles,
-  Settings,
-  Users,
 } from 'lucide-react';
 import NewProjectModal from './NewProjectModal';
 import ExportModal from '../../components/common/ExportModal';
 import MobileSheet from '../../components/mobile/MobileSheet';
+import MobileNavigationMenu from '../../components/mobile/MobileNavigationMenu.jsx';
 import SupportDonateModal from '../../components/support/SupportDonateModal.jsx';
+import { getActiveProjectCoversForProjects } from '../../services/projectCovers/coverRepository.js';
 import './Dashboard.css';
 
 const UTILITY_ITEMS = [
@@ -69,61 +59,6 @@ UTILITY_ITEMS.splice(2, 0, {
 });
 
 const VISIBLE_UTILITY_ITEMS = UTILITY_ITEMS.filter(shouldShowNavItem);
-const FULL_MOBILE_DRAWER_ITEMS = [
-  { id: 'dashboard', title: 'Dashboard', icon: LayoutDashboard, path: '/', surface: 'core' },
-  { id: 'story-bible', title: 'Sổ tay truyện', icon: BookOpen, path: '/story-bible', needsProject: true, surface: 'core' },
-  { id: 'su-that', title: 'Sự thật', icon: BookKey, path: '/su-that', needsProject: true, surface: 'core' },
-  { id: 'outline', title: 'Bảng dàn ý', icon: Map, path: '/outline', needsProject: true, surface: 'core' },
-  { id: 'characters', title: 'Nhân vật', icon: Users, path: '/characters', needsProject: true, surface: 'core' },
-  { id: 'world', title: 'Thế giới', icon: Globe, path: '/world', needsProject: true, surface: 'core' },
-  { divider: true },
-  { id: 'editor', title: 'Viết truyện', icon: PenTool, path: '/editor', needsProject: true, surface: 'core' },
-  { id: 'project-chat', title: 'Chat AI', icon: MessageSquare, path: '/chat', needsProject: true, surface: 'core' },
-  { id: 'project-prompts', title: 'Prompt truyện', icon: Sparkles, path: '/prompts', needsProject: true, surface: 'core' },
-  { id: 'style-importer', title: 'Prompt Doctor', icon: Sparkles, path: '/style-importer', needsProject: true, surface: 'core' },
-  { id: 'writing-debug', title: 'Test prompt viết', icon: FileJson, path: '/writing-debug', needsProject: true, surface: 'debug' },
-  { divider: true },
-  { id: 'lab', title: 'Narrative Lab', icon: FlaskConical, path: '/lab', needsProject: true, surface: 'lab' },
-  { id: 'lab-lite', title: 'Lab Lite', icon: BookKey, path: '/lab-lite', needsProject: true, surface: 'lab-lite' },
-  { id: 'corpus-lab', title: 'Corpus Lab', icon: FlaskConical, path: '/corpus-lab', needsProject: true, surface: 'lab' },
-  { divider: true },
-  { id: 'timeline', title: 'Timeline', icon: Clock, path: '/timeline', needsProject: true, comingSoon: true, surface: 'roadmap' },
-  { id: 'revision', title: 'Revision & QA', icon: FileSearch, path: '/revision', needsProject: true, comingSoon: true, surface: 'roadmap' },
-  { id: 'style-lab', title: 'Style Lab', icon: Palette, path: '/style-lab', needsProject: true, comingSoon: true, surface: 'roadmap' },
-  { divider: true },
-  { id: 'global-chat', title: 'Chat tự do', icon: MessageSquare, path: '/ai-chat', surface: 'core' },
-  { id: 'translator', title: 'Dịch truyện', icon: Languages, path: '/translator', surface: 'core' },
-  { id: 'prompt-manager', title: 'Prompt tổng quát', icon: Sparkles, path: '/prompt-manager', surface: 'core' },
-  { id: 'account-vip', title: 'Tài khoản & VIP', icon: Crown, path: '/login', surface: 'core' },
-  { id: 'cloud-sync', title: 'Cloud Sync', icon: Cloud, path: '/cloud-sync', surface: 'core' },
-  { id: 'settings', title: 'Cài đặt', icon: Settings, path: '/settings', surface: 'core' },
-];
-
-const VISIBLE_MOBILE_DRAWER_ITEMS = FULL_MOBILE_DRAWER_ITEMS.filter((item, index, items) => {
-  if (item.divider) {
-    const prev = items[index - 1];
-    const next = items[index + 1];
-    return shouldShowNavItem(prev || {}) && shouldShowNavItem(next || {});
-  }
-
-  return shouldShowNavItem(item);
-}).filter((item, index, items) => {
-  if (!item.divider) return true;
-  const prev = items[index - 1];
-  const next = items[index + 1];
-  return !!prev && !!next && !prev.divider && !next.divider;
-});
-const COMPACT_MOBILE_DRAWER_ITEMS = VISIBLE_MOBILE_DRAWER_ITEMS.filter((item) => !item.divider);
-
-function getMobileDrawerPath(item, activeProjectId) {
-  if (item.id === 'translator') return '/translator';
-  if (item.id === 'settings' && activeProjectId) return `/project/${activeProjectId}/settings`;
-  if (item.id === 'prompt-manager' && activeProjectId) return `/project/${activeProjectId}/prompt-manager`;
-  if (item.id === 'cloud-sync' && activeProjectId) return `/project/${activeProjectId}/cloud-sync`;
-  if (item.needsProject && activeProjectId) return `/project/${activeProjectId}${item.path}`;
-  return item.path;
-}
-
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -135,15 +70,48 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [donateOpen, setDonateOpen] = useState(false);
+  const [coverByProjectId, setCoverByProjectId] = useState({});
   const activeProjectId = null;
 
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
 
+  useEffect(() => {
+    let alive = true;
+    const projectsNeedingCoverFallback = projects.filter((project) => (
+      Number(project.cover_asset_id || 0) > 0
+      && !String(project.cover_thumbnail_data_url || '').trim()
+    ));
+    if (projectsNeedingCoverFallback.length === 0) {
+      setCoverByProjectId({});
+      return () => {
+        alive = false;
+      };
+    }
+
+    getActiveProjectCoversForProjects(projectsNeedingCoverFallback)
+      .then((covers) => {
+        if (alive) setCoverByProjectId(covers);
+      })
+      .catch(() => {
+        if (alive) setCoverByProjectId({});
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [projects]);
+
   const handleOpenProject = async (id) => {
     await loadProject(id);
     navigate(`/project/${id}/editor`);
+  };
+
+  const handleAddCover = async (id, event) => {
+    event.stopPropagation();
+    await loadProject(id);
+    navigate(`/project/${id}/story-bible?focus=cover`);
   };
 
   const handleDeleteProject = async (id, event) => {
@@ -177,18 +145,6 @@ export default function Dashboard() {
     }
 
     navigate(path, options.state ? { state: options.state } : undefined);
-  };
-
-  const handleMobileDrawerNavigate = (item) => {
-    if (item.needsProject && !activeProjectId) return;
-
-    handleUtilityNavigate(
-      getMobileDrawerPath(item, activeProjectId),
-      item.id === 'cloud-sync'
-        ? { state: { returnTo: `${location.pathname}${location.search}${location.hash}` } }
-        : {},
-    );
-    setMobileMenuOpen(false);
   };
 
   return (
@@ -291,59 +247,80 @@ export default function Dashboard() {
               </div>
             </button>
 
-            {filteredProjects.map((project, index) => (
-              <div
-                key={project.id}
-                className="project-card card-glass animate-slide-up"
-                style={{ animationDelay: `${(index + 1) * 60}ms` }}
-                onClick={() => handleOpenProject(project.id)}
-              >
-                <div className="project-card-header">
-                  <span className="project-genre-emoji">{getGenreEmoji(project.genre_primary)}</span>
-                  <button
-                    className="btn btn-ghost btn-icon btn-sm project-card-menu"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setContextMenu(contextMenu === project.id ? null : project.id);
-                    }}
-                  >
-                    <MoreVertical size={14} />
-                  </button>
-                  {contextMenu === project.id && (
-                    <div className="context-menu project-context-menu">
+            {filteredProjects.map((project, index) => {
+              const cover = coverByProjectId[project.id];
+              const coverUrl = project.cover_thumbnail_data_url || cover?.thumbnail_data_url || cover?.data_url || '';
+              const hasCover = Boolean(coverUrl);
+              return (
+                <div
+                  key={project.id}
+                  className={`project-card card-glass animate-slide-up ${hasCover ? 'project-card--with-cover' : 'project-card--without-cover'}`}
+                  style={{ animationDelay: `${(index + 1) * 60}ms` }}
+                  onClick={() => handleOpenProject(project.id)}
+                >
+                  <div className="project-card-cover-frame">
+                    {hasCover ? (
+                      <img className="project-card-cover-thumb" src={coverUrl} alt="Bìa truyện" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="project-card-cover-empty">
+                        <span className="project-genre-emoji">{getGenreEmoji(project.genre_primary)}</span>
+                        <button
+                          type="button"
+                          className="project-card-cover-action"
+                          onClick={(event) => handleAddCover(project.id, event)}
+                        >
+                          <ImageIcon size={12} /> Thêm bìa
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="project-card-content">
+                    <div className="project-card-topline">
+                      <span className="badge badge-accent">{getGenreLabel(project.genre_primary)}</span>
                       <button
-                        className="context-menu-item"
+                        className="btn btn-ghost btn-icon btn-sm project-card-menu"
                         onClick={(event) => {
                           event.stopPropagation();
-                          setContextMenu(null);
-                          setExportingProject(project);
+                          setContextMenu(contextMenu === project.id ? null : project.id);
                         }}
+                        aria-label="Mở menu dự án"
                       >
-                        <Download size={14} /> Xuất bản truyện
+                        <MoreVertical size={14} />
                       </button>
-                      <button
-                        className="context-menu-item danger"
-                        onClick={(event) => handleDeleteProject(project.id, event)}
-                      >
-                        <Trash2 size={14} /> Xóa dự án
-                      </button>
+                      {contextMenu === project.id && (
+                        <div className="context-menu project-context-menu">
+                          <button
+                            className="context-menu-item"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setContextMenu(null);
+                              setExportingProject(project);
+                            }}
+                          >
+                            <Download size={14} /> Xuất bản truyện
+                          </button>
+                          <button
+                            className="context-menu-item danger"
+                            onClick={(event) => handleDeleteProject(project.id, event)}
+                          >
+                            <Trash2 size={14} /> Xóa dự án
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                    <h3 className="project-card-title">{project.title}</h3>
+
+                    {project.description && <p className="project-card-desc">{project.description}</p>}
+
+                    <div className="project-card-footer">
+                      <span className="project-card-date">{formatDate(project.updated_at)}</span>
+                    </div>
+                  </div>
                 </div>
-
-                <h3 className="project-card-title">{project.title}</h3>
-
-                <div className="project-card-meta">
-                  <span className="badge badge-accent">{getGenreLabel(project.genre_primary)}</span>
-                </div>
-
-                {project.description && <p className="project-card-desc">{project.description}</p>}
-
-                <div className="project-card-footer">
-                  <span className="project-card-date">{formatDate(project.updated_at)}</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {projects.length === 0 && (
@@ -370,28 +347,10 @@ export default function Dashboard() {
         size="full"
         onClose={() => setMobileMenuOpen(false)}
       >
-        <div className="dashboard-mobile-menu-list">
-          {COMPACT_MOBILE_DRAWER_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const targetPath = getMobileDrawerPath(item, activeProjectId);
-            const active = location.pathname === targetPath;
-            const disabled = item.needsProject && !activeProjectId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`dashboard-mobile-menu-item ${active ? 'dashboard-mobile-menu-item--active' : ''} ${disabled ? 'dashboard-mobile-menu-item--disabled' : ''}`}
-                onClick={() => handleMobileDrawerNavigate(item)}
-                disabled={disabled}
-                title={disabled ? 'Cần mở một project trước' : undefined}
-              >
-                <Icon size={18} />
-                <span>{item.title}</span>
-                {item.comingSoon ? <span className="dashboard-mobile-menu-badge">Soon</span> : null}
-              </button>
-            );
-          })}
-        </div>
+        <MobileNavigationMenu
+          activeProjectId={activeProjectId}
+          onNavigate={() => setMobileMenuOpen(false)}
+        />
       </MobileSheet>
 
       {showModal && (

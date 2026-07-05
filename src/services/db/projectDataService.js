@@ -59,6 +59,7 @@ export async function deleteProjectCascade(projectId) {
     db.ai_chat_threads.where('project_id').equals(normalizedProjectId).delete(),
     db.ai_chat_messages.where('project_id').equals(normalizedProjectId).delete(),
     db.ai_chat_attachments.where('project_id').equals(normalizedProjectId).delete(),
+    db.project_assets.where('project_id').equals(normalizedProjectId).delete(),
     ...(plotThreadIds.length > 0
       ? [db.threadBeats.where('plot_thread_id').anyOf(plotThreadIds).delete()]
       : []),

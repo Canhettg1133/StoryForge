@@ -8,6 +8,11 @@ const StoryBibleSummariesSection = React.memo(function StoryBibleSummariesSectio
   isOpen,
   onToggle,
 }) {
+  const chapterMetaByChapterId = React.useMemo(
+    () => new Map(chapterMetas.map((item) => [item.chapter_id, item])),
+    [chapterMetas],
+  );
+
   if (chapterMetas.length === 0) return null;
 
   return (
@@ -22,7 +27,7 @@ const StoryBibleSummariesSection = React.memo(function StoryBibleSummariesSectio
       {isOpen && (
         <div className="bible-summaries">
           {chapters.map((chapter, index) => {
-            const meta = chapterMetas.find((item) => item.chapter_id === chapter.id);
+            const meta = chapterMetaByChapterId.get(chapter.id);
             if (!meta?.summary) return null;
             return (
               <div key={chapter.id} className="bible-summary-item">

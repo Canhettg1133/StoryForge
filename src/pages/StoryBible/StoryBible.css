@@ -175,6 +175,65 @@
   margin-left: auto;
 }
 
+/* World/Lore shortcut */
+.bible-world-summary {
+  padding: var(--space-4);
+  background: var(--color-surface-1, rgba(255,255,255,0.03));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl, 12px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.bible-world-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.bible-world-summary__item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-2, rgba(255,255,255,0.05));
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg, 10px);
+}
+
+.bible-world-summary__icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md, 8px);
+  color: var(--color-accent);
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.bible-world-summary__label {
+  min-width: 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.bible-world-summary__item strong {
+  font-size: 18px;
+  color: var(--color-text);
+}
+
+.bible-world-summary__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
 /* Summaries */
 .bible-summaries {
   display: flex;
@@ -883,6 +942,471 @@
   gap: var(--space-3);
 }
 
+.project-cover-panel {
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--color-border) 84%, var(--color-accent) 16%);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(139, 92, 246, 0.1), transparent 42%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.project-cover-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.project-cover-panel__header h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.project-cover-panel__header span {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.project-cover-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.project-cover-upload {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.project-cover-upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.project-cover-panel__body {
+  display: grid;
+  grid-template-columns: minmax(164px, 210px) minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.project-cover-preview {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, #ffffff 10%);
+  background:
+    radial-gradient(circle at 50% 20%, rgba(139, 92, 246, 0.18), transparent 38%),
+    linear-gradient(145deg, rgba(14, 165, 233, 0.12), rgba(245, 158, 11, 0.1)),
+    var(--color-surface-2);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+.project-cover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.project-cover-preview__empty {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.project-cover-preview__overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 12px 12px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.76));
+  color: #fff;
+}
+
+.project-cover-preview__overlay strong {
+  font-size: 16px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.project-cover-preview__overlay span {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.78);
+  overflow-wrap: anywhere;
+}
+
+.project-cover-controls {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.project-cover-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.project-cover-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.project-cover-count .select {
+  width: 70px;
+}
+
+.project-cover-model-combobox {
+  position: relative;
+}
+
+.project-cover-model-combobox__control {
+  width: 100%;
+  min-height: 42px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-cover-model-combobox__control:hover,
+.project-cover-model-combobox__control--open {
+  border-color: color-mix(in srgb, var(--color-accent) 58%, var(--color-border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+.project-cover-model-combobox__control:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.project-cover-model-combobox__value,
+.project-cover-model-option__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-cover-model-combobox__value--empty {
+  color: var(--color-text-muted);
+}
+
+.project-cover-model-combobox__chevron {
+  color: var(--color-text-muted);
+}
+
+.project-cover-model-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-surface-2);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.project-cover-model-badge--image {
+  border-color: rgba(16, 185, 129, 0.32);
+  color: #8decbc;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.project-cover-model-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  max-height: min(380px, 72vh);
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, #ffffff 12%);
+  border-radius: 8px;
+  background: #101522;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.34);
+}
+
+.project-cover-model-menu__search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--color-text-muted);
+}
+
+.project-cover-model-menu__search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+}
+
+.project-cover-model-menu__search input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.project-cover-model-menu__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.project-cover-model-menu__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.project-cover-model-option {
+  width: 100%;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.project-cover-model-option:hover,
+.project-cover-model-option--selected {
+  border-color: color-mix(in srgb, var(--color-accent) 42%, transparent);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.project-cover-model-option--manual {
+  border-color: rgba(245, 158, 11, 0.26);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.project-cover-model-menu__empty {
+  padding: 12px 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.project-cover-spin {
+  animation: projectCoverSpin 0.9s linear infinite;
+}
+
+@keyframes projectCoverSpin {
+  to { transform: rotate(360deg); }
+}
+
+.project-cover-message {
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid rgba(16, 185, 129, 0.24);
+  background: rgba(16, 185, 129, 0.08);
+  color: #9ef0c7;
+  font-size: 12px;
+}
+
+.project-cover-message--error {
+  border-color: rgba(239, 68, 68, 0.28);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ffc2c2;
+}
+
+.project-cover-variants {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.project-cover-variant {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.project-cover-variant:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 44%, var(--color-border));
+  transform: translateY(-1px);
+}
+
+.project-cover-variant--active {
+  border-color: var(--color-accent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-accent) 36%, transparent),
+    0 14px 30px rgba(0, 0, 0, 0.24);
+}
+
+.project-cover-variant__poster {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(139, 92, 246, 0.16), transparent 38%),
+    var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.project-cover-variant__poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.22s ease;
+}
+
+.project-cover-variant:hover .project-cover-variant__poster img {
+  transform: scale(1.025);
+}
+
+.project-cover-variant__placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.project-cover-variant__status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.project-cover-variant__source,
+.project-cover-variant__active {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.project-cover-variant__source {
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-secondary);
+}
+
+.project-cover-variant__active {
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 8px;
+  background: rgba(16, 185, 129, 0.14);
+  color: #8decbc;
+}
+
+.project-cover-variant__footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.project-cover-variant__actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.project-cover-variant__actions .btn {
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
+  font-size: 11px;
+  justify-content: center;
+}
+
+.project-cover-variant__use {
+  width: 100%;
+}
+
+.project-cover-delete {
+  width: auto;
+}
+
+.project-cover-delete--confirm {
+  border-color: rgba(239, 68, 68, 0.36);
+  color: #ffc2c2;
+  background: rgba(239, 68, 68, 0.1);
+}
+
 .save-indicator {
   font-size: 11px;
   color: var(--color-success, #34d399);
@@ -1075,6 +1599,7 @@
   .bible-grid,
   .bible-grid--terms,
   .bible-edit-row,
+  .project-cover-panel__body,
   .bible-planning-scope__grid,
   .bible-milestone-plan-row,
   .bible-milestone-plan-row__inputs {
@@ -1092,6 +1617,39 @@
 
   .bible-inline-actions {
     flex-wrap: wrap;
+  }
+
+  .bible-world-summary__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bible-world-summary__item {
+    padding: 12px;
+  }
+
+  .project-cover-panel__header,
+  .project-cover-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .project-cover-panel__actions {
+    width: 100%;
+  }
+
+  .project-cover-upload,
+  .project-cover-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .project-cover-preview {
+    width: min(100%, 220px);
+    max-width: none;
+  }
+
+  .project-cover-variants {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .bible-planning-scope__actions .btn {

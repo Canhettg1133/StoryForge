@@ -40,6 +40,37 @@ describe('keyManager provider pools', () => {
     expect(keyManager.getNextKey('openai_proxy')).toBe('sk-custom-proxy-key');
   });
 
+  it('loads Cloudflare Workers AI keys from their own provider pool', async () => {
+    localStorage.setItem('sf-api-keys-v2', JSON.stringify({
+      cloudflare_workers_ai: [{ key: 'cf-workers-ai-token', label: 'cloudflare' }],
+      openai_proxy: [{ key: 'sk-custom-proxy-key', label: 'custom' }],
+    }));
+
+    const keyManager = await loadKeyManager();
+
+    expect(keyManager.getKeys('cloudflare_workers_ai').map((item) => item.key)).toEqual([
+      'cf-workers-ai-token',
+    ]);
+    expect(keyManager.getNextKey('cloudflare_workers_ai')).toBe('cf-workers-ai-token');
+    expect(keyManager.getNextKey('openai_proxy')).toBe('sk-custom-proxy-key');
+    expect(keyManager.getTotalKeys()).toBe(2);
+  });
+
+  it('keeps legacy custom_openai_proxy keys after refresh when openai_proxy exists but is empty', async () => {
+    localStorage.setItem('sf-api-keys-v2', JSON.stringify({
+      gemini_proxy: [{ key: 'sk-ag-proxy-key', label: 'ag' }],
+      openai_proxy: [],
+      custom_openai_proxy: [{ key: 'sk-legacy-custom-key', label: 'legacy custom' }],
+    }));
+
+    const keyManager = await loadKeyManager();
+
+    expect(keyManager.getKeys('openai_proxy').map((item) => item.key)).toEqual([
+      'sk-legacy-custom-key',
+    ]);
+    expect(keyManager.getNextKey('openai_proxy')).toBe('sk-legacy-custom-key');
+  });
+
   it('accepts Gemini Direct keys without assuming a prefix or minimum length', async () => {
     const keyManager = await loadKeyManager();
 

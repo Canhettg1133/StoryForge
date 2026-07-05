@@ -84,6 +84,7 @@ const useCodexStore = create((set, get) => ({
   taboos: [],
   canonFacts: [],
   chapterMetas: [],
+  storyBibleWorldCounts: { locations: 0, objects: 0, terms: 0 },
   loading: false,
 
   // =============================================
@@ -136,6 +137,61 @@ const useCodexStore = create((set, get) => ({
       taboos,
       canonFacts,
       chapterMetas,
+      storyBibleWorldCounts: {
+        locations: locations.length,
+        objects: objects.length,
+        terms: worldTerms.length,
+      },
+      loading: false,
+    });
+  },
+
+  // =============================================
+  // LOAD ONLY the data Story Bible needs up front
+  // =============================================
+  loadStoryBibleCodex: async (projectId) => {
+    if (!projectId) return;
+    const requestId = ++latestCodexLoadRequestId;
+    set({ loading: true });
+    const [
+      characters,
+      canonFacts,
+      chapterMetas,
+      entityStates,
+      locationsCount,
+      objectsCount,
+      worldTermsCount,
+    ] = await Promise.all([
+      db.characters.where('project_id').equals(projectId).toArray(),
+      db.canonFacts.where('project_id').equals(projectId).toArray(),
+      db.chapterMeta.where('project_id').equals(projectId).toArray(),
+      db.entity_state_current.where('project_id').equals(projectId).toArray(),
+      db.locations.where('project_id').equals(projectId).count(),
+      db.objects.where('project_id').equals(projectId).count(),
+      db.worldTerms.where('project_id').equals(projectId).count(),
+    ]);
+    const canonStateByCharacterId = new Map(entityStates.map((state) => [state.entity_id, state]));
+    const hydratedCharacters = characters.map((character) => {
+      const canonState = canonStateByCharacterId.get(character.id);
+      if (!canonState) return character;
+      return {
+        ...character,
+        canon_state: canonState,
+        canon_status_summary: buildCharacterStateSummary(canonState, ''),
+      };
+    });
+    if (requestId !== latestCodexLoadRequestId) {
+      return;
+    }
+    set({
+      characters: hydratedCharacters,
+      canonFacts,
+      chapterMetas,
+      storyBibleWorldCounts: {
+        locations: locationsCount,
+        objects: objectsCount,
+        terms: worldTermsCount,
+      },
       loading: false,
     });
   },

@@ -109,6 +109,38 @@ describe('openAIProxyConfig legacy settings migration', () => {
     ]);
   });
 
+  it('keeps image-capable model ids from varied OpenAI-compatible model list shapes', async () => {
+    const {
+      parseOpenAIModelIds,
+    } = await loadConfig();
+
+    expect(parseOpenAIModelIds({
+      data: [
+        { id: 'chat-text-model' },
+        { model: 'gemini-3-pro-image-preview' },
+        { slug: 'gpt-image-1' },
+        { value: 'flux-pro' },
+        { name: 'models/gemini-3.1-flash-image' },
+      ],
+    })).toEqual([
+      'chat-text-model',
+      'gemini-3-pro-image-preview',
+      'gpt-image-1',
+      'flux-pro',
+      'models/gemini-3.1-flash-image',
+    ]);
+
+    expect(parseOpenAIModelIds({
+      models: {
+        'gemini-3-pro-image': { owned_by: 'proxy' },
+        'claude-sonnet-text': { owned_by: 'proxy' },
+      },
+    })).toEqual([
+      'gemini-3-pro-image',
+      'claude-sonnet-text',
+    ]);
+  });
+
   it('classifies current proxy model families for search and filtering', async () => {
     const {
       CUSTOM_PROXY_PROFILE_ID,

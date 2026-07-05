@@ -1,5 +1,6 @@
 import {
   DEFAULT_PROXY_CHAT_PATH,
+  DEFAULT_PROXY_IMAGE_GENERATIONS_PATH,
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
   isLocalProxyHost,
@@ -12,7 +13,7 @@ import {
   sendAccessDenied,
 } from './_lib/access-control.js';
 
-const ALLOWED_ACTIONS = new Set(['models', 'chat', 'chat_stream_batch']);
+const ALLOWED_ACTIONS = new Set(['models', 'chat', 'chat_stream_batch', 'image_generation']);
 const MAX_CHAT_STREAM_BATCH_SIZE = 50;
 const AG_PROXY_HOSTS = new Set(['ag.beijixingxing.com']);
 const AG_PROXY_SAFE_SUFFIXES = ['.beijixingxing.com'];
@@ -397,6 +398,8 @@ export function createOpenAIProxyHandler({
 
   const endpoint = action === 'models'
     ? buildOpenAIProxyEndpoint(baseUrl, body?.modelsPath || DEFAULT_PROXY_MODELS_PATH)
+    : action === 'image_generation'
+      ? buildOpenAIProxyEndpoint(baseUrl, body?.imageGenerationsPath || DEFAULT_PROXY_IMAGE_GENERATIONS_PATH)
     : buildOpenAIProxyEndpoint(baseUrl, body?.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
 
   const upstreamAuthHeaders = buildUpstreamAuthHeaders(upstreamKey);

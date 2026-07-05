@@ -37,6 +37,17 @@ import {
   updateCustomOpenAIProxyProfile,
 } from '../../services/ai/openAIProxyConfig';
 import {
+  CLOUDFLARE_COVER_IMAGE_MODELS,
+  CLOUDFLARE_WORKERS_AI_SETTINGS_CHANGED_EVENT,
+  DEFAULT_CLOUDFLARE_COVER_IMAGE_MODEL,
+  fetchCloudflareWorkersAIModels,
+  getCloudflareWorkersAIModelLabel,
+  getCloudflareWorkersAIModelMeta,
+  getCloudflareWorkersAISettings,
+  saveCloudflareWorkersAISettings,
+  sortCoverImageModels,
+} from '../../services/projectCovers/coverImageProvider';
+import {
   Key, Server, Cpu, Cloud, Trash2, Eye, EyeOff, CheckCircle, XCircle,
   Zap, Gauge, Crown, RefreshCw, TestTube, Download, Upload, Copy, Check,
   Plus, X, BookOpen, ExternalLink, ArrowLeft, ChevronsUpDown, Sparkles,
@@ -51,7 +62,7 @@ import { navigateBackOr } from '../../utils/navigation.js';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
-function KeySection({ provider, providerLabel, description = '', icon: Icon, onKeysChange }) {
+function KeySection({ provider, providerLabel, description = '', icon: Icon, onKeysChange, children = null }) {
   const [keys, setKeys] = useState([...keyManager.getKeys(provider)]);
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
@@ -173,6 +184,7 @@ function KeySection({ provider, providerLabel, description = '', icon: Icon, onK
         <span className="key-section-count">{keys.length} keys</span>
       </div>
       {description ? <p className="key-section-description">{description}</p> : null}
+      {children}
 
       {/* Feedback message */}
       {feedback && (
@@ -267,6 +279,220 @@ function KeySection({ provider, providerLabel, description = '', icon: Icon, onK
   );
 }
 
+// ─── Cloudflare Workers AI Cover Settings ───
+const CLOUDFLARE_MODEL_FAMILY_FILTERS = [
+  'Tất cả',
+  'Khuyến nghị',
+  'Leonardo',
+  'FLUX',
+  'Stable Diffusion',
+  'Đã lấy API',
+  'Khác',
+];
+const PRIMARY_CLOUDFLARE_MODEL_FAMILIES = ['Leonardo', 'FLUX', 'Stable Diffusion'];
+
+function groupCloudflareModelOptionsForSelect(options = []) {
+  const groupMap = new Map();
+  options.forEach((model) => {
+    const channel = model.channel || 'Cloudflare Workers AI';
+    if (!groupMap.has(channel)) {
+      groupMap.set(channel, { channel, options: [] });
+    }
+    groupMap.get(channel).options.push({
+      id: model.id,
+      label: model.label,
+    });
+  });
+  return Array.from(groupMap.values());
+}
+
+function groupCloudflareModelOptionsForPicker(options = []) {
+  const groupMap = new Map();
+  options.forEach((model) => {
+    const channel = model.channel || 'Cloudflare Workers AI';
+    const family = model.family || 'Khác';
+    if (!groupMap.has(channel)) {
+      groupMap.set(channel, {
+        channel,
+        models: [],
+        familyMap: new Map(),
+      });
+    }
+    const group = groupMap.get(channel);
+    group.models.push(model);
+    if (!group.familyMap.has(family)) {
+      group.familyMap.set(family, { family, models: [] });
+    }
+    group.familyMap.get(family).models.push(model);
+  });
+  return Array.from(groupMap.values()).map((group) => ({
+    channel: group.channel,
+    models: group.models,
+    families: Array.from(group.familyMap.values()),
+  }));
+}
+
+function useCloudflareWorkersAISettingsState() {
+  const [settings, setSettings] = useState(getCloudflareWorkersAISettings);
+
+  useEffect(() => {
+    const handleChange = () => setSettings(getCloudflareWorkersAISettings());
+    window.addEventListener(CLOUDFLARE_WORKERS_AI_SETTINGS_CHANGED_EVENT, handleChange);
+    return () => window.removeEventListener(CLOUDFLARE_WORKERS_AI_SETTINGS_CHANGED_EVENT, handleChange);
+  }, []);
+
+  const updateSettings = (patch) => {
+    setSettings(saveCloudflareWorkersAISettings(patch));
+  };
+
+  return [settings, updateSettings];
+}
+
+function CloudflareWorkersAIModelSettingsPanel() {
+  const [settings, updateSettings] = useCloudflareWorkersAISettingsState();
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [modelStatus, setModelStatus] = useState(null);
+  const [showModelLibrary, setShowModelLibrary] = useState(false);
+  const knownCloudflareModelIds = new Set(CLOUDFLARE_COVER_IMAGE_MODELS.map((model) => model.id));
+  const fetchedCloudflareModelIds = new Set(Array.isArray(settings.models) ? settings.models : []);
+  const cloudflareModelOptions = sortCoverImageModels([
+    settings.defaultModel,
+    ...CLOUDFLARE_COVER_IMAGE_MODELS.map((model) => model.id),
+    ...settings.models,
+  ]).map((id) => {
+    const meta = getCloudflareWorkersAIModelMeta(id);
+    const fetched = fetchedCloudflareModelIds.has(id) && !knownCloudflareModelIds.has(id);
+    const title = getCloudflareWorkersAIModelLabel(id);
+    return {
+      id,
+      label: `${title || id} · ${id}`,
+      title: title || id,
+      family: meta.family || 'Khác',
+      channel: meta.channel || (fetched ? 'Model đã lấy từ Cloudflare API' : 'Cloudflare Workers AI'),
+      badge: meta.badge || (fetched ? 'Fetched' : 'Model ảnh'),
+      note: meta.note || '',
+      fetched,
+    };
+  });
+  const cloudflareModelOptionGroups = groupCloudflareModelOptionsForSelect(cloudflareModelOptions);
+  const selectedCloudflareModelMeta = getCloudflareWorkersAIModelMeta(settings.defaultModel);
+
+  const handleFetchModels = async () => {
+    setFetchingModels(true);
+    setModelStatus(null);
+    try {
+      const models = await fetchCloudflareWorkersAIModels();
+      saveCloudflareWorkersAISettings({
+        models,
+        defaultModel: settings.defaultModel || models[0] || DEFAULT_CLOUDFLARE_COVER_IMAGE_MODEL,
+      });
+      setModelStatus({
+        type: 'success',
+        text: models.length > 0
+          ? `Đã lấy ${models.length} model từ Cloudflare API. Danh sách khuyến nghị đang có ${CLOUDFLARE_COVER_IMAGE_MODELS.length} model chính thức.`
+          : `Cloudflare API chưa trả thêm model mới; vẫn hiển thị ${CLOUDFLARE_COVER_IMAGE_MODELS.length} model khuyến nghị chính thức trong app.`,
+      });
+    } catch (error) {
+      setModelStatus({
+        type: 'error',
+        text: toVietnameseErrorMessage(error, 'Không lấy được model Cloudflare.'),
+      });
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  return (
+    <div className="form-group cloudflare-workers-ai-provider-config">
+      <ModelDefaultCallout
+        eyebrow="Model Cloudflare Workers AI"
+        value={selectedCloudflareModelMeta?.id
+          ? `${selectedCloudflareModelMeta.label || selectedCloudflareModelMeta.id} · ${selectedCloudflareModelMeta.id}`
+          : settings.defaultModel}
+        hint="Bấm vào hộp bên dưới để đổi model mặc định cho phần tạo bìa Cloudflare."
+        selectLabel="Chọn model Cloudflare tạo bìa mặc định"
+        selectValue={settings.defaultModel}
+        options={cloudflareModelOptions}
+        optionGroups={cloudflareModelOptionGroups}
+        onChange={(model) => updateSettings({ defaultModel: model || DEFAULT_CLOUDFLARE_COVER_IMAGE_MODEL })}
+      />
+
+      <div className="settings-action-row settings-action-row--spaced">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={handleFetchModels}
+          disabled={fetchingModels || !settings.accountId}
+          title={!settings.accountId ? 'Nhập Account ID Cloudflare ở API Keys trước.' : undefined}
+        >
+          {fetchingModels ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          {fetchingModels ? 'Đang lấy...' : 'Lấy model ảnh'}
+        </button>
+        <button
+          type="button"
+          className={`btn btn-ghost cloudflare-workers-ai-library-toggle ${showModelLibrary ? 'is-active' : ''}`}
+          onClick={() => setShowModelLibrary((value) => !value)}
+        >
+          <ChevronsUpDown size={14} />
+          {showModelLibrary ? 'Ẩn danh sách' : `Duyệt ${cloudflareModelOptions.length} model`}
+        </button>
+      </div>
+
+      {modelStatus ? (
+        <div className={`settings-test-result ${modelStatus.type}`}>
+          {modelStatus.type === 'success' ? <CheckCircle size={14} /> : <XCircle size={14} />}
+          {modelStatus.text}
+        </div>
+      ) : null}
+
+      {showModelLibrary ? (
+        <div className="cloudflare-workers-ai-library">
+          <CloudflareWorkersAIModelPicker
+            models={cloudflareModelOptions}
+            selectedModel={settings.defaultModel}
+            onSelect={(model) => updateSettings({ defaultModel: model })}
+          />
+
+          <div className="form-group cloudflare-workers-ai-manual-model">
+            <label className="form-label">Nhập model Cloudflare thủ công</label>
+            <input
+              className="input"
+              value={settings.defaultModel}
+              onChange={(event) => updateSettings({ defaultModel: event.target.value || DEFAULT_CLOUDFLARE_COVER_IMAGE_MODEL })}
+              placeholder="@cf/leonardo/lucid-origin"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="settings-hint">Dùng khi Cloudflare mở model ảnh mới nhưng app chưa có preset.</p>
+          </div>
+          <p className="settings-hint">Danh sách trên có sẵn model chính thức, cộng thêm model lấy được từ Cloudflare API nếu tài khoản của bạn thấy model mới.</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CloudflareWorkersAIAccountSettingsFields() {
+  const [settings, updateSettings] = useCloudflareWorkersAISettingsState();
+
+  return (
+    <div className="cloudflare-workers-ai-account-only">
+      <div className="form-group">
+        <label className="form-label">Account ID Cloudflare</label>
+        <input
+          className="input cloudflare-workers-ai-account-input"
+          value={settings.accountId}
+          onChange={(event) => updateSettings({ accountId: event.target.value })}
+          placeholder="Ví dụ: 35227c3d18fc83a0478996f9cad7e399"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <p className="settings-hint">Dùng Account ID trong Workers AI REST API, không phải email tài khoản.</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Model Manager (Gemini Direct) ───
 function DirectModelManager() {
   const [activeModels, setActiveModels] = useState(modelRouter.getActiveDirectModels());
@@ -309,6 +535,7 @@ function DirectModelManager() {
 // ─── Main Settings Page ───
 const PROVIDER_CARD_AG_PROXY = `${PROVIDERS.OPENAI_PROXY}:${AG_PROXY_PROFILE_ID}`;
 const PROVIDER_CARD_CUSTOM_PROXY = `${PROVIDERS.OPENAI_PROXY}:${CUSTOM_PROXY_PROFILE_ID}`;
+const PROVIDER_CARD_CLOUDFLARE_COVER = `${PROVIDERS.CLOUDFLARE_WORKERS_AI}:cover`;
 const OLLAMA_PRESET_OPTIONS = ['qwen3', 'qwen25', 'llama3', 'gemma2', 'mistral', 'phi3']
   .map((key) => ({ key, ...OLLAMA_MODEL_PRESETS[key] }))
   .filter((preset) => preset.recommended);
@@ -547,6 +774,101 @@ function CustomProxyModelPicker({
   );
 }
 
+function CloudflareWorkersAIModelPicker({
+  models = [],
+  selectedModel,
+  onSelect,
+}) {
+  const [searchText, setSearchText] = useState('');
+  const [familyFilter, setFamilyFilter] = useState('Tất cả');
+  if (!models.length) return null;
+
+  const normalizedSearch = searchText.trim().toLowerCase();
+  const filteredModels = models.filter((model) => {
+    const searchableText = [
+      model.id,
+      model.title,
+      model.family,
+      model.channel,
+      model.badge,
+      model.note,
+    ].join(' ').toLowerCase();
+    const matchesSearch = !normalizedSearch || searchableText.includes(normalizedSearch);
+    const matchesFamily = familyFilter === 'Tất cả'
+      || (familyFilter === 'Khuyến nghị'
+        ? model.channel === 'Khuyến nghị bìa truyện'
+        : familyFilter === 'Đã lấy API'
+          ? model.fetched
+          : familyFilter === 'Khác'
+            ? !PRIMARY_CLOUDFLARE_MODEL_FAMILIES.includes(model.family)
+            : model.family === familyFilter);
+    return matchesSearch && matchesFamily;
+  });
+  const filteredGroups = groupCloudflareModelOptionsForPicker(filteredModels);
+
+  return (
+    <div className="custom-proxy-model-picker cloudflare-workers-ai-model-picker">
+      <div className="custom-proxy-model-picker__header">
+        <div>
+          <strong>Danh sách model Cloudflare</strong>
+          <span>{models.length} model · sắp xếp theo khuyến nghị bìa truyện</span>
+        </div>
+      </div>
+      <div className="custom-proxy-model-tools">
+        <input
+          className="input custom-proxy-model-search"
+          value={searchText}
+          onChange={(event) => setSearchText(event.target.value)}
+          placeholder="Tìm model Cloudflare..."
+        />
+        <div className="custom-proxy-model-filters" role="group" aria-label="Lọc model Cloudflare">
+          {CLOUDFLARE_MODEL_FAMILY_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              className={`custom-proxy-model-filter ${familyFilter === filter ? 'is-active' : ''}`}
+              onClick={() => setFamilyFilter(filter)}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="custom-proxy-model-list">
+        {filteredGroups.length > 0 ? filteredGroups.map((group) => (
+          <div className="custom-proxy-model-group" key={group.channel}>
+            <div className="custom-proxy-model-group__header">
+              <span>{group.channel}</span>
+              <small>{group.models.length} model</small>
+            </div>
+            {group.families.map((familyGroup) => (
+              <div className="custom-proxy-model-family" key={`${group.channel}:${familyGroup.family}`}>
+                <div className="custom-proxy-model-family__label">{familyGroup.family}</div>
+                {familyGroup.models.map((model) => (
+                  <button
+                    key={model.id}
+                    type="button"
+                    className={`custom-proxy-model-item ${selectedModel === model.id ? 'is-active' : ''}`}
+                    onClick={() => onSelect(model.id)}
+                  >
+                    <span className="custom-proxy-model-item__id">{model.id}</span>
+                    <span className="custom-proxy-model-item__badges">
+                      <span className="custom-proxy-model-badge custom-proxy-model-badge--muted">{model.family}</span>
+                      <span className="custom-proxy-model-badge custom-proxy-model-badge--muted">{model.badge}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        )) : (
+          <div className="custom-proxy-model-empty">Không có model Cloudflare phù hợp.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function getProxyProfileTestKey(profileId) {
   return `${PROVIDERS.OPENAI_PROXY}:${profileId}`;
 }
@@ -564,6 +886,7 @@ function readSettingsKeyCounts() {
     agProxy: keyManager.getKeyCount('gemini_proxy'),
     customProxy: keyManager.getKeyCount(PROVIDERS.OPENAI_PROXY),
     geminiDirect: keyManager.getKeyCount(PROVIDERS.GEMINI_DIRECT),
+    cloudflareWorkersAI: keyManager.getKeyCount(PROVIDERS.CLOUDFLARE_WORKERS_AI),
   };
 }
 
@@ -610,11 +933,13 @@ export default function Settings() {
   const [quality, setQuality] = useState(modelRouter.getQualityMode());
   const [proxyModel, setProxyModel] = useState(modelRouter.getProxyModel());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
+  const [selectedProviderCardOverride, setSelectedProviderCardOverride] = useState('');
   const selectedProxyPreset = PROXY_MODEL_PRESETS.find((model) => model.id === proxyModel)
     || (proxyModel ? { id: proxyModel, label: proxyModel } : PROXY_MODEL_PRESETS[1] || PROXY_MODEL_PRESETS[0]);
-  const selectedProviderCard = provider === PROVIDERS.OPENAI_PROXY
+  const chatProviderCard = provider === PROVIDERS.OPENAI_PROXY
     ? (activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? PROVIDER_CARD_CUSTOM_PROXY : PROVIDER_CARD_AG_PROXY)
     : provider;
+  const selectedProviderCard = selectedProviderCardOverride || chatProviderCard;
   const agProxyFetchedModels = normalizeAgProxyModelList(agProxyModels);
   const agProxyFallbackOptions = [
     ...(!PROXY_MODEL_PRESETS.some((model) => model.id === proxyModel) && proxyModel
@@ -831,6 +1156,7 @@ export default function Settings() {
     const saved = updateCustomOpenAIProxyProfile(nextProfile);
     setCustomProxyProfile(saved);
     if (activate) {
+      setSelectedProviderCardOverride('');
       setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
       setActiveProxyProfileId(CUSTOM_PROXY_PROFILE_ID);
       setProvider(PROVIDERS.OPENAI_PROXY);
@@ -848,6 +1174,13 @@ export default function Settings() {
       });
       return;
     }
+
+    if (nextProvider === PROVIDER_CARD_CLOUDFLARE_COVER) {
+      setSelectedProviderCardOverride(PROVIDER_CARD_CLOUDFLARE_COVER);
+      return;
+    }
+
+    setSelectedProviderCardOverride('');
 
     if (nextProvider === PROVIDER_CARD_AG_PROXY) {
       setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
@@ -904,6 +1237,7 @@ export default function Settings() {
       return;
     }
 
+    setSelectedProviderCardOverride('');
     setOpenAIProxyActiveProfile(AG_PROXY_PROFILE_ID);
     setActiveProxyProfileId(AG_PROXY_PROFILE_ID);
     setProvider(PROVIDERS.OPENAI_PROXY);
@@ -1107,16 +1441,17 @@ export default function Settings() {
             <Gauge size={20} />
             <div>
               <h2>Provider đang dùng</h2>
-              <p>Chọn 1 provider để gọi AI. Có thể đổi bất cứ lúc nào.</p>
+              <p>Chọn provider gọi AI hoặc mở cấu hình provider tạo bìa. Có thể đổi bất cứ lúc nào.</p>
             </div>
           </div>
 
-          <div className="settings-radio-group horizontal">
+          <div className="settings-radio-group horizontal settings-provider-grid">
             {[
               { value: PROVIDER_CARD_AG_PROXY, icon: Server, label: 'Gemini Proxy mặc định', desc: '/api/proxy - ag' },
               { value: PROVIDER_CARD_CUSTOM_PROXY, icon: Server, label: 'Custom OpenAI-compatible', desc: 'one-api / NewAPI / proxy clone' },
               { value: PROVIDERS.GEMINI_DIRECT, icon: Cloud, label: 'Gemini Direct', desc: 'AI Studio, dành cho VIP' },
               { value: PROVIDERS.AI_STUDIO_RELAY, icon: Cloud, label: 'AI Studio Relay', desc: 'Experimental' },
+              { value: PROVIDER_CARD_CLOUDFLARE_COVER, icon: Sparkles, label: 'Cloudflare Workers AI', desc: 'Tạo bìa / ảnh' },
               { value: PROVIDERS.OLLAMA, icon: Cpu, label: 'Ollama', desc: 'Local AI' },
             ].map((p) => {
               const feature = getSettingsProviderFeature(p.value);
@@ -1270,7 +1605,11 @@ export default function Settings() {
             </div>
           ) : null}
 
-          {provider === PROVIDERS.GEMINI_DIRECT ? (
+          {selectedProviderCard === PROVIDER_CARD_CLOUDFLARE_COVER ? (
+            <CloudflareWorkersAIModelSettingsPanel />
+          ) : null}
+
+          {selectedProviderCard === PROVIDERS.GEMINI_DIRECT ? (
             <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
               <label className="form-label">Chế độ chất lượng</label>
               <div className="settings-radio-group horizontal">
@@ -1292,7 +1631,7 @@ export default function Settings() {
             </div>
           ) : null}
 
-          {provider === PROVIDERS.AI_STUDIO_RELAY ? (
+          {selectedProviderCard === PROVIDERS.AI_STUDIO_RELAY ? (
             <div className="form-group" style={{ marginTop: 'var(--space-4)' }}>
               <label className="form-label">Model StoryForge sẽ gửi</label>
               <select
@@ -1357,6 +1696,15 @@ export default function Settings() {
               icon={Cloud}
               onKeysChange={handleKeysChange}
             />
+            <KeySection
+              provider={PROVIDERS.CLOUDFLARE_WORKERS_AI}
+              providerLabel="Cloudflare Workers AI"
+              description="Dùng cho tạo bìa truyện qua Workers AI REST API. Cần Account ID và API token có quyền Workers AI."
+              icon={Cloud}
+              onKeysChange={handleKeysChange}
+            >
+              <CloudflareWorkersAIAccountSettingsFields />
+            </KeySection>
           </div>
         </section>
 

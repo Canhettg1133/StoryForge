@@ -4,6 +4,7 @@ import {
   DEFAULT_AG_PROXY_BASE_URL,
   DEFAULT_AG_PROXY_MODEL,
   DEFAULT_PROXY_CHAT_PATH,
+  DEFAULT_PROXY_IMAGE_GENERATIONS_PATH,
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
   classifyProxyModel,
@@ -15,6 +16,17 @@ import {
   upgradeMixedContentProxyUrl,
 } from './openAIProxyCore.js';
 import { getStoryForgeAccessToken } from '../access/accessClient.js';
+
+export const OPENAI_PROXY_SETTINGS_CHANGED_EVENT = 'storyforge:openai-proxy-settings-changed';
+
+function dispatchOpenAIProxySettingsChanged(detail = {}) {
+  if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+  try {
+    window.dispatchEvent(new CustomEvent(OPENAI_PROXY_SETTINGS_CHANGED_EVENT, { detail }));
+  } catch {
+    // Settings persistence must still work if CustomEvent is unavailable.
+  }
+}
 
 const SETTINGS_KEY = 'sf-ai-settings';
 const PROXY_MODEL_KEY = 'sf-proxy-model';
@@ -33,6 +45,7 @@ function readSettings() {
 
 function writeSettings(settings) {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  dispatchOpenAIProxySettingsChanged({ key: SETTINGS_KEY });
   return settings;
 }
 
@@ -92,6 +105,7 @@ export function setAgProxyModel(model) {
   const normalized = trimText(model) || DEFAULT_AG_PROXY_MODEL;
   localStorage.setItem(PROXY_MODEL_KEY, normalized);
   localStorage.setItem(AG_PROXY_MODEL_META_KEY, JSON.stringify({ manualModel: normalized }));
+  dispatchOpenAIProxySettingsChanged({ key: PROXY_MODEL_KEY });
   return normalized;
 }
 
@@ -102,6 +116,7 @@ export function getAgProxyModels() {
 export function setAgProxyModels(models = []) {
   const normalized = normalizeStoredModelList(models);
   localStorage.setItem(AG_PROXY_MODELS_KEY, JSON.stringify(normalized));
+  dispatchOpenAIProxySettingsChanged({ key: AG_PROXY_MODELS_KEY });
   return normalized;
 }
 
@@ -113,6 +128,7 @@ export function getDefaultCustomOpenAIProxyProfile() {
     defaultModel: '',
     models: [],
     chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
+    imageGenerationsPath: DEFAULT_PROXY_IMAGE_GENERATIONS_PATH,
     modelsPath: DEFAULT_PROXY_MODELS_PATH,
     authType: 'bearer',
     requiresApiKey: true,
@@ -129,6 +145,7 @@ export function getAgOpenAIProxyProfile() {
     defaultModel: getAgProxyModel(),
     models: getAgProxyModels(),
     chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
+    imageGenerationsPath: DEFAULT_PROXY_IMAGE_GENERATIONS_PATH,
     modelsPath: DEFAULT_PROXY_MODELS_PATH,
     authType: 'bearer',
     requiresApiKey: true,
@@ -232,7 +249,9 @@ export function resolveOpenAIProxyRequest(profile, action, options = {}) {
   const mode = resolveProxyTransportMode(safeProfile);
   const path = action === 'models'
     ? (safeProfile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
-    : (safeProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
+    : action === 'image_generation'
+      ? (safeProfile.imageGenerationsPath || DEFAULT_PROXY_IMAGE_GENERATIONS_PATH)
+      : (safeProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
 
   if (mode === 'relay') {
     return {
@@ -255,7 +274,9 @@ export function resolveOpenAIProxyDirectRequest(profile, action, options = {}) {
   const safeProfile = getRequestSafeProxyProfile(profile, options);
   const path = action === 'models'
     ? (safeProfile.modelsPath || DEFAULT_PROXY_MODELS_PATH)
-    : (safeProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
+    : action === 'image_generation'
+      ? (safeProfile.imageGenerationsPath || DEFAULT_PROXY_IMAGE_GENERATIONS_PATH)
+      : (safeProfile.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH);
   return {
     mode: 'direct',
     url: buildOpenAIProxyEndpoint(safeProfile.baseUrl, path),
@@ -325,6 +346,7 @@ export {
   DEFAULT_AG_PROXY_BASE_URL,
   DEFAULT_AG_PROXY_MODEL,
   DEFAULT_PROXY_CHAT_PATH,
+  DEFAULT_PROXY_IMAGE_GENERATIONS_PATH,
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
   classifyProxyModel,

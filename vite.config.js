@@ -19,6 +19,7 @@ function loadLocalServerEnv() {
 function resolveApiRoute(pathname) {
   const exactRoutes = {
     '/api/openai-proxy': './api/openai-proxy.js',
+    '/api/cloudflare-workers-ai': './api/cloudflare-workers-ai.js',
     '/api/translator-openai-proxy': './api/translator-openai-proxy.js',
     '/api/vip-page-content': './api/vip-page-content.js',
     '/api/site-announcement': './api/site-announcement.js',

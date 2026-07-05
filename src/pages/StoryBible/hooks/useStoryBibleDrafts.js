@@ -4,27 +4,15 @@ import { syncDraftMap } from '../utils/storyBibleHelpers';
 export default function useStoryBibleDrafts({
   currentProjectId,
   characters,
-  locations,
-  objects,
-  worldTerms,
   canonFacts,
   createCanonFact,
   updateCanonFact,
   deleteCanonFact,
   updateCharacter,
-  updateLocation,
-  updateObject,
-  updateWorldTerm,
 }) {
   const [characterDrafts, setCharacterDrafts] = useState({});
-  const [locationDrafts, setLocationDrafts] = useState({});
-  const [objectDrafts, setObjectDrafts] = useState({});
-  const [worldTermDrafts, setWorldTermDrafts] = useState({});
   const [canonFactDrafts, setCanonFactDrafts] = useState({});
   const characterSaveTimersRef = useRef({});
-  const locationSaveTimersRef = useRef({});
-  const objectSaveTimersRef = useRef({});
-  const worldTermSaveTimersRef = useRef({});
   const canonFactSaveTimersRef = useRef({});
 
   useEffect(() => {
@@ -46,31 +34,6 @@ export default function useStoryBibleDrafts({
   }, [characters]);
 
   useEffect(() => {
-    setLocationDrafts((previousDrafts) => syncDraftMap(previousDrafts, locations, (item) => ({
-      name: item.name || '',
-      description: item.description || '',
-      details: item.details || '',
-    })));
-  }, [locations]);
-
-  useEffect(() => {
-    setObjectDrafts((previousDrafts) => syncDraftMap(previousDrafts, objects, (item) => ({
-      name: item.name || '',
-      description: item.description || '',
-      properties: item.properties || '',
-      owner_character_id: item.owner_character_id || '',
-    })));
-  }, [objects]);
-
-  useEffect(() => {
-    setWorldTermDrafts((previousDrafts) => syncDraftMap(previousDrafts, worldTerms, (item) => ({
-      name: item.name || '',
-      definition: item.definition || '',
-      category: item.category || 'other',
-    })));
-  }, [worldTerms]);
-
-  useEffect(() => {
     setCanonFactDrafts((previousDrafts) => syncDraftMap(previousDrafts, canonFacts, (item) => ({
       fact_type: item.fact_type || 'fact',
       description: item.description || '',
@@ -80,9 +43,6 @@ export default function useStoryBibleDrafts({
   useEffect(() => () => {
     [
       characterSaveTimersRef,
-      locationSaveTimersRef,
-      objectSaveTimersRef,
-      worldTermSaveTimersRef,
       canonFactSaveTimersRef,
     ].forEach((ref) => {
       Object.values(ref.current || {}).forEach((timer) => clearTimeout(timer));
@@ -131,39 +91,6 @@ export default function useStoryBibleDrafts({
     scheduleDraftPersist(characterSaveTimersRef, id, () => updateCharacter(id, patch));
   }, [characterDrafts, scheduleDraftPersist, updateCharacter]);
 
-  const handleLocationDraftChange = useCallback((id, field, value) => {
-    setLocationDrafts((prev) => ({
-      ...prev,
-      [id]: {
-        ...(prev[id] || {}),
-        [field]: value,
-      },
-    }));
-    scheduleDraftPersist(locationSaveTimersRef, id, () => updateLocation(id, { [field]: value }));
-  }, [scheduleDraftPersist, updateLocation]);
-
-  const handleObjectDraftChange = useCallback((id, field, value) => {
-    setObjectDrafts((prev) => ({
-      ...prev,
-      [id]: {
-        ...(prev[id] || {}),
-        [field]: value,
-      },
-    }));
-    scheduleDraftPersist(objectSaveTimersRef, id, () => updateObject(id, { [field]: value }));
-  }, [scheduleDraftPersist, updateObject]);
-
-  const handleWorldTermDraftChange = useCallback((id, field, value) => {
-    setWorldTermDrafts((prev) => ({
-      ...prev,
-      [id]: {
-        ...(prev[id] || {}),
-        [field]: value,
-      },
-    }));
-    scheduleDraftPersist(worldTermSaveTimersRef, id, () => updateWorldTerm(id, { [field]: value }));
-  }, [scheduleDraftPersist, updateWorldTerm]);
-
   const handleCanonFactDraftChange = useCallback((id, field, value) => {
     setCanonFactDrafts((prev) => ({
       ...prev,
@@ -202,16 +129,10 @@ export default function useStoryBibleDrafts({
 
   return {
     characterDrafts,
-    locationDrafts,
-    objectDrafts,
-    worldTermDrafts,
     canonFactDrafts,
     activeCanonFacts,
     deprecatedCanonFacts,
     handleCharacterDraftChange,
-    handleLocationDraftChange,
-    handleObjectDraftChange,
-    handleWorldTermDraftChange,
     handleCanonFactDraftChange,
     handleAddCanonFact,
     handleArchiveCanonFact,

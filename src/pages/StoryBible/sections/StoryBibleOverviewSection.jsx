@@ -6,6 +6,7 @@ import {
   STORY_STRUCTURES,
   TONES,
 } from '../../../utils/constants';
+import ProjectCoverPanel from '../components/ProjectCoverPanel';
 import StoryBibleSectionHeader from '../components/StoryBibleSectionHeader';
 
 const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection({
@@ -52,6 +53,8 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
   handleStructureChange,
   handleTargetLengthTypeChange,
   pronounStylePresets,
+  currentProject,
+  onSaveProjectSettings,
 }) {
   const handleSelectAll = React.useCallback((event) => {
     const input = event.currentTarget;
@@ -123,6 +126,11 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
             </select>
           </div>
 
+          <ProjectCoverPanel
+            project={currentProject}
+            onSaveProjectSettings={onSaveProjectSettings}
+          />
+
           <div className="form-group">
             <label className="form-label">Cốt truyện chính {synopsisSaved && <span className="save-indicator">Đã lưu</span>}</label>
             <textarea
@@ -182,7 +190,7 @@ const StoryBibleOverviewSection = React.memo(function StoryBibleOverviewSection(
               </button>
             </label>
             {milestonesInfo.map((milestone, index) => (
-              <div key={`${milestone.percent}-${index}`} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              <div key={`milestone-${index}`} style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
                 <input
                   type="text"
                   inputMode="numeric"

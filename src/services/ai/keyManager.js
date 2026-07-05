@@ -35,11 +35,13 @@ class KeyManager {
       gemini_direct: [],  // [{ key, label }]
       gemini_proxy: [],   // [{ key, label }]
       openai_proxy: [],   // [{ key, label }]
+      cloudflare_workers_ai: [], // [{ key, label }]
     };
     this.currentIndex = {
       gemini_direct: 0,
       gemini_proxy: 0,
       openai_proxy: 0,
+      cloudflare_workers_ai: 0,
     };
     this.rateLimited = new Map(); // key → timestamp
     this.reservations = new Map(); // key -> request timestamps in the current minute
@@ -52,10 +54,14 @@ class KeyManager {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
+        const openAIProxyKeys = Array.isArray(parsed.openai_proxy) && parsed.openai_proxy.length > 0
+          ? parsed.openai_proxy
+          : (parsed.custom_openai_proxy || []);
         this.pools = {
           gemini_direct: parsed.gemini_direct || [],
           gemini_proxy: parsed.gemini_proxy || [],
-          openai_proxy: parsed.openai_proxy || parsed.custom_openai_proxy || [],
+          openai_proxy: openAIProxyKeys,
+          cloudflare_workers_ai: parsed.cloudflare_workers_ai || [],
         };
       }
     } catch (e) {
@@ -283,6 +289,7 @@ class KeyManager {
       (this.pools.gemini_direct?.length || 0)
       + (this.pools.gemini_proxy?.length || 0)
       + (this.pools.openai_proxy?.length || 0)
+      + (this.pools.cloudflare_workers_ai?.length || 0)
     );
   }
 }

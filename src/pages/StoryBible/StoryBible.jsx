@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   BookMarked,
   BookOpen,
@@ -24,33 +24,27 @@ import useStoryBibleMacroArcs from './hooks/useStoryBibleMacroArcs';
 import useStoryBibleProjectFields from './hooks/useStoryBibleProjectFields';
 import StoryBibleCanonSection from './sections/StoryBibleCanonSection';
 import StoryBibleCharactersSection from './sections/StoryBibleCharactersSection';
-import StoryBibleLocationsSection from './sections/StoryBibleLocationsSection';
 import StoryBibleMacroArcSection from './sections/StoryBibleMacroArcSection';
-import StoryBibleObjectsSection from './sections/StoryBibleObjectsSection';
 import StoryBibleOverviewSection from './sections/StoryBibleOverviewSection';
 import StoryBibleSummariesSection from './sections/StoryBibleSummariesSection';
-import StoryBibleTermsSection from './sections/StoryBibleTermsSection';
+import StoryBibleWorldLoreSummarySection from './sections/StoryBibleWorldLoreSummarySection';
 import './StoryBible.css';
 
 export default function StoryBible() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { projectId: routeProjectId } = useParams();
   const { currentProject, chapters, updateProjectSettings } = useProjectStore();
   const {
     characters,
-    locations,
-    objects,
-    worldTerms,
     canonFacts,
     chapterMetas,
-    loadCodex,
+    storyBibleWorldCounts,
+    loadStoryBibleCodex,
     createCanonFact,
     updateCanonFact,
     deleteCanonFact,
     updateCharacter,
-    updateLocation,
-    updateObject,
-    updateWorldTerm,
   } = useCodexStore();
   const [openSections, setOpenSections] = useState({
     overview: true,
@@ -59,21 +53,32 @@ export default function StoryBible() {
     suggestions: true,
     canon: true,
     characters: true,
-    locations: true,
-    objects: true,
-    terms: true,
+    worldLore: true,
     summaries: true,
   });
 
   useEffect(() => {
     if (currentProject?.id) {
-      loadCodex(currentProject.id);
+      loadStoryBibleCodex(currentProject.id);
     }
-  }, [currentProject?.id, loadCodex]);
+  }, [currentProject?.id, loadStoryBibleCodex]);
 
   const toggleSection = useCallback((key) => {
     setOpenSections((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('focus') !== 'cover') return;
+    setOpenSections((prev) => ({ ...prev, overview: true }));
+    const timer = setTimeout(() => {
+      document.getElementById('project-cover-panel')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [location.search]);
 
   const projectFields = useStoryBibleProjectFields({
     currentProject,
@@ -83,17 +88,11 @@ export default function StoryBible() {
   const draftState = useStoryBibleDrafts({
     currentProjectId: currentProject?.id,
     characters,
-    locations,
-    objects,
-    worldTerms,
     canonFacts,
     createCanonFact,
     updateCanonFact,
     deleteCanonFact,
     updateCharacter,
-    updateLocation,
-    updateObject,
-    updateWorldTerm,
   });
 
   const characterNameMap = useMemo(
@@ -132,7 +131,13 @@ export default function StoryBible() {
     );
   }
 
-  const totalItems = characters.length + locations.length + objects.length + worldTerms.length;
+  const worldLoreCounts = {
+    locations: Number(storyBibleWorldCounts?.locations || 0),
+    objects: Number(storyBibleWorldCounts?.objects || 0),
+    terms: Number(storyBibleWorldCounts?.terms || 0),
+  };
+  const totalWorldLoreItems = worldLoreCounts.locations + worldLoreCounts.objects + worldLoreCounts.terms;
+  const totalItems = characters.length + totalWorldLoreItems;
   const activeProjectId = currentProject.id || Number(routeProjectId) || null;
   const currentContentMode = resolveProjectContentMode(currentProject);
   const buildProjectPath = useCallback((path = '') => {
@@ -164,11 +169,20 @@ export default function StoryBible() {
         onToggle={toggleSection}
         chaptersCount={chapters.length}
         charactersCount={characters.length}
-        locationsCount={locations.length}
-        objectsCount={objects.length}
-        worldTermsCount={worldTerms.length}
+        locationsCount={worldLoreCounts.locations}
+        objectsCount={worldLoreCounts.objects}
+        worldTermsCount={worldLoreCounts.terms}
         pronounStylePresets={PRONOUN_STYLE_PRESETS}
+        currentProject={currentProject}
+        onSaveProjectSettings={projectFields.save}
         {...projectFields}
+      />
+
+      <StoryBibleWorldLoreSummarySection
+        counts={worldLoreCounts}
+        isOpen={openSections.worldLore}
+        onToggle={toggleSection}
+        onNavigate={handleNavigate}
       />
 
       <div className="bible-section">
@@ -262,7 +276,7 @@ export default function StoryBible() {
           <div className="bible-edit-card">
             <SuggestionInbox
               projectId={currentProject.id}
-              onAccepted={() => loadCodex(currentProject.id)}
+              onAccepted={() => loadStoryBibleCodex(currentProject.id)}
             />
           </div>
         )}
@@ -284,34 +298,6 @@ export default function StoryBible() {
         onToggle={toggleSection}
         onNavigate={handleNavigate}
         onDraftChange={draftState.handleCharacterDraftChange}
-      />
-
-      <StoryBibleLocationsSection
-        locations={locations}
-        locationDrafts={draftState.locationDrafts}
-        isOpen={openSections.locations}
-        onToggle={toggleSection}
-        onNavigate={handleNavigate}
-        onDraftChange={draftState.handleLocationDraftChange}
-      />
-
-      <StoryBibleObjectsSection
-        objects={objects}
-        objectDrafts={draftState.objectDrafts}
-        characters={characters}
-        isOpen={openSections.objects}
-        onToggle={toggleSection}
-        onNavigate={handleNavigate}
-        onDraftChange={draftState.handleObjectDraftChange}
-      />
-
-      <StoryBibleTermsSection
-        worldTerms={worldTerms}
-        worldTermDrafts={draftState.worldTermDrafts}
-        isOpen={openSections.terms}
-        onToggle={toggleSection}
-        onNavigate={handleNavigate}
-        onDraftChange={draftState.handleWorldTermDraftChange}
       />
 
       <StoryBibleSummariesSection
