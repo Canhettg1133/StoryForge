@@ -27,6 +27,11 @@ import {
 import { routeStoryMirrorAdmin } from './storyMirror/index.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
+const SECURITY_HEADERS = {
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+};
 const PROFILES_TABLE = 'profiles';
 const PLANS_TABLE = 'plans';
 const USER_PLANS_TABLE = 'user_plans';
@@ -41,6 +46,14 @@ const SITE_SETTINGS_TABLE = 'site_settings';
 const DEFAULT_USAGE_PAGE_SIZE = 100;
 const MAX_USAGE_PAGE_SIZE = 200;
 const MAX_USAGE_OFFSET_WITHOUT_CURSOR = 10000;
+const PROFILE_SELECT = 'user_id,email,display_name,system_role,status,metadata,created_at,updated_at';
+const PLAN_SELECT = 'id,key,name,description,active,sort_order,metadata,created_at,updated_at';
+const FEATURE_SELECT = 'key,name,description,category,active,metadata,created_at,updated_at';
+const PLAN_FEATURE_SELECT = 'id,plan_id,feature_key,enabled,limit_json,created_at,updated_at,plans(key,name)';
+const USER_PLAN_SELECT = 'id,user_id,plan_id,status,starts_at,expires_at,created_at,updated_at,plans(key,name)';
+const OVERRIDE_SELECT = 'id,user_id,feature_key,enabled,reason,limit_json,metadata,expires_at,revoked_at,granted_by,created_at,updated_at';
+const CONSENT_SELECT = 'id,key,version,title,body,active,effective_at,created_at,updated_at';
+const USAGE_SELECT = 'id,request_id,user_id,feature_key,provider,model,event_type,count,status,metadata,created_at';
 
 const ROUTE_PERMISSIONS = {
   users: ADMIN_PERMISSIONS.USERS_READ,
@@ -105,7 +118,7 @@ function corsHeaders(request, config) {
 function json(payload, status = 200, cors = {}) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...cors, ...JSON_HEADERS },
+    headers: { ...cors, ...SECURITY_HEADERS, ...JSON_HEADERS },
   });
 }
 
@@ -149,7 +162,7 @@ function restUrl(config, table, query = '') {
 
 async function supabaseRest(config, table, {
   method = 'GET',
-  query = 'select=*',
+  query = '',
   body,
   prefer = 'return=representation',
 } = {}) {
@@ -164,7 +177,7 @@ async function supabaseRest(config, table, {
 
 async function supabaseRestResult(config, table, {
   method = 'GET',
-  query = 'select=*',
+  query = '',
   body,
   prefer = 'return=representation',
 } = {}) {
@@ -208,14 +221,6 @@ function filterIn(column, values) {
 
 function filterIsNull(column) {
   return `${column}=is.null`;
-}
-
-function queryWithSelect(defaultQuery, url) {
-  const query = new URLSearchParams(defaultQuery);
-  for (const [key, value] of url.searchParams.entries()) {
-    query.set(key, value);
-  }
-  return query.toString();
 }
 
 function toBoundedInteger(value, fallback, { min = 1, max = 200 } = {}) {
@@ -503,7 +508,7 @@ function buildActorFromProfile(authUser, profile) {
 
 async function getProfile(config, userId) {
   const rows = await supabaseRest(config, PROFILES_TABLE, {
-    query: `select=*&${filterEq('user_id', userId)}&limit=1`,
+    query: `select=${PROFILE_SELECT}&${filterEq('user_id', userId)}&limit=1`,
     prefer: '',
   });
   return Array.isArray(rows) ? rows[0] || null : null;
@@ -747,7 +752,7 @@ function enrichAuditLog(row, profileMap) {
 async function listAuditLogs(config, actor, url) {
   requirePermission(actor, ROUTE_PERMISSIONS.audit);
   const rows = await supabaseRest(config, AUDIT_TABLE, {
-    query: queryWithSelect('select=*&order=created_at.desc&limit=200', url),
+    query: 'select=id,actor_user_id,action,target_user_id,target_feature_key,before_json,after_json,actor_snapshot,target_snapshot,action_summary,change_summary,resource_label,ip_address,user_agent,created_at&order=created_at.desc&limit=200',
     prefer: '',
   });
   const items = Array.isArray(rows) ? rows : [];
@@ -878,7 +883,7 @@ function appendUsageLogicalFilters(query, groups) {
 
 async function buildUsageQuery(config, url, pagination) {
   const query = new URLSearchParams({
-    select: '*',
+    select: USAGE_SELECT,
     order: 'created_at.desc,id.desc',
   });
   const rawCursor = String(url.searchParams.get('cursor') || '').trim();
@@ -978,7 +983,7 @@ async function listTable(config, actor, resource, table, url, defaultQuery) {
   requirePermission(actor, ROUTE_PERMISSIONS[resource]);
   return {
     items: await supabaseRest(config, table, {
-      query: queryWithSelect(defaultQuery, url),
+      query: defaultQuery,
       prefer: '',
     }),
   };
@@ -987,7 +992,7 @@ async function listTable(config, actor, resource, table, url, defaultQuery) {
 async function findPlanByKey(config, planKeyInput) {
   const planKey = normalizePlan(planKeyInput);
   const rows = await supabaseRest(config, PLANS_TABLE, {
-    query: `select=*&${filterEq('key', planKey)}&limit=1`,
+    query: `select=${PLAN_SELECT}&${filterEq('key', planKey)}&limit=1`,
     prefer: '',
   });
   const plan = Array.isArray(rows) ? rows[0] || null : null;
@@ -999,7 +1004,7 @@ async function findPlanByKey(config, planKeyInput) {
 
 async function findPlanById(config, id) {
   const rows = await supabaseRest(config, PLANS_TABLE, {
-    query: `select=*&id=eq.${encodeURIComponent(id)}&limit=1`,
+    query: `select=${PLAN_SELECT}&id=eq.${encodeURIComponent(id)}&limit=1`,
     prefer: '',
   });
   return Array.isArray(rows) ? rows[0] || null : null;
@@ -1025,7 +1030,7 @@ function getCurrentPlanKey(user) {
 
 async function listUsers(config, actor, url) {
   requirePermission(actor, ADMIN_PERMISSIONS.USERS_READ);
-  const query = queryWithSelect('select=*,user_plans(*,plans(*))&order=updated_at.desc&limit=200', url);
+  const query = 'select=user_id,email,display_name,system_role,status,metadata,updated_at,created_at,user_plans(id,user_id,plan_id,status,starts_at,expires_at,created_at,plans(key,name))&order=updated_at.desc&limit=200';
   const rows = await supabaseRest(config, PROFILES_TABLE, { query, prefer: '' });
   const items = Array.isArray(rows)
     ? rows.map((row) => ({
@@ -1044,23 +1049,23 @@ async function buildAccessData(config, userId) {
   const [profile, userPlans, features, planFeatures, overrides, consentVersions, accessVersions] = await Promise.all([
     getProfile(config, userId),
     supabaseRest(config, USER_PLANS_TABLE, {
-      query: `select=*,plans(key,name)&${filterEq('user_id', userId)}&order=starts_at.desc`,
+      query: `select=${USER_PLAN_SELECT}&${filterEq('user_id', userId)}&order=starts_at.desc`,
       prefer: '',
     }),
     supabaseRest(config, FEATURES_TABLE, {
-      query: 'select=*&order=category.asc,key.asc',
+      query: `select=${FEATURE_SELECT}&order=category.asc,key.asc`,
       prefer: '',
     }),
     supabaseRest(config, PLAN_FEATURES_TABLE, {
-      query: 'select=*,plans(key,name)&order=feature_key.asc',
+      query: `select=${PLAN_FEATURE_SELECT}&order=feature_key.asc`,
       prefer: '',
     }),
     supabaseRest(config, OVERRIDES_TABLE, {
-      query: `select=*&${filterEq('user_id', userId)}&order=created_at.desc`,
+      query: `select=${OVERRIDE_SELECT}&${filterEq('user_id', userId)}&order=created_at.desc`,
       prefer: '',
     }),
     supabaseRest(config, CONSENT_TABLE, {
-      query: 'select=*&order=effective_at.desc',
+      query: `select=${CONSENT_SELECT}&order=effective_at.desc`,
       prefer: '',
     }),
     supabaseRest(config, ACCESS_VERSIONS_TABLE, {
@@ -1247,10 +1252,10 @@ async function mutateUserFeatureOverride(config, request, actor, userId, body) {
 async function getCatalog(config, actor) {
   requirePermission(actor, ADMIN_PERMISSIONS.CATALOG_READ);
   const [plans, features, planFeatures, consentVersions] = await Promise.all([
-    supabaseRest(config, PLANS_TABLE, { query: 'select=*&order=sort_order.asc,key.asc', prefer: '' }),
-    supabaseRest(config, FEATURES_TABLE, { query: 'select=*&order=category.asc,key.asc', prefer: '' }),
-    supabaseRest(config, PLAN_FEATURES_TABLE, { query: 'select=*,plans(key,name)&order=feature_key.asc', prefer: '' }),
-    supabaseRest(config, CONSENT_TABLE, { query: 'select=*&order=effective_at.desc', prefer: '' }),
+    supabaseRest(config, PLANS_TABLE, { query: `select=${PLAN_SELECT}&order=sort_order.asc,key.asc`, prefer: '' }),
+    supabaseRest(config, FEATURES_TABLE, { query: `select=${FEATURE_SELECT}&order=category.asc,key.asc`, prefer: '' }),
+    supabaseRest(config, PLAN_FEATURES_TABLE, { query: `select=${PLAN_FEATURE_SELECT}&order=feature_key.asc`, prefer: '' }),
+    supabaseRest(config, CONSENT_TABLE, { query: `select=${CONSENT_SELECT}&order=effective_at.desc`, prefer: '' }),
   ]);
   return {
     items: Array.isArray(plans) ? plans : [],
@@ -1551,7 +1556,7 @@ async function routeRequest(request, config, actor, env = {}) {
 
   if (resource === 'features') {
     if (request.method === 'GET' && !id) {
-      return listTable(config, actor, resource, FEATURES_TABLE, url, 'select=*&order=category.asc,key.asc&limit=500');
+      return listTable(config, actor, resource, FEATURES_TABLE, url, `select=${FEATURE_SELECT}&order=category.asc,key.asc&limit=500`);
     }
     if (id && action === 'plan' && request.method === 'POST') {
       return mutatePlanFeature(config, request, actor, id, await readJson(request));
@@ -1563,7 +1568,7 @@ async function routeRequest(request, config, actor, env = {}) {
 
   if (resource === 'consent') {
     if (request.method === 'GET') {
-      return listTable(config, actor, resource, CONSENT_TABLE, url, 'select=*&order=effective_at.desc&limit=200');
+      return listTable(config, actor, resource, CONSENT_TABLE, url, `select=${CONSENT_SELECT}&order=effective_at.desc&limit=200`);
     }
     if (request.method === 'POST') return mutateConsent(config, request, actor, await readJson(request));
   }
@@ -1594,7 +1599,7 @@ async function handle(request, env = {}) {
   }
 
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: cors });
+    return new Response(null, { status: 204, headers: { ...cors, ...SECURITY_HEADERS } });
   }
 
   if (new URL(request.url).pathname.replace(/^\/api\/admin/u, '') === '/health') {

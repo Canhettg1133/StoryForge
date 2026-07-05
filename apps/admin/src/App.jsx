@@ -2017,42 +2017,130 @@ export default function App() {
     },
   }), []);
 
-  const loadAdminData = useCallback(async () => {
+  const loadActor = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
       const me = await adminApi.me();
-      const [users, catalog, audit, usage, features, consent, announcement] = await Promise.all([
-        adminApi.users(),
-        adminApi.catalog(),
-        adminApi.audit(),
-        adminApi.usage({ page: 1, pageSize: DEFAULT_USAGE_PAGE_SIZE }),
-        adminApi.features(),
-        adminApi.consent(),
-        adminApi.announcement(),
-      ]);
-
       setActor(me.actor);
-      setData({
-        users: users.users || users.items || [],
-        catalog: catalog.plans || catalog.items || [],
-        audit: audit.items || [],
-        usage: usage.items || [],
-        features: features.items || catalog.features || [],
-        planFeatures: catalog.planFeatures || [],
-        consent: consent.items || catalog.consentVersions || [],
-        announcement: announcement.announcement || null,
-      });
-      setUsagePagination(usage.pagination || EMPTY_USAGE_PAGINATION);
-      setUsagePageCursors(EMPTY_USAGE_PAGE_CURSORS);
-      setUsageError('');
     } catch (error) {
-      setLoadError(error.message || 'Không tải được dữ liệu admin.');
+      setLoadError(error.message || 'Could not load admin session.');
       setActor(null);
     } finally {
       setLoading(false);
     }
   }, [adminApi]);
+
+  const loadAdminData = useCallback(async (view = activeView) => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const viewToLoad = view || activeView;
+      if (viewToLoad === 'overview') {
+        const [users, audit, usage] = await Promise.all([
+          adminApi.users(),
+          adminApi.audit(),
+          adminApi.usage({ page: 1, pageSize: DEFAULT_USAGE_PAGE_SIZE }),
+        ]);
+        setData((current) => ({
+          ...current,
+          users: users.users || users.items || [],
+          audit: audit.items || [],
+          usage: usage.items || [],
+        }));
+        setUsagePagination(usage.pagination || EMPTY_USAGE_PAGINATION);
+        setUsagePageCursors(EMPTY_USAGE_PAGE_CURSORS);
+        setUsageError('');
+        return;
+      }
+
+      if (viewToLoad === 'users') {
+        const [users, features] = await Promise.all([
+          adminApi.users(),
+          adminApi.features(),
+        ]);
+        setData((current) => ({
+          ...current,
+          users: users.users || users.items || [],
+          features: features.items || [],
+        }));
+        return;
+      }
+
+      if (viewToLoad === 'vip') {
+        const catalog = await adminApi.catalog();
+        setData((current) => ({
+          ...current,
+          catalog: catalog.plans || catalog.items || [],
+          features: catalog.features || current.features,
+          planFeatures: catalog.planFeatures || [],
+          consent: catalog.consentVersions || current.consent,
+        }));
+        return;
+      }
+
+      if (viewToLoad === 'announcement') {
+        const announcement = await adminApi.announcement();
+        setData((current) => ({
+          ...current,
+          announcement: announcement.announcement || null,
+        }));
+        return;
+      }
+
+      if (viewToLoad === 'features') {
+        const [features, catalog] = await Promise.all([
+          adminApi.features(),
+          adminApi.catalog(),
+        ]);
+        setData((current) => ({
+          ...current,
+          features: features.items || [],
+          catalog: catalog.plans || catalog.items || current.catalog,
+          planFeatures: catalog.planFeatures || [],
+        }));
+        return;
+      }
+
+      if (viewToLoad === 'consent') {
+        const consent = await adminApi.consent();
+        setData((current) => ({
+          ...current,
+          consent: consent.items || [],
+        }));
+        return;
+      }
+
+      if (viewToLoad === 'audit') {
+        const audit = await adminApi.audit();
+        setData((current) => ({
+          ...current,
+          audit: audit.items || [],
+        }));
+        return;
+      }
+
+      if (viewToLoad === 'usage' || viewToLoad === 'advanced') {
+        const usage = await adminApi.usage({ page: 1, pageSize: DEFAULT_USAGE_PAGE_SIZE });
+        setData((current) => ({
+          ...current,
+          usage: usage.items || [],
+        }));
+        setUsagePagination(usage.pagination || EMPTY_USAGE_PAGINATION);
+        setUsagePageCursors(EMPTY_USAGE_PAGE_CURSORS);
+        setUsageError('');
+        return;
+      }
+
+      if (viewToLoad === 'story-mirror') {
+        return;
+      }
+    } catch (error) {
+      setLoadError(error.message || 'Không tải được dữ liệu admin.');
+    } finally {
+      setLoading(false);
+    }
+  }, [activeView, adminApi]);
 
   const loadUsagePage = useCallback(async ({
     page = 1,
@@ -2133,8 +2221,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (session) loadAdminData();
-  }, [session, loadAdminData]);
+    if (session) loadActor();
+  }, [session, loadActor]);
+
+  useEffect(() => {
+    if (session && actor) loadAdminData();
+  }, [session, actor, loadAdminData]);
 
   const login = async () => {
     setAuthLoading(true);

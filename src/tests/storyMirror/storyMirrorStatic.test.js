@@ -51,4 +51,17 @@ describe('story mirror static safety', () => {
     expect(settingsSource).not.toContain('Chạy đồng bộ truyện cũ');
     expect(runtimeSource).toContain('scheduleStoryMirrorBackfill');
   });
+  it('keeps sensitive worker responses non-cacheable and non-sniffable', () => {
+    const workerFiles = [
+      'apps/story-mirror-worker/src/index.js',
+      'apps/admin-api-worker/src/index.js',
+    ];
+
+    for (const file of workerFiles) {
+      const source = readFileSync(resolve(process.cwd(), file), 'utf8');
+      expect(source).toContain("'Cache-Control': 'no-store'");
+      expect(source).toContain("'X-Content-Type-Options': 'nosniff'");
+      expect(source).toContain("'Referrer-Policy': 'no-referrer'");
+    }
+  });
 });

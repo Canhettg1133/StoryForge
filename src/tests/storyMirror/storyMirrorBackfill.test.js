@@ -77,30 +77,30 @@ describe('story mirror local backfill', () => {
     vi.unstubAllEnvs();
   });
 
-  it('queues old IndexedDB scenes into the story mirror outbox without uploading directly', async () => {
+  it('queues old IndexedDB scenes into the story mirror outbox without persisting raw content', async () => {
     const memory = createMemoryDb({
-      projects: [{ id: 11, title: 'Dự án cũ', genre_primary: 'fantasy', status: 'active', updated_at: 1700000000000 }],
-      chapters: [{ id: 22, project_id: 11, title: 'Chương 1', order_index: 0, status: 'draft' }],
+      projects: [{ id: 11, title: 'Old project', genre_primary: 'fantasy', status: 'active', updated_at: 1700000000000 }],
+      chapters: [{ id: 22, project_id: 11, title: 'Chapter 1', order_index: 0, status: 'draft' }],
       scenes: [
         {
           id: 33,
           project_id: 11,
           chapter_id: 22,
-          title: 'Cảnh cũ',
+          title: 'Old scene',
           order_index: 0,
           status: 'draft',
-          draft_text: '<p>Nội dung cũ</p>',
+          draft_text: '<p>old raw story content</p>',
           final_text: '',
-          translated_text: '<p>Không được gửi</p>',
-          prompt: 'Không được gửi',
-          chat_messages: ['Không được gửi'],
+          translated_text: '<p>must not be queued</p>',
+          prompt: 'must not be queued',
+          chat_messages: ['must not be queued'],
           updated_at: 1700000000001,
         },
         {
           id: 34,
           project_id: 11,
           chapter_id: 22,
-          title: 'Cảnh rỗng',
+          title: 'Empty scene',
           order_index: 1,
           status: 'draft',
           draft_text: '<p><br></p>',
@@ -121,22 +121,27 @@ describe('story mirror local backfill', () => {
 
     const row = [...memory.outboxRows.values()][0];
     expect(row.id).toMatch(/^scene:install:/u);
-    expect(row.payload.project.clientProjectId).toMatch(/^install:/u);
-    expect(row.payload.scene.clientSceneId).toMatch(/^install:/u);
-    expect(row.payload.scene.content).toBe('<p>Nội dung cũ</p>');
+    expect(row.project_id).toBe(11);
+    expect(row.chapter_id).toBe(22);
+    expect(row.scene_id).toBe(33);
+    expect(row.idempotency_key).toMatch(/^scene:install:/u);
+    expect(row.content_hash).toBeTruthy();
+    expect(row).not.toHaveProperty('payload');
 
-    const serialized = JSON.stringify(row.payload);
+    const serialized = JSON.stringify(row);
+    expect(serialized).not.toContain('<p>');
+    expect(serialized).not.toContain('old raw story content');
     expect(serialized).not.toContain('translated_text');
     expect(serialized).not.toContain('prompt');
     expect(serialized).not.toContain('chat_messages');
-    expect(serialized).not.toContain('Không được gửi');
+    expect(serialized).not.toContain('must not be queued');
   });
 
   it('is idempotent when the same backfill runs again on one installation', async () => {
     const memory = createMemoryDb({
-      projects: [{ id: 11, title: 'Dự án cũ', updated_at: 1700000000000 }],
-      chapters: [{ id: 22, project_id: 11, title: 'Chương 1', order_index: 0 }],
-      scenes: [{ id: 33, project_id: 11, chapter_id: 22, title: 'Cảnh cũ', draft_text: '<p>Cũ</p>', updated_at: 1700000000001 }],
+      projects: [{ id: 11, title: 'Old project', updated_at: 1700000000000 }],
+      chapters: [{ id: 22, project_id: 11, title: 'Chapter 1', order_index: 0 }],
+      scenes: [{ id: 33, project_id: 11, chapter_id: 22, title: 'Old scene', draft_text: '<p>Old</p>', updated_at: 1700000000001 }],
     });
     const { runStoryMirrorBackfill } = await loadBackfillWithDb(memory);
 
@@ -147,14 +152,15 @@ describe('story mirror local backfill', () => {
 
     expect(memory.outboxRows.size).toBe(1);
     expect(secondRow.id).toBe(firstRow.id);
-    expect(secondRow.payload.project.clientProjectId).toBe(firstRow.payload.project.clientProjectId);
+    expect(secondRow.idempotency_key).toBe(firstRow.idempotency_key);
+    expect(secondRow).not.toHaveProperty('payload');
   });
 
   it('does not scan local stories when the remote status says story mirror is disabled', async () => {
     const memory = createMemoryDb({
-      projects: [{ id: 11, title: 'Dự án cũ' }],
-      chapters: [{ id: 22, project_id: 11, title: 'Chương 1' }],
-      scenes: [{ id: 33, project_id: 11, chapter_id: 22, title: 'Cảnh cũ', draft_text: '<p>Cũ</p>' }],
+      projects: [{ id: 11, title: 'Old project' }],
+      chapters: [{ id: 22, project_id: 11, title: 'Chapter 1' }],
+      scenes: [{ id: 33, project_id: 11, chapter_id: 22, title: 'Old scene', draft_text: '<p>Old</p>' }],
     });
     const { runStoryMirrorBackfill } = await loadBackfillWithDb(memory, {
       ok: true,
@@ -172,9 +178,9 @@ describe('story mirror local backfill', () => {
 
   it('does not touch local stories when Supabase Auth is not configured', async () => {
     const memory = createMemoryDb({
-      projects: [{ id: 11, title: 'Dự án cũ' }],
-      chapters: [{ id: 22, project_id: 11, title: 'Chương 1' }],
-      scenes: [{ id: 33, project_id: 11, chapter_id: 22, title: 'Cảnh cũ', draft_text: '<p>Cũ</p>' }],
+      projects: [{ id: 11, title: 'Old project' }],
+      chapters: [{ id: 22, project_id: 11, title: 'Chapter 1' }],
+      scenes: [{ id: 33, project_id: 11, chapter_id: 22, title: 'Old scene', draft_text: '<p>Old</p>' }],
     });
     const { runStoryMirrorBackfill } = await loadBackfillWithDb(memory, { ok: true, enabled: true }, { authConfigured: false });
 

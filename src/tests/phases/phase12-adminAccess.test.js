@@ -13,8 +13,15 @@ describe('phase12 admin access package', () => {
   it('maps role permissions without treating support as a mutating admin', () => {
     expect(hasPermission('support', ADMIN_PERMISSIONS.USERS_READ)).toBe(true);
     expect(hasPermission('support', ADMIN_PERMISSIONS.AUDIT_READ)).toBe(true);
+    expect(hasPermission('support', ADMIN_PERMISSIONS.STORY_MIRROR_READ)).toBe(true);
+    expect(hasPermission('support', ADMIN_PERMISSIONS.STORY_MIRROR_CONTENT_READ)).toBe(false);
+    expect(hasPermission('support', ADMIN_PERMISSIONS.STORY_MIRROR_EXPORT)).toBe(false);
     expect(hasPermission('support', ADMIN_PERMISSIONS.USERS_PLAN_UPDATE)).toBe(false);
     expect(hasPermission('admin', ADMIN_PERMISSIONS.USERS_PLAN_UPDATE)).toBe(true);
+    expect(hasPermission('admin', ADMIN_PERMISSIONS.STORY_MIRROR_CONTENT_READ)).toBe(true);
+    expect(hasPermission('admin', ADMIN_PERMISSIONS.STORY_MIRROR_EXPORT)).toBe(false);
+    expect(hasPermission('admin', ADMIN_PERMISSIONS.STORY_MIRROR_WRITE)).toBe(false);
+    expect(hasPermission('owner', ADMIN_PERMISSIONS.STORY_MIRROR_EXPORT)).toBe(true);
     expect(hasPermission('owner', ADMIN_PERMISSIONS.USERS_ROLE_UPDATE)).toBe(true);
   });
 

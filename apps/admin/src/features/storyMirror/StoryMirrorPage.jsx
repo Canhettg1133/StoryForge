@@ -61,6 +61,11 @@ function downloadJson(filename, payload) {
   URL.revokeObjectURL(url);
 }
 
+function requestRawAccessReason(actionLabel) {
+  const reason = window.prompt(`${actionLabel}\nNhap ly do/ticket de ghi audit:`);
+  return String(reason || '').trim();
+}
+
 function normalizeSettings(settings = {}) {
   return {
     enabled: settings.enabled === true,
@@ -92,6 +97,7 @@ export default function StoryMirrorPage({ adminApi }) {
   const loadData = useCallback(async () => {
     setLoading(true);
     setError('');
+    setSelectedScene(null);
     try {
       const [healthPayload, usersPayload, projectsPayload, auditPayload] = await Promise.all([
         adminApi.storyMirrorHealth(),
@@ -190,10 +196,12 @@ export default function StoryMirrorPage({ adminApi }) {
   };
 
   const loadScene = async (sceneId) => {
+    const reason = requestRawAccessReason('Xem noi dung raw cua canh');
+    if (!reason) return;
     setActionLoading(`scene:${sceneId}`);
     setError('');
     try {
-      const payload = await adminApi.storyMirrorScene(sceneId);
+      const payload = await adminApi.storyMirrorScene(sceneId, reason);
       setSelectedScene(payload);
     } catch (err) {
       setError(err.message || 'Không tải được nội dung cảnh.');
@@ -203,10 +211,12 @@ export default function StoryMirrorPage({ adminApi }) {
   };
 
   const exportProject = async (project) => {
+    const reason = requestRawAccessReason('Xuat raw content cua truyen');
+    if (!reason) return;
     setActionLoading(`export:${project.id}`);
     setError('');
     try {
-      const payload = await adminApi.exportStoryMirrorProject(project.id);
+      const payload = await adminApi.exportStoryMirrorProject(project.id, reason);
       downloadJson(`storyforge-${project.client_project_id || project.id}.json`, payload);
       setNotice('Đã xuất truyện từ R2.');
     } catch (err) {
@@ -232,6 +242,14 @@ export default function StoryMirrorPage({ adminApi }) {
     } finally {
       setActionLoading('');
     }
+  };
+
+  const selectUser = (userId) => {
+    const nextUserId = selectedUserId === userId ? '' : userId;
+    setSelectedUserId(nextUserId);
+    setSelectedProjectId('');
+    setScenes([]);
+    setSelectedScene(null);
   };
 
   return (
@@ -340,7 +358,7 @@ export default function StoryMirrorPage({ adminApi }) {
                 <tr
                   key={user.userId}
                   className={selectedUserId === user.userId ? 'story-mirror-row-active' : ''}
-                  onClick={() => setSelectedUserId(selectedUserId === user.userId ? '' : user.userId)}
+                  onClick={() => selectUser(user.userId)}
                 >
                   <td><strong>{user.label}</strong><span>{user.userId}</span></td>
                   <td>{user.projectCount}</td>

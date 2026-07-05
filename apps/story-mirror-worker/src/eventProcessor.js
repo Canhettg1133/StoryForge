@@ -1,4 +1,7 @@
 export const DEFAULT_STORY_MIRROR_QUOTA_BYTES = 100 * 1024 * 1024;
+export const MAX_STORY_MIRROR_SCENE_BYTES = 2 * 1024 * 1024;
+
+const TEXT_ENCODER = new TextEncoder();
 
 function toText(value) {
   return String(value ?? '').trim();
@@ -15,6 +18,27 @@ function toIso(value, fallback = Date.now()) {
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function byteSize(value) {
+  return TEXT_ENCODER.encode(String(value || '')).length;
+}
+
+function fallbackHash(value) {
+  let hash = 0x811c9dc5;
+  const text = String(value || '');
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return `fnv1a:${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+async function sha256(value) {
+  const text = String(value || '');
+  if (!globalThis.crypto?.subtle) return fallbackHash(text);
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', TEXT_ENCODER.encode(text));
+  return `sha256:${[...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
 function compareTime(left, right) {
@@ -44,13 +68,29 @@ function manifestStorageKey(userId, clientProjectId) {
 
 function assertSceneEvent(event) {
   if (!event || event.resourceType !== 'scene.upsert') {
-    throw new Error('Event story mirror không hợp lệ.');
+    throw new Error('Invalid story mirror event.');
   }
-  if (!toText(event.idempotencyKey)) throw new Error('Thiếu idempotencyKey.');
-  if (!toText(event.project?.clientProjectId)) throw new Error('Thiếu clientProjectId.');
-  if (!toText(event.chapter?.clientChapterId)) throw new Error('Thiếu clientChapterId.');
-  if (!toText(event.scene?.clientSceneId)) throw new Error('Thiếu clientSceneId.');
-  if (!toText(event.scene?.contentHash)) throw new Error('Thiếu contentHash.');
+  if (!toText(event.idempotencyKey)) throw new Error('Missing idempotencyKey.');
+  if (!toText(event.project?.clientProjectId)) throw new Error('Missing clientProjectId.');
+  if (!toText(event.chapter?.clientChapterId)) throw new Error('Missing clientChapterId.');
+  if (!toText(event.scene?.clientSceneId)) throw new Error('Missing clientSceneId.');
+  if (typeof event.scene?.content !== 'string') throw new Error('Missing scene content.');
+  if (byteSize(event.scene.content) > MAX_STORY_MIRROR_SCENE_BYTES) {
+    throw new Error('Scene content exceeds the Story Mirror limit.');
+  }
+}
+
+function buildTrustedEvent(event) {
+  const content = String(event.scene.content || '');
+  return sha256(content).then((contentHash) => ({
+    ...event,
+    scene: {
+      ...event.scene,
+      content,
+      contentHash,
+      sizeBytes: byteSize(content),
+    },
+  }));
 }
 
 function buildSceneObject({ event, userId, storageKey }) {
@@ -111,66 +151,67 @@ export async function processStoryMirrorEvent({
   bucket,
 } = {}) {
   const userId = toText(user?.id);
-  if (!userId) throw new Error('Thiếu user để xử lý story mirror.');
+  if (!userId) throw new Error('Missing user for story mirror processing.');
   assertSceneEvent(event);
+  const trustedEvent = await buildTrustedEvent(event);
+  const sizeBytes = toNumber(trustedEvent.scene.sizeBytes);
 
-  const existingEvent = await repo.findEventByKey(userId, event.idempotencyKey);
+  const existingEvent = await repo.findEventByKey(userId, trustedEvent.idempotencyKey);
   if (existingEvent) {
-    return { idempotencyKey: event.idempotencyKey, status: 'duplicate' };
+    return { idempotencyKey: trustedEvent.idempotencyKey, status: 'duplicate' };
   }
 
   const project = await repo.upsertProject(userId, {
     user_id: userId,
-    client_project_id: event.project.clientProjectId,
-    title: event.project.title || '',
-    genre: event.project.genre || '',
-    status: event.project.status || 'active',
-    word_count: toNumber(event.project.wordCount),
-    client_updated_at: toIso(event.project.updatedAt || event.clientUpdatedAt),
+    client_project_id: trustedEvent.project.clientProjectId,
+    title: trustedEvent.project.title || '',
+    genre: trustedEvent.project.genre || '',
+    status: trustedEvent.project.status || 'active',
+    word_count: toNumber(trustedEvent.project.wordCount),
+    client_updated_at: toIso(trustedEvent.project.updatedAt || trustedEvent.clientUpdatedAt),
   });
 
   const chapter = await repo.upsertChapter(userId, {
     user_id: userId,
     project_id: project.id,
-    client_project_id: event.project.clientProjectId,
-    client_chapter_id: event.chapter.clientChapterId,
-    title: event.chapter.title || '',
-    order_index: toNumber(event.chapter.orderIndex),
-    status: event.chapter.status || 'draft',
-    word_count: toNumber(event.chapter.wordCount),
+    client_project_id: trustedEvent.project.clientProjectId,
+    client_chapter_id: trustedEvent.chapter.clientChapterId,
+    title: trustedEvent.chapter.title || '',
+    order_index: toNumber(trustedEvent.chapter.orderIndex),
+    status: trustedEvent.chapter.status || 'draft',
+    word_count: toNumber(trustedEvent.chapter.wordCount),
   });
 
-  const existingScene = await repo.findScene(userId, project.id, event.scene.clientSceneId);
-  if (existingScene?.client_updated_at && compareTime(existingScene.client_updated_at, event.scene.updatedAt || event.clientUpdatedAt) > 0) {
-    await record(repo, userId, event, 'stale', { metadata: { existingUpdatedAt: existingScene.client_updated_at } });
-    return { idempotencyKey: event.idempotencyKey, status: 'stale' };
+  const existingScene = await repo.findScene(userId, project.id, trustedEvent.scene.clientSceneId);
+  if (existingScene?.client_updated_at && compareTime(existingScene.client_updated_at, trustedEvent.scene.updatedAt || trustedEvent.clientUpdatedAt) > 0) {
+    await record(repo, userId, trustedEvent, 'stale', { metadata: { existingUpdatedAt: existingScene.client_updated_at } });
+    return { idempotencyKey: trustedEvent.idempotencyKey, status: 'stale' };
   }
 
-  const sizeBytes = toNumber(event.scene.sizeBytes, new TextEncoder().encode(event.scene.content || '').length);
   const existingSize = toNumber(existingScene?.size_bytes);
   const currentUsage = await repo.getUserUsageBytes(userId);
   if ((currentUsage - existingSize + sizeBytes) > quotaBytes) {
-    await record(repo, userId, event, 'failed', { code: 'STORY_MIRROR_QUOTA_EXCEEDED' });
+    await record(repo, userId, trustedEvent, 'failed', { code: 'STORY_MIRROR_QUOTA_EXCEEDED' });
     return {
-      idempotencyKey: event.idempotencyKey,
+      idempotencyKey: trustedEvent.idempotencyKey,
       status: 'failed',
       code: 'STORY_MIRROR_QUOTA_EXCEEDED',
     };
   }
 
-  if (existingScene?.content_hash && existingScene.content_hash === event.scene.contentHash) {
-    await record(repo, userId, event, 'skipped', { metadata: { reason: 'hash-unchanged' } });
-    return { idempotencyKey: event.idempotencyKey, status: 'skipped' };
+  if (existingScene?.content_hash && existingScene.content_hash === trustedEvent.scene.contentHash) {
+    await record(repo, userId, trustedEvent, 'skipped', { metadata: { reason: 'hash-unchanged' } });
+    return { idempotencyKey: trustedEvent.idempotencyKey, status: 'skipped' };
   }
 
-  const storageKey = sceneStorageKey(userId, event.project.clientProjectId, event.scene.clientSceneId);
-  const sceneObject = buildSceneObject({ event, userId, storageKey });
+  const storageKey = sceneStorageKey(userId, trustedEvent.project.clientProjectId, trustedEvent.scene.clientSceneId);
+  const sceneObject = buildSceneObject({ event: trustedEvent, userId, storageKey });
   await bucket.put(storageKey, JSON.stringify(sceneObject), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
     customMetadata: {
       userId,
-      clientProjectId: event.project.clientProjectId,
-      clientSceneId: event.scene.clientSceneId,
+      clientProjectId: trustedEvent.project.clientProjectId,
+      clientSceneId: trustedEvent.scene.clientSceneId,
     },
   });
 
@@ -178,33 +219,32 @@ export async function processStoryMirrorEvent({
     user_id: userId,
     project_id: project.id,
     chapter_id: chapter.id,
-    client_project_id: event.project.clientProjectId,
-    client_chapter_id: event.chapter.clientChapterId,
-    client_scene_id: event.scene.clientSceneId,
-    title: event.scene.title || '',
-    order_index: toNumber(event.scene.orderIndex),
-    status: event.scene.status || 'draft',
-    word_count: toNumber(event.scene.wordCount),
-    content_hash: event.scene.contentHash,
+    client_project_id: trustedEvent.project.clientProjectId,
+    client_chapter_id: trustedEvent.chapter.clientChapterId,
+    client_scene_id: trustedEvent.scene.clientSceneId,
+    title: trustedEvent.scene.title || '',
+    order_index: toNumber(trustedEvent.scene.orderIndex),
+    status: trustedEvent.scene.status || 'draft',
+    word_count: toNumber(trustedEvent.scene.wordCount),
+    content_hash: trustedEvent.scene.contentHash,
     size_bytes: sizeBytes,
     storage_key: storageKey,
-    client_updated_at: toIso(event.scene.updatedAt || event.clientUpdatedAt),
+    client_updated_at: toIso(trustedEvent.scene.updatedAt || trustedEvent.clientUpdatedAt),
   });
 
   const scenes = await repo.listProjectScenes(userId, project.id);
-  const manifestKey = manifestStorageKey(userId, event.project.clientProjectId);
-  await bucket.put(manifestKey, JSON.stringify(buildManifest({ event, userId, scenes })), {
+  const manifestKey = manifestStorageKey(userId, trustedEvent.project.clientProjectId);
+  await bucket.put(manifestKey, JSON.stringify(buildManifest({ event: trustedEvent, userId, scenes })), {
     httpMetadata: { contentType: 'application/json; charset=utf-8' },
-    customMetadata: { userId, clientProjectId: event.project.clientProjectId },
+    customMetadata: { userId, clientProjectId: trustedEvent.project.clientProjectId },
   });
   await repo.updateProjectStorageBytes(project.id, scenes.reduce((sum, item) => sum + toNumber(item.size_bytes), 0));
-  await record(repo, userId, event, 'synced', { metadata: { sceneId: scene.id, storageKey } });
+  await record(repo, userId, trustedEvent, 'synced', { metadata: { sceneId: scene.id } });
   return {
-    idempotencyKey: event.idempotencyKey,
+    idempotencyKey: trustedEvent.idempotencyKey,
     status: 'synced',
     projectId: project.id,
     sceneId: scene.id,
-    storageKey,
   };
 }
 

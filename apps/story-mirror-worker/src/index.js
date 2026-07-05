@@ -4,11 +4,18 @@ import {
 } from './eventProcessor.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
+const SECURITY_HEADERS = {
+  'Cache-Control': 'no-store',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+};
 const SETTINGS_TABLE = 'story_mirror_settings';
 const PROJECTS_TABLE = 'story_mirror_projects';
 const CHAPTERS_TABLE = 'story_mirror_chapters';
 const SCENES_TABLE = 'story_mirror_scenes';
 const EVENTS_TABLE = 'story_mirror_events';
+const MAX_STORY_MIRROR_EVENTS_PER_BATCH = 50;
+const MAX_STORY_MIRROR_BATCH_BYTES = 5 * 1024 * 1024;
 
 function makeError(status, code, message) {
   const error = new Error(message || code);
@@ -74,11 +81,15 @@ function isOriginAllowed(request, config) {
 function json(payload, status = 200, cors = {}) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...cors, ...JSON_HEADERS },
+    headers: { ...cors, ...SECURITY_HEADERS, ...JSON_HEADERS },
   });
 }
 
 async function readJson(request) {
+  const contentLength = Number(request.headers.get('Content-Length') || 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_STORY_MIRROR_BATCH_BYTES) {
+    throw makeError(413, 'STORY_MIRROR_PAYLOAD_TOO_LARGE', 'Story Mirror payload is too large.');
+  }
   try {
     return await request.json();
   } catch {
@@ -116,7 +127,7 @@ async function readSupabaseJson(response) {
 
 async function supabaseRest(config, table, {
   method = 'GET',
-  query = 'select=*',
+  query = '',
   body,
   prefer = 'return=representation',
 } = {}) {
@@ -154,7 +165,7 @@ async function authenticate(request, config) {
 
 async function getSettings(config) {
   const rows = await supabaseRest(config, SETTINGS_TABLE, {
-    query: 'select=*&key=eq.global&limit=1',
+    query: 'select=key,enabled,test_only,test_user_ids,per_user_quota_bytes,updated_at&key=eq.global&limit=1',
     prefer: '',
   }).catch(() => []);
   const row = Array.isArray(rows) ? rows[0] || null : null;
@@ -183,7 +194,7 @@ function createRepository(config) {
   return {
     async findEventByKey(userId, idempotencyKey) {
       const rows = await supabaseRest(config, EVENTS_TABLE, {
-        query: `select=*&user_id=eq.${encodeURIComponent(userId)}&idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&limit=1`,
+        query: `select=id,idempotency_key,status&user_id=eq.${encodeURIComponent(userId)}&idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&limit=1`,
         prefer: '',
       });
       return Array.isArray(rows) ? rows[0] || null : null;
@@ -210,7 +221,7 @@ function createRepository(config) {
     },
     async findProjectByClientId(userId, clientProjectId) {
       const rows = await supabaseRest(config, PROJECTS_TABLE, {
-        query: `select=*&user_id=eq.${encodeURIComponent(userId)}&client_project_id=eq.${encodeURIComponent(clientProjectId)}&limit=1`,
+        query: `select=id,user_id,client_project_id&user_id=eq.${encodeURIComponent(userId)}&client_project_id=eq.${encodeURIComponent(clientProjectId)}&limit=1`,
         prefer: '',
       });
       return Array.isArray(rows) ? rows[0] || null : null;
@@ -230,7 +241,7 @@ function createRepository(config) {
     },
     async findScene(userId, projectId, clientSceneId) {
       const rows = await supabaseRest(config, SCENES_TABLE, {
-        query: `select=*&user_id=eq.${encodeURIComponent(userId)}&project_id=eq.${encodeURIComponent(projectId)}&client_scene_id=eq.${encodeURIComponent(clientSceneId)}&limit=1`,
+        query: `select=id,client_updated_at,content_hash,size_bytes&user_id=eq.${encodeURIComponent(userId)}&project_id=eq.${encodeURIComponent(projectId)}&client_scene_id=eq.${encodeURIComponent(clientSceneId)}&limit=1`,
         prefer: '',
       });
       return Array.isArray(rows) ? rows[0] || null : null;
@@ -250,7 +261,7 @@ function createRepository(config) {
     },
     async listProjectScenes(userId, projectId) {
       const rows = await supabaseRest(config, SCENES_TABLE, {
-        query: `select=*&user_id=eq.${encodeURIComponent(userId)}&project_id=eq.${encodeURIComponent(projectId)}&order=order_index.asc&limit=10000`,
+        query: `select=id,client_scene_id,client_chapter_id,title,order_index,status,content_hash,size_bytes,storage_key,client_updated_at&user_id=eq.${encodeURIComponent(userId)}&project_id=eq.${encodeURIComponent(projectId)}&order=order_index.asc&limit=10000`,
         prefer: '',
       });
       return Array.isArray(rows) ? rows : [];
@@ -287,7 +298,13 @@ async function handleBatch(request, config, user) {
   const settings = await getSettings(config);
   const access = canUserMirror(user, settings);
   const body = await readJson(request);
-  const events = Array.isArray(body?.events) ? body.events.slice(0, 50) : [];
+  if (body?.events !== undefined && !Array.isArray(body.events)) {
+    throw makeError(400, 'STORY_MIRROR_EVENTS_MALFORMED', 'Story Mirror events must be an array.');
+  }
+  if (Array.isArray(body?.events) && body.events.length > MAX_STORY_MIRROR_EVENTS_PER_BATCH) {
+    throw makeError(413, 'STORY_MIRROR_TOO_MANY_EVENTS', 'Story Mirror batch has too many events.');
+  }
+  const events = Array.isArray(body?.events) ? body.events : [];
   if (events.length === 0) {
     return { ok: true, results: [] };
   }
@@ -389,7 +406,7 @@ async function handle(request, env = {}) {
     return json({ error: 'Origin không được phép gọi Story Mirror.', code: 'STORY_MIRROR_ORIGIN_NOT_ALLOWED' }, 403, cors);
   }
   if (request.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: cors });
+    return new Response(null, { status: 204, headers: { ...cors, ...SECURITY_HEADERS } });
   }
   if (new URL(request.url).pathname.endsWith('/health')) {
     return json({ ok: true, service: 'storyforge-story-mirror' }, 200, cors);

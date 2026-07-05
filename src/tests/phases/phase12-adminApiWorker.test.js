@@ -134,6 +134,25 @@ describe('phase12 admin API worker', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('ignores dangerous select and limit URL overrides on admin user lists', async () => {
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/profiles') && target.includes('order=updated_at.desc')) {
+        const query = new URL(target).searchParams;
+        expect(query.get('select')).not.toBe('*');
+        expect(query.get('select')).not.toContain('service_role');
+        expect(query.get('limit')).toBe('200');
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/users?select=*&limit=9999'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items).toEqual([]);
+  });
+
   it('uses profiles.system_role over stale auth metadata', async () => {
     mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
       if (target.includes('/rest/v1/admin_audit_logs')) {

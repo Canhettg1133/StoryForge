@@ -122,6 +122,65 @@ describe('story mirror event processor', () => {
     expect(deps.bucket.put).not.toHaveBeenCalled();
   });
 
+  it('computes quota from raw scene content instead of trusting client sizeBytes', async () => {
+    const deps = createProcessorDeps();
+
+    const result = await processStoryMirrorEvent({
+      event: {
+        ...baseEvent,
+        idempotencyKey: 'scene-forged-size',
+        scene: {
+          ...baseEvent.scene,
+          content: 'x'.repeat(64),
+          contentHash: 'sha256:client-forged-small',
+          sizeBytes: 1,
+        },
+      },
+      user: { id: 'user-1' },
+      quotaBytes: 10,
+      ...deps,
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.code).toBe('STORY_MIRROR_QUOTA_EXCEEDED');
+    expect(deps.bucket.put).not.toHaveBeenCalled();
+  });
+
+  it('recomputes contentHash before deciding a changed scene is unchanged', async () => {
+    const deps = createProcessorDeps({
+      repo: {
+        findScene: vi.fn(async () => ({
+          id: 'scene-server-1',
+          client_updated_at: '2026-07-02T00:00:00.000Z',
+          content_hash: 'sha256:client-forged-old-hash',
+          size_bytes: 9,
+        })),
+      },
+    });
+
+    const result = await processStoryMirrorEvent({
+      event: {
+        ...baseEvent,
+        idempotencyKey: 'scene-forged-hash',
+        scene: {
+          ...baseEvent.scene,
+          content: '<p>changed content that must be mirrored</p>',
+          contentHash: 'sha256:client-forged-old-hash',
+          sizeBytes: 1,
+        },
+      },
+      user: { id: 'user-1' },
+      quotaBytes: DEFAULT_STORY_MIRROR_QUOTA_BYTES,
+      ...deps,
+    });
+
+    expect(result.status).toBe('synced');
+    expect(deps.bucket.put).toHaveBeenCalled();
+    const upsertedScene = deps.repo.upsertScene.mock.calls.at(-1)?.[1];
+    expect(upsertedScene.content_hash).toBeTruthy();
+    expect(upsertedScene.content_hash).not.toBe('sha256:client-forged-old-hash');
+  });
+
   it('records synced events against the authenticated Supabase user', async () => {
     const deps = createProcessorDeps();
 

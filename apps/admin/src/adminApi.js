@@ -153,10 +153,13 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       return request(`/story-mirror/projects${suffix}`);
     },
     storyMirrorProjectScenes: (projectId) => request(`/story-mirror/projects/${encodeURIComponent(projectId)}/scenes`),
-    storyMirrorScene: (sceneId) => request(`/story-mirror/scenes/${encodeURIComponent(sceneId)}`),
-    exportStoryMirrorProject: (projectId) => request(`/story-mirror/projects/${encodeURIComponent(projectId)}/export`, {
+    storyMirrorScene: (sceneId, reason) => request(`/story-mirror/scenes/${encodeURIComponent(sceneId)}/view`, {
       method: 'POST',
-      body: {},
+      body: { reason },
+    }),
+    exportStoryMirrorProject: (projectId, reason) => request(`/story-mirror/projects/${encodeURIComponent(projectId)}/export`, {
+      method: 'POST',
+      body: { reason },
     }),
     deleteStoryMirrorProject: (projectId) => request(`/story-mirror/projects/${encodeURIComponent(projectId)}`, {
       method: 'DELETE',
