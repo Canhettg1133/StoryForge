@@ -60,7 +60,7 @@ const FEATURE_SELECT = 'key,name,description,category,active,metadata,created_at
 const PLAN_FEATURE_SELECT = 'id,plan_id,feature_key,enabled,limit_json,created_at,updated_at,plans(key,name)';
 const USER_PLAN_SELECT = 'id,user_id,plan_id,status,starts_at,expires_at,created_at,updated_at,plans(key,name)';
 const OVERRIDE_SELECT = 'id,user_id,feature_key,enabled,reason,limit_json,metadata,expires_at,revoked_at,granted_by,created_at,updated_at';
-const CONSENT_SELECT = 'id,key,version,title,body,active,effective_at,created_at,updated_at';
+const CONSENT_SELECT = 'id,key,version,title,body,active,effective_at,created_at';
 const USAGE_SELECT = 'id,request_id,user_id,feature_key,provider,model,event_type,count,status,metadata,created_at';
 
 const ROUTE_PERMISSIONS = {
@@ -165,6 +165,32 @@ async function readSupabaseJson(response) {
   }
 }
 
+function toVietnameseAdminErrorMessage(payload, fallback = 'Supabase trả về lỗi.') {
+  const rawMessage = String(
+    (typeof payload === 'string' ? payload : '')
+    || payload?.message
+    || payload?.error
+    || payload?.msg
+    || fallback
+    || '',
+  ).trim();
+  if (!rawMessage) return fallback;
+
+  if (/column\s+.+\s+does not exist/iu.test(rawMessage)) {
+    return 'Cấu trúc dữ liệu Admin chưa khớp với API hiện tại. Hãy kiểm tra migration Supabase rồi tải lại.';
+  }
+  if (/relation\s+.+\s+does not exist/iu.test(rawMessage)) {
+    return 'Cấu trúc dữ liệu Admin còn thiếu bảng cần thiết. Hãy kiểm tra migration Supabase rồi tải lại.';
+  }
+  if (/duplicate key value violates unique constraint/iu.test(rawMessage)) {
+    return 'Dữ liệu bị trùng với ràng buộc hiện có. Hãy kiểm tra bản ghi rồi thử lại.';
+  }
+  if (/permission denied/iu.test(rawMessage)) {
+    return 'Admin API không có quyền thực hiện truy vấn này.';
+  }
+  return rawMessage;
+}
+
 function supabaseHeaders(config, extra = {}) {
   return {
     apikey: config.serviceRoleKey,
@@ -209,7 +235,11 @@ async function supabaseRestResult(config, table, {
   });
   const payload = await readSupabaseJson(response);
   if (!response.ok) {
-    throw makeError(response.status || 500, 'ADMIN_SUPABASE_REST_FAILED', payload?.message || payload?.error || 'Supabase REST trả về lỗi.');
+    throw makeError(
+      response.status || 500,
+      'ADMIN_SUPABASE_REST_FAILED',
+      toVietnameseAdminErrorMessage(payload, 'Supabase REST trả về lỗi.'),
+    );
   }
   return { payload, headers: response.headers };
 }
@@ -224,7 +254,11 @@ async function authAdminFetch(config, path, init = {}) {
   });
   const payload = await readSupabaseJson(response);
   if (!response.ok) {
-    throw makeError(response.status || 500, 'ADMIN_SUPABASE_AUTH_FAILED', payload?.msg || payload?.message || 'Supabase Auth trả về lỗi.');
+    throw makeError(
+      response.status || 500,
+      'ADMIN_SUPABASE_AUTH_FAILED',
+      toVietnameseAdminErrorMessage(payload, 'Supabase Auth trả về lỗi.'),
+    );
   }
   return payload;
 }

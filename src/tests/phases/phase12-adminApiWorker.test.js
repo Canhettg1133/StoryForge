@@ -1196,6 +1196,43 @@ describe('phase12 admin API worker', () => {
     });
   });
 
+  it('keeps consent version queries compatible with the deployed schema', () => {
+    const schema = readFileSync(resolve(process.cwd(), 'docs/supabase-access-control/001_access_control_schema.sql'), 'utf8');
+    const workerSource = readFileSync(resolve(process.cwd(), 'apps/admin-api-worker/src/index.js'), 'utf8');
+
+    const consentTableBlock = schema.slice(
+      schema.indexOf('create table if not exists public.consent_versions'),
+      schema.indexOf('create unique index if not exists one_active_consent_version_per_key'),
+    );
+
+    expect(consentTableBlock).toContain('created_at timestamptz');
+    expect(consentTableBlock).not.toContain('updated_at');
+    expect(workerSource).toContain("const CONSENT_SELECT = 'id,key,version,title,body,active,effective_at,created_at';");
+    expect(workerSource).not.toContain("CONSENT_SELECT = 'id,key,version,title,body,active,effective_at,created_at,updated_at'");
+  });
+
+  it('returns a Vietnamese admin message for Supabase schema errors', async () => {
+    mockAuthAndActor({}, async (target, init = {}) => {
+      if (target.includes('/rest/v1/plans')) return jsonResponse([]);
+      if (target.includes('/rest/v1/features')) return jsonResponse([]);
+      if (target.includes('/rest/v1/plan_features')) return jsonResponse([]);
+      if (target.includes('/rest/v1/consent_versions')) {
+        return jsonResponse({
+          code: '42703',
+          message: 'column consent_versions.updated_at does not exist',
+        }, 400);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/catalog'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toContain('Cấu trúc dữ liệu Admin chưa khớp');
+    expect(payload.error).not.toContain('column consent_versions.updated_at does not exist');
+  });
+
   it('does not read or write the retired storyforge access tables', () => {
     const workerSource = readFileSync(resolve(process.cwd(), 'apps/admin-api-worker/src/index.js'), 'utf8');
 

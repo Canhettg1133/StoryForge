@@ -280,6 +280,67 @@ describe('admin split UI contract', () => {
     expect(css).toContain('.overview-ranking-panel');
   });
 
+  it('keeps admin reload actions scoped and avoids stuck loading states', () => {
+    const app = read('apps/admin/src/App.jsx');
+    const api = read('apps/admin/src/adminApi.js');
+
+    expect(app).toContain('const refreshActiveView');
+    expect(app).toContain("activeView === 'vip-ranking'");
+    expect(app).toContain("activeView === 'overview'");
+    expect(app).toContain("activeView === 'usage'");
+    expect(app).toContain('typeof view === \'string\' ? view : activeView');
+    expect(app).toContain('const [usageFilters, setUsageFilters]');
+    expect(app).toContain('setUsageFilters(normalizedFilters)');
+    expect(app).toContain('...usageFilters');
+    expect(app).toContain('onClick={refreshActiveView}');
+    expect(app).toContain('onRetry={refreshActiveView}');
+    expect(app).not.toContain('onClick={loadAdminData}');
+    expect(app).not.toContain('onRetry={loadAdminData}');
+    expect(app).not.toContain('Could not load admin session.');
+    expect(api).toContain('ADMIN_REQUEST_TIMEOUT_MS');
+    expect(api).toContain('Yêu cầu Admin API quá lâu');
+  });
+
+  it('keeps the admin sidebar navigation scrollable when menus grow', () => {
+    const css = read('apps/admin/src/App.css');
+
+    expect(css).toContain('.admin-sidebar nav');
+    expect(css).toContain('overflow-y: auto');
+    expect(css).toContain('overscroll-behavior: contain');
+    expect(css).toContain('.admin-account');
+    expect(css).toContain('flex-shrink: 0');
+  });
+
+  it('does not show a confusing 0-0 usage range on empty pages', () => {
+    const app = read('apps/admin/src/App.jsx');
+
+    expect(app).toContain('usageSummaryText');
+    expect(app).toContain('Chưa có hoạt động phù hợp');
+    expect(app).not.toContain('Hiển thị ${formatter.format(startRow)}-${formatter.format(endRow)}');
+  });
+
+  it('keeps known admin-facing error messages in Vietnamese', () => {
+    const combined = [
+      read('apps/admin/src/App.jsx'),
+      read('apps/admin/src/adminApi.js'),
+      read('apps/admin-api-worker/src/index.js'),
+      read('apps/admin-api-worker/src/storyMirror/index.js'),
+    ].join('\n');
+
+    expect(combined).toContain('Cấu trúc dữ liệu Admin chưa khớp');
+    expect(combined).toContain('Không tìm thấy route quản trị Sổ tay truyện.');
+    expect(combined).not.toContain('Could not load admin session.');
+    expect(combined).not.toContain('Feature tắt');
+    expect(combined).not.toContain('Missing STORY_MIRROR_BUCKET binding for Admin API.');
+    expect(combined).not.toContain('Mirrored story content was not found in R2.');
+    expect(combined).not.toContain('A reason is required before reading raw mirrored story content.');
+    expect(combined).not.toContain('Quota must be greater than 0.');
+    expect(combined).not.toContain('Retention days must be between 1 and 365.');
+    expect(combined).not.toContain('Mirrored project was not found.');
+    expect(combined).not.toContain('Mirrored scene was not found.');
+    expect(combined).not.toContain('Story Mirror admin route was not found.');
+  });
+
   it('does not expose new plan or feature names in the admin UI source', () => {
     const combined = [
       read('apps/admin/src/App.jsx'),

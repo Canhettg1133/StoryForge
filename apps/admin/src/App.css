@@ -114,6 +114,7 @@ textarea:disabled {
   align-items: center;
   gap: 12px;
   min-height: 54px;
+  flex-shrink: 0;
 }
 
 .brand-mark {
@@ -145,6 +146,10 @@ textarea:disabled {
 .admin-sidebar nav {
   display: grid;
   gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .nav-group {
@@ -199,6 +204,7 @@ textarea:disabled {
   margin-top: auto;
   display: grid;
   gap: 10px;
+  flex-shrink: 0;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }

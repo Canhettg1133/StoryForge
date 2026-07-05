@@ -102,6 +102,12 @@ const EMPTY_USAGE_PAGINATION = {
 
 const EMPTY_USAGE_PAGE_CURSORS = { 1: '' };
 
+const DEFAULT_USAGE_FILTERS = {
+  q: '',
+  provider: 'all',
+  status: 'all',
+};
+
 const DEFAULT_VIP_RANKING_FILTERS = {
   range: '30d',
   from: '',
@@ -369,7 +375,7 @@ function explainDecision(decision) {
     case ACCESS_REASONS.USER_BANNED:
       return 'Tài khoản đang bị khóa';
     case ACCESS_REASONS.FEATURE_DISABLED:
-      return 'Feature tắt';
+      return 'Tính năng đang tắt';
     case ACCESS_REASONS.OVERRIDE_BLOCKED:
       return 'Bị chặn riêng';
     case ACCESS_REASONS.AGE_CONFIRMATION_REQUIRED:
@@ -1969,7 +1975,7 @@ function VipRankingPanel({ ranking, loading, error, onLoadRanking }) {
             <Search size={15} />
             Áp dụng lọc
           </button>
-          <button type="button" className="button button--ghost" disabled={loading} onClick={() => onLoadRanking(filters)}>
+          <button type="button" className="button button--ghost" disabled={loading} onClick={() => onLoadRanking({ ...filters, force: true })}>
             <RefreshCw size={15} />
             Tải lại
           </button>
@@ -2068,6 +2074,13 @@ function UsagePanel({
 
   const startRow = total === 0 ? 0 : ((page - 1) * pageSize) + 1;
   const endRow = total === 0 ? 0 : Math.min(total, ((page - 1) * pageSize) + data.usage.length);
+  const usageSummaryText = total === 0
+    ? (hasActiveUsageFilters
+      ? 'Chưa có hoạt động phù hợp bộ lọc.'
+      : 'Chưa có hoạt động người dùng để hiển thị.')
+    : hasActiveUsageFilters
+      ? `Kết quả phù hợp: ${formatter.format(total)} hoạt động`
+      : `Hiển thị ${formatter.format(startRow)} đến ${formatter.format(endRow)} trong ${formatter.format(total)} hoạt động`;
 
   const applyUsageFilters = () => {
     onLoadPage({
@@ -2144,14 +2157,10 @@ function UsagePanel({
           </div>
         </div>
 
-        {error ? <ErrorState message={error} onRetry={() => onLoadPage({ page, pageSize })} /> : null}
+        {error ? <ErrorState message={error} onRetry={() => onLoadPage({ page, pageSize, ...currentFilters })} /> : null}
 
         <div className="usage-page-summary">
-          <span>
-            {hasActiveUsageFilters
-              ? `Kết quả phù hợp: ${formatter.format(total)} hoạt động`
-              : `Hiển thị ${formatter.format(startRow)}-${formatter.format(endRow)} trong ${formatter.format(total)} hoạt động`}
-          </span>
+          <span>{usageSummaryText}</span>
           <strong>Trang {formatter.format(page)} / {formatter.format(displayTotalPages)}</strong>
         </div>
 
@@ -2299,6 +2308,7 @@ export default function App() {
   const [data, setData] = useState(EMPTY_DATA);
   const [usagePagination, setUsagePagination] = useState(EMPTY_USAGE_PAGINATION);
   const [usagePageCursors, setUsagePageCursors] = useState(EMPTY_USAGE_PAGE_CURSORS);
+  const [usageFilters, setUsageFilters] = useState(DEFAULT_USAGE_FILTERS);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState('');
   const [vipRanking, setVipRanking] = useState(EMPTY_VIP_RANKING);
@@ -2327,7 +2337,7 @@ export default function App() {
       const me = await adminApi.me();
       setActor(me.actor);
     } catch (error) {
-      setLoadError(error.message || 'Could not load admin session.');
+      setLoadError(error.message || 'Không tải được phiên quản trị.');
       setActor(null);
     } finally {
       setLoading(false);
@@ -2338,7 +2348,7 @@ export default function App() {
     setLoading(true);
     setLoadError('');
     try {
-      const viewToLoad = view || activeView;
+      const viewToLoad = typeof view === 'string' ? view : activeView;
       if (viewToLoad === 'overview') {
         const [users, audit, usage] = await Promise.all([
           adminApi.users(),
@@ -2461,6 +2471,12 @@ export default function App() {
   } = {}) => {
     setUsageLoading(true);
     setUsageError('');
+    const normalizedFilters = {
+      q: String(q || '').trim(),
+      provider: provider || 'all',
+      status: status || 'all',
+    };
+    setUsageFilters(normalizedFilters);
     const nextCursor = page <= 1 || resetCursor
       ? ''
       : (cursor ?? usagePageCursors[page] ?? '');
@@ -2468,9 +2484,7 @@ export default function App() {
       const usage = await adminApi.usage({
         page,
         pageSize,
-        q,
-        provider,
-        status,
+        ...normalizedFilters,
         cursor: nextCursor,
         knownTotal,
       });
@@ -2601,6 +2615,7 @@ export default function App() {
     setData(EMPTY_DATA);
     setUsagePagination(EMPTY_USAGE_PAGINATION);
     setUsagePageCursors(EMPTY_USAGE_PAGE_CURSORS);
+    setUsageFilters(DEFAULT_USAGE_FILTERS);
     setUsageError('');
     setVipRanking(EMPTY_VIP_RANKING);
     setVipRankingLoading(false);
@@ -2615,6 +2630,44 @@ export default function App() {
   };
   openMutationConfirm.api = adminApi;
 
+  const refreshActiveView = useCallback(async () => {
+    if (activeView === 'overview') {
+      await Promise.all([
+        loadAdminData('overview'),
+        loadOverviewRanking(),
+      ]);
+      return;
+    }
+
+    if (activeView === 'vip-ranking') {
+      await loadVipRanking({ ...(vipRanking.filters || DEFAULT_VIP_RANKING_FILTERS), force: true });
+      return;
+    }
+
+    if (activeView === 'usage') {
+      await loadUsagePage({
+        page: 1,
+        pageSize: usagePagination.pageSize || DEFAULT_USAGE_PAGE_SIZE,
+        knownTotal: usagePagination.total,
+        ...usageFilters,
+        resetCursor: true,
+      });
+      return;
+    }
+
+    await loadAdminData(activeView);
+  }, [
+    activeView,
+    loadAdminData,
+    loadOverviewRanking,
+    loadUsagePage,
+    loadVipRanking,
+    usageFilters,
+    usagePagination.pageSize,
+    usagePagination.total,
+    vipRanking.filters,
+  ]);
+
   const confirmMutation = async () => {
     if (!pendingConfirm) return;
     const action = pendingConfirm.action;
@@ -2623,7 +2676,7 @@ export default function App() {
     setLoadError('');
     try {
       await action();
-      await loadAdminData();
+      await refreshActiveView();
     } catch (error) {
       setLoadError(error.message || 'Không thực hiện được thao tác admin.');
     } finally {
@@ -2678,6 +2731,10 @@ export default function App() {
     }
     return <AdvancedPanel data={data} onMutation={openMutationConfirm} apiBaseUrl={adminApi.baseUrl} actor={actor} />;
   })();
+  const reloadLoading = loading
+    || (activeView === 'overview' && overviewRankingLoading)
+    || (activeView === 'vip-ranking' && vipRankingLoading)
+    || (activeView === 'usage' && usageLoading);
 
   return (
     <AppShell actor={actor} activeView={activeView} onSelectView={setActiveView} onLogout={logout}>
@@ -2687,12 +2744,12 @@ export default function App() {
             <span>Admin riêng</span>
             <strong>StoryForge quản trị</strong>
           </div>
-          <button type="button" className="button button--ghost" onClick={loadAdminData} disabled={loading}>
+          <button type="button" className="button button--ghost" onClick={refreshActiveView} disabled={reloadLoading}>
             <RefreshCw size={15} />
-            {loading ? 'Đang tải' : 'Tải lại'}
+            {reloadLoading ? 'Đang tải' : 'Tải lại'}
           </button>
         </header>
-        {loadError ? <ErrorState message={loadError} onRetry={loadAdminData} /> : null}
+        {loadError ? <ErrorState message={loadError} onRetry={refreshActiveView} /> : null}
         {panel}
       </main>
       <ConfirmDialog pending={pendingConfirm} onCancel={() => setPendingConfirm(null)} onConfirm={confirmMutation} />

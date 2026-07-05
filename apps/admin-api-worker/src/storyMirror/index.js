@@ -96,7 +96,7 @@ function pick(row = {}, keys = []) {
 
 function requireBucket(env = {}) {
   if (!env.STORY_MIRROR_BUCKET) {
-    throw makeError(500, 'ADMIN_STORY_MIRROR_R2_MISSING', 'Missing STORY_MIRROR_BUCKET binding for Admin API.');
+    throw makeError(500, 'ADMIN_STORY_MIRROR_R2_MISSING', 'Thiếu binding STORY_MIRROR_BUCKET cho Admin API.');
   }
   return env.STORY_MIRROR_BUCKET;
 }
@@ -124,7 +124,7 @@ function redactAuditDetails(details = {}) {
 
 async function readR2Json(bucket, key) {
   const object = await bucket.get(key);
-  if (!object) throw makeError(404, 'ADMIN_STORY_MIRROR_OBJECT_NOT_FOUND', 'Mirrored story content was not found in R2.');
+  if (!object) throw makeError(404, 'ADMIN_STORY_MIRROR_OBJECT_NOT_FOUND', 'Không tìm thấy nội dung truyện đã đồng bộ trong R2.');
   if (typeof object.json === 'function') return object.json();
   const text = typeof object.text === 'function' ? await object.text() : '';
   return text ? JSON.parse(text) : null;
@@ -134,7 +134,7 @@ async function readReason(request, helpers) {
   const body = await helpers.readJson(request);
   const reason = toText(body?.reason);
   if (reason.length < 8) {
-    throw makeError(422, 'ADMIN_STORY_MIRROR_REASON_REQUIRED', 'A reason is required before reading raw mirrored story content.');
+    throw makeError(422, 'ADMIN_STORY_MIRROR_REASON_REQUIRED', 'Cần nhập lý do trước khi đọc nội dung truyện thô đã đồng bộ.');
   }
   return reason.slice(0, 500);
 }
@@ -192,12 +192,12 @@ function normalizeSettingsPatch(body = {}) {
   }
   if (Object.prototype.hasOwnProperty.call(body, 'perUserQuotaBytes')) {
     const quota = toInteger(body.perUserQuotaBytes, 104857600);
-    if (quota <= 0) throw makeError(422, 'ADMIN_STORY_MIRROR_BAD_QUOTA', 'Quota must be greater than 0.');
+    if (quota <= 0) throw makeError(422, 'ADMIN_STORY_MIRROR_BAD_QUOTA', 'Dung lượng giới hạn phải lớn hơn 0.');
     patch.per_user_quota_bytes = quota;
   }
   if (Object.prototype.hasOwnProperty.call(body, 'retentionDays')) {
     const days = toInteger(body.retentionDays, 90);
-    if (days < 1 || days > 365) throw makeError(422, 'ADMIN_STORY_MIRROR_BAD_RETENTION', 'Retention days must be between 1 and 365.');
+    if (days < 1 || days > 365) throw makeError(422, 'ADMIN_STORY_MIRROR_BAD_RETENTION', 'Số ngày lưu giữ phải từ 1 đến 365.');
     patch.retention_days = days;
   }
   patch.updated_at = new Date().toISOString();
@@ -309,7 +309,7 @@ async function getProject(config, helpers, projectId) {
     prefer: '',
   });
   const project = asArray(rows)[0] || null;
-  if (!project) throw makeError(404, 'ADMIN_STORY_MIRROR_PROJECT_NOT_FOUND', 'Mirrored project was not found.');
+  if (!project) throw makeError(404, 'ADMIN_STORY_MIRROR_PROJECT_NOT_FOUND', 'Không tìm thấy dự án truyện đã đồng bộ.');
   return project;
 }
 
@@ -331,7 +331,7 @@ async function viewScene(config, request, env, actor, sceneId, helpers) {
     prefer: '',
   });
   const scene = asArray(rows)[0] || null;
-  if (!scene) throw makeError(404, 'ADMIN_STORY_MIRROR_SCENE_NOT_FOUND', 'Mirrored scene was not found.');
+  if (!scene) throw makeError(404, 'ADMIN_STORY_MIRROR_SCENE_NOT_FOUND', 'Không tìm thấy cảnh đã đồng bộ.');
   const raw = await readR2Json(requireBucket(env), scene.storage_key);
   const content = raw?.scene?.content || raw?.content || '';
   await audit(config, request, actor, helpers, {
@@ -493,7 +493,7 @@ export async function routeStoryMirrorAdmin({
   if (resource === 'audit' && request.method === 'GET') {
     return listAudit(config, actor, helpers);
   }
-  throw makeError(404, 'ADMIN_STORY_MIRROR_ROUTE_NOT_FOUND', 'Story Mirror admin route was not found.');
+  throw makeError(404, 'ADMIN_STORY_MIRROR_ROUTE_NOT_FOUND', 'Không tìm thấy route quản trị Sổ tay truyện.');
 }
 
 export default {

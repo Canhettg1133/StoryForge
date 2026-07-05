@@ -1,5 +1,6 @@
 const DEFAULT_ADMIN_API_BASE_URL = String(import.meta.env.VITE_ADMIN_API_BASE_URL || '').trim();
 const LOCAL_ADMIN_API_BASE_URL = 'http://localhost:8788';
+const ADMIN_REQUEST_TIMEOUT_MS = 60_000;
 
 function isLocalHost() {
   if (typeof window === 'undefined') {
@@ -22,6 +23,18 @@ async function readPayload(response) {
   return { error: await response.text() };
 }
 
+function toVietnameseAdminApiErrorMessage(message, fallback = 'Admin API trả về lỗi.') {
+  const rawMessage = String(message || fallback || '').trim();
+  if (!rawMessage) return fallback;
+  if (/column\s+.+\s+does not exist/iu.test(rawMessage)) {
+    return 'Cấu trúc dữ liệu Admin chưa khớp với API hiện tại. Hãy kiểm tra migration Supabase rồi tải lại.';
+  }
+  if (/failed to fetch|networkerror|load failed/iu.test(rawMessage)) {
+    return 'Không kết nối được Admin API. Hãy kiểm tra mạng hoặc thử tải lại.';
+  }
+  return rawMessage;
+}
+
 export function createAdminApiClient({ baseUrl, getAccessToken }) {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
 
@@ -39,19 +52,40 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       throw error;
     }
 
-    const response = await fetch(`${normalizedBaseUrl}${path}`, {
-      method: options.method || 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    });
+    const controller = new AbortController();
+    const timeoutId = globalThis.setTimeout(
+      () => controller.abort(),
+      options.timeoutMs || ADMIN_REQUEST_TIMEOUT_MS,
+    );
+    let response;
+    try {
+      response = await fetch(`${normalizedBaseUrl}${path}`, {
+        method: options.method || 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        const timeoutError = new Error('Yêu cầu Admin API quá lâu. Hãy thử lại hoặc kiểm tra nhật ký Worker.');
+        timeoutError.code = 'ADMIN_API_TIMEOUT';
+        throw timeoutError;
+      }
+      throw new Error(toVietnameseAdminApiErrorMessage(error?.message, 'Không kết nối được Admin API.'));
+    } finally {
+      globalThis.clearTimeout(timeoutId);
+    }
     const payload = await readPayload(response);
 
     if (!response.ok) {
-      const error = new Error(payload?.error || `Admin API trả về mã ${response.status}.`);
+      const error = new Error(toVietnameseAdminApiErrorMessage(
+        payload?.error,
+        `Admin API trả về mã ${response.status}.`,
+      ));
       error.code = payload?.code || 'ADMIN_API_FAILED';
       error.status = response.status;
       throw error;
@@ -96,6 +130,7 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       status = '',
       q = '',
       limit = 20,
+      force = false,
     } = {}) => {
       const query = new URLSearchParams({
         range: String(range || '30d'),
@@ -108,6 +143,7 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       if (provider && provider !== 'all') query.set('provider', provider);
       if (status && status !== 'all') query.set('status', status);
       if (q) query.set('q', q);
+      if (force) query.set('force', '1');
       return request(`/usage/ranking?${query.toString()}`);
     },
     features: () => request('/features'),
