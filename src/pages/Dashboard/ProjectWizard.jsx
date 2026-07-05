@@ -3,7 +3,7 @@
  * Luồng hai lượt: ý tưởng -> nền truyện -> dàn ý chương -> tạo dự án.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   GENRES,
   TONES,
@@ -45,6 +45,7 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  BookMarked,
   BookOpen,
   Check,
   Dna,
@@ -102,6 +103,22 @@ const PROPOSAL_GROUPS = [
   { key: 'terms', label: 'Thuật ngữ', icon: BookOpen, nameField: 'name' },
   { key: 'plot_threads', label: 'Tuyến truyện', icon: GitPullRequest, nameField: 'title' },
 ];
+
+const PROMPT_CORE_KEYS = new Set(['constitution', 'style_dna', 'anti_ai_blacklist']);
+const REVISION_QUICK_ACTIONS = {
+  seed: [
+    { label: 'Ít nhân vật hơn', prompt: 'Giảm số nhân vật, chỉ giữ các nhân vật thật sự xuất hiện và tạo lực trong phần mở đầu.' },
+    { label: 'Tăng xung đột mở đầu', prompt: 'Tăng xung đột mở đầu và hệ quả gần, nhưng không nhảy cóc sang cao trào lớn.' },
+    { label: 'Bám tag/trope hơn', prompt: 'Diễn giải tag/trope thành xung đột, kiểu nhân vật, nhịp truyện và payoff rõ hơn.' },
+    { label: 'Đổi tone', prompt: 'Chỉnh tone cho rõ hơn theo hướng tôi ghi trong ô yêu cầu, giữ nguyên JSON và không thêm dàn ý chương.' },
+  ],
+  outline: [
+    { label: 'Làm chậm nhịp', prompt: 'Làm chậm nhịp, thêm chuẩn bị và hệ quả thay vì đẩy cao trào quá nhanh.' },
+    { label: 'Thêm chương đệm', prompt: 'Chèn hoặc biến một chương thành chương đệm có chức năng xây dựng, chuẩn bị hoặc trả hệ quả.' },
+    { label: 'Giữ bí mật chưa lộ', prompt: 'Giữ các bí mật lớn chưa lộ, chỉ cho phép manh mối nhỏ nếu thật sự cần.' },
+    { label: 'Tăng nhân quả', prompt: 'Siết opening_state, handoff_from_previous và ending_state để các chương nối nhau rõ hơn.' },
+  ],
+};
 
 const emptyValidation = { blockingIssues: [], warnings: [] };
 
@@ -190,6 +207,105 @@ function parseWizardJson(text) {
   if (Array.isArray(parsedValue)) return { chapters: parsedValue };
   if (isPlainObject(parsedValue)) return parsedValue;
     throw new Error('Phản hồi JSON không đúng định dạng.');
+}
+
+function parsePromptTemplates(rawValue) {
+  if (!rawValue) return {};
+  if (typeof rawValue === 'object') return rawValue;
+  try {
+    const parsed = JSON.parse(rawValue);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function listFromPromptTemplate(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean);
+  if (typeof value === 'string') {
+    return value
+      .split(/\n+/)
+      .map((item) => item.replace(/^[-*]\s*/, '').trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function hasPromptOverrideValue(value) {
+  if (Array.isArray(value)) return value.some((item) => String(item || '').trim());
+  return typeof value === 'string' ? Boolean(value.trim()) : value != null;
+}
+
+function summarizeInheritedPrompt(project) {
+  if (!project) {
+    return {
+      templates: {},
+      constitutionCount: 0,
+      styleCount: 0,
+      blacklistCount: 0,
+      overrideCount: 0,
+      hasAiGuidelines: false,
+    };
+  }
+  const templates = parsePromptTemplates(project.prompt_templates);
+  return {
+    templates,
+    constitutionCount: listFromPromptTemplate(templates.constitution).length,
+    styleCount: listFromPromptTemplate(templates.style_dna).length,
+    blacklistCount: listFromPromptTemplate(templates.anti_ai_blacklist).length,
+    overrideCount: Object.entries(templates)
+      .filter(([key, value]) => !PROMPT_CORE_KEYS.has(key) && hasPromptOverrideValue(value))
+      .length,
+    hasAiGuidelines: Boolean(String(project.ai_guidelines || '').trim()),
+  };
+}
+
+function formatPromptCount(count, label) {
+  return `${Number(count) || 0} ${label}`;
+}
+
+function clipPromptLine(value, maxLength = 900) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
+}
+
+function buildPromptListSection(title, items = []) {
+  const cleanItems = listFromPromptTemplate(items);
+  if (cleanItems.length === 0) return '';
+  return `${title}:\n${cleanItems.map((item, index) => `${index + 1}. ${item}`).join('\n')}`;
+}
+
+function buildInheritedPromptBlock(project) {
+  if (!project) return '';
+  const summary = summarizeInheritedPrompt(project);
+  const overrideLines = Object.entries(summary.templates)
+    .filter(([key, value]) => !PROMPT_CORE_KEYS.has(key) && hasPromptOverrideValue(value))
+    .slice(0, 8)
+    .map(([key, value]) => {
+      const normalized = Array.isArray(value) ? value.join('\n') : value;
+      return `- ${key}: ${clipPromptLine(normalized, 700)}`;
+    });
+  const parts = [
+    '[PROMPT TRUYỆN KẾ THỪA]',
+    `Nguồn: ${project.title || 'Truyện cũ'}`,
+    'Chỉ dùng các mục dưới đây như luật prompt, giọng văn và ràng buộc phong cách. Không copy Bible/canon, nhân vật, địa danh, lore hoặc sự kiện của truyện nguồn trừ khi ý tưởng truyện mới yêu cầu rõ.',
+    project.ai_guidelines ? `AI guidelines:\n${clipPromptLine(project.ai_guidelines, 900)}` : '',
+    buildPromptListSection('Luật cốt lõi', summary.templates.constitution),
+    buildPromptListSection('Style DNA', summary.templates.style_dna),
+    buildPromptListSection('Anti AI blacklist', summary.templates.anti_ai_blacklist),
+    overrideLines.length ? `Prompt override liên quan:\n${overrideLines.join('\n')}` : '',
+  ].filter(Boolean);
+  return parts.join('\n\n');
+}
+
+function buildInheritedProjectPromptPayload(project) {
+  if (!project) return {};
+  const payload = {};
+  if (project.prompt_templates) payload.prompt_templates = project.prompt_templates;
+  if (typeof project.ai_guidelines === 'string') payload.ai_guidelines = project.ai_guidelines;
+  if (project.prompt_profile_version) payload.prompt_profile_version = project.prompt_profile_version;
+  return payload;
 }
 
 function getRecordName(record, field = 'name') {
@@ -374,7 +490,12 @@ function buildCoverageWarnings(result, excluded) {
 }
 
 export default function ProjectWizard({ onClose, onCreated }) {
-  const { createProject, createChapter } = useProjectStore();
+  const {
+    createProject,
+    createChapter,
+    projects = [],
+    loadProjects,
+  } = useProjectStore();
   const {
     createCharacter,
     createLocation,
@@ -405,6 +526,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [macroArcsInput, setMacroArcsInput] = useState([]);
   const [showMacroArcs, setShowMacroArcs] = useState(false);
   const [autoGenerateOutline, setAutoGenerateOutline] = useState(false);
+  const [inheritPromptEnabled, setInheritPromptEnabled] = useState(false);
+  const [inheritedPromptProjectId, setInheritedPromptProjectId] = useState('');
+  const [seedRevisionPrompt, setSeedRevisionPrompt] = useState('');
+  const [outlineRevisionPrompt, setOutlineRevisionPrompt] = useState('');
 
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -418,6 +543,40 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const selectedProjectTags = useMemo(() => normalizeProjectTagList(projectTags), [projectTags]);
   const hasDNA = !!(currentTemplate?.constitution?.length || currentTemplate?.style_dna?.length);
   const chapterCount = clampInitialChapterCount(initialChapterCount);
+  const availablePromptProjects = useMemo(
+    () => (Array.isArray(projects) ? projects : []).filter((project) => project?.id),
+    [projects],
+  );
+  const selectedInheritedPromptProject = useMemo(() => {
+    if (!inheritPromptEnabled) return null;
+    const selected = availablePromptProjects.find((project) => String(project.id) === String(inheritedPromptProjectId));
+    return selected || availablePromptProjects[0] || null;
+  }, [availablePromptProjects, inheritPromptEnabled, inheritedPromptProjectId]);
+  const inheritedPromptSummary = useMemo(
+    () => summarizeInheritedPrompt(selectedInheritedPromptProject),
+    [selectedInheritedPromptProject],
+  );
+  const inheritedPromptBlock = useMemo(
+    () => buildInheritedPromptBlock(selectedInheritedPromptProject),
+    [selectedInheritedPromptProject],
+  );
+  const inheritedProjectPromptPayload = useMemo(
+    () => buildInheritedProjectPromptPayload(selectedInheritedPromptProject),
+    [selectedInheritedPromptProject],
+  );
+
+  useEffect(() => {
+    if (typeof loadProjects !== 'function') return;
+    if (availablePromptProjects.length > 0) return;
+    loadProjects().catch((error) => {
+      console.warn('[Wizard] Failed to load projects for prompt inheritance:', error);
+    });
+  }, [availablePromptProjects.length, loadProjects]);
+
+  useEffect(() => {
+    if (!inheritPromptEnabled || inheritedPromptProjectId || availablePromptProjects.length === 0) return;
+    setInheritedPromptProjectId(String(availablePromptProjects[0].id));
+  }, [availablePromptProjects, inheritPromptEnabled, inheritedPromptProjectId]);
 
   const workingResult = useMemo(
     () => (result ? mergeAcceptedProposals(result, acceptedProposals) : null),
@@ -593,26 +752,32 @@ export default function ProjectWizard({ onClose, onCreated }) {
       story_structure_line: storyStructure ? `Cấu trúc: ${STORY_STRUCTURES.find((item) => item.value === storyStructure)?.label}\n` : '',
       idea,
       template_hint: templateHint,
+      inherited_prompt_block: inheritedPromptBlock,
       initial_chapter_count: chapterCount,
       pacing_guidance: pacingGuidance,
       approved_seed_json: approvedSeed ? JSON.stringify(approvedSeed, null, 2) : '',
     };
   };
 
-  const sendStoryCreationRequest = ({ groupKey, taskType, variables, onComplete, onError }) => {
+  const sendStoryCreationRequest = ({ groupKey, taskType, variables, extraUserContent = '', onComplete, onError }) => {
     const storyCreationSettings = getStoryCreationSettings();
     const prompts = storyCreationSettings[groupKey];
+    const systemPromptTemplate = [
+      prompts.systemPrompt,
+      variables?.inherited_prompt_block ? '{{inherited_prompt_block}}' : '',
+    ].filter(Boolean).join('\n\n');
+    const userPrompt = renderStoryCreationTemplate(prompts.userPromptTemplate, variables);
     const messages = [
       {
         role: 'system',
         content: renderStoryCreationTemplate(
-          composeStoryCreationSystemPrompt(groupKey, prompts.systemPrompt),
+          composeStoryCreationSystemPrompt(groupKey, systemPromptTemplate),
           variables,
         ),
       },
       {
         role: 'user',
-        content: renderStoryCreationTemplate(prompts.userPromptTemplate, variables),
+        content: [userPrompt, extraUserContent].filter(Boolean).join('\n\n'),
       },
     ];
 
@@ -623,6 +788,38 @@ export default function ProjectWizard({ onClose, onCreated }) {
       onComplete,
       onError,
     });
+  };
+
+  const applyOutlinePassText = (text, approvedSeed) => {
+    const parsed = parseWizardJson(text);
+    const outline = normalizeChapterOutlinePassResult(parsed, approvedSeed);
+    const seedThreadNames = new Set((approvedSeed.plot_threads || []).map((thread) => normalizeSearchText(thread.title)));
+    const existingOutlineThreads = outline.plot_threads.filter((thread) => seedThreadNames.has(normalizeSearchText(thread.title)));
+    const proposedOutlineThreads = outline.plot_threads
+      .filter((thread) => thread.title && !seedThreadNames.has(normalizeSearchText(thread.title)))
+      .map((thread) => ({
+        ...thread,
+        reason: thread.reason || 'Dàn ý đề xuất tuyến truyện mới ngoài nền truyện đã duyệt.',
+      }));
+    const mergedPlotThreads = existingOutlineThreads.length
+      ? mergeRecordsByName(approvedSeed.plot_threads, existingOutlineThreads, 'title')
+      : approvedSeed.plot_threads;
+    const proposedEntities = {
+      ...outline.proposed_entities,
+      plot_threads: mergeRecordsByName(
+        outline.proposed_entities?.plot_threads || [],
+        proposedOutlineThreads,
+        'title',
+      ),
+    };
+    setResult((prev) => normalizeWizardBlueprintResult({
+      ...(prev || approvedSeed),
+      chapters: outline.chapters,
+      plot_threads: mergedPlotThreads,
+      proposed_entities: proposedEntities,
+    }, idea));
+    setAcceptedProposals(new Set());
+    setEditingKey(null);
   };
 
   const requestOutline = (seedInput) => {
@@ -649,35 +846,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
       onComplete: (text) => {
         setIsGenerating(false);
         try {
-          const parsed = parseWizardJson(text);
-          const outline = normalizeChapterOutlinePassResult(parsed, approvedSeed);
-          const seedThreadNames = new Set((approvedSeed.plot_threads || []).map((thread) => normalizeSearchText(thread.title)));
-          const existingOutlineThreads = outline.plot_threads.filter((thread) => seedThreadNames.has(normalizeSearchText(thread.title)));
-          const proposedOutlineThreads = outline.plot_threads
-            .filter((thread) => thread.title && !seedThreadNames.has(normalizeSearchText(thread.title)))
-            .map((thread) => ({
-              ...thread,
-              reason: thread.reason || 'Dàn ý đề xuất tuyến truyện mới ngoài nền truyện đã duyệt.',
-            }));
-          const mergedPlotThreads = existingOutlineThreads.length
-            ? mergeRecordsByName(approvedSeed.plot_threads, existingOutlineThreads, 'title')
-            : approvedSeed.plot_threads;
-          const proposedEntities = {
-            ...outline.proposed_entities,
-            plot_threads: mergeRecordsByName(
-              outline.proposed_entities?.plot_threads || [],
-              proposedOutlineThreads,
-              'title',
-            ),
-          };
-          setResult((prev) => normalizeWizardBlueprintResult({
-            ...(prev || approvedSeed),
-            chapters: outline.chapters,
-            plot_threads: mergedPlotThreads,
-            proposed_entities: proposedEntities,
-          }, idea));
-          setAcceptedProposals(new Set());
-          setEditingKey(null);
+          applyOutlinePassText(text, approvedSeed);
           setStep(4);
         } catch (parseError) {
           console.error('[Wizard] Outline parse error:', parseError, '\nRaw:', text);
@@ -693,6 +862,116 @@ export default function ProjectWizard({ onClose, onCreated }) {
     });
   };
 
+  const appendSeedRevisionPrompt = (prompt) => {
+    setSeedRevisionPrompt((currentValue) => {
+      const current = currentValue.trim();
+      return current ? `${current}\n- ${prompt}` : prompt;
+    });
+  };
+
+  const appendOutlineRevisionPrompt = (prompt) => {
+    setOutlineRevisionPrompt((currentValue) => {
+      const current = currentValue.trim();
+      return current ? `${current}\n- ${prompt}` : prompt;
+    });
+  };
+
+  const reviseStorySeed = () => {
+    const instruction = seedRevisionPrompt.trim();
+    if (!result || !instruction || isGenerating) return;
+
+    const currentSeed = {
+      ...result,
+      chapters: [],
+      proposed_entities: {},
+    };
+    setIsGenerating(true);
+    setError(null);
+
+    sendStoryCreationRequest({
+      groupKey: 'storyBibleSeed',
+      taskType: TASK_TYPES.STORY_BIBLE_SEED,
+      variables: buildTemplateVariables(),
+      extraUserContent: [
+        '[NỀN TRUYỆN HIỆN TẠI CẦN CHỈNH]',
+        JSON.stringify(currentSeed, null, 2),
+        '[YÊU CẦU CHỈNH CỦA TÁC GIẢ]',
+        instruction,
+        'Hãy trả lại FULL JSON Story Bible Seed đã chỉnh. Không thêm chapters ở bước này.',
+      ].join('\n\n'),
+      onComplete: (text) => {
+        setIsGenerating(false);
+        try {
+          const parsed = parseWizardJson(text);
+          const seed = normalizeStoryBibleSeedResult(parsed, idea);
+          setResult(seed);
+          setExcluded(new Set());
+          setAcceptedProposals(new Set());
+          setEditingKey(null);
+          setSeedRevisionPrompt('');
+          setStep(2);
+        } catch (parseError) {
+          console.error('[Wizard] Seed revision parse error:', parseError, '\nRaw:', text);
+          setError('Không parse được nền truyện đã chỉnh. Hãy thử lại yêu cầu ngắn và rõ hơn.');
+        }
+      },
+      onError: (err) => {
+        setIsGenerating(false);
+        setError(toVietnameseErrorMessage(err, 'Lỗi kết nối AI khi chỉnh nền truyện.'));
+      },
+    });
+  };
+
+  const reviseStoryOutline = () => {
+    const instruction = outlineRevisionPrompt.trim();
+    if (!result || !instruction || isGenerating) return;
+    const approvedSeed = filterApprovedSeed(result, excluded);
+    const validation = buildStoryBibleSeedValidation(approvedSeed, {
+      initialChapterCount: chapterCount,
+      excluded: new Set(),
+    });
+    if (validation.blockingIssues.length > 0) {
+      setError('Nền truyện còn lỗi chặn. Hãy sửa nền truyện trước khi chỉnh dàn ý.');
+      setStep(2);
+      return;
+    }
+
+    setIsGenerating(true);
+    setError(null);
+
+    sendStoryCreationRequest({
+      groupKey: 'chapterOutlinePass',
+      taskType: TASK_TYPES.CHAPTER_OUTLINE_PASS,
+      variables: buildTemplateVariables(approvedSeed),
+      extraUserContent: [
+        '[DÀN Ý HIỆN TẠI CẦN CHỈNH]',
+        JSON.stringify({
+          chapters: result.chapters || [],
+          plot_threads: result.plot_threads || [],
+          proposed_entities: result.proposed_entities || {},
+        }, null, 2),
+        '[YÊU CẦU CHỈNH CỦA TÁC GIẢ]',
+        instruction,
+        'Hãy trả lại FULL JSON dàn ý chương đã chỉnh theo schema khóa. Giữ đúng số chương khởi đầu trừ khi yêu cầu sửa nói rõ phải đổi cấu trúc.',
+      ].join('\n\n'),
+      onComplete: (text) => {
+        setIsGenerating(false);
+        try {
+          applyOutlinePassText(text, approvedSeed);
+          setOutlineRevisionPrompt('');
+          setStep(4);
+        } catch (parseError) {
+          console.error('[Wizard] Outline revision parse error:', parseError, '\nRaw:', text);
+          setError('Không parse được dàn ý đã chỉnh. Hãy thử lại yêu cầu ngắn và rõ hơn.');
+        }
+      },
+      onError: (err) => {
+        setIsGenerating(false);
+        setError(toVietnameseErrorMessage(err, 'Lỗi kết nối AI khi chỉnh dàn ý.'));
+      },
+    });
+  };
+
   const handleGenerateSeed = async () => {
     setStep(1);
     setIsGenerating(true);
@@ -701,6 +980,8 @@ export default function ProjectWizard({ onClose, onCreated }) {
     setExcluded(new Set());
     setAcceptedProposals(new Set());
     setEditingKey(null);
+    setSeedRevisionPrompt('');
+    setOutlineRevisionPrompt('');
 
     sendStoryCreationRequest({
       groupKey: 'storyBibleSeed',
@@ -783,6 +1064,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
         prompt_profile_version: useTagFirstPromptProfile
           ? PROMPT_PROFILE_VERSIONS.TAG_FIRST_V2
           : PROMPT_PROFILE_VERSIONS.LEGACY,
+        ...inheritedProjectPromptPayload,
         target_length: Number(targetLength) || 0,
         target_length_type: targetLengthType,
         ultimate_goal: ultimateGoal,
@@ -939,8 +1221,114 @@ export default function ProjectWizard({ onClose, onCreated }) {
     setExcluded(new Set());
     setAcceptedProposals(new Set());
     setEditingKey(null);
+    setSeedRevisionPrompt('');
+    setOutlineRevisionPrompt('');
     setError(null);
   };
+
+  const renderInheritedPromptPanel = () => {
+    const selectedValue = selectedInheritedPromptProject?.id ? String(selectedInheritedPromptProject.id) : '';
+    return (
+      <div className={`wizard-inherit-panel ${inheritPromptEnabled ? 'wizard-inherit-panel--open' : ''}`}>
+        <label className="wizard-inherit-toggle">
+          <input
+            type="checkbox"
+            aria-label="Bật kế thừa Prompt truyện cũ"
+            checked={inheritPromptEnabled}
+            onChange={(event) => setInheritPromptEnabled(event.target.checked)}
+          />
+          <span className="wizard-inherit-toggle__icon"><BookMarked size={15} /></span>
+          <span className="wizard-inherit-toggle__copy">
+            <strong>Kế thừa Prompt truyện cũ</strong>
+            <span>Chỉ lấy prompt, không lấy Bible/canon, nhân vật hay thế giới cũ.</span>
+          </span>
+        </label>
+
+        {inheritPromptEnabled && (
+          <div className="wizard-inherit-content">
+            <div className="wizard-form-grid">
+              <div className="form-group">
+                <label className="form-label">Truyện nguồn</label>
+                <select
+                  className="select"
+                  value={selectedValue}
+                  onChange={(event) => setInheritedPromptProjectId(event.target.value)}
+                  disabled={availablePromptProjects.length === 0}
+                >
+                  {availablePromptProjects.length === 0 && <option value="">Chưa có truyện cũ để chọn</option>}
+                  {availablePromptProjects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.title || `Truyện #${project.id}`}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="wizard-inherit-summary" aria-live="polite">
+                <span className="badge badge-sm">{formatPromptCount(inheritedPromptSummary.constitutionCount, 'luật')}</span>
+                <span className="badge badge-sm">{formatPromptCount(inheritedPromptSummary.styleCount, 'style')}</span>
+                <span className="badge badge-sm">{formatPromptCount(inheritedPromptSummary.blacklistCount, 'blacklist')}</span>
+                <span className="badge badge-sm">{formatPromptCount(inheritedPromptSummary.overrideCount, 'override')}</span>
+                {inheritedPromptSummary.hasAiGuidelines && <span className="badge badge-sm">có AI guidelines</span>}
+              </div>
+            </div>
+            <div className="wizard-dna-note wizard-inherit-note">
+              <Dna size={14} />
+              <span>Prompt kế thừa chỉ định hướng cách AI tạo nền truyện và dàn ý. Nếu prompt nguồn có tên riêng/lore cũ, hãy sửa sau trong Prompt truyện mới.</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderRevisionBox = ({
+    title,
+    description,
+    value,
+    onChange,
+    onSubmit,
+    onQuickAction,
+    actions,
+    placeholder,
+    buttonLabel,
+  }) => (
+    <div className="wizard-ai-revision-box">
+      <div className="wizard-ai-revision-head">
+        <div>
+          <h4><Sparkles size={16} /> {title}</h4>
+          <p>{description}</p>
+        </div>
+      </div>
+      <textarea
+        className="textarea wizard-ai-revision-textarea"
+        rows={3}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+      />
+      <div className="wizard-ai-revision-actions">
+        <div className="wizard-ai-quick-actions">
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              className="arc-quick-action"
+              onClick={() => onQuickAction(action.prompt)}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onSubmit}
+          disabled={isGenerating || !value.trim()}
+        >
+          {isGenerating ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+          {buttonLabel}
+        </button>
+      </div>
+    </div>
+  );
 
   const renderItemActions = (key) => (
     <div className="wizard-item-actions">
@@ -1302,6 +1690,17 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
   const renderSeedReview = () => (
     <div className="wizard-review-stack">
+      {renderRevisionBox({
+        title: 'AI chỉnh nền truyện theo ý tôi',
+        description: 'Giữ thao tác duyệt như cũ, chỉ dùng ô này khi muốn AI sửa lại seed hiện tại theo hướng cụ thể.',
+        value: seedRevisionPrompt,
+        onChange: setSeedRevisionPrompt,
+        onSubmit: reviseStorySeed,
+        onQuickAction: appendSeedRevisionPrompt,
+        actions: REVISION_QUICK_ACTIONS.seed,
+        placeholder: 'VD: ít nhân vật hơn, tăng xung đột mở đầu, đổi tone sang trầm hơn, vẫn giữ bí mật chính...',
+        buttonLabel: 'AI chỉnh nền truyện',
+      })}
       {(seedValidation.blockingIssues.length > 0 || seedValidation.warnings.length > 0) && (
         <div className="wizard-issues-grid">
           {renderIssueList('Lỗi chặn nền truyện', seedValidation.blockingIssues, true)}
@@ -1424,6 +1823,17 @@ export default function ProjectWizard({ onClose, onCreated }) {
         {renderProposals()}
       </div>
       <aside className="wizard-review-side">
+        {renderRevisionBox({
+          title: 'AI chỉnh dàn ý theo ý tôi',
+          description: 'Sửa lại danh sách chương hiện tại bằng yêu cầu tự nhiên, vẫn qua validator trước khi tạo dự án.',
+          value: outlineRevisionPrompt,
+          onChange: setOutlineRevisionPrompt,
+          onSubmit: reviseStoryOutline,
+          onQuickAction: appendOutlineRevisionPrompt,
+          actions: REVISION_QUICK_ACTIONS.outline,
+          placeholder: 'VD: làm chậm nhịp chương 2-3, giữ bí mật chưa lộ, thêm hệ quả rõ ở cuối mỗi chương...',
+          buttonLabel: 'AI chỉnh dàn ý',
+        })}
         {renderIssueList('Lỗi chặn dàn ý', blockingIssues, true)}
         {renderIssueList('Cảnh báo khớp nội dung', coverageWarnings)}
         <div className="wizard-side-card">
@@ -1511,6 +1921,8 @@ export default function ProjectWizard({ onClose, onCreated }) {
               </div>
 
               <ProjectContentModeControl surface="wizard" mode={contentMode} onChange={setContentMode} />
+
+              {renderInheritedPromptPanel()}
 
               <div className="wizard-form-grid">
                 <div className="form-group">
