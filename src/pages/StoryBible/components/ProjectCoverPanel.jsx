@@ -205,6 +205,7 @@ function CoverModelCombobox({
             <Search size={14} />
             <input
               ref={searchRef}
+              className="project-cover-model-menu__search-input"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Tìm model hoặc nhập thủ công"
