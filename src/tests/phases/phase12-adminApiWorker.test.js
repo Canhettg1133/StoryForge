@@ -570,6 +570,108 @@ describe('phase12 admin API worker', () => {
     });
   });
 
+  it('loads VIP usage rankings through the aggregate RPC instead of scanning usage pages', async () => {
+    const { calls } = mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target, init = {}) => {
+      if (target.includes('/rest/v1/rpc/admin_usage_user_rankings')) {
+        const body = JSON.parse(init.body || '{}');
+        expect(init.method).toBe('POST');
+        expect(body).toMatchObject({
+          p_task: 'translation',
+          p_plan: 'vip',
+          p_provider: 'custom_proxy',
+          p_status: 'ok',
+          p_search: 'reader@example.com',
+          p_limit: 50,
+          p_from: '2026-07-01T00:00:00.000Z',
+          p_to: '2026-08-01T00:00:00.000Z',
+        });
+        return jsonResponse([
+          {
+            rank_order: 1,
+            user_id: 'user-2',
+            email: 'reader@example.com',
+            display_name: 'Reader',
+            plan_key: 'vip',
+            plan_name: 'VIP',
+            total_count: 17,
+            event_count: 4,
+            ok_count: 17,
+            error_count: 0,
+            blocked_count: 0,
+            last_used_at: '2026-07-20T12:30:00.000Z',
+            task_summary: 'Dịch truyện',
+            matching_user_count: 3,
+            matching_total_count: 99,
+            matching_event_count: 21,
+            matching_ok_count: 94,
+            matching_issue_count: 5,
+            matching_last_used_at: '2026-07-21T10:00:00.000Z',
+          },
+        ]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(
+      authedRequest('/usage/ranking?range=custom&from=2026-07-01&to=2026-07-31&task=translation&plan=vip&provider=custom_proxy&status=ok&q=reader@example.com&limit=999'),
+      createEnv(),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items).toHaveLength(1);
+    expect(payload.items[0]).toMatchObject({
+      rank: 1,
+      userId: 'user-2',
+      email: 'reader@example.com',
+      displayName: 'Reader',
+      planKey: 'vip',
+      totalCount: 17,
+      eventCount: 4,
+      taskSummary: 'Dịch truyện',
+    });
+    expect(payload.summary).toMatchObject({
+      totalUsers: 3,
+      totalCount: 99,
+      eventCount: 21,
+      okCount: 94,
+      issueCount: 5,
+      lastUsedAt: '2026-07-21T10:00:00.000Z',
+    });
+    expect(calls.some((call) => call.url.includes('/rest/v1/usage_events'))).toBe(false);
+  });
+
+  it('falls back to the default VIP ranking limit for unsupported sizes', async () => {
+    let rpcBody = null;
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target, init = {}) => {
+      if (target.includes('/rest/v1/rpc/admin_usage_user_rankings')) {
+        rpcBody = JSON.parse(init.body || '{}');
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/usage/ranking?limit=7'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(rpcBody).toMatchObject({ p_limit: 20 });
+    expect(payload.filters.limit).toBe(20);
+  });
+
+  it('defines the VIP usage ranking SQL as an aggregate over active VIP plans', () => {
+    const migration = readFileSync(resolve(process.cwd(), 'docs/supabase-access-control/007_usage_user_rankings.sql'), 'utf8');
+
+    expect(migration).toContain('create or replace function public.admin_usage_user_rankings');
+    expect(migration).toContain('sum(greatest(coalesce(candidate.count, 0), 0))');
+    expect(migration).toContain('from public.user_plans');
+    expect(migration).toContain("plan.key in ('vip', 'lifetime')");
+    expect(migration).toContain("user_plan.status = 'active'");
+    expect(migration).toContain('when coalesce(p_limit, 20) in (10, 20, 50)');
+    expect(migration).toContain('row_number() over');
+    expect(migration).not.toContain('create table');
+  });
+
   it('preserves existing privileged roles when syncing Supabase Auth users', async () => {
     mockAuthAndActor({ role: 'admin', id: 'admin-1' }, async (target, init = {}) => {
       if (target.includes('/auth/v1/admin/users')) {

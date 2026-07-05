@@ -86,6 +86,30 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       if (knownTotal !== '' && knownTotal !== null && knownTotal !== undefined) query.set('knownTotal', String(knownTotal));
       return request(`/usage?${query.toString()}`);
     },
+    usageRanking: ({
+      range = '30d',
+      from = '',
+      to = '',
+      task = 'all',
+      plan = 'vip_lifetime',
+      provider = '',
+      status = '',
+      q = '',
+      limit = 20,
+    } = {}) => {
+      const query = new URLSearchParams({
+        range: String(range || '30d'),
+        task: String(task || 'all'),
+        plan: String(plan || 'vip_lifetime'),
+        limit: String(limit || 20),
+      });
+      if (from) query.set('from', from);
+      if (to) query.set('to', to);
+      if (provider && provider !== 'all') query.set('provider', provider);
+      if (status && status !== 'all') query.set('status', status);
+      if (q) query.set('q', q);
+      return request(`/usage/ranking?${query.toString()}`);
+    },
     features: () => request('/features'),
     consent: () => request('/consent'),
     announcement: () => request('/announcement'),

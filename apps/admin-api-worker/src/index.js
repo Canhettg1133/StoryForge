@@ -46,6 +46,9 @@ const SITE_SETTINGS_TABLE = 'site_settings';
 const DEFAULT_USAGE_PAGE_SIZE = 100;
 const MAX_USAGE_PAGE_SIZE = 200;
 const MAX_USAGE_OFFSET_WITHOUT_CURSOR = 10000;
+const DEFAULT_USAGE_RANKING_LIMIT = 20;
+const MAX_USAGE_RANKING_LIMIT = 50;
+const DEFAULT_USAGE_RANKING_RANGE = '30d';
 const PROFILE_SELECT = 'user_id,email,display_name,system_role,status,metadata,created_at,updated_at';
 const PLAN_SELECT = 'id,key,name,description,active,sort_order,metadata,created_at,updated_at';
 const FEATURE_SELECT = 'key,name,description,category,active,metadata,created_at,updated_at';
@@ -291,6 +294,96 @@ function parseContentRangeTotal(headers, fallback) {
   if (!match || match[1] === '*') return fallback;
   const total = Number.parseInt(match[1], 10);
   return Number.isFinite(total) ? total : fallback;
+}
+
+const USAGE_RANKING_RANGES = new Set(['24h', '7d', '30d', '90d', 'this_month', 'last_month', 'all', 'custom']);
+const USAGE_RANKING_TASKS = new Set(['all', 'writing', 'translation', 'story_chat', 'free_chat', 'planning', 'analysis', 'image_generation']);
+const USAGE_RANKING_PLANS = new Set(['vip_lifetime', 'vip', 'lifetime']);
+const USAGE_RANKING_LIMITS = new Set([10, 20, 50]);
+
+function normalizeUsageRankingChoice(value, allowed, fallback) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return allowed.has(normalized) ? normalized : fallback;
+}
+
+function normalizeUsageRankingSearch(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/gu, ' ')
+    .slice(0, 120);
+}
+
+function normalizeUsageRankingLimit(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return DEFAULT_USAGE_RANKING_LIMIT;
+  if (parsed > MAX_USAGE_RANKING_LIMIT) return MAX_USAGE_RANKING_LIMIT;
+  return USAGE_RANKING_LIMITS.has(parsed) ? parsed : DEFAULT_USAGE_RANKING_LIMIT;
+}
+
+function parseRankingDateBound(value, { exclusiveEnd = false } = {}) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const date = /^\d{4}-\d{2}-\d{2}$/u.test(raw)
+    ? new Date(`${raw}T00:00:00.000Z`)
+    : new Date(raw);
+  if (Number.isNaN(date.getTime())) return null;
+  if (exclusiveEnd && /^\d{4}-\d{2}-\d{2}$/u.test(raw)) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  return date.toISOString();
+}
+
+function getUsageRankingWindow(range, url, now = new Date()) {
+  const normalizedRange = normalizeUsageRankingChoice(range, USAGE_RANKING_RANGES, DEFAULT_USAGE_RANKING_RANGE);
+  if (normalizedRange === 'all') return { range: normalizedRange, from: null, to: null };
+  if (normalizedRange === 'custom') {
+    return {
+      range: normalizedRange,
+      from: parseRankingDateBound(url.searchParams.get('from')),
+      to: parseRankingDateBound(url.searchParams.get('to'), { exclusiveEnd: true }),
+    };
+  }
+
+  const fromDate = new Date(now);
+  let toDate = null;
+  if (normalizedRange === '24h') fromDate.setUTCHours(fromDate.getUTCHours() - 24);
+  if (normalizedRange === '7d') fromDate.setUTCDate(fromDate.getUTCDate() - 7);
+  if (normalizedRange === '30d') fromDate.setUTCDate(fromDate.getUTCDate() - 30);
+  if (normalizedRange === '90d') fromDate.setUTCDate(fromDate.getUTCDate() - 90);
+  if (normalizedRange === 'this_month') {
+    fromDate.setUTCDate(1);
+    fromDate.setUTCHours(0, 0, 0, 0);
+  }
+  if (normalizedRange === 'last_month') {
+    fromDate.setUTCDate(1);
+    fromDate.setUTCHours(0, 0, 0, 0);
+    toDate = new Date(fromDate);
+    fromDate.setUTCMonth(fromDate.getUTCMonth() - 1);
+  }
+
+  return {
+    range: normalizedRange,
+    from: fromDate.toISOString(),
+    to: toDate ? toDate.toISOString() : null,
+  };
+}
+
+function normalizeUsageRankingParams(url) {
+  const window = getUsageRankingWindow(url.searchParams.get('range'), url);
+  return {
+    ...window,
+    task: normalizeUsageRankingChoice(url.searchParams.get('task'), USAGE_RANKING_TASKS, 'all'),
+    plan: normalizeUsageRankingChoice(url.searchParams.get('plan'), USAGE_RANKING_PLANS, 'vip_lifetime'),
+    provider: normalizeUsageFilter(url.searchParams.get('provider')),
+    status: normalizeUsageFilter(url.searchParams.get('status')),
+    q: normalizeUsageRankingSearch(url.searchParams.get('q')),
+    limit: normalizeUsageRankingLimit(url.searchParams.get('limit')),
+  };
+}
+
+function toSafeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
 }
 
 function cleanPath(url) {
@@ -979,6 +1072,86 @@ async function listUsageEvents(config, actor, url) {
   };
 }
 
+function enrichUsageRankingRow(row) {
+  const okCount = toSafeNumber(row.ok_count);
+  const errorCount = toSafeNumber(row.error_count);
+  const blockedCount = toSafeNumber(row.blocked_count);
+  return {
+    rank: toSafeNumber(row.rank_order),
+    userId: row.user_id || '',
+    email: row.email || '',
+    displayName: row.display_name || '',
+    label: row.display_name || row.email || row.user_id || 'Không rõ người dùng',
+    planKey: row.plan_key || '',
+    planName: row.plan_name || getPlanLabel(row.plan_key),
+    totalCount: toSafeNumber(row.total_count),
+    eventCount: toSafeNumber(row.event_count),
+    okCount,
+    errorCount,
+    blockedCount,
+    issueCount: errorCount + blockedCount,
+    lastUsedAt: row.last_used_at || null,
+    taskSummary: row.task_summary || 'Tác vụ AI',
+  };
+}
+
+function summarizeUsageRanking(items, rows = []) {
+  const firstRow = Array.isArray(rows) ? rows[0] || null : null;
+  if (firstRow && firstRow.matching_user_count !== undefined) {
+    return {
+      totalUsers: toSafeNumber(firstRow.matching_user_count),
+      totalCount: toSafeNumber(firstRow.matching_total_count),
+      eventCount: toSafeNumber(firstRow.matching_event_count),
+      okCount: toSafeNumber(firstRow.matching_ok_count),
+      issueCount: toSafeNumber(firstRow.matching_issue_count),
+      lastUsedAt: firstRow.matching_last_used_at || null,
+    };
+  }
+  return items.reduce((summary, item) => ({
+    totalUsers: summary.totalUsers + 1,
+    totalCount: summary.totalCount + item.totalCount,
+    eventCount: summary.eventCount + item.eventCount,
+    okCount: summary.okCount + item.okCount,
+    issueCount: summary.issueCount + item.issueCount,
+    lastUsedAt: !summary.lastUsedAt || (item.lastUsedAt && item.lastUsedAt > summary.lastUsedAt)
+      ? item.lastUsedAt
+      : summary.lastUsedAt,
+  }), {
+    totalUsers: 0,
+    totalCount: 0,
+    eventCount: 0,
+    okCount: 0,
+    issueCount: 0,
+    lastUsedAt: null,
+  });
+}
+
+async function listUsageRanking(config, actor, url) {
+  requirePermission(actor, ROUTE_PERMISSIONS.usage);
+  const filters = normalizeUsageRankingParams(url);
+  const rows = await supabaseRest(config, 'rpc/admin_usage_user_rankings', {
+    method: 'POST',
+    prefer: '',
+    body: {
+      p_from: filters.from,
+      p_to: filters.to,
+      p_task: filters.task,
+      p_plan: filters.plan,
+      p_provider: filters.provider,
+      p_status: filters.status,
+      p_search: filters.q,
+      p_limit: filters.limit,
+    },
+  });
+  const items = (Array.isArray(rows) ? rows : []).map(enrichUsageRankingRow);
+  return {
+    ok: true,
+    items,
+    summary: summarizeUsageRanking(items, rows),
+    filters,
+  };
+}
+
 async function listTable(config, actor, resource, table, url, defaultQuery) {
   requirePermission(actor, ROUTE_PERMISSIONS[resource]);
   return {
@@ -1575,6 +1748,10 @@ async function routeRequest(request, config, actor, env = {}) {
 
   if (resource === 'audit' && request.method === 'GET') {
     return listAuditLogs(config, actor, url);
+  }
+
+  if (resource === 'usage' && id === 'ranking' && request.method === 'GET') {
+    return listUsageRanking(config, actor, url);
   }
 
   if (resource === 'usage' && request.method === 'GET') {

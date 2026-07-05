@@ -233,6 +233,52 @@ describe('admin split UI contract', () => {
     expect(css).toContain('minmax(150px, 1fr)');
   });
 
+  it('adds a dedicated VIP ranking page and overview preview without merging it into usage history', () => {
+    const app = read('apps/admin/src/App.jsx');
+    const api = read('apps/admin/src/adminApi.js');
+    const css = read('apps/admin/src/App.css');
+
+    for (const label of [
+      'Xếp hạng VIP',
+      'Top VIP 30 ngày',
+      'Bảng xếp hạng tài khoản VIP',
+      'Chưa có dữ liệu VIP phù hợp bộ lọc',
+      'Loại việc',
+      'Khoảng thời gian',
+      'Tất cả việc',
+      'Viết truyện',
+      'Dịch truyện',
+      'Tạo ảnh',
+      'VIP + trọn đời',
+      'Lần dùng gần nhất',
+    ]) {
+      expect(app).toContain(label);
+    }
+
+    for (const sourceContract of [
+      "id: 'vip-ranking', label: 'Xếp hạng VIP'",
+      'function VipRankingPanel',
+      'overviewRanking',
+      'vipRanking',
+      'loadVipRanking',
+      'loadOverviewRanking',
+      'usageRanking',
+      "activeView === 'vip-ranking'",
+      "onSelectView('vip-ranking')",
+    ]) {
+      expect(app).toContain(sourceContract);
+    }
+
+    expect(api).toContain('usageRanking:');
+    expect(api).toContain("request(`/usage/ranking?${query.toString()}`)");
+    expect(app.indexOf("id: 'vip-ranking'")).toBeLessThan(app.indexOf("id: 'usage'"));
+    expect(css).toContain('.vip-ranking-page');
+    expect(css).toContain('.vip-ranking-filter-grid');
+    expect(css).toContain('.vip-ranking-metrics');
+    expect(css).toContain('.vip-ranking-table');
+    expect(css).toContain('.overview-ranking-panel');
+  });
+
   it('does not expose new plan or feature names in the admin UI source', () => {
     const combined = [
       read('apps/admin/src/App.jsx'),
@@ -253,6 +299,7 @@ describe('admin split UI contract', () => {
       read('apps/admin/src/App.jsx'),
       read('apps/admin/src/adminApi.js'),
       read('apps/admin-api-worker/src/index.js'),
+      read('docs/supabase-access-control/007_usage_user_rankings.sql'),
       read('packages/access/src/index.js'),
       read('packages/access/src/vipPageContent.js'),
     ].join('\n');

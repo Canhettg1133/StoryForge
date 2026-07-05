@@ -21,6 +21,8 @@ import {
   Sparkles,
   UserCog,
   Users,
+  Trophy,
+  TrendingUp,
   X,
 } from 'lucide-react';
 import {
@@ -67,6 +69,7 @@ const NAV_GROUPS = [
     label: 'Giám sát',
     items: [
       { id: 'audit', label: 'Nhật ký quản trị', icon: FileClock },
+      { id: 'vip-ranking', label: 'Xếp hạng VIP', icon: Trophy },
       { id: 'usage', label: 'Hoạt động người dùng', icon: Activity },
       { id: 'advanced', label: 'Nâng cao', icon: Database },
     ],
@@ -85,6 +88,8 @@ const EMPTY_DATA = {
 };
 
 const DEFAULT_USAGE_PAGE_SIZE = 100;
+const DEFAULT_VIP_RANKING_LIMIT = 20;
+const OVERVIEW_VIP_RANKING_LIMIT = 5;
 
 const EMPTY_USAGE_PAGINATION = {
   page: 1,
@@ -96,6 +101,61 @@ const EMPTY_USAGE_PAGINATION = {
 };
 
 const EMPTY_USAGE_PAGE_CURSORS = { 1: '' };
+
+const DEFAULT_VIP_RANKING_FILTERS = {
+  range: '30d',
+  from: '',
+  to: '',
+  task: 'all',
+  plan: 'vip_lifetime',
+  provider: 'all',
+  status: 'all',
+  q: '',
+  limit: DEFAULT_VIP_RANKING_LIMIT,
+};
+
+const EMPTY_VIP_RANKING = {
+  items: [],
+  summary: {
+    totalUsers: 0,
+    totalCount: 0,
+    eventCount: 0,
+    okCount: 0,
+    issueCount: 0,
+    lastUsedAt: null,
+  },
+  filters: DEFAULT_VIP_RANKING_FILTERS,
+};
+
+const RANKING_RANGE_OPTIONS = [
+  { value: '24h', label: '24 giờ qua' },
+  { value: '7d', label: '7 ngày' },
+  { value: '30d', label: '30 ngày' },
+  { value: '90d', label: '90 ngày' },
+  { value: 'this_month', label: 'Tháng này' },
+  { value: 'last_month', label: 'Tháng trước' },
+  { value: 'all', label: 'Tất cả' },
+  { value: 'custom', label: 'Tùy chỉnh' },
+];
+
+const RANKING_TASK_OPTIONS = [
+  { value: 'all', label: 'Tất cả việc' },
+  { value: 'writing', label: 'Viết truyện' },
+  { value: 'translation', label: 'Dịch truyện' },
+  { value: 'story_chat', label: 'Chat truyện' },
+  { value: 'free_chat', label: 'Chat tự do' },
+  { value: 'planning', label: 'Lên kế hoạch' },
+  { value: 'analysis', label: 'Phân tích' },
+  { value: 'image_generation', label: 'Tạo ảnh' },
+];
+
+const RANKING_PLAN_OPTIONS = [
+  { value: 'vip_lifetime', label: 'VIP + trọn đời' },
+  { value: 'vip', label: 'Chỉ VIP' },
+  { value: 'lifetime', label: 'Chỉ trọn đời' },
+];
+
+const RANKING_LIMIT_OPTIONS = [10, 20, 50];
 
 const DEFAULT_PLAN_FORM = {
   planKey: 'vip',
@@ -119,6 +179,10 @@ function formatDate(value) {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(date);
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat('vi-VN').format(Number(value) || 0);
 }
 
 function isToday(value) {
@@ -523,7 +587,48 @@ function Metric({ label, value, icon: Icon, tone = 'neutral' }) {
   );
 }
 
-function OverviewPanel({ data, apiBaseUrl, onSelectView }) {
+function OverviewRankingPreview({ ranking, loading, error, onSelectView }) {
+  const items = ranking?.items || [];
+
+  return (
+    <section className="panel overview-ranking-panel">
+      <header className="panel-header">
+        <div>
+          <h2>Top VIP 30 ngày</h2>
+          <span>Tài khoản VIP và trọn đời dùng nhiều nhất gần đây</span>
+        </div>
+        <button type="button" className="button button--ghost" onClick={() => onSelectView('vip-ranking')}>
+          <Trophy size={15} />
+          Xem xếp hạng
+        </button>
+      </header>
+      {error ? (
+        <div className="ranking-inline-error">{error}</div>
+      ) : loading ? (
+        <div className="ranking-skeleton-list" aria-label="Đang tải xếp hạng VIP">
+          {[0, 1, 2].map((index) => <span key={index} />)}
+        </div>
+      ) : items.length === 0 ? (
+        <EmptyState title="Chưa có dữ liệu VIP" text="Chưa có tài khoản VIP dùng AI trong 30 ngày gần đây." />
+      ) : (
+        <div className="overview-ranking-list">
+          {items.map((item) => (
+            <div className="overview-ranking-row" key={item.userId || item.email}>
+              <strong>#{item.rank}</strong>
+              <div>
+                <b>{item.displayName || item.email || item.userId}</b>
+                <span>{item.email || item.userId}</span>
+              </div>
+              <em>{formatNumber(item.totalCount)} lượt</em>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function OverviewPanel({ data, apiBaseUrl, onSelectView, ranking, rankingLoading, rankingError }) {
   const activeUsers = data.users.filter((user) => String(user.status || 'active') === 'active').length;
   const vipUsers = data.users.filter((user) => ['vip', 'lifetime'].includes(getCurrentUserPlanKey(user))).length;
   const auditToday = data.audit.filter((item) => isToday(item.created_at)).length;
@@ -545,6 +650,12 @@ function OverviewPanel({ data, apiBaseUrl, onSelectView }) {
         <Metric label="Thao tác hôm nay" value={auditToday} icon={FileClock} tone="info" />
         <Metric label="Lỗi usage gần đây" value={usageErrors} icon={AlertTriangle} tone={usageErrors > 0 ? 'danger' : 'success'} />
       </div>
+      <OverviewRankingPreview
+        ranking={ranking}
+        loading={rankingLoading}
+        error={rankingError}
+        onSelectView={onSelectView}
+      />
       <section className="panel">
         <header className="panel-header">
           <h2>Nhật ký mới</h2>
@@ -1743,6 +1854,192 @@ function AuditPanel({ data }) {
   );
 }
 
+function VipRankingMetric({ label, value, icon: Icon, tone = 'neutral' }) {
+  return (
+    <div className={`vip-ranking-metric vip-ranking-metric--${tone}`}>
+      <Icon size={18} />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function VipRankingSkeleton() {
+  return (
+    <div className="vip-ranking-skeleton" aria-label="Đang tải bảng xếp hạng VIP">
+      {[0, 1, 2, 3, 4].map((index) => <span key={index} />)}
+    </div>
+  );
+}
+
+function VipRankingPanel({ ranking, loading, error, onLoadRanking }) {
+  const [filters, setFilters] = useState(DEFAULT_VIP_RANKING_FILTERS);
+  const items = ranking?.items || [];
+  const summary = ranking?.summary || EMPTY_VIP_RANKING.summary;
+  const hasCustomRange = filters.range === 'custom';
+
+  const updateFilter = (field, value) => {
+    setFilters((current) => ({
+      ...current,
+      [field]: field === 'limit' ? Number(value) : value,
+    }));
+  };
+
+  const applyFilters = () => onLoadRanking(filters);
+
+  return (
+    <section className="content-grid vip-ranking-page">
+      <div className="section-header">
+        <div>
+          <h1>Xếp hạng VIP</h1>
+          <p>Bảng xếp hạng tài khoản VIP và trọn đời dùng StoryForge nhiều nhất theo thời gian, loại việc và provider.</p>
+        </div>
+        <Badge tone="warning">{formatNumber(summary.totalUsers)} tài khoản phù hợp</Badge>
+      </div>
+
+      <section className="panel vip-ranking-control-panel" aria-label="Bộ lọc xếp hạng VIP">
+        <div className="vip-ranking-filter-grid">
+          <label className="usage-filter-control vip-ranking-search">
+            <span>Tìm tài khoản</span>
+            <input
+              value={filters.q}
+              onChange={(event) => updateFilter('q', event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') applyFilters();
+              }}
+              placeholder="Email, tên hoặc user id"
+            />
+          </label>
+          <label className="usage-filter-control">
+            <span>Khoảng thời gian</span>
+            <select value={filters.range} disabled={loading} onChange={(event) => updateFilter('range', event.target.value)}>
+              {RANKING_RANGE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          {hasCustomRange ? (
+            <>
+              <label className="usage-filter-control">
+                <span>Từ ngày</span>
+                <input type="date" value={filters.from} disabled={loading} onChange={(event) => updateFilter('from', event.target.value)} />
+              </label>
+              <label className="usage-filter-control">
+                <span>Đến ngày</span>
+                <input type="date" value={filters.to} disabled={loading} onChange={(event) => updateFilter('to', event.target.value)} />
+              </label>
+            </>
+          ) : null}
+          <label className="usage-filter-control">
+            <span>Loại việc</span>
+            <select value={filters.task} disabled={loading} onChange={(event) => updateFilter('task', event.target.value)}>
+              {RANKING_TASK_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="usage-filter-control">
+            <span>Gói</span>
+            <select value={filters.plan} disabled={loading} onChange={(event) => updateFilter('plan', event.target.value)}>
+              {RANKING_PLAN_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="usage-filter-control">
+            <span>Provider</span>
+            <select value={filters.provider} disabled={loading} onChange={(event) => updateFilter('provider', event.target.value)}>
+              <option value="all">Tất cả provider</option>
+              <option value="custom_proxy">Proxy tùy chỉnh</option>
+              <option value="ag_proxy">Gemini Proxy AG</option>
+              <option value="gemini_direct">Gemini Direct</option>
+              <option value="openai_proxy">OpenAI Proxy</option>
+            </select>
+          </label>
+          <label className="usage-filter-control">
+            <span>Trạng thái</span>
+            <select value={filters.status} disabled={loading} onChange={(event) => updateFilter('status', event.target.value)}>
+              <option value="all">Tất cả trạng thái</option>
+              <option value="ok">Thành công</option>
+              <option value="error">Lỗi</option>
+              <option value="blocked">Bị chặn</option>
+            </select>
+          </label>
+          <label className="usage-filter-control">
+            <span>Hiển thị</span>
+            <select value={filters.limit} disabled={loading} onChange={(event) => updateFilter('limit', event.target.value)}>
+              {RANKING_LIMIT_OPTIONS.map((limit) => <option key={limit} value={limit}>Top {limit}</option>)}
+            </select>
+          </label>
+          <button type="button" className="button button--primary" disabled={loading} onClick={applyFilters}>
+            <Search size={15} />
+            Áp dụng lọc
+          </button>
+          <button type="button" className="button button--ghost" disabled={loading} onClick={() => onLoadRanking(filters)}>
+            <RefreshCw size={15} />
+            Tải lại
+          </button>
+        </div>
+      </section>
+
+      <div className="vip-ranking-metrics">
+        <VipRankingMetric label="Tổng lượt dùng" value={formatNumber(summary.totalCount)} icon={TrendingUp} tone="info" />
+        <VipRankingMetric label="VIP có hoạt động" value={formatNumber(summary.totalUsers)} icon={Users} tone="success" />
+        <VipRankingMetric label="Lượt thành công" value={formatNumber(summary.okCount)} icon={Check} tone="success" />
+        <VipRankingMetric label="Lỗi hoặc bị chặn" value={formatNumber(summary.issueCount)} icon={AlertTriangle} tone={summary.issueCount > 0 ? 'danger' : 'success'} />
+        <VipRankingMetric label="Lần dùng gần nhất" value={formatDate(summary.lastUsedAt)} icon={Activity} tone="neutral" />
+      </div>
+
+      <section className="panel panel--table">
+        <div className="table-toolbar">
+          <div>
+            <h2>Bảng xếp hạng tài khoản VIP</h2>
+            <span>Sắp xếp theo tổng lượt dùng, sau đó theo lần dùng gần nhất.</span>
+          </div>
+          <Badge tone="info">{formatNumber(items.length)} dòng</Badge>
+        </div>
+
+        {error ? <ErrorState message={error} onRetry={() => onLoadRanking(filters)} /> : null}
+
+        {loading ? (
+          <VipRankingSkeleton />
+        ) : items.length === 0 ? (
+          <EmptyState title="Chưa có dữ liệu VIP phù hợp bộ lọc" text="Thử đổi khoảng thời gian, loại việc hoặc provider để xem thêm dữ liệu." />
+        ) : (
+          <table className="data-table vip-ranking-table">
+            <thead>
+              <tr>
+                <th>Hạng</th>
+                <th>Tài khoản</th>
+                <th>Gói</th>
+                <th>Tổng lượt</th>
+                <th>Request</th>
+                <th>Trạng thái</th>
+                <th>Loại việc nổi bật</th>
+                <th>Lần dùng gần nhất</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.userId || item.email}>
+                  <td><span className={`rank-badge ${item.rank <= 3 ? 'is-top' : ''}`}>#{item.rank}</span></td>
+                  <td className="vip-ranking-user-cell">
+                    <strong>{item.displayName || item.email || item.userId}</strong>
+                    <span>{item.email || item.userId}</span>
+                  </td>
+                  <td><Badge tone={item.planKey === 'lifetime' ? 'warning' : 'info'}>{item.planName || getPlanLabel(item.planKey)}</Badge></td>
+                  <td className="numeric-cell">{formatNumber(item.totalCount)}</td>
+                  <td className="numeric-cell">{formatNumber(item.eventCount)}</td>
+                  <td className="vip-ranking-status-cell">
+                    <span>{formatNumber(item.okCount)} thành công</span>
+                    <span>{formatNumber(item.issueCount)} lỗi/chặn</span>
+                  </td>
+                  <td>{item.taskSummary || 'Tác vụ AI'}</td>
+                  <td className="numeric-cell">{formatDate(item.lastUsedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </section>
+  );
+}
+
 function UsagePanel({
   data,
   pagination,
@@ -2004,6 +2301,12 @@ export default function App() {
   const [usagePageCursors, setUsagePageCursors] = useState(EMPTY_USAGE_PAGE_CURSORS);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState('');
+  const [vipRanking, setVipRanking] = useState(EMPTY_VIP_RANKING);
+  const [vipRankingLoading, setVipRankingLoading] = useState(false);
+  const [vipRankingError, setVipRankingError] = useState('');
+  const [overviewRanking, setOverviewRanking] = useState(EMPTY_VIP_RANKING);
+  const [overviewRankingLoading, setOverviewRankingLoading] = useState(false);
+  const [overviewRankingError, setOverviewRankingError] = useState('');
   const [activeView, setActiveView] = useState('overview');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -2132,6 +2435,10 @@ export default function App() {
         return;
       }
 
+      if (viewToLoad === 'vip-ranking') {
+        return;
+      }
+
       if (viewToLoad === 'story-mirror') {
         return;
       }
@@ -2194,6 +2501,45 @@ export default function App() {
     loadUsagePage({ page: 1, pageSize, ...filters, resetCursor: true });
   }, [loadUsagePage]);
 
+  const loadVipRanking = useCallback(async (filters = DEFAULT_VIP_RANKING_FILTERS) => {
+    setVipRankingLoading(true);
+    setVipRankingError('');
+    try {
+      const ranking = await adminApi.usageRanking(filters);
+      setVipRanking({
+        ...EMPTY_VIP_RANKING,
+        ...ranking,
+        items: ranking.items || [],
+        summary: ranking.summary || EMPTY_VIP_RANKING.summary,
+      });
+    } catch (error) {
+      setVipRankingError(error.message || 'Không tải được bảng xếp hạng VIP.');
+    } finally {
+      setVipRankingLoading(false);
+    }
+  }, [adminApi]);
+
+  const loadOverviewRanking = useCallback(async () => {
+    setOverviewRankingLoading(true);
+    setOverviewRankingError('');
+    try {
+      const ranking = await adminApi.usageRanking({
+        ...DEFAULT_VIP_RANKING_FILTERS,
+        limit: OVERVIEW_VIP_RANKING_LIMIT,
+      });
+      setOverviewRanking({
+        ...EMPTY_VIP_RANKING,
+        ...ranking,
+        items: ranking.items || [],
+        summary: ranking.summary || EMPTY_VIP_RANKING.summary,
+      });
+    } catch (error) {
+      setOverviewRankingError(error.message || 'Không tải được Top VIP 30 ngày.');
+    } finally {
+      setOverviewRankingLoading(false);
+    }
+  }, [adminApi]);
+
   useEffect(() => {
     if (!isSupabaseConfigured()) return undefined;
     const client = getSupabaseClient();
@@ -2228,6 +2574,12 @@ export default function App() {
     if (session && actor) loadAdminData();
   }, [session, actor, loadAdminData]);
 
+  useEffect(() => {
+    if (!session || !actor) return;
+    if (activeView === 'overview') loadOverviewRanking();
+    if (activeView === 'vip-ranking') loadVipRanking(DEFAULT_VIP_RANKING_FILTERS);
+  }, [activeView, actor, loadOverviewRanking, loadVipRanking, session]);
+
   const login = async () => {
     setAuthLoading(true);
     setAuthError('');
@@ -2250,6 +2602,12 @@ export default function App() {
     setUsagePagination(EMPTY_USAGE_PAGINATION);
     setUsagePageCursors(EMPTY_USAGE_PAGE_CURSORS);
     setUsageError('');
+    setVipRanking(EMPTY_VIP_RANKING);
+    setVipRankingLoading(false);
+    setVipRankingError('');
+    setOverviewRanking(EMPTY_VIP_RANKING);
+    setOverviewRankingLoading(false);
+    setOverviewRankingError('');
   };
 
   const openMutationConfirm = (config) => {
@@ -2277,7 +2635,18 @@ export default function App() {
   if (!session) return <LoginScreen onLogin={login} authError={authError} loading={authLoading} />;
 
   const panel = (() => {
-    if (activeView === 'overview') return <OverviewPanel data={data} apiBaseUrl={adminApi.baseUrl} onSelectView={setActiveView} />;
+    if (activeView === 'overview') {
+      return (
+        <OverviewPanel
+          data={data}
+          apiBaseUrl={adminApi.baseUrl}
+          onSelectView={setActiveView}
+          ranking={overviewRanking}
+          rankingLoading={overviewRankingLoading}
+          rankingError={overviewRankingError}
+        />
+      );
+    }
     if (activeView === 'users') return <UsersPanel data={data} selectedUserId={selectedUserId} setSelectedUserId={setSelectedUserId} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'vip') return <VipPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'announcement') return <AnnouncementPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
@@ -2285,6 +2654,16 @@ export default function App() {
     if (activeView === 'features') return <FeaturesPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'consent') return <ConsentPanel data={data} />;
     if (activeView === 'audit') return <AuditPanel data={data} />;
+    if (activeView === 'vip-ranking') {
+      return (
+        <VipRankingPanel
+          ranking={vipRanking}
+          loading={vipRankingLoading}
+          error={vipRankingError}
+          onLoadRanking={loadVipRanking}
+        />
+      );
+    }
     if (activeView === 'usage') {
       return (
         <UsagePanel
