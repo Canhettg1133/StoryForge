@@ -659,17 +659,170 @@ describe('phase12 admin API worker', () => {
     expect(payload.filters.limit).toBe(20);
   });
 
+  it('caches normalized VIP ranking responses and marks cache hits with Server-Timing', async () => {
+    let rpcCalls = 0;
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/rpc/admin_usage_user_rankings')) {
+        rpcCalls += 1;
+        return jsonResponse([{
+          rank_order: 1,
+          user_id: 'user-cache',
+          email: 'cache-reader@example.com',
+          display_name: 'Cache Reader',
+          plan_key: 'vip',
+          plan_name: 'VIP',
+          total_count: 11,
+          event_count: 3,
+          ok_count: 11,
+          error_count: 0,
+          blocked_count: 0,
+          last_used_at: '2026-07-20T12:30:00.000Z',
+          task_summary: 'Dịch truyện',
+          matching_user_count: 1,
+          matching_total_count: 11,
+          matching_event_count: 3,
+          matching_ok_count: 11,
+          matching_issue_count: 0,
+          matching_last_used_at: '2026-07-20T12:30:00.000Z',
+        }]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const path = '/usage/ranking?range=custom&from=2026-07-01&to=2026-07-31&q=cache-reader@example.com&limit=20';
+    const first = await adminWorker.fetch(authedRequest(path), createEnv());
+    const second = await adminWorker.fetch(authedRequest(path), createEnv());
+    const secondPayload = await second.json();
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(rpcCalls).toBe(1);
+    expect(first.headers.get('Server-Timing')).toContain('desc="miss"');
+    expect(second.headers.get('Server-Timing')).toContain('desc="hit"');
+    expect(secondPayload.items[0]).toMatchObject({
+      email: 'cache-reader@example.com',
+      totalCount: 11,
+    });
+  });
+
+  it('deduplicates concurrent VIP ranking requests with the same normalized filters', async () => {
+    let rpcCalls = 0;
+    let releaseRpc;
+    const rpcResponse = new Promise((resolve) => {
+      releaseRpc = () => resolve(jsonResponse([{
+        rank_order: 1,
+        user_id: 'user-shared',
+        email: 'shared-reader@example.com',
+        display_name: 'Shared Reader',
+        plan_key: 'lifetime',
+        plan_name: 'Trọn đời',
+        total_count: 25,
+        event_count: 6,
+        ok_count: 23,
+        error_count: 2,
+        blocked_count: 0,
+        last_used_at: '2026-07-22T09:00:00.000Z',
+        task_summary: 'Viết truyện',
+        matching_user_count: 1,
+        matching_total_count: 25,
+        matching_event_count: 6,
+        matching_ok_count: 23,
+        matching_issue_count: 2,
+        matching_last_used_at: '2026-07-22T09:00:00.000Z',
+      }]));
+    });
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/rpc/admin_usage_user_rankings')) {
+        rpcCalls += 1;
+        return rpcResponse;
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const path = '/usage/ranking?range=custom&from=2026-07-01&to=2026-07-31&q=shared-reader@example.com&limit=20';
+    const first = adminWorker.fetch(authedRequest(path), createEnv());
+    const second = adminWorker.fetch(authedRequest(path), createEnv());
+    await vi.waitFor(() => expect(rpcCalls).toBe(1));
+    releaseRpc();
+    const responses = await Promise.all([first, second]);
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(rpcCalls).toBe(1);
+    expect(responses[0].headers.get('Server-Timing')).toContain('desc="miss"');
+    expect(responses[1].headers.get('Server-Timing')).toContain('desc="shared"');
+  });
+
+  it('bypasses the VIP ranking cache when force=1 is provided', async () => {
+    let rpcCalls = 0;
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/rpc/admin_usage_user_rankings')) {
+        rpcCalls += 1;
+        return jsonResponse([{
+          rank_order: 1,
+          user_id: 'user-force',
+          email: 'force-reader@example.com',
+          display_name: 'Force Reader',
+          plan_key: 'vip',
+          plan_name: 'VIP',
+          total_count: rpcCalls,
+          event_count: 1,
+          ok_count: rpcCalls,
+          error_count: 0,
+          blocked_count: 0,
+          last_used_at: '2026-07-23T09:00:00.000Z',
+          task_summary: 'Chat truyện',
+          matching_user_count: 1,
+          matching_total_count: rpcCalls,
+          matching_event_count: 1,
+          matching_ok_count: rpcCalls,
+          matching_issue_count: 0,
+          matching_last_used_at: '2026-07-23T09:00:00.000Z',
+        }]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const path = '/usage/ranking?range=custom&from=2026-07-01&to=2026-07-31&q=force-reader@example.com&limit=20';
+    await adminWorker.fetch(authedRequest(path), createEnv());
+    const forced = await adminWorker.fetch(authedRequest(`${path}&force=1`), createEnv());
+    const forcedPayload = await forced.json();
+
+    expect(forced.status).toBe(200);
+    expect(rpcCalls).toBe(2);
+    expect(forced.headers.get('Server-Timing')).toContain('desc="miss"');
+    expect(forcedPayload.items[0].totalCount).toBe(2);
+  });
+
   it('defines the VIP usage ranking SQL as an aggregate over active VIP plans', () => {
     const migration = readFileSync(resolve(process.cwd(), 'docs/supabase-access-control/007_usage_user_rankings.sql'), 'utf8');
 
     expect(migration).toContain('create or replace function public.admin_usage_user_rankings');
-    expect(migration).toContain('sum(greatest(coalesce(candidate.count, 0), 0))');
+    expect(migration).toContain('sum(greatest(coalesce(filtered_usage.count, 0), 0))');
     expect(migration).toContain('from public.user_plans');
     expect(migration).toContain("plan.key in ('vip', 'lifetime')");
     expect(migration).toContain("user_plan.status = 'active'");
     expect(migration).toContain('when coalesce(p_limit, 20) in (10, 20, 50)');
     expect(migration).toContain('row_number() over');
+    expect(migration).toContain('case input.task_key');
+    expect(migration).toContain("else 'Tất cả việc'");
+    expect(migration).toContain("then 'Viết truyện'");
+    expect(migration).not.toContain('string_agg(distinct candidate.task_label');
+    expect(migration).not.toContain('top_task_summary');
+    expect(migration).not.toContain('from filtered_usage\n  join limited');
     expect(migration).not.toContain('create table');
+  });
+
+  it('adds concurrent covering indexes for the VIP ranking query path', () => {
+    const migration = readFileSync(resolve(process.cwd(), 'docs/supabase-access-control/008_usage_ranking_performance.sql'), 'utf8');
+
+    expect(migration).toContain('Run outside a transaction');
+    expect(migration).toContain('create index concurrently if not exists idx_usage_events_ranking_recent');
+    expect(migration).toContain('on public.usage_events(created_at desc, user_id)');
+    expect(migration).toContain('include (count, provider, status, feature_key)');
+    expect(migration).toContain('create index concurrently if not exists idx_usage_events_ranking_provider_status_recent');
+    expect(migration).toContain('on public.usage_events(provider, status, created_at desc, user_id)');
+    expect(migration).toContain('create index concurrently if not exists idx_user_plans_active_plan_user_current');
+    expect(migration).toContain("where status = 'active'");
   });
 
   it('preserves existing privileged roles when syncing Supabase Auth users', async () => {

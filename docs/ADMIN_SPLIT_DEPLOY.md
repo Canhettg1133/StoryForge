@@ -56,9 +56,11 @@ docs/supabase-access-control/003_access_control_v2_sync_and_union_plans.sql
 docs/supabase-access-control/004_add_gemini_direct_feature.sql
 docs/supabase-access-control/005_site_settings.sql
 docs/supabase-access-control/006_story_mirror.sql
+docs/supabase-access-control/007_usage_user_rankings.sql
+docs/supabase-access-control/008_usage_ranking_performance.sql
 ```
 
-Existing production databases that already ran `001`, `002`, and `003` need to run `004_add_gemini_direct_feature.sql`, `005_site_settings.sql`, and `006_story_mirror.sql` before or alongside the code deploy. `004` adds `provider.gemini_direct` to the VIP/lifetime access catalog. `005` adds the system announcement setting used by the public app and Admin API. `006` adds Story Mirror metadata/settings/audit tables for R2 latest-only storage.
+Existing production databases that already ran `001`, `002`, and `003` need to run `004_add_gemini_direct_feature.sql`, `005_site_settings.sql`, `006_story_mirror.sql`, `007_usage_user_rankings.sql`, and `008_usage_ranking_performance.sql` before or alongside the code deploy. `004` adds `provider.gemini_direct` to the VIP/lifetime access catalog. `005` adds the system announcement setting used by the public app and Admin API. `006` adds Story Mirror metadata/settings/audit tables for R2 latest-only storage. `007` adds the VIP usage ranking RPC. `008` adds concurrent ranking indexes and must be run outside a transaction.
 
 The Worker verifies the Supabase user token first, resolves admin role from `profiles.system_role`, rejects non-admin mutations, and writes audit logs for sensitive changes.
 

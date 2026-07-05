@@ -588,7 +588,7 @@ function Metric({ label, value, icon: Icon, tone = 'neutral' }) {
 }
 
 function OverviewRankingPreview({ ranking, loading, error, onSelectView }) {
-  const items = ranking?.items || [];
+  const items = (ranking?.items || []).slice(0, OVERVIEW_VIP_RANKING_LIMIT);
 
   return (
     <section className="panel overview-ranking-panel">

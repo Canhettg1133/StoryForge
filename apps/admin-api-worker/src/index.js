@@ -49,6 +49,11 @@ const MAX_USAGE_OFFSET_WITHOUT_CURSOR = 10000;
 const DEFAULT_USAGE_RANKING_LIMIT = 20;
 const MAX_USAGE_RANKING_LIMIT = 50;
 const DEFAULT_USAGE_RANKING_RANGE = '30d';
+const USAGE_RANKING_CACHE_TTL_MS = 60_000;
+const USAGE_RANKING_CACHE_MAX_ENTRIES = 100;
+const RESPONSE_HEADERS = Symbol('responseHeaders');
+const usageRankingCache = new Map();
+const usageRankingInflight = new Map();
 const PROFILE_SELECT = 'user_id,email,display_name,system_role,status,metadata,created_at,updated_at';
 const PLAN_SELECT = 'id,key,name,description,active,sort_order,metadata,created_at,updated_at';
 const FEATURE_SELECT = 'key,name,description,category,active,metadata,created_at,updated_at';
@@ -118,11 +123,21 @@ function corsHeaders(request, config) {
   return headers;
 }
 
-function json(payload, status = 200, cors = {}) {
+function json(payload, status = 200, cors = {}, extraHeaders = {}) {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...cors, ...SECURITY_HEADERS, ...JSON_HEADERS },
+    headers: { ...cors, ...SECURITY_HEADERS, ...extraHeaders, ...JSON_HEADERS },
   });
+}
+
+function withResponseHeaders(payload, headers = {}) {
+  if (!payload || typeof payload !== 'object') return payload;
+  return Object.assign(payload, { [RESPONSE_HEADERS]: headers });
+}
+
+function getResponseHeaders(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  return payload[RESPONSE_HEADERS] || {};
 }
 
 async function readJson(request) {
@@ -1126,9 +1141,58 @@ function summarizeUsageRanking(items, rows = []) {
   });
 }
 
-async function listUsageRanking(config, actor, url) {
-  requirePermission(actor, ROUTE_PERMISSIONS.usage);
-  const filters = normalizeUsageRankingParams(url);
+function cloneUsageRankingPayload(payload) {
+  return {
+    ok: true,
+    items: Array.isArray(payload?.items) ? payload.items.map((item) => ({ ...item })) : [],
+    summary: { ...(payload?.summary || {}) },
+    filters: { ...(payload?.filters || {}) },
+  };
+}
+
+function getUsageRankingCacheKey(filters) {
+  return JSON.stringify({
+    range: filters.range,
+    from: filters.from || '',
+    to: filters.to || '',
+    task: filters.task,
+    plan: filters.plan,
+    provider: filters.provider || '',
+    status: filters.status || '',
+    q: filters.q || '',
+    limit: filters.limit,
+  });
+}
+
+function getCachedUsageRankingPayload(cacheKey) {
+  const entry = usageRankingCache.get(cacheKey);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    usageRankingCache.delete(cacheKey);
+    return null;
+  }
+  usageRankingCache.delete(cacheKey);
+  usageRankingCache.set(cacheKey, entry);
+  return cloneUsageRankingPayload(entry.payload);
+}
+
+function setCachedUsageRankingPayload(cacheKey, payload) {
+  if (usageRankingCache.size >= USAGE_RANKING_CACHE_MAX_ENTRIES) {
+    const oldestKey = usageRankingCache.keys().next().value;
+    if (oldestKey) usageRankingCache.delete(oldestKey);
+  }
+  usageRankingCache.set(cacheKey, {
+    expiresAt: Date.now() + USAGE_RANKING_CACHE_TTL_MS,
+    payload: cloneUsageRankingPayload(payload),
+  });
+}
+
+function usageRankingServerTiming(cacheStatus, startedAt) {
+  const duration = Math.max(0, Date.now() - startedAt);
+  return `vip-ranking;dur=${duration};desc="${cacheStatus}"`;
+}
+
+async function fetchUsageRankingPayload(config, filters) {
   const rows = await supabaseRest(config, 'rpc/admin_usage_user_rankings', {
     method: 'POST',
     prefer: '',
@@ -1150,6 +1214,43 @@ async function listUsageRanking(config, actor, url) {
     summary: summarizeUsageRanking(items, rows),
     filters,
   };
+}
+
+async function getUsageRankingPayload(config, filters, { force = false } = {}) {
+  const cacheKey = getUsageRankingCacheKey(filters);
+  if (!force) {
+    const cachedPayload = getCachedUsageRankingPayload(cacheKey);
+    if (cachedPayload) return { payload: cachedPayload, cacheStatus: 'hit' };
+
+    const pendingPayload = usageRankingInflight.get(cacheKey);
+    if (pendingPayload) {
+      const payload = await pendingPayload;
+      return { payload: cloneUsageRankingPayload(payload), cacheStatus: 'shared' };
+    }
+  }
+
+  const pendingPayload = fetchUsageRankingPayload(config, filters).then((payload) => {
+    setCachedUsageRankingPayload(cacheKey, payload);
+    return payload;
+  });
+  if (!force) usageRankingInflight.set(cacheKey, pendingPayload);
+  try {
+    const payload = await pendingPayload;
+    return { payload: cloneUsageRankingPayload(payload), cacheStatus: 'miss' };
+  } finally {
+    if (!force) usageRankingInflight.delete(cacheKey);
+  }
+}
+
+async function listUsageRanking(config, actor, url) {
+  requirePermission(actor, ROUTE_PERMISSIONS.usage);
+  const startedAt = Date.now();
+  const filters = normalizeUsageRankingParams(url);
+  const force = url.searchParams.get('force') === '1';
+  const { payload, cacheStatus } = await getUsageRankingPayload(config, filters, { force });
+  return withResponseHeaders(payload, {
+    'Server-Timing': usageRankingServerTiming(cacheStatus, startedAt),
+  });
 }
 
 async function listTable(config, actor, resource, table, url, defaultQuery) {
@@ -1786,7 +1887,7 @@ async function handle(request, env = {}) {
   try {
     const actor = await authenticate(request, config);
     const payload = await routeRequest(request, config, actor, env);
-    return json(payload, 200, cors);
+    return json(payload, 200, cors, getResponseHeaders(payload));
   } catch (error) {
     return json({
       error: error.message || 'Admin API gặp lỗi ngoài dự kiến.',

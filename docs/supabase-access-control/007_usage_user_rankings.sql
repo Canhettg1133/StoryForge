@@ -35,8 +35,8 @@ set search_path = public
 as $$
 with normalized as (
   select
-    coalesce(p_from, null) as from_at,
-    coalesce(p_to, null) as to_at,
+    p_from as from_at,
+    p_to as to_at,
     case
       when lower(coalesce(p_task, 'all')) in (
         'all',
@@ -81,7 +81,7 @@ active_plans as (
     case plan.key when 'lifetime' then 2 when 'vip' then 1 else 0 end desc,
     user_plan.starts_at desc
 ),
-candidate as (
+filtered_usage as not materialized (
   select
     usage_event.user_id,
     profile.email,
@@ -91,121 +91,128 @@ candidate as (
     usage_event.count,
     usage_event.status,
     usage_event.created_at,
-    case
-      when usage_event.feature_key = 'translator.access'
-        or usage_event.metadata ->> 'workflowFeature' = 'translator.access'
-        then 'translation'
-      when usage_event.metadata ->> 'taskGroup' = 'story_chat'
-        then 'story_chat'
-      when usage_event.metadata ->> 'taskGroup' = 'free_chat'
-        then 'free_chat'
-      when usage_event.metadata ->> 'taskGroup' = 'story_planning'
-        then 'planning'
-      when usage_event.metadata ->> 'taskGroup' = 'story_analysis'
-        then 'analysis'
-      when usage_event.metadata ->> 'action' = 'image_generation'
-        or usage_event.metadata ->> 'taskType' = 'cover_generation'
-        or usage_event.metadata ->> 'taskGroup' = 'story_publishing'
-        then 'image_generation'
-      when usage_event.metadata ->> 'taskGroup' = 'story_writing'
-        or usage_event.metadata ->> 'taskType' in ('continue', 'scene_draft', 'arc_chapter_draft', 'rewrite', 'expand', 'style_write')
-        then 'writing'
-      else 'other'
-    end as task_key,
-    case
-      when usage_event.feature_key = 'translator.access'
-        or usage_event.metadata ->> 'workflowFeature' = 'translator.access'
-        then 'Dịch truyện'
-      when usage_event.metadata ->> 'taskGroup' = 'story_chat'
-        then 'Chat truyện'
-      when usage_event.metadata ->> 'taskGroup' = 'free_chat'
-        then 'Chat tự do'
-      when usage_event.metadata ->> 'taskGroup' = 'story_planning'
-        then 'Lên kế hoạch'
-      when usage_event.metadata ->> 'taskGroup' = 'story_analysis'
-        then 'Phân tích'
-      when usage_event.metadata ->> 'action' = 'image_generation'
-        or usage_event.metadata ->> 'taskType' = 'cover_generation'
-        or usage_event.metadata ->> 'taskGroup' = 'story_publishing'
-        then 'Tạo ảnh'
-      when usage_event.metadata ->> 'taskGroup' = 'story_writing'
-        or usage_event.metadata ->> 'taskType' in ('continue', 'scene_draft', 'arc_chapter_draft', 'rewrite', 'expand', 'style_write')
-        then 'Viết truyện'
-      else 'Tác vụ khác'
-    end as task_label
+    usage_event.feature_key,
+    usage_event.metadata
   from public.usage_events usage_event
   join active_plans on active_plans.user_id = usage_event.user_id
   join public.profiles profile on profile.user_id = usage_event.user_id
   cross join normalized input
-  where (input.from_at is null or usage_event.created_at >= input.from_at)
+  where usage_event.user_id is not null
+    and (input.from_at is null or usage_event.created_at >= input.from_at)
     and (input.to_at is null or usage_event.created_at < input.to_at)
-    and (input.provider_key = '' or lower(usage_event.provider) = input.provider_key)
-    and (input.status_key = '' or lower(usage_event.status) = input.status_key)
+    and (input.provider_key = '' or usage_event.provider = input.provider_key)
+    and (input.status_key = '' or usage_event.status = input.status_key)
     and (
       input.search_text = ''
       or profile.email ilike '%' || input.search_text || '%'
       or profile.display_name ilike '%' || input.search_text || '%'
       or profile.user_id::text ilike '%' || input.search_text || '%'
     )
+    and (
+      input.task_key = 'all'
+      or (
+        input.task_key = 'translation'
+        and (
+          usage_event.feature_key = 'translator.access'
+          or usage_event.metadata ->> 'workflowFeature' = 'translator.access'
+        )
+      )
+      or (input.task_key = 'story_chat' and usage_event.metadata ->> 'taskGroup' = 'story_chat')
+      or (input.task_key = 'free_chat' and usage_event.metadata ->> 'taskGroup' = 'free_chat')
+      or (input.task_key = 'planning' and usage_event.metadata ->> 'taskGroup' = 'story_planning')
+      or (input.task_key = 'analysis' and usage_event.metadata ->> 'taskGroup' = 'story_analysis')
+      or (
+        input.task_key = 'image_generation'
+        and (
+          usage_event.metadata ->> 'action' = 'image_generation'
+          or usage_event.metadata ->> 'taskType' = 'cover_generation'
+          or usage_event.metadata ->> 'taskGroup' = 'story_publishing'
+        )
+      )
+      or (
+        input.task_key = 'writing'
+        and (
+          usage_event.metadata ->> 'taskGroup' = 'story_writing'
+          or usage_event.metadata ->> 'taskType' in ('continue', 'scene_draft', 'arc_chapter_draft', 'rewrite', 'expand', 'style_write')
+        )
+      )
+    )
 ),
 grouped as (
   select
-    candidate.user_id,
-    candidate.email,
-    candidate.display_name,
-    candidate.plan_key,
-    candidate.plan_name,
-    sum(greatest(coalesce(candidate.count, 0), 0)) as total_count,
+    filtered_usage.user_id,
+    filtered_usage.email,
+    filtered_usage.display_name,
+    filtered_usage.plan_key,
+    filtered_usage.plan_name,
+    sum(greatest(coalesce(filtered_usage.count, 0), 0)) as total_count,
     count(*) as event_count,
-    sum(case when lower(candidate.status) in ('ok', 'success') then greatest(coalesce(candidate.count, 0), 0) else 0 end) as ok_count,
-    sum(case when lower(candidate.status) in ('error', 'failed') then greatest(coalesce(candidate.count, 0), 0) else 0 end) as error_count,
-    sum(case when lower(candidate.status) in ('blocked', 'denied') then greatest(coalesce(candidate.count, 0), 0) else 0 end) as blocked_count,
-    max(candidate.created_at) as last_used_at,
-    string_agg(distinct candidate.task_label, ', ' order by candidate.task_label) as task_summary
-  from candidate
-  cross join normalized input
-  where input.task_key = 'all' or candidate.task_key = input.task_key
+    sum(case when lower(filtered_usage.status) in ('ok', 'success') then greatest(coalesce(filtered_usage.count, 0), 0) else 0 end) as ok_count,
+    sum(case when lower(filtered_usage.status) in ('error', 'failed') then greatest(coalesce(filtered_usage.count, 0), 0) else 0 end) as error_count,
+    sum(case when lower(filtered_usage.status) in ('blocked', 'denied') then greatest(coalesce(filtered_usage.count, 0), 0) else 0 end) as blocked_count,
+    max(filtered_usage.created_at) as last_used_at
+  from filtered_usage
   group by
-    candidate.user_id,
-    candidate.email,
-    candidate.display_name,
-    candidate.plan_key,
-    candidate.plan_name
+    filtered_usage.user_id,
+    filtered_usage.email,
+    filtered_usage.display_name,
+    filtered_usage.plan_key,
+    filtered_usage.plan_name
+),
+summary as (
+  select
+    count(*)::bigint as matching_user_count,
+    coalesce(sum(grouped.total_count), 0)::bigint as matching_total_count,
+    coalesce(sum(grouped.event_count), 0)::bigint as matching_event_count,
+    coalesce(sum(grouped.ok_count), 0)::bigint as matching_ok_count,
+    coalesce(sum(grouped.error_count + grouped.blocked_count), 0)::bigint as matching_issue_count,
+    max(grouped.last_used_at) as matching_last_used_at
+  from grouped
 ),
 ranked as (
   select
     row_number() over (order by grouped.total_count desc, grouped.last_used_at desc, grouped.user_id asc)::integer as rank_order,
-    count(*) over () as matching_user_count,
-    sum(grouped.total_count) over () as matching_total_count,
-    sum(grouped.event_count) over () as matching_event_count,
-    sum(grouped.ok_count) over () as matching_ok_count,
-    sum(grouped.error_count + grouped.blocked_count) over () as matching_issue_count,
-    max(grouped.last_used_at) over () as matching_last_used_at,
     grouped.*
   from grouped
+),
+limited as (
+  select ranked.*
+  from ranked
+  cross join normalized input
+  order by ranked.rank_order
+  limit (select row_limit from normalized)
 )
 select
-  ranked.rank_order,
-  ranked.user_id,
-  ranked.email,
-  ranked.display_name,
-  ranked.plan_key,
-  ranked.plan_name,
-  ranked.total_count,
-  ranked.event_count,
-  ranked.ok_count,
-  ranked.error_count,
-  ranked.blocked_count,
-  ranked.last_used_at,
-  ranked.task_summary,
-  ranked.matching_user_count,
-  ranked.matching_total_count,
-  ranked.matching_event_count,
-  ranked.matching_ok_count,
-  ranked.matching_issue_count,
-  ranked.matching_last_used_at
-from ranked
+  limited.rank_order,
+  limited.user_id,
+  limited.email,
+  limited.display_name,
+  limited.plan_key,
+  limited.plan_name,
+  limited.total_count,
+  limited.event_count,
+  limited.ok_count,
+  limited.error_count,
+  limited.blocked_count,
+  limited.last_used_at,
+  case input.task_key
+    when 'writing' then 'Viết truyện'
+    when 'translation' then 'Dịch truyện'
+    when 'story_chat' then 'Chat truyện'
+    when 'free_chat' then 'Chat tự do'
+    when 'planning' then 'Lên kế hoạch'
+    when 'analysis' then 'Phân tích'
+    when 'image_generation' then 'Tạo ảnh'
+    else 'Tất cả việc'
+  end as task_summary,
+  summary.matching_user_count,
+  summary.matching_total_count,
+  summary.matching_event_count,
+  summary.matching_ok_count,
+  summary.matching_issue_count,
+  summary.matching_last_used_at
+from limited
+cross join summary
 cross join normalized input
-order by ranked.rank_order
-limit (select row_limit from normalized);
+order by limited.rank_order;
 $$;

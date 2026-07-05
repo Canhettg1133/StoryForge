@@ -265,6 +265,7 @@ describe('admin split UI contract', () => {
       'usageRanking',
       "activeView === 'vip-ranking'",
       "onSelectView('vip-ranking')",
+      'slice(0, OVERVIEW_VIP_RANKING_LIMIT)',
     ]) {
       expect(app).toContain(sourceContract);
     }
