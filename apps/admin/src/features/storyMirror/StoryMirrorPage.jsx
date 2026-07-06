@@ -368,6 +368,24 @@ export default function StoryMirrorPage({ adminApi }) {
               ))}
             </tbody>
           </table>
+          <div className="admin-mobile-card-list story-mirror-mobile-list" aria-label="Người dùng có truyện mirror trên mobile">
+            {filteredUsers.map((user) => (
+              <button
+                type="button"
+                key={user.userId}
+                className={`admin-mobile-card story-mirror-mobile-card ${selectedUserId === user.userId ? 'is-active' : ''}`}
+                onClick={() => selectUser(user.userId)}
+              >
+                <span className="admin-mobile-card__eyebrow">{formatDate(user.lastSyncedAt)}</span>
+                <strong>{user.label}</strong>
+                <span>{user.userId}</span>
+                <div className="admin-mobile-card__meta">
+                  <span>{user.projectCount} truyện</span>
+                  <span>{formatBytes(user.storageUsedBytes)}</span>
+                </div>
+              </button>
+            ))}
+          </div>
         </section>
 
         <section className="panel panel--table">
@@ -410,6 +428,29 @@ export default function StoryMirrorPage({ adminApi }) {
               ))}
             </tbody>
           </table>
+          <div className="admin-mobile-card-list story-mirror-mobile-list" aria-label="Truyện đã lưu trên mobile">
+            {visibleProjects.map((project) => (
+              <article className={`admin-mobile-card story-mirror-mobile-card ${selectedProjectId === project.id ? 'is-active' : ''}`} key={project.id}>
+                <span className="admin-mobile-card__eyebrow">{formatDate(project.updated_at)}</span>
+                <strong>{project.title || 'Chưa đặt tên'}</strong>
+                <span>{project.user?.label || project.user_id}</span>
+                <div className="admin-mobile-card__meta">
+                  <span>{formatBytes(project.storage_used_bytes)}</span>
+                </div>
+                <div className="story-mirror-actions story-mirror-mobile-actions">
+                  <button type="button" className="button button--ghost" onClick={() => loadProjectScenes(project.id)}>
+                    <Eye size={14} /> Cảnh
+                  </button>
+                  <button type="button" className="button button--ghost" onClick={() => exportProject(project)} disabled={actionLoading === `export:${project.id}`}>
+                    <Download size={14} /> Xuất
+                  </button>
+                  <button type="button" className="button button--danger" onClick={() => deleteProject(project)} disabled={actionLoading === `delete:${project.id}`}>
+                    <Trash2 size={14} /> Xóa
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
       </div>
 
@@ -445,6 +486,21 @@ export default function StoryMirrorPage({ adminApi }) {
               ))}
             </tbody>
           </table>
+          <div className="admin-mobile-card-list story-mirror-mobile-list" aria-label="Cảnh trong truyện trên mobile">
+            {scenes.map((scene) => (
+              <article className="admin-mobile-card story-mirror-mobile-card" key={scene.id}>
+                <span className="admin-mobile-card__eyebrow">{formatDate(scene.client_updated_at)}</span>
+                <strong>{scene.title || 'Cảnh không tên'}</strong>
+                <span>{scene.content_hash}</span>
+                <div className="admin-mobile-card__meta">
+                  <span>{formatBytes(scene.size_bytes)}</span>
+                  <button type="button" className="button button--ghost" onClick={() => loadScene(scene.id)} disabled={actionLoading === `scene:${scene.id}`}>
+                    <Eye size={14} /> Xem
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
 
         <aside className="panel story-mirror-raw">

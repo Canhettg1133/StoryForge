@@ -6,10 +6,46 @@ function read(path) {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
 }
 
+const ADMIN_UI_FILES = [
+  'apps/admin/src/App.jsx',
+  'apps/admin/src/constants/navigation.js',
+  'apps/admin/src/constants/adminDefaults.js',
+  'apps/admin/src/utils/adminFormatters.js',
+  'apps/admin/src/components/ui/AdminPrimitives.jsx',
+  'apps/admin/src/layout/AdminShell.jsx',
+  'apps/admin/src/views/AdminViews.jsx',
+  'apps/admin/src/features/storyMirror/StoryMirrorPage.jsx',
+];
+
+const ADMIN_CSS_FILES = [
+  'apps/admin/src/App.css',
+  'apps/admin/src/styles/base.css',
+  'apps/admin/src/styles/shell.css',
+  'apps/admin/src/styles/components.css',
+  'apps/admin/src/styles/pages.css',
+  'apps/admin/src/styles/responsive.css',
+  'apps/admin/src/features/storyMirror/storyMirror.css',
+];
+
+function readAdminUi() {
+  return ADMIN_UI_FILES.map((file) => read(file)).join('\n');
+}
+
+function readAdminCss() {
+  return ADMIN_CSS_FILES.map((file) => read(file)).join('\n');
+}
+
+function readCssRule(css, selector) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const matches = [...css.matchAll(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`, 'g'))];
+  return matches.at(-1)?.[1] || '';
+}
+
+
 describe('admin split UI contract', () => {
   it('keeps the new admin UI shell and restores old VIP workflows inside it', () => {
-    const app = read('apps/admin/src/App.jsx');
-    const css = read('apps/admin/src/App.css');
+    const app = readAdminUi();
+    const css = readAdminCss();
 
     for (const label of [
       'Tổng quan',
@@ -53,8 +89,8 @@ describe('admin split UI contract', () => {
   });
 
   it('keeps dedicated user-list filters for role, plan, and status', () => {
-    const app = read('apps/admin/src/App.jsx');
-    const css = read('apps/admin/src/App.css');
+    const app = readAdminUi();
+    const css = readAdminCss();
 
     expect(app).toContain('const [roleFilter');
     expect(app).toContain('const [planFilter');
@@ -67,8 +103,8 @@ describe('admin split UI contract', () => {
   });
 
   it('shows a modern user management workspace with visible VIP expiry and scrollable details', () => {
-    const app = read('apps/admin/src/App.jsx');
-    const css = read('apps/admin/src/App.css');
+    const app = readAdminUi();
+    const css = readAdminCss();
 
     for (const label of [
       'Tổng người dùng',
@@ -150,8 +186,8 @@ describe('admin split UI contract', () => {
   });
 
   it('renders a readable audit workspace for non-technical admins', () => {
-    const app = read('apps/admin/src/App.jsx');
-    const css = read('apps/admin/src/App.css');
+    const app = readAdminUi();
+    const css = readAdminCss();
 
     for (const label of [
       'Nhật ký quản trị',
@@ -186,15 +222,17 @@ describe('admin split UI contract', () => {
   });
 
   it('separates user activity into its own menu page with server pagination', () => {
-    const app = read('apps/admin/src/App.jsx');
+    const app = readAdminUi();
     const api = read('apps/admin/src/adminApi.js');
-    const css = read('apps/admin/src/App.css');
+    const css = readAdminCss();
+    const baseCss = read('apps/admin/src/styles/base.css');
 
     for (const label of [
       'Hoạt động người dùng',
       'Tất cả hoạt động người dùng',
       'Tìm toàn bộ lịch sử',
       'Provider',
+      'Tìm kiếm',
       'Dòng mỗi trang',
       'Trang',
       'Áp dụng lọc',
@@ -212,6 +250,8 @@ describe('admin split UI contract', () => {
       'usagePageCursors',
       'usage-filter-grid',
       'usage-filter-control',
+      'usage-search-control',
+      'usage-control-panel',
       'loadUsagePage',
       'setUsagePageSize',
       'hasNextPage',
@@ -231,12 +271,27 @@ describe('admin split UI contract', () => {
     expect(css).toContain('.usage-page-summary');
     expect(css).toContain('.usage-filter-grid');
     expect(css).toContain('minmax(150px, 1fr)');
+    expect(css).toContain('.usage-search-control');
+    expect(baseCss).toContain('grid-template-columns: minmax(260px, 1.35fr) repeat(auto-fit, minmax(150px, 1fr))');
+    expect(readCssRule(baseCss, '.usage-search-control .search-box')).toContain('height: 44px');
+  });
+
+  it('imports VIP page normalizers wherever the VIP editor calls them', () => {
+    const views = read('apps/admin/src/views/AdminViews.jsx');
+    const formatters = read('apps/admin/src/utils/adminFormatters.js');
+    const viewAccessImport = views.match(/import\s*\{[\s\S]*?\}\s*from '@storyforge\/access';/)?.[0] || '';
+    const formatterAccessImport = formatters.match(/import\s*\{[\s\S]*?\}\s*from '@storyforge\/access';/)?.[0] || '';
+
+    expect(viewAccessImport).toContain('normalizeVipPageContent');
+    expect(formatterAccessImport).toContain('normalizeVipPageContent');
+    expect(views).toContain('const preview = normalizeVipPageContent(form)');
+    expect(formatters).toContain('return normalizeVipPageContent(getPlanMetadata(plan).vipPage)');
   });
 
   it('adds a dedicated VIP ranking page and overview preview without merging it into usage history', () => {
-    const app = read('apps/admin/src/App.jsx');
+    const app = readAdminUi();
     const api = read('apps/admin/src/adminApi.js');
-    const css = read('apps/admin/src/App.css');
+    const css = readAdminCss();
 
     for (const label of [
       'Xếp hạng VIP',
@@ -281,7 +336,7 @@ describe('admin split UI contract', () => {
   });
 
   it('keeps admin reload actions scoped and avoids stuck loading states', () => {
-    const app = read('apps/admin/src/App.jsx');
+    const app = readAdminUi();
     const api = read('apps/admin/src/adminApi.js');
 
     expect(app).toContain('const refreshActiveView');
@@ -302,7 +357,7 @@ describe('admin split UI contract', () => {
   });
 
   it('keeps the admin sidebar navigation scrollable when menus grow', () => {
-    const css = read('apps/admin/src/App.css');
+    const css = readAdminCss();
 
     expect(css).toContain('.admin-sidebar nav');
     expect(css).toContain('overflow-y: auto');
@@ -312,7 +367,7 @@ describe('admin split UI contract', () => {
   });
 
   it('does not show a confusing 0-0 usage range on empty pages', () => {
-    const app = read('apps/admin/src/App.jsx');
+    const app = readAdminUi();
 
     expect(app).toContain('usageSummaryText');
     expect(app).toContain('Chưa có hoạt động phù hợp');
@@ -321,7 +376,7 @@ describe('admin split UI contract', () => {
 
   it('keeps known admin-facing error messages in Vietnamese', () => {
     const combined = [
-      read('apps/admin/src/App.jsx'),
+      readAdminUi(),
       read('apps/admin/src/adminApi.js'),
       read('apps/admin-api-worker/src/index.js'),
       read('apps/admin-api-worker/src/storyMirror/index.js'),
@@ -343,7 +398,7 @@ describe('admin split UI contract', () => {
 
   it('does not expose new plan or feature names in the admin UI source', () => {
     const combined = [
-      read('apps/admin/src/App.jsx'),
+      readAdminUi(),
       read('apps/admin/src/adminApi.js'),
       read('packages/access/src/index.js'),
     ].join('\n');
@@ -358,7 +413,7 @@ describe('admin split UI contract', () => {
 
   it('uses Vietnamese with accents and avoids common mojibake in edited admin files', () => {
     const combined = [
-      read('apps/admin/src/App.jsx'),
+      readAdminUi(),
       read('apps/admin/src/adminApi.js'),
       read('apps/admin-api-worker/src/index.js'),
       read('docs/supabase-access-control/007_usage_user_rankings.sql'),

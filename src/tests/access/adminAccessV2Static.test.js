@@ -6,6 +6,36 @@ function read(path) {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
 }
 
+const ADMIN_UI_FILES = [
+  'apps/admin/src/App.jsx',
+  'apps/admin/src/constants/navigation.js',
+  'apps/admin/src/constants/adminDefaults.js',
+  'apps/admin/src/utils/adminFormatters.js',
+  'apps/admin/src/components/ui/AdminPrimitives.jsx',
+  'apps/admin/src/layout/AdminShell.jsx',
+  'apps/admin/src/views/AdminViews.jsx',
+  'apps/admin/src/features/storyMirror/StoryMirrorPage.jsx',
+];
+
+const ADMIN_CSS_FILES = [
+  'apps/admin/src/App.css',
+  'apps/admin/src/styles/base.css',
+  'apps/admin/src/styles/shell.css',
+  'apps/admin/src/styles/components.css',
+  'apps/admin/src/styles/pages.css',
+  'apps/admin/src/styles/responsive.css',
+  'apps/admin/src/features/storyMirror/storyMirror.css',
+];
+
+function readAdminUi() {
+  return ADMIN_UI_FILES.map((file) => read(file)).join('\n');
+}
+
+function readAdminCss() {
+  return ADMIN_CSS_FILES.map((file) => read(file)).join('\n');
+}
+
+
 describe('split admin access static contracts', () => {
   it('documents the canonical access schema and keeps the newer schema out of the deploy guide', () => {
     const schema = read('docs/supabase-access-control/001_access_control_schema.sql');
@@ -81,7 +111,7 @@ describe('split admin access static contracts', () => {
       read('src/pages/Login/Login.jsx'),
       read('src/services/access/accessControl.js'),
       read('packages/access/src/vipPageContent.js'),
-      read('apps/admin/src/App.jsx'),
+      readAdminUi(),
       read('apps/admin-api-worker/src/index.js'),
     ].join('\n');
 

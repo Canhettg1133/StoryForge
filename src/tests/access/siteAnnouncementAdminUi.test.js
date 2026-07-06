@@ -6,12 +6,42 @@ function read(path) {
   return readFileSync(resolve(process.cwd(), path), 'utf8');
 }
 
+const ADMIN_UI_FILES = [
+  'apps/admin/src/App.jsx',
+  'apps/admin/src/constants/navigation.js',
+  'apps/admin/src/constants/adminDefaults.js',
+  'apps/admin/src/utils/adminFormatters.js',
+  'apps/admin/src/components/ui/AdminPrimitives.jsx',
+  'apps/admin/src/layout/AdminShell.jsx',
+  'apps/admin/src/views/AdminViews.jsx',
+  'apps/admin/src/features/storyMirror/StoryMirrorPage.jsx',
+];
+
+const ADMIN_CSS_FILES = [
+  'apps/admin/src/App.css',
+  'apps/admin/src/styles/base.css',
+  'apps/admin/src/styles/shell.css',
+  'apps/admin/src/styles/components.css',
+  'apps/admin/src/styles/pages.css',
+  'apps/admin/src/styles/responsive.css',
+  'apps/admin/src/features/storyMirror/storyMirror.css',
+];
+
+function readAdminUi() {
+  return ADMIN_UI_FILES.map((file) => read(file)).join('\n');
+}
+
+function readAdminCss() {
+  return ADMIN_CSS_FILES.map((file) => read(file)).join('\n');
+}
+
+
 const MOJIBAKE_PATTERN = /\u0102|\u00c6|\u00e1\u00ba|\u00e1\u00bb|\u00e2\u20ac|\u00c4|\u00c5|\ufffd/u;
 
 describe('site announcement admin UI contract', () => {
   it('exposes the announcement admin workflow without adding plan concepts', () => {
-    const app = read('apps/admin/src/App.jsx');
-    const css = read('apps/admin/src/App.css');
+    const app = readAdminUi();
+    const css = readAdminCss();
     const api = read('apps/admin/src/adminApi.js');
 
     for (const label of [
@@ -34,8 +64,8 @@ describe('site announcement admin UI contract', () => {
 
   it('keeps new announcement copy in valid Vietnamese UTF-8', () => {
     const combined = [
-      read('apps/admin/src/App.jsx'),
-      read('apps/admin/src/App.css'),
+      readAdminUi(),
+      readAdminCss(),
       read('apps/admin-api-worker/src/index.js'),
       read('packages/access/src/siteAnnouncement.js'),
       read('src/components/siteAnnouncement/SiteAnnouncementCenter.jsx'),
