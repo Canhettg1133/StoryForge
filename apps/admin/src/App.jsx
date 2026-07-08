@@ -11,7 +11,6 @@ import {
   DEFAULT_USAGE_FILTERS,
   DEFAULT_USAGE_PAGE_SIZE,
   DEFAULT_VIP_RANKING_FILTERS,
-  OVERVIEW_VIP_RANKING_LIMIT,
 } from './constants/adminDefaults.js';
 import { NAV_GROUPS } from './constants/navigation.js';
 import { ConfirmDialog, ErrorState } from './components/ui/AdminPrimitives.jsx';
@@ -72,9 +71,6 @@ export default function App() {
   const [vipRanking, setVipRanking] = useState(EMPTY_VIP_RANKING);
   const [vipRankingLoading, setVipRankingLoading] = useState(false);
   const [vipRankingError, setVipRankingError] = useState('');
-  const [overviewRanking, setOverviewRanking] = useState(EMPTY_VIP_RANKING);
-  const [overviewRankingLoading, setOverviewRankingLoading] = useState(false);
-  const [overviewRankingError, setOverviewRankingError] = useState('');
   const [activeView, setActiveView] = useState('overview');
   const [selectedUserId, setSelectedUserId] = useState('');
   const [loading, setLoading] = useState(false);
@@ -108,18 +104,14 @@ export default function App() {
     try {
       const viewToLoad = typeof view === 'string' ? view : activeView;
       if (viewToLoad === 'overview') {
-        const [users, audit, usage] = await Promise.all([
-          adminApi.users(),
-          adminApi.audit(),
-          adminApi.usage({ page: 1, pageSize: DEFAULT_USAGE_PAGE_SIZE }),
-        ]);
+        const overview = await adminApi.overview();
         setData((current) => ({
           ...current,
-          users: users.users || users.items || [],
-          audit: audit.items || [],
-          usage: usage.items || [],
+          users: overview.users?.items || [],
+          audit: overview.audit?.items || [],
+          usage: [],
         }));
-        setUsagePagination(usage.pagination || EMPTY_USAGE_PAGINATION);
+        setUsagePagination(EMPTY_USAGE_PAGINATION);
         setUsagePageCursors(EMPTY_USAGE_PAGE_CURSORS);
         setUsageError('');
         return;
@@ -291,27 +283,6 @@ export default function App() {
     }
   }, [adminApi]);
 
-  const loadOverviewRanking = useCallback(async () => {
-    setOverviewRankingLoading(true);
-    setOverviewRankingError('');
-    try {
-      const ranking = await adminApi.usageRanking({
-        ...DEFAULT_VIP_RANKING_FILTERS,
-        limit: OVERVIEW_VIP_RANKING_LIMIT,
-      });
-      setOverviewRanking({
-        ...EMPTY_VIP_RANKING,
-        ...ranking,
-        items: ranking.items || [],
-        summary: ranking.summary || EMPTY_VIP_RANKING.summary,
-      });
-    } catch (error) {
-      setOverviewRankingError(error.message || 'Không tải được Top VIP 30 ngày.');
-    } finally {
-      setOverviewRankingLoading(false);
-    }
-  }, [adminApi]);
-
   useEffect(() => {
     if (!isSupabaseConfigured()) return undefined;
     const client = getSupabaseClient();
@@ -348,9 +319,8 @@ export default function App() {
 
   useEffect(() => {
     if (!session || !actor) return;
-    if (activeView === 'overview') loadOverviewRanking();
     if (activeView === 'vip-ranking') loadVipRanking(DEFAULT_VIP_RANKING_FILTERS);
-  }, [activeView, actor, loadOverviewRanking, loadVipRanking, session]);
+  }, [activeView, actor, loadVipRanking, session]);
 
   const login = async () => {
     setAuthLoading(true);
@@ -378,9 +348,6 @@ export default function App() {
     setVipRanking(EMPTY_VIP_RANKING);
     setVipRankingLoading(false);
     setVipRankingError('');
-    setOverviewRanking(EMPTY_VIP_RANKING);
-    setOverviewRankingLoading(false);
-    setOverviewRankingError('');
   };
 
   const openMutationConfirm = (config) => {
@@ -390,10 +357,7 @@ export default function App() {
 
   const refreshActiveView = useCallback(async () => {
     if (activeView === 'overview') {
-      await Promise.all([
-        loadAdminData('overview'),
-        loadOverviewRanking(),
-      ]);
+      await loadAdminData('overview');
       return;
     }
 
@@ -417,7 +381,6 @@ export default function App() {
   }, [
     activeView,
     loadAdminData,
-    loadOverviewRanking,
     loadUsagePage,
     loadVipRanking,
     usageFilters,
@@ -452,9 +415,6 @@ export default function App() {
           data={data}
           apiBaseUrl={adminApi.baseUrl}
           onSelectView={setActiveView}
-          ranking={overviewRanking}
-          rankingLoading={overviewRankingLoading}
-          rankingError={overviewRankingError}
         />
       );
     }
@@ -490,7 +450,6 @@ export default function App() {
     return <AdvancedPanel data={data} onMutation={openMutationConfirm} apiBaseUrl={adminApi.baseUrl} actor={actor} />;
   })();
   const reloadLoading = loading
-    || (activeView === 'overview' && overviewRankingLoading)
     || (activeView === 'vip-ranking' && vipRankingLoading)
     || (activeView === 'usage' && usageLoading);
 

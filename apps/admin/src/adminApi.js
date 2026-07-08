@@ -97,6 +97,7 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
   return {
     baseUrl: normalizedBaseUrl,
     me: () => request('/me'),
+    overview: () => request('/overview'),
     users: () => request('/users'),
     catalog: () => request('/catalog'),
     audit: () => request('/audit'),

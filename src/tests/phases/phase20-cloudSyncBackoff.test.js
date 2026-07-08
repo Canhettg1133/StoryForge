@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   clearCloudAutoSyncBackoff,
+  clearCloudAutoSyncCooldown,
   getCloudAutoSyncBackoffUntil,
+  getCloudAutoSyncCooldownUntil,
   isCloudAutoSyncBackoffActive,
+  isCloudAutoSyncCooldownActive,
+  noteCloudAutoSyncSuccess,
   noteCloudAutoSyncFailure,
 } from '../../components/cloud/CloudAutoSyncAgent.jsx';
+import {
+  releaseCloudSyncLock,
+  tryAcquireCloudSyncLock,
+} from '../../services/cloud/cloudAutoSyncService.js';
 import {
   createSupabaseFetchWithTimeout as createAppSupabaseFetchWithTimeout,
 } from '../../services/cloud/supabaseClient.js';
@@ -25,6 +33,43 @@ describe('phase20 cloud sync outage protection', () => {
 
     clearCloudAutoSyncBackoff();
     expect(isCloudAutoSyncBackoffActive(300_999)).toBe(false);
+  });
+
+  it('uses progressive 5m, 10m, and 30m auto sync failure backoff by default', () => {
+    clearCloudAutoSyncBackoff();
+
+    expect(noteCloudAutoSyncFailure(1_000)).toBe(301_000);
+    expect(noteCloudAutoSyncFailure(301_000)).toBe(901_000);
+    expect(noteCloudAutoSyncFailure(901_000)).toBe(2_701_000);
+
+    clearCloudAutoSyncBackoff();
+  });
+
+  it('cools down successful auto sync triggers for five minutes', () => {
+    clearCloudAutoSyncCooldown();
+
+    const cooldownUntil = noteCloudAutoSyncSuccess(1_000);
+
+    expect(cooldownUntil).toBe(301_000);
+    expect(getCloudAutoSyncCooldownUntil()).toBe(301_000);
+    expect(isCloudAutoSyncCooldownActive(300_999)).toBe(true);
+    expect(isCloudAutoSyncCooldownActive(301_000)).toBe(false);
+
+    clearCloudAutoSyncCooldown();
+  });
+
+  it('uses a localStorage lock so multiple tabs do not sync at the same time', () => {
+    localStorage.clear();
+
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-a', now: 1_000, ttlMs: 60_000 })).toBe(true);
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-b', now: 2_000, ttlMs: 60_000 })).toBe(false);
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-a', now: 3_000, ttlMs: 60_000 })).toBe(true);
+
+    releaseCloudSyncLock('tab-b');
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-b', now: 4_000, ttlMs: 60_000 })).toBe(false);
+
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-b', now: 62_000, ttlMs: 60_000 })).toBe(true);
+    releaseCloudSyncLock('tab-b');
   });
 
   it.each([

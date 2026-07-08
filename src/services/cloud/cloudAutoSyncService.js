@@ -16,8 +16,60 @@ import { getSession } from './cloudAuthService.js';
 
 const PREFS_KEY = 'sf-cloud-sync-prefs';
 const STATUS_EVENT = 'storyforge:cloud-sync-status';
+const CLOUD_SYNC_LOCK_KEY = 'cloudSyncLock';
+const CLOUD_SYNC_LOCK_TTL_MS = 90 * 1000;
 
 let cyclePromise = null;
+let cloudSyncOwnerId = '';
+
+function getCloudSyncOwnerId() {
+  if (cloudSyncOwnerId) return cloudSyncOwnerId;
+  const randomPart = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+  cloudSyncOwnerId = `tab-${Date.now()}-${randomPart}`;
+  return cloudSyncOwnerId;
+}
+
+function readCloudSyncLock() {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return null;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CLOUD_SYNC_LOCK_KEY) || 'null');
+    if (!parsed || typeof parsed !== 'object') return null;
+    return {
+      owner: String(parsed.owner || ''),
+      expiresAt: Number(parsed.expiresAt || 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function tryAcquireCloudSyncLock({
+  owner = getCloudSyncOwnerId(),
+  now = Date.now(),
+  ttlMs = CLOUD_SYNC_LOCK_TTL_MS,
+} = {}) {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return true;
+  const normalizedOwner = String(owner || getCloudSyncOwnerId());
+  const current = readCloudSyncLock();
+  const currentActive = current?.owner && Number(current.expiresAt || 0) > Number(now || 0);
+  if (currentActive && current.owner !== normalizedOwner) return false;
+  if (currentActive && current.owner === normalizedOwner) return true;
+
+  localStorage.setItem(CLOUD_SYNC_LOCK_KEY, JSON.stringify({
+    owner: normalizedOwner,
+    expiresAt: Number(now || 0) + Number(ttlMs || CLOUD_SYNC_LOCK_TTL_MS),
+  }));
+  return true;
+}
+
+export function releaseCloudSyncLock(owner = getCloudSyncOwnerId()) {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') return;
+  const current = readCloudSyncLock();
+  if (!current?.owner || current.owner !== String(owner || '')) return;
+  localStorage.removeItem(CLOUD_SYNC_LOCK_KEY);
+}
 
 function readPrefs() {
   if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
@@ -333,6 +385,27 @@ export async function runAutoSyncCycle(options = {}) {
     return cyclePromise;
   }
 
+  const lockOwner = String(options.lockOwner || getCloudSyncOwnerId());
+  const lockAcquired = tryAcquireCloudSyncLock({
+    owner: lockOwner,
+    ttlMs: options.lockTtlMs || CLOUD_SYNC_LOCK_TTL_MS,
+  });
+  if (!lockAcquired) {
+    const prefs = readPrefs();
+    const result = {
+      signedIn: false,
+      autoSyncEnabled: prefs.autoSyncEnabled,
+      uploadedCount: 0,
+      pendingUploads: [],
+      conflicts: [],
+      lastRunAt: prefs.lastRunAt,
+      reason: 'locked',
+      skipped: true,
+    };
+    emitStatus(result);
+    return result;
+  }
+
   cyclePromise = (async () => {
     const prefs = readPrefs();
     const session = await getSession();
@@ -399,6 +472,7 @@ export async function runAutoSyncCycle(options = {}) {
     return await cyclePromise;
   } finally {
     cyclePromise = null;
+    releaseCloudSyncLock(lockOwner);
   }
 }
 
@@ -419,5 +493,7 @@ export default {
   saveCloudSyncPreferences,
   scanCloudSyncState,
   runAutoSyncCycle,
+  tryAcquireCloudSyncLock,
+  releaseCloudSyncLock,
   subscribeCloudSyncStatus,
 };

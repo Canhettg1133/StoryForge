@@ -11,7 +11,6 @@ export const EMPTY_DATA = {
 
 export const DEFAULT_USAGE_PAGE_SIZE = 100;
 export const DEFAULT_VIP_RANKING_LIMIT = 20;
-export const OVERVIEW_VIP_RANKING_LIMIT = 5;
 
 export const EMPTY_USAGE_PAGINATION = {
   page: 1,

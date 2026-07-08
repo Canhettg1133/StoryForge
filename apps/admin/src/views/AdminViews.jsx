@@ -38,7 +38,6 @@ import {
   DEFAULT_USAGE_PAGE_SIZE,
   DEFAULT_VIP_RANKING_FILTERS,
   EMPTY_VIP_RANKING,
-  OVERVIEW_VIP_RANKING_LIMIT,
   RANKING_LIMIT_OPTIONS,
   RANKING_PLAN_OPTIONS,
   RANKING_RANGE_OPTIONS,
@@ -86,8 +85,10 @@ import {
   toPrettyJson,
 } from '../utils/adminFormatters.js';
 
-function OverviewRankingPreview({ ranking, loading, error, onSelectView }) {
-  const items = (ranking?.items || []).slice(0, OVERVIEW_VIP_RANKING_LIMIT);
+function OverviewDeferredReports({ onSelectView }) {
+  const error = '';
+  const loading = false;
+  const items = [];
 
   return (
     <section className="panel overview-ranking-panel">
@@ -127,7 +128,7 @@ function OverviewRankingPreview({ ranking, loading, error, onSelectView }) {
   );
 }
 
-export function OverviewPanel({ data, apiBaseUrl, onSelectView, ranking, rankingLoading, rankingError }) {
+export function OverviewPanel({ data, apiBaseUrl, onSelectView }) {
   const activeUsers = data.users.filter((user) => String(user.status || 'active') === 'active').length;
   const vipUsers = data.users.filter((user) => ['vip', 'lifetime'].includes(getCurrentUserPlanKey(user))).length;
   const auditToday = data.audit.filter((item) => isToday(item.created_at)).length;
@@ -149,12 +150,7 @@ export function OverviewPanel({ data, apiBaseUrl, onSelectView, ranking, ranking
         <Metric label="Thao tác hôm nay" value={auditToday} icon={FileClock} tone="info" />
         <Metric label="Lỗi usage gần đây" value={usageErrors} icon={AlertTriangle} tone={usageErrors > 0 ? 'danger' : 'success'} />
       </div>
-      <OverviewRankingPreview
-        ranking={ranking}
-        loading={rankingLoading}
-        error={rankingError}
-        onSelectView={onSelectView}
-      />
+      <OverviewDeferredReports onSelectView={onSelectView} />
       <section className="panel">
         <header className="panel-header">
           <h2>Nhật ký mới</h2>

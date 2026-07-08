@@ -51,9 +51,12 @@ const MAX_USAGE_RANKING_LIMIT = 50;
 const DEFAULT_USAGE_RANKING_RANGE = '30d';
 const USAGE_RANKING_CACHE_TTL_MS = 60_000;
 const USAGE_RANKING_CACHE_MAX_ENTRIES = 100;
+const ACTOR_CACHE_TTL_MS = 60_000;
 const RESPONSE_HEADERS = Symbol('responseHeaders');
 const usageRankingCache = new Map();
 const usageRankingInflight = new Map();
+const actorCache = new Map();
+let actorCacheFetchRef = null;
 const PROFILE_SELECT = 'user_id,email,display_name,system_role,status,metadata,created_at,updated_at';
 const PLAN_SELECT = 'id,key,name,description,active,sort_order,metadata,created_at,updated_at';
 const FEATURE_SELECT = 'key,name,description,category,active,metadata,created_at,updated_at';
@@ -62,6 +65,7 @@ const USER_PLAN_SELECT = 'id,user_id,plan_id,status,starts_at,expires_at,created
 const OVERRIDE_SELECT = 'id,user_id,feature_key,enabled,reason,limit_json,metadata,expires_at,revoked_at,granted_by,created_at,updated_at';
 const CONSENT_SELECT = 'id,key,version,title,body,active,effective_at,created_at';
 const USAGE_SELECT = 'id,request_id,user_id,feature_key,provider,model,event_type,count,status,metadata,created_at';
+const OVERVIEW_PROFILE_SELECT = 'user_id,email,display_name,system_role,status,updated_at,created_at';
 
 const ROUTE_PERMISSIONS = {
   users: ADMIN_PERMISSIONS.USERS_READ,
@@ -77,6 +81,12 @@ function makeError(status, code, message) {
   error.status = status;
   error.code = code;
   return error;
+}
+
+function envFlagEnabled(env, name, fallback = true) {
+  const raw = env?.[name];
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  return String(raw).trim().toLowerCase() !== 'false';
 }
 
 function trimTrailingSlash(value) {
@@ -153,6 +163,43 @@ function getBearerToken(request) {
   const header = String(request.headers.get('Authorization') || '').trim();
   const match = header.match(/^Bearer\s+(.+)$/iu);
   return match ? match[1].trim() : '';
+}
+
+function resetActorCacheIfFetchChanged() {
+  if (actorCacheFetchRef === globalThis.fetch) return;
+  actorCache.clear();
+  actorCacheFetchRef = globalThis.fetch;
+}
+
+function getActorCacheKey(token) {
+  const value = String(token || '');
+  return `${value.length}:${value.slice(0, 12)}:${value.slice(-12)}`;
+}
+
+function getCachedActor(token) {
+  resetActorCacheIfFetchChanged();
+  const entry = actorCache.get(getActorCacheKey(token));
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    actorCache.delete(getActorCacheKey(token));
+    return null;
+  }
+  return {
+    ...entry.actor,
+    profile: { ...(entry.actor.profile || {}) },
+  };
+}
+
+function setCachedActor(token, actor) {
+  resetActorCacheIfFetchChanged();
+  const cacheKey = getActorCacheKey(token);
+  actorCache.set(cacheKey, {
+    expiresAt: Date.now() + ACTOR_CACHE_TTL_MS,
+    actor: {
+      ...actor,
+      profile: { ...(actor.profile || {}) },
+    },
+  });
 }
 
 async function readSupabaseJson(response) {
@@ -299,8 +346,9 @@ function getPaginationFromUrl(url, { defaultPageSize = DEFAULT_USAGE_PAGE_SIZE, 
 }
 
 function normalizeUsageSearch(value) {
-  return String(value || '')
-    .trim()
+  const raw = String(value || '').trim();
+  if (raw.length < 3 && !looksLikeUuid(raw)) return '';
+  return raw
     .replace(/[*,(){}]/gu, ' ')
     .replace(/\s+/gu, '*')
     .slice(0, 80);
@@ -438,6 +486,10 @@ function toSafeNumber(value) {
 function cleanPath(url) {
   const pathname = url.pathname.replace(/^\/api\/admin(?=\/|$)/u, '') || '/';
   return pathname.replace(/^\/+|\/+$/gu, '').split('/').filter(Boolean);
+}
+
+function shouldCacheActorForRequest(request) {
+  return request.method === 'GET';
 }
 
 function getClientIp(request) {
@@ -719,10 +771,15 @@ async function insertProfileFromAuth(config, authUser) {
   return Array.isArray(rows) ? rows[0] || null : rows;
 }
 
-async function authenticate(request, config) {
+async function authenticate(request, config, { allowCache = false } = {}) {
   const token = getBearerToken(request);
   if (!token) {
     throw makeError(401, 'ADMIN_AUTH_REQUIRED', 'Bạn cần đăng nhập trước khi dùng Admin API.');
+  }
+
+  if (allowCache) {
+    const cachedActor = getCachedActor(token);
+    if (cachedActor) return cachedActor;
   }
 
   const response = await fetch(`${config.supabaseUrl}/auth/v1/user`, {
@@ -756,10 +813,12 @@ async function authenticate(request, config) {
     throw makeError(403, 'ADMIN_PERMISSION_DENIED', 'Bạn không có quyền truy cập Admin API.');
   }
 
-  return {
+  const actor = {
     ...buildActorFromProfile(authUser, profile),
     profile,
   };
+  if (allowCache) setCachedActor(token, actor);
+  return actor;
 }
 
 function requirePermission(actor, permission) {
@@ -902,6 +961,54 @@ async function listAuditLogs(config, actor, url) {
   return {
     items: items.map((row) => enrichAuditLog(row, profileMap)),
   };
+}
+
+async function getOverview(config, actor) {
+  requirePermission(actor, ADMIN_PERMISSIONS.USERS_READ);
+  const startedAt = Date.now();
+  const [profiles, auditRows] = await Promise.all([
+    supabaseRest(config, PROFILES_TABLE, {
+      query: `select=${OVERVIEW_PROFILE_SELECT}&order=updated_at.desc&limit=25`,
+      prefer: '',
+    }),
+    supabaseRest(config, AUDIT_TABLE, {
+      query: 'select=id,actor_user_id,action,target_user_id,target_feature_key,before_json,after_json,actor_snapshot,target_snapshot,action_summary,change_summary,resource_label,ip_address,user_agent,created_at&order=created_at.desc&limit=5',
+      prefer: '',
+    }),
+  ]);
+  const userItems = Array.isArray(profiles) ? profiles : [];
+  const auditItems = Array.isArray(auditRows) ? auditRows : [];
+  const profileMap = await getProfilesMapForRows(config, auditItems, ['actor_user_id', 'target_user_id']);
+  const byRole = {};
+  const byStatus = {};
+  for (const user of userItems) {
+    const role = normalizeRole(user.system_role);
+    const status = normalizeStatus(user.status);
+    byRole[role] = (byRole[role] || 0) + 1;
+    byStatus[status] = (byStatus[status] || 0) + 1;
+  }
+  const payload = {
+    ok: true,
+    actor: actorToSnapshot(actor),
+    users: {
+      items: userItems,
+      summary: {
+        total: userItems.length,
+        byRole,
+        byStatus,
+      },
+    },
+    audit: {
+      items: auditItems.map((row) => enrichAuditLog(row, profileMap)),
+    },
+    service: {
+      ok: true,
+      name: 'storyforge-admin-api',
+    },
+  };
+  return withResponseHeaders(payload, {
+    'Server-Timing': `overview-db;dur=${Math.max(0, Date.now() - startedAt)};desc="miss"`,
+  });
 }
 
 function getProviderLabel(provider) {
@@ -1095,14 +1202,14 @@ async function listUsageEvents(config, actor, url) {
   const knownTotal = toBoundedInteger(url.searchParams.get('knownTotal'), 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
   const { payload: rows, headers } = await supabaseRestResult(config, USAGE_TABLE, {
     query: query.toString(),
-    prefer: cursorMode && knownTotal > 0 ? '' : 'count=exact',
+    prefer: '',
   });
   const fetchedItems = Array.isArray(rows) ? rows : [];
   const items = fetchedItems.slice(0, pagination.pageSize);
   const profileMap = await getProfilesMapForRows(config, items, ['user_id']);
-  const total = cursorMode && knownTotal > 0
+  const total = knownTotal > 0
     ? knownTotal
-    : parseContentRangeTotal(headers, pagination.offset + items.length);
+    : pagination.offset + items.length + (fetchedItems.length > items.length ? 1 : 0);
   const totalPages = total > 0 ? Math.ceil(total / pagination.pageSize) : 0;
   const hasExtraRow = fetchedItems.length > items.length;
   const nextCursor = hasExtraRow && items.length > 0 ? encodeUsageCursor(items[items.length - 1]) : '';
@@ -1804,6 +1911,10 @@ async function routeRequest(request, config, actor, env = {}) {
     return { ok: true, actor };
   }
 
+  if (resource === 'overview' && request.method === 'GET') {
+    return getOverview(config, actor);
+  }
+
   if (resource === 'story-mirror') {
     return routeStoryMirrorAdmin({
       request,
@@ -1886,10 +1997,19 @@ async function routeRequest(request, config, actor, env = {}) {
   }
 
   if (resource === 'usage' && id === 'ranking' && request.method === 'GET') {
+    if (!envFlagEnabled(env, 'ADMIN_RANKING_ENABLED')) {
+      throw makeError(503, 'ADMIN_RANKING_DISABLED', 'Bảng xếp hạng VIP tạm tắt để bảo trì.');
+    }
     return listUsageRanking(config, actor, url);
   }
 
   if (resource === 'usage' && request.method === 'GET') {
+    if (!envFlagEnabled(env, 'ADMIN_USAGE_ENABLED')) {
+      throw makeError(503, 'ADMIN_USAGE_DISABLED', 'Trang usage tạm tắt để bảo trì.');
+    }
+    if (!envFlagEnabled(env, 'ADMIN_USAGE_SEARCH_ENABLED') && String(url.searchParams.get('q') || '').trim()) {
+      throw makeError(503, 'ADMIN_USAGE_SEARCH_DISABLED', 'Tìm kiếm usage tạm tắt để bảo trì.');
+    }
     return listUsageEvents(config, actor, url);
   }
 
@@ -1919,7 +2039,9 @@ async function handle(request, env = {}) {
   }
 
   try {
-    const actor = await authenticate(request, config);
+    const actor = await authenticate(request, config, {
+      allowCache: shouldCacheActorForRequest(request),
+    });
     const payload = await routeRequest(request, config, actor, env);
     return json(payload, 200, cors, getResponseHeaders(payload));
   } catch (error) {

@@ -153,6 +153,75 @@ describe('phase12 admin API worker', () => {
     expect(payload.items).toEqual([]);
   });
 
+  it('serves a lightweight overview without loading usage history or ranking', async () => {
+    const { calls } = mockAuthAndActor({ role: 'admin', id: 'admin-1' }, async (target) => {
+      if (target.includes('/rest/v1/profiles')) {
+        const query = new URL(target).searchParams;
+        expect(query.get('select')).toContain('user_id,email,display_name,system_role,status,updated_at,created_at');
+        expect(query.get('limit')).toBe('25');
+        return jsonResponse([{
+          user_id: 'admin-1',
+          email: 'admin-1@example.com',
+          display_name: 'Admin',
+          system_role: 'admin',
+          status: 'active',
+          updated_at: '2026-07-03T12:00:00.000Z',
+          created_at: '2026-07-01T12:00:00.000Z',
+        }]);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs')) {
+        const query = new URL(target).searchParams;
+        expect(query.get('limit')).toBe('5');
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/overview'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Server-Timing')).toContain('overview-db');
+    expect(payload.actor.email).toBe('admin-1@example.com');
+    expect(payload.users.summary.total).toBe(1);
+    expect(payload.audit.items).toEqual([]);
+    expect(calls.some((call) => call.url.includes('/rest/v1/usage_events'))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/rest/v1/rpc/admin_usage_user_rankings'))).toBe(false);
+  });
+
+  it('caches admin actors for read routes and revalidates before mutations', async () => {
+    const { calls } = mockAuthAndActor({ role: 'admin', id: 'admin-1' }, async (target, init = {}) => {
+      if (target.includes('/rest/v1/admin_audit_logs') && (init.method || 'GET') === 'GET') {
+        return jsonResponse([]);
+      }
+      if (target.includes('/rest/v1/features') && init.method === 'POST') {
+        return jsonResponse([{ key: 'feature.test' }]);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs') && init.method === 'POST') {
+        return jsonResponse([{ id: 'audit-1' }]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const first = await adminWorker.fetch(authedRequest('/audit'), createEnv());
+    const second = await adminWorker.fetch(authedRequest('/audit'), createEnv());
+    const mutation = await adminWorker.fetch(authedRequest('/features', {
+      method: 'POST',
+      body: JSON.stringify({
+        key: 'feature.test',
+        name: 'Feature Test',
+        description: '',
+        category: 'test',
+        active: true,
+      }),
+    }), createEnv());
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(mutation.status).toBe(200);
+    expect(calls.filter((call) => call.url.includes('/auth/v1/user'))).toHaveLength(2);
+  });
+
   it('uses profiles.system_role over stale auth metadata', async () => {
     mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
       if (target.includes('/rest/v1/admin_audit_logs')) {
@@ -354,13 +423,13 @@ describe('phase12 admin API worker', () => {
     expect(JSON.stringify(payload)).not.toContain('service-role-key');
   });
 
-  it('paginates usage events and returns total count metadata', async () => {
+  it('paginates usage events without exact counts by default', async () => {
     mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target, init = {}) => {
       if (target.includes('/rest/v1/usage_events')) {
         expect(target).toContain('limit=51');
         expect(target).toContain('offset=100');
         expect(target).toContain('order=created_at.desc%2Cid.desc');
-        expect(init.headers?.Prefer).toBe('count=exact');
+        expect(init.headers?.Prefer).toBeUndefined();
         return new Response(JSON.stringify([
           {
             id: 'usage-page-3',
@@ -405,12 +474,12 @@ describe('phase12 admin API worker', () => {
     expect(payload.pagination).toMatchObject({
       page: 3,
       pageSize: 50,
-      total: 33463,
-      totalPages: 670,
+      total: 101,
+      totalPages: 3,
       hasPreviousPage: true,
       mode: 'offset',
     });
-    expect(payload.pagination.hasNextPage).toBe(true);
+    expect(payload.pagination.hasNextPage).toBe(false);
   });
 
   it('uses cursor pagination for deeper usage pages without offset', async () => {
@@ -568,6 +637,59 @@ describe('phase12 admin API worker', () => {
       id: 'usage-filtered',
       email: 'reader@example.com',
     });
+  });
+
+  it('ignores short usage searches instead of running broad ilike filters', async () => {
+    const { calls } = mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/usage_events')) {
+        const query = new URL(target).searchParams;
+        expect(query.get('or')).toBeNull();
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/usage?page=1&pageSize=50&q=ab'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items).toEqual([]);
+    expect(calls.some((call) => call.url.includes('/rest/v1/profiles') && call.url.includes('or='))).toBe(false);
+  });
+
+  it('honors admin kill switches for usage, usage search, and VIP ranking', async () => {
+    const usageOff = mockAuthAndActor({ role: 'support', id: 'support-1' });
+    const usageOffResponse = await adminWorker.fetch(
+      authedRequest('/usage?page=1&pageSize=50'),
+      createEnv({ ADMIN_USAGE_ENABLED: 'false' }),
+    );
+    const usageOffPayload = await usageOffResponse.json();
+
+    expect(usageOffResponse.status).toBe(503);
+    expect(usageOffPayload.code).toBe('ADMIN_USAGE_DISABLED');
+    expect(usageOff.calls.some((call) => call.url.includes('/rest/v1/usage_events'))).toBe(false);
+
+    const searchOff = mockAuthAndActor({ role: 'support', id: 'support-1' });
+    const searchOffResponse = await adminWorker.fetch(
+      authedRequest('/usage?page=1&pageSize=50&q=reader@example.com'),
+      createEnv({ ADMIN_USAGE_SEARCH_ENABLED: 'false' }),
+    );
+    const searchOffPayload = await searchOffResponse.json();
+
+    expect(searchOffResponse.status).toBe(503);
+    expect(searchOffPayload.code).toBe('ADMIN_USAGE_SEARCH_DISABLED');
+    expect(searchOff.calls.some((call) => call.url.includes('/rest/v1/usage_events'))).toBe(false);
+
+    const rankingOff = mockAuthAndActor({ role: 'support', id: 'support-1' });
+    const rankingOffResponse = await adminWorker.fetch(
+      authedRequest('/usage/ranking?range=30d'),
+      createEnv({ ADMIN_RANKING_ENABLED: 'false' }),
+    );
+    const rankingOffPayload = await rankingOffResponse.json();
+
+    expect(rankingOffResponse.status).toBe(503);
+    expect(rankingOffPayload.code).toBe('ADMIN_RANKING_DISABLED');
+    expect(rankingOff.calls.some((call) => call.url.includes('/rest/v1/rpc/admin_usage_user_rankings'))).toBe(false);
   });
 
   it('loads VIP usage rankings through the aggregate RPC instead of scanning usage pages', async () => {

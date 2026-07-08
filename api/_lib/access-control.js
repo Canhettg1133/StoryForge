@@ -13,8 +13,35 @@ import { getSupabaseAdminClient, getSupabaseAdminConfig } from './supabaseAdmin.
 
 export { ACCESS_FEATURES, ACCESS_REASONS, SYSTEM_ROLES };
 
+const ACCESS_GLOBAL_CATALOG_TTL_MS = 5 * 60 * 1000;
+const ACCESS_USER_SNAPSHOT_TTL_MS = 120 * 1000;
+
+let globalAccessCatalogCache = null;
+const userAccessDataCache = new Map();
+
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function isAccessCacheEnabled() {
+  return String(process.env.ACCESS_CACHE_ENABLED || 'true').trim().toLowerCase() !== 'false';
+}
+
+function cloneJson(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function cloneAccessData(value) {
+  return cloneJson(value);
+}
+
+async function readSupabaseData(query, fallbackCode) {
+  return throwOnError(await query, fallbackCode);
+}
+
+export function clearAccessRuntimeCaches() {
+  globalAccessCatalogCache = null;
+  userAccessDataCache.clear();
 }
 
 function normalizeEmail(user) {
@@ -50,6 +77,61 @@ function mapUserPlan(row) {
     plan_key: row?.plans?.key || row?.plan_key || '',
     plan_name: row?.plans?.name || '',
   };
+}
+
+async function getAccessVersion(supabase, userId) {
+  const accessVersion = await readSupabaseData(
+    supabase
+      .from('access_versions')
+      .select('version,updated_at')
+      .eq('user_id', userId)
+      .maybeSingle(),
+  );
+  return accessVersion?.version || 1;
+}
+
+function getCachedUserAccessData(userId, accessVersion, profileInput = null) {
+  const entry = userAccessDataCache.get(`${userId}:${accessVersion}`);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    userAccessDataCache.delete(`${userId}:${accessVersion}`);
+    return null;
+  }
+  const accessData = cloneAccessData(entry.accessData);
+  if (profileInput) {
+    accessData.profile = profileInput;
+  }
+  return accessData;
+}
+
+function setCachedUserAccessData(userId, accessVersion, accessData) {
+  userAccessDataCache.set(`${userId}:${accessVersion}`, {
+    expiresAt: Date.now() + ACCESS_USER_SNAPSHOT_TTL_MS,
+    accessData: cloneAccessData(accessData),
+  });
+}
+
+async function getGlobalAccessCatalog(supabase) {
+  if (globalAccessCatalogCache?.expiresAt > Date.now()) {
+    return cloneAccessData(globalAccessCatalogCache.catalog);
+  }
+
+  const [features, planFeatures, consentVersions] = await Promise.all([
+    readSupabaseData(supabase.from('features').select('*')),
+    readSupabaseData(supabase.from('plan_features').select('*')),
+    readSupabaseData(supabase.from('consent_versions').select('*').eq('active', true)),
+  ]);
+
+  const catalog = {
+    features: asArray(features),
+    planFeatures: asArray(planFeatures),
+    consentVersions: asArray(consentVersions),
+  };
+  globalAccessCatalogCache = {
+    expiresAt: Date.now() + ACCESS_GLOBAL_CATALOG_TTL_MS,
+    catalog: cloneAccessData(catalog),
+  };
+  return catalog;
 }
 
 async function throwOnError(result, fallbackCode = 'SUPABASE_QUERY_FAILED') {
@@ -168,7 +250,7 @@ export async function authenticateRequest(req, { ensureUserProfile = true } = {}
   };
 }
 
-export async function buildAccessData(supabase, user, profileInput = null) {
+async function buildAccessDataUncached(supabase, user, profileInput = null) {
   const profile = profileInput || await ensureProfile(supabase, user);
   const userId = user.id;
 
@@ -180,28 +262,22 @@ export async function buildAccessData(supabase, user, profileInput = null) {
     consentVersions,
     accessVersion,
   ] = await Promise.all([
-    throwOnError(await supabase.from('features').select('*')),
-    throwOnError(
-      await supabase
+    readSupabaseData(supabase.from('features').select('*')),
+    readSupabaseData(
+      supabase
         .from('user_plans')
         .select('*, plans(key, name)')
         .eq('user_id', userId),
     ),
-    throwOnError(await supabase.from('plan_features').select('*')),
-    throwOnError(
-      await supabase
+    readSupabaseData(supabase.from('plan_features').select('*')),
+    readSupabaseData(
+      supabase
         .from('user_entitlement_overrides')
         .select('*')
         .eq('user_id', userId),
     ),
-    throwOnError(await supabase.from('consent_versions').select('*').eq('active', true)),
-    throwOnError(
-      await supabase
-        .from('access_versions')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle(),
-    ),
+    readSupabaseData(supabase.from('consent_versions').select('*').eq('active', true)),
+    getAccessVersion(supabase, userId),
   ]);
 
   return {
@@ -213,8 +289,54 @@ export async function buildAccessData(supabase, user, profileInput = null) {
     planFeatures: asArray(planFeatures),
     overrides: asArray(overrides),
     consentVersions: asArray(consentVersions),
-    accessVersion: accessVersion?.version || 1,
+    accessVersion,
   };
+}
+
+export async function buildAccessData(supabase, user, profileInput = null) {
+  if (!isAccessCacheEnabled()) {
+    return buildAccessDataUncached(supabase, user, profileInput);
+  }
+
+  const profile = profileInput || await ensureProfile(supabase, user);
+  const userId = user.id;
+  const accessVersion = await getAccessVersion(supabase, userId);
+  const cached = getCachedUserAccessData(userId, accessVersion, profile);
+  if (cached) return cached;
+
+  const [
+    catalog,
+    userPlans,
+    overrides,
+  ] = await Promise.all([
+    getGlobalAccessCatalog(supabase),
+    readSupabaseData(
+      supabase
+        .from('user_plans')
+        .select('*, plans(key, name)')
+        .eq('user_id', userId),
+    ),
+    readSupabaseData(
+      supabase
+        .from('user_entitlement_overrides')
+        .select('*')
+        .eq('user_id', userId),
+    ),
+  ]);
+
+  const accessData = {
+    authenticated: true,
+    userId,
+    profile,
+    features: asArray(catalog.features),
+    userPlans: asArray(userPlans).map(mapUserPlan),
+    planFeatures: asArray(catalog.planFeatures),
+    overrides: asArray(overrides),
+    consentVersions: asArray(catalog.consentVersions),
+    accessVersion,
+  };
+  setCachedUserAccessData(userId, accessVersion, accessData);
+  return cloneAccessData(accessData);
 }
 
 export async function resolveAccessForRequest(req) {

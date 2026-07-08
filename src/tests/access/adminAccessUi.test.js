@@ -288,7 +288,7 @@ describe('admin split UI contract', () => {
     expect(formatters).toContain('return normalizeVipPageContent(getPlanMetadata(plan).vipPage)');
   });
 
-  it('adds a dedicated VIP ranking page and overview preview without merging it into usage history', () => {
+  it('keeps VIP ranking lazy-loaded outside the overview hot path', () => {
     const app = readAdminUi();
     const api = read('apps/admin/src/adminApi.js');
     const css = readAdminCss();
@@ -313,26 +313,26 @@ describe('admin split UI contract', () => {
     for (const sourceContract of [
       "id: 'vip-ranking', label: 'Xếp hạng VIP'",
       'function VipRankingPanel',
-      'overviewRanking',
       'vipRanking',
       'loadVipRanking',
-      'loadOverviewRanking',
       'usageRanking',
       "activeView === 'vip-ranking'",
       "onSelectView('vip-ranking')",
-      'slice(0, OVERVIEW_VIP_RANKING_LIMIT)',
     ]) {
       expect(app).toContain(sourceContract);
     }
 
+    expect(app).not.toContain('loadOverviewRanking');
+    expect(app).not.toContain('overviewRanking');
+    expect(app).not.toContain('OVERVIEW_VIP_RANKING_LIMIT');
     expect(api).toContain('usageRanking:');
     expect(api).toContain("request(`/usage/ranking?${query.toString()}`)");
+    expect(api).toContain("overview: () => request('/overview')");
     expect(app.indexOf("id: 'vip-ranking'")).toBeLessThan(app.indexOf("id: 'usage'"));
     expect(css).toContain('.vip-ranking-page');
     expect(css).toContain('.vip-ranking-filter-grid');
     expect(css).toContain('.vip-ranking-metrics');
     expect(css).toContain('.vip-ranking-table');
-    expect(css).toContain('.overview-ranking-panel');
   });
 
   it('keeps admin reload actions scoped and avoids stuck loading states', () => {

@@ -208,8 +208,11 @@ describe('/api/openai-proxy', () => {
     vi.unstubAllGlobals();
   });
 
-  it('records chat usage before streaming chunks to the client', async () => {
-    const insertMock = vi.fn(async () => ({ error: null }));
+  it('does not block streaming chunks on slow usage logging', async () => {
+    let resolveInsert;
+    const insertMock = vi.fn(() => new Promise((resolve) => {
+      resolveInsert = resolve;
+    }));
     const loggingHandler = createOpenAIProxyHandler({
       requireFeatureImpl: async (_req, featureKey) => ({
         ok: true,
@@ -254,15 +257,19 @@ describe('/api/openai-proxy', () => {
       },
       headers: { 'x-storyforge-upstream-key': 'test-key' },
     });
-    const write = res.write.bind(res);
-    res.write = (chunk) => {
-      expect(insertMock).toHaveBeenCalledTimes(1);
-      return write(chunk);
-    };
+    const request = loggingHandler(req, res);
 
-    await loggingHandler(req, res);
+    try {
+      await vi.waitFor(() => {
+        expect(res.ended).toBe(true);
+      }, { timeout: 100 });
+    } finally {
+      resolveInsert?.({ error: null });
+      await request;
+    }
 
     expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('data: {"choices"');
     expect(insertMock).toHaveBeenCalledWith(expect.objectContaining({
       user_id: 'stream-user',
       status: 'ok',
