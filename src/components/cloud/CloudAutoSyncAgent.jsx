@@ -10,6 +10,27 @@ import {
 } from '../../services/cloud/cloudAuthService.js';
 
 const AUTO_SYNC_INTERVAL_MS = 45000;
+const AUTO_SYNC_ERROR_BACKOFF_MS = 5 * 60 * 1000;
+
+let autoSyncBackoffUntil = 0;
+
+export function getCloudAutoSyncBackoffUntil() {
+  return autoSyncBackoffUntil;
+}
+
+export function isCloudAutoSyncBackoffActive(now = Date.now()) {
+  return Number(now || 0) < autoSyncBackoffUntil;
+}
+
+export function noteCloudAutoSyncFailure(now = Date.now(), backoffMs = AUTO_SYNC_ERROR_BACKOFF_MS) {
+  const nextBackoffUntil = Number(now || 0) + Number(backoffMs || AUTO_SYNC_ERROR_BACKOFF_MS);
+  autoSyncBackoffUntil = Math.max(autoSyncBackoffUntil, nextBackoffUntil);
+  return autoSyncBackoffUntil;
+}
+
+export function clearCloudAutoSyncBackoff() {
+  autoSyncBackoffUntil = 0;
+}
 
 export default function CloudAutoSyncAgent() {
   useEffect(() => {
@@ -23,13 +44,16 @@ export default function CloudAutoSyncAgent() {
       if (stopped) return;
       const prefs = getCloudSyncPreferences();
       if (!prefs.autoSyncEnabled) return;
+      if (isCloudAutoSyncBackoffActive()) return;
 
       const session = await getSession();
       if (!session?.user?.id) return;
 
       try {
         await runAutoSyncCycle({ reason });
+        clearCloudAutoSyncBackoff();
       } catch (error) {
+        noteCloudAutoSyncFailure();
         console.warn('[CloudSync] Auto sync failed:', error);
       }
     };
