@@ -22,4 +22,15 @@ describe('production security headers', () => {
     expect(headers['Content-Security-Policy-Report-Only']).toContain("default-src 'self'");
     expect(headers['Content-Security-Policy-Report-Only']).toContain("connect-src 'self' https: wss:");
   });
+
+  it('prevents stale SPA HTML while keeping hashed assets cacheable', () => {
+    const vercel = readJson('vercel.json');
+    const spaHeaders = vercel.headers?.find((entry) => entry.source.includes('(?!api/|assets/'))?.headers || [];
+    const assetHeaders = vercel.headers?.find((entry) => entry.source === '/assets/(.*)')?.headers || [];
+    const spa = Object.fromEntries(spaHeaders.map((entry) => [entry.key, entry.value]));
+    const assets = Object.fromEntries(assetHeaders.map((entry) => [entry.key, entry.value]));
+
+    expect(spa['Cache-Control']).toContain('no-store');
+    expect(assets['Cache-Control']).toContain('immutable');
+  });
 });
