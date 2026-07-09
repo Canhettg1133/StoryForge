@@ -1,5 +1,39 @@
+const ENV = globalThis.process?.env || {};
+
+const DEFAULT_JOB_ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:4173',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5176',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:4173',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:5176',
+];
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseOriginList(value, fallback = []) {
+  const origins = String(value || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  return origins.length > 0 ? origins : fallback;
+}
+
+const configuredAllowedOrigins = String(ENV.JOB_ALLOWED_ORIGINS || '').trim();
+
 export const JOB_CONFIG = {
-  PORT: 3847,
+  PORT: parsePositiveInteger(ENV.JOB_PORT, 3847),
+  BIND_HOST: String(ENV.JOB_BIND_HOST || '127.0.0.1').trim() || '127.0.0.1',
+  ALLOWED_ORIGINS: parseOriginList(configuredAllowedOrigins, DEFAULT_JOB_ALLOWED_ORIGINS),
+  ALLOWED_ORIGINS_CONFIGURED: Boolean(configuredAllowedOrigins),
+  API_TOKEN: String(ENV.JOB_API_TOKEN || '').trim(),
   MAX_CONCURRENT_JOBS: 2,
   MAX_CONCURRENT_ANALYSIS: 1,
   MAX_QUEUE_SIZE: 100,

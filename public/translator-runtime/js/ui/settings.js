@@ -272,7 +272,25 @@ function updateWorkspaceToolbar() {
     const alertBar = document.getElementById('activeProviderAlertBar');
     const alertText = document.getElementById('activeProviderAlertText');
     if (alertBar && alertText) {
-        alertText.innerHTML = `Đang sử dụng: <strong>${providerLabel}</strong> &middot; <span>${configSummary}</span>`;
+        alertText.textContent = '';
+        if (typeof alertText.appendChild !== 'function') {
+            alertText.textContent = `Đang sử dụng: ${providerLabel} · ${configSummary}`;
+            alertBar.style.display = 'flex';
+            updateSettingsAccordions();
+            return;
+        }
+        const prefixElement = document.createElement('span');
+        prefixElement.textContent = 'Đang sử dụng: ';
+        alertText.appendChild(prefixElement);
+        const providerElement = document.createElement('strong');
+        providerElement.textContent = providerLabel;
+        alertText.appendChild(providerElement);
+        const separatorElement = document.createElement('span');
+        separatorElement.textContent = ' · ';
+        alertText.appendChild(separatorElement);
+        const summaryElement = document.createElement('span');
+        summaryElement.textContent = configSummary;
+        alertText.appendChild(summaryElement);
         alertBar.style.display = 'flex';
     }
 

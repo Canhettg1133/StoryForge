@@ -235,6 +235,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                     }
                 }
 
+                if (attempt === retries) {
+                    throw translatorError || error;
+                }
+
                 await sleep(500);
                 continue;
             }
@@ -289,6 +293,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
             if (!modelKeyPair && translatorError?.retryable === false) {
                 throw translatorError;
+            }
+
+            if (isContentBlocked && attempt === retries) {
+                throw translatorError || error;
             }
 
             // === XỬ LÝ CONTENT BLOCKED ===

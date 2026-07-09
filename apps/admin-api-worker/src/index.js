@@ -52,11 +52,15 @@ const DEFAULT_USAGE_RANKING_RANGE = '30d';
 const USAGE_RANKING_CACHE_TTL_MS = 60_000;
 const USAGE_RANKING_CACHE_MAX_ENTRIES = 100;
 const ACTOR_CACHE_TTL_MS = 60_000;
+const OVERVIEW_CACHE_TTL_MS = 30_000;
 const RESPONSE_HEADERS = Symbol('responseHeaders');
 const usageRankingCache = new Map();
 const usageRankingInflight = new Map();
 const actorCache = new Map();
 let actorCacheFetchRef = null;
+let overviewCacheFetchRef = null;
+let overviewCache = null;
+let overviewInflight = null;
 const PROFILE_SELECT = 'user_id,email,display_name,system_role,status,metadata,created_at,updated_at';
 const PLAN_SELECT = 'id,key,name,description,active,sort_order,metadata,created_at,updated_at';
 const FEATURE_SELECT = 'key,name,description,category,active,metadata,created_at,updated_at';
@@ -169,6 +173,17 @@ function resetActorCacheIfFetchChanged() {
   if (actorCacheFetchRef === globalThis.fetch) return;
   actorCache.clear();
   actorCacheFetchRef = globalThis.fetch;
+}
+
+function resetOverviewCacheIfFetchChanged() {
+  if (overviewCacheFetchRef === globalThis.fetch) return;
+  overviewCache = null;
+  overviewInflight = null;
+  overviewCacheFetchRef = globalThis.fetch;
+}
+
+function clonePlainData(value) {
+  return value ? JSON.parse(JSON.stringify(value)) : value;
 }
 
 function getActorCacheKey(token) {
@@ -391,6 +406,15 @@ function parseContentRangeTotal(headers, fallback) {
   if (!match || match[1] === '*') return fallback;
   const total = Number.parseInt(match[1], 10);
   return Number.isFinite(total) ? total : fallback;
+}
+
+async function supabaseRestCount(config, table, query = '') {
+  const { headers } = await supabaseRestResult(config, table, {
+    method: 'HEAD',
+    query,
+    prefer: 'count=exact',
+  });
+  return parseContentRangeTotal(headers, 0);
 }
 
 const USAGE_RANKING_RANGES = new Set(['24h', '7d', '30d', '90d', 'this_month', 'last_month', 'all', 'custom']);
@@ -722,12 +746,6 @@ async function getProfilesByUserIds(config, userIds) {
   return new Map(profiles.map((profile) => [String(profile.user_id), profile]));
 }
 
-function strongestRole(...roles) {
-  return roles
-    .map(normalizeRole)
-    .sort((left, right) => roleRank(right) - roleRank(left))[0] || SYSTEM_ROLES.USER;
-}
-
 function resolveSyncedUserStatus(authUser, existingProfile) {
   const authStatus = authUser.banned_until ? USER_STATUSES.BANNED : USER_STATUSES.ACTIVE;
   const existingStatus = existingProfile ? normalizeStatus(existingProfile.status) : '';
@@ -750,7 +768,6 @@ function mergeAuthMetadata(existingProfile, authUser) {
 }
 
 async function insertProfileFromAuth(config, authUser) {
-  const subject = resolveAccessSubject(authUser);
   const rows = await supabaseRest(config, PROFILES_TABLE, {
     method: 'POST',
     query: 'on_conflict=user_id',
@@ -759,7 +776,7 @@ async function insertProfileFromAuth(config, authUser) {
       user_id: authUser.id,
       email: authUser.email || '',
       display_name: authUser.user_metadata?.name || authUser.user_metadata?.full_name || authUser.email || '',
-      system_role: subject.role,
+      system_role: SYSTEM_ROLES.USER,
       status: USER_STATUSES.ACTIVE,
       metadata: {
         auth_created_at: authUser.created_at || null,
@@ -882,9 +899,10 @@ async function getProfilesMapForRows(config, rows, fields) {
 async function getUsageSearchProfileIds(config, rawSearch) {
   const search = normalizeUsageSearch(rawSearch);
   if (!search) return [];
+  const searchFilterValue = encodeURIComponent(search);
   const filters = [
-    `email.ilike.*${search}*`,
-    `display_name.ilike.*${search}*`,
+    `email.ilike.*${searchFilterValue}*`,
+    `display_name.ilike.*${searchFilterValue}*`,
   ];
   if (looksLikeUuid(rawSearch)) {
     filters.push(`user_id.eq.${String(rawSearch).trim()}`);
@@ -963,10 +981,13 @@ async function listAuditLogs(config, actor, url) {
   };
 }
 
-async function getOverview(config, actor) {
-  requirePermission(actor, ADMIN_PERMISSIONS.USERS_READ);
-  const startedAt = Date.now();
-  const [profiles, auditRows] = await Promise.all([
+function getOverviewCacheKey(config) {
+  return config.supabaseUrl;
+}
+
+async function getOverviewData(config) {
+  const nowIso = new Date().toISOString();
+  const [profiles, auditRows, totalUsers, activeUsers, currentVipPlans] = await Promise.all([
     supabaseRest(config, PROFILES_TABLE, {
       query: `select=${OVERVIEW_PROFILE_SELECT}&order=updated_at.desc&limit=25`,
       prefer: '',
@@ -975,9 +996,21 @@ async function getOverview(config, actor) {
       query: 'select=id,actor_user_id,action,target_user_id,target_feature_key,before_json,after_json,actor_snapshot,target_snapshot,action_summary,change_summary,resource_label,ip_address,user_agent,created_at&order=created_at.desc&limit=5',
       prefer: '',
     }),
+    supabaseRestCount(config, PROFILES_TABLE, 'select=user_id'),
+    supabaseRestCount(config, PROFILES_TABLE, `select=user_id&${filterEq('status', USER_STATUSES.ACTIVE)}`),
+    supabaseRest(config, USER_PLANS_TABLE, {
+      query: `select=user_id,plans!inner(key)&${filterEq('status', PLAN_STATUSES.ACTIVE)}&starts_at=lte.${encodeURIComponent(nowIso)}&or=(expires_at.is.null,expires_at.gt.${encodeURIComponent(nowIso)})&plans.key=in.(vip,lifetime)&order=starts_at.desc&limit=5000`,
+      prefer: '',
+    }),
   ]);
   const userItems = Array.isArray(profiles) ? profiles : [];
   const auditItems = Array.isArray(auditRows) ? auditRows : [];
+  const vipUserIds = new Set(
+    (Array.isArray(currentVipPlans) ? currentVipPlans : [])
+      .filter((plan) => ['vip', 'lifetime'].includes(String(plan?.plans?.key || '').toLowerCase()))
+      .map((plan) => String(plan.user_id || '').trim())
+      .filter(Boolean),
+  );
   const profileMap = await getProfilesMapForRows(config, auditItems, ['actor_user_id', 'target_user_id']);
   const byRole = {};
   const byStatus = {};
@@ -987,15 +1020,20 @@ async function getOverview(config, actor) {
     byRole[role] = (byRole[role] || 0) + 1;
     byStatus[status] = (byStatus[status] || 0) + 1;
   }
-  const payload = {
-    ok: true,
-    actor: actorToSnapshot(actor),
+
+  return {
     users: {
       items: userItems,
       summary: {
-        total: userItems.length,
+        total: totalUsers,
+        active: activeUsers,
+        vip: vipUserIds.size,
+        sampleSize: userItems.length,
         byRole,
-        byStatus,
+        byStatus: {
+          ...byStatus,
+          [USER_STATUSES.ACTIVE]: activeUsers,
+        },
       },
     },
     audit: {
@@ -1006,8 +1044,45 @@ async function getOverview(config, actor) {
       name: 'storyforge-admin-api',
     },
   };
+}
+
+async function getCachedOverviewData(config) {
+  resetOverviewCacheIfFetchChanged();
+  const key = getOverviewCacheKey(config);
+  const now = Date.now();
+  if (overviewCache?.key === key && overviewCache.expiresAt > now) {
+    return { data: clonePlainData(overviewCache.data), cacheStatus: 'hit' };
+  }
+  if (overviewInflight?.key === key) {
+    return { data: clonePlainData(await overviewInflight.promise), cacheStatus: 'wait' };
+  }
+
+  const promise = getOverviewData(config).then((data) => {
+    overviewCache = {
+      key,
+      expiresAt: Date.now() + OVERVIEW_CACHE_TTL_MS,
+      data: clonePlainData(data),
+    };
+    return data;
+  }).finally(() => {
+    overviewInflight = null;
+  });
+  overviewInflight = { key, promise };
+
+  return { data: clonePlainData(await promise), cacheStatus: 'miss' };
+}
+
+async function getOverview(config, actor) {
+  requirePermission(actor, ADMIN_PERMISSIONS.USERS_READ);
+  const startedAt = Date.now();
+  const { data, cacheStatus } = await getCachedOverviewData(config);
+  const payload = {
+    ok: true,
+    actor: actorToSnapshot(actor),
+    ...data,
+  };
   return withResponseHeaders(payload, {
-    'Server-Timing': `overview-db;dur=${Math.max(0, Date.now() - startedAt)};desc="miss"`,
+    'Server-Timing': `overview-db;dur=${Math.max(0, Date.now() - startedAt)};desc="${cacheStatus}"`,
   });
 }
 
@@ -1872,13 +1947,12 @@ async function syncAuth(config, request, actor) {
   const users = Array.isArray(payload?.users) ? payload.users : [];
   const existingProfiles = await getProfilesByUserIds(config, users.map((user) => user.id));
   const rows = users.map((user) => {
-    const subject = resolveAccessSubject(user);
     const existingProfile = existingProfiles.get(String(user.id));
     return {
       user_id: user.id,
       email: user.email || '',
       display_name: user.user_metadata?.name || user.user_metadata?.full_name || user.email || '',
-      system_role: strongestRole(existingProfile?.system_role, subject.role),
+      system_role: existingProfile ? normalizeRole(existingProfile.system_role) : SYSTEM_ROLES.USER,
       status: resolveSyncedUserStatus(user, existingProfile),
       metadata: mergeAuthMetadata(existingProfile, user),
     };
@@ -2016,12 +2090,23 @@ async function routeRequest(request, config, actor, env = {}) {
   throw makeError(404, 'ADMIN_ROUTE_NOT_FOUND', 'Không tìm thấy route Admin API.');
 }
 
+function publicAdminErrorMessage(error) {
+  const status = Number(error?.status || 500);
+  if (status >= 500 || error?.code === 'ADMIN_SUPABASE_FAILED') {
+    return 'Admin API không xử lý được yêu cầu.';
+  }
+  return error?.message || 'Admin API không xử lý được yêu cầu.';
+}
+
 async function handle(request, env = {}) {
   let config;
   try {
     config = validateEnv(env);
   } catch (error) {
-    return json({ error: error.message, code: error.code || 'ADMIN_CONFIG_ERROR' }, error.status || 500);
+    return json({
+      error: 'Admin API chưa được cấu hình hợp lệ.',
+      code: error.code || 'ADMIN_CONFIG_ERROR',
+    }, error.status || 500);
   }
 
   const cors = corsHeaders(request, config);
@@ -2046,7 +2131,7 @@ async function handle(request, env = {}) {
     return json(payload, 200, cors, getResponseHeaders(payload));
   } catch (error) {
     return json({
-      error: error.message || 'Admin API gặp lỗi ngoài dự kiến.',
+      error: publicAdminErrorMessage(error),
       code: error.code || 'ADMIN_UNEXPECTED_ERROR',
     }, error.status || 500, cors);
   }

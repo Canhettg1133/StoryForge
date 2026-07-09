@@ -8,6 +8,8 @@ export const ACCESS_FEATURES = {
   CUSTOM_PROXY: 'provider.custom_proxy',
   TRANSLATOR_PARALLEL_HIGH: 'translator.parallel_high',
   TRANSLATOR_BULK_KEYS: 'translator.bulk_keys',
+  STORY_MIRROR_ACCESS: 'story_mirror.access',
+  PROJECT_COVER_GENERATION: 'project.cover_generation',
 };
 
 export const ACCESS_REASONS = {
@@ -72,6 +74,8 @@ export const FEATURE_LABELS_VI = {
   [ACCESS_FEATURES.CUSTOM_PROXY]: 'Proxy tùy chỉnh',
   [ACCESS_FEATURES.TRANSLATOR_PARALLEL_HIGH]: 'Dịch song song tốc độ cao',
   [ACCESS_FEATURES.TRANSLATOR_BULK_KEYS]: 'Nhập nhiều API key',
+  [ACCESS_FEATURES.STORY_MIRROR_ACCESS]: 'Đồng bộ Story Mirror',
+  [ACCESS_FEATURES.PROJECT_COVER_GENERATION]: 'Tạo bìa AI',
 };
 
 const PLAN_PRIORITY = {

@@ -1,8 +1,43 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_STORY_MIRROR_QUOTA_BYTES,
   processStoryMirrorEvent,
 } from '../../../apps/story-mirror-worker/src/eventProcessor.js';
+import storyMirrorWorker, {
+  clearStoryMirrorAccessCaches,
+} from '../../../apps/story-mirror-worker/src/index.js';
+
+function jsonResponse(payload, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+  });
+}
+
+function createWorkerEnv() {
+  return {
+    SUPABASE_URL: 'https://storyforge.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+    STORY_MIRROR_ALLOWED_ORIGINS: 'https://app.storyforge.test',
+    STORY_MIRROR_BUCKET: {
+      put: vi.fn(async () => null),
+      get: vi.fn(async () => null),
+      delete: vi.fn(async () => null),
+    },
+  };
+}
+
+function mirrorRequest(path, init = {}) {
+  return new Request(`https://mirror.storyforge.test${path}`, {
+    ...init,
+    headers: {
+      Origin: 'https://app.storyforge.test',
+      Authorization: 'Bearer user-token',
+      'Content-Type': 'application/json',
+      ...(init.headers || {}),
+    },
+  });
+}
 
 function createProcessorDeps(overrides = {}) {
   const repo = {
@@ -56,6 +91,11 @@ const baseEvent = {
     updatedAt: '2026-07-03T00:00:00.000Z',
   },
 };
+
+afterEach(() => {
+  clearStoryMirrorAccessCaches();
+  vi.unstubAllGlobals();
+});
 
 describe('story mirror event processor', () => {
   it('is idempotent and does not write R2 again for duplicate keys', async () => {
@@ -202,5 +242,76 @@ describe('story mirror event processor', () => {
       expect.any(String),
       expect.any(Object),
     );
+  });
+});
+
+describe('story mirror worker access control', () => {
+  it('does not process batch events when the authenticated user lacks story mirror access', async () => {
+    const calls = [];
+    vi.stubGlobal('fetch', vi.fn(async (url, init = {}) => {
+      const target = String(url);
+      calls.push({ url: target, method: init.method || 'GET', body: init.body || '' });
+      if (target.includes('/auth/v1/user')) {
+        return jsonResponse({ id: 'free-user-1', email: 'free@example.com' });
+      }
+      if (target.includes('/rest/v1/story_mirror_settings')) {
+        return jsonResponse([{
+          key: 'global',
+          enabled: true,
+          test_only: false,
+          test_user_ids: [],
+          per_user_quota_bytes: DEFAULT_STORY_MIRROR_QUOTA_BYTES,
+          updated_at: '2026-07-09T00:00:00.000Z',
+        }]);
+      }
+      if (target.includes('/rest/v1/profiles')) {
+        return jsonResponse([{
+          user_id: 'free-user-1',
+          email: 'free@example.com',
+          system_role: 'user',
+          status: 'active',
+        }]);
+      }
+      if (target.includes('/rest/v1/access_versions')) {
+        return jsonResponse([{ version: 1, updated_at: '2026-07-09T00:00:00.000Z' }]);
+      }
+      if (target.includes('/rest/v1/features')) {
+        return jsonResponse([{ key: 'story_mirror.access', active: true }]);
+      }
+      if (target.includes('/rest/v1/plan_features')) {
+        return jsonResponse([{ plan_id: 'plan-vip', feature_key: 'story_mirror.access', enabled: true }]);
+      }
+      if (target.includes('/rest/v1/consent_versions')) {
+        return jsonResponse([]);
+      }
+      if (target.includes('/rest/v1/user_plans')) {
+        return jsonResponse([{
+          id: 'plan-row-free',
+          user_id: 'free-user-1',
+          plan_id: 'plan-free',
+          status: 'active',
+          plans: { key: 'free', name: 'Free' },
+        }]);
+      }
+      if (target.includes('/rest/v1/user_entitlement_overrides')) {
+        return jsonResponse([]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    }));
+
+    const response = await storyMirrorWorker.fetch(mirrorRequest('/mirror/v1/events/batch', {
+      method: 'POST',
+      body: JSON.stringify({ events: [baseEvent] }),
+    }), createWorkerEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.results).toEqual([expect.objectContaining({
+      idempotencyKey: baseEvent.idempotencyKey,
+      status: 'disabled',
+      code: 'FEATURE_NOT_ALLOWED',
+    })]);
+    expect(calls.some((call) => call.url.includes('/rest/v1/story_mirror_events') && call.method === 'POST')).toBe(false);
+    expect(calls.some((call) => call.url.includes('/rest/v1/story_mirror_projects') && call.method === 'POST')).toBe(false);
   });
 });

@@ -325,6 +325,8 @@ function viewChunkDetail(chunkIndex) {
     const translatedText = translatedChunks[chunkIndex] || '';
     const statusLabel = getStatusLabel(data.status);
     const timeStr = data.timeMs > 0 ? (data.timeMs / 1000).toFixed(1) + 's' : '--';
+    const safeModel = escapeHtml(data.model || '');
+    const safeError = escapeHtml(data.error || '');
 
     const modal = document.getElementById('chunkDetailModal');
     const content = document.getElementById('chunkDetailContent');
@@ -340,9 +342,9 @@ function viewChunkDetail(chunkIndex) {
             <span>📊 Ratio: <strong class="${data.ratio < 60 ? 'ratio-warning' : 'ratio-ok'}">${data.ratio}%</strong></span>
             <span>⏱️ ${timeStr}</span>
             ${data.retryCount > 0 ? `<span>🔄 Retry: ${data.retryCount}</span>` : ''}
-            ${data.model ? `<span>🤖 ${data.model}</span>` : ''}
+            ${data.model ? `<span>🤖 ${safeModel}</span>` : ''}
         </div>
-        ${data.error ? `<div class="chunk-detail-error">❌ ${data.error}</div>` : ''}
+        ${data.error ? `<div class="chunk-detail-error">❌ ${safeError}</div>` : ''}
         <div class="chunk-detail-texts">
             <div class="chunk-detail-col">
                 <h4>📥 Nội dung gốc</h4>

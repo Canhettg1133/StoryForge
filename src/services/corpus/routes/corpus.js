@@ -12,6 +12,10 @@ import { JOB_PRIORITY, JOB_TYPES } from '../../jobs/config.js';
 import { getJobQueue } from '../../jobs/jobQueue.js';
 import { projectSnapshotRepository } from '../../projects/repositories/projectSnapshotRepository.js';
 import {
+  MAX_CORPUS_UPLOAD_FILE_BYTES,
+  validateCorpusUploadFile,
+} from '../../chatAttachments/fileSafety.js';
+import {
   createCorpusFromUpload,
   getCorpusChunkPreview,
   getCorpusChapter,
@@ -26,7 +30,11 @@ import {
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 100 * 1024 * 1024,
+    fileSize: MAX_CORPUS_UPLOAD_FILE_BYTES,
+    files: 1,
+    fields: 16,
+    parts: 24,
+    fieldNameSize: 100,
   },
 });
 
@@ -54,7 +62,7 @@ function getStoryGraphPayload(analysis = null) {
 
 function toHttpError(error) {
   if (!error?.code) {
-    return { status: 500, message: error?.message || 'Lỗi máy chủ nội bộ.' };
+    return { status: 500, message: 'Lỗi máy chủ nội bộ.' };
   }
 
   switch (error.code) {
@@ -77,7 +85,7 @@ function toHttpError(error) {
     case 'SESSION_CHUNK_COVERAGE_MISMATCH':
       return { status: 422, message: error.message };
     default:
-      return { status: 500, message: error.message || 'Lỗi máy chủ nội bộ.' };
+      return { status: 500, message: 'Lỗi máy chủ nội bộ.' };
   }
 }
 
@@ -177,6 +185,15 @@ export function createCorpusRouter() {
     try {
       const metadata = parseMetadata(req.body?.metadata);
       const chunkSize = req.body?.chunkSize || metadata.chunkSize;
+      const safety = await validateCorpusUploadFile(req.file);
+      if (!safety.ok) {
+        const status = safety.code === 'FILE_TOO_LARGE'
+          ? 413
+          : safety.code === 'UNSUPPORTED_EXTENSION' || safety.code === 'UNSUPPORTED_MIME'
+            ? 415
+            : 400;
+        return res.status(status).json({ error: safety.message, code: safety.code });
+      }
 
       const corpus = await createCorpusFromUpload({
         file: req.file,
@@ -824,9 +841,9 @@ export function createCorpusRouter() {
         items,
         total: items.length,
       });
-    } catch (error) {
+    } catch {
       return res.status(503).json({
-        error: error?.message || 'Không thể đọc project snapshots từ Postgres.',
+        error: 'Không thể đọc project snapshots từ Postgres.',
       });
     }
   });
@@ -843,9 +860,9 @@ export function createCorpusRouter() {
         artifactVersion: req.body?.artifactVersion,
       });
       return res.status(201).json(saved);
-    } catch (error) {
+    } catch {
       return res.status(503).json({
-        error: error?.message || 'Không thể lưu project snapshot vào Postgres.',
+        error: 'Không thể lưu project snapshot vào Postgres.',
       });
     }
   });

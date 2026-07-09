@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyRound, RefreshCw, Shield, ShieldCheck } from 'lucide-react';
 import { createAdminApiClient } from './adminApi.js';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase.js';
@@ -107,6 +107,7 @@ export default function App() {
         const overview = await adminApi.overview();
         setData((current) => ({
           ...current,
+          overview,
           users: overview.users?.items || [],
           audit: overview.audit?.items || [],
           usage: [],
@@ -124,6 +125,7 @@ export default function App() {
         ]);
         setData((current) => ({
           ...current,
+          overview: null,
           users: users.users || users.items || [],
           features: features.items || [],
         }));

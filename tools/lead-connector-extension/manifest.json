@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "TravelLead Connect - Auto Sender",
+  "version": "1.0",
+  "description": "Tự động gửi tin nhắn giới thiệu đối tác trên Zalo Web từ Dashboard",
+  "permissions": [
+    "tabs",
+    "storage",
+    "activeTab",
+    "alarms",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://chat.zalo.me/*",
+    "https://zalo.me/*",
+    "https://*.facebook.com/*",
+    "file:///*zalo-lead-connector.html",
+    "http://localhost/*zalo-lead-connector.html",
+    "http://127.0.0.1/*zalo-lead-connector.html"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chat.zalo.me/*", "https://zalo.me/*"],
+      "js": ["content-zalo.js"]
+    },
+    {
+      "matches": ["https://*.facebook.com/*"],
+      "js": ["content-facebook-network-hook.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://*.facebook.com/*"],
+      "js": ["fb-phone-engine.js", "content-facebook.js"]
+    },
+    {
+      "matches": ["file:///*zalo-lead-connector.html", "http://localhost/*zalo-lead-connector.html", "http://127.0.0.1/*zalo-lead-connector.html"],
+      "js": ["content-dashboard.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

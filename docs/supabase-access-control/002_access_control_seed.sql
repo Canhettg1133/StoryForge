@@ -20,7 +20,9 @@ values
   ('provider.gemini_direct', 'Gemini Direct', 'Cho phép dùng Gemini Direct qua API key AI Studio.', 'provider', true),
   ('provider.custom_proxy', 'Custom Proxy', 'Cho phép dùng custom OpenAI-compatible proxy trong app.', 'provider', true),
   ('translator.parallel_high', 'Request song song cao', 'Cho phép dùng mức request song song cao trong dịch truyện.', 'translator', true),
-  ('translator.bulk_keys', 'Nhập nhiều API key', 'Cho phép nhập/xuất nhiều API key trong trang cài đặt.', 'translator', true)
+  ('translator.bulk_keys', 'Nhập nhiều API key', 'Cho phép nhập/xuất nhiều API key trong trang cài đặt.', 'translator', true),
+  ('story_mirror.access', 'Story Mirror', 'Cho phép đồng bộ Story Mirror qua worker backend.', 'story_mirror', true),
+  ('project.cover_generation', 'Tạo bìa AI', 'Cho phép tạo bìa dự án bằng AI qua relay backend.', 'project', true)
 on conflict (key) do update set
   name = excluded.name,
   description = excluded.description,
@@ -42,7 +44,9 @@ feature_map as (
     'provider.gemini_direct',
     'provider.custom_proxy',
     'translator.parallel_high',
-    'translator.bulk_keys'
+    'translator.bulk_keys',
+    'story_mirror.access',
+    'project.cover_generation'
   )
 )
 insert into public.plan_features(plan_id, feature_key, enabled)

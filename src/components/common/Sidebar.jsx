@@ -135,8 +135,8 @@ export default function Sidebar() {
   }, []);
 
   const routeProjectId = projectId || null;
-  const settingsScopedProjectId = location.pathname === '/settings' ? currentProject?.id || null : null;
-  const activeProjectId = routeProjectId || settingsScopedProjectId;
+  const appScopedProjectId = ['/settings', '/login'].includes(location.pathname) ? currentProject?.id || null : null;
+  const activeProjectId = routeProjectId || appScopedProjectId;
   const baseVisibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.divider) return true;
     if (item.id === 'global-chat') return !activeProjectId;

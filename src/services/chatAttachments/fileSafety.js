@@ -16,11 +16,13 @@ export const CHAT_ATTACHMENT_STATUSES = Object.freeze({
 
 export const MAX_CHAT_ATTACHMENT_FILE_BYTES = 25 * 1024 * 1024;
 export const MAX_CHAT_IMAGE_FILE_BYTES = 8 * 1024 * 1024;
+export const MAX_CORPUS_UPLOAD_FILE_BYTES = 100 * 1024 * 1024;
 export const MAX_CHAT_IMAGE_ATTACHMENTS_PER_TURN = 4;
 export const MAX_CHAT_IMAGE_CONTEXT_BYTES = 12 * 1024 * 1024;
 export const MAX_CHAT_ATTACHMENT_ZIP_ENTRIES = 3500;
 export const MAX_CHAT_ATTACHMENT_ZIP_UNCOMPRESSED_BYTES = 80 * 1024 * 1024;
 export const CHAT_ATTACHMENT_ACCEPT = '.txt,.md,.docx,.epub,.pdf,.png,.jpg,.jpeg,.webp';
+export const CORPUS_UPLOAD_ACCEPT = '.txt,.docx,.epub,.pdf';
 
 const EXTENSION_TO_TYPE = new Map([
   ['.txt', 'txt'],
@@ -35,6 +37,12 @@ const EXTENSION_TO_TYPE = new Map([
 ]);
 
 const ZIP_CONTAINER_EXTENSIONS = new Set(['.docx', '.epub']);
+const CORPUS_EXTENSION_TO_TYPE = new Map([
+  ['.txt', 'txt'],
+  ['.docx', 'docx'],
+  ['.epub', 'epub'],
+  ['.pdf', 'pdf'],
+]);
 const IMAGE_EXTENSION_TO_MIME = new Map([
   ['.png', 'image/png'],
   ['.jpg', 'image/jpeg'],
@@ -323,6 +331,109 @@ async function inspectZipContainer(file, extension) {
   }
 
   return makeResult(true, 'ZIP_SAFE', 'File nén hợp lệ.');
+}
+
+export async function validateCorpusUploadFile(file) {
+  if (!file) {
+    return makeResult(false, 'NO_FILE', 'Chua chon tep.');
+  }
+
+  const fileName = String(file.name || file.fileName || file.originalname || '').trim();
+  const extension = getChatAttachmentExtension(fileName);
+  const fileType = CORPUS_EXTENSION_TO_TYPE.get(extension) || null;
+  const mimeType = normalizeMimeType(file);
+  const size = normalizeFileSize(file);
+
+  if (!fileName) {
+    return makeResult(false, 'NO_FILENAME', 'Tep thieu ten hop le.');
+  }
+
+  if (UNSAFE_EXTENSIONS.has(extension)) {
+    return makeResult(false, 'UNSAFE_EXTENSION', 'Dinh dang tep nay bi chan vi ly do an toan.', {
+      extension,
+      fileType,
+      mimeType,
+      size,
+    });
+  }
+
+  if (!fileType) {
+    return makeResult(false, 'UNSUPPORTED_EXTENSION', 'Chi ho tro TXT, DOCX, EPUB va PDF cho corpus.', {
+      extension,
+      fileType,
+      mimeType,
+      size,
+    });
+  }
+
+  if (size > MAX_CORPUS_UPLOAD_FILE_BYTES) {
+    return makeResult(false, 'FILE_TOO_LARGE', 'Tep corpus vuot gioi han 100 MB.', {
+      extension,
+      fileType,
+      mimeType,
+      size,
+    });
+  }
+
+  if (
+    UNSAFE_MIME_PARTS.some((part) => mimeType.includes(part))
+    || (mimeType.includes('zip') && !ZIP_CONTAINER_EXTENSIONS.has(extension))
+  ) {
+    return makeResult(false, 'UNSAFE_MIME', 'MIME type cua tep khong an toan de phan tich.', {
+      extension,
+      fileType,
+      mimeType,
+      size,
+    });
+  }
+
+  if (!ALLOWED_MIME_TYPES.has(mimeType) && !mimeType.startsWith('text/')) {
+    return makeResult(false, 'UNSUPPORTED_MIME', 'MIME type khong khop voi dinh dang duoc ho tro.', {
+      extension,
+      fileType,
+      mimeType,
+      size,
+    });
+  }
+
+  const magicBytes = await readMagicBytes(file);
+  if (hasUnsafeMagicBytes(magicBytes, extension)) {
+    return makeResult(false, 'UNSAFE_MAGIC_BYTES', 'Magic bytes cho thay tep khong an toan.', {
+      extension,
+      fileType,
+      mimeType,
+      size,
+    });
+  }
+
+  if (fileType === 'pdf' && !hasPdfMagicBytes(magicBytes)) {
+    return makeResult(false, 'PDF_INVALID_SIGNATURE', 'Magic bytes khong khop dinh dang PDF.', {
+      extension,
+      fileType,
+      mimeType,
+      size,
+    });
+  }
+
+  if (ZIP_CONTAINER_EXTENSIONS.has(extension)) {
+    const zipResult = await inspectZipContainer(file, extension);
+    if (!zipResult.ok) {
+      return {
+        ...zipResult,
+        extension,
+        fileType,
+        mimeType,
+        size,
+      };
+    }
+  }
+
+  return makeResult(true, 'SAFE_CORPUS_FILE', 'Tep corpus hop le de phan tich.', {
+    extension,
+    fileType,
+    mimeType,
+    size,
+  });
 }
 
 export async function validateChatAttachmentFile(file) {

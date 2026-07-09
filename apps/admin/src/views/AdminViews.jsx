@@ -129,8 +129,11 @@ function OverviewDeferredReports({ onSelectView }) {
 }
 
 export function OverviewPanel({ data, apiBaseUrl, onSelectView }) {
-  const activeUsers = data.users.filter((user) => String(user.status || 'active') === 'active').length;
-  const vipUsers = data.users.filter((user) => ['vip', 'lifetime'].includes(getCurrentUserPlanKey(user))).length;
+  const userSummary = data.overview?.users?.summary || {};
+  const activeUsersFallback = data.users.filter((user) => String(user.status || 'active') === 'active').length;
+  const vipUsersFallback = data.users.filter((user) => ['vip', 'lifetime'].includes(getCurrentUserPlanKey(user))).length;
+  const activeUsers = userSummary.active ?? userSummary.byStatus?.active ?? activeUsersFallback;
+  const vipUsers = userSummary.vip ?? vipUsersFallback;
   const auditToday = data.audit.filter((item) => isToday(item.created_at)).length;
   const usageErrors = data.usage.filter((item) => String(item.status || '').toLowerCase() === 'error').length;
   const recentAudit = data.audit.slice(0, 5);

@@ -15,6 +15,7 @@ import {
   HeartHandshake,
   Image as ImageIcon,
   Languages,
+  FileJson,
   MessageSquare,
   Menu,
 } from 'lucide-react';
@@ -42,11 +43,27 @@ const UTILITY_ITEMS = [
     path: '/translator',
   },
   {
+    id: 'lab-lite',
+    title: 'Lab Lite',
+    description: 'Nạp dữ liệu fanfic và tạo Canon Pack để liên kết với dự án.',
+    icon: BookOpen,
+    path: '/lab-lite',
+    surface: 'lab-lite',
+  },
+  {
     id: 'settings',
     title: 'Thiết lập API',
     description: 'Vào Cài đặt để xem hướng dẫn Gemini, dán API key và test ngay trong cùng một chỗ.',
     icon: BookKey,
     path: '/settings#gemini-guides',
+  },
+  {
+    id: 'writing-debug',
+    title: 'Test prompt viết',
+    description: 'Kiểm tra prompt viết trong chế độ debug nội bộ.',
+    icon: FileJson,
+    path: '/writing-debug',
+    surface: 'debug',
   },
 ];
 

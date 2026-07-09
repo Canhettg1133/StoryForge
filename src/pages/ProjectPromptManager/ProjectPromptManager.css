@@ -120,12 +120,20 @@
 }
 
 .prompt-manager-intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
   border: 1px solid var(--color-accent-muted);
+}
+
+.prompt-manager-intro .settings-section-header {
+  margin-bottom: 0;
 }
 
 .prompt-manager-intro__grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
@@ -181,7 +189,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-5);
   border-color: color-mix(in srgb, var(--color-accent) 16%, var(--color-border));
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 42%),
@@ -327,7 +335,6 @@
   font-weight: var(--weight-semibold);
 }
 
-.project-style-runtime-preview pre,
 .project-style-runtime-preview p {
   margin: 0;
   padding: 0 12px 12px;
@@ -339,6 +346,128 @@
   line-height: 1.55;
   max-height: 360px;
   overflow: auto;
+}
+
+.project-style-runtime-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 12px 12px;
+}
+
+.project-style-runtime-editor__textarea {
+  min-height: 260px;
+  max-height: min(62dvh, 680px);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.project-style-runtime-editor__empty {
+  padding: 0;
+  color: var(--color-text-tertiary);
+  font-family: inherit;
+  max-height: none;
+  overflow: visible;
+}
+
+.final-prompt-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  border-color: color-mix(in srgb, var(--color-accent) 12%, var(--color-border));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
+    var(--color-bg-secondary);
+}
+
+.final-prompt-preview__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.final-prompt-preview__header .settings-section-header {
+  margin-bottom: 0;
+}
+
+.final-prompt-preview__input-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.final-prompt-preview__input {
+  min-height: 96px;
+  max-height: 260px;
+}
+
+.final-prompt-preview__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.final-prompt-preview__stats span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: var(--radius-full);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 14%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-bg-tertiary));
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+.final-prompt-preview__outputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.final-prompt-preview__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-tertiary);
+}
+
+.final-prompt-preview__panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.final-prompt-preview__panel-header strong {
+  color: var(--color-text-primary);
+}
+
+.final-prompt-preview__panel-header span {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.final-prompt-preview__textarea {
+  min-height: 320px;
+  max-height: min(70dvh, 760px);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.final-prompt-preview__textarea.is-readonly {
+  opacity: 0.9;
+  cursor: text;
 }
 
 .prompt-group-list {
@@ -610,6 +739,7 @@
 
   .prompt-manager-page__heading,
   .project-style-runtime-card__header,
+  .final-prompt-preview__header,
   .prompt-editor-block__header,
   .prompt-card__header {
     flex-direction: column;
@@ -617,6 +747,7 @@
 
   .prompt-card__info-grid,
   .prompt-card__columns,
+  .final-prompt-preview__outputs,
   .prompt-manager-intro__grid,
   .project-style-runtime-summary,
   .project-style-runtime-rules {
@@ -625,6 +756,7 @@
 
   .prompt-manager-page__toolbar,
   .project-style-runtime-actions,
+  .final-prompt-preview__header .btn,
   .prompt-editor-block__actions {
     width: 100%;
   }
@@ -655,6 +787,7 @@
   .project-mobile-shell .prompt-manager-page__heading,
   .project-mobile-shell .prompt-manager-intro,
   .project-mobile-shell .project-style-runtime-card,
+  .project-mobile-shell .final-prompt-preview-card,
   .project-mobile-shell .prompt-manager-toolbar-card,
   .project-mobile-shell .prompt-group-list,
   .project-mobile-shell .prompt-card,
@@ -682,6 +815,11 @@
     align-items: stretch;
   }
 
+  .project-mobile-shell .final-prompt-preview__header {
+    align-items: stretch;
+  }
+
+  .project-mobile-shell .final-prompt-preview__header .btn,
   .project-mobile-shell .project-style-runtime-actions .btn {
     width: 100%;
     justify-content: center;
@@ -695,6 +833,7 @@
   .prompt-manager-toolbar-card,
   .prompt-manager-intro,
   .project-style-runtime-card,
+  .final-prompt-preview-card,
   .prompt-card,
   .prompt-editor-block {
     border-radius: 8px;
@@ -755,6 +894,25 @@
     overflow-wrap: anywhere;
   }
 
+  .project-style-runtime-editor__textarea,
+  .final-prompt-preview__input,
+  .final-prompt-preview__textarea {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .final-prompt-preview__panel-header {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .final-prompt-preview__panel-header span {
+    white-space: normal;
+  }
+
   .prompt-card__footer {
     flex-direction: column;
     gap: 8px;
@@ -775,6 +933,8 @@
   .project-mobile-shell .prompt-manager-status,
   .project-mobile-shell .project-style-runtime-note,
   .project-mobile-shell .project-style-runtime-summary,
+  .project-mobile-shell .final-prompt-preview__stats,
+  .project-mobile-shell .final-prompt-preview__panel,
   .project-mobile-shell .prompt-card__header h3,
   .project-mobile-shell .prompt-card__header p,
   .project-mobile-shell .prompt-card__info-box p,

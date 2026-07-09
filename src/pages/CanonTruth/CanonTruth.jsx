@@ -977,18 +977,6 @@ export default function CanonTruth() {
                 </div>
               </div>
             </div>
-
-            <div className="bible-canon-panel">
-              <div className="bible-canon-panel-header">
-                <strong>Văn bản revision</strong>
-                <span>{revisionDetail.revision.revision_number || 0}</span>
-              </div>
-              <div className="bible-canon-snapshot">
-                <pre className="su-that-page__revision-text">
-                  {revisionDetail.revision.chapter_text || 'Revision này chưa có chapter_text.'}
-                </pre>
-              </div>
-            </div>
           </>
         )}
 

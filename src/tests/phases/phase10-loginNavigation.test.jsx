@@ -12,9 +12,16 @@ const cloudAuthMock = vi.hoisted(() => ({
   signInWithGoogle: vi.fn(),
   signOut: vi.fn(async () => {}),
 }));
+const mobileLayoutMock = vi.hoisted(() => ({
+  current: false,
+}));
 
 vi.mock('../../hooks/useUserAccess.js', () => ({
   useUserAccess: () => accessMock.current,
+}));
+
+vi.mock('../../hooks/useMobileLayout.js', () => ({
+  default: () => mobileLayoutMock.current,
 }));
 
 vi.mock('../../services/cloud/cloudAuthService.js', async () => {
@@ -60,6 +67,7 @@ describe('phase10 account page navigation', () => {
       access: createAuthenticatedAccess(),
       loading: false,
     };
+    mobileLayoutMock.current = false;
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -94,6 +102,7 @@ describe('phase10 account page navigation', () => {
   }
 
   it('uses the top account back button as a stable home action', async () => {
+    mobileLayoutMock.current = true;
     const router = await renderLogin();
 
     const homeButton = container.querySelector('.login-page__back');
@@ -105,6 +114,57 @@ describe('phase10 account page navigation', () => {
     });
 
     expect(router.state.location.pathname).toBe('/');
+  });
+
+  it('uses persistent sidebar navigation on desktop instead of a duplicate account back button', async () => {
+    await renderLogin();
+
+    expect(container.querySelector('.login-page__back')).toBeNull();
+    expect(container.querySelector('.login-page__mobile-menu-button')).toBeNull();
+  });
+
+  it('opens account navigation from the mobile account page', async () => {
+    mobileLayoutMock.current = true;
+    const router = await renderLogin('/login');
+
+    const menuButton = container.querySelector('.login-page__mobile-menu-button');
+    expect(menuButton).not.toBeNull();
+
+    await act(async () => {
+      menuButton.click();
+    });
+
+    expect(container.querySelector('.mobile-sheet-root')).not.toBeNull();
+    expect(container.querySelector('[data-nav-id="account-vip"]')?.className).toContain('dashboard-mobile-menu-item--active');
+
+    const dashboardButton = container.querySelector('[data-nav-id="dashboard"]');
+    expect(dashboardButton).not.toBeNull();
+
+    await act(async () => {
+      dashboardButton.click();
+    });
+
+    expect(router.state.location.pathname).toBe('/');
+    expect(container.querySelector('.mobile-sheet-root')).toBeNull();
+  });
+
+  it('returns from Google sign-in to the account page before continuing elsewhere', async () => {
+    accessMock.current = {
+      access: { authenticated: false, features: {} },
+      loading: false,
+    };
+    await renderLogin('/login?returnTo=%2Fsettings');
+
+    const loginButton = container.querySelector('.login-page__login-button');
+    expect(loginButton).not.toBeNull();
+
+    await act(async () => {
+      loginButton.click();
+    });
+
+    expect(cloudAuthMock.signInWithGoogle).toHaveBeenCalledWith({
+      returnPath: '/login?returnTo=%2Fsettings',
+    });
   });
 
   it('uses Continue for returnTo and replaces the login page in history', async () => {

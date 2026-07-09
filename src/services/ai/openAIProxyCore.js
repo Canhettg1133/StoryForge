@@ -117,7 +117,7 @@ const PROXY_MODEL_FAMILY_ORDER = [
   'OpenAI',
   'DeepSeek',
   'Kimi',
-  'MiniMax',
+  'Mimo/MiniMax',
   'Qwen',
   'Llama',
   'Mistral',
@@ -192,8 +192,8 @@ function classifyProxyModelFamily(normalizedModelId, channel) {
   }
   if (normalizedModelId.includes('deepseek')) return { family: 'DeepSeek', confidence: 'high' };
   if (normalizedModelId.includes('kimi') || normalizedModelId.includes('moonshot')) return { family: 'Kimi', confidence: 'high' };
-  if (normalizedModelId.includes('minimax') || normalizedModelId.includes('abab')) {
-    return { family: 'MiniMax', confidence: 'high' };
+  if (normalizedModelId.includes('minimax') || normalizedModelId.includes('abab') || hasToken(normalizedModelId, 'mimo')) {
+    return { family: 'Mimo/MiniMax', confidence: 'high' };
   }
   if (normalizedModelId.includes('qwen')) return { family: 'Qwen', confidence: 'high' };
   if (normalizedModelId.includes('meta-llama') || normalizedModelId.includes('llama')) return { family: 'Llama', confidence: 'high' };

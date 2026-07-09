@@ -7,6 +7,10 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: MAX_CHAT_ATTACHMENT_FILE_BYTES,
+    files: 1,
+    fields: 8,
+    parts: 12,
+    fieldNameSize: 100,
   },
 });
 
@@ -20,7 +24,7 @@ function toHttpError(error) {
   if (error?.code === 'PARSE_FAILED' || error?.code?.includes('INVALID')) {
     return { status: 422, message: error.message };
   }
-  return { status: 500, message: error?.message || 'Không thể đọc tệp đính kèm.' };
+  return { status: 500, message: 'Không thể đọc tệp đính kèm.' };
 }
 
 function flattenParsedText(parsed = {}) {

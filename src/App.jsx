@@ -45,8 +45,8 @@ export default function App() {
     <AccessProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<Login />} />
           <Route element={<AppLayout />}>
+          <Route path="/login" element={<Login />} />
           <Route path="/" element={<Dashboard />} />
           <Route path="/thong-bao" element={<Notifications />} />
           <Route path="/settings" element={<Settings />} />

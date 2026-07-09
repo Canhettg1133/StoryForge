@@ -325,6 +325,10 @@ describe('admin split UI contract', () => {
     expect(app).not.toContain('loadOverviewRanking');
     expect(app).not.toContain('overviewRanking');
     expect(app).not.toContain('OVERVIEW_VIP_RANKING_LIMIT');
+    expect(app).toContain('overview,');
+    expect(app).toContain('const userSummary = data.overview?.users?.summary || {};');
+    expect(app).toContain('const activeUsers = userSummary.active ?? userSummary.byStatus?.active ?? activeUsersFallback;');
+    expect(app).toContain('const vipUsers = userSummary.vip ?? vipUsersFallback;');
     expect(api).toContain('usageRanking:');
     expect(api).toContain("request(`/usage/ranking?${query.toString()}`)");
     expect(api).toContain("overview: () => request('/overview')");

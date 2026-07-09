@@ -11,6 +11,7 @@ const DATABASE_URL =
 
 let pool = null;
 let schemaReadyPromise = null;
+const CLOUD_SYNC_MAX_BODY_BYTES = 4_500_000;
 
 function getPool() {
   if (!DATABASE_URL) {
@@ -58,7 +59,15 @@ async function ensureSchema() {
 function sendJson(res, status, payload) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   res.end(JSON.stringify(payload));
+}
+
+function getRequestId(req) {
+  const incoming = String(req.headers['x-request-id'] || req.headers['x-correlation-id'] || '').trim();
+  if (incoming) return incoming.slice(0, 120);
+  return crypto.randomUUID();
 }
 
 function readCredentials(req) {
@@ -96,12 +105,27 @@ async function readJsonBody(req) {
   }
 
   if (typeof req.body === 'string') {
+    if (Buffer.byteLength(req.body, 'utf8') > CLOUD_SYNC_MAX_BODY_BYTES) {
+      const error = new Error('CLOUD_SYNC_BODY_TOO_LARGE');
+      error.code = 'CLOUD_SYNC_BODY_TOO_LARGE';
+      error.status = 413;
+      throw error;
+    }
     return req.body ? JSON.parse(req.body) : {};
   }
 
   const chunks = [];
+  let totalBytes = 0;
   for await (const chunk of req) {
-    chunks.push(chunk);
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > CLOUD_SYNC_MAX_BODY_BYTES) {
+      const error = new Error('CLOUD_SYNC_BODY_TOO_LARGE');
+      error.code = 'CLOUD_SYNC_BODY_TOO_LARGE';
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(buffer);
   }
 
   const raw = Buffer.concat(chunks).toString('utf8');
@@ -248,11 +272,12 @@ async function deleteSnapshot(res, workspaceSlug, accessHash, projectSlug) {
 }
 
 export default async function handler(req, res) {
+  res.setHeader('X-Request-Id', getRequestId(req));
   try {
     await ensureSchema();
-  } catch (error) {
+  } catch {
     sendJson(res, 500, {
-      error: error.message || 'Không khởi tạo được database cloud.',
+      error: 'Không khởi tạo được database cloud.',
       code: 'CLOUD_DATABASE_UNAVAILABLE',
     });
     return;
@@ -305,8 +330,15 @@ export default async function handler(req, res) {
 
     sendJson(res, 405, { error: 'Phương thức yêu cầu không được hỗ trợ.', code: 'METHOD_NOT_ALLOWED' });
   } catch (error) {
+    if (error?.code === 'CLOUD_SYNC_BODY_TOO_LARGE') {
+      sendJson(res, 413, {
+        error: 'Cloud Sync payload vuot gioi han an toan.',
+        code: 'CLOUD_SYNC_BODY_TOO_LARGE',
+      });
+      return;
+    }
     sendJson(res, 500, {
-      error: error.message || 'Cloud Sync gặp lỗi ngoài dự kiến.',
+      error: 'Cloud Sync gặp lỗi ngoài dự kiến.',
       code: 'CLOUD_SYNC_UNEXPECTED_ERROR',
     });
   }

@@ -1,4 +1,5 @@
 export const EMPTY_DATA = {
+  overview: null,
   users: [],
   catalog: [],
   audit: [],

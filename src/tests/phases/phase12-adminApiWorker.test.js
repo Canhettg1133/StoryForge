@@ -154,20 +154,40 @@ describe('phase12 admin API worker', () => {
   });
 
   it('serves a lightweight overview without loading usage history or ranking', async () => {
-    const { calls } = mockAuthAndActor({ role: 'admin', id: 'admin-1' }, async (target) => {
+    const { calls } = mockAuthAndActor({ role: 'admin', id: 'admin-1' }, async (target, init = {}) => {
       if (target.includes('/rest/v1/profiles')) {
         const query = new URL(target).searchParams;
-        expect(query.get('select')).toContain('user_id,email,display_name,system_role,status,updated_at,created_at');
-        expect(query.get('limit')).toBe('25');
-        return jsonResponse([{
-          user_id: 'admin-1',
-          email: 'admin-1@example.com',
-          display_name: 'Admin',
-          system_role: 'admin',
-          status: 'active',
-          updated_at: '2026-07-03T12:00:00.000Z',
-          created_at: '2026-07-01T12:00:00.000Z',
-        }]);
+        if (target.includes('limit=25')) {
+          expect(query.get('select')).toContain('user_id,email,display_name,system_role,status,updated_at,created_at');
+          return jsonResponse([{
+            user_id: 'admin-1',
+            email: 'admin-1@example.com',
+            display_name: 'Admin',
+            system_role: 'admin',
+            status: 'active',
+            updated_at: '2026-07-03T12:00:00.000Z',
+            created_at: '2026-07-01T12:00:00.000Z',
+          }]);
+        }
+        if (init?.method === 'HEAD') {
+          const total = target.includes('status=eq.active') ? 23 : 25;
+          return new Response(null, {
+            status: 200,
+            headers: {
+              'Content-Range': `0-0/${total}`,
+            },
+          });
+        }
+      }
+      if (target.includes('/rest/v1/user_plans')) {
+        const query = new URL(target).searchParams;
+        expect(query.get('select')).toContain('plans!inner');
+        expect(query.get('status')).toBe('eq.active');
+        return jsonResponse([
+          { user_id: 'user-vip', plans: { key: 'vip' } },
+          { user_id: 'user-lifetime', plans: { key: 'lifetime' } },
+          { user_id: 'user-vip', plans: { key: 'vip' } },
+        ]);
       }
       if (target.includes('/rest/v1/admin_audit_logs')) {
         const query = new URL(target).searchParams;
@@ -183,7 +203,10 @@ describe('phase12 admin API worker', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Server-Timing')).toContain('overview-db');
     expect(payload.actor.email).toBe('admin-1@example.com');
-    expect(payload.users.summary.total).toBe(1);
+    expect(payload.users.summary.total).toBe(25);
+    expect(payload.users.summary.active).toBe(23);
+    expect(payload.users.summary.vip).toBe(2);
+    expect(payload.users.summary.sampleSize).toBe(1);
     expect(payload.audit.items).toEqual([]);
     expect(calls.some((call) => call.url.includes('/rest/v1/usage_events'))).toBe(false);
     expect(calls.some((call) => call.url.includes('/rest/v1/rpc/admin_usage_user_rankings'))).toBe(false);
@@ -657,6 +680,25 @@ describe('phase12 admin API worker', () => {
     expect(calls.some((call) => call.url.includes('/rest/v1/profiles') && call.url.includes('or='))).toBe(false);
   });
 
+  it('encodes profile usage search filters before sending PostgREST ilike queries', async () => {
+    const { calls } = mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/profiles') && target.includes('or=')) {
+        expect(target).toContain('reader%40example.com');
+        expect(target).not.toContain('*reader@example.com*');
+        return jsonResponse([]);
+      }
+      if (target.includes('/rest/v1/usage_events')) {
+        return jsonResponse([], 200);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/usage?page=1&pageSize=50&q=reader@example.com'), createEnv());
+
+    expect(response.status).toBe(200);
+    expect(calls.some((call) => call.url.includes('/rest/v1/profiles') && call.url.includes('or='))).toBe(true);
+  });
+
   it('honors admin kill switches for usage, usage search, and VIP ranking', async () => {
     const usageOff = mockAuthAndActor({ role: 'support', id: 'support-1' });
     const usageOffResponse = await adminWorker.fetch(
@@ -964,8 +1006,8 @@ describe('phase12 admin API worker', () => {
             {
               id: 'user-2',
               email: 'user@example.com',
-              app_metadata: {},
-              user_metadata: {},
+              app_metadata: { storyforge_role: 'admin' },
+              user_metadata: { role: 'owner' },
               created_at: '2026-06-02T00:00:00.000Z',
               updated_at: '2026-06-23T01:05:00.000Z',
               last_sign_in_at: '2026-06-23T01:05:00.000Z',

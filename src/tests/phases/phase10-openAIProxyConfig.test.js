@@ -151,8 +151,8 @@ describe('openAIProxyConfig legacy settings migration', () => {
     expect(classifyProxyModel('deepseek-ai/deepseek-v4-flash', context).family).toBe('DeepSeek');
     expect(classifyProxyModel('moonshotai/kimi-k2-instruct', context).family).toBe('Kimi');
     expect(classifyProxyModel('kimi-k2-thinking', context).family).toBe('Kimi');
-    expect(classifyProxyModel('MiniMax-M3', context).family).toBe('MiniMax');
-    expect(classifyProxyModel('abab6.5s-chat', context).family).toBe('MiniMax');
+    expect(classifyProxyModel('MiniMax-M3', context).family).toBe('Mimo/MiniMax');
+    expect(classifyProxyModel('abab6.5s-chat', context).family).toBe('Mimo/MiniMax');
     expect(classifyProxyModel('x-ai/grok-4.3', context).family).toBe('Grok');
     expect(classifyProxyModel('01-ai/yi-large', context).family).toBe('Yi');
     expect(classifyProxyModel('bytedance/seed-oss-36b-instruct', context).family).toBe('Doubao/Seed');
@@ -164,7 +164,7 @@ describe('openAIProxyConfig legacy settings migration', () => {
       'utf8',
     );
 
-    ['DeepSeek', 'Kimi', 'MiniMax', 'Qwen', 'Grok'].forEach((family) => {
+    ['DeepSeek', 'Kimi', 'Mimo/MiniMax', 'Qwen', 'Grok'].forEach((family) => {
       expect(settingsSource).toContain(`'${family}'`);
     });
   });

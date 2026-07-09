@@ -191,7 +191,7 @@ export async function exportProject(projectId) {
     db.chapter_snapshots.where('project_id').equals(projectId).toArray(),
     db.item_state_current.where('project_id').equals(projectId).toArray(),
     db.relationship_state_current.where('project_id').equals(projectId).toArray(),
-    db.project_assets.where('project_id').equals(projectId).toArray(),
+    db.project_assets?.where('project_id').equals(projectId).toArray() || Promise.resolve([]),
   ]);
 
   if (!project) throw new Error('Không tìm thấy dự án');

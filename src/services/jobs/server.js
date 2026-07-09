@@ -11,16 +11,91 @@ import { JOB_CONFIG } from './config.js';
 import { getJobQueue } from './jobQueue.js';
 import { createJobsRouter } from './routes/jobs.js';
 
-function createApp(queue) {
+function normalizeHost(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+export function isRemoteJobBindHost(host) {
+  const normalized = normalizeHost(host);
+  return normalized === '0.0.0.0' || normalized === '::';
+}
+
+export function validateJobServerSecurity({
+  host = JOB_CONFIG.BIND_HOST,
+  apiToken = JOB_CONFIG.API_TOKEN,
+  allowedOriginsConfigured = JOB_CONFIG.ALLOWED_ORIGINS_CONFIGURED,
+} = {}) {
+  if (!isRemoteJobBindHost(host)) return;
+  if (!apiToken) {
+    const error = new Error('JOB_API_TOKEN is required when JOB_BIND_HOST exposes the jobs server.');
+    error.code = 'JOB_API_TOKEN_REQUIRED';
+    throw error;
+  }
+  if (!allowedOriginsConfigured) {
+    const error = new Error('JOB_ALLOWED_ORIGINS is required when JOB_BIND_HOST exposes the jobs server.');
+    error.code = 'JOB_ALLOWED_ORIGINS_REQUIRED';
+    throw error;
+  }
+}
+
+export function isJobOriginAllowed(origin, allowedOrigins = JOB_CONFIG.ALLOWED_ORIGINS) {
+  if (!origin) return true;
+  return allowedOrigins.includes(origin);
+}
+
+function createOriginGuard(allowedOrigins) {
+  return (req, res, next) => {
+    if (!isJobOriginAllowed(req.headers.origin, allowedOrigins)) {
+      return res.status(403).json({
+        code: 'JOB_ORIGIN_NOT_ALLOWED',
+        error: 'Origin không được phép gọi Job API.',
+      });
+    }
+    return next();
+  };
+}
+
+function createTokenGuard(apiToken) {
+  return (req, res, next) => {
+    if (!apiToken || req.path === '/health') return next();
+    const authHeader = String(req.headers.authorization || '').trim();
+    const bearer = authHeader.match(/^Bearer\s+(.+)$/iu)?.[1]?.trim() || '';
+    const headerToken = String(req.headers['x-job-api-token'] || '').trim();
+    if (bearer === apiToken || headerToken === apiToken) return next();
+    return res.status(401).json({
+      code: 'JOB_AUTH_REQUIRED',
+      error: 'Cần token để gọi Job API.',
+    });
+  };
+}
+
+function createSafeErrorHandler() {
+  return (_err, _req, res, _next) => {
+    if (res.headersSent) return;
+    res.status(500).json({
+      code: 'JOB_INTERNAL_ERROR',
+      error: 'Lỗi máy chủ nội bộ.',
+    });
+  };
+}
+
+function createApp(queue, {
+  allowedOrigins = JOB_CONFIG.ALLOWED_ORIGINS,
+  apiToken = JOB_CONFIG.API_TOKEN,
+} = {}) {
   const app = express();
 
+  app.use(createOriginGuard(allowedOrigins));
   app.use(
     cors({
-      origin: true,
+      origin(origin, callback) {
+        callback(null, isJobOriginAllowed(origin, allowedOrigins));
+      },
       credentials: true,
     }),
   );
   app.use(express.json({ limit: '5mb' }));
+  app.use(createTokenGuard(apiToken));
 
   app.get('/health', (_req, res) => {
     res.json({
@@ -34,18 +109,21 @@ function createApp(queue) {
   app.use('/api/corpus', createCorpusRouter());
   app.use('/api/chat-attachments', createChatAttachmentsRouter());
 
-  app.use((err, _req, res, _next) => {
-    res.status(500).json({
-      error: err?.message || 'Lỗi máy chủ nội bộ.',
-    });
-  });
+  app.use(createSafeErrorHandler());
 
   return app;
 }
 
-export function createJobServer({ port = JOB_CONFIG.PORT } = {}) {
+export function createJobServer({
+  port = JOB_CONFIG.PORT,
+  host = JOB_CONFIG.BIND_HOST,
+  allowedOrigins = JOB_CONFIG.ALLOWED_ORIGINS,
+  allowedOriginsConfigured = JOB_CONFIG.ALLOWED_ORIGINS_CONFIGURED,
+  apiToken = JOB_CONFIG.API_TOKEN,
+} = {}) {
+  validateJobServerSecurity({ host, apiToken, allowedOriginsConfigured });
   const queue = getJobQueue();
-  const app = createApp(queue);
+  const app = createApp(queue, { allowedOrigins, apiToken });
 
   let server = null;
 
@@ -63,7 +141,7 @@ export function createJobServer({ port = JOB_CONFIG.PORT } = {}) {
       queue.start();
 
       await new Promise((resolve, reject) => {
-        server = app.listen(port, '0.0.0.0', resolve);
+        server = app.listen(port, host, resolve);
         server.once('error', reject);
       });
 
@@ -108,7 +186,7 @@ if (isDirectRun) {
     .start()
     .then(() => {
       // eslint-disable-next-line no-console
-      console.log(`[jobs] listening on http://localhost:${JOB_CONFIG.PORT}`);
+      console.log(`[jobs] listening on http://${JOB_CONFIG.BIND_HOST}:${JOB_CONFIG.PORT}`);
     })
     .catch((error) => {
       // eslint-disable-next-line no-console

@@ -1,11 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ACCESS_FEATURES,
   ACCESS_REASONS,
   createAuthenticatedAccessFallbackSnapshot,
+  createUnauthenticatedAccessSnapshot,
+  getCachedAccessToken,
+  setCachedAccessSnapshot,
 } from '../../services/access/accessClient.js';
 
 describe('access client fallback snapshot', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('keeps the Supabase session identity when the access API is unavailable', () => {
     const snapshot = createAuthenticatedAccessFallbackSnapshot({
       user: {
@@ -34,5 +41,16 @@ describe('access client fallback snapshot', () => {
       allowed: false,
       reason: ACCESS_REASONS.AUTH_REQUIRED,
     });
+  });
+
+  it('does not expose the bearer token on window globals', () => {
+    vi.stubGlobal('window', { __STORYFORGE_ACCESS_TOKEN__: 'old-token' });
+    const snapshot = createUnauthenticatedAccessSnapshot();
+
+    setCachedAccessSnapshot(snapshot, 'secret-token');
+
+    expect(getCachedAccessToken()).toBe('secret-token');
+    expect(window.__STORYFORGE_ACCESS_SNAPSHOT__).toBe(snapshot);
+    expect(window.__STORYFORGE_ACCESS_TOKEN__).toBeUndefined();
   });
 });

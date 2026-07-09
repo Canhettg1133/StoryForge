@@ -2,6 +2,13 @@ import {
   DEFAULT_STORY_MIRROR_QUOTA_BYTES,
   processStoryMirrorEvent,
 } from './eventProcessor.js';
+import {
+  ACCESS_FEATURES,
+  PLAN_STATUSES,
+  SYSTEM_ROLES,
+  USER_STATUSES,
+  resolveFeatureDecision,
+} from '../../../packages/access/src/index.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
 const SECURITY_HEADERS = {
@@ -14,8 +21,25 @@ const PROJECTS_TABLE = 'story_mirror_projects';
 const CHAPTERS_TABLE = 'story_mirror_chapters';
 const SCENES_TABLE = 'story_mirror_scenes';
 const EVENTS_TABLE = 'story_mirror_events';
+const PROFILES_TABLE = 'profiles';
+const FEATURES_TABLE = 'features';
+const PLAN_FEATURES_TABLE = 'plan_features';
+const USER_PLANS_TABLE = 'user_plans';
+const USER_ENTITLEMENT_OVERRIDES_TABLE = 'user_entitlement_overrides';
+const CONSENT_VERSIONS_TABLE = 'consent_versions';
+const ACCESS_VERSIONS_TABLE = 'access_versions';
 const MAX_STORY_MIRROR_EVENTS_PER_BATCH = 50;
 const MAX_STORY_MIRROR_BATCH_BYTES = 5 * 1024 * 1024;
+const ACCESS_GLOBAL_CATALOG_TTL_MS = 5 * 60 * 1000;
+const ACCESS_USER_SNAPSHOT_TTL_MS = 120 * 1000;
+
+let accessCatalogCache = null;
+const userAccessDataCache = new Map();
+
+export function clearStoryMirrorAccessCaches() {
+  accessCatalogCache = null;
+  userAccessDataCache.clear();
+}
 
 function makeError(status, code, message) {
   const error = new Error(message || code);
@@ -26,6 +50,38 @@ function makeError(status, code, message) {
 
 function trimTrailingSlash(value) {
   return String(value || '').trim().replace(/\/+$/u, '');
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function cloneJson(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function getFirstRow(value) {
+  return Array.isArray(value) ? value[0] || null : value || null;
+}
+
+function getCachedUserAccessData(userId, accessVersion, profile) {
+  const cacheKey = `${userId}:${accessVersion}`;
+  const entry = userAccessDataCache.get(cacheKey);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    userAccessDataCache.delete(cacheKey);
+    return null;
+  }
+  const accessData = cloneJson(entry.accessData);
+  accessData.profile = profile;
+  return accessData;
+}
+
+function setCachedUserAccessData(userId, accessVersion, accessData) {
+  userAccessDataCache.set(`${userId}:${accessVersion}`, {
+    expiresAt: Date.now() + ACCESS_USER_SNAPSHOT_TTL_MS,
+    accessData: cloneJson(accessData),
+  });
 }
 
 function validateEnv(env = {}) {
@@ -83,6 +139,21 @@ function json(payload, status = 200, cors = {}) {
     status,
     headers: { ...cors, ...SECURITY_HEADERS, ...JSON_HEADERS },
   });
+}
+
+function publicErrorMessage(error) {
+  const status = Number(error?.status || 500);
+  if (status >= 500 || error?.code === 'STORY_MIRROR_SUPABASE_FAILED') {
+    return 'Story Mirror không xử lý được yêu cầu.';
+  }
+  return error?.message || 'Story Mirror không xử lý được yêu cầu.';
+}
+
+function publicEventErrorMessage(error) {
+  if (!error?.code || error.code === 'STORY_MIRROR_SUPABASE_FAILED') {
+    return 'Không xử lý được story mirror event.';
+  }
+  return error.message || 'Không xử lý được story mirror event.';
 }
 
 async function readJson(request) {
@@ -146,6 +217,106 @@ async function supabaseRest(config, table, {
   return payload;
 }
 
+async function getAccessCatalog(config) {
+  if (accessCatalogCache?.expiresAt > Date.now()) {
+    return cloneJson(accessCatalogCache.catalog);
+  }
+
+  const [features, planFeatures, consentVersions] = await Promise.all([
+    supabaseRest(config, FEATURES_TABLE, {
+      query: 'select=*',
+      prefer: '',
+    }),
+    supabaseRest(config, PLAN_FEATURES_TABLE, {
+      query: 'select=*',
+      prefer: '',
+    }),
+    supabaseRest(config, CONSENT_VERSIONS_TABLE, {
+      query: 'select=*&active=eq.true',
+      prefer: '',
+    }),
+  ]);
+  const catalog = {
+    features: asArray(features),
+    planFeatures: asArray(planFeatures),
+    consentVersions: asArray(consentVersions),
+  };
+  accessCatalogCache = {
+    expiresAt: Date.now() + ACCESS_GLOBAL_CATALOG_TTL_MS,
+    catalog: cloneJson(catalog),
+  };
+  return catalog;
+}
+
+async function getUserProfile(config, user) {
+  const rows = await supabaseRest(config, PROFILES_TABLE, {
+    query: `select=*&user_id=eq.${encodeURIComponent(user.id)}&limit=1`,
+    prefer: '',
+  });
+  const profile = getFirstRow(rows);
+  return {
+    user_id: user.id,
+    email: user.email || '',
+    display_name: user.user_metadata?.name || user.user_metadata?.full_name || user.email || '',
+    system_role: SYSTEM_ROLES.USER,
+    status: USER_STATUSES.ACTIVE,
+    ...(profile && typeof profile === 'object' ? profile : {}),
+  };
+}
+
+async function getAccessVersion(config, userId) {
+  const rows = await supabaseRest(config, ACCESS_VERSIONS_TABLE, {
+    query: `select=version,updated_at&user_id=eq.${encodeURIComponent(userId)}&limit=1`,
+    prefer: '',
+  });
+  return Number(getFirstRow(rows)?.version || 1) || 1;
+}
+
+function mapUserPlan(row) {
+  return {
+    ...row,
+    plan_key: row?.plans?.key || row?.plan_key || '',
+    plan_name: row?.plans?.name || '',
+  };
+}
+
+async function buildAccessData(config, user) {
+  const userId = String(user?.id || '');
+  if (!userId) throw makeError(401, 'STORY_MIRROR_AUTH_INVALID', 'Phiên đăng nhập không hợp lệ.');
+
+  const profile = await getUserProfile(config, user);
+  const accessVersion = await getAccessVersion(config, userId);
+  const cached = getCachedUserAccessData(userId, accessVersion, profile);
+  if (cached) return cached;
+
+  const [catalog, userPlans, overrides] = await Promise.all([
+    getAccessCatalog(config),
+    supabaseRest(config, USER_PLANS_TABLE, {
+      query: `select=*,plans(key,name)&user_id=eq.${encodeURIComponent(userId)}`,
+      prefer: '',
+    }),
+    supabaseRest(config, USER_ENTITLEMENT_OVERRIDES_TABLE, {
+      query: `select=*&user_id=eq.${encodeURIComponent(userId)}`,
+      prefer: '',
+    }),
+  ]);
+  const accessData = {
+    authenticated: true,
+    userId,
+    profile,
+    features: asArray(catalog.features),
+    userPlans: asArray(userPlans)
+      .filter((row) => !row?.status || row.status === PLAN_STATUSES.ACTIVE)
+      .map(mapUserPlan),
+    planFeatures: asArray(catalog.planFeatures),
+    overrides: asArray(overrides),
+    consentVersions: asArray(catalog.consentVersions),
+    accessVersion,
+  };
+  setCachedUserAccessData(userId, accessVersion, accessData);
+  return cloneJson(accessData);
+}
+
 async function authenticate(request, config) {
   const token = getBearerToken(request);
   if (!token) {
@@ -178,10 +349,21 @@ async function getSettings(config) {
   };
 }
 
-function canUserMirror(user, settings) {
+async function canUserMirror(config, user, settings) {
   if (!settings.enabled) return { ok: false, code: 'STORY_MIRROR_DISABLED', status: 'disabled' };
   if (settings.testOnly && !settings.testUserIds.includes(String(user.id))) {
     return { ok: false, code: 'STORY_MIRROR_TEST_ONLY', status: 'disabled' };
+  }
+  const accessData = await buildAccessData(config, user);
+  const decision = resolveFeatureDecision(accessData, ACCESS_FEATURES.STORY_MIRROR_ACCESS);
+  if (!decision.allowed) {
+    return {
+      ok: false,
+      code: decision.reason || 'STORY_MIRROR_ACCESS_DENIED',
+      status: 'disabled',
+      httpStatus: decision.status || 403,
+      decision,
+    };
   }
   return { ok: true };
 }
@@ -296,7 +478,7 @@ function createRepository(config) {
 
 async function handleBatch(request, config, user) {
   const settings = await getSettings(config);
-  const access = canUserMirror(user, settings);
+  const access = await canUserMirror(config, user, settings);
   const body = await readJson(request);
   if (body?.events !== undefined && !Array.isArray(body.events)) {
     throw makeError(400, 'STORY_MIRROR_EVENTS_MALFORMED', 'Story Mirror events must be an array.');
@@ -336,7 +518,7 @@ async function handleBatch(request, config, user) {
         idempotencyKey: event?.idempotencyKey || '',
         status: 'failed',
         code: error.code || 'STORY_MIRROR_EVENT_FAILED',
-        error: error.message || 'Không xử lý được story mirror event.',
+        error: publicEventErrorMessage(error),
       });
     }
   }
@@ -345,19 +527,24 @@ async function handleBatch(request, config, user) {
 
 async function handleStatus(config, user) {
   const settings = await getSettings(config);
-  const access = canUserMirror(user, settings);
+  const access = await canUserMirror(config, user, settings);
   const repo = createRepository(config);
   return {
     ok: true,
     enabled: access.ok,
     disabledCode: access.ok ? '' : access.code,
     quotaBytes: settings.perUserQuotaBytes,
-    usedBytes: await repo.getUserUsageBytes(user.id),
+    usedBytes: access.ok ? await repo.getUserUsageBytes(user.id) : 0,
     updatedAt: settings.updatedAt,
   };
 }
 
 async function handleProjectDelete(config, user, clientProjectId) {
+  const settings = await getSettings(config);
+  const access = await canUserMirror(config, user, settings);
+  if (!access.ok) {
+    throw makeError(access.httpStatus || 403, access.code, 'Bạn chưa có quyền dùng Story Mirror.');
+  }
   const repo = createRepository(config);
   const project = await repo.findProjectByClientId(user.id, clientProjectId);
   if (!project) return { ok: true, deleted: false };
@@ -398,7 +585,10 @@ async function handle(request, env = {}) {
   try {
     config = validateEnv(env);
   } catch (error) {
-    return json({ error: error.message, code: error.code || 'STORY_MIRROR_CONFIG_ERROR' }, error.status || 500);
+    return json({
+      error: 'Story Mirror chưa được cấu hình hợp lệ.',
+      code: error.code || 'STORY_MIRROR_CONFIG_ERROR',
+    }, error.status || 500);
   }
 
   const cors = corsHeaders(request, config);
@@ -418,7 +608,7 @@ async function handle(request, env = {}) {
     return json(payload, 200, cors);
   } catch (error) {
     return json({
-      error: error.message || 'Story Mirror gặp lỗi ngoài dự kiến.',
+      error: publicErrorMessage(error),
       code: error.code || 'STORY_MIRROR_UNEXPECTED_ERROR',
     }, error.status || 500, cors);
   }

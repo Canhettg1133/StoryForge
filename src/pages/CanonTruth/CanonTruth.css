@@ -223,14 +223,6 @@
   flex-shrink: 0;
 }
 
-.su-that-page__revision-text {
-  margin: 0;
-  white-space: pre-wrap;
-  line-height: 1.7;
-  font: inherit;
-  color: var(--color-text-primary);
-}
-
 @media (max-width: 1400px) {
   .su-that-page__summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -394,12 +386,6 @@
 
   .project-mobile-shell .bible-canon-list-item {
     border-radius: 8px;
-  }
-
-  .project-mobile-shell .su-that-page__revision-text {
-    max-height: 52dvh;
-    overflow: auto;
-    overflow-wrap: anywhere;
   }
 
   .project-mobile-shell .su-that-page__compact-item,

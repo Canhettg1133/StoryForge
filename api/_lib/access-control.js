@@ -8,7 +8,7 @@ import {
   resolveFeatureDecision,
   resolveUserAccess,
 } from '../../src/services/access/accessControl.js';
-import { getBearerToken, getClientIp, getUserAgent, sendJson } from './http.js';
+import { getBearerToken, getClientIp, getUserAgent, sendJson, sendPublicError } from './http.js';
 import { getSupabaseAdminClient, getSupabaseAdminConfig } from './supabaseAdmin.js';
 
 export { ACCESS_FEATURES, ACCESS_REASONS, SYSTEM_ROLES };
@@ -445,11 +445,10 @@ export async function requireAdmin(req, role = SYSTEM_ROLES.ADMIN) {
 }
 
 export function sendAccessDenied(res, result) {
-  sendJson(res, result?.status || 403, {
-    error: result?.reason || ACCESS_REASONS.FEATURE_NOT_ALLOWED,
-    code: result?.reason || ACCESS_REASONS.FEATURE_NOT_ALLOWED,
-    feature: result?.decision?.feature || '',
-    decision: result?.decision || null,
+  const code = result?.reason || ACCESS_REASONS.FEATURE_NOT_ALLOWED;
+  sendPublicError(null, res, result?.status || 403, {
+    error: code,
+    code,
   });
 }
 

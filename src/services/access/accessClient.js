@@ -67,7 +67,7 @@ export function setCachedAccessSnapshot(snapshot, token = cachedAccessToken) {
   cachedAccessToken = String(token || '');
   if (typeof window !== 'undefined') {
     window.__STORYFORGE_ACCESS_SNAPSHOT__ = cachedAccessSnapshot;
-    window.__STORYFORGE_ACCESS_TOKEN__ = cachedAccessToken;
+    delete window.__STORYFORGE_ACCESS_TOKEN__;
   }
   return cachedAccessSnapshot;
 }

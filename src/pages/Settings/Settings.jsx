@@ -662,7 +662,7 @@ const PROXY_MODEL_FAMILY_FILTERS = [
   'OpenAI',
   'DeepSeek',
   'Kimi',
-  'MiniMax',
+  'Mimo/MiniMax',
   'Qwen',
   'Llama',
   'Mistral',
@@ -893,6 +893,7 @@ function readSettingsKeyCounts() {
 function getSettingsProviderFeature(providerCardOrProvider) {
   if (providerCardOrProvider === PROVIDER_CARD_AG_PROXY) return ACCESS_FEATURES.AG_PROXY;
   if (providerCardOrProvider === PROVIDER_CARD_CUSTOM_PROXY) return ACCESS_FEATURES.CUSTOM_PROXY;
+  if (providerCardOrProvider === PROVIDER_CARD_CLOUDFLARE_COVER) return ACCESS_FEATURES.PROJECT_COVER_GENERATION;
   if (providerCardOrProvider === PROVIDERS.AI_STUDIO_RELAY) return ACCESS_FEATURES.AI_STUDIO_RELAY;
   if (providerCardOrProvider === PROVIDERS.GEMINI_DIRECT) return ACCESS_FEATURES.GEMINI_DIRECT;
   return '';

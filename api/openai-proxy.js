@@ -5,7 +5,8 @@ import {
   buildOpenAIProxyEndpoint,
   isLocalProxyHost,
 } from '../src/services/ai/openAIProxyCore.js';
-import { getHeader, readJsonBody, sendJson } from './_lib/http.js';
+import { getHeader, readJsonBody, sendJson, sendPublicError } from './_lib/http.js';
+import { checkRateLimit, writeRateLimitHeaders } from './_lib/rate-limit.js';
 import {
   ACCESS_FEATURES,
   requireFeature,
@@ -15,6 +16,10 @@ import {
 
 const ALLOWED_ACTIONS = new Set(['models', 'chat', 'chat_stream_batch', 'image_generation']);
 const MAX_CHAT_STREAM_BATCH_SIZE = 50;
+const DEFAULT_OPENAI_PROXY_MAX_BODY_BYTES = 4 * 1024 * 1024;
+const DEFAULT_OPENAI_PROXY_RATE_LIMIT = 120;
+const DEFAULT_OPENAI_PROXY_RATE_WINDOW_MS = 60 * 1000;
+const DEFAULT_CHAT_STREAM_BATCH_CONCURRENCY = 6;
 const DEFAULT_USAGE_LOGGING_TIMEOUT_MS = 2000;
 const AG_PROXY_HOSTS = new Set(['ag.beijixingxing.com']);
 const AG_PROXY_SAFE_SUFFIXES = ['.beijixingxing.com'];
@@ -78,6 +83,40 @@ async function pipeUpstreamResponse(upstream, res) {
 
 function getUpstreamKey(req) {
   return getHeader(req, 'x-storyforge-upstream-key').trim();
+}
+
+function getBoundedEnvInteger(name, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = Number.parseInt(process.env[name] || '', 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function getOpenAIProxyMaxBodyBytes() {
+  return getBoundedEnvInteger('OPENAI_PROXY_MAX_BODY_BYTES', DEFAULT_OPENAI_PROXY_MAX_BODY_BYTES, {
+    min: 16 * 1024,
+    max: 8 * 1024 * 1024,
+  });
+}
+
+function getOpenAIProxyRateLimit() {
+  return getBoundedEnvInteger('OPENAI_PROXY_RATE_LIMIT_MAX', DEFAULT_OPENAI_PROXY_RATE_LIMIT, {
+    min: 1,
+    max: 10_000,
+  });
+}
+
+function getOpenAIProxyRateWindowMs() {
+  return getBoundedEnvInteger('OPENAI_PROXY_RATE_LIMIT_WINDOW_MS', DEFAULT_OPENAI_PROXY_RATE_WINDOW_MS, {
+    min: 10_000,
+    max: 10 * 60 * 1000,
+  });
+}
+
+function getChatStreamBatchConcurrency() {
+  return getBoundedEnvInteger('OPENAI_PROXY_BATCH_CONCURRENCY', DEFAULT_CHAT_STREAM_BATCH_CONCURRENCY, {
+    min: 1,
+    max: 12,
+  });
 }
 
 function normalizeHost(hostname = '') {
@@ -291,16 +330,30 @@ async function fetchChatPayload(endpoint, headers, payload) {
       status: upstream.status,
       body: await readUpstreamResponseBody(upstream),
     };
-  } catch (error) {
+  } catch {
     return {
       ok: false,
       status: 502,
       body: {
-        error: error?.message || 'Relay OpenAI proxy thất bại.',
+        error: 'Relay OpenAI proxy thất bại.',
         code: 'OPENAI_PROXY_UPSTREAM_FAILED',
       },
     };
   }
+}
+
+async function mapWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  }));
+  return results;
 }
 
 function createProxyAccessError(status, reason, feature = '') {
@@ -388,10 +441,32 @@ export function createOpenAIProxyHandler({
     return;
   }
 
+  const rateLimit = checkRateLimit(req, {
+    keyPrefix: 'openai-proxy',
+    limit: getOpenAIProxyRateLimit(),
+    windowMs: getOpenAIProxyRateWindowMs(),
+  });
+  writeRateLimitHeaders(res, rateLimit);
+  if (!rateLimit.allowed) {
+    sendPublicError(req, res, 429, {
+      code: 'OPENAI_PROXY_RATE_LIMITED',
+      error: 'Qua nhieu yeu cau AI trong thoi gian ngan. Hay thu lai sau.',
+      retryAfterSeconds: rateLimit.retryAfterSeconds,
+    });
+    return;
+  }
+
   let body;
   try {
-    body = await readJsonBody(req);
-  } catch {
+    body = await readJsonBody(req, { maxBytes: getOpenAIProxyMaxBodyBytes() });
+  } catch (error) {
+    if (error?.code === 'JSON_BODY_TOO_LARGE') {
+      sendPublicError(req, res, 413, {
+        code: 'OPENAI_PROXY_BODY_TOO_LARGE',
+        error: 'Noi dung yeu cau AI vuot gioi han an toan.',
+      });
+      return;
+    }
     sendJson(res, 400, { error: 'Nội dung JSON gửi lên không hợp lệ.', code: 'OPENAI_PROXY_BAD_JSON' });
     return;
   }
@@ -468,10 +543,10 @@ export function createOpenAIProxyHandler({
     if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
     logUsageOnce('ok');
-    await Promise.all(payloads.map(async (payload, index) => {
+    await mapWithConcurrency(payloads, getChatStreamBatchConcurrency(), async (payload, index) => {
       const result = await fetchChatPayload(endpoint, chatHeaders, payload);
       res.write(`${JSON.stringify({ index, ...result })}\n`);
-    }));
+    });
     res.end();
     return;
   }
@@ -492,14 +567,14 @@ export function createOpenAIProxyHandler({
 
     await pipeUpstreamResponse(upstream, res);
     logUsageOnce(upstream.ok ? 'ok' : 'error');
-  } catch (error) {
+  } catch {
     logUsageOnce('error');
     if (res.headersSent || res.writableEnded) {
       if (!res.writableEnded) res.end();
       return;
     }
     sendJson(res, 502, {
-      error: error?.message || 'Relay OpenAI proxy thất bại.',
+      error: 'Relay OpenAI proxy thất bại.',
       code: 'OPENAI_PROXY_UPSTREAM_FAILED',
     });
   }

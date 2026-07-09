@@ -10,6 +10,7 @@ import {
   LogIn,
   LogOut,
   Mail,
+  Menu,
   MessageCircle,
 } from 'lucide-react';
 import {
@@ -29,7 +30,11 @@ import {
   normalizeVipPageContent,
 } from '../../config/vipPageContent.js';
 import SupportDonateModal from '../../components/support/SupportDonateModal.jsx';
+import MobileSheet from '../../components/mobile/MobileSheet.jsx';
+import MobileNavigationMenu from '../../components/mobile/MobileNavigationMenu.jsx';
 import { useUserAccess } from '../../hooks/useUserAccess.js';
+import useMobileLayout from '../../hooks/useMobileLayout.js';
+import useProjectStore from '../../stores/projectStore.js';
 import './Login.css';
 
 const FEATURE_ORDER = [
@@ -86,18 +91,26 @@ export default function Login() {
   const location = useLocation();
   const navigate = useNavigate();
   const { access, loading } = useUserAccess();
+  const currentProject = useProjectStore((state) => state.currentProject);
+  const isMobileLayout = useMobileLayout(900);
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [copied, setCopied] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [donateOpen, setDonateOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [vipPageContent, setVipPageContent] = useState(DEFAULT_VIP_PAGE_CONTENT);
   const returnTo = useMemo(() => getReturnTo(location), [location]);
+  const accountReturnPath = useMemo(
+    () => `${location.pathname || '/login'}${location.search || ''}${location.hash || ''}`,
+    [location.hash, location.pathname, location.search],
+  );
 
   const email = access?.user?.email || '';
   const enabledFeatures = FEATURE_ORDER.filter((featureKey) => access?.features?.[featureKey]?.allowed);
   const hasVipPlan = ['vip', 'lifetime'].includes(String(access?.plan?.key || '').toLowerCase());
   const authenticated = Boolean(access?.authenticated);
+  const activeProjectId = currentProject?.id || null;
 
   useEffect(() => {
     let mounted = true;
@@ -117,7 +130,7 @@ export default function Login() {
     setError('');
     setStatusMessage('');
     try {
-      await signInWithGoogle({ returnPath: returnTo });
+      await signInWithGoogle({ returnPath: accountReturnPath });
     } catch (err) {
       setError(err?.message || 'Không thể mở đăng nhập Google. Hãy kiểm tra cấu hình Supabase.');
     }
@@ -161,10 +174,24 @@ export default function Login() {
     <main className="login-page">
       <section className="login-page__shell" aria-label="Đăng nhập và kiểm tra quyền VIP">
         <div className="login-page__intro">
-          <button type="button" className="login-page__back" onClick={handleGoHome}>
-            <ArrowLeft size={16} />
-            Về trang chủ
-          </button>
+          {isMobileLayout ? (
+            <div className="login-page__mobile-nav">
+              <button type="button" className="login-page__back" onClick={handleGoHome}>
+                <ArrowLeft size={16} />
+                Về trang chủ
+              </button>
+              <button
+                type="button"
+                className="login-page__mobile-menu-button btn btn-ghost"
+                onClick={() => setMobileMenuOpen(true)}
+                aria-expanded={mobileMenuOpen}
+                aria-label="Mở menu điều hướng"
+              >
+                <Menu size={17} />
+                <span>Menu</span>
+              </button>
+            </div>
+          ) : null}
 
           <div className="login-page__title">
             <span className="login-page__mark" aria-hidden="true">
@@ -323,6 +350,18 @@ export default function Login() {
       </section>
 
       <SupportDonateModal open={donateOpen} onClose={() => setDonateOpen(false)} />
+      <MobileSheet
+        open={mobileMenuOpen}
+        title="Menu"
+        kicker={currentProject?.title || 'StoryForge'}
+        size="full"
+        onClose={() => setMobileMenuOpen(false)}
+      >
+        <MobileNavigationMenu
+          activeProjectId={activeProjectId}
+          onNavigate={() => setMobileMenuOpen(false)}
+        />
+      </MobileSheet>
     </main>
   );
 }

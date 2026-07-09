@@ -1046,35 +1046,7 @@
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->
-
-    <!-- Clear translator PWA caches from previous embedded builds -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', async () => {
-                try {
-                    const registrations = await navigator.serviceWorker.getRegistrations();
-                    await Promise.all(
-                        registrations
-                            .filter((registration) => registration.scope.includes('/translator-runtime/'))
-                            .map((registration) => registration.unregister())
-                    );
-
-                    if ('caches' in window) {
-                        const cacheKeys = await caches.keys();
-                        await Promise.all(
-                            cacheKeys
-                                .filter((key) => key.startsWith('novel-translator-'))
-                                .map((key) => caches.delete(key))
-                        );
-                    }
-
-                    console.log('🧹 Translator cache cleared');
-                } catch (error) {
-                    console.warn('⚠️ Failed to clear translator cache:', error);
-                }
-            });
-        }
-    </script>
+    <script src="js/cache-cleanup.js?v=1"></script>
 </body>
 
 </html>

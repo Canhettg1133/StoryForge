@@ -1914,7 +1914,7 @@ function renderApiKeysList() {
         return `
         <div class="api-key-item">
             <span class="key-index" style="background: ${statusColor}">${index + 1}</span>
-            <span class="key-value">${maskApiKey(key)}</span>
+            <span class="key-value">${escapeRuntimeHtml(maskApiKey(key))}</span>
             <span class="key-status" style="color: ${statusColor};">${status.message}</span>
             <button class="remove-btn" onclick="removeApiKey(${index})" title="Xóa">🗑️</button>
         </div>
@@ -1928,5 +1928,14 @@ function renderApiKeysList() {
 function maskApiKey(key) {
     if (key.length <= 10) return key;
     return key.substring(0, 8) + '••••••••' + key.substring(key.length - 4);
+}
+
+function escapeRuntimeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 // EXPOSE GLOBALLY đã chuyển sang js/init.js

@@ -1,7 +1,16 @@
-import { getHeader, readJsonBody, sendJson } from './_lib/http.js';
+import { getHeader, readJsonBody, sendJson, sendPublicError } from './_lib/http.js';
+import { checkRateLimit, writeRateLimitHeaders } from './_lib/rate-limit.js';
+import {
+  ACCESS_FEATURES,
+  requireFeature,
+  sendAccessDenied,
+} from './_lib/access-control.js';
 
 const CLOUDFLARE_API_BASE = 'https://api.cloudflare.com/client/v4';
 const ALLOWED_ACTIONS = new Set(['run', 'models']);
+const DEFAULT_CLOUDFLARE_WORKERS_AI_MAX_BODY_BYTES = 6 * 1024 * 1024;
+const DEFAULT_CLOUDFLARE_WORKERS_AI_RATE_LIMIT = 40;
+const DEFAULT_CLOUDFLARE_WORKERS_AI_RATE_WINDOW_MS = 60 * 1000;
 
 export const config = {
   maxDuration: 300,
@@ -13,6 +22,33 @@ function trimText(value) {
 
 function getUpstreamKey(req) {
   return getHeader(req, 'x-storyforge-upstream-key').trim();
+}
+
+function getBoundedEnvInteger(name, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const parsed = Number.parseInt(process.env[name] || '', 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function getWorkersAIMaxBodyBytes() {
+  return getBoundedEnvInteger('CLOUDFLARE_WORKERS_AI_MAX_BODY_BYTES', DEFAULT_CLOUDFLARE_WORKERS_AI_MAX_BODY_BYTES, {
+    min: 16 * 1024,
+    max: 8 * 1024 * 1024,
+  });
+}
+
+function getWorkersAIRateLimit() {
+  return getBoundedEnvInteger('CLOUDFLARE_WORKERS_AI_RATE_LIMIT_MAX', DEFAULT_CLOUDFLARE_WORKERS_AI_RATE_LIMIT, {
+    min: 1,
+    max: 10_000,
+  });
+}
+
+function getWorkersAIRateWindowMs() {
+  return getBoundedEnvInteger('CLOUDFLARE_WORKERS_AI_RATE_LIMIT_WINDOW_MS', DEFAULT_CLOUDFLARE_WORKERS_AI_RATE_WINDOW_MS, {
+    min: 10_000,
+    max: 10 * 60 * 1000,
+  });
 }
 
 function isValidAccountId(value) {
@@ -76,7 +112,10 @@ function buildMultipartBody(payload = {}) {
   return form;
 }
 
-export default async function handler(req, res) {
+export function createCloudflareWorkersAIHandler({
+  requireFeatureImpl = requireFeature,
+} = {}) {
+  return async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.statusCode = 204;
     res.end();
@@ -88,10 +127,32 @@ export default async function handler(req, res) {
     return;
   }
 
+  const rateLimit = checkRateLimit(req, {
+    keyPrefix: 'cloudflare-workers-ai',
+    limit: getWorkersAIRateLimit(),
+    windowMs: getWorkersAIRateWindowMs(),
+  });
+  writeRateLimitHeaders(res, rateLimit);
+  if (!rateLimit.allowed) {
+    sendPublicError(req, res, 429, {
+      code: 'CLOUDFLARE_WORKERS_AI_RATE_LIMITED',
+      error: 'Qua nhieu yeu cau tao anh trong thoi gian ngan. Hay thu lai sau.',
+      retryAfterSeconds: rateLimit.retryAfterSeconds,
+    });
+    return;
+  }
+
   let body;
   try {
-    body = await readJsonBody(req);
-  } catch {
+    body = await readJsonBody(req, { maxBytes: getWorkersAIMaxBodyBytes() });
+  } catch (error) {
+    if (error?.code === 'JSON_BODY_TOO_LARGE') {
+      sendPublicError(req, res, 413, {
+        code: 'CLOUDFLARE_WORKERS_AI_BODY_TOO_LARGE',
+        error: 'Noi dung yeu cau Cloudflare Workers AI vuot gioi han an toan.',
+      });
+      return;
+    }
     sendJson(res, 400, { error: 'Nội dung JSON gửi lên không hợp lệ.', code: 'CLOUDFLARE_WORKERS_AI_BAD_JSON' });
     return;
   }
@@ -99,6 +160,12 @@ export default async function handler(req, res) {
   const action = trimText(body?.action);
   if (!ALLOWED_ACTIONS.has(action)) {
     sendJson(res, 400, { error: 'Hành động Cloudflare Workers AI không được hỗ trợ.', code: 'CLOUDFLARE_WORKERS_AI_BAD_ACTION' });
+    return;
+  }
+
+  const access = await requireFeatureImpl(req, ACCESS_FEATURES.PROJECT_COVER_GENERATION);
+  if (!access.ok) {
+    sendAccessDenied(res, access);
     return;
   }
 
@@ -166,10 +233,13 @@ export default async function handler(req, res) {
   try {
     const upstream = await fetch(endpoint, init);
     await pipeUpstreamResponse(upstream, res);
-  } catch (error) {
+  } catch {
     sendJson(res, 502, {
-      error: error?.message || 'Relay Cloudflare Workers AI thất bại.',
+      error: 'Relay Cloudflare Workers AI thất bại.',
       code: 'CLOUDFLARE_WORKERS_AI_UPSTREAM_FAILED',
     });
   }
+  };
 }
+
+export default createCloudflareWorkersAIHandler();

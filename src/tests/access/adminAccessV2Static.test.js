@@ -85,6 +85,24 @@ describe('split admin access static contracts', () => {
     expect(settings).not.toContain('free tier');
   });
 
+  it('keeps Story Mirror and AI cover generation behind VIP feature gates', () => {
+    const seed = read('docs/supabase-access-control/002_access_control_seed.sql');
+    const migration = read('docs/supabase-access-control/009_harden_vip_feature_gates.sql');
+    const deploy = read('docs/ADMIN_SPLIT_DEPLOY.md');
+    const accessPackage = read('packages/access/src/index.js');
+    const accessClient = read('src/services/access/accessControl.js');
+    const settings = read('src/pages/Settings/Settings.jsx');
+
+    for (const content of [seed, migration, accessPackage, accessClient]) {
+      expect(content).toContain('story_mirror.access');
+      expect(content).toContain('project.cover_generation');
+    }
+    expect(migration).toContain("where key in ('vip', 'lifetime')");
+    expect(migration).not.toContain("where key in ('free'");
+    expect(deploy).toContain('docs/supabase-access-control/009_harden_vip_feature_gates.sql');
+    expect(settings).toContain('PROVIDER_CARD_CLOUDFLARE_COVER) return ACCESS_FEATURES.PROJECT_COVER_GENERATION');
+  });
+
   it('keeps the root app routes focused on user access while admin UI calls the worker API', () => {
     const app = read('src/App.jsx');
     const sidebar = read('src/components/common/Sidebar.jsx');

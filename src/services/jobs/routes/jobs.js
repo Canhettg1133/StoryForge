@@ -83,7 +83,8 @@ export function createJobsRouter(queue) {
       }
 
       return res.status(500).json({
-        error: error?.message || 'Không tạo được job.',
+        code: 'JOB_CREATE_FAILED',
+        error: 'Không tạo được job.',
       });
     }
   });

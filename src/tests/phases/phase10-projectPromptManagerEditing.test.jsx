@@ -7,6 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const projectStoreMock = vi.hoisted(() => {
   const state = {
     currentProject: null,
+    chapters: [],
+    scenes: [],
+    activeChapterId: null,
+    activeSceneId: null,
   };
 
   return {
@@ -25,6 +29,10 @@ const projectStoreMock = vi.hoisted(() => {
 vi.mock('../../stores/projectStore', () => ({
   default: () => ({
     currentProject: projectStoreMock.state.currentProject,
+    chapters: projectStoreMock.state.chapters,
+    scenes: projectStoreMock.state.scenes,
+    activeChapterId: projectStoreMock.state.activeChapterId,
+    activeSceneId: projectStoreMock.state.activeSceneId,
     loadProject: projectStoreMock.loadProject,
     updateProjectSettings: projectStoreMock.updateProjectSettings,
   }),
@@ -67,6 +75,23 @@ vi.mock('../../services/ai/promptManagerMeta', () => ({
   ],
 }));
 
+const writingDebugMock = vi.hoisted(() => ({
+  buildWritingDebugPayload: vi.fn(async () => ({
+    systemPrompt: 'SYSTEM_FINAL',
+    userContent: 'USER_FINAL',
+    warnings: [],
+    summary: {
+      systemChars: 12,
+      userChars: 10,
+      messageCount: 2,
+      hasProjectStyleRuntime: true,
+      retrievalMode: 'near_memory_3_compact',
+    },
+  })),
+}));
+
+vi.mock('../../services/ai/writingRequestDebugger.js', () => writingDebugMock);
+
 import ProjectPromptManager from '../../pages/ProjectPromptManager/ProjectPromptManager.jsx';
 import { stripProtectedTaskInstruction } from '../../services/ai/promptBuilder/taskInstructionProtection.js';
 
@@ -102,8 +127,17 @@ describe('phase10 project prompt manager editing', () => {
       project_style_runtime_enabled: false,
       project_style_runtime_meta: null,
     };
+    projectStoreMock.state.chapters = [
+      { id: 10, title: 'Chương thử', order_index: 0 },
+    ];
+    projectStoreMock.state.scenes = [
+      { id: 20, chapter_id: 10, title: 'Cảnh thử', order_index: 0, draft_text: 'Nội dung cảnh hiện tại.' },
+    ];
+    projectStoreMock.state.activeChapterId = 10;
+    projectStoreMock.state.activeSceneId = 20;
     projectStoreMock.loadProject.mockClear();
     projectStoreMock.updateProjectSettings.mockClear();
+    writingDebugMock.buildWritingDebugPayload.mockClear();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -139,10 +173,72 @@ describe('phase10 project prompt manager editing', () => {
     return Array.from(container.querySelectorAll('textarea.prompt-editor-block__textarea'));
   }
 
+  function getRuntimeTextarea() {
+    return container.querySelector('textarea.project-style-runtime-editor__textarea');
+  }
+
+  function getButtonByText(text) {
+    return Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent?.includes(text));
+  }
+
   function getFirstCoreEditButton() {
     return Array.from(container.querySelectorAll('button'))
       .find((button) => button.textContent?.includes('Bật chỉnh thử') || button.textContent?.includes('Tắt chỉnh thử'));
   }
+
+  it('hides the final FREE_PROMPT system and user prompt preview from the project prompt page', async () => {
+    await renderPromptManager();
+
+    expect(container.querySelector('.final-prompt-preview-card')).toBeNull();
+    expect(container.querySelector('textarea.final-prompt-preview__input')).toBeNull();
+    expect(container.querySelectorAll('textarea.final-prompt-preview__textarea')).toHaveLength(0);
+    expect(writingDebugMock.buildWritingDebugPayload).not.toHaveBeenCalled();
+  });
+
+  it('allows editing and saving the project style runtime block', async () => {
+    const savedBlock = [
+      '[PROJECT STYLE - BẮT BUỘC]',
+      '1. Luật cốt lõi: giữ đúng canon.',
+      '2. Giọng kể / POV: ngôi ba giới hạn.',
+      '3. Nhịp chương: căng chậm.',
+      '4. Scene grammar: hành động kéo cảm xúc.',
+      '5. Cần tránh: giải thích lộ liễu.',
+      '6. QA tự kiểm ngầm: kiểm tra mâu thuẫn.',
+    ].join('\n');
+    projectStoreMock.state.currentProject = {
+      ...projectStoreMock.state.currentProject,
+      project_style_runtime_block: savedBlock,
+      project_style_runtime_enabled: true,
+      project_style_runtime_meta: { source_hash: 'old-hash', generated_at: 1 },
+    };
+
+    await renderPromptManager();
+
+    const runtimeTextarea = getRuntimeTextarea();
+    expect(runtimeTextarea).toBeDefined();
+    const editedBlock = savedBlock.replace('giữ đúng canon', 'giữ đúng canon và nhịp truyện');
+    await act(async () => {
+      setTextareaValue(runtimeTextarea, editedBlock);
+    });
+
+    const saveBlockButton = getButtonByText('Lưu block');
+    expect(saveBlockButton).toBeDefined();
+    await act(async () => {
+      saveBlockButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(projectStoreMock.updateProjectSettings).toHaveBeenCalledWith(expect.objectContaining({
+      project_style_runtime_block: editedBlock,
+      project_style_runtime_enabled: true,
+      project_style_runtime_meta: expect.objectContaining({
+        source_hash: expect.any(String),
+        manual_edited_at: expect.any(Number),
+      }),
+    }));
+  });
 
   it('preserves a typed space while editing list prompt overrides', async () => {
     await renderPromptManager();

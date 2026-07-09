@@ -2,7 +2,16 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
-import handler from '../../../api/cloudflare-workers-ai.js';
+import { createCloudflareWorkersAIHandler } from '../../../api/cloudflare-workers-ai.js';
+
+const allowCoverGeneration = async () => ({
+  ok: true,
+  decision: { allowed: true, feature: 'project.cover_generation' },
+});
+
+const handler = createCloudflareWorkersAIHandler({
+  requireFeatureImpl: allowCoverGeneration,
+});
 
 function createReqRes({ method = 'POST', body = {}, headers = {} } = {}) {
   const chunks = [];
@@ -204,6 +213,46 @@ describe('/api/cloudflare-workers-ai', () => {
     await handler(invalidModel.req, invalidModel.res);
     expect(invalidModel.res.statusCode).toBe(400);
     expect(JSON.parse(invalidModel.res.body).code).toBe('CLOUDFLARE_WORKERS_AI_BAD_MODEL');
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('requires StoryForge project cover access before using the upstream key', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const gatedHandler = createCloudflareWorkersAIHandler({
+      requireFeatureImpl: async () => ({
+        ok: false,
+        status: 403,
+        reason: 'FEATURE_NOT_ALLOWED',
+        decision: {
+          allowed: false,
+          feature: 'project.cover_generation',
+          reason: 'FEATURE_NOT_ALLOWED',
+        },
+      }),
+    });
+    const { req, res } = createReqRes({
+      body: {
+        action: 'run',
+        accountId: '35227c3d18fc83a0478996f9cad7e399',
+        model: '@cf/black-forest-labs/flux-1-schnell',
+        payload: { prompt: 'cover' },
+      },
+      headers: { 'x-storyforge-upstream-key': 'cf-workers-ai-token' },
+    });
+
+    await gatedHandler(req, res);
+
+    expect(res.statusCode).toBe(403);
+    const payload = JSON.parse(res.body);
+    expect(payload).toMatchObject({
+      code: 'FEATURE_NOT_ALLOWED',
+      error: 'FEATURE_NOT_ALLOWED',
+    });
+    expect(payload).not.toHaveProperty('feature');
+    expect(payload).not.toHaveProperty('decision');
     expect(fetchMock).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });

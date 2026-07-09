@@ -32,12 +32,15 @@ import {
   PROJECT_STYLE_RUNTIME_SECTIONS,
 } from '../../services/ai/projectStyleRuntime';
 import { generateProjectStyleRuntimeBlock } from '../../services/ai/projectStyleRuntimeGenerator';
+import { buildWritingDebugPayload } from '../../services/ai/writingRequestDebugger.js';
 import { TASK_TYPES } from '../../services/ai/router';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
+
+const SHOW_FINAL_PROMPT_PREVIEW = false;
 
 function parsePromptTemplates(rawValue) {
   if (!rawValue) return {};
@@ -235,22 +238,33 @@ function ProjectStyleRuntimeCard({
   displayBlock,
   runtimePreview,
   runtimeMessage,
+  editableBlock,
   isGeneratingRuntime,
   isSaving,
   onGenerate,
-  onSavePreview,
+  onEditableBlockChange,
+  onSaveBlock,
   onToggleEnabled,
   onDelete,
 }) {
   const hasPreview = !!runtimePreview?.project_style_runtime_block;
   const hasSavedBlock = !!runtimeState?.block;
+  const normalizedEditableBlock = String(editableBlock || '').trim();
+  const normalizedDisplayBlock = String(displayBlock || '').trim();
+  const hasEditableBlock = normalizedEditableBlock.length > 0;
+  const blockChanged = normalizedEditableBlock !== normalizedDisplayBlock;
+  const editableBlockValid = !hasEditableBlock || hasRequiredProjectStyleRuntimeSections(normalizedEditableBlock);
   const displayMeta = runtimePreview?.meta || runtimeState?.meta || {};
   const previewSourceChanged = Boolean(
     hasPreview
     && runtimePreview?.meta?.source_hash
     && runtimePreview.meta.source_hash !== draftSourceHash,
   );
-  const canSavePreview = hasPreview && !previewSourceChanged && !isSaving;
+  const canSaveBlock = hasEditableBlock
+    && editableBlockValid
+    && !previewSourceChanged
+    && !isSaving
+    && (hasPreview || blockChanged);
   const canToggle = hasSavedBlock && runtimeState.validBlock && !isSaving;
   const canDelete = hasSavedBlock && !isSaving;
 
@@ -299,12 +313,19 @@ function ProjectStyleRuntimeCard({
         </div>
       )}
 
+      {hasEditableBlock && !editableBlockValid && (
+        <div className="project-style-runtime-note is-error">
+          <AlertCircle size={14} />
+          Block cần đủ 6 mục: Luật cốt lõi, Giọng kể / POV, Nhịp chương, Scene grammar, Cần tránh, QA tự kiểm ngầm.
+        </div>
+      )}
+
       <div className="project-style-runtime-actions">
         <button type="button" className="btn btn-primary" onClick={onGenerate} disabled={isGeneratingRuntime || isSaving}>
           {isGeneratingRuntime ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
           Rút lõi vào System Prompt
         </button>
-        <button type="button" className="btn btn-secondary" onClick={onSavePreview} disabled={!canSavePreview}>
+        <button type="button" className="btn btn-secondary" onClick={onSaveBlock} disabled={!canSaveBlock}>
           <Save size={14} />
           Lưu block
         </button>
@@ -325,17 +346,125 @@ function ProjectStyleRuntimeCard({
         </div>
       )}
 
-      <details className="project-style-runtime-preview" open={Boolean(displayBlock)}>
+      <details className="project-style-runtime-preview" open={Boolean(displayBlock || editableBlock)}>
         <summary>
           <Eye size={14} />
-          Xem block runtime
+          Chỉnh sửa block runtime
         </summary>
-        {displayBlock ? (
-          <pre>{displayBlock}</pre>
-        ) : (
-          <p>Chưa có block để xem trước.</p>
-        )}
+        <div className="project-style-runtime-editor">
+          <AutoResizeTextarea
+            className="textarea project-style-runtime-editor__textarea"
+            rows={14}
+            value={editableBlock}
+            onChange={(event) => onEditableBlockChange(event.target.value)}
+            placeholder="Chưa có block runtime. Bạn có thể rút lõi bằng AI hoặc dán block đủ 6 mục vào đây rồi bấm Lưu block."
+          />
+          {!hasEditableBlock && (
+            <p className="project-style-runtime-editor__empty">Chưa có block để chỉnh sửa.</p>
+          )}
+        </div>
       </details>
+    </section>
+  );
+}
+
+function FinalPromptPreviewCard({
+  promptInput,
+  promptPayload,
+  promptError,
+  isBuildingPrompt,
+  onPromptInputChange,
+  onBuildPrompt,
+}) {
+  const systemPrompt = promptPayload?.systemPrompt || '';
+  const userPrompt = promptPayload?.userContent || '';
+  const summary = promptPayload?.summary || {};
+  const warnings = promptPayload?.warnings || [];
+
+  return (
+    <section className="settings-section card animate-slide-up final-prompt-preview-card">
+      <div className="final-prompt-preview__header">
+        <div className="settings-section-header">
+          <Eye size={20} />
+          <div>
+            <h2>Prompt cuối cùng khi viết chính</h2>
+            <p>
+              Dựng request <strong>FREE_PROMPT</strong> giống lệnh viết tự do. Chỉ xem nội dung messages, không gửi AI.
+            </p>
+          </div>
+        </div>
+        <button type="button" className="btn btn-primary" onClick={onBuildPrompt} disabled={isBuildingPrompt}>
+          {isBuildingPrompt ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
+          Dựng prompt
+        </button>
+      </div>
+
+      <div className="final-prompt-preview__input-block">
+        <label className="form-label" htmlFor="final-free-prompt-input">
+          Lệnh viết tự do để thử
+        </label>
+        <AutoResizeTextarea
+          id="final-free-prompt-input"
+          className="textarea final-prompt-preview__input"
+          rows={4}
+          value={promptInput}
+          onChange={(event) => onPromptInputChange(event.target.value)}
+          placeholder="Nhập lệnh viết chính bạn muốn kiểm tra..."
+        />
+      </div>
+
+      {promptError && (
+        <div className="project-style-runtime-note is-error">
+          <AlertCircle size={14} />
+          {promptError}
+        </div>
+      )}
+
+      {warnings.length > 0 && (
+        <div className="project-style-runtime-note is-warning">
+          <AlertCircle size={14} />
+          {warnings.join(' ')}
+        </div>
+      )}
+
+      {promptPayload && (
+        <div className="final-prompt-preview__stats">
+          <span>{summary.messageCount || 0} messages</span>
+          <span>{Number(summary.systemChars || systemPrompt.length).toLocaleString('vi-VN')} ký tự system</span>
+          <span>{Number(summary.userChars || userPrompt.length).toLocaleString('vi-VN')} ký tự prompt thường</span>
+          <span>{summary.hasProjectStyleRuntime ? 'Có runtime block' : 'Không có runtime block'}</span>
+        </div>
+      )}
+
+      <div className="final-prompt-preview__outputs">
+        <section className="final-prompt-preview__panel">
+          <div className="final-prompt-preview__panel-header">
+            <strong>System prompt cuối cùng</strong>
+            <span>messages[0] role system</span>
+          </div>
+          <AutoResizeTextarea
+            className="textarea final-prompt-preview__textarea is-readonly"
+            rows={14}
+            value={systemPrompt}
+            readOnly
+            placeholder="Bấm Dựng prompt để xem system prompt cuối cùng."
+          />
+        </section>
+
+        <section className="final-prompt-preview__panel">
+          <div className="final-prompt-preview__panel-header">
+            <strong>Prompt thường cuối cùng</strong>
+            <span>messages[1] role user</span>
+          </div>
+          <AutoResizeTextarea
+            className="textarea final-prompt-preview__textarea is-readonly"
+            rows={14}
+            value={userPrompt}
+            readOnly
+            placeholder="Bấm Dựng prompt để xem prompt thường cuối cùng."
+          />
+        </section>
+      </div>
     </section>
   );
 }
@@ -541,6 +670,10 @@ export default function ProjectPromptManager() {
   const { projectId } = useParams();
   const {
     currentProject,
+    chapters = [],
+    scenes = [],
+    activeChapterId,
+    activeSceneId,
     loadProject,
     updateProjectSettings,
   } = useProjectStore();
@@ -555,7 +688,12 @@ export default function ProjectPromptManager() {
   const [editableCoreKeys, setEditableCoreKeys] = useState({});
   const [runtimePreview, setRuntimePreview] = useState(null);
   const [runtimeMessage, setRuntimeMessage] = useState(null);
+  const [runtimeBlockDraft, setRuntimeBlockDraft] = useState('');
   const [isGeneratingRuntime, setIsGeneratingRuntime] = useState(false);
+  const [finalPromptInput, setFinalPromptInput] = useState('Viết tiếp cảnh này theo đúng canon và văn phong của truyện.');
+  const [finalPromptPayload, setFinalPromptPayload] = useState(null);
+  const [finalPromptError, setFinalPromptError] = useState('');
+  const [isBuildingFinalPrompt, setIsBuildingFinalPrompt] = useState(false);
   const isHydratingRef = useRef(true);
   const lastSavedSignatureRef = useRef('');
   const pendingSavedSignatureRef = useRef('');
@@ -655,6 +793,10 @@ export default function ProjectPromptManager() {
   );
   const runtimeDisplayBlock = runtimePreview?.project_style_runtime_block || savedRuntimeState.block || '';
   const deferredRuntimeDisplayBlock = useDeferredValue(runtimeDisplayBlock);
+
+  useEffect(() => {
+    setRuntimeBlockDraft(runtimeDisplayBlock);
+  }, [runtimeDisplayBlock]);
 
   const filteredGroups = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -801,6 +943,7 @@ export default function ProjectPromptManager() {
       }
 
       setRuntimePreview(result);
+      setRuntimeBlockDraft(result.project_style_runtime_block || '');
       setRuntimeMessage({
         type: 'success',
         text: 'Đã tạo bản xem trước. Kiểm tra nội dung rồi bấm Lưu block để áp dụng cho truyện này.',
@@ -815,10 +958,27 @@ export default function ProjectPromptManager() {
     }
   };
 
-  const handleSaveRuntimePreview = async () => {
-    if (!currentProject || !runtimePreview?.project_style_runtime_block || isSaving) return;
+  const handleSaveRuntimeBlock = async () => {
+    if (!currentProject || isSaving) return;
 
-    if (runtimePreview.meta?.source_hash && runtimePreview.meta.source_hash !== runtimeDraftSource.sourceHash) {
+    const blockToSave = String(runtimeBlockDraft || '').trim();
+    if (!blockToSave) {
+      setRuntimeMessage({
+        type: 'error',
+        text: 'Chưa có block runtime để lưu.',
+      });
+      return;
+    }
+
+    if (!hasRequiredProjectStyleRuntimeSections(blockToSave)) {
+      setRuntimeMessage({
+        type: 'error',
+        text: 'Block cần đủ 6 mục bắt buộc trước khi lưu.',
+      });
+      return;
+    }
+
+    if (runtimePreview?.meta?.source_hash && runtimePreview.meta.source_hash !== runtimeDraftSource.sourceHash) {
       setRuntimeMessage({
         type: 'error',
         text: 'Prompt nguồn đã đổi sau khi tạo preview. Hãy rút lõi lại trước khi lưu.',
@@ -838,12 +998,14 @@ export default function ProjectPromptManager() {
       await updateProjectSettings({
         prompt_templates: JSON.stringify(runtimeDraftSource.promptTemplates),
         ai_guidelines: runtimeDraftSource.aiGuidelines,
-        project_style_runtime_block: runtimePreview.project_style_runtime_block,
+        project_style_runtime_block: blockToSave,
         project_style_runtime_enabled: true,
         project_style_runtime_meta: {
-          ...(runtimePreview.meta || {}),
+          ...(savedRuntimeState.meta || {}),
+          ...(runtimePreview?.meta || {}),
           source_hash: runtimeDraftSource.sourceHash,
-          generated_at: runtimePreview.meta?.generated_at || Date.now(),
+          generated_at: runtimePreview?.meta?.generated_at || savedRuntimeState.meta?.generated_at || Date.now(),
+          manual_edited_at: Date.now(),
         },
       });
 
@@ -851,6 +1013,7 @@ export default function ProjectPromptManager() {
       lastSavedSignatureRef.current = savedSignature;
       pendingSavedSignatureRef.current = '';
       setRuntimePreview(null);
+      setRuntimeBlockDraft(blockToSave);
       setRuntimeMessage({
         type: 'success',
         text: 'Đã lưu Project Style Runtime. Block sẽ được dùng ngay cho các luồng viết của truyện.',
@@ -904,6 +1067,7 @@ export default function ProjectPromptManager() {
         project_style_runtime_meta: null,
       });
       setRuntimePreview(null);
+      setRuntimeBlockDraft('');
       setRuntimeMessage({
         type: 'success',
         text: 'Đã xóa Project Style Runtime. Truyện sẽ dùng logic prompt cũ.',
@@ -915,6 +1079,40 @@ export default function ProjectPromptManager() {
       });
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleBuildFinalPrompt = async () => {
+    if (!currentProject || isBuildingFinalPrompt) return;
+
+    const resolvedChapter = chapters.find((chapter) => String(chapter?.id) === String(activeChapterId))
+      || chapters[0]
+      || null;
+    const resolvedScene = scenes.find((scene) => (
+      String(scene?.id) === String(activeSceneId)
+      && (!resolvedChapter || String(scene?.chapter_id) === String(resolvedChapter.id))
+    ))
+      || scenes.find((scene) => resolvedChapter && String(scene?.chapter_id) === String(resolvedChapter.id))
+      || scenes[0]
+      || null;
+
+    setIsBuildingFinalPrompt(true);
+    setFinalPromptError('');
+    try {
+      const payload = await buildWritingDebugPayload({
+        taskId: 'free_prompt',
+        project: currentProject,
+        chapters,
+        scenes,
+        chapterId: resolvedChapter?.id || null,
+        sceneId: resolvedScene?.id || null,
+        userPrompt: finalPromptInput,
+      });
+      setFinalPromptPayload(payload);
+    } catch (error) {
+      setFinalPromptError(toVietnameseErrorMessage(error, 'Không thể dựng prompt cuối cùng.'));
+    } finally {
+      setIsBuildingFinalPrompt(false);
     }
   };
 
@@ -1031,6 +1229,10 @@ export default function ProjectPromptManager() {
             <strong>Dùng để làm gì</strong>
             <p>Giúp bạn gom toàn bộ prompt liên quan đến viết truyện, canon và ghi nhớ về đúng một nơi quản lý.</p>
           </div>
+          <div className="prompt-manager-intro__box">
+            <strong>Runtime block</strong>
+            <p>Rút lõi văn phong thành block riêng của truyện, có thể chỉnh tay rồi lưu lại.</p>
+          </div>
         </div>
 
         <div
@@ -1066,13 +1268,26 @@ export default function ProjectPromptManager() {
         displayBlock={deferredRuntimeDisplayBlock}
         runtimePreview={runtimePreview}
         runtimeMessage={runtimeMessage}
+        editableBlock={runtimeBlockDraft}
         isGeneratingRuntime={isGeneratingRuntime}
         isSaving={isSaving}
         onGenerate={handleGenerateRuntimeBlock}
-        onSavePreview={handleSaveRuntimePreview}
+        onEditableBlockChange={setRuntimeBlockDraft}
+        onSaveBlock={handleSaveRuntimeBlock}
         onToggleEnabled={handleToggleRuntimeEnabled}
         onDelete={handleDeleteRuntimeBlock}
       />
+
+      {SHOW_FINAL_PROMPT_PREVIEW && (
+        <FinalPromptPreviewCard
+          promptInput={finalPromptInput}
+          promptPayload={finalPromptPayload}
+          promptError={finalPromptError}
+          isBuildingPrompt={isBuildingFinalPrompt}
+          onPromptInputChange={setFinalPromptInput}
+          onBuildPrompt={handleBuildFinalPrompt}
+        />
+      )}
 
       <div className="settings-sections">
         {filteredGroups.map((group, groupIndex) => (

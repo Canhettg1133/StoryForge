@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 function toAsciiUpper(text) {
@@ -490,6 +492,17 @@ describe('phase10 ProjectChat routing inheritance', () => {
         sticky_model_override: '',
         updated_at: 456,
       });
+  });
+
+  it('recomputes the chat route when switching between ag and custom proxy profiles', () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/pages/ProjectChat/ProjectChat.jsx'),
+      'utf8',
+    );
+
+    expect(source).toMatch(
+      /\[\s*activeThread\?\.provider_override,\s*activeThread\?\.model_override,\s*activeThread\?\.proxy_profile_id,\s*routingConfigStamp,?\s*\]/u,
+    );
   });
 
   it('binds a selected inherited chat model to the current provider and proxy profile', async () => {

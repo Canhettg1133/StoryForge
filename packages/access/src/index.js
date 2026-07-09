@@ -8,6 +8,8 @@ export const ACCESS_FEATURES = {
   CUSTOM_PROXY: 'provider.custom_proxy',
   TRANSLATOR_PARALLEL_HIGH: 'translator.parallel_high',
   TRANSLATOR_BULK_KEYS: 'translator.bulk_keys',
+  STORY_MIRROR_ACCESS: 'story_mirror.access',
+  PROJECT_COVER_GENERATION: 'project.cover_generation',
 };
 
 export const ACCESS_REASONS = {
@@ -99,6 +101,8 @@ export const FEATURE_LABELS_VI = {
   [ACCESS_FEATURES.CUSTOM_PROXY]: 'Proxy tùy chỉnh',
   [ACCESS_FEATURES.TRANSLATOR_PARALLEL_HIGH]: 'Dịch song song tốc độ cao',
   [ACCESS_FEATURES.TRANSLATOR_BULK_KEYS]: 'Nhập nhiều API key',
+  [ACCESS_FEATURES.STORY_MIRROR_ACCESS]: 'Đồng bộ Story Mirror',
+  [ACCESS_FEATURES.PROJECT_COVER_GENERATION]: 'Tạo bìa AI',
 };
 
 export const DEFAULT_FEATURE_LIMITS = Object.freeze({});
@@ -541,7 +545,6 @@ function pickStrongestRole(roles) {
 
 export function resolveAccessSubject(input = {}) {
   const appMetadata = input.app_metadata || input.appMetadata || {};
-  const userMetadata = input.user_metadata || input.userMetadata || {};
   const roles = [
     input.role,
     input.system_role,
@@ -550,12 +553,8 @@ export function resolveAccessSubject(input = {}) {
     appMetadata.system_role,
     appMetadata.storyforge_role,
     appMetadata.admin_role,
-    userMetadata.role,
-    userMetadata.system_role,
-    userMetadata.storyforge_role,
     ...roleCandidatesFrom(input.roles),
     ...roleCandidatesFrom(appMetadata.roles),
-    ...roleCandidatesFrom(userMetadata.roles),
   ].filter(Boolean);
   const role = pickStrongestRole(roles);
 

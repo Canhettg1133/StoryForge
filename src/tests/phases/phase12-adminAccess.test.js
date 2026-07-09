@@ -25,7 +25,7 @@ describe('phase12 admin access package', () => {
     expect(hasPermission('owner', ADMIN_PERMISSIONS.USERS_ROLE_UPDATE)).toBe(true);
   });
 
-  it('resolves the strongest recognized role from Supabase claims and metadata', () => {
+  it('resolves admin roles from app metadata but ignores user metadata role claims', () => {
     const subject = resolveAccessSubject({
       id: 'actor-1',
       email: 'admin@example.com',
@@ -36,9 +36,30 @@ describe('phase12 admin access package', () => {
     expect(subject).toMatchObject({
       id: 'actor-1',
       email: 'admin@example.com',
-      role: 'admin',
+      role: 'support',
     });
-    expect(subject.permissions).toContain(ADMIN_PERMISSIONS.USERS_PLAN_UPDATE);
+    expect(subject.permissions).toContain(ADMIN_PERMISSIONS.USERS_READ);
+    expect(subject.permissions).not.toContain(ADMIN_PERMISSIONS.USERS_PLAN_UPDATE);
+  });
+
+  it('does not grant admin access from user metadata alone', () => {
+    const subject = resolveAccessSubject({
+      id: 'actor-2',
+      email: 'claimed-owner@example.com',
+      user_metadata: {
+        role: 'owner',
+        system_role: 'admin',
+        storyforge_role: 'support',
+        roles: ['owner'],
+      },
+    });
+
+    expect(subject).toMatchObject({
+      id: 'actor-2',
+      email: 'claimed-owner@example.com',
+      role: 'user',
+    });
+    expect(subject.permissions).toEqual([]);
   });
 
   it('blocks self-demotion for privileged users', () => {

@@ -48,6 +48,15 @@ function updateProxyModeControls() {
     }
 }
 
+function escapeProxyHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function disableOllamaProvider() {
     if (typeof useOllama === 'undefined' || !useOllama) return;
     useOllama = false;
@@ -139,7 +148,7 @@ function renderProxyKeysList() {
         return `
         <div class="api-key-item">
             <span class="key-index" style="background: var(--accent-primary)">Key ${keyLabel}</span>
-            <span class="key-value">${maskProxyKey(key)}</span>
+            <span class="key-value">${escapeProxyHtml(maskProxyKey(key))}</span>
             <button class="remove-btn" onclick="removeProxyKey(${index})" title="Xóa">Xóa</button>
         </div>
     `;
@@ -412,7 +421,7 @@ async function exportProxyKeys(provider = 'ag') {
                 font-family:monospace;
                 font-size:13px;
                 resize:none;
-            ">${keys.join('\n')}</textarea>
+            ">${escapeProxyHtml(keys.join('\n'))}</textarea>
             <div style="display:flex;gap:10px;margin-top:15px;">
                 <button onclick="copyExportedProxyKeys('${config.provider}')" style="flex:1;padding:12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">📋 Sao chép tất cả</button>
                 <button onclick="closeProxyKeyModal('${config.provider}')" style="flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;">✕ Đóng</button>
@@ -628,7 +637,7 @@ async function testProxyConnection() {
                 ? createProxyHttpError(response.status, errorData, { model: proxyModel, provider: 'Gemini Proxy AG' })
                 : new Error(errorData.error?.message || `HTTP ${response.status}`);
             const errorMsg = typeof formatTranslatorError === 'function' ? formatTranslatorError(proxyError) : proxyError.message;
-            if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">${errorMsg}</p><p style="color:#888;font-size:12px;">Thời gian: ${elapsed}s</p>`;
+            if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">${escapeProxyHtml(errorMsg)}</p><p style="color:#888;font-size:12px;">Thời gian: ${escapeProxyHtml(elapsed)}s</p>`;
             return false;
         }
 
@@ -638,10 +647,10 @@ async function testProxyConnection() {
             resultDiv.innerHTML = `
                 <div class="proxy-test-card success">
                     <strong>Kết nối Gemini Proxy AG thành công.</strong>
-                    <span>Model: ${data.model || proxyModel}</span>
-                    <span>Thời gian: ${elapsed}s</span>
-                    <span>Key: ...${testKey.slice(-6)}</span>
-                    <p>${content.substring(0, 200)}</p>
+                    <span>Model: ${escapeProxyHtml(data.model || proxyModel)}</span>
+                    <span>Thời gian: ${escapeProxyHtml(elapsed)}s</span>
+                    <span>Key: ...${escapeProxyHtml(testKey.slice(-6))}</span>
+                    <p>${escapeProxyHtml(content.substring(0, 200))}</p>
                 </div>`;
         }
         showToast(`Gemini Proxy AG hoạt động. Thời gian phản hồi ${elapsed}s.`, 'success');
@@ -652,7 +661,7 @@ async function testProxyConnection() {
             ? normalizeTranslatorError(error, { provider: 'Gemini Proxy AG', model: proxyModel })
             : error;
         const errorMsg = typeof formatTranslatorError === 'function' ? formatTranslatorError(normalizedError) : error.message;
-        if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">${errorMsg}</p><p style="color:#888;font-size:12px;">Thời gian: ${elapsed}s</p>`;
+        if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">${escapeProxyHtml(errorMsg)}</p><p style="color:#888;font-size:12px;">Thời gian: ${escapeProxyHtml(elapsed)}s</p>`;
         return false;
     }
 }
@@ -1042,7 +1051,7 @@ function renderCustomProxyKeysList() {
     container.innerHTML = customProxyApiKeys.map((key, index) => `
         <div class="api-key-item">
             <span class="key-index" style="background: var(--accent-primary)">C${index + 1}</span>
-            <span class="key-value">${maskProxyKey(key)}</span>
+            <span class="key-value">${escapeProxyHtml(maskProxyKey(key))}</span>
             <button class="remove-btn" onclick="removeCustomProxyKey(${index})" title="Xóa">Xóa</button>
         </div>
     `).join('');
@@ -1358,7 +1367,7 @@ async function testCustomProxyConnection() {
                 ? createProxyHttpError(response.status, errorData, { model, provider: 'Custom Proxy' })
                 : new Error(errorData?.error?.message || errorData?.error || `HTTP ${response.status}`);
             const message = typeof formatTranslatorError === 'function' ? formatTranslatorError(proxyError) : proxyError.message;
-            if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">Không kết nối được Custom Proxy: ${message}</p>`;
+            if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">Không kết nối được Custom Proxy: ${escapeProxyHtml(message)}</p>`;
             return false;
         }
 
@@ -1368,10 +1377,10 @@ async function testCustomProxyConnection() {
             resultDiv.innerHTML = `
                 <div class="proxy-test-card success">
                     <strong>Kết nối Custom Proxy thành công.</strong>
-                    <span>Model: ${data.model || model}</span>
-                    <span>Thời gian: ${elapsed}s</span>
-                    <span>Key: ...${key.slice(-6)}</span>
-                    <p>${content.substring(0, 200)}</p>
+                    <span>Model: ${escapeProxyHtml(data.model || model)}</span>
+                    <span>Thời gian: ${escapeProxyHtml(elapsed)}s</span>
+                    <span>Key: ...${escapeProxyHtml(key.slice(-6))}</span>
+                    <p>${escapeProxyHtml(content.substring(0, 200))}</p>
                 </div>`;
         }
         showToast(`Custom Proxy hoạt động. Thời gian phản hồi ${elapsed}s.`, 'success');
@@ -1390,7 +1399,7 @@ async function testCustomProxyConnection() {
         const message = typeof formatTranslatorError === 'function'
             ? formatTranslatorError(proxyError)
             : (proxyError?.message || 'Lỗi mạng/CORS khi test Custom Proxy.');
-        if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">${message}</p>`;
+        if (resultDiv) resultDiv.innerHTML = `<p style="color:#ef4444;">${escapeProxyHtml(message)}</p>`;
         return false;
     }
 }

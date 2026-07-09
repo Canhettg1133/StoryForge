@@ -71,6 +71,7 @@ export default defineConfig({
     },
   },
   build: {
+    sourcemap: false,
     chunkSizeWarningLimit: 2200,
     rollupOptions: {
       output: {
@@ -78,7 +79,7 @@ export default defineConfig({
           if (!id.includes('node_modules')) return null
           if (id.includes('tiptap') || id.includes('prosemirror')) return 'vendor-editor'
           if (id.includes('dexie')) return 'vendor-db'
-          return null
+          return 'vendor'
         },
       },
     },

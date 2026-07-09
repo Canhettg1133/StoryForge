@@ -1,0 +1,2654 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TravelLead Connect - Trình Khai Thác & Kết Nối Zalo Đối Tác</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --glass: rgba(15, 23, 42, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glow-primary: rgba(99, 102, 241, 0.15);
+            --glow-secondary: rgba(6, 182, 212, 0.15);
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #0f172a 50%, #020617 100%);
+            color: #f8fafc;
+            min-height: 100vh;
+        }
+
+        .glass-panel {
+            background: var(--glass);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .glass-panel-glow-indigo {
+            box-shadow: 0 0 25px var(--glow-primary);
+        }
+
+        .glass-panel-glow-cyan {
+            box-shadow: 0 0 25px var(--glow-secondary);
+        }
+
+        .scroll-custom::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .scroll-custom::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .scroll-custom::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        .scroll-custom::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.3);
+        }
+
+        /* Checkbox custom style */
+        .custom-checkbox {
+            appearance: none;
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 8px;
+            border-radius: 4px;
+            display: inline-block;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .custom-checkbox:checked {
+            background-color: #6366f1;
+            border-color: #6366f1;
+        }
+        .custom-checkbox:checked:after {
+            content: '\2714';
+            font-size: 10px;
+            color: white;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        /* Toast notification animation */
+        @keyframes slideUp {
+            from { transform: translateY(100px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .toast-animate {
+            animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-6 lg:p-8 scroll-custom">
+    <div class="max-w-7xl mx-auto">
+        <!-- HEADER -->
+        <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
+            <div>
+                <div class="flex items-center gap-3">
+                    <div class="p-2.5 bg-gradient-to-tr from-indigo-600 to-cyan-500 rounded-xl shadow-lg shadow-indigo-500/20">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M8.684 10.742a3 3 0 00-3.665-2.664l-3 1a3 3 0 00-1.816 4.056l1 3a3 3 0 004.056 1.816l1.24-.413M21 8.25V18a2 2 0 01-2 2H5a2 2 0 01-2-2V8.25M21 8.25l-9 6-9-6M21 8.25l-9-6-9 6m18 8V18a2 2 0 01-2 2h-1.5m-9 0H5a2 2 0 01-2-2v-1.5m18 0h-1.5m-9 0H5" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">
+                            TravelLead Connect
+                        </h1>
+                        <p class="text-slate-400 text-xs md:text-sm mt-0.5 font-medium">
+                            Khai thác số điện thoại đại lý/đối tác công khai từ Facebook &amp; Kết nối gửi tin nhắn Zalo thông minh
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions & Brand -->
+            <div class="flex flex-wrap items-center gap-3">
+                <button onclick="triggerImport()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 border border-slate-700/50 hover:border-slate-600 transition-all flex items-center gap-1.5 text-slate-300">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16v1a2 2 0 002 2h14a2 2 0 002-2v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                    Nhập dữ liệu (JSON)
+                </button>
+                <input type="file" id="import-file" class="hidden" accept=".json" onchange="importData(event)">
+
+                <button onclick="restoreLatestBackup()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-950/40 hover:bg-emerald-900/40 text-emerald-300 border border-emerald-900/40 hover:border-emerald-700/50 transition-all flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 010 10H7m-4-10l4-4m-4 4l4 4"/></svg>
+                    Khôi phục backup
+                </button>
+
+                <button onclick="exportData()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 border border-slate-700/50 hover:border-slate-600 transition-all flex items-center gap-1.5 text-slate-300">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a2 2 0 002 2h14a2 2 0 002-2v-1M12 12V3m0 9l4-4m-4 4L8 8"/></svg>
+                    Xuất dữ liệu (Excel/JSON)
+                </button>
+
+                <button onclick="confirmClearAll()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-red-950/40 hover:bg-red-900/40 text-red-400 border border-red-900/40 hover:border-red-700/50 transition-all flex items-center gap-1.5">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    Xóa tất cả
+                </button>
+
+                <span id="storage-status" class="w-full md:w-auto text-[10px] text-slate-500 font-semibold">
+                    Đang kiểm tra dữ liệu lưu...
+                </span>
+            </div>
+        </header>
+
+        <!-- STATISTICS DASHBOARD -->
+        <section class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="glass-panel rounded-2xl p-4 flex flex-col justify-between">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tổng số đối tác</span>
+                <div class="flex items-baseline gap-2 mt-2">
+                    <span id="stat-total" class="text-2xl md:text-3xl font-black text-white">0</span>
+                    <span class="text-[10px] text-slate-500 font-bold">leads</span>
+                </div>
+            </div>
+            <div class="glass-panel rounded-2xl p-4 flex flex-col justify-between border-l-2 border-l-emerald-500">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Đã kết nối (Zalo)</span>
+                <div class="flex items-baseline gap-2 mt-2">
+                    <span id="stat-sent" class="text-2xl md:text-3xl font-black text-emerald-400">0</span>
+                    <span id="stat-sent-percent" class="text-[10px] text-emerald-500 font-bold">(0%)</span>
+                </div>
+            </div>
+            <div class="glass-panel rounded-2xl p-4 flex flex-col justify-between border-l-2 border-l-indigo-500">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Đang trao đổi / Mới</span>
+                <div class="flex items-baseline gap-2 mt-2">
+                    <span id="stat-new" class="text-2xl md:text-3xl font-black text-indigo-400">0</span>
+                    <span class="text-[10px] text-slate-500 font-bold">chưa gửi</span>
+                </div>
+            </div>
+            <div class="glass-panel rounded-2xl p-4 flex flex-col justify-between border-l-2 border-l-cyan-500">
+                <span class="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tỷ lệ tương tác</span>
+                <div class="mt-2">
+                    <div class="flex justify-between items-center text-[10px] font-bold text-slate-400 mb-1">
+                        <span>Tiến trình gửi tin</span>
+                        <span id="progress-percent-label">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div id="progress-bar" class="bg-gradient-to-r from-indigo-500 to-cyan-400 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- MAIN LAYOUT -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- LEFT PANEL: EXTRACTOR & TEMPLATES (col-span-4) -->
+            <div class="lg:col-span-4 flex flex-col gap-6">
+
+                <!-- EXTRACTOR PANEL -->
+                <div class="glass-panel glass-panel-glow-indigo rounded-2xl p-5 flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-1.5 h-3 bg-indigo-500 rounded-full"></span>
+                            Quét &amp; Trích xuất Số Điện Thoại
+                        </h2>
+                        <span class="text-[10px] px-2 py-0.5 bg-indigo-500/20 text-indigo-300 rounded font-semibold">Tự động nhận diện</span>
+                    </div>
+                    <p class="text-slate-400 text-xs mb-3 leading-relaxed">
+                        Hãy copy bài đăng, bình luận hoặc tin nhắn trong hội nhóm Facebook rồi dán vào khung bên dưới. Hệ thống sẽ tự động lọc sạch và định dạng số điện thoại.
+                    </p>
+
+                    <textarea
+                        id="raw-text-input"
+                        placeholder="Ví dụ: &#10;Chào cả nhà, mình cần tìm đối tác tour Phú Quốc 3N2D gấp. Liên hệ zalo em số 0912345678 nha. Hoặc alo số hotline: +84988 888 888 gặp đại lý..."
+                        class="w-full h-40 bg-black/40 border border-slate-800 hover:border-slate-700 focus:border-indigo-500 focus:outline-none rounded-xl p-3 text-xs text-slate-200 placeholder-slate-600 resize-none scroll-custom transition-all"
+                    ></textarea>
+
+                    <div class="grid grid-cols-2 gap-3 mt-3">
+                        <div>
+                            <label class="block text-[10px] text-slate-500 font-bold uppercase mb-1">Nguồn / Nhóm Facebook</label>
+                            <input
+                                type="text"
+                                id="default-source"
+                                placeholder="Ví dụ: Group Tour PQ"
+                                class="w-full bg-black/40 border border-slate-800 focus:border-indigo-500 focus:outline-none rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-600 transition-all"
+                            >
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-500 font-bold uppercase mb-1">Tên mặc định</label>
+                            <input
+                                type="text"
+                                id="default-name"
+                                placeholder="Đối tác"
+                                class="w-full bg-black/40 border border-slate-800 focus:border-indigo-500 focus:outline-none rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-600 transition-all"
+                            >
+                        </div>
+                    </div>
+
+                    <button
+                        onclick="processExtraction()"
+                        class="w-full mt-4 py-3 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-500/10 flex items-center justify-center gap-2 hover:scale-[1.01]"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        TRÍCH XUẤT ĐỐI TÁC NGAY
+                    </button>
+
+                    <!-- Facebook Extension Scraper -->
+                    <div id="fb-scraper-section" class="hidden mt-4 pt-4 border-t border-slate-800/80 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="block text-[10px] text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"/></svg>
+                                Quét SĐT từ Facebook
+                            </span>
+                            <span class="text-[9px] px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded font-semibold">Hỗ trợ nhiều link</span>
+                        </div>
+
+                        <!-- Scan Mode Selector -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="fb-mode-current" onclick="setFbScanMode('CURRENT')" class="py-1.5 text-[10px] font-bold rounded-lg transition-all border bg-indigo-500/10 text-indigo-300 border-indigo-500/30">
+                                Tab hiện tại
+                            </button>
+                            <button id="fb-mode-urls" onclick="setFbScanMode('URLS')" class="py-1.5 text-[10px] font-bold rounded-lg transition-all border bg-slate-800/50 text-slate-400 border-slate-700/50">
+                                Nhập link FB
+                            </button>
+                        </div>
+
+                        <!-- Mode: Current Tab Description -->
+                        <div id="fb-mode-current-desc">
+                            <p class="text-slate-400 text-[10px] leading-relaxed">
+                                Mở hội nhóm / trang FB ở tab khác trước, rồi bấm quét. Hệ thống sẽ đọc nội dung trang đó và trích xuất SĐT.
+                            </p>
+                        </div>
+
+                        <!-- Mode: URL Queue Input -->
+                        <div id="fb-mode-urls-panel" class="hidden space-y-2">
+                            <p class="text-slate-400 text-[10px] leading-relaxed">
+                                Dán link nhóm/trang Facebook công khai bên dưới <span class="text-indigo-300 font-semibold">(mỗi dòng 1 link)</span>. Hệ thống sẽ mở từng trang và quét SĐT tuần tự.
+                            </p>
+                            <textarea
+                                id="fb-url-input"
+                                placeholder="https://www.facebook.com/groups/dulichvietnam&#10;https://www.facebook.com/groups/tourphucquoc&#10;https://www.facebook.com/tourdalat.official"
+                                class="w-full h-24 bg-black/40 border border-slate-800 hover:border-slate-700 focus:border-indigo-500 focus:outline-none rounded-xl p-2.5 text-[10px] text-slate-200 placeholder-slate-600 resize-none scroll-custom transition-all font-mono"
+                            ></textarea>
+
+                            <div class="flex items-center justify-between">
+                                <button onclick="addFbUrls()" class="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                    Thêm vào danh sách
+                                </button>
+                                <button onclick="clearFbUrls()" class="text-[10px] font-bold text-red-400 hover:text-red-300">Xóa danh sách</button>
+                            </div>
+
+                            <!-- Saved URL List -->
+                            <div id="fb-url-list" class="max-h-28 overflow-y-auto scroll-custom space-y-1">
+                                <!-- Rendered dynamically -->
+                            </div>
+
+                            <div class="text-[9px] text-slate-500 flex items-center justify-between">
+                                <span id="fb-url-count">0 trang trong hàng đợi</span>
+                                <span>Thời gian quét: ~<span id="fb-estimated-time">0</span> phút</span>
+                            </div>
+                        </div>
+
+                        <!-- Settings -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[9px] text-slate-500 font-bold uppercase mb-0.5">Số lần cuộn/trang</label>
+                                <input type="number" id="fb-scroll-count" value="20" min="5" max="50" class="w-full bg-black/40 border border-slate-800 focus:border-indigo-500 focus:outline-none rounded-lg px-2 py-1 text-[10px] text-slate-200 transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] text-slate-500 font-bold uppercase mb-0.5">Nghỉ giữa mỗi trang (giây)</label>
+                                <input type="number" id="fb-page-delay" value="45" min="20" max="180" class="w-full bg-black/40 border border-slate-800 focus:border-indigo-500 focus:outline-none rounded-lg px-2 py-1 text-[10px] text-slate-200 transition-all">
+                            </div>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="fb-autoscroll" checked class="custom-checkbox">
+                            <label for="fb-autoscroll" class="text-[11px] text-slate-300 cursor-pointer">Tự động cuộn trang (khuyến cáo bật)</label>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <input type="checkbox" id="fb-continuous-scan" checked class="custom-checkbox">
+                            <label for="fb-continuous-scan" class="text-[11px] text-slate-300 cursor-pointer">Quét liên tục đến khi bấm Dừng (tab hiện tại)</label>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <button id="btn-start-fb-scan" onclick="startFbScan()" class="py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-[11px] font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 shadow-md shadow-indigo-500/10 hover:scale-[1.01]">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/></svg>
+                                Bắt đầu quét
+                            </button>
+                            <button id="btn-stop-fb-scan" onclick="stopFbScan()" disabled class="py-2 bg-slate-800 hover:bg-slate-700 text-slate-500 text-[11px] font-bold rounded-lg transition-all cursor-not-allowed">
+                                Dừng quét
+                            </button>
+                        </div>
+
+                        <!-- Scan Progress -->
+                        <div id="fb-scan-status-container" class="hidden p-3 bg-slate-900/80 rounded-xl border border-slate-800 space-y-2">
+                            <div class="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                                <span class="flex items-center gap-1.5">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                                    <span id="fb-scan-status-text">Đang quét Facebook...</span>
+                                </span>
+                                <span id="fb-scan-count" class="font-bold text-indigo-400">0 SĐT</span>
+                            </div>
+                            <div id="fb-scan-url-progress" class="hidden">
+                                <div class="flex justify-between text-[9px] text-slate-500 mb-1">
+                                    <span id="fb-scan-current-url" class="truncate max-w-[200px]">—</span>
+                                    <span id="fb-scan-page-progress">0/0</span>
+                                </div>
+                                <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                                    <div id="fb-scan-progress-bar" class="bg-gradient-to-r from-blue-500 to-indigo-500 h-1 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-6 gap-1.5 text-center">
+                                <div class="rounded-lg bg-black/30 border border-slate-800 px-1.5 py-1">
+                                    <div id="fb-scan-post-count" class="text-[11px] font-black text-slate-100">0</div>
+                                    <div class="text-[8px] text-slate-500 uppercase">Bài</div>
+                                </div>
+                                <div class="rounded-lg bg-black/30 border border-slate-800 px-1.5 py-1">
+                                    <div id="fb-scan-comment-count" class="text-[11px] font-black text-slate-100">0</div>
+                                    <div class="text-[8px] text-slate-500 uppercase">Bình luận</div>
+                                </div>
+                                <div class="rounded-lg bg-black/30 border border-slate-800 px-1.5 py-1">
+                                    <div id="fb-scan-candidate-count" class="text-[11px] font-black text-slate-100">0</div>
+                                    <div class="text-[8px] text-slate-500 uppercase">Chuỗi số</div>
+                                </div>
+                                <div class="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-1">
+                                    <div id="fb-scan-valid-count" class="text-[11px] font-black text-emerald-300">0</div>
+                                    <div class="text-[8px] text-emerald-400 uppercase">Hợp lệ</div>
+                                </div>
+                                <div class="rounded-lg bg-red-500/10 border border-red-500/20 px-1.5 py-1">
+                                    <div id="fb-scan-rejected-count" class="text-[11px] font-black text-red-300">0</div>
+                                    <div class="text-[8px] text-red-400 uppercase">Loại</div>
+                                </div>
+                                <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 px-1.5 py-1">
+                                    <div id="fb-scan-duplicate-count" class="text-[11px] font-black text-amber-300">0</div>
+                                    <div class="text-[8px] text-amber-400 uppercase">Trùng</div>
+                                </div>
+                            </div>
+                            <div id="fb-scan-last-error" class="hidden text-[10px] text-red-300 bg-red-950/30 border border-red-900/50 rounded-lg px-2 py-1"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TEMPLATE MANAGER -->
+                <div class="glass-panel glass-panel-glow-cyan rounded-2xl p-5 flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-1.5 h-3 bg-cyan-500 rounded-full"></span>
+                            Quản Lý Mẫu Tin Nhắn
+                        </h2>
+                        <button onclick="openNewTemplateModal()" class="text-[10px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-0.5">
+                            + Thêm mới
+                        </button>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-[10px] text-slate-500 font-bold uppercase mb-1">Chọn mẫu gửi tin</label>
+                        <select
+                            id="template-selector"
+                            onchange="loadSelectedTemplate()"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+                        >
+                            <!-- Dynamically loaded -->
+                        </select>
+                    </div>
+
+                    <div class="flex-1">
+                        <label class="block text-[10px] text-slate-500 font-bold uppercase mb-1">Nội dung mẫu</label>
+                        <textarea
+                            id="template-text"
+                            oninput="updateTemplatePreview()"
+                            class="w-full h-32 bg-black/40 border border-slate-800 hover:border-slate-700 focus:border-cyan-500 focus:outline-none rounded-xl p-3 text-xs text-slate-200 resize-none scroll-custom transition-all"
+                        ></textarea>
+
+                        <div class="flex justify-between items-center mt-1 text-[9px] text-slate-500">
+                            <span>Biến hỗ trợ: <code class="text-indigo-400 font-mono font-semibold">{ten}</code>, <code class="text-indigo-400 font-mono font-semibold">{sdt}</code>, <code class="text-indigo-400 font-mono font-semibold">{nguon}</code></span>
+                            <span id="char-counter">0 kí tự</span>
+                        </div>
+                    </div>
+
+                    <!-- PREVIEW BOX -->
+                    <div class="mt-4 p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl">
+                        <span class="text-[9px] font-bold text-slate-500 uppercase block mb-1">Xem trước tin nhắn thực tế</span>
+                        <div id="template-preview" class="text-xs text-cyan-200/90 whitespace-pre-wrap italic line-clamp-4 leading-relaxed">
+                            Chưa chọn lead hoặc chưa soạn nội dung.
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 mt-4">
+                        <button
+                            onclick="saveTemplate()"
+                            class="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700/50 text-slate-200 text-xs font-bold rounded-lg transition-all"
+                        >
+                            Lưu mẫu này
+                        </button>
+                        <button
+                            onclick="deleteTemplate()"
+                            class="py-2 bg-red-950/20 hover:bg-red-900/20 text-red-400 border border-red-900/40 text-xs font-bold rounded-lg transition-all"
+                        >
+                            Xóa mẫu
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AUTO CAMPAIGN PANEL -->
+                <div class="glass-panel rounded-2xl p-5 flex flex-col border-t-2 border-t-pink-500 shadow-lg shadow-pink-500/5">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-sm font-bold text-pink-400 uppercase tracking-wider flex items-center gap-2">
+                            <span class="w-1.5 h-3 bg-pink-500 rounded-full"></span>
+                            Chiến Dịch Gửi Tự Động
+                        </h2>
+                        <span id="ext-status-badge" class="text-[9px] px-2 py-0.5 bg-red-500/20 text-red-300 rounded font-semibold">Chưa Kết Nối Extension</span>
+                    </div>
+
+                    <!-- Setup Info if extension not installed -->
+                    <div id="ext-not-installed" class="space-y-3">
+                        <p class="text-slate-400 text-xs leading-relaxed">
+                            Để gửi tin nhắn hàng loạt tự động trực tiếp qua Zalo Web, bạn cần cài đặt Chrome Extension hỗ trợ.
+                        </p>
+                        <div class="p-3 bg-slate-900/80 rounded-xl border border-slate-800 text-xs">
+                            <span class="font-bold text-pink-400 block mb-1 text-[11px]">Cách cài đặt đơn giản:</span>
+                            <ol class="list-decimal pl-4 space-y-1 text-slate-400 text-[10px]">
+                                <li>Tải thư mục <code class="text-cyan-400">tools/lead-connector-extension</code></li>
+                                <li>Vào <code class="text-cyan-400">chrome://extensions</code> trên trình duyệt</li>
+                                <li>Bật <span class="font-bold text-white">Chế độ nhà phát triển</span></li>
+                                <li>Chọn <span class="font-bold text-white">Load unpacked</span> rồi chọn thư mục extension</li>
+                            </ol>
+                        </div>
+                        <button onclick="window.location.reload()" class="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-lg transition-all border border-slate-700/50">
+                            🔄 Tải Lại Trang Để Kiểm Tra
+                        </button>
+                    </div>
+
+                    <!-- Campaign interface if extension installed -->
+                    <div id="ext-installed" class="hidden space-y-3">
+                        <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <div>
+                                    <div class="text-[10px] font-bold uppercase text-slate-500">Đăng nhập Zalo</div>
+                                    <div id="zalo-login-status" class="text-[11px] text-slate-300 mt-0.5">Đang kiểm tra OpenZCA local...</div>
+                                </div>
+                                <button id="btn-zalo-login-qr" onclick="requestZaloLoginQr()" class="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-[10px] font-black transition-all">
+                                    QUÉT QR
+                                </button>
+                            </div>
+                            <div class="rounded-lg border border-sky-500/20 bg-sky-500/10 px-3 py-2 text-[10px] text-sky-100">
+                                Ảnh biên nhận đang dùng chế độ DEMO: chỉ tạo sau khi OpenZCA báo gửi thành công.
+                            </div>
+                            <div id="zalo-login-account" class="hidden rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2">
+                                <div class="text-[9px] font-black uppercase tracking-wider text-emerald-300">Đang dùng nick Zalo</div>
+                                <div id="zalo-login-account-name" class="mt-0.5 text-[12px] font-bold text-white truncate">-</div>
+                                <div id="zalo-login-account-id" class="mt-0.5 text-[9px] text-emerald-200/80 break-all">-</div>
+                            </div>
+                            <div id="zalo-login-qr-panel" class="hidden flex flex-col items-center gap-2">
+                                <img id="zalo-login-qr-img" alt="QR đăng nhập Zalo" class="w-44 h-44 rounded-lg border border-slate-700 bg-white p-2" />
+                                <span class="text-[10px] text-slate-400 text-center">Mở Zalo trên điện thoại, quét QR này rồi quay lại dashboard.</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] text-slate-500 font-bold uppercase mb-1">Số lượng gửi tin nhắn</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="campaign-target-type" onchange="toggleCampaignInput()" class="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none">
+                                    <option value="SELECTED">Mục đã chọn (Checkbox)</option>
+                                    <option value="NEW_LEADS">Tất cả Leads MỚI</option>
+                                    <option value="LIMIT" selected>Giới hạn số chưa gửi</option>
+                                </select>
+                                <input type="number" id="campaign-limit-val" value="15" min="1" class="bg-black/40 border border-slate-800 focus:border-pink-500 focus:outline-none rounded-lg px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-600 transition-all">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] text-slate-500 font-bold uppercase mb-1">Khoảng trễ giữa mỗi tin (giây)</label>
+                            <input type="number" id="campaign-delay" value="12" min="5" max="120" class="w-full bg-black/40 border border-slate-800 focus:border-pink-500 focus:outline-none rounded-lg px-2.5 py-1.5 text-xs text-slate-200 transition-all">
+                            <span class="text-[9px] text-slate-500 mt-1 block">Khuyến cáo: Nên từ 10-15 giây trở lên để tránh bị Zalo giới hạn.</span>
+                        </div>
+
+                        <div class="flex items-center gap-2 py-1">
+                            <input type="checkbox" id="campaign-silent" checked class="rounded border-slate-800 bg-slate-900 text-pink-500 focus:ring-pink-500">
+                            <label for="campaign-silent" class="text-[11px] text-slate-300 cursor-pointer selection:bg-transparent">Chạy ngầm (Không tự chuyển tab Zalo)</label>
+                        </div>
+
+                        <!-- Active status logs -->
+                        <div id="campaign-running-status" class="hidden p-3 bg-slate-950 rounded-xl border border-slate-800 text-xs space-y-2">
+                            <div class="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                                <span>Tiến độ gửi:</span>
+                                <span id="campaign-progress-label">0/0</span>
+                            </div>
+                            <div class="w-full bg-slate-800 rounded-full h-1 overflow-hidden">
+                                <div id="campaign-progress-bar" class="bg-pink-500 h-1 rounded-full transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                            <div id="campaign-status-desc" class="text-[10px] text-pink-300 font-semibold italic text-center animate-pulse">
+                                Đang chuẩn bị...
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 mt-4">
+                            <button id="btn-start-campaign" onclick="startAutoCampaign()" class="py-2.5 bg-gradient-to-r from-pink-600 to-pink-500 hover:from-pink-500 hover:to-pink-400 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-pink-500/10">
+                                BẮT ĐẦU GỬI
+                            </button>
+                            <button id="btn-stop-campaign" onclick="stopAutoCampaign()" disabled class="py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-500 text-xs font-black rounded-xl transition-all border border-slate-700/50 cursor-not-allowed">
+                                DỪNG GỬI
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT PANEL: LEADS LIST & CONNECT (col-span-8) -->
+            <div class="lg:col-span-8">
+                <div class="glass-panel rounded-2xl flex flex-col h-[750px] overflow-hidden">
+
+                    <!-- Search & Filter Header -->
+                    <div class="p-4 border-b border-slate-800 bg-slate-900/30 flex flex-col md:flex-row gap-3 items-center justify-between">
+                        <!-- Search & Filter inputs -->
+                        <div class="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+                            <!-- Search -->
+                            <div class="relative w-full md:w-60">
+                                <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+                                    <svg class="w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                                </span>
+                                <input
+                                    type="text"
+                                    id="search-input"
+                                    placeholder="Tìm tên, SĐT, ghi chú..."
+                                    oninput="filterLeads()"
+                                    class="w-full pl-9 pr-3 py-1.5 bg-black/40 border border-slate-800 focus:border-indigo-500 focus:outline-none rounded-lg text-xs text-slate-200 placeholder-slate-600 transition-all"
+                                >
+                            </div>
+
+                            <!-- Filter status -->
+                            <select
+                                id="filter-status"
+                                onchange="filterLeads()"
+                                class="bg-black/40 border border-slate-800 focus:border-indigo-500 focus:outline-none rounded-lg px-2 py-1.5 text-xs text-slate-400 transition-all w-full md:w-auto"
+                            >
+                                <option value="ALL">Tất cả trạng thái</option>
+                                <option value="NEW">Mới (Chưa gửi)</option>
+                                <option value="CONTACTED">Đã gửi tin</option>
+                                <option value="REPLIED">Đang trao đổi</option>
+                                <option value="CLOSED">Chốt đại lý/đối tác</option>
+                                <option value="DECLINED">Từ chối / Sai số</option>
+                            </select>
+
+                            <!-- Filter Source -->
+                            <select
+                                id="filter-source"
+                                onchange="filterLeads()"
+                                class="bg-black/40 border border-slate-800 focus:border-indigo-500 focus:outline-none rounded-lg px-2 py-1.5 text-xs text-slate-400 transition-all max-w-[150px] w-full md:w-auto"
+                            >
+                                <option value="ALL">Tất cả nguồn</option>
+                            </select>
+                        </div>
+
+                        <button
+                            id="btn-copy-unsent-leads"
+                            onclick="copyNextUnsentLeads()"
+                            class="w-full md:w-auto px-3 py-1.5 bg-emerald-600/15 hover:bg-emerald-600/25 text-emerald-300 border border-emerald-500/25 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5"
+                            title="Copy 15 đối tác chưa gửi, mỗi người cách nhau bằng ====="
+                        >
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V5a2 2 0 012-2h6l4 4v10a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2M8 7h6a2 2 0 012 2v8a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2z"/></svg>
+                            Copy 15 chưa gửi
+                        </button>
+
+                        <button
+                            id="btn-mark-copied-sent"
+                            onclick="markLastCopiedUnsentLeadsAsContacted()"
+                            disabled
+                            class="w-full md:w-auto px-3 py-1.5 bg-amber-600/15 hover:bg-amber-600/25 disabled:bg-slate-800/40 disabled:text-slate-600 disabled:border-slate-700/60 text-amber-300 border border-amber-500/25 rounded-lg text-[11px] font-black transition-all flex items-center justify-center gap-1.5 disabled:cursor-not-allowed"
+                            title="Đánh dấu đúng batch vừa copy là đã gửi"
+                        >
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75l2 2 4-5.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                            <span id="mark-copied-sent-label">Đánh dấu batch đã gửi</span>
+                        </button>
+
+                        <!-- Bulk Actions -->
+                        <div id="bulk-actions" class="hidden flex items-center gap-2 w-full md:w-auto justify-end">
+                            <span class="text-[10px] text-indigo-400 font-bold" id="selected-count">Chọn 0</span>
+
+                            <select
+                                id="bulk-status-value"
+                                class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-[11px] text-slate-300 focus:outline-none"
+                            >
+                                <option value="NEW">Trạng thái: Mới</option>
+                                <option value="CONTACTED">Trạng thái: Đã gửi tin</option>
+                                <option value="REPLIED">Trạng thái: Đang trao đổi</option>
+                                <option value="CLOSED">Trạng thái: Chốt đối tác</option>
+                                <option value="DECLINED">Trạng thái: Từ chối</option>
+                            </select>
+
+                            <button
+                                onclick="applyBulkStatus()"
+                                class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold rounded-lg transition-all"
+                            >
+                                Áp dụng
+                            </button>
+                            <button
+                                onclick="deleteSelectedLeads()"
+                                class="p-1 bg-red-950/40 hover:bg-red-900/40 text-red-400 border border-red-900/50 rounded-lg transition-all"
+                                title="Xóa các mục đã chọn"
+                            >
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Leads Table container -->
+                    <div class="flex-1 overflow-auto scroll-custom">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="sticky top-0 bg-slate-950 text-slate-400 text-[10px] font-bold uppercase tracking-wider z-10">
+                                <tr>
+                                    <th class="p-3 w-10">
+                                        <input type="checkbox" id="select-all" class="custom-checkbox" onchange="toggleSelectAll(this)">
+                                    </th>
+                                    <th class="p-3 w-40">Tên Đối Tác</th>
+                                    <th class="p-3 w-32">Số Điện Thoại</th>
+                                    <th class="p-3 w-32">Nguồn / Nhóm</th>
+                                    <th class="p-3 w-28">Trạng Thái</th>
+                                    <th class="p-3">Ghi Chú</th>
+                                    <th class="p-3 text-right w-44">Hành Động Zalo</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lead-rows" class="divide-y divide-slate-800/40 text-xs">
+                                <!-- Loaded dynamically -->
+                            </tbody>
+                        </table>
+
+                        <!-- Empty state -->
+                        <div id="empty-state" class="py-44 text-center text-slate-500">
+                            <svg class="w-10 h-10 mx-auto text-slate-700 mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.109A2.25 2.25 0 0112.75 21.5h-1.5a2.25 2.25 0 01-2.25-2.263V19.13m-2.625.372a9.337 9.337 0 01-4.121-.952 4.125 4.125 0 007.533-2.493M3.75 19.5h-.003c0-1.113.285-2.16.786-3.07M3.75 19.5v.109A2.25 2.25 0 006 21.5h1.5a2.25 2.25 0 002.25-2.263V19.13" />
+                            </svg>
+                            <p class="text-xs font-semibold text-slate-600">Chưa có thông tin đối tác nào trong danh sách</p>
+                            <p class="text-[10px] text-slate-700 mt-1 max-w-sm mx-auto">Vui lòng dán dữ liệu Facebook ở ô bên trái và nhấn nút Trích xuất đối tác để bắt đầu.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- NEW TEMPLATE MODAL -->
+    <div id="template-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden z-[200] flex items-center justify-center p-4">
+        <div class="glass-panel max-w-md w-full p-5 rounded-2xl animate-in fade-in zoom-in duration-200">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-cyan-400 text-sm uppercase tracking-wider">Tạo Mẫu Tin Nhắn Mới</h3>
+                <button onclick="closeTemplateModal()" class="text-slate-500 hover:text-white text-xl">&times;</button>
+            </div>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-[10px] text-slate-500 font-bold uppercase mb-1">Tên tiêu đề mẫu</label>
+                    <input
+                        type="text"
+                        id="new-template-name"
+                        placeholder="Ví dụ: Giới Thiệu Chào Hàng"
+                        class="w-full bg-slate-900 border border-slate-800 focus:border-cyan-500 focus:outline-none rounded-lg px-2.5 py-1.5 text-xs text-slate-200"
+                    >
+                </div>
+                <div>
+                    <label class="block text-[10px] text-slate-500 font-bold uppercase mb-1">Nội dung tin nhắn</label>
+                    <textarea
+                        id="new-template-text"
+                        placeholder="Chào {ten}, mình liên hệ từ Đại lý..."
+                        class="w-full h-32 bg-slate-900 border border-slate-800 focus:border-cyan-500 focus:outline-none rounded-lg p-2.5 text-xs text-slate-200 resize-none"
+                    ></textarea>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-4">
+                <button onclick="closeTemplateModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs text-slate-300">Hủy</button>
+                <button onclick="createNewTemplate()" class="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-xs font-bold text-white">Tạo mới</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RECEIPT PREVIEW MODAL -->
+    <div id="receipt-modal" class="fixed inset-0 bg-black/85 backdrop-blur-sm hidden z-[220] flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-5xl max-h-[92vh] rounded-2xl overflow-hidden border border-slate-700/70">
+            <div class="flex items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
+                <div class="min-w-0">
+                    <h3 id="receipt-modal-title" class="text-sm font-black text-cyan-300 truncate">Ảnh demo Zalo</h3>
+                    <p id="receipt-modal-status" class="mt-0.5 text-[10px] text-slate-400">Ảnh demo sau khi gửi thành công qua OpenZCA.</p>
+                </div>
+                <div class="flex shrink-0 items-center gap-2">
+                    <a id="receipt-modal-open-link" href="#" target="_blank" rel="noopener" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[10px] font-bold text-slate-200">Mở tab mới</a>
+                    <button onclick="closeReceiptModal()" class="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-[10px] font-bold text-red-200">Đóng</button>
+                </div>
+            </div>
+            <div class="max-h-[82vh] overflow-auto bg-slate-950/70 p-4">
+                <img id="receipt-modal-img" alt="Ảnh demo Zalo" class="mx-auto max-h-[78vh] max-w-full rounded-lg border border-slate-800 bg-slate-900 object-contain" />
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION -->
+    <div id="toast" class="fixed bottom-5 right-5 z-[300] hidden bg-gradient-to-r from-indigo-900 to-indigo-800 border border-indigo-500/30 text-indigo-200 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 toast-animate">
+        <div class="p-1 bg-indigo-500/20 rounded-lg text-indigo-400">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="text-xs font-bold" id="toast-message">Đã sao chép tin nhắn thành công!</div>
+    </div>
+
+    <script>
+        // Core states
+        let leads = [];
+        let templates = {};
+        let activeTemplateId = '';
+        let selectedLeadIdForPreview = null;
+        let lastCopiedUnsentLeadIds = [];
+        const ZALO_LOCAL_SERVER_URL = 'http://127.0.0.1:11452';
+        const STORAGE_KEYS = {
+            leads: 'travel_leads',
+            templates: 'travel_templates',
+            activeTemplate: 'travel_active_template',
+            backup: 'travel_leads_backup',
+            lastSavedAt: 'travel_last_saved_at'
+        };
+        let zaloLocalStatusPollTimer = null;
+        let zaloLoginStatusPollTimer = null;
+
+        // Default initial templates if not set
+        const DEFAULT_TEMPLATES = {
+            "intro_tour": {
+                name: "Giới thiệu Tour Hợp tác",
+                text: "Chào {ten},\n\nMình thấy thông tin của {ten} tại nhóm {nguon}. Bên mình là đại lý lữ hành du lịch chuyên tour Phú Quốc/Đà Nẵng/Nha Trang giá tốt nhất cho đối tác.\n\nKhông biết bên mình có cơ hội kết nối gửi báo giá đại lý để cùng hợp tác bán tour không ạ? Zalo liên hệ của mình là: {sdt}."
+            },
+            "hello_agent": {
+                name: "Chào hỏi ban đầu",
+                text: "Chào {ten} ạ, mình thấy số của {ten} công khai trên nhóm du lịch {nguon}. Rất vui được kết nối với bạn làm du lịch để trao đổi khách lẻ/khách đoàn sau này nhé!"
+            }
+        };
+
+        const VN_MOBILE_PREFIXES = [
+            '032','033','034','035','036','037','038','039','086','096','097','098',
+            '070','076','077','078','079','089','090','093',
+            '081','082','083','084','085','088','091','094',
+            '052','056','058','059','055'
+        ];
+
+        function normalizeVietnameseMobilePhone(value) {
+            const clean = String(value || '').replace(/[^0-9+]/g, '');
+            let normalized = clean;
+
+            if (clean.startsWith('+84')) {
+                normalized = '0' + clean.slice(3);
+            } else if (clean.startsWith('84') && clean.length > 9) {
+                normalized = '0' + clean.slice(2);
+            }
+
+            if (normalized.length !== 10 || !normalized.startsWith('0')) {
+                return '';
+            }
+
+            return VN_MOBILE_PREFIXES.includes(normalized.slice(0, 3)) ? normalized : '';
+        }
+
+        // Initialize App
+        window.addEventListener('DOMContentLoaded', () => {
+            loadFromLocalStorage();
+            if (leads.length > 0) {
+                selectedLeadIdForPreview = leads[0].id;
+            }
+            renderAll();
+            initializeZaloLocalIntegration();
+            refreshZaloLocalStatus({ silent: true });
+        });
+
+        function safeJsonParse(rawValue, fallback) {
+            try {
+                return rawValue ? JSON.parse(rawValue) : fallback;
+            } catch (error) {
+                return fallback;
+            }
+        }
+
+        function updateStorageStatus(savedAt = '') {
+            const statusEl = document.getElementById('storage-status');
+            if (!statusEl) return;
+            if (!savedAt) {
+                statusEl.textContent = 'Chưa có dữ liệu lưu trong trình duyệt này';
+                return;
+            }
+            const timeText = new Date(savedAt).toLocaleString('vi-VN');
+            statusEl.textContent = `Đã lưu ${leads.length} đối tác lúc ${timeText}`;
+        }
+
+        function writeLatestBackup(savedAt) {
+            if (leads.length === 0 && Object.keys(templates).length === 0) return;
+            const snapshot = {
+                version: 1,
+                savedAt,
+                origin: window.location && window.location.href ? window.location.href : '',
+                leads,
+                templates,
+                activeTemplateId
+            };
+            localStorage.setItem(STORAGE_KEYS.backup, JSON.stringify(snapshot));
+        }
+
+        // Save & Load LocalStorage
+        function saveToLocalStorage() {
+            const savedAt = new Date().toISOString();
+            localStorage.setItem(STORAGE_KEYS.leads, JSON.stringify(leads));
+            localStorage.setItem(STORAGE_KEYS.templates, JSON.stringify(templates));
+            localStorage.setItem(STORAGE_KEYS.activeTemplate, activeTemplateId);
+            localStorage.setItem(STORAGE_KEYS.lastSavedAt, savedAt);
+            writeLatestBackup(savedAt);
+            updateStorageStatus(savedAt);
+        }
+
+        function loadFromLocalStorage() {
+            // Load Leads
+            const rawLeads = localStorage.getItem(STORAGE_KEYS.leads);
+            leads = safeJsonParse(rawLeads, []);
+
+            // Load Templates
+            const rawTemplates = localStorage.getItem(STORAGE_KEYS.templates);
+            templates = safeJsonParse(rawTemplates, { ...DEFAULT_TEMPLATES });
+
+            // Load Active Template
+            activeTemplateId = localStorage.getItem(STORAGE_KEYS.activeTemplate) || Object.keys(templates)[0];
+            if (!templates[activeTemplateId] && Object.keys(templates).length > 0) {
+                activeTemplateId = Object.keys(templates)[0];
+            }
+            updateStorageStatus(localStorage.getItem(STORAGE_KEYS.lastSavedAt));
+        }
+
+        function restoreLatestBackup() {
+            const backup = safeJsonParse(localStorage.getItem(STORAGE_KEYS.backup), null);
+            if (!backup || !Array.isArray(backup.leads)) {
+                showToast("Chưa có backup trong trình duyệt hiện tại để khôi phục.", "error");
+                return;
+            }
+
+            let restoredCount = 0;
+            backup.leads.forEach(item => {
+                const normalizedPhone = normalizeVietnameseMobilePhone(item.phone);
+                if (!normalizedPhone) return;
+                if (leads.find(lead => normalizeVietnameseMobilePhone(lead.phone) === normalizedPhone)) return;
+
+                leads.push({
+                    id: item.id || 'lead_' + Math.random().toString(36).substr(2, 9),
+                    name: item.name || 'Đối tác',
+                    phone: normalizedPhone,
+                    source: item.source || 'Backup',
+                    status: item.status || 'NEW',
+                    note: item.note || '',
+                    createdAt: item.createdAt || new Date().toISOString(),
+                    sentAt: item.sentAt || '',
+                    receiptPath: item.receiptPath || '',
+                    receiptUrl: item.receiptUrl || '',
+                    zaloName: item.zaloName || '',
+                    receiptCreatedAt: item.receiptCreatedAt || '',
+                    receiptError: item.receiptError || '',
+                    receiptKind: item.receiptKind || '',
+                    receiptVerifiedBy: item.receiptVerifiedBy || '',
+                    receiptRecentVerified: Boolean(item.receiptRecentVerified)
+                });
+                restoredCount++;
+            });
+
+            if (backup.templates && typeof backup.templates === 'object') {
+                templates = { ...backup.templates, ...templates };
+            }
+            if (!activeTemplateId && backup.activeTemplateId && templates[backup.activeTemplateId]) {
+                activeTemplateId = backup.activeTemplateId;
+            }
+
+            if (restoredCount === 0) {
+                showToast("Backup không có đối tác mới để khôi phục.");
+                return;
+            }
+
+            saveToLocalStorage();
+            renderAll();
+            showToast(`Khôi phục thêm ${restoredCount} đối tác từ backup.`);
+        }
+
+        // Extractor Logic
+        function processExtraction() {
+            const rawText = document.getElementById('raw-text-input').value;
+            const source = document.getElementById('default-source').value.trim() || 'Facebook';
+            const defaultName = document.getElementById('default-name').value.trim() || 'Đối tác';
+
+            if (!rawText.trim()) {
+                showToast("Vui lòng nhập nội dung có chứa số điện thoại!", "error");
+                return;
+            }
+
+            // Regex matches numbers beginning with +84, 84, or 0, followed by digits/dots/spaces/dashes
+            // Vietnamese phone number regex matcher
+            const phoneRegex = /(?:\+84|84|0)[0-9\s.-]{9,15}/g;
+            const matches = rawText.match(phoneRegex) || [];
+
+            let addedCount = 0;
+            let duplicateCount = 0;
+            const now = new Date().toLocaleDateString('vi-VN');
+
+            matches.forEach(match => {
+                const normalized = normalizeVietnameseMobilePhone(match);
+
+                if (normalized) {
+                    // Check duplicate in list
+                    const exists = leads.find(l => l.phone === normalized);
+                    if (!exists) {
+                        const newId = 'lead_' + Math.random().toString(36).substr(2, 9);
+                        leads.unshift({
+                            id: newId,
+                            name: defaultName,
+                            phone: normalized,
+                            source: source,
+                            status: 'NEW',
+                            note: `Quét ngày ${now}`,
+                            createdAt: new Date().toISOString()
+                        });
+                        if (!selectedLeadIdForPreview) {
+                            selectedLeadIdForPreview = newId;
+                        }
+                        addedCount++;
+                    } else {
+                        duplicateCount++;
+                    }
+                }
+            });
+
+            document.getElementById('raw-text-input').value = '';
+            saveToLocalStorage();
+            renderAll();
+
+            if (addedCount > 0) {
+                showToast(`Trích xuất thành công ${addedCount} số điện thoại mới!${duplicateCount > 0 ? ` (Bỏ qua ${duplicateCount} số trùng)` : ''}`);
+            } else {
+                showToast("Không tìm thấy số điện thoại mới nào trong nội dung dán!", "error");
+            }
+        }
+
+        // Render UI
+        function renderAll() {
+            renderStats();
+            renderTemplateSelector();
+            renderTemplateText();
+            renderSourceFilterDropdown();
+            renderLeadTable();
+            updateTemplatePreview();
+            updateCopiedBatchButton();
+        }
+
+        function renderStats() {
+            const total = leads.length;
+            const sent = leads.filter(l => l.status === 'CONTACTED').length;
+            const news = leads.filter(l => l.status !== 'CONTACTED').length;
+
+            document.getElementById('stat-total').innerText = total;
+            document.getElementById('stat-sent').innerText = sent;
+            document.getElementById('stat-new').innerText = news;
+
+            const percent = total > 0 ? Math.round((sent / total) * 100) : 0;
+            document.getElementById('stat-sent-percent').innerText = `(${percent}%)`;
+            document.getElementById('progress-percent-label').innerText = `${percent}%`;
+            document.getElementById('progress-bar').style.width = `${percent}%`;
+        }
+
+        function renderTemplateSelector() {
+            const selector = document.getElementById('template-selector');
+            selector.innerHTML = '';
+
+            Object.keys(templates).forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = templates[key].name;
+                if (key === activeTemplateId) {
+                    opt.selected = true;
+                }
+                selector.appendChild(opt);
+            });
+        }
+
+        function renderTemplateText() {
+            const textarea = document.getElementById('template-text');
+            if (activeTemplateId && templates[activeTemplateId]) {
+                textarea.value = templates[activeTemplateId].text;
+                document.getElementById('char-counter').textContent = `${templates[activeTemplateId].text.length} kí tự`;
+            } else {
+                textarea.value = '';
+                document.getElementById('char-counter').textContent = `0 kí tự`;
+            }
+        }
+
+        function renderSourceFilterDropdown() {
+            const filterDropdown = document.getElementById('filter-source');
+            const currentValue = filterDropdown.value;
+
+            // Extract unique sources
+            const sources = [...new Set(leads.map(l => l.source))].filter(Boolean);
+
+            filterDropdown.innerHTML = '<option value="ALL">Tất cả nguồn</option>';
+            sources.forEach(src => {
+                const opt = document.createElement('option');
+                opt.value = src;
+                opt.textContent = src;
+                if (src === currentValue) {
+                    opt.selected = true;
+                }
+                filterDropdown.appendChild(opt);
+            });
+        }
+
+        function formatLeadSentAt(value) {
+            if (!value) return '';
+            const date = new Date(value);
+            if (Number.isNaN(date.getTime())) return '';
+            return date.toLocaleString('vi-VN');
+        }
+
+        function buildLocalReceiptUrl(receiptUrl) {
+            if (!receiptUrl) return;
+            return /^https?:\/\//i.test(receiptUrl)
+                ? receiptUrl
+                : `${ZALO_LOCAL_SERVER_URL}${receiptUrl.startsWith('/') ? receiptUrl : `/${receiptUrl}`}`;
+        }
+
+        function openReceiptImage(receiptUrl, leadName = '') {
+            const url = buildLocalReceiptUrl(receiptUrl);
+            if (!url) return;
+            const modal = document.getElementById('receipt-modal');
+            const image = document.getElementById('receipt-modal-img');
+            const title = document.getElementById('receipt-modal-title');
+            const status = document.getElementById('receipt-modal-status');
+            const openLink = document.getElementById('receipt-modal-open-link');
+
+            if (image) image.src = url;
+            if (openLink) openLink.href = url;
+            if (title) title.textContent = leadName ? `Ảnh demo Zalo - ${leadName}` : 'Ảnh demo Zalo';
+            if (status) status.textContent = 'Ảnh demo sau khi gửi thành công qua OpenZCA. Ảnh có nhãn DEMO để phân biệt với ảnh chụp thật.';
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeReceiptModal() {
+            const modal = document.getElementById('receipt-modal');
+            const image = document.getElementById('receipt-modal-img');
+            if (modal) modal.classList.add('hidden');
+            if (image) image.src = '';
+        }
+
+        function escapeHtmlAttribute(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function renderLeadTable() {
+            const tbody = document.getElementById('lead-rows');
+            const emptyState = document.getElementById('empty-state');
+            tbody.innerHTML = '';
+
+            const searchQuery = document.getElementById('search-input').value.toLowerCase().trim();
+            const statusFilter = document.getElementById('filter-status').value;
+            const sourceFilter = document.getElementById('filter-source').value;
+
+            const filteredLeads = leads.filter(l => {
+                const matchesSearch = l.name.toLowerCase().includes(searchQuery) ||
+                                      l.phone.includes(searchQuery) ||
+                                      (l.note && l.note.toLowerCase().includes(searchQuery));
+
+                const matchesStatus = statusFilter === 'ALL' || l.status === statusFilter;
+                const matchesSource = sourceFilter === 'ALL' || l.source === sourceFilter;
+
+                return matchesSearch && matchesStatus && matchesSource;
+            });
+
+            if (filteredLeads.length === 0) {
+                emptyState.classList.remove('hidden');
+                document.getElementById('select-all').checked = false;
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            filteredLeads.forEach(lead => {
+                const tr = document.createElement('tr');
+                tr.id = `row_${lead.id}`;
+                const isContacted = lead.status === 'CONTACTED';
+                tr.className = `hover:bg-slate-900/40 transition-all ${isContacted ? 'bg-emerald-950/10' : ''} ${lead.id === selectedLeadIdForPreview ? 'bg-indigo-950/20 border-l-2 border-l-indigo-500' : ''}`;
+
+                // Active Row Selection on click
+                tr.addEventListener('click', (e) => {
+                    if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') {
+                        selectedLeadIdForPreview = lead.id;
+                        document.querySelectorAll('#lead-rows tr').forEach(row => {
+                            row.classList.remove('bg-indigo-950/20', 'border-l-2', 'border-l-indigo-500');
+                        });
+                        tr.classList.add('bg-indigo-950/20', 'border-l-2', 'border-l-indigo-500');
+                        updateTemplatePreview();
+                    }
+                });
+
+                // Status Badge Color Map
+                const statusColors = {
+                    'NEW': 'bg-indigo-500/10 text-indigo-300 border-indigo-500/20',
+                    'CONTACTED': 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+                    'REPLIED': 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20',
+                    'CLOSED': 'bg-purple-500/10 text-purple-300 border-purple-500/20',
+                    'DECLINED': 'bg-red-500/10 text-red-300 border-red-500/20'
+                };
+                const statusClass = statusColors[lead.status] || statusColors['NEW'];
+
+                const formattedPhone = lead.phone.replace(/(\d{4})(\d{3})(\d{3})/, '$1 $2 $3');
+                const sentTime = formatLeadSentAt(lead.sentAt);
+                const sentBadge = isContacted
+                    ? `<div class="mt-1 inline-flex items-center gap-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-300">Đã gửi Zalo${sentTime ? ` · ${sentTime}` : ''}</div>`
+                    : '';
+                const hasDemoReceipt = lead.receiptKind === 'zalo-demo-render';
+                const demoReceiptBadge = isContacted && hasDemoReceipt && lead.receiptUrl
+                    ? `<div class="mt-1 inline-flex items-center gap-1 rounded-full border border-sky-500/20 bg-sky-500/10 px-2 py-0.5 text-[9px] font-bold text-sky-300">Có ảnh demo</div>`
+                    : '';
+                const receiptErrorBadge = isContacted && lead.receiptError && !lead.receiptUrl
+                    ? `<div class="mt-1 inline-flex items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[9px] font-bold text-amber-300" title="${escapeHtmlAttribute(lead.receiptError)}">Đã gửi, chưa tạo được ảnh demo</div>`
+                    : '';
+                const zaloButtonText = isContacted ? 'GỬI LẠI' : 'CHÁT ZALO';
+                const receiptButtonText = hasDemoReceipt ? 'Ảnh demo' : 'Ảnh gửi';
+                const receiptButton = lead.receiptUrl
+                    ? `<button
+                            data-receipt-url="${escapeHtmlAttribute(lead.receiptUrl)}"
+                            data-lead-name="${escapeHtmlAttribute(lead.zaloName || lead.name || '')}"
+                            onclick="openReceiptImage(this.getAttribute('data-receipt-url'), this.getAttribute('data-lead-name'))"
+                            class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all"
+                            title="Mở ảnh biên nhận đã gửi"
+                        >
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            ${receiptButtonText}
+                        </button>`
+                    : '';
+
+                tr.innerHTML = `
+                    <td class="p-3">
+                        <input type="checkbox" data-id="${lead.id}" class="custom-checkbox lead-checkbox" onchange="checkBulkActionStatus()">
+                    </td>
+                    <td class="p-3 font-semibold text-slate-200">
+                        <input type="text" value="${lead.name}" onchange="updateLeadField('${lead.id}', 'name', this.value)" class="bg-transparent border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-none w-full py-0.5">
+                    </td>
+                    <td class="p-3 font-mono text-slate-300">
+                        <div class="flex items-center gap-1">
+                            <span>${formattedPhone}</span>
+                            <button onclick="copyToClipboard('${lead.phone}', 'Đã copy số điện thoại')" class="text-slate-500 hover:text-slate-300" title="Sao chép số">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7v8a2 2 0 002 2h6M8 7V5a2 2 0 012-2h4.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M8 7H6a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2v-2" /></svg>
+                            </button>
+                        </div>
+                    </td>
+                    <td class="p-3 text-slate-400">
+                        <input type="text" value="${lead.source}" onchange="updateLeadField('${lead.id}', 'source', this.value)" class="bg-transparent border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-none w-full py-0.5">
+                    </td>
+                    <td class="p-3">
+                        <select onchange="updateLeadField('${lead.id}', 'status', this.value)" class="bg-slate-900/90 border border-slate-800 rounded-md px-1.5 py-0.5 text-[11px] font-bold ${statusClass}">
+                            <option value="NEW" ${lead.status === 'NEW' ? 'selected' : ''}>MỚI</option>
+                            <option value="CONTACTED" ${lead.status === 'CONTACTED' ? 'selected' : ''}>ĐÃ GỬI</option>
+                            <option value="REPLIED" ${lead.status === 'REPLIED' ? 'selected' : ''}>TRAO ĐỔI</option>
+                            <option value="CLOSED" ${lead.status === 'CLOSED' ? 'selected' : ''}>CHỐT</option>
+                            <option value="DECLINED" ${lead.status === 'DECLINED' ? 'selected' : ''}>TỪ CHỐI</option>
+                        </select>
+                        ${sentBadge}
+                        ${demoReceiptBadge}
+                        ${receiptErrorBadge}
+                    </td>
+                    <td class="p-3 text-slate-400">
+                        <input type="text" value="${lead.note || ''}" placeholder="Thêm ghi chú..." onchange="updateLeadField('${lead.id}', 'note', this.value)" class="bg-transparent border-b border-transparent hover:border-slate-700 focus:border-indigo-500 focus:outline-none w-full py-0.5 italic">
+                    </td>
+                    <td class="p-3 text-right">
+                        <div class="flex items-center justify-end gap-1.5">
+                            ${receiptButton}
+                            <button
+                                onclick="connectZalo('${lead.id}')"
+                                class="px-2.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg font-bold text-[10px] flex items-center gap-1 transition-all shadow-md shadow-indigo-500/10 active:scale-[0.98]"
+                            >
+                                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+                                ${zaloButtonText}
+                            </button>
+                            <button
+                                onclick="deleteLead('${lead.id}')"
+                                class="p-1 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-all"
+                                title="Xóa khách hàng"
+                            >
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Re-apply select all checkbox state
+            checkBulkActionStatus();
+        }
+
+        // Live compile helper
+        function compileTemplate(templateText, leadObj) {
+            if (!templateText) return '';
+            if (!leadObj) return templateText;
+
+            return templateText
+                .replace(/{ten}/g, leadObj.name || 'anh/chị')
+                .replace(/{sdt}/g, leadObj.phone || '')
+                .replace(/{nguon}/g, leadObj.source || 'Nhóm du lịch')
+                .replace(/{ghichu}/g, leadObj.note || '');
+        }
+
+        function updateTemplatePreview() {
+            const previewContainer = document.getElementById('template-preview');
+            const selectedLead = leads.find(l => l.id === selectedLeadIdForPreview) || leads[0];
+            const currentTemplateText = document.getElementById('template-text').value;
+
+            if (!currentTemplateText.trim()) {
+                previewContainer.innerHTML = '<span class="text-slate-600">Chưa soạn nội dung tin nhắn.</span>';
+                return;
+            }
+
+            if (!selectedLead) {
+                previewContainer.innerHTML = '<span class="text-slate-600 italic">Vui lòng thêm đối tác để xem trước tin nhắn thực tế.</span>';
+                return;
+            }
+
+            const compiledText = compileTemplate(currentTemplateText, selectedLead);
+            previewContainer.textContent = compiledText;
+        }
+
+        // Field modifications
+        function updateLeadField(leadId, field, value) {
+            const lead = leads.find(l => l.id === leadId);
+            if (lead) {
+                lead[field] = value;
+                if (field === 'status' && value === 'CONTACTED' && !lead.sentAt) {
+                    lead.sentAt = new Date().toISOString();
+                }
+                saveToLocalStorage();
+                renderStats();
+                if (leadId === selectedLeadIdForPreview) {
+                    updateTemplatePreview();
+                }
+
+                // If modifying the source field, update source dropdown filters
+                if (field === 'source') {
+                    renderSourceFilterDropdown();
+                }
+            }
+        }
+
+        function initializeZaloLocalIntegration() {
+            const notInstalledPanel = document.getElementById('ext-not-installed');
+            const installedPanel = document.getElementById('ext-installed');
+            const badge = document.getElementById('ext-status-badge');
+
+            if (notInstalledPanel) notInstalledPanel.classList.add('hidden');
+            if (installedPanel) installedPanel.classList.remove('hidden');
+            if (badge) {
+                badge.textContent = 'OPENZCA LOCAL';
+                badge.className = 'text-[9px] px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-semibold';
+            }
+        }
+
+        async function readZaloLocalJson(response) {
+            try {
+                return await response.json();
+            } catch (error) {
+                return {};
+            }
+        }
+
+        function formatZaloLocalApiError(error) {
+            const message = error && error.message ? error.message : String(error || '');
+            if (message.includes('fetch') || message.includes('Failed to fetch') || message.includes('NetworkError')) {
+                return 'Không kết nối được Zalo local server. Hãy chạy npm run dev.';
+            }
+            return message || 'Không thể gọi Zalo local server.';
+        }
+
+        async function callZaloLocalApi(path, options = {}) {
+            if (typeof fetch !== 'function') {
+                throw new Error('Trình duyệt không hỗ trợ fetch để gọi Zalo local server.');
+            }
+
+            const response = await fetch(`${ZALO_LOCAL_SERVER_URL}${path}`, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                }
+            });
+            const data = await readZaloLocalJson(response);
+            if (!response.ok) {
+                throw new Error(data.error || `Zalo local server trả về HTTP ${response.status}`);
+            }
+            return data;
+        }
+
+        function applyZaloLocalQueueResults(queueStatus) {
+            const items = queueStatus && Array.isArray(queueStatus.items) ? queueStatus.items : [];
+            let changed = false;
+
+            items.forEach(item => {
+                if (!item || !item.status || item.status === 'PENDING' || item.status === 'RUNNING') return;
+                const normalizedPhone = normalizeVietnameseMobilePhone(item.phone);
+                const lead = leads.find(l => l.id === item.id || normalizeVietnameseMobilePhone(l.phone) === normalizedPhone);
+                if (!lead) return;
+
+                if (item.status === 'SUCCESS') {
+                    const nextSentAt = item.completedAt || item.sentAt || lead.sentAt || new Date().toISOString();
+                    const nextNote = `Gửi Zalo OpenZCA thành công lúc ${new Date(nextSentAt).toLocaleTimeString()}`;
+                    const nextReceiptPath = item.receiptPath || lead.receiptPath || '';
+                    const nextReceiptUrl = item.receiptUrl || lead.receiptUrl || '';
+                    const nextReceiptCreatedAt = item.receiptCreatedAt || lead.receiptCreatedAt || '';
+                    const nextReceiptError = item.receiptError || '';
+                    const nextReceiptKind = item.receiptKind || lead.receiptKind || '';
+                    const nextReceiptVerifiedBy = item.receiptVerifiedBy || lead.receiptVerifiedBy || '';
+                    const nextReceiptRecentVerified = Boolean(item.receiptRecentVerified || lead.receiptRecentVerified);
+                    const nextZaloName = item.zaloName || lead.zaloName || '';
+                    if (
+                        lead.status !== 'CONTACTED' ||
+                        lead.sentAt !== nextSentAt ||
+                        lead.note !== nextNote ||
+                        lead.receiptPath !== nextReceiptPath ||
+                        lead.receiptUrl !== nextReceiptUrl ||
+                        lead.zaloName !== nextZaloName ||
+                        lead.receiptCreatedAt !== nextReceiptCreatedAt ||
+                        lead.receiptError !== nextReceiptError ||
+                        lead.receiptKind !== nextReceiptKind ||
+                        lead.receiptVerifiedBy !== nextReceiptVerifiedBy ||
+                        Boolean(lead.receiptRecentVerified) !== nextReceiptRecentVerified
+                    ) {
+                        lead.status = 'CONTACTED';
+                        lead.sentAt = nextSentAt;
+                        lead.note = nextNote;
+                        lead.receiptPath = nextReceiptPath;
+                        lead.receiptUrl = nextReceiptUrl;
+                        lead.zaloName = nextZaloName;
+                        lead.receiptCreatedAt = nextReceiptCreatedAt;
+                        lead.receiptError = nextReceiptError;
+                        lead.receiptKind = nextReceiptKind;
+                        lead.receiptVerifiedBy = nextReceiptVerifiedBy;
+                        lead.receiptRecentVerified = nextReceiptRecentVerified;
+                        changed = true;
+                    }
+                } else if (item.status === 'FAILED') {
+                    const errorText = item.error || 'Không gửi được qua OpenZCA';
+                    const nextNote = `Lỗi gửi Zalo OpenZCA: ${errorText}`;
+                    if (lead.status !== 'DECLINED' || lead.note !== nextNote) {
+                        lead.status = 'DECLINED';
+                        lead.note = nextNote;
+                        lead.failedAt = new Date().toISOString();
+                        changed = true;
+                    }
+                }
+            });
+
+            if (changed) {
+                saveToLocalStorage();
+                renderAll();
+            }
+        }
+
+        function formatZaloAccountId(auth) {
+            if (!auth) return '';
+            const parts = [];
+            if (auth.userId) parts.push(`User ID: ${auth.userId}`);
+            if (auth.profile) parts.push(`Profile: ${auth.profile}`);
+            return parts.join(' | ');
+        }
+
+        function updateZaloLocalBadge(statusData) {
+            const badge = document.getElementById('ext-status-badge');
+            if (!badge) return;
+
+            if (!statusData) {
+                badge.textContent = 'LOCAL OFFLINE';
+                badge.className = 'text-[9px] px-2 py-0.5 bg-red-500/20 text-red-300 rounded font-semibold';
+                return;
+            }
+
+            if (statusData.auth && statusData.auth.loggedIn) {
+                const accountName = (statusData.auth.displayName || '').trim();
+                badge.textContent = statusData.queue && statusData.queue.running
+                    ? `ĐANG GỬI: ${accountName || 'OPENZCA'}`
+                    : accountName ? `ZALO: ${accountName}` : 'OPENZCA SẴN SÀNG';
+                badge.className = 'text-[9px] px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded font-semibold';
+            } else {
+                badge.textContent = 'CHƯA LOGIN OPENZCA';
+                badge.className = 'text-[9px] px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-semibold';
+            }
+        }
+
+        function updateZaloLoginPanel(statusData) {
+            const statusEl = document.getElementById('zalo-login-status');
+            const button = document.getElementById('btn-zalo-login-qr');
+            const qrPanel = document.getElementById('zalo-login-qr-panel');
+            const accountPanel = document.getElementById('zalo-login-account');
+            const accountNameEl = document.getElementById('zalo-login-account-name');
+            const accountIdEl = document.getElementById('zalo-login-account-id');
+
+            if (!statusEl) return;
+
+            if (!statusData) {
+                statusEl.textContent = 'Local server chưa chạy. Chạy npm run dev.';
+                if (button) button.disabled = false;
+                if (accountPanel) accountPanel.classList.add('hidden');
+                return;
+            }
+
+            if (statusData.auth && statusData.auth.loggedIn) {
+                const accountName = (statusData.auth.displayName || '').trim();
+                const accountIdText = formatZaloAccountId(statusData.auth);
+                statusEl.textContent = accountName
+                    ? `Đã đăng nhập Zalo: ${accountName}. Có thể gửi.`
+                    : 'Đã đăng nhập OpenZCA. Có thể gửi Zalo.';
+                if (accountNameEl) accountNameEl.textContent = accountName || 'Không đọc được tên nick';
+                if (accountIdEl) accountIdEl.textContent = accountIdText || 'Không đọc được userId/profile';
+                if (accountPanel) accountPanel.classList.remove('hidden');
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = 'QR MỚI';
+                }
+                if (qrPanel) qrPanel.classList.add('hidden');
+                stopZaloLoginStatusPolling();
+            } else {
+                statusEl.textContent = 'Chưa đăng nhập OpenZCA. Bấm QUÉT QR để đăng nhập.';
+                if (accountPanel) accountPanel.classList.add('hidden');
+                if (button) {
+                    button.disabled = false;
+                    button.textContent = 'QUÉT QR';
+                }
+            }
+        }
+
+        function startZaloLoginStatusPolling() {
+            if (zaloLoginStatusPollTimer || typeof setInterval !== 'function') return;
+            zaloLoginStatusPollTimer = setInterval(() => {
+                refreshZaloLocalStatus({ silent: true });
+            }, 3000);
+        }
+
+        function stopZaloLoginStatusPolling() {
+            if (!zaloLoginStatusPollTimer || typeof clearInterval !== 'function') return;
+            clearInterval(zaloLoginStatusPollTimer);
+            zaloLoginStatusPollTimer = null;
+        }
+
+        async function requestZaloLoginQr() {
+            const button = document.getElementById('btn-zalo-login-qr');
+            const statusEl = document.getElementById('zalo-login-status');
+            const qrPanel = document.getElementById('zalo-login-qr-panel');
+            const qrImg = document.getElementById('zalo-login-qr-img');
+
+            if (button) button.disabled = true;
+            if (statusEl) statusEl.textContent = 'Đang tạo QR đăng nhập OpenZCA...';
+
+            try {
+                const response = await callZaloLocalApi('/api/zalo/auth/login-qr', { method: 'POST' });
+                if (!response.qrDataUrl) {
+                    throw new Error('Server không trả QR đăng nhập.');
+                }
+                if (qrImg) qrImg.src = response.qrDataUrl;
+                if (qrPanel) qrPanel.classList.remove('hidden');
+                if (statusEl) statusEl.textContent = 'Quét QR bằng Zalo trên điện thoại, dashboard sẽ tự kiểm tra đăng nhập.';
+                startZaloLoginStatusPolling();
+            } catch (error) {
+                if (statusEl) statusEl.textContent = formatZaloLocalApiError(error);
+                showToast(formatZaloLocalApiError(error), 'error');
+            } finally {
+                if (button) button.disabled = false;
+            }
+        }
+
+        function updateCampaignUIFromZaloLocal(queueStatus) {
+            if (!queueStatus) return;
+            updateCampaignUI({
+                isSending: !!queueStatus.running,
+                currentIndex: queueStatus.currentIndex,
+                total: queueStatus.total,
+                queue: queueStatus.items || [],
+                message: queueStatus.running ? queueStatus.message : ''
+            });
+        }
+
+        async function refreshZaloLocalStatus(options = {}) {
+            const silent = !!options.silent;
+            try {
+                const status = await callZaloLocalApi('/api/zalo/status');
+                updateZaloLocalBadge(status);
+                updateZaloLoginPanel(status);
+                if (status.queue) {
+                    applyZaloLocalQueueResults(status.queue);
+                    updateCampaignUIFromZaloLocal(status.queue);
+                    if (!status.queue.running) {
+                        stopZaloLocalStatusPolling();
+                    }
+                }
+                return status;
+            } catch (error) {
+                updateZaloLocalBadge(null);
+                updateZaloLoginPanel(null);
+                if (!silent) {
+                    showToast(formatZaloLocalApiError(error), 'error');
+                }
+                return null;
+            }
+        }
+
+        function startZaloLocalStatusPolling() {
+            if (zaloLocalStatusPollTimer || typeof setInterval !== 'function') return;
+            zaloLocalStatusPollTimer = setInterval(() => {
+                refreshZaloLocalStatus({ silent: true });
+            }, 2500);
+        }
+
+        function stopZaloLocalStatusPolling() {
+            if (!zaloLocalStatusPollTimer || typeof clearInterval !== 'function') return;
+            clearInterval(zaloLocalStatusPollTimer);
+            zaloLocalStatusPollTimer = null;
+        }
+
+        async function startZaloLocalQueue(sendQueue, delaySec) {
+            const response = await callZaloLocalApi('/api/zalo/queue/start', {
+                method: 'POST',
+                body: JSON.stringify({ queue: sendQueue, delaySec })
+            });
+            if (response.queue) {
+                updateZaloLocalBadge(response);
+                updateCampaignUIFromZaloLocal(response.queue);
+            }
+            startZaloLocalStatusPolling();
+            return response;
+        }
+
+        // Single connect action
+        async function connectZalo(leadId) {
+            const lead = leads.find(l => l.id === leadId);
+            if (!lead) return;
+
+            const templateText = document.getElementById('template-text').value;
+            if (!templateText.trim()) {
+                showToast("Vui lòng soạn nội dung tin nhắn trước khi gửi!", "error");
+                return;
+            }
+            const normalizedPhone = normalizeVietnameseMobilePhone(lead.phone);
+            if (!normalizedPhone) {
+                showToast("Số điện thoại không hợp lệ hoặc không phải số di động Việt Nam!", "error");
+                return;
+            }
+            const leadForSend = { ...lead, phone: normalizedPhone };
+            const message = compileTemplate(templateText, leadForSend);
+
+            try {
+                await startZaloLocalQueue([{
+                    id: lead.id,
+                    name: lead.name,
+                    phone: normalizedPhone,
+                    source: lead.source,
+                    message: message
+                }], 0);
+                showToast(`Đã chuyển ${lead.name} vào queue OpenZCA.`);
+            } catch (error) {
+                showToast(formatZaloLocalApiError(error), 'error');
+            }
+        }
+
+        function deleteLead(leadId) {
+            leads = leads.filter(l => l.id !== leadId);
+            if (selectedLeadIdForPreview === leadId) {
+                selectedLeadIdForPreview = leads.length > 0 ? leads[0].id : null;
+            }
+            saveToLocalStorage();
+            renderAll();
+            showToast("Đã xóa đối tác khỏi danh sách");
+        }
+
+        // Filter triggers
+        function filterLeads() {
+            renderLeadTable();
+        }
+
+        // Checkbox actions
+        function toggleSelectAll(masterCheckbox) {
+            const checkboxes = document.querySelectorAll('.lead-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = masterCheckbox.checked;
+            });
+            checkBulkActionStatus();
+        }
+
+        function checkBulkActionStatus() {
+            const checkboxes = document.querySelectorAll('.lead-checkbox:checked');
+            const totalCheckboxes = document.querySelectorAll('.lead-checkbox').length;
+            const selectAllCb = document.getElementById('select-all');
+            const bulkContainer = document.getElementById('bulk-actions');
+            const searchContainer = document.getElementById('search-input');
+
+            if (checkboxes.length > 0) {
+                bulkContainer.classList.remove('hidden');
+                document.getElementById('selected-count').innerText = `Đã chọn ${checkboxes.length}`;
+            } else {
+                bulkContainer.classList.add('hidden');
+            }
+
+            if (checkboxes.length === totalCheckboxes && totalCheckboxes > 0) {
+                selectAllCb.checked = true;
+                selectAllCb.indeterminate = false;
+            } else if (checkboxes.length > 0) {
+                selectAllCb.checked = false;
+                selectAllCb.indeterminate = true;
+            } else {
+                selectAllCb.checked = false;
+                selectAllCb.indeterminate = false;
+            }
+        }
+
+        function applyBulkStatus() {
+            const selectedStatus = document.getElementById('bulk-status-value').value;
+            const checkedBoxes = document.querySelectorAll('.lead-checkbox:checked');
+
+            checkedBoxes.forEach(cb => {
+                const leadId = cb.getAttribute('data-id');
+                const lead = leads.find(l => l.id === leadId);
+                if (lead) {
+                    lead.status = selectedStatus;
+                    if (selectedStatus === 'CONTACTED' && !lead.sentAt) {
+                        lead.sentAt = new Date().toISOString();
+                    }
+                }
+            });
+
+            saveToLocalStorage();
+            renderAll();
+            showToast(`Đã cập nhật trạng thái của ${checkedBoxes.length} đối tác!`);
+        }
+
+        function deleteSelectedLeads() {
+            if (!confirm("Bạn có chắc chắn muốn xóa những đối tác đã chọn không?")) return;
+            const checkedBoxes = document.querySelectorAll('.lead-checkbox:checked');
+            const idsToDelete = Array.from(checkedBoxes).map(cb => cb.getAttribute('data-id'));
+
+            leads = leads.filter(l => !idsToDelete.includes(l.id));
+            if (idsToDelete.includes(selectedLeadIdForPreview)) {
+                selectedLeadIdForPreview = leads.length > 0 ? leads[0].id : null;
+            }
+
+            saveToLocalStorage();
+            renderAll();
+            showToast(`Đã xóa thành công ${checkedBoxes.length} đối tác!`);
+        }
+
+        // Templates managers
+        function loadSelectedTemplate() {
+            const select = document.getElementById('template-selector');
+            activeTemplateId = select.value;
+            saveToLocalStorage();
+            renderTemplateText();
+            updateTemplatePreview();
+        }
+
+        function saveTemplate() {
+            if (!activeTemplateId || !templates[activeTemplateId]) return;
+            const text = document.getElementById('template-text').value;
+            templates[activeTemplateId].text = text;
+            templates[activeTemplateId].updatedAt = new Date().toISOString();
+            saveToLocalStorage();
+            updateTemplatePreview();
+            showToast("Đã lưu mẫu tin nhắn thành công!");
+        }
+
+        function deleteTemplate() {
+            const keys = Object.keys(templates);
+            if (keys.length <= 1) {
+                showToast("Bạn phải giữ ít nhất một mẫu tin nhắn!", "error");
+                return;
+            }
+
+            if (!confirm(`Bạn có chắc muốn xóa mẫu "${templates[activeTemplateId].name}"?`)) return;
+
+            delete templates[activeTemplateId];
+            activeTemplateId = Object.keys(templates)[0];
+            saveToLocalStorage();
+            renderAll();
+            showToast("Đã xóa mẫu tin nhắn!");
+        }
+
+        function openNewTemplateModal() {
+            document.getElementById('new-template-name').value = '';
+            document.getElementById('new-template-text').value = '';
+            document.getElementById('template-modal').classList.remove('hidden');
+        }
+
+        function closeTemplateModal() {
+            document.getElementById('template-modal').classList.add('hidden');
+        }
+
+        function createNewTemplate() {
+            const name = document.getElementById('new-template-name').value.trim();
+            const text = document.getElementById('new-template-text').value;
+
+            if (!name) {
+                alert("Vui lòng nhập tên tiêu đề mẫu!");
+                return;
+            }
+
+            const id = 'template_' + Math.random().toString(36).substr(2, 9);
+            const now = new Date().toISOString();
+            templates[id] = { name, text, createdAt: now, updatedAt: now };
+            activeTemplateId = id;
+
+            saveToLocalStorage();
+            closeTemplateModal();
+            renderAll();
+            showToast("Đã thêm mẫu mới!");
+        }
+
+        // Toast Helper
+        function showToast(message, type = "success") {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+
+            toastMsg.innerText = message;
+            toast.classList.remove('hidden');
+
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
+
+        // Helper clipboard
+        function copyToClipboard(text, successMsg) {
+            return navigator.clipboard.writeText(text).then(() => {
+                showToast(successMsg);
+            }).catch(e => {
+                showToast("Không thể sao chép tự động!", "error");
+            });
+        }
+
+        function getNextUnsentLeads(limit = 15) {
+            const safeLimit = Math.max(1, parseInt(limit, 10) || 15);
+            return leads
+                .filter(lead => lead && !isLeadMarkedSent(lead))
+                .slice(0, safeLimit);
+        }
+
+        function normalizeLeadStatusText(status) {
+            return String(status || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/đ/g, 'd')
+                .replace(/Đ/g, 'D')
+                .toUpperCase()
+                .trim();
+        }
+
+        function isLeadMarkedSent(lead) {
+            if (!lead) return false;
+            const statusText = normalizeLeadStatusText(lead.status);
+            return Boolean(
+                statusText === 'CONTACTED' ||
+                statusText === 'DA GUI' ||
+                statusText === 'DA GUI TIN' ||
+                lead.sentAt
+            );
+        }
+
+        function buildLeadCopyText(targetLeads) {
+            return targetLeads.map(lead => {
+                const name = lead.zaloName || lead.name || 'Đối tác';
+                const phone = normalizeVietnameseMobilePhone(lead.phone) || String(lead.phone || '').trim();
+                return [
+                    `Tên: ${name}`,
+                    `SĐT: ${phone}`,
+                    lead.source ? `Nguồn: ${lead.source}` : ''
+                ].filter(Boolean).join('\n');
+            }).join('\n=====\n');
+        }
+
+        function buildUnsentLeadCopyText(limit = 15) {
+            return buildLeadCopyText(getNextUnsentLeads(limit));
+        }
+
+        function updateCopiedBatchButton() {
+            const button = document.getElementById('btn-mark-copied-sent');
+            const label = document.getElementById('mark-copied-sent-label');
+            if (!button || !label) return;
+
+            const pendingCount = lastCopiedUnsentLeadIds.filter(id => {
+                const lead = leads.find(item => item.id === id);
+                return lead && !isLeadMarkedSent(lead);
+            }).length;
+
+            button.disabled = pendingCount === 0;
+            label.textContent = pendingCount > 0
+                ? `Đánh dấu ${pendingCount} đã gửi`
+                : 'Đánh dấu batch đã gửi';
+        }
+
+        function copyNextUnsentLeads(limit = 15) {
+            const targetLeads = getNextUnsentLeads(limit);
+            if (targetLeads.length === 0) {
+                showToast("Không còn đối tác chưa gửi để copy.", "error");
+                return Promise.resolve();
+            }
+            const text = buildLeadCopyText(targetLeads);
+            return navigator.clipboard.writeText(text).then(() => {
+                lastCopiedUnsentLeadIds = targetLeads.map(lead => lead.id);
+                updateCopiedBatchButton();
+                showToast(`Đã copy ${targetLeads.length} đối tác chưa gửi.`);
+            }).catch(e => {
+                showToast("Không thể sao chép tự động!", "error");
+            });
+        }
+
+        function markLastCopiedUnsentLeadsAsContacted() {
+            const ids = [...lastCopiedUnsentLeadIds];
+            if (ids.length === 0) {
+                showToast("Chưa có batch vừa copy để đánh dấu.", "error");
+                updateCopiedBatchButton();
+                return;
+            }
+
+            const now = new Date().toISOString();
+            let markedCount = 0;
+
+            ids.forEach(id => {
+                const lead = leads.find(item => item.id === id);
+                if (!lead || lead.status === 'CONTACTED') return;
+                lead.status = 'CONTACTED';
+                lead.sentAt = now;
+                lead.note = `Đánh dấu đã gửi sau khi copy batch lúc ${new Date(now).toLocaleTimeString()}`;
+                markedCount++;
+            });
+
+            if (markedCount === 0) {
+                showToast("Batch vừa copy đã được đánh dấu trước đó.", "error");
+                lastCopiedUnsentLeadIds = [];
+                updateCopiedBatchButton();
+                return;
+            }
+
+            lastCopiedUnsentLeadIds = [];
+            saveToLocalStorage();
+            renderAll();
+            updateCopiedBatchButton();
+            showToast(`Đã đánh dấu ${markedCount} đối tác vừa copy là đã gửi.`);
+        }
+
+        // Confirm clean all
+        function confirmClearAll() {
+            if (confirm("LƯU Ý: Bạn sẽ xóa toàn bộ danh sách đối tác đang có. Thao tác này không thể hoàn tác!\nBạn có chắc chắn muốn xóa?")) {
+                leads = [];
+                selectedLeadIdForPreview = null;
+                lastCopiedUnsentLeadIds = [];
+                saveToLocalStorage();
+                renderAll();
+                showToast("Đã xóa toàn bộ đối tác.");
+            }
+        }
+
+        // Data Import/Export (JSON/CSV)
+        function triggerImport() {
+            document.getElementById('import-file').click();
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (Array.isArray(imported)) {
+                        // Import leads validation
+                        let newCount = 0;
+                        imported.forEach(item => {
+                            const normalizedPhone = normalizeVietnameseMobilePhone(item.phone);
+                            if (normalizedPhone && !leads.find(l => l.phone === normalizedPhone)) {
+                                leads.push({
+                                    id: item.id || 'lead_' + Math.random().toString(36).substr(2, 9),
+                                    name: item.name || 'Đối tác',
+                                    phone: normalizedPhone,
+                                    source: item.source || 'Nhập Excel/JSON',
+                                    status: item.status || 'NEW',
+                                    note: item.note || '',
+                                    createdAt: item.createdAt || new Date().toISOString(),
+                                    sentAt: item.sentAt || '',
+                                    zaloName: item.zaloName || '',
+                                    receiptPath: item.receiptPath || '',
+                                    receiptUrl: item.receiptUrl || '',
+                                    receiptCreatedAt: item.receiptCreatedAt || '',
+                                    receiptError: item.receiptError || '',
+                                    receiptKind: item.receiptKind || '',
+                                    receiptVerifiedBy: item.receiptVerifiedBy || '',
+                                    receiptRecentVerified: Boolean(item.receiptRecentVerified)
+                                });
+                                newCount++;
+                            }
+                        });
+                        if (newCount > 0) {
+                            saveToLocalStorage();
+                            renderAll();
+                            showToast(`Đã nhập thành công ${newCount} đối tác mới!`);
+                        } else {
+                            showToast("Không có đối tác mới nào hoặc dữ liệu bị trùng lặp.");
+                        }
+                    } else {
+                        showToast("File JSON không đúng định dạng danh sách!", "error");
+                    }
+                } catch (err) {
+                    showToast("Lỗi giải mã file JSON!", "error");
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = ''; // Reset input
+        }
+
+        function exportData() {
+            if (leads.length === 0) {
+                showToast("Không có dữ liệu đối tác để xuất!", "error");
+                return;
+            }
+
+            const formatChoice = confirm("Chọn kiểu xuất dữ liệu:\n- OK: Xuất file Excel (CSV)\n- Cancel: Xuất file backup (JSON)");
+
+            if (formatChoice) {
+                // Export CSV
+                // Add UTF-8 BOM to display Vietnamese accents correctly in Excel
+                let csvContent = "\uFEFF";
+                csvContent += "Số điện thoại,Tên đối tác,Nguồn,Trạng thái,Ghi chú,Ngày tạo,Đã gửi lúc,Ảnh biên nhận\n";
+
+                leads.forEach(l => {
+                    const statusName = {
+                        'NEW': 'Mới',
+                        'CONTACTED': 'Đã gửi tin',
+                        'REPLIED': 'Đang trao đổi',
+                        'CLOSED': 'Chốt',
+                        'DECLINED': 'Từ chối'
+                    }[l.status] || 'Mới';
+
+                    csvContent += `"${l.phone}","${l.name.replace(/"/g, '""')}","${(l.source || '').replace(/"/g, '""')}","${statusName}","${(l.note || '').replace(/"/g, '""')}","${l.createdAt || ''}","${l.sentAt || ''}","${l.receiptUrl || ''}"\n`;
+                });
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Danh_Sach_Doi_Tac_Zalo_${new Date().toISOString().split('T')[0]}.csv`;
+                a.click();
+                showToast("Đã tải xuống file CSV!");
+            } else {
+                // Export JSON
+                const jsonStr = JSON.stringify(leads, null, 2);
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `backup_leads_zalo_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                showToast("Đã tải xuống file JSON backup!");
+            }
+        }
+
+        // EXTENSION SAAS AUTOMATION INTEGRATION
+        let isExtensionInstalled = false;
+        let isCampaignActive = false;
+
+        // Check if extension is active
+        function checkExtensionInstallation() {
+            if (document.documentElement.getAttribute('data-lead-connector-extension') === 'installed') {
+                isExtensionInstalled = true;
+                const fbScraperSection = document.getElementById('fb-scraper-section');
+                if (fbScraperSection) {
+                    fbScraperSection.classList.remove('hidden');
+                }
+                window.dispatchEvent(new CustomEvent('LEAD_CONNECTOR_TO_EXT', { detail: { action: "GET_STATUS" } }));
+            }
+        }
+
+        // Listener for extension status/ready signals
+        window.addEventListener('LEAD_CONNECTOR_EXTENSION_READY', () => {
+            checkExtensionInstallation();
+        });
+
+        // Polling check as fallback
+        setTimeout(checkExtensionInstallation, 1000);
+        setTimeout(checkExtensionInstallation, 3000);
+
+        function setFbText(id, value) {
+            const element = document.getElementById(id);
+            if (element) element.textContent = String(value);
+        }
+
+        function resetFbScanMetrics() {
+            ['fb-scan-post-count', 'fb-scan-comment-count', 'fb-scan-candidate-count', 'fb-scan-valid-count', 'fb-scan-rejected-count', 'fb-scan-duplicate-count'].forEach(id => setFbText(id, '0'));
+            setFbText('fb-scan-current-url', '—');
+            const errorEl = document.getElementById('fb-scan-last-error');
+            if (errorEl) {
+                errorEl.textContent = '';
+                errorEl.classList.add('hidden');
+            }
+        }
+
+        function updateFbScanMetrics(metrics = {}) {
+            setFbText('fb-scan-post-count', metrics.postCount || 0);
+            setFbText('fb-scan-comment-count', metrics.commentCount || 0);
+            setFbText('fb-scan-candidate-count', metrics.rawCandidateCount || 0);
+            setFbText('fb-scan-valid-count', metrics.validPhoneCount || 0);
+            setFbText('fb-scan-rejected-count', metrics.rejectedCount || 0);
+            if (metrics.duplicateCount !== undefined) {
+                setFbText('fb-scan-duplicate-count', metrics.duplicateCount || 0);
+            }
+            const scanCount = document.getElementById('fb-scan-count');
+            if (scanCount) scanCount.textContent = `${metrics.validPhoneCount || 0} SĐT`;
+        }
+
+        function formatFbScanStatus(data = {}) {
+            const labels = {
+                STARTED: 'Bắt đầu quét Facebook...',
+                NAVIGATING: `Đang mở trang ${data.currentPage || 1}/${data.totalPages || 1}...`,
+                LOADED: `Đã tải trang ${data.currentPage || 1}/${data.totalPages || 1}.`,
+                EXPANDING_COMMENTS: 'Đang mở rộng bài viết và bình luận...',
+                RECOVERING_DIALOG: 'Đang khôi phục sau khi mở bình luận...',
+                SCANNING: data.currentPage ? `Đang quét trang ${data.currentPage}/${data.totalPages || data.currentPage}...` : 'Đang quét Facebook...',
+                WAITING: `Nghỉ ${data.delaySeconds || 0}s trước khi quét trang tiếp...`,
+                DONE: 'Hoàn tất quét Facebook.',
+                COMPLETED: `Hoàn thành quét ${data.totalPages || 0} trang!`,
+                FAILED: 'Lỗi khi quét Facebook.'
+            };
+            return labels[data.status] || data.message || 'Đang quét Facebook...';
+        }
+
+        function updateFbScanProgress(data = {}) {
+            const statusText = document.getElementById('fb-scan-status-text');
+            if (statusText) statusText.textContent = formatFbScanStatus(data);
+            if (data.currentUrl) {
+                setFbText('fb-scan-current-url', data.currentUrl);
+            }
+            if (data.metrics) {
+                updateFbScanMetrics(data.metrics);
+            }
+
+            const errorEl = document.getElementById('fb-scan-last-error');
+            const reason = data.error || data.reason || '';
+            if (errorEl) {
+                if (reason) {
+                    errorEl.textContent = reason;
+                    errorEl.classList.remove('hidden');
+                } else if (data.status !== 'FAILED') {
+                    errorEl.textContent = '';
+                    errorEl.classList.add('hidden');
+                }
+            }
+        }
+
+        function handleFbScanFailure(error, requestAction = '') {
+            updateFbScanProgress({
+                status: 'FAILED',
+                error: error || 'Extension không phản hồi.',
+                metrics: {}
+            });
+            resetFbScanUI();
+            showToast(`${requestAction ? requestAction + ': ' : ''}${error || 'Lệnh quét Facebook thất bại.'}`, 'error');
+        }
+
+        // Receive status updates from Extension Background Worker
+        window.addEventListener('LEAD_CONNECTOR_FROM_EXT', (event) => {
+            const data = event.detail;
+            console.log("Web page received from Extension:", data);
+
+            if (data.action === "STATUS_UPDATE") {
+                isCampaignActive = data.isSending;
+                updateCampaignUI(data);
+            }
+
+            else if (data.action === "LEAD_COMPLETED") {
+                // Find lead by phone and update status in web app!
+                const lead = leads.find(l => l.phone === data.phone);
+                if (lead) {
+                    if (data.status === "SUCCESS") {
+                        lead.status = "CONTACTED";
+                        lead.sentAt = new Date().toISOString();
+                        lead.note = `Gửi tự động thành công lúc ${new Date(lead.sentAt).toLocaleTimeString()}`;
+                    } else {
+                        lead.status = "DECLINED";
+                        lead.note = `Lỗi gửi tự động: ${data.error || 'không tìm thấy ô chat'}`;
+                        lead.failedAt = new Date().toISOString();
+                    }
+                    saveToLocalStorage();
+                    renderAll();
+                }
+            }
+
+            else if (data.action === "FB_SCAN_PROGRESS") {
+                updateFbScanProgress(data);
+            }
+
+            else if (data.action === "EXTENSION_COMMAND_FAILED") {
+                handleFbScanFailure(data.error, data.requestAction);
+            }
+
+            // Facebook scraping messages handler
+            else if (data.action === "INCOMING_FB_LEADS") {
+                let addCount = 0;
+                let duplicateCount = 0;
+                data.leads.forEach(newLead => {
+                    // Avoid duplication check
+                    if (!leads.find(l => l.phone === newLead.phone)) {
+                        leads.push({
+                            id: 'lead_' + Math.random().toString(36).substr(2, 9),
+                            name: newLead.name,
+                            phone: newLead.phone,
+                            source: newLead.source,
+                            status: 'NEW',
+                            note: newLead.note,
+                            createdAt: new Date().toISOString()
+                        });
+                        addCount++;
+                    } else {
+                        duplicateCount++;
+                    }
+                });
+
+                const duplicateEl = document.getElementById('fb-scan-duplicate-count');
+                if (duplicateEl) {
+                    const currentDuplicateCount = parseInt(duplicateEl.textContent || '0', 10) || 0;
+                    duplicateEl.textContent = String(currentDuplicateCount + duplicateCount);
+                }
+
+                if (addCount > 0) {
+                    saveToLocalStorage();
+                    renderAll();
+                    showToast(`Đã thêm ${addCount} SĐT mới từ Facebook${duplicateCount > 0 ? `, bỏ qua ${duplicateCount} số trùng` : ''}.`);
+
+                    const countElem = document.getElementById('fb-scan-count');
+                    if (countElem) {
+                        const currentScraped = leads.filter(l => l.source.includes("Facebook") || l.note.includes("FB:")).length;
+                        countElem.textContent = `Đã tìm thấy: ${currentScraped} SĐT`;
+                    }
+                } else if (duplicateCount > 0) {
+                    showToast(`Không có SĐT mới, bỏ qua ${duplicateCount} số trùng.`, 'error');
+                }
+            }
+
+            else if (data.action === "FB_SCAN_FINISHED") {
+                updateFbScanProgress({
+                    status: 'DONE',
+                    metrics: data.metrics || {},
+                    reason: data.reason || ''
+                });
+                document.getElementById('btn-start-fb-scan').disabled = false;
+                document.getElementById('btn-start-fb-scan').classList.remove('opacity-50', 'cursor-not-allowed');
+                document.getElementById('btn-stop-fb-scan').disabled = true;
+                document.getElementById('btn-stop-fb-scan').classList.add('cursor-not-allowed', 'text-slate-500');
+
+                if ((data.count || 0) === 0) {
+                    showToast(data.reason || 'Quét xong nhưng chưa tìm thấy SĐT hợp lệ.', 'error');
+                } else {
+                    showToast(`Đã hoàn thành quét nhóm Facebook. Tìm thấy ${data.count} SĐT hợp lệ!`);
+                }
+            }
+        });
+
+        function toggleCampaignInput() {
+            const type = document.getElementById('campaign-target-type').value;
+            const limitInput = document.getElementById('campaign-limit-val');
+            if (type === 'LIMIT') {
+                limitInput.disabled = false;
+                limitInput.classList.remove('opacity-50');
+            } else {
+                limitInput.disabled = true;
+                limitInput.classList.add('opacity-50');
+            }
+        }
+
+        function updateCampaignUI(statusData) {
+            const statusCard = document.getElementById('campaign-running-status');
+            const startBtn = document.getElementById('btn-start-campaign');
+            const stopBtn = document.getElementById('btn-stop-campaign');
+
+            if (statusData.isSending) {
+                statusCard.classList.remove('hidden');
+                startBtn.disabled = true;
+                startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                stopBtn.disabled = false;
+                stopBtn.classList.remove('text-slate-500', 'cursor-not-allowed');
+                stopBtn.classList.add('text-red-400', 'border-red-900/50', 'bg-red-950/20');
+
+                const current = statusData.currentIndex || 0;
+                const total = statusData.total || 0;
+                document.getElementById('campaign-progress-label').textContent = `${current + 1}/${total}`;
+
+                const percent = total > 0 ? Math.round(((current + 1) / total) * 100) : 0;
+                document.getElementById('campaign-progress-bar').style.width = `${percent}%`;
+
+                if (statusData.queue && statusData.queue[current]) {
+                    document.getElementById('campaign-status-desc').textContent = `Đang gửi: ${statusData.queue[current].phone}`;
+                }
+            } else {
+                statusCard.classList.add('hidden');
+                startBtn.disabled = false;
+                startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                stopBtn.disabled = true;
+                stopBtn.classList.add('text-slate-500', 'cursor-not-allowed');
+                stopBtn.classList.remove('text-red-400', 'border-red-900/50', 'bg-red-950/20');
+
+                if (statusData.message) {
+                    showToast(statusData.message);
+                }
+            }
+        }
+
+        async function startAutoCampaign() {
+            // Build campaign list based on criteria
+            const targetType = document.getElementById('campaign-target-type').value;
+            let targetLeads = [];
+
+            if (targetType === 'SELECTED') {
+                const checkedBoxes = document.querySelectorAll('.lead-checkbox:checked');
+                const checkedIds = Array.from(checkedBoxes).map(cb => cb.getAttribute('data-id'));
+                targetLeads = leads.filter(l => checkedIds.includes(l.id));
+
+                if (targetLeads.length === 0) {
+                    showToast("Vui lòng tích chọn ít nhất 1 đối tác trên bảng để gửi!", "error");
+                    return;
+                }
+            } else if (targetType === 'NEW_LEADS') {
+                targetLeads = leads.filter(l => l.status === 'NEW');
+                if (targetLeads.length === 0) {
+                    showToast("Không tìm thấy đối tác nào có trạng thái 'MỚI'!", "error");
+                    return;
+                }
+            } else if (targetType === 'LIMIT') {
+                const limit = parseInt(document.getElementById('campaign-limit-val').value) || 15;
+                targetLeads = leads.filter(l => l.status !== 'CONTACTED').slice(0, limit);
+                if (targetLeads.length === 0) {
+                    showToast("Không còn đối tác chưa gửi trong danh sách!", "error");
+                    return;
+                }
+            }
+
+            const delaySec = parseInt(document.getElementById('campaign-delay').value) || 12;
+            const templateText = document.getElementById('template-text').value;
+
+            if (!templateText.trim()) {
+                showToast("Nội dung mẫu tin nhắn không được để trống!", "error");
+                return;
+            }
+
+            // Create send queue items with compiled message
+            const sendQueue = targetLeads
+                .map(l => {
+                    const normalizedPhone = normalizeVietnameseMobilePhone(l.phone);
+                    if (!normalizedPhone) return null;
+                    const leadForSend = { ...l, phone: normalizedPhone };
+                    return {
+                        id: l.id,
+                        name: l.name,
+                        phone: normalizedPhone,
+                        source: l.source,
+                        message: compileTemplate(templateText, leadForSend)
+                    };
+                })
+                .filter(Boolean);
+
+            if (sendQueue.length === 0) {
+                showToast("Không có số di động Việt Nam hợp lệ để gửi!", "error");
+                return;
+            }
+
+            try {
+                await startZaloLocalQueue(sendQueue, delaySec);
+                showToast(`Đã bắt đầu queue OpenZCA cho ${sendQueue.length} đối tác!`);
+            } catch (error) {
+                showToast(formatZaloLocalApiError(error), 'error');
+            }
+        }
+
+        async function stopAutoCampaign() {
+            try {
+                const response = await callZaloLocalApi('/api/zalo/queue/stop', { method: 'POST' });
+                if (response.queue) {
+                    updateCampaignUIFromZaloLocal(response.queue);
+                }
+                showToast("Đã gửi lệnh dừng queue OpenZCA.");
+            } catch (error) {
+                showToast(formatZaloLocalApiError(error), 'error');
+            }
+        }
+
+        // ===== FACEBOOK SCANNING SYSTEM =====
+        let fbScanMode = 'CURRENT'; // 'CURRENT' or 'URLS'
+        let fbUrlQueue = [];
+        let fbScanRunning = false;
+
+        // Load saved FB URLs from localStorage
+        function loadFbUrls() {
+            try {
+                const saved = localStorage.getItem('travel_fb_urls');
+                fbUrlQueue = saved ? JSON.parse(saved) : [];
+            } catch (e) {
+                fbUrlQueue = [];
+            }
+            renderFbUrlList();
+        }
+
+        function saveFbUrls() {
+            localStorage.setItem('travel_fb_urls', JSON.stringify(fbUrlQueue));
+        }
+
+        // Initialize FB URL list on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadFbUrls();
+        });
+
+        function setFbScanMode(mode) {
+            fbScanMode = mode;
+            const btnCurrent = document.getElementById('fb-mode-current');
+            const btnUrls = document.getElementById('fb-mode-urls');
+            const descCurrent = document.getElementById('fb-mode-current-desc');
+            const panelUrls = document.getElementById('fb-mode-urls-panel');
+
+            if (mode === 'CURRENT') {
+                btnCurrent.className = 'py-1.5 text-[10px] font-bold rounded-lg transition-all border bg-indigo-500/10 text-indigo-300 border-indigo-500/30';
+                btnUrls.className = 'py-1.5 text-[10px] font-bold rounded-lg transition-all border bg-slate-800/50 text-slate-400 border-slate-700/50';
+                descCurrent.classList.remove('hidden');
+                panelUrls.classList.add('hidden');
+            } else {
+                btnCurrent.className = 'py-1.5 text-[10px] font-bold rounded-lg transition-all border bg-slate-800/50 text-slate-400 border-slate-700/50';
+                btnUrls.className = 'py-1.5 text-[10px] font-bold rounded-lg transition-all border bg-indigo-500/10 text-indigo-300 border-indigo-500/30';
+                descCurrent.classList.add('hidden');
+                panelUrls.classList.remove('hidden');
+            }
+        }
+
+        function addFbUrls() {
+            const input = document.getElementById('fb-url-input');
+            const rawText = input.value.trim();
+            if (!rawText) {
+                showToast("Vui lòng nhập ít nhất 1 link Facebook!", "error");
+                return;
+            }
+
+            const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            let addedCount = 0;
+            let invalidCount = 0;
+
+            lines.forEach(url => {
+                // Validate Facebook URL
+                if (isValidFbUrl(url)) {
+                    // Normalize URL
+                    const normalized = normalizeFbUrl(url);
+                    // Check duplicate
+                    if (!fbUrlQueue.includes(normalized)) {
+                        fbUrlQueue.push(normalized);
+                        addedCount++;
+                    }
+                } else {
+                    invalidCount++;
+                }
+            });
+
+            input.value = '';
+            saveFbUrls();
+            renderFbUrlList();
+
+            if (addedCount > 0) {
+                showToast(`Đã thêm ${addedCount} link FB vào danh sách!${invalidCount > 0 ? ` (${invalidCount} link không hợp lệ)` : ''}`);
+            } else if (invalidCount > 0) {
+                showToast(`${invalidCount} link không phải Facebook hoặc đã trùng!`, "error");
+            }
+        }
+
+        function isValidFbUrl(url) {
+            try {
+                const parsed = new URL(url);
+                return parsed.hostname.includes('facebook.com') || parsed.hostname.includes('fb.com');
+            } catch (e) {
+                // Try adding https:// prefix
+                try {
+                    const parsed = new URL('https://' + url);
+                    return parsed.hostname.includes('facebook.com') || parsed.hostname.includes('fb.com');
+                } catch (e2) {
+                    return false;
+                }
+            }
+        }
+
+        function normalizeFbUrl(url) {
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = 'https://' + url;
+            }
+            // Remove trailing slash
+            url = url.replace(/\/+$/, '');
+            // Remove tracking parameters
+            try {
+                const parsed = new URL(url);
+                // Keep only pathname, remove fbclid and other tracking params
+                parsed.searchParams.delete('fbclid');
+                parsed.searchParams.delete('ref');
+                parsed.searchParams.delete('notif_id');
+                parsed.searchParams.delete('notif_t');
+                return parsed.toString().replace(/\/+$/, '');
+            } catch (e) {
+                return url;
+            }
+        }
+
+        function removeFbUrl(index) {
+            fbUrlQueue.splice(index, 1);
+            saveFbUrls();
+            renderFbUrlList();
+        }
+
+        function clearFbUrls() {
+            if (fbUrlQueue.length === 0) return;
+            if (!confirm('Xóa toàn bộ danh sách link Facebook?')) return;
+            fbUrlQueue = [];
+            saveFbUrls();
+            renderFbUrlList();
+            showToast("Đã xóa danh sách link FB");
+        }
+
+        function renderFbUrlList() {
+            const container = document.getElementById('fb-url-list');
+            const countEl = document.getElementById('fb-url-count');
+            const timeEl = document.getElementById('fb-estimated-time');
+
+            if (fbUrlQueue.length === 0) {
+                container.innerHTML = '<div class="text-[9px] text-slate-600 text-center py-2 italic">Chưa có link nào trong danh sách</div>';
+                countEl.textContent = '0 trang trong hàng đợi';
+                timeEl.textContent = '0';
+                return;
+            }
+
+            container.innerHTML = fbUrlQueue.map((url, i) => {
+                // Extract readable name from URL
+                const displayName = extractFbPageName(url);
+                return `
+                    <div class="flex items-center justify-between px-2 py-1 bg-slate-800/40 rounded-lg group">
+                        <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                            <span class="text-[9px] text-slate-500 font-mono w-4 text-right flex-shrink-0">${i + 1}.</span>
+                            <span class="text-[10px] text-slate-300 truncate" title="${url}">${displayName}</span>
+                        </div>
+                        <button onclick="removeFbUrl(${i})" class="text-slate-600 hover:text-red-400 ml-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0" title="Xóa">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+
+            countEl.textContent = `${fbUrlQueue.length} trang trong hàng đợi`;
+
+            // Estimate time: scrollCount * ~5s per scroll + pageDelay between pages
+            const scrollCount = parseInt(document.getElementById('fb-scroll-count')?.value) || 20;
+            const pageDelay = parseInt(document.getElementById('fb-page-delay')?.value) || 45;
+            const timePerPage = (scrollCount * 5) + pageDelay; // seconds
+            const totalMinutes = Math.ceil((fbUrlQueue.length * timePerPage) / 60);
+            timeEl.textContent = totalMinutes;
+        }
+
+        function extractFbPageName(url) {
+            try {
+                const parsed = new URL(url);
+                const path = parsed.pathname.replace(/^\/+|\/+$/g, '');
+                // /groups/groupname → groupname
+                // /pagename → pagename
+                const parts = path.split('/');
+                if (parts[0] === 'groups' && parts[1]) {
+                    return `👥 ${parts[1]}`;
+                } else if (parts[0] === 'pages' && parts.length > 1) {
+                    return `📄 ${parts[parts.length - 1]}`;
+                } else if (parts[0]) {
+                    return `📄 ${parts[0]}`;
+                }
+                return url;
+            } catch (e) {
+                return url;
+            }
+        }
+
+        // ===== SCAN CONTROL =====
+        function startFbScan() {
+            if (!isExtensionInstalled) {
+                showToast("Bạn cần cài đặt Extension trước!", "error");
+                return;
+            }
+
+            resetFbScanMetrics();
+
+            const autoScrollEl = document.getElementById('fb-autoscroll');
+            const continuousScanEl = document.getElementById('fb-continuous-scan');
+            const scrollCountEl = document.getElementById('fb-scroll-count');
+            const pageDelayEl = document.getElementById('fb-page-delay');
+
+            const autoScroll = autoScrollEl ? autoScrollEl.checked : true;
+            const continuousScan = fbScanMode === 'CURRENT' && continuousScanEl ? continuousScanEl.checked : false;
+            const scrollCount = continuousScan ? 0 : (scrollCountEl ? (parseInt(scrollCountEl.value) || 20) : 20);
+            const pageDelay = pageDelayEl ? (parseInt(pageDelayEl.value) || 45) : 45;
+
+            if (fbScanMode === 'URLS') {
+                // URL Queue Mode
+                if (fbUrlQueue.length === 0) {
+                    showToast("Vui lòng thêm ít nhất 1 link Facebook vào danh sách!", "error");
+                    return;
+                }
+
+                // Send URL queue to background script
+                window.dispatchEvent(new CustomEvent('LEAD_CONNECTOR_TO_EXT', {
+                    detail: {
+                        action: "START_FB_URL_QUEUE",
+                        urls: [...fbUrlQueue],
+                        autoScroll: autoScroll,
+                        scrollCount: scrollCount,
+                        continuousScan: false,
+                        pageDelay: pageDelay
+                    }
+                }));
+
+                // Show progress with URL tracking
+                document.getElementById('fb-scan-url-progress').classList.remove('hidden');
+                document.getElementById('fb-scan-page-progress').textContent = `0/${fbUrlQueue.length}`;
+                document.getElementById('fb-scan-current-url').textContent = extractFbPageName(fbUrlQueue[0]);
+                document.getElementById('fb-scan-progress-bar').style.width = '0%';
+
+                showToast(`Bắt đầu quét ${fbUrlQueue.length} trang Facebook...`);
+            } else {
+                // Current Tab Mode
+                window.dispatchEvent(new CustomEvent('LEAD_CONNECTOR_TO_EXT', {
+                    detail: {
+                        action: "START_FB_SCAN",
+                        autoScroll: autoScroll,
+                        scrollCount: scrollCount,
+                        continuousScan: continuousScan
+                    }
+                }));
+
+                document.getElementById('fb-scan-url-progress').classList.add('hidden');
+                showToast("Đang gửi yêu cầu quét tới tab Facebook...");
+            }
+
+            // Update UI state
+            fbScanRunning = true;
+            document.getElementById('fb-scan-status-container').classList.remove('hidden');
+            document.getElementById('fb-scan-status-text').textContent = 'Đang quét Facebook...';
+            document.getElementById('fb-scan-count').textContent = '0 SĐT';
+            document.getElementById('btn-start-fb-scan').disabled = true;
+            document.getElementById('btn-start-fb-scan').classList.add('opacity-50', 'cursor-not-allowed');
+            document.getElementById('btn-stop-fb-scan').disabled = false;
+            document.getElementById('btn-stop-fb-scan').classList.remove('cursor-not-allowed', 'text-slate-500');
+            document.getElementById('btn-stop-fb-scan').classList.add('text-red-400', 'border-red-900/50', 'bg-red-950/20');
+        }
+
+        function stopFbScan() {
+            window.dispatchEvent(new CustomEvent('LEAD_CONNECTOR_TO_EXT', {
+                detail: { action: "STOP_FB_SCAN" }
+            }));
+            // Also stop URL queue if running
+            window.dispatchEvent(new CustomEvent('LEAD_CONNECTOR_TO_EXT', {
+                detail: { action: "STOP_FB_URL_QUEUE" }
+            }));
+
+            resetFbScanUI();
+            showToast("Đã dừng quét Facebook.");
+        }
+
+        function resetFbScanUI() {
+            fbScanRunning = false;
+            document.getElementById('fb-scan-status-container').classList.add('hidden');
+            document.getElementById('btn-start-fb-scan').disabled = false;
+            document.getElementById('btn-start-fb-scan').classList.remove('opacity-50', 'cursor-not-allowed');
+            document.getElementById('btn-stop-fb-scan').disabled = true;
+            document.getElementById('btn-stop-fb-scan').classList.add('cursor-not-allowed', 'text-slate-500');
+            document.getElementById('btn-stop-fb-scan').classList.remove('text-red-400', 'border-red-900/50', 'bg-red-950/20');
+        }
+
+        // Listen for FB scan progress updates from extension
+        // (These events are already handled in the main listener, but we add URL queue specific ones)
+        window.addEventListener('LEAD_CONNECTOR_FROM_EXT', (event) => {
+            const data = event.detail;
+
+            if (data.action === "FB_URL_QUEUE_PROGRESS") {
+                // Update URL queue progress UI
+                const statusText = document.getElementById('fb-scan-status-text');
+                const currentUrlEl = document.getElementById('fb-scan-current-url');
+                const pageProgress = document.getElementById('fb-scan-page-progress');
+                const progressBar = document.getElementById('fb-scan-progress-bar');
+                const scanCount = document.getElementById('fb-scan-count');
+                updateFbScanProgress(data);
+
+                if (data.status === 'NAVIGATING') {
+                    statusText.textContent = `Đang mở trang ${data.currentPage}/${data.totalPages}...`;
+                    currentUrlEl.textContent = extractFbPageName(data.currentUrl);
+                    pageProgress.textContent = `${data.currentPage}/${data.totalPages}`;
+                    progressBar.style.width = `${Math.round((data.currentPage / data.totalPages) * 100)}%`;
+                } else if (data.status === 'LOADED') {
+                    statusText.textContent = `Đã tải trang ${data.currentPage}/${data.totalPages}.`;
+                } else if (data.status === 'EXPANDING_COMMENTS') {
+                    statusText.textContent = 'Đang mở rộng bài viết và bình luận...';
+                } else if (data.status === 'RECOVERING_DIALOG') {
+                    statusText.textContent = 'Đang khôi phục sau khi mở bình luận...';
+                } else if (data.status === 'SCANNING') {
+                    statusText.textContent = `Đang quét trang ${data.currentPage}/${data.totalPages}...`;
+                } else if (data.status === 'WAITING') {
+                    statusText.textContent = `Nghỉ ${data.delaySeconds}s trước khi quét trang tiếp...`;
+                } else if (data.status === 'COMPLETED') {
+                    statusText.textContent = `Hoàn thành quét ${data.totalPages} trang!`;
+                    progressBar.style.width = '100%';
+
+                    setTimeout(() => resetFbScanUI(), 3000);
+                    showToast(`Quét xong ${data.totalPages} trang FB! Tìm thấy ${data.totalLeads || 0} SĐT mới.`);
+                }
+
+                if (data.totalLeads !== undefined) {
+                    scanCount.textContent = `${data.totalLeads} SĐT`;
+                }
+            }
+            else if (data.action === "FB_SCAN_PROGRESS") {
+                updateFbScanProgress(data);
+            }
+            else if (data.action === "EXTENSION_COMMAND_FAILED") {
+                handleFbScanFailure(data.error, data.requestAction);
+            }
+        });
+    </script>
+</body>
+</html>

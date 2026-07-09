@@ -21,6 +21,13 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: false,
     chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          return id.includes('node_modules') ? 'vendor' : null;
+        },
+      },
+    },
   },
   server: {
     port: 5176,

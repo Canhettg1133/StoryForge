@@ -6,6 +6,15 @@
 // ============================================
 // MODEL KEY ERROR TRACKING
 // ============================================
+function escapeModelRotationHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function recordModelKeyError(modelName, keyIndex, retryAfterSeconds = 60) {
     const pairId = `${modelName}|${keyIndex}`;
     if (!modelKeyHealthMap[pairId]) {
@@ -431,11 +440,6 @@ function exportApiKeys() {
     // Chỉ xuất danh sách keys, mỗi dòng 1 key
     const fullKeyList = apiKeys.join('\n');
 
-    // Log to console
-    apiKeys.forEach((key, index) => {
-        console.log(`Key ${index + 1}: ${key}`);
-    });
-
     const modal = document.createElement('div');
     modal.id = 'keyExportModal';
     modal.style.cssText = `
@@ -476,7 +480,7 @@ function exportApiKeys() {
                 font-family: monospace;
                 font-size: 13px;
                 resize: none;
-            ">${fullKeyList}</textarea>
+            ">${escapeModelRotationHtml(fullKeyList)}</textarea>
             <div style="display: flex; gap: 10px; margin-top: 15px;">
                 <button onclick="copyExportedKeys()" style="
                     flex: 1;
@@ -724,7 +728,7 @@ function executeImportApiKeys() {
     }
     showToast(message, 'success');
 
-    console.log(`[Import] Added ${result.newKeys.length} new keys:`, result.newKeys);
+    console.log(`[Import] Added ${result.newKeys.length} new keys.`);
 }
 
 function closeImportModal() {

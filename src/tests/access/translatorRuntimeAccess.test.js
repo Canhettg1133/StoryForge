@@ -59,8 +59,32 @@ describe('translator runtime access gates', () => {
     expect(host).toContain('Tôi đủ 18 tuổi và đồng ý');
   });
 
+  it('escapes translator runtime HTML sinks that receive upstream or key data', () => {
+    const app = read('public/translator-runtime/js/app.js');
+    const modelRotation = read('public/translator-runtime/js/gemini/model-rotation.js');
+    const proxyApi = read('public/translator-runtime/js/proxy/proxy-api.js');
+    const settings = read('public/translator-runtime/js/ui/settings.js');
+    const chunkTracker = read('public/translator-runtime/js/ui/chunk-tracker.js');
+
+    expect(proxyApi).toContain('function escapeProxyHtml');
+    expect(proxyApi).toContain('${escapeProxyHtml(errorMsg)}');
+    expect(proxyApi).toContain('${escapeProxyHtml(data.model || proxyModel)}');
+    expect(proxyApi).toContain('${escapeProxyHtml(content.substring(0, 200))}');
+    expect(proxyApi).toContain('${escapeProxyHtml(maskProxyKey(key))}');
+    expect(app).toContain('function escapeRuntimeHtml');
+    expect(app).toContain('${escapeRuntimeHtml(maskApiKey(key))}');
+    expect(modelRotation).toContain('function escapeModelRotationHtml');
+    expect(modelRotation).toContain('${escapeModelRotationHtml(fullKeyList)}');
+    expect(modelRotation).not.toContain('console.log(`Key ${index + 1}: ${key}`)');
+    expect(modelRotation).not.toContain('result.newKeys);');
+    expect(settings).toContain("alertText.textContent = ''");
+    expect(settings).not.toContain('alertText.innerHTML = `');
+    expect(chunkTracker).toContain('const safeModel = escapeHtml(data.model ||');
+    expect(chunkTracker).toContain('const safeError = escapeHtml(data.error ||');
+  });
+
   it('keeps new access-control UI copy in Vietnamese with accents and avoids common mojibake', () => {
-    const adminUi = read('apps/admin/src/App.jsx');
+    const adminUi = `${read('apps/admin/src/App.jsx')}\n${read('apps/admin/src/views/AdminViews.jsx')}`;
     const translatorSettings = read('public/translator-runtime/js/ui/settings.js');
     const combined = `${adminUi}\n${translatorSettings}`;
 

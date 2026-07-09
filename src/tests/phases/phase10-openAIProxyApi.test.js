@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createOpenAIProxyHandler } from '../../../api/openai-proxy.js';
+import { clearRateLimitState } from '../../../api/_lib/rate-limit.js';
 
 const handler = createOpenAIProxyHandler({
   requireFeatureImpl: async (_req, featureKey) => ({
@@ -55,6 +56,62 @@ describe('/api/openai-proxy', () => {
 
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body).code).toBe('OPENAI_PROXY_BAD_ACTION');
+  });
+
+  it('rejects oversized request bodies before upstream work', async () => {
+    const originalLimit = process.env.OPENAI_PROXY_MAX_BODY_BYTES;
+    process.env.OPENAI_PROXY_MAX_BODY_BYTES = '16384';
+    clearRateLimitState();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const { req, res } = createReqRes({
+      body: JSON.stringify({
+        action: 'models',
+        baseUrl: 'https://proxy.example.com',
+        padding: 'x'.repeat(20_000),
+      }),
+      headers: { 'x-request-id': 'req-openai-body' },
+    });
+
+    try {
+      await handler(req, res);
+    } finally {
+      if (originalLimit === undefined) delete process.env.OPENAI_PROXY_MAX_BODY_BYTES;
+      else process.env.OPENAI_PROXY_MAX_BODY_BYTES = originalLimit;
+      vi.unstubAllGlobals();
+    }
+
+    expect(res.statusCode).toBe(413);
+    expect(JSON.parse(res.body)).toMatchObject({
+      code: 'OPENAI_PROXY_BODY_TOO_LARGE',
+      requestId: 'req-openai-body',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rate limits bursts before upstream work and returns Retry-After', async () => {
+    const originalLimit = process.env.OPENAI_PROXY_RATE_LIMIT_MAX;
+    const originalWindow = process.env.OPENAI_PROXY_RATE_LIMIT_WINDOW_MS;
+    process.env.OPENAI_PROXY_RATE_LIMIT_MAX = '1';
+    process.env.OPENAI_PROXY_RATE_LIMIT_WINDOW_MS = '60000';
+    clearRateLimitState();
+    const first = createReqRes({ body: { action: 'delete' } });
+    const second = createReqRes({ body: { action: 'delete' } });
+
+    try {
+      await handler(first.req, first.res);
+      await handler(second.req, second.res);
+    } finally {
+      if (originalLimit === undefined) delete process.env.OPENAI_PROXY_RATE_LIMIT_MAX;
+      else process.env.OPENAI_PROXY_RATE_LIMIT_MAX = originalLimit;
+      if (originalWindow === undefined) delete process.env.OPENAI_PROXY_RATE_LIMIT_WINDOW_MS;
+      else process.env.OPENAI_PROXY_RATE_LIMIT_WINDOW_MS = originalWindow;
+    }
+
+    expect(first.res.statusCode).toBe(400);
+    expect(second.res.statusCode).toBe(429);
+    expect(second.res.headers['retry-after']).toBeTruthy();
+    expect(JSON.parse(second.res.body).code).toBe('OPENAI_PROXY_RATE_LIMITED');
   });
 
   it('rejects private relay targets', async () => {

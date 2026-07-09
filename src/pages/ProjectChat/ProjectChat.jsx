@@ -898,7 +898,7 @@ export default function ProjectChat() {
   );
   const threadRouting = useMemo(
     () => getThreadRouting(activeThread),
-    [activeThread?.provider_override, activeThread?.model_override, routingConfigStamp],
+    [activeThread?.provider_override, activeThread?.model_override, activeThread?.proxy_profile_id, routingConfigStamp],
   );
   const routePreview = threadRouting.route;
 
