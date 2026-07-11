@@ -59,9 +59,14 @@ docs/supabase-access-control/006_story_mirror.sql
 docs/supabase-access-control/007_usage_user_rankings.sql
 docs/supabase-access-control/008_usage_ranking_performance.sql
 docs/supabase-access-control/009_harden_vip_feature_gates.sql
+docs/supabase-access-control/010_lock_down_security_definer_rpc.sql
+docs/supabase-access-control/011_cloud_snapshot_guardrails.sql
+docs/supabase-access-control/012_validate_cloud_snapshot_guardrails.sql
 ```
 
-Existing production databases that already ran `001`, `002`, and `003` need to run `004_add_gemini_direct_feature.sql`, `005_site_settings.sql`, `006_story_mirror.sql`, `007_usage_user_rankings.sql`, `008_usage_ranking_performance.sql`, and `009_harden_vip_feature_gates.sql` before or alongside the code deploy. `004` adds `provider.gemini_direct` to the VIP/lifetime access catalog. `005` adds the system announcement setting used by the public app and Admin API. `006` adds Story Mirror metadata/settings/audit tables for R2 latest-only storage. `007` adds the VIP usage ranking RPC. `008` adds concurrent ranking indexes and must be run outside a transaction. `009` adds server-enforced VIP gates for Story Mirror and AI cover generation.
+Migration `004` keeps `provider.gemini_direct` in the VIP/lifetime access catalog. Existing production databases must also run `010` before deploying the Admin API. It removes browser-role execution from admin RPCs while retaining `service_role` access. Deploy the Cloud Sync client guardrails before `011`, then run `012` outside peak hours to validate existing rows.
+
+After `010`, run the read-only `docs/supabase-access-control/verify_010_security_definer_acl.sql` query and require every `acl_matches` value to be `true`. The full staged order and rollback rules are in `docs/SECURITY_DEPLOY_HANDOFF.md`.
 
 The Worker verifies the Supabase user token first, resolves admin role from `profiles.system_role`, rejects non-admin mutations, and writes audit logs for sensitive changes.
 
@@ -112,7 +117,6 @@ User app on Vercel:
 - `VITE_AI_STUDIO_CONNECTOR_URL`
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `VITE_CLOUD_SYNC_BASE_URL=/api/cloud`
 - `VITE_SHOW_LABS=false` unless the jobs/corpus backend is deployed.
 - `VITE_SHOW_WRITING_DEBUG=false`
 - `VITE_JOB_SERVER_URL` only when Labs/Job UI are enabled in production.

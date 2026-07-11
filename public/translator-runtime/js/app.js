@@ -87,6 +87,15 @@ let storyForgeAccessRefreshRequestCounter = 0;
 let storyForgeAccessRefreshPromise = null;
 const storyForgeAccessRefreshRequests = new Map();
 
+function escapeHtmlAttribute(value) {
+    return String(value ?? '')
+        .replace(/&/gu, '&amp;')
+        .replace(/"/gu, '&quot;')
+        .replace(/'/gu, '&#39;')
+        .replace(/</gu, '&lt;')
+        .replace(/>/gu, '&gt;');
+}
+
 storyForgeRuntimeGlobal.getStoryForgeAccessToken = () => storyForgeAccessToken;
 storyForgeRuntimeGlobal.getStoryForgeAccessSnapshot = () => storyForgeAccessSnapshot;
 
@@ -120,6 +129,7 @@ function handleStoryForgeAccessRefreshResult(payload = {}) {
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('message', (event) => {
         if (event.origin !== window.location.origin) return;
+        if (event.source !== window.parent) return;
         const payload = event.data || {};
         if (payload.type === 'STORYFORGE_ACCESS_CONTEXT') {
             storyForgeAccessToken = String(payload.token || '');
@@ -1916,7 +1926,7 @@ function renderApiKeysList() {
             <span class="key-index" style="background: ${statusColor}">${index + 1}</span>
             <span class="key-value">${escapeRuntimeHtml(maskApiKey(key))}</span>
             <span class="key-status" style="color: ${statusColor};">${status.message}</span>
-            <button class="remove-btn" onclick="removeApiKey(${index})" title="Xóa">🗑️</button>
+            <button class="remove-btn" type="button" data-click-action="removeApiKey" data-action-index="${index}" title="Xóa">🗑️</button>
         </div>
     `}).join('');
 

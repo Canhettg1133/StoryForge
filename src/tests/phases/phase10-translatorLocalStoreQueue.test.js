@@ -17,6 +17,7 @@ const {
   updateTranslatorQueueItemStatus,
   claimNextTranslatorQueueItem,
   reorderTranslatorQueueItems,
+  summarizeTranslatorChunks,
 } = globalThis.TranslatorLocalStore;
 
 class TrackingFile extends Blob {
@@ -100,6 +101,22 @@ describe('translator local store and queue', () => {
 
     const parts = await getTranslatorSessionOutputParts(session.id);
     expect(parts.join('')).toBe('Ba đã dịch\n\nBốn đã dịch');
+  });
+
+  it('counts preserved output plus the selected translation scope without completing early', () => {
+    const summary = summarizeTranslatorChunks([
+      { chunkIndex: 0, status: 'done', outputText: 'Chunk 1 đã dịch' },
+      { chunkIndex: 1, status: 'skipped', outputText: '' },
+      { chunkIndex: 2, status: 'done', outputText: 'Chunk 3 đã dịch' },
+      { chunkIndex: 3, status: 'pending', outputText: '' },
+    ], 2);
+
+    expect(summary).toEqual({
+      completedChunks: 2,
+      failedChunks: 0,
+      totalChunks: 3,
+      isComplete: false,
+    });
   });
 
   it('claims queue items sequentially and never starts two translator sessions at once', async () => {

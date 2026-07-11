@@ -674,13 +674,13 @@ function showStartServerGuide() {
 <p><strong>Bước 2:</strong> Chạy lệnh sau:</p>
 <div style="background: #1a1a2e; padding: 10px; border-radius: 8px; margin: 10px 0;">
     <code style="color: #10b981; font-size: 14px;">ollama serve</code>
-    <button onclick="copyCommand('ollama serve')" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">📋 Sao chép</button>
+    <button type="button" data-click-action="copyCommand" data-action-value="ollama serve" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">📋 Sao chép</button>
 </div>
 
 <p><strong>Bước 3:</strong> Nếu chưa có model, cài model:</p>
 <div style="background: #1a1a2e; padding: 10px; border-radius: 8px; margin: 10px 0;">
     <code style="color: #10b981; font-size: 14px;">ollama pull qwen3:4b</code>
-    <button onclick="copyCommand('ollama pull qwen3:4b')" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">📋 Sao chép</button>
+    <button type="button" data-click-action="copyCommand" data-action-value="ollama pull qwen3:4b" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">📋 Sao chép</button>
 </div>
 
 <p><strong>Model khuyến nghị:</strong></p>
@@ -841,7 +841,7 @@ function applyModelPreset(presetKey) {
 📥 Nếu chưa có model, chạy lệnh:
 <div style="background: #1a1a2e; padding: 8px; border-radius: 6px; margin-top: 5px;">
     <code style="color: #10b981;">ollama pull ${preset.recommended}</code>
-    <button onclick="copyCommand('ollama pull ${preset.recommended}')" style="margin-left: 10px; padding: 3px 8px; cursor: pointer;">📋</button>
+    <button type="button" data-click-action="copyPresetCommand" data-action-value="${presetKey}" style="margin-left: 10px; padding: 3px 8px; cursor: pointer;">📋</button>
 </div>
     `;
 

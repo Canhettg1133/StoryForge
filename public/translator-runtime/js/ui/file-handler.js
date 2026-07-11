@@ -389,7 +389,7 @@ async function runStartChunkSearch() {
             return;
         }
         results.innerHTML = matches.map(match => `
-            <button type="button" class="start-chunk-result" onclick="selectStartChunk(${match.chunkIndex}, ${match.byteStart})">
+            <button type="button" class="start-chunk-result" data-click-action="selectStartChunk" data-chunk-index="${match.chunkIndex}" data-byte-start="${match.byteStart}">
                 <span class="start-chunk-result__title">Chunk ${match.chunkIndex + 1}</span>
                 <span class="start-chunk-result__text">${escapeHtml(match.sourcePreview)}</span>
             </button>
@@ -554,18 +554,18 @@ async function renderTranslationQueue() {
             ? 100
             : Math.min(100, Math.round(((session?.completedChunks || 0) / totalToTranslate) * 100));
         return `
-            <article class="translation-queue-item translation-queue-item--${item.status}" data-queue-id="${item.id}" draggable="${canReorder ? 'true' : 'false'}" ondragstart="handleQueueDragStart(event, '${item.id}')" ondragover="handleQueueDragOver(event, '${item.id}')" ondragleave="handleQueueDragLeave(event)" ondrop="handleQueueDrop(event, '${item.id}')" ondragend="handleQueueDragEnd(event)">
+            <article class="translation-queue-item translation-queue-item--${item.status}" data-queue-id="${escapeHtmlAttribute(item.id)}" draggable="${canReorder ? 'true' : 'false'}">
                 <span class="translation-queue-item__drag ${canReorder ? '' : 'translation-queue-item__drag--locked'}" title="Kéo để đổi thứ tự">${canReorder ? '↕' : ''}</span>
                 <div class="translation-queue-item__main">
-                    <strong title="${escapeHtml(sessionName)}">${escapeHtml(sessionName)}</strong>
+                <strong title="${escapeHtmlAttribute(sessionName)}">${escapeHtml(sessionName)}</strong>
                     <span>${queueStatusLabel(item.status)} • ${progress}% • ${session?.completedChunks || 0}/${totalToTranslate} chunk</span>
                 </div>
                 <div class="translation-queue-item__actions">
-                    ${item.status === 'queued' ? `<button type="button" class="btn btn-small btn-secondary" onclick="pauseQueuedTranslatorItem('${item.id}')">Tạm dừng</button>` : ''}
-                    ${item.status === 'paused' ? `<button type="button" class="btn btn-small btn-primary" onclick="resumeQueuedTranslatorItem('${item.id}')">Tiếp tục</button>` : ''}
-                    ${item.status === 'running' ? `<button type="button" class="btn btn-small btn-danger" onclick="cancelQueuedTranslatorItem('${item.id}')">Hủy</button>` : ''}
-                    ${item.status === 'queued' || item.status === 'paused' || item.status === 'failed' || item.status === 'cancelled' || item.status === 'completed' ? `<button type="button" class="btn btn-small btn-secondary" onclick="removeQueuedTranslatorItem('${item.id}')">Xóa</button>` : ''}
-                    ${item.status === 'completed' ? `<button type="button" class="btn btn-small btn-primary" onclick="downloadQueuedTranslatorResult('${item.sessionId}')">Tải về</button>` : ''}
+                    ${item.status === 'queued' ? `<button type="button" class="btn btn-small btn-secondary" data-click-action="pauseQueuedTranslatorItem" data-queue-id="${escapeHtmlAttribute(item.id)}">Tạm dừng</button>` : ''}
+                    ${item.status === 'paused' ? `<button type="button" class="btn btn-small btn-primary" data-click-action="resumeQueuedTranslatorItem" data-queue-id="${escapeHtmlAttribute(item.id)}">Tiếp tục</button>` : ''}
+                    ${item.status === 'running' ? `<button type="button" class="btn btn-small btn-danger" data-click-action="cancelQueuedTranslatorItem" data-queue-id="${escapeHtmlAttribute(item.id)}">Hủy</button>` : ''}
+                    ${item.status === 'queued' || item.status === 'paused' || item.status === 'failed' || item.status === 'cancelled' || item.status === 'completed' ? `<button type="button" class="btn btn-small btn-secondary" data-click-action="removeQueuedTranslatorItem" data-queue-id="${escapeHtmlAttribute(item.id)}">Xóa</button>` : ''}
+                    ${item.status === 'completed' ? `<button type="button" class="btn btn-small btn-primary" data-click-action="downloadQueuedTranslatorResult" data-session-id="${escapeHtmlAttribute(item.sessionId)}">Tải về</button>` : ''}
                 </div>
             </article>
         `;
@@ -668,7 +668,7 @@ async function resumeQueuedTranslatorItem(queueId) {
 }
 
 function handleQueueDragStart(event, queueId) {
-    const row = event.currentTarget;
+    const row = event.target?.closest?.('.translation-queue-item[data-queue-id]');
     if (!row || row.getAttribute('draggable') !== 'true') return;
     draggedTranslatorQueueItemId = queueId;
     row.classList.add('is-dragging');
@@ -680,7 +680,7 @@ function handleQueueDragStart(event, queueId) {
 
 function handleQueueDragOver(event, queueId) {
     if (!draggedTranslatorQueueItemId || draggedTranslatorQueueItemId === queueId) return;
-    const row = event.currentTarget;
+    const row = event.target?.closest?.('.translation-queue-item[data-queue-id]');
     if (!row || row.getAttribute('draggable') !== 'true') return;
     event.preventDefault();
     row.classList.add('is-drag-over');
@@ -688,12 +688,12 @@ function handleQueueDragOver(event, queueId) {
 }
 
 function handleQueueDragLeave(event) {
-    event.currentTarget?.classList?.remove('is-drag-over');
+    event.target?.closest?.('.translation-queue-item[data-queue-id]')?.classList?.remove('is-drag-over');
 }
 
 function handleQueueDragEnd(event) {
     draggedTranslatorQueueItemId = null;
-    event.currentTarget?.classList?.remove('is-dragging', 'is-drag-over');
+    event.target?.closest?.('.translation-queue-item[data-queue-id]')?.classList?.remove('is-dragging', 'is-drag-over');
     document.querySelectorAll('.translation-queue-item.is-dragging, .translation-queue-item.is-drag-over').forEach(row => {
         row.classList.remove('is-dragging', 'is-drag-over');
     });

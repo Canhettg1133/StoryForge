@@ -149,7 +149,7 @@ function renderProxyKeysList() {
         <div class="api-key-item">
             <span class="key-index" style="background: var(--accent-primary)">Key ${keyLabel}</span>
             <span class="key-value">${escapeProxyHtml(maskProxyKey(key))}</span>
-            <button class="remove-btn" onclick="removeProxyKey(${index})" title="Xóa">Xóa</button>
+            <button class="remove-btn" type="button" data-click-action="removeProxyKey" data-action-index="${index}" title="Xóa">Xóa</button>
         </div>
     `;
     }).join('');
@@ -296,8 +296,8 @@ async function openImportProxyKeysModal(provider = 'ag') {
                 border-radius:6px;
             ">Dán danh sách key để xem trước...</div>
             <div style="display:flex;gap:10px;margin-top:15px;">
-                <button onclick="executeImportProxyKeys('${config.provider}')" style="flex:1;padding:12px;background:#10b981;color:#fff;border:none;border-radius:8px;cursor:pointer;">✅ Nhập key</button>
-                <button onclick="closeProxyImportModal('${config.provider}')" style="flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;">✕ Hủy</button>
+                <button type="button" data-click-action="executeImportProxyKeys" data-action-value="${config.provider}" style="flex:1;padding:12px;background:#10b981;color:#fff;border:none;border-radius:8px;cursor:pointer;">✅ Nhập key</button>
+                <button type="button" data-click-action="closeProxyImportModal" data-action-value="${config.provider}" style="flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;">✕ Hủy</button>
             </div>
         </div>
     `;
@@ -423,8 +423,8 @@ async function exportProxyKeys(provider = 'ag') {
                 resize:none;
             ">${escapeProxyHtml(keys.join('\n'))}</textarea>
             <div style="display:flex;gap:10px;margin-top:15px;">
-                <button onclick="copyExportedProxyKeys('${config.provider}')" style="flex:1;padding:12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">📋 Sao chép tất cả</button>
-                <button onclick="closeProxyKeyModal('${config.provider}')" style="flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;">✕ Đóng</button>
+                <button type="button" data-click-action="copyExportedProxyKeys" data-action-value="${config.provider}" style="flex:1;padding:12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">📋 Sao chép tất cả</button>
+                <button type="button" data-click-action="closeProxyKeyModal" data-action-value="${config.provider}" style="flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;">✕ Đóng</button>
             </div>
         </div>
     `;
@@ -1052,7 +1052,7 @@ function renderCustomProxyKeysList() {
         <div class="api-key-item">
             <span class="key-index" style="background: var(--accent-primary)">C${index + 1}</span>
             <span class="key-value">${escapeProxyHtml(maskProxyKey(key))}</span>
-            <button class="remove-btn" onclick="removeCustomProxyKey(${index})" title="Xóa">Xóa</button>
+            <button class="remove-btn" type="button" data-click-action="removeCustomProxyKey" data-action-index="${index}" title="Xóa">Xóa</button>
         </div>
     `).join('');
 }

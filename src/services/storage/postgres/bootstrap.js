@@ -1,7 +1,9 @@
 import {
   ensurePostgresBootstrapped,
-  queryPostgres,
+  withPostgresTransaction,
 } from './client.js';
+
+const BOOTSTRAP_ADVISORY_LOCK_KEY = '721993741991';
 
 const BOOTSTRAP_SQL = `
 CREATE TABLE IF NOT EXISTS corpuses (
@@ -545,6 +547,9 @@ CREATE INDEX IF NOT EXISTS idx_analysis_execution_stage_outputs_session_stage ON
 
 export async function bootstrapPostgres() {
   return ensurePostgresBootstrapped(async () => {
-    await queryPostgres(BOOTSTRAP_SQL);
+    await withPostgresTransaction(async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [BOOTSTRAP_ADVISORY_LOCK_KEY]);
+      await client.query(BOOTSTRAP_SQL);
+    });
   });
 }

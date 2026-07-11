@@ -81,6 +81,37 @@ describe('phase10 translator runtime performance', () => {
     expect(preview).toContain('TAIL-MARKER-FINAL-CHUNK');
   });
 
+  it('shows only a few previous chunks when previewing a resumed translation', () => {
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/translation/engine.js',
+    ]);
+
+    context.translationStartChunkIndex = 8;
+    context.translatedChunks = [
+      'CHUNK-CU-1',
+      'CHUNK-CU-2',
+      'CHUNK-CU-3',
+      'CHUNK-CU-4',
+      'CHUNK-CU-5',
+      'CHUNK-CU-6',
+      'CHUNK-CU-7',
+      'CHUNK-CU-8',
+      'CHUNK-MOI-9',
+      null,
+    ];
+
+    const preview = context.buildLargeFileResultPreview('Đang dịch', 10_000);
+
+    expect(preview).toContain('3 chunk đã dịch gần nhất');
+    expect(preview).not.toContain('CHUNK-CU-5');
+    expect(preview).toContain('CHUNK-CU-6');
+    expect(preview).toContain('CHUNK-CU-7');
+    expect(preview).toContain('CHUNK-CU-8');
+    expect(preview).toContain('CHUNK-MOI-9');
+    expect(preview).toContain('[Đang dịch chunk 10]');
+    expect(preview.length).toBeLessThanOrEqual(10_000);
+  });
+
   it('exports the full translated chunks instead of the capped preview text', async () => {
     let downloadedBlob = null;
     let translatedTextValue = '';
@@ -150,6 +181,64 @@ describe('phase10 translator runtime performance', () => {
     expect(downloadedText).toBe(
       context.buildTranslatedTextFromChunks(context.translatedChunks, '⏳ Đang dịch')
     );
+  });
+
+  it('distinguishes partial and complete session downloads while keeping the same saved output', async () => {
+    let downloadedBlob = null;
+    let toastMessage = '';
+    const anchorEl = {
+      href: '',
+      download: '',
+      click() {},
+    };
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/ui/progress.js',
+    ], {
+      Blob,
+      URL: {
+        createObjectURL(blob) {
+          downloadedBlob = blob;
+          return 'blob:translator-session-test';
+        },
+        revokeObjectURL() {},
+      },
+      document: {
+        body: {
+          appendChild() {},
+          removeChild() {},
+        },
+        createElement() {
+          return anchorEl;
+        },
+      },
+    });
+
+    context.showToast = (message) => {
+      toastMessage = message;
+    };
+    let sessionComplete = false;
+    context.getTranslatorSession = async () => ({
+      completedChunks: 2,
+      isComplete: sessionComplete,
+    });
+    context.getTranslatorSessionOutputParts = async () => [
+      'Chunk cũ đã dịch',
+      '\n\n',
+      'Chunk mới đã dịch',
+    ];
+
+    await context.downloadTranslatorSessionResult('session-1', 'truyen_translated.txt');
+
+    expect(anchorEl.download).toBe('truyen_translated_partial_2chunks.txt');
+    expect(await downloadedBlob.text()).toBe('Chunk cũ đã dịch\n\nChunk mới đã dịch');
+    expect(toastMessage).toBe('Đã tải 2 chunk đã dịch.');
+
+    sessionComplete = true;
+    await context.downloadTranslatorSessionResult('session-1', 'truyen_translated.txt');
+
+    expect(anchorEl.download).toBe('truyen_translated.txt');
+    expect(await downloadedBlob.text()).toBe('Chunk cũ đã dịch\n\nChunk mới đã dịch');
+    expect(toastMessage).toBe('Đã tải bản dịch đầy đủ.');
   });
 
   it('runs chunk settlement callbacks as each request finishes instead of waiting for the whole batch', async () => {

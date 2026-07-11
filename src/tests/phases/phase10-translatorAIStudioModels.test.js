@@ -91,7 +91,7 @@ describe('phase10 translator AI Studio model discovery', () => {
     const initScript = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/init.js'), 'utf8');
 
     expect(html).toContain('id="activateGeminiDirectButton"');
-    expect(html).toContain('onclick="fetchAIStudioFreeModels()"');
+    expect(html).toContain('data-click-action="fetchAIStudioFreeModels"');
     expect(html).toContain('Lấy model từ AI Studio');
     expect(html).toContain('id="geminiModelSelect"');
     expect(html).toContain('class="gemini-direct-grid"');

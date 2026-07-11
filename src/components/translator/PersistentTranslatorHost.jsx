@@ -3,7 +3,7 @@ import { useUserAccess } from '../../hooks/useUserAccess.js';
 import { getCachedAccessToken } from '../../services/access/accessClient.js';
 import './PersistentTranslatorHost.css';
 
-const TRANSLATOR_URL = '/translator-runtime/index.html?v=13';
+const TRANSLATOR_URL = '/translator-runtime/index.html?v=14';
 const ADULT_TEMPLATE_LABELS = {
   adult: 'Truyện 18+',
   sacHiep: 'Sắc hiệp',

@@ -105,8 +105,9 @@ describe('translator queue/history audit', () => {
     expect(historyInfoRule).toContain('flex: 1 1 0;');
     expect(historyInfoRule).toContain('overflow: hidden;');
     expect(historyNameRule).toContain('text-overflow: ellipsis;');
-    expect(historySource).toContain('class="history-name" title="${escapeHtml(item.name)}"');
-    expect(fileHandlerSource).toContain('<strong title="${escapeHtml(sessionName)}">${escapeHtml(sessionName)}</strong>');
+    expect(historySource).toContain('name.title = item.name;');
+    expect(historySource).toContain('name.textContent = item.name;');
+    expect(fileHandlerSource).toContain('<strong title="${escapeHtmlAttribute(sessionName)}">${escapeHtml(sessionName)}</strong>');
     expect(queueListRule).toContain('overflow-x: hidden;');
     expect(queueMainRule).toContain('flex: 1 1 0;');
     expect(queueMainRule).toContain('overflow: hidden;');
@@ -154,7 +155,8 @@ describe('translator queue/history audit', () => {
     expect(fileHandlerSource).toContain('function handleQueueDragStart');
     expect(fileHandlerSource).toContain('async function handleQueueDrop');
     expect(renderQueueBody).toContain('draggable="${canReorder ? \'true\' : \'false\'}"');
-    expect(renderQueueBody).toContain("onclick=\"cancelQueuedTranslatorItem('${item.id}')\"");
+    expect(renderQueueBody).toContain('data-click-action="cancelQueuedTranslatorItem"');
+    expect(renderQueueBody).toContain('data-queue-id="${escapeHtmlAttribute(item.id)}"');
     expect(localStoreSource).toContain('async function reorderTranslatorQueueItems');
     expect(initSource).toContain('startTranslatorQueue');
     expect(initSource).toContain('handleQueueDragStart');

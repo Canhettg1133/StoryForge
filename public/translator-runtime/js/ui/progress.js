@@ -113,24 +113,42 @@ function downloadBlobParts(parts, fileName, successMessage) {
     showToast(successMessage || 'Đã tải file thành công!', 'success');
 }
 
+function buildPartialTranslatorFileName(fileName, completedCount) {
+    const safeName = String(fileName || 'translated_novel.txt');
+    const suffix = `_partial_${Math.max(0, Number(completedCount) || 0)}chunks.txt`;
+    return /\.txt$/i.test(safeName)
+        ? safeName.replace(/\.txt$/i, suffix)
+        : `${safeName}${suffix}`;
+}
+
+async function downloadTranslatorSessionResult(sessionId, fileName, options = {}) {
+    if (!sessionId || typeof getTranslatorSessionOutputParts !== 'function') return false;
+
+    const session = typeof getTranslatorSession === 'function'
+        ? await getTranslatorSession(sessionId)
+        : null;
+    const parts = await getTranslatorSessionOutputParts(sessionId, { includePending: false });
+    const completedCount = Math.max(0, Number(session?.completedChunks) || 0);
+    const partial = Boolean(options.partial) || !session?.isComplete;
+    const outputFileName = partial
+        ? buildPartialTranslatorFileName(fileName, completedCount)
+        : String(fileName || session?.outputFileName || 'translated_novel.txt');
+    const successMessage = partial
+        ? `Đã tải ${completedCount.toLocaleString('vi-VN')} chunk đã dịch.`
+        : 'Đã tải bản dịch đầy đủ.';
+
+    downloadBlobParts(parts, outputFileName, successMessage);
+    return true;
+}
+
 async function downloadCurrentLargeFileResult({ partial = false } = {}) {
     if (currentTranslatorSessionId && typeof getTranslatorSessionOutputParts === 'function') {
-        const parts = await getTranslatorSessionOutputParts(currentTranslatorSessionId, { includePending: false });
-        const fileName = partial
-            ? originalFileName.replace('.txt', `_partial_${completedChunks}chunks.txt`)
-            : originalFileName;
-        downloadBlobParts(
-            parts,
-            fileName,
-            partial
-                ? `Đã tải ${completedChunks.toLocaleString('vi-VN')} chunk đã dịch.`
-                : 'Đã tải bản dịch file lớn.'
-        );
+        await downloadTranslatorSessionResult(currentTranslatorSessionId, originalFileName, { partial });
         return;
     }
 
     const fileName = partial
-        ? originalFileName.replace('.txt', `_partial_${completedChunks}chunks.txt`)
+        ? buildPartialTranslatorFileName(originalFileName, completedChunks)
         : originalFileName;
     downloadBlobParts(
         getTranslatedBlobParts({ includePending: false }),
@@ -204,7 +222,7 @@ async function downloadPartial() {
     }
 
     const text = translatedParts.join('\n\n');
-    const partialFileName = originalFileName.replace('.txt', `_partial_${completedChunks}chunks.txt`);
+    const partialFileName = buildPartialTranslatorFileName(originalFileName, completedChunks);
 
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);

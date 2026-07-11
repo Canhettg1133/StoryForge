@@ -2,6 +2,8 @@
 
 Muc tieu: deploy nhanh StoryForge sang Vercel account moi, dung GitHub `main`, Supabase cu, va it thao tac nhat.
 
+Voi dot security rollout hien tai, bat buoc lam theo `docs/SECURITY_DEPLOY_HANDOFF.md` truoc tai lieu nay.
+
 ## Trang thai hien tai
 
 - GitHub repo: `Canhettg1133/StoryForge`
@@ -13,7 +15,7 @@ Muc tieu: deploy nhanh StoryForge sang Vercel account moi, dung GitHub `main`, S
 - Install Command: `npm install`
 - Supabase project ref: `mjeuajnswqyuerztsncz`
 - Supabase dashboard: `https://supabase.com/dashboard/project/mjeuajnswqyuerztsncz`
-- Cloud Sync API: `/api/cloud`
+- Cloud Sync: Supabase Auth/RLS table `public.cloud_snapshots`
 
 ## File env dung de import vao Vercel
 
@@ -23,14 +25,13 @@ Dung file local nay:
 deploy/vercel.env.production.local
 ```
 
-File nay co day du 8 bien can thiet:
+File nay can co cac bien production sau:
 
 ```env
 VITE_SUPABASE_URL
 VITE_SUPABASE_ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY
-STORYFORGE_DATABASE_URL
-VITE_CLOUD_SYNC_BASE_URL
+VITE_ENABLE_CLOUD_SYNC
 VITE_SHOW_LABS
 VITE_SHOW_JOB_UI
 VITE_SHOW_WRITING_DEBUG
@@ -59,7 +60,7 @@ Install Command: npm install
 10. Bam `Import .env`.
 11. Dan noi dung file `deploy/vercel.env.production.local`.
 12. Environment: chon `Production and Preview`.
-13. Kiem tra danh sach chi con 8 key o tren, khong co `VERCEL_*`, `TURBO_*`, hoac `NX_DAEMON`.
+13. Kiem tra co `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; khong import `VERCEL_*`, `TURBO_*`, `NX_DAEMON`, `STORYFORGE_DATABASE_URL` hoac `VITE_CLOUD_SYNC_BASE_URL`.
 14. Bam `Deploy`.
 
 ## Sau khi deploy xong
@@ -135,7 +136,7 @@ Mo URL moi va kiem tra:
 
 1. App load duoc dashboard/login.
 2. Supabase Google login quay ve dung domain moi.
-3. Cloud Sync khong bao thieu database URL.
+3. Cloud Sync dang nhap bang Supabase va chi hien snapshot cua user hien tai.
 4. VIP/access API khong bao thieu Supabase admin config.
 5. AI proxy/translator khong bi CORS khi goi qua domain moi.
 
@@ -150,4 +151,4 @@ npm run test:admin
 npx vercel build --prod
 ```
 
-Database URL trong file env local da duoc test ket noi OK bang `pg`.
+Build production se dung som neu thieu `VITE_SUPABASE_URL` hoac `VITE_SUPABASE_ANON_KEY`.

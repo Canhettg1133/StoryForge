@@ -16,17 +16,75 @@ let historyWriteQueue = Promise.resolve();
 let lastHistoryProgressRenderAt = 0;
 const HISTORY_PROGRESS_RENDER_INTERVAL_MS = 2000;
 
-function normalizeHistoryItems(items) {
-    return Array.isArray(items) ? items.map(item => ({
-        ...item,
-        translatedChunksData: Array.isArray(item.translatedChunksData) ? item.translatedChunksData : null,
-        chunkSizeUsed: Number.isFinite(parseInt(item.chunkSizeUsed, 10)) ? parseInt(item.chunkSizeUsed, 10) : null,
-        completedChunks: Number.isFinite(parseInt(item.completedChunks, 10)) ? parseInt(item.completedChunks, 10) : 0,
-        totalChunks: Number.isFinite(parseInt(item.totalChunks, 10)) ? parseInt(item.totalChunks, 10) : 0,
-        charCount: Number.isFinite(parseInt(item.charCount, 10))
-            ? parseInt(item.charCount, 10)
-            : String(item.originalText || '').length,
-    })) : [];
+function createHistoryId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    return `history-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function normalizeHistoryInteger(value, fallback = 0) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(parsed)));
+}
+
+function normalizeHistoryString(value, fallback = '') {
+    return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeHistoryDate(value) {
+    const timestamp = Date.parse(normalizeHistoryString(value));
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : new Date().toISOString();
+}
+
+function normalizeHistoryId(value, regenerateIds) {
+    const normalized = normalizeHistoryString(value).trim();
+    if (!regenerateIds && /^[A-Za-z0-9._:-]{1,160}$/u.test(normalized)) {
+        return normalized;
+    }
+    return createHistoryId();
+}
+
+function normalizeHistoryItems(items, options = {}) {
+    const regenerateIds = Boolean(options.regenerateIds);
+    if (!Array.isArray(items)) return [];
+
+    return items
+        .filter(item => item && typeof item === 'object' && !Array.isArray(item))
+        .map((item) => {
+            const originalText = normalizeHistoryString(item.originalText);
+            const totalChunks = normalizeHistoryInteger(item.totalChunks);
+            const completedChunks = Math.min(normalizeHistoryInteger(item.completedChunks), totalChunks);
+            const translatedChunksData = Array.isArray(item.translatedChunksData)
+                ? item.translatedChunksData
+                    .slice(0, totalChunks)
+                    .map(chunk => typeof chunk === 'string' ? chunk : null)
+                : null;
+            const chunks = Array.isArray(item.chunks)
+                ? item.chunks.slice(0, totalChunks).filter(chunk => typeof chunk === 'string')
+                : [];
+
+            return {
+                id: normalizeHistoryId(item.id, regenerateIds),
+                name: normalizeHistoryString(item.name, 'translated_novel.txt'),
+                date: normalizeHistoryDate(item.date),
+                originalText,
+                translatedText: normalizeHistoryString(item.translatedText),
+                chunks,
+                completedChunks,
+                totalChunks,
+                charCount: normalizeHistoryInteger(item.charCount, originalText.length),
+                isComplete: item.isComplete === true || (totalChunks > 0 && completedChunks >= totalChunks),
+                translatedChunksData,
+                chunkSizeUsed: item.chunkSizeUsed == null ? null : normalizeHistoryInteger(item.chunkSizeUsed),
+                sourceMode: normalizeHistoryString(item.sourceMode),
+                sessionId: normalizeHistoryString(item.sessionId),
+                fileSize: normalizeHistoryInteger(item.fileSize),
+                startChunkIndex: normalizeHistoryInteger(item.startChunkIndex),
+                startByte: normalizeHistoryInteger(item.startByte),
+            };
+        });
 }
 
 function hasIndexedDBHistory() {
@@ -165,6 +223,7 @@ async function loadHistory() {
 }
 
 function saveHistory() {
+    translationHistory = normalizeHistoryItems(translationHistory);
     if (translationHistory.length > 20) {
         translationHistory = translationHistory.slice(-20);
     }
@@ -298,11 +357,16 @@ function renderHistoryList() {
     const container = document.getElementById('historyList');
     if (!container) return; // Mobile might not have this element
     const countBadge = document.getElementById('historyCount');
+    bindHistoryActions(container);
 
     if (countBadge) countBadge.textContent = `${translationHistory.length} bản`;
 
+    container.replaceChildren();
     if (translationHistory.length === 0) {
-        container.innerHTML = '<p class="empty-message">Chưa có lịch sử dịch nào.</p>';
+        const empty = document.createElement('p');
+        empty.className = 'empty-message';
+        empty.textContent = 'Chưa có lịch sử dịch nào.';
+        container.appendChild(empty);
         return;
     }
 
@@ -310,60 +374,121 @@ function renderHistoryList() {
     const pendingItems = sorted.filter(item => !item.isComplete);
     const completedItems = sorted.filter(item => item.isComplete);
 
-    const renderItems = (items) => items.map(item => {
+    const renderItems = (items, target) => items.forEach(item => {
         const total = Math.max(1, Number(item.totalChunks) || 1);
         const completed = Math.max(0, Number(item.completedChunks) || 0);
         const progress = Math.min(100, Math.round((completed / total) * 100));
         const statusText = item.isComplete ? 'Hoàn tất' : 'Đang/chưa xong';
         const date = new Date(item.date);
         const dateStr = date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-        const largeBadge = isLargeHistoryItem(item) ? '<span>File lớn</span>' : '';
         const canDownload = item.isComplete || item.translatedText || item.sessionId;
 
-        return `
-            <div class="history-item" data-id="${item.id}">
-                <span class="status-icon">${item.isComplete ? '✅' : '⏳'}</span>
-                <div class="history-info">
-                    <div class="history-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
-                    <div class="history-meta">
-                        <span>📅 ${dateStr}</span>
-                        <span>${statusText}</span>
-                        ${largeBadge}
-                        <span>📝 ${formatNumber(item.charCount)} ký tự</span>
-                        <span>📦 ${completed}/${item.totalChunks || 0} chunk</span>
-                    </div>
-                </div>
-                <div class="history-progress">
-                    <div class="history-progress-fill ${item.isComplete ? 'complete' : ''}" style="width: ${progress}%"></div>
-                </div>
-                <div class="history-btns">
-                    ${!item.isComplete ? `<button onclick="continueFromHistory('${item.id}')" title="Tiếp tục dịch">Tiếp tục</button>` : ''}
-                    <button onclick="loadFromHistory('${item.id}')" title="Xem bản dịch">Xem</button>
-                    ${canDownload ? `<button onclick="downloadHistoryResult('${item.id}')" title="Tải bản dịch">Tải về</button>` : ''}
-                    <button onclick="deleteFromHistory('${item.id}')" class="btn-delete" title="Xóa">Xóa</button>
-                </div>
-            </div>
-        `;
-    }).join('');
+        const row = document.createElement('div');
+        row.className = 'history-item';
+        row.dataset.historyId = item.id;
 
-    const sections = [];
-    if (pendingItems.length > 0) {
-        sections.push(`
-            <div class="history-group">
-                <h3>Đang/chưa xong</h3>
-                ${renderItems(pendingItems)}
-            </div>
-        `);
-    }
-    if (completedItems.length > 0) {
-        sections.push(`
-            <div class="history-group">
-                <h3>Đã hoàn tất</h3>
-                ${renderItems(completedItems)}
-            </div>
-        `);
-    }
-    container.innerHTML = sections.join('');
+        const status = document.createElement('span');
+        status.className = 'status-icon';
+        status.textContent = item.isComplete ? '✅' : '⏳';
+        row.appendChild(status);
+
+        const info = document.createElement('div');
+        info.className = 'history-info';
+        const name = document.createElement('div');
+        name.className = 'history-name';
+        name.title = item.name;
+        name.textContent = item.name;
+        info.appendChild(name);
+
+        const meta = document.createElement('div');
+        meta.className = 'history-meta';
+        [`📅 ${dateStr}`, statusText].forEach((text) => {
+            const span = document.createElement('span');
+            span.textContent = text;
+            meta.appendChild(span);
+        });
+        if (isLargeHistoryItem(item)) {
+            const large = document.createElement('span');
+            large.textContent = 'File lớn';
+            meta.appendChild(large);
+        }
+        [`📝 ${formatNumber(item.charCount)} ký tự`, `📦 ${completed}/${item.totalChunks || 0} chunk`].forEach((text) => {
+            const span = document.createElement('span');
+            span.textContent = text;
+            meta.appendChild(span);
+        });
+        info.appendChild(meta);
+        row.appendChild(info);
+
+        const progressTrack = document.createElement('div');
+        progressTrack.className = 'history-progress';
+        const progressFill = document.createElement('div');
+        progressFill.className = `history-progress-fill${item.isComplete ? ' complete' : ''}`;
+        progressFill.style.width = `${progress}%`;
+        progressTrack.appendChild(progressFill);
+        row.appendChild(progressTrack);
+
+        const buttons = document.createElement('div');
+        buttons.className = 'history-btns';
+        if (!item.isComplete) buttons.appendChild(createHistoryActionButton('Tiếp tục', 'continue', item.id, 'Tiếp tục dịch'));
+        buttons.appendChild(createHistoryActionButton('Xem', 'load', item.id, 'Xem bản dịch'));
+        if (canDownload) buttons.appendChild(createHistoryActionButton('Tải về', 'download', item.id, 'Tải bản dịch'));
+        buttons.appendChild(createHistoryActionButton('Xóa', 'delete', item.id, 'Xóa', 'btn-delete'));
+        row.appendChild(buttons);
+        target.appendChild(row);
+    });
+
+    const fragment = document.createDocumentFragment();
+    const appendGroup = (title, items) => {
+        if (items.length === 0) return;
+        const group = document.createElement('div');
+        group.className = 'history-group';
+        const heading = document.createElement('h3');
+        heading.textContent = title;
+        group.appendChild(heading);
+        renderItems(items, group);
+        fragment.appendChild(group);
+    };
+    appendGroup('Đang/chưa xong', pendingItems);
+    appendGroup('Đã hoàn tất', completedItems);
+    container.appendChild(fragment);
+}
+
+function createHistoryActionButton(label, action, historyId, title, className = '') {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.title = title;
+    button.dataset.action = action;
+    button.dataset.historyId = historyId;
+    if (className) button.className = className;
+    return button;
+}
+
+function bindHistoryActions(container) {
+    if (container.dataset.historyActionsBound === 'true') return;
+    container.dataset.historyActionsBound = 'true';
+    container.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-action][data-history-id]');
+        if (!button || !container.contains(button)) return;
+        const id = button.dataset.historyId;
+        switch (button.dataset.action) {
+            case 'continue':
+                continueFromHistory(id);
+                break;
+            case 'load':
+                loadFromHistory(id);
+                break;
+            case 'download':
+                downloadHistoryResult(id);
+                break;
+            case 'delete':
+                deleteFromHistory(id);
+                break;
+            default:
+                break;
+        }
+    });
 }
 
 async function continueFromHistory(id) {
@@ -396,13 +521,6 @@ async function continueFromHistory(id) {
         if (nextChunk) {
             translationStartChunkIndex = Number(nextChunk.chunkIndex) || 0;
             translationStartByte = Number(nextChunk.byteStart) || 0;
-            if (typeof updateTranslatorSession === 'function') {
-                currentTranslatorSessionMeta = await updateTranslatorSession(item.sessionId, {
-                    historyId: id,
-                    startChunkIndex: translationStartChunkIndex,
-                    startByte: translationStartByte,
-                }) || currentTranslatorSessionMeta;
-            }
             if (typeof updateStartChunkSelection === 'function') updateStartChunkSelection();
         }
         document.getElementById('translatedText').value = item.translatedText || '';
@@ -499,8 +617,12 @@ async function downloadHistoryResult(id) {
     }
 
     if (item.sessionId && typeof getTranslatorSessionOutputParts === 'function') {
-        const parts = await getTranslatorSessionOutputParts(item.sessionId, { includePending: false });
-        downloadBlobParts(parts, item.name || 'translated_novel.txt', 'Đã tải bản dịch từ lịch sử.');
+        if (typeof downloadTranslatorSessionResult === 'function') {
+            await downloadTranslatorSessionResult(item.sessionId, item.name || 'translated_novel.txt');
+        } else {
+            const parts = await getTranslatorSessionOutputParts(item.sessionId, { includePending: false });
+            downloadBlobParts(parts, item.name || 'translated_novel.txt', 'Đã tải bản dịch từ lịch sử.');
+        }
         return;
     }
 
@@ -549,7 +671,7 @@ function exportHistory() {
         version: '1.0',
         exportDate: new Date().toISOString(),
         count: translationHistory.length,
-        history: translationHistory
+        history: normalizeHistoryItems(translationHistory)
     };
 
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -579,17 +701,18 @@ function importHistory(event) {
             }
 
             const importCount = data.history.length;
+            const importedItems = normalizeHistoryItems(data.history, { regenerateIds: true });
+            if (importCount > 0 && importedItems.length === 0) {
+                throw new Error('Invalid history items');
+            }
             let newCount = 0;
 
-            // FIX: dùng index để tránh trùng ID khi Date.now() giống nhau
-            data.history.forEach((item, index) => {
+            importedItems.forEach((item) => {
                 const exists = translationHistory.some(h =>
-                    h.id === item.id ||
                     (h.name === item.name && h.date === item.date)
                 );
 
                 if (!exists) {
-                    item.id = `${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`;
                     translationHistory.push(item);
                     newCount++;
                 }

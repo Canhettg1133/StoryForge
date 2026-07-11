@@ -482,7 +482,7 @@ function exportApiKeys() {
                 resize: none;
             ">${escapeModelRotationHtml(fullKeyList)}</textarea>
             <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button onclick="copyExportedKeys()" style="
+                <button type="button" data-click-action="copyExportedKeys" style="
                     flex: 1;
                     padding: 12px;
                     background: #6366f1;
@@ -492,7 +492,7 @@ function exportApiKeys() {
                     cursor: pointer;
                     font-size: 14px;
                 ">📋 Sao chép tất cả</button>
-                <button onclick="closeKeyModal()" style="
+                <button type="button" data-click-action="closeKeyModal" style="
                     flex: 1;
                     padding: 12px;
                     background: #333;
@@ -593,7 +593,7 @@ async function openImportApiKeysModal() {
                 border-radius: 6px;
             ">Dán danh sách key để xem trước...</div>
             <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button onclick="executeImportApiKeys()" style="
+                <button type="button" data-click-action="executeImportApiKeys" style="
                     flex: 1;
                     padding: 12px;
                     background: #10b981;
@@ -603,7 +603,7 @@ async function openImportApiKeysModal() {
                     cursor: pointer;
                     font-size: 14px;
                 ">✅ Nhập key</button>
-                <button onclick="closeImportModal()" style="
+                <button type="button" data-click-action="closeImportModal" style="
                     flex: 1;
                     padding: 12px;
                     background: #333;

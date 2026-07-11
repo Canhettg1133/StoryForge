@@ -97,4 +97,163 @@ if (typeof handleQueueDragLeave === 'function') window.handleQueueDragLeave = ha
 if (typeof handleQueueDrop === 'function') window.handleQueueDrop = handleQueueDrop;
 if (typeof handleQueueDragEnd === 'function') window.handleQueueDragEnd = handleQueueDragEnd;
 
+const TRANSLATOR_CLICK_ACTIONS = Object.freeze({
+    toggleSettingsPanels: () => toggleSettingsPanels(),
+    toggleHistoryPanel: () => toggleHistoryPanel(),
+    toggleTranslationQueuePanel: () => toggleTranslationQueuePanel(),
+    closeTranslationQueuePanel: () => toggleTranslationQueuePanel(false),
+    toggleConfigGroup: element => toggleConfigGroup(element.dataset.actionValue),
+    activateGeminiDirect: () => activateGeminiDirect(),
+    addApiKey: () => addApiKey(),
+    removeApiKey: element => removeApiKey(Number(element.dataset.actionIndex)),
+    openImportApiKeysModal: () => openImportApiKeysModal(),
+    exportApiKeys: () => exportApiKeys(),
+    resetRotationAndRefresh: () => resetRotationAndRefresh(),
+    fetchAIStudioFreeModels: () => fetchAIStudioFreeModels(),
+    resetGeminiModels: () => resetGeminiModels(),
+    useCustomGeminiModel: () => useCustomGeminiModel(),
+    addProxyKey: () => addProxyKey(),
+    removeProxyKey: element => removeProxyKey(Number(element.dataset.actionIndex)),
+    openImportProxyKeysModal: element => openImportProxyKeysModal(element.dataset.actionValue),
+    executeImportProxyKeys: element => executeImportProxyKeys(element.dataset.actionValue),
+    closeProxyImportModal: element => closeProxyImportModal(element.dataset.actionValue),
+    exportProxyKeys: element => exportProxyKeys(element.dataset.actionValue),
+    copyExportedProxyKeys: element => copyExportedProxyKeys(element.dataset.actionValue),
+    closeProxyKeyModal: element => closeProxyKeyModal(element.dataset.actionValue),
+    applyProxyCustomModel: () => applyProxyCustomModel(),
+    testProxyConnection: () => testProxyConnection(),
+    addCustomProxyKey: () => addCustomProxyKey(),
+    removeCustomProxyKey: element => removeCustomProxyKey(Number(element.dataset.actionIndex)),
+    fetchCustomProxyModels: () => fetchCustomProxyModels(),
+    testCustomProxyConnection: () => testCustomProxyConnection(),
+    applyCustomProxyModelInput: () => selectCustomProxyModel(document.getElementById('customProxyModelInput')?.value),
+    showStartServerGuide: () => showStartServerGuide(),
+    testOllamaConnection: () => testOllamaConnection(),
+    loadOllamaModelsDropdown: () => loadOllamaModelsDropdown(),
+    applyModelPreset: element => applyModelPreset(element.dataset.actionValue),
+    testOllamaTranslation: () => testOllamaTranslation(),
+    copyCommand: element => copyCommand(element.dataset.actionValue),
+    copyPresetCommand: element => {
+        const preset = MODEL_PRESETS[element.dataset.actionValue];
+        if (preset) return copyCommand(`ollama pull ${preset.recommended}`);
+        return undefined;
+    },
+    exportHistory: () => exportHistory(),
+    clearAllHistory: () => clearAllHistory(),
+    setPromptTemplate: element => setPromptTemplate(element.dataset.actionValue),
+    refreshCanonPackSelector: () => refreshCanonPackSelector(),
+    applySelectedCanonPackToPrompt: () => applySelectedCanonPackToPrompt(),
+    clearFile: () => clearFile(),
+    selectStartChunk: element => selectStartChunk(Number(element.dataset.chunkIndex), Number(element.dataset.byteStart)),
+    startTranslation: () => startTranslation(),
+    downloadPartial: () => downloadPartial(),
+    togglePause: () => togglePause(),
+    confirmCancel: () => confirmCancel(),
+    closeCancelModal: () => closeCancelModal(),
+    executeCancel: () => executeCancel(),
+    toggleChunkTracker: () => toggleChunkTracker(),
+    copyResult: () => copyResult(),
+    downloadResult: () => downloadResult(),
+    pauseQueuedTranslatorItem: element => pauseQueuedTranslatorItem(element.dataset.queueId),
+    resumeQueuedTranslatorItem: element => resumeQueuedTranslatorItem(element.dataset.queueId),
+    cancelQueuedTranslatorItem: element => cancelQueuedTranslatorItem(element.dataset.queueId),
+    removeQueuedTranslatorItem: element => removeQueuedTranslatorItem(element.dataset.queueId),
+    downloadQueuedTranslatorResult: element => downloadQueuedTranslatorResult(element.dataset.sessionId),
+    closeChunkDetail: () => closeChunkDetail(),
+    retranslateChunk: element => retranslateChunk(Number(element.dataset.chunkIndex)),
+    retranslateChunkAndClose: element => {
+        const result = retranslateChunk(Number(element.dataset.chunkIndex));
+        closeChunkDetail();
+        return result;
+    },
+    editChunkManual: element => editChunkManual(Number(element.dataset.chunkIndex)),
+    viewChunkDetail: element => viewChunkDetail(Number(element.dataset.chunkIndex)),
+    retranslateAllFailed: () => retranslateAllFailed(),
+    copyExportedKeys: () => copyExportedKeys(),
+    closeKeyModal: () => closeKeyModal(),
+    executeImportApiKeys: () => executeImportApiKeys(),
+    closeImportModal: () => closeImportModal(),
+});
+
+const TRANSLATOR_CHANGE_ACTIONS = Object.freeze({
+    selectGeminiModel: element => selectGeminiModel(element.value),
+    toggleProxyMode: () => toggleProxyMode(),
+    updateProxyConfig: () => updateProxyConfig(),
+    selectProxyModel: () => selectProxyModel(),
+    toggleCustomProxyMode: () => toggleCustomProxyMode(),
+    updateCustomProxyConfig: () => updateCustomProxyConfig(),
+    selectCustomProxyModel: element => selectCustomProxyModel(element.value),
+    toggleOllamaMode: () => toggleOllamaMode(),
+    selectOllamaModel: () => selectOllamaModel(),
+    importHistory: (_element, event) => importHistory(event),
+    handleCanonPackToggle: () => handleCanonPackToggle(),
+    selectCanonPack: (element) => {
+        selectedCanonPackId = element.value;
+        saveSettings();
+        updateSettingsAccordions();
+    },
+});
+
+const TRANSLATOR_INPUT_ACTIONS = Object.freeze({
+    setCustomProxyModelSearch: element => setCustomProxyModelSearch(element.value),
+    handleStartChunkSearchInput: () => handleStartChunkSearchInput(),
+});
+
+const TRANSLATOR_KEYDOWN_ACTIONS = Object.freeze({
+    addProxyKey: () => addProxyKey(),
+    addCustomProxyKey: () => addCustomProxyKey(),
+});
+
+function runTranslatorDelegatedAction(handlers, actionName, element, event) {
+    const handler = handlers[actionName];
+    if (!handler) return;
+    if (element.dataset.stopPropagation === 'true') event.stopPropagation();
+    try {
+        const result = handler(element, event);
+        if (result && typeof result.catch === 'function') {
+            result.catch(error => console.error(`[TranslatorAction] ${actionName} failed:`, error));
+        }
+    } catch (error) {
+        console.error(`[TranslatorAction] ${actionName} failed:`, error);
+    }
+}
+
+document.addEventListener('click', (event) => {
+    const element = event.target.closest('[data-click-action]');
+    if (!element) return;
+    runTranslatorDelegatedAction(TRANSLATOR_CLICK_ACTIONS, element.dataset.clickAction, element, event);
+});
+
+document.addEventListener('change', (event) => {
+    const element = event.target.closest('[data-change-action]');
+    if (!element) return;
+    runTranslatorDelegatedAction(TRANSLATOR_CHANGE_ACTIONS, element.dataset.changeAction, element, event);
+});
+
+document.addEventListener('input', (event) => {
+    const element = event.target.closest('[data-input-action]');
+    if (!element) return;
+    runTranslatorDelegatedAction(TRANSLATOR_INPUT_ACTIONS, element.dataset.inputAction, element, event);
+});
+
+document.addEventListener('keydown', (event) => {
+    const element = event.target.closest('[data-keydown-action]');
+    if (!element || event.key !== 'Enter') return;
+    event.preventDefault();
+    runTranslatorDelegatedAction(TRANSLATOR_KEYDOWN_ACTIONS, element.dataset.keydownAction, element, event);
+});
+
+for (const eventName of ['dragstart', 'dragover', 'dragleave', 'drop', 'dragend']) {
+    document.addEventListener(eventName, (event) => {
+        const row = event.target.closest('.translation-queue-item[data-queue-id]');
+        if (!row) return;
+        const queueId = row.dataset.queueId;
+        if (eventName === 'dragstart') handleQueueDragStart(event, queueId);
+        if (eventName === 'dragover') handleQueueDragOver(event, queueId);
+        if (eventName === 'dragleave') handleQueueDragLeave(event);
+        if (eventName === 'drop') handleQueueDrop(event, queueId);
+        if (eventName === 'dragend') handleQueueDragEnd(event);
+    });
+}
+
 console.log('✅ All modules loaded and exposed globally');

@@ -334,7 +334,7 @@ function viewChunkDetail(chunkIndex) {
     content.innerHTML = `
         <div class="chunk-detail-header">
             <h3>📋 Chunk #${chunkIndex + 1} ${statusLabel}</h3>
-            <button class="btn btn-small btn-secondary" onclick="closeChunkDetail()">✕</button>
+            <button class="btn btn-small btn-secondary" type="button" data-click-action="closeChunkDetail">✕</button>
         </div>
         <div class="chunk-detail-stats">
             <span>📥 Input: <strong>${data.inputLen.toLocaleString()}</strong> chữ</span>
@@ -356,8 +356,8 @@ function viewChunkDetail(chunkIndex) {
             </div>
         </div>
         <div class="chunk-detail-actions">
-            <button class="btn btn-primary btn-small" onclick="retranslateChunk(${chunkIndex}); closeChunkDetail();">🔄 Dịch lại chunk này</button>
-            <button class="btn btn-secondary btn-small" onclick="editChunkManual(${chunkIndex})">✏️ Sửa thủ công</button>
+            <button class="btn btn-primary btn-small" type="button" data-click-action="retranslateChunkAndClose" data-chunk-index="${chunkIndex}">🔄 Dịch lại chunk này</button>
+            <button class="btn btn-secondary btn-small" type="button" data-click-action="editChunkManual" data-chunk-index="${chunkIndex}">✏️ Sửa thủ công</button>
         </div>
     `;
 
@@ -533,7 +533,7 @@ function buildChunkRowHtml(data) {
     const keyBadge = data.keyLabel ? `<span class="ct-key">🔑${data.keyLabel}</span>` : '';
 
     return `
-        <div class="ct-row ct-${data.status}" id="chunk-row-${i}" onclick="viewChunkDetail(${i})">
+        <div class="ct-row ct-${data.status}" id="chunk-row-${i}" data-click-action="viewChunkDetail" data-chunk-index="${i}">
             <span class="ct-num">#${i + 1}</span>
             <div class="ct-bar-wrap">
                 <div class="ct-bar ct-bar-${data.status}" style="width:${barWidth}%"></div>
@@ -542,7 +542,7 @@ function buildChunkRowHtml(data) {
             <span class="ct-ratio ${ratioClass}">${data.ratio > 0 ? data.ratio + '%' : '--'}</span>
             <span class="ct-status">${statusInfo.icon} ${statusInfo.label}${retryLabel}</span>
             ${keyBadge}
-            ${showRetranslate ? `<button class="ct-retry-btn" onclick="event.stopPropagation(); retranslateChunk(${i});" title="Dịch lại chunk này">🔄</button>` : ''}
+            ${showRetranslate ? `<button class="ct-retry-btn" type="button" data-click-action="retranslateChunk" data-stop-propagation="true" data-chunk-index="${i}" title="Dịch lại chunk này">🔄</button>` : ''}
         </div>
     `;
 }
@@ -590,7 +590,7 @@ function updateChunkSummary() {
         <span>📥 ${totalInput.toLocaleString()} → 📤 ${totalOutput.toLocaleString()} chữ</span>
         <span class="${ratioClass}">📊 Tỷ lệ: <strong>${totalRatio}%</strong></span>
         <span>🔄 Thử lại: ${totalRetries}</span>
-        ${!chunkTrackerLargeFileMode && (failed + warning) > 0 ? `<button class="btn btn-small btn-warning ct-retry-all-btn" onclick="retranslateAllFailed()">🔄 Dịch lại ${failed + warning} lỗi</button>` : ''}
+        ${!chunkTrackerLargeFileMode && (failed + warning) > 0 ? `<button class="btn btn-small btn-warning ct-retry-all-btn" type="button" data-click-action="retranslateAllFailed">🔄 Dịch lại ${failed + warning} lỗi</button>` : ''}
     `;
 }
 

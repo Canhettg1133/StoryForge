@@ -6,7 +6,6 @@
         CHUNKS: 'translationChunks',
         QUEUE: 'translationQueue',
     };
-    const DONE_STATUSES = new Set(['done', 'failed']);
     let dbPromise = null;
 
     function nowIso() {
@@ -149,6 +148,31 @@
         return getRecord(STORES.CHUNKS, `${sessionId}:${chunkIndex}`);
     }
 
+    function hasTranslatorChunkOutput(chunk) {
+        return typeof chunk?.outputText === 'string' && chunk.outputText.length > 0;
+    }
+
+    function summarizeTranslatorChunks(chunks, startChunkIndex = 0) {
+        const safeStart = Math.max(0, Number(startChunkIndex) || 0);
+        const includedChunks = Array.isArray(chunks)
+            ? chunks.filter((chunk) => (
+                hasTranslatorChunkOutput(chunk) ||
+                (Number(chunk?.chunkIndex) >= safeStart && chunk?.status !== 'skipped')
+            ))
+            : [];
+        const completedChunks = includedChunks.filter(hasTranslatorChunkOutput).length;
+        const failedChunks = includedChunks.filter((chunk) => (
+            chunk.status === 'failed' && hasTranslatorChunkOutput(chunk)
+        )).length;
+
+        return {
+            completedChunks,
+            failedChunks,
+            totalChunks: includedChunks.length,
+            isComplete: includedChunks.length > 0 && completedChunks >= includedChunks.length,
+        };
+    }
+
     async function createTranslatorSessionFromFile(file, options = {}) {
         if (!file || typeof file.slice !== 'function') {
             throw new Error('File truyện không hợp lệ.');
@@ -231,16 +255,13 @@
         await putRecord(STORES.CHUNKS, updated);
 
         const chunks = await getTranslatorSessionChunks(sessionId);
-        const completedChunks = chunks.filter((chunk) => DONE_STATUSES.has(chunk.status)).length;
-        const failedChunks = chunks.filter((chunk) => chunk.status === 'failed').length;
-        const isComplete = chunks.length > 0 && chunks.every((chunk) => (
-            chunk.status === 'done' || chunk.status === 'failed' || chunk.status === 'skipped'
-        ));
+        const session = await getTranslatorSession(sessionId);
+        const summary = summarizeTranslatorChunks(chunks, session?.startChunkIndex || 0);
         await updateTranslatorSession(sessionId, {
-            completedChunks,
-            failedChunks,
-            isComplete,
-            status: isComplete ? 'completed' : 'running',
+            completedChunks: summary.completedChunks,
+            failedChunks: summary.failedChunks,
+            isComplete: summary.isComplete,
+            status: summary.isComplete ? 'completed' : 'running',
         });
         return updated;
     }
@@ -250,6 +271,7 @@
         const safeStart = Math.max(0, Number(startChunkIndex) || 0);
         for (const chunk of chunks) {
             if (chunk.chunkIndex >= safeStart) continue;
+            if (hasTranslatorChunkOutput(chunk)) continue;
             await putRecord(STORES.CHUNKS, {
                 ...chunk,
                 status: 'skipped',
@@ -257,9 +279,12 @@
                 updatedAt: nowIso(),
             });
         }
+        const updatedChunks = await getTranslatorSessionChunks(sessionId);
+        const summary = summarizeTranslatorChunks(updatedChunks, safeStart);
         await updateTranslatorSession(sessionId, {
-            startChunkIndex: safeStart,
-            startByte: chunks.find((chunk) => chunk.chunkIndex === safeStart)?.byteStart || 0,
+            completedChunks: summary.completedChunks,
+            failedChunks: summary.failedChunks,
+            isComplete: summary.isComplete,
         });
     }
 
@@ -293,9 +318,9 @@
         const chunks = await getTranslatorSessionChunks(sessionId);
         const parts = [];
         for (const chunk of chunks) {
-            const hasOutput = typeof chunk.outputText === 'string' && chunk.outputText.length > 0;
+            const hasOutput = hasTranslatorChunkOutput(chunk);
             if (!hasOutput && !includePending) continue;
-            if (chunk.status === 'skipped' && !includePending) continue;
+            if (!hasOutput && chunk.status === 'skipped') continue;
             if (parts.length > 0) parts.push('\n\n');
             parts.push(hasOutput ? chunk.outputText : `[Chưa dịch chunk ${chunk.chunkIndex + 1}]`);
         }
@@ -431,6 +456,7 @@
         removeTranslatorQueueItem,
         reorderTranslatorQueueItems,
         searchTranslatorSessionChunks,
+        summarizeTranslatorChunks,
         updateTranslatorChunkResult,
         updateTranslatorQueueItemStatus,
         updateTranslatorSession,

@@ -1,58 +1,36 @@
-# Vercel Cloud Sync
+# Vercel and Supabase Cloud Sync
 
-StoryForge hien tai chay theo kieu local-first:
+StoryForge is local-first: project data remains in IndexedDB, while optional cloud backups use `public.cloud_snapshots` through Supabase Auth and Row Level Security.
 
-- Du lieu viet truyen va codex nam trong IndexedDB (Dexie) tren trinh duyet.
-- Cloud Sync la lop backup/restore theo snapshot toan project.
-- Backend web la Vercel Function `api/cloud.js`.
+## Required Vercel variables
 
-## Bien moi truong
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` for trusted Vercel API routes only
+- `VITE_ENABLE_CLOUD_SYNC=true` when the Cloud Sync UI should be available
 
-- `STORYFORGE_DATABASE_URL`
-- hoac `POSTGRES_URL`
-- hoac `DATABASE_URL`
-- hoac `SUPABASE_DB_URL`
+Do not configure `VITE_CLOUD_SYNC_BASE_URL` or `STORYFORGE_DATABASE_URL`. They belonged to the retired unauthenticated `/api/cloud` implementation.
 
-Frontend:
+## Database setup
 
-- `VITE_SHOW_LABS=false`
-- `VITE_SHOW_ROADMAP_PAGES=false`
-- `VITE_SHOW_JOB_UI=false`
-- `VITE_ENABLE_CLOUD_SYNC=true`
-- `VITE_SUPABASE_URL=https://your-project.supabase.co`
-- `VITE_SUPABASE_ANON_KEY=your-supabase-anon-key`
-- `VITE_CLOUD_SYNC_BASE_URL=/api/cloud`
+Run `docs/supabase-cloud-sync.sql`, followed by:
 
-## Supabase Google OAuth redirect
+1. Deploy the matching client validation and wait for Vercel Production to be `Ready`.
+2. `docs/supabase-access-control/011_cloud_snapshot_guardrails.sql`
+3. `docs/supabase-access-control/012_validate_cloud_snapshot_guardrails.sql` outside peak hours.
 
-Neu dang nhap Google tren localhost duoc nhung tren Vercel lai quay ve `http://localhost:3000/?code=...`, hay sua trong Supabase Dashboard:
+RLS restricts every select/insert/update/delete to `auth.uid() = user_id`. The client keeps uploads sequential and uses a multi-tab lock, cooldown, timeout, and progressive backoff.
 
-1. Vao `Authentication -> URL Configuration`.
-2. Dat `Site URL` thanh URL production, vi du `https://story-forge-virid.vercel.app`.
-3. Them `Redirect URLs`:
-   - `https://story-forge-virid.vercel.app`
-   - `http://localhost:3000`
-   - `https://*-<team-or-account-slug>.vercel.app/**` neu can Vercel preview deployment
-4. Vao `Authentication -> Providers -> Google`.
-5. Trong Google Cloud OAuth client, `Authorized redirect URI` phai la callback cua Supabase:
-   - `https://<your-project-ref>.supabase.co/auth/v1/callback`
+## Google OAuth redirect
 
-App mac dinh gui `redirectTo` ve domain goc hien tai, vi vay cau hinh tren chi can allow-list domain goc. Truoc khi nhay sang Google, app luu route Cloud Sync hien tai trong sessionStorage; sau khi Supabase tra ve `?code=...` o domain goc, app se tu dieu huong lai Cloud Sync.
+Set the production Vercel origin in Supabase `Authentication -> URL Configuration`. Add preview wildcard URLs only when preview login is required. The Google OAuth callback remains the Supabase callback URL:
 
-Neu muon ep callback ve path rieng, co the dat them `VITE_CLOUD_AUTH_REDIRECT_URL`, nhung URL do phai nam trong Supabase Redirect URLs.
+```text
+https://<project-ref>.supabase.co/auth/v1/callback
+```
 
-## Cac buoc deploy
+## Retired endpoint
 
-1. Tren Vercel, gan mot Postgres integration tu Marketplace.
-2. Bao dam project co env URL cho Postgres.
-3. Deploy app.
-4. Vao `Settings -> Cloud Sync`.
-5. Nhap `workspace slug` va `access key`.
-6. Backup local project len cloud.
-7. Khi can, restore snapshot cloud thanh project moi trong may.
+`/api/cloud` now returns `410 CLOUD_SYNC_LEGACY_RETIRED`. It must not be re-enabled or redirected to the authenticated Supabase tables because the old workspace/access-key protocol is not compatible with Supabase user ownership.
 
-## Gioi han hien tai
-
-- Chua co auth day du; `access key` la lop bao ve toi thieu.
-- Restore tao project moi, khong ghi de len project local cu.
-- Snapshot lon hon khoang 4 MB se bi tu choi boi function hien tai.
+Do not remove the repository's `pg` dependency when the legacy route is cleaned up. `src/services/storage/postgres/client.js` still uses it for a separate backend storage path.

@@ -23,6 +23,39 @@ const PROMPT_BUNDLE_SCOPE = 'prompt_bundle';
 const PROMPT_BUNDLE_SLUG = 'story-creation-settings';
 const PROMPT_BUNDLE_TITLE = 'Global prompt bundle';
 
+export const CLOUD_SNAPSHOT_LIMITS = Object.freeze({
+  payloadBytes: 64 * 1024 * 1024,
+  slugCharacters: 256,
+  titleCharacters: 256,
+  metadataBytes: 64 * 1024,
+});
+
+export const CLOUD_IMPORT_LIMITS = Object.freeze({
+  itemCount: 250,
+  totalPayloadBytes: 512 * 1024 * 1024,
+});
+
+function makeCloudLimitError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function countCharacters(value) {
+  return Array.from(String(value || '')).length;
+}
+
+function normalizeCloudInteger(value, fallback, min, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(numeric)));
+}
+
+function normalizeCloudTimestamp(value) {
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
 function ensureConfigured() {
   if (!isSupabaseConfigured()) {
     throw new Error(getSupabaseConfigError());
@@ -86,6 +119,71 @@ function computeSizeBytes(value) {
   } catch {
     return String(value || '').length;
   }
+}
+
+export function validateCloudSnapshotInput({ itemSlug, itemTitle, payloadText, metadata = {} }) {
+  const normalizedSlug = String(itemSlug || '').trim();
+  const normalizedTitle = String(itemTitle || normalizedSlug).trim() || normalizedSlug;
+  const normalizedPayload = String(payloadText || '');
+  let metadataText = '';
+  try {
+    metadataText = JSON.stringify(metadata ?? {});
+  } catch {
+    throw makeCloudLimitError('CLOUD_SNAPSHOT_METADATA_INVALID', 'Metadata snapshot cloud không hợp lệ.');
+  }
+
+  const payloadBytes = computeSizeBytes(normalizedPayload);
+  if (payloadBytes > CLOUD_SNAPSHOT_LIMITS.payloadBytes) {
+    throw makeCloudLimitError(
+      'CLOUD_SNAPSHOT_PAYLOAD_TOO_LARGE',
+      'Snapshot cloud vượt giới hạn 64 MiB. Hãy giảm dữ liệu dự án trước khi đồng bộ.',
+    );
+  }
+  if (countCharacters(normalizedSlug) > CLOUD_SNAPSHOT_LIMITS.slugCharacters) {
+    throw makeCloudLimitError('CLOUD_SNAPSHOT_SLUG_TOO_LONG', 'Mã snapshot cloud vượt 256 ký tự.');
+  }
+  if (countCharacters(normalizedTitle) > CLOUD_SNAPSHOT_LIMITS.titleCharacters) {
+    throw makeCloudLimitError('CLOUD_SNAPSHOT_TITLE_TOO_LONG', 'Tên snapshot cloud vượt 256 ký tự.');
+  }
+  if (computeSizeBytes(metadataText) > CLOUD_SNAPSHOT_LIMITS.metadataBytes) {
+    throw makeCloudLimitError('CLOUD_SNAPSHOT_METADATA_TOO_LARGE', 'Metadata snapshot cloud vượt giới hạn 64 KiB.');
+  }
+
+  return {
+    itemSlug: normalizedSlug,
+    itemTitle: normalizedTitle,
+    payloadText: normalizedPayload,
+    metadata: metadata ?? {},
+    sizeBytes: payloadBytes,
+  };
+}
+
+export function validateCloudImportItems(items) {
+  if (!Array.isArray(items)) return [];
+  if (items.length > CLOUD_IMPORT_LIMITS.itemCount) {
+    throw makeCloudLimitError(
+      'CLOUD_IMPORT_TOO_MANY_ITEMS',
+      `File import cloud vượt giới hạn ${CLOUD_IMPORT_LIMITS.itemCount} snapshot.`,
+    );
+  }
+
+  let totalPayloadBytes = 0;
+  const validated = items.map((item) => {
+    const snapshot = validateCloudSnapshotInput(item);
+    totalPayloadBytes += snapshot.sizeBytes;
+    if (totalPayloadBytes > CLOUD_IMPORT_LIMITS.totalPayloadBytes) {
+      throw makeCloudLimitError('CLOUD_IMPORT_TOTAL_TOO_LARGE', 'Tổng dữ liệu import cloud vượt giới hạn 512 MiB.');
+    }
+    return {
+      ...item,
+      ...snapshot,
+      payloadVersion: normalizeCloudInteger(item?.payloadVersion, 1, 1, 2_147_483_647),
+      sourceUpdatedAt: normalizeCloudInteger(item?.sourceUpdatedAt, 0, 0, Number.MAX_SAFE_INTEGER),
+      updatedAt: normalizeCloudTimestamp(item?.updatedAt),
+    };
+  });
+
+  return validated;
 }
 
 function parseServerTimestamp(value) {
@@ -261,20 +359,45 @@ async function listAllBackupsWithPayload() {
   return Array.isArray(data) ? data.map(mapSnapshotRow) : [];
 }
 
-async function upsertSnapshot({ scope, itemSlug, itemTitle, payloadText, sourceUpdatedAt, metadata = {} }) {
+async function listAllBackupsMetadata() {
   const user = await requireUser();
   const client = getSupabaseClient();
-  const sizeBytes = computeSizeBytes(payloadText);
+  const { data, error } = await client
+    .from('cloud_snapshots')
+    .select(`
+      id,
+      scope,
+      item_slug,
+      item_title,
+      payload_version,
+      source_updated_at,
+      size_bytes,
+      metadata,
+      created_at,
+      updated_at
+    `)
+    .eq('user_id', user.id)
+    .order('scope', { ascending: true })
+    .order('updated_at', { ascending: false });
+
+  if (error) throw error;
+  return Array.isArray(data) ? data.map(mapSnapshotRow) : [];
+}
+
+async function upsertSnapshot({ scope, itemSlug, itemTitle, payloadText, sourceUpdatedAt, metadata = {} }) {
+  const validated = validateCloudSnapshotInput({ itemSlug, itemTitle, payloadText, metadata });
+  const user = await requireUser();
+  const client = getSupabaseClient();
   const row = {
     user_id: user.id,
     scope,
-    item_slug: itemSlug,
-    item_title: String(itemTitle || itemSlug).trim() || itemSlug,
-    payload_text: payloadText,
+    item_slug: validated.itemSlug,
+    item_title: validated.itemTitle,
+    payload_text: validated.payloadText,
     payload_version: 1,
     source_updated_at: Number(sourceUpdatedAt || Date.now()),
-    size_bytes: sizeBytes,
-    metadata,
+    size_bytes: validated.sizeBytes,
+    metadata: validated.metadata,
     updated_at: new Date().toISOString(),
   };
 
@@ -622,12 +745,19 @@ export async function exportCloudBackups(format = 'zip') {
 
 async function readCloudImportManifestFromFile(file) {
   const lowerName = String(file?.name || '').toLowerCase();
+  if (Number(file?.size || 0) > CLOUD_IMPORT_LIMITS.totalPayloadBytes) {
+    throw makeCloudLimitError('CLOUD_IMPORT_FILE_TOO_LARGE', 'File import cloud vượt giới hạn 512 MiB.');
+  }
 
   if (lowerName.endsWith('.zip')) {
     const zip = await JSZip.loadAsync(file);
     const manifestEntry = zip.file('manifest.json');
     if (!manifestEntry) {
       throw new Error('File zip cloud không có manifest.json.');
+    }
+    const uncompressedSize = Number(manifestEntry?._data?.uncompressedSize || 0);
+    if (uncompressedSize > CLOUD_IMPORT_LIMITS.totalPayloadBytes) {
+      throw makeCloudLimitError('CLOUD_IMPORT_FILE_TOO_LARGE', 'manifest.json vượt giới hạn 512 MiB.');
     }
     const text = await manifestEntry.async('string');
     return JSON.parse(text);
@@ -643,14 +773,20 @@ export async function importCloudBackups(file) {
   }
 
   const manifest = await readCloudImportManifestFromFile(file);
-  const items = validateCloudExportManifest(manifest);
+  if (Array.isArray(manifest?.snapshots) && manifest.snapshots.length > CLOUD_IMPORT_LIMITS.itemCount) {
+    throw makeCloudLimitError(
+      'CLOUD_IMPORT_TOO_MANY_ITEMS',
+      `File import cloud vượt giới hạn ${CLOUD_IMPORT_LIMITS.itemCount} snapshot.`,
+    );
+  }
+  const items = validateCloudImportItems(validateCloudExportManifest(manifest));
   if (items.length === 0) {
     throw new Error('File import cloud không có snapshot hợp lệ nào.');
   }
 
   const user = await requireUser();
   const client = getSupabaseClient();
-  const existingItems = await listAllBackupsWithPayload();
+  const existingItems = await listAllBackupsMetadata();
   const existingMap = new Map(existingItems.map((item) => [`${item.scope}:${item.itemSlug}`, item]));
   const imported = [];
   const skipped = [];
@@ -678,7 +814,7 @@ export async function importCloudBackups(file) {
       payload_text: item.payloadText,
       payload_version: item.payloadVersion || 1,
       source_updated_at: incomingUpdated || Date.now(),
-      size_bytes: item.sizeBytes || computeSizeBytes(item.payloadText),
+      size_bytes: item.sizeBytes,
       metadata: item.metadata || {},
       updated_at: item.updatedAt || new Date().toISOString(),
     };
