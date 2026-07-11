@@ -367,6 +367,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
     let historyTotalChunks = Math.max(knownTotalChunks > 0 ? knownTotalChunks - scopeStartChunkIndex : 0, 1);
     let largeFileRunStatus = 'failed';
     let shouldStartNextQueue = false;
+    let largeIssueSummary = null;
 
     isTranslating = true;
     cancelRequested = false;
@@ -420,6 +421,27 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         charCount: Number(currentSourceFile.size || 0),
         totalChunks: historyTotalChunks,
     });
+
+    const refreshLargeChunkIssueSummary = async (shouldRender = false) => {
+        if (typeof summarizeTranslatorChunkIssues !== 'function') return null;
+
+        let issueRows = [];
+        if (sessionId && typeof getTranslatorSessionChunks === 'function') {
+            issueRows = await getTranslatorSessionChunks(sessionId);
+        } else if (Array.isArray(translatedChunks)) {
+            issueRows = translatedChunks;
+        }
+
+        largeIssueSummary = summarizeTranslatorChunkIssues({
+            chunks: issueRows,
+            startChunkIndex: scopeStartChunkIndex,
+            totalChunks: Math.max(issueRows.length, knownTotalChunks),
+        });
+        if (shouldRender && typeof renderChunkIssuePanel === 'function') {
+            renderChunkIssuePanel(largeIssueSummary);
+        }
+        return largeIssueSummary;
+    };
 
     if (!currentHistoryId && typeof addToHistory === 'function') {
         currentHistoryId = addToHistory(
@@ -630,6 +652,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         document.getElementById('resultSection').style.display = 'block';
         updateLargePreview(cancelRequested ? '⏳ Chưa dịch' : '✅ Hoàn thành', true);
         persistLargeHistoryProgress(true);
+        await refreshLargeChunkIssueSummary(false);
 
         if (!cancelRequested) {
             largeFileRunStatus = 'completed';
@@ -639,7 +662,11 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
                 completed: completedChunks,
                 status: 'Hoàn thành file lớn. Dùng Tải xuống để lấy toàn bộ bản dịch.',
             });
-            showToast(`Dịch hoàn tất ${completedChunks.toLocaleString('vi-VN')} chunk.`, 'success');
+            if (largeIssueSummary?.issueCount > 0) {
+                showToast(`Dịch hoàn tất ${completedChunks.toLocaleString('vi-VN')} chunk, còn ${largeIssueSummary.issueCount} chunk cần xử lý.`, 'warning');
+            } else {
+                showToast(`Dịch hoàn tất ${completedChunks.toLocaleString('vi-VN')} chunk.`, 'success');
+            }
         } else {
             largeFileRunStatus = 'cancelled';
             showToast('Đã hủy dịch file lớn. Tiến trình đã được lưu vào lịch sử cục bộ.', 'warning');
@@ -685,6 +712,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
         isTranslating = false;
         isPaused = false;
         setTranslationButtonsBusy(false);
+        await refreshLargeChunkIssueSummary(true);
         const cancelModal = document.getElementById('cancelModal');
         if (cancelModal) cancelModal.style.display = 'none';
         updateStats();
@@ -996,6 +1024,19 @@ async function startTranslation() {
     persistHistoryProgress(true);
 
     let textRunCompleted = false;
+    let finalTextIssueSummary = null;
+    const summarizeTextChunkIssues = () => {
+        if (typeof summarizeTranslatorChunkIssues !== 'function') return null;
+        return summarizeTranslatorChunkIssues({
+            chunks: translatedChunks,
+            startChunkIndex: textStartChunkIndex,
+            totalChunks: chunks.length,
+        });
+    };
+    const getHistoryCompletedFromIssueSummary = (summary) => {
+        if (!summary) return completedChunks;
+        return Math.max(0, textHistoryTotalChunks - summary.issueCount);
+    };
 
     try {
         // Process in parallel batches
@@ -1317,13 +1358,23 @@ ${chunks[idx]}
             for (let idx = textStartChunkIndex; idx < translatedChunks.length; idx += 1) {
                 const outputText = translatedChunks[idx];
                 if (typeof outputText !== 'string' || outputText.length === 0) continue;
-                const failed = outputText.startsWith('[LỖI CHUNK') || outputText.includes('CẦN DỊCH THỦ CÔNG');
+                const issueType = typeof getChunkIssueType === 'function'
+                    ? getChunkIssueType(null, outputText)
+                    : '';
+                const failed = issueType === 'failed' ||
+                    issueType === 'manual' ||
+                    outputText.startsWith('[LỖI CHUNK') ||
+                    outputText.includes('CẦN DỊCH THỦ CÔNG');
                 await updateTranslatorChunkResult(currentTranslatorSessionId, idx, {
                     status: failed ? 'failed' : 'done',
                     outputText,
+                    error: failed ? 'Cần xử lý thủ công' : '',
                 });
             }
         }
+
+        finalTextIssueSummary = summarizeTextChunkIssues();
+        const finalHistoryCompletedChunks = getHistoryCompletedFromIssueSummary(finalTextIssueSummary);
 
         // Completion - GIỮ ĐÚNG THỨ TỰ
         const translatedText = cancelRequested
@@ -1332,7 +1383,7 @@ ${chunks[idx]}
                 .slice(textStartChunkIndex)
                 .map((c, i) => c !== null ? c : `[❌ Chunk ${textStartChunkIndex + i + 1} thất bại]`)
                 .join('\n\n');
-        addToHistory(originalFileName, text, translatedText, chunks.slice(textStartChunkIndex), completedChunks, textHistoryTotalChunks, translatedChunks.slice(textStartChunkIndex), chunkSize, {
+        addToHistory(originalFileName, text, translatedText, chunks.slice(textStartChunkIndex), finalHistoryCompletedChunks, textHistoryTotalChunks, translatedChunks.slice(textStartChunkIndex), chunkSize, {
             sessionId: currentTranslatorSessionId,
             startChunkIndex: textStartChunkIndex,
             startByte: translationStartByte,
@@ -1345,10 +1396,10 @@ ${chunks[idx]}
             document.getElementById('translatedText').value = translatedText;
 
             const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-            const errorCount = translatedChunks.filter(c => c && c.startsWith('[LỖI CHUNK')).length;
+            const errorCount = finalTextIssueSummary?.issueCount || 0;
 
             if (errorCount > 0) {
-                showToast(`Dịch hoàn tất trong ${totalTime}s! (${errorCount} chunk lỗi)`, 'warning');
+                showToast(`Dịch hoàn tất trong ${totalTime}s! Còn ${errorCount} chunk cần xử lý.`, 'warning');
             } else {
                 showToast(`Dịch hoàn tất 100% trong ${totalTime}s! 🎉`, 'success');
             }
@@ -1364,7 +1415,8 @@ ${chunks[idx]}
         const errorText = String(error?.message || error || '');
         if (cancelRequested || errorText.includes('TRANSLATION_CANCELLED')) {
             const partialText = buildHistoryTextSnapshotFromChunks(translatedChunks.slice(textStartChunkIndex));
-            addToHistory(originalFileName, text, partialText, chunks.slice(textStartChunkIndex), completedChunks, textHistoryTotalChunks, translatedChunks.slice(textStartChunkIndex), chunkSize, {
+            finalTextIssueSummary = summarizeTextChunkIssues();
+            addToHistory(originalFileName, text, partialText, chunks.slice(textStartChunkIndex), getHistoryCompletedFromIssueSummary(finalTextIssueSummary), textHistoryTotalChunks, translatedChunks.slice(textStartChunkIndex), chunkSize, {
                 sessionId: currentTranslatorSessionId,
                 startChunkIndex: textStartChunkIndex,
                 startByte: translationStartByte,
@@ -1387,7 +1439,8 @@ ${chunks[idx]}
                 .slice(textStartChunkIndex)
                 .map((c, i) => c !== null ? c : `[❌ Chunk ${textStartChunkIndex + i + 1} thất bại]`)
                 .join('\n\n');
-            addToHistory(originalFileName, text, translatedText, chunks.slice(textStartChunkIndex), completedChunks, textHistoryTotalChunks, translatedChunks.slice(textStartChunkIndex), chunkSize, {
+            finalTextIssueSummary = summarizeTextChunkIssues();
+            addToHistory(originalFileName, text, translatedText, chunks.slice(textStartChunkIndex), getHistoryCompletedFromIssueSummary(finalTextIssueSummary), textHistoryTotalChunks, translatedChunks.slice(textStartChunkIndex), chunkSize, {
                 sessionId: currentTranslatorSessionId,
                 startChunkIndex: textStartChunkIndex,
                 startByte: translationStartByte,
@@ -1414,6 +1467,12 @@ ${chunks[idx]}
         }
         if (cancelModal) {
             cancelModal.style.display = 'none';
+        }
+        if (typeof renderChunkIssuePanel === 'function') {
+            finalTextIssueSummary = finalTextIssueSummary || summarizeTextChunkIssues();
+            if (finalTextIssueSummary) {
+                renderChunkIssuePanel(finalTextIssueSummary);
+            }
         }
         if (typeof flushHistoryWrites === 'function') {
             await flushHistoryWrites();

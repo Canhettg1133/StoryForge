@@ -77,6 +77,9 @@ if (typeof retranslateAllFailed === 'function') window.retranslateAllFailed = re
 if (typeof viewChunkDetail === 'function') window.viewChunkDetail = viewChunkDetail;
 if (typeof closeChunkDetail === 'function') window.closeChunkDetail = closeChunkDetail;
 if (typeof editChunkManual === 'function') window.editChunkManual = editChunkManual;
+if (typeof retryIssueChunks === 'function') window.retryIssueChunks = retryIssueChunks;
+if (typeof focusFirstIssueChunk === 'function') window.focusFirstIssueChunk = focusFirstIssueChunk;
+if (typeof downloadMarkedIssueResult === 'function') window.downloadMarkedIssueResult = downloadMarkedIssueResult;
 if (typeof toggleChunkTracker === 'function') window.toggleChunkTracker = toggleChunkTracker;
 
 // Translator local session, start search, and queue functions
@@ -169,6 +172,9 @@ const TRANSLATOR_CLICK_ACTIONS = Object.freeze({
     editChunkManual: element => editChunkManual(Number(element.dataset.chunkIndex)),
     viewChunkDetail: element => viewChunkDetail(Number(element.dataset.chunkIndex)),
     retranslateAllFailed: () => retranslateAllFailed(),
+    retryIssueChunks: element => retryIssueChunks({ source: element.dataset.issueSource }),
+    focusFirstIssueChunk: () => focusFirstIssueChunk(),
+    downloadMarkedIssueResult: () => downloadMarkedIssueResult(),
     copyExportedKeys: () => copyExportedKeys(),
     closeKeyModal: () => closeKeyModal(),
     executeImportApiKeys: () => executeImportApiKeys(),
