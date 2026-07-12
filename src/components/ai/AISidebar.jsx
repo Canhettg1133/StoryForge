@@ -1452,8 +1452,11 @@ export default function AISidebar({
   const renderOutputArea = (showEmptyState = false) => {
     if (!scopedHasOutput && !showEmptyState) return null;
 
+    const outputRouteProvider = lastRouteInfo?.provider || '';
+    const outputRouteModel = lastRouteInfo?.model || '';
     const showOutputMeta = !!(
-      lastRouteInfo
+      outputRouteProvider
+      && outputRouteModel
       && !scopedIsStreaming
       && !scopedError
       && scopedHasOutput
@@ -1512,7 +1515,7 @@ export default function AISidebar({
 
         {showOutputMeta && (
           <div className="ai-output-meta">
-            <span>{lastRouteInfo.provider === 'ollama' ? 'Local' : 'Cloud'} · {lastRouteInfo.model}</span>
+            <span>{outputRouteProvider === 'ollama' ? 'Local' : 'Cloud'} · {outputRouteModel}</span>
             {lastElapsed && <span>· {(lastElapsed / 1000).toFixed(1)}s</span>}
           </div>
         )}
