@@ -50,6 +50,26 @@
   gap: var(--space-1);
 }
 
+.chapter-list-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: var(--space-2);
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-success) 34%, var(--color-border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-success) 12%, var(--color-bg-tertiary));
+  color: var(--color-success);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  line-height: 1.35;
+}
+
+.chapter-list-notice svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
 .chapter-list--collapsed .chapter-list-header-actions {
   width: 100%;
   justify-content: center;

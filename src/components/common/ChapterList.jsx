@@ -60,6 +60,7 @@ export default function ChapterList({
   const [contextMenu, setContextMenu] = useState(null);
   const [mobileActionMenu, setMobileActionMenu] = useState(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [chapterNotice, setChapterNotice] = useState('');
   const contextMenuRef = useRef(null);
   const mobileActionMenuRef = useRef(null);
   const desktopTreeRef = useRef(null);
@@ -97,6 +98,12 @@ export default function ChapterList({
     if (!scene) return;
     refreshChapterWordCount(activeChapterId);
   }, [activeSceneId, activeChapterId, scenes, refreshChapterWordCount]);
+
+  useEffect(() => {
+    if (!chapterNotice) return undefined;
+    const timer = window.setTimeout(() => setChapterNotice(''), 2600);
+    return () => window.clearTimeout(timer);
+  }, [chapterNotice]);
 
   useEffect(() => {
     if (!contextMenu && !(mobileActionMenu && !isMobileLayout)) return undefined;
@@ -158,6 +165,11 @@ export default function ChapterList({
     }
     setExpandedChapters((previous) => new Set(previous).add(chapterId));
     onItemSelect?.();
+  };
+
+  const handleCreateChapter = async () => {
+    const result = await createChapter();
+    if (result) setChapterNotice('Đã thêm chương mới và Cảnh 1.');
   };
 
   const openForEditing = (type, id, currentName) => {
@@ -667,7 +679,7 @@ export default function ChapterList({
         {!panelCollapsed && <span className="chapter-list-title">Chương & Cảnh</span>}
         <div className="chapter-list-header-actions">
           {!panelCollapsed && (
-            <button className="btn btn-ghost btn-icon btn-sm" onClick={() => createChapter()} title="Thêm chương">
+            <button className="btn btn-ghost btn-icon btn-sm" onClick={handleCreateChapter} title="Thêm chương">
               <Plus size={16} />
             </button>
           )}
@@ -686,6 +698,13 @@ export default function ChapterList({
           )}
         </div>
       </div>
+
+      {chapterNotice && !panelCollapsed && (
+        <div className="chapter-list-notice" role="status" aria-live="polite">
+          <CheckCircle2 size={14} />
+          {chapterNotice}
+        </div>
+      )}
 
       {isMobileLayout ? renderMobileTree() : renderDesktopTree()}
 

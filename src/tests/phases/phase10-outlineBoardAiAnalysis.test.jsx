@@ -110,6 +110,12 @@ function clickByText(container, text) {
   button.click();
 }
 
+function clickByAriaLabel(container, label) {
+  const button = container.querySelector(`button[aria-label="${label}"]`);
+  expect(button, `Không tìm thấy nút có aria-label "${label}"`).toBeTruthy();
+  button.click();
+}
+
 describe('phase10 outline board AI analysis safety', () => {
   let container;
   let root;
@@ -253,11 +259,25 @@ describe('phase10 outline board AI analysis safety', () => {
     expect(container.textContent).not.toContain('Đề xuất phân tích dàn ý');
   });
 
-  it('clears outline AI metadata without touching title, status, scenes, or written text', async () => {
+  it('shows a visible notice after manually adding a chapter', async () => {
     await renderBoard(container, root);
 
     await act(async () => {
-      clickByText(container, 'Xóa dàn ý AI');
+      clickByText(container, 'Thêm chương');
+      await Promise.resolve();
+    });
+
+    expect(projectState.createChapter).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Đã thêm chương mới và Cảnh 1.');
+  });
+
+  it('clears outline AI metadata without touching title, status, scenes, or written text', async () => {
+    await renderBoard(container, root);
+
+    expect(container.textContent).toContain('Xóa toàn bộ dàn ý AI');
+
+    await act(async () => {
+      clickByText(container, 'Xóa toàn bộ dàn ý AI');
       await Promise.resolve();
     });
 
@@ -292,11 +312,36 @@ describe('phase10 outline board AI analysis safety', () => {
     expect(updateChapter.mock.calls[0][1]).not.toHaveProperty('final_text');
   });
 
+  it('exposes single-chapter outline clearing directly on chapter cards', async () => {
+    await renderBoard(container, root);
+
+    await act(async () => {
+      clickByAriaLabel(container, 'Xóa dàn ý AI của Chương 1');
+      await Promise.resolve();
+    });
+
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('"Chương 1"'));
+    expect(updateChapter).toHaveBeenCalledTimes(1);
+    expect(updateChapter).toHaveBeenCalledWith(1, expect.objectContaining({
+      purpose: '',
+      summary: '',
+      arc_id: null,
+      featured_characters: [],
+      key_events: [],
+      required_terms: [],
+    }));
+    expect(updateChapter.mock.calls[0][1]).not.toHaveProperty('title');
+    expect(updateChapter.mock.calls[0][1]).not.toHaveProperty('status');
+  });
+
   it('clears outline AI metadata for a single chapter from the detail modal', async () => {
     await renderBoard(container, root);
 
     await act(async () => {
-      container.querySelector('.outline-card').click();
+      const chapterOneCard = Array.from(container.querySelectorAll('.outline-card'))
+        .find((item) => item.querySelector('.outline-card-title')?.textContent.trim() === 'Chương 1');
+      expect(chapterOneCard, 'Không tìm thấy card Chương 1').toBeTruthy();
+      chapterOneCard.click();
       await Promise.resolve();
     });
     expect(container.textContent).toContain('Xóa dàn ý chương này');

@@ -321,11 +321,16 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
             {OUTPUT_MODES.map((mode) => (
                 <button
                     key={mode.id}
+                    type="button"
                     className={`arc-mode-card ${arcStore.outputMode === mode.id ? 'arc-mode-card--active' : ''}`}
+                    aria-pressed={arcStore.outputMode === mode.id}
                     onClick={() => arcStore.setArcConfig({ outputMode: mode.id })}
                 >
-                    <strong>{mode.title}</strong>
-                    <span>{mode.description}</span>
+                    <span className="arc-mode-card__top">
+                        <strong>{mode.title}</strong>
+                        {arcStore.outputMode === mode.id && <CheckCircle2 size={16} />}
+                    </span>
+                    <span className="arc-mode-card__desc">{mode.description}</span>
                 </button>
             ))}
         </div>
@@ -415,128 +420,145 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
     );
 
     const renderStep1 = () => (
-        <div className="arc-step-content">
-            <div className="arc-tabs">
-                <button
-                    className={`arc-tab ${activeTab === 'guided' ? 'arc-tab--active' : ''}`}
-                    onClick={() => setActiveTab('guided')}
-                >
-                    <Bot size={16} /> Có định hướng
-                </button>
-                <button
-                    className={`arc-tab ${activeTab === 'auto' ? 'arc-tab--active' : ''}`}
-                    onClick={() => setActiveTab('auto')}
-                >
-                    <Sparkles size={16} /> Tự động gợi ý
-                </button>
+        <div className="arc-step-content arc-step-content--setup">
+            <div className="arc-setup-main">
+                <div className="arc-tabs">
+                    <button
+                        type="button"
+                        className={`arc-tab ${activeTab === 'guided' ? 'arc-tab--active' : ''}`}
+                        onClick={() => setActiveTab('guided')}
+                    >
+                        <Bot size={16} /> Có định hướng
+                    </button>
+                    <button
+                        type="button"
+                        className={`arc-tab ${activeTab === 'auto' ? 'arc-tab--active' : ''}`}
+                        onClick={() => setActiveTab('auto')}
+                    >
+                        <Sparkles size={16} /> Tự động gợi ý
+                    </button>
+                </div>
+
+                {renderOutputModes()}
+
+                <div className="arc-tab-content">
+                    {activeTab === 'guided' ? (
+                        <div className="form-group arc-goal-card">
+                            <div className="arc-field-head">
+                                <label className="form-label">Mục tiêu của đợt dàn ý này</label>
+                                <span>Tùy chọn</span>
+                            </div>
+                            <textarea
+                                className="textarea"
+                                rows={3}
+                                placeholder="VD: Nhân vật chính đi vào bế cảnh, mở một tuyến truyện mới, tăng phần xây dựng, chưa lộ bí mật lớn..."
+                                value={arcStore.arcGoal}
+                                onChange={(e) => arcStore.setArcConfig({ arcGoal: e.target.value })}
+                            />
+                        </div>
+                    ) : (
+                        <div className="arc-auto-desc">
+                            Chế độ tự động sẽ tự lấy các tuyến truyện và dữ kiện canon để gợi ý đợt chương tiếp theo.
+                            Kết quả vẫn bị ràng buộc bởi nhịp tiến độ và macro arc.
+                        </div>
+                    )}
+
+                    <div className="arc-batch-summary">
+                        <div className="arc-batch-summary__item">
+                            <span className="arc-batch-summary__label">Đã có</span>
+                            <strong>{currentChapterCount} chương</strong>
+                        </div>
+                        <div className="arc-batch-summary__item">
+                            <span className="arc-batch-summary__label">Đợt này tạo</span>
+                            <strong>Chương {batchStartChapter}-{batchEndChapter}</strong>
+                        </div>
+                        <div className="arc-batch-summary__item">
+                            <span className="arc-batch-summary__label">Đại cục mặc định</span>
+                            <strong>{selectedMacroArc ? selectedMacroArc.title : 'Chưa khóa'}</strong>
+                        </div>
+                    </div>
+
+                    <div className="arc-config-grid">
+                        <div className="form-group">
+                            <label className="form-label">Số chương muốn tạo</label>
+                            <NumberStepper
+                                value={arcChapterCountInput}
+                                min={1}
+                                max={20}
+                                fallback={1}
+                                ariaLabel="Số chương muốn tạo"
+                                onChange={setArcChapterCountInput}
+                                onCommit={(value) => arcStore.setArcConfig({ arcChapterCount: value })}
+                            />
+                            <div className="arc-help-text">
+                                Đề xuất hiện tại: {arcStore.recommendedBatchCount} chương.
+                            </div>
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">Nhịp độ</label>
+                            <select
+                                className="select"
+                                value={arcStore.arcPacing}
+                                onChange={(e) => arcStore.setArcConfig({ arcPacing: e.target.value })}
+                            >
+                                <option value="slow">Chậm</option>
+                                <option value="medium">Vừa</option>
+                                <option value="fast">Nhanh</option>
+                            </select>
+                            <div className="arc-help-text">Cân bằng xây dựng và biến cố.</div>
+                        </div>
+
+                        <div className="form-group">
+                            <label className="form-label">Đại cục hiện hành</label>
+                            <select
+                                className="select"
+                                value={arcStore.selectedMacroArcId || ''}
+                                onChange={(e) => {
+                                    const value = e.target.value ? Number(e.target.value) : null;
+                                    arcStore.setArcConfig({ selectedMacroArcId: value });
+                                }}
+                            >
+                                <option value="">Không khóa theo macro arc</option>
+                                {arcStore.availableMacroArcs.map((macroArc) => (
+                                    <option key={macroArc.id} value={macroArc.id}>
+                                        {macroArc.title}
+                                        {macroArc.chapter_from && macroArc.chapter_to
+                                            ? ` (${macroArc.chapter_from}-${macroArc.chapter_to})`
+                                            : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            <div className="arc-help-text">Bám ngân sách chung nếu chưa khóa.</div>
+                        </div>
+                    </div>
+
+                    {batchWarning && (
+                        <div className="arc-warning-box">
+                            Đợt chương hiện tại vượt mức đề xuất cho truyện dài. Hệ thống vẫn có thể tạo,
+                            nhưng nguy cơ dồn cốt truyện quá nhanh và sinh chương rời rạc sẽ tăng.
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {renderOutputModes()}
-
-            <div className="arc-tab-content">
-                {activeTab === 'guided' ? (
-                    <div className="form-group">
-                        <label className="form-label">Mục tiêu của đợt dàn ý này</label>
-                        <textarea
-                            className="textarea"
-                            rows={3}
-                            placeholder="VD: Nhân vật chính đi vào bế cảnh, mở một tuyến truyện mới, tăng phần xây dựng, chưa lộ bí mật lớn..."
-                            value={arcStore.arcGoal}
-                            onChange={(e) => arcStore.setArcConfig({ arcGoal: e.target.value })}
-                        />
-                    </div>
-                ) : (
-                    <div className="arc-auto-desc">
-                        Chế độ tự động sẽ tự lấy các tuyến truyện và dữ kiện canon để gợi ý đợt chương tiếp theo.
-                        Kết quả vẫn bị ràng buộc bởi nhịp tiến độ và macro arc.
-                    </div>
-                )}
-
-                <div className="arc-batch-summary">
-                    <div className="arc-batch-summary__item">
-                        <span className="arc-batch-summary__label">Đã có</span>
-                        <strong>{currentChapterCount} chương</strong>
-                    </div>
-                    <div className="arc-batch-summary__item">
-                        <span className="arc-batch-summary__label">Đợt này tạo</span>
-                        <strong>Chương {batchStartChapter}-{batchEndChapter}</strong>
-                    </div>
-                    <div className="arc-batch-summary__item">
-                        <span className="arc-batch-summary__label">Đại cục mặc định</span>
-                        <strong>{selectedMacroArc ? selectedMacroArc.title : 'Chưa khóa'}</strong>
-                    </div>
+            <aside className="arc-setup-preview" aria-label="Bản xem trước đợt tạo">
+                <div>
+                    <h3>Bản xem trước đợt tạo</h3>
+                    <p>Thông tin tóm tắt giúp kiểm tra nhanh trước khi sinh dàn ý.</p>
                 </div>
-
-                <div className="arc-config-grid">
-                    <div className="form-group">
-                        <label className="form-label">Số chương muốn tạo</label>
-                        <NumberStepper
-                            value={arcChapterCountInput}
-                            min={1}
-                            max={20}
-                            fallback={1}
-                            ariaLabel="Số chương muốn tạo"
-                            onChange={setArcChapterCountInput}
-                            onCommit={(value) => arcStore.setArcConfig({ arcChapterCount: value })}
-                        />
-                        <div className="arc-help-text">
-                            Đề xuất hiện tại: {arcStore.recommendedBatchCount} chương cho tổng độ dài {arcStore.projectTargetLength || 'chưa đặt'}.
-                        </div>
-                        <div className="arc-help-text">
-                            Hiện đã có {currentChapterCount} chương. Nếu tạo đợt này, hệ thống sẽ sinh từ chương {batchStartChapter} đến chương {batchEndChapter}.
-                        </div>
-                    </div>
-
-                    <div className="form-group">
-                        <label className="form-label">Nhịp độ</label>
-                        <select
-                            className="select"
-                            value={arcStore.arcPacing}
-                            onChange={(e) => arcStore.setArcConfig({ arcPacing: e.target.value })}
-                        >
-                            <option value="slow">Chậm</option>
-                            <option value="medium">Vừa</option>
-                            <option value="fast">Nhanh</option>
-                        </select>
-                    </div>
-
-                    <div className="form-group">
-                        <label className="form-label">Đại cục hiện hành</label>
-                        <select
-                            className="select"
-                            value={arcStore.selectedMacroArcId || ''}
-                            onChange={(e) => {
-                                const value = e.target.value ? Number(e.target.value) : null;
-                                arcStore.setArcConfig({ selectedMacroArcId: value });
-                            }}
-                        >
-                            <option value="">Không khóa theo macro arc</option>
-                            {arcStore.availableMacroArcs.map((macroArc) => (
-                                <option key={macroArc.id} value={macroArc.id}>
-                                    {macroArc.title}
-                                    {macroArc.chapter_from && macroArc.chapter_to
-                                        ? ` (${macroArc.chapter_from}-${macroArc.chapter_to})`
-                                        : ''}
-                                </option>
-                            ))}
-                        </select>
-                        <div className="arc-help-text">
-                            {selectedMacroArcHint}
-                        </div>
-                    </div>
+                <div className="arc-preview-chapter">
+                    <strong>Chương {batchStartChapter}-{batchEndChapter}</strong>
+                    <span>Đợt này tạo {Math.max(1, arcStore.arcChapterCount)} chương với nhịp {PACING_BADGE_LABELS[arcStore.arcPacing] || PACING_BADGE_LABELS.medium}.</span>
                 </div>
-
-                {batchWarning && (
-                    <div className="arc-warning-box">
-                        Đợt chương hiện tại vượt mức đề xuất cho truyện dài. Hệ thống vẫn có thể tạo,
-                        nhưng nguy cơ dồn cốt truyện quá nhanh và sinh chương rời rạc sẽ tăng.
-                    </div>
-                )}
-
+                <div className="arc-preview-chapter">
+                    <strong>{selectedMacroArc ? selectedMacroArc.title : 'Canon + nhịp tiến độ'}</strong>
+                    <span>{selectedMacroArcHint}</span>
+                </div>
                 {renderBudgetBox()}
-            </div>
+            </aside>
 
-            <div className="arc-actions">
+            <div className="arc-actions arc-actions--setup">
                 <button
                     className="btn btn-primary"
                     onClick={handleGenerateOutline}
@@ -553,7 +575,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         if (arcStore.outlineStatus === 'generating') {
             return (
                 <div className="arc-loading-state">
-                    <Loader2 size={48} className="spin" style={{ color: 'var(--color-primary)' }} />
+                    <Loader2 size={48} className="spin" style={{ color: 'var(--color-accent)' }} />
                     <h3>Đang xử lý dàn ý...</h3>
                     <p>Hệ thống đang dựng lại dàn ý theo macro arc, nhịp tiến độ và ghi chú chỉnh sửa.</p>
                 </div>
@@ -963,7 +985,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
         <div className="arc-modal-overlay">
             <div className="arc-modal">
                 <div className="arc-modal-header">
-                    <h2><Sparkles size={20} style={{ color: 'var(--color-primary)' }} /> Tạo chương tự động</h2>
+                    <h2><Sparkles size={20} style={{ color: 'var(--color-accent)' }} /> Tạo chương tự động</h2>
                     <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={20} /></button>
                 </div>
 

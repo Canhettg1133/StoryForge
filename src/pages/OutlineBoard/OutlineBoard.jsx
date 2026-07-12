@@ -237,6 +237,7 @@ export default function OutlineBoard() {
   const [isApplyingAnalysis, setIsApplyingAnalysis] = useState(false);
   const [genError, setGenError] = useState(null);
   const [outlineAnalysisPreview, setOutlineAnalysisPreview] = useState(null);
+  const [chapterNotice, setChapterNotice] = useState('');
 
   // Plot Threads modal state
   const [showPlotModal, setShowPlotModal] = useState(false);
@@ -274,6 +275,12 @@ export default function OutlineBoard() {
       setViewMode('list');
     }
   }, [isMobileLayout]);
+
+  useEffect(() => {
+    if (!chapterNotice) return undefined;
+    const timer = window.setTimeout(() => setChapterNotice(''), 2600);
+    return () => window.clearTimeout(timer);
+  }, [chapterNotice]);
 
   // Group chapters by act (arc_id)
   const chaptersByAct = useMemo(() => {
@@ -328,8 +335,14 @@ export default function OutlineBoard() {
     navigate(`/project/${currentProject.id}/editor`);
   };
 
+  const handleCreateManualChapter = async (chapterData) => {
+    const result = await createChapter(undefined, undefined, chapterData);
+    if (result) setChapterNotice('Đã thêm chương mới và Cảnh 1.');
+    return result;
+  };
+
   const addChapterToAct = async (act) => {
-    await createChapter(undefined, undefined, { arc_id: act });
+    await handleCreateManualChapter({ arc_id: act });
   };
 
   // AI Generate Outline
@@ -484,7 +497,7 @@ export default function OutlineBoard() {
   const handleClearAllOutlineMetadata = async () => {
     if (!chapters.length) return;
     const ok = window.confirm(
-      'Xóa dàn ý AI của toàn bộ chương? Nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.',
+      'Xóa toàn bộ dàn ý AI của tất cả chương? Nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.',
     );
     if (!ok) return;
 
@@ -498,6 +511,27 @@ export default function OutlineBoard() {
     } catch (err) {
       console.error('[OutlineBoard] Clear outline metadata failed:', err);
       setGenError(toVietnameseErrorMessage(err, 'Không xóa được dàn ý AI.'));
+    }
+  };
+
+  const handleClearChapterOutlineMetadata = async (chapter) => {
+    if (!chapter?.id) return;
+    const ok = window.confirm(
+      `Xóa dàn ý AI của "${chapter.title}"? Nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.`,
+    );
+    if (!ok) return;
+
+    setOutlineAnalysisPreview(null);
+    setGenError(null);
+    const patch = buildClearOutlinePatch();
+    try {
+      await updateChapter(chapter.id, patch);
+      setSelectedChapter((current) => (
+        current?.id === chapter.id ? { ...current, ...patch } : current
+      ));
+    } catch (err) {
+      console.error('[OutlineBoard] Clear chapter outline metadata failed:', err);
+      setGenError(toVietnameseErrorMessage(err, 'Không xóa được dàn ý AI của chương này.'));
     }
   };
 
@@ -779,6 +813,14 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
           <button className="btn btn-ghost btn-sm" onClick={() => goToEditor(chapter.id)} title="Mở editor">
             <PenTool size={12} /> Viết
           </button>
+          <button
+            className="btn btn-ghost btn-sm outline-card-clear"
+            aria-label={`Xóa dàn ý AI của ${chapter.title}`}
+            title="Xóa dàn ý AI của riêng chương này"
+            onClick={() => handleClearChapterOutlineMetadata(chapter)}
+          >
+            <Trash2 size={12} /> Xóa dàn ý
+          </button>
         </div>
       </div>
     );
@@ -824,7 +866,7 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
           <div className="outline-action-group">
             <button
               className="btn btn-accent btn-sm"
-              style={{ backgroundImage: 'linear-gradient(135deg, var(--color-primary), var(--color-accent))', color: '#fff' }}
+              style={{ backgroundImage: 'linear-gradient(135deg, var(--color-accent-hover), var(--color-accent))', color: '#fff' }}
               onClick={() => setShowArcGen(true)}
             >
               <Sparkles size={14} /> Tạo chương tự động
@@ -841,20 +883,28 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
 
             {chapters.length > 0 && (
               <button
-                className="btn btn-ghost btn-sm outline-clear-btn"
+                className="btn btn-ghost btn-sm outline-clear-btn outline-clear-all-btn"
                 onClick={handleClearAllOutlineMetadata}
                 disabled={isGenerating || isApplyingAnalysis}
+                title="Xóa metadata dàn ý AI của tất cả chương, không xóa nội dung đã viết"
               >
-                <Trash2 size={14} /> Xóa dàn ý AI
+                <Trash2 size={14} /> Xóa toàn bộ dàn ý AI
               </button>
             )}
           </div>
 
-          <button className="btn btn-primary btn-sm" onClick={() => createChapter()}>
+          <button className="btn btn-primary btn-sm" onClick={() => handleCreateManualChapter()}>
             <Plus size={15} /> Thêm chương
           </button>
         </div>
       </div>
+
+      {chapterNotice && (
+        <div className="outline-action-notice" role="status" aria-live="polite">
+          <CheckCircle2 size={14} />
+          {chapterNotice}
+        </div>
+      )}
 
       {isMobileLayout && (
         <div className="outline-mobile-tabs">
@@ -907,11 +957,11 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
               <div className="outline-mobile-auto-card">
                 <Trash2 size={22} />
                 <div>
-                  <h3>Xóa dàn ý AI</h3>
+                  <h3>Xóa toàn bộ dàn ý AI</h3>
                   <p>Gỡ metadata dàn ý sai, giữ nguyên tiêu đề, cảnh, nội dung đã viết và trạng thái.</p>
                 </div>
                 <button className="btn btn-ghost" onClick={handleClearAllOutlineMetadata} disabled={isGenerating || isApplyingAnalysis}>
-                  Xóa
+                  Xóa toàn bộ
                 </button>
               </div>
             )}
@@ -938,45 +988,48 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
                   {isGenerating ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
                   AI tạo outline
                 </button>
-                <button className="btn btn-primary" onClick={() => createChapter()}>
+                <button className="btn btn-primary" onClick={() => handleCreateManualChapter()}>
                   <Plus size={16} /> Thêm chương
                 </button>
               </div>
             </div>
           ) : viewMode === 'board' ? (
-            <div className="outline-lanes">
-              {ACTS.map(act => (
-                <div key={act.id} className="outline-lane">
-                  <div className="outline-lane-header" style={{ borderColor: act.color }}>
-                    <div>
-                      <h3 className="outline-lane-title" style={{ color: act.color }}>{act.label}</h3>
-                      <span className="outline-lane-desc">{act.desc}</span>
-                    </div>
-                    <span className="outline-lane-percent">{act.percent}</span>
-                  </div>
-
-                  <div className="outline-lane-body">
-                    {chaptersByAct[act.id].map(renderChapterCard)}
-                    <button className="outline-add-card" onClick={() => addChapterToAct(act.id)}>
-                      <Plus size={14} /> Thêm vào {act.label.split('—')[0].trim()}
-                    </button>
-                  </div>
-                </div>
-              ))}
-
+            <div className="outline-board-view">
               {chaptersByAct.unassigned.length > 0 && (
-                <div className="outline-lane outline-lane--unassigned">
-                  <div className="outline-lane-header">
+                <section className="outline-unassigned-strip" aria-label="Chương chưa gán hồi">
+                  <div className="outline-unassigned-head">
                     <div>
-                      <h3 className="outline-lane-title">Chưa gán hồi</h3>
-                      <span className="outline-lane-desc">Click vào chương → chọn hồi</span>
+                      <h3>Chưa gán hồi</h3>
+                      <p>Bấm vào chương để chọn hồi hoặc chỉnh thông tin dàn ý.</p>
                     </div>
+                    <span>{chaptersByAct.unassigned.length} chương</span>
                   </div>
-                  <div className="outline-lane-body">
+                  <div className="outline-unassigned-list">
                     {chaptersByAct.unassigned.map(renderChapterCard)}
                   </div>
-                </div>
+                </section>
               )}
+
+              <div className="outline-lanes">
+                {ACTS.map(act => (
+                  <div key={act.id} className="outline-lane">
+                    <div className="outline-lane-header" style={{ borderColor: act.color }}>
+                      <div>
+                        <h3 className="outline-lane-title" style={{ color: act.color }}>{act.label}</h3>
+                        <span className="outline-lane-desc">{act.desc}</span>
+                      </div>
+                      <span className="outline-lane-percent">{act.percent}</span>
+                    </div>
+
+                    <div className="outline-lane-body">
+                      {chaptersByAct[act.id].map(renderChapterCard)}
+                      <button className="outline-add-card" onClick={() => addChapterToAct(act.id)}>
+                        <Plus size={14} /> Thêm vào {act.label.split('—')[0].trim()}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="outline-list">
@@ -985,7 +1038,11 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
                 return (
                   <div key={chapter.id} className="outline-list-item" onClick={() => setSelectedChapter(chapter)}>
                     <span className="outline-list-index">{idx + 1}</span>
-                    {act && <span className="outline-list-act" style={{ color: act.color }}>H{act.id}</span>}
+                    {act ? (
+                      <span className="outline-list-act" style={{ color: act.color }}>H{act.id}</span>
+                    ) : (
+                      <span className="outline-list-act outline-list-act--empty">Chưa</span>
+                    )}
                     <div className="outline-list-content">
                       <strong>{chapter.title}</strong>
                       {chapter.purpose && <span className="outline-list-purpose"> — {chapter.purpose}</span>}
@@ -993,6 +1050,17 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
                     <span className="outline-list-scenes">{sceneCountMap[chapter.id]} cảnh</span>
                     <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); goToEditor(chapter.id); }}>
                       <PenTool size={12} />
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm outline-list-clear"
+                      aria-label={`Xóa dàn ý AI của ${chapter.title}`}
+                      title="Xóa dàn ý AI của riêng chương này"
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleClearChapterOutlineMetadata(chapter);
+                      }}
+                    >
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 );

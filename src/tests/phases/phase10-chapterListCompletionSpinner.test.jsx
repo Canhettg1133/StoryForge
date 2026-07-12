@@ -107,6 +107,26 @@ describe('phase10 chapter list completion spinner', () => {
     expect(container.querySelector('.chapter-loading-icon')).toBeNull();
   });
 
+  it('shows a visible notice after adding a chapter from the writing sidebar', async () => {
+    const ChapterList = await loadChapterList();
+    const createChapter = vi.fn(async () => ({ chapterId: 7, sceneId: 71 }));
+
+    mockedProjectStoreState = buildStoreState({ createChapter });
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<ChapterList />);
+    });
+
+    await act(async () => {
+      container.querySelector('button[title="Thêm chương"]').click();
+      await Promise.resolve();
+    });
+
+    expect(createChapter).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain('Đã thêm chương mới và Cảnh 1.');
+  });
+
   it('does not style the desktop completion action as success state', async () => {
     const ChapterList = await loadChapterList();
 
