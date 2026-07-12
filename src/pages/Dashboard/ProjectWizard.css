@@ -676,18 +676,264 @@
   border-top: 1px dashed var(--color-border);
 }
 
-.wizard-inherit-summary {
+.wizard-inherit-stats {
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
   align-items: center;
   gap: 6px;
   min-height: 36px;
-  padding-top: 22px;
+  padding-top: 20px;
 }
 
-.wizard-inherit-note {
-  margin-top: 0;
+.wizard-inherit-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.wizard-inherit-stat svg {
+  flex: 0 0 auto;
+}
+
+.wizard-inherit-stat--safe {
+  border-color: color-mix(in srgb, var(--color-success, #22c55e) 32%, var(--color-border));
+  color: var(--color-success, #22c55e);
+}
+
+.wizard-inherit-stat--selected {
+  border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
+  color: var(--color-accent);
+}
+
+.wizard-inherit-stat--blocked {
+  border-color: color-mix(in srgb, var(--color-danger, #ef4444) 28%, var(--color-border));
+  color: var(--color-danger, #ef4444);
+}
+
+.wizard-inherit-stat--manual {
+  border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 32%, var(--color-border));
+  color: color-mix(in srgb, var(--color-warning, #f59e0b) 82%, var(--color-text));
+}
+
+.wizard-inherit-empty,
+.wizard-inherit-fixed-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.wizard-inherit-empty {
+  display: block;
+}
+
+.wizard-inherit-fixed-note svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--color-accent);
+}
+
+.wizard-inherit-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wizard-inherit-preview-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wizard-inherit-preview-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text);
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.wizard-inherit-preview-title svg {
+  color: var(--color-accent);
+}
+
+.wizard-inherit-preview-section p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.wizard-inherit-groups {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wizard-inherit-group-card {
+  border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-2) 72%, transparent);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow: hidden;
+}
+
+.wizard-inherit-group-card--checked {
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 9%, var(--color-surface-2));
+}
+
+.wizard-inherit-group-card--removed {
+  opacity: 0.82;
+}
+
+.wizard-inherit-group-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 9px;
+}
+
+.wizard-inherit-group-check {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.wizard-inherit-group-check input {
+  width: 15px;
+  height: 15px;
+  margin: 2px 0 0;
+  accent-color: var(--color-accent);
+}
+
+.wizard-inherit-group-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wizard-inherit-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wizard-inherit-group-head strong {
+  color: var(--color-text);
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.wizard-inherit-risk {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-1);
+  color: var(--color-text-secondary);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.wizard-inherit-risk--low,
+.wizard-inherit-risk--technical {
+  border-color: color-mix(in srgb, var(--color-success, #22c55e) 26%, var(--color-border));
+  color: var(--color-success, #22c55e);
+}
+
+.wizard-inherit-risk--style,
+.wizard-inherit-risk--strong {
+  border-color: color-mix(in srgb, var(--color-warning, #f59e0b) 34%, var(--color-border));
+  color: color-mix(in srgb, var(--color-warning, #f59e0b) 86%, var(--color-text));
+}
+
+.wizard-inherit-risk--structure,
+.wizard-inherit-risk--sensitive,
+.wizard-inherit-risk--unknown {
+  border-color: color-mix(in srgb, var(--color-danger, #ef4444) 30%, var(--color-border));
+  color: var(--color-danger, #ef4444);
+}
+
+.wizard-inherit-group-meta,
+.wizard-inherit-group-preview {
+  min-width: 0;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.wizard-inherit-group-meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.wizard-inherit-group-copy em {
+  color: var(--color-text-muted);
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
+.wizard-inherit-group-action {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+}
+
+.wizard-inherit-details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.wizard-inherit-details summary {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  cursor: pointer;
+  color: var(--color-accent);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.wizard-inherit-details[open] {
+  gap: var(--space-3);
+}
+
+.wizard-inherit-details[open] summary {
+  margin-bottom: var(--space-2);
 }
 
 .wizard-ai-revision-box {
@@ -865,8 +1111,20 @@
     text-align: center;
   }
 
-  .wizard-inherit-summary {
+  .wizard-inherit-stats {
     padding-top: 0;
+  }
+
+  .wizard-inherit-group-main {
+    grid-template-columns: minmax(0, 1fr) 30px;
+  }
+
+  .wizard-inherit-group-head {
+    align-items: flex-start;
+  }
+
+  .wizard-inherit-risk {
+    max-width: 100%;
   }
 
   .wizard-ai-revision-actions {

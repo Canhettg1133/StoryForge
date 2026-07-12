@@ -22,6 +22,7 @@ import usePlotStore from '../../stores/plotStore';
 import db from '../../services/db/database';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
+import { PROJECT_PROMPT_GROUPS } from '../../services/ai/promptManagerMeta';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import { parseAIJsonValue, isPlainObject } from '../../utils/aiJson';
 import {
@@ -104,7 +105,150 @@ const PROPOSAL_GROUPS = [
   { key: 'plot_threads', label: 'Tuyến truyện', icon: GitPullRequest, nameField: 'title' },
 ];
 
-const PROMPT_CORE_KEYS = new Set(['constitution', 'style_dna', 'anti_ai_blacklist']);
+const PROMPT_INHERITANCE_LABELS = {
+  prompt_profile_version: 'Phiên bản prompt',
+  ai_guidelines: 'Chỉ dẫn AI',
+  constitution: 'Luật cốt lõi',
+  style_dna: 'DNA văn phong',
+  anti_ai_blacklist: 'Từ/cụm cần tránh',
+  [TASK_TYPES.FREE_PROMPT]: 'Lệnh tự do',
+  [TASK_TYPES.CONTINUE]: 'Viết tiếp',
+  [TASK_TYPES.SCENE_DRAFT]: 'Viết nháp cảnh',
+  [TASK_TYPES.ARC_CHAPTER_DRAFT]: 'Viết chương theo arc',
+  [TASK_TYPES.OUTLINE]: 'Dàn ý chương',
+  [TASK_TYPES.ARC_OUTLINE]: 'Dàn ý arc',
+  [TASK_TYPES.QA_CHECK]: 'Kiểm tra chất lượng',
+  [TASK_TYPES.CONTINUITY_CHECK]: 'Kiểm tra continuity',
+  [TASK_TYPES.CHECK_CONFLICT]: 'Kiểm tra mâu thuẫn',
+  [TASK_TYPES.CANON_REPAIR]: 'Sửa canon',
+  [TASK_TYPES.CANON_EXTRACT_OPS]: 'Trích xuất canon',
+  [TASK_TYPES.SUGGEST_UPDATES]: 'Đề xuất cập nhật codex',
+  nsfw_system_prompt: 'Luật nền NSFW',
+  nsfw_rules: 'Luật bổ sung NSFW',
+  nsfw_intimate_prompt: 'Tăng cường cảnh thân mật',
+};
+const PROMPT_GENRE_STYLE_SIGNALS = [
+  { match: 'tien hiep', label: 'tiên hiệp' },
+  { match: 'tu tien', label: 'tu tiên' },
+  { match: 'tu chan', label: 'tu chân' },
+  { match: 'tu luyen', label: 'tu luyện' },
+  { match: 'canh gioi', label: 'cảnh giới' },
+  { match: 'linh khi', label: 'linh khí' },
+  { match: 'linh luc', label: 'linh lực' },
+  { match: 'linh thach', label: 'linh thạch' },
+  { match: 'phap bao', label: 'pháp bảo' },
+  { match: 'dan duoc', label: 'đan dược' },
+  { match: 'han viet', label: 'Hán-Việt' },
+  { match: 'co phong', label: 'cổ phong' },
+  { match: 'giao phong', label: 'giao phong' },
+  { match: 'giang ho', label: 'giang hồ' },
+  { match: 'cung dau', label: 'cung đấu' },
+  { match: 'ma phap', label: 'ma pháp' },
+  { match: 'he thong', label: 'hệ thống' },
+  { match: 'lit rpg', label: 'LitRPG' },
+  { match: 'isekai', label: 'isekai' },
+  { match: 'xuyen khong', label: 'xuyên không' },
+  { match: 'trong sinh', label: 'trọng sinh' },
+  { match: 'kiem hiep', label: 'kiếm hiệp' },
+  { match: 'vo hiep', label: 'võ hiệp' },
+  { match: 'do thi', label: 'đô thị' },
+  { match: 'mat the', label: 'mạt thế' },
+  { match: 'fantasy', label: 'fantasy' },
+  { match: 'romance', label: 'romance' },
+  { match: 'dark fantasy', label: 'dark fantasy' },
+  { match: 'su phu', label: 'sư phụ' },
+];
+const PROMPT_HARD_LOCK_SIGNALS = [
+  { match: 'canon', label: 'canon' },
+  { match: 'lore', label: 'lore' },
+  { match: 'outline', label: 'outline' },
+  { match: 'arc', label: 'arc' },
+  { match: 'chapter', label: 'chapter' },
+  { match: 'chuong', label: 'chương' },
+  { match: 'pov khoa', label: 'POV khóa cứng' },
+  { match: 'target length', label: 'độ dài khóa cứng' },
+  { match: 'do dai', label: 'độ dài khóa cứng' },
+  { match: 'nsfw', label: 'NSFW' },
+  { match: 'continuity', label: 'continuity' },
+  { match: 'memory', label: 'memory' },
+  { match: 'retcon', label: 'retcon' },
+  { match: 'ten rieng', label: 'tên riêng' },
+  { match: 'dia danh rieng', label: 'địa danh riêng' },
+  { match: 'nhan vat cu', label: 'nhân vật cũ' },
+  { match: 'truyen cu', label: 'truyện cũ' },
+  { match: 'quan he nhan vat', label: 'quan hệ nhân vật' },
+  { match: 'luat the gioi', label: 'luật thế giới' },
+  { match: 'world rule', label: 'luật thế giới' },
+  { match: 'huyet mach', label: 'huyết mạch' },
+  { match: 'tong mon cu', label: 'tông môn cũ' },
+  { match: 'vuong quoc cu', label: 'vương quốc cũ' },
+];
+const PROMPT_INHERITANCE_SAFE_PROPER_PHRASES = new Set(['ai', 'pov', 'style dna', 'ai guidelines', 'han viet', 'nsfw']);
+const PROMPT_STRUCTURE_RISK_KEYS = new Set([
+  'constitution',
+  TASK_TYPES.OUTLINE,
+  TASK_TYPES.ARC_OUTLINE,
+  TASK_TYPES.CONTINUITY_CHECK,
+  TASK_TYPES.CHECK_CONFLICT,
+  TASK_TYPES.CANON_REPAIR,
+  TASK_TYPES.CANON_EXTRACT_OPS,
+  TASK_TYPES.SUGGEST_UPDATES,
+  TASK_TYPES.CHAPTER_SUMMARY,
+  TASK_TYPES.FEEDBACK_EXTRACT,
+  TASK_TYPES.RELATIONSHIP_ANALYZE_BATCH,
+  TASK_TYPES.GENERATE_MACRO_MILESTONES,
+  TASK_TYPES.ANALYZE_MACRO_CONTRACT,
+  TASK_TYPES.AUDIT_ARC_ALIGNMENT,
+]);
+const PROMPT_STRONG_WRITING_RISK_KEYS = new Set([
+  'ai_guidelines',
+  TASK_TYPES.FREE_PROMPT,
+  TASK_TYPES.CONTINUE,
+  TASK_TYPES.SCENE_DRAFT,
+  TASK_TYPES.ARC_CHAPTER_DRAFT,
+  TASK_TYPES.QA_CHECK,
+  TASK_TYPES.REWRITE,
+  TASK_TYPES.EXPAND,
+  TASK_TYPES.STYLE_WRITE,
+]);
+const PROMPT_SENSITIVE_RISK_KEYS = new Set([
+  'nsfw_system_prompt',
+  'nsfw_rules',
+  'nsfw_intimate_prompt',
+]);
+const PROMPT_RISK_META = {
+  low: { label: 'Ít rủi ro', high: false },
+  technical: { label: 'Thiết lập kỹ thuật', high: false },
+  style: { label: 'Ảnh hưởng văn phong/thể loại', high: true },
+  structure: { label: 'Ảnh hưởng cấu trúc/canon', high: true },
+  strong: { label: 'Prompt mạnh khi viết', high: true },
+  sensitive: { label: 'Nội dung nhạy cảm', high: true },
+  unknown: { label: 'Prompt lạ/custom', high: true },
+};
+const PROMPT_INHERITANCE_META_BY_KEY = (() => {
+  const map = new Map();
+  map.set('prompt_profile_version', {
+    key: 'prompt_profile_version',
+    label: 'Phiên bản prompt',
+    type: 'text',
+    promptGroupKey: 'technical',
+    promptGroupTitle: 'Thiết lập kỹ thuật',
+    order: -20,
+  });
+  let order = 0;
+  PROJECT_PROMPT_GROUPS.forEach((group) => {
+    group.items.forEach((item) => {
+      map.set(item.key, {
+        ...item,
+        promptGroupKey: group.key,
+        promptGroupTitle: group.title,
+        order,
+      });
+      order += 1;
+    });
+  });
+  return map;
+})();
 const REVISION_QUICK_ACTIONS = {
   seed: [
     { label: 'Ít nhân vật hơn', prompt: 'Giảm số nhân vật, chỉ giữ các nhân vật thật sự xuất hiện và tạo lực trong phần mở đầu.' },
@@ -236,75 +380,257 @@ function hasPromptOverrideValue(value) {
   return typeof value === 'string' ? Boolean(value.trim()) : value != null;
 }
 
-function summarizeInheritedPrompt(project) {
-  if (!project) {
-    return {
-      templates: {},
-      constitutionCount: 0,
-      styleCount: 0,
-      blacklistCount: 0,
-      overrideCount: 0,
-      hasAiGuidelines: false,
-    };
-  }
-  const templates = parsePromptTemplates(project.prompt_templates);
-  return {
-    templates,
-    constitutionCount: listFromPromptTemplate(templates.constitution).length,
-    styleCount: listFromPromptTemplate(templates.style_dna).length,
-    blacklistCount: listFromPromptTemplate(templates.anti_ai_blacklist).length,
-    overrideCount: Object.entries(templates)
-      .filter(([key, value]) => !PROMPT_CORE_KEYS.has(key) && hasPromptOverrideValue(value))
-      .length,
-    hasAiGuidelines: Boolean(String(project.ai_guidelines || '').trim()),
-  };
-}
-
-function formatPromptCount(count, label) {
-  return `${Number(count) || 0} ${label}`;
-}
-
 function clipPromptLine(value, maxLength = 900) {
   const text = String(value || '').trim();
   if (!text) return '';
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
 }
 
-function buildPromptListSection(title, items = []) {
-  const cleanItems = listFromPromptTemplate(items);
-  if (cleanItems.length === 0) return '';
-  return `${title}:\n${cleanItems.map((item, index) => `${index + 1}. ${item}`).join('\n')}`;
+function normalizePromptSafetyText(value = '') {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[Đđ]/g, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
-function buildInheritedPromptBlock(project) {
-  if (!project) return '';
-  const summary = summarizeInheritedPrompt(project);
-  const overrideLines = Object.entries(summary.templates)
-    .filter(([key, value]) => !PROMPT_CORE_KEYS.has(key) && hasPromptOverrideValue(value))
-    .slice(0, 8)
-    .map(([key, value]) => {
-      const normalized = Array.isArray(value) ? value.join('\n') : value;
-      return `- ${key}: ${clipPromptLine(normalized, 700)}`;
-    });
-  const parts = [
-    '[PROMPT TRUYỆN KẾ THỪA]',
-    `Nguồn: ${project.title || 'Truyện cũ'}`,
-    'Chỉ dùng các mục dưới đây như luật prompt, giọng văn và ràng buộc phong cách. Không copy Bible/canon, nhân vật, địa danh, lore hoặc sự kiện của truyện nguồn trừ khi ý tưởng truyện mới yêu cầu rõ.',
-    project.ai_guidelines ? `AI guidelines:\n${clipPromptLine(project.ai_guidelines, 900)}` : '',
-    buildPromptListSection('Luật cốt lõi', summary.templates.constitution),
-    buildPromptListSection('Style DNA', summary.templates.style_dna),
-    buildPromptListSection('Anti AI blacklist', summary.templates.anti_ai_blacklist),
-    overrideLines.length ? `Prompt override liên quan:\n${overrideLines.join('\n')}` : '',
-  ].filter(Boolean);
-  return parts.join('\n\n');
+function hasProperNameRisk(value = '') {
+  const matches = String(value || '').match(/\b[A-ZÀ-Ỵ][\p{L}]+(?:\s+[A-ZÀ-Ỵ][\p{L}]+)+/gu) || [];
+  return matches.some((match) => !PROMPT_INHERITANCE_SAFE_PROPER_PHRASES.has(normalizePromptSafetyText(match)));
 }
 
-function buildInheritedProjectPromptPayload(project) {
+function findPromptSignals(normalizedText, signals = []) {
+  return signals.filter((signal) => normalizedText.includes(signal.match));
+}
+
+function formatPromptSignalLabels(signals = [], limit = 3) {
+  return signals.slice(0, limit).map((signal) => signal.label).join(', ');
+}
+
+function getPromptInheritanceMeta(key) {
+  return PROMPT_INHERITANCE_META_BY_KEY.get(key) || {
+    key,
+    label: PROMPT_INHERITANCE_LABELS[key] || key,
+    type: 'text',
+    promptGroupKey: 'custom',
+    promptGroupTitle: 'Prompt tùy chỉnh',
+    order: 10000,
+  };
+}
+
+function promptInheritanceLabel(key) {
+  return PROMPT_INHERITANCE_LABELS[key] || getPromptInheritanceMeta(key).label || key;
+}
+
+function promptTemplateValueToText(value) {
+  if (Array.isArray(value)) return listFromPromptTemplate(value).join('\n');
+  if (typeof value === 'string') return value.trim();
+  if (value == null) return '';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value || '').trim();
+    }
+  }
+  return String(value || '').trim();
+}
+
+function normalizePromptGroupPayloadValue(value) {
+  if (Array.isArray(value)) return listFromPromptTemplate(value);
+  if (typeof value === 'string') return value.trim();
+  if (value && typeof value === 'object') return value;
+  return String(value || '').trim();
+}
+
+function classifyInheritedPromptGroup(key, value, meta = getPromptInheritanceMeta(key)) {
+  const text = promptTemplateValueToText(value);
+  const normalized = normalizePromptSafetyText(text);
+  const hardSignals = findPromptSignals(normalized, PROMPT_HARD_LOCK_SIGNALS);
+  const genreSignals = findPromptSignals(normalized, PROMPT_GENRE_STYLE_SIGNALS);
+
+  if (key === 'prompt_profile_version') {
+    return {
+      id: 'technical',
+      reason: 'Thiết lập kỹ thuật của prompt builder; chỉ copy nếu muốn project mới dùng cùng profile với truyện nguồn.',
+    };
+  }
+
+  if (PROMPT_SENSITIVE_RISK_KEYS.has(key) || meta.promptGroupKey === 'nsfw') {
+    return {
+      id: 'sensitive',
+      reason: 'Liên quan NSFW/ENI hoặc cảnh thân mật; chỉ copy nếu truyện mới thật sự dùng cùng chế độ và cùng gu xử lý.',
+    };
+  }
+
+  if (PROMPT_STRUCTURE_RISK_KEYS.has(key) || ['planning', 'canon-memory'].includes(meta.promptGroupKey)) {
+    return {
+      id: 'structure',
+      reason: 'Có thể kéo theo cấu trúc chương, canon, memory hoặc luật truyện cũ. Có thể chọn nếu Anh Đạt thật sự muốn dùng nguyên cụm.',
+    };
+  }
+
+  if (PROMPT_STRONG_WRITING_RISK_KEYS.has(key) || ['writing', 'refine'].includes(meta.promptGroupKey)) {
+    return {
+      id: 'strong',
+      reason: 'Prompt tác động trực tiếp khi viết/chỉnh truyện; copy nguyên cụm có thể đổi mạnh cách AI trả lời.',
+    };
+  }
+
+  if (key === 'style_dna') {
+    const hasNameRisk = hasProperNameRisk(text);
+    const hasLoreRisk = hardSignals.length > 0 || hasNameRisk;
+    if (hasLoreRisk) {
+      const loreLabels = [
+        ...hardSignals.map((signal) => signal.label),
+        ...(hasNameRisk ? ['tên riêng'] : []),
+      ];
+      return {
+        id: 'structure',
+        reason: `DNA này có dấu hiệu canon/tên riêng/cấu trúc truyện cũ: ${loreLabels.slice(0, 3).join(', ')}. Vẫn có thể chọn nếu Anh Đạt muốn copy nguyên cụm, nhưng nó có thể kéo lore cũ sang project mới.`,
+      };
+    }
+    const signalText = genreSignals.length > 0
+      ? ` Dấu hiệu thấy được: ${formatPromptSignalLabels(genreSignals)}.`
+      : '';
+    return {
+      id: 'style',
+      reason: `Đây là DNA văn phong/thể loại của truyện nguồn.${signalText} Copy nguyên cụm sẽ thay DNA mặc định của thể loại mới.`,
+    };
+  }
+
+  if (key === 'anti_ai_blacklist') {
+    if (hardSignals.length > 0 || hasProperNameRisk(text)) {
+      return {
+        id: 'structure',
+        reason: `Blacklist có dấu hiệu canon/tên riêng/cấu trúc truyện cũ${hardSignals.length > 0 ? `: ${formatPromptSignalLabels(hardSignals)}.` : '.'}`,
+      };
+    }
+    if (genreSignals.length > 0) {
+      return {
+        id: 'style',
+        reason: `Blacklist có màu thể loại: ${formatPromptSignalLabels(genreSignals)}. Chỉ copy nếu hợp truyện mới.`,
+      };
+    }
+    return {
+      id: 'low',
+      reason: 'Chủ yếu là danh sách từ/cụm chung cần tránh. Vẫn chỉ copy khi được chọn.',
+    };
+  }
+
+  if (meta.promptGroupKey === 'custom') {
+    return {
+      id: 'unknown',
+      reason: 'Prompt lạ hoặc chưa có metadata trong Prompt Manager; cần đọc kỹ trước khi copy.',
+    };
+  }
+
+  return {
+    id: 'low',
+    reason: 'Không thấy dấu hiệu rủi ro rõ trong metadata; vẫn chỉ copy khi được chọn.',
+  };
+}
+
+function buildInheritancePromptGroup(key, value, source = 'prompt_templates') {
+  if (!hasPromptOverrideValue(value)) return null;
+  const text = promptTemplateValueToText(value);
+  if (!text) return null;
+  const meta = getPromptInheritanceMeta(key);
+  const risk = classifyInheritedPromptGroup(key, value, meta);
+  const riskMeta = PROMPT_RISK_META[risk.id] || PROMPT_RISK_META.unknown;
+
+  return {
+    id: `prompt-group:${key}`,
+    key,
+    label: promptInheritanceLabel(key),
+    type: meta.type || (Array.isArray(value) ? 'list' : 'text'),
+    source,
+    promptGroupTitle: meta.promptGroupTitle || 'Prompt tùy chỉnh',
+    order: Number.isFinite(meta.order) ? meta.order : 10000,
+    value: normalizePromptGroupPayloadValue(value),
+    preview: clipPromptLine(text, 520),
+    fullText: text,
+    riskId: risk.id,
+    riskLabel: riskMeta.label,
+    riskHigh: riskMeta.high,
+    reason: risk.reason,
+  };
+}
+
+function sortInheritancePromptGroups(groups = []) {
+  return [...groups].sort((left, right) => {
+    const orderDiff = (left.order || 0) - (right.order || 0);
+    if (orderDiff !== 0) return orderDiff;
+    return String(left.label || left.key).localeCompare(String(right.label || right.key), 'vi');
+  });
+}
+
+function buildSafePromptInheritanceDetails(project) {
+  if (!project) return { availableGroups: [] };
+
+  const templates = parsePromptTemplates(project.prompt_templates);
+  const groups = [];
+
+  const profileGroup = buildInheritancePromptGroup('prompt_profile_version', project.prompt_profile_version, 'project_field');
+  if (profileGroup) groups.push(profileGroup);
+
+  const aiGuidelinesGroup = buildInheritancePromptGroup('ai_guidelines', project.ai_guidelines, 'project_field');
+  if (aiGuidelinesGroup) groups.push(aiGuidelinesGroup);
+
+  Object.entries(templates).forEach(([key, value]) => {
+    if (key === 'ai_guidelines') return;
+    const group = buildInheritancePromptGroup(key, value, 'prompt_templates');
+    if (group) groups.push(group);
+  });
+
+  return { availableGroups: sortInheritancePromptGroups(groups) };
+}
+
+function isPromptGroupKeySelected(selectedGroupKeys, key) {
+  if (!key || !selectedGroupKeys) return false;
+  if (selectedGroupKeys instanceof Set) return selectedGroupKeys.has(key);
+  if (Array.isArray(selectedGroupKeys)) return selectedGroupKeys.includes(key);
+  return false;
+}
+
+function isPromptGroupKeyRemoved(removedGroupKeys, key) {
+  if (!key || !removedGroupKeys) return false;
+  if (removedGroupKeys instanceof Set) return removedGroupKeys.has(key);
+  if (Array.isArray(removedGroupKeys)) return removedGroupKeys.includes(key);
+  return false;
+}
+
+function buildSafePromptInheritancePayload(project, options = {}) {
   if (!project) return {};
+  const {
+    selectedGroupKeys = new Set(),
+    removedGroupKeys = new Set(),
+  } = options;
+  const details = buildSafePromptInheritanceDetails(project);
   const payload = {};
-  if (project.prompt_templates) payload.prompt_templates = project.prompt_templates;
-  if (typeof project.ai_guidelines === 'string') payload.ai_guidelines = project.ai_guidelines;
-  if (project.prompt_profile_version) payload.prompt_profile_version = project.prompt_profile_version;
+  const inheritedTemplates = {};
+
+  (details.availableGroups || []).forEach((group) => {
+    if (!isPromptGroupKeySelected(selectedGroupKeys, group.key)) return;
+    if (isPromptGroupKeyRemoved(removedGroupKeys, group.key)) return;
+
+    if (group.key === 'prompt_profile_version') {
+      payload.prompt_profile_version = String(group.value || '').trim();
+      return;
+    }
+    if (group.key === 'ai_guidelines') {
+      payload.ai_guidelines = String(group.value || '').trim();
+      return;
+    }
+    inheritedTemplates[group.key] = group.value;
+  });
+
+  if (Object.keys(inheritedTemplates).length > 0) {
+    payload.prompt_templates = JSON.stringify(inheritedTemplates);
+  }
   return payload;
 }
 
@@ -528,6 +854,8 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [autoGenerateOutline, setAutoGenerateOutline] = useState(false);
   const [inheritPromptEnabled, setInheritPromptEnabled] = useState(false);
   const [inheritedPromptProjectId, setInheritedPromptProjectId] = useState('');
+  const [selectedInheritedPromptGroupKeys, setSelectedInheritedPromptGroupKeys] = useState(new Set());
+  const [removedInheritedPromptGroupKeys, setRemovedInheritedPromptGroupKeys] = useState(new Set());
   const [seedRevisionPrompt, setSeedRevisionPrompt] = useState('');
   const [outlineRevisionPrompt, setOutlineRevisionPrompt] = useState('');
 
@@ -548,21 +876,36 @@ export default function ProjectWizard({ onClose, onCreated }) {
     [projects],
   );
   const selectedInheritedPromptProject = useMemo(() => {
-    if (!inheritPromptEnabled) return null;
+    if (!inheritPromptEnabled || !inheritedPromptProjectId) return null;
     const selected = availablePromptProjects.find((project) => String(project.id) === String(inheritedPromptProjectId));
-    return selected || availablePromptProjects[0] || null;
+    return selected || null;
   }, [availablePromptProjects, inheritPromptEnabled, inheritedPromptProjectId]);
-  const inheritedPromptSummary = useMemo(
-    () => summarizeInheritedPrompt(selectedInheritedPromptProject),
+  const safePromptInheritance = useMemo(
+    () => buildSafePromptInheritanceDetails(selectedInheritedPromptProject),
     [selectedInheritedPromptProject],
   );
-  const inheritedPromptBlock = useMemo(
-    () => buildInheritedPromptBlock(selectedInheritedPromptProject),
-    [selectedInheritedPromptProject],
+  const availableInheritedPromptGroups = safePromptInheritance.availableGroups || [];
+  const visibleInheritedPromptGroups = useMemo(
+    () => availableInheritedPromptGroups.filter((group) => !removedInheritedPromptGroupKeys.has(group.key)),
+    [availableInheritedPromptGroups, removedInheritedPromptGroupKeys],
+  );
+  const removedInheritedPromptGroups = useMemo(
+    () => availableInheritedPromptGroups.filter((group) => removedInheritedPromptGroupKeys.has(group.key)),
+    [availableInheritedPromptGroups, removedInheritedPromptGroupKeys],
+  );
+  const selectedInheritedPromptGroups = useMemo(
+    () => availableInheritedPromptGroups.filter((group) => (
+      selectedInheritedPromptGroupKeys.has(group.key)
+      && !removedInheritedPromptGroupKeys.has(group.key)
+    )),
+    [availableInheritedPromptGroups, removedInheritedPromptGroupKeys, selectedInheritedPromptGroupKeys],
   );
   const inheritedProjectPromptPayload = useMemo(
-    () => buildInheritedProjectPromptPayload(selectedInheritedPromptProject),
-    [selectedInheritedPromptProject],
+    () => buildSafePromptInheritancePayload(selectedInheritedPromptProject, {
+      selectedGroupKeys: selectedInheritedPromptGroupKeys,
+      removedGroupKeys: removedInheritedPromptGroupKeys,
+    }),
+    [removedInheritedPromptGroupKeys, selectedInheritedPromptGroupKeys, selectedInheritedPromptProject],
   );
 
   useEffect(() => {
@@ -574,9 +917,16 @@ export default function ProjectWizard({ onClose, onCreated }) {
   }, [availablePromptProjects.length, loadProjects]);
 
   useEffect(() => {
-    if (!inheritPromptEnabled || inheritedPromptProjectId || availablePromptProjects.length === 0) return;
-    setInheritedPromptProjectId(String(availablePromptProjects[0].id));
-  }, [availablePromptProjects, inheritPromptEnabled, inheritedPromptProjectId]);
+    const groupKeys = new Set(availableInheritedPromptGroups.map((group) => group.key));
+    setSelectedInheritedPromptGroupKeys((prev) => {
+      const next = new Set([...prev].filter((key) => groupKeys.has(key)));
+      return next.size === prev.size ? prev : next;
+    });
+    setRemovedInheritedPromptGroupKeys((prev) => {
+      const next = new Set([...prev].filter((key) => groupKeys.has(key)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [availableInheritedPromptGroups]);
 
   const workingResult = useMemo(
     () => (result ? mergeAcceptedProposals(result, acceptedProposals) : null),
@@ -690,6 +1040,41 @@ export default function ProjectWizard({ onClose, onCreated }) {
       return next;
     });
   };
+  const handleInheritedPromptProjectChange = (value) => {
+    setInheritedPromptProjectId(value);
+    setSelectedInheritedPromptGroupKeys(new Set());
+    setRemovedInheritedPromptGroupKeys(new Set());
+  };
+  const toggleInheritedPromptGroup = (groupKey) => {
+    setSelectedInheritedPromptGroupKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  };
+  const removeInheritedPromptGroup = (groupKey) => {
+    setSelectedInheritedPromptGroupKeys((prev) => {
+      if (!prev.has(groupKey)) return prev;
+      const next = new Set(prev);
+      next.delete(groupKey);
+      return next;
+    });
+    setRemovedInheritedPromptGroupKeys((prev) => {
+      if (prev.has(groupKey)) return prev;
+      const next = new Set(prev);
+      next.add(groupKey);
+      return next;
+    });
+  };
+  const restoreInheritedPromptGroup = (groupKey) => {
+    setRemovedInheritedPromptGroupKeys((prev) => {
+      if (!prev.has(groupKey)) return prev;
+      const next = new Set(prev);
+      next.delete(groupKey);
+      return next;
+    });
+  };
 
   const updateResultItem = (section, index, field, value) => {
     setResult((prev) => {
@@ -752,7 +1137,6 @@ export default function ProjectWizard({ onClose, onCreated }) {
       story_structure_line: storyStructure ? `Cấu trúc: ${STORY_STRUCTURES.find((item) => item.value === storyStructure)?.label}\n` : '',
       idea,
       template_hint: templateHint,
-      inherited_prompt_block: inheritedPromptBlock,
       initial_chapter_count: chapterCount,
       pacing_guidance: pacingGuidance,
       approved_seed_json: approvedSeed ? JSON.stringify(approvedSeed, null, 2) : '',
@@ -762,16 +1146,12 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const sendStoryCreationRequest = ({ groupKey, taskType, variables, extraUserContent = '', onComplete, onError }) => {
     const storyCreationSettings = getStoryCreationSettings();
     const prompts = storyCreationSettings[groupKey];
-    const systemPromptTemplate = [
-      prompts.systemPrompt,
-      variables?.inherited_prompt_block ? '{{inherited_prompt_block}}' : '',
-    ].filter(Boolean).join('\n\n');
     const userPrompt = renderStoryCreationTemplate(prompts.userPromptTemplate, variables);
     const messages = [
       {
         role: 'system',
         content: renderStoryCreationTemplate(
-          composeStoryCreationSystemPrompt(groupKey, systemPromptTemplate),
+          composeStoryCreationSystemPrompt(groupKey, prompts.systemPrompt),
           variables,
         ),
       },
@@ -1228,19 +1608,79 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
   const renderInheritedPromptPanel = () => {
     const selectedValue = selectedInheritedPromptProject?.id ? String(selectedInheritedPromptProject.id) : '';
+    const selectedGroupCount = selectedInheritedPromptGroups.length;
+    const highRiskCount = visibleInheritedPromptGroups.filter((group) => group.riskHigh).length;
+    const renderPromptGroupCard = (group, { removed = false } = {}) => {
+      const checked = selectedInheritedPromptGroupKeys.has(group.key) && !removedInheritedPromptGroupKeys.has(group.key);
+      return (
+        <li
+          key={`${removed ? 'removed' : 'active'}-${group.key}`}
+          className={`wizard-inherit-group-card wizard-inherit-group-card--${group.riskId} ${checked ? 'wizard-inherit-group-card--checked' : ''} ${removed ? 'wizard-inherit-group-card--removed' : ''}`}
+        >
+          <div className="wizard-inherit-group-main">
+            {removed ? (
+              <div className="wizard-inherit-group-copy">
+                <span className="wizard-inherit-group-head">
+                  <strong>{group.label}</strong>
+                  <span className={`wizard-inherit-risk wizard-inherit-risk--${group.riskId}`}>{group.riskLabel}</span>
+                </span>
+                <span className="wizard-inherit-group-meta">{group.key} · {group.promptGroupTitle}</span>
+                <span className="wizard-inherit-group-preview">{group.preview}</span>
+                <em>{group.reason}</em>
+              </div>
+            ) : (
+              <label className="wizard-inherit-group-check">
+                <input
+                  type="checkbox"
+                  aria-label={`Chọn ${group.label}`}
+                  checked={checked}
+                  onChange={() => toggleInheritedPromptGroup(group.key)}
+                />
+                <span className="wizard-inherit-group-copy">
+                  <span className="wizard-inherit-group-head">
+                    <strong>{group.label}</strong>
+                    <span className={`wizard-inherit-risk wizard-inherit-risk--${group.riskId}`}>{group.riskLabel}</span>
+                  </span>
+                  <span className="wizard-inherit-group-meta">{group.key} · {group.promptGroupTitle}</span>
+                  <span className="wizard-inherit-group-preview">{group.preview}</span>
+                  <em>{group.reason}</em>
+                </span>
+              </label>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon btn-sm wizard-inherit-group-action"
+              aria-label={removed ? `Khôi phục ${group.label}` : `Bỏ qua ${group.label}`}
+              title={removed ? 'Khôi phục cụm prompt này' : 'Bỏ qua cụm prompt này'}
+              onClick={() => (removed ? restoreInheritedPromptGroup(group.key) : removeInheritedPromptGroup(group.key))}
+            >
+              {removed ? <RotateCcw size={14} /> : <Trash2 size={14} />}
+            </button>
+          </div>
+        </li>
+      );
+    };
+
     return (
       <div className={`wizard-inherit-panel ${inheritPromptEnabled ? 'wizard-inherit-panel--open' : ''}`}>
         <label className="wizard-inherit-toggle">
           <input
             type="checkbox"
-            aria-label="Bật kế thừa Prompt truyện cũ"
+            aria-label="Bật kế thừa prompt có chọn lọc"
             checked={inheritPromptEnabled}
-            onChange={(event) => setInheritPromptEnabled(event.target.checked)}
+            onChange={(event) => {
+              setInheritPromptEnabled(event.target.checked);
+              if (!event.target.checked) {
+                setInheritedPromptProjectId('');
+                setSelectedInheritedPromptGroupKeys(new Set());
+                setRemovedInheritedPromptGroupKeys(new Set());
+              }
+            }}
           />
           <span className="wizard-inherit-toggle__icon"><BookMarked size={15} /></span>
           <span className="wizard-inherit-toggle__copy">
-            <strong>Kế thừa Prompt truyện cũ</strong>
-            <span>Chỉ lấy prompt, không lấy Bible/canon, nhân vật hay thế giới cũ.</span>
+            <strong>Kế thừa prompt có chọn lọc</strong>
+            <span>Chỉ copy sau khi tạo project. Không dùng khi tạo seed/dàn ý.</span>
           </span>
         </label>
 
@@ -1252,27 +1692,58 @@ export default function ProjectWizard({ onClose, onCreated }) {
                 <select
                   className="select"
                   value={selectedValue}
-                  onChange={(event) => setInheritedPromptProjectId(event.target.value)}
+                  onChange={(event) => handleInheritedPromptProjectChange(event.target.value)}
                   disabled={availablePromptProjects.length === 0}
                 >
-                  {availablePromptProjects.length === 0 && <option value="">Chưa có truyện cũ để chọn</option>}
+                  <option value="">
+                    {availablePromptProjects.length === 0
+                      ? 'Chưa có truyện cũ để chọn'
+                      : 'Chọn truyện để xem các cụm prompt có thể kế thừa'}
+                  </option>
                   {availablePromptProjects.map((project) => (
                     <option key={project.id} value={project.id}>{project.title || `Truyện #${project.id}`}</option>
                   ))}
                 </select>
               </div>
-              <div className="wizard-inherit-summary" aria-live="polite">
-                <span className="badge badge-sm">{formatPromptCount(inheritedPromptSummary.constitutionCount, 'luật')}</span>
-                <span className="badge badge-sm">{formatPromptCount(inheritedPromptSummary.styleCount, 'style')}</span>
-                <span className="badge badge-sm">{formatPromptCount(inheritedPromptSummary.blacklistCount, 'blacklist')}</span>
-                <span className="badge badge-sm">{formatPromptCount(inheritedPromptSummary.overrideCount, 'override')}</span>
-                {inheritedPromptSummary.hasAiGuidelines && <span className="badge badge-sm">có AI guidelines</span>}
+              <div className="wizard-inherit-stats" aria-live="polite">
+                <span className="wizard-inherit-stat wizard-inherit-stat--selected"><Check size={12} /> Đã chọn: {selectedGroupCount}</span>
+                <span className="wizard-inherit-stat wizard-inherit-stat--manual"><Eye size={12} /> Có thể copy: {visibleInheritedPromptGroups.length}</span>
+                <span className="wizard-inherit-stat wizard-inherit-stat--blocked"><AlertCircle size={12} /> Nguy cơ cao: {highRiskCount}</span>
+                <span className="wizard-inherit-stat wizard-inherit-stat--safe"><Trash2 size={12} /> Đã bỏ qua: {removedInheritedPromptGroups.length}</span>
               </div>
             </div>
-            <div className="wizard-dna-note wizard-inherit-note">
-              <Dna size={14} />
-              <span>Prompt kế thừa chỉ định hướng cách AI tạo nền truyện và dàn ý. Nếu prompt nguồn có tên riêng/lore cũ, hãy sửa sau trong Prompt truyện mới.</span>
-            </div>
+            {!selectedInheritedPromptProject ? (
+              <div className="wizard-inherit-empty">
+                Chọn truyện nguồn để xem các cụm prompt có thể kế thừa. Khi chưa chọn nguồn, project mới không copy prompt nào từ truyện cũ.
+              </div>
+            ) : (
+              <div className="wizard-inherit-preview">
+                <div className="wizard-inherit-fixed-note">
+                  <Dna size={14} />
+                  <span>Không dùng khi tạo seed/dàn ý: prompt kế thừa không được gửi vào bước tạo nền truyện hoặc tạo dàn ý.</span>
+                </div>
+                <div className="wizard-inherit-preview-section">
+                  <div className="wizard-inherit-preview-title"><List size={13} /> Cụm prompt có thể copy</div>
+                  {visibleInheritedPromptGroups.length > 0 ? (
+                    <ul className="wizard-inherit-groups">
+                      {visibleInheritedPromptGroups.map((group) => renderPromptGroupCard(group))}
+                    </ul>
+                  ) : (
+                    <p>Không còn cụm prompt nào trong danh sách copy. Có thể khôi phục từ mục đã bỏ qua.</p>
+                  )}
+                </div>
+                <details className="wizard-inherit-details" open={removedInheritedPromptGroups.length > 0}>
+                  <summary>Đã bỏ qua ({removedInheritedPromptGroups.length})</summary>
+                  {removedInheritedPromptGroups.length > 0 ? (
+                    <ul className="wizard-inherit-groups wizard-inherit-groups--removed">
+                      {removedInheritedPromptGroups.map((group) => renderPromptGroupCard(group, { removed: true }))}
+                    </ul>
+                  ) : (
+                    <p>Chưa bỏ qua cụm prompt nào.</p>
+                  )}
+                </details>
+              </div>
+            )}
           </div>
         )}
       </div>
