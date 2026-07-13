@@ -158,6 +158,60 @@ describe('/api/openai-proxy', () => {
     vi.unstubAllGlobals();
   });
 
+  it('fetches the allowlisted 9Router OpenCode model catalog without forwarding upstream keys', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: 'mimo-v2.5-free' }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { req, res } = createReqRes({
+      body: {
+        action: 'model_catalog',
+        catalog: '9router_opencode',
+        baseUrl: 'https://ignored.example.com',
+      },
+      headers: { 'x-storyforge-upstream-key': 'must-not-forward' },
+    });
+
+    await handler(req, res);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://opencode.ai/zen/v1/models',
+      expect.objectContaining({
+        method: 'GET',
+        redirect: 'manual',
+        headers: expect.not.objectContaining({
+          Authorization: expect.any(String),
+        }),
+      }),
+    );
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data[0].id).toBe('mimo-v2.5-free');
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects unknown model catalog sources before upstream work', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { req, res } = createReqRes({
+      body: {
+        action: 'model_catalog',
+        catalog: 'internal_dashboard',
+      },
+    });
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).code).toBe('OPENAI_PROXY_BAD_MODEL_CATALOG');
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
   it('forwards chat payloads without changing the model or messages', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: 'ok' } }],

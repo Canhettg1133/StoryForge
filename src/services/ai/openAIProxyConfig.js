@@ -3,14 +3,20 @@ import {
   CUSTOM_PROXY_PROFILE_ID,
   DEFAULT_AG_PROXY_BASE_URL,
   DEFAULT_AG_PROXY_MODEL,
+  DEFAULT_PROXY_MODEL_CATALOG_SOURCE,
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_IMAGE_GENERATIONS_PATH,
   DEFAULT_PROXY_MODELS_PATH,
+  MODEL_CATALOG_SOURCE_AUTO,
+  MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE,
+  MODEL_CATALOG_SOURCE_OPENAI,
   buildOpenAIProxyEndpoint,
   classifyProxyModel,
   filterGeminiModelIds,
   groupProxyModelsForDisplay,
+  isLikely9RouterProxyProfile,
   isMixedContentBlockedProxyUrl,
+  normalize9RouterOpenCodeModelIds,
   parseOpenAIModelIds,
   resolveProxyTransportMode,
   upgradeMixedContentProxyUrl,
@@ -130,6 +136,7 @@ export function getDefaultCustomOpenAIProxyProfile() {
     chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
     imageGenerationsPath: DEFAULT_PROXY_IMAGE_GENERATIONS_PATH,
     modelsPath: DEFAULT_PROXY_MODELS_PATH,
+    modelCatalogSource: DEFAULT_PROXY_MODEL_CATALOG_SOURCE,
     authType: 'bearer',
     requiresApiKey: true,
     supportsGeminiSafetySettings: false,
@@ -147,6 +154,7 @@ export function getAgOpenAIProxyProfile() {
     chatCompletionsPath: DEFAULT_PROXY_CHAT_PATH,
     imageGenerationsPath: DEFAULT_PROXY_IMAGE_GENERATIONS_PATH,
     modelsPath: DEFAULT_PROXY_MODELS_PATH,
+    modelCatalogSource: DEFAULT_PROXY_MODEL_CATALOG_SOURCE,
     authType: 'bearer',
     requiresApiKey: true,
     supportsGeminiSafetySettings: true,
@@ -292,6 +300,32 @@ export function shouldFallbackOpenAIProxyRelay(response) {
   return response.ok && contentType.includes('text/html');
 }
 
+async function fetchOpenAIProxyModelCatalog({
+  catalog,
+  signal,
+} = {}) {
+  const storyForgeToken = await getStoryForgeAccessToken();
+  const response = await fetch('/api/openai-proxy', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(storyForgeToken ? { Authorization: `Bearer ${storyForgeToken}` } : {}),
+    },
+    body: JSON.stringify({
+      action: 'model_catalog',
+      catalog,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(text || `Model catalog request failed with status ${response.status}.`);
+  }
+
+  return parseOpenAIModelIds(await response.json());
+}
+
 export async function fetchOpenAIProxyModels({
   profile = getActiveOpenAIProxyProfile(),
   apiKey = '',
@@ -337,7 +371,18 @@ export async function fetchOpenAIProxyModels({
     throw new Error(text || `Không lấy được danh sách model. Mã lỗi ${response.status}.`);
   }
 
-  return parseOpenAIModelIds(await response.json());
+  const upstreamModels = parseOpenAIModelIds(await response.json());
+  if (!isLikely9RouterProxyProfile(profile)) return upstreamModels;
+
+  try {
+    const catalogModels = normalize9RouterOpenCodeModelIds(await fetchOpenAIProxyModelCatalog({
+      catalog: MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE,
+      signal,
+    }));
+    return [...new Set([...upstreamModels, ...catalogModels])];
+  } catch {
+    return upstreamModels;
+  }
 }
 
 export {
@@ -345,9 +390,13 @@ export {
   CUSTOM_PROXY_PROFILE_ID,
   DEFAULT_AG_PROXY_BASE_URL,
   DEFAULT_AG_PROXY_MODEL,
+  DEFAULT_PROXY_MODEL_CATALOG_SOURCE,
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_IMAGE_GENERATIONS_PATH,
   DEFAULT_PROXY_MODELS_PATH,
+  MODEL_CATALOG_SOURCE_AUTO,
+  MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE,
+  MODEL_CATALOG_SOURCE_OPENAI,
   buildOpenAIProxyEndpoint,
   classifyProxyModel,
   filterGeminiModelIds,

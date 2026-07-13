@@ -4,6 +4,7 @@ import {
   DEFAULT_PROXY_MODELS_PATH,
   buildOpenAIProxyEndpoint,
   isLocalProxyHost,
+  parseOpenAIModelIds,
 } from '../src/services/ai/openAIProxyCore.js';
 import { getHeader, readJsonBody, sendJson, sendPublicError } from './_lib/http.js';
 import { checkRateLimit, writeRateLimitHeaders } from './_lib/rate-limit.js';
@@ -14,7 +15,7 @@ import {
   sendAccessDenied,
 } from './_lib/access-control.js';
 
-const ALLOWED_ACTIONS = new Set(['models', 'chat', 'chat_stream_batch', 'image_generation']);
+const ALLOWED_ACTIONS = new Set(['models', 'model_catalog', 'chat', 'chat_stream_batch', 'image_generation']);
 const MAX_CHAT_STREAM_BATCH_SIZE = 50;
 const DEFAULT_OPENAI_PROXY_MAX_BODY_BYTES = 4 * 1024 * 1024;
 const DEFAULT_OPENAI_PROXY_RATE_LIMIT = 120;
@@ -23,6 +24,9 @@ const DEFAULT_CHAT_STREAM_BATCH_CONCURRENCY = 6;
 const DEFAULT_USAGE_LOGGING_TIMEOUT_MS = 2000;
 const AG_PROXY_HOSTS = new Set(['ag.beijixingxing.com']);
 const AG_PROXY_SAFE_SUFFIXES = ['.beijixingxing.com'];
+const MODEL_CATALOG_URLS = new Map([
+  ['9router_opencode', 'https://opencode.ai/zen/v1/models'],
+]);
 export const TRANSLATOR_TEMPLATE_IDS = new Set([
   'convert',
   'novel',
@@ -424,6 +428,60 @@ async function requireProxyAccess(req, {
   };
 }
 
+async function handleModelCatalogAction(req, res, {
+  body,
+  requireFeatureImpl,
+} = {}) {
+  const catalog = String(body?.catalog || '').trim();
+  const catalogUrl = MODEL_CATALOG_URLS.get(catalog);
+  if (!catalogUrl) {
+    sendJson(res, 400, {
+      error: 'Model catalog khong duoc ho tro.',
+      code: 'OPENAI_PROXY_BAD_MODEL_CATALOG',
+    });
+    return;
+  }
+
+  const access = await requireFeatureImpl(req, ACCESS_FEATURES.CUSTOM_PROXY);
+  if (!access.ok) {
+    sendAccessDenied(res, access);
+    return;
+  }
+
+  try {
+    const upstream = await fetch(catalogUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: {
+        Accept: 'application/json',
+      },
+    });
+    if (!upstream.ok) {
+      sendJson(res, 502, {
+        error: 'Khong lay duoc model catalog.',
+        code: 'OPENAI_PROXY_MODEL_CATALOG_FAILED',
+      });
+      return;
+    }
+
+    const payload = await upstream.json().catch(() => null);
+    const models = parseOpenAIModelIds(payload);
+    sendJson(res, 200, {
+      object: 'list',
+      data: models.map((id) => ({
+        id,
+        object: 'model',
+        owned_by: catalog,
+      })),
+    });
+  } catch {
+    sendJson(res, 502, {
+      error: 'Khong lay duoc model catalog.',
+      code: 'OPENAI_PROXY_MODEL_CATALOG_FAILED',
+    });
+  }
+}
+
 export function createOpenAIProxyHandler({
   workflowFeature = ACCESS_FEATURES.AI_CHAT_ACCESS,
   requireTranslatorTemplate = false,
@@ -474,6 +532,14 @@ export function createOpenAIProxyHandler({
   const action = String(body?.action || '').trim();
   if (!ALLOWED_ACTIONS.has(action)) {
     sendJson(res, 400, { error: 'Hành động proxy không được hỗ trợ.', code: 'OPENAI_PROXY_BAD_ACTION' });
+    return;
+  }
+
+  if (action === 'model_catalog') {
+    await handleModelCatalogAction(req, res, {
+      body,
+      requireFeatureImpl,
+    });
     return;
   }
 

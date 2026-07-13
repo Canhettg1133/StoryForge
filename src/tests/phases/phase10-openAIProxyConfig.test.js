@@ -291,4 +291,79 @@ describe('openAIProxyConfig legacy settings migration', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/openai-proxy');
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).baseUrl).toBe('https://proxy.example.com/v1');
   });
+
+  it('keeps ordinary custom proxies on /v1/models without adding the 9Router catalog', async () => {
+    const {
+      fetchOpenAIProxyModels,
+      getDefaultCustomOpenAIProxyProfile,
+    } = await loadConfig();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: 'custom-model' }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const models = await fetchOpenAIProxyModels({
+      profile: {
+        ...getDefaultCustomOpenAIProxyProfile(),
+        baseUrl: 'https://proxy.example.com/v1',
+        transport: 'direct',
+      },
+      apiKey: 'sk-custom-key',
+    });
+
+    expect(models).toEqual(['custom-model']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://proxy.example.com/v1/models');
+  });
+
+  it('adds 9Router OpenCode catalog models for local 9Router without replacing /v1/models', async () => {
+    const {
+      fetchOpenAIProxyModels,
+      getDefaultCustomOpenAIProxyProfile,
+    } = await loadConfig();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [{ id: 'cx/gpt-5.6-sol' }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [
+          { id: 'mimo-v2.5-free' },
+          { id: 'oc/deepseek-v4-flash-free' },
+        ],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const models = await fetchOpenAIProxyModels({
+      profile: {
+        ...getDefaultCustomOpenAIProxyProfile(),
+        baseUrl: 'http://localhost:20128/v1',
+        transport: 'direct',
+      },
+      apiKey: 'sk-9router-key',
+    });
+
+    expect(models).toEqual([
+      'cx/gpt-5.6-sol',
+      'oc/mimo-v2.5-free',
+      'oc/deepseek-v4-flash-free',
+    ]);
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:20128/v1/models');
+    expect(fetchMock.mock.calls[1][0]).toBe('/api/openai-proxy');
+    const catalogRequest = fetchMock.mock.calls[1][1];
+    expect(catalogRequest.headers['X-StoryForge-Upstream-Key']).toBeUndefined();
+    expect(JSON.parse(catalogRequest.body)).toEqual({
+      action: 'model_catalog',
+      catalog: '9router_opencode',
+    });
+  });
 });

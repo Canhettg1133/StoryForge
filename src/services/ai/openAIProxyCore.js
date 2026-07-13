@@ -5,6 +5,10 @@ export const DEFAULT_PROXY_MODELS_PATH = '/v1/models';
 export const DEFAULT_PROXY_IMAGE_GENERATIONS_PATH = '/v1/images/generations';
 export const DEFAULT_AG_PROXY_BASE_URL = 'https://ag.beijixingxing.com';
 export const OPENAI_PROXY_MIXED_CONTENT_BLOCKED = 'OPENAI_PROXY_MIXED_CONTENT_BLOCKED';
+export const MODEL_CATALOG_SOURCE_AUTO = 'auto';
+export const MODEL_CATALOG_SOURCE_OPENAI = 'openai';
+export const MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE = '9router_opencode';
+export const DEFAULT_PROXY_MODEL_CATALOG_SOURCE = MODEL_CATALOG_SOURCE_AUTO;
 export const DEFAULT_AG_PROXY_MODEL = 'gemini-3-flash-high-真流-[星星公益站-CLI渠道]';
 
 const KNOWN_ENDPOINT_SUFFIXES = [
@@ -100,6 +104,15 @@ export function parseOpenAIModelIds(payload) {
       return String(item?.id || item?.name || item?.model || item?.slug || item?.value || '').trim();
     })
     .filter(Boolean);
+}
+
+export function normalize9RouterOpenCodeModelIds(models = []) {
+  return [...new Set(
+    (Array.isArray(models) ? models : [])
+      .map((model) => String(model || '').trim())
+      .filter(Boolean)
+      .map((model) => (model.startsWith('oc/') ? model : `oc/${model}`)),
+  )];
 }
 
 export function filterGeminiModelIds(models = []) {
@@ -291,6 +304,24 @@ export function isLocalProxyUrl(rawBaseUrl) {
   try {
     const parsed = new URL(trimmed);
     return isLocalProxyHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function isLikely9RouterProxyProfile(profile = {}) {
+  const source = String(profile.modelCatalogSource || DEFAULT_PROXY_MODEL_CATALOG_SOURCE).trim();
+  if (source === MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE) return true;
+  if (source && source !== MODEL_CATALOG_SOURCE_AUTO) return false;
+
+  const label = String(profile.label || '').trim().toLowerCase();
+  if (label.includes('9router')) return true;
+
+  const baseUrl = String(profile.baseUrl || '').trim();
+  if (!baseUrl || isRelativeProxyUrl(baseUrl)) return false;
+  try {
+    const parsed = new URL(baseUrl);
+    return parsed.port === '20128' && isLocalProxyHost(parsed.hostname);
   } catch {
     return false;
   }

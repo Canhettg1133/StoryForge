@@ -22,8 +22,12 @@ import aiService, {
 import {
   AG_PROXY_PROFILE_ID,
   CUSTOM_PROXY_PROFILE_ID,
+  DEFAULT_PROXY_MODEL_CATALOG_SOURCE,
   DEFAULT_PROXY_CHAT_PATH,
   DEFAULT_PROXY_MODELS_PATH,
+  MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE,
+  MODEL_CATALOG_SOURCE_AUTO,
+  MODEL_CATALOG_SOURCE_OPENAI,
   buildOpenAIProxyEndpoint,
   classifyProxyModel,
   fetchOpenAIProxyModels,
@@ -1148,6 +1152,9 @@ export default function Settings() {
       ).trim() || DEFAULT_PROXY_CHAT_PATH,
       modelsPath: String((patch.modelsPath ?? customProxyProfile.modelsPath) || DEFAULT_PROXY_MODELS_PATH).trim()
         || DEFAULT_PROXY_MODELS_PATH,
+      modelCatalogSource: String(
+        (patch.modelCatalogSource ?? customProxyProfile.modelCatalogSource) || DEFAULT_PROXY_MODEL_CATALOG_SOURCE,
+      ).trim() || DEFAULT_PROXY_MODEL_CATALOG_SOURCE,
       models: normalizeCustomProxyModelList(shouldClearStoredModels ? [] : (patch.models ?? customProxyProfile.models ?? [])),
       supportsGeminiSafetySettings: Boolean(
         patch.supportsGeminiSafetySettings ?? customProxyProfile.supportsGeminiSafetySettings,
@@ -2200,7 +2207,7 @@ export default function Settings() {
                         className="input"
                         value={customProxyProfile.defaultModel || ''}
                         onChange={(event) => syncCustomProxyProfile({ defaultModel: event.target.value }, { activate: true })}
-                        placeholder="gemini-2.5-flash, openai/gpt-4.1, llama3..."
+                        placeholder="oc/mimo-v2.5-free, gemini-2.5-flash, openai/gpt-4.1..."
                       />
                     </div>
                   </div>
@@ -2256,6 +2263,18 @@ export default function Settings() {
                           value={customProxyProfile.modelsPath || DEFAULT_PROXY_MODELS_PATH}
                           onChange={(event) => syncCustomProxyProfile({ modelsPath: event.target.value }, { activate: true })}
                         />
+                      </label>
+                      <label>
+                        <span>Model catalog</span>
+                        <select
+                          className="select"
+                          value={customProxyProfile.modelCatalogSource || DEFAULT_PROXY_MODEL_CATALOG_SOURCE}
+                          onChange={(event) => syncCustomProxyProfile({ modelCatalogSource: event.target.value }, { activate: true })}
+                        >
+                          <option value={MODEL_CATALOG_SOURCE_AUTO}>Auto</option>
+                          <option value={MODEL_CATALOG_SOURCE_OPENAI}>Chỉ /v1/models</option>
+                          <option value={MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE}>9Router OpenCode</option>
+                        </select>
                       </label>
                       <label>
                         <span>Transport</span>

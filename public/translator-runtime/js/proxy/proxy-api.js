@@ -695,6 +695,76 @@ function normalizeCustomProxyModelList(models = []) {
     )];
 }
 
+const CUSTOM_PROXY_MODEL_CATALOG_SOURCE_AUTO = 'auto';
+const CUSTOM_PROXY_MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE = '9router_opencode';
+
+function normalize9RouterOpenCodeModelIds(models = []) {
+    return normalizeCustomProxyModelList(
+        normalizeCustomProxyModelList(models)
+            .map((model) => (model.startsWith('oc/') ? model : `oc/${model}`))
+    );
+}
+
+function isLikely9RouterCustomProxyProfile(profile = {}) {
+    const source = String(profile.modelCatalogSource || CUSTOM_PROXY_MODEL_CATALOG_SOURCE_AUTO).trim();
+    if (source === CUSTOM_PROXY_MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE) return true;
+    if (source && source !== CUSTOM_PROXY_MODEL_CATALOG_SOURCE_AUTO) return false;
+
+    const label = String(profile.label || '').trim().toLowerCase();
+    if (label.includes('9router')) return true;
+
+    const baseUrl = String(profile.baseUrl || '').trim();
+    if (!baseUrl || (typeof isRelativeProxyUrl === 'function' && isRelativeProxyUrl(baseUrl))) return false;
+
+    try {
+        const parsed = new URL(baseUrl);
+        return parsed.port === '20128'
+            && (typeof isLocalProxyHost === 'function'
+                ? isLocalProxyHost(parsed.hostname)
+                : ['localhost', '127.0.0.1'].includes(parsed.hostname));
+    } catch {
+        return false;
+    }
+}
+
+function getCustomProxyModelCatalogHeaders() {
+    const storyForgeToken = typeof getStoryForgeAccessToken === 'function'
+        ? String(getStoryForgeAccessToken() || '').trim()
+        : '';
+    return {
+        'Content-Type': 'application/json',
+        ...(storyForgeToken ? { 'Authorization': `Bearer ${storyForgeToken}` } : {}),
+    };
+}
+
+async function fetchCustomProxyModelCatalog(catalog = CUSTOM_PROXY_MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE) {
+    const response = await fetch('/api/openai-proxy', {
+        method: 'POST',
+        headers: getCustomProxyModelCatalogHeaders(),
+        body: JSON.stringify({
+            action: 'model_catalog',
+            catalog,
+        }),
+    });
+
+    if (!response.ok) throw new Error(`Model catalog request failed with status ${response.status}.`);
+    return parseOpenAIModelIds(await response.json().catch(() => ({})));
+}
+
+async function mergeCustomProxyCatalogModels(profile, upstreamModels = []) {
+    const normalizedUpstreamModels = normalizeCustomProxyModelList(upstreamModels);
+    if (!isLikely9RouterCustomProxyProfile(profile)) return normalizedUpstreamModels;
+
+    try {
+        const catalogModels = normalize9RouterOpenCodeModelIds(
+            await fetchCustomProxyModelCatalog(CUSTOM_PROXY_MODEL_CATALOG_SOURCE_9ROUTER_OPENCODE)
+        );
+        return normalizeCustomProxyModelList([...normalizedUpstreamModels, ...catalogModels]);
+    } catch {
+        return normalizedUpstreamModels;
+    }
+}
+
 const TRANSLATOR_PROXY_MODEL_CHANNEL_ORDER = ['Google CLI', 'Antigravity', 'AG Proxy', 'Custom Proxy', 'Không rõ kênh'];
 const TRANSLATOR_PROXY_MODEL_FAMILY_ORDER = [
     'Gemini',
@@ -1265,7 +1335,7 @@ async function fetchCustomProxyModels() {
         return [];
     }
 
-    const allModels = normalizeCustomProxyModelList(parseOpenAIModelIds(data));
+    const allModels = await mergeCustomProxyCatalogModels(profile, parseOpenAIModelIds(data));
     if (allModels.length === 0) {
         normalizeCustomProxyProfile({ models: [] });
         renderCustomProxyModelsDropdown();
@@ -1342,7 +1412,8 @@ async function testCustomProxyConnection() {
             model,
             messages: [{ role: 'user', content: 'Xin chào! Trả lời ngắn gọn 1 câu.' }],
             temperature: 0.5,
-            max_tokens: 100,
+            stream: false,
+            max_tokens: 1000,
         };
         const response = await fetch(target.url, {
             method: 'POST',
