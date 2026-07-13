@@ -20,11 +20,14 @@ describe('production build hardening', () => {
     expect(pkg.scripts['build:admin:secure']).toContain('scripts/build-production-app.mjs admin');
     expect(read('scripts/build-production-app.mjs')).toContain('scripts/secure-build-guard.mjs');
     expect(read('scripts/secure-build-guard.mjs')).toContain('assertNoPublicSourceMaps');
+    expect(read('scripts/secure-build-guard.mjs')).toContain('assertNoServerOnlySecretMarkers');
   });
 
   it('fails production builds before Vite can emit a login bundle without Supabase Auth env', () => {
     const buildScript = read('scripts/build-production-app.mjs');
     expect(buildScript).toContain('loadProductionBuildEnv');
+    expect(buildScript).toContain('assertNoForbiddenPublicSupabaseEnv');
+    expect(buildScript).toContain('sanitizeClientBuildEnv');
     expect(buildScript).toContain('VITE_SUPABASE_URL');
     expect(buildScript).toContain('VITE_SUPABASE_ANON_KEY');
     expect(buildScript).toContain('Missing required production client env');

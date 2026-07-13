@@ -284,7 +284,7 @@ function syncActiveTranslatorTemplateFromPrompt(promptText = '') {
             return setActiveTranslatorTemplateId(matchedEntry[0]);
         }
     }
-    return setActiveTranslatorTemplateId('convert');
+    return getActiveTranslatorTemplateId();
 }
 
 async function requireStoryForgeAdultTemplateAccess(templateId = getActiveTranslatorTemplateId()) {
@@ -1789,6 +1789,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function initializeApp() {
     loadGeminiModels();
+    const hadSavedPromptBeforeLoadSettings = typeof hasSavedTranslatorCustomPrompt === 'function'
+        && hasSavedTranslatorCustomPrompt();
     loadSettings();
     await loadHistory();
     setupEventListeners();
@@ -1800,8 +1802,21 @@ async function initializeApp() {
 
     // Set default prompt
     const promptEl = document.getElementById('customPrompt');
-    if (!promptEl.value.trim()) {
+    const hasSavedPrompt = hadSavedPromptBeforeLoadSettings;
+    const shouldApplyDefaultPrompt = promptEl && !promptEl.value.trim() && !hasSavedPrompt;
+    const globalPromptSettingsPromise = typeof loadTranslatorGlobalPromptSettings === 'function'
+        ? loadTranslatorGlobalPromptSettings()
+        : Promise.resolve(false);
+    if (shouldApplyDefaultPrompt) {
+        await globalPromptSettingsPromise;
+    } else if (globalPromptSettingsPromise && typeof globalPromptSettingsPromise.catch === 'function') {
+        globalPromptSettingsPromise.catch(() => false);
+    }
+    if (!promptEl.value.trim() && !hasSavedPrompt) {
         promptEl.value = ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES.sacHiep);
+    }
+    if (typeof resizeCustomPromptEditor === 'function') {
+        resizeCustomPromptEditor();
     }
 
     if (typeof updateWorkspaceToolbar === 'function') {

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import adminWorker from '../../../apps/admin-api-worker/src/index.js';
 import {
   DEFAULT_SITE_ANNOUNCEMENT_URL,
+  PROMPT_SETTINGS_ADMIN_BODY_MAX_BYTES,
   SITE_ANNOUNCEMENT_KEY,
 } from '../../../packages/access/src/index.js';
 
@@ -1236,6 +1237,228 @@ describe('phase12 admin API worker', () => {
     expect(response.status).toBe(200);
     expect(payload.announcement.revision).toBe(4);
     expect(payload.announcement.title).toBe('Thông báo mới');
+  });
+
+  it('lets owners read translator prompt settings without leaking storage metadata', async () => {
+    mockAuthAndActor({ role: 'owner', id: 'owner-1' }, async (target, init = {}) => {
+      if (target.includes('/rest/v1/prompt_settings') && (init.method || 'GET') === 'GET') {
+        expect(target).toContain('domain=eq.translator');
+        return jsonResponse([{
+          domain: 'translator',
+          key: 'sacHiepPro',
+          content: 'Prompt global đang bật',
+          enabled: true,
+          revision: 7,
+          updated_by: 'owner-1',
+          created_at: '2026-07-13T00:00:00.000Z',
+          updated_at: '2026-07-13T00:00:00.000Z',
+        }]);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/prompt-settings?domain=translator'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.domain).toBe('translator');
+    expect(payload.items.find((item) => item.key === 'sacHiepPro')).toMatchObject({
+      content: 'Prompt global đang bật',
+      enabled: true,
+      revision: 7,
+    });
+    expect(JSON.stringify(payload)).not.toContain('updated_by');
+    expect(JSON.stringify(payload)).not.toContain('owner-1');
+  });
+
+  it('keeps prompt settings owner-only for read and write routes', async () => {
+    const { calls } = mockAuthAndActor({ role: 'admin', id: 'admin-1' }, async (target) => {
+      if (target.includes('/rest/v1/prompt_settings')) {
+        throw new Error('Admin role must not reach prompt_settings storage');
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const readResponse = await adminWorker.fetch(authedRequest('/prompt-settings?domain=translator'), createEnv());
+    const readPayload = await readResponse.json();
+    const writeResponse = await adminWorker.fetch(authedRequest('/prompt-settings/translator/sacHiepPro', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        content: 'Prompt không được phép sửa',
+        enabled: true,
+        expectedRevision: 1,
+      }),
+    }), createEnv());
+    const writePayload = await writeResponse.json();
+
+    expect(readResponse.status).toBe(403);
+    expect(readPayload.code).toBe('ADMIN_PERMISSION_DENIED');
+    expect(writeResponse.status).toBe(403);
+    expect(writePayload.code).toBe('ADMIN_PERMISSION_DENIED');
+    expect(calls.some((call) => call.url.includes('/rest/v1/prompt_settings'))).toBe(false);
+  });
+
+  it('updates translator prompt settings through revision-checked RPC and audits metadata only', async () => {
+    mockAuthAndActor({ role: 'owner', id: 'owner-1' }, async (target, init = {}) => {
+      if (target.includes('/rest/v1/prompt_settings') && (init.method || 'GET') === 'GET') {
+        return jsonResponse([{
+          domain: 'translator',
+          key: 'sacHiepPro',
+          content: 'OLD RAW PROMPT SECRET',
+          enabled: true,
+          revision: 7,
+          updated_at: '2026-07-13T00:00:00.000Z',
+        }]);
+      }
+      if (target.includes('/rest/v1/rpc/upsert_prompt_setting') && init.method === 'POST') {
+        const body = JSON.parse(init.body);
+        expect(body).toMatchObject({
+          p_domain: 'translator',
+          p_key: 'sacHiepPro',
+          p_content: 'NEW RAW PROMPT SECRET',
+          p_enabled: true,
+          p_expected_revision: 7,
+          p_updated_by: 'owner-1',
+        });
+        return jsonResponse([{
+          domain: 'translator',
+          key: 'sacHiepPro',
+          content: body.p_content,
+          enabled: body.p_enabled,
+          revision: 8,
+          updated_at: '2026-07-13T01:00:00.000Z',
+        }]);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs') && init.method === 'POST') {
+        const body = JSON.parse(init.body);
+        expect(body.action).toBe('prompt_settings.update');
+        expect(body.before_json).toMatchObject({
+          domain: 'translator',
+          key: 'sacHiepPro',
+          enabled: true,
+          revision: 7,
+          contentLength: 'OLD RAW PROMPT SECRET'.length,
+        });
+        expect(body.after_json).toMatchObject({
+          domain: 'translator',
+          key: 'sacHiepPro',
+          enabled: true,
+          revision: 8,
+          contentLength: 'NEW RAW PROMPT SECRET'.length,
+        });
+        expect(body.before_json.contentHash).toMatch(/^sha256:[0-9a-f]{64}$/u);
+        expect(body.after_json.contentHash).toMatch(/^sha256:[0-9a-f]{64}$/u);
+        expect(JSON.stringify(body.before_json)).not.toContain('OLD RAW PROMPT SECRET');
+        expect(JSON.stringify(body.after_json)).not.toContain('NEW RAW PROMPT SECRET');
+        return jsonResponse([{ id: 'audit-1', action: body.action }], 201);
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/prompt-settings/translator/sacHiepPro', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        content: 'NEW RAW PROMPT SECRET',
+        enabled: true,
+        expectedRevision: 7,
+      }),
+    }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.item).toMatchObject({
+      key: 'sacHiepPro',
+      content: 'NEW RAW PROMPT SECRET',
+      revision: 8,
+    });
+  });
+
+  it('rejects unknown prompt domains and keys before storage access', async () => {
+    const { calls } = mockAuthAndActor({ role: 'owner', id: 'owner-1' }, async (target) => {
+      if (target.includes('/rest/v1/prompt_settings')) {
+        throw new Error('Invalid prompt route must not reach storage');
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const badDomainResponse = await adminWorker.fetch(authedRequest('/prompt-settings?domain=writing'), createEnv());
+    const badDomainPayload = await badDomainResponse.json();
+    const badKeyResponse = await adminWorker.fetch(authedRequest('/prompt-settings/translator/notAllowed', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        content: 'Prompt',
+        enabled: true,
+        expectedRevision: 1,
+      }),
+    }), createEnv());
+    const badKeyPayload = await badKeyResponse.json();
+
+    expect(badDomainResponse.status).toBe(400);
+    expect(badDomainPayload.code).toBe('ADMIN_PROMPT_DOMAIN_UNSUPPORTED');
+    expect(badKeyResponse.status).toBe(400);
+    expect(badKeyPayload.code).toBe('ADMIN_PROMPT_KEY_UNSUPPORTED');
+    expect(calls.some((call) => call.url.includes('/rest/v1/prompt_settings'))).toBe(false);
+  });
+
+  it('rejects oversized prompt setting JSON before parsing the body', async () => {
+    const { calls } = mockAuthAndActor({ role: 'owner', id: 'owner-1' }, async (target) => {
+      if (target.includes('/rest/v1/prompt_settings')) {
+        throw new Error('Oversized prompt body must not reach storage');
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/prompt-settings/translator/sacHiepPro', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        content: 'x'.repeat(PROMPT_SETTINGS_ADMIN_BODY_MAX_BYTES + 1),
+        enabled: true,
+        expectedRevision: 1,
+      }),
+    }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(413);
+    expect(payload.code).toBe('ADMIN_JSON_BODY_TOO_LARGE');
+    expect(calls.some((call) => call.url.includes('/rest/v1/prompt_settings'))).toBe(false);
+  });
+
+  it('maps prompt setting revision conflicts to 409 without writing audit logs', async () => {
+    const { calls } = mockAuthAndActor({ role: 'owner', id: 'owner-1' }, async (target, init = {}) => {
+      if (target.includes('/rest/v1/prompt_settings') && (init.method || 'GET') === 'GET') {
+        return jsonResponse([{
+          domain: 'translator',
+          key: 'sacHiepPro',
+          content: 'Prompt hiện tại',
+          enabled: true,
+          revision: 8,
+        }]);
+      }
+      if (target.includes('/rest/v1/rpc/upsert_prompt_setting') && init.method === 'POST') {
+        return jsonResponse({
+          code: 'P0001',
+          message: 'PROMPT_SETTING_REVISION_CONFLICT',
+        }, 400);
+      }
+      if (target.includes('/rest/v1/admin_audit_logs')) {
+        throw new Error('Revision conflict must not be audited as a successful update');
+      }
+      throw new Error(`Unexpected fetch ${init.method || 'GET'} ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/prompt-settings/translator/sacHiepPro', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        content: 'Prompt tab cũ',
+        enabled: true,
+        expectedRevision: 7,
+      }),
+    }), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.code).toBe('ADMIN_PROMPT_REVISION_CONFLICT');
+    expect(calls.some((call) => call.url.includes('/rest/v1/admin_audit_logs'))).toBe(false);
   });
 
   it('creates user_plans rows for quick VIP grants and writes an audit log', async () => {

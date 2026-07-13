@@ -21,6 +21,12 @@ describe('phase12 admin access package', () => {
     expect(hasPermission('admin', ADMIN_PERMISSIONS.STORY_MIRROR_CONTENT_READ)).toBe(true);
     expect(hasPermission('admin', ADMIN_PERMISSIONS.STORY_MIRROR_EXPORT)).toBe(false);
     expect(hasPermission('admin', ADMIN_PERMISSIONS.STORY_MIRROR_WRITE)).toBe(false);
+    expect(hasPermission('support', ADMIN_PERMISSIONS.PROMPTS_READ)).toBe(false);
+    expect(hasPermission('support', ADMIN_PERMISSIONS.PROMPTS_WRITE)).toBe(false);
+    expect(hasPermission('admin', ADMIN_PERMISSIONS.PROMPTS_READ)).toBe(false);
+    expect(hasPermission('admin', ADMIN_PERMISSIONS.PROMPTS_WRITE)).toBe(false);
+    expect(hasPermission('owner', ADMIN_PERMISSIONS.PROMPTS_READ)).toBe(true);
+    expect(hasPermission('owner', ADMIN_PERMISSIONS.PROMPTS_WRITE)).toBe(true);
     expect(hasPermission('owner', ADMIN_PERMISSIONS.STORY_MIRROR_EXPORT)).toBe(true);
     expect(hasPermission('owner', ADMIN_PERMISSIONS.USERS_ROLE_UPDATE)).toBe(true);
   });

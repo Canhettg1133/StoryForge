@@ -21,7 +21,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=16">
+    <link rel="stylesheet" href="style.css?v=18">
 </head>
 
 <body>
@@ -733,9 +733,21 @@
                     <p>💡 Thêm hướng dẫn dịch để cải thiện chất lượng. Prompt sẽ được thêm vào đầu mỗi đoạn văn.</p>
                 </div>
 
+                <div class="prompt-editor-toolbar">
+                    <div class="prompt-editor-state">
+                        <span>Mẫu đang chỉnh</span>
+                        <strong id="activePromptTemplateLabel">Sắc hiệp</strong>
+                        <small id="promptSaveStatus" hidden>Đã lưu</small>
+                    </div>
+                    <button class="btn btn-secondary btn-small prompt-reset-btn" type="button"
+                        data-click-action="resetActivePromptTemplate" title="Khôi phục prompt gốc của mẫu đang chỉnh">
+                        ↺ Mẫu gốc
+                    </button>
+                </div>
+
                 <textarea id="customPrompt"
                     placeholder="Ví dụ:&#10;[Dịch văn phong tiểu thuyết, giữ nguyên từ ngữ 18+, không censor]&#10;&#10;Hoặc để trống nếu không cần..."
-                    rows="3"></textarea>
+                    rows="3" data-input-action="saveCustomPrompt"></textarea>
 
                 <div class="prompt-templates">
                     <span class="template-label">Mẫu có sẵn:</span>
@@ -1005,7 +1017,8 @@
     ============================================== -->
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
-    <script src="js/app.js?v=18"></script>
+    <script src="js/app.js?v=19"></script>
+    <script src="js/translation/prompt-settings.js?v=1"></script>
     <script src="js/canon-pack.js?v=13"></script>
 
     <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
@@ -1029,7 +1042,7 @@
     <!-- 4. UI Components -->
     <script src="js/ui/progress.js?v=13"></script>
     <script src="js/ui/file-handler.js?v=14"></script>
-    <script src="js/ui/settings.js?v=13"></script>
+    <script src="js/ui/settings.js?v=15"></script>
     <script src="js/ui/controls.js?v=13"></script>
     <script src="js/ui/chunk-tracker.js?v=16"></script>
 
@@ -1043,7 +1056,7 @@
     <script src="js/proxy/proxy-api.js?v=16"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
-    <script src="js/init.js?v=15"></script>
+    <script src="js/init.js?v=16"></script>
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->

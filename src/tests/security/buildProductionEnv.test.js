@@ -3,10 +3,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  assertNoForbiddenPublicSupabaseEnv,
   assertRequiredEnv,
   loadEnvFile,
   loadProductionBuildEnv,
   loadVercelProductionEnv,
+  sanitizeClientBuildEnv,
 } from '../../../scripts/build-production-app.mjs';
 
 describe('production build env loading', () => {
@@ -67,6 +69,55 @@ describe('production build env loading', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it('does not load server-only Supabase secrets into the client production build env', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'storyforge-client-env-'));
+    writeFileSync(path.join(root, '.env.local'), [
+      'VITE_SUPABASE_URL=https://local.supabase.co',
+      'VITE_SUPABASE_ANON_KEY=local-anon-key',
+      'SUPABASE_SERVICE_ROLE_KEY=server-only-service-role-key',
+      'SUPABASE_SECRET_KEY=server-only-secret-key',
+      '',
+    ].join('\n'));
+    const env = {};
+
+    try {
+      expect(loadProductionBuildEnv(root, env)).toEqual([
+        'VITE_SUPABASE_URL',
+        'VITE_SUPABASE_ANON_KEY',
+      ]);
+      expect(env.VITE_SUPABASE_URL).toBe('https://local.supabase.co');
+      expect(env.VITE_SUPABASE_ANON_KEY).toBe('local-anon-key');
+      expect(env.SUPABASE_SERVICE_ROLE_KEY).toBeUndefined();
+      expect(env.SUPABASE_SECRET_KEY).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects Supabase service role keys when they are accidentally prefixed as public Vite env', () => {
+    expect(() => assertNoForbiddenPublicSupabaseEnv({
+      VITE_SUPABASE_URL: 'https://storyforge.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'anon-key',
+      VITE_SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+    })).toThrow(/VITE_SUPABASE_SERVICE_ROLE_KEY/u);
+  });
+
+  it('removes server-only Supabase secrets from the Vite child-process env', () => {
+    const env = sanitizeClientBuildEnv({
+      VITE_SUPABASE_URL: 'https://storyforge.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'anon-key',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+      SUPABASE_SECRET_KEY: 'secret-key',
+      SUPABASE_SERVICE_KEY: 'legacy-service-key',
+    });
+
+    expect(env.VITE_SUPABASE_URL).toBe('https://storyforge.supabase.co');
+    expect(env.VITE_SUPABASE_ANON_KEY).toBe('anon-key');
+    expect(env.SUPABASE_SERVICE_ROLE_KEY).toBeUndefined();
+    expect(env.SUPABASE_SECRET_KEY).toBeUndefined();
+    expect(env.SUPABASE_SERVICE_KEY).toBeUndefined();
   });
 
   it('reports missing production client env keys before building', () => {

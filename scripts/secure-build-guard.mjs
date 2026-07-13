@@ -2,6 +2,34 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
+const SERVER_ONLY_SECRET_MARKERS = Object.freeze([
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_SECRET_KEY',
+  'SUPABASE_SERVICE_KEY',
+  'VITE_SUPABASE_SERVICE_ROLE_KEY',
+  'VITE_SUPABASE_SECRET_KEY',
+  'VITE_SUPABASE_SERVICE_KEY',
+]);
+
+const SERVER_ONLY_SECRET_VALUE_ENV_KEYS = Object.freeze([
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_SECRET_KEY',
+  'SUPABASE_SERVICE_KEY',
+  'VITE_SUPABASE_SERVICE_ROLE_KEY',
+  'VITE_SUPABASE_SECRET_KEY',
+  'VITE_SUPABASE_SERVICE_KEY',
+]);
+
+const TEXT_BUNDLE_EXTENSIONS = new Set([
+  '.css',
+  '.html',
+  '.js',
+  '.json',
+  '.mjs',
+  '.svg',
+  '.txt',
+]);
+
 function walkFiles(root) {
   const files = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -13,6 +41,10 @@ function walkFiles(root) {
     }
   }
   return files;
+}
+
+function isTextBundle(filePath) {
+  return TEXT_BUNDLE_EXTENSIONS.has(path.extname(filePath));
 }
 
 export function assertNoPublicSourceMaps(rootDir) {
@@ -27,6 +59,35 @@ export function assertNoPublicSourceMaps(rootDir) {
     .filter((file) => readFileSync(file, 'utf8').includes('sourceMappingURL='));
   if (jsWithSourceMapComments.length > 0) {
     throw new Error(`Production JS still references sourcemaps: ${jsWithSourceMapComments.join(', ')}`);
+  }
+}
+
+export function assertNoServerOnlySecretMarkers(rootDir, env = process.env) {
+  const files = walkFiles(rootDir).filter(isTextBundle);
+  const secretValues = SERVER_ONLY_SECRET_VALUE_ENV_KEYS
+    .map((key) => ({ key, value: String(env[key] || '').trim() }))
+    .filter((item) => item.value.length >= 16);
+  const leaks = [];
+
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8');
+    const relativeFile = path.relative(rootDir, file) || path.basename(file);
+
+    for (const marker of SERVER_ONLY_SECRET_MARKERS) {
+      if (source.includes(marker)) {
+        leaks.push(`${relativeFile} contains server-only marker ${marker}`);
+      }
+    }
+
+    for (const item of secretValues) {
+      if (source.includes(item.value)) {
+        leaks.push(`${relativeFile} contains value from ${item.key}`);
+      }
+    }
+  }
+
+  if (leaks.length > 0) {
+    throw new Error(`Production build exposes server-only Supabase secret data: ${leaks.join('; ')}`);
   }
 }
 
@@ -47,5 +108,6 @@ if (!existsSync(rootDir)) {
 }
 
 assertNoPublicSourceMaps(rootDir);
+assertNoServerOnlySecretMarkers(rootDir);
 assertObfuscationManifest(rootDir);
 console.log(`[secure-build-guard] ${rootDir} passed production hardening checks.`);

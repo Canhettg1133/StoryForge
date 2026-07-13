@@ -7,6 +7,7 @@
 // SETTINGS MANAGEMENT
 // ============================================
 const SETTINGS_GROUPS = ['gemini', 'proxy', 'custom-proxy', 'ollama', 'general', 'canon-pack', 'prompt'];
+const CUSTOM_PROMPT_MIN_HEIGHT_PX = 180;
 
 function getDefaultProxyModel() {
     if (typeof DEFAULT_PROXY_MODEL !== 'undefined' && DEFAULT_PROXY_MODEL) return DEFAULT_PROXY_MODEL;
@@ -337,6 +338,9 @@ function toggleConfigGroup(group, forceOpen) {
 
     // Tự động cuộn mượt nhóm cài đặt đang mở vào tầm mắt của người dùng
     if (shouldOpen) {
+        if (group === 'prompt') {
+            resizeCustomPromptEditor();
+        }
         setTimeout(() => {
             const toggleButton = document.querySelector(`[data-config-toggle="${group}"]`);
             if (toggleButton && typeof toggleButton.scrollIntoView === 'function') {
@@ -359,9 +363,11 @@ function toggleHistoryPanel(forceOpen) {
     if (toggleBtn) toggleBtn.classList.toggle('is-active', shouldOpen);
 }
 
-function saveSettings() {
+function saveSettings(options = {}) {
     const promptInput = document.getElementById('customPrompt');
-    const normalizedPrompt = typeof ensureCharacterNameConsistencyPrompt === 'function'
+    const shouldNormalizePrompt = options.normalizePrompt === true;
+    const shouldPersistPrompt = options.persistPrompt !== false;
+    const normalizedPrompt = shouldNormalizePrompt && typeof ensureCharacterNameConsistencyPrompt === 'function'
         ? ensureCharacterNameConsistencyPrompt(promptInput?.value || '')
         : (promptInput?.value || '');
 
@@ -375,7 +381,10 @@ function saveSettings() {
         parallelCount: document.getElementById('parallelCount').value,
         chunkSize: document.getElementById('chunkSize').value,
         rpmPerKey: document.getElementById('rpmPerKey')?.value || rpmPerKey,
-        customPrompt: normalizedPrompt,
+        ...(shouldPersistPrompt ? { customPrompt: normalizedPrompt } : {}),
+        activeTranslatorTemplateId: typeof getActiveTranslatorTemplateId === 'function'
+            ? getActiveTranslatorTemplateId()
+            : 'convert',
         useCanonPackTranslation: typeof useCanonPackTranslation !== 'undefined' ? useCanonPackTranslation : false,
         selectedCanonPackId: typeof selectedCanonPackId !== 'undefined' ? selectedCanonPackId : '',
         useProxy: useProxy,
@@ -397,13 +406,47 @@ function saveSettings() {
     }
     updateRateLimitSummary();
     updateWorkspaceToolbar();
+    updatePromptTemplateUi();
+}
+
+function saveCustomPrompt() {
+    saveSettings({ normalizePrompt: false });
+    resizeCustomPromptEditor();
+    const saveStatus = document.getElementById('promptSaveStatus');
+    if (saveStatus) {
+        saveStatus.textContent = 'Đã lưu';
+        saveStatus.hidden = false;
+    }
+}
+
+function hasSavedTranslatorCustomPrompt() {
+    const saved = localStorage.getItem('novelTranslatorProSettings');
+    if (!saved) return false;
+    try {
+        const settings = JSON.parse(saved);
+        return Object.prototype.hasOwnProperty.call(settings || {}, 'customPrompt');
+    } catch {
+        return false;
+    }
+}
+
+function resizeCustomPromptEditor() {
+    const promptInput = document.getElementById('customPrompt');
+    if (!promptInput || !promptInput.style) return;
+
+    promptInput.style.height = 'auto';
+    const nextHeight = Math.max(CUSTOM_PROMPT_MIN_HEIGHT_PX, Number(promptInput.scrollHeight) || 0);
+    promptInput.style.height = `${nextHeight}px`;
+    promptInput.style.overflowY = 'hidden';
 }
 
 function loadSettings() {
     const saved = localStorage.getItem('novelTranslatorProSettings');
+    let hadSavedCustomPrompt = false;
     if (saved) {
         try {
             const settings = JSON.parse(saved);
+            hadSavedCustomPrompt = Object.prototype.hasOwnProperty.call(settings || {}, 'customPrompt');
             if (settings.apiKeys) apiKeys = settings.apiKeys;
             if (settings.sourceLang) document.getElementById('sourceLang').value = settings.sourceLang;
             if (settings.parallelCount) document.getElementById('parallelCount').value = settings.parallelCount;
@@ -414,9 +457,13 @@ function loadSettings() {
                     : Number(settings.rpmPerKey || 10);
                 document.getElementById('rpmPerKey').value = rpmPerKey;
             }
-            if (settings.customPrompt) document.getElementById('customPrompt').value = typeof ensureCharacterNameConsistencyPrompt === 'function'
-                ? ensureCharacterNameConsistencyPrompt(settings.customPrompt)
-                : settings.customPrompt;
+            if (settings.activeTranslatorTemplateId && typeof setActiveTranslatorTemplateId === 'function') {
+                setActiveTranslatorTemplateId(settings.activeTranslatorTemplateId);
+            }
+            if (settings.customPrompt !== undefined) document.getElementById('customPrompt').value = settings.customPrompt;
+            if (!settings.activeTranslatorTemplateId && settings.customPrompt && typeof syncActiveTranslatorTemplateFromPrompt === 'function') {
+                syncActiveTranslatorTemplateFromPrompt(settings.customPrompt);
+            }
             if (typeof useCanonPackTranslation !== 'undefined' && settings.useCanonPackTranslation !== undefined) {
                 useCanonPackTranslation = Boolean(settings.useCanonPackTranslation);
             }
@@ -500,9 +547,11 @@ function loadSettings() {
         refreshCanonPackSelector();
     }
 
-    saveSettings();
+    saveSettings({ normalizePrompt: false, persistPrompt: hadSavedCustomPrompt });
     updateRateLimitSummary();
     updateWorkspaceToolbar();
+    updatePromptTemplateUi();
+    resizeCustomPromptEditor();
 }
 
 // ============================================
@@ -552,6 +601,19 @@ function updateStats() {
 // ============================================
 // PROMPT TEMPLATES
 // ============================================
+function updatePromptTemplateUi() {
+    const activeTemplate = typeof getActiveTranslatorTemplateId === 'function'
+        ? getActiveTranslatorTemplateId()
+        : 'convert';
+
+    document.querySelectorAll('.template-btn').forEach((btn) => {
+        btn.classList.toggle('active-template', btn.dataset.actionValue === activeTemplate);
+    });
+
+    const label = document.getElementById('activePromptTemplateLabel');
+    if (label) label.textContent = getTemplateName(activeTemplate);
+}
+
 async function setPromptTemplate(templateName) {
     if (PROMPT_TEMPLATES[templateName]) {
         const activeTemplate = typeof setActiveTranslatorTemplateId === 'function'
@@ -565,15 +627,35 @@ async function setPromptTemplate(templateName) {
         document.getElementById('customPrompt').value = typeof ensureCharacterNameConsistencyPrompt === 'function'
             ? ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES[templateName])
             : PROMPT_TEMPLATES[templateName];
-        saveSettings();
-
-        document.querySelectorAll('.template-btn').forEach((btn) => {
-            btn.classList.remove('active-template');
-        });
-        event.target.classList.add('active-template');
+        saveSettings({ normalizePrompt: true });
+        updatePromptTemplateUi();
+        resizeCustomPromptEditor();
 
         showToast(`Đã chọn template: ${getTemplateName(templateName)}`, 'success');
     }
+}
+
+async function resetActivePromptTemplate() {
+    const templateName = typeof getActiveTranslatorTemplateId === 'function'
+        ? getActiveTranslatorTemplateId()
+        : 'convert';
+    if (!PROMPT_TEMPLATES[templateName]) return;
+
+    if (
+        typeof requireStoryForgeAdultTemplateAccess === 'function'
+        && !(await requireStoryForgeAdultTemplateAccess(templateName))
+    ) return;
+
+    const promptInput = document.getElementById('customPrompt');
+    if (!promptInput) return;
+
+    promptInput.value = typeof ensureCharacterNameConsistencyPrompt === 'function'
+        ? ensureCharacterNameConsistencyPrompt(PROMPT_TEMPLATES[templateName])
+        : PROMPT_TEMPLATES[templateName];
+    saveSettings({ normalizePrompt: true });
+    updatePromptTemplateUi();
+    resizeCustomPromptEditor();
+    showToast(`Đã khôi phục prompt gốc: ${getTemplateName(templateName)}`, 'success');
 }
 
 function getTemplateName(key) {

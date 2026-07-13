@@ -11,8 +11,13 @@ function isLocalHost() {
 }
 
 function normalizeBaseUrl(value) {
-  const fallback = isLocalHost() ? LOCAL_ADMIN_API_BASE_URL : '';
-  return String(value || DEFAULT_ADMIN_API_BASE_URL || fallback)
+  if (value) {
+    return String(value).trim().replace(/\/+$/u, '');
+  }
+  if (isLocalHost()) {
+    return LOCAL_ADMIN_API_BASE_URL;
+  }
+  return String(DEFAULT_ADMIN_API_BASE_URL || '')
     .trim()
     .replace(/\/+$/u, '');
 }
@@ -150,6 +155,10 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
     features: () => request('/features'),
     consent: () => request('/consent'),
     announcement: () => request('/announcement'),
+    promptSettings: ({ domain = 'translator' } = {}) => {
+      const query = new URLSearchParams({ domain });
+      return request(`/prompt-settings?${query.toString()}`);
+    },
     syncAuth: () => request('/users/sync-auth', { method: 'POST', body: {} }),
     userAccess: (userId) => request(`/users/${encodeURIComponent(userId)}/access`),
     updateUserAccess: (userId, role) => request(`/users/${encodeURIComponent(userId)}/access`, {
@@ -193,6 +202,10 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       body,
     }),
     updateAnnouncement: (body) => request('/announcement', {
+      method: 'PATCH',
+      body,
+    }),
+    updatePromptSetting: (domain, key, body) => request(`/prompt-settings/${encodeURIComponent(domain)}/${encodeURIComponent(key)}`, {
       method: 'PATCH',
       body,
     }),

@@ -24,6 +24,7 @@ import {
   SITE_ANNOUNCEMENT_KEY,
   toPublicSiteAnnouncement,
 } from '../../../packages/access/src/index.js';
+import { routePromptSettingsAdmin } from './promptSettings/index.js';
 import { routeStoryMirrorAdmin } from './storyMirror/index.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
@@ -158,6 +159,49 @@ async function readJson(request) {
   if (request.method === 'GET') return {};
   try {
     return await request.json();
+  } catch {
+    throw makeError(400, 'ADMIN_BAD_JSON', 'Nội dung JSON gửi lên không hợp lệ.');
+  }
+}
+
+async function readTextLimited(request, maxBytes) {
+  const contentLength = Number(request.headers.get('Content-Length') || request.headers.get('content-length') || 0);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw makeError(413, 'ADMIN_JSON_BODY_TOO_LARGE', 'Nội dung JSON gửi lên quá lớn.');
+  }
+  if (!request.body || typeof request.body.getReader !== 'function') {
+    const text = await request.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) {
+      throw makeError(413, 'ADMIN_JSON_BODY_TOO_LARGE', 'Nội dung JSON gửi lên quá lớn.');
+    }
+    return text;
+  }
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  let text = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunkBytes = value?.byteLength || 0;
+    totalBytes += chunkBytes;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw makeError(413, 'ADMIN_JSON_BODY_TOO_LARGE', 'Nội dung JSON gửi lên quá lớn.');
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+  text += decoder.decode();
+  return text;
+}
+
+async function readJsonLimited(request, maxBytes) {
+  if (request.method === 'GET') return {};
+  const text = await readTextLimited(request, maxBytes);
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text);
   } catch {
     throw makeError(400, 'ADMIN_BAD_JSON', 'Nội dung JSON gửi lên không hợp lệ.');
   }
@@ -658,6 +702,8 @@ function getAuditActionSummary(action, before = {}, after = {}, targetFeatureKey
       return `Gỡ quyền riêng ${getFeatureLabel(targetFeatureKey)}`;
     case 'site_announcement.update':
       return 'Cập nhật thông báo hệ thống';
+    case 'prompt_settings.update':
+      return 'Cập nhật prompt hệ thống';
     case 'plans.update':
       return 'Cập nhật gói';
     case 'features.create':
@@ -698,6 +744,8 @@ function getAuditChangeSummary(action, before = {}, after = {}, targetFeatureKey
       return `${afterObject.enabled === false ? 'Tắt' : 'Bật'} ${getFeatureLabel(targetFeatureKey)} trong gói ${getPlanLabel(afterObject.planKey || afterObject.plan_key)}`;
     case 'site_announcement.update':
       return `Phiên bản: ${beforeObject.revision || 1} → ${afterObject.revision || 1}`;
+    case 'prompt_settings.update':
+      return `Prompt ${afterObject.key || beforeObject.key || ''}: revision ${beforeObject.revision || 0} → ${afterObject.revision || 0}`;
     case 'users.sync_auth':
       return `Đồng bộ ${Number(afterObject.count || 0)} người dùng`;
     default:
@@ -711,6 +759,7 @@ function getResourceLabel({ targetSnapshot = {}, targetFeatureKey = '', action =
   if (target.label && target.label !== 'Hệ thống') return target.label;
   if (targetFeatureKey) return getFeatureLabel(targetFeatureKey);
   if (String(action || '').startsWith('site_announcement')) return 'Thông báo hệ thống';
+  if (String(action || '').startsWith('prompt_settings')) return 'Prompt hệ thống';
   if (String(action || '').startsWith('plans')) return 'Danh mục gói';
   if (String(action || '').startsWith('consent')) return 'Điều khoản 18+';
   return 'Hệ thống';
@@ -2002,6 +2051,22 @@ async function routeRequest(request, config, actor, env = {}) {
         requirePermission,
         readJson,
         getClientIp,
+      },
+    });
+  }
+
+  if (resource === 'prompt-settings') {
+    return routePromptSettingsAdmin({
+      request,
+      config,
+      actor,
+      segments: segments.slice(1),
+      url,
+      helpers: {
+        supabaseRest,
+        requirePermission,
+        readJsonLimited,
+        auditMutation,
       },
     });
   }

@@ -7,9 +7,23 @@
 // PROXY API - OpenAI Compatible (BeiJiXingXing, OpenRouter...)
 // ============================================
 const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 50;
+const DEFAULT_PROXY_TRANSLATION_MAX_TOKENS = 16384;
+const CUSTOM_PROXY_TRANSLATION_MAX_TOKENS = 32768;
 let proxyRelayChatBatchQueue = [];
 let proxyRelayChatBatchTimer = null;
 const STORYFORGE_RELAY_AUTH_CODES = new Set(['AUTH_REQUIRED']);
+
+function getProxyTranslationMaxTokens() {
+    const customProvider = typeof TRANSLATOR_PROVIDERS !== 'undefined'
+        ? TRANSLATOR_PROVIDERS.CUSTOM_PROXY
+        : 'custom_proxy';
+    const activeProvider = typeof activeTranslatorProvider !== 'undefined'
+        ? activeTranslatorProvider
+        : '';
+    return activeProvider === customProvider
+        ? CUSTOM_PROXY_TRANSLATION_MAX_TOKENS
+        : DEFAULT_PROXY_TRANSLATION_MAX_TOKENS;
+}
 
 function createProxyAbortError() {
     const error = new Error('Request aborted');
@@ -300,7 +314,8 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
             model: activeModel,
             messages: [{ role: 'user', content: text }],
             temperature: temperature,
-            max_tokens: 16384
+            stream: false,
+            max_tokens: getProxyTranslationMaxTokens()
         };
         const requestBody = proxyTarget?.mode === 'relay'
             ? {

@@ -19,6 +19,8 @@ window.copyResult = copyResult;
 window.downloadResult = downloadResult;
 window.downloadPartial = downloadPartial;
 window.setPromptTemplate = setPromptTemplate;
+if (typeof saveCustomPrompt === 'function') window.saveCustomPrompt = saveCustomPrompt;
+if (typeof resetActivePromptTemplate === 'function') window.resetActivePromptTemplate = resetActivePromptTemplate;
 window.clearFile = clearFile;
 window.continueFromHistory = continueFromHistory;
 window.loadFromHistory = loadFromHistory;
@@ -144,6 +146,7 @@ const TRANSLATOR_CLICK_ACTIONS = Object.freeze({
     exportHistory: () => exportHistory(),
     clearAllHistory: () => clearAllHistory(),
     setPromptTemplate: element => setPromptTemplate(element.dataset.actionValue),
+    resetActivePromptTemplate: () => resetActivePromptTemplate(),
     refreshCanonPackSelector: () => refreshCanonPackSelector(),
     applySelectedCanonPackToPrompt: () => applySelectedCanonPackToPrompt(),
     clearFile: () => clearFile(),
@@ -201,6 +204,7 @@ const TRANSLATOR_CHANGE_ACTIONS = Object.freeze({
 });
 
 const TRANSLATOR_INPUT_ACTIONS = Object.freeze({
+    saveCustomPrompt: () => saveCustomPrompt(),
     setCustomProxyModelSearch: element => setCustomProxyModelSearch(element.value),
     handleStartChunkSearchInput: () => handleStartChunkSearchInput(),
 });

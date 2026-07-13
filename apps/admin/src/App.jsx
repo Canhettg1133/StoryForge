@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { KeyRound, RefreshCw, Shield, ShieldCheck } from 'lucide-react';
+import { hasPermission } from '@storyforge/access';
 import { createAdminApiClient } from './adminApi.js';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase.js';
+import PromptSettingsPage from './features/promptSettings/PromptSettingsPage.jsx';
 import StoryMirrorPage from './features/storyMirror/StoryMirrorPage.jsx';
 import {
   EMPTY_DATA,
@@ -76,6 +78,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [pendingConfirm, setPendingConfirm] = useState(null);
+  const [promptSettingsReloadSignal, setPromptSettingsReloadSignal] = useState(0);
 
   const adminApi = useMemo(() => createAdminApiClient({
     getAccessToken: async () => {
@@ -204,6 +207,10 @@ export default function App() {
       if (viewToLoad === 'story-mirror') {
         return;
       }
+
+      if (viewToLoad === 'prompt-settings') {
+        return;
+      }
     } catch (error) {
       setLoadError(error.message || 'Không tải được dữ liệu admin.');
     } finally {
@@ -324,6 +331,21 @@ export default function App() {
     if (activeView === 'vip-ranking') loadVipRanking(DEFAULT_VIP_RANKING_FILTERS);
   }, [activeView, actor, loadVipRanking, session]);
 
+  const visibleNavGroups = useMemo(() => NAV_GROUPS
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.permission || hasPermission(actor, item.permission)),
+    }))
+    .filter((group) => group.items.length > 0), [actor]);
+
+  useEffect(() => {
+    if (!actor) return;
+    const visibleViewIds = new Set(visibleNavGroups.flatMap((group) => group.items.map((item) => item.id)));
+    if (!visibleViewIds.has(activeView)) {
+      setActiveView('overview');
+    }
+  }, [activeView, actor, visibleNavGroups]);
+
   const login = async () => {
     setAuthLoading(true);
     setAuthError('');
@@ -379,6 +401,11 @@ export default function App() {
       return;
     }
 
+    if (activeView === 'prompt-settings') {
+      setPromptSettingsReloadSignal((value) => value + 1);
+      return;
+    }
+
     await loadAdminData(activeView);
   }, [
     activeView,
@@ -423,6 +450,7 @@ export default function App() {
     if (activeView === 'users') return <UsersPanel data={data} selectedUserId={selectedUserId} setSelectedUserId={setSelectedUserId} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'vip') return <VipPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'announcement') return <AnnouncementPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
+    if (activeView === 'prompt-settings') return <PromptSettingsPage adminApi={adminApi} reloadSignal={promptSettingsReloadSignal} />;
     if (activeView === 'story-mirror') return <StoryMirrorPage adminApi={adminApi} actor={actor} />;
     if (activeView === 'features') return <FeaturesPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'consent') return <ConsentPanel data={data} />;
@@ -456,7 +484,7 @@ export default function App() {
     || (activeView === 'usage' && usageLoading);
 
   return (
-    <AdminShell actor={actor} activeView={activeView} navGroups={NAV_GROUPS} onSelectView={setActiveView} onLogout={logout} onRefresh={refreshActiveView} refreshLoading={reloadLoading}>
+    <AdminShell actor={actor} activeView={activeView} navGroups={visibleNavGroups} onSelectView={setActiveView} onLogout={logout} onRefresh={refreshActiveView} refreshLoading={reloadLoading}>
       <main className="admin-main">
         <header className="topbar">
           <div>

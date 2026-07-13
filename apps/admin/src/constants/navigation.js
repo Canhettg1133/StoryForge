@@ -4,6 +4,7 @@ import {
   BookOpen,
   Database,
   FileClock,
+  FileText,
   Gauge,
   ShieldCheck,
   SlidersHorizontal,
@@ -11,6 +12,7 @@ import {
   Trophy,
   Users,
 } from 'lucide-react';
+import { ADMIN_PERMISSIONS } from '@storyforge/access';
 
 export const NAV_GROUPS = [
   {
@@ -32,6 +34,7 @@ export const NAV_GROUPS = [
     label: 'Nội dung hệ thống',
     items: [
       { id: 'announcement', label: 'Thông báo', icon: Bell },
+      { id: 'prompt-settings', label: 'Prompt hệ thống', icon: FileText, permission: ADMIN_PERMISSIONS.PROMPTS_READ },
       { id: 'story-mirror', label: 'Kho truyện', icon: BookOpen },
     ],
   },

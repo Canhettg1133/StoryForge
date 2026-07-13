@@ -69,6 +69,8 @@ export const ADMIN_PERMISSIONS = {
   STORY_MIRROR_WRITE: 'story_mirror.write',
   CONSENT_READ: 'consent.read',
   CONSENT_WRITE: 'consent.write',
+  PROMPTS_READ: 'prompts.read',
+  PROMPTS_WRITE: 'prompts.write',
   ADMIN_SYNC_AUTH: 'admin.sync_auth',
 };
 
@@ -636,3 +638,21 @@ export {
   normalizeSiteAnnouncement,
   toPublicSiteAnnouncement,
 } from './siteAnnouncement.js';
+
+export {
+  PROMPT_SETTING_MAX_CONTENT_CHARS,
+  PROMPT_SETTINGS_ACTIVE_DOMAINS,
+  PROMPT_SETTINGS_ADMIN_BODY_MAX_BYTES,
+  PROMPT_SETTINGS_DOMAINS,
+  TRANSLATOR_PROMPT_KEYS,
+  TRANSLATOR_PROMPT_LABELS,
+  assertPromptSettingsDomain,
+  assertPromptSettingsKey,
+  buildPromptSettingsList,
+  isTranslatorPromptKey,
+  normalizePromptSettingKey,
+  normalizePromptSettingPatch,
+  normalizePromptSettingRow,
+  normalizePromptSettingsDomain,
+  toPublicTranslatorPromptSettings,
+} from './promptSettings.js';

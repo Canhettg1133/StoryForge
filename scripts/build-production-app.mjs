@@ -19,6 +19,40 @@ const TARGETS = {
   },
 };
 
+const SERVER_ONLY_SUPABASE_ENV_KEYS = Object.freeze([
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_SECRET_KEY',
+  'SUPABASE_SERVICE_KEY',
+]);
+
+export function isClientBuildEnvKey(key) {
+  return String(key || '').startsWith('VITE_');
+}
+
+export function isForbiddenPublicSupabaseSecretEnvKey(key) {
+  return /^VITE_.*SUPABASE.*(?:SERVICE|SECRET).*KEY$/iu.test(String(key || ''));
+}
+
+export function assertNoForbiddenPublicSupabaseEnv(env = process.env) {
+  const offenders = Object.keys(env || {}).filter(isForbiddenPublicSupabaseSecretEnvKey);
+  if (offenders.length > 0) {
+    throw new Error(
+      [
+        `Forbidden public Supabase secret env: ${offenders.join(', ')}`,
+        'Supabase service role keys must stay in Worker/Vercel server secrets and must never use the VITE_ prefix.',
+      ].join('\n'),
+    );
+  }
+}
+
+export function sanitizeClientBuildEnv(env = process.env) {
+  const safeEnv = { ...env };
+  for (const key of SERVER_ONLY_SUPABASE_ENV_KEYS) {
+    delete safeEnv[key];
+  }
+  return safeEnv;
+}
+
 function parseEnvValue(rawValue) {
   let value = String(rawValue || '').trim();
   const quote = value[0];
@@ -37,13 +71,14 @@ function parseEnvValue(rawValue) {
 
 export function loadEnvFile(filePath, env = process.env, options = {}) {
   if (!existsSync(filePath)) return [];
-  const { override = false } = options;
+  const { allowKey = null, override = false } = options;
   const loaded = [];
   const lines = readFileSync(filePath, 'utf8').split(/\r?\n/u);
   for (const line of lines) {
     const match = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/u);
     if (!match) continue;
     const [, key, rawValue] = match;
+    if (allowKey && !allowKey(key)) continue;
     if (!override && env[key]) continue;
     const value = parseEnvValue(rawValue);
     if (!value) continue;
@@ -54,15 +89,17 @@ export function loadEnvFile(filePath, env = process.env, options = {}) {
 }
 
 export function loadVercelProductionEnv(cwd = process.cwd(), env = process.env) {
-  return loadEnvFile(path.join(cwd, '.vercel', '.env.production.local'), env);
+  return loadEnvFile(path.join(cwd, '.vercel', '.env.production.local'), env, {
+    allowKey: isClientBuildEnvKey,
+  });
 }
 
 export function loadProductionBuildEnv(cwd = process.cwd(), env = process.env) {
   return [
-    ...loadEnvFile(path.join(cwd, '.env'), env),
-    ...loadEnvFile(path.join(cwd, '.env.local'), env),
-    ...loadEnvFile(path.join(cwd, '.env.production'), env),
-    ...loadEnvFile(path.join(cwd, '.env.production.local'), env),
+    ...loadEnvFile(path.join(cwd, '.env'), env, { allowKey: isClientBuildEnvKey }),
+    ...loadEnvFile(path.join(cwd, '.env.local'), env, { allowKey: isClientBuildEnvKey }),
+    ...loadEnvFile(path.join(cwd, '.env.production'), env, { allowKey: isClientBuildEnvKey }),
+    ...loadEnvFile(path.join(cwd, '.env.production.local'), env, { allowKey: isClientBuildEnvKey }),
     ...loadVercelProductionEnv(cwd, env),
   ];
 }
@@ -79,11 +116,11 @@ export function assertRequiredEnv(keys, env = process.env) {
   }
 }
 
-function runCommand(command, args) {
+function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
     stdio: 'inherit',
     shell: false,
-    env: process.env,
+    env: options.env || process.env,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -102,11 +139,13 @@ export function main(argv = process.argv.slice(2)) {
   if (loaded.length > 0) {
     console.log(`[build-production-app] loaded ${loaded.length} production env key(s) from local/Vercel env files`);
   }
+  assertNoForbiddenPublicSupabaseEnv();
   assertRequiredEnv(target.requiredEnv);
 
+  const clientBuildEnv = sanitizeClientBuildEnv(process.env);
   console.log(`[build-production-app] building ${target.label}`);
-  runCommand(process.execPath, ['node_modules/vite/bin/vite.js', ...target.viteArgs]);
-  runCommand(process.execPath, ['scripts/obfuscate-first-party.mjs', target.outDir]);
+  runCommand(process.execPath, ['node_modules/vite/bin/vite.js', ...target.viteArgs], { env: clientBuildEnv });
+  runCommand(process.execPath, ['scripts/obfuscate-first-party.mjs', target.outDir], { env: clientBuildEnv });
   runCommand(process.execPath, ['scripts/secure-build-guard.mjs', target.outDir]);
 }
 

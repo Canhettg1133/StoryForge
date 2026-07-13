@@ -285,6 +285,8 @@ describe('phase10 translator proxy key rotation', () => {
     expect(body.baseUrl).toBe('https://ag.beijixingxing.com');
     expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
     expect(body.payload.model).toBe('ag-gemini-model');
+    expect(body.payload.stream).toBe(false);
+    expect(body.payload.max_tokens).toBe(16384);
     expect(body.payload).not.toHaveProperty('safetySettings');
     expect(body.payload).not.toHaveProperty('safety_settings');
   });
@@ -450,6 +452,8 @@ describe('phase10 translator proxy key rotation', () => {
     expect(body.baseUrl).toBe('https://custom.example/v1');
     expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
     expect(body.payload.model).toBe('custom-gemini-model');
+    expect(body.payload.stream).toBe(false);
+    expect(body.payload.max_tokens).toBeGreaterThanOrEqual(1000);
   });
 
   it('formats Custom Proxy model fetch errors with Vietnamese proxy messages', async () => {
@@ -636,6 +640,8 @@ describe('phase10 translator proxy key rotation', () => {
       expect(request.body.chatCompletionsPath).toBe('/v1/chat/completions');
       expect(request.body.payloads).toHaveLength(5);
       expect(request.body.payloads.every((payload) => payload.model === 'ag-gemini-model')).toBe(true);
+      expect(request.body.payloads.every((payload) => payload.stream === false)).toBe(true);
+      expect(request.body.payloads.every((payload) => payload.max_tokens === 16384)).toBe(true);
     });
   });
 
@@ -673,12 +679,79 @@ describe('phase10 translator proxy key rotation', () => {
 
     const models = await context.fetchCustomProxyModels();
 
+    expect(requests).toHaveLength(1);
     expect(requests[0].url).toBe('http://localhost:1234/v1/models');
     expect(requests[0].options.headers.Authorization).toBe('Bearer CUSTOM_KEY');
     expect(models).toEqual(['openai/gpt-4.1', 'google/gemini-2.5-pro', 'gemini-2.5-flash']);
     expect(vm.runInContext('proxyModel', context)).toBe('ag-model');
     expect(vm.runInContext('proxyApiKeys', context)).toEqual(['AG_KEY']);
     expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe('openai/gpt-4.1');
+  });
+
+  it('merges the OpenCode catalog into likely 9Router Custom Proxy model fetches', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options, body: options.body ? JSON.parse(options.body) : null });
+
+      if (String(url) === 'http://localhost:20128/v1/models') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [{ id: 'cx/gpt-5.6-sol' }],
+          }),
+        };
+      }
+
+      if (String(url) === '/api/openai-proxy') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: [
+              { id: 'mimo-v2.5-free' },
+              { id: 'oc/deepseek-v4-flash-free' },
+            ],
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+
+    vm.runInContext(`
+      storyForgeAccessToken = 'story-token';
+      activeTranslatorProvider = TRANSLATOR_PROVIDERS.CUSTOM_PROXY;
+      customProxyProfile = {
+        baseUrl: 'http://localhost:20128/v1',
+        defaultModel: 'oc/deepseek-v4-flash-free',
+        models: ['oc/deepseek-v4-flash-free'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'direct'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+    `, context);
+
+    const models = await context.fetchCustomProxyModels();
+
+    expect(models).toEqual([
+      'cx/gpt-5.6-sol',
+      'oc/mimo-v2.5-free',
+      'oc/deepseek-v4-flash-free',
+    ]);
+    expect(requests).toHaveLength(2);
+    expect(requests[0].url).toBe('http://localhost:20128/v1/models');
+    expect(requests[0].options.headers.Authorization).toBe('Bearer CUSTOM_KEY');
+    expect(requests[1].url).toBe('/api/openai-proxy');
+    expect(requests[1].options.headers.Authorization).toBe('Bearer story-token');
+    expect(requests[1].options.headers['X-StoryForge-Upstream-Key']).toBeUndefined();
+    expect(requests[1].body).toEqual({
+      action: 'model_catalog',
+      catalog: '9router_opencode',
+    });
+    expect(vm.runInContext('customProxyProfile.defaultModel', context)).toBe('oc/deepseek-v4-flash-free');
   });
 
   it('does not write translator Custom Proxy state back into main StoryForge settings', () => {
@@ -777,9 +850,63 @@ describe('phase10 translator proxy key rotation', () => {
 
     expect(requests[0].url).toBe('http://localhost:1234/v1/chat/completions');
     expect(requests[0].options.headers.Authorization).toBe('Bearer CUSTOM_KEY');
-    expect(JSON.parse(requests[0].options.body).model).toBe('custom-gemini-model');
-    expect(JSON.parse(requests[0].options.body)).not.toHaveProperty('safetySettings');
-    expect(JSON.parse(requests[0].options.body)).not.toHaveProperty('safety_settings');
+    const body = JSON.parse(requests[0].options.body);
+    expect(body.model).toBe('custom-gemini-model');
+    expect(body.stream).toBe(false);
+    expect(body.max_tokens).toBe(32768);
+    expect(body).not.toHaveProperty('safetySettings');
+    expect(body).not.toHaveProperty('safety_settings');
+  });
+
+  it('translates remote Custom Proxy relay chunks with the Custom output token budget', async () => {
+    const requests = [];
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      requests.push({ url: String(url), options });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{
+            message: {
+              content: 'Báº£n dá»‹ch tiáº¿ng Viá»‡t há»£p lá»‡, Ä‘á»§ dĂ i vĂ  cĂ³ dáº¥u. '.repeat(90),
+            },
+          }],
+        }),
+      };
+    });
+
+    vm.runInContext(`
+      useProxy = true;
+      activeTranslatorProvider = 'custom_proxy';
+      customProxyProfile = {
+        baseUrl: 'https://custom.example/v1',
+        defaultModel: 'oc/deepseek-v4-flash-free',
+        models: ['oc/deepseek-v4-flash-free'],
+        chatCompletionsPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        transport: 'auto'
+      };
+      customProxyApiKeys = ['CUSTOM_KEY'];
+      customProxyApiKey = 'CUSTOM_KEY';
+      setActiveTranslatorTemplateId('convert');
+    `, context);
+
+    await context.translateChunkViaProxy(
+      'Äoáº¡n nguá»“n cáº§n dá»‹ch sang tiáº¿ng Viá»‡t. '.repeat(20),
+      0.7,
+      'CUSTOM_KEY'
+    );
+
+    expect(requests[0].url).toBe('/api/translator-openai-proxy');
+    expect(requests[0].options.headers.Authorization).toBe('Bearer story-token');
+    expect(requests[0].options.headers['X-StoryForge-Upstream-Key']).toBe('CUSTOM_KEY');
+    const body = JSON.parse(requests[0].options.body);
+    expect(body.action).toBe('chat');
+    expect(body.baseUrl).toBe('https://custom.example/v1');
+    expect(body.chatCompletionsPath).toBe('/v1/chat/completions');
+    expect(body.payload.model).toBe('oc/deepseek-v4-flash-free');
+    expect(body.payload.stream).toBe(false);
+    expect(body.payload.max_tokens).toBe(32768);
   });
 
   it('disables Gemini 2.5 Flash thinking for direct translation chunks', async () => {
