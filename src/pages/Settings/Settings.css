@@ -1597,6 +1597,64 @@
   }
 }
 
+.cloud-sync-offline-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 15px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 62%),
+    var(--color-bg-elevated);
+}
+
+.cloud-sync-offline-card p {
+  margin: 4px 0 0;
+  color: var(--color-text-tertiary);
+  font-size: 0.82rem;
+}
+
+.cloud-sync-offline-card__icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+.cloud-restore-full-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.cloud-restore-full-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cloud-restore-full-option small {
+  color: var(--color-text-tertiary);
+}
+
+@media (max-width: 700px) {
+  .cloud-sync-offline-card {
+    grid-template-columns: auto 1fr;
+  }
+
+  .cloud-sync-offline-card .btn {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 480px) {
   .custom-proxy-model-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -47,6 +47,14 @@
   gap: var(--space-5);
 }
 
+.new-project-card--import {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--color-accent) 8%, transparent), transparent 58%),
+    var(--color-bg-elevated);
+}
+
 .dashboard-tools,
 .dashboard-projects {
   display: flex;
@@ -266,6 +274,10 @@
   padding: 12px;
   cursor: pointer;
   position: relative;
+}
+
+.project-card--menu-open {
+  z-index: 1;
 }
 
 .project-card-cover-frame {

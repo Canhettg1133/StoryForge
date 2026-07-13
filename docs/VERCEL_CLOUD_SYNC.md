@@ -8,6 +8,8 @@ StoryForge is local-first: project data remains in IndexedDB, while optional clo
 - `VITE_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` for trusted Vercel API routes only
 - `VITE_ENABLE_CLOUD_SYNC=true` when the Cloud Sync UI should be available
+- `VITE_ENABLE_CLOUD_SNAPSHOT_V2=true` to write complete schema-8 project snapshots; set `false` only as a temporary writer rollback
+- `VITE_ENABLE_STORY_BUNDLE=true` to expose local `.storyforge` import/export (this feature does not use Supabase)
 
 Do not configure `VITE_CLOUD_SYNC_BASE_URL` or `STORYFORGE_DATABASE_URL`. They belonged to the retired unauthenticated `/api/cloud` implementation.
 
@@ -18,6 +20,7 @@ Run `docs/supabase-cloud-sync.sql`, followed by:
 1. Deploy the matching client validation and wait for Vercel Production to be `Ready`.
 2. `docs/supabase-access-control/011_cloud_snapshot_guardrails.sql`
 3. `docs/supabase-access-control/012_validate_cloud_snapshot_guardrails.sql` outside peak hours.
+4. `docs/supabase-access-control/015_cloud_snapshot_quota_and_rls.sql` to enforce the 200 snapshot / 256 MiB per-user quota and optimized RLS policies.
 
 RLS restricts every select/insert/update/delete to `auth.uid() = user_id`. The client keeps uploads sequential and uses a multi-tab lock, cooldown, timeout, and progressive backoff.
 

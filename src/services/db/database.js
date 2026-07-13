@@ -1,4 +1,5 @@
 import Dexie from 'dexie';
+import { installProjectDirtyTracking } from '../cloud/projectBackupDirty.js';
 
 const db = new Dexie('StoryForgeDB');
 
@@ -1365,6 +1366,8 @@ db.savePlotSuggestions = async (chapterId, projectId, suggestions) => {
     created_at: Date.now(),
   })));
 };
+
+installProjectDirtyTracking(db);
 
 db.on('ready', () => {
   // Do not block Dexie open on expensive canon rebuild work.

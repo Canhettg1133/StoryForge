@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
 import useMobileLayout from '../../hooks/useMobileLayout';
-import { shouldShowNavItem } from '../../config/productSurface';
+import { PRODUCT_SURFACE, shouldShowNavItem } from '../../config/productSurface';
 import { getGenreEmoji, getGenreLabel, formatDate } from '../../utils/constants';
 import {
   Plus,
@@ -18,12 +18,15 @@ import {
   FileJson,
   MessageSquare,
   Menu,
+  ArchiveRestore,
+  PackageOpen,
 } from 'lucide-react';
 import NewProjectModal from './NewProjectModal';
 import ExportModal from '../../components/common/ExportModal';
 import MobileSheet from '../../components/mobile/MobileSheet';
 import MobileNavigationMenu from '../../components/mobile/MobileNavigationMenu.jsx';
 import SupportDonateModal from '../../components/support/SupportDonateModal.jsx';
+import StoryBundleModal from '../../components/storyBundle/StoryBundleModal.jsx';
 import { getActiveProjectCoversForProjects } from '../../services/projectCovers/coverRepository.js';
 import './Dashboard.css';
 
@@ -88,11 +91,19 @@ export default function Dashboard() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [donateOpen, setDonateOpen] = useState(false);
   const [coverByProjectId, setCoverByProjectId] = useState({});
+  const [bundleExportProject, setBundleExportProject] = useState(null);
+  const [bundleImportOpen, setBundleImportOpen] = useState(false);
   const activeProjectId = null;
 
   useEffect(() => {
     loadProjects();
   }, [loadProjects]);
+
+  useEffect(() => {
+    if (!PRODUCT_SURFACE.enableStoryBundle || !location.state?.openStoryBundleImport) return;
+    setBundleImportOpen(true);
+    navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
+  }, [location.hash, location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
     let alive = true;
@@ -143,6 +154,13 @@ export default function Dashboard() {
     setShowModal(false);
     await loadProject(id);
     navigate(options.path || `/project/${id}/editor`);
+  };
+
+  const handleStoryBundleImported = async (id) => {
+    setBundleImportOpen(false);
+    await loadProjects();
+    await loadProject(id);
+    navigate(`/project/${id}/editor`);
   };
 
   const filteredProjects = projects.filter((project) => {
@@ -264,6 +282,18 @@ export default function Dashboard() {
               </div>
             </button>
 
+            {PRODUCT_SURFACE.enableStoryBundle ? (
+              <button className="new-project-card new-project-card--import animate-slide-up" onClick={() => setBundleImportOpen(true)}>
+                <div className="new-project-icon">
+                  <ArchiveRestore size={30} />
+                </div>
+                <div className="new-project-card__content">
+                  <span className="new-project-label">Nhập file StoryForge</span>
+                  <span className="new-project-hint">Khôi phục file .storyforge hoặc backup JSON cũ ngay trên máy, không cần Cloud Sync.</span>
+                </div>
+              </button>
+            ) : null}
+
             {filteredProjects.map((project, index) => {
               const cover = coverByProjectId[project.id];
               const coverUrl = project.cover_thumbnail_data_url || cover?.thumbnail_data_url || cover?.data_url || '';
@@ -271,7 +301,7 @@ export default function Dashboard() {
               return (
                 <div
                   key={project.id}
-                  className={`project-card card-glass animate-slide-up ${hasCover ? 'project-card--with-cover' : 'project-card--without-cover'}`}
+                  className={`project-card card-glass animate-slide-up ${hasCover ? 'project-card--with-cover' : 'project-card--without-cover'} ${contextMenu === project.id ? 'project-card--menu-open' : ''}`}
                   style={{ animationDelay: `${(index + 1) * 60}ms` }}
                   onClick={() => handleOpenProject(project.id)}
                 >
@@ -317,6 +347,18 @@ export default function Dashboard() {
                           >
                             <Download size={14} /> Xuất bản truyện
                           </button>
+                          {PRODUCT_SURFACE.enableStoryBundle ? (
+                            <button
+                              className="context-menu-item"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setContextMenu(null);
+                                setBundleExportProject(project);
+                              }}
+                            >
+                              <PackageOpen size={14} /> Sao lưu truyện (.storyforge)
+                            </button>
+                          ) : null}
                           <button
                             className="context-menu-item danger"
                             onClick={(event) => handleDeleteProject(project.id, event)}
@@ -383,6 +425,24 @@ export default function Dashboard() {
           onClose={() => setExportingProject(null)}
         />
       )}
+
+      {bundleExportProject ? (
+        <StoryBundleModal
+          mode="export"
+          project={bundleExportProject}
+          projects={projects}
+          onClose={() => setBundleExportProject(null)}
+        />
+      ) : null}
+
+      {bundleImportOpen ? (
+        <StoryBundleModal
+          mode="import"
+          projects={projects}
+          onClose={() => setBundleImportOpen(false)}
+          onImported={handleStoryBundleImported}
+        />
+      ) : null}
 
       <SupportDonateModal open={donateOpen} onClose={() => setDonateOpen(false)} />
     </div>

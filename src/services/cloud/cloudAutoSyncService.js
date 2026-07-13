@@ -13,6 +13,7 @@ import {
   listPromptBackups,
 } from './cloudBackupService.js';
 import { getSession } from './cloudAuthService.js';
+import { getDirtyProjectIds } from './projectBackupDirty.js';
 
 const PREFS_KEY = 'sf-cloud-sync-prefs';
 const STATUS_EVENT = 'storyforge:cloud-sync-status';
@@ -143,7 +144,7 @@ function isPendingLocalForkAfterDuplicateRestore(item) {
   return baseline > 0 && localUpdatedAt <= baseline;
 }
 
-function detectProjectState(project, cloudItem, currentUserId) {
+function detectProjectState(project, cloudItem, currentUserId, options = {}) {
   const slug = deriveProjectCloudSlug(project);
   const localUpdatedAt = Number(project?.updated_at || 0);
   const localSyncedAt = Number(project?.cloud_last_synced_at || 0);
@@ -151,6 +152,21 @@ function detectProjectState(project, cloudItem, currentUserId) {
   const cloudUpdatedAt = parseServerTimestamp(cloudItem?.updatedAt);
   if (isOwnedByDifferentUser(project?.cloud_owner_user_id, currentUserId)) {
     return null;
+  }
+
+  if (project?.cloud_pending_file_import && cloudItem) {
+    return {
+      type: 'conflict',
+      reason: 'file_import',
+      scope: 'project',
+      itemSlug: slug,
+      itemTitle: cloudItem.itemTitle || project.title,
+      localId: Number(project.id),
+      localUpdatedAt,
+      cloudUpdatedAt,
+      cloudItem,
+      data: project,
+    };
   }
 
   if (!cloudItem) {
@@ -170,7 +186,22 @@ function detectProjectState(project, cloudItem, currentUserId) {
     };
   }
 
-  if (localUpdatedAt > Math.max(localSyncedAt, cloudUpdatedAt)) {
+  const localIsDirty = options.force === true || options.dirty === true;
+  if (localIsDirty && cloudUpdatedAt > localServerUpdatedAt) {
+    return {
+      type: 'conflict',
+      scope: 'project',
+      itemSlug: slug,
+      itemTitle: cloudItem.itemTitle || project.title,
+      localId: Number(project.id),
+      localUpdatedAt,
+      cloudUpdatedAt,
+      cloudItem,
+      data: project,
+    };
+  }
+
+  if (localIsDirty || localUpdatedAt > Math.max(localSyncedAt, cloudUpdatedAt)) {
     return {
       type: 'upload',
       scope: 'project',
@@ -179,6 +210,7 @@ function detectProjectState(project, cloudItem, currentUserId) {
       localId: Number(project.id),
       localUpdatedAt,
       cloudUpdatedAt,
+      cloudItem,
       data: project,
     };
   }
@@ -314,7 +346,7 @@ export function saveCloudSyncPreferences(nextPrefs = {}) {
   return writePrefs(nextPrefs);
 }
 
-export async function scanCloudSyncState() {
+export async function scanCloudSyncState(options = {}) {
   const session = await getSession();
   if (!session?.user?.id) {
     return {
@@ -350,9 +382,20 @@ export async function scanCloudSyncState() {
   const promptItem = Array.isArray(promptBackups) ? promptBackups[0] || null : null;
   const pendingUploads = [];
   const conflicts = [];
+  const dirtyProjectIds = new Set(getDirtyProjectIds());
+  const selectedProjectIds = Array.isArray(options.projectIds)
+    ? new Set(options.projectIds.map(Number))
+    : null;
 
   projects.forEach((project) => {
-    const state = detectProjectState(project, projectBackupMap.get(deriveProjectCloudSlug(project)), currentUserId);
+    const forceProject = options.forceProjects === true
+      && (!selectedProjectIds || selectedProjectIds.has(Number(project.id)));
+    const state = detectProjectState(
+      project,
+      projectBackupMap.get(deriveProjectCloudSlug(project)),
+      currentUserId,
+      { dirty: dirtyProjectIds.has(Number(project.id)), force: forceProject },
+    );
     if (!state) return;
     if (state.type === 'upload') pendingUploads.push(state);
     if (state.type === 'conflict') conflicts.push(state);
@@ -436,13 +479,17 @@ export async function runAutoSyncCycle(options = {}) {
       return result;
     }
 
-    const scan = await scanCloudSyncState();
+    const scan = await scanCloudSyncState({
+      forceProjects: options.force === true,
+      projectIds: options.projectIds,
+    });
     const uploaded = [];
 
     if (prefs.autoSyncEnabled || options.force === true) {
       for (const item of scan.pendingUploads) {
         if (item.scope === 'project') {
-          await backupProject(item.data);
+          const backup = await backupProject(item.data, { cloudItem: item.cloudItem });
+          if (backup?.skipped) continue;
         } else if (item.scope === 'chat') {
           await backupChatThread(item.data);
         } else if (item.scope === 'prompt_bundle') {

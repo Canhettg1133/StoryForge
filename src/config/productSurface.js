@@ -5,6 +5,7 @@ export const PRODUCT_SURFACE = {
   showJobUi: import.meta.env.VITE_SHOW_JOB_UI === 'true',
   showWritingDebug: import.meta.env.VITE_SHOW_WRITING_DEBUG === 'true',
   enableCloudSync: import.meta.env.VITE_ENABLE_CLOUD_SYNC !== 'false',
+  enableStoryBundle: import.meta.env.VITE_ENABLE_STORY_BUNDLE !== 'false',
 };
 
 export function shouldShowNavItem(item) {

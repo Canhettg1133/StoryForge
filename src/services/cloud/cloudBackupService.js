@@ -2,13 +2,17 @@ import db from '../db/database.js';
 import JSZip from 'jszip';
 import {
   exportChatThread,
-  exportProject,
   exportPromptBundle,
   importChatThread,
   importProject,
   importPromptBundle,
 } from '../db/exportImport.js';
-import { deleteProjectCascade } from '../db/projectDataService.js';
+import {
+  buildProjectSnapshot,
+  hashProjectSnapshot,
+  stableStringify,
+} from '../db/projectSnapshot.js';
+import { clearProjectBackupDirty } from './projectBackupDirty.js';
 import {
   DEFAULT_STORY_CREATION_SETTINGS,
   STORY_CREATION_PROMPT_GROUPS,
@@ -22,6 +26,7 @@ const CHAT_SCOPE = 'chat';
 const PROMPT_BUNDLE_SCOPE = 'prompt_bundle';
 const PROMPT_BUNDLE_SLUG = 'story-creation-settings';
 const PROMPT_BUNDLE_TITLE = 'Global prompt bundle';
+const CLOUD_SNAPSHOT_V2_ENABLED = import.meta.env.VITE_ENABLE_CLOUD_SNAPSHOT_V2 !== 'false';
 
 export const CLOUD_SNAPSHOT_LIMITS = Object.freeze({
   payloadBytes: 64 * 1024 * 1024,
@@ -246,6 +251,38 @@ function validateChatSnapshotPayload(payloadText) {
   return parsed;
 }
 
+function namespaceChatSnapshot(chat, namespace) {
+  const prefix = String(namespace || 'chat');
+  const threadId = `${prefix}:thread:${chat.thread?.id}`;
+  const messageId = (id) => `${prefix}:message:${id}`;
+  const attachmentId = (id) => `${prefix}:attachment:${id}`;
+  return {
+    ...chat,
+    thread: { ...chat.thread, id: threadId },
+    messages: (chat.messages || []).map((row) => ({
+      ...row,
+      id: messageId(row.id),
+      thread_id: threadId,
+    })),
+    attachments: (chat.attachments || []).map((row) => ({
+      ...row,
+      id: attachmentId(row.id),
+      thread_id: threadId,
+    })),
+    attachment_chunks: (chat.attachment_chunks || []).map((row) => ({
+      ...row,
+      id: `${prefix}:chunk:${row.id}`,
+      attachment_id: attachmentId(row.attachment_id),
+    })),
+    message_attachments: (chat.message_attachments || []).map((row) => ({
+      ...row,
+      id: `${prefix}:link:${row.id}`,
+      message_id: messageId(row.message_id),
+      attachment_id: attachmentId(row.attachment_id),
+    })),
+  };
+}
+
 function validatePromptBundlePayload(payloadText) {
   let parsed = null;
   try {
@@ -384,7 +421,18 @@ async function listAllBackupsMetadata() {
   return Array.isArray(data) ? data.map(mapSnapshotRow) : [];
 }
 
-async function upsertSnapshot({ scope, itemSlug, itemTitle, payloadText, sourceUpdatedAt, metadata = {} }) {
+function mapCloudWriteError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  if (message.includes('cloud_snapshot_quota') || message.includes('snapshot quota')) {
+    return makeCloudLimitError(
+      'CLOUD_SNAPSHOT_QUOTA_EXCEEDED',
+      'Dung lượng Cloud Sync đã đạt giới hạn 256 MiB hoặc 200 snapshot. Hãy xóa bớt snapshot rồi thử lại.',
+    );
+  }
+  return error;
+}
+
+async function upsertSnapshot({ scope, itemSlug, itemTitle, payloadText, payloadVersion = 1, sourceUpdatedAt, metadata = {} }) {
   const validated = validateCloudSnapshotInput({ itemSlug, itemTitle, payloadText, metadata });
   const user = await requireUser();
   const client = getSupabaseClient();
@@ -394,7 +442,7 @@ async function upsertSnapshot({ scope, itemSlug, itemTitle, payloadText, sourceU
     item_slug: validated.itemSlug,
     item_title: validated.itemTitle,
     payload_text: validated.payloadText,
-    payload_version: 1,
+    payload_version: payloadVersion,
     source_updated_at: Number(sourceUpdatedAt || Date.now()),
     size_bytes: validated.sizeBytes,
     metadata: validated.metadata,
@@ -420,7 +468,7 @@ async function upsertSnapshot({ scope, itemSlug, itemTitle, payloadText, sourceU
     `)
     .single();
 
-  if (error) throw error;
+  if (error) throw mapCloudWriteError(error);
   return mapSnapshotRow(data);
 }
 
@@ -441,7 +489,25 @@ export async function listProjectBackups() {
   return listBackups(PROJECT_SCOPE);
 }
 
-export async function backupProject(project) {
+function countProjectSnapshotRecords(snapshot) {
+  return Object.entries(snapshot || {}).reduce((counts, [key, value]) => {
+    if (Array.isArray(value)) counts[key] = value.length;
+    return counts;
+  }, {});
+}
+
+function toLegacyCloudProjectSnapshot(snapshot) {
+  if (CLOUD_SNAPSHOT_V2_ENABLED) return snapshot;
+  const legacy = { ...snapshot, _storyforge_version: 7 };
+  for (const key of [
+    'characterStates', 'timelineEvents', 'stylePacks', 'voicePacks', 'revisions', 'qaReports',
+    'linked_events', 'project_analysis_snapshots', 'canon_purge_archives',
+    'entity_resolution_candidates', 'canon_pack', '_warnings',
+  ]) delete legacy[key];
+  return legacy;
+}
+
+export async function backupProject(project, options = {}) {
   const normalizedProjectId = Number(project?.id);
   if (!Number.isFinite(normalizedProjectId) || normalizedProjectId <= 0) {
     throw new Error('Không tìm thấy project local để backup.');
@@ -454,19 +520,42 @@ export async function backupProject(project) {
 
   const user = await requireUser();
   const itemSlug = buildProjectSlug(freshProject);
-  const payloadText = await exportProject(freshProject.id);
+  const fullSnapshot = options.snapshot || await buildProjectSnapshot(freshProject.id, { includeCanonPack: true });
+  const snapshot = toLegacyCloudProjectSnapshot(fullSnapshot);
+  const contentHash = options.contentHash || await hashProjectSnapshot(snapshot);
+  const payloadText = stableStringify(snapshot, 2);
   const snapshotMeta = parseProjectSnapshotMetadata(payloadText);
+  const cloudItem = options.cloudItem || null;
+  if (cloudItem?.metadata?.contentHash === contentHash) {
+    clearProjectBackupDirty(freshProject.id);
+    await db.projects.update(freshProject.id, {
+      cloud_project_slug: itemSlug,
+      cloud_content_hash: contentHash,
+      cloud_last_synced_at: Date.now(),
+      cloud_last_server_updated_at: cloudItem.updatedAt || freshProject.cloud_last_server_updated_at || '',
+      cloud_owner_user_id: user.id,
+      cloud_pending_local_fork_until_change: 0,
+      cloud_pending_file_import: false,
+    });
+    return { ...cloudItem, skipped: true, contentHash };
+  }
 
   const backup = await upsertSnapshot({
     scope: PROJECT_SCOPE,
     itemSlug,
     itemTitle: String(freshProject.title || `Project ${freshProject.id}`).trim() || `Project ${freshProject.id}`,
     payloadText,
+    payloadVersion: Number(snapshot._storyforge_version || 8),
     sourceUpdatedAt: Number(freshProject.updated_at || Date.now()),
     metadata: {
       localProjectId: Number(freshProject.id),
       exportedAt: snapshotMeta.exportedAt,
       storyforgeVersion: snapshotMeta.storyforgeVersion,
+      contentHash,
+      recordCounts: countProjectSnapshotRecords(snapshot),
+      projectCloudSlug: itemSlug,
+      warningCount: Array.isArray(snapshot._warnings) ? snapshot._warnings.length : 0,
+      writerVersion: CLOUD_SNAPSHOT_V2_ENABLED ? 2 : 1,
     },
   });
 
@@ -476,7 +565,10 @@ export async function backupProject(project) {
     cloud_last_server_updated_at: backup.updatedAt,
     cloud_owner_user_id: user.id,
     cloud_pending_local_fork_until_change: 0,
+    cloud_content_hash: contentHash,
+    cloud_pending_file_import: false,
   });
+  clearProjectBackupDirty(freshProject.id);
 
   return backup;
 }
@@ -494,6 +586,31 @@ export async function restoreProjectBackup(itemSlug, options = {}) {
 
   validateProjectSnapshotPayload(payloadText);
 
+  let combinedChats = null;
+  let matchedChatBackups = [];
+  let legacyChatBackups = [];
+  if (options.fullRestore === true) {
+    const chatBackups = await listChatBackups();
+    matchedChatBackups = chatBackups.filter((item) => String(item?.metadata?.projectCloudSlug || '') === String(itemSlug));
+    legacyChatBackups = chatBackups.filter((item) => !String(item?.metadata?.projectCloudSlug || '').trim());
+    const chatPayloads = [];
+    for (const chatBackup of matchedChatBackups) {
+      const chatRow = await getSnapshotRow(CHAT_SCOPE, chatBackup.itemSlug);
+      chatPayloads.push(namespaceChatSnapshot(
+        validateChatSnapshotPayload(String(chatRow.payload_text || '')),
+        chatBackup.itemSlug,
+      ));
+    }
+    combinedChats = chatPayloads.reduce((result, chat) => {
+      result.threads.push(chat.thread);
+      result.messages.push(...(chat.messages || []));
+      result.attachments.push(...(chat.attachments || []));
+      result.attachment_chunks.push(...(chat.attachment_chunks || []));
+      result.message_attachments.push(...(chat.message_attachments || []));
+      return result;
+    }, { threads: [], messages: [], attachments: [], attachment_chunks: [], message_attachments: [] });
+  }
+
   if (normalizedMode === 'replace') {
     if (!Number.isFinite(normalizedTargetProjectId) || normalizedTargetProjectId <= 0) {
       throw new Error('Hãy chọn project local để ghi đè.');
@@ -503,12 +620,16 @@ export async function restoreProjectBackup(itemSlug, options = {}) {
     if (!targetProject) {
       throw new Error('Project local được chọn để ghi đè không còn tồn tại.');
     }
-    await deleteProjectCascade(normalizedTargetProjectId);
   }
 
   const newProjectId = await importProject(payloadText, {
     titleMode: normalizedMode === 'replace' ? 'original' : 'imported',
     preserveCloudMetadata: normalizedMode === 'replace',
+    replaceProjectId: normalizedMode === 'replace' ? normalizedTargetProjectId : null,
+    source: 'cloud',
+    chats: combinedChats,
+    preserveChatCloudMetadata: normalizedMode === 'replace',
+    preserveTargetChats: normalizedMode === 'replace' && options.fullRestore !== true,
   });
 
   const restoredProject = await db.projects.get(newProjectId);
@@ -531,12 +652,19 @@ export async function restoreProjectBackup(itemSlug, options = {}) {
       cloud_pending_local_fork_until_change: duplicateBaselineAt,
     });
   }
+  clearProjectBackupDirty(newProjectId);
 
   return {
     newProjectId,
     backup: mapSnapshotRow(snapshotRow),
     mode: normalizedMode,
+    restoredChatCount: matchedChatBackups.length,
+    legacyChatBackups,
   };
+}
+
+export async function restoreCloudStory(itemSlug, options = {}) {
+  return restoreProjectBackup(itemSlug, { ...options, fullRestore: true });
 }
 
 export async function deleteProjectBackup(itemSlug) {
@@ -564,6 +692,7 @@ export async function backupChatThread(thread) {
     metadata: {
       localThreadId: Number(thread.id),
       projectId: Number(thread.project_id || 0),
+      projectCloudSlug: String(parsed?.metadata?.project_cloud_slug || ''),
       chatMode: String(thread.chat_mode || 'free'),
       messageCount: Array.isArray(parsed.messages) ? parsed.messages.length : 0,
     },
@@ -843,6 +972,7 @@ export default {
   listProjectBackups,
   backupProject,
   restoreProjectBackup,
+  restoreCloudStory,
   deleteProjectBackup,
   listChatBackups,
   backupChatThread,

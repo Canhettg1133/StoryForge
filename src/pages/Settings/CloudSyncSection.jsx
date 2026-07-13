@@ -11,6 +11,7 @@ import {
   Trash2,
   Upload,
   UserRound,
+  PackageOpen,
 } from 'lucide-react';
 import { PRODUCT_SURFACE } from '../../config/productSurface';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
@@ -91,6 +92,8 @@ const EMPTY_RESTORE_STATE = {
   item: null,
   mode: 'duplicate',
   targetProjectId: '',
+  confirmProjectTitle: '',
+  fullRestore: true,
 };
 
 export default function CloudSyncSection() {
@@ -194,6 +197,13 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
     () => [...projects].sort((left, right) => Number(right.updated_at || 0) - Number(left.updated_at || 0)),
     [projects],
   );
+  const cloudUsage = useMemo(() => {
+    const items = [...projectItems, ...chatItems, ...promptItems];
+    return {
+      count: items.length,
+      bytes: items.reduce((sum, item) => sum + Number(item.sizeBytes || 0), 0),
+    };
+  }, [projectItems, chatItems, promptItems]);
 
   const showMessage = (type, text) => {
     setMessage({ type, text });
@@ -483,10 +493,12 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
     const actionKey = `project:${project.id}`;
     setSavingKey(actionKey);
     try {
-      await backupProject(project);
+      const result = await backupProject(project);
       await loadProjects();
       await refreshCloud();
-      showMessage('success', `Đã backup "${project.title}" lên cloud.`);
+      showMessage('success', result?.skipped
+        ? `"${project.title}" không đổi; không cần tải lại lên cloud.`
+        : `Đã backup "${project.title}" lên cloud.`);
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
     } finally {
@@ -527,6 +539,8 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       item,
       mode: 'duplicate',
       targetProjectId: scopedProjectId ? String(scopedProjectId) : '',
+      confirmProjectTitle: '',
+      fullRestore: true,
     });
   };
 
@@ -541,6 +555,11 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       showMessage('error', 'Hay chon project local de ghi de.');
       return;
     }
+    const targetProject = sortedProjects.find((project) => Number(project.id) === Number(restoreState.targetProjectId));
+    if (restoreState.mode === 'replace' && restoreState.confirmProjectTitle !== targetProject?.title) {
+      showMessage('error', 'Hãy gõ đúng tên project local để xác nhận ghi đè.');
+      return;
+    }
 
     const actionKey = `project:${restoreState.item.itemSlug}`;
     setRestoringKey(actionKey);
@@ -550,6 +569,7 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
         targetProjectId: restoreState.mode === 'replace'
           ? Number(restoreState.targetProjectId)
           : null,
+        fullRestore: restoreState.fullRestore,
       });
 
       await loadProjects();
@@ -566,8 +586,8 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       showMessage(
         'success',
         restoreState.mode === 'replace'
-          ? `Đã ghi đè project local bằng snapshot "${restoreState.item.itemTitle}".`
-          : `Đã khôi phục snapshot "${restoreState.item.itemTitle}" thành project mới (#${result.newProjectId}).`,
+          ? `Đã ghi đè project local bằng snapshot "${restoreState.item.itemTitle}"${result.restoredChatCount ? ` và ${result.restoredChatCount} chat` : ''}.`
+          : `Đã khôi phục snapshot "${restoreState.item.itemTitle}" thành project mới (#${result.newProjectId})${result.restoredChatCount ? ` cùng ${result.restoredChatCount} chat` : ''}.`,
       );
       setRestoreState(EMPTY_RESTORE_STATE);
     } catch (error) {
@@ -649,10 +669,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       return (
         <>
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => handleProjectBackup(item.data)}>
-            <Upload size={14} /> Lưu local để cloud
+            <Upload size={14} /> Dùng local ghi lên cloud
           </button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => openRestoreModal(item.cloudItem)}>
-            <Download size={14} /> Khôi phục cloud
+            <Download size={14} /> Lấy cloud ghi về local
           </button>
         </>
       );
@@ -766,12 +786,26 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
         onChange={handleImportCloudFile}
       />
 
+      {PRODUCT_SURFACE.enableStoryBundle ? (
+        <div className="cloud-sync-offline-card">
+          <div className="cloud-sync-offline-card__icon"><PackageOpen size={20} /></div>
+          <div>
+            <strong>Sao lưu ngoại tuyến</strong>
+            <p>File .storyforge hoạt động không cần đăng nhập, Supabase hoặc mạng.</p>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={() => navigate('/', { state: { openStoryBundleImport: true } })}>
+            Mở nhập/xuất file
+          </button>
+        </div>
+      ) : null}
+
       <div className="cloud-sync-ops">
         <div className="cloud-sync-ops__summary">
           <strong>{autoSyncPrefs.autoSyncEnabled ? 'Tự đồng bộ đang bật' : 'Tự đồng bộ đang tắt'}</strong>
           <p>
             Chờ tải lên: {syncStatus.pendingUploads.length} | Xung đột: {syncStatus.conflicts.length} | Lần chạy cuối: {formatTimestamp(syncStatus.lastRunAt)}
           </p>
+          <p>Dung lượng Cloud: {formatBytes(cloudUsage.bytes)} / 256 MiB | {cloudUsage.count} / 200 snapshot</p>
           {syncStatus.accountMismatch ? (
             <p>Tài khoản Google hiện tại khác với tài khoản đã bật tự đồng bộ trước đó. Hãy bật lại tự đồng bộ nếu muốn đổi tài khoản.</p>
           ) : null}
@@ -790,11 +824,11 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => handleExportCloud('zip')} disabled={!isSignedIn || exportingFormat === 'zip' || importingCloud}>
             {exportingFormat === 'zip' ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-            Xuất .zip
+            Xuất kho snapshot Cloud (.zip)
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => handleExportCloud('json')} disabled={!isSignedIn || exportingFormat === 'json' || importingCloud}>
             {exportingFormat === 'json' ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-            Xuất .json
+            Xuất kho snapshot Cloud (.json)
           </button>
           <button type="button" className="btn btn-ghost" onClick={() => importInputRef.current?.click()} disabled={!isSignedIn || importingCloud}>
             {importingCloud ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
@@ -1133,16 +1167,33 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                     id="cloud-restore-target"
                     className="select"
                     value={restoreState.targetProjectId}
-                    onChange={(event) => setRestoreState((prev) => ({ ...prev, targetProjectId: event.target.value }))}
+                    onChange={(event) => setRestoreState((prev) => ({ ...prev, targetProjectId: event.target.value, confirmProjectTitle: '' }))}
                   >
                     <option value="">Chon project local</option>
                     {sortedProjects.map((project) => (
                       <option key={project.id} value={project.id}>{project.title}</option>
                     ))}
                   </select>
-                  <span className="settings-hint">Project được chọn sẽ bị xóa khỏi máy trước khi import snapshot.</span>
+                  <span className="settings-hint">Project hiện tại được giữ nguyên cho đến khi toàn bộ snapshot đã kiểm tra và transaction sẵn sàng commit.</span>
+                  <label className="form-label" htmlFor="cloud-restore-confirm-title">Gõ đúng tên project</label>
+                  <input
+                    id="cloud-restore-confirm-title"
+                    className="input"
+                    value={restoreState.confirmProjectTitle}
+                    onChange={(event) => setRestoreState((prev) => ({ ...prev, confirmProjectTitle: event.target.value }))}
+                    placeholder={sortedProjects.find((project) => Number(project.id) === Number(restoreState.targetProjectId))?.title || ''}
+                  />
                 </div>
               ) : null}
+
+              <label className="cloud-restore-full-option">
+                <input
+                  type="checkbox"
+                  checked={restoreState.fullRestore}
+                  onChange={(event) => setRestoreState((prev) => ({ ...prev, fullRestore: event.target.checked }))}
+                />
+                <span><strong>Khôi phục đầy đủ</strong><small>Kèm Canon Pack và mọi Project Chat có metadata liên kết với snapshot này.</small></span>
+              </label>
             </div>
 
             <div className="modal-actions">
@@ -1153,7 +1204,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
                 type="button"
                 className="btn btn-primary"
                 onClick={handleProjectRestore}
-                disabled={Boolean(restoringKey) || (restoreState.mode === 'replace' && !restoreState.targetProjectId)}
+                disabled={Boolean(restoringKey) || (restoreState.mode === 'replace' && (
+                  !restoreState.targetProjectId
+                  || restoreState.confirmProjectTitle !== sortedProjects.find((project) => Number(project.id) === Number(restoreState.targetProjectId))?.title
+                ))}
               >
                 {restoringKey ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
                 {restoreState.mode === 'replace' ? 'Ghi đè và khôi phục' : 'Khôi phục thành project mới'}

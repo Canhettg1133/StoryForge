@@ -51,15 +51,23 @@ function normalizeChunkInput(chunk = {}, attachmentId) {
   };
 }
 
+async function touchChatThreads(threadIds = []) {
+  const ids = [...new Set(threadIds.map(normalizeId).filter(Boolean))];
+  const timestamp = now();
+  await Promise.all(ids.map((threadId) => db.ai_chat_threads.update(threadId, { updated_at: timestamp })));
+}
+
 async function deleteAttachmentRows(attachmentIds = []) {
   const ids = attachmentIds.map(normalizeId).filter(Boolean);
   if (ids.length === 0) return;
+  const attachments = await db.ai_chat_attachments.where('id').anyOf(ids).toArray();
 
   await Promise.all([
     db.ai_chat_attachment_chunks.where('attachment_id').anyOf(ids).delete(),
     db.ai_chat_message_attachments.where('attachment_id').anyOf(ids).delete(),
     db.ai_chat_attachments.bulkDelete(ids),
   ]);
+  await touchChatThreads(attachments.map((attachment) => attachment.thread_id));
 }
 
 export async function saveChatAttachmentWithChunks({ attachment = {}, chunks = [] } = {}) {
@@ -78,16 +86,21 @@ export async function saveChatAttachmentWithChunks({ attachment = {}, chunks = [
     await db.ai_chat_attachment_chunks.bulkAdd(chunkRows);
   }
 
+  await touchChatThreads([normalizedAttachment.thread_id]);
+
   return db.ai_chat_attachments.get(attachmentId);
 }
 
 export async function updateChatAttachment(attachmentId, patch = {}) {
   const id = normalizeId(attachmentId);
   if (!id) return 0;
-  return db.ai_chat_attachments.update(id, {
+  const updated = await db.ai_chat_attachments.update(id, {
     ...patch,
     updated_at: now(),
   });
+  const attachment = await db.ai_chat_attachments.get(id);
+  await touchChatThreads([attachment?.thread_id]);
+  return updated;
 }
 
 export async function replaceChatAttachmentChunks(attachmentId, chunks = []) {
@@ -111,7 +124,11 @@ export async function replaceChatAttachmentChunks(attachmentId, chunks = []) {
 export async function updateChatAttachmentChunk(chunkId, patch = {}) {
   const id = normalizeId(chunkId);
   if (!id) return 0;
-  return db.ai_chat_attachment_chunks.update(id, patch);
+  const updated = await db.ai_chat_attachment_chunks.update(id, patch);
+  const chunk = await db.ai_chat_attachment_chunks.get(id);
+  const attachment = chunk ? await db.ai_chat_attachments.get(chunk.attachment_id) : null;
+  await touchChatThreads([attachment?.thread_id]);
+  return updated;
 }
 
 export async function getChatAttachmentChunks(attachmentId) {
@@ -153,6 +170,8 @@ export async function linkMessageAttachments({ messageId, attachmentIds = [] } =
     created_at: now(),
   }));
   await db.ai_chat_message_attachments.bulkAdd(rows);
+  const attachments = await db.ai_chat_attachments.where('id').anyOf(ids).toArray();
+  await touchChatThreads(attachments.map((attachment) => attachment.thread_id));
   return rows;
 }
 

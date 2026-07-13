@@ -1,5 +1,6 @@
 import Dexie from 'dexie';
 import { hashLabLiteContent } from './longContextPlanner.js';
+import { markProjectBackupDirty } from '../cloud/projectBackupDirty.js';
 
 export const labLiteDb = new Dexie('StoryForgeLabLiteDB');
 
@@ -84,6 +85,21 @@ labLiteDb.version(6).stores({
   analysisJobItems: 'id, jobId, corpusId, chapterIndex, batchId, status, retryCount, updatedAt, [jobId+status], [corpusId+chapterIndex]',
   chapterCoverage: 'id, corpusId, chapterIndex, status, failedReason, updatedAt, [corpusId+chapterIndex], [corpusId+status]',
 });
+
+function markCanonPackProjectDirty(record = {}, modifications = {}) {
+  markProjectBackupDirty(
+    modifications.projectId
+    || modifications.linkedProjectId
+    || record.projectId
+    || record.linkedProjectId,
+  );
+}
+
+if (typeof labLiteDb.canonPacks?.hook === 'function') {
+  labLiteDb.canonPacks.hook('creating', (_primaryKey, record) => markCanonPackProjectDirty(record));
+  labLiteDb.canonPacks.hook('updating', (modifications, _primaryKey, record) => markCanonPackProjectDirty(record, modifications));
+  labLiteDb.canonPacks.hook('deleting', (_primaryKey, record) => markCanonPackProjectDirty(record));
+}
 
 function createId(prefix) {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {

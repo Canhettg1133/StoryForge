@@ -11,6 +11,7 @@ import {
   listProjectBackups,
   listPromptBackups,
   restoreChatBackup,
+  restoreCloudStory,
   restoreProjectBackup,
   restorePromptBackup,
 } from './cloudBackupService.js';
@@ -28,6 +29,7 @@ import {
   scanCloudSyncState,
   subscribeCloudSyncStatus,
 } from './cloudAutoSyncService.js';
+import { markProjectBackupDirty } from './projectBackupDirty.js';
 
 export {
   backupChatThread,
@@ -46,6 +48,7 @@ export {
   listPromptBackups,
   runAutoSyncCycle,
   restoreChatBackup,
+  restoreCloudStory,
   restoreProjectBackup,
   restorePromptBackup,
   saveCloudSyncPreferences,
@@ -54,6 +57,7 @@ export {
   signOut,
   subscribe,
   subscribeCloudSyncStatus,
+  markProjectBackupDirty,
 };
 
 export default {
@@ -73,6 +77,7 @@ export default {
   listPromptBackups,
   runAutoSyncCycle,
   restoreChatBackup,
+  restoreCloudStory,
   restoreProjectBackup,
   restorePromptBackup,
   saveCloudSyncPreferences,
@@ -81,4 +86,5 @@ export default {
   signOut,
   subscribe,
   subscribeCloudSyncStatus,
+  markProjectBackupDirty,
 };
