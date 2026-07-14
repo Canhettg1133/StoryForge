@@ -358,7 +358,7 @@ export default function CanonTruth() {
   useEffect(() => {
     clearActionOutcome();
     clearRepairText();
-  }, [selectedChapterId, selectedRevisionId, clearActionOutcome, clearRepairText]);
+  }, [selectedChapterId, clearActionOutcome, clearRepairText]);
 
   useEffect(() => {
     if (!overview?.chapterCommits?.length) {
@@ -410,8 +410,8 @@ export default function CanonTruth() {
         reportId: scopedRepairPreview.reportId || null,
         chapterText: scopedRepairPreview.text,
       });
-      await loadOverview();
       await loadRevisionInspector(selectedChapterId, saved?.id || null);
+      await loadOverview();
     } catch {
       // Outcome is stored centrally.
     }
@@ -594,7 +594,11 @@ export default function CanonTruth() {
                 key={commit.id || commit.chapter_id}
                 type="button"
                 className={`bible-canon-list-item bible-canon-list-item--interactive bible-canon-list-item--${commit.status || 'draft'} ${selectedChapterId === commit.chapter_id ? 'is-selected' : ''}`}
-                onClick={() => loadRevisionInspector(commit.chapter_id)}
+                onClick={() => {
+                  clearActionOutcome();
+                  clearRepairText();
+                  loadRevisionInspector(commit.chapter_id);
+                }}
               >
                 <div>
                   <strong>{commit.chapter_title || `Chương ${commit.chapter_id}`}</strong>
@@ -796,6 +800,8 @@ export default function CanonTruth() {
               className="select"
               value={selectedRevisionId || ''}
               onChange={async (event) => {
+                clearActionOutcome();
+                clearRepairText();
                 const revisionId = Number(event.target.value) || null;
                 setSelectedRevisionId(revisionId);
                 setDetailLoading(true);
@@ -1066,7 +1072,9 @@ export default function CanonTruth() {
         open={Boolean(scopedRepairPreview)}
         preview={scopedRepairPreview}
         saving={savingRepairDraft}
+        outcome={lastActionOutcome}
         onClose={clearRepairText}
+        onRetry={() => handleGenerateRepair(scopedRepairPreview?.reportId || null)}
         onCopy={handleCopyRepair}
         onSaveDraft={handleSaveRepairDraft}
       />

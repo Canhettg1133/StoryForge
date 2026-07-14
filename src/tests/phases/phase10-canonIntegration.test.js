@@ -1050,6 +1050,14 @@ describe('phase10 canon integration', () => {
     const { db, engine } = await loadModules({
       projects: [{ id: 1, title: 'Repair Test' }],
       chapters: [{ id: 1, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{
+        id: 11,
+        project_id: 1,
+        chapter_id: 1,
+        order_index: 0,
+        title: 'Canh 1',
+        draft_text: 'Noi dung dang mo trong editor',
+      }],
       chapter_revisions: [
         {
           id: 101,
@@ -1061,6 +1069,14 @@ describe('phase10 canon integration', () => {
           created_at: 1,
         },
       ],
+      chapter_commits: [{
+        id: 201,
+        project_id: 1,
+        chapter_id: 1,
+        current_revision_id: 101,
+        canonical_revision_id: null,
+        status: 'blocked',
+      }],
       validator_reports: [
         {
           id: 401,
@@ -1091,6 +1107,11 @@ describe('phase10 canon integration', () => {
 
     const revisions = await db.chapter_revisions.where('[project_id+chapter_id]').equals([1, 1]).toArray();
     expect(revisions).toHaveLength(2);
+    expect((await db.scenes.get(11)).draft_text).toBe('Noi dung dang mo trong editor');
+
+    const commit = await db.chapter_commits.get(201);
+    expect(commit.current_revision_id).toBe(saved.id);
+    expect(commit.canonical_revision_id).toBeNull();
   });
 
   it('exports and imports canon tables with remapped references', async () => {

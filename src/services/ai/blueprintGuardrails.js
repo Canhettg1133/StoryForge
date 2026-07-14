@@ -983,10 +983,10 @@ export function buildStoryBibleSeedValidation(seed = {}, options = {}) {
   const characterLimit = getSeedCharacterLimit(chapterCount);
 
   if (protagonists.length === 0) {
-    blockingIssues.push(createIssue(
-      'blocking',
+    warnings.push(createIssue(
+      'warning',
       'seed-missing-protagonist',
-      'Nền truyện phải có ít nhất một nhân vật chính hoặc trung tâm.',
+      'Nền truyện chưa có nhân vật chính hoặc trung tâm; vẫn có thể tạo dự án và bổ sung sau.',
     ));
   } else if (protagonists.length > 2) {
     warnings.push(createIssue(
@@ -998,10 +998,10 @@ export function buildStoryBibleSeedValidation(seed = {}, options = {}) {
   }
 
   if (importantCharacters.length > characterLimit) {
-    blockingIssues.push(createIssue(
-      'blocking',
+    warnings.push(createIssue(
+      'warning',
       'seed-character-cap-exceeded',
-      `${chapterCount} chương khởi đầu chỉ nên có tối đa ${characterLimit} nhân vật quan trọng, hiện có ${importantCharacters.length}.`,
+      `${chapterCount} chương khởi đầu đang có ${importantCharacters.length} nhân vật quan trọng; mức gợi ý là tối đa ${characterLimit}, nhưng vẫn có thể tạo dự án.`,
       { characterCount: importantCharacters.length, characterLimit, chapterCount },
     ));
   }
@@ -1020,10 +1020,10 @@ export function buildStoryBibleSeedValidation(seed = {}, options = {}) {
     .forEach((character, index) => {
       const name = getBlueprintEntityName(character) || `Nhân vật phụ ${index + 1}`;
       if (!normalizeOptionalText(character.story_function) || looksDeferredToFuture(character.story_function)) {
-        blockingIssues.push(createIssue(
-          'blocking',
+        warnings.push(createIssue(
+          'warning',
           'seed-deferred-character',
-          `Nhân vật "${name}" chưa có vai trò sớm rõ ràng; không tạo nhân vật để dành về sau trong nền truyện.`,
+          `Nhân vật "${name}" chưa có vai trò sớm rõ ràng; vẫn có thể tạo dự án và hoàn thiện sau.`,
           { entityName: name },
         ));
       }
@@ -1080,14 +1080,17 @@ function pushUnknownReferenceIssues({
   chapterSignal,
   label,
   requireNonEmpty = false,
+  blockUnknown = true,
 }) {
+  const unknownIssues = blockUnknown ? blockingIssues : warnings;
+  const issueType = blockUnknown ? 'blocking' : 'warning';
   normalizeChapterListField(references).forEach((reference) => {
     const normalizedReference = normalizeBlueprintText(reference);
     if (!normalizedReference || allowedSet.has(normalizedReference)) return;
 
     if (hasProposalReference(proposedEntities, collectionKey, reference)) {
-      blockingIssues.push(createIssue(
-        'blocking',
+      unknownIssues.push(createIssue(
+        issueType,
         'outline-proposal-pending',
         `${chapterSignal.title} dùng ${label} "${reference}" từ Đề xuất mới nhưng đề xuất này chưa được duyệt.`,
         { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title, entityName: reference, collectionKey },
@@ -1095,8 +1098,8 @@ function pushUnknownReferenceIssues({
       return;
     }
 
-    blockingIssues.push(createIssue(
-      'blocking',
+    unknownIssues.push(createIssue(
+      issueType,
       `outline-unknown-${collectionKey}`,
       `${chapterSignal.title} gọi ${label} "${reference}" chưa có trong nền truyện và không nằm trong Đề xuất mới.`,
       { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title, entityName: reference, collectionKey },
@@ -1189,6 +1192,7 @@ export function buildChapterOutlinePassValidation(outline = {}, seed = {}, optio
       chapterSignal,
       label: 'nhân vật',
       requireNonEmpty: true,
+      blockUnknown: false,
     });
 
     pushUnknownReferenceIssues({
@@ -1310,10 +1314,10 @@ export function buildWizardValidation(result, excluded = new Set()) {
       ));
     }
     if (chapterSignal.featuredCharacters.length === 0) {
-      blockingIssues.push(createIssue(
-        'blocking',
+      warnings.push(createIssue(
+        'warning',
         'chapter-missing-featured-characters',
-        `${chapterSignal.title} chưa gắn nhân vật xuất hiện.`,
+        `${chapterSignal.title} chưa gắn nhân vật xuất hiện; vẫn có thể tạo dự án và bổ sung sau.`,
         { chapterIndex: chapterSignal.index, chapterTitle: chapterSignal.title },
       ));
     }
@@ -1376,10 +1380,10 @@ export function buildWizardValidation(result, excluded = new Set()) {
       || chapterSignal.searchableText.includes(normalized)
     ));
     if (!appears) {
-      blockingIssues.push(createIssue(
-        'blocking',
+      warnings.push(createIssue(
+        'warning',
         'protagonist-unused',
-        `Nhân vật chính/trung tâm "${name}" không xuất hiện trong chương đầu.`,
+        `Nhân vật chính/trung tâm "${name}" chưa xuất hiện trong dàn ý chương đầu.`,
         { entityName: name },
       ));
     }

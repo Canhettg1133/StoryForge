@@ -92,7 +92,7 @@ describe('phase10 blueprint guardrails', () => {
     expect(normalized.chapters).toEqual([]);
   });
 
-  it('blocks one-chapter seeds with too many important characters', () => {
+  it('warns without blocking one-chapter seeds with many important characters', () => {
     const validation = buildStoryBibleSeedValidation({
       characters: [
         { name: 'Lan', role: 'protagonist' },
@@ -102,15 +102,17 @@ describe('phase10 blueprint guardrails', () => {
       ],
     }, { initialChapterCount: 1 });
 
-    expect(validation.blockingIssues.map((item) => item.code)).toContain('seed-character-cap-exceeded');
+    expect(validation.blockingIssues.map((item) => item.code)).not.toContain('seed-character-cap-exceeded');
+    expect(validation.warnings.map((item) => item.code)).toContain('seed-character-cap-exceeded');
   });
 
-  it('blocks seeds without a protagonist', () => {
+  it('warns without blocking seeds without a protagonist', () => {
     const validation = buildStoryBibleSeedValidation({
       characters: [{ name: 'Kha', role: 'supporting', story_function: 'xuat hien o chuong 1' }],
     }, { initialChapterCount: 2 });
 
-    expect(validation.blockingIssues.map((item) => item.code)).toContain('seed-missing-protagonist');
+    expect(validation.blockingIssues.map((item) => item.code)).not.toContain('seed-missing-protagonist');
+    expect(validation.warnings.map((item) => item.code)).toContain('seed-missing-protagonist');
   });
 
   it('allows two protagonists in a story bible seed', () => {
@@ -146,7 +148,7 @@ describe('phase10 blueprint guardrails', () => {
     expect(validation.warnings.map((item) => item.code)).toContain('seed-too-many-protagonists');
   });
 
-  it('blocks supporting characters reserved for later instead of early story use', () => {
+  it('warns without blocking supporting characters reserved for later', () => {
     const validation = buildStoryBibleSeedValidation({
       characters: [
         { name: 'Lan', role: 'protagonist' },
@@ -154,7 +156,17 @@ describe('phase10 blueprint guardrails', () => {
       ],
     }, { initialChapterCount: 2 });
 
-    expect(validation.blockingIssues.map((item) => item.code)).toContain('seed-deferred-character');
+    expect(validation.blockingIssues.map((item) => item.code)).not.toContain('seed-deferred-character');
+    expect(validation.warnings.map((item) => item.code)).toContain('seed-deferred-character');
+  });
+
+  it('allows a multi-chapter seed with only one character', () => {
+    const validation = buildStoryBibleSeedValidation({
+      characters: [{ name: 'Lan', role: 'protagonist' }],
+    }, { initialChapterCount: 5 });
+
+    expect(validation.blockingIssues).toHaveLength(0);
+    expect(validation.warnings.map((item) => item.code)).toContain('seed-character-count-low');
   });
 
   it('does not turn prompt-like ideas into story titles', () => {
@@ -246,16 +258,20 @@ describe('phase10 blueprint guardrails', () => {
 
     expect(validation.blockingIssues.map((item) => item.code)).toEqual(expect.arrayContaining([
       'chapter-missing-purpose',
-      'chapter-missing-featured-characters',
       'chapter-missing-primary-location',
       'chapter-missing-thread-anchor',
-      'protagonist-unused',
       'thread-without-anchor',
       'location-unused',
       'faction-unused',
       'term-unused',
     ]));
-    expect(validation.warnings.map((item) => item.code)).toContain('term-unused');
+    expect(validation.blockingIssues.map((item) => item.code)).not.toContain('chapter-missing-featured-characters');
+    expect(validation.blockingIssues.map((item) => item.code)).not.toContain('protagonist-unused');
+    expect(validation.warnings.map((item) => item.code)).toEqual(expect.arrayContaining([
+      'chapter-missing-featured-characters',
+      'protagonist-unused',
+      'term-unused',
+    ]));
   });
 
   it('treats required_terms and required_factions as valid early anchors', () => {
@@ -465,7 +481,7 @@ describe('phase10 blueprint guardrails', () => {
     ]));
   });
 
-  it('blocks unknown outline references unless they are proposed and approved', () => {
+  it('warns for unknown character references without blocking project creation', () => {
     const seed = normalizeStoryBibleSeedResult({
       characters: [{ name: 'Lan', role: 'protagonist' }],
       locations: [{ name: 'Thanh Co' }],
@@ -486,7 +502,8 @@ describe('phase10 blueprint guardrails', () => {
     };
 
     const pending = buildChapterOutlinePassValidation(outline, seed);
-    expect(pending.blockingIssues.map((item) => item.code)).toContain('outline-proposal-pending');
+    expect(pending.blockingIssues.map((item) => item.code)).not.toContain('outline-proposal-pending');
+    expect(pending.warnings.map((item) => item.code)).toContain('outline-proposal-pending');
 
     const approved = buildChapterOutlinePassValidation(outline, seed, {
       acceptedProposals: new Set(['proposal-characters-0']),
@@ -497,7 +514,8 @@ describe('phase10 blueprint guardrails', () => {
       ...outline,
       proposed_entities: {},
     }, seed);
-    expect(unknown.blockingIssues.map((item) => item.code)).toContain('outline-unknown-characters');
+    expect(unknown.blockingIssues.map((item) => item.code)).not.toContain('outline-unknown-characters');
+    expect(unknown.warnings.map((item) => item.code)).toContain('outline-unknown-characters');
   });
 
   it('auto-proposes outline references missing from the approved seed', () => {

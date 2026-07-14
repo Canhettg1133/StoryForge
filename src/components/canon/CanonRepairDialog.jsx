@@ -7,7 +7,9 @@ export default function CanonRepairDialog({
   open = false,
   preview = null,
   saving = false,
+  outcome = null,
   onClose,
+  onRetry,
   onCopy,
   onSaveDraft,
 }) {
@@ -16,6 +18,12 @@ export default function CanonRepairDialog({
     ? preview.reports
     : (preview.report ? [preview.report] : []);
   const isBulkRepair = !preview.reportId && reports.length > 1;
+  const isSaved = Boolean(preview.savedRevisionId);
+  const outcomeTone = outcome?.ok
+    ? 'success'
+    : outcome?.kind === 'blocked'
+      ? 'warning'
+      : 'error';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -58,9 +66,22 @@ export default function CanonRepairDialog({
           )}
 
           {!preview.loading && preview.error && (
-            <div className="canon-repair-dialog__state canon-repair-dialog__state--error">
-              {preview.error}
-            </div>
+            <>
+              <div className="canon-repair-dialog__state canon-repair-dialog__state--error" role="alert">
+                {preview.error}
+              </div>
+              <div className="modal-actions canon-repair-dialog__actions">
+                <button type="button" className="btn btn-ghost" onClick={onClose}>
+                  Đóng
+                </button>
+                {onRetry && (
+                  <button type="button" className="btn btn-primary" onClick={onRetry}>
+                    <Sparkles size={16} />
+                    Thử lại
+                  </button>
+                )}
+              </div>
+            </>
           )}
 
           {!preview.loading && !preview.error && (
@@ -71,6 +92,18 @@ export default function CanonRepairDialog({
                 readOnly
                 spellCheck={false}
               />
+              <p className="canon-repair-dialog__draft-note">
+                Bản nháp được lưu thành một phiên bản mới trong lịch sử canon; thao tác này không thay nội dung chương đang mở trong trình soạn thảo và chưa biến nó thành canon chính thức.
+              </p>
+              {outcome?.message && (
+                <div
+                  className={`canon-repair-dialog__outcome canon-repair-dialog__outcome--${outcomeTone}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {outcome.message}
+                </div>
+              )}
               <div className="modal-actions canon-repair-dialog__actions">
                 <button type="button" className="btn btn-ghost" onClick={onCopy} disabled={!preview.text}>
                   <Copy size={16} />
@@ -80,10 +113,10 @@ export default function CanonRepairDialog({
                   type="button"
                   className="btn btn-primary"
                   onClick={onSaveDraft}
-                  disabled={!preview.text || saving}
+                  disabled={!preview.text || saving || isSaved}
                 >
                   {saving ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-                  Lưu thành bản nháp
+                  {isSaved ? 'Đã lưu bản nháp' : 'Lưu thành bản nháp'}
                 </button>
               </div>
             </>

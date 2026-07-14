@@ -59,6 +59,8 @@ function buildSuccessCanonMessage(reports = []) {
   return lines.join('\n');
 }
 
+let repairRequestSequence = 0;
+
 const useCanonStore = create((set, get) => ({
   chapterCanon: null,
   retrievalPacket: null,
@@ -145,6 +147,7 @@ const useCanonStore = create((set, get) => ({
   },
 
   repairChapterRevision: async ({ projectId, chapterId, revisionId, reportId = null }) => {
+    const requestId = ++repairRequestSequence;
     set({
       repairPreview: {
         projectId,
@@ -162,6 +165,7 @@ const useCanonStore = create((set, get) => ({
     });
     try {
       const result = await repairChapterRevisionEngine({ projectId, chapterId, revisionId, reportId });
+      if (requestId !== repairRequestSequence) return null;
       const preview = {
         projectId,
         chapterId,
@@ -177,6 +181,7 @@ const useCanonStore = create((set, get) => ({
       set({ repairPreview: preview });
       return preview;
     } catch (error) {
+      if (requestId !== repairRequestSequence) throw error;
       const preview = {
         projectId,
         chapterId,
@@ -195,7 +200,7 @@ const useCanonStore = create((set, get) => ({
   },
 
   saveRepairDraftRevision: async ({ projectId, chapterId, revisionId, reportId = null, chapterText }) => {
-    set({ savingRepairDraft: true });
+    set({ savingRepairDraft: true, lastActionOutcome: null });
     try {
       const saved = await saveRepairDraftRevisionEngine({
         projectId,
@@ -208,15 +213,21 @@ const useCanonStore = create((set, get) => ({
       const remainingReports = saved?.validation?.reports || [];
       const remainingErrors = remainingReports.filter((report) => report?.severity === 'error').length;
       const remainingWarnings = remainingReports.filter((report) => report?.severity === 'warning').length;
+      const revisionLabel = saved?.revision_number ? ` r${saved.revision_number}` : '';
+      const savedMessage = `Đã lưu bản sửa thành bản nháp${revisionLabel} trong lịch sử canon. Nội dung chương trong trình soạn thảo chưa thay đổi.`;
       const message = remainingErrors > 0
-        ? `Đã lưu bản sửa thành draft mới, nhưng vẫn còn ${remainingErrors} lỗi canon${remainingWarnings > 0 ? ` và ${remainingWarnings} cảnh báo` : ''}.`
+        ? `${savedMessage} Lần kiểm tra bản nháp vẫn còn ${remainingErrors} lỗi canon${remainingWarnings > 0 ? ` và ${remainingWarnings} cảnh báo` : ''}.`
         : remainingWarnings > 0
-          ? `Đã lưu bản sửa thành draft mới. Không còn lỗi canon, còn ${remainingWarnings} cảnh báo cần xem lại.`
-          : 'Đã lưu bản sửa thành draft mới. Không còn lỗi canon.';
+          ? `${savedMessage} Lần kiểm tra bản nháp không còn lỗi canon, còn ${remainingWarnings} cảnh báo cần xem lại.`
+          : `${savedMessage} Lần kiểm tra bản nháp không còn lỗi canon.`;
       set((state) => ({
         savingRepairDraft: false,
         repairPreview: state.repairPreview
-          ? { ...state.repairPreview, savedRevisionId: saved?.id || null }
+          ? {
+            ...state.repairPreview,
+            savedRevisionId: saved?.id || null,
+            savedRevisionNumber: saved?.revision_number || null,
+          }
           : state.repairPreview,
         lastActionOutcome: {
           ok: remainingErrors === 0,
@@ -224,6 +235,7 @@ const useCanonStore = create((set, get) => ({
           message,
           reports: remainingReports,
           revisionId: saved?.id || null,
+          revisionNumber: saved?.revision_number || null,
         },
       }));
       return saved;
@@ -234,7 +246,10 @@ const useCanonStore = create((set, get) => ({
     }
   },
 
-  clearRepairText: () => set({ repairPreview: null }),
+  clearRepairText: () => {
+    repairRequestSequence += 1;
+    set({ repairPreview: null });
+  },
   clearActionOutcome: () => set({ lastActionOutcome: null }),
 }));
 

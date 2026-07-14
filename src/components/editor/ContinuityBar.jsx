@@ -498,7 +498,9 @@ export default function ContinuityBar({ isMobileLayout = false }) {
         open={Boolean(scopedRepairPreview)}
         preview={scopedRepairPreview}
         saving={savingRepairDraft}
+        outcome={lastActionOutcome}
         onClose={clearRepairText}
+        onRetry={() => handleRepair(scopedRepairPreview?.reportId || null)}
         onCopy={handleCopyRepair}
         onSaveDraft={handleSaveDraft}
       />
