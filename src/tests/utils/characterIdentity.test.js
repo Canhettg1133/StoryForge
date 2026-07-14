@@ -92,4 +92,23 @@ describe('character identity helpers', () => {
     expect(patch.updated_at).toBe(1700000000000);
     vi.useRealTimers();
   });
+
+  it('preserves the existing role when Codex only provides a role hint', () => {
+    const patch = mergeCharacterPatch(
+      {
+        name: 'Lan',
+        aliases: [],
+        role: 'supporting',
+      },
+      {
+        name: 'Lan',
+        aliases: [],
+        role: 'protagonist',
+        role_hint: 'protagonist',
+      },
+      { preserveRole: true },
+    );
+
+    expect(patch.role).toBeUndefined();
+  });
 });

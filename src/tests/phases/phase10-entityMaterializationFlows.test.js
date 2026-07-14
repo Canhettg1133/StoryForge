@@ -208,6 +208,11 @@ async function loadProjectStoreModule(seed, options = {}) {
   const extractFromChapter = vi.fn(
     options.extractFromChapterImpl || (async () => options.extracted ?? null),
   );
+  const enqueueCodexExtractionJob = vi.fn(async (input) => ({
+    id: 700,
+    status: input.canonPassed ? 'queued' : 'waiting_canon',
+    ...input,
+  }));
   const canonicalizeChapter = vi.fn(
     options.canonicalizeChapterImpl || (async () => options.canonResult ?? { ok: true, revisionId: 77 }),
   );
@@ -241,6 +246,9 @@ async function loadProjectStoreModule(seed, options = {}) {
     purgeChapterCanonState,
     rebuildCanonFromChapter,
   }));
+  vi.doMock('../../services/codex/codexExtractionJobs.js', () => ({
+    enqueueCodexExtractionJob,
+  }));
   vi.doMock('../../services/db/projectDataService.js', () => ({
     deleteProjectCascade: vi.fn(async () => undefined),
   }));
@@ -252,6 +260,7 @@ async function loadProjectStoreModule(seed, options = {}) {
     mocks: {
       summarizeChapter,
       extractFromChapter,
+      enqueueCodexExtractionJob,
       canonicalizeChapter,
       applyCompletionDelta,
       purgeChapterCanonState,
@@ -275,12 +284,8 @@ describe('phase10 entity materialization flows', () => {
 
   it('blocks a second chapter completion run while the first is still active', async () => {
     let resolveSummary;
-    let resolveExtract;
     const summaryPromise = new Promise((resolve) => {
       resolveSummary = resolve;
-    });
-    const extractPromise = new Promise((resolve) => {
-      resolveExtract = resolve;
     });
 
     const { store, mocks } = await loadProjectStoreModule({
@@ -289,7 +294,6 @@ describe('phase10 entity materialization flows', () => {
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
     }, {
       summarizeChapterImpl: () => summaryPromise,
-      extractFromChapterImpl: () => extractPromise,
       canonResult: { ok: true, revisionId: 91 },
     });
 
@@ -311,18 +315,17 @@ describe('phase10 entity materialization flows', () => {
     });
     await vi.waitFor(() => {
       expect(mocks.summarizeChapter).toHaveBeenCalledTimes(1);
-      expect(mocks.extractFromChapter).toHaveBeenCalledTimes(1);
+      expect(mocks.extractFromChapter).not.toHaveBeenCalled();
     });
 
     resolveSummary('Tom tat');
-    resolveExtract({ characters: [] });
 
     const firstResult = await firstRun;
     expect(firstResult.ok).toBe(true);
   });
 
-  it('does not materialize extracted entities when canonization fails', async () => {
-    const { store, db } = await loadProjectStoreModule({
+  it('keeps Codex waiting and does not stage entities when canonization fails', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
@@ -347,13 +350,17 @@ describe('phase10 entity materialization flows', () => {
 
     expect(result.ok).toBe(false);
     expect(await db.characters.toArray()).toHaveLength(0);
-    const candidates = await db.entity_resolution_candidates.toArray();
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0].resolution_status).toBe('pending_canon');
+    expect(await db.entity_resolution_candidates.toArray()).toHaveLength(0);
+    expect(mocks.extractFromChapter).not.toHaveBeenCalled();
+    expect(mocks.enqueueCodexExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 1,
+      chapterId: 11,
+      canonPassed: false,
+    }));
   });
 
-  it('materializes only after canon pass and creates ambiguity review instead of duplicate character', async () => {
-    const { store, db } = await loadProjectStoreModule({
+  it('queues Codex after canon pass without creating or mutating Story Bible entities', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh nhin ve phia xa.', final_text: '', order_index: 0 }],
@@ -381,10 +388,15 @@ describe('phase10 entity materialization flows', () => {
 
     expect(result.ok).toBe(true);
     expect(await db.characters.toArray()).toHaveLength(2);
-    const suggestions = await db.suggestions.toArray();
-    expect(suggestions.some((item) => item.type === 'entity_resolution')).toBe(true);
-    const candidates = await db.entity_resolution_candidates.toArray();
-    expect(candidates[0].resolution_status).toBe('ambiguous_review');
+    expect(await db.suggestions.toArray()).toHaveLength(0);
+    expect(await db.entity_resolution_candidates.toArray()).toHaveLength(0);
+    expect(mocks.extractFromChapter).not.toHaveBeenCalled();
+    expect(mocks.enqueueCodexExtractionJob).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: 1,
+      chapterId: 11,
+      revisionId: 91,
+      canonPassed: true,
+    }));
   });
 
   it('skips chapter canonization when existing canon is fresh for current chapter text', async () => {
@@ -472,21 +484,13 @@ describe('phase10 entity materialization flows', () => {
     expect((await db.chapters.get(11)).status).toBe('done');
   });
 
-  it('starts chapter canonization in parallel with summary and codex extraction', async () => {
+  it('starts canonization with summary but queues Codex only after canon succeeds', async () => {
     let resolveSummary;
-    let resolveExtract;
     let summaryResolved = false;
-    let extractResolved = false;
     let canonStartedBeforeAnalysisSettled = false;
     const summaryPromise = new Promise((resolve) => {
       resolveSummary = (value) => {
         summaryResolved = true;
-        resolve(value);
-      };
-    });
-    const extractPromise = new Promise((resolve) => {
-      resolveExtract = (value) => {
-        extractResolved = true;
         resolve(value);
       };
     });
@@ -501,9 +505,8 @@ describe('phase10 entity materialization flows', () => {
       worldTerms: [],
     }, {
       summarizeChapterImpl: () => summaryPromise,
-      extractFromChapterImpl: () => extractPromise,
       canonicalizeChapterImpl: async () => {
-        canonStartedBeforeAnalysisSettled = !summaryResolved && !extractResolved;
+        canonStartedBeforeAnalysisSettled = !summaryResolved;
         return { ok: true, revisionId: 91 };
       },
     });
@@ -528,12 +531,13 @@ describe('phase10 entity materialization flows', () => {
         routeOptions: expect.any(Object),
       }),
     );
+    expect(mocks.enqueueCodexExtractionJob).not.toHaveBeenCalled();
 
     resolveSummary('Tom tat');
-    resolveExtract({ characters: [] });
 
     const result = await completionPromise;
     expect(result.ok).toBe(true);
+    expect(mocks.enqueueCodexExtractionJob).toHaveBeenCalledTimes(1);
   });
 
   it('abandons chapter completion commit when chapter text changes during canonicalization', async () => {
@@ -588,6 +592,7 @@ describe('phase10 entity materialization flows', () => {
     expect(await db.chapterMeta.toArray()).toHaveLength(0);
     expect(await db.entity_resolution_candidates.toArray()).toHaveLength(0);
     expect(mocks.applyCompletionDelta).not.toHaveBeenCalled();
+    expect(mocks.enqueueCodexExtractionJob).not.toHaveBeenCalled();
     expect(mocks.purgeChapterCanonState).toHaveBeenCalledWith(1, 11);
   });
 

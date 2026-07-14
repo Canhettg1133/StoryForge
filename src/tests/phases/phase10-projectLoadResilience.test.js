@@ -136,6 +136,7 @@ function createMockDb(seed = {}, failures = {}) {
     objects: new MemoryTable(seed.objects || []),
     worldTerms: new MemoryTable(seed.worldTerms || []),
     suggestions: new MemoryTable(seed.suggestions || []),
+    aiJobs: new MemoryTable(seed.aiJobs || []),
     entity_resolution_candidates: new MemoryTable(seed.entity_resolution_candidates || []),
     canonFacts: new MemoryTable(seed.canonFacts || []),
   };
@@ -184,7 +185,7 @@ describe('phase10 project load resilience', () => {
   });
 
   it('falls back to raw project scan when updated_at index read fails', async () => {
-    const { store } = await loadProjectStore({
+    const { store, db } = await loadProjectStore({
       projects: [
         { id: 1, title: 'Older', updated_at: 10 },
         { id: 2, title: 'Newest', updated_at: 20 },
@@ -272,7 +273,7 @@ describe('phase10 project load resilience', () => {
   });
 
   it('keeps selection near the deleted chapter instead of jumping back to the first chapter', async () => {
-    const { store } = await loadProjectStore({
+    const { store, db } = await loadProjectStore({
       projects: [{ id: 7, title: 'Project 7', updated_at: 20 }],
       chapters: [
         { id: 10, project_id: 7, order_index: 0, title: 'Chuong 1', actual_word_count: 0 },
@@ -284,6 +285,10 @@ describe('phase10 project load resilience', () => {
         { id: 200, project_id: 7, chapter_id: 20, order_index: 0, title: 'Canh 2', draft_text: 'two', final_text: '' },
         { id: 300, project_id: 7, chapter_id: 30, order_index: 0, title: 'Canh 3', draft_text: 'three', final_text: '' },
       ],
+      aiJobs: [
+        { id: 1, project_id: 7, chapter_id: 20, job_type: 'codex_entity_resolution', status: 'queued' },
+        { id: 2, project_id: 7, chapter_id: 30, job_type: 'codex_entity_resolution', status: 'completed' },
+      ],
     });
 
     await store.getState().loadProject(7, { activeChapterId: 20, activeSceneId: 200 });
@@ -292,5 +297,6 @@ describe('phase10 project load resilience', () => {
     expect(store.getState().chapters.map((chapter) => chapter.id)).toEqual([10, 30]);
     expect(store.getState().activeChapterId).toBe(30);
     expect(store.getState().activeSceneId).toBe(300);
+    expect((await db.aiJobs.toArray()).map((job) => job.id)).toEqual([2]);
   });
 });

@@ -13,6 +13,7 @@ import {
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import useCanonStore from '../../stores/canonStore';
+import useCodexJobStore from '../../stores/codexJobStore';
 import CanonRepairDialog from '../canon/CanonRepairDialog';
 import { getCanonReportTitle } from '../../services/canon/reportLabels';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
@@ -49,6 +50,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     updateScene,
   } = useProjectStore();
   const { chapterMetas, loadCodex } = useCodexStore();
+  const { jobs: codexJobs, loadJobs: loadCodexJobs, retryJob: retryCodexJob } = useCodexJobStore();
   const {
     chapterCanon,
     loadChapterCanon,
@@ -83,6 +85,19 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   useEffect(() => {
     if (currentProject?.id) loadCodex(currentProject.id);
   }, [currentProject?.id, loadCodex]);
+
+  useEffect(() => {
+    if (!currentProject?.id) return undefined;
+    loadCodexJobs(currentProject.id);
+    return undefined;
+  }, [currentProject?.id, loadCodexJobs]);
+
+  const hasActiveCodexJob = codexJobs.some((job) => ['queued', 'running'].includes(job.status));
+  useEffect(() => {
+    if (!currentProject?.id || !hasActiveCodexJob) return undefined;
+    const timer = window.setInterval(() => loadCodexJobs(currentProject.id), 2000);
+    return () => window.clearInterval(timer);
+  }, [currentProject?.id, hasActiveCodexJob, loadCodexJobs]);
 
   useEffect(() => {
     if (currentProject?.id && activeChapterId) {
@@ -125,6 +140,30 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   const completionState = activeChapterId ? (chapterCompletionById[activeChapterId] || {}) : {};
   const isCompletingChapter = !!activeChapterId && (completionState.running || completingChapterId === activeChapterId);
   const chapterDone = activeChapter?.status === 'done';
+  const activeCodexJob = useMemo(
+    () => codexJobs.find((job) => job.chapter_id === activeChapterId) || null,
+    [activeChapterId, codexJobs],
+  );
+  const codexStatus = useMemo(() => {
+    if (!activeCodexJob) return null;
+    if (['queued', 'running'].includes(activeCodexJob.status)) {
+      return { label: 'Codex đang xử lý', mobileLabel: 'Codex đang xử lý', tone: 'running' };
+    }
+    if (activeCodexJob.status === 'awaiting_review') {
+      const count = Number(activeCodexJob.suggestion_count || 0);
+      return { label: `Có ${count} mục cần duyệt`, mobileLabel: `Codex ${count}`, tone: 'review' };
+    }
+    if (['stale', 'retryable_error'].includes(activeCodexJob.status)) {
+      return { label: 'Codex cần chạy lại', mobileLabel: 'Codex lỗi', tone: 'error', retryable: true };
+    }
+    if (activeCodexJob.status === 'completed') {
+      return { label: 'Codex đã cập nhật', mobileLabel: 'Codex xong', tone: 'complete' };
+    }
+    if (activeCodexJob.status === 'waiting_canon') {
+      return { label: 'Codex chờ canon', mobileLabel: 'Codex chờ', tone: 'waiting' };
+    }
+    return null;
+  }, [activeCodexJob]);
 
   const canonStatusLabel = useMemo(() => {
     const status = chapterCanon?.status || 'draft';
@@ -211,6 +250,12 @@ export default function ContinuityBar({ isMobileLayout = false }) {
       console.error('[ContinuityBar] Chapter completion failed:', error);
       alert(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
     }
+  };
+
+  const handleRetryCodex = async (event) => {
+    event.stopPropagation();
+    if (!activeCodexJob?.id || !codexStatus?.retryable) return;
+    await retryCodexJob(activeCodexJob.id);
   };
 
   const handleRepair = async (reportId = null) => {
@@ -305,6 +350,22 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                       {completionLabel}
                     </button>
                   ))}
+                  {codexStatus && (codexStatus.retryable ? (
+                    <button
+                      type="button"
+                      className={`continuity-bar-status continuity-bar-status--button continuity-bar-status--codex-${codexStatus.tone}`}
+                      onClick={handleRetryCodex}
+                      title="Chạy lại Codex cho chương này"
+                    >
+                      <ShieldAlert size={12} />
+                      {codexStatus.label}
+                    </button>
+                  ) : (
+                    <span className={`continuity-bar-status continuity-bar-status--codex-${codexStatus.tone}`}>
+                      {codexStatus.tone === 'running' ? <Loader2 size={12} className="spin" /> : <CheckCircle2 size={12} />}
+                      {codexStatus.label}
+                    </span>
+                  ))}
                   {hasCanonIssues ? (
                     <button
                       type="button"
@@ -355,6 +416,20 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                 {completionLabel}
               </button>
             )}
+            {isMobileLayout && codexStatus && (codexStatus.retryable ? (
+              <button
+                type="button"
+                className={`continuity-bar-btn continuity-bar-btn--codex continuity-bar-status--codex-${codexStatus.tone}`}
+                onClick={handleRetryCodex}
+              >
+                <ShieldAlert size={12} /> {codexStatus.mobileLabel}
+              </button>
+            ) : (
+              <span className={`continuity-bar-status continuity-bar-status--mobile-pill continuity-bar-status--codex-${codexStatus.tone}`}>
+                {codexStatus.tone === 'running' ? <Loader2 size={12} className="spin" /> : <CheckCircle2 size={12} />}
+                {codexStatus.mobileLabel}
+              </span>
+            ))}
             {isMobileLayout && (
               hasCanonIssues ? (
                 <button

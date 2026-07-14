@@ -489,12 +489,33 @@
 .continuity-bar--mobile .continuity-bar-actions {
   grid-area: actions;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
   gap: 6px;
   margin-right: 0;
   width: 100%;
   max-width: none;
   overflow: visible;
+}
+
+.continuity-bar-status--codex-running,
+.continuity-bar-status--codex-waiting {
+  color: var(--color-info);
+  background: color-mix(in srgb, var(--color-info) 12%, var(--color-bg-tertiary));
+}
+
+.continuity-bar-status--codex-review {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-bg-tertiary));
+}
+
+.continuity-bar-status--codex-error {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 12%, var(--color-bg-tertiary));
+}
+
+.continuity-bar-status--codex-complete {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, var(--color-bg-tertiary));
 }
 
 .continuity-bar--mobile .continuity-bar-btn {

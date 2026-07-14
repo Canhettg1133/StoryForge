@@ -18,6 +18,7 @@ import useAIStore from '../../stores/aiStore';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
+import { previewStoryBibleEntityMerge } from '../../services/codex/storyBibleMergeService.js';
 import './SuggestionInbox.css';
 
 function parseCandidateOp(value) {
@@ -74,9 +75,11 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
     loadSuggestions,
     acceptSuggestion,
     rejectSuggestion,
-    acceptAll,
+    quickApproveSafe,
     rejectAll,
     clearResolved,
+    runDuplicateAudit,
+    duplicateAuditing,
   } = useSuggestionStore();
 
   const { generateSuggestions, isSuggesting } = useAIStore();
@@ -87,6 +90,9 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
   const [notice, setNotice] = useState(null);
   const [showResolved, setShowResolved] = useState(false);
   const [entityResolutionChoices, setEntityResolutionChoices] = useState({});
+  const [entityRoleConfirmations, setEntityRoleConfirmations] = useState({});
+  const [duplicatePreviews, setDuplicatePreviews] = useState({});
+  const [duplicatePreviewLoading, setDuplicatePreviewLoading] = useState({});
 
   useEffect(() => {
     if (projectId) {
@@ -138,18 +144,83 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
     }
   };
 
+  const handleDuplicateAudit = async () => {
+    if (!projectId || duplicateAuditing) return;
+    setNotice(null);
+    try {
+      const job = await runDuplicateAudit(projectId);
+      if (['awaiting_review', 'completed'].includes(job?.status)) {
+        const continuation = job.shortlist_truncated
+          ? ` Còn ${job.remaining_count || 'một số'} cặp chưa phân tích; chạy lại sau khi xử lý đợt này.`
+          : '';
+        setInfo(
+          `Đã phân tích ${job.analyzed_count || 0} cặp trong lượt này; có ${job.suggestion_count || 0} mục cần duyệt.${continuation}`,
+          'success',
+        );
+      } else if (job?.status === 'retryable_error') {
+        setInfo('Rà soát trùng dữ liệu chưa hoàn tất. Kiểm tra model tool-call rồi chạy lại.', 'error');
+      }
+    } catch (error) {
+      setInfo(toVietnameseErrorMessage(error, 'Không thể rà soát dữ liệu cũ.'), 'error');
+    }
+  };
+
+  const loadDuplicatePreview = async (item, resolution) => {
+    const entityOptions = Array.isArray(resolution?.entity_options) ? resolution.entity_options : [];
+    const survivorId = Number(
+      entityResolutionChoices[item.id]
+      || resolution?.recommended_survivor_id
+      || entityOptions[0]?.id,
+    );
+    const duplicateId = Number(entityOptions.find((option) => Number(option.id) !== survivorId)?.id);
+    if (!survivorId || !duplicateId) throw new Error('Cặp thực thể rà soát không còn hợp lệ.');
+
+    setDuplicatePreviewLoading((current) => ({ ...current, [item.id]: true }));
+    try {
+      const preview = await previewStoryBibleEntityMerge({
+        projectId,
+        entityKind: resolution?.entity_kind,
+        survivorId,
+        duplicateId,
+      });
+      setDuplicatePreviews((current) => ({ ...current, [item.id]: preview }));
+      return { preview, survivorId, duplicateId };
+    } finally {
+      setDuplicatePreviewLoading((current) => ({ ...current, [item.id]: false }));
+    }
+  };
+
   const handleAccept = async (id) => {
     const suggestion = suggestions.find((item) => item.id === id) || null;
     const parsed = parseCandidateOp(suggestion?.candidate_op);
     const resolutionValue = entityResolutionChoices[id]
       || (parsed?.recommended_target_id ? String(parsed.recommended_target_id) : '__create_new__');
     try {
-      await acceptSuggestion(id, projectId, suggestion?.type === 'entity_resolution'
-        ? {
+      let options;
+      if (suggestion?.type === 'entity_resolution') {
+        const centralRole = ['protagonist', 'deuteragonist'].includes(parsed?.role_hint)
+          ? parsed.role_hint
+          : null;
+        options = {
           resolutionAction: resolutionValue === '__create_new__' ? 'create_new' : 'match_existing',
           targetEntityId: resolutionValue === '__create_new__' ? null : Number(resolutionValue),
-        }
-        : undefined);
+          confirmedRole: resolutionValue === '__create_new__' && centralRole && entityRoleConfirmations[id]
+            ? centralRole
+            : null,
+        };
+      } else if (suggestion?.type === 'entity_duplicate_review') {
+        const { preview, survivorId, duplicateId } = await loadDuplicatePreview(suggestion, parsed);
+        const protectedWarning = preview.protected_conflicts.length > 0
+          ? `\nTrường được bảo vệ: ${preview.protected_conflicts.join(', ')}.`
+          : '';
+        const confirmed = window.confirm(
+          `Giữ "${preview.survivor.name}" và gộp "${preview.duplicate.name}"?\n`
+          + `${preview.reference_count} tham chiếu sẽ được viết lại.${protectedWarning}`,
+        );
+        if (!confirmed) return;
+        options = { survivorId, duplicateId, confirmed: true };
+      }
+      await acceptSuggestion(id, projectId, options);
       if (projectId) {
         loadCodex(projectId);
       }
@@ -167,12 +238,17 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
 
   const handleAcceptAll = async () => {
     try {
-      await acceptAll(projectId);
+      const result = await quickApproveSafe(projectId);
       if (projectId) {
         loadCodex(projectId);
       }
       onAccepted?.();
-      setInfo('Đã duyệt toàn bộ đề xuất qua canon engine.', 'success');
+      setInfo(
+        result?.heldCount > 0
+          ? `Đã duyệt nhanh ${result.acceptedCount || 0} mục an toàn; giữ lại ${result.heldCount} mục cần xem kỹ.`
+          : `Đã duyệt nhanh ${result?.acceptedCount || 0} mục an toàn.`,
+        'success',
+      );
     } catch (err) {
       setInfo(toVietnameseErrorMessage(err, 'Không thể canon hóa toàn bộ đề xuất.'), 'error');
     }
@@ -192,6 +268,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
   const typeIcon = (type) => {
     if (type === 'character_status') return <UserCheck size={14} />;
     if (type === 'entity_resolution') return <UserCheck size={14} />;
+    if (type === 'entity_duplicate_review') return <ShieldAlert size={14} />;
     if (type === 'canon_op_review') return <ShieldAlert size={14} />;
     return <BookKey size={14} />;
   };
@@ -199,6 +276,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
   const typeLabel = (type) => {
     if (type === 'character_status') return 'Trạng thái';
     if (type === 'entity_resolution') return 'Gộp thực thể';
+    if (type === 'entity_duplicate_review') return 'Nghi trùng dữ liệu cũ';
     if (type === 'canon_op_review') return 'Canon cần duyệt';
     return 'Sự thật canon';
   };
@@ -249,6 +327,15 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
             </>
           )}
         </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={handleDuplicateAudit}
+          disabled={duplicateAuditing || !projectId}
+        >
+          {duplicateAuditing ? <Loader size={14} className="spin" /> : <ShieldAlert size={14} />}
+          Rà soát trùng dữ liệu
+        </button>
       </div>
 
       {notice && (
@@ -264,8 +351,8 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
           <div className="si-actions-bar">
             <span className="si-count">{pending.length} đề xuất chờ duyệt</span>
             <div className="si-actions-btns">
-              <button type="button" className="btn btn-ghost btn-sm" onClick={handleAcceptAll} title="Duyệt tất cả">
-                <CheckCheck size={14} /> Duyệt tất cả
+              <button type="button" className="btn btn-ghost btn-sm" onClick={handleAcceptAll} title="Chỉ duyệt các mục an toàn">
+                <CheckCheck size={14} /> Duyệt nhanh an toàn
               </button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={handleRejectAll} title="Bỏ tất cả">
                 <XCircle size={14} /> Bỏ tất cả
@@ -303,6 +390,11 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                 ) : item.type === 'entity_resolution' ? (() => {
                   const resolution = parseCandidateOp(item.candidate_op);
                   const options = Array.isArray(resolution?.resolution_options) ? resolution.resolution_options : [];
+                  const evidence = Array.isArray(resolution?.evidence) ? resolution.evidence : [];
+                  const riskFlags = [
+                    ...(Array.isArray(resolution?.risk_flags) ? resolution.risk_flags : []),
+                    ...(Array.isArray(resolution?.protected_field_changes) ? resolution.protected_field_changes : []),
+                  ];
                   const selectedValue = entityResolutionChoices[item.id]
                     || (resolution?.recommended_target_id ? String(resolution.recommended_target_id) : '__create_new__');
                   return (
@@ -311,6 +403,40 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                       <div className="si-fact-content">
                         {item.reasoning || 'Thực thể này mơ hồ, cần chọn gộp vào thực thể có sẵn hoặc tạo mới.'}
                       </div>
+                      {(resolution?.canonical_name || resolution?.aliases?.length > 0 || resolution?.role_hint || resolution?.proposed_changes?.length > 0) && (
+                        <div className="si-entity-details">
+                          {resolution.canonical_name && <span>{`Tên chuẩn đề xuất: ${resolution.canonical_name}`}</span>}
+                          {resolution.aliases?.length > 0 && <span>{`Bí danh: ${resolution.aliases.join(', ')}`}</span>}
+                          {resolution.role_hint && <span>{`Vai trò gợi ý: ${resolution.role_hint}`}</span>}
+                          {(resolution.proposed_changes || []).map((change) => (
+                            <span key={`${item.id}:change:${change.field}`}>
+                              {`${change.field}: ${change.value == null ? '(trống)' : String(change.value)}`}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {evidence.length > 0 && (
+                        <div className="si-evidence-list">
+                          <span className="si-label">Bằng chứng</span>
+                          {evidence.map((entry, index) => (
+                            <blockquote key={`${item.id}:evidence:${entry.paragraph_id || index}`}>
+                              {entry.quote}
+                            </blockquote>
+                          ))}
+                        </div>
+                      )}
+                      {resolution?.critic && (
+                        <div className={`si-critic si-critic--${resolution.critic.decision || 'review'}`}>
+                          <span className="si-label">Phản biện AI</span>
+                          <strong>{resolution.critic.decision === 'agree' ? 'Đồng ý' : resolution.critic.decision === 'disagree' ? 'Phản đối' : 'Cần xem lại'}</strong>
+                          {resolution.critic.reasoning && <span>{resolution.critic.reasoning}</span>}
+                        </div>
+                      )}
+                      {riskFlags.length > 0 && (
+                        <div className="si-risk-flags">
+                          {riskFlags.map((flag) => <span key={`${item.id}:risk:${flag}`}>{flag}</span>)}
+                        </div>
+                      )}
                       <select
                         className="select"
                         value={selectedValue}
@@ -326,6 +452,92 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
                         ))}
                         <option value="__create_new__">Tạo thực thể mới</option>
                       </select>
+                      {['protagonist', 'deuteragonist'].includes(resolution?.role_hint) && (
+                        <label className="si-role-confirmation">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(entityRoleConfirmations[item.id])}
+                            onChange={(event) => setEntityRoleConfirmations((current) => ({
+                              ...current,
+                              [item.id]: event.target.checked,
+                            }))}
+                          />
+                          <span>{`Nếu tạo mới, xác nhận riêng vai trò ${resolution.role_hint}`}</span>
+                        </label>
+                      )}
+                    </div>
+                  );
+                })() : item.type === 'entity_duplicate_review' ? (() => {
+                  const resolution = parseCandidateOp(item.candidate_op) || {};
+                  const options = Array.isArray(resolution.entity_options) ? resolution.entity_options : [];
+                  const evidence = Array.isArray(resolution.evidence) ? resolution.evidence : [];
+                  const preview = duplicatePreviews[item.id] || null;
+                  const selectedValue = entityResolutionChoices[item.id]
+                    || String(resolution.recommended_survivor_id || options[0]?.id || '');
+                  return (
+                    <div className="si-card-body">
+                      <div className="si-char-name">{item.target_name}</div>
+                      <div className="si-fact-content">{item.reasoning}</div>
+                      {evidence.length > 0 && (
+                        <div className="si-evidence-list">
+                          <span className="si-label">Bằng chứng</span>
+                          {evidence.map((entry, index) => (
+                            <blockquote key={`${item.id}:duplicate-evidence:${entry.paragraph_id || index}`}>
+                              {entry.quote}
+                            </blockquote>
+                          ))}
+                        </div>
+                      )}
+                      <label className="si-label" htmlFor={`duplicate-survivor-${item.id}`}>Bản ghi giữ lại</label>
+                      <select
+                        id={`duplicate-survivor-${item.id}`}
+                        className="select"
+                        value={selectedValue}
+                        onChange={(event) => {
+                          setEntityResolutionChoices((current) => ({
+                            ...current,
+                            [item.id]: event.target.value,
+                          }));
+                          setDuplicatePreviews((current) => ({ ...current, [item.id]: null }));
+                        }}
+                      >
+                        {options.map((option) => (
+                          <option key={`${item.id}:survivor:${option.id}`} value={String(option.id)}>{option.name}</option>
+                        ))}
+                      </select>
+                      {resolution.critic && (
+                        <div className={`si-critic si-critic--${resolution.critic.decision || 'review'}`}>
+                          <span className="si-label">Phản biện AI</span>
+                          <strong>{resolution.critic.decision === 'agree' ? 'Đồng ý' : resolution.critic.decision === 'disagree' ? 'Phản đối' : 'Cần xem lại'}</strong>
+                          {resolution.critic.reasoning && <span>{resolution.critic.reasoning}</span>}
+                        </div>
+                      )}
+                      <div className="si-risk-flags">
+                        {(resolution.risk_flags || []).map((flag) => <span key={`${item.id}:${flag}`}>{flag}</span>)}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={duplicatePreviewLoading[item.id]}
+                        onClick={() => loadDuplicatePreview(item, resolution).catch((error) => {
+                          setInfo(toVietnameseErrorMessage(error, 'Không thể tạo bản xem trước gộp.'), 'error');
+                        })}
+                      >
+                        {duplicatePreviewLoading[item.id] ? <Loader size={14} className="spin" /> : <ShieldAlert size={14} />}
+                        Xem trước gộp
+                      </button>
+                      {preview && (
+                        <div className="si-merge-preview">
+                          <strong>{`Giữ ${preview.survivor.name}, gộp ${preview.duplicate.name}`}</strong>
+                          <span>{`${preview.reference_count} tham chiếu sẽ được viết lại`}</span>
+                          {Object.entries(preview.reference_counts || {}).map(([table, count]) => (
+                            <span key={`${item.id}:preview-ref:${table}`}>{`${table}: ${count}`}</span>
+                          ))}
+                          {(preview.field_changes || []).map((change) => (
+                            <span key={`${item.id}:preview-field:${change.field}`}>{change.field}</span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })() : item.type === 'canon_op_review' ? (() => {

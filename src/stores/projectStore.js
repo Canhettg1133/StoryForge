@@ -3,10 +3,7 @@ import db from '../services/db/database';
 import { countWords } from '../utils/constants';
 import { GENRE_TEMPLATES } from '../utils/genreTemplates';
 import { buildProseBuffer } from '../utils/proseBuffer';
-import {
-  resolveAndMaterializeEntityCandidates,
-  stageExtractedEntityCandidates,
-} from '../services/entityIdentity/index.js';
+import { enqueueCodexExtractionJob } from '../services/codex/codexExtractionJobs.js';
 import {
   canonicalizeChapter as canonicalizeChapterEngine,
 } from '../services/canon/workflow';
@@ -292,10 +289,6 @@ async function persistChapterSummary({ projectId, chapterId, summary, chapterTex
     created_at: Date.now(),
     updated_at: Date.now(),
   });
-}
-
-function buildCompletionSessionKey(projectId, chapterId) {
-  return `complete:${projectId}:${chapterId}:${Date.now()}`;
 }
 
 async function loadCompletionChapterText(chapterId) {
@@ -708,6 +701,9 @@ const useProjectStore = create((set, get) => ({
     if (stagedCandidates.length > 0) {
       await db.entity_resolution_candidates.bulkDelete(stagedCandidates.map((item) => item.id));
     }
+    if (db.aiJobs) {
+      await db.aiJobs.where('chapter_id').equals(id).delete();
+    }
     await reindexProjectChapters(chapter.project_id);
     await rebuildCanonFromChapterEngine(chapter.project_id);
     await touchProjectUpdatedAt(chapter.project_id, set);
@@ -906,19 +902,18 @@ const useProjectStore = create((set, get) => ({
       };
 
       let summary = '';
-      let extracted = null;
+      let codexJob = null;
       let extractionStats = {
         createdCount: 0,
         created: {},
         createdEntries: {},
       };
-      const completionSessionKey = buildCompletionSessionKey(currentProject.id, chapterId);
       let canonResult = null;
       let canonProcessed = false;
       let canonSucceeded = false;
       let canonReused = false;
       let canonRuntimeError = '';
-      const { summarizeChapter, extractFromChapter } = useAIStore.getState();
+      const { summarizeChapter } = useAIStore.getState();
 
       const runCanonWork = async () => {
         let existingCanonState = null;
@@ -985,27 +980,19 @@ const useProjectStore = create((set, get) => ({
       get().setChapterCompletionState(chapterId, {
         phase: 'summarize_extract',
         progress: 20,
-        message: 'Đang tóm tắt và trích xuất dữ liệu codex...',
+        message: 'Đang tóm tắt và phân tích canon...',
       });
       const summaryPromise = summarizeChapter(context);
-      const extractPromise = extractFromChapter(context);
       const canonWorkPromise = runCanonWork();
       await yieldToUi();
-      const [summaryResult, extractResult] = await Promise.allSettled([
+      const [summaryResult] = await Promise.allSettled([
         summaryPromise,
-        extractPromise,
       ]);
 
       if (summaryResult.status === 'fulfilled') {
         summary = summaryResult.value || '';
       } else {
         console.warn('[ChapterCompletion] Summarize failed (non-fatal):', summaryResult.reason);
-      }
-
-      if (extractResult.status === 'fulfilled') {
-        extracted = extractResult.value || null;
-      } else {
-        console.warn('[ChapterCompletion] Extraction failed (non-fatal):', extractResult.reason);
       }
 
       const snapshotBeforeCanon = await loadCompletionChapterText(chapterId);
@@ -1087,48 +1074,24 @@ const useProjectStore = create((set, get) => ({
           console.warn('[ChapterCompletion] Persist summary failed (non-fatal):', error);
         }
       }
-      if (extracted) {
-        try {
-          const staged = await stageExtractedEntityCandidates({
-            projectId: currentProject.id,
-            chapterId,
-            sessionKey: completionSessionKey,
-            sourceType: 'chapter_extract',
-            sourceRef: `chapter:${chapterId}`,
-            extracted,
-          });
-          extractionStats = {
-            createdCount: 0,
-            created: {
-              staged: staged.stagedCount || 0,
-            },
-            createdEntries: {
-              characters: [],
-              locations: [],
-              worldTerms: [],
-              objects: [],
-            },
-          };
-        } catch (error) {
-          console.warn('[ChapterCompletion] Stage extraction failed (non-fatal):', error);
-        }
-      }
       if (canonSucceeded) {
         await get().updateChapter(chapterId, { status: 'done' });
       } else {
         await get().updateChapter(chapterId, { status: 'draft' });
       }
-      if (canonSucceeded) {
-        try {
-          extractionStats = await resolveAndMaterializeEntityCandidates({
-            projectId: currentProject.id,
-            chapterId,
-            revisionId: canonResult?.revisionId || null,
-            sessionKey: completionSessionKey,
-          });
-        } catch (error) {
-          console.warn('[ChapterCompletion] Entity materialization failed after canon pass:', error);
-        }
+      try {
+        codexJob = await enqueueCodexExtractionJob({
+          projectId: currentProject.id,
+          chapterId,
+          revisionId: canonResult?.revisionId || null,
+          canonPassed: canonSucceeded,
+        });
+      } catch (error) {
+        console.warn('[ChapterCompletion] Codex queue failed (non-fatal):', error);
+        codexJob = {
+          status: 'retryable_error',
+          error_code: 'CODEX_QUEUE_FAILED',
+        };
       }
       await useCodexStore.getState().applyCompletionDelta({
         projectId: currentProject.id,
@@ -1143,7 +1106,7 @@ const useProjectStore = create((set, get) => ({
         ? `Đã hoàn thành chương. Có ${deferredCanonCount} thay đổi canon lớn đang chờ duyệt.`
         : canonReused
           ? 'Đã hoàn thành chương. Phân tích sự thật đã có sẵn và vẫn khớp nội dung.'
-          : 'Đã hoàn thành chương.';
+          : 'Đã hoàn thành chương. Codex đang xử lý dữ liệu gợi ý.';
       const result = {
         ok: canonSucceeded,
         kind: canonProcessed
@@ -1159,7 +1122,7 @@ const useProjectStore = create((set, get) => ({
               ? `Không thể hoàn thành chương vì lỗi canon hóa: ${canonRuntimeError}`
               : 'Không thể hoàn thành chương vì lỗi runtime khi canon hóa.'),
         summary,
-        extracted,
+        codexJob,
         extractionStats,
         canonResult,
       };

@@ -63,6 +63,7 @@ import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { useUserAccess } from '../../hooks/useUserAccess';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import { navigateBackOr } from '../../utils/navigation.js';
+import { probeCodexToolCapability } from '../../services/codex/codexToolCapability.js';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
@@ -935,6 +936,8 @@ export default function Settings() {
   const [ollamaModels, setOllamaModels] = useState([]);
   const [testResults, setTestResults] = useState({});
   const [testing, setTesting] = useState({});
+  const [codexToolTesting, setCodexToolTesting] = useState({});
+  const [codexToolResults, setCodexToolResults] = useState({});
   const [quality, setQuality] = useState(modelRouter.getQualityMode());
   const [proxyModel, setProxyModel] = useState(modelRouter.getProxyModel());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
@@ -1239,6 +1242,22 @@ export default function Settings() {
     handleSelectOllamaModel(preset.recommended);
   };
 
+  const handleTestCodexTools = async (profile, model) => {
+    const key = getProxyProfileTestKey(profile.id);
+    const apiKey = keyManager.getNextKey(getOpenAIProxyKeyProvider(profile)) || '';
+    if (!profile.baseUrl || !String(model || '').trim() || !apiKey) {
+      setCodexToolResults((current) => ({
+        ...current,
+        [key]: { supported: false, error_code: 'MISSING_PROXY_MODEL_OR_KEY' },
+      }));
+      return;
+    }
+    setCodexToolTesting((current) => ({ ...current, [key]: true }));
+    const result = await probeCodexToolCapability({ profile, model, apiKey });
+    setCodexToolResults((current) => ({ ...current, [key]: result }));
+    setCodexToolTesting((current) => ({ ...current, [key]: false }));
+  };
+
   const handleFetchAgProxyModels = async () => {
     if (!hasFeature(ACCESS_FEATURES.AG_PROXY)) {
       setProxyModelFetchStatus({ type: 'error', text: getDeniedMessage(ACCESS_FEATURES.AG_PROXY) });
@@ -1510,6 +1529,14 @@ export default function Settings() {
                   {testing[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
                   Test
                 </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => handleTestCodexTools(getAgOpenAIProxyProfile(), proxyModel)}
+                  disabled={codexToolTesting[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)]}
+                >
+                  {codexToolTesting[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  Test tool-call
+                </button>
               </div>
               <CustomProxyModelPicker
                 models={agProxyFetchedModels}
@@ -1530,6 +1557,13 @@ export default function Settings() {
                   {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success
                     ? <><CheckCircle size={14} /> Kết nối OK</>
                     : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].error}</>}
+                </div>
+              ) : null}
+              {codexToolResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] ? (
+                <div className={`settings-test-result ${codexToolResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].supported ? 'success' : 'error'}`}>
+                  {codexToolResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].supported
+                    ? <><CheckCircle size={14} /> Model hỗ trợ Codex tool-call</>
+                    : <><XCircle size={14} /> Model không hỗ trợ Codex tool-call an toàn</>}
                 </div>
               ) : null}
             </div>
@@ -1595,6 +1629,14 @@ export default function Settings() {
                   {testing[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <TestTube size={14} />}
                   Test
                 </button>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => handleTestCodexTools(customProxyProfile, customProxyProfile.defaultModel)}
+                  disabled={codexToolTesting[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] || !String(customProxyProfile.baseUrl || '').trim()}
+                >
+                  {codexToolTesting[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                  Test tool-call
+                </button>
               </div>
 
               {proxyModelFetchStatus ? (
@@ -1608,6 +1650,13 @@ export default function Settings() {
                   {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].success
                     ? <><CheckCircle size={14} /> Kết nối OK</>
                     : <><XCircle size={14} /> {testResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].error}</>}
+                </div>
+              ) : null}
+              {codexToolResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)] ? (
+                <div className={`settings-test-result ${codexToolResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].supported ? 'success' : 'error'}`}>
+                  {codexToolResults[getProxyProfileTestKey(CUSTOM_PROXY_PROFILE_ID)].supported
+                    ? <><CheckCircle size={14} /> Model hỗ trợ Codex tool-call</>
+                    : <><XCircle size={14} /> Model không hỗ trợ Codex tool-call an toàn</>}
                 </div>
               ) : null}
             </div>

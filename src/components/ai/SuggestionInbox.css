@@ -241,6 +241,48 @@
   border-radius: var(--radius-sm, 4px);
 }
 
+.si-evidence-list,
+.si-critic {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg-tertiary);
+  font-size: 12px;
+}
+
+.si-evidence-list blockquote {
+  margin: 0;
+  padding-left: 9px;
+  border-left: 2px solid var(--color-accent);
+  color: var(--color-text-secondary);
+}
+
+.si-critic--disagree,
+.si-critic--review {
+  border-color: color-mix(in srgb, var(--color-warning) 55%, var(--color-border));
+}
+
+.si-risk-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.si-risk-flags span {
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-warning) 14%, var(--color-bg-tertiary));
+  color: var(--color-warning);
+  font-size: 10px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
 .si-canon-review {
   gap: var(--space-2);
 }
@@ -326,6 +368,36 @@
 
 .si-btn-reject:hover {
   background: rgba(239, 68, 68, 0.2) !important;
+}
+
+.si-merge-preview {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.08);
+  font-size: 12px;
+}
+
+.si-entity-details {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-left: 2px solid rgba(56, 189, 248, 0.45);
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.si-role-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 8px;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 /* Empty state */

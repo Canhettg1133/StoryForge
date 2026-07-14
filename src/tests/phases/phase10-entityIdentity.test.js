@@ -21,7 +21,7 @@ describe('phase10 entity identity', () => {
     expect(resolution.matchTier).toBe('exact_alias');
   });
 
-  it('matches a character by stripped honorific name', () => {
+  it('requires review for a character matched only after stripping a title', () => {
     const resolution = identity.resolveEntityCandidate(
       { name: 'su huynh Lam' },
       [
@@ -30,8 +30,21 @@ describe('phase10 entity identity', () => {
       'character',
     );
 
-    expect(resolution.status).toBe('matched_existing');
-    expect(resolution.matchedEntityId).toBe(7);
+    expect(resolution.status).toBe('ambiguous_review');
+    expect(resolution.matchTier).toBe('title_stripped');
+  });
+
+  it('requires review for a unique multi-token subset instead of auto-merging it', () => {
+    const resolution = identity.resolveEntityCandidate(
+      { name: 'Linh Dao' },
+      [
+        { id: 8, name: 'Nguyen Linh Dao', aliases: [] },
+      ],
+      'character',
+    );
+
+    expect(resolution.status).toBe('ambiguous_review');
+    expect(resolution.matchTier).toBe('safe_subset');
   });
 
   it('creates a new entity when no safe deterministic match exists', () => {

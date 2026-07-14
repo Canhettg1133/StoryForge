@@ -252,6 +252,56 @@ describe('/api/openai-proxy', () => {
     vi.unstubAllGlobals();
   });
 
+  it('preserves OpenAI-compatible tool definitions, tool choice, and tool-call responses', async () => {
+    const upstreamBody = {
+      choices: [{
+        message: {
+          role: 'assistant',
+          tool_calls: [{
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'load_codex_analysis_context', arguments: '{}' },
+          }],
+        },
+      }],
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(upstreamBody), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const payload = {
+      model: 'tool-model',
+      messages: [{ role: 'user', content: 'Call the required tool.' }],
+      tools: [{
+        type: 'function',
+        function: {
+          name: 'load_codex_analysis_context',
+          strict: true,
+          parameters: { type: 'object', additionalProperties: false, properties: {}, required: [] },
+        },
+      }],
+      tool_choice: 'required',
+      parallel_tool_calls: false,
+      stream: false,
+    };
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://ag.beijixingxing.com/v1',
+        chatCompletionsPath: '/v1/chat/completions',
+        payload,
+      },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
+    });
+
+    await handler(req, res);
+
+    expect(fetchMock.mock.calls[0][1].body).toBe(JSON.stringify(payload));
+    expect(JSON.parse(res.body)).toEqual(upstreamBody);
+    vi.unstubAllGlobals();
+  });
+
   it('logs only allowlisted usage metadata for admin activity labels', async () => {
     const insertMock = vi.fn(async () => ({ error: null }));
     const loggingHandler = createOpenAIProxyHandler({

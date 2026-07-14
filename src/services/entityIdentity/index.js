@@ -1,5 +1,7 @@
+import Dexie from 'dexie';
 import db from '../db/database.js';
 import { mergeCharacterPatch } from '../../utils/characterIdentity.js';
+import { buildCodexAnalysisSnapshot } from '../codex/codexAnalysisSnapshot.js';
 
 const HONORIFICS = [
   'su huynh',
@@ -327,7 +329,9 @@ function resolveCharacterCandidate(candidateIdentity, index) {
 
   const aliasMatches = uniqueRecords([
     ...(index.aliases.get(candidateIdentity.normalized_name) || []),
-    ...candidateIdentity.alias_keys.flatMap((aliasKey) => index.aliases.get(aliasKey) || []),
+    ...candidateIdentity.aliases
+      .map((alias) => normalizeIdentityText(alias))
+      .flatMap((aliasKey) => index.aliases.get(aliasKey) || []),
   ]);
   if (aliasMatches.length === 1) {
     return resolveMatched(candidateIdentity, aliasMatches[0], 'exact_alias', 'Exact alias match.');
@@ -355,30 +359,21 @@ function resolveCharacterCandidate(candidateIdentity, index) {
   }
   subsetCandidates.sort((left, right) => right.score - left.score);
   if (subsetCandidates.length === 1) {
-    return resolveMatched(
+    return resolveAmbiguous(
       candidateIdentity,
-      subsetCandidates[0].record,
+      [subsetCandidates[0].record],
       'safe_subset',
-      'Safe contiguous multi-token subset match.',
+      'Subset name matches are navigation hints and require review.',
       subsetCandidates[0].score,
     );
   }
   if (subsetCandidates.length > 1) {
-    const [best, second] = subsetCandidates;
-    if (best.score >= 0.9 && (!second || best.score - second.score >= 0.04)) {
-      return resolveMatched(
-        candidateIdentity,
-        best.record,
-        'safe_subset',
-        'Safe subset match with clear winner.',
-        best.score,
-      );
-    }
+    const [best] = subsetCandidates;
     return resolveAmbiguous(
       candidateIdentity,
       subsetCandidates.map((item) => item.record),
       'safe_subset',
-      'Multiple subset matches are too close to auto-merge.',
+      'Subset name matches require semantic review.',
       best?.score || 0.9,
     );
   }
@@ -389,7 +384,13 @@ function resolveCharacterCandidate(candidateIdentity, index) {
       ...(index.aliases.get(candidateIdentity.stripped_name) || []),
     ]);
     if (strippedMatches.length === 1) {
-      return resolveMatched(candidateIdentity, strippedMatches[0], 'title_stripped', 'Honorific/title stripped exact match.');
+      return resolveAmbiguous(
+        candidateIdentity,
+        strippedMatches,
+        'title_stripped',
+        'Title-stripped matches require semantic review.',
+        0.9,
+      );
     }
     if (strippedMatches.length > 1) {
       return resolveAmbiguous(candidateIdentity, strippedMatches, 'title_stripped', 'Title-stripped name resolves to multiple characters.');
@@ -452,22 +453,26 @@ function resolveEntityCandidate(candidate, existingEntities = [], kind) {
 
 function mergeGenericEntityPatch(existing, incoming, kind) {
   const patch = {};
-  if (kind !== 'object') {
-    const nextAliases = mergeUniqueAliases(existing.aliases, incoming.aliases);
-    if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
-      patch.aliases = nextAliases;
-    }
+  const nextAliases = mergeUniqueAliases(existing.aliases, incoming.aliases);
+  if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
+    patch.aliases = nextAliases;
   }
 
   if (kind === 'location') {
     patch.description = firstBlankFill(existing.description, incoming.description);
     patch.details = firstBlankFill(existing.details, incoming.details);
     patch.story_function = firstBlankFill(existing.story_function, incoming.story_function);
+    if (!existing.parent_location_id && incoming.parent_location_id) {
+      patch.parent_location_id = incoming.parent_location_id;
+    }
   } else if (kind === 'object') {
     patch.description = firstBlankFill(existing.description, incoming.description);
     patch.properties = firstBlankFill(existing.properties, incoming.properties);
     if (!existing.owner_character_id && incoming.owner_character_id) {
       patch.owner_character_id = incoming.owner_character_id;
+    }
+    if (!existing.holder_character_id && incoming.holder_character_id) {
+      patch.holder_character_id = incoming.holder_character_id;
     }
   } else if (kind === 'world_term') {
     patch.definition = firstBlankFill(existing.definition, incoming.definition);
@@ -524,7 +529,8 @@ function tablePayloadFromCandidate(projectId, candidate, kind) {
     return {
       ...base,
       aliases: mergeUniqueAliases(payload.aliases, candidate.aliases),
-      role: cleanText(payload.role || 'supporting') || 'supporting',
+      role: 'supporting',
+      role_hint: cleanText(payload.role_hint || payload.role || ''),
       appearance: cleanText(payload.appearance || ''),
       age: cleanText(payload.age || ''),
       personality: cleanText(payload.personality || ''),
@@ -557,8 +563,10 @@ function tablePayloadFromCandidate(projectId, candidate, kind) {
   if (normalizedKind === 'object') {
     return {
       ...base,
+      aliases: mergeUniqueAliases(payload.aliases, candidate.aliases),
       description: cleanText(payload.description || ''),
       owner_character_id: payload.owner_character_id || null,
+      holder_character_id: payload.holder_character_id || null,
       properties: cleanText(payload.properties || ''),
       story_function: cleanText(payload.story_function || ''),
     };
@@ -647,15 +655,24 @@ async function materializeResolvedDecision(projectId, candidate, resolution, kin
       return { status: 'ambiguous_review', createdEntry: null, matchedEntityId: null };
     }
     const patch = normalizedKind === 'character'
-      ? {
-        ...mergeCharacterPatch(current, {
+      ? (() => {
+        const characterPatch = mergeCharacterPatch(current, {
           ...payload,
           aliases: payload.aliases || [],
-        }),
-        normalized_name: payload.normalized_name,
-        alias_keys: payload.alias_keys,
-        identity_key: payload.identity_key,
-      }
+        }, { preserveRole: true });
+        const identity = normalizeEntityIdentity(normalizedKind, {
+          ...current,
+          ...characterPatch,
+          name: current.name,
+          aliases: characterPatch.aliases || current.aliases || [],
+        });
+        return {
+          ...characterPatch,
+          normalized_name: identity.normalized_name,
+          alias_keys: identity.alias_keys,
+          identity_key: identity.identity_key,
+        };
+      })()
       : mergeGenericEntityPatch(current, payload, normalizedKind);
     if (Object.keys(patch).length > 0) {
       await table.update(current.id, patch);
@@ -953,7 +970,7 @@ export async function resolveAndMaterializeEntityCandidates({
   };
 }
 
-export async function applyEntityResolutionSuggestion({
+async function applyEntityResolutionSuggestionUnsafe({
   suggestionId,
   resolutionAction = 'auto',
   targetEntityId = null,
@@ -1027,6 +1044,175 @@ export async function applyEntityResolutionSuggestion({
     targetEntityId: targetId,
     createdEntries,
   };
+}
+
+export async function applyEntityResolutionSuggestion({
+  suggestionId,
+  resolutionAction = 'auto',
+  targetEntityId = null,
+  confirmedRole = null,
+}) {
+  const initialSuggestion = await db.suggestions.get(suggestionId);
+  if (!initialSuggestion || initialSuggestion.status !== 'pending') {
+    const error = new Error('Entity resolution suggestion is missing or already resolved.');
+    error.code = 'ENTITY_SUGGESTION_ALREADY_RESOLVED';
+    throw error;
+  }
+  const initialPayload = initialSuggestion.candidate_op
+    ? JSON.parse(initialSuggestion.candidate_op)
+    : {};
+  const kind = normalizeKind(initialPayload.entity_kind);
+  const tableName = KIND_TO_TABLE[kind];
+  if (!tableName || !db[tableName]) {
+    const error = new Error('Invalid entity kind.');
+    error.code = 'ENTITY_KIND_INVALID';
+    throw error;
+  }
+  const snapshotBuilder = initialPayload.source_hash || initialPayload.catalog_revision
+    ? buildCodexAnalysisSnapshot
+    : null;
+  const transactionTables = [
+    db.suggestions,
+    db.entity_resolution_candidates,
+    db.aiJobs,
+    db.chapters,
+    db.scenes,
+    db.characters,
+    db.locations,
+    db.objects,
+    db.worldTerms,
+    db.relationships,
+    db.entityTimeline,
+    db.entity_state_current,
+    db.item_state_current,
+    db.story_events,
+    db.canonFacts,
+    db.memory_evidence,
+  ].filter(Boolean);
+
+  return db.transaction('rw', ...transactionTables, async () => {
+    const suggestion = await db.suggestions.get(suggestionId);
+    if (!suggestion || suggestion.status !== 'pending') {
+      const error = new Error('Entity resolution suggestion was resolved in another session.');
+      error.code = 'ENTITY_SUGGESTION_ALREADY_RESOLVED';
+      throw error;
+    }
+    const payload = suggestion.candidate_op ? JSON.parse(suggestion.candidate_op) : {};
+    const candidateIds = Array.isArray(payload.candidate_ids) ? payload.candidate_ids : [];
+    if (candidateIds.length === 0) {
+      const error = new Error('Entity resolution suggestion has no candidates.');
+      error.code = 'ENTITY_CANDIDATE_MISSING';
+      throw error;
+    }
+
+    if (snapshotBuilder && suggestion.source_chapter_id) {
+      const snapshot = await Dexie.waitFor(snapshotBuilder({
+        db,
+        projectId: suggestion.project_id,
+        chapterId: suggestion.source_chapter_id,
+      }));
+      if (payload.source_hash && payload.source_hash !== snapshot.sourceHash) {
+        const error = new Error('Chapter content changed; Codex must run again.');
+        error.code = 'CODEX_SOURCE_STALE';
+        throw error;
+      }
+      if (payload.catalog_revision && payload.catalog_revision !== snapshot.catalogRevision) {
+        const error = new Error('Story Bible changed; Codex must run again.');
+        error.code = 'CODEX_CATALOG_STALE';
+        throw error;
+      }
+    }
+
+    const candidates = await db.entity_resolution_candidates.where('id').anyOf(candidateIds).toArray();
+    if (candidates.length !== candidateIds.length || candidates.some((candidate) => (
+      candidate.project_id !== suggestion.project_id
+      || candidate.chapter_id !== suggestion.source_chapter_id
+      || !['pending_review', 'ambiguous_review'].includes(candidate.resolution_status)
+    ))) {
+      const error = new Error('Entity resolution candidate is stale or outside the current project.');
+      error.code = 'ENTITY_CANDIDATE_STALE';
+      throw error;
+    }
+
+    const action = resolutionAction === 'auto'
+      ? (payload.quick_approve === true && payload.review_safety === 'quick_approve'
+        ? payload.recommended_action
+        : null)
+      : resolutionAction;
+    if (!['match_existing', 'create_new'].includes(action)) {
+      const error = new Error('Ambiguous entity resolutions require an explicit user action.');
+      error.code = 'ENTITY_REVIEW_ACTION_REQUIRED';
+      throw error;
+    }
+    const roleConfirmation = ['protagonist', 'deuteragonist'].includes(confirmedRole)
+      ? confirmedRole
+      : null;
+    if (
+      roleConfirmation
+      && (
+        action !== 'create_new'
+        || kind !== 'character'
+        || payload.role_hint !== roleConfirmation
+      )
+    ) {
+      const error = new Error('Central character roles require a matching explicit confirmation.');
+      error.code = 'ENTITY_ROLE_CONFIRMATION_INVALID';
+      throw error;
+    }
+    const targetId = targetEntityId || payload.recommended_target_id || null;
+    const existingEntities = await loadExistingEntities(suggestion.project_id, kind);
+    if (action === 'match_existing' && !existingEntities.some((entity) => entity.id === targetId)) {
+      const error = new Error('Entity resolution target is outside the current project.');
+      error.code = 'ENTITY_TARGET_INVALID';
+      throw error;
+    }
+    if (action === 'create_new') {
+      for (const candidate of candidates) {
+        const latestResolution = resolveEntityCandidate({
+          ...parseCandidatePayload(candidate),
+          raw_name: candidate.raw_name,
+          aliases: candidate.aliases || [],
+        }, existingEntities, kind);
+        if (['exact_normalized_name', 'exact_alias'].includes(latestResolution.matchTier)) {
+          const error = new Error('An exact entity collision appeared; review the target instead of creating a duplicate.');
+          error.code = 'ENTITY_EXACT_COLLISION';
+          throw error;
+        }
+      }
+    }
+
+    const result = await applyEntityResolutionSuggestionUnsafe({
+      suggestionId,
+      resolutionAction: action,
+      targetEntityId: targetId,
+    });
+    if (roleConfirmation) {
+      for (const character of result.createdEntries.characters) {
+        await db.characters.update(character.id, { role: roleConfirmation, updated_at: Date.now() });
+        character.role = roleConfirmation;
+      }
+    }
+    await db.suggestions.update(suggestionId, {
+      status: 'accepted',
+      applied_at: Date.now(),
+      last_error: '',
+    });
+    if (suggestion.job_id && db.aiJobs) {
+      const pendingForJob = await db.suggestions.where('project_id').equals(suggestion.project_id)
+        .filter((item) => item.job_id === suggestion.job_id && item.status === 'pending')
+        .toArray();
+      if (pendingForJob.length === 0) {
+        await db.aiJobs.update(suggestion.job_id, {
+          status: 'completed',
+          updated_at: Date.now(),
+        });
+      }
+    }
+    return {
+      ...result,
+      suggestionUpdated: true,
+    };
+  });
 }
 
 export {

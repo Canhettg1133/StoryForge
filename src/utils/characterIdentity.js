@@ -199,7 +199,7 @@ export function findCharacterIdentityMatch(characters = [], incoming = {}) {
   return null;
 }
 
-export function mergeCharacterPatch(existing = {}, incoming = {}) {
+export function mergeCharacterPatch(existing = {}, incoming = {}, options = {}) {
   const patch = {};
   const aliases = uniqueText([
     ...(Array.isArray(existing.aliases) ? existing.aliases : []),
@@ -243,7 +243,7 @@ export function mergeCharacterPatch(existing = {}, incoming = {}) {
   const roleRank = { minor: 1, supporting: 2, mentor: 3, antagonist: 4, protagonist: 5 };
   const existingRole = cleanText(existing.role || 'supporting').toLowerCase();
   const incomingRole = cleanText(incoming.role || '').toLowerCase();
-  if (incomingRole && (roleRank[incomingRole] || 0) > (roleRank[existingRole] || 0)) {
+  if (!options.preserveRole && incomingRole && (roleRank[incomingRole] || 0) > (roleRank[existingRole] || 0)) {
     patch.role = incomingRole;
   }
 

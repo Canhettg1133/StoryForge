@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   BookMarked,
@@ -21,6 +21,9 @@ import {
 import { PRODUCT_SURFACE, shouldShowNavItem } from '../../config/productSurface';
 import useProjectStore from '../../stores/projectStore';
 import useUIStore from '../../stores/uiStore';
+import useCodexJobStore from '../../stores/codexJobStore';
+import useSuggestionStore from '../../stores/suggestionStore';
+import SuggestionInbox from '../ai/SuggestionInbox';
 import MobileSheet from './MobileSheet';
 import MobileProjectTopBar from './MobileProjectTopBar';
 import './MobileProjectShell.css';
@@ -91,6 +94,9 @@ export default function MobileProjectShell({ children }) {
   const { currentProject, chapters, scenes, activeChapterId, activeSceneId } = useProjectStore();
   const storyEditorViewMode = useUIStore((state) => state.storyEditorViewMode);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [codexOpen, setCodexOpen] = useState(false);
+  const { jobs: codexJobs, loadJobs: loadCodexJobs } = useCodexJobStore();
+  const { suggestions, loadSuggestions } = useSuggestionStore();
 
   const numericProjectId = Number(projectId || currentProject?.id);
   const isEditorRoute = location.pathname.includes('/editor');
@@ -112,6 +118,36 @@ export default function MobileProjectShell({ children }) {
   const backLabel = isEditorRoute ? 'V\u1ec1 Dashboard' : 'V\u1ec1 m\u00e0n vi\u1ebft';
 
   const visibleMoreItems = useMemo(() => MORE_ITEMS.filter(canShowItem), []);
+  const pendingCodexCount = suggestions.filter((item) => (
+    item.project_id === numericProjectId
+    && item.status === 'pending'
+    && (item.job_id || item.type === 'entity_resolution')
+  )).length;
+  const latestCodexJob = codexJobs.find((job) => job.project_id === numericProjectId) || null;
+  const codexBadgeLabel = pendingCodexCount > 0
+    ? `Codex ${pendingCodexCount}`
+    : ['queued', 'running'].includes(latestCodexJob?.status)
+      ? 'Codex...'
+      : ['stale', 'retryable_error'].includes(latestCodexJob?.status)
+        ? 'Codex !'
+        : '';
+
+  useEffect(() => {
+    if (!numericProjectId) return undefined;
+    loadCodexJobs(numericProjectId);
+    loadSuggestions(numericProjectId);
+    return undefined;
+  }, [numericProjectId, loadCodexJobs, loadSuggestions]);
+
+  const hasActiveCodexJob = codexJobs.some((job) => ['queued', 'running'].includes(job.status));
+  useEffect(() => {
+    if (!numericProjectId || !hasActiveCodexJob) return undefined;
+    const timer = window.setInterval(() => {
+      loadCodexJobs(numericProjectId);
+      loadSuggestions(numericProjectId);
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [numericProjectId, hasActiveCodexJob, loadCodexJobs, loadSuggestions]);
 
   const openEditorPanel = (panel) => {
     window.dispatchEvent(new CustomEvent(EDITOR_PANEL_EVENT, { detail: { panel } }));
@@ -142,6 +178,17 @@ export default function MobileProjectShell({ children }) {
         backLabel={backLabel}
         onTitleClick={handleTitleClick}
         onMore={() => setMoreOpen(true)}
+        statusBadge={codexBadgeLabel ? (
+          <button
+            type="button"
+            className="project-mobile-codex-badge"
+            onClick={() => setCodexOpen(true)}
+            aria-label="Mở Hộp đề xuất Codex"
+          >
+            <Sparkles size={13} />
+            <span>{codexBadgeLabel}</span>
+          </button>
+        ) : null}
       />
 
       <main className="project-mobile-content">
@@ -173,6 +220,16 @@ export default function MobileProjectShell({ children }) {
             );
           })}
         </div>
+      </MobileSheet>
+
+      <MobileSheet
+        open={codexOpen}
+        title="Codex"
+        kicker={pendingCodexCount > 0 ? `${pendingCodexCount} mục cần duyệt` : 'Hộp đề xuất'}
+        size="sheet"
+        onClose={() => setCodexOpen(false)}
+      >
+        <SuggestionInbox projectId={numericProjectId} />
       </MobileSheet>
     </div>
   );
