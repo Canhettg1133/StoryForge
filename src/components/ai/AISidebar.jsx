@@ -27,6 +27,7 @@ import {
   Loader2,
   Replace,
   Bookmark,
+  History,
 } from 'lucide-react';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
@@ -41,6 +42,11 @@ import {
   CONTENT_MODE_QUICK_ACTION_ID,
   getWriterQuickActionOrder,
 } from './quickActionLayout.js';
+import {
+  addRecentWritingRequest,
+  loadRecentWritingRequests,
+  persistRecentWritingRequests,
+} from './recentWritingRequests.js';
 import './AISidebar.css';
 
 const PROSE_INSERT_TASKS = ['continue', 'free_prompt'];
@@ -396,6 +402,7 @@ export default function AISidebar({
     : undefined;
 
   const [customPrompt, setCustomPrompt] = useState('');
+  const [recentWritingRequests, setRecentWritingRequests] = useState(loadRecentWritingRequests);
   const [copied, setCopied] = useState(false);
   const [activeAction, setActiveAction] = useState(null);
   const [pendingAction, setPendingAction] = useState(null);
@@ -693,6 +700,12 @@ export default function AISidebar({
     };
   };
 
+  const rememberWritingRequest = (request) => {
+    const nextRequests = addRecentWritingRequest(recentWritingRequests, request);
+    persistRecentWritingRequests(nextRequests);
+    setRecentWritingRequests(nextRequests);
+  };
+
   const executeAction = (action, guidance) => {
     const context = getContext();
     const textAvailable = context.selectedText || context.sceneText || context.chapterText;
@@ -710,8 +723,10 @@ export default function AISidebar({
       return;
     }
 
-    if (guidance.trim()) {
-      context.userPrompt = guidance.trim();
+    const userGuidance = guidance.trim();
+    if (userGuidance) {
+      context.userPrompt = userGuidance;
+      rememberWritingRequest(userGuidance);
     }
 
     setPendingAction(null);
@@ -789,17 +804,29 @@ export default function AISidebar({
 
   const handleFreePrompt = (event) => {
     event.preventDefault();
-    if (!customPrompt.trim()) return;
+    const userPrompt = customPrompt.trim();
+    if (!userPrompt) return;
     const context = getContext();
-    context.userPrompt = customPrompt.trim();
+    context.userPrompt = userPrompt;
     const nextOutputScope = buildOutputScope(context, 'free_prompt');
     setOutputTracking({
       taskId: 'free_prompt',
       outputScope: nextOutputScope,
     });
     context.outputScope = nextOutputScope;
+    rememberWritingRequest(userPrompt);
     freePrompt(context);
     setCustomPrompt('');
+  };
+
+  const handleReuseCustomPrompt = (request) => {
+    setCustomPrompt(request);
+    setTimeout(() => customPromptRef.current?.focus(), 0);
+  };
+
+  const handleReuseActionGuidance = (request) => {
+    setActionGuidance(request);
+    setTimeout(() => guidanceRef.current?.focus(), 0);
   };
 
   const handleCopy = () => {
@@ -1322,6 +1349,7 @@ export default function AISidebar({
         }}
         rows={1}
       />
+      {renderRecentWritingRequests(handleReuseActionGuidance)}
       <div className="ai-guidance-actions">
         <button className="btn btn-ghost btn-sm" onClick={() => executeAction(pendingAction, '')}>
           Bỏ qua
@@ -1330,6 +1358,33 @@ export default function AISidebar({
           <Send size={12} /> Gửi
         </button>
       </div>
+      </div>
+    );
+  };
+
+  const renderRecentWritingRequests = (onSelect) => {
+    if (recentWritingRequests.length === 0) return null;
+
+    return (
+      <div className="ai-recent-requests">
+        <div className="ai-recent-requests__label">
+          <History size={11} aria-hidden="true" />
+          <span>Đã gửi gần đây</span>
+        </div>
+        <div className="ai-recent-requests__list" aria-label="Yêu cầu đã gửi gần đây">
+          {recentWritingRequests.map((request) => (
+            <button
+              key={request}
+              className="ai-recent-requests__item"
+              type="button"
+              onClick={() => onSelect(request)}
+              title={request}
+              aria-label={`Dùng lại yêu cầu: ${request}`}
+            >
+              {request}
+            </button>
+          ))}
+        </div>
       </div>
     );
   };
@@ -1530,37 +1585,40 @@ export default function AISidebar({
           <PenTool size={12} />
           <span>Viết chính</span>
         </div>
-        <textarea
-          ref={customPromptRef}
-          className="ai-prompt-input"
-          placeholder="Nhập yêu cầu viết chính cho cảnh/chương..."
-          aria-label="Yêu cầu viết chính"
-          value={customPrompt}
-          onFocus={() => onMobileInputFocusChange?.(true)}
-          onBlur={() => onMobileInputFocusChange?.(false)}
-          onChange={(event) => {
-            setCustomPrompt(event.target.value);
-            autosizeTextarea(event.currentTarget);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.shiftKey) {
-              event.preventDefault();
-              handleFreePrompt(event);
-            }
-          }}
-          rows={1}
-          disabled={isStreaming}
-        />
+        <div className="ai-free-prompt__composer">
+          <textarea
+            ref={customPromptRef}
+            className="ai-prompt-input"
+            placeholder="Nhập yêu cầu viết chính cho cảnh/chương..."
+            aria-label="Yêu cầu viết chính"
+            value={customPrompt}
+            onFocus={() => onMobileInputFocusChange?.(true)}
+            onBlur={() => onMobileInputFocusChange?.(false)}
+            onChange={(event) => {
+              setCustomPrompt(event.target.value);
+              autosizeTextarea(event.currentTarget);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                handleFreePrompt(event);
+              }
+            }}
+            rows={1}
+            disabled={isStreaming}
+          />
+          <button
+            type="submit"
+            className="btn btn-primary btn-sm ai-send-btn"
+            disabled={isStreaming || isCheckingConflict || !customPrompt.trim()}
+            title="Gửi yêu cầu viết chính"
+            aria-label="Gửi yêu cầu viết chính"
+          >
+            {isStreaming ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
+          </button>
+        </div>
+        {renderRecentWritingRequests(handleReuseCustomPrompt)}
       </div>
-      <button
-        type="submit"
-        className="btn btn-primary btn-sm ai-send-btn"
-        disabled={isStreaming || isCheckingConflict || !customPrompt.trim()}
-        title="Gửi yêu cầu viết chính"
-        aria-label="Gửi yêu cầu viết chính"
-      >
-        {isStreaming ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
-      </button>
     </form>
   );
 
