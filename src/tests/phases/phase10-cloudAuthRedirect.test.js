@@ -1,13 +1,36 @@
-import { describe, expect, it } from 'vitest';
+import {
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+
+const supabaseAuthMock = vi.hoisted(() => ({
+  signInWithOAuth: vi.fn(),
+}));
+
+vi.mock('../../services/cloud/supabaseClient.js', () => ({
+  getSupabaseClient: () => ({ auth: supabaseAuthMock }),
+  getSupabaseConfigError: () => '',
+  isSupabaseConfigured: () => true,
+}));
+
 import {
   consumeCloudAuthReturnPath,
   getSafeCloudRedirectUrl,
   normalizeCloudRedirectUrl,
   rememberCloudAuthReturnPath,
   resolveCloudRedirectUrl,
+  signInWithGoogle,
 } from '../../services/cloud/cloudAuthService.js';
 
 describe('phase10 cloud auth redirect', () => {
+  beforeEach(() => {
+    supabaseAuthMock.signInWithOAuth.mockReset();
+    window.sessionStorage.clear();
+  });
+
   it('normalizes relative callback paths against the current origin', () => {
     expect(normalizeCloudRedirectUrl('/cloud-sync', 'https://story-forge-virid.vercel.app'))
       .toBe('https://story-forge-virid.vercel.app/cloud-sync');
@@ -31,6 +54,27 @@ describe('phase10 cloud auth redirect', () => {
       'http://localhost:5173',
       'https://story-forge-virid.vercel.app',
     )).toBe('https://story-forge-virid.vercel.app');
+  });
+
+  it('does not allow a different production origin to replace the login origin', () => {
+    expect(resolveCloudRedirectUrl(
+      'https://story-forge-kohl.vercel.app',
+      'https://story-forge-virid.vercel.app',
+    )).toBe('https://story-forge-virid.vercel.app');
+  });
+
+  it('sends the initiating origin to Supabase instead of a cross-origin override', async () => {
+    supabaseAuthMock.signInWithOAuth.mockResolvedValue({ data: { url: 'https://accounts.google.com' }, error: null });
+
+    await signInWithGoogle({
+      redirectTo: 'https://story-forge-kohl.vercel.app',
+      returnPath: '/login',
+    });
+
+    expect(supabaseAuthMock.signInWithOAuth).toHaveBeenCalledWith({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
+    });
   });
 
   it('keeps localhost redirects when the app itself is running locally', () => {

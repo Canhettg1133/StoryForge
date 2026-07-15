@@ -64,6 +64,13 @@ function countManifestRecords(manifest) {
   ), 0);
 }
 
+function isIOSFileSavePlatform() {
+  if (typeof navigator === 'undefined') return false;
+  const userAgent = String(navigator.userAgent || '');
+  return /iPad|iPhone|iPod/iu.test(userAgent)
+    || (navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints || 0) > 1);
+}
+
 export default function StoryBundleModal({
   mode = 'import',
   project = null,
@@ -80,6 +87,7 @@ export default function StoryBundleModal({
   const [estimate, setEstimate] = useState(null);
   const [progress, setProgress] = useState({ phase: '', progress: 0 });
   const [working, setWorking] = useState(false);
+  const [preparedBundle, setPreparedBundle] = useState(null);
   const [error, setError] = useState('');
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -108,12 +116,26 @@ export default function StoryBundleModal({
     };
   }, [mode, project?.id]);
 
+  useEffect(() => {
+    setPreparedBundle(null);
+  }, [project?.id, includeChats, includeFullLab, protectWithPassword, password, passwordConfirm]);
+
   const closeIfIdle = () => {
     if (!working) onClose?.();
   };
 
   const handleExport = async () => {
     if (!project?.id) return;
+    if (preparedBundle) {
+      setError('');
+      try {
+        saveAs(preparedBundle.blob, preparedBundle.fileName);
+        onClose?.();
+      } catch (cause) {
+        setError(cause?.message || 'Không thể lưu file StoryForge.');
+      }
+      return;
+    }
     if (protectWithPassword && password.length < 12) {
       setError('Mật khẩu phải có ít nhất 12 ký tự.');
       return;
@@ -131,6 +153,10 @@ export default function StoryBundleModal({
         password: protectWithPassword ? password : '',
         onProgress: setProgress,
       });
+      if (isIOSFileSavePlatform()) {
+        setPreparedBundle(result);
+        return;
+      }
       saveAs(result.blob, result.fileName);
       onClose?.();
     } catch (cause) {
@@ -285,6 +311,7 @@ export default function StoryBundleModal({
                 </div>
               ) : null}
               {!cryptoAvailable ? <p className="story-bundle-note"><AlertTriangle size={14} /> Web Crypto không khả dụng; vẫn có thể xuất file thường.</p> : null}
+              {preparedBundle ? <p className="story-bundle-note"><CheckCircle2 size={14} /> File đã tạo xong. Nhấn Lưu file .storyforge để mở trình lưu trên iPhone.</p> : null}
             </>
           ) : (
             <>
@@ -300,7 +327,7 @@ export default function StoryBundleModal({
                 <strong>{file ? file.name : 'Kéo thả hoặc chọn file .storyforge'}</strong>
                 <span>Hỗ trợ Story Bundle và project backup JSON phiên bản cũ.</span>
               </button>
-              <input ref={inputRef} hidden type="file" accept=".storyforge,.json,application/vnd.storyforge.bundle,application/json" onChange={(event) => chooseFile(event.target.files?.[0])} />
+              <input ref={inputRef} hidden type="file" onChange={(event) => chooseFile(event.target.files?.[0])} />
 
               {needsPassword ? (
                 <div className="story-bundle-unlock">
@@ -362,7 +389,7 @@ export default function StoryBundleModal({
           {mode === 'export' ? (
             <button type="button" className="btn btn-primary" onClick={handleExport} disabled={working}>
               {working ? <Loader2 size={16} className="animate-spin" /> : protectWithPassword ? <LockKeyhole size={16} /> : <Download size={16} />}
-              {working ? 'Đang tạo file...' : 'Tải file .storyforge'}
+              {working ? 'Đang tạo file...' : preparedBundle ? 'Lưu file .storyforge' : 'Tải file .storyforge'}
             </button>
           ) : (
             <button type="button" className="btn btn-primary" onClick={handleImport} disabled={working || !preview}>

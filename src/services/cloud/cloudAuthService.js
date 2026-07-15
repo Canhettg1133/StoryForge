@@ -51,8 +51,18 @@ export function resolveCloudRedirectUrl(configuredRedirectUrl, currentOrigin) {
     ? normalizeCloudRedirectUrl(configured, origin)
     : origin;
 
-  if (origin && !isLocalOrigin(origin) && isLocalhostRedirect(normalized)) {
-    return origin;
+  if (origin && normalized) {
+    try {
+      const currentUrl = new URL(origin);
+      const redirectUrl = new URL(normalized);
+      const bothLocal = isLocalOrigin(currentUrl.origin) && isLocalhostRedirect(redirectUrl.origin);
+
+      if (currentUrl.origin !== redirectUrl.origin && !bothLocal) {
+        return currentUrl.origin;
+      }
+    } catch {
+      return origin;
+    }
   }
 
   return normalized;
@@ -113,9 +123,10 @@ export async function signInWithGoogle(options = {}) {
   ensureConfigured();
   const client = getSupabaseClient();
   rememberCloudAuthReturnPath(options.returnPath || options.returnTo || getCurrentReturnPath());
-  const redirectTo = normalizeCloudRedirectUrl(
-    options.redirectTo || getSafeCloudRedirectUrl(),
-    typeof window !== 'undefined' ? window.location?.origin : '',
+  const currentOrigin = typeof window !== 'undefined' ? window.location?.origin : '';
+  const redirectTo = resolveCloudRedirectUrl(
+    options.redirectTo || CLOUD_AUTH_REDIRECT_URL,
+    currentOrigin,
   ) || undefined;
   const { data, error } = await client.auth.signInWithOAuth({
     provider: 'google',
