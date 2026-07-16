@@ -54,7 +54,7 @@ npm run worker:story-mirror:dry-run
 - Preview đang chạy tại `https://storyforge-web-preview.canhettg113.workers.dev`.
 - Acceptance tự động gần nhất ngày 17/07/2026: full suite `1524 passed`, `4 skipped`, `0 failed`; workerd `5/5`; auth/VIP `17/17`; preview/production user Worker dry-run, Admin secure build, Admin API Worker, AI Studio Relay và Story Mirror dry-run đều pass; `npm audit` có `0` vulnerability.
 - Preview current version: `da9c24e1-f647-4974-a8f6-04ed6eec0b38`; rollback version: `937d78fc-06ca-4460-bf01-45b90835ca27`.
-- Preview hiện chứa commit local `a7444a4` và regression tests `67c2516`; branch ahead `11` commit và vẫn chưa push.
+- Preview hiện chứa commit local `a7444a4` và regression tests `67c2516`; branch vẫn chưa push.
 - Preview có secret `SUPABASE_SERVICE_ROLE_KEY`; production user Worker chưa được deploy.
 - AI Studio Relay current version: `0df9c409-3ae9-4aa9-a951-301a4055d51b`; rollback version: `e16c93b9-eed1-4aba-bd76-231e723bf11b`.
 - Story Mirror current version: `7571693f-1d6b-4c2e-80fa-46405812650d`; rollback version: `f539e523-ad55-44c4-a53b-53f176e5cbf3`.
