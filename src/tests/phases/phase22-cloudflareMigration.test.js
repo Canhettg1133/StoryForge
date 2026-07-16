@@ -263,6 +263,7 @@ describe('Web-native OpenAI relay', () => {
       await vi.waitFor(() => expect(runtime.deferred).toHaveLength(1));
       await Promise.all(runtime.deferred);
       expect(insertUsage).toHaveBeenCalledTimes(1);
+      expect(insertUsage.mock.calls[0][0]).toMatchObject({ count: 30 });
     } finally {
       vi.unstubAllGlobals();
     }

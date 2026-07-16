@@ -140,6 +140,10 @@ describe('openAIProxyCore model parsing and transport policy', () => {
     expect(isRelayAllowedTarget('https://[::]')).toBe(false);
     expect(isRelayAllowedTarget('https://[::ffff:127.0.0.1]')).toBe(false);
     expect(isRelayAllowedTarget('https://[::ffff:10.0.0.1]')).toBe(false);
+    expect(isRelayAllowedTarget('https://[::127.0.0.1]')).toBe(false);
+    expect(isRelayAllowedTarget('https://[::10.0.0.1]')).toBe(false);
+    expect(isRelayAllowedTarget('https://fc00.example.com')).toBe(true);
+    expect(isRelayAllowedTarget('https://ff00.example.com')).toBe(true);
     expect(isRelayAllowedTarget('/api/proxy')).toBe(false);
   });
 

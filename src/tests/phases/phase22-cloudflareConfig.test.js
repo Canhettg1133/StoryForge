@@ -154,12 +154,14 @@ describe('Cloudflare build configuration', () => {
   it('uses platform-neutral StoryForge relay wording in user-facing setup screens', () => {
     const settings = read('src/pages/Settings/Settings.jsx');
     const proxyGuide = read('src/pages/Guide/GeminiProxyGuide.jsx');
+    const analysisConfig = read('src/pages/Lab/CorpusLab/components/AnalysisConfig.jsx');
 
     expect(settings).toContain('StoryForge relay');
     expect(settings).not.toContain('Vercel relay');
     expect(settings).not.toContain('Vercel rewrite');
     expect(settings).not.toContain('/api/proxy');
     expect(proxyGuide).not.toContain('/api/proxy');
+    expect(analysisConfig).not.toContain('/api/proxy');
   });
 
   it('allows both Vercel origins and the Cloudflare production origin during transition', () => {
