@@ -102,7 +102,15 @@
 }
 
 .app-main--translator-active {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+.app-main--translator-active .translator-shell.is-active {
+  flex: 1;
+  height: auto;
+  min-height: 0;
 }
 
 .app-layout--mobile {
@@ -135,6 +143,11 @@
   min-height: 100svh;
   height: 100dvh;
   min-height: 100dvh;
+}
+
+.app-layout--mobile .app-main--translator-active .translator-shell.is-active {
+  height: auto;
+  min-height: 0;
 }
 
 .app-layout--mobile .translator-shell__mobile-back {

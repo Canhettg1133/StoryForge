@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { cloudflare } from '@cloudflare/vite-plugin'
 import path from 'path'
 import fs from 'fs'
 import { pathToFileURL } from 'url'
@@ -25,6 +26,8 @@ function resolveApiRoute(pathname) {
     '/api/site-announcement': './api/site-announcement.js',
     '/api/me/access': './api/me/access.js',
     '/api/me/adult-consent': './api/me/adult-consent.js',
+    '/api/translator-prompt-settings': './api/translator-prompt-settings.js',
+    '/api/cloud': './api/cloud.js',
   }
   if (exactRoutes[pathname]) return { modulePath: exactRoutes[pathname], params: {} }
 
@@ -64,7 +67,12 @@ function storyForgeApiDevMiddleware() {
 }
 
 export default defineConfig({
-  plugins: [react(), storyForgeApiDevMiddleware()],
+  plugins: [
+    react(),
+    ...(process.env.STORYFORGE_CLOUDFLARE === 'true'
+      ? [cloudflare()]
+      : [storyForgeApiDevMiddleware()]),
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

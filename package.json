@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:web": "vite",
+    "dev:cloudflare": "node scripts/cloudflare-command.mjs dev preview",
     "dev:admin": "vite --config apps/admin/vite.config.js --host 0.0.0.0 --port 5176",
     "db:start": "powershell -ExecutionPolicy Bypass -File scripts/start-local-postgres.ps1",
     "db:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-local-postgres.ps1",
@@ -18,6 +19,7 @@
     "dev:zalo": "npm run zalo:dev",
     "analysis:eval:live": "node scripts/analysis-live-eval.mjs",
     "test": "vitest run",
+    "test:cloudflare-runtime": "vitest run --config vitest.cloudflare.config.js",
     "test:admin": "vitest run src/tests/phases/phase12-adminAccess.test.js src/tests/phases/phase12-adminApiWorker.test.js",
     "test:phase6b": "vitest run src/tests/phases/phase6b-incidentFirst.test.js",
     "test:phase6d": "vitest run src/tests/phases/phase6d-analysisV2.test.js",
@@ -28,10 +30,18 @@
     "build:admin": "node scripts/build-production-app.mjs admin",
     "build:admin:plain": "vite build --config apps/admin/vite.config.js",
     "build:admin:secure": "node scripts/build-production-app.mjs admin",
+    "build:cloudflare:preview": "node scripts/cloudflare-command.mjs build preview",
+    "build:cloudflare:production": "node scripts/cloudflare-command.mjs build production",
     "preview": "vite preview",
     "preview:admin": "vite preview --config apps/admin/vite.config.js --host 0.0.0.0 --port 4176",
+    "preview:cloudflare": "node scripts/cloudflare-command.mjs preview preview",
+    "worker:user:dry-run:preview": "node scripts/cloudflare-command.mjs dry-run preview",
+    "worker:user:dry-run:production": "node scripts/cloudflare-command.mjs dry-run production",
+    "deploy:cloudflare:preview": "node scripts/cloudflare-command.mjs deploy preview",
+    "deploy:cloudflare:production": "node scripts/cloudflare-command.mjs deploy production",
     "worker:admin:dry-run": "npx wrangler deploy --config apps/admin-api-worker/wrangler.toml --dry-run",
-    "worker:relay:dry-run": "npx wrangler deploy --config relay-worker/wrangler.toml --dry-run"
+    "worker:relay:dry-run": "npx wrangler deploy --config relay-worker/wrangler.toml --dry-run",
+    "worker:story-mirror:dry-run": "npx wrangler deploy --config apps/story-mirror-worker/wrangler.toml --dry-run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.3",
@@ -69,11 +79,14 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "1.45.0",
+    "@cloudflare/vitest-pool-workers": "0.18.5",
     "@vitejs/plugin-react": "^4.3.0",
     "fake-indexeddb": "^6.2.5",
     "javascript-obfuscator": "^4.1.1",
     "jsdom": "^29.0.1",
     "vite": "^6.4.3",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.2",
+    "wrangler": "4.111.0"
   }
 }

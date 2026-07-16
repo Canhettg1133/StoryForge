@@ -1,0 +1,42 @@
+name = "storyforge-web"
+main = "worker/index.js"
+compatibility_date = "2026-07-16"
+workers_dev = true
+preview_urls = true
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[vars]
+SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
+DEPLOYMENT_MODE = "production"
+ACCESS_CACHE_ENABLED = "true"
+OPENAI_PROXY_MAX_BODY_BYTES = "4194304"
+OPENAI_PROXY_RATE_LIMIT_MAX = "120"
+OPENAI_PROXY_RATE_LIMIT_WINDOW_MS = "60000"
+OPENAI_PROXY_BATCH_CONCURRENCY = "6"
+CLOUDFLARE_WORKERS_AI_MAX_BODY_BYTES = "6291456"
+CLOUDFLARE_WORKERS_AI_RATE_LIMIT_MAX = "40"
+CLOUDFLARE_WORKERS_AI_RATE_LIMIT_WINDOW_MS = "60000"
+USAGE_LOGGING_ENABLED = "true"
+USAGE_LOGGING_TIMEOUT_MS = "2000"
+
+[env.preview]
+name = "storyforge-web-preview"
+
+[env.preview.vars]
+SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
+DEPLOYMENT_MODE = "preview"
+ACCESS_CACHE_ENABLED = "true"
+OPENAI_PROXY_MAX_BODY_BYTES = "4194304"
+OPENAI_PROXY_RATE_LIMIT_MAX = "120"
+OPENAI_PROXY_RATE_LIMIT_WINDOW_MS = "60000"
+OPENAI_PROXY_BATCH_CONCURRENCY = "6"
+CLOUDFLARE_WORKERS_AI_MAX_BODY_BYTES = "6291456"
+CLOUDFLARE_WORKERS_AI_RATE_LIMIT_MAX = "40"
+CLOUDFLARE_WORKERS_AI_RATE_LIMIT_WINDOW_MS = "60000"
+USAGE_LOGGING_ENABLED = "false"
+USAGE_LOGGING_TIMEOUT_MS = "2000"

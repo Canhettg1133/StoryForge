@@ -192,6 +192,51 @@ describe('Web-native OpenAI relay', () => {
       headers: { 'content-type': 'application/json' },
     }))).toBe(true);
   });
+
+  it('does not write usage events when preview disables usage logging', async () => {
+    const insertUsage = vi.fn(async () => ({ error: null }));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'ok' } }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const handler = createOpenAIProxyWebHandler({
+      requireFeatureImpl: async () => ({
+        ...allowFeature(),
+        providerFeature: 'ai.provider.openai_proxy',
+        supabase: {
+          from(table) {
+            expect(table).toBe('usage_events');
+            return { insert: insertUsage };
+          },
+        },
+      }),
+    });
+    const runtime = createRuntime({
+      DEPLOYMENT_MODE: 'preview',
+      USAGE_LOGGING_ENABLED: 'false',
+    });
+
+    const response = await handler(new Request('https://storyforge-web-preview.example/api/openai-proxy', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-storyforge-upstream-key': 'disposable-test-key',
+      },
+      body: JSON.stringify({
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        payload: { model: 'test-model', messages: [] },
+      }),
+    }), runtime);
+
+    await Promise.all(runtime.deferred);
+    expect(response.status).toBe(200);
+    expect(insertUsage).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('Web-native Cloudflare Workers AI relay', () => {

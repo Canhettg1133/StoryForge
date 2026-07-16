@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 .dev.vars*
+!.dev.vars.example
+.env.cloudflare.*.local
+!.env.cloudflare.*.example
 
 # Editor directories and files
 .vscode/*

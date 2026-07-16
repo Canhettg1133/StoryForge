@@ -667,7 +667,7 @@ async function retranslateAllFailed() {
     const parallelInput = typeof document !== 'undefined' ? Number(document.getElementById('parallelCount')?.value) : 1;
     const manualParallel = typeof normalizeTranslatorParallel === 'function'
         ? normalizeTranslatorParallel(parallelInput || 1)
-        : Math.max(1, Math.min(50, parallelInput || 1));
+        : Math.max(1, Math.min(30, parallelInput || 1));
 
     for (let offset = 0; offset < toRetranslate.length; offset += manualParallel) {
         const batch = toRetranslate.slice(offset, offset + manualParallel);
@@ -687,7 +687,7 @@ function getManualRetryDefaultLimit(source, issueCount) {
     const parallelInput = typeof document !== 'undefined' ? Number(document.getElementById('parallelCount')?.value) : 1;
     const normalizedParallel = typeof normalizeTranslatorParallel === 'function'
         ? normalizeTranslatorParallel(parallelInput || 1)
-        : Math.max(1, Math.min(50, parallelInput || 1));
+        : Math.max(1, Math.min(30, parallelInput || 1));
     return Math.max(1, Math.min(2, normalizedParallel, issueCount));
 }
 

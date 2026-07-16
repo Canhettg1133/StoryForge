@@ -7,6 +7,7 @@ import { resolveUserAccess } from '../../src/services/access/accessControl.js';
 import {
   isPreviewRuntime,
   jsonResponse,
+  noStoreResponse,
   normalizeRuntime,
   readJsonRequest,
 } from '../_lib/web.js';
@@ -18,7 +19,7 @@ function accessDeniedResponse(result) {
 
 export function createMeAccessWebHandler() {
   return async function meAccessWebHandler(request, runtimeInput = {}) {
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
+    if (request.method === 'OPTIONS') return noStoreResponse();
     if (request.method !== 'GET') return jsonResponse({ error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' }, 405);
     const runtime = normalizeRuntime(runtimeInput);
     try {
@@ -33,7 +34,7 @@ export function createMeAccessWebHandler() {
 
 export function createAdultConsentWebHandler() {
   return async function adultConsentWebHandler(request, runtimeInput = {}) {
-    if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
+    if (request.method === 'OPTIONS') return noStoreResponse();
     if (request.method !== 'POST') return jsonResponse({ error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' }, 405);
     const runtime = normalizeRuntime(runtimeInput);
     if (isPreviewRuntime(runtime)) {

@@ -14,6 +14,7 @@ import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import { useUserAccess } from '../../hooks/useUserAccess';
 import AccessGate from '../access/AccessGate.jsx';
 import { navigateBackOr } from '../../utils/navigation.js';
+import CloudflarePreviewBanner from './CloudflarePreviewBanner.jsx';
 import './AppLayout.css';
 
 export default function AppLayout() {
@@ -33,6 +34,7 @@ export default function AppLayout() {
     <div className={`app-layout ${isMobileLayout ? 'app-layout--mobile' : ''} ${isProjectRoute ? 'app-layout--project-route' : ''}`}>
       {!isMobileLayout && <Sidebar />}
       <main className={`app-main ${location.pathname === '/translator' ? 'app-main--translator-active' : ''}`}>
+        <CloudflarePreviewBanner />
         <Outlet />
         <div className={`translator-shell ${isTranslatorRoute ? 'is-active' : 'is-hidden'}`}>
           {isTranslatorRoute && isMobileLayout ? (

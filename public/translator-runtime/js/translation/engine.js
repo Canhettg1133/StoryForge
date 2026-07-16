@@ -65,7 +65,7 @@ function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto') {
 function resolveEffectiveTranslationParallel(options = {}) {
     const requestedParallel = typeof normalizeTranslatorParallel === 'function'
         ? normalizeTranslatorParallel(options.requestedParallel)
-        : Math.max(1, Math.min(50, Number(options.requestedParallel) || 1));
+        : Math.max(1, Math.min(30, Number(options.requestedParallel) || 1));
     const useOllamaMode = Boolean(options.useOllamaMode);
 
     if (useOllamaMode) return 1;
@@ -812,7 +812,7 @@ async function startTranslation() {
 
         parallelCount = typeof normalizeTranslatorParallel === 'function'
             ? normalizeTranslatorParallel(parallelCount)
-            : Math.max(1, Math.min(parallelCount, 50));
+            : Math.max(1, Math.min(parallelCount, 30));
         if (proxyKeyCount > 0 && parallelCount > proxyKeyCount) {
             showToast(`Proxy có ${proxyKeyCount} key nhưng đang chạy ${parallelCount} luồng; dễ gặp 429/403 nếu server giới hạn tốc độ.`, 'warning');
         }

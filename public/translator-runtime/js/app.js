@@ -45,7 +45,7 @@ const activeRequestControllers = new Set();
 const DEFAULT_TRANSLATOR_RPM_PER_KEY = 10;
 const TRANSLATOR_RPM_MIN = 1;
 const TRANSLATOR_RPM_MAX = 100;
-const TRANSLATOR_MAX_PARALLEL = 50;
+const TRANSLATOR_MAX_PARALLEL = 30;
 const TRANSLATOR_RPM_WINDOW_MS = 65000;
 const TRANSLATOR_PROVIDERS = {
     GEMINI_DIRECT: 'gemini_direct',

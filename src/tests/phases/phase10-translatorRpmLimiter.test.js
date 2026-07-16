@@ -395,7 +395,7 @@ describe('phase10 translator RPM limiter', () => {
 
     expect(html).toContain('id="rpmPerKey"');
     expect(html).toContain('RPM mỗi API key');
-    expect(html).toContain('max="50"');
+    expect(html).toContain('id="parallelCount" value="2" min="1" max="30"');
     expect(html).not.toContain('Delay giữa các batch');
   });
 });

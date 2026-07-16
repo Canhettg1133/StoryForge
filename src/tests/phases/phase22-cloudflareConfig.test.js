@@ -2,7 +2,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveCloudflareBuildEnv } from '../../../scripts/cloudflare-command.mjs';
+import {
+  resolveCloudflareBuildEnv,
+  resolveCloudflarePreviewEnv,
+  resolveWranglerArgs,
+} from '../../../scripts/cloudflare-command.mjs';
 import { shouldInjectVercelAnalytics } from '../../services/analytics/vercelAnalytics.js';
 
 function read(pathname) {
@@ -18,6 +22,11 @@ describe('Cloudflare build configuration', () => {
       '@cloudflare/vite-plugin': '1.45.0',
       '@cloudflare/vitest-pool-workers': '0.18.5',
       wrangler: '4.111.0',
+    });
+    expect(pkg.scripts).toMatchObject({
+      'worker:admin:dry-run': expect.stringContaining('apps/admin-api-worker/wrangler.toml'),
+      'worker:relay:dry-run': expect.stringContaining('relay-worker/wrangler.toml'),
+      'worker:story-mirror:dry-run': expect.stringContaining('apps/story-mirror-worker/wrangler.toml'),
     });
     expect(wrangler).toContain('name = "storyforge-web"');
     expect(wrangler).toContain('name = "storyforge-web-preview"');
@@ -44,6 +53,35 @@ describe('Cloudflare build configuration', () => {
     expect(env).not.toHaveProperty('VITE_CLOUD_SYNC_BASE_URL');
   });
 
+  it('always targets the isolated preview Worker for preview dry-runs and deploys', () => {
+    expect(resolveWranglerArgs('dry-run', 'preview')).toEqual([
+      'deploy',
+      '--env',
+      'preview',
+      '--dry-run',
+    ]);
+    expect(resolveWranglerArgs('deploy', 'preview')).toEqual([
+      'deploy',
+      '--env',
+      'preview',
+    ]);
+    expect(resolveWranglerArgs('deploy', 'production')).toEqual(['deploy']);
+  });
+
+  it('previews the generated Cloudflare artifact without re-selecting an environment', () => {
+    const env = resolveCloudflarePreviewEnv({
+      CLOUDFLARE_ENV: 'preview',
+      STORYFORGE_CLOUDFLARE: 'true',
+      VITE_DEPLOYMENT_MODE: 'preview',
+    });
+
+    expect(env).not.toHaveProperty('CLOUDFLARE_ENV');
+    expect(env).toMatchObject({
+      STORYFORGE_CLOUDFLARE: 'true',
+      VITE_DEPLOYMENT_MODE: 'preview',
+    });
+  });
+
   it('keeps production feature values while removing the retired cloud API override', () => {
     const env = resolveCloudflareBuildEnv('production', {
       VITE_ENABLE_CLOUD_SYNC: 'true',
@@ -63,12 +101,47 @@ describe('Cloudflare build configuration', () => {
     expect(shouldInjectVercelAnalytics('localhost', 'preview')).toBe(false);
   });
 
+  it('shows an explicit read-only notice only in Cloudflare preview builds', () => {
+    const layout = read('src/components/common/AppLayout.jsx');
+    const layoutCss = read('src/components/common/AppLayout.css');
+    expect(layout).toContain('CloudflarePreviewBanner');
+    expect(layout.indexOf('<main')).toBeLessThan(layout.indexOf('<CloudflarePreviewBanner />'));
+    expect(layout.indexOf('<CloudflarePreviewBanner />')).toBeLessThan(layout.indexOf('<Outlet />'));
+    const banner = read('src/components/common/CloudflarePreviewBanner.jsx');
+    const bannerCss = read('src/components/common/CloudflarePreviewBanner.css');
+    expect(banner).toContain("VITE_DEPLOYMENT_MODE !== 'preview'");
+    expect(banner).toContain('API key và dữ liệu local thuộc riêng URL preview');
+    expect(banner).toContain('Cloud Sync và Story Mirror đang tạm khóa');
+    expect(bannerCss).toContain('position: sticky');
+    expect(bannerCss).not.toContain('position: fixed');
+    expect(layoutCss).toContain('.app-layout--mobile .app-main--translator-active .translator-shell.is-active');
+  });
+
   it('preserves security and cache headers for Cloudflare static assets', () => {
     const headers = read('public/_headers');
     expect(headers).toContain('Strict-Transport-Security: max-age=31536000; includeSubDomains');
     expect(headers).toContain('X-Content-Type-Options: nosniff');
     expect(headers).toContain('/assets/*');
     expect(headers).toContain('Cache-Control: public, max-age=31536000, immutable');
+  });
+
+  it('documents rollback and keeps local Cloudflare secrets out of Git', () => {
+    const gitignore = read('.gitignore');
+    const devVarsExample = read('.dev.vars.example');
+    const previewExample = read('.env.cloudflare.preview.example');
+    const productionExample = read('.env.cloudflare.production.example');
+    const handoff = read('docs/cloudflare-migration-handoff.md');
+
+    expect(gitignore).toContain('.dev.vars*');
+    expect(gitignore).toContain('!.dev.vars.example');
+    expect(gitignore).toContain('.env.cloudflare.*.local');
+    expect(devVarsExample).toContain('SUPABASE_SERVICE_ROLE_KEY=replace-with-local-service-role-key');
+    expect(previewExample).toContain('VITE_DEPLOYMENT_MODE=preview');
+    expect(previewExample).toContain('VITE_ENABLE_CLOUD_SYNC=false');
+    expect(productionExample).toContain('VITE_DEPLOYMENT_MODE=production');
+    expect(productionExample).not.toContain('VITE_CLOUD_SYNC_BASE_URL');
+    expect(handoff).toContain('05b6a64c0ac55348b7fccf67803aee3fbdfed221');
+    expect(handoff).toContain('codex/cloudflare-migration');
   });
 
   it('limits every Translator parallel and relay batch entry point to 30', () => {

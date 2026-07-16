@@ -67,6 +67,16 @@ export function jsonResponse(payload, status = 200, headers = {}) {
   });
 }
 
+export function noStoreResponse(status = 204, headers = {}) {
+  return new Response(null, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store',
+      ...headers,
+    },
+  });
+}
+
 export function getRequestId(request) {
   const incoming = request?.headers?.get?.('x-request-id')
     || request?.headers?.get?.('x-correlation-id');

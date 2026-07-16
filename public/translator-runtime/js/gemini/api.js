@@ -6,7 +6,7 @@
 // ============================================
 // PROXY API - OpenAI Compatible (BeiJiXingXing, OpenRouter...)
 // ============================================
-const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 50;
+const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 30;
 const DEFAULT_PROXY_TRANSLATION_MAX_TOKENS = 16384;
 const CUSTOM_PROXY_TRANSLATION_MAX_TOKENS = 32768;
 let proxyRelayChatBatchQueue = [];

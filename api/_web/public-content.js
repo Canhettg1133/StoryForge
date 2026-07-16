@@ -9,7 +9,7 @@ import {
   toPublicTranslatorPromptSettings,
 } from '../../packages/access/src/index.js';
 import { getSupabaseAdminClient, getSupabaseAdminConfig } from '../_lib/supabaseAdmin.js';
-import { jsonResponse, normalizeRuntime } from '../_lib/web.js';
+import { jsonResponse, noStoreResponse, normalizeRuntime } from '../_lib/web.js';
 
 async function fetchSiteAnnouncementFromSupabase(runtime) {
   if (!getSupabaseAdminConfig(runtime.env).configured) throw new Error('SUPABASE_ADMIN_NOT_CONFIGURED');
@@ -50,7 +50,7 @@ async function fetchVipPlanFromSupabase(runtime) {
 }
 
 function rejectNonGet(request) {
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204 });
+  if (request.method === 'OPTIONS') return noStoreResponse();
   if (request.method !== 'GET') return jsonResponse({ error: 'Method not allowed.', code: 'METHOD_NOT_ALLOWED' }, 405);
   return null;
 }

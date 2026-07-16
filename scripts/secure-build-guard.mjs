@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 const SERVER_ONLY_SECRET_MARKERS = Object.freeze([
   'SUPABASE_SERVICE_ROLE_KEY',
@@ -62,14 +63,23 @@ export function assertNoPublicSourceMaps(rootDir) {
   }
 }
 
-export function assertNoServerOnlySecretMarkers(rootDir, env = process.env) {
-  const files = walkFiles(rootDir).filter(isTextBundle);
+export function resolvePublicBundleRoot(rootDir) {
+  const cloudflareClientDir = path.join(rootDir, 'client');
+  return existsSync(cloudflareClientDir) ? cloudflareClientDir : rootDir;
+}
+
+export function assertNoServerOnlySecretMarkers(rootDir, env = process.env, options = {}) {
+  const markerRootDir = options.markerRootDir || rootDir;
+  const markerFiles = walkFiles(markerRootDir).filter(isTextBundle);
+  const allFiles = markerRootDir === rootDir
+    ? markerFiles
+    : walkFiles(rootDir).filter(isTextBundle);
   const secretValues = SERVER_ONLY_SECRET_VALUE_ENV_KEYS
     .map((key) => ({ key, value: String(env[key] || '').trim() }))
     .filter((item) => item.value.length >= 16);
   const leaks = [];
 
-  for (const file of files) {
+  for (const file of markerFiles) {
     const source = readFileSync(file, 'utf8');
     const relativeFile = path.relative(rootDir, file) || path.basename(file);
 
@@ -78,7 +88,11 @@ export function assertNoServerOnlySecretMarkers(rootDir, env = process.env) {
         leaks.push(`${relativeFile} contains server-only marker ${marker}`);
       }
     }
+  }
 
+  for (const file of allFiles) {
+    const source = readFileSync(file, 'utf8');
+    const relativeFile = path.relative(rootDir, file) || path.basename(file);
     for (const item of secretValues) {
       if (source.includes(item.value)) {
         leaks.push(`${relativeFile} contains value from ${item.key}`);
@@ -102,12 +116,20 @@ function assertObfuscationManifest(rootDir) {
   }
 }
 
-const rootDir = path.resolve(process.argv[2] || 'dist');
-if (!existsSync(rootDir)) {
-  throw new Error(`Build output not found: ${rootDir}`);
+export function runSecureBuildGuard(rootDirInput = process.argv[2] || 'dist') {
+  const rootDir = path.resolve(rootDirInput);
+  if (!existsSync(rootDir)) {
+    throw new Error(`Build output not found: ${rootDir}`);
+  }
+
+  assertNoPublicSourceMaps(rootDir);
+  assertNoServerOnlySecretMarkers(rootDir, process.env, {
+    markerRootDir: resolvePublicBundleRoot(rootDir),
+  });
+  assertObfuscationManifest(rootDir);
+  console.log(`[secure-build-guard] ${rootDir} passed production hardening checks.`);
 }
 
-assertNoPublicSourceMaps(rootDir);
-assertNoServerOnlySecretMarkers(rootDir);
-assertObfuscationManifest(rootDir);
-console.log(`[secure-build-guard] ${rootDir} passed production hardening checks.`);
+const isDirectRun = process.argv[1]
+  && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (isDirectRun) runSecureBuildGuard();
