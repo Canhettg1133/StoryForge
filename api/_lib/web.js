@@ -48,12 +48,37 @@ function createHttpError(status, code, message) {
 }
 
 export async function readJsonRequest(request, { maxBytes = DEFAULT_JSON_BODY_MAX_BYTES } = {}) {
-  const buffer = await request.arrayBuffer();
-  if (buffer.byteLength > maxBytes) {
+  const contentLength = Number.parseInt(request.headers.get('content-length') || '', 10);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
     throw createHttpError(413, 'JSON_BODY_TOO_LARGE', 'JSON body is too large.');
   }
-  if (buffer.byteLength === 0) return {};
-  return JSON.parse(new TextDecoder().decode(buffer));
+
+  if (!request.body) return {};
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let raw = '';
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const bytes = value instanceof Uint8Array
+        ? value
+        : ArrayBuffer.isView(value)
+          ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength)
+          : new TextEncoder().encode(String(value));
+      totalBytes += bytes.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel('JSON_BODY_TOO_LARGE').catch(() => {});
+        throw createHttpError(413, 'JSON_BODY_TOO_LARGE', 'JSON body is too large.');
+      }
+      raw += decoder.decode(bytes, { stream: true });
+    }
+    raw += decoder.decode();
+  } finally {
+    reader.releaseLock?.();
+  }
+  return raw ? JSON.parse(raw) : {};
 }
 
 export function jsonResponse(payload, status = 200, headers = {}) {
@@ -144,7 +169,7 @@ function toWebHeaders(nodeHeaders = {}) {
   return headers;
 }
 
-async function readNodeRequestBody(req) {
+function readNodeRequestBody(req) {
   if (req.body !== undefined && req.body !== null) {
     if (typeof req.body === 'string' || req.body instanceof Uint8Array || req.body instanceof ArrayBuffer) {
       return req.body;
@@ -153,21 +178,35 @@ async function readNodeRequestBody(req) {
   }
   if (!req?.[Symbol.asyncIterator]) return undefined;
 
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    const bytes = chunk instanceof Uint8Array ? chunk : new TextEncoder().encode(String(chunk));
-    chunks.push(bytes);
-    size += bytes.byteLength;
-  }
-  if (size === 0) return undefined;
-  const body = new Uint8Array(size);
-  let offset = 0;
-  chunks.forEach((chunk) => {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  });
-  return body;
+  const iterator = req[Symbol.asyncIterator]();
+  let finished = false;
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const result = await iterator.next();
+        if (result.done) {
+          finished = true;
+          controller.close();
+          return;
+        }
+        const bytes = result.value instanceof Uint8Array
+          ? result.value
+          : ArrayBuffer.isView(result.value)
+            ? new Uint8Array(result.value.buffer, result.value.byteOffset, result.value.byteLength)
+            : new TextEncoder().encode(String(result.value));
+        controller.enqueue(bytes);
+      } catch (error) {
+        finished = true;
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      if (finished) return;
+      finished = true;
+      await iterator.return?.();
+      req.destroy?.(reason instanceof Error ? reason : undefined);
+    },
+  }, { highWaterMark: 0 });
 }
 
 async function nodeRequestToWebRequest(req) {
@@ -179,7 +218,7 @@ async function nodeRequestToWebRequest(req) {
   const url = /^https?:\/\//iu.test(rawUrl) ? rawUrl : `${protocol}://${host}${rawUrl.startsWith('/') ? rawUrl : `/${rawUrl}`}`;
   const controller = new AbortController();
   req.on?.('aborted', () => controller.abort());
-  const body = method === 'GET' || method === 'HEAD' ? undefined : await readNodeRequestBody(req);
+  const body = method === 'GET' || method === 'HEAD' ? undefined : readNodeRequestBody(req);
   if (body && !headers.has('content-type') && typeof req.body === 'object') {
     headers.set('content-type', 'application/json');
   }
@@ -190,6 +229,7 @@ async function nodeRequestToWebRequest(req) {
       headers,
       body,
       signal: controller.signal,
+      ...(typeof ReadableStream !== 'undefined' && body instanceof ReadableStream ? { duplex: 'half' } : {}),
     }),
   };
 }

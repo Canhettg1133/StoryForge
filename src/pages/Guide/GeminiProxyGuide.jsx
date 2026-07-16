@@ -441,7 +441,7 @@ export default function GeminiProxyGuide({ focusFixCli = false }) {
             <li>{'V\u00e0o khu Gemini Proxy.'}</li>
             <li>{'D\u00e1n \u0111\u1ee7 3 key, m\u1ed7i key m\u1ed9t d\u00f2ng ho\u1eb7c th\u00eam t\u1eebng key.'}</li>
             <li>{'Ch\u1ecdn provider l\u00e0 Gemini Proxy.'}</li>
-            <li>{'Gi\u1eef Proxy URL m\u1eb7c \u0111\u1ecbnh /api/proxy n\u1ebfu \u0111ang d\u00f9ng proxy chu\u1ea9n c\u1ee7a app.'}</li>
+            <li>{'Gi\u1eef c\u1ea5u h\u00ecnh StoryForge relay m\u1eb7c \u0111\u1ecbnh n\u1ebfu \u0111ang d\u00f9ng Gemini Proxy chu\u1ea9n c\u1ee7a app.'}</li>
             <li>{'Ch\u1ea5t l\u01b0\u1ee3ng khuy\u1ebfn ngh\u1ecb: C\u00e2n b\u1eb1ng.'}</li>
             <li>{'B\u1ea5m Test \u0111\u1ec3 ki\u1ec3m tra.'}</li>
           </ol>

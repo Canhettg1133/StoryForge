@@ -47,7 +47,7 @@ export async function handleStoryForgeWorkerRequest(request, env = {}, ctx = {},
     }
   }
 
-  if (url.pathname.startsWith('/api/')) {
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
     return jsonResponse({ error: 'API route not found.', code: 'API_ROUTE_NOT_FOUND' }, 404);
   }
 

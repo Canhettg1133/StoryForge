@@ -70,7 +70,7 @@ function resolveAnalysisProxyUrl() {
   const stored = getProxyUrl();
   const trimmed = String(stored || '').trim();
 
-  // Duong dan tuong doi '/api/proxy' chi dung o trinh duyet, jobs server can URL tuyet doi.
+  // Duong dan relay tuong doi chi dung o trinh duyet; jobs server can URL tuyet doi.
   if (!trimmed || trimmed.startsWith('/')) {
     return 'https://ag.beijixingxing.com';
   }

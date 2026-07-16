@@ -368,7 +368,7 @@ export default function AnalysisConfig({
           <span>URL Gemini Proxy</span>
           <input
             type="text"
-            placeholder="/api/proxy"
+            placeholder="https://ag.beijixingxing.com"
             value={config.geminiProxyUrl || ''}
             disabled={disabled}
             onChange={(event) => onChange?.({

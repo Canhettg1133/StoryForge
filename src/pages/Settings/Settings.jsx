@@ -1455,7 +1455,7 @@ export default function Settings() {
 
           <div className="settings-radio-group horizontal settings-provider-grid">
             {[
-              { value: PROVIDER_CARD_AG_PROXY, icon: Server, label: 'Gemini Proxy mặc định', desc: '/api/proxy - ag' },
+              { value: PROVIDER_CARD_AG_PROXY, icon: Server, label: 'Gemini Proxy mặc định', desc: 'StoryForge relay - ag' },
               { value: PROVIDER_CARD_CUSTOM_PROXY, icon: Server, label: 'Custom OpenAI-compatible', desc: 'one-api / NewAPI / proxy clone' },
               { value: PROVIDERS.GEMINI_DIRECT, icon: Cloud, label: 'Gemini Direct', desc: 'AI Studio, dành cho VIP' },
               { value: PROVIDERS.AI_STUDIO_RELAY, icon: Cloud, label: 'AI Studio Relay', desc: 'Experimental' },
@@ -1686,7 +1686,7 @@ export default function Settings() {
             <KeySection
               provider="gemini_proxy"
               providerLabel="Gemini Proxy mặc định (ag)"
-              description="Dùng cho preset /api/proxy trên Vercel."
+              description="Dùng cho preset Gemini Proxy qua StoryForge relay."
               icon={Server}
               onKeysChange={handleKeysChange}
             />
@@ -1722,14 +1722,14 @@ export default function Settings() {
             <Server size={20} />
             <div>
               <h2>Gemini Proxy mặc định</h2>
-              <p>ag.beijixingxing - OpenAI-compatible qua /api/proxy để tránh CORS trên Vercel.</p>
+              <p>ag.beijixingxing - OpenAI-compatible qua StoryForge relay cùng origin để tránh CORS.</p>
             </div>
           </div>
 
           <div className="form-group">
             <label className="form-label">Proxy URL</label>
             <div className="settings-input-row">
-              <input className="input" value="/api/proxy" readOnly placeholder="/api/proxy" />
+              <input className="input" value="/api/openai-proxy" readOnly placeholder="/api/openai-proxy" />
               <button className="btn btn-secondary" onClick={() => handleProviderSelect(PROVIDER_CARD_AG_PROXY)}>Dùng preset</button>
               <button
                 className="btn btn-ghost btn-icon"
@@ -1739,7 +1739,7 @@ export default function Settings() {
                 {testing[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] ? <RefreshCw size={16} className="animate-spin" /> : <TestTube size={16} />}
               </button>
             </div>
-            <p className="settings-hint">Mặc định: <code>/api/proxy</code> (Vercel rewrite -&gt; ag.beijixingxing.com). Không cần đổi trừ khi dùng proxy khác.</p>
+            <p className="settings-hint">Mặc định: <code>/api/openai-proxy</code> (StoryForge relay -&gt; ag.beijixingxing.com). Không cần đổi trừ khi dùng proxy khác.</p>
             {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)] && (
               <div className={`settings-test-result ${testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success ? 'success' : 'error'}`}>
                 {testResults[getProxyProfileTestKey(AG_PROXY_PROFILE_ID)].success
@@ -1756,7 +1756,7 @@ export default function Settings() {
               <Server size={20} />
               <div>
                 <h2>Custom OpenAI-compatible</h2>
-                <p>Nhập web proxy OpenAI-compatible. Hosted HTTPS dùng Vercel relay; local/private URL dùng direct và cần CORS.</p>
+                <p>Nhập web proxy OpenAI-compatible. Hosted HTTPS dùng StoryForge relay; local/private URL dùng direct và cần CORS.</p>
               </div>
             </div>
             <button
@@ -1786,7 +1786,7 @@ export default function Settings() {
             </div>
             <div className="settings-summary-tile">
               <span>Transport</span>
-              <strong>{customProxyTransportMode === 'relay' ? 'Vercel relay' : 'Direct'}</strong>
+              <strong>{customProxyTransportMode === 'relay' ? 'StoryForge relay' : 'Direct'}</strong>
             </div>
           </div>
 
@@ -2071,7 +2071,7 @@ export default function Settings() {
                   <p className="ai-studio-relay-hero__kicker">Dành cho proxy OpenAI-compatible</p>
                   <p>
                     Dùng cho one-api, NewAPI, OpenRouter, Gemini CLI proxy clone hoặc endpoint có dạng
-                    <code> /v1/chat/completions</code>. Nếu là URL HTTPS public, StoryForge có thể đi qua Vercel relay.
+                    <code> /v1/chat/completions</code>. Nếu là URL HTTPS public, StoryForge có thể đi qua StoryForge relay.
                     Nếu là localhost hoặc mạng riêng, trình duyệt sẽ gọi direct và server đó cần bật CORS.
                   </p>
                 </div>
@@ -2079,7 +2079,7 @@ export default function Settings() {
                   <span>Trạng thái</span>
                   <strong>{activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? 'Đang dùng Custom' : 'Chưa chọn Custom'}</strong>
                   <small>
-                    {customProxyKeyCount} keys riêng · {customProxyModels.length} models · {customProxyTransportMode === 'relay' ? 'Vercel relay' : 'Direct'}
+                    {customProxyKeyCount} keys riêng · {customProxyModels.length} models · {customProxyTransportMode === 'relay' ? 'StoryForge relay' : 'Direct'}
                   </small>
                 </div>
               </div>
@@ -2104,10 +2104,10 @@ export default function Settings() {
                     ))}
                   </div>
                   <div className="ai-studio-relay-note">
-                    <strong>Lưu ý Vercel</strong>
+                    <strong>Lưu ý StoryForge relay</strong>
                     <p>
                       Hosted HTTPS public có thể dùng relay cùng origin. Localhost, LM Studio local hoặc IP mạng riêng
-                      phải dùng direct vì Vercel cloud không gọi được máy local của người dùng.
+                      phải dùng direct vì relay cloud không gọi được máy local của người dùng.
                     </p>
                   </div>
                 </aside>
@@ -2218,7 +2218,7 @@ export default function Settings() {
                       <span>Profile</span>
                       <strong>{activeProxyProfileId === CUSTOM_PROXY_PROFILE_ID ? 'Custom đang dùng' : 'Đang lưu sẵn'}</strong>
                       <span>Transport</span>
-                      <strong>{customProxyTransportMode === 'relay' ? 'Vercel relay' : 'Direct'}</strong>
+                      <strong>{customProxyTransportMode === 'relay' ? 'StoryForge relay' : 'Direct'}</strong>
                       <span>Models</span>
                       <strong>{customProxyModels.length}</strong>
                       <span>Keys</span>
@@ -2284,7 +2284,7 @@ export default function Settings() {
                           onChange={(event) => syncCustomProxyProfile({ transport: event.target.value }, { activate: true })}
                         >
                           <option value="auto">Auto</option>
-                          <option value="relay">Vercel relay</option>
+                          <option value="relay">StoryForge relay</option>
                           <option value="direct">Direct</option>
                         </select>
                       </label>

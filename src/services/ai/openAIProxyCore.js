@@ -279,7 +279,7 @@ export function isLocalProxyHost(hostname = '') {
   const host = String(hostname || '').toLowerCase().replace(/^\[|\]$/gu, '').replace(/\.+$/u, '');
   if (!host) return false;
   if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
-  if (host === '::1' || host === '0:0:0:0:0:0:0:1') return true;
+  if (host === '::' || host === '::1' || host === '0:0:0:0:0:0:0:1') return true;
   if (host === '0.0.0.0') return true;
   if (host.startsWith('127.')) return true;
   if (host.startsWith('10.')) return true;
@@ -294,7 +294,29 @@ export function isLocalProxyHost(hostname = '') {
     if (parts[0] >= 224) return true;
   }
 
-  if (host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80')) return true;
+  let embeddedIpv4Prefix = '';
+  if (host.startsWith('::ffff:')) embeddedIpv4Prefix = '::ffff:';
+  else if (host.startsWith('0:0:0:0:0:ffff:')) embeddedIpv4Prefix = '0:0:0:0:0:ffff:';
+  else if (host.startsWith('::')) embeddedIpv4Prefix = '::';
+  if (embeddedIpv4Prefix) {
+    const mapped = host.slice(embeddedIpv4Prefix.length);
+    const mappedParts = mapped.split(':');
+    if (mappedParts.length === 2 && mappedParts.every((part) => /^[a-f0-9]{1,4}$/u.test(part))) {
+      const high = Number.parseInt(mappedParts[0], 16);
+      const low = Number.parseInt(mappedParts[1], 16);
+      const mappedIpv4 = `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
+      if (isLocalProxyHost(mappedIpv4)) return true;
+    } else if (isLocalProxyHost(mapped)) {
+      return true;
+    }
+  }
+
+  const firstHextet = Number.parseInt(host.split(':')[0] || '', 16);
+  if (host.includes(':') && Number.isFinite(firstHextet)) {
+    if (firstHextet >= 0xfc00 && firstHextet <= 0xfdff) return true;
+    if (firstHextet >= 0xfe80 && firstHextet <= 0xfebf) return true;
+    if (firstHextet >= 0xff00) return true;
+  }
   return false;
 }
 
