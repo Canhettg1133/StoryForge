@@ -11,13 +11,34 @@ const handler = createOpenAIProxyHandler({
   }),
 });
 
-function createReqRes({ method = 'POST', body = {}, headers = {} } = {}) {
+function createReqRes({ method = 'POST', body = {}, headers = {}, backpressureWrites = [] } = {}) {
   const chunks = [];
+  const listeners = new Map();
   const res = {
     statusCode: 200,
     headers: {},
     headersSent: false,
     writableEnded: false,
+    writeCount: 0,
+    on(event, listener) {
+      const eventListeners = listeners.get(event) || [];
+      eventListeners.push({ listener, once: false });
+      listeners.set(event, eventListeners);
+    },
+    once(event, listener) {
+      const eventListeners = listeners.get(event) || [];
+      eventListeners.push({ listener, once: true });
+      listeners.set(event, eventListeners);
+    },
+    off(event, listener) {
+      const eventListeners = listeners.get(event) || [];
+      listeners.set(event, eventListeners.filter((entry) => entry.listener !== listener));
+    },
+    emit(event) {
+      const eventListeners = [...(listeners.get(event) || [])];
+      listeners.set(event, eventListeners.filter((entry) => !entry.once));
+      eventListeners.forEach((entry) => entry.listener());
+    },
     setHeader(key, value) {
       if (this.headersSent) {
         throw new Error('Cannot set headers after they are sent to the client');
@@ -29,7 +50,9 @@ function createReqRes({ method = 'POST', body = {}, headers = {} } = {}) {
     },
     write(chunk) {
       this.headersSent = true;
+      this.writeCount += 1;
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+      return !backpressureWrites.includes(this.writeCount);
     },
     end(chunk) {
       if (chunk) this.write(chunk);
@@ -390,6 +413,45 @@ describe('/api/openai-proxy', () => {
       }),
     }));
     vi.unstubAllGlobals();
+  });
+
+  it('waits for Node response drain before reading another upstream chunk', async () => {
+    const encoder = new TextEncoder();
+    const fetchMock = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('first'));
+        controller.enqueue(encoder.encode('second'));
+        controller.close();
+      },
+    }), {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { req, res } = createReqRes({
+      body: {
+        action: 'chat',
+        baseUrl: 'https://proxy.example.com',
+        payload: { model: 'custom-model', messages: [], stream: true },
+      },
+      headers: { 'x-storyforge-upstream-key': 'test-key' },
+      backpressureWrites: [1],
+    });
+    const pending = handler(req, res);
+
+    try {
+      await vi.waitFor(() => expect(res.writeCount).toBeGreaterThanOrEqual(1));
+      expect(res.writeCount).toBe(1);
+      expect(res.writableEnded).toBe(false);
+
+      res.emit('drain');
+      await pending;
+      expect(res.writeCount).toBe(2);
+      expect(res.body).toBe('firstsecond');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('streams chat_stream_batch results as each upstream payload resolves', async () => {

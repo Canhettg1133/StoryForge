@@ -117,6 +117,106 @@ describe('Web-native OpenAI relay', () => {
     vi.unstubAllGlobals();
   });
 
+  it('does not start usage logging while six batch upstream slots are active', async () => {
+    const insertUsage = vi.fn(async () => ({ error: null }));
+    const fetchMock = vi.fn(async (_url, init) => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.parse(init.body).messages[0].content } }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const handler = createOpenAIProxyWebHandler({
+      requireFeatureImpl: async () => ({
+        ...allowFeature(),
+        providerFeature: 'ai.provider.openai_proxy',
+        supabase: {
+          from(table) {
+            expect(table).toBe('usage_events');
+            return { insert: insertUsage };
+          },
+        },
+      }),
+    });
+    const runtime = createRuntime({
+      OPENAI_PROXY_BATCH_CONCURRENCY: '6',
+      USAGE_LOGGING_ENABLED: 'true',
+    });
+    const payloads = Array.from({ length: 30 }, (_, index) => ({
+      model: 'test-model',
+      messages: [{ role: 'user', content: `chunk-${index}` }],
+    }));
+
+    const response = await handler(new Request('https://storyforge-web.example/api/openai-proxy', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-storyforge-upstream-key': 'disposable-test-key',
+      },
+      body: JSON.stringify({
+        action: 'chat_stream_batch',
+        baseUrl: 'https://proxy.example.com',
+        payloads,
+      }),
+    }), runtime);
+
+    try {
+      await vi.waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(6));
+      expect(insertUsage).not.toHaveBeenCalled();
+      await response.text();
+      await vi.waitFor(() => expect(runtime.deferred).toHaveLength(1));
+      await Promise.all(runtime.deferred);
+      expect(insertUsage).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('pauses batch production when the NDJSON consumer applies backpressure', async () => {
+    const fetchMock = vi.fn(async (_url, init) => new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.parse(init.body).messages[0].content } }],
+    }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const handler = createOpenAIProxyWebHandler({
+      requireFeatureImpl: async () => allowFeature(),
+    });
+    const payloads = Array.from({ length: 30 }, (_, index) => ({
+      model: 'test-model',
+      messages: [{ role: 'user', content: `chunk-${index}` }],
+    }));
+
+    const response = await handler(new Request('https://storyforge-web.example/api/openai-proxy', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-storyforge-upstream-key': 'disposable-test-key',
+      },
+      body: JSON.stringify({
+        action: 'chat_stream_batch',
+        baseUrl: 'https://proxy.example.com',
+        payloads,
+      }),
+    }), createRuntime({
+      OPENAI_PROXY_BATCH_CONCURRENCY: '6',
+      USAGE_LOGGING_ENABLED: 'false',
+    }));
+
+    try {
+      await vi.waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(6));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(fetchMock.mock.calls.length).toBeLessThan(payloads.length);
+
+      const lines = (await response.text()).trim().split('\n');
+      expect(fetchMock).toHaveBeenCalledTimes(payloads.length);
+      expect(lines).toHaveLength(payloads.length);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('rejects payload 31 before making an upstream request', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

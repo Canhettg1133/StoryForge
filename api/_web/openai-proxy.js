@@ -440,29 +440,36 @@ function createBatchStreamResponse({ payloads, endpoint, headers, request, runti
   if (request.signal.aborted) abort();
   else request.signal.addEventListener('abort', abort, { once: true });
   const encoder = new TextEncoder();
-
-  const stream = new ReadableStream({
-    start(streamController) {
-      mapWithConcurrency(payloads, getChatStreamBatchConcurrency(runtime.env), async (payload, index) => {
-        const result = await fetchChatPayload(endpoint, headers, payload, controller.signal);
-        streamController.enqueue(encoder.encode(`${JSON.stringify({ index, ...result })}\n`));
-      }).then(
-        () => streamController.close(),
-        (error) => streamController.error(error),
-      );
+  const stream = new TransformStream(undefined, undefined, { highWaterMark: 0 });
+  const writer = stream.writable.getWriter();
+  const completion = mapWithConcurrency(
+    payloads,
+    getChatStreamBatchConcurrency(runtime.env),
+    async (payload, index) => {
+      const result = await fetchChatPayload(endpoint, headers, payload, controller.signal);
+      await writer.write(encoder.encode(`${JSON.stringify({ index, ...result })}\n`));
     },
-    cancel() {
+  ).then(
+    () => writer.close(),
+    async (error) => {
       controller.abort();
+      await writer.abort(error).catch(() => {});
+      throw error;
     },
+  ).finally(() => {
+    request.signal.removeEventListener?.('abort', abort);
   });
 
-  return withRelay(new Response(stream, {
-    status: 200,
-    headers: {
-      'Cache-Control': 'no-store',
-      'Content-Type': 'application/x-ndjson; charset=utf-8',
-    },
-  }), rateHeaders);
+  return {
+    completion,
+    response: withRelay(new Response(stream.readable, {
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+      },
+    }), rateHeaders),
+  };
 }
 
 export function createOpenAIProxyWebHandler({
@@ -565,8 +572,7 @@ export function createOpenAIProxyWebHandler({
     };
 
     if (action === 'chat_stream_batch') {
-      logUsageOnce('ok');
-      return createBatchStreamResponse({
+      const batch = createBatchStreamResponse({
         payloads: body.payloads,
         endpoint,
         headers: chatHeaders,
@@ -574,6 +580,11 @@ export function createOpenAIProxyWebHandler({
         runtime,
         rateHeaders,
       });
+      batch.completion.then(
+        () => logUsageOnce('ok'),
+        () => logUsageOnce('error'),
+      );
+      return batch.response;
     }
 
     try {

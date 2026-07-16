@@ -194,6 +194,19 @@ async function nodeRequestToWebRequest(req) {
   };
 }
 
+function waitForNodeDrain(res) {
+  if (typeof res.once !== 'function') return Promise.resolve();
+  return new Promise((resolve) => {
+    const finish = () => {
+      res.off?.('drain', finish);
+      res.off?.('close', finish);
+      resolve();
+    };
+    res.once('drain', finish);
+    res.once('close', finish);
+  });
+}
+
 async function pipeWebResponseToNode(response, res, controller) {
   res.statusCode = response.status;
   response.headers.forEach((value, key) => res.setHeader(key, value));
@@ -221,13 +234,14 @@ async function pipeWebResponseToNode(response, res, controller) {
       const { done, value } = await reader.read();
       if (done) break;
       const chunk = globalThis.Buffer?.from ? globalThis.Buffer.from(value) : value;
-      res.write(chunk);
+      if (res.write(chunk) === false) await waitForNodeDrain(res);
+      if (controller.signal.aborted) break;
     }
   } catch (error) {
     controller.abort();
     if (!res.headersSent) throw error;
   } finally {
-    if (!res.writableEnded) res.end();
+    if (!res.writableEnded && !res.destroyed) res.end();
   }
 }
 
