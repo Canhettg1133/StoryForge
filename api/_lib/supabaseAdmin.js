@@ -1,13 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-let cachedClient = null;
+const cachedClients = new Map();
 
-export function getSupabaseAdminConfig() {
-  const url = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
+function getDefaultEnv() {
+  return typeof process !== 'undefined' && process?.env ? process.env : {};
+}
+
+export function getSupabaseAdminConfig(env = getDefaultEnv()) {
+  const url = String(env.SUPABASE_URL || env.VITE_SUPABASE_URL || '').trim();
   const serviceRoleKey = String(
-    process.env.SUPABASE_SERVICE_ROLE_KEY
-      || process.env.SUPABASE_SECRET_KEY
-      || process.env.SUPABASE_SERVICE_KEY
+    env.SUPABASE_SERVICE_ROLE_KEY
+      || env.SUPABASE_SECRET_KEY
+      || env.SUPABASE_SERVICE_KEY
       || '',
   ).trim();
 
@@ -18,20 +22,21 @@ export function getSupabaseAdminConfig() {
   };
 }
 
-export function getSupabaseAdminClient() {
-  const config = getSupabaseAdminConfig();
+export function getSupabaseAdminClient(env = getDefaultEnv()) {
+  const config = getSupabaseAdminConfig(env);
   if (!config.configured) {
     throw new Error('SUPABASE_ADMIN_NOT_CONFIGURED');
   }
 
-  if (!cachedClient) {
-    cachedClient = createClient(config.url, config.serviceRoleKey, {
+  const cacheKey = `${config.url}:${config.serviceRoleKey}`;
+  if (!cachedClients.has(cacheKey)) {
+    cachedClients.set(cacheKey, createClient(config.url, config.serviceRoleKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
       },
-    });
+    }));
   }
 
-  return cachedClient;
+  return cachedClients.get(cacheKey);
 }

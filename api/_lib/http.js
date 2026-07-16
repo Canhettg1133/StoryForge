@@ -58,7 +58,8 @@ export function getBearerToken(req) {
 }
 
 export function getClientIp(req) {
-  return getHeader(req, 'x-forwarded-for').split(',')[0]?.trim()
+  return getHeader(req, 'cf-connecting-ip').trim()
+    || getHeader(req, 'x-forwarded-for').split(',')[0]?.trim()
     || getHeader(req, 'x-real-ip').trim()
     || '';
 }

@@ -10,6 +10,7 @@ import {
 } from '../../src/services/access/accessControl.js';
 import { getBearerToken, getClientIp, getUserAgent, sendJson, sendPublicError } from './http.js';
 import { getSupabaseAdminClient, getSupabaseAdminConfig } from './supabaseAdmin.js';
+import { isPreviewRuntime, normalizeRuntime } from './web.js';
 
 export { ACCESS_FEATURES, ACCESS_REASONS, SYSTEM_ROLES };
 
@@ -23,8 +24,8 @@ function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-function isAccessCacheEnabled() {
-  return String(process.env.ACCESS_CACHE_ENABLED || 'true').trim().toLowerCase() !== 'false';
+function isAccessCacheEnabled(env = {}) {
+  return String(env.ACCESS_CACHE_ENABLED || 'true').trim().toLowerCase() !== 'false';
 }
 
 function cloneJson(value) {
@@ -143,7 +144,7 @@ async function throwOnError(result, fallbackCode = 'SUPABASE_QUERY_FAILED') {
   return result?.data;
 }
 
-async function ensureProfile(supabase, user) {
+async function ensureProfile(supabase, user, { allowCreate = true } = {}) {
   const userId = user?.id;
   if (!userId) throw new Error('AUTH_USER_MISSING');
 
@@ -156,6 +157,13 @@ async function ensureProfile(supabase, user) {
   );
 
   if (existing) return existing;
+
+  if (!allowCreate) {
+    const error = new Error('PREVIEW_PROFILE_REQUIRED');
+    error.code = 'PREVIEW_PROFILE_REQUIRED';
+    error.status = 409;
+    throw error;
+  }
 
   const profile = await throwOnError(
     await supabase
@@ -193,7 +201,9 @@ async function ensureProfile(supabase, user) {
   return profile;
 }
 
-export async function authenticateRequest(req, { ensureUserProfile = true } = {}) {
+export async function authenticateRequest(req, options = {}) {
+  const runtime = normalizeRuntime(options.runtime || { env: options.env });
+  const ensureUserProfile = options.ensureUserProfile ?? !isPreviewRuntime(runtime);
   const token = getBearerToken(req);
   if (!token) {
     return {
@@ -208,7 +218,7 @@ export async function authenticateRequest(req, { ensureUserProfile = true } = {}
     };
   }
 
-  const config = getSupabaseAdminConfig();
+  const config = getSupabaseAdminConfig(runtime.env);
   if (!config.configured) {
     return {
       ok: false,
@@ -222,7 +232,7 @@ export async function authenticateRequest(req, { ensureUserProfile = true } = {}
     };
   }
 
-  const supabase = getSupabaseAdminClient();
+  const supabase = getSupabaseAdminClient(runtime.env);
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data?.user) {
     return {
@@ -237,9 +247,26 @@ export async function authenticateRequest(req, { ensureUserProfile = true } = {}
     };
   }
 
-  const profile = ensureUserProfile
-    ? await ensureProfile(supabase, data.user)
-    : null;
+  let profile = null;
+  if (ensureUserProfile) {
+    profile = await ensureProfile(supabase, data.user);
+  } else {
+    try {
+      profile = await ensureProfile(supabase, data.user, { allowCreate: false });
+    } catch (error) {
+      if (error?.code !== 'PREVIEW_PROFILE_REQUIRED') throw error;
+      return {
+        ok: false,
+        status: 409,
+        reason: 'PREVIEW_PROFILE_REQUIRED',
+        decision: {
+          allowed: false,
+          status: 409,
+          reason: 'PREVIEW_PROFILE_REQUIRED',
+        },
+      };
+    }
+  }
 
   return {
     ok: true,
@@ -293,8 +320,9 @@ async function buildAccessDataUncached(supabase, user, profileInput = null) {
   };
 }
 
-export async function buildAccessData(supabase, user, profileInput = null) {
-  if (!isAccessCacheEnabled()) {
+export async function buildAccessData(supabase, user, profileInput = null, runtimeInput = {}) {
+  const runtime = normalizeRuntime(runtimeInput);
+  if (!isAccessCacheEnabled(runtime.env)) {
     return buildAccessDataUncached(supabase, user, profileInput);
   }
 
@@ -339,11 +367,12 @@ export async function buildAccessData(supabase, user, profileInput = null) {
   return cloneAccessData(accessData);
 }
 
-export async function resolveAccessForRequest(req) {
-  const auth = await authenticateRequest(req);
+export async function resolveAccessForRequest(req, runtimeInput = {}) {
+  const runtime = normalizeRuntime(runtimeInput);
+  const auth = await authenticateRequest(req, { runtime });
   if (!auth.ok) return auth;
 
-  const accessData = await buildAccessData(auth.supabase, auth.user, auth.profile);
+  const accessData = await buildAccessData(auth.supabase, auth.user, auth.profile, runtime);
   return {
     ...auth,
     accessData,
@@ -351,11 +380,12 @@ export async function resolveAccessForRequest(req) {
   };
 }
 
-export async function requireFeature(req, featureKey, context = {}) {
-  const auth = await authenticateRequest(req);
+export async function requireFeature(req, featureKey, context = {}, runtimeInput = {}) {
+  const runtime = normalizeRuntime(runtimeInput);
+  const auth = await authenticateRequest(req, { runtime });
   if (!auth.ok) return auth;
 
-  const accessData = await buildAccessData(auth.supabase, auth.user, auth.profile);
+  const accessData = await buildAccessData(auth.supabase, auth.user, auth.profile, runtime);
   const decision = resolveFeatureDecision(accessData, featureKey);
   if (!decision.allowed) {
     return {
@@ -390,11 +420,12 @@ export async function requireFeature(req, featureKey, context = {}) {
   };
 }
 
-export async function requireFeatures(req, featureKeys = []) {
-  const auth = await authenticateRequest(req);
+export async function requireFeatures(req, featureKeys = [], runtimeInput = {}) {
+  const runtime = normalizeRuntime(runtimeInput);
+  const auth = await authenticateRequest(req, { runtime });
   if (!auth.ok) return auth;
 
-  const accessData = await buildAccessData(auth.supabase, auth.user, auth.profile);
+  const accessData = await buildAccessData(auth.supabase, auth.user, auth.profile, runtime);
   let lastDecision = null;
   for (const featureKey of featureKeys) {
     const decision = resolveFeatureDecision(accessData, featureKey);
@@ -419,11 +450,12 @@ export async function requireFeatures(req, featureKeys = []) {
   };
 }
 
-export async function requireAdmin(req, role = SYSTEM_ROLES.ADMIN) {
-  const auth = await authenticateRequest(req);
+export async function requireAdmin(req, role = SYSTEM_ROLES.ADMIN, runtimeInput = {}) {
+  const runtime = normalizeRuntime(runtimeInput);
+  const auth = await authenticateRequest(req, { runtime });
   if (!auth.ok) return auth;
 
-  const accessData = await buildAccessData(auth.supabase, auth.user, auth.profile);
+  const accessData = await buildAccessData(auth.supabase, auth.user, auth.profile, runtime);
   const decision = resolveAdminDecision(accessData, role);
   if (!decision.allowed) {
     return {

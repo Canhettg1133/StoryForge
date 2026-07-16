@@ -295,9 +295,10 @@ export function resolveOpenAIProxyDirectRequest(profile, action, options = {}) {
 
 export function shouldFallbackOpenAIProxyRelay(response) {
   if (!response) return false;
-  if (response.status === 404 || response.status === 405) return true;
+  const relayMarker = String(response.headers?.get?.('x-storyforge-relay') || '').trim();
+  if ((response.status === 404 || response.status === 405) && relayMarker !== '1') return true;
   const contentType = String(response.headers?.get?.('content-type') || '').toLowerCase();
-  return response.ok && contentType.includes('text/html');
+  return relayMarker !== '1' && response.ok && contentType.includes('text/html');
 }
 
 async function fetchOpenAIProxyModelCatalog({
