@@ -122,6 +122,7 @@ describe('Cloudflare build configuration', () => {
     expect(headers).toContain('Strict-Transport-Security: max-age=31536000; includeSubDomains');
     expect(headers).toContain('X-Content-Type-Options: nosniff');
     expect(headers).toContain('/assets/*');
+    expect(headers).toContain('! Cache-Control');
     expect(headers).toContain('Cache-Control: public, max-age=31536000, immutable');
   });
 
