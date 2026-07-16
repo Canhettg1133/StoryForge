@@ -1,7 +1,13 @@
+import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createCloudflareWorkersAIWebHandler } from '../../../api/cloudflare-workers-ai.js';
 import { createOpenAIProxyWebHandler } from '../../../api/openai-proxy.js';
+import {
+  createVercelHandler,
+  jsonResponse,
+  readJsonRequest,
+} from '../../../api/_lib/web.js';
 import { shouldFallbackOpenAIProxyRelay } from '../../services/ai/openAIProxyConfig.js';
 import { handleStoryForgeWorkerRequest } from '../../../worker/index.js';
 
@@ -28,6 +34,21 @@ function allowFeature() {
 }
 
 describe('Cloudflare Worker routing', () => {
+  it('returns JSON for the exact API root instead of the SPA shell', async () => {
+    const assetsFetch = vi.fn();
+
+    const response = await handleStoryForgeWorkerRequest(
+      new Request('https://storyforge-web.example/api'),
+      { ASSETS: { fetch: assetsFetch } },
+      { waitUntil() {} },
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(await response.json()).toMatchObject({ code: 'API_ROUTE_NOT_FOUND' });
+    expect(assetsFetch).not.toHaveBeenCalled();
+  });
+
   it('returns JSON for unknown API routes instead of falling through to SPA assets', async () => {
     const assetsFetch = vi.fn();
 
@@ -71,6 +92,81 @@ describe('Cloudflare Worker routing', () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ code: 'PREVIEW_READ_ONLY' });
     expect(adultConsent).not.toHaveBeenCalled();
+  });
+});
+
+describe('Bounded Web request bodies', () => {
+  it('stops reading a Web request as soon as the configured byte limit is exceeded', async () => {
+    let pulls = 0;
+    const body = new ReadableStream({
+      pull(controller) {
+        pulls += 1;
+        if (pulls <= 9) controller.enqueue(Uint8Array.of(123));
+        else controller.close();
+      },
+    }, { highWaterMark: 0 });
+    const request = new Request('https://storyforge-web.example/api/openai-proxy', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+      duplex: 'half',
+    });
+
+    await expect(readJsonRequest(request, { maxBytes: 3 })).rejects.toMatchObject({
+      code: 'JSON_BODY_TOO_LARGE',
+      status: 413,
+    });
+    expect(pulls).toBe(4);
+  });
+
+  it('keeps the Vercel adapter streaming until the Web handler enforces its limit', async () => {
+    let reads = 0;
+    let iteratorCancelled = false;
+    const req = new EventEmitter();
+    req.method = 'POST';
+    req.url = '/api/openai-proxy';
+    req.headers = {
+      host: 'storyforge.example',
+      'content-type': 'application/json',
+    };
+    req[Symbol.asyncIterator] = () => ({
+      async next() {
+        reads += 1;
+        if (reads <= 9) return { done: false, value: Uint8Array.of(123) };
+        return { done: true, value: undefined };
+      },
+      async return() {
+        iteratorCancelled = true;
+        return { done: true, value: undefined };
+      },
+    });
+
+    const res = new EventEmitter();
+    res.headers = {};
+    res.writableEnded = false;
+    res.destroyed = false;
+    res.headersSent = false;
+    res.setHeader = (key, value) => {
+      res.headers[String(key).toLowerCase()] = value;
+    };
+    res.end = (chunk = '') => {
+      res.body = String(chunk || '');
+      res.writableEnded = true;
+    };
+
+    const handler = createVercelHandler(async (request) => {
+      try {
+        await readJsonRequest(request, { maxBytes: 3 });
+        return jsonResponse({ ok: true });
+      } catch (error) {
+        return jsonResponse({ code: error?.code }, error?.status || 500);
+      }
+    });
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(413);
+    expect(reads).toBe(4);
+    expect(iteratorCancelled).toBe(true);
   });
 });
 

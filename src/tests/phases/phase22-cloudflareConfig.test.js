@@ -31,7 +31,7 @@ describe('Cloudflare build configuration', () => {
     expect(wrangler).toContain('name = "storyforge-web"');
     expect(wrangler).toContain('name = "storyforge-web-preview"');
     expect(wrangler).toContain('main = "worker/index.js"');
-    expect(wrangler).toContain('run_worker_first = ["/api/*"]');
+    expect(wrangler).toContain('run_worker_first = ["/api", "/api/*"]');
     expect(wrangler).toContain('not_found_handling = "single-page-application"');
   });
 
@@ -149,6 +149,17 @@ describe('Cloudflare build configuration', () => {
     expect(read('public/translator-runtime/js/app.js')).toContain('const TRANSLATOR_MAX_PARALLEL = 30;');
     expect(read('public/translator-runtime/js/gemini/api.js')).toContain('const PROXY_RELAY_CHAT_BATCH_MAX_SIZE = 30;');
     expect(read('public/translator-runtime/index.html')).toContain('id="parallelCount" value="2" min="1" max="30"');
+  });
+
+  it('uses platform-neutral StoryForge relay wording in user-facing setup screens', () => {
+    const settings = read('src/pages/Settings/Settings.jsx');
+    const proxyGuide = read('src/pages/Guide/GeminiProxyGuide.jsx');
+
+    expect(settings).toContain('StoryForge relay');
+    expect(settings).not.toContain('Vercel relay');
+    expect(settings).not.toContain('Vercel rewrite');
+    expect(settings).not.toContain('/api/proxy');
+    expect(proxyGuide).not.toContain('/api/proxy');
   });
 
   it('allows both Vercel origins and the Cloudflare production origin during transition', () => {

@@ -127,7 +127,7 @@ describe('openAIProxyCore model parsing and transport policy', () => {
     expect(resolveProxyTransportMode({ baseUrl: '/api/proxy', transport: 'vercelRewrite' })).toBe('direct');
   });
 
-  it('allows only public HTTPS targets through the Vercel relay', () => {
+  it('allows only public HTTPS targets through the StoryForge relay', () => {
     expect(isRelayAllowedTarget('https://proxy.example.com')).toBe(true);
     expect(isRelayAllowedTarget('http://proxy.example.com')).toBe(false);
     expect(isRelayAllowedTarget('https://localhost:1234')).toBe(false);
@@ -137,6 +137,9 @@ describe('openAIProxyCore model parsing and transport policy', () => {
     expect(isRelayAllowedTarget('https://10.0.0.4')).toBe(false);
     expect(isRelayAllowedTarget('https://100.64.0.4')).toBe(false);
     expect(isRelayAllowedTarget('https://224.0.0.1')).toBe(false);
+    expect(isRelayAllowedTarget('https://[::]')).toBe(false);
+    expect(isRelayAllowedTarget('https://[::ffff:127.0.0.1]')).toBe(false);
+    expect(isRelayAllowedTarget('https://[::ffff:10.0.0.1]')).toBe(false);
     expect(isRelayAllowedTarget('/api/proxy')).toBe(false);
   });
 
