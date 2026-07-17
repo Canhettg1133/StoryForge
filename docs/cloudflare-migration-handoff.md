@@ -11,8 +11,8 @@
 ## Môi trường mục tiêu
 
 - Production: `https://storyforge-web.canhettg113.workers.dev`
-- Preview: `https://storyforge-web-preview.canhettg113.workers.dev`
-- Preview dùng production Supabase để đọc quyền thật nhưng khóa Cloud Sync, Auto Sync, Story Mirror, usage logging và adult-consent writes.
+- Full-mode Worker hiện tại: `https://storyforge-web-preview.canhettg113.workers.dev`
+- Worker giữ tên legacy `preview` để không đổi URL/OAuth, nhưng client và server đều chạy `production` mode; Cloud Sync, Auto Sync, Story Mirror, usage logging và adult-consent writes đã bật.
 
 ## Cấu hình local
 
@@ -53,16 +53,18 @@ npm run worker:story-mirror:dry-run
 
 - Preview đang chạy tại `https://storyforge-web-preview.canhettg113.workers.dev`.
 - Acceptance tự động gần nhất ngày 17/07/2026: full suite `1524 passed`, `4 skipped`, `0 failed`; workerd `5/5`; auth/VIP `17/17`; preview/production user Worker dry-run, Admin secure build, Admin API Worker, AI Studio Relay và Story Mirror dry-run đều pass; `npm audit` có `0` vulnerability.
-- Preview current version: `da9c24e1-f647-4974-a8f6-04ed6eec0b38`; rollback version: `937d78fc-06ca-4460-bf01-45b90835ca27`.
-- Preview hiện chứa commit local `a7444a4` và regression tests `67c2516`; branch vẫn chưa push.
+- Full-mode current version: `5cbd6554-1705-4295-9a42-1a89541d4567`; rollback read-only version: `da9c24e1-f647-4974-a8f6-04ed6eec0b38`.
+- Worker hiện chứa commit local `1808137` và full-mode config tests `cc47a75`; branch vẫn chưa push.
 - Preview có secret `SUPABASE_SERVICE_ROLE_KEY`; production user Worker chưa được deploy.
 - AI Studio Relay current version: `0df9c409-3ae9-4aa9-a951-301a4055d51b`; rollback version: `e16c93b9-eed1-4aba-bd76-231e723bf11b`.
-- Story Mirror current version: `7571693f-1d6b-4c2e-80fa-46405812650d`; rollback version: `f539e523-ad55-44c4-a53b-53f176e5cbf3`.
+- Story Mirror current version: `6f2c8374-b234-410d-b3ba-61e11fa332b9`; rollback version: `7571693f-1d6b-4c2e-80fa-46405812650d`.
 - Live CORS preflight pass cho hai origin Cloudflare, `story-forge-virid.vercel.app` và Story Mirror production origin.
 - Live preview sau deploy trả SPA/deep-link `200`; `/api`, `/api?x=1` và unknown API đều JSON `404`; `/api/cloud` JSON `410`; unauthenticated `/api/me/access` JSON `401`; HTML/API giữ `no-store` và asset hash giữ cache một năm `immutable`.
+- Full-mode smoke test: unauthenticated `/api/me/adult-consent` trả `401 AUTH_REQUIRED` thay vì `403 PREVIEW_READ_ONLY`; secure bundle không còn preview banner; Story Mirror và AI Studio Relay preflight trả đúng full-mode origin.
 - Cloudflare median cold LCP trong ba lượt là `6.264s`; Vercel median là `6.416s`. Cloudflare không regression, nhưng cả hai chưa đạt mục tiêu tuyệt đối `2.5s` do baseline tải Translator runtime trên Dashboard.
 - Batch NDJSON hiện tôn trọng backpressure; Vercel adapter chờ Node `drain`; production usage logging chỉ bắt đầu sau khi sáu upstream batch slot đã hoàn tất nên không tạo kết nối outbound thứ bảy.
-- Audit Supabase đối chiếu `origin/main` xác nhận không tăng số query/write theo mỗi request: cache catalog `5` phút và user snapshot `2` phút giữ nguyên, nhiều feature dùng một access resolution, batch `30` chỉ insert một `usage_events` với `count=30`, preview không ghi usage/profile/Free plan.
+- Audit Supabase đối chiếu `origin/main` xác nhận không tăng số query/write theo mỗi request: cache catalog `5` phút và user snapshot `2` phút giữ nguyên, nhiều feature dùng một access resolution, batch `30` chỉ insert một `usage_events` với `count=30`. Full-mode Worker hiện ghi dữ liệu theo đúng policy production.
 - Ngày 17/07/2026, Supabase OAuth redirect allowlist đã thêm `https://storyforge-web-preview.canhettg113.workers.dev` và `https://storyforge-web.canhettg113.workers.dev` (tổng 11 URL). Site URL vẫn giữ `https://story-forge-kohl.vercel.app` làm fallback; client tiếp tục gửi origin khởi tạo để `kohl`, `virid` và Cloudflare quay về đúng chính web đăng nhập.
 - Targeted auth tests đạt `17/17`. Chưa chạy acceptance đăng nhập production account hoặc disposable provider key trên preview.
 - Không push branch, không deploy user Worker production và không đổi Site Announcement trước khi các cổng còn thiếu được xác nhận.
+- Cloudflare account hiện không có active DNS zone. Không đổi account workers.dev subdomain vì thao tác đó ảnh hưởng đồng thời User Worker, Admin API, AI Studio Relay và Story Mirror. Domain lâu dài cần đăng ký/thêm một custom domain rồi gắn trực tiếp vào User Worker.
