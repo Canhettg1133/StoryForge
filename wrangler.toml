@@ -25,7 +25,7 @@ USAGE_LOGGING_ENABLED = "true"
 USAGE_LOGGING_TIMEOUT_MS = "2000"
 
 [env.preview]
-name = "storyforge-web-preview"
+name = "storyforge"
 
 [env.preview.vars]
 SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
