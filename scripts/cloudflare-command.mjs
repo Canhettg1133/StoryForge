@@ -14,14 +14,14 @@ export function resolveCloudflareBuildEnv(target, baseEnv = {}) {
     ...baseEnv,
     STORYFORGE_CLOUDFLARE: 'true',
     CLOUDFLARE_ENV: target === 'preview' ? 'preview' : '',
-    VITE_DEPLOYMENT_MODE: target,
+    VITE_DEPLOYMENT_MODE: 'production',
   };
   delete env.VITE_CLOUD_SYNC_BASE_URL;
 
   if (target === 'preview') {
-    env.VITE_ENABLE_CLOUD_SYNC = 'false';
-    env.VITE_CLOUD_AUTO_SYNC_ENABLED = 'false';
-    env.VITE_ENABLE_STORY_MIRROR = 'false';
+    env.VITE_ENABLE_CLOUD_SYNC = 'true';
+    env.VITE_CLOUD_AUTO_SYNC_ENABLED = 'true';
+    env.VITE_ENABLE_STORY_MIRROR = 'true';
   }
   return env;
 }
