@@ -63,6 +63,13 @@ describe('phase10 cloud auth redirect', () => {
     )).toBe('https://story-forge-virid.vercel.app');
   });
 
+  it('keeps OAuth on the short Cloudflare Worker origin', () => {
+    expect(resolveCloudRedirectUrl(
+      'https://story-forge-kohl.vercel.app',
+      'https://storyforge.canhettg113.workers.dev',
+    )).toBe('https://storyforge.canhettg113.workers.dev');
+  });
+
   it('sends the initiating origin to Supabase instead of a cross-origin override', async () => {
     supabaseAuthMock.signInWithOAuth.mockResolvedValue({ data: { url: 'https://accounts.google.com' }, error: null });
 

@@ -29,7 +29,7 @@ describe('Cloudflare build configuration', () => {
       'worker:story-mirror:dry-run': expect.stringContaining('apps/story-mirror-worker/wrangler.toml'),
     });
     expect(wrangler).toContain('name = "storyforge-web"');
-    expect(wrangler).toContain('name = "storyforge-web-preview"');
+    expect(wrangler).toContain('name = "storyforge"');
     expect(wrangler).toContain('main = "worker/index.js"');
     expect(wrangler).toContain('run_worker_first = ["/api", "/api/*"]');
     expect(wrangler).toContain('not_found_handling = "single-page-application"');
@@ -101,6 +101,7 @@ describe('Cloudflare build configuration', () => {
 
   it('keeps Vercel Analytics on Vercel only', () => {
     expect(shouldInjectVercelAnalytics('story-forge-virid.vercel.app', 'production')).toBe(true);
+    expect(shouldInjectVercelAnalytics('storyforge.canhettg113.workers.dev', 'production')).toBe(false);
     expect(shouldInjectVercelAnalytics('storyforge-web.canhettg113.workers.dev', 'production')).toBe(false);
     expect(shouldInjectVercelAnalytics('localhost', 'preview')).toBe(false);
   });
@@ -176,6 +177,7 @@ describe('Cloudflare build configuration', () => {
     const origins = [
       'https://story-forge-virid.vercel.app',
       'https://story-forge-kohl.vercel.app',
+      'https://storyforge.canhettg113.workers.dev',
       'https://storyforge-web.canhettg113.workers.dev',
     ];
     origins.forEach((origin) => {
