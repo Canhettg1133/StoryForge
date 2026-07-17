@@ -35,22 +35,26 @@ describe('Cloudflare build configuration', () => {
     expect(wrangler).toContain('not_found_handling = "single-page-application"');
   });
 
-  it('forces preview to disable every remote data write surface', () => {
+  it('deploys the preview Worker slot with full production product features', () => {
     const env = resolveCloudflareBuildEnv('preview', {
-      VITE_ENABLE_CLOUD_SYNC: 'true',
-      VITE_CLOUD_AUTO_SYNC_ENABLED: 'true',
-      VITE_ENABLE_STORY_MIRROR: 'true',
+      VITE_ENABLE_CLOUD_SYNC: 'false',
+      VITE_CLOUD_AUTO_SYNC_ENABLED: 'false',
+      VITE_ENABLE_STORY_MIRROR: 'false',
     });
 
     expect(env).toMatchObject({
       CLOUDFLARE_ENV: 'preview',
       STORYFORGE_CLOUDFLARE: 'true',
-      VITE_DEPLOYMENT_MODE: 'preview',
-      VITE_ENABLE_CLOUD_SYNC: 'false',
-      VITE_CLOUD_AUTO_SYNC_ENABLED: 'false',
-      VITE_ENABLE_STORY_MIRROR: 'false',
+      VITE_DEPLOYMENT_MODE: 'production',
+      VITE_ENABLE_CLOUD_SYNC: 'true',
+      VITE_CLOUD_AUTO_SYNC_ENABLED: 'true',
+      VITE_ENABLE_STORY_MIRROR: 'true',
     });
     expect(env).not.toHaveProperty('VITE_CLOUD_SYNC_BASE_URL');
+
+    const previewVars = read('wrangler.toml').split('[env.preview.vars]')[1];
+    expect(previewVars).toContain('DEPLOYMENT_MODE = "production"');
+    expect(previewVars).toContain('USAGE_LOGGING_ENABLED = "true"');
   });
 
   it('always targets the isolated preview Worker for preview dry-runs and deploys', () => {
@@ -72,13 +76,13 @@ describe('Cloudflare build configuration', () => {
     const env = resolveCloudflarePreviewEnv({
       CLOUDFLARE_ENV: 'preview',
       STORYFORGE_CLOUDFLARE: 'true',
-      VITE_DEPLOYMENT_MODE: 'preview',
+      VITE_DEPLOYMENT_MODE: 'production',
     });
 
     expect(env).not.toHaveProperty('CLOUDFLARE_ENV');
     expect(env).toMatchObject({
       STORYFORGE_CLOUDFLARE: 'true',
-      VITE_DEPLOYMENT_MODE: 'preview',
+      VITE_DEPLOYMENT_MODE: 'production',
     });
   });
 
@@ -137,8 +141,10 @@ describe('Cloudflare build configuration', () => {
     expect(gitignore).toContain('!.dev.vars.example');
     expect(gitignore).toContain('.env.cloudflare.*.local');
     expect(devVarsExample).toContain('SUPABASE_SERVICE_ROLE_KEY=replace-with-local-service-role-key');
-    expect(previewExample).toContain('VITE_DEPLOYMENT_MODE=preview');
-    expect(previewExample).toContain('VITE_ENABLE_CLOUD_SYNC=false');
+    expect(previewExample).toContain('VITE_DEPLOYMENT_MODE=production');
+    expect(previewExample).toContain('VITE_ENABLE_CLOUD_SYNC=true');
+    expect(previewExample).toContain('VITE_CLOUD_AUTO_SYNC_ENABLED=true');
+    expect(previewExample).toContain('VITE_ENABLE_STORY_MIRROR=true');
     expect(productionExample).toContain('VITE_DEPLOYMENT_MODE=production');
     expect(productionExample).not.toContain('VITE_CLOUD_SYNC_BASE_URL');
     expect(handoff).toContain('05b6a64c0ac55348b7fccf67803aee3fbdfed221');
@@ -177,5 +183,6 @@ describe('Cloudflare build configuration', () => {
       expect(relay).toContain(origin);
     });
     expect(relay).toContain('https://storyforge-web-preview.canhettg113.workers.dev');
+    expect(mirror).toContain('https://storyforge-web-preview.canhettg113.workers.dev');
   });
 });
