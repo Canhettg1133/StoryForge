@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const repoRoot = process.cwd();
 
 function read(file) {
-  return fs.readFileSync(path.join(repoRoot, file), 'utf8');
+  return fs.readFileSync(path.join(repoRoot, file), 'utf8').replace(/\r\n?/g, '\n');
 }
 
 function getCssRuleBody(source, selector) {

@@ -8,7 +8,7 @@ bucket_name = "storyforge-story-mirror"
 
 [vars]
 # Exact user app origins only. Do not use "*".
-STORY_MIRROR_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,https://story-forge-kohl.vercel.app"
+STORY_MIRROR_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,https://story-forge-virid.vercel.app,https://story-forge-kohl.vercel.app,https://storyforge.canhettg113.workers.dev,https://storyforge-web.canhettg113.workers.dev,https://storyforge-web-preview.canhettg113.workers.dev"
 SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
 STORY_MIRROR_USER_QUOTA_BYTES = "104857600"
 
