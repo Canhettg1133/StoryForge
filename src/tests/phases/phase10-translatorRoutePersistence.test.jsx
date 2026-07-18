@@ -216,6 +216,39 @@ describe('phase10 translator route persistence', () => {
     expect(contextMessage.access).not.toHaveProperty('nativeEvent');
   });
 
+  it('sends the current theme on iframe load and whenever the theme changes', async () => {
+    const { default: useUIStore } = await import('../../stores/uiStore.js');
+    useUIStore.getState().setTheme('cream');
+    const module = await import('../../components/translator/PersistentTranslatorHost.jsx');
+    const PersistentTranslatorHost = module.default;
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<PersistentTranslatorHost active />);
+    });
+
+    const iframe = container.querySelector('iframe[title="StoryForge Translator"]');
+    const postMessageSpy = vi.spyOn(iframe.contentWindow, 'postMessage');
+
+    await act(async () => {
+      iframe.dispatchEvent(new Event('load'));
+    });
+
+    expect(postMessageSpy.mock.calls.map(([payload]) => payload)).toContainEqual({
+      type: 'STORYFORGE_THEME_CONTEXT',
+      theme: 'cream',
+    });
+
+    await act(async () => {
+      useUIStore.getState().setTheme('light');
+    });
+
+    expect(postMessageSpy.mock.calls.map(([payload]) => payload)).toContainEqual({
+      type: 'STORYFORGE_THEME_CONTEXT',
+      theme: 'light',
+    });
+  });
+
   it('refreshes and returns a new access context when the translator iframe requests it', async () => {
     const module = await import('../../components/translator/PersistentTranslatorHost.jsx');
     const PersistentTranslatorHost = module.default;

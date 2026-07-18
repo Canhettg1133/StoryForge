@@ -194,7 +194,7 @@ export default function CharacterGraph({
                     y1={sourceNode.y}
                     x2={targetNode.x}
                     y2={targetNode.y}
-                    stroke={isHighlighted ? style.color : '#475569'}
+                    stroke={isHighlighted ? style.color : 'var(--color-text-muted)'}
                     strokeWidth={isHighlighted ? 3 : 1.5}
                     strokeDasharray={style.dashArray}
                     opacity={highlightEdgeIds && !isHighlighted ? 0.2 : 1}
@@ -245,7 +245,7 @@ export default function CharacterGraph({
                   <circle
                     r={node.size / 2}
                     fill={node.color || '#6366f1'}
-                    stroke={isActive ? '#fff' : '#1e293b'}
+                    stroke={isActive ? 'var(--color-text-heading)' : 'var(--color-bg-primary)'}
                     strokeWidth={isActive ? 3 : 2}
                     opacity={highlightNodeIds && !isHighlighted ? 0.25 : 1}
                   />
@@ -255,7 +255,7 @@ export default function CharacterGraph({
                     <circle
                       r={node.size / 2 + 4}
                       fill="none"
-                      stroke="#f59e0b"
+                      stroke="var(--color-warning)"
                       strokeWidth="2"
                       strokeDasharray="4,2"
                     />
@@ -265,7 +265,7 @@ export default function CharacterGraph({
                   <text
                     textAnchor="middle"
                     dy={`${node.size / 2 + 16}px`}
-                    fill="#e2e8f0"
+                    fill="var(--color-text-primary)"
                     fontSize="12"
                     fontWeight="500"
                     style={{ pointerEvents: 'none' }}

@@ -279,7 +279,10 @@ async function sendProxyRelayChatStreamBatchGroup(items) {
     }
 }
 
-async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = null, allowStoryForgeAuthRefresh = true) {
+async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = null, allowStoryForgeAuthRefresh = true, requestOptions = {}) {
+    const request = typeof normalizeTranslationRequest === 'function'
+        ? normalizeTranslationRequest(text)
+        : { systemText: '', userText: String(text || ''), sourceText: String(text || '') };
     const resolvedApiKeyOverride = apiKeyOverride && typeof apiKeyOverride.then === 'function'
         ? await apiKeyOverride
         : apiKeyOverride;
@@ -310,9 +313,13 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
 
     let response;
     try {
+        const messages = [
+            ...(request.systemText ? [{ role: 'system', content: request.systemText }] : []),
+            { role: 'user', content: request.userText },
+        ];
         const payload = {
             model: activeModel,
-            messages: [{ role: 'user', content: text }],
+            messages,
             temperature: temperature,
             stream: false,
             max_tokens: getProxyTranslationMaxTokens()
@@ -375,7 +382,7 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
         ) {
             const refreshed = await refreshStoryForgeRelayAuth().catch(() => false);
             if (refreshed && !cancelRequested) {
-                return translateChunkViaProxy(text, temperature, apiKeyOverride, false);
+                return translateChunkViaProxy(request, temperature, apiKeyOverride, false, requestOptions);
             }
         }
 
@@ -419,16 +426,18 @@ async function translateChunkViaProxy(text, temperature = 0.7, apiKeyOverride = 
         });
     }
 
-    let result = cleanGeminiResponse(content);
+    let result = requestOptions.cleanResponse === false ? content : cleanGeminiResponse(content);
 
     // Validation
-    const validationResult = validateTranslationOutput(text, result);
-    if (!validationResult.valid) {
-        console.error(`[❌ VALIDATION FAILED] ${validationResult.reason}`);
-        throw createValidationTranslatorError(validationResult);
-    }
-    if (validationResult.warning) {
-        console.warn(`[⚠️ WARNING] ${validationResult.warning}`);
+    if (requestOptions.skipValidation !== true) {
+        const validationResult = validateTranslationOutput(request.sourceText, result);
+        if (!validationResult.valid) {
+            console.error(`[❌ VALIDATION FAILED] ${validationResult.reason}`);
+            throw createValidationTranslatorError(validationResult);
+        }
+        if (validationResult.warning) {
+            console.warn(`[⚠️ WARNING] ${validationResult.warning}`);
+        }
     }
 
     return result;
@@ -465,18 +474,27 @@ function sanitizeDirectGeminiSystemInstruction(text = '') {
 }
 
 function getDirectGeminiSystemInstructionText(text = '') {
+    if (text && typeof text === 'object' && !Array.isArray(text)) {
+        const request = typeof normalizeTranslationRequest === 'function'
+            ? normalizeTranslationRequest(text)
+            : text;
+        return sanitizeDirectGeminiSystemInstruction(request.systemText || '');
+    }
     const rawText = String(text || '');
     const markerIndex = rawText.indexOf(DIRECT_GEMINI_SOURCE_MARKER);
     if (markerIndex <= 0) return '';
     return sanitizeDirectGeminiSystemInstruction(rawText.slice(0, markerIndex));
 }
 
-async function translateChunk(text, modelKeyPair, temperature = 0.7) {
+async function translateChunk(text, modelKeyPair, temperature = 0.7, requestOptions = {}) {
+    const request = typeof normalizeTranslationRequest === 'function'
+        ? normalizeTranslationRequest(text)
+        : { systemText: getDirectGeminiSystemInstructionText(text), userText: String(text || ''), sourceText: String(text || '') };
     // ===== AUTO-ROUTE: Nếu bật proxy, gọi proxy thay vì Gemini Direct =====
     if (useProxy) {
         // Safety net: should not normally reach here (retry.js handles proxy routing)
         const proxyKey = typeof getProxyKeyForChunk === 'function' ? await getProxyKeyForChunk(0) : proxyApiKey;
-        return await translateChunkViaProxy(text, temperature, proxyKey);
+        return await translateChunkViaProxy(request, temperature, proxyKey, true, requestOptions);
     }
 
     const { model: modelName, key: apiKey, keyIndex } = modelKeyPair;
@@ -485,7 +503,7 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
     console.log(`[Gemini API] ${modelName} + Key ${keyIndex + 1} (temp=${temperature})`);
 
     const thinkingConfig = getDirectGeminiThinkingConfig(modelName);
-    const systemInstructionText = getDirectGeminiSystemInstructionText(text);
+    const systemInstructionText = getDirectGeminiSystemInstructionText(request);
     const body = {
         ...(systemInstructionText ? {
             systemInstruction: {
@@ -493,7 +511,7 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
             }
         } : {}),
         contents: [{
-            parts: [{ text: text }]
+            parts: [{ text: request.userText }]
         }],
         generationConfig: {
             temperature: temperature,
@@ -584,10 +602,12 @@ async function translateChunk(text, modelKeyPair, temperature = 0.7) {
     // Extract text from Gemini response
     if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
         let result = data.candidates[0].content.parts[0].text.trim();
-        result = cleanGeminiResponse(result);
+        if (requestOptions.cleanResponse !== false) result = cleanGeminiResponse(result);
 
         // ========== VALIDATION ĐẦY ĐỦ ==========
-        const validationResult = validateTranslationOutput(text, result);
+        const validationResult = requestOptions.skipValidation === true
+            ? { valid: true, warning: null }
+            : validateTranslationOutput(request.sourceText, result);
 
         if (!validationResult.valid) {
             console.error(`[❌ VALIDATION FAILED] ${validationResult.reason}`);

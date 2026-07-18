@@ -208,6 +208,11 @@
             status: 'ready',
             isComplete: false,
             previewText,
+            storyPromptText: '',
+            storyPromptEnabled: false,
+            storyPromptUncertainties: [],
+            storyPromptUpdatedAt: null,
+            storyPromptScanMeta: null,
             createdAt,
             updatedAt: createdAt,
         };

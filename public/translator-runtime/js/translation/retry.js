@@ -22,8 +22,27 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
     // Track số lần bị OUTPUT_TOO_SHORT
     let shortOutputCount = 0;
 
-    // Lưu text gốc (không có prompt) để progressive prompt
-    const originalText = text;
+    const originalRequest = typeof normalizeTranslationRequest === 'function'
+        ? normalizeTranslationRequest(text)
+        : { systemText: '', userText: String(text || ''), sourceText: String(text || '') };
+    const originalText = originalRequest.sourceText;
+
+    const buildProgressiveRequest = (level) => {
+        let ruleText = '';
+        if (level === 1) {
+            ruleText = typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : '';
+        } else if (level === 2) {
+            ruleText = [
+                typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.literary : '',
+                typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : '',
+            ].filter(Boolean).join('\n\n');
+        } else if (level >= 3) {
+            ruleText = typeof getFictionalPrompt === 'function' ? getFictionalPrompt('') : '';
+        }
+        return typeof prependTranslationSystemRule === 'function'
+            ? prependTranslationSystemRule(originalRequest, ruleText)
+            : originalRequest;
+    };
 
     for (let attempt = 1; attempt <= retries; attempt++) {
         if (cancelRequested) {
@@ -44,22 +63,11 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             // ========== OLLAMA MODE ==========
             if (useOllama) {
                 // ========== PROGRESSIVE PROMPT CHO OLLAMA ==========
-                let promptToUse = text;
+                let promptToUse = originalRequest;
 
                 if (shortOutputCount > 0) {
-                    const basePrompt = document.getElementById('customPrompt')?.value || '';
-                    const contentOnly = originalText.replace(basePrompt, '').trim();
-
-                    if (shortOutputCount === 1) {
-                        promptToUse = basePrompt + contentOnly + (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : '');
-                        console.log(`[Ollama] Chunk ${chunkIndex + 1} 🔄 Using EMPHATIC prompt`);
-                    } else if (shortOutputCount === 2) {
-                        promptToUse = (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.literary : '') + basePrompt + contentOnly;
-                        console.log(`[Ollama] Chunk ${chunkIndex + 1} 🔄 Using LITERARY prompt`);
-                    } else {
-                        promptToUse = typeof getFictionalPrompt === 'function' ? getFictionalPrompt(contentOnly) : contentOnly;
-                        console.log(`[Ollama] Chunk ${chunkIndex + 1} 🔄 Using FICTIONAL prompt`);
-                    }
+                    promptToUse = buildProgressiveRequest(shortOutputCount);
+                    console.log(`[Ollama] Chunk ${chunkIndex + 1} 🔄 Using progressive system rule ${shortOutputCount}`);
                 }
 
                 console.log(`[Ollama] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}`);
@@ -73,7 +81,7 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
 
                 // ========== VALIDATION CHO OLLAMA ==========
                 if (typeof validateTranslationOutput === 'function') {
-                    const validation = validateTranslationOutput(originalText, result);
+                    const validation = validateTranslationOutput(originalRequest.sourceText, result);
 
                     if (!validation.valid) {
                         console.warn(`[Ollama] ❌ Validation failed: ${validation.reason}`);
@@ -91,26 +99,11 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             // ========== PROXY MODE ==========
             if (useProxy) {
                 // Progressive prompt cho Proxy (giống Gemini)
-                let promptToUse = text;
+                let promptToUse = originalRequest;
 
                 if (shortOutputCount > 0) {
-                    const basePrompt = document.getElementById('customPrompt')?.value || '';
-                    const contentOnly = originalText.replace(basePrompt, '').trim();
-
-                    if (shortOutputCount === 1) {
-                        promptToUse = basePrompt + contentOnly + (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : '');
-                        console.log(`[Proxy] Chunk ${chunkIndex + 1} 🔄 Using EMPHATIC prompt (attempt ${attempt})`);
-                    } else if (shortOutputCount === 2) {
-                        promptToUse = (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.literary : '') +
-                            basePrompt + contentOnly +
-                            (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : '');
-                        console.log(`[Proxy] Chunk ${chunkIndex + 1} 🔄 Using LITERARY prompt (attempt ${attempt})`);
-                    } else {
-                        promptToUse = typeof getFictionalPrompt === 'function' ?
-                            getFictionalPrompt(contentOnly) :
-                            contentOnly;
-                        console.log(`[Proxy] Chunk ${chunkIndex + 1} 🔄 Using FICTIONAL prompt (attempt ${attempt})`);
-                    }
+                    promptToUse = buildProgressiveRequest(shortOutputCount);
+                    console.log(`[Proxy] Chunk ${chunkIndex + 1} 🔄 Using progressive system rule ${shortOutputCount} (attempt ${attempt})`);
                 }
 
                 const activeProxyModel = typeof getActiveProxyModel === 'function' ? getActiveProxyModel() : proxyModel;
@@ -137,32 +130,12 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             }
 
             // ========== PROGRESSIVE PROMPT ==========
-            let promptToUse = text;
+            let promptToUse = originalRequest;
 
             // Nếu đã bị OUTPUT_TOO_SHORT, sử dụng progressive prompt
             if (shortOutputCount > 0) {
-                const basePrompt = document.getElementById('customPrompt')?.value || '';
-                // Tách prompt và nội dung thực
-                const contentOnly = originalText.replace(basePrompt, '').trim();
-
-                if (shortOutputCount === 1) {
-                    // Lần 2: Thêm emphasis
-                    promptToUse = basePrompt + contentOnly + (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : '');
-                    console.log(`[Chunk ${chunkIndex + 1}] 🔄 Using EMPHATIC prompt (attempt ${attempt})`);
-                } else if (shortOutputCount === 2) {
-                    // Lần 3: Literary framing
-                    promptToUse = (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.literary : '') +
-                        basePrompt + contentOnly +
-                        (typeof PROMPT_ENHANCERS !== 'undefined' ? PROMPT_ENHANCERS.emphatic : '');
-                    console.log(`[Chunk ${chunkIndex + 1}] 🔄 Using LITERARY prompt (attempt ${attempt})`);
-                } else {
-                    // Lần 4+: Fictional prompt (fallback cuối)
-                    const fictionalPrompt = typeof getFictionalPrompt === 'function'
-                        ? getFictionalPrompt(contentOnly)
-                        : contentOnly;
-                    promptToUse = `${basePrompt}\n\n${fictionalPrompt}`;
-                    console.log(`[Chunk ${chunkIndex + 1}] 🔄 Using FICTIONAL prompt (attempt ${attempt})`);
-                }
+                promptToUse = buildProgressiveRequest(shortOutputCount);
+                console.log(`[Chunk ${chunkIndex + 1}] 🔄 Using progressive system rule ${shortOutputCount} (attempt ${attempt})`);
             }
 
             console.log(`[Gemini] Chunk ${chunkIndex + 1}, attempt ${attempt}/${retries}, temp=${temperature}`);
@@ -226,10 +199,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ Output quá ngắn (lần ${shortOutputCount}), thử prompt mạnh hơn...`);
 
                 // Nếu đã thử 4 lần với prompt khác nhau mà vẫn ngắn → chia nhỏ chunk
-                if (shortOutputCount >= 4 && text.length > 1000) {
+                if (shortOutputCount >= 4 && originalRequest.sourceText.length > 1000) {
                     console.log(`[Chunk ${chunkIndex + 1}] 📦 Chia nhỏ chunk do output liên tục quá ngắn...`);
                     try {
-                        return await translateLargeChunkBySplitting(originalText, chunkIndex);
+                        return await translateLargeChunkBySplitting(originalRequest, chunkIndex);
                     } catch (splitError) {
                         console.error(`[Chunk ${chunkIndex + 1}] ❌ Chia nhỏ cũng thất bại`);
                     }
@@ -304,10 +277,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
                 shortOutputCount++; // Treat as similar to short output
                 console.warn(`[Chunk ${chunkIndex + 1}] ⚠️ Content blocked, thử prompt literary/fictional...`);
 
-                if (shortOutputCount >= 3 && text.length > 1000) {
+                if (shortOutputCount >= 3 && originalRequest.sourceText.length > 1000) {
                     console.log(`[Chunk ${chunkIndex + 1}] 📦 Chia nhỏ chunk do bị block...`);
                     try {
-                        return await translateLargeChunkBySplitting(originalText, chunkIndex);
+                        return await translateLargeChunkBySplitting(originalRequest, chunkIndex);
                     } catch (splitError) {
                         console.error(`[Chunk ${chunkIndex + 1}] ❌ Chia nhỏ cũng thất bại`);
                     }
@@ -354,10 +327,10 @@ async function translateChunkWithRetry(text, chunkIndex, retries = 5) {
             // === HẾT RETRY ===
             if (attempt === retries) {
                 // Thử chia nhỏ chunk như fallback cuối cùng
-                if (text.length > 1000 && !text.includes('[AUTO-SPLIT]')) {
+                if (originalRequest.sourceText.length > 1000 && !originalRequest.sourceText.includes('[AUTO-SPLIT]')) {
                     console.log(`[Chunk ${chunkIndex + 1}] 📦 Final attempt: splitting chunk...`);
                     try {
-                        return await translateLargeChunkBySplitting(originalText, chunkIndex);
+                        return await translateLargeChunkBySplitting(originalRequest, chunkIndex);
                     } catch (splitError) {
                         throw error;
                     }
@@ -386,9 +359,12 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
 
     console.log(`[Chunk ${chunkIndex + 1}] 📦 Splitting into smaller parts...`);
 
+    const originalRequest = typeof normalizeTranslationRequest === 'function'
+        ? normalizeTranslationRequest(text)
+        : { systemText: '', userText: String(text || ''), sourceText: String(text || '') };
     // Chia thành nhiều phần nhỏ hơn (4-5 phần thay vì 3)
-    const numParts = Math.max(4, Math.ceil(text.length / 800));
-    const parts = splitTextIntoSmallerParts(text, numParts);
+    const numParts = Math.max(4, Math.ceil(originalRequest.sourceText.length / 800));
+    const parts = splitTextIntoSmallerParts(originalRequest.sourceText, numParts);
     const translatedParts = [];
 
     console.log(`[Chunk ${chunkIndex + 1}] Split into ${parts.length} sub-chunks`);
@@ -399,6 +375,9 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
         }
 
         const partText = '[AUTO-SPLIT]' + parts[i];
+        const partRequest = typeof replaceTranslationRequestSource === 'function'
+            ? replaceTranslationRequestSource(originalRequest, partText)
+            : partText;
         console.log(`[Chunk ${chunkIndex + 1}] Translating sub-chunk ${i + 1}/${parts.length}...`);
 
         try {
@@ -409,23 +388,23 @@ async function translateLargeChunkBySplitting(text, chunkIndex) {
                 if (typeof recordTranslatorRpmRequest === 'function') {
                     recordTranslatorRpmRequest(TRANSLATOR_PROVIDERS.OLLAMA, 0);
                 }
-                const result = await translateWithOllama(partText, 0.8);
+                const result = await translateWithOllama(partRequest, 0.8);
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else if (useProxy) {
                 // Proxy mode - gọi trực tiếp với key theo chunk
                 const result = typeof sendProxyTranslationAttempt === 'function'
                     ? (await sendProxyTranslationAttempt({
                         chunkIndex,
-                        text: partText,
+                        text: partRequest,
                         temperature: 0.8,
                         kind: 'split_retry',
                     })).result
-                    : await translateChunkViaProxy(partText, 0.8, proxyApiKey);
+                    : await translateChunkViaProxy(partRequest, 0.8, proxyApiKey);
                 translatedParts.push(result.replace('[AUTO-SPLIT]', ''));
             } else {
                 const directAttempt = await sendDirectTranslationAttempt({
                     chunkIndex,
-                    text: partText,
+                    text: partRequest,
                     temperature: 0.8,
                     kind: 'split_retry',
                 });

@@ -1,4 +1,9 @@
 import { create } from 'zustand';
+import {
+  applyDocumentTheme,
+  persistTheme,
+  readStoredTheme,
+} from '../config/themes.js';
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'sf-sidebar-collapsed';
 const CONTENT_FONT_SIZE_STORAGE_KEY = 'sf-content-font-size';
@@ -39,8 +44,8 @@ function persistContentFontSizePreference(value) {
   localStorage.setItem(CONTENT_FONT_SIZE_STORAGE_KEY, String(normalized));
 }
 
-const useUIStore = create((set, get) => ({
-  theme: localStorage.getItem('sf-theme') || 'dark',
+const useUIStore = create((set) => ({
+  theme: readStoredTheme(),
   sidebarCollapsed: readSidebarCollapsedPreference(),
   contentFontSize: readContentFontSizePreference(),
   storyEditorViewMode: 'scene',
@@ -48,14 +53,9 @@ const useUIStore = create((set, get) => ({
   activePage: 'dashboard',
 
   setTheme: (theme) => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('sf-theme', theme);
-    set({ theme });
-  },
-
-  toggleTheme: () => {
-    const next = get().theme === 'dark' ? 'light' : 'dark';
-    get().setTheme(next);
+    const normalizedTheme = persistTheme(theme);
+    applyDocumentTheme(normalizedTheme);
+    set({ theme: normalizedTheme });
   },
 
   toggleSidebar: () => set((s) => {
@@ -89,8 +89,8 @@ const useUIStore = create((set, get) => ({
 
   // Initialize theme on app load
   initTheme: () => {
-    const theme = localStorage.getItem('sf-theme') || 'dark';
-    document.documentElement.setAttribute('data-theme', theme);
+    const theme = persistTheme(readStoredTheme());
+    applyDocumentTheme(theme);
     set({ theme });
   },
 }));

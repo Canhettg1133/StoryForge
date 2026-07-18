@@ -31,6 +31,7 @@ import Login from './pages/Login/Login';
 import ProjectLayout from './components/common/ProjectLayout';
 import SiteAnnouncementCenter from './components/siteAnnouncement/SiteAnnouncementCenter';
 import { AccessProvider } from './services/access/AccessContext.jsx';
+import './styles/cream-overrides.css';
 
 const SHOW_WRITING_DEBUG = import.meta.env.VITE_SHOW_WRITING_DEBUG === 'true';
 const WritingRequestDebugger = SHOW_WRITING_DEBUG

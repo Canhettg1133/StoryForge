@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useUserAccess } from '../../hooks/useUserAccess.js';
 import { getCachedAccessToken } from '../../services/access/accessClient.js';
+import { normalizeTheme } from '../../config/themes.js';
+import useUIStore from '../../stores/uiStore.js';
 import './PersistentTranslatorHost.css';
 
-const TRANSLATOR_URL = '/translator-runtime/index.html?v=14';
+const TRANSLATOR_URL = '/translator-runtime/index.html?v=20';
 const ADULT_TEMPLATE_LABELS = {
   adult: 'Truyện 18+',
   sacHiep: 'Sắc hiệp',
@@ -30,6 +32,7 @@ function isAccessSnapshot(value) {
 
 export default function PersistentTranslatorHost({ active = false }) {
   const frameRef = useRef(null);
+  const theme = useUIStore((state) => state.theme);
   const { access, confirmAdultTerms, refreshAccess } = useUserAccess();
   const [adultConsentRequest, setAdultConsentRequest] = useState(null);
   const [adultConsentBusy, setAdultConsentBusy] = useState(false);
@@ -45,6 +48,15 @@ export default function PersistentTranslatorHost({ active = false }) {
       access: accessSnapshot,
     }, window.location.origin);
   }, [access]);
+
+  const sendThemeContext = useCallback((nextTheme = theme) => {
+    const frame = frameRef.current;
+    if (!frame?.contentWindow || typeof window === 'undefined') return;
+    frame.contentWindow.postMessage({
+      type: 'STORYFORGE_THEME_CONTEXT',
+      theme: normalizeTheme(nextTheme),
+    }, window.location.origin);
+  }, [theme]);
 
   const sendAdultConsentResult = useCallback((request, result) => {
     const frame = frameRef.current;
@@ -103,6 +115,10 @@ export default function PersistentTranslatorHost({ active = false }) {
   }, [sendAccessContext]);
 
   useEffect(() => {
+    sendThemeContext();
+  }, [sendThemeContext]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handleMessage = (event) => {
       if (event.origin !== window.location.origin) return;
@@ -153,7 +169,10 @@ export default function PersistentTranslatorHost({ active = false }) {
         className="persistent-translator-host__frame"
         src={TRANSLATOR_URL}
         title="StoryForge Translator"
-        onLoad={() => sendAccessContext()}
+        onLoad={() => {
+          sendAccessContext();
+          sendThemeContext();
+        }}
       />
       {active && adultConsentRequest ? (
         <div className="persistent-translator-host__adult-backdrop" role="presentation" onMouseDown={closeAdultConsent}>

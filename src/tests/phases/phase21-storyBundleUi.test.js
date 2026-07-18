@@ -23,6 +23,16 @@ describe('phase21 Story Bundle UI contract', () => {
     expect(dashboardCss).toMatch(/\.project-card--menu-open\s*\{[^}]*z-index:\s*1/s);
   });
 
+  it('keeps Story Bundle files selectable when iOS cannot map the custom type', () => {
+    const modal = readFileSync('src/components/storyBundle/StoryBundleModal.jsx', 'utf8');
+    const importInput = modal.match(/<input ref=\{inputRef\}[\s\S]*?\/>/u)?.[0] || '';
+    const acceptValue = importInput.match(/\baccept="([^"]*)"/u)?.[1] || '';
+    const acceptedTypes = acceptValue.split(',').map((value) => value.trim()).filter(Boolean);
+
+    expect(importInput).not.toBe('');
+    expect(acceptedTypes.length === 0 || acceptedTypes.includes('*/*')).toBe(true);
+  });
+
   it('labels Cloud archive export distinctly and shows offline backup and quota usage', () => {
     const cloud = readFileSync('src/pages/Settings/CloudSyncSection.jsx', 'utf8');
 

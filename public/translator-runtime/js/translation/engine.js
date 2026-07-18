@@ -55,10 +55,28 @@ function buildTranslatorLanguageDirective(sourceLang = 'auto') {
 - Chỉ trả về bản tiếng Việt cuối cùng, không giải thích, không giữ nguyên tiếng nguồn nếu không phải tên riêng/thuật ngữ.`;
 }
 
-function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto') {
+function buildPromptedChunk(promptText, chunkText, sourceLang = 'auto', options = {}) {
     const directive = buildTranslatorLanguageDirective(sourceLang);
     const prompt = String(promptText || '').trim();
     const source = String(chunkText || '').trim();
+    if (typeof compileTranslationRequest === 'function') {
+        const session = options.session || (typeof currentTranslatorSessionMeta !== 'undefined' ? currentTranslatorSessionMeta : null);
+        const canonPromptText = typeof getCanonPackTranslationContext === 'function'
+            ? getCanonPackTranslationContext(prompt)
+            : '';
+        const basePromptText = typeof stripCanonPackTranslationContext === 'function'
+            ? stripCanonPackTranslationContext(prompt)
+            : prompt;
+        return compileTranslationRequest({
+            basePromptText,
+            canonPromptText,
+            storyPromptText: session?.storyPromptText || '',
+            storyPromptEnabled: Boolean(session?.storyPromptEnabled),
+            sourceLang,
+            contextText: options.contextText || '',
+            sourceText: source,
+        });
+    }
     return `${directive}${prompt ? `\n\n${prompt}` : ''}\n\n[Đoạn nguồn]\n${source}`;
 }
 
@@ -494,8 +512,9 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
 
     const buildPromptForLargeChunk = (chunk) => {
         if (contextBeforeStart && chunk.index === startChunkIndex) {
-            const contextualPrompt = `${customPrompt || ''}\n\nNgữ cảnh tham khảo từ các chunk trước, chỉ dùng để giữ tên riêng, xưng hô và giọng văn. Không dịch lại phần ngữ cảnh này:\n${contextBeforeStart}\n\nChỉ dịch chunk hiện tại bên dưới.`;
-            return buildPromptedChunk(contextualPrompt, chunk.text, sourceLang);
+            return buildPromptedChunk(customPrompt, chunk.text, sourceLang, {
+                contextText: contextBeforeStart,
+            });
         }
         return buildPromptedChunk(customPrompt, chunk.text, sourceLang);
     };

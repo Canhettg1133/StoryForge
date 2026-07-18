@@ -5,6 +5,11 @@ import App from './App';
 import { shouldInjectVercelAnalytics } from './services/analytics/vercelAnalytics.js';
 import { initStorage } from './services/db/storage';
 import { initStoryMirrorRuntime } from './services/storyMirror/runtime.js';
+import {
+  applyDocumentTheme,
+  persistTheme,
+  readStoredTheme,
+} from './config/themes.js';
 
 // Styles
 import './styles/index.css';
@@ -16,8 +21,8 @@ if (shouldInjectVercelAnalytics(window.location.hostname, import.meta.env.VITE_D
 }
 
 // Initialize theme
-const savedTheme = localStorage.getItem('sf-theme') || 'dark';
-document.documentElement.setAttribute('data-theme', savedTheme);
+const savedTheme = persistTheme(readStoredTheme());
+applyDocumentTheme(savedTheme);
 
 // Initialize persistent storage for IndexedDB (200MB+ support)
 initStorage().catch(() => {});

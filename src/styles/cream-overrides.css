@@ -1,0 +1,487 @@
+/* Theme-specific fixes for surfaces that still assume a dark background. */
+[data-theme="cream"] .app-main,
+[data-theme="cream"] .project-mobile-shell {
+  background: var(--color-bg-primary);
+}
+
+[data-theme="cream"] .mobile-sheet,
+[data-theme="cream"] .mobile-sheet-footer {
+  background: var(--color-bg-modal);
+}
+
+[data-theme="cream"] .project-mobile-topbar {
+  background: var(--color-bg-sidebar);
+  backdrop-filter: none;
+}
+
+/* Keep navigation readable without making inactive destinations compete with content. */
+[data-theme="cream"] .sidebar-item {
+  color: var(--color-text-primary);
+  font-weight: 550;
+}
+
+[data-theme="cream"] .sidebar-theme-trigger {
+  color: var(--color-text-secondary);
+}
+
+[data-theme="cream"] .sidebar-item--active,
+[data-theme="cream"] .sidebar-item--primary:not(.sidebar-item--disabled) {
+  color: var(--color-accent);
+  font-weight: var(--weight-semibold);
+}
+
+[data-theme="cream"] .sidebar-item--disabled {
+  color: #756a5f;
+  font-weight: var(--weight-medium);
+  opacity: 1;
+}
+
+[data-theme="cream"] .sidebar-item--coming-soon:not(.sidebar-item--disabled) {
+  opacity: 0.78;
+}
+
+[data-theme="cream"] .sidebar-theme-trigger__copy small {
+  color: var(--color-text-muted);
+}
+
+[data-theme="cream"] .modal-overlay,
+[data-theme="cream"] .codex-modal-overlay,
+[data-theme="cream"] .project-chat-drawer-backdrop {
+  background: rgba(33, 28, 23, 0.36);
+}
+
+[data-theme="cream"] .codex-modal {
+  background: var(--color-bg-modal);
+}
+
+[data-theme="cream"] .select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2362564a' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* Editor: the paper treatment is limited to the reading and writing surface. */
+[data-theme="cream"] .story-editor-wrapper {
+  background: var(--color-bg-primary);
+}
+
+[data-theme="cream"] .story-editor-content {
+  min-height: calc(100% - 12px);
+  padding: clamp(28px, 4vw, 48px);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg-editor);
+  color: var(--color-text-primary);
+  box-shadow: 0 2px 6px rgba(52, 45, 39, 0.08);
+}
+
+[data-theme="cream"] .story-editor-content p.is-editor-empty:first-child::before,
+[data-theme="cream"] .story-editor-scene-title::placeholder,
+[data-theme="cream"] .chapter-outline-edit-textarea::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+[data-theme="cream"] .story-editor-ai-draft {
+  background: var(--color-bg-editor);
+  box-shadow: 0 2px 6px rgba(52, 45, 39, 0.08);
+}
+
+[data-theme="cream"] .story-editor-header,
+[data-theme="cream"] .story-editor-footer,
+[data-theme="cream"] .chapter-outline-panel {
+  background: var(--color-bg-secondary);
+}
+
+/* Scene details previously encoded a fixed indigo-black surface. */
+[data-theme="cream"] .scene-detail-backdrop {
+  background: rgba(33, 28, 23, 0.34);
+}
+
+[data-theme="cream"] .scene-detail-panel {
+  border-color: var(--color-border-strong);
+  border-radius: 16px;
+  background: var(--color-bg-modal);
+  color: var(--color-text-primary);
+  box-shadow: 0 6px 8px rgba(52, 45, 39, 0.14);
+}
+
+[data-theme="cream"] .scene-detail-header {
+  border-bottom-color: var(--color-border);
+  background: var(--color-bg-secondary);
+}
+
+[data-theme="cream"] .scene-detail-kicker,
+[data-theme="cream"] .scene-detail-scene-name,
+[data-theme="cream"] .scene-detail-section-note,
+[data-theme="cream"] .scene-detail-label,
+[data-theme="cream"] .scene-detail-char-role {
+  color: var(--color-text-secondary);
+}
+
+[data-theme="cream"] .scene-detail-title,
+[data-theme="cream"] .scene-detail-section-title,
+[data-theme="cream"] .scene-detail-char-item,
+[data-theme="cream"] .scene-detail-tag {
+  color: var(--color-text-heading);
+}
+
+[data-theme="cream"] .scene-detail-pill,
+[data-theme="cream"] .scene-detail-section,
+[data-theme="cream"] .scene-detail-char-item,
+[data-theme="cream"] .scene-detail-tag {
+  border-color: var(--color-border);
+  background: var(--color-surface-1);
+}
+
+[data-theme="cream"] .scene-detail-section {
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+[data-theme="cream"] .scene-detail-textarea,
+[data-theme="cream"] .scene-detail-select,
+[data-theme="cream"] .scene-detail-tag-input input {
+  border-color: var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+[data-theme="cream"] .scene-detail-textarea::placeholder,
+[data-theme="cream"] .scene-detail-tag-input input::placeholder {
+  color: var(--color-text-muted);
+}
+
+[data-theme="cream"] .scene-detail-textarea:focus,
+[data-theme="cream"] .scene-detail-select:focus,
+[data-theme="cream"] .scene-detail-tag-input input:focus {
+  border-color: var(--color-accent);
+  background: var(--color-bg-editor);
+  box-shadow: 0 0 0 3px var(--color-accent-muted);
+}
+
+[data-theme="cream"] .scene-detail-char-item:hover,
+[data-theme="cream"] .scene-detail-char-item--active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-muted);
+  box-shadow: none;
+}
+
+[data-theme="cream"] .scene-detail-char-item input[type="checkbox"] {
+  accent-color: var(--color-accent-fill);
+}
+
+[data-theme="cream"] .scene-detail-tag-remove {
+  background: var(--color-bg-active);
+}
+
+[data-theme="cream"] .scene-detail-tag--danger {
+  border-color: color-mix(in srgb, var(--color-danger) 36%, var(--color-border));
+  background: var(--color-danger-muted);
+  color: var(--color-danger);
+}
+
+[data-theme="cream"] .scene-detail-tag--warn {
+  border-color: color-mix(in srgb, var(--color-warning) 36%, var(--color-border));
+  background: var(--color-warning-muted);
+  color: var(--color-warning);
+}
+
+/* Narrative Lab is the only main route whose base stylesheet is fully dark-coded. */
+[data-theme="cream"] .narrative-lab {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+[data-theme="cream"] .lab-sidebar,
+[data-theme="cream"] .chat-input-bar {
+  border-color: var(--color-border);
+  background: var(--color-bg-sidebar);
+}
+
+[data-theme="cream"] .lab-sidebar h3,
+[data-theme="cream"] .thinking-header {
+  color: var(--color-accent);
+}
+
+[data-theme="cream"] .setting-group label,
+[data-theme="cream"] .welcome-msg,
+[data-theme="cream"] .message-label,
+[data-theme="cream"] .message-meta,
+[data-theme="cream"] .thinking-text,
+[data-theme="cream"] .debug-content {
+  color: var(--color-text-secondary);
+}
+
+[data-theme="cream"] .toggle-buttons,
+[data-theme="cream"] .setting-group select,
+[data-theme="cream"] .chat-input-bar textarea,
+[data-theme="cream"] .system-debug {
+  border-color: var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+[data-theme="cream"] .toggle-buttons button {
+  color: var(--color-text-secondary);
+}
+
+[data-theme="cream"] .toggle-buttons button.active,
+[data-theme="cream"] .user .message-bubble,
+[data-theme="cream"] .chat-input-bar button {
+  background: var(--color-accent-fill);
+  color: #fff;
+}
+
+[data-theme="cream"] .assistant .message-bubble {
+  border-color: var(--color-border);
+  background: var(--color-bg-editor);
+  color: var(--color-text-primary);
+}
+
+[data-theme="cream"] .thinking-block {
+  border: 1px solid var(--color-border-accent);
+  background: var(--color-accent-muted);
+}
+
+[data-theme="cream"] .priming-promo {
+  border-color: var(--color-border-accent);
+  background: var(--color-accent-muted);
+}
+
+/* Canon Truth and Story Bible contain a few translucent dark-only panels. */
+[data-theme="cream"] .su-that-page__priority-panel,
+[data-theme="cream"] .bible-canon-stat {
+  background: var(--color-surface-1);
+}
+
+[data-theme="cream"] .su-that-page__panel-icon,
+[data-theme="cream"] .su-that-page__panel-count {
+  background: var(--color-surface-2);
+}
+
+[data-theme="cream"] .su-that-page__compact-list,
+[data-theme="cream"] .su-that-page__compact-item,
+[data-theme="cream"] .su-that-page__state-panel-footer {
+  border-color: var(--color-border);
+}
+
+[data-theme="cream"] .su-that-page__panel-count--warning {
+  color: var(--color-warning);
+  background: var(--color-warning-muted);
+}
+
+[data-theme="cream"] .su-that-page__panel-count--danger {
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
+}
+
+[data-theme="cream"] .su-that-page__panel-count--accent {
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
+}
+
+[data-theme="cream"] .project-cover-model-menu {
+  border-color: var(--color-border-strong);
+  background: var(--color-bg-modal);
+  box-shadow: 0 6px 8px rgba(52, 45, 39, 0.13);
+}
+
+/* Chat attachments and drawers used dark color-mix fallback colors. */
+[data-theme="cream"] .project-chat-page .card,
+[data-theme="cream"] .project-chat-empty.card {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-1);
+  box-shadow: 0 2px 6px rgba(52, 45, 39, 0.08);
+}
+
+[data-theme="cream"] .project-chat-sidebar__hint {
+  border-color: var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+}
+
+[data-theme="cream"] :is(
+  .project-chat-sidebar__kicker,
+  .project-chat-topbar__kicker,
+  .project-chat-drawer__kicker,
+  .project-chat-thread__meta,
+  .project-chat-message__author
+) {
+  color: var(--color-text-tertiary);
+}
+
+[data-theme="cream"] .project-chat-statusbar__item--live,
+[data-theme="cream"] .project-chat-message__chip--live {
+  color: var(--color-accent);
+}
+
+[data-theme="cream"] .project-chat-composer__input,
+[data-theme="cream"] .project-chat-attachment-scope-toggle,
+[data-theme="cream"] .project-chat-paste-chip,
+[data-theme="cream"] .project-chat-paste-chip__preview,
+[data-theme="cream"] .project-chat-image-preview-card,
+[data-theme="cream"] .project-chat-message-image img,
+[data-theme="cream"] .project-chat-attachment-row,
+[data-theme="cream"] .project-chat-attachment-row__status,
+[data-theme="cream"] .project-chat-drawer,
+[data-theme="cream"] .project-chat-drawer__source {
+  background: var(--color-bg-modal);
+}
+
+[data-theme="cream"] .project-chat-composer__input {
+  border-color: var(--color-border-strong);
+  box-shadow: 0 2px 6px rgba(52, 45, 39, 0.08);
+  backdrop-filter: none;
+}
+
+[data-theme="cream"] .project-chat-composer__input .textarea {
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+[data-theme="cream"] .project-chat-paste-chip {
+  background: var(--color-accent-muted);
+}
+
+/* Arc generation exposes local tokens, so remap those instead of rewriting the modal. */
+[data-theme="cream"] .arc-modal-overlay {
+  --bg-backdrop: rgba(33, 28, 23, 0.36);
+  --bg-content: var(--color-bg-modal);
+  --bg-panel: var(--color-bg-secondary);
+  --bg-input: var(--color-surface-2);
+  --bg-hover: var(--color-bg-hover);
+  --border-color: var(--color-border);
+}
+
+[data-theme="cream"] .arc-modal {
+  box-shadow: 0 6px 8px rgba(52, 45, 39, 0.14);
+}
+
+/* Analysis Viewer: preserve series colors, replace only structural surfaces and labels. */
+[data-theme="cream"] .analysis-viewer {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+}
+
+[data-theme="cream"] .analysis-utility-panel {
+  box-shadow: -4px 0 8px rgba(52, 45, 39, 0.08);
+}
+
+[data-theme="cream"] .analysis-viewer :is(
+  .search-panel,
+  .filter-panel,
+  .selection-panel,
+  .knowledge-section,
+  .knowledge-card,
+  .event-card,
+  .incident-card,
+  .mindmap-toolbar,
+  .mindmap-container,
+  .mindmap-context-menu,
+  .timeline-view,
+  .timeline-header,
+  .timeline-overview,
+  .timeline-stage-main,
+  .timeline-detail,
+  .character-graph,
+  .graph-toolbar,
+  .graph-container,
+  .graph-tooltip,
+  .graph-node-info,
+  .compare-panel,
+  .adapt-panel-container,
+  .annotation-editor,
+  .event-edit-modal,
+  .export-modal,
+  .link-project-modal
+) {
+  border-color: var(--color-border);
+  background: var(--color-surface-1);
+  color: var(--color-text-primary);
+}
+
+[data-theme="cream"] .analysis-viewer :is(
+  .search-input,
+  .filter-group select,
+  .quick-select-btn,
+  .selected-item,
+  .event-action-btn,
+  .incident-btn,
+  .mindmap-toolbar button,
+  .graph-reset-btn,
+  .timeline-zoom button,
+  .analysis-input,
+  textarea,
+  select
+) {
+  border-color: var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text-primary);
+}
+
+[data-theme="cream"] .analysis-viewer :is(
+  .event-card-description,
+  .event-card-meta,
+  .incident-location,
+  .node-intensity,
+  .timeline-subtitle,
+  .graph-legend,
+  .graph-node-info .info-row
+) {
+  color: var(--color-text-secondary);
+}
+
+[data-theme="cream"] .analysis-viewer .search-input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+[data-theme="cream"] .analysis-viewer :is(.mindmap-node, .event-preview, .timeline-event) {
+  border-color: var(--color-border);
+  background: var(--color-bg-editor);
+  color: var(--color-text-primary);
+}
+
+/* Suggestion Inbox keeps semantic status colors but loses dark translucent fills. */
+[data-theme="cream"] .suggestion-card,
+[data-theme="cream"] .suggestion-group,
+[data-theme="cream"] .suggestion-inbox-empty,
+[data-theme="cream"] .suggestion-evidence {
+  border-color: var(--color-border);
+  background: var(--color-surface-1);
+}
+
+[data-theme="cream"] .suggestion-evidence {
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 900px) {
+  [data-theme="cream"] .story-editor-wrapper {
+    padding-inline: 0;
+  }
+
+  [data-theme="cream"] .story-editor-content {
+    min-height: 100%;
+    max-width: 100%;
+    padding: 18px 16px 28px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  [data-theme="cream"] .scene-detail-panel {
+    border-radius: 16px 0 0 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  [data-theme="cream"] .scene-detail-panel {
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme="cream"] .scene-detail-backdrop,
+  [data-theme="cream"] .scene-detail-panel {
+    animation: none;
+  }
+}

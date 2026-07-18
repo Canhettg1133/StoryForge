@@ -21,7 +21,8 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=18">
+    <script src="js/theme.js?v=2"></script>
+    <link rel="stylesheet" href="style.css?v=23">
 </head>
 
 <body>
@@ -292,19 +293,36 @@
                     </div>
 
                     <!-- Multi Proxy Keys -->
-                    <div class="form-group">
-                        <label>
+                    <div class="form-group proxy-key-section">
+                        <label class="proxy-key-heading" for="newProxyKeyInput">
                             <span class="icon">🔑</span>
                             Gemini Proxy AG Keys
-                            <span class="badge" id="proxyKeyCount" style="font-size:0.75rem;">0 keys</span>
+                            <span class="badge proxy-key-count" id="proxyKeyCount" data-tone="empty">0 key</span>
                         </label>
-                        <div id="proxyKeysList"></div>
-                        <div class="input-group" style="display:flex;gap:8px;margin-top:8px;">
-                            <input type="password" id="newProxyKeyInput" placeholder="sk-..." style="flex:1;"
-                                data-keydown-action="addProxyKey">
-                            <button class="btn btn-primary btn-small" data-click-action="addProxyKey">➕ Thêm</button>
-                            <button class="btn btn-success btn-small" data-click-action="openImportProxyKeysModal" data-action-value="ag" title="Nhập nhiều Gemini Proxy AG keys">📥 Nhập nhiều</button>
-                            <button class="btn btn-info btn-small" data-click-action="exportProxyKeys" data-action-value="ag" title="Xuất Gemini Proxy AG keys">📋 Xuất</button>
+                        <div id="proxyKeysList" class="proxy-key-list"></div>
+                        <div class="proxy-key-entry">
+                            <input type="password" id="newProxyKeyInput" placeholder="Nhập key Gemini Proxy AG"
+                                autocomplete="new-password" data-keydown-action="addProxyKey">
+                            <button class="btn btn-primary btn-small" type="button" data-click-action="addProxyKey">
+                                <svg class="proxy-key-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M12 5v14M5 12h14"></path>
+                                </svg>
+                                Thêm key
+                            </button>
+                        </div>
+                        <div class="proxy-key-actions">
+                            <button class="btn btn-secondary btn-small" type="button" data-click-action="openImportProxyKeysModal" data-action-value="ag" title="Nhập nhiều Gemini Proxy AG keys">
+                                <svg class="proxy-key-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"></path>
+                                </svg>
+                                Nhập nhiều
+                            </button>
+                            <button class="btn btn-secondary btn-small" type="button" data-click-action="exportProxyKeys" data-action-value="ag" title="Xuất Gemini Proxy AG keys">
+                                <svg class="proxy-key-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M12 15V3m0 0 4 4m-4-4-4 4M5 21h14"></path>
+                                </svg>
+                                Xuất key
+                            </button>
                         </div>
                         <small class="hint">Key dùng để xoay tua. Số luồng song song không bị khóa theo số key.</small>
                     </div>
@@ -402,19 +420,36 @@
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <label>
+                        <div class="form-group proxy-key-section">
+                            <label class="proxy-key-heading" for="newCustomProxyKeyInput">
                                 <span class="icon">🔑</span>
                                 Custom Proxy API Keys
-                                <span class="badge" id="customProxyKeyCount" style="font-size:0.75rem;">0 key</span>
+                                <span class="badge proxy-key-count" id="customProxyKeyCount" data-tone="empty">0 key</span>
                             </label>
-                            <div id="customProxyKeysList"></div>
-                            <div class="input-group custom-proxy-key-row">
+                            <div id="customProxyKeysList" class="proxy-key-list"></div>
+                            <div class="proxy-key-entry">
                                 <input type="password" id="newCustomProxyKeyInput" placeholder="sk-... hoặc key của proxy"
-                                    data-keydown-action="addCustomProxyKey">
-                                <button class="btn btn-primary btn-small" data-click-action="addCustomProxyKey">➕ Thêm</button>
-                                <button class="btn btn-success btn-small" data-click-action="openImportProxyKeysModal" data-action-value="custom" title="Nhập nhiều Custom Proxy keys">📥 Nhập nhiều</button>
-                                <button class="btn btn-info btn-small" data-click-action="exportProxyKeys" data-action-value="custom" title="Xuất Custom Proxy keys">📋 Xuất</button>
+                                    autocomplete="new-password" data-keydown-action="addCustomProxyKey">
+                                <button class="btn btn-primary btn-small" type="button" data-click-action="addCustomProxyKey">
+                                    <svg class="proxy-key-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M12 5v14M5 12h14"></path>
+                                    </svg>
+                                    Thêm key
+                                </button>
+                            </div>
+                            <div class="proxy-key-actions">
+                                <button class="btn btn-secondary btn-small" type="button" data-click-action="openImportProxyKeysModal" data-action-value="custom" title="Nhập nhiều Custom Proxy keys">
+                                    <svg class="proxy-key-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14"></path>
+                                    </svg>
+                                    Nhập nhiều
+                                </button>
+                                <button class="btn btn-secondary btn-small" type="button" data-click-action="exportProxyKeys" data-action-value="custom" title="Xuất Custom Proxy keys">
+                                    <svg class="proxy-key-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                        <path d="M12 15V3m0 0 4 4m-4-4-4 4M5 21h14"></path>
+                                    </svg>
+                                    Xuất key
+                                </button>
                             </div>
                             <small class="hint">Key này dùng riêng cho Custom Proxy và lưu cùng Settings chính.</small>
                         </div>
@@ -884,6 +919,89 @@
                     rows="10"></textarea>
             </section>
 
+            <section class="story-prompt-panel glass-card" id="storyPromptPanel" hidden>
+                <div class="story-prompt-header">
+                    <div>
+                        <h2 class="section-title">
+                            <span class="icon">📚</span>
+                            Hồ sơ dịch riêng của truyện
+                        </h2>
+                        <p class="panel-subtitle">AI đọc cùng lúc tối đa 20 chunk đầu để đề xuất tên chuẩn, xưng hô, thuật ngữ và văn phong riêng cho truyện này.</p>
+                    </div>
+                    <div class="story-prompt-state">
+                        <span class="story-prompt-status" id="storyPromptStatus" role="status">Chưa quét hồ sơ truyện</span>
+                        <div class="story-prompt-toggle-row">
+                            <span class="toggle-label">Áp dụng khi dịch</span>
+                            <label class="toggle-switch" title="Prompt riêng chỉ được dùng khi công tắc này bật">
+                                <input type="checkbox" id="storyPromptEnabled" data-change-action="toggleStoryPromptEnabled" disabled>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="story-prompt-scan-grid">
+                    <div class="form-group story-prompt-request-count">
+                        <label for="storyPromptScanRequestCount">Số request quét song song</label>
+                        <input type="number" id="storyPromptScanRequestCount" min="1" max="17" value="1"
+                            data-change-action="saveStoryPromptScanRequestCount">
+                    </div>
+                    <div class="story-prompt-distribution-wrap">
+                        <strong id="storyPromptScanDistribution">1 request phân tích toàn bộ 17 nhóm</strong>
+                        <span>Mỗi request vẫn đọc đủ cùng một tập 20 chunk. Tăng số request chỉ chia 17 nhóm phân tích; không khắc phục giới hạn context của model.</span>
+                    </div>
+                    <button type="button" class="btn btn-primary story-prompt-scan-btn" id="storyPromptScanBtn"
+                        data-click-action="scanStoryPrompt">Quét 20 chunk đầu</button>
+                </div>
+
+                <div class="story-prompt-progress" id="storyPromptProgress" role="status" hidden></div>
+
+                <div class="story-prompt-editor" id="storyPromptEditorArea" hidden>
+                    <div class="form-group">
+                        <label for="storyPromptText">System prompt riêng của truyện</label>
+                        <textarea id="storyPromptText" rows="16"
+                            placeholder="Kết quả quét sẽ xuất hiện ở đây và được tự lưu sau khi chỉnh sửa."
+                            data-input-action="saveStoryPromptText"></textarea>
+                    </div>
+
+                    <div class="story-prompt-feedback-grid">
+                        <div class="story-prompt-feedback-header">
+                            <div>
+                                <label for="storyPromptFeedback">Ý kiến để AI chỉnh lại prompt</label>
+                                <p id="storyPromptFeedbackHint">AI dùng prompt hiện tại để chỉnh sửa, không quét lại nội dung truyện.</p>
+                            </div>
+                        </div>
+                        <textarea id="storyPromptFeedback" rows="4"
+                            aria-describedby="storyPromptFeedbackHint storyPromptFeedbackSaveNote"
+                            placeholder="Ví dụ: Giữ tên nhân vật theo pinyin; nhân vật A xưng tôi với B, nhưng xưng thuộc hạ với C."></textarea>
+                        <div class="story-prompt-feedback-footer">
+                            <p class="story-prompt-feedback-note" id="storyPromptFeedbackSaveNote">
+                                <svg class="story-prompt-save-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M20 6 9 17l-5-5"></path>
+                                </svg>
+                                Prompt mới sẽ thay prompt hiện tại và được tự lưu.
+                            </p>
+                            <button type="button" class="btn story-prompt-refine-btn" id="storyPromptRefineBtn"
+                                data-click-action="refineStoryPromptFromFeedback">
+                                <svg class="story-prompt-refine-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2L12 3ZM5 14l-.8 2.2L2 17l2.2.8L5 20l.8-2.2L8 17l-2.2-.8L5 14Zm14-1-.8 2.2L16 16l2.2.8L19 19l.8-2.2L22 16l-2.2-.8L19 13Z"></path>
+                                </svg>
+                                <span class="story-prompt-refine-spinner" aria-hidden="true"></span>
+                                <span class="story-prompt-refine-label" aria-live="polite">Chỉnh prompt theo góp ý</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="story-prompt-uncertainties">
+                        <h3>Điểm cần kiểm tra</h3>
+                        <p>Các suy luận chưa đủ chắc chắn được giữ riêng tại đây và không tự biến thành luật dịch.</p>
+                        <div id="storyPromptUncertainties">
+                            <p class="story-prompt-empty">Chưa có điểm nào cần kiểm tra.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Translate Button -->
             <div class="translate-actions">
                 <button class="btn btn-translate" id="translateBtn" data-click-action="startTranslation">
@@ -1019,6 +1137,7 @@
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
     <script src="js/app.js?v=19"></script>
     <script src="js/translation/prompt-settings.js?v=1"></script>
+    <script src="js/translation/request-contract.js?v=1"></script>
     <script src="js/canon-pack.js?v=13"></script>
 
     <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
@@ -1037,12 +1156,13 @@
     <script src="js/translation/local-store.js?v=13"></script>
     <script src="js/translation/retry.js?v=17"></script>
     <script src="js/translation/engine.js?v=17"></script>
+    <script src="js/translation/story-prompt.js?v=2"></script>
 
 
     <!-- 4. UI Components -->
     <script src="js/ui/progress.js?v=13"></script>
-    <script src="js/ui/file-handler.js?v=14"></script>
-    <script src="js/ui/settings.js?v=15"></script>
+    <script src="js/ui/file-handler.js?v=15"></script>
+    <script src="js/ui/settings.js?v=16"></script>
     <script src="js/ui/controls.js?v=13"></script>
     <script src="js/ui/chunk-tracker.js?v=16"></script>
 
@@ -1053,7 +1173,7 @@
     <script src="js/local-ai/ollama.js?v=15"></script>
 
     <!-- 6b. Proxy API -->
-    <script src="js/proxy/proxy-api.js?v=16"></script>
+    <script src="js/proxy/proxy-api.js?v=17"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
     <script src="js/init.js?v=16"></script>

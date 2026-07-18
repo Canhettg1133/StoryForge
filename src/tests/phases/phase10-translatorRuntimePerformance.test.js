@@ -346,6 +346,7 @@ describe('phase10 translator runtime performance', () => {
   it('keeps translator runtime sources as valid UTF-8 rather than mojibake literals', () => {
     const files = [
       'public/translator-runtime/index.html',
+      'public/translator-runtime/js/theme.js',
       'public/translator-runtime/js/app.js',
       'public/translator-runtime/js/translation/engine.js',
       'public/translator-runtime/js/translation/chunker.js',

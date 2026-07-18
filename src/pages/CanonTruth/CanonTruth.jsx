@@ -554,24 +554,31 @@ export default function CanonTruth() {
           return (
             <div key={panel.id} className={`su-that-page__priority-panel su-that-page__priority-panel--${panel.tone}`}>
               <div className="su-that-page__panel-title">
-                <div className="su-that-page__panel-icon">
-                  <Icon size={16} />
-                </div>
-                <div>
+                <div className="su-that-page__panel-title-main">
+                  <div className="su-that-page__panel-icon">
+                    <Icon size={16} />
+                  </div>
                   <strong>{panel.title}</strong>
-                  <p>{panel.description}</p>
                 </div>
-                <span className="bible-canon-badge bible-canon-badge--warning">{panel.count}</span>
+                <span className={`su-that-page__panel-count su-that-page__panel-count--${panel.tone}`}>
+                  {panel.count}
+                </span>
+                <p>{panel.description}</p>
               </div>
 
               <div className="su-that-page__compact-list">
                 {panel.items.length > 0 ? panel.items.map((item, index) => (
                   <div key={`${panel.id}-${index}`} className="su-that-page__compact-item">
-                    <div>
+                    <div className="su-that-page__compact-heading">
                       <strong>{item.title}</strong>
-                      <p>{item.detail}</p>
+                      <span
+                        className="bible-canon-meta su-that-page__compact-badge"
+                        title={item.badge}
+                      >
+                        {item.badge}
+                      </span>
                     </div>
-                    <span className="bible-canon-meta">{item.badge}</span>
+                    <p>{item.detail}</p>
                   </div>
                 )) : (
                   <p className="text-muted bible-canon-empty">Hiện chưa có mục nổi bật.</p>
@@ -593,7 +600,7 @@ export default function CanonTruth() {
               <button
                 key={commit.id || commit.chapter_id}
                 type="button"
-                className={`bible-canon-list-item bible-canon-list-item--interactive bible-canon-list-item--${commit.status || 'draft'} ${selectedChapterId === commit.chapter_id ? 'is-selected' : ''}`}
+                className={`bible-canon-list-item bible-canon-list-item--interactive su-that-page__flow-item bible-canon-list-item--${commit.status || 'draft'} ${selectedChapterId === commit.chapter_id ? 'is-selected' : ''}`}
                 onClick={() => {
                   clearActionOutcome();
                   clearRepairText();
@@ -604,7 +611,10 @@ export default function CanonTruth() {
                   <strong>{commit.chapter_title || `Chương ${commit.chapter_id}`}</strong>
                   <p>Phiên bản hiện tại: r{commit.current_revision?.revision_number || 0}</p>
                 </div>
-                <span className={`bible-canon-badge bible-canon-badge--${commit.status || 'draft'}`}>
+                <span
+                  className={`bible-canon-badge bible-canon-badge--${commit.status || 'draft'}`}
+                  title={translateStatus(commit.status || 'draft')}
+                >
                   {translateStatus(commit.status || 'draft')}
                 </span>
               </button>
@@ -622,12 +632,15 @@ export default function CanonTruth() {
           </div>
           <div className="bible-canon-list">
             {entityCards.map((state) => (
-              <div key={state.id || state.entity_id} className="bible-canon-list-item">
+              <div key={state.id || state.entity_id} className="bible-canon-list-item su-that-page__flow-item">
                 <div>
                   <strong>{state.displayName}</strong>
                   <p>{state.summaryText || 'Chưa có bản tóm tắt trạng thái.'}</p>
                 </div>
-                <span className={`bible-canon-badge bible-canon-badge--${state.alive_status || 'alive'}`}>
+                <span
+                  className={`bible-canon-badge bible-canon-badge--${state.alive_status || 'alive'}`}
+                  title={translateStatus(state.alive_status || 'alive')}
+                >
                   {translateStatus(state.alive_status || 'alive')}
                 </span>
               </div>
@@ -645,7 +658,7 @@ export default function CanonTruth() {
           </div>
           <div className="bible-canon-list">
             {itemCards.map((state) => (
-              <div key={state.id || state.object_id} className="bible-canon-list-item">
+              <div key={state.id || state.object_id} className="bible-canon-list-item su-that-page__flow-item">
                 <div>
                   <strong>{state.displayName}</strong>
                   <p>
@@ -653,7 +666,10 @@ export default function CanonTruth() {
                     {state.status_note ? ` | ${state.status_note}` : ''}
                   </p>
                 </div>
-                <span className={`bible-canon-badge bible-canon-badge--${state.availability || 'available'}`}>
+                <span
+                  className={`bible-canon-badge bible-canon-badge--${state.availability || 'available'}`}
+                  title={state.availabilityLabel}
+                >
                   {state.availabilityLabel}
                 </span>
               </div>
@@ -671,13 +687,16 @@ export default function CanonTruth() {
           </div>
           <div className="bible-canon-list">
             {relationshipCards.map((state) => (
-              <div key={state.id || state.pair_key} className="bible-canon-list-item">
+              <div key={state.id || state.pair_key} className="bible-canon-list-item su-that-page__flow-item">
                 <div>
                   <strong>{state.pairLabel}</strong>
                   <p>{state.summary || 'Chưa có tóm tắt quan hệ.'}</p>
                   {state.aftermath && <p>{state.aftermath}</p>}
                 </div>
-                <span className={`bible-canon-badge bible-canon-badge--${state.secrecy_state || 'public'}`}>
+                <span
+                  className={`bible-canon-badge bible-canon-badge--${state.secrecy_state || 'public'}`}
+                  title={translateStatus(state.secrecy_state || 'public')}
+                >
                   {translateStatus(state.secrecy_state || 'public')}
                 </span>
               </div>
@@ -695,12 +714,15 @@ export default function CanonTruth() {
           </div>
           <div className="bible-canon-list">
             {(overview?.threadStates || []).map((threadState) => (
-              <div key={threadState.id || threadState.thread_id} className="bible-canon-list-item">
+              <div key={threadState.id || threadState.thread_id} className="bible-canon-list-item su-that-page__flow-item">
                 <div>
                   <strong>{threadState.thread_title || `Tuyến #${threadState.thread_id}`}</strong>
                   <p>{threadState.summary || 'Chưa có tóm tắt cho tuyến truyện này.'}</p>
                 </div>
-                <span className={`bible-canon-badge bible-canon-badge--${threadState.state || 'active'}`}>
+                <span
+                  className={`bible-canon-badge bible-canon-badge--${threadState.state || 'active'}`}
+                  title={translateStatus(threadState.state || 'active')}
+                >
                   {translateStatus(threadState.state || 'active')}
                 </span>
               </div>
@@ -720,12 +742,14 @@ export default function CanonTruth() {
           </div>
           <div className="bible-canon-list">
             {(overview?.recentReports || []).map((report) => (
-              <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--${report.severity}`}>
-                <div>
+              <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--${report.severity} su-that-page__report-item`}>
+                <div className="su-that-page__report-heading">
                   <strong>{translateSeverity(report.severity)}</strong>
-                  <p>{report.message}</p>
+                  <span className="bible-canon-meta" title={report.chapter_title || 'Bản nháp'}>
+                    {report.chapter_title || 'Bản nháp'}
+                  </span>
                 </div>
-                <span className="bible-canon-meta">{report.chapter_title || 'Bản nháp'}</span>
+                <p className="su-that-page__report-message">{report.message}</p>
               </div>
             ))}
             {(overview?.recentReports || []).length === 0 && (
@@ -741,12 +765,14 @@ export default function CanonTruth() {
           </div>
           <div className="bible-canon-list">
             {(overview?.recentEvents || []).map((event) => (
-              <div key={event.id} className="bible-canon-list-item">
+              <div key={event.id} className="bible-canon-list-item su-that-page__flow-item">
                 <div>
                   <strong>{translateOpType(event.op_type)}</strong>
                   <p>{event.summary || event.subject_name || event.thread_title || event.fact_description || 'Sự kiện truyện'}</p>
                 </div>
-                <span className="bible-canon-meta">{event.chapter_title || 'Chương chưa rõ'}</span>
+                <span className="bible-canon-meta" title={event.chapter_title || 'Chương chưa rõ'}>
+                  {event.chapter_title || 'Chương chưa rõ'}
+                </span>
               </div>
             ))}
             {(overview?.recentEvents || []).length === 0 && (
@@ -762,16 +788,18 @@ export default function CanonTruth() {
           </div>
           <div className="bible-canon-list">
             {(overview?.recentEvidence || []).map((item) => (
-              <div key={`evidence-${item.id}`} className="bible-canon-list-item">
+              <div key={`evidence-${item.id}`} className="bible-canon-list-item su-that-page__flow-item">
                 <div>
                   <strong>{translateEvidenceType(item.target_type)}</strong>
                   <p>{item.summary || item.evidence_text || 'Chưa có nội dung bằng chứng.'}</p>
                 </div>
-                <span className="bible-canon-meta">{item.chapter_title || 'Chương chưa rõ'}</span>
+                <span className="bible-canon-meta" title={item.chapter_title || 'Chương chưa rõ'}>
+                  {item.chapter_title || 'Chương chưa rõ'}
+                </span>
               </div>
             ))}
             {(overview?.recentRevisions || []).map((revision) => (
-              <div key={`revision-${revision.id}`} className={`bible-canon-list-item bible-canon-list-item--${revision.status || 'draft'}`}>
+              <div key={`revision-${revision.id}`} className={`bible-canon-list-item su-that-page__flow-item bible-canon-list-item--${revision.status || 'draft'}`}>
                 <div>
                   <strong>{revision.chapter_title || `Chương ${revision.chapter_id}`}</strong>
                   <p>Phiên bản r{revision.revision_number || 0} - {translateStatus(revision.status || 'draft')}</p>
@@ -839,19 +867,21 @@ export default function CanonTruth() {
             </div>
 
             <div className="bible-canon-detail-grid">
-              <div className="bible-canon-panel">
+              <div className="bible-canon-panel su-that-page__detail-panel su-that-page__detail-panel--events">
                 <div className="bible-canon-panel-header">
                   <strong>Sự kiện trong phiên bản</strong>
                   <span>{revisionDetail.events.length}</span>
                 </div>
                 <div className="bible-canon-list">
                   {revisionDetail.events.map((event) => (
-                    <div key={event.id} className="bible-canon-list-item">
+                    <div key={event.id} className="bible-canon-list-item su-that-page__flow-item">
                       <div>
                         <strong>{translateOpType(event.op_type)}</strong>
                         <p>{event.summary || event.subject_name || event.fact_description || 'Sự kiện truyện'}</p>
                       </div>
-                      <span className="bible-canon-meta">{buildSceneLabel(event.scene_id)}</span>
+                      <span className="bible-canon-meta" title={buildSceneLabel(event.scene_id)}>
+                        {buildSceneLabel(event.scene_id)}
+                      </span>
                     </div>
                   ))}
                   {revisionDetail.events.length === 0 && (
@@ -860,7 +890,7 @@ export default function CanonTruth() {
                 </div>
               </div>
 
-              <div className="bible-canon-panel">
+              <div className="bible-canon-panel su-that-page__detail-panel su-that-page__detail-panel--evidence">
                 <div className="bible-canon-panel-header">
                   <strong>Bộ xem bằng chứng</strong>
                   <span>{revisionDetail.evidence.length}</span>
@@ -871,7 +901,7 @@ export default function CanonTruth() {
                       <button
                         key={item.id}
                         type="button"
-                        className={`bible-canon-list-item bible-canon-list-item--interactive ${selectedEvidence?.id === item.id ? 'is-selected' : ''}`}
+                        className={`bible-canon-list-item bible-canon-list-item--interactive su-that-page__flow-item ${selectedEvidence?.id === item.id ? 'is-selected' : ''}`}
                         onClick={() => setSelectedEvidenceId(item.id)}
                       >
                         <div>
@@ -898,32 +928,32 @@ export default function CanonTruth() {
                 </div>
               </div>
 
-              <div className="bible-canon-panel">
+              <div className="bible-canon-panel su-that-page__detail-panel su-that-page__detail-panel--reports">
                 <div className="bible-canon-panel-header">
                   <strong>Báo cáo kiểm tra</strong>
                   <span>{revisionDetail.reports.length}</span>
                 </div>
                 <div className="bible-canon-list">
                   {revisionDetail.reports.map((report) => (
-                    <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--${report.severity}`}>
-                      <div className="su-that-page__report-row">
-                        <div>
-                          <strong>{translateSeverity(report.severity)}</strong>
-                          <p>{report.message}</p>
-                        </div>
-                        <div className="su-that-page__report-actions">
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm"
-                            onClick={() => handleGenerateRepair(report.id)}
-                            disabled={scopedRepairPreview?.loading}
-                          >
-                            {scopedRepairPreview?.loading && scopedRepairPreview?.reportId === report.id ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
-                            Gợi ý sửa
-                          </button>
-                        </div>
+                    <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--${report.severity} su-that-page__report-item`}>
+                      <div className="su-that-page__report-heading">
+                        <strong>{translateSeverity(report.severity)}</strong>
+                        <span className="bible-canon-meta" title={buildSceneLabel(report.scene_id)}>
+                          {buildSceneLabel(report.scene_id)}
+                        </span>
                       </div>
-                      <span className="bible-canon-meta">{buildSceneLabel(report.scene_id)}</span>
+                      <p className="su-that-page__report-message">{report.message}</p>
+                      <div className="su-that-page__report-actions">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => handleGenerateRepair(report.id)}
+                          disabled={scopedRepairPreview?.loading}
+                        >
+                          {scopedRepairPreview?.loading && scopedRepairPreview?.reportId === report.id ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
+                          Gợi ý sửa
+                        </button>
+                      </div>
                     </div>
                   ))}
                   {revisionDetail.reports.length === 0 && (
@@ -932,7 +962,7 @@ export default function CanonTruth() {
                 </div>
               </div>
 
-              <div className="bible-canon-panel">
+              <div className="bible-canon-panel su-that-page__detail-panel su-that-page__detail-panel--snapshot">
                 <div className="bible-canon-panel-header">
                   <strong>Ảnh chụp trạng thái</strong>
                   <span>{revisionDetail.snapshotData ? 'Có' : 'Không'}</span>
@@ -949,7 +979,7 @@ export default function CanonTruth() {
                       </div>
                       <div className="bible-canon-list">
                         {(revisionDetail.snapshotData.entityStates || []).slice(0, 4).map((state) => (
-                          <div key={`snap-entity-${state.entity_id}`} className="bible-canon-list-item">
+                          <div key={`snap-entity-${state.entity_id}`} className="bible-canon-list-item su-that-page__flow-item">
                             <div>
                               <strong>{characterNameMap.get(state.entity_id) || `Nhân vật #${state.entity_id}`}</strong>
                               <p>{buildCharacterStateSummary(state)}</p>
@@ -957,7 +987,7 @@ export default function CanonTruth() {
                           </div>
                         ))}
                         {(revisionDetail.snapshotData.itemStates || []).slice(0, 2).map((state) => (
-                          <div key={`snap-item-${state.object_id}`} className="bible-canon-list-item">
+                          <div key={`snap-item-${state.object_id}`} className="bible-canon-list-item su-that-page__flow-item">
                             <div>
                               <strong>{state.object_name || `Vật phẩm #${state.object_id}`}</strong>
                               <p>{translateStatus(state.availability || 'available')}</p>
@@ -967,7 +997,7 @@ export default function CanonTruth() {
                         {(revisionDetail.snapshotData.relationshipStates || []).slice(0, 2).map((state) => {
                           const details = buildRelationshipSummary(state, characterNameMap);
                           return (
-                            <div key={`snap-rel-${state.pair_key}`} className="bible-canon-list-item">
+                            <div key={`snap-rel-${state.pair_key}`} className="bible-canon-list-item su-that-page__flow-item">
                               <div>
                                 <strong>{details.pairLabel}</strong>
                                 <p>{details.summary || 'Quan hệ đang được theo dõi.'}</p>
@@ -1001,11 +1031,10 @@ export default function CanonTruth() {
 
         <div className="bible-cards-list">
           {activeFacts.map((fact) => (
-            <div key={fact.id} className="bible-edit-card" style={{ gap: 'var(--space-2)' }}>
-              <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <div key={fact.id} className="bible-edit-card su-that-page__fact-card">
+              <div className="su-that-page__fact-editor-row">
                 <select
-                  className="select"
-                  style={{ width: '140px' }}
+                  className="select su-that-page__fact-type"
                   value={fact.fact_type}
                   onChange={(event) => updateCanonFact(fact.id, { fact_type: event.target.value })}
                 >
@@ -1014,17 +1043,17 @@ export default function CanonTruth() {
                   <option value="rule">Quy tắc</option>
                 </select>
                 <input
-                  className="input"
-                  style={{ flex: 1 }}
+                  className="input su-that-page__fact-description"
                   value={fact.description}
                   onChange={(event) => updateCanonFact(fact.id, { description: event.target.value })}
                   placeholder="Mô tả sự thật, bí mật hoặc quy tắc..."
                 />
                 <button
-                  className="btn btn-icon text-danger"
+                  className="btn btn-icon text-danger su-that-page__fact-archive"
                   type="button"
                   onClick={() => updateCanonFact(fact.id, { status: 'deprecated' })}
                   title="Lưu trữ"
+                  aria-label="Lưu trữ sự thật này"
                 >
                   ×
                 </button>

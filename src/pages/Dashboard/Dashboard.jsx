@@ -18,11 +18,13 @@ import {
   FileJson,
   MessageSquare,
   Menu,
+  Palette,
   ArchiveRestore,
   PackageOpen,
 } from 'lucide-react';
 import NewProjectModal from './NewProjectModal';
 import ExportModal from '../../components/common/ExportModal';
+import ThemePicker from '../../components/common/ThemePicker.jsx';
 import MobileSheet from '../../components/mobile/MobileSheet';
 import MobileNavigationMenu from '../../components/mobile/MobileNavigationMenu.jsx';
 import SupportDonateModal from '../../components/support/SupportDonateModal.jsx';
@@ -220,6 +222,21 @@ export default function Dashboard() {
       </div>
 
       <div className="dashboard-content">
+        {isMobileLayout ? (
+          <section className="dashboard-mobile-theme" aria-labelledby="dashboard-mobile-theme-title">
+            <div className="dashboard-mobile-theme__header">
+              <span className="dashboard-mobile-theme__icon" aria-hidden="true">
+                <Palette size={18} />
+              </span>
+              <div>
+                <h2 id="dashboard-mobile-theme-title">Đổi giao diện</h2>
+                <p>Áp dụng ngay cho toàn bộ StoryForge.</p>
+              </div>
+            </div>
+            <ThemePicker variant="dashboard" />
+          </section>
+        ) : null}
+
         <section className="dashboard-tools card animate-slide-up">
           <div className="dashboard-tools__grid">
             {VISIBLE_UTILITY_ITEMS.map((item) => {

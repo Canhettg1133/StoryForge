@@ -62,6 +62,7 @@ function loadProxyRuntimeContext(fetchImpl) {
   vm.createContext(context);
 
   [
+    'public/translator-runtime/js/translation/request-contract.js',
     'public/translator-runtime/js/translation/errors.js',
     'public/translator-runtime/js/app.js',
     'public/translator-runtime/js/ui/settings.js',
@@ -989,7 +990,7 @@ describe('phase10 translator proxy key rotation', () => {
     ]);
   });
 
-  it('sends the prompted source text for each Gemini Direct chunk request', async () => {
+  it('separates system prompt from source text for each Gemini Direct chunk request', async () => {
     const requests = [];
     const context = loadProxyRuntimeContext(async (url, options = {}) => {
       const body = JSON.parse(options.body);
@@ -1036,14 +1037,14 @@ describe('phase10 translator proxy key rotation', () => {
 
     expect(requests).toHaveLength(2);
     const requestTexts = requests.map((body) => body.contents[0].parts[0].text);
-    expect(requestTexts[0]).toContain('PROMPT_SENTINEL');
+    expect(requestTexts[0]).not.toContain('PROMPT_SENTINEL');
     expect(requestTexts[0]).toContain('CHUNK_ONE_SENTINEL');
     expect(requestTexts[0]).not.toContain('CHUNK_TWO_SENTINEL');
-    expect(requestTexts[0]).toContain('VĂN BẢN CẦN BIÊN TẬP:');
-    expect(requestTexts[1]).toContain('PROMPT_SENTINEL');
+    expect(requestTexts[0]).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
+    expect(requestTexts[1]).not.toContain('PROMPT_SENTINEL');
     expect(requestTexts[1]).toContain('CHUNK_TWO_SENTINEL');
     expect(requestTexts[1]).not.toContain('CHUNK_ONE_SENTINEL');
-    expect(requestTexts[1]).toContain('VĂN BẢN CẦN BIÊN TẬP:');
+    expect(requestTexts[1]).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
 
     const systemTexts = requests.map((body) => body.systemInstruction.parts[0].text);
     expect(systemTexts[0]).toContain('PROMPT_SENTINEL');
@@ -1056,11 +1057,11 @@ describe('phase10 translator proxy key rotation', () => {
     expect(systemTexts[1]).not.toContain('VĂN BẢN CẦN BIÊN TẬP:');
   });
 
-  it('sends the prompted source text for each Custom Proxy chunk request', async () => {
-    const requestTexts = [];
+  it('separates system and user messages for each Custom Proxy chunk request', async () => {
+    const requestMessages = [];
     const context = loadProxyRuntimeContext(async (url, options = {}) => {
       const body = JSON.parse(options.body);
-      requestTexts.push(body.messages[0].content);
+      requestMessages.push(body.messages);
       return {
         ok: true,
         status: 200,
@@ -1107,20 +1108,22 @@ describe('phase10 translator proxy key rotation', () => {
       );
     }
 
-    expect(requestTexts).toHaveLength(2);
-    expect(requestTexts[0]).toContain('PROMPT_SENTINEL');
-    expect(requestTexts[0]).toContain('CHUNK_ONE_SENTINEL');
-    expect(requestTexts[0]).not.toContain('CHUNK_TWO_SENTINEL');
-    expect(requestTexts[1]).toContain('PROMPT_SENTINEL');
-    expect(requestTexts[1]).toContain('CHUNK_TWO_SENTINEL');
-    expect(requestTexts[1]).not.toContain('CHUNK_ONE_SENTINEL');
+    expect(requestMessages).toHaveLength(2);
+    expect(requestMessages[0][0]).toMatchObject({ role: 'system', content: expect.stringContaining('PROMPT_SENTINEL') });
+    expect(requestMessages[0][1]).toMatchObject({ role: 'user', content: expect.stringContaining('CHUNK_ONE_SENTINEL') });
+    expect(requestMessages[0][1].content).not.toContain('CHUNK_TWO_SENTINEL');
+    expect(requestMessages[0][1].content).not.toContain('PROMPT_SENTINEL');
+    expect(requestMessages[1][0]).toMatchObject({ role: 'system', content: expect.stringContaining('PROMPT_SENTINEL') });
+    expect(requestMessages[1][1]).toMatchObject({ role: 'user', content: expect.stringContaining('CHUNK_TWO_SENTINEL') });
+    expect(requestMessages[1][1].content).not.toContain('CHUNK_ONE_SENTINEL');
+    expect(requestMessages[1][1].content).not.toContain('PROMPT_SENTINEL');
   });
 
-  it('sends the prompted source text for each AG Proxy relay chunk request', async () => {
-    const requestTexts = [];
+  it('separates system and user messages for each AG Proxy relay chunk request', async () => {
+    const requestMessages = [];
     const context = loadProxyRuntimeContext(async (url, options = {}) => {
       const body = JSON.parse(options.body);
-      requestTexts.push(body.payload.messages[0].content);
+      requestMessages.push(body.payload.messages);
       return {
         ok: true,
         status: 200,
@@ -1163,13 +1166,15 @@ describe('phase10 translator proxy key rotation', () => {
       );
     }
 
-    expect(requestTexts).toHaveLength(2);
-    expect(requestTexts[0]).toContain('PROMPT_SENTINEL');
-    expect(requestTexts[0]).toContain('CHUNK_ONE_SENTINEL');
-    expect(requestTexts[0]).not.toContain('CHUNK_TWO_SENTINEL');
-    expect(requestTexts[1]).toContain('PROMPT_SENTINEL');
-    expect(requestTexts[1]).toContain('CHUNK_TWO_SENTINEL');
-    expect(requestTexts[1]).not.toContain('CHUNK_ONE_SENTINEL');
+    expect(requestMessages).toHaveLength(2);
+    expect(requestMessages[0][0]).toMatchObject({ role: 'system', content: expect.stringContaining('PROMPT_SENTINEL') });
+    expect(requestMessages[0][1]).toMatchObject({ role: 'user', content: expect.stringContaining('CHUNK_ONE_SENTINEL') });
+    expect(requestMessages[0][1].content).not.toContain('CHUNK_TWO_SENTINEL');
+    expect(requestMessages[0][1].content).not.toContain('PROMPT_SENTINEL');
+    expect(requestMessages[1][0]).toMatchObject({ role: 'system', content: expect.stringContaining('PROMPT_SENTINEL') });
+    expect(requestMessages[1][1]).toMatchObject({ role: 'user', content: expect.stringContaining('CHUNK_TWO_SENTINEL') });
+    expect(requestMessages[1][1].content).not.toContain('CHUNK_ONE_SENTINEL');
+    expect(requestMessages[1][1].content).not.toContain('PROMPT_SENTINEL');
   });
 
   it('cooldowns a direct Gemini pair after repeated Google 500 errors and retries another pair', async () => {
@@ -1328,7 +1333,8 @@ describe('phase10 translator proxy key rotation', () => {
 
     expect(result).toContain('Bản dịch tiếng Việt hợp lệ');
     expect(requests).toHaveLength(5);
-    expect(requests.every(({ body }) => body.contents[0].parts[0].text.includes('VĂN BẢN CẦN BIÊN TẬP:'))).toBe(true);
+    expect(requests.every(({ body }) => body.contents[0].parts[0].text.includes('Đoạn nguồn cần dịch'))).toBe(true);
+    expect(requests.every(({ body }) => !body.contents[0].parts[0].text.includes('VĂN BẢN CẦN BIÊN TẬP:'))).toBe(true);
     expect(requests.every(({ body }) => body.systemInstruction.parts[0].text.includes('RETRY_PROMPT_SENTINEL'))).toBe(true);
     expect(requests.every(({ body }) => !body.systemInstruction.parts[0].text.includes('VĂN BẢN CẦN BIÊN TẬP:'))).toBe(true);
     expect(requests.map(({ body }) => body.generationConfig.temperature)).toEqual([0.7, 0.9, 0.5, 1.0, 0.3]);

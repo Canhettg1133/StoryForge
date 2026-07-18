@@ -41,6 +41,14 @@
 .settings-section-header h2 { font-size: var(--text-lg); font-weight: var(--weight-bold); margin-bottom: 2px; }
 .settings-section-header p { font-size: var(--text-sm); color: var(--color-text-tertiary); }
 
+.settings-appearance {
+  background: var(--color-surface-1, var(--color-surface));
+}
+
+.settings-appearance .settings-section-header {
+  margin-bottom: var(--space-4);
+}
+
 .settings-section-header--with-action {
   align-items: center;
   justify-content: space-between;

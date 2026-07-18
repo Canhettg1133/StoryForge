@@ -509,6 +509,11 @@ async function continueFromHistory(id) {
         return;
     }
 
+    if (!isLargeHistoryItem(item) && item.sessionId && typeof getTranslatorSession === 'function') {
+        const session = await getTranslatorSession(item.sessionId);
+        if (session && typeof setCurrentTranslatorSession === 'function') setCurrentTranslatorSession(session);
+    }
+
     if (isLargeHistoryItem(item) && item.sessionId && typeof loadTranslatorSessionIntoWorkspace === 'function') {
         const session = await loadTranslatorSessionIntoWorkspace(item.sessionId);
         if (!session) return;
@@ -596,6 +601,11 @@ async function loadFromHistory(id) {
         showToast(`Đã tải "${item.name}" từ lịch sử cục bộ.`, 'success');
         document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth' });
         return;
+    }
+
+    if (item.sessionId && typeof getTranslatorSession === 'function') {
+        const session = await getTranslatorSession(item.sessionId);
+        if (session && typeof setCurrentTranslatorSession === 'function') setCurrentTranslatorSession(session);
     }
 
     document.getElementById('originalText').value = item.originalText;

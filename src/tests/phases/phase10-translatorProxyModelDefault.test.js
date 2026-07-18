@@ -52,7 +52,7 @@ function loadRuntime({ savedSettings = null } = {}) {
     customProxyChatPreview: { textContent: '' },
     customProxyModelsPreview: { textContent: '' },
     customProxyKeysList: { innerHTML: '' },
-    customProxyKeyCount: { textContent: '', style: {} },
+    customProxyKeyCount: { textContent: '', style: {}, dataset: {} },
     customProxyModelInput: { id: 'customProxyModelInput', value: '' },
     customProxyModelStatus: { textContent: '', className: '' },
     activateGeminiDirectButton: { textContent: '', disabled: false, classList: createClassList(), setAttribute() {} },
@@ -128,14 +128,15 @@ describe('phase10 translator proxy model default', () => {
     expect(html).toContain('id="customProxyModelPicker"');
     expect(html).toContain('Lấy models');
     expect(html).toContain('Nhập model thủ công');
-    expect(html).toContain('href="style.css?v=18"');
+    expect(html).toContain('src="js/theme.js?v=2"');
+    expect(html).toContain('href="style.css?v=23"');
     expect(html).toContain('src="js/app.js?v=19"');
     expect(html).toContain('src="js/gemini/model-rotation.js?v=16"');
     expect(html).toContain('src="js/gemini/api.js?v=17"');
     expect(html).toContain('src="js/translation/retry.js?v=17"');
     expect(html).toContain('src="js/translation/engine.js?v=17"');
     expect(html).toContain('src="js/ui/chunk-tracker.js?v=16"');
-    expect(html).toContain('src="js/proxy/proxy-api.js?v=16"');
+    expect(html).toContain('src="js/proxy/proxy-api.js?v=17"');
     expect(html).toContain('src="js/init.js?v=16"');
   });
 

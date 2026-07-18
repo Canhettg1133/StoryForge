@@ -55,9 +55,11 @@ import {
   Key, Server, Cpu, Cloud, Trash2, Eye, EyeOff, CheckCircle, XCircle,
   Zap, Gauge, Crown, RefreshCw, TestTube, Download, Upload, Copy, Check,
   Plus, X, BookOpen, ExternalLink, ArrowLeft, ChevronsUpDown, Sparkles,
+  Palette,
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
 import AccountAccessSummary from '../../components/access/AccountAccessSummary.jsx';
+import ThemePicker from '../../components/common/ThemePicker.jsx';
 import useMobileLayout from '../../hooks/useMobileLayout';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { useUserAccess } from '../../hooks/useUserAccess';
@@ -1416,6 +1418,17 @@ export default function Settings() {
       </header>
 
       <div className="settings-sections">
+        <section className="settings-section settings-appearance card animate-slide-up" id="appearance-settings">
+          <div className="settings-section-header">
+            <Palette size={20} />
+            <div>
+              <h2>Giao diện</h2>
+              <p>Chọn tông màu phù hợp với thời gian đọc và viết. Thay đổi được áp dụng ngay.</p>
+            </div>
+          </div>
+          <ThemePicker variant="settings" />
+        </section>
+
         <AccountAccessSummary />
 
         <section className="settings-section card animate-slide-up" id="gemini-guides">

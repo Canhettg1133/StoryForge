@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   BookKey,
@@ -15,20 +15,20 @@ import {
   Languages,
   Map,
   MessageSquare,
-  Moon,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
   PenTool,
   Settings,
   Sparkles,
-  Sun,
   Users,
 } from 'lucide-react';
 import { shouldShowNavItem } from '../../config/productSurface';
+import { getThemeDefinition } from '../../config/themes.js';
 import useProjectStore from '../../stores/projectStore';
 import useUIStore from '../../stores/uiStore';
 import ArcNavigator from './ArcNavigator';
+import ThemePicker from './ThemePicker.jsx';
 import './Sidebar.css';
 
 const RAW_NAV_ITEMS = [
@@ -111,8 +111,11 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { projectId } = useParams();
-  const { sidebarCollapsed, toggleSidebar, theme, toggleTheme } = useUIStore();
+  const { sidebarCollapsed, toggleSidebar, theme } = useUIStore();
   const { currentProject, chapters, activeChapterId } = useProjectStore();
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const themeTriggerRef = useRef(null);
+  const themePopoverRef = useRef(null);
   const [isNarrowViewport, setIsNarrowViewport] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.matchMedia(SIDEBAR_COLLAPSE_QUERY).matches;
@@ -134,6 +137,28 @@ export default function Sidebar() {
     return () => mediaQuery.removeListener(handleChange);
   }, []);
 
+  useEffect(() => {
+    if (!themeMenuOpen) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (themeTriggerRef.current?.contains(event.target)) return;
+      if (themePopoverRef.current?.contains(event.target)) return;
+      setThemeMenuOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      setThemeMenuOpen(false);
+      themeTriggerRef.current?.focus();
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [themeMenuOpen]);
+
   const routeProjectId = projectId || null;
   const appScopedProjectId = ['/settings', '/login'].includes(location.pathname) ? currentProject?.id || null : null;
   const activeProjectId = routeProjectId || appScopedProjectId;
@@ -151,6 +176,7 @@ export default function Sidebar() {
   const visibleNavItems = baseVisibleNavItems;
   const isAutoCollapsed = isNarrowViewport;
   const isCollapsed = isAutoCollapsed || sidebarCollapsed;
+  const activeTheme = getThemeDefinition(theme);
 
   const handleNav = (item) => {
     if (item.needsProject && !activeProjectId) return;
@@ -219,7 +245,13 @@ export default function Sidebar() {
               key={item.id}
               className={`sidebar-item ${isActive ? 'sidebar-item--active' : ''} ${isDisabled ? 'sidebar-item--disabled' : ''} ${item.primary ? 'sidebar-item--primary' : ''} ${isComingSoon ? 'sidebar-item--coming-soon' : ''}`}
               onClick={() => handleNav(item)}
-              title={isCollapsed ? (item.comingSoon ? `${item.label} (Sắp có)` : item.label) : undefined}
+              disabled={isDisabled}
+              aria-disabled={isDisabled || undefined}
+              title={isDisabled
+                ? `Chọn truyện trước để mở ${item.label}`
+                : isCollapsed
+                  ? (item.comingSoon ? `${item.label} (Sắp có)` : item.label)
+                  : undefined}
             >
               <Icon size={18} />
               {!isCollapsed && <span>{item.label}</span>}
@@ -231,10 +263,47 @@ export default function Sidebar() {
       </nav>
 
       <div className="sidebar-footer">
-        <button className="btn btn-ghost btn-icon btn-sm" onClick={toggleTheme} title={theme === 'dark' ? 'Chuyển sang sáng' : 'Chuyển sang tối'}>
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        <button
+          ref={themeTriggerRef}
+          type="button"
+          className={`sidebar-theme-trigger ${isCollapsed ? 'sidebar-theme-trigger--collapsed' : ''}`}
+          onClick={() => setThemeMenuOpen((open) => !open)}
+          title={isCollapsed ? `Giao diện: ${activeTheme.shortLabel}` : undefined}
+          aria-label={`Giao diện hiện tại: ${activeTheme.label}`}
+          aria-expanded={themeMenuOpen}
+          aria-controls="sidebar-theme-popover"
+        >
+          <Palette size={17} aria-hidden="true" />
+          {!isCollapsed ? (
+            <span className="sidebar-theme-trigger__copy">
+              <span>Giao diện</span>
+              <small>{activeTheme.shortLabel}</small>
+            </span>
+          ) : null}
         </button>
       </div>
+
+      {themeMenuOpen ? (
+        <div
+          ref={themePopoverRef}
+          className={`sidebar-theme-popover ${isCollapsed ? 'sidebar-theme-popover--collapsed' : ''}`}
+          id="sidebar-theme-popover"
+          role="dialog"
+          aria-label="Chọn giao diện StoryForge"
+        >
+          <div className="sidebar-theme-popover__header">
+            <strong>Giao diện</strong>
+            <span>{activeTheme.shortLabel}</span>
+          </div>
+          <ThemePicker
+            variant="sidebar"
+            onSelect={() => {
+              setThemeMenuOpen(false);
+              themeTriggerRef.current?.focus();
+            }}
+          />
+        </div>
+      ) : null}
     </aside>
   );
 }

@@ -28,7 +28,7 @@
 .su-that-page__subtitle {
   margin: 0;
   max-width: 960px;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   line-height: 1.6;
 }
 
@@ -77,10 +77,18 @@
 
 .su-that-page__panel-title {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: var(--space-3);
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+  align-items: center;
   margin-bottom: var(--space-3);
+}
+
+.su-that-page__panel-title-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .su-that-page__panel-title strong {
@@ -89,10 +97,14 @@
 }
 
 .su-that-page__panel-title p {
-  margin: 4px 0 0;
-  color: var(--color-text-muted);
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--color-text-secondary);
   font-size: 12px;
   line-height: 1.5;
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-wrap: pretty;
 }
 
 .su-that-page__panel-icon {
@@ -106,34 +118,93 @@
   color: var(--color-text);
 }
 
+.su-that-page__panel-count {
+  min-width: 28px;
+  height: 24px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.su-that-page__panel-count--warning {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.su-that-page__panel-count--danger {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.su-that-page__panel-count--accent {
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.1);
+}
+
 .su-that-page__compact-list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 0;
+  margin-top: var(--space-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .su-that-page__compact-item {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  padding: var(--space-3) 0;
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.su-that-page__compact-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.su-that-page__compact-heading {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: var(--space-2);
-  align-items: start;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .su-that-page__compact-item strong {
-  display: block;
+  min-width: 0;
   font-size: 13px;
-  margin-bottom: 4px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
 }
 
 .su-that-page__compact-item p {
   margin: 0;
   font-size: 12px;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   line-height: 1.45;
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-wrap: pretty;
+}
+
+.su-that-page__compact-badge {
+  flex: 0 1 auto;
+  max-width: 58%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .su-that-page__state-grid {
@@ -156,6 +227,102 @@
   gap: var(--space-3);
 }
 
+.su-that-page__flow-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-2);
+  row-gap: 6px;
+  align-items: start;
+}
+
+.su-that-page__flow-item > div {
+  display: contents;
+}
+
+.su-that-page__flow-item > div > strong {
+  grid-column: 1;
+  min-width: 0;
+  margin-bottom: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.su-that-page__flow-item > div > p {
+  grid-column: 1 / -1;
+  min-width: 0;
+  max-width: 72ch;
+}
+
+.su-that-page__flow-item > .bible-canon-badge,
+.su-that-page__flow-item > .bible-canon-meta {
+  grid-column: 2;
+  grid-row: 1;
+  display: block;
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-bible.su-that-page .bible-canon-list-item p {
+  color: var(--color-text-secondary);
+  line-height: 1.55;
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-wrap: pretty;
+}
+
+.story-bible.su-that-page .bible-canon-detail-header p,
+.story-bible.su-that-page .bible-canon-evidence-preview p {
+  color: var(--color-text-secondary);
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-wrap: pretty;
+}
+
+.story-bible.su-that-page .bible-canon-detail-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
+}
+
+.su-that-page__detail-panel {
+  min-width: 0;
+}
+
+.su-that-page__detail-panel--events,
+.su-that-page__detail-panel--reports {
+  grid-column: span 3;
+}
+
+.su-that-page__detail-panel--evidence {
+  grid-column: span 6;
+}
+
+.su-that-page__detail-panel--snapshot {
+  grid-column: 1 / -1;
+}
+
+.su-that-page__detail-panel--evidence .bible-canon-evidence-layout {
+  grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
+  gap: var(--space-3);
+}
+
+.su-that-page__detail-panel--evidence .bible-canon-evidence-list,
+.su-that-page__detail-panel--evidence .bible-canon-evidence-preview {
+  min-height: 280px;
+  max-height: 360px;
+}
+
+.su-that-page__detail-panel--evidence .bible-canon-evidence-preview {
+  overflow: auto;
+}
+
+.su-that-page__detail-panel--snapshot .bible-canon-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .su-that-page__fact-meta {
   display: flex;
   justify-content: flex-end;
@@ -172,17 +339,26 @@
 }
 
 .su-that-page__archive-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.su-that-page__archive-row > div:first-child,
+.su-that-page__archive-row > span {
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .su-that-page__archive-actions {
   display: flex;
+  justify-content: flex-end;
   gap: var(--space-2);
   flex-wrap: wrap;
+  padding-top: var(--space-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .su-that-page__feedback {
@@ -210,17 +386,75 @@
   color: var(--color-danger);
 }
 
-.su-that-page__report-row {
+.su-that-page__report-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: stretch;
+}
+
+.su-that-page__report-heading {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.su-that-page__report-heading strong {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+  font-size: 13px;
+}
+
+.su-that-page__report-heading .bible-canon-meta {
+  display: block;
+  min-width: 0;
+  max-width: min(68%, 280px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.su-that-page__report-message {
+  margin: 0;
+  max-width: 70ch;
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-wrap: pretty;
 }
 
 .su-that-page__report-actions {
   display: flex;
+  justify-content: flex-end;
   gap: var(--space-2);
-  flex-shrink: 0;
+}
+
+.su-that-page__report-actions .btn {
+  min-height: 36px;
+}
+
+.su-that-page__fact-card {
+  gap: var(--space-2);
+}
+
+.su-that-page__fact-editor-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr) 40px;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.su-that-page__fact-type,
+.su-that-page__fact-description {
+  width: 100%;
+  min-width: 0;
+}
+
+.su-that-page__fact-archive {
+  width: 40px;
+  min-width: 40px;
+  min-height: 40px;
 }
 
 @media (max-width: 1400px) {
@@ -237,8 +471,18 @@
     grid-column: span 6;
   }
 
-  .su-that-page__log-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .story-bible.su-that-page .bible-canon-detail-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .su-that-page__detail-panel--events,
+  .su-that-page__detail-panel--reports {
+    grid-column: span 4;
+  }
+
+  .su-that-page__detail-panel--evidence,
+  .su-that-page__detail-panel--snapshot {
+    grid-column: span 8;
   }
 }
 
@@ -261,6 +505,20 @@
   .su-that-page__state-panel--wide {
     grid-column: span 1;
   }
+
+  .story-bible.su-that-page .bible-canon-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .su-that-page__detail-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .su-that-page__detail-panel--evidence .bible-canon-evidence-layout,
+  .su-that-page__detail-panel--snapshot .bible-canon-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -269,13 +527,46 @@
     width: 100%;
   }
 
-  .su-that-page__panel-title,
-  .su-that-page__compact-item {
+  .su-that-page__report-heading {
+    align-items: flex-start;
+  }
+
+  .su-that-page__report-heading .bible-canon-meta {
+    max-width: 65%;
+  }
+
+  .su-that-page__flow-item > .bible-canon-badge,
+  .su-that-page__flow-item > .bible-canon-meta {
+    max-width: 42vw;
+  }
+
+  .su-that-page__report-actions {
+    width: 100%;
+    display: grid;
     grid-template-columns: 1fr;
   }
 
-  .su-that-page__report-row {
-    flex-direction: column;
+  .su-that-page__report-actions .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .su-that-page__fact-editor-row {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    align-items: stretch;
+  }
+
+  .su-that-page__fact-description {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .su-that-page__fact-archive {
+    grid-column: 2;
+    grid-row: 1;
+    width: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 
@@ -354,11 +645,8 @@
     border-radius: 8px;
   }
 
-  .project-mobile-shell .su-that-page__panel-title,
-  .project-mobile-shell .su-that-page__compact-item,
   .project-mobile-shell .bible-canon-panel-header,
   .project-mobile-shell .bible-canon-detail-header,
-  .project-mobile-shell .su-that-page__report-row,
   .project-mobile-shell .su-that-page__archive-row {
     display: flex;
     flex-direction: column;
@@ -367,6 +655,10 @@
 
   .project-mobile-shell .su-that-page__panel-title {
     gap: 10px;
+  }
+
+  .project-mobile-shell .su-that-page__compact-badge {
+    max-width: 55%;
   }
 
   .project-mobile-shell .bible-canon-detail-actions,

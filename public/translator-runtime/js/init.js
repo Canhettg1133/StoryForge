@@ -83,6 +83,10 @@ if (typeof retryIssueChunks === 'function') window.retryIssueChunks = retryIssue
 if (typeof focusFirstIssueChunk === 'function') window.focusFirstIssueChunk = focusFirstIssueChunk;
 if (typeof downloadMarkedIssueResult === 'function') window.downloadMarkedIssueResult = downloadMarkedIssueResult;
 if (typeof toggleChunkTracker === 'function') window.toggleChunkTracker = toggleChunkTracker;
+if (typeof scanStoryPrompt === 'function') window.scanStoryPrompt = scanStoryPrompt;
+if (typeof refineStoryPromptFromFeedback === 'function') window.refineStoryPromptFromFeedback = refineStoryPromptFromFeedback;
+if (typeof toggleStoryPromptEnabled === 'function') window.toggleStoryPromptEnabled = toggleStoryPromptEnabled;
+if (typeof saveStoryPromptText === 'function') window.saveStoryPromptText = saveStoryPromptText;
 
 // Translator local session, start search, and queue functions
 if (typeof handleStartChunkSearchInput === 'function') window.handleStartChunkSearchInput = handleStartChunkSearchInput;
@@ -150,6 +154,8 @@ const TRANSLATOR_CLICK_ACTIONS = Object.freeze({
     refreshCanonPackSelector: () => refreshCanonPackSelector(),
     applySelectedCanonPackToPrompt: () => applySelectedCanonPackToPrompt(),
     clearFile: () => clearFile(),
+    scanStoryPrompt: () => scanStoryPrompt(),
+    refineStoryPromptFromFeedback: () => refineStoryPromptFromFeedback(),
     selectStartChunk: element => selectStartChunk(Number(element.dataset.chunkIndex), Number(element.dataset.byteStart)),
     startTranslation: () => startTranslation(),
     downloadPartial: () => downloadPartial(),
@@ -196,6 +202,8 @@ const TRANSLATOR_CHANGE_ACTIONS = Object.freeze({
     selectOllamaModel: () => selectOllamaModel(),
     importHistory: (_element, event) => importHistory(event),
     handleCanonPackToggle: () => handleCanonPackToggle(),
+    toggleStoryPromptEnabled: () => toggleStoryPromptEnabled(),
+    saveStoryPromptScanRequestCount: () => saveStoryPromptScanRequestCount(),
     selectCanonPack: (element) => {
         selectedCanonPackId = element.value;
         saveSettings();
@@ -205,6 +213,7 @@ const TRANSLATOR_CHANGE_ACTIONS = Object.freeze({
 
 const TRANSLATOR_INPUT_ACTIONS = Object.freeze({
     saveCustomPrompt: () => saveCustomPrompt(),
+    saveStoryPromptText: () => saveStoryPromptText(),
     setCustomProxyModelSearch: element => setCustomProxyModelSearch(element.value),
     handleStartChunkSearchInput: () => handleStartChunkSearchInput(),
 });

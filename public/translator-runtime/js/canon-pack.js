@@ -82,6 +82,15 @@ function stripCanonPackTranslationContext(promptText) {
     return withoutBoundedBlocks.slice(0, startIndex).trim();
 }
 
+function getCanonPackTranslationContext(promptText) {
+    const text = String(promptText || '');
+    const startIndex = text.indexOf(CANON_PACK_PROMPT_START);
+    if (startIndex < 0) return '';
+    const endIndex = text.indexOf(CANON_PACK_PROMPT_END, startIndex);
+    if (endIndex < 0) return text.slice(startIndex).trim();
+    return text.slice(startIndex, endIndex + CANON_PACK_PROMPT_END.length).trim();
+}
+
 function applyCanonPackPromptToTranslatorPrompt(basePrompt, canonPrompt) {
     const base = stripCanonPackTranslationContext(basePrompt);
     const canon = String(canonPrompt || '').trim();

@@ -123,7 +123,11 @@ export default function MindMapView({
           style={{
             ...nodeStyle,
             borderColor: node.color || '#9ca3af',
-            backgroundColor: isRoot ? '#1e293b' : isCategory ? '#334155' : undefined,
+            backgroundColor: isRoot
+              ? 'var(--color-bg-elevated)'
+              : isCategory
+                ? 'var(--color-bg-tertiary)'
+                : undefined,
           }}
           onClick={(e) => {
             e.stopPropagation();
@@ -170,7 +174,7 @@ export default function MindMapView({
               y1={pos.y}
               x2={pos.x + 120}
               y2={pos.y}
-              stroke="#475569"
+              stroke="var(--color-border-strong)"
               strokeWidth="2"
             />
           </svg>

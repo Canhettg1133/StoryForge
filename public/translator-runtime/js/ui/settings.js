@@ -306,6 +306,11 @@ function toggleSettingsPanels(forceOpen) {
         ? forceOpen
         : hub.style.display === 'none';
 
+    if (shouldOpen) {
+        toggleHistoryPanel(false);
+        if (typeof toggleTranslationQueuePanel === 'function') toggleTranslationQueuePanel(false);
+    }
+
     hub.style.display = shouldOpen ? '' : 'none';
     if (!shouldOpen) {
         closeAllConfigGroups();
@@ -357,6 +362,11 @@ function toggleHistoryPanel(forceOpen) {
     const shouldOpen = typeof forceOpen === 'boolean'
         ? forceOpen
         : panel.style.display === 'none';
+
+    if (shouldOpen) {
+        toggleSettingsPanels(false);
+        if (typeof toggleTranslationQueuePanel === 'function') toggleTranslationQueuePanel(false);
+    }
 
     panel.style.display = shouldOpen ? '' : 'none';
     const toggleBtn = document.getElementById('toggleHistoryBtn');

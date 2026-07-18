@@ -225,15 +225,16 @@ function extractResultFromThinking(thinkingText) {
 }
 
 // Translate with Ollama API
-async function translateWithOllama(text, temperature = 0.7) {
+async function translateWithOllama(text, temperature = 0.7, requestOptions = {}) {
+    const request = typeof normalizeTranslationRequest === 'function'
+        ? normalizeTranslationRequest(text)
+        : { systemText: '', userText: String(text || ''), sourceText: String(text || '') };
     const url = document.getElementById('ollamaUrl').value.trim() || ollamaUrl;
     const model = document.getElementById('ollamaModel').value.trim() || ollamaModel;
 
     const startTime = Date.now();
     console.log(`[Ollama] Calling ${model} at ${url}...`);
-    console.log(`[Ollama] Text length: ${text.length} chars`);
-
-    let processedText = text;
+    console.log(`[Ollama] Text length: ${request.userText.length} chars`);
 
     // Auto-detect model type và lấy settings tối ưu
     const modelType = detectModelType(model);
@@ -257,7 +258,8 @@ async function translateWithOllama(text, temperature = 0.7) {
     const body = {
         model: model,
         messages: [
-            { role: 'user', content: processedText }
+            ...(request.systemText ? [{ role: 'system', content: request.systemText }] : []),
+            { role: 'user', content: request.userText }
         ],
         stream: false,
         options: modelSettings
@@ -376,7 +378,7 @@ async function translateWithOllama(text, temperature = 0.7) {
         }
 
         if (result) {
-            result = cleanGeminiResponse(result);
+            if (requestOptions.cleanResponse !== false) result = cleanGeminiResponse(result);
             console.log(`[Ollama] Final result: ${result.length} chars`);
             return result;
         }
@@ -384,7 +386,7 @@ async function translateWithOllama(text, temperature = 0.7) {
 
     if (data.response) {
         let result = data.response.trim();
-        result = cleanGeminiResponse(result);
+        if (requestOptions.cleanResponse !== false) result = cleanGeminiResponse(result);
         return result;
     }
 

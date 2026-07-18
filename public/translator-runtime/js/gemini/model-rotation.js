@@ -326,7 +326,7 @@ async function sendDirectTranslationAttempt(options = {}) {
     if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
 
     try {
-        const result = await translateChunk(text, modelKeyPair, temperature);
+        const result = await translateChunk(text, modelKeyPair, temperature, options.requestOptions || {});
         return { result, modelKeyPair };
     } catch (error) {
         recordDirectAttemptFailure(error, modelKeyPair);

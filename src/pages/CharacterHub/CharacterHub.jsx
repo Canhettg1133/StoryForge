@@ -19,6 +19,8 @@ import BatchGenerate from '../../components/common/BatchGenerate';
 import RelationshipMap from '../../components/common/RelationshipMap';
 import EntityTimeline from '../../components/common/EntityTimeline';
 import MobileBibleTabs from '../../components/mobile/MobileBibleTabs';
+import { parseCharacterTraits } from '../../utils/characterTraitSuggestions';
+import CharacterTraitPicker from './CharacterTraitPicker';
 import './CharacterHub.css';
 
 const EMPTY_CHARACTER = {
@@ -490,10 +492,10 @@ export default function CharacterHub() {
                     )}
 
                     {char.personality_tags && (
-                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', margin: '4px 0' }}>
-                        {char.personality_tags.split(',').map(t => t.trim()).filter(Boolean).map((t, idx) => (
-                          <span key={idx} style={{ background: 'var(--color-surface-2)', padding: '2px 6px', borderRadius: '4px', fontSize: '11px', color: 'var(--color-accent)' }}>
-                            {t.startsWith('#') ? t : `#${t}`}
+                      <div className="character-card-tags">
+                        {parseCharacterTraits(char.personality_tags).map((tag) => (
+                          <span key={tag} className="character-card-tag" title={tag}>
+                            {`#${tag.replace(/\s+/g, '_')}`}
                           </span>
                         ))}
                       </div>
@@ -577,7 +579,7 @@ export default function CharacterHub() {
       {/* Character Modal */}
       {showModal && (
         <div className="codex-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="codex-modal" onClick={e => e.stopPropagation()}>
+          <div className="codex-modal codex-modal--character" onClick={e => e.stopPropagation()}>
             <div className="codex-modal-header">
               <h3>{editingChar ? 'Sửa nhân vật' : 'Thêm nhân vật mới'}</h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowModal(false)}>
@@ -605,16 +607,6 @@ export default function CharacterHub() {
             <div className="codex-modal-body">
               {modalTab === 'info' ? (
                 <>
-                  <div className="form-group">
-                    <label>Điểm yếu / Khuyết điểm</label>
-                    <textarea
-                      value={form.flaws}
-                      onChange={e => setForm({ ...form, flaws: e.target.value })}
-                      placeholder="Ví dụ: Nóng vội, quá tự tin, bị ảnh hưởng bởi quá khứ..."
-                      rows={2}
-                    />
-                  </div>
-
                   <div className="form-row">
                     <div className="form-group form-group--wide">
                       <label>Tên nhân vật *</label>
@@ -738,6 +730,22 @@ export default function CharacterHub() {
                       placeholder="Trầm tĩnh, lạnh lùng bên ngoài nhưng bảo vệ người thân..."
                       rows={2}
                     />
+                    <span className="form-hint">Mô tả 1–3 câu về cách nhân vật suy nghĩ và phản ứng; dùng tag bên dưới để khóa các nét cốt lõi.</span>
+                  </div>
+
+                  <CharacterTraitPicker
+                    value={form.personality_tags}
+                    onChange={(personalityTags) => setForm({ ...form, personality_tags: personalityTags })}
+                  />
+
+                  <div className="form-group">
+                    <label>Điểm yếu / Khuyết điểm</label>
+                    <textarea
+                      value={form.flaws}
+                      onChange={e => setForm({ ...form, flaws: e.target.value })}
+                      placeholder="Ví dụ: Nóng vội, quá tự tin, sợ bị bỏ rơi, dễ mất bình tĩnh khi bị nghi ngờ..."
+                      rows={2}
+                    />
                   </div>
 
                   <div className="form-group">
@@ -747,16 +755,6 @@ export default function CharacterHub() {
                       onChange={e => setForm({ ...form, speech_pattern: e.target.value })}
                       placeholder={'Ví dụ: Nói chậm rãi, hay dùng "hừm...", gọi mọi người là "tiểu tử".\nKhi tức giận chuyển sang giọng lạnh, cắt ngắn câu.\nKhẩu ngữ: "Ngươi... thật sự muốn chết sao?"'}
                       rows={3}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>Tags Tâm lý / Nét đặc trưng</label>
-                    <input
-                      type="text"
-                      value={form.personality_tags}
-                      onChange={e => setForm({ ...form, personality_tags: e.target.value })}
-                      placeholder="Ví dụ: #Kiên_nhẫn, #Quyết_đoán, #Thâm_trầm"
                     />
                   </div>
 

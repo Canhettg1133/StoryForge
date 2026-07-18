@@ -118,17 +118,19 @@ describe('translator Gemini prohibited-content diagnostics', () => {
     };
 
     vm.createContext(context);
+    runRuntimeFile(context, 'public/translator-runtime/js/translation/request-contract.js');
     runRuntimeFile(context, 'public/translator-runtime/js/translation/retry.js');
     const translateChunkWithRetry = vm.runInContext('translateChunkWithRetry', context);
 
     await expect(translateChunkWithRetry('BASE\n\n[Đoạn nguồn]\ntext', 0, 3))
       .rejects.toMatchObject({ code: 'CONTENT_BLOCKED_PROHIBITED' });
     expect(sentPrompts).toHaveLength(3);
-    expect(sentPrompts[0]).toBe('BASE\n\n[Đoạn nguồn]\ntext');
-    expect(sentPrompts[1]).toContain(':EMPHATIC');
-    expect(sentPrompts[1]).not.toContain('LITERARY:');
-    expect(sentPrompts[2]).toContain('LITERARY:');
-    expect(sentPrompts[2]).toContain(':EMPHATIC');
+    expect(sentPrompts[0]).toMatchObject({ sourceText: 'text' });
+    expect(sentPrompts[0].systemText).toContain('BASE');
+    expect(sentPrompts[1].systemText).toContain(':EMPHATIC');
+    expect(sentPrompts[1].systemText).not.toContain('LITERARY:');
+    expect(sentPrompts[2].systemText).toContain('LITERARY:');
+    expect(sentPrompts[2].systemText).toContain(':EMPHATIC');
   });
 
   it('must propagate the final prohibited-content error instead of fulfilling undefined', async () => {

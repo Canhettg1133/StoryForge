@@ -134,7 +134,7 @@ function renderProxyKeysList() {
 
     if (countBadge) {
         countBadge.textContent = `${count} key xoay tua`;
-        countBadge.style.background = count > 1 ? 'var(--success)' : (count === 1 ? 'var(--accent-primary)' : 'var(--danger)');
+        countBadge.dataset.tone = count > 1 ? 'success' : (count === 1 ? 'active' : 'empty');
     }
 
     if (!container) return;
@@ -144,12 +144,16 @@ function renderProxyKeysList() {
     }
 
     container.innerHTML = proxyApiKeys.map((key, index) => {
-        const keyLabel = String.fromCharCode(65 + index);
         return `
-        <div class="api-key-item">
-            <span class="key-index" style="background: var(--accent-primary)">Key ${keyLabel}</span>
+        <div class="api-key-item proxy-key-item">
+            <span class="key-index" aria-hidden="true">AG${index + 1}</span>
             <span class="key-value">${escapeProxyHtml(maskProxyKey(key))}</span>
-            <button class="remove-btn" type="button" data-click-action="removeProxyKey" data-action-index="${index}" title="Xóa">Xóa</button>
+            <button class="remove-btn" type="button" data-click-action="removeProxyKey" data-action-index="${index}"
+                title="Xóa key" aria-label="Xóa key Gemini Proxy AG số ${index + 1}">
+                <svg class="remove-btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"></path>
+                </svg>
+            </button>
         </div>
     `;
     }).join('');
@@ -1111,7 +1115,7 @@ function renderCustomProxyKeysList() {
     const count = customProxyApiKeys.length;
     if (countBadge) {
         countBadge.textContent = `${count} key xoay tua`;
-        countBadge.style.background = count > 1 ? 'var(--success)' : (count === 1 ? 'var(--accent-primary)' : 'var(--danger)');
+        countBadge.dataset.tone = count > 1 ? 'success' : (count === 1 ? 'active' : 'empty');
     }
     if (!container) return;
     if (count === 0) {
@@ -1119,10 +1123,15 @@ function renderCustomProxyKeysList() {
         return;
     }
     container.innerHTML = customProxyApiKeys.map((key, index) => `
-        <div class="api-key-item">
-            <span class="key-index" style="background: var(--accent-primary)">C${index + 1}</span>
+        <div class="api-key-item proxy-key-item">
+            <span class="key-index" aria-hidden="true">C${index + 1}</span>
             <span class="key-value">${escapeProxyHtml(maskProxyKey(key))}</span>
-            <button class="remove-btn" type="button" data-click-action="removeCustomProxyKey" data-action-index="${index}" title="Xóa">Xóa</button>
+            <button class="remove-btn" type="button" data-click-action="removeCustomProxyKey" data-action-index="${index}"
+                title="Xóa key" aria-label="Xóa key Custom Proxy số ${index + 1}">
+                <svg class="remove-btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5"></path>
+                </svg>
+            </button>
         </div>
     `).join('');
 }

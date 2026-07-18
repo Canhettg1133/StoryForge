@@ -170,6 +170,7 @@ function resetSourceModeToText() {
         notice.textContent = '';
     }
     renderStartChunkPanel();
+    if (typeof renderStoryPromptPanel === 'function') renderStoryPromptPanel();
 }
 
 function getCurrentChunkSizeValue() {
@@ -191,6 +192,7 @@ function setCurrentTranslatorSession(session) {
         const chunkSizeInput = document.getElementById('chunkSize');
         if (chunkSizeInput) chunkSizeInput.value = String(parseInt(session.chunkSize, 10));
     }
+    if (typeof renderStoryPromptPanel === 'function') renderStoryPromptPanel();
 }
 
 async function processTextFile(file) {
@@ -320,6 +322,7 @@ function clearFile() {
     translationStartChunkIndex = 0;
     translationStartByte = 0;
     renderStartChunkPanel();
+    if (typeof renderStoryPromptPanel === 'function') renderStoryPromptPanel();
     updateStats();
 }
 
@@ -521,6 +524,7 @@ async function loadTranslatorSessionIntoWorkspace(sessionId) {
     showFileInfo({ name: session.fileName, size: session.fileSize }, { mode: 'large-file' });
     updateLargeFileNotice();
     renderStartChunkPanel();
+    if (typeof renderStoryPromptPanel === 'function') renderStoryPromptPanel();
     updateStats();
     return session;
 }
@@ -587,6 +591,10 @@ function toggleTranslationQueuePanel(forceOpen) {
     const panel = document.getElementById('translationQueuePanel');
     if (!panel) return;
     const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : panel.style.display === 'none';
+    if (shouldOpen) {
+        if (typeof toggleSettingsPanels === 'function') toggleSettingsPanels(false);
+        if (typeof toggleHistoryPanel === 'function') toggleHistoryPanel(false);
+    }
     panel.style.display = shouldOpen ? '' : 'none';
     const toggleBtn = document.getElementById('toggleQueueBtn');
     if (toggleBtn) toggleBtn.classList.toggle('is-active', shouldOpen);

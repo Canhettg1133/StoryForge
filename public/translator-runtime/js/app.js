@@ -1048,7 +1048,7 @@ async function sendProxyTranslationAttempt(options = {}) {
     }
 
     try {
-        const result = await translateChunkViaProxy(text, temperature, attempt.proxyKey);
+        const result = await translateChunkViaProxy(text, temperature, attempt.proxyKey, true, options.requestOptions || {});
         return {
             result,
             proxyKey: attempt.proxyKey,
