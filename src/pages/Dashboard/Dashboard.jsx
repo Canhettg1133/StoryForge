@@ -91,6 +91,7 @@ export default function Dashboard() {
   const [exportingProject, setExportingProject] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileThemeOpen, setMobileThemeOpen] = useState(false);
   const [donateOpen, setDonateOpen] = useState(false);
   const [coverByProjectId, setCoverByProjectId] = useState({});
   const [bundleExportProject, setBundleExportProject] = useState(null);
@@ -193,16 +194,28 @@ export default function Dashboard() {
             StoryForge
           </h1>
           {isMobileLayout ? (
-            <button
-              type="button"
-              className="dashboard-mobile-menu-button btn btn-ghost"
-              onClick={() => setMobileMenuOpen(true)}
-              aria-expanded={mobileMenuOpen}
-              aria-label="Mở menu điều hướng"
-            >
-              <Menu size={18} />
-              <span>Menu</span>
-            </button>
+            <div className="dashboard-header__mobile-actions">
+              <button
+                type="button"
+                className="dashboard-mobile-theme-button btn btn-ghost"
+                onClick={() => setMobileThemeOpen(true)}
+                aria-expanded={mobileThemeOpen}
+                aria-label="Đổi màu giao diện"
+              >
+                <Palette size={19} />
+                <span>Màu</span>
+              </button>
+              <button
+                type="button"
+                className="dashboard-mobile-menu-button btn btn-ghost"
+                onClick={() => setMobileMenuOpen(true)}
+                aria-expanded={mobileMenuOpen}
+                aria-label="Mở menu điều hướng"
+              >
+                <Menu size={18} />
+                <span>Menu</span>
+              </button>
+            </div>
           ) : null}
         </div>
         <div>
@@ -222,21 +235,6 @@ export default function Dashboard() {
       </div>
 
       <div className="dashboard-content">
-        {isMobileLayout ? (
-          <section className="dashboard-mobile-theme" aria-labelledby="dashboard-mobile-theme-title">
-            <div className="dashboard-mobile-theme__header">
-              <span className="dashboard-mobile-theme__icon" aria-hidden="true">
-                <Palette size={18} />
-              </span>
-              <div>
-                <h2 id="dashboard-mobile-theme-title">Đổi giao diện</h2>
-                <p>Áp dụng ngay cho toàn bộ StoryForge.</p>
-              </div>
-            </div>
-            <ThemePicker variant="dashboard" />
-          </section>
-        ) : null}
-
         <section className="dashboard-tools card animate-slide-up">
           <div className="dashboard-tools__grid">
             {VISIBLE_UTILITY_ITEMS.map((item) => {
@@ -415,6 +413,15 @@ export default function Dashboard() {
       <button className="dashboard-mobile-cta btn btn-primary" onClick={() => setShowModal(true)}>
         <Plus size={18} /> Tạo truyện
       </button>
+
+      <MobileSheet
+        open={mobileThemeOpen}
+        title="Giao diện"
+        kicker="StoryForge"
+        onClose={() => setMobileThemeOpen(false)}
+      >
+        <ThemePicker variant="sheet" />
+      </MobileSheet>
 
       <MobileSheet
         open={mobileMenuOpen}

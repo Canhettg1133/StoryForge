@@ -158,9 +158,10 @@
 }
 
 .continuity-bar-btn--success {
-  border-color: color-mix(in srgb, var(--color-success) 48%, var(--color-border));
-  background: color-mix(in srgb, var(--color-success) 14%, var(--color-bg-tertiary));
-  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 62%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 18%, var(--color-bg-tertiary));
+  color: color-mix(in srgb, var(--color-success) 45%, var(--color-text-primary));
+  font-weight: var(--weight-semibold);
 }
 
 .continuity-bar-btn--warning {
@@ -210,14 +211,17 @@
 }
 
 .continuity-bar-status--completed {
-  border-color: color-mix(in srgb, var(--color-success) 48%, var(--color-border));
-  background: color-mix(in srgb, var(--color-success) 14%, var(--color-bg-tertiary));
-  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 62%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 18%, var(--color-bg-tertiary));
+  color: color-mix(in srgb, var(--color-success) 45%, var(--color-text-primary));
+  font-weight: var(--weight-semibold);
 }
 
 .continuity-bar-status--canonical {
-  border-color: color-mix(in srgb, var(--color-success) 50%, var(--color-border));
-  color: var(--color-success);
+  border-color: color-mix(in srgb, var(--color-success) 62%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 18%, var(--color-bg-tertiary));
+  color: color-mix(in srgb, var(--color-success) 45%, var(--color-text-primary));
+  font-weight: var(--weight-semibold);
 }
 
 .continuity-bar-status--blocked,

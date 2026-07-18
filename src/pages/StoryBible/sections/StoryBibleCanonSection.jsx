@@ -125,7 +125,7 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                 <div className="bible-canon-panel-header"><strong>Trạng thái chương</strong><span>{canonOverview?.chapterCommits?.length || 0}</span></div>
                 <div className="bible-canon-list">
                   {(canonOverview?.chapterCommits || []).map((commit) => (
-                    <button key={commit.id || commit.chapter_id} type="button" className={`bible-canon-list-item bible-canon-list-item--interactive bible-canon-list-item--${commit.status || 'draft'} ${selectedCanonChapterId === commit.chapter_id ? 'is-selected' : ''}`} onClick={() => loadChapterRevisionInspector(commit.chapter_id)}>
+                    <button key={commit.id || commit.chapter_id} type="button" className={`bible-canon-list-item bible-canon-list-item--flow bible-canon-list-item--interactive bible-canon-list-item--${commit.status || 'draft'} ${selectedCanonChapterId === commit.chapter_id ? 'is-selected' : ''}`} onClick={() => loadChapterRevisionInspector(commit.chapter_id)}>
                       <div><strong>{commit.chapter_title}</strong><p>Phiên bản hiện tại: r{commit.current_revision?.revision_number || 0}</p></div>
                       <span className="bible-canon-badge">{translateStatus(commit.status || 'draft')}</span>
                     </button>
@@ -138,7 +138,7 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                 <div className="bible-canon-panel-header"><strong>Trạng thái nhân vật</strong><span>{canonEntityCards.length}</span></div>
                 <div className="bible-canon-list">
                   {canonEntityCards.map((state) => (
-                    <div key={state.id || state.entity_id} className="bible-canon-list-item">
+                    <div key={state.id || state.entity_id} className="bible-canon-list-item bible-canon-list-item--flow">
                       <div><strong>{state.displayName}</strong><p>{state.summaryText || 'Chưa có tóm tắt trạng thái.'}</p></div>
                       <span className={`bible-canon-badge bible-canon-badge--${state.alive_status || 'alive'}`}>{translateStatus(state.alive_status || 'alive')}</span>
                     </div>
@@ -151,7 +151,7 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                 <div className="bible-canon-panel-header"><strong>Trạng thái tuyến truyện</strong><span>{canonOverview?.threadStates?.length || 0}</span></div>
                 <div className="bible-canon-list">
                   {(canonOverview?.threadStates || []).map((threadState) => (
-                    <div key={threadState.id || threadState.thread_id} className="bible-canon-list-item">
+                    <div key={threadState.id || threadState.thread_id} className="bible-canon-list-item bible-canon-list-item--flow">
                       <div><strong>{threadState.thread_title}</strong><p>{threadState.summary || 'Không có tóm tắt tuyến truyện.'}</p></div>
                       <span className={`bible-canon-badge bible-canon-badge--${threadState.state || 'active'}`}>{translateStatus(threadState.state || 'active')}</span>
                     </div>
@@ -164,9 +164,9 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                 <div className="bible-canon-panel-header"><strong>Báo cáo kiểm tra</strong><span>{canonOverview?.recentReports?.length || 0}</span></div>
                 <div className="bible-canon-list">
                   {(canonOverview?.recentReports || []).map((report) => (
-                    <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--${report.severity}`}>
+                    <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--flow bible-canon-list-item--${report.severity}`}>
                       <div><strong>{getCanonReportTitle(report)}</strong><p>{report.message}</p></div>
-                      <span className="bible-canon-meta">{report.chapter_title || 'Bản nháp'}</span>
+                      <span className="bible-canon-meta" title={report.chapter_title || 'Bản nháp'}>{report.chapter_title || 'Bản nháp'}</span>
                     </div>
                   ))}
                   {(canonOverview?.recentReports || []).length === 0 && <p className="text-muted bible-canon-empty">Chưa có báo cáo kiểm tra nào.</p>}
@@ -177,9 +177,9 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                 <div className="bible-canon-panel-header"><strong>Sự kiện gần đây</strong><span>{canonOverview?.recentEvents?.length || 0}</span></div>
                 <div className="bible-canon-list">
                   {(canonOverview?.recentEvents || []).map((event) => (
-                    <div key={event.id} className="bible-canon-list-item">
+                    <div key={event.id} className="bible-canon-list-item bible-canon-list-item--flow">
                       <div><strong>{translateOpType(event.op_type)}</strong><p>{event.subject_name || event.thread_title || event.fact_description || 'Sự kiện canon'}</p></div>
-                      <span className="bible-canon-meta">{event.chapter_title || 'Chương chưa rõ'}</span>
+                      <span className="bible-canon-meta" title={event.chapter_title || 'Chương chưa rõ'}>{event.chapter_title || 'Chương chưa rõ'}</span>
                     </div>
                   ))}
                   {(canonOverview?.recentEvents || []).length === 0 && <p className="text-muted bible-canon-empty">Chưa có sự kiện truyện nào.</p>}
@@ -190,13 +190,13 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                 <div className="bible-canon-panel-header"><strong>Bằng chứng và phiên bản</strong><span>{(canonOverview?.recentEvidence?.length || 0) + (canonOverview?.recentRevisions?.length || 0)}</span></div>
                 <div className="bible-canon-list">
                   {(canonOverview?.recentEvidence || []).map((item) => (
-                    <div key={`evidence-${item.id}`} className="bible-canon-list-item">
+                    <div key={`evidence-${item.id}`} className="bible-canon-list-item bible-canon-list-item--flow">
                       <div><strong>{translateEvidenceType(item.target_type)}</strong><p>{item.evidence_text || item.excerpt || 'Không có nội dung bằng chứng.'}</p></div>
-                      <span className="bible-canon-meta">{item.chapter_title || 'Chương chưa rõ'}</span>
+                      <span className="bible-canon-meta" title={item.chapter_title || 'Chương chưa rõ'}>{item.chapter_title || 'Chương chưa rõ'}</span>
                     </div>
                   ))}
                   {(canonOverview?.recentRevisions || []).map((revision) => (
-                    <div key={`revision-${revision.id}`} className={`bible-canon-list-item bible-canon-list-item--${revision.status || 'draft'}`}>
+                    <div key={`revision-${revision.id}`} className={`bible-canon-list-item bible-canon-list-item--flow bible-canon-list-item--${revision.status || 'draft'}`}>
                       <div><strong>{revision.chapter_title || `Chương ${revision.chapter_id}`}</strong><p>Phiên bản r{revision.revision_number || 0} - {translateStatus(revision.status || 'draft')}</p></div>
                       <span className="bible-canon-meta">Phiên bản</span>
                     </div>
@@ -238,7 +238,7 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                     <div className="bible-canon-panel-header"><strong>Sự kiện trong phiên bản</strong><span>{selectedRevisionDetail.events.length}</span></div>
                     <div className="bible-canon-list">
                       {selectedRevisionDetail.events.map((event) => (
-                        <div key={event.id} className="bible-canon-list-item">
+                        <div key={event.id} className="bible-canon-list-item bible-canon-list-item--flow">
                           <div><strong>{translateOpType(event.op_type)}</strong><p>{event.summary || event.subject_name || event.fact_description || 'Sự kiện canon'}</p></div>
                           <span className="bible-canon-meta">{buildSceneLabel(event.scene_id)}</span>
                         </div>
@@ -246,7 +246,7 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                       {selectedRevisionDetail.events.length === 0 && <p className="text-muted bible-canon-empty">Phiên bản này chưa có sự kiện được chốt.</p>}
                     </div>
                   </div>
-                  <div className="bible-canon-panel">
+                  <div className="bible-canon-panel bible-canon-panel--evidence">
                     <div className="bible-canon-panel-header"><strong>Trình xem bằng chứng</strong><span>{selectedRevisionDetail.evidence.length}</span></div>
                     <div className="bible-canon-evidence-layout">
                       <div className="bible-canon-evidence-list">
@@ -274,7 +274,7 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
                     <div className="bible-canon-panel-header"><strong>Báo cáo kiểm tra</strong><span>{selectedRevisionDetail.reports.length}</span></div>
                     <div className="bible-canon-list">
                       {selectedRevisionDetail.reports.map((report) => (
-                        <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--${report.severity}`}>
+                        <div key={report.id} className={`bible-canon-list-item bible-canon-list-item--flow bible-canon-list-item--${report.severity}`}>
                           <div><strong>{getCanonReportTitle(report)}</strong><p>{report.message}</p></div>
                           <span className="bible-canon-meta">{buildSceneLabel(report.scene_id)}</span>
                         </div>

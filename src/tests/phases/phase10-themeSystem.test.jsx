@@ -34,17 +34,22 @@ describe('phase10 StoryForge theme system', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-theme-family');
     vi.resetModules();
   });
 
-  it('defines the three supported themes with Vietnamese labels', async () => {
+  it('defines the seven supported themes with Vietnamese labels', async () => {
     const { THEMES, THEME_IDS } = await import('../../config/themes.js');
 
-    expect(THEME_IDS).toEqual(['dark', 'light', 'cream']);
+    expect(THEME_IDS).toEqual(['dark', 'light', 'cream', 'soft-cream', 'sepia', 'sage-paper', 'mist']);
     expect(THEMES.map(({ id, label }) => ({ id, label }))).toEqual([
       { id: 'dark', label: 'Tối' },
       { id: 'light', label: 'Sáng' },
       { id: 'cream', label: 'Giấy Kem Mềm' },
+      { id: 'soft-cream', label: 'Kem Dịu' },
+      { id: 'sepia', label: 'Sepia' },
+      { id: 'sage-paper', label: 'Xanh Giấy' },
+      { id: 'mist', label: 'Xám Sương' },
     ]);
   });
 
@@ -52,7 +57,8 @@ describe('phase10 StoryForge theme system', () => {
     const { normalizeTheme } = await import('../../config/themes.js');
 
     expect(normalizeTheme(null)).toBe('dark');
-    expect(normalizeTheme('sepia')).toBe('dark');
+    expect(normalizeTheme('neon')).toBe('dark');
+    expect(normalizeTheme('sepia')).toBe('sepia');
     expect(normalizeTheme('cream')).toBe('cream');
   });
 
@@ -64,10 +70,11 @@ describe('phase10 StoryForge theme system', () => {
     expect(useUIStore.getState().theme).toBe('cream');
     expect(localStorage.getItem('sf-theme')).toBe('cream');
     expect(document.documentElement.dataset.theme).toBe('cream');
+    expect(document.documentElement.dataset.themeFamily).toBe('paper');
   });
 
   it('heals an unsupported stored theme during initialization', async () => {
-    localStorage.setItem('sf-theme', 'sepia');
+    localStorage.setItem('sf-theme', 'neon');
     const { default: useUIStore } = await import('../../stores/uiStore.js');
 
     useUIStore.getState().initTheme();
@@ -111,21 +118,21 @@ describe('phase10 StoryForge theme system', () => {
     });
   });
 
-  it('covers the editor and dark-only product surfaces with Cream overrides', () => {
+  it('covers the editor and dark-only product surfaces for all paper themes', () => {
     const css = fs.readFileSync(path.join(repoRoot, 'src/styles/cream-overrides.css'), 'utf8');
 
     [
-      '[data-theme="cream"] .story-editor-content',
-      '[data-theme="cream"] .scene-detail-panel',
-      '[data-theme="cream"] .narrative-lab',
-      '[data-theme="cream"] .analysis-viewer',
-      '[data-theme="cream"] .su-that-page__priority-panel',
-      '[data-theme="cream"] .project-chat-composer__input',
-      '[data-theme="cream"] .sidebar-item--disabled',
+      '[data-theme-family="paper"] .story-editor-content',
+      '[data-theme-family="paper"] .scene-detail-panel',
+      '[data-theme-family="paper"] .narrative-lab',
+      '[data-theme-family="paper"] .analysis-viewer',
+      '[data-theme-family="paper"] .su-that-page__priority-panel',
+      '[data-theme-family="paper"] .project-chat-composer__input',
+      '[data-theme-family="paper"] .sidebar-item--disabled',
     ].forEach((selector) => expect(css).toContain(selector));
 
-    expect(css).toMatch(/\[data-theme="cream"\] \.sidebar-item\s*\{[\s\S]*?color:\s*var\(--color-text-primary\);[\s\S]*?font-weight:\s*550;/u);
-    expect(css).toMatch(/\[data-theme="cream"\] \.sidebar-item--disabled\s*\{[\s\S]*?color:\s*#756a5f;[\s\S]*?opacity:\s*1;/u);
+    expect(css).toMatch(/\[data-theme-family="paper"\] \.sidebar-item\s*\{[\s\S]*?color:\s*var\(--color-text-primary\);[\s\S]*?font-weight:\s*550;/u);
+    expect(css).toMatch(/\[data-theme-family="paper"\] \.sidebar-item--disabled\s*\{[\s\S]*?color:\s*var\(--color-text-muted\);[\s\S]*?opacity:\s*1;/u);
   });
 
   it('keeps the desktop picker unclipped and exposes the same choices in Settings', () => {
@@ -164,7 +171,7 @@ describe('phase10 theme picker', () => {
     container.remove();
   });
 
-  it('renders three choices and applies the selected theme immediately', async () => {
+  it('renders seven choices and applies the selected theme immediately', async () => {
     const { default: ThemePicker } = await import('../../components/common/ThemePicker.jsx');
 
     root = createRoot(container);
@@ -173,7 +180,7 @@ describe('phase10 theme picker', () => {
     });
 
     const choices = [...container.querySelectorAll('[role="radio"]')];
-    expect(choices).toHaveLength(3);
+    expect(choices).toHaveLength(7);
     expect(container.textContent).toContain('Giấy Kem Mềm');
 
     const creamChoice = choices.find((choice) => choice.textContent.includes('Giấy Kem Mềm'));

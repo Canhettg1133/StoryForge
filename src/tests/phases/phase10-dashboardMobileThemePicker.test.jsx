@@ -22,7 +22,9 @@ vi.mock('../../components/common/ExportModal', () => ({
 }));
 
 vi.mock('../../components/mobile/MobileSheet', () => ({
-  default: () => null,
+  default: ({ open, title, children }) => open ? (
+    <div role="dialog" aria-label={title}>{children}</div>
+  ) : null,
 }));
 
 vi.mock('../../components/support/SupportDonateModal.jsx', () => ({
@@ -44,6 +46,7 @@ describe('phase10 dashboard mobile theme picker', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.dataset.theme = 'dark';
+    document.documentElement.dataset.themeFamily = 'dark';
     projectState = {
       projects: [],
       loadProjects: vi.fn(),
@@ -64,7 +67,7 @@ describe('phase10 dashboard mobile theme picker', () => {
     vi.resetModules();
   });
 
-  it('shows all themes on the mobile home and applies the selected interface immediately', async () => {
+  it('opens the compact mobile theme sheet and applies the selected interface immediately', async () => {
     const { default: Dashboard } = await import('../../pages/Dashboard/Dashboard.jsx');
     const router = createMemoryRouter([
       { path: '/', element: <Dashboard /> },
@@ -77,18 +80,26 @@ describe('phase10 dashboard mobile theme picker', () => {
       root.render(<RouterProvider router={router} />);
     });
 
-    const mobileThemeSection = container.querySelector('.dashboard-mobile-theme');
-    expect(mobileThemeSection).not.toBeNull();
-    expect(mobileThemeSection.textContent).toContain('Đổi giao diện');
+    expect(container.querySelector('.dashboard-mobile-theme')).toBeNull();
+    const themeButton = container.querySelector('.dashboard-mobile-theme-button');
+    expect(themeButton).not.toBeNull();
 
-    const themeChoices = [...mobileThemeSection.querySelectorAll('[role="radio"]')];
-    expect(themeChoices).toHaveLength(3);
+    await act(async () => themeButton.click());
+
+    const themeSheet = container.querySelector('[role="dialog"][aria-label="Giao diện"]');
+    expect(themeSheet).not.toBeNull();
+    expect(themeSheet.textContent).toContain('Cơ bản');
+    expect(themeSheet.textContent).toContain('Màu đọc');
+
+    const themeChoices = [...themeSheet.querySelectorAll('[role="radio"]')];
+    expect(themeChoices).toHaveLength(7);
 
     const creamChoice = themeChoices.find((choice) => choice.textContent.includes('Giấy Kem Mềm'));
     await act(async () => creamChoice.click());
 
     expect(creamChoice.getAttribute('aria-checked')).toBe('true');
     expect(document.documentElement.dataset.theme).toBe('cream');
+    expect(document.documentElement.dataset.themeFamily).toBe('paper');
     expect(localStorage.getItem('sf-theme')).toBe('cream');
   });
 });

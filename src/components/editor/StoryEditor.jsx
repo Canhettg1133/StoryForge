@@ -9,13 +9,14 @@ import useUIStore, {
   CONTENT_FONT_SIZE_MIN,
   DEFAULT_CONTENT_FONT_SIZE,
 } from '../../stores/uiStore';
+import { THEMES } from '../../config/themes.js';
 import { countWords } from '../../utils/constants';
 import ContinuityBar from './ContinuityBar';
 import SceneDetailPanel from './SceneDetailPanel';
 import ChapterReader from './ChapterReader';
 import db from '../../services/db/database';
 import { createSceneAutosaveController } from './storyEditorAutosave';
-import { ChevronDown, ChevronRight, BookOpen, FileText, ListChecks, Pencil, Check, X, Settings, Copy, Type, Minus, Plus, RotateCcw, PanelLeft } from 'lucide-react';
+import { ChevronDown, ChevronRight, BookOpen, FileText, ListChecks, Pencil, Check, X, Settings, Copy, Type, Minus, Plus, RotateCcw, PanelLeft, Palette } from 'lucide-react';
 import './StoryEditor.css';
 
 function isContentEmpty(html = '') {
@@ -67,6 +68,8 @@ export default function StoryEditor({
   const contentFontSize = useUIStore((state) => state.contentFontSize);
   const setContentFontSize = useUIStore((state) => state.setContentFontSize);
   const resetContentFontSize = useUIStore((state) => state.resetContentFontSize);
+  const theme = useUIStore((state) => state.theme);
+  const setTheme = useUIStore((state) => state.setTheme);
   const autosaveControllerRef = useRef(null);
   const lastSavedBySceneRef = useRef(new Map());
   const previousSceneIdRef = useRef(null);
@@ -333,7 +336,8 @@ export default function StoryEditor({
   const isEmptySceneForAiDraft = !activeScene?.draft_text || isContentEmpty(activeScene.draft_text || '');
   const useAiDraftFocus = !!aiDraft && isEmptySceneForAiDraft;
   const activeContentFontSize = contentFontSize ?? DEFAULT_CONTENT_FONT_SIZE;
-  const contentTypographyStyle = contentFontSize
+  const activeTheme = THEMES.find((option) => option.id === theme) || THEMES[0];
+  const contentDisplayStyle = contentFontSize
     ? { '--sf-content-font-size': `${contentFontSize}px` }
     : undefined;
   const aiDraftTitle = aiDraft?.isStreaming ? 'AI đang viết cảnh trống này' : 'AI đã viết cảnh trống này';
@@ -430,7 +434,7 @@ export default function StoryEditor({
   return (
     <div
       className={`story-editor ${isMobileLayout ? 'story-editor--mobile' : ''} ${hasMobileProjectShell ? 'story-editor--mobile-shell' : ''} ${isReaderMode ? 'story-editor--reader' : ''}`}
-      style={contentTypographyStyle}
+      style={contentDisplayStyle}
     >
       <div className={`story-editor-header ${isReaderMode ? 'story-editor-header--reader' : ''}`}>
         <div className={`story-editor-header-main ${!isMobileLayout ? 'story-editor-header-main--desktop' : ''}`}>
@@ -515,45 +519,80 @@ export default function StoryEditor({
             type="button"
             className={`story-editor-font-trigger ${fontPopoverOpen ? 'story-editor-font-trigger--active' : ''}`}
             onClick={() => setFontPopoverOpen((value) => !value)}
-            title="Chỉnh cỡ chữ nội dung"
+            title="Chỉnh cỡ chữ và giao diện StoryForge"
             aria-expanded={fontPopoverOpen}
           >
             <Type size={14} />
             <span>{isReaderMode && isMobileLayout ? 'Cỡ chữ' : 'Chỉnh cỡ chữ'}</span>
           </button>
-          <div className={`story-editor-font-control ${fontPopoverOpen ? 'story-editor-font-control--open' : ''}`} aria-label="Cỡ chữ nội dung">
-            <Type size={14} />
-            <button
-              type="button"
-              className="story-editor-font-control__btn"
-              onClick={() => adjustContentFontSize(-1)}
-              disabled={activeContentFontSize <= CONTENT_FONT_SIZE_MIN}
-              title="Giảm cỡ chữ nội dung"
-            >
-              <Minus size={13} />
-            </button>
-            <span className="story-editor-font-control__value">
-              {contentFontSize ? `${contentFontSize}px` : 'Mặc định'}
-            </span>
-            <button
-              type="button"
-              className="story-editor-font-control__btn"
-              onClick={() => adjustContentFontSize(1)}
-              disabled={activeContentFontSize >= CONTENT_FONT_SIZE_MAX}
-              title="Tăng cỡ chữ nội dung"
-            >
-              <Plus size={13} />
-            </button>
-            {contentFontSize && (
-              <button
-                type="button"
-                className="story-editor-font-control__btn"
-                onClick={resetContentFontSize}
-                title="Trở về cỡ chữ mặc định"
-              >
-                <RotateCcw size={13} />
-              </button>
-            )}
+          <div className={`story-editor-font-control ${fontPopoverOpen ? 'story-editor-font-control--open' : ''}`} aria-label="Cỡ chữ và giao diện StoryForge">
+            <div className="story-editor-display-section">
+              <div className="story-editor-display-label">
+                <Type size={14} />
+                <span>Cỡ chữ</span>
+              </div>
+              <div className="story-editor-font-control__row">
+                <button
+                  type="button"
+                  className="story-editor-font-control__btn"
+                  onClick={() => adjustContentFontSize(-1)}
+                  disabled={activeContentFontSize <= CONTENT_FONT_SIZE_MIN}
+                  title="Giảm cỡ chữ nội dung"
+                >
+                  <Minus size={13} />
+                </button>
+                <span className="story-editor-font-control__value">
+                  {contentFontSize ? `${contentFontSize}px` : 'Mặc định'}
+                </span>
+                <button
+                  type="button"
+                  className="story-editor-font-control__btn"
+                  onClick={() => adjustContentFontSize(1)}
+                  disabled={activeContentFontSize >= CONTENT_FONT_SIZE_MAX}
+                  title="Tăng cỡ chữ nội dung"
+                >
+                  <Plus size={13} />
+                </button>
+                {contentFontSize && (
+                  <button
+                    type="button"
+                    className="story-editor-font-control__btn"
+                    onClick={resetContentFontSize}
+                    title="Trở về cỡ chữ mặc định"
+                  >
+                    <RotateCcw size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="story-editor-display-section story-editor-display-section--background">
+              <div className="story-editor-display-label">
+                <Palette size={14} />
+                <span>Giao diện</span>
+                <span className="story-editor-display-current">{activeTheme.shortLabel}</span>
+              </div>
+              <div className="story-editor-background-options" role="radiogroup" aria-label="Giao diện StoryForge">
+                {THEMES.map((option) => {
+                  const isActive = option.id === activeTheme.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      aria-label={option.label}
+                      className={`story-editor-background-option ${isActive ? 'story-editor-background-option--active' : ''}`}
+                      style={{ '--story-editor-background-swatch': option.swatches[1] }}
+                      onClick={() => setTheme(option.id)}
+                      title={option.label}
+                    >
+                      <span className="story-editor-background-swatch" aria-hidden="true" />
+                      {isActive && <Check className="story-editor-background-check" size={12} aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
           </div>
         </div>

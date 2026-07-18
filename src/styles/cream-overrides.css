@@ -1,69 +1,101 @@
-/* Theme-specific fixes for surfaces that still assume a dark background. */
-[data-theme="cream"] .app-main,
-[data-theme="cream"] .project-mobile-shell {
+/* Paper-theme fixes for surfaces that still assume a dark background. */
+[data-theme-family="paper"] .app-main,
+[data-theme-family="paper"] .project-mobile-shell {
   background: var(--color-bg-primary);
 }
 
-[data-theme="cream"] .mobile-sheet,
-[data-theme="cream"] .mobile-sheet-footer {
+[data-theme-family="paper"] .mobile-sheet,
+[data-theme-family="paper"] .mobile-sheet-footer {
   background: var(--color-bg-modal);
 }
 
-[data-theme="cream"] .project-mobile-topbar {
+[data-theme-family="paper"] .project-mobile-topbar {
   background: var(--color-bg-sidebar);
   backdrop-filter: none;
 }
 
 /* Keep navigation readable without making inactive destinations compete with content. */
-[data-theme="cream"] .sidebar-item {
+[data-theme-family="paper"] .sidebar-item {
   color: var(--color-text-primary);
   font-weight: 550;
 }
 
-[data-theme="cream"] .sidebar-theme-trigger {
+[data-theme-family="paper"] .sidebar-theme-trigger {
   color: var(--color-text-secondary);
 }
 
-[data-theme="cream"] .sidebar-item--active,
-[data-theme="cream"] .sidebar-item--primary:not(.sidebar-item--disabled) {
+[data-theme-family="paper"] .sidebar-item--active,
+[data-theme-family="paper"] .sidebar-item--primary:not(.sidebar-item--disabled) {
   color: var(--color-accent);
   font-weight: var(--weight-semibold);
 }
 
-[data-theme="cream"] .sidebar-item--disabled {
-  color: #756a5f;
+[data-theme-family="paper"] .sidebar-item--disabled {
+  color: var(--color-text-muted);
   font-weight: var(--weight-medium);
   opacity: 1;
 }
 
-[data-theme="cream"] .sidebar-item--coming-soon:not(.sidebar-item--disabled) {
+[data-theme-family="paper"] .sidebar-item--coming-soon:not(.sidebar-item--disabled) {
   opacity: 0.78;
 }
 
-[data-theme="cream"] .sidebar-theme-trigger__copy small {
+[data-theme-family="paper"] .sidebar-theme-trigger__copy small {
   color: var(--color-text-muted);
 }
 
-[data-theme="cream"] .modal-overlay,
-[data-theme="cream"] .codex-modal-overlay,
-[data-theme="cream"] .project-chat-drawer-backdrop {
+[data-theme-family="paper"] .modal-overlay,
+[data-theme-family="paper"] .codex-modal-overlay,
+[data-theme-family="paper"] .project-chat-drawer-backdrop {
   background: rgba(33, 28, 23, 0.36);
 }
 
-[data-theme="cream"] .codex-modal {
+[data-theme-family="paper"] .codex-modal {
   background: var(--color-bg-modal);
 }
 
-[data-theme="cream"] .select {
+[data-theme-family="paper"] .select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2362564a' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 12px 12px;
+}
+
+/* Keep the softer treatment limited to the glare-heavy writing panels. */
+[data-theme-family="paper"] .chapter-list,
+[data-theme-family="paper"] .chapter-list-header {
+  background: var(--writing-bg-panel, #f5eee2);
+}
+
+[data-theme-family="paper"] .chapter-list-tree {
+  background: var(--writing-bg-elevated, #f7f3ec);
+}
+
+[data-theme-family="paper"] .ai-sidebar,
+[data-theme-family="paper"] .ai-bottom-dock {
+  background: var(--writing-bg-panel, #f5eee2);
+}
+
+[data-theme-family="paper"] .ai-quick-actions,
+[data-theme-family="paper"] .codex-panel-body {
+  background: var(--writing-bg-elevated, #f7f3ec);
+}
+
+[data-theme-family="paper"] .ai-guidance-panel {
+  background: var(--writing-bg-panel-alt, #ebe5dc);
+}
+
+[data-theme-family="paper"] .ai-guidance-input,
+[data-theme-family="paper"] .ai-prompt-input {
+  background: var(--writing-bg-elevated, #f7f3ec);
 }
 
 /* Editor: the paper treatment is limited to the reading and writing surface. */
-[data-theme="cream"] .story-editor-wrapper {
+[data-theme-family="paper"] .story-editor-wrapper {
   background: var(--color-bg-primary);
 }
 
-[data-theme="cream"] .story-editor-content {
+[data-theme-family="paper"] .story-editor-content {
   min-height: calc(100% - 12px);
   padding: clamp(28px, 4vw, 48px);
   border: 1px solid var(--color-border);
@@ -73,30 +105,30 @@
   box-shadow: 0 2px 6px rgba(52, 45, 39, 0.08);
 }
 
-[data-theme="cream"] .story-editor-content p.is-editor-empty:first-child::before,
-[data-theme="cream"] .story-editor-scene-title::placeholder,
-[data-theme="cream"] .chapter-outline-edit-textarea::placeholder {
+[data-theme-family="paper"] .story-editor-content p.is-editor-empty:first-child::before,
+[data-theme-family="paper"] .story-editor-scene-title::placeholder,
+[data-theme-family="paper"] .chapter-outline-edit-textarea::placeholder {
   color: var(--color-text-muted);
   opacity: 1;
 }
 
-[data-theme="cream"] .story-editor-ai-draft {
+[data-theme-family="paper"] .story-editor-ai-draft {
   background: var(--color-bg-editor);
   box-shadow: 0 2px 6px rgba(52, 45, 39, 0.08);
 }
 
-[data-theme="cream"] .story-editor-header,
-[data-theme="cream"] .story-editor-footer,
-[data-theme="cream"] .chapter-outline-panel {
+[data-theme-family="paper"] .story-editor-header,
+[data-theme-family="paper"] .story-editor-footer,
+[data-theme-family="paper"] .chapter-outline-panel {
   background: var(--color-bg-secondary);
 }
 
 /* Scene details previously encoded a fixed indigo-black surface. */
-[data-theme="cream"] .scene-detail-backdrop {
+[data-theme-family="paper"] .scene-detail-backdrop {
   background: rgba(33, 28, 23, 0.34);
 }
 
-[data-theme="cream"] .scene-detail-panel {
+[data-theme-family="paper"] .scene-detail-panel {
   border-color: var(--color-border-strong);
   border-radius: 16px;
   background: var(--color-bg-modal);
@@ -104,202 +136,202 @@
   box-shadow: 0 6px 8px rgba(52, 45, 39, 0.14);
 }
 
-[data-theme="cream"] .scene-detail-header {
+[data-theme-family="paper"] .scene-detail-header {
   border-bottom-color: var(--color-border);
   background: var(--color-bg-secondary);
 }
 
-[data-theme="cream"] .scene-detail-kicker,
-[data-theme="cream"] .scene-detail-scene-name,
-[data-theme="cream"] .scene-detail-section-note,
-[data-theme="cream"] .scene-detail-label,
-[data-theme="cream"] .scene-detail-char-role {
+[data-theme-family="paper"] .scene-detail-kicker,
+[data-theme-family="paper"] .scene-detail-scene-name,
+[data-theme-family="paper"] .scene-detail-section-note,
+[data-theme-family="paper"] .scene-detail-label,
+[data-theme-family="paper"] .scene-detail-char-role {
   color: var(--color-text-secondary);
 }
 
-[data-theme="cream"] .scene-detail-title,
-[data-theme="cream"] .scene-detail-section-title,
-[data-theme="cream"] .scene-detail-char-item,
-[data-theme="cream"] .scene-detail-tag {
+[data-theme-family="paper"] .scene-detail-title,
+[data-theme-family="paper"] .scene-detail-section-title,
+[data-theme-family="paper"] .scene-detail-char-item,
+[data-theme-family="paper"] .scene-detail-tag {
   color: var(--color-text-heading);
 }
 
-[data-theme="cream"] .scene-detail-pill,
-[data-theme="cream"] .scene-detail-section,
-[data-theme="cream"] .scene-detail-char-item,
-[data-theme="cream"] .scene-detail-tag {
+[data-theme-family="paper"] .scene-detail-pill,
+[data-theme-family="paper"] .scene-detail-section,
+[data-theme-family="paper"] .scene-detail-char-item,
+[data-theme-family="paper"] .scene-detail-tag {
   border-color: var(--color-border);
   background: var(--color-surface-1);
 }
 
-[data-theme="cream"] .scene-detail-section {
+[data-theme-family="paper"] .scene-detail-section {
   border-radius: 12px;
   box-shadow: none;
 }
 
-[data-theme="cream"] .scene-detail-textarea,
-[data-theme="cream"] .scene-detail-select,
-[data-theme="cream"] .scene-detail-tag-input input {
+[data-theme-family="paper"] .scene-detail-textarea,
+[data-theme-family="paper"] .scene-detail-select,
+[data-theme-family="paper"] .scene-detail-tag-input input {
   border-color: var(--color-border);
   background: var(--color-surface-2);
   color: var(--color-text-primary);
 }
 
-[data-theme="cream"] .scene-detail-textarea::placeholder,
-[data-theme="cream"] .scene-detail-tag-input input::placeholder {
+[data-theme-family="paper"] .scene-detail-textarea::placeholder,
+[data-theme-family="paper"] .scene-detail-tag-input input::placeholder {
   color: var(--color-text-muted);
 }
 
-[data-theme="cream"] .scene-detail-textarea:focus,
-[data-theme="cream"] .scene-detail-select:focus,
-[data-theme="cream"] .scene-detail-tag-input input:focus {
+[data-theme-family="paper"] .scene-detail-textarea:focus,
+[data-theme-family="paper"] .scene-detail-select:focus,
+[data-theme-family="paper"] .scene-detail-tag-input input:focus {
   border-color: var(--color-accent);
   background: var(--color-bg-editor);
   box-shadow: 0 0 0 3px var(--color-accent-muted);
 }
 
-[data-theme="cream"] .scene-detail-char-item:hover,
-[data-theme="cream"] .scene-detail-char-item--active {
+[data-theme-family="paper"] .scene-detail-char-item:hover,
+[data-theme-family="paper"] .scene-detail-char-item--active {
   border-color: var(--color-accent);
   background: var(--color-accent-muted);
   box-shadow: none;
 }
 
-[data-theme="cream"] .scene-detail-char-item input[type="checkbox"] {
+[data-theme-family="paper"] .scene-detail-char-item input[type="checkbox"] {
   accent-color: var(--color-accent-fill);
 }
 
-[data-theme="cream"] .scene-detail-tag-remove {
+[data-theme-family="paper"] .scene-detail-tag-remove {
   background: var(--color-bg-active);
 }
 
-[data-theme="cream"] .scene-detail-tag--danger {
+[data-theme-family="paper"] .scene-detail-tag--danger {
   border-color: color-mix(in srgb, var(--color-danger) 36%, var(--color-border));
   background: var(--color-danger-muted);
   color: var(--color-danger);
 }
 
-[data-theme="cream"] .scene-detail-tag--warn {
+[data-theme-family="paper"] .scene-detail-tag--warn {
   border-color: color-mix(in srgb, var(--color-warning) 36%, var(--color-border));
   background: var(--color-warning-muted);
   color: var(--color-warning);
 }
 
 /* Narrative Lab is the only main route whose base stylesheet is fully dark-coded. */
-[data-theme="cream"] .narrative-lab {
+[data-theme-family="paper"] .narrative-lab {
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
 }
 
-[data-theme="cream"] .lab-sidebar,
-[data-theme="cream"] .chat-input-bar {
+[data-theme-family="paper"] .lab-sidebar,
+[data-theme-family="paper"] .chat-input-bar {
   border-color: var(--color-border);
   background: var(--color-bg-sidebar);
 }
 
-[data-theme="cream"] .lab-sidebar h3,
-[data-theme="cream"] .thinking-header {
+[data-theme-family="paper"] .lab-sidebar h3,
+[data-theme-family="paper"] .thinking-header {
   color: var(--color-accent);
 }
 
-[data-theme="cream"] .setting-group label,
-[data-theme="cream"] .welcome-msg,
-[data-theme="cream"] .message-label,
-[data-theme="cream"] .message-meta,
-[data-theme="cream"] .thinking-text,
-[data-theme="cream"] .debug-content {
+[data-theme-family="paper"] .setting-group label,
+[data-theme-family="paper"] .welcome-msg,
+[data-theme-family="paper"] .message-label,
+[data-theme-family="paper"] .message-meta,
+[data-theme-family="paper"] .thinking-text,
+[data-theme-family="paper"] .debug-content {
   color: var(--color-text-secondary);
 }
 
-[data-theme="cream"] .toggle-buttons,
-[data-theme="cream"] .setting-group select,
-[data-theme="cream"] .chat-input-bar textarea,
-[data-theme="cream"] .system-debug {
+[data-theme-family="paper"] .toggle-buttons,
+[data-theme-family="paper"] .setting-group select,
+[data-theme-family="paper"] .chat-input-bar textarea,
+[data-theme-family="paper"] .system-debug {
   border-color: var(--color-border);
   background: var(--color-surface-2);
   color: var(--color-text-primary);
 }
 
-[data-theme="cream"] .toggle-buttons button {
+[data-theme-family="paper"] .toggle-buttons button {
   color: var(--color-text-secondary);
 }
 
-[data-theme="cream"] .toggle-buttons button.active,
-[data-theme="cream"] .user .message-bubble,
-[data-theme="cream"] .chat-input-bar button {
+[data-theme-family="paper"] .toggle-buttons button.active,
+[data-theme-family="paper"] .user .message-bubble,
+[data-theme-family="paper"] .chat-input-bar button {
   background: var(--color-accent-fill);
   color: #fff;
 }
 
-[data-theme="cream"] .assistant .message-bubble {
+[data-theme-family="paper"] .assistant .message-bubble {
   border-color: var(--color-border);
   background: var(--color-bg-editor);
   color: var(--color-text-primary);
 }
 
-[data-theme="cream"] .thinking-block {
+[data-theme-family="paper"] .thinking-block {
   border: 1px solid var(--color-border-accent);
   background: var(--color-accent-muted);
 }
 
-[data-theme="cream"] .priming-promo {
+[data-theme-family="paper"] .priming-promo {
   border-color: var(--color-border-accent);
   background: var(--color-accent-muted);
 }
 
 /* Canon Truth and Story Bible contain a few translucent dark-only panels. */
-[data-theme="cream"] .su-that-page__priority-panel,
-[data-theme="cream"] .bible-canon-stat {
+[data-theme-family="paper"] .su-that-page__priority-panel,
+[data-theme-family="paper"] .bible-canon-stat {
   background: var(--color-surface-1);
 }
 
-[data-theme="cream"] .su-that-page__panel-icon,
-[data-theme="cream"] .su-that-page__panel-count {
+[data-theme-family="paper"] .su-that-page__panel-icon,
+[data-theme-family="paper"] .su-that-page__panel-count {
   background: var(--color-surface-2);
 }
 
-[data-theme="cream"] .su-that-page__compact-list,
-[data-theme="cream"] .su-that-page__compact-item,
-[data-theme="cream"] .su-that-page__state-panel-footer {
+[data-theme-family="paper"] .su-that-page__compact-list,
+[data-theme-family="paper"] .su-that-page__compact-item,
+[data-theme-family="paper"] .su-that-page__state-panel-footer {
   border-color: var(--color-border);
 }
 
-[data-theme="cream"] .su-that-page__panel-count--warning {
+[data-theme-family="paper"] .su-that-page__panel-count--warning {
   color: var(--color-warning);
   background: var(--color-warning-muted);
 }
 
-[data-theme="cream"] .su-that-page__panel-count--danger {
+[data-theme-family="paper"] .su-that-page__panel-count--danger {
   color: var(--color-danger);
   background: var(--color-danger-muted);
 }
 
-[data-theme="cream"] .su-that-page__panel-count--accent {
+[data-theme-family="paper"] .su-that-page__panel-count--accent {
   color: var(--color-accent);
   background: var(--color-accent-muted);
 }
 
-[data-theme="cream"] .project-cover-model-menu {
+[data-theme-family="paper"] .project-cover-model-menu {
   border-color: var(--color-border-strong);
   background: var(--color-bg-modal);
   box-shadow: 0 6px 8px rgba(52, 45, 39, 0.13);
 }
 
 /* Chat attachments and drawers used dark color-mix fallback colors. */
-[data-theme="cream"] .project-chat-page .card,
-[data-theme="cream"] .project-chat-empty.card {
+[data-theme-family="paper"] .project-chat-page .card,
+[data-theme-family="paper"] .project-chat-empty.card {
   border-color: var(--color-border-strong);
   background: var(--color-surface-1);
   box-shadow: 0 2px 6px rgba(52, 45, 39, 0.08);
 }
 
-[data-theme="cream"] .project-chat-sidebar__hint {
+[data-theme-family="paper"] .project-chat-sidebar__hint {
   border-color: var(--color-border);
   background: var(--color-surface-2);
   color: var(--color-text-secondary);
 }
 
-[data-theme="cream"] :is(
+[data-theme-family="paper"] :is(
   .project-chat-sidebar__kicker,
   .project-chat-topbar__kicker,
   .project-chat-drawer__kicker,
@@ -309,41 +341,41 @@
   color: var(--color-text-tertiary);
 }
 
-[data-theme="cream"] .project-chat-statusbar__item--live,
-[data-theme="cream"] .project-chat-message__chip--live {
+[data-theme-family="paper"] .project-chat-statusbar__item--live,
+[data-theme-family="paper"] .project-chat-message__chip--live {
   color: var(--color-accent);
 }
 
-[data-theme="cream"] .project-chat-composer__input,
-[data-theme="cream"] .project-chat-attachment-scope-toggle,
-[data-theme="cream"] .project-chat-paste-chip,
-[data-theme="cream"] .project-chat-paste-chip__preview,
-[data-theme="cream"] .project-chat-image-preview-card,
-[data-theme="cream"] .project-chat-message-image img,
-[data-theme="cream"] .project-chat-attachment-row,
-[data-theme="cream"] .project-chat-attachment-row__status,
-[data-theme="cream"] .project-chat-drawer,
-[data-theme="cream"] .project-chat-drawer__source {
+[data-theme-family="paper"] .project-chat-composer__input,
+[data-theme-family="paper"] .project-chat-attachment-scope-toggle,
+[data-theme-family="paper"] .project-chat-paste-chip,
+[data-theme-family="paper"] .project-chat-paste-chip__preview,
+[data-theme-family="paper"] .project-chat-image-preview-card,
+[data-theme-family="paper"] .project-chat-message-image img,
+[data-theme-family="paper"] .project-chat-attachment-row,
+[data-theme-family="paper"] .project-chat-attachment-row__status,
+[data-theme-family="paper"] .project-chat-drawer,
+[data-theme-family="paper"] .project-chat-drawer__source {
   background: var(--color-bg-modal);
 }
 
-[data-theme="cream"] .project-chat-composer__input {
+[data-theme-family="paper"] .project-chat-composer__input {
   border-color: var(--color-border-strong);
   box-shadow: 0 2px 6px rgba(52, 45, 39, 0.08);
   backdrop-filter: none;
 }
 
-[data-theme="cream"] .project-chat-composer__input .textarea {
+[data-theme-family="paper"] .project-chat-composer__input .textarea {
   background: var(--color-surface-2);
   color: var(--color-text-primary);
 }
 
-[data-theme="cream"] .project-chat-paste-chip {
+[data-theme-family="paper"] .project-chat-paste-chip {
   background: var(--color-accent-muted);
 }
 
 /* Arc generation exposes local tokens, so remap those instead of rewriting the modal. */
-[data-theme="cream"] .arc-modal-overlay {
+[data-theme-family="paper"] .arc-modal-overlay {
   --bg-backdrop: rgba(33, 28, 23, 0.36);
   --bg-content: var(--color-bg-modal);
   --bg-panel: var(--color-bg-secondary);
@@ -352,21 +384,21 @@
   --border-color: var(--color-border);
 }
 
-[data-theme="cream"] .arc-modal {
+[data-theme-family="paper"] .arc-modal {
   box-shadow: 0 6px 8px rgba(52, 45, 39, 0.14);
 }
 
 /* Analysis Viewer: preserve series colors, replace only structural surfaces and labels. */
-[data-theme="cream"] .analysis-viewer {
+[data-theme-family="paper"] .analysis-viewer {
   background: var(--color-bg-primary);
   color: var(--color-text-primary);
 }
 
-[data-theme="cream"] .analysis-utility-panel {
+[data-theme-family="paper"] .analysis-utility-panel {
   box-shadow: -4px 0 8px rgba(52, 45, 39, 0.08);
 }
 
-[data-theme="cream"] .analysis-viewer :is(
+[data-theme-family="paper"] .analysis-viewer :is(
   .search-panel,
   .filter-panel,
   .selection-panel,
@@ -399,7 +431,7 @@
   color: var(--color-text-primary);
 }
 
-[data-theme="cream"] .analysis-viewer :is(
+[data-theme-family="paper"] .analysis-viewer :is(
   .search-input,
   .filter-group select,
   .quick-select-btn,
@@ -418,7 +450,7 @@
   color: var(--color-text-primary);
 }
 
-[data-theme="cream"] .analysis-viewer :is(
+[data-theme-family="paper"] .analysis-viewer :is(
   .event-card-description,
   .event-card-meta,
   .incident-location,
@@ -430,36 +462,36 @@
   color: var(--color-text-secondary);
 }
 
-[data-theme="cream"] .analysis-viewer .search-input::placeholder {
+[data-theme-family="paper"] .analysis-viewer .search-input::placeholder {
   color: var(--color-text-muted);
   opacity: 1;
 }
 
-[data-theme="cream"] .analysis-viewer :is(.mindmap-node, .event-preview, .timeline-event) {
+[data-theme-family="paper"] .analysis-viewer :is(.mindmap-node, .event-preview, .timeline-event) {
   border-color: var(--color-border);
   background: var(--color-bg-editor);
   color: var(--color-text-primary);
 }
 
 /* Suggestion Inbox keeps semantic status colors but loses dark translucent fills. */
-[data-theme="cream"] .suggestion-card,
-[data-theme="cream"] .suggestion-group,
-[data-theme="cream"] .suggestion-inbox-empty,
-[data-theme="cream"] .suggestion-evidence {
+[data-theme-family="paper"] .suggestion-card,
+[data-theme-family="paper"] .suggestion-group,
+[data-theme-family="paper"] .suggestion-inbox-empty,
+[data-theme-family="paper"] .suggestion-evidence {
   border-color: var(--color-border);
   background: var(--color-surface-1);
 }
 
-[data-theme="cream"] .suggestion-evidence {
+[data-theme-family="paper"] .suggestion-evidence {
   color: var(--color-text-secondary);
 }
 
 @media (max-width: 900px) {
-  [data-theme="cream"] .story-editor-wrapper {
+  [data-theme-family="paper"] .story-editor-wrapper {
     padding-inline: 0;
   }
 
-  [data-theme="cream"] .story-editor-content {
+  [data-theme-family="paper"] .story-editor-content {
     min-height: 100%;
     max-width: 100%;
     padding: 18px 16px 28px;
@@ -468,20 +500,20 @@
     box-shadow: none;
   }
 
-  [data-theme="cream"] .scene-detail-panel {
+  [data-theme-family="paper"] .scene-detail-panel {
     border-radius: 16px 0 0 16px;
   }
 }
 
 @media (max-width: 640px) {
-  [data-theme="cream"] .scene-detail-panel {
+  [data-theme-family="paper"] .scene-detail-panel {
     border-radius: 16px 16px 0 0;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-theme="cream"] .scene-detail-backdrop,
-  [data-theme="cream"] .scene-detail-panel {
+  [data-theme-family="paper"] .scene-detail-backdrop,
+  [data-theme-family="paper"] .scene-detail-panel {
     animation: none;
   }
 }
