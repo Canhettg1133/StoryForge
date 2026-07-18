@@ -12,4 +12,4 @@ new_sqlite_classes = ["AIStudioRelayRoom"]
 
 [vars]
 # Allowed StoryForge origins. Add your final production domain here if it changes.
-ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,https://story-forge-virid.vercel.app,https://story-forge-kohl.vercel.app,https://storyforge.canhettg113.workers.dev,https://storyforge-web.canhettg113.workers.dev,https://storyforge-web-preview.canhettg113.workers.dev,https://ai.studio,https://aistudio.google.com,https://*.googleusercontent.com,https://*.usercontent.goog"
+ALLOWED_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:5175,http://127.0.0.1:5175,https://story-forge-kohl.vercel.app,https://ai.studio,https://aistudio.google.com,https://*.googleusercontent.com,https://*.usercontent.goog"
