@@ -94,6 +94,7 @@ export default function MobileProjectShell({ children }) {
 
   const numericProjectId = Number(projectId || currentProject?.id);
   const isEditorRoute = location.pathname.includes('/editor');
+  const isChatRoute = location.pathname.includes('/chat');
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
   const activeScene = scenes.find((scene) => scene.id === activeSceneId) || null;
   const isReaderMode = isEditorRoute && storyEditorViewMode === 'reader';
@@ -133,7 +134,7 @@ export default function MobileProjectShell({ children }) {
   };
 
   return (
-    <div className="project-mobile-shell">
+    <div className={`project-mobile-shell ${isChatRoute ? 'project-mobile-shell--chat' : ''}`}>
       <MobileProjectTopBar
         pageTitle={pageTitle}
         title={mobileTitle}

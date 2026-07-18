@@ -107,6 +107,26 @@
   overscroll-behavior: contain;
 }
 
+.project-mobile-shell--chat,
+.project-mobile-shell--chat .project-mobile-topbar,
+.project-mobile-shell--chat .project-mobile-content {
+  background: var(--color-surface);
+}
+
+.project-mobile-shell--chat .project-mobile-topbar {
+  padding-bottom: 6px;
+  border-bottom: 0;
+  backdrop-filter: none;
+}
+
+.project-mobile-shell--chat .project-mobile-content {
+  overflow: hidden;
+}
+
+.project-mobile-shell--chat .project-chat-topbar {
+  padding-top: 2px;
+}
+
 .project-mobile-content > * {
   max-width: 100%;
   min-width: 0;

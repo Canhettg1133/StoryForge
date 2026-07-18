@@ -2534,7 +2534,7 @@ export default function ProjectChat() {
                     {activeThread?.title || 'Cuộc trò chuyện mới'}
                   </span>
                 </h2>
-                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <div className="project-chat-topbar__status">
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '6px', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', fontSize: '10.5px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
                     <Bot size={12} /> {getChatModeLabel(activeThreadMode)}
                   </span>
