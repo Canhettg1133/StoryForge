@@ -329,10 +329,10 @@
   min-height: 28px;
   width: 100%;
   padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--color-border));
+  border: 1px solid color-mix(in srgb, var(--color-accent) 52%, var(--color-border));
   border-radius: 8px;
-  background: rgba(139, 92, 246, 0.14);
-  color: #d8c4ff;
+  background: var(--color-accent-muted);
+  color: var(--color-accent);
   font: inherit;
   font-size: 11px;
   font-weight: 700;
@@ -343,7 +343,7 @@
 .project-card-cover-action:hover {
   border-color: var(--color-accent);
   color: #fff;
-  background: rgba(139, 92, 246, 0.28);
+  background: var(--color-accent-fill, var(--color-accent));
 }
 
 .project-card-content {

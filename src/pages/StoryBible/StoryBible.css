@@ -452,8 +452,8 @@
 .bible-canon-badge--blocked,
 .bible-canon-badge--invalidated,
 .bible-canon-badge--resolved {
-  background: rgba(239, 68, 68, 0.18);
-  color: #ffb3b3;
+  background: var(--color-danger-muted);
+  color: var(--color-danger);
 }
 
 .bible-canon-empty {
@@ -703,7 +703,7 @@
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #d8c4ff;
+  color: var(--color-accent);
   margin-bottom: 4px;
 }
 
@@ -753,15 +753,15 @@
 }
 
 .bible-planning-scope__warning--warning {
-  background: rgba(245, 158, 11, 0.08);
-  border-color: rgba(245, 158, 11, 0.24);
-  color: #ffd89b;
+  background: var(--color-warning-muted);
+  border-color: color-mix(in srgb, var(--color-warning) 34%, var(--color-border));
+  color: var(--color-warning);
 }
 
 .bible-planning-scope__warning--info {
-  background: rgba(14, 165, 233, 0.08);
-  border-color: rgba(14, 165, 233, 0.22);
-  color: #b9eeff;
+  background: var(--color-info-muted);
+  border-color: color-mix(in srgb, var(--color-info) 34%, var(--color-border));
+  color: var(--color-info);
 }
 
 .bible-milestone-plan-panel {
@@ -868,7 +868,7 @@
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #d8c4ff;
+  color: var(--color-accent);
   margin-bottom: 4px;
 }
 
@@ -883,14 +883,14 @@
   flex-shrink: 0;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(124, 58, 237, 0.14);
-  border: 1px solid rgba(124, 58, 237, 0.3);
+  background: var(--color-accent-muted);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
 }
 
 .macro-contract-panel__stage span {
   font-size: 11px;
   font-weight: 600;
-  color: #e7d7ff;
+  color: var(--color-accent);
 }
 
 .macro-contract-panel__body {
@@ -975,15 +975,15 @@
 }
 
 .macro-contract-panel__chip--focus {
-  background: rgba(14, 165, 233, 0.12);
-  border-color: rgba(14, 165, 233, 0.24);
-  color: #b6ecff;
+  background: var(--color-info-muted);
+  border-color: color-mix(in srgb, var(--color-info) 34%, var(--color-border));
+  color: var(--color-info);
 }
 
 .macro-contract-panel__chip--forbidden {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.22);
-  color: #ffc2c2;
+  background: var(--color-danger-muted);
+  border-color: color-mix(in srgb, var(--color-danger) 34%, var(--color-border));
+  color: var(--color-danger);
 }
 
 .bible-edit-row {
@@ -1196,9 +1196,9 @@
 }
 
 .project-cover-model-badge--image {
-  border-color: rgba(16, 185, 129, 0.32);
-  color: #8decbc;
-  background: rgba(16, 185, 129, 0.1);
+  border-color: color-mix(in srgb, var(--color-success) 40%, var(--color-border));
+  color: var(--color-success);
+  background: var(--color-success-muted);
 }
 
 .project-cover-model-menu {
@@ -1331,16 +1331,16 @@
 .project-cover-message {
   padding: 9px 11px;
   border-radius: 8px;
-  border: 1px solid rgba(16, 185, 129, 0.24);
-  background: rgba(16, 185, 129, 0.08);
-  color: #9ef0c7;
+  border: 1px solid color-mix(in srgb, var(--color-success) 34%, var(--color-border));
+  background: var(--color-success-muted);
+  color: var(--color-success);
   font-size: 12px;
 }
 
 .project-cover-message--error {
-  border-color: rgba(239, 68, 68, 0.28);
-  background: rgba(239, 68, 68, 0.08);
-  color: #ffc2c2;
+  border-color: color-mix(in srgb, var(--color-danger) 34%, var(--color-border));
+  background: var(--color-danger-muted);
+  color: var(--color-danger);
 }
 
 .project-cover-variants {
@@ -1439,8 +1439,8 @@
   justify-content: center;
   min-height: 24px;
   padding: 0 8px;
-  background: rgba(16, 185, 129, 0.14);
-  color: #8decbc;
+  background: var(--color-success-muted);
+  color: var(--color-success);
 }
 
 .project-cover-variant__footer {
@@ -1475,9 +1475,9 @@
 }
 
 .project-cover-delete--confirm {
-  border-color: rgba(239, 68, 68, 0.36);
-  color: #ffc2c2;
-  background: rgba(239, 68, 68, 0.1);
+  border-color: color-mix(in srgb, var(--color-danger) 44%, var(--color-border));
+  color: var(--color-danger);
+  background: var(--color-danger-muted);
 }
 
 .save-indicator {

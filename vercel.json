@@ -1,4 +1,9 @@
 {
+    "git": {
+        "deploymentEnabled": {
+            "main": false
+        }
+    },
     "fluid": true,
     "functions": {
         "api/openai-proxy.js": {

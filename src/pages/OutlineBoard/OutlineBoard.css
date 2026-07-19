@@ -337,8 +337,7 @@
 }
 
 .outline-card--done {
-  border-left: 3px solid var(--color-success);
-  opacity: 0.8;
+  opacity: 1;
 }
 
 .outline-card-header {
@@ -369,7 +368,7 @@
 
 .outline-card-status {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   flex-shrink: 0;
@@ -377,6 +376,7 @@
 
 .outline-card-purpose {
   font-size: 12px;
+  font-weight: 600;
   color: var(--color-accent);
   display: flex;
   align-items: flex-start;
@@ -386,7 +386,8 @@
 }
 
 .outline-card-summary {
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--color-text-secondary);
   line-height: 1.4;
   margin: var(--space-1) 0;
@@ -404,10 +405,11 @@
   align-items: center;
   gap: 3px;
   font-size: 10px;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
   background: var(--color-bg);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
+  font-weight: 600;
 }
 
 .outline-card-actions {
@@ -1095,8 +1097,9 @@
 .outline-unassigned-head p {
   margin: 0;
   max-width: 560px;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-size: var(--text-xs);
+  font-weight: 500;
   line-height: 1.4;
 }
 
@@ -1156,6 +1159,7 @@
   margin-top: 4px;
   color: var(--color-text-secondary);
   font-size: var(--text-xs);
+  font-weight: 500;
   line-height: 1.35;
 }
 
@@ -1175,6 +1179,11 @@
   background: color-mix(in srgb, var(--color-bg-primary) 54%, var(--color-bg-secondary));
   border-color: var(--color-border);
   box-shadow: none;
+}
+
+.outline-card.outline-card--done {
+  border-color: color-mix(in srgb, var(--color-success) 42%, var(--color-border));
+  background: color-mix(in srgb, var(--color-success) 6%, var(--color-bg-secondary));
 }
 
 .outline-card:hover {
@@ -1221,6 +1230,7 @@
 .outline-card-actions .btn {
   flex: 1 1 0;
   min-width: 0;
+  font-weight: 600;
 }
 
 .outline-card-clear,
@@ -1242,6 +1252,7 @@
   min-height: 42px;
   border-color: color-mix(in srgb, var(--color-text-tertiary) 36%, var(--color-border));
   color: var(--color-text-secondary);
+  font-weight: 600;
 }
 
 .outline-list {
