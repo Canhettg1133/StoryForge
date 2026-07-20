@@ -1420,7 +1420,7 @@ textarea:disabled {
 }
 
 .user-filter-grid {
-  grid-template-columns: minmax(150px, 0.9fr) minmax(150px, 0.9fr) minmax(180px, 1.1fr) auto;
+  grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;
 }
 
 .user-summary-strip {

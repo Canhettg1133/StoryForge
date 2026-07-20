@@ -81,6 +81,8 @@ import {
   getVisibleUserPlans,
   isActivePlanExpiringSoon,
   isToday,
+  matchesUserPlanExpiryFilter,
+  sortUsersByPlanExpiry,
   summarizeLimits,
   toPrettyJson,
 } from '../utils/adminFormatters.js';
@@ -184,6 +186,7 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
   const [roleFilter, setRoleFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [expiryFilter, setExpiryFilter] = useState('all');
   const [planForm, setPlanForm] = useState(DEFAULT_PLAN_FORM);
   const [overrideForm, setOverrideForm] = useState(DEFAULT_OVERRIDE_FORM);
   const [accessCheck, setAccessCheck] = useState(null);
@@ -192,7 +195,7 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
 
   const users = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return data.users.filter((user) => {
+    const filteredUsers = data.users.filter((user) => {
       const role = String(user.system_role || user.role || 'user').toLowerCase();
       const plan = getCurrentUserPlanKey(user);
       const status = String(user.status || 'active').toLowerCase();
@@ -207,12 +210,18 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
       return matchesQuery
         && (roleFilter === 'all' || role === roleFilter)
         && (planFilter === 'all' || plan === planFilter)
-        && (statusFilter === 'all' || status === statusFilter);
+        && (statusFilter === 'all' || status === statusFilter)
+        && matchesUserPlanExpiryFilter(user, expiryFilter);
     });
-  }, [data.users, planFilter, query, roleFilter, statusFilter]);
+    return expiryFilter === 'all' ? filteredUsers : sortUsersByPlanExpiry(filteredUsers);
+  }, [data.users, expiryFilter, planFilter, query, roleFilter, statusFilter]);
   const selected = users.find((user) => getUserId(user) === selectedUserId) || users[0] || null;
   const selectedId = selected ? getUserId(selected) : '';
-  const hasUserFilters = Boolean(query.trim()) || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all';
+  const hasUserFilters = Boolean(query.trim())
+    || roleFilter !== 'all'
+    || planFilter !== 'all'
+    || statusFilter !== 'all'
+    || expiryFilter !== 'all';
   const userStats = useMemo(() => getUserManagementStats(data.users), [data.users]);
 
   useEffect(() => {
@@ -369,6 +378,14 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
               ))}
             </select>
           </label>
+          <label>
+            <span>Lọc hạn VIP</span>
+            <select value={expiryFilter} onChange={(event) => setExpiryFilter(event.target.value)}>
+              <option value="all">Tất cả thời hạn</option>
+              <option value="expiring_7">Sắp hết trong 7 ngày</option>
+              <option value="expiring_30">Sắp hết trong 30 ngày</option>
+            </select>
+          </label>
           <button
             type="button"
             className="filter-chip"
@@ -378,6 +395,7 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
               setRoleFilter('all');
               setPlanFilter('all');
               setStatusFilter('all');
+              setExpiryFilter('all');
             }}
           >
             Xóa bộ lọc
@@ -442,7 +460,10 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
             <Badge tone="info">{selected ? 'Đã chọn 1 người dùng' : 'Chưa chọn'}</Badge>
           </div>
           {users.length === 0 ? (
-            <EmptyState title="Chưa có người dùng" text="Bấm Đồng bộ Auth để nhập danh sách từ Supabase Auth." />
+            <EmptyState
+              title={hasUserFilters ? 'Không có người dùng phù hợp' : 'Chưa có người dùng'}
+              text={hasUserFilters ? 'Thử điều chỉnh hoặc xóa bộ lọc hiện tại.' : 'Bấm Đồng bộ Auth để nhập danh sách từ Supabase Auth.'}
+            />
           ) : (
             <div className="user-list-scroll">
               <table className="data-table user-table">

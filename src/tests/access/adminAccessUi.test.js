@@ -88,13 +88,18 @@ describe('admin split UI contract', () => {
     expect(css).toContain('.vip-page-preview');
   });
 
-  it('keeps dedicated user-list filters for role, plan, and status', () => {
+  it('keeps dedicated user-list filters for role, plan, status, and VIP expiry', () => {
     const app = readAdminUi();
     const css = readAdminCss();
 
     expect(app).toContain('const [roleFilter');
     expect(app).toContain('const [planFilter');
     expect(app).toContain('const [statusFilter');
+    expect(app).toContain('const [expiryFilter');
+    expect(app).toContain('matchesUserPlanExpiryFilter');
+    expect(app).toContain('sortUsersByPlanExpiry');
+    expect(app).toContain("value=\"expiring_7\"");
+    expect(app).toContain("value=\"expiring_30\"");
     expect(app).toContain('admin-user-filters');
     expect(app).toContain('Lọc vai trò');
     expect(app).toContain('Lọc gói');

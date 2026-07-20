@@ -120,6 +120,19 @@ export function isActivePlanExpiringSoon(plan, days = 7) {
   return expiresAt > now && expiresAt <= now + (days * 24 * 60 * 60 * 1000);
 }
 
+export function matchesUserPlanExpiryFilter(user, filter = 'all') {
+  if (filter === 'all') return true;
+  const days = filter === 'expiring_7' ? 7 : filter === 'expiring_30' ? 30 : 0;
+  return days > 0 && isActivePlanExpiringSoon(getActiveUserPlan(user), days);
+}
+
+export function sortUsersByPlanExpiry(users) {
+  return [...users].sort((left, right) => (
+    new Date(getActiveUserPlan(left)?.expires_at).getTime()
+    - new Date(getActiveUserPlan(right)?.expires_at).getTime()
+  ));
+}
+
 export function getUserManagementStats(users) {
   const source = Array.isArray(users) ? users : [];
   return {
