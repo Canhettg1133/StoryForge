@@ -332,7 +332,12 @@ describe('phase10 entity materialization flows', () => {
       worldTerms: [],
     }, {
       extracted: {
-        characters: [{ name: 'Ly Mac', aliases: ['Mac'] }],
+        characters: [{
+          name: 'Ly Mac',
+          aliases: ['Mac'],
+          identity_action: 'new',
+          existing_entity_id: null,
+        }],
       },
       canonResult: { ok: false, revisionId: 90 },
     });
@@ -352,7 +357,117 @@ describe('phase10 entity materialization flows', () => {
     expect(candidates[0].resolution_status).toBe('pending_canon');
   });
 
-  it('materializes only after canon pass and creates ambiguity review instead of duplicate character', async () => {
+  it('materializes a valid new extracted entity only after canonization succeeds', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: {
+        characters: [{
+          name: 'Lý Mặc',
+          raw_name: { unexpected: true },
+          aliases: ['Mặc'],
+          identity_action: 'new',
+          existing_entity_id: null,
+        }],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(await db.characters.toArray()).toEqual([
+      expect.objectContaining({
+        name: 'Lý Mặc',
+        aliases: ['Mặc'],
+        normalized_name: 'ly mac',
+        identity_key: 'character:ly mac',
+      }),
+    ]);
+    const candidates = await db.entity_resolution_candidates.toArray();
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].resolution_status).toBe('created_new');
+    expect(result.extractionStats.stats.created_new).toBe(1);
+  });
+
+  it('rejects and reports chapter extraction items with invalid identity field types', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung chuong.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: {
+        characters: [{
+          name: { unexpected: true },
+          aliases: [],
+          identity_action: 'new',
+          existing_entity_id: null,
+        }],
+        locations: [{
+          name: 'Động Phủ',
+          aliases: [{ unexpected: true }],
+          identity_action: 'new',
+          existing_entity_id: null,
+        }],
+        objects: [{
+          name: 'Ngọc Bội',
+          aliases: [],
+          identity_action: { unexpected: true },
+          existing_entity_id: null,
+        }],
+        terms: [{
+          name: 'Linh Khí',
+          aliases: [],
+          identity_action: 'existing',
+          existing_entity_id: { unexpected: true },
+        }, {
+          name: 'Cảnh Giới',
+          aliases: [],
+          definition: { unexpected: true },
+          identity_action: 'new',
+          existing_entity_id: null,
+        }],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung chuong.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(await db.characters.toArray()).toHaveLength(0);
+    expect(await db.locations.toArray()).toHaveLength(0);
+    expect(await db.objects.toArray()).toHaveLength(0);
+    expect(await db.worldTerms.toArray()).toHaveLength(0);
+    const candidates = await db.entity_resolution_candidates.toArray();
+    expect(candidates).toHaveLength(5);
+    expect(candidates.every((candidate) => candidate.resolution_status === 'rejected')).toBe(true);
+    expect(result.extractionStats.stats.skipped_ai_identity).toBe(5);
+    expect(result.message).toContain('Bỏ qua 5 mục trích xuất');
+  });
+
+  it('skips chapter extraction candidates that omit the identity contract', async () => {
     const { store, db } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
@@ -382,9 +497,305 @@ describe('phase10 entity materialization flows', () => {
     expect(result.ok).toBe(true);
     expect(await db.characters.toArray()).toHaveLength(2);
     const suggestions = await db.suggestions.toArray();
-    expect(suggestions.some((item) => item.type === 'entity_resolution')).toBe(true);
+    expect(suggestions.some((item) => item.type === 'entity_resolution')).toBe(false);
     const candidates = await db.entity_resolution_candidates.toArray();
-    expect(candidates[0].resolution_status).toBe('ambiguous_review');
+    expect(candidates[0].resolution_status).toBe('rejected');
+    expect(result.extractionStats.stats.skipped_ai_identity).toBe(1);
+    expect(result.message).toContain('Bỏ qua 1 mục trích xuất');
+  });
+
+  it('matches an existing extracted object by validated AI identity and stores its observed alias', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac lay vien Huyet Lien Dan.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [{ id: 5, project_id: 1, name: 'Huyết Liên Đan', aliases: [], description: '' }],
+      worldTerms: [],
+    }, {
+      extracted: {
+        objects: [{
+          name: 'Huyết Liên Đan',
+          aliases: ['Viên Huyết Liên Đan'],
+          description: 'Đan dược được Lý Mặc sử dụng.',
+          identity_action: 'existing',
+          existing_entity_id: 5,
+        }],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac lay vien Huyet Lien Dan.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    const objects = await db.objects.toArray();
+    expect(objects).toHaveLength(1);
+    expect(objects[0].aliases).toContain('Viên Huyết Liên Đan');
+    expect(objects[0].description).toBe('Đan dược được Lý Mặc sử dụng.');
+    expect(result.extractionStats.stats.matched_existing).toBe(1);
+  });
+
+  it('preserves the extracted primary name as an alias when AI-new matches an existing object alias', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Vien Huyet Lien Dan xuat hien.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [{ id: 5, project_id: 1, name: 'Huyết Liên Đan', aliases: [], description: '' }],
+      worldTerms: [],
+    }, {
+      extracted: {
+        objects: [{
+          name: 'Viên Huyết Liên Đan',
+          aliases: ['Huyết Liên Đan'],
+          identity_action: 'new',
+          existing_entity_id: null,
+          owner_character_id: { unexpected: true },
+        }],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Vien Huyet Lien Dan xuat hien.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    const objects = await db.objects.toArray();
+    expect(objects).toHaveLength(1);
+    expect(objects[0].name).toBe('Huyết Liên Đan');
+    expect(objects[0].aliases).toEqual(expect.arrayContaining([
+      'Huyết Liên Đan',
+      'Viên Huyết Liên Đan',
+    ]));
+    expect(objects[0].owner_character_id ?? null).toBeNull();
+    expect(result.extractionStats.stats.matched_existing).toBe(1);
+  });
+
+  it('maps an observed short character name through a validated id and stores it as an alias', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Mặc bước vào đại điện.', final_text: '', order_index: 0 }],
+      characters: [{ id: 7, project_id: 1, name: 'Lý Mặc', aliases: [], personality: '' }],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: {
+        characters: [{
+          name: 'Lý Mặc',
+          aliases: ['Mặc'],
+          personality: 'Điềm tĩnh.',
+          identity_action: 'existing',
+          existing_entity_id: 7,
+        }],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Mặc bước vào đại điện.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    const characters = await db.characters.toArray();
+    expect(characters).toHaveLength(1);
+    expect(characters[0].aliases).toContain('Mặc');
+    expect(characters[0].personality).toBe('Điềm tĩnh.');
+    expect(result.extractionStats.stats.matched_existing).toBe(1);
+  });
+
+  it('skips and reports an extracted identity whose id and canonical name conflict', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Huyet Lien Dan xuat hien.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [
+        { id: 5, project_id: 1, name: 'Huyết Liên Đan', aliases: [] },
+        { id: 6, project_id: 1, name: 'Cửu Chuyển Đan', aliases: [] },
+      ],
+      worldTerms: [],
+    }, {
+      extracted: {
+        objects: [{
+          name: 'Huyết Liên Đan',
+          identity_action: 'existing',
+          existing_entity_id: 6,
+        }],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Huyet Lien Dan xuat hien.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(await db.objects.toArray()).toHaveLength(2);
+    expect(await db.suggestions.toArray()).toHaveLength(0);
+    expect(result.extractionStats.stats.skipped_ai_identity).toBe(1);
+    expect(result.message).toContain('Bỏ qua 1 mục trích xuất');
+  });
+
+  it('rejects duplicate extracted identities whose AI decisions conflict', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Lý Mặc xuất hiện.', final_text: '', order_index: 0 }],
+      characters: [{ id: 7, project_id: 1, name: 'Lý Mặc', aliases: [] }],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: {
+        characters: [
+          {
+            name: 'Lý Mặc',
+            aliases: ['Mặc'],
+            identity_action: 'existing',
+            existing_entity_id: 7,
+          },
+          {
+            name: 'Lý Mặc',
+            aliases: [],
+            identity_action: 'new',
+            existing_entity_id: null,
+          },
+        ],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Lý Mặc xuất hiện.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(result.extractionStats.stats.skipped_ai_identity).toBe(1);
+    expect(result.message).toContain('Bỏ qua 1 mục trích xuất');
+    expect((await db.characters.get(7)).aliases).toEqual([]);
+    expect(await db.suggestions.toArray()).toHaveLength(0);
+    const candidates = await db.entity_resolution_candidates.toArray();
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].resolution_status).toBe('rejected');
+  });
+
+  it('stages and reports a chapter extraction item that is missing its canonical name', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Một người vô danh xuất hiện.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: {
+        characters: [{
+          aliases: ['Vô Danh'],
+          identity_action: 'new',
+          existing_entity_id: null,
+        }],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Một người vô danh xuất hiện.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(result.extractionStats.stats.skipped_ai_identity).toBe(1);
+    expect(result.message).toContain('Bỏ qua 1 mục trích xuất');
+    expect(await db.characters.toArray()).toHaveLength(0);
+    const candidates = await db.entity_resolution_candidates.toArray();
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].resolution_status).toBe('rejected');
+  });
+
+  it('continues canon completion and reports when Codex extraction fails closed', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung chuong.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extractFromChapterImpl: async () => {
+        throw new Error('identity roster unavailable');
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung chuong.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect((await db.chapters.get(11)).status).toBe('done');
+    expect(result.extractionWarning).toContain('Không thể trích xuất Codex');
+    expect(result.message).toContain('Không thể trích xuất Codex');
+  });
+
+  it('reports an invalid empty extraction response without blocking canon completion', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung chuong.', final_text: '', order_index: 0 }],
+    }, {
+      extracted: null,
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung chuong.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect((await db.chapters.get(11)).status).toBe('done');
+    expect(result.extractionWarning).toContain('AI không trả về dữ liệu Codex hợp lệ');
+    expect(result.message).toContain('AI không trả về dữ liệu Codex hợp lệ');
   });
 
   it('skips chapter canonization when existing canon is fresh for current chapter text', async () => {

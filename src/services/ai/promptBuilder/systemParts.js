@@ -114,6 +114,7 @@ export function buildPromptSystemParts(taskType, context = {}) {
     entityType = '',
     batchCount = 0,
     entityContextText = '',
+    entityIdentityRoster = null,
     recentChapterSummaries = [],
     authorIdea = '',
     existingMacroMilestones = [],
@@ -466,6 +467,28 @@ export function buildPromptSystemParts(taskType, context = {}) {
   const taskInstruction = composeTaskInstruction(taskType, rawTaskInstruction);
   if (taskInstruction) {
     systemParts.push('\n[NHIỆM VỤ]\n' + taskInstruction);
+  }
+
+  if (taskType === TASK_TYPES.FEEDBACK_EXTRACT && entityIdentityRoster) {
+    const compactGroup = (items) => (Array.isArray(items) ? items : [])
+      .map((item) => ({
+        id: item?.id ?? null,
+        name: String(item?.name || '').trim(),
+        aliases: Array.isArray(item?.aliases)
+          ? item.aliases.map((alias) => String(alias || '').trim()).filter(Boolean)
+          : [],
+      }))
+      .filter((item) => item.id != null && item.name);
+    const compactRoster = {
+      characters: compactGroup(entityIdentityRoster.characters),
+      locations: compactGroup(entityIdentityRoster.locations),
+      objects: compactGroup(entityIdentityRoster.objects),
+      worldTerms: compactGroup(entityIdentityRoster.worldTerms),
+    };
+    systemParts.push(
+      '\n[DANH SÁCH THỰC THỂ HIỆN CÓ - DÙNG ĐỂ NHẬN DIỆN]\n'
+      + JSON.stringify(compactRoster, null, 2),
+    );
   }
 
   const canonRoleLocksLayer = buildCanonRoleLocksLayer(canonRoleLocks);

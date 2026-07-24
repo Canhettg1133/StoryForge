@@ -42,6 +42,13 @@ const KIND_TO_TABLE = {
   world_term: 'worldTerms',
 };
 
+const CHAPTER_EXTRACT_TEXT_FIELDS = {
+  character: ['role', 'age', 'appearance', 'personality', 'personality_tags', 'flaws'],
+  location: ['description'],
+  object: ['description', 'owner'],
+  world_term: ['definition', 'category'],
+};
+
 function cleanText(value) {
   return String(value || '')
     .replace(/<[^>]*>/g, ' ')
@@ -53,6 +60,7 @@ function cleanText(value) {
 function stripDiacritics(value) {
   return cleanText(value)
     .toLowerCase()
+    .replace(/đ/g, 'd')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 }
@@ -203,6 +211,7 @@ function buildEntityIdentityIndex(existingEntities = [], kind) {
   const records = existingEntities.map((entity) => buildEntityIdentityRecord(entity, kind));
   const exactName = new Map();
   const aliases = new Map();
+  const literalAliases = new Map();
 
   for (const record of records) {
     const exactKey = record.identity.normalized_name;
@@ -214,9 +223,13 @@ function buildEntityIdentityIndex(existingEntities = [], kind) {
       if (!aliases.has(aliasKey)) aliases.set(aliasKey, []);
       aliases.get(aliasKey).push(record);
     }
+    for (const aliasKey of uniqueKeyList(Array.isArray(record.aliases) ? record.aliases : [])) {
+      if (!literalAliases.has(aliasKey)) literalAliases.set(aliasKey, []);
+      literalAliases.get(aliasKey).push(record);
+    }
   }
 
-  return { records, exactName, aliases };
+  return { records, exactName, aliases, literalAliases };
 }
 
 function buildResolverDebug(candidateIdentity, compared, resolution, reason, matchTier, score) {
@@ -306,6 +319,103 @@ function resolveCreated(candidateIdentity, compared = [], reason = 'No determini
     matchTier: 'create_new',
     debug: buildResolverDebug(candidateIdentity, compared, 'created_new', reason, 'create_new', 0),
   };
+}
+
+function resolveRejected(candidateIdentity, records = [], reason = 'AI identity contract is invalid.') {
+  return {
+    status: 'rejected',
+    matchedEntity: null,
+    matchedEntityId: null,
+    score: 0,
+    matchTier: 'invalid_ai_identity',
+    debug: buildResolverDebug(
+      candidateIdentity,
+      records.map((record) => ({
+        id: record.id || null,
+        name: record.name || '',
+        normalized_name: record.identity.normalized_name,
+        alias_keys: record.identity.alias_keys,
+        score: 0,
+        tier: 'invalid_ai_identity',
+      })),
+      'rejected',
+      reason,
+      'invalid_ai_identity',
+      0,
+    ),
+  };
+}
+
+function sameEntityId(left, right) {
+  return left != null && right != null && String(left) === String(right);
+}
+
+function strictIdentityMatches(candidateIdentity, index) {
+  const strictKeys = uniqueKeyList([
+    candidateIdentity.normalized_name,
+    ...candidateIdentity.aliases,
+  ]);
+  return uniqueRecords(strictKeys.flatMap((key) => [
+    ...(index.exactName.get(key) || []),
+    ...(index.literalAliases.get(key) || []),
+  ]));
+}
+
+function resolveChapterExtractCandidate(candidate, existingEntities = [], kind) {
+  const normalizedKind = normalizeKind(kind || candidate?.entity_kind);
+  const candidateIdentity = normalizeEntityIdentity(normalizedKind, candidate);
+  const index = buildEntityIdentityIndex(existingEntities, normalizedKind);
+  if (candidate?.identity_contract_invalid === true) {
+    return resolveRejected(candidateIdentity, [], 'Chapter extraction item has invalid identity field types or values.');
+  }
+  if (!candidateIdentity.normalized_name) {
+    return resolveRejected(candidateIdentity, [], 'Candidate has no usable canonical name.');
+  }
+  if (candidate?.identity_decision_conflict === true) {
+    return resolveRejected(candidateIdentity, [], 'AI returned conflicting identity decisions for the same entity name.');
+  }
+
+  const action = cleanText(candidate?.identity_action).toLowerCase();
+  if (action === 'existing') {
+    const target = index.records.find((record) => sameEntityId(record.id, candidate?.existing_entity_id));
+    if (!target) {
+      return resolveRejected(candidateIdentity, [], 'AI existing_entity_id does not exist in this entity group.');
+    }
+    const identityMatches = strictIdentityMatches(candidateIdentity, index);
+    const hasUniqueCanonicalTarget = identityMatches.length === 1
+      && sameEntityId(identityMatches[0].id, target.id)
+      && candidateIdentity.normalized_name === target.identity.normalized_name;
+    if (!hasUniqueCanonicalTarget) {
+      return resolveRejected(
+        candidateIdentity,
+        uniqueRecords([target, ...identityMatches]),
+        'AI existing_entity_id, canonical name, or aliases conflict with existing identities.',
+      );
+    }
+    return resolveMatched(candidateIdentity, target, 'ai_existing_id', 'Validated AI existing entity id and canonical name.');
+  }
+
+  if (action === 'new') {
+    const hasExplicitNullEntityId = Object.prototype.hasOwnProperty.call(candidate, 'existing_entity_id')
+      && candidate.existing_entity_id === null;
+    if (!hasExplicitNullEntityId) {
+      return resolveRejected(candidateIdentity, [], 'AI-new candidate must use existing_entity_id=null.');
+    }
+    const exactMatches = strictIdentityMatches(candidateIdentity, index);
+    if (exactMatches.length === 1) {
+      const target = exactMatches[0];
+      const tier = candidateIdentity.normalized_name === target.identity.normalized_name
+        ? 'strict_exact_name'
+        : 'strict_exact_alias';
+      return resolveMatched(candidateIdentity, target, tier, 'AI-new candidate matched one exact existing name or alias.');
+    }
+    if (exactMatches.length > 1) {
+      return resolveRejected(candidateIdentity, exactMatches, 'AI-new candidate matches multiple exact existing identities.');
+    }
+    return resolveCreated(candidateIdentity, [], 'AI marked the candidate new and no exact name or alias exists.');
+  }
+
+  return resolveRejected(candidateIdentity, [], 'Chapter extraction candidate is missing identity_action existing|new.');
 }
 
 function resolveCharacterCandidate(candidateIdentity, index) {
@@ -452,11 +562,9 @@ function resolveEntityCandidate(candidate, existingEntities = [], kind) {
 
 function mergeGenericEntityPatch(existing, incoming, kind) {
   const patch = {};
-  if (kind !== 'object') {
-    const nextAliases = mergeUniqueAliases(existing.aliases, incoming.aliases);
-    if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
-      patch.aliases = nextAliases;
-    }
+  const nextAliases = mergeUniqueAliases(existing.aliases, incoming.aliases);
+  if (JSON.stringify(existing.aliases || []) !== JSON.stringify(nextAliases)) {
+    patch.aliases = nextAliases;
   }
 
   if (kind === 'location') {
@@ -505,10 +613,16 @@ function mergeGenericEntityPatch(existing, incoming, kind) {
 
 function tablePayloadFromCandidate(projectId, candidate, kind) {
   const normalizedKind = normalizeKind(kind);
-  const payload = typeof candidate.payload_json === 'string'
+  const rawPayload = typeof candidate.payload_json === 'string'
     ? JSON.parse(candidate.payload_json)
     : (candidate.payload_json || candidate);
-  const identity = normalizeEntityIdentity(normalizedKind, payload);
+  const payload = candidate.source_type === 'chapter_extract'
+    ? chapterExtractMaterializationPayload(rawPayload, normalizedKind)
+    : rawPayload;
+  const identityInput = candidate.source_type === 'chapter_extract'
+    ? safeIdentityNormalizationPayload(payload)
+    : payload;
+  const identity = normalizeEntityIdentity(normalizedKind, identityInput);
   const base = {
     project_id: projectId,
     name: cleanText(payload.name || candidate.raw_name || ''),
@@ -557,6 +671,7 @@ function tablePayloadFromCandidate(projectId, candidate, kind) {
   if (normalizedKind === 'object') {
     return {
       ...base,
+      aliases: mergeUniqueAliases(payload.aliases, candidate.aliases),
       description: cleanText(payload.description || ''),
       owner_character_id: payload.owner_character_id || null,
       properties: cleanText(payload.properties || ''),
@@ -646,6 +761,14 @@ async function materializeResolvedDecision(projectId, candidate, resolution, kin
     if (!current) {
       return { status: 'ambiguous_review', createdEntry: null, matchedEntityId: null };
     }
+    const genericPayload = candidate.source_type === 'chapter_extract'
+      && payload.name
+      && normalizeIdentityText(payload.name) !== normalizeIdentityText(current.name)
+      ? {
+        ...payload,
+        aliases: mergeUniqueAliases(payload.aliases, [payload.name]),
+      }
+      : payload;
     const patch = normalizedKind === 'character'
       ? {
         ...mergeCharacterPatch(current, {
@@ -656,7 +779,7 @@ async function materializeResolvedDecision(projectId, candidate, resolution, kin
         alias_keys: payload.alias_keys,
         identity_key: payload.identity_key,
       }
-      : mergeGenericEntityPatch(current, payload, normalizedKind);
+      : mergeGenericEntityPatch(current, genericPayload, normalizedKind);
     if (Object.keys(patch).length > 0) {
       await table.update(current.id, patch);
       Object.assign(current, patch);
@@ -698,6 +821,67 @@ function mergePayloads(existingPayload, incomingPayload) {
   };
 }
 
+function chapterIdentityDecisionSignature(payload = {}) {
+  const hasExistingEntityId = Object.prototype.hasOwnProperty.call(payload, 'existing_entity_id');
+  return JSON.stringify({
+    action: cleanText(payload.identity_action).toLowerCase(),
+    has_existing_entity_id: hasExistingEntityId,
+    existing_entity_id: hasExistingEntityId && payload.existing_entity_id != null
+      ? String(payload.existing_entity_id)
+      : null,
+  });
+}
+
+function hasValidChapterExtractEntityId(payload, action) {
+  if (!Object.prototype.hasOwnProperty.call(payload, 'existing_entity_id')) return false;
+  if (action === 'new') return payload.existing_entity_id === null;
+  if (typeof payload.existing_entity_id === 'number') {
+    return Number.isFinite(payload.existing_entity_id);
+  }
+  return typeof payload.existing_entity_id === 'string'
+    && payload.existing_entity_id.trim().length > 0;
+}
+
+function isValidChapterExtractIdentityPayload(payload, kind) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+  if (typeof payload.name !== 'string' || cleanText(payload.name) === '') return false;
+  if (!Array.isArray(payload.aliases) || payload.aliases.some((alias) => typeof alias !== 'string')) {
+    return false;
+  }
+  if (typeof payload.identity_action !== 'string') return false;
+  const action = cleanText(payload.identity_action).toLowerCase();
+  if (action !== 'existing' && action !== 'new') return false;
+  if (!hasValidChapterExtractEntityId(payload, action)) return false;
+  return (CHAPTER_EXTRACT_TEXT_FIELDS[normalizeKind(kind)] || []).every((field) => (
+    !Object.prototype.hasOwnProperty.call(payload, field) || typeof payload[field] === 'string'
+  ));
+}
+
+function safeIdentityNormalizationPayload(payload = {}) {
+  const name = typeof payload.name === 'string' ? payload.name : '';
+  return {
+    ...payload,
+    name,
+    raw_name: name,
+    aliases: Array.isArray(payload.aliases)
+      ? payload.aliases.filter((alias) => typeof alias === 'string')
+      : [],
+  };
+}
+
+function chapterExtractMaterializationPayload(payload = {}, kind) {
+  const allowedFields = [
+    'name',
+    'aliases',
+    ...(CHAPTER_EXTRACT_TEXT_FIELDS[normalizeKind(kind)] || []),
+  ];
+  return Object.fromEntries(
+    allowedFields
+      .filter((field) => Object.prototype.hasOwnProperty.call(payload, field))
+      .map((field) => [field, payload[field]]),
+  );
+}
+
 function toCandidateRows({
   projectId,
   chapterId = null,
@@ -718,18 +902,45 @@ function toCandidateRows({
   ];
 
   for (const [kind, items] of groups) {
-    for (const item of Array.isArray(items) ? items : []) {
-      const payload = item && typeof item === 'object' ? item : { name: cleanText(item) };
-      const identity = normalizeEntityIdentity(kind, payload);
-      if (!identity.normalized_name) continue;
-      const dedupeKey = `${kind}:${identity.identity_key || identity.normalized_name}`;
+    for (const [itemIndex, item] of (Array.isArray(items) ? items : []).entries()) {
+      const rawPayload = item && typeof item === 'object' && !Array.isArray(item)
+        ? item
+        : { name: typeof item === 'string' ? item : '' };
+      const payload = sourceType === 'chapter_extract' && !isValidChapterExtractIdentityPayload(rawPayload, kind)
+        ? { ...rawPayload, identity_contract_invalid: true }
+        : rawPayload;
+      const identityInput = sourceType === 'chapter_extract'
+        ? safeIdentityNormalizationPayload(payload)
+        : payload;
+      const identity = normalizeEntityIdentity(kind, identityInput);
+      if (!identity.normalized_name && sourceType !== 'chapter_extract') continue;
+      const dedupeKey = identity.normalized_name
+        ? `${kind}:${sourceType === 'chapter_extract'
+          ? identity.normalized_name
+          : (identity.identity_key || identity.normalized_name)}`
+        : `${kind}:invalid:${itemIndex}`;
       const existing = rowsByKey.get(dedupeKey);
       if (existing) {
-        const mergedPayload = mergePayloads(parseCandidatePayload(existing), payload);
-        const mergedIdentity = normalizeEntityIdentity(kind, mergedPayload);
+        const existingPayload = parseCandidatePayload(existing);
+        const hasDecisionConflict = sourceType === 'chapter_extract'
+          && (existingPayload.identity_decision_conflict === true
+            || chapterIdentityDecisionSignature(existingPayload) !== chapterIdentityDecisionSignature(payload));
+        const mergedPayload = sourceType === 'chapter_extract'
+          ? mergePayloads(
+            safeIdentityNormalizationPayload(existingPayload),
+            safeIdentityNormalizationPayload(payload),
+          )
+          : mergePayloads(existingPayload, payload);
+        if (hasDecisionConflict) {
+          mergedPayload.identity_decision_conflict = true;
+        }
+        const mergedIdentityInput = sourceType === 'chapter_extract'
+          ? safeIdentityNormalizationPayload(mergedPayload)
+          : mergedPayload;
+        const mergedIdentity = normalizeEntityIdentity(kind, mergedIdentityInput);
         rowsByKey.set(dedupeKey, {
           ...existing,
-          raw_name: existing.raw_name || payload.name || '',
+          raw_name: existing.raw_name || mergedIdentity.raw_name,
           normalized_name: mergedIdentity.normalized_name,
           aliases: mergeUniqueAliases(existing.aliases, payload.aliases),
           alias_keys: mergedIdentity.alias_keys,
@@ -874,6 +1085,7 @@ export async function resolveAndMaterializeEntityCandidates({
     created_new: 0,
     ambiguous_review: 0,
     rejected: 0,
+    skipped_ai_identity: 0,
   };
 
   const existingByKind = {
@@ -886,12 +1098,15 @@ export async function resolveAndMaterializeEntityCandidates({
   for (const candidate of candidates) {
     const kind = normalizeKind(candidate.entity_kind);
     const existingEntities = existingByKind[kind] || [];
-    const resolution = resolveEntityCandidate({
+    const candidatePayload = {
       ...parseCandidatePayload(candidate),
       raw_name: candidate.raw_name,
       aliases: candidate.aliases || [],
       entity_kind: kind,
-    }, existingEntities, kind);
+    };
+    const resolution = candidate.source_type === 'chapter_extract'
+      ? resolveChapterExtractCandidate(candidatePayload, existingEntities, kind)
+      : resolveEntityCandidate(candidatePayload, existingEntities, kind);
 
     if (resolution.status === 'ambiguous_review') {
       await createEntityResolutionSuggestion(projectId, candidate, resolution, kind);
@@ -906,6 +1121,9 @@ export async function resolveAndMaterializeEntityCandidates({
 
     if (resolution.status === 'rejected') {
       stats.rejected += 1;
+      if (candidate.source_type === 'chapter_extract' && resolution.matchTier === 'invalid_ai_identity') {
+        stats.skipped_ai_identity += 1;
+      }
       await updateCandidateStatus(candidate.id, {
         revision_id: revisionId ?? candidate.revision_id ?? null,
         resolution_status: 'rejected',
@@ -1038,5 +1256,6 @@ export {
   normalizeEntityIdentity,
   normalizeKind,
   parseCandidatePayload,
+  resolveChapterExtractCandidate,
   resolveEntityCandidate,
 };

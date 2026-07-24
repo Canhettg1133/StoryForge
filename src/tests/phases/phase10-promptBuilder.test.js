@@ -159,6 +159,62 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[0].content).toContain('"relationship_updates"');
   });
 
+  it('gives feedback extraction the complete compact entity identity roster', () => {
+    const characters = Array.from({ length: 16 }, (_, index) => ({
+      id: index + 1,
+      name: `Nhân vật ${index + 1}`,
+      aliases: index === 15 ? ['Người thứ mười sáu'] : [],
+      description: `Mô tả dài không được gửi ${index + 1}`,
+    }));
+    const messages = buildPrompt(TASK_TYPES.FEEDBACK_EXTRACT, {
+      sceneText: 'Người thứ mười sáu cầm Huyết Liên Đan tới Thanh Vân Sơn.',
+      entityIdentityRoster: {
+        characters,
+        locations: [{ id: 21, name: 'Thanh Vân Sơn', aliases: ['Thanh Vân'] }],
+        objects: [{ id: 31, name: 'Huyết Liên Đan', aliases: ['Viên Huyết Liên Đan'] }],
+        worldTerms: [{ id: 41, name: 'Linh lực', aliases: ['Linh khí'] }],
+      },
+    });
+
+    const system = messages[0].content;
+    expect(system).toContain('[DANH SÁCH THỰC THỂ HIỆN CÓ - DÙNG ĐỂ NHẬN DIỆN]');
+    expect(system).toContain('Nhân vật 16');
+    expect(system).toContain('Người thứ mười sáu');
+    expect(system).toContain('Thanh Vân Sơn');
+    expect(system).toContain('Huyết Liên Đan');
+    expect(system).toContain('Linh lực');
+    expect(system).not.toContain('Mô tả dài không được gửi');
+  });
+
+  it('locks identity decisions into the feedback extraction JSON contract', () => {
+    const messages = buildPrompt(TASK_TYPES.FEEDBACK_EXTRACT, {
+      promptTemplates: {
+        [TASK_TYPES.FEEDBACK_EXTRACT]: 'Chỉ lấy dữ liệu có bằng chứng rõ.',
+      },
+      sceneText: 'Lý Mặc lấy đan dược.',
+    });
+
+    expect(messages[0].content).toContain('"identity_action": "existing|new"');
+    expect(messages[0].content).toContain('"existing_entity_id": 123');
+    expect(messages[0].content).toContain('Nếu không đủ căn cứ để quyết định');
+  });
+
+  it('still sends an explicit empty roster when the project has no existing entities', () => {
+    const messages = buildPrompt(TASK_TYPES.FEEDBACK_EXTRACT, {
+      sceneText: 'Một nhân vật hoàn toàn mới xuất hiện.',
+      entityIdentityRoster: {
+        characters: [],
+        locations: [],
+        objects: [],
+        worldTerms: [],
+      },
+    });
+
+    expect(messages[0].content).toContain('[DANH SÁCH THỰC THỂ HIỆN CÓ - DÙNG ĐỂ NHẬN DIỆN]');
+    expect(messages[0].content).toContain('"characters": []');
+    expect(messages[0].content).toContain('"worldTerms": []');
+  });
+
   it('builds a relationship-only batch analysis prompt with the required schema', () => {
     const messages = buildPrompt(TASK_TYPES.RELATIONSHIP_ANALYZE_BATCH, {
       projectTitle: 'Dự án thử',

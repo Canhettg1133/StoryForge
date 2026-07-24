@@ -27,5 +27,8 @@ export default defineConfig({
     include: ['worker/**/*.workerd.test.js'],
     reporters: ['verbose'],
     testTimeout: 10000,
+    maxWorkers: 2,
+    minWorkers: 1,
+    globalSetup: ['./scripts/vitest-resource-guard.mjs'],
   },
 });

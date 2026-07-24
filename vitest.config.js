@@ -45,6 +45,11 @@ export default defineConfig({
         // Test timeouts
         testTimeout: 10000,
         hookTimeout: 10000,
+
+        // Keep local verification responsive and prevent overlapping Vitest runs.
+        maxWorkers: 2,
+        minWorkers: 1,
+        globalSetup: ['./scripts/vitest-resource-guard.mjs'],
         
         // reporters
         reporters: ['verbose'],

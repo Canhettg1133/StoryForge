@@ -898,6 +898,7 @@ const useProjectStore = create((set, get) => ({
         projectTitle: currentProject.title,
         genre: currentProject.genre_primary || '',
         projectId: currentProject.id,
+        chapterId,
         promptTemplates: parsePromptTemplates(currentProject.prompt_templates),
         nsfwMode: !!currentProject.nsfw_mode,
         superNsfwMode: !!currentProject.super_nsfw_mode,
@@ -907,10 +908,12 @@ const useProjectStore = create((set, get) => ({
 
       let summary = '';
       let extracted = null;
+      let extractionWarning = '';
       let extractionStats = {
         createdCount: 0,
         created: {},
         createdEntries: {},
+        stats: { skipped_ai_identity: 0 },
       };
       const completionSessionKey = buildCompletionSessionKey(currentProject.id, chapterId);
       let canonResult = null;
@@ -1004,8 +1007,12 @@ const useProjectStore = create((set, get) => ({
 
       if (extractResult.status === 'fulfilled') {
         extracted = extractResult.value || null;
+        if (!extracted) {
+          extractionWarning = 'AI không trả về dữ liệu Codex hợp lệ ở lần hoàn thành này.';
+        }
       } else {
         console.warn('[ChapterCompletion] Extraction failed (non-fatal):', extractResult.reason);
+        extractionWarning = 'Không thể trích xuất Codex ở lần hoàn thành này.';
       }
 
       const snapshotBeforeCanon = await loadCompletionChapterText(chapterId);
@@ -1139,11 +1146,19 @@ const useProjectStore = create((set, get) => ({
       await yieldToUi();
 
       const deferredCanonCount = Number(canonResult?.deferredCount || 0);
-      const completionSuccessMessage = deferredCanonCount > 0
+      const baseCompletionMessage = deferredCanonCount > 0
         ? `Đã hoàn thành chương. Có ${deferredCanonCount} thay đổi canon lớn đang chờ duyệt.`
         : canonReused
           ? 'Đã hoàn thành chương. Phân tích sự thật đã có sẵn và vẫn khớp nội dung.'
           : 'Đã hoàn thành chương.';
+      const skippedIdentityCount = Number(extractionStats?.stats?.skipped_ai_identity || 0);
+      const completionSuccessMessage = [
+        baseCompletionMessage,
+        skippedIdentityCount > 0
+          ? `Bỏ qua ${skippedIdentityCount} mục trích xuất vì nhận diện AI không hợp lệ.`
+          : '',
+        extractionWarning,
+      ].filter(Boolean).join(' ');
       const result = {
         ok: canonSucceeded,
         kind: canonProcessed
@@ -1160,6 +1175,7 @@ const useProjectStore = create((set, get) => ({
               : 'Không thể hoàn thành chương vì lỗi runtime khi canon hóa.'),
         summary,
         extracted,
+        extractionWarning,
         extractionStats,
         canonResult,
       };

@@ -204,16 +204,12 @@ async function loadEniState(chapterId) {
 }
 
 function normalizeExtractResult(parsed) {
-  if (Array.isArray(parsed)) {
-    return {
-      characters: [],
-      locations: [],
-      terms: [],
-      objects: [],
-      items: parsed,
-    };
+  if (!isPlainObject(parsed)) return null;
+  const terms = Array.isArray(parsed.terms) ? parsed.terms : parsed.worldTerms;
+  if (![parsed.characters, parsed.locations, parsed.objects, terms].every(Array.isArray)) {
+    return null;
   }
-  return isPlainObject(parsed) ? parsed : null;
+  return { ...parsed, terms };
 }
 
 function normalizeConflictResult(parsed) {
@@ -440,6 +436,41 @@ async function hydrateProjectAiContext(context = {}) {
   }
 
   return enrichedContext;
+}
+
+function compactEntityIdentityRows(rows = []) {
+  return rows
+    .map((row) => ({
+      id: row?.id ?? null,
+      name: String(row?.name || '').trim(),
+      aliases: Array.isArray(row?.aliases)
+        ? row.aliases.map((alias) => String(alias || '').trim()).filter(Boolean)
+        : [],
+    }))
+    .filter((row) => row.id != null && row.name)
+    .sort((left, right) => String(left.id).localeCompare(String(right.id), 'en', { numeric: true }));
+}
+
+async function hydrateEntityExtractionContext(context = {}) {
+  const enrichedContext = await hydrateProjectAiContext(context);
+  if (!enrichedContext.projectId) return enrichedContext;
+
+  const [characters, locations, objects, worldTerms] = await Promise.all([
+    db.characters.where('project_id').equals(enrichedContext.projectId).toArray(),
+    db.locations.where('project_id').equals(enrichedContext.projectId).toArray(),
+    db.objects.where('project_id').equals(enrichedContext.projectId).toArray(),
+    db.worldTerms.where('project_id').equals(enrichedContext.projectId).toArray(),
+  ]);
+
+  return {
+    ...enrichedContext,
+    entityIdentityRoster: {
+      characters: compactEntityIdentityRows(characters),
+      locations: compactEntityIdentityRows(locations),
+      objects: compactEntityIdentityRows(objects),
+      worldTerms: compactEntityIdentityRows(worldTerms),
+    },
+  };
 }
 
 const useAIStore = create((set, get) => ({
@@ -772,7 +803,14 @@ const useAIStore = create((set, get) => ({
   extractFromChapter: (context) => {
     return new Promise(async (resolve, reject) => {
       set({ isExtracting: true, lastExtractResult: null });
-      const enrichedContext = await hydrateProjectAiContext(context);
+      let enrichedContext;
+      try {
+        enrichedContext = await hydrateEntityExtractionContext(context);
+      } catch (error) {
+        set({ isExtracting: false, lastExtractResult: null });
+        reject(error);
+        return;
+      }
 
       const messages = buildPrompt(TASK_TYPES.FEEDBACK_EXTRACT, enrichedContext);
 
