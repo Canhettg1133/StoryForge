@@ -343,6 +343,26 @@ function buildDefaultSystemPrompt(mode, project) {
   return mode === CHAT_MODES.STORY ? buildStorySystemPrompt(project) : buildFreeSystemPrompt();
 }
 
+export function resolveThreadSystemPrompt(thread, defaultPrompt = '') {
+  const storedPrompt = String(thread?.system_prompt ?? '');
+  return thread?.system_prompt_customized === true || storedPrompt.trim()
+    ? storedPrompt
+    : defaultPrompt;
+}
+
+export function buildSystemPromptMessages(systemPrompt = '') {
+  const content = String(systemPrompt ?? '');
+  return content.trim() ? [{ role: 'system', content }] : [];
+}
+
+function isThreadSystemPromptCustomized(thread, defaultPrompt = '') {
+  if (thread?.system_prompt_customized === true) return true;
+  if (thread?.system_prompt_customized === false) return false;
+
+  const storedPrompt = String(thread?.system_prompt ?? '');
+  return !!storedPrompt.trim() && storedPrompt !== defaultPrompt;
+}
+
 function getThreadOverridePatch(thread = {}) {
   return {
     provider_override: normalizeOpenAIProxyProvider(normalizeThreadOverrideValue(thread?.provider_override)),
@@ -510,11 +530,12 @@ function getModelOptionSelectLabel(option) {
 
 export function normalizeThread(thread, projectScopeEnabled, project) {
   const chatMode = thread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
+  const defaultSystemPrompt = buildDefaultSystemPrompt(chatMode, project);
   return {
     ...thread,
     chat_mode: chatMode,
-    system_prompt:
-      String(thread?.system_prompt || '').trim() || buildDefaultSystemPrompt(chatMode, project),
+    system_prompt: resolveThreadSystemPrompt(thread, defaultSystemPrompt),
+    system_prompt_customized: isThreadSystemPromptCustomized(thread, defaultSystemPrompt),
     ...getThreadOverridePatch(thread),
     last_provider: thread?.last_provider || '',
     last_model: thread?.last_model || '',
@@ -533,6 +554,7 @@ export function buildThreadPayload({
     title: CHAT_THREAD_TITLE_FALLBACK,
     chat_mode: mode,
     system_prompt: buildDefaultSystemPrompt(mode, projectScopeEnabled ? project : null),
+    system_prompt_customized: false,
     provider_override: '',
     model_override: '',
     proxy_profile_id: '',
@@ -550,11 +572,14 @@ export function buildThreadConfigPatch(thread = {}, {
   projectScopeEnabled,
   project,
 } = {}) {
+  const defaultSystemPrompt = buildDefaultSystemPrompt(
+    activeThreadMode,
+    projectScopeEnabled ? project : null,
+  );
   return {
     chat_mode: thread?.chat_mode || activeThreadMode,
-    system_prompt:
-      String(thread?.system_prompt || '').trim()
-      || buildDefaultSystemPrompt(activeThreadMode, projectScopeEnabled ? project : null),
+    system_prompt: resolveThreadSystemPrompt(thread, defaultSystemPrompt),
+    system_prompt_customized: isThreadSystemPromptCustomized(thread, defaultSystemPrompt),
     ...getThreadOverridePatch(thread),
   };
 }
@@ -997,10 +1022,8 @@ export default function ProjectChat() {
     activeThreadMode,
     projectScopeEnabled ? currentProject : null,
   );
-  const effectiveSystemPrompt = activeThread?.system_prompt || defaultSystemPrompt;
-  const hasThreadPromptOverride =
-    !!String(activeThread?.system_prompt || '').trim() &&
-    String(activeThread?.system_prompt || '').trim() !== defaultSystemPrompt.trim();
+  const effectiveSystemPrompt = resolveThreadSystemPrompt(activeThread, defaultSystemPrompt);
+  const hasThreadPromptOverride = activeThread?.system_prompt_customized === true;
   const alternateChatMode =
     activeThreadMode === CHAT_MODES.STORY ? CHAT_MODES.FREE : CHAT_MODES.STORY;
 
@@ -1344,6 +1367,7 @@ export default function ProjectChat() {
     activeThread?.id,
     activeThread?.chat_mode,
     activeThread?.system_prompt,
+    activeThread?.system_prompt_customized,
     activeThread?.provider_override,
     activeThread?.model_override,
     activeThread?.proxy_profile_id,
@@ -1518,6 +1542,7 @@ export default function ProjectChat() {
         resetMode,
         projectScopeEnabled ? currentProject : null,
       ),
+      system_prompt_customized: false,
       provider_override: normalizeThreadOverrideValue(activeThread.provider_override),
       model_override: '',
       proxy_profile_id: normalizeThreadOverrideValue(activeThread.proxy_profile_id),
@@ -1551,9 +1576,13 @@ export default function ProjectChat() {
   }
 
   function buildConversationMessages(nextUserMessage, thread, sourceMessages = messages, attachmentContexts = [], options = {}) {
-    const systemPrompt =
-      String(thread.system_prompt || '').trim() ||
-      buildDefaultSystemPrompt(thread.chat_mode || activeThreadMode, projectScopeEnabled ? currentProject : null);
+    const systemPrompt = resolveThreadSystemPrompt(
+      thread,
+      buildDefaultSystemPrompt(
+        thread.chat_mode || activeThreadMode,
+        projectScopeEnabled ? currentProject : null,
+      ),
+    );
 
     const currentImageAttachments = options.currentImageAttachments || [];
     const imagePayloadFormat = options.imagePayloadFormat || CHAT_IMAGE_PAYLOAD_FORMATS.OPENAI;
@@ -1577,7 +1606,7 @@ export default function ProjectChat() {
       });
     }
 
-    const apiMessages = [{ role: 'system', content: systemPrompt }];
+    const apiMessages = buildSystemPromptMessages(systemPrompt);
     sourceMessages
       .filter((item) => item.role === 'user' || item.role === 'assistant')
       .forEach((item) => apiMessages.push({ role: item.role, content: item.content }));
@@ -2346,9 +2375,10 @@ export default function ProjectChat() {
       mode,
       projectScopeEnabled ? currentProject : null,
     );
-    const shouldSwitchPrompt =
-      !String(activeThread.system_prompt || '').trim() ||
-      String(activeThread.system_prompt || '').trim() === currentDefaultPrompt.trim();
+    const shouldSwitchPrompt = !isThreadSystemPromptCustomized(
+      activeThread,
+      currentDefaultPrompt,
+    );
 
     await persistThreadUpdate(activeThread.id, {
       chat_mode: mode,
@@ -2983,6 +3013,7 @@ export default function ProjectChat() {
                       activeThreadMode,
                       projectScopeEnabled ? currentProject : null,
                     ),
+                    system_prompt_customized: false,
                     updated_at: Date.now(),
                   })
                 }
@@ -3015,12 +3046,14 @@ export default function ProjectChat() {
             <textarea
               className="textarea project-chat-drawer__textarea"
               value={effectiveSystemPrompt}
-              onChange={(event) =>
-                persistThreadUpdate(activeThread.id, {
-                  system_prompt: event.target.value,
+              onChange={(event) => {
+                const nextSystemPrompt = event.target.value;
+                return persistThreadUpdate(activeThread.id, {
+                  system_prompt: nextSystemPrompt,
+                  system_prompt_customized: nextSystemPrompt !== defaultSystemPrompt,
                   updated_at: Date.now(),
-                })
-              }
+                });
+              }}
               disabled={isStreaming}
             />
           </aside>

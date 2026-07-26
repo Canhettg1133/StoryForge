@@ -600,7 +600,12 @@ describe('phase10 ProjectChat routing inheritance', () => {
   });
 
   it('preserves blank overrides in the persisted config patch for inherited threads', async () => {
-    const { buildThreadConfigPatch } = await loadProjectChatHelpers();
+    const {
+      buildSystemPromptMessages,
+      buildThreadConfigPatch,
+      normalizeThread,
+      resolveThreadSystemPrompt,
+    } = await loadProjectChatHelpers();
 
     const patch = buildThreadConfigPatch({
       id: 105,
@@ -608,6 +613,7 @@ describe('phase10 ProjectChat routing inheritance', () => {
       provider_override: '',
       model_override: '',
       system_prompt: '',
+      system_prompt_customized: true,
     }, {
       activeThreadMode: 'free',
       projectScopeEnabled: false,
@@ -616,6 +622,23 @@ describe('phase10 ProjectChat routing inheritance', () => {
 
     expect(patch.provider_override).toBe('');
     expect(patch.model_override).toBe('');
+    expect(patch.system_prompt).toBe('');
+    expect(patch.system_prompt_customized).toBe(true);
+    expect(normalizeThread({
+      id: 106,
+      chat_mode: 'free',
+      system_prompt: '',
+      system_prompt_customized: true,
+    }, false, null).system_prompt).toBe('');
+    expect(resolveThreadSystemPrompt({
+      system_prompt: '',
+      system_prompt_customized: true,
+    }, 'fallback prompt')).toBe('');
+    expect(resolveThreadSystemPrompt({ system_prompt: '' }, 'fallback prompt')).toBe('fallback prompt');
+    expect(buildSystemPromptMessages('')).toEqual([]);
+    expect(buildSystemPromptMessages('custom prompt')).toEqual([
+      { role: 'system', content: 'custom prompt' },
+    ]);
   });
 
   it('labels AI Studio Relay and exposes relay model options without falling back to proxy models', async () => {
