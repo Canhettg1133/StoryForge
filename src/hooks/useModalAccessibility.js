@@ -15,50 +15,120 @@ function getFocusableElements(container) {
     .filter((element) => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
 }
 
+const modalStack = [];
+const lockedElements = new Map();
+let sessionPreviousFocus = null;
+
+function getInertSiblings(dialog) {
+  const modalRoot = dialog.parentElement;
+  const inertSiblings = [];
+  let activeBranch = modalRoot;
+
+  while (activeBranch?.parentElement) {
+    const parent = activeBranch.parentElement;
+    Array.from(parent.children).forEach((element) => {
+      if (element !== activeBranch && !inertSiblings.includes(element)) {
+        inertSiblings.push(element);
+      }
+    });
+    activeBranch = parent;
+    if (parent === document.body) break;
+  }
+
+  return inertSiblings;
+}
+
+function restoreBackground() {
+  lockedElements.forEach(({ inert, ariaHidden }, element) => {
+    element.inert = inert;
+    if (ariaHidden == null) element.removeAttribute('aria-hidden');
+    else element.setAttribute('aria-hidden', ariaHidden);
+  });
+  lockedElements.clear();
+}
+
+function lockBackground(dialog) {
+  getInertSiblings(dialog).forEach((element) => {
+    lockedElements.set(element, {
+      inert: Boolean(element.inert),
+      ariaHidden: element.getAttribute('aria-hidden'),
+    });
+    element.inert = true;
+    element.setAttribute('aria-hidden', 'true');
+  });
+}
+
+function focusInitialElement(dialog) {
+  const initialFocus = dialog.querySelector('[autofocus]') || getFocusableElements(dialog)[0] || dialog;
+  initialFocus.focus();
+}
+
+function getTopModal() {
+  return modalStack[modalStack.length - 1];
+}
+
+function activateModal(modal, shouldFocus) {
+  restoreBackground();
+  if (!modal) return;
+  if (shouldFocus) focusInitialElement(modal.dialog);
+  lockBackground(modal.dialog);
+}
+
+function registerModal(dialog) {
+  if (modalStack.length === 0) sessionPreviousFocus = document.activeElement;
+  const modal = { dialog };
+  modalStack.push(modal);
+  activateModal(modal, true);
+  return modal;
+}
+
+function unregisterModal(modal) {
+  const index = modalStack.indexOf(modal);
+  if (index === -1) return;
+
+  const wasTopModal = index === modalStack.length - 1;
+  modalStack.splice(index, 1);
+  const nextModal = getTopModal();
+
+  if (nextModal) {
+    const focusLeftTopModal = !nextModal.dialog.contains(document.activeElement);
+    activateModal(nextModal, wasTopModal || focusLeftTopModal);
+    return;
+  }
+
+  restoreBackground();
+  const focusTarget = sessionPreviousFocus;
+  sessionPreviousFocus = null;
+  if (focusTarget instanceof HTMLElement && focusTarget.isConnected) {
+    focusTarget.focus();
+  }
+}
+
 export default function useModalAccessibility({ open, onClose, closeOnEscape = true }) {
   const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
+  const closeOnEscapeRef = useRef(closeOnEscape);
 
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
 
   useEffect(() => {
+    closeOnEscapeRef.current = closeOnEscape;
+  }, [closeOnEscape]);
+
+  useEffect(() => {
     if (!open) return undefined;
     const dialog = dialogRef.current;
     if (!dialog) return undefined;
 
-    const previousFocus = document.activeElement;
-    const modalRoot = dialog.parentElement;
-    const inertSiblings = [];
-    let activeBranch = modalRoot;
-    while (activeBranch?.parentElement) {
-      const parent = activeBranch.parentElement;
-      Array.from(parent.children).forEach((element) => {
-        if (element !== activeBranch && !inertSiblings.includes(element)) {
-          inertSiblings.push(element);
-        }
-      });
-      activeBranch = parent;
-      if (parent === document.body) break;
-    }
-    const previousInert = inertSiblings.map((element) => ({
-      element,
-      inert: element.inert,
-      ariaHidden: element.getAttribute('aria-hidden'),
-    }));
-
-    inertSiblings.forEach((element) => {
-      element.inert = true;
-      element.setAttribute('aria-hidden', 'true');
-    });
-
     if (!dialog.hasAttribute('tabindex')) dialog.setAttribute('tabindex', '-1');
-    const initialFocus = dialog.querySelector('[autofocus]') || getFocusableElements(dialog)[0] || dialog;
-    initialFocus.focus();
+    const modal = registerModal(dialog);
 
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && closeOnEscape) {
+      if (getTopModal() !== modal) return;
+
+      if (event.key === 'Escape' && closeOnEscapeRef.current) {
         event.preventDefault();
         onCloseRef.current?.();
         return;
@@ -86,16 +156,9 @@ export default function useModalAccessibility({ open, onClose, closeOnEscape = t
     document.addEventListener('keydown', handleKeyDown);
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      previousInert.forEach(({ element, inert, ariaHidden }) => {
-        element.inert = inert;
-        if (ariaHidden == null) element.removeAttribute('aria-hidden');
-        else element.setAttribute('aria-hidden', ariaHidden);
-      });
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
-        previousFocus.focus();
-      }
+      unregisterModal(modal);
     };
-  }, [closeOnEscape, open]);
+  }, [open]);
 
   return dialogRef;
 }
