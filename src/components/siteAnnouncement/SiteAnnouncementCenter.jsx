@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Bell, ExternalLink, X } from 'lucide-react';
 import {
@@ -10,6 +10,7 @@ import {
   fetchSiteAnnouncement,
   getDismissedSiteAnnouncementKey,
 } from '../../services/siteAnnouncement/siteAnnouncementClient.js';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './SiteAnnouncementCenter.css';
 
 export default function SiteAnnouncementCenter() {
@@ -17,6 +18,14 @@ export default function SiteAnnouncementCenter() {
   const isHomePage = location.pathname === '/';
   const [announcement, setAnnouncement] = useState(null);
   const [open, setOpen] = useState(false);
+  const closeAndDismiss = useCallback(() => {
+    if (announcement) dismissSiteAnnouncement(announcement);
+    setOpen(false);
+  }, [announcement]);
+  const dialogRef = useModalAccessibility({
+    open: Boolean(open && announcement?.enabled),
+    onClose: closeAndDismiss,
+  });
 
   useEffect(() => {
     if (!isHomePage) {
@@ -49,11 +58,6 @@ export default function SiteAnnouncementCenter() {
 
   if (!announcement?.enabled) return null;
 
-  const closeAndDismiss = () => {
-    dismissSiteAnnouncement(announcement);
-    setOpen(false);
-  };
-
   return (
     <>
       <button
@@ -69,6 +73,7 @@ export default function SiteAnnouncementCenter() {
       {open ? (
         <div className="site-announcement-overlay" role="presentation">
           <section
+            ref={dialogRef}
             className="site-announcement-dialog"
             role="dialog"
             aria-modal="true"

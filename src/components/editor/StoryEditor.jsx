@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
+import { useShallow } from 'zustand/react/shallow';
 import useProjectStore from '../../stores/projectStore';
 import useUIStore, {
   CONTENT_FONT_SIZE_MAX,
@@ -57,20 +58,35 @@ export default function StoryEditor({
   onAiDraftSaved,
 }) {
   const {
-    activeSceneId, activeChapterId, scenes, chapters,
-    updateScene, updateChapter, updateProjectTimestamp,
-  } = useProjectStore();
+    activeSceneId, activeChapterId, scenes, chapters, currentProject,
+    updateScene, updateChapter,
+  } = useProjectStore(useShallow((state) => ({
+    activeSceneId: state.activeSceneId,
+    activeChapterId: state.activeChapterId,
+    scenes: state.scenes,
+    chapters: state.chapters,
+    currentProject: state.currentProject,
+    updateScene: state.updateScene,
+    updateChapter: state.updateChapter,
+  })));
 
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
   const isReaderMode = viewMode === 'reader';
-  const activeChapterSceneCount = scenes.filter((scene) => scene.chapter_id === activeChapterId).length;
+  const activeChapterSceneCount = useMemo(
+    () => scenes.reduce(
+      (count, scene) => count + (scene.chapter_id === activeChapterId ? 1 : 0),
+      0,
+    ),
+    [activeChapterId, scenes],
+  );
   const contentFontSize = useUIStore((state) => state.contentFontSize);
   const setContentFontSize = useUIStore((state) => state.setContentFontSize);
   const resetContentFontSize = useUIStore((state) => state.resetContentFontSize);
   const theme = useUIStore((state) => state.theme);
   const setTheme = useUIStore((state) => state.setTheme);
   const autosaveControllerRef = useRef(null);
+  const titleAutosaveControllerRef = useRef(null);
   const lastSavedBySceneRef = useRef(new Map());
   const previousSceneIdRef = useRef(null);
   const editorWrapperRef = useRef(null);
@@ -79,6 +95,17 @@ export default function StoryEditor({
   const [sceneDetailOpen, setSceneDetailOpen] = useState(false);
   const [fontPopoverOpen, setFontPopoverOpen] = useState(false);
   const [allCharacters, setAllCharacters] = useState([]);
+  const [autosaveStatus, setAutosaveStatus] = useState({
+    state: 'idle',
+    sceneId: null,
+    error: null,
+  });
+  const [titleAutosaveStatus, setTitleAutosaveStatus] = useState({
+    state: 'idle',
+    sceneId: null,
+    error: null,
+  });
+  const [sceneTitleDraft, setSceneTitleDraft] = useState('');
 
   // [MỚI] Outline edit state
   const [isEditingOutline, setIsEditingOutline] = useState(false);
@@ -128,7 +155,6 @@ export default function StoryEditor({
       summary: editSummary.trim(),
       purpose: purposeToSave,
     });
-    await updateProjectTimestamp();
     setIsEditingOutline(false);
   };
 
@@ -220,7 +246,6 @@ export default function StoryEditor({
   });
 
   // Load characters when project changes
-  const { currentProject } = useProjectStore();
   useEffect(() => {
     if (!currentProject?.id) { setAllCharacters([]); return; }
     db.characters.where('project_id').equals(currentProject.id).toArray()
@@ -235,18 +260,28 @@ export default function StoryEditor({
         onSave: async (sceneId, html) => {
           const lastSaved = lastSavedBySceneRef.current.get(sceneId) || '';
           if (html === lastSaved) return;
-          lastSavedBySceneRef.current.set(sceneId, html);
           await updateScene(sceneId, { draft_text: html });
-          await updateProjectTimestamp();
+          lastSavedBySceneRef.current.set(sceneId, html);
         },
+        onStatusChange: setAutosaveStatus,
       });
     }
-  }, [updateProjectTimestamp, updateScene]);
+    if (!titleAutosaveControllerRef.current) {
+      titleAutosaveControllerRef.current = createSceneAutosaveController({
+        delayMs: 400,
+        onSave: async (sceneId, title) => {
+          await updateScene(sceneId, { title });
+        },
+        onStatusChange: setTitleAutosaveStatus,
+      });
+    }
+  }, [updateScene]);
 
   useEffect(() => {
     const previousSceneId = previousSceneIdRef.current;
     if (previousSceneId && previousSceneId !== activeSceneId) {
       void autosaveControllerRef.current?.flush();
+      void titleAutosaveControllerRef.current?.flush();
     }
     previousSceneIdRef.current = activeSceneId;
   }, [activeSceneId]);
@@ -254,6 +289,7 @@ export default function StoryEditor({
   useEffect(() => {
     if (editor && activeScene) {
       const content = activeScene.draft_text || '';
+      if (autosaveControllerRef.current?.hasPendingForScene(activeScene.id)) return;
       const lastSaved = lastSavedBySceneRef.current.get(activeScene.id) || '';
       if (content !== lastSaved) {
         lastSavedBySceneRef.current.set(activeScene.id, content);
@@ -359,10 +395,23 @@ export default function StoryEditor({
     if (!sceneId) return;
     const lastSaved = lastSavedBySceneRef.current.get(sceneId) || '';
     if (html === lastSaved) return;
-    lastSavedBySceneRef.current.set(sceneId, html);
     await updateScene(sceneId, { draft_text: html });
-    await updateProjectTimestamp();
-  }, [updateScene, updateProjectTimestamp]);
+    lastSavedBySceneRef.current.set(sceneId, html);
+  }, [updateScene]);
+
+  const flushSceneTitle = useCallback(async () => {
+    await titleAutosaveControllerRef.current?.flush();
+  }, []);
+
+  const scheduleSceneTitle = useCallback((sceneId, title) => {
+    setSceneTitleDraft(title);
+    titleAutosaveControllerRef.current?.schedule({ sceneId, html: title });
+  }, []);
+
+  useEffect(() => {
+    if (titleAutosaveControllerRef.current?.hasPendingForScene(activeSceneId)) return;
+    setSceneTitleDraft(activeScene?.title || '');
+  }, [activeScene?.title, activeSceneId]);
 
   const handleSaveAiDraft = async () => {
     if (!aiDraft || !editor || !activeSceneId) return;
@@ -407,15 +456,59 @@ export default function StoryEditor({
 
   useEffect(() => {
     return () => {
-      autosaveControllerRef.current?.dispose({ flushPending: true });
+      void autosaveControllerRef.current?.dispose({ flushPending: true });
+      void titleAutosaveControllerRef.current?.dispose({ flushPending: true });
     };
   }, []);
 
   useEffect(() => {
     if (isReaderMode) {
       void autosaveControllerRef.current?.flush();
+      void flushSceneTitle();
     }
-  }, [isReaderMode]);
+  }, [flushSceneTitle, isReaderMode]);
+
+  useEffect(() => {
+    const flushPendingChanges = () => {
+      void autosaveControllerRef.current?.flush();
+      void flushSceneTitle();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushPendingChanges();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', flushPendingChanges);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', flushPendingChanges);
+    };
+  }, [flushSceneTitle]);
+
+  useEffect(() => {
+    const hasDirtyData = [autosaveStatus.state, titleAutosaveStatus.state]
+      .some((state) => ['dirty', 'saving', 'error'].includes(state));
+    if (!hasDirtyData) return undefined;
+    const handleBeforeUnload = (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [autosaveStatus.state, titleAutosaveStatus.state]);
+
+  const visibleAutosaveStatus = useMemo(() => {
+    const priority = {
+      error: 4,
+      saving: 3,
+      dirty: 2,
+      saved: 1,
+      idle: 0,
+    };
+    return priority[titleAutosaveStatus.state] > priority[autosaveStatus.state]
+      ? titleAutosaveStatus
+      : autosaveStatus;
+  }, [autosaveStatus, titleAutosaveStatus]);
 
   if (!activeScene && !isReaderMode) {
     return (
@@ -455,9 +548,14 @@ export default function StoryEditor({
               </div>
               <input
                 className="story-editor-scene-title"
-                value={activeScene.title}
-                onChange={(e) => updateScene(activeSceneId, { title: e.target.value })}
+                value={sceneTitleDraft}
+                onChange={(event) => scheduleSceneTitle(activeSceneId, event.target.value)}
+                onBlur={() => void flushSceneTitle()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') event.currentTarget.blur();
+                }}
                 placeholder="Tên cảnh..."
+                aria-label="Tên cảnh"
               />
             </div>
           )}
@@ -853,7 +951,28 @@ export default function StoryEditor({
             <span className="story-editor-progress-pct">{chapterProgress.percent}%</span>
           )}
           <span className="story-editor-mobile-word-count">{wordCount.toLocaleString()} từ</span>
-          <span className="story-editor-autosave">Tự động lưu</span>
+          <span
+            className={`story-editor-autosave is-${visibleAutosaveStatus.state}`}
+            role={visibleAutosaveStatus.state === 'error' ? 'alert' : 'status'}
+            aria-live={visibleAutosaveStatus.state === 'error' ? 'assertive' : 'polite'}
+          >
+            {visibleAutosaveStatus.state === 'idle' ? 'Đã lưu' : null}
+            {visibleAutosaveStatus.state === 'dirty' ? 'Chưa lưu' : null}
+            {visibleAutosaveStatus.state === 'saving' ? 'Đang lưu…' : null}
+            {visibleAutosaveStatus.state === 'saved' ? 'Đã lưu' : null}
+            {visibleAutosaveStatus.state === 'error' ? (
+              <button
+                type="button"
+                className="story-editor-autosave__retry"
+                onClick={() => {
+                  void autosaveControllerRef.current?.retry();
+                  void titleAutosaveControllerRef.current?.retry();
+                }}
+              >
+                Lưu thất bại – Thử lại
+              </button>
+            ) : null}
+          </span>
         </div>
         </div>
         </>

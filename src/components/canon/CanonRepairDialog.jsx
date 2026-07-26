@@ -1,6 +1,7 @@
 import React from 'react';
 import { Copy, Loader2, Sparkles, X } from 'lucide-react';
 import { getCanonReportTitle } from '../../services/canon/reportLabels';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './CanonRepairDialog.css';
 
 export default function CanonRepairDialog({
@@ -13,6 +14,7 @@ export default function CanonRepairDialog({
   onCopy,
   onSaveDraft,
 }) {
+  const dialogRef = useModalAccessibility({ open: open && Boolean(preview), onClose });
   if (!open || !preview) return null;
   const reports = Array.isArray(preview.reports) && preview.reports.length > 0
     ? preview.reports
@@ -27,7 +29,7 @@ export default function CanonRepairDialog({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal canon-repair-dialog" onClick={(event) => event.stopPropagation()}>
+      <div ref={dialogRef} className="modal canon-repair-dialog" role="dialog" aria-modal="true" aria-label="Gợi ý sửa lỗi canon" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header canon-repair-dialog__header">
           <div>
             <div className="canon-repair-dialog__eyebrow">

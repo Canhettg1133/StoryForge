@@ -11,6 +11,19 @@
   padding: 0;
 }
 
+@media (pointer: coarse) {
+  [role='dialog'] button,
+  [role='dialog'] a,
+  [role='dialog'] input,
+  [role='dialog'] select {
+    min-height: 44px;
+  }
+
+  [role='dialog'] .btn-icon {
+    min-width: 44px;
+  }
+}
+
 /* --- CSS Variables (Dark Theme Default) --- */
 :root {
   color-scheme: dark;
@@ -43,8 +56,8 @@
   --color-text-primary: #e8ecf4;
   --color-text-heading: var(--color-text-primary);
   --color-text-secondary: #94a3b8;
-  --color-text-tertiary: #64748b;
-  --color-text-muted: #475569;
+  --color-text-tertiary: #94a3b8;
+  --color-text-muted: #8493a7;
   --color-text-inverse: #0a0e1a;
   --color-text: var(--color-text-primary);
   --color-text-dim: var(--color-text-muted);
@@ -182,8 +195,8 @@
   --color-text-primary: #0f172a;
   --color-text-heading: var(--color-text-primary);
   --color-text-secondary: #475569;
-  --color-text-tertiary: #94a3b8;
-  --color-text-muted: #cbd5e1;
+  --color-text-tertiary: #64748b;
+  --color-text-muted: #59677a;
 
   --color-border: rgba(0, 0, 0, 0.08);
   --color-border-strong: rgba(0, 0, 0, 0.14);

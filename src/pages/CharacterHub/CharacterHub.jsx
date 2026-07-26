@@ -21,6 +21,7 @@ import EntityTimeline from '../../components/common/EntityTimeline';
 import MobileBibleTabs from '../../components/mobile/MobileBibleTabs';
 import { parseCharacterTraits } from '../../utils/characterTraitSuggestions';
 import CharacterTraitPicker from './CharacterTraitPicker';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './CharacterHub.css';
 
 const EMPTY_CHARACTER = {
@@ -79,6 +80,18 @@ export default function CharacterHub() {
     character_id: '',
     description: '',
     effective_before_chapter: 10,
+  });
+  const characterDialogRef = useModalAccessibility({
+    open: showModal,
+    onClose: () => setShowModal(false),
+  });
+  const tabooDialogRef = useModalAccessibility({
+    open: showTabooModal,
+    onClose: () => setShowTabooModal(false),
+  });
+  const batchDialogRef = useModalAccessibility({
+    open: showBatchGen,
+    onClose: () => setShowBatchGen(false),
   });
 
   useEffect(() => {
@@ -579,7 +592,7 @@ export default function CharacterHub() {
       {/* Character Modal */}
       {showModal && (
         <div className="codex-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="codex-modal codex-modal--character" onClick={e => e.stopPropagation()}>
+          <div ref={characterDialogRef} className="codex-modal codex-modal--character" role="dialog" aria-modal="true" aria-label={editingChar ? 'Sửa nhân vật' : 'Thêm nhân vật'} onClick={e => e.stopPropagation()}>
             <div className="codex-modal-header">
               <h3>{editingChar ? 'Sửa nhân vật' : 'Thêm nhân vật mới'}</h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowModal(false)}>
@@ -819,7 +832,7 @@ export default function CharacterHub() {
       {/* Taboo Modal */}
       {showTabooModal && (
         <div className="codex-modal-overlay" onClick={() => setShowTabooModal(false)}>
-          <div className="codex-modal codex-modal--sm" onClick={e => e.stopPropagation()}>
+          <div ref={tabooDialogRef} className="codex-modal codex-modal--sm" role="dialog" aria-modal="true" aria-label={editingTaboo ? 'Sửa cấm kỵ' : 'Thêm cấm kỵ'} onClick={e => e.stopPropagation()}>
             <div className="codex-modal-header">
               <h3>{editingTaboo ? 'Sửa cấm kỵ' : 'Thêm cấm kỵ mới'}</h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowTabooModal(false)}>
@@ -873,7 +886,7 @@ export default function CharacterHub() {
       {/* Batch Generate Modal */}
       {showBatchGen && (
         <div className="codex-modal-overlay" onClick={() => setShowBatchGen(false)}>
-          <div className="codex-modal codex-modal--lg" onClick={e => e.stopPropagation()}>
+          <div ref={batchDialogRef} className="codex-modal codex-modal--lg" role="dialog" aria-modal="true" aria-label="Tạo hàng loạt nhân vật" onClick={e => e.stopPropagation()}>
             <BatchGenerate
               entityType="character"
               canonRoleLocks={canonRoleLocks}

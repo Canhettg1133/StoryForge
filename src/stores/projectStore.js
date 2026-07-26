@@ -1,31 +1,14 @@
 import { create } from 'zustand';
 import db from '../services/db/database';
 import { countWords } from '../utils/constants';
-import { GENRE_TEMPLATES } from '../utils/genreTemplates';
-import { buildProseBuffer } from '../utils/proseBuffer';
-import {
-  resolveAndMaterializeEntityCandidates,
-  stageExtractedEntityCandidates,
-} from '../services/entityIdentity/index.js';
-import {
-  canonicalizeChapter as canonicalizeChapterEngine,
-} from '../services/canon/workflow';
-import {
-  purgeChapterCanonState,
-  rebuildCanonFromChapter as rebuildCanonFromChapterEngine,
-} from '../services/canon/projection';
-import { getChapterCanonState } from '../services/canon/queries';
 import { CHAPTER_COMMIT_STATUS } from '../services/canon/constants';
 import { isRevisionFreshForCanonText } from '../services/canon/utils';
-import { deleteProjectCascade } from '../services/db/projectDataService.js';
 import {
   normalizePromptProfileVersion,
   PROMPT_PROFILE_VERSIONS,
 } from '../services/ai/promptProfiles.js';
 import { toVietnameseErrorMessage } from '../utils/errorMessages';
 import { enqueueSceneMirror } from '../services/storyMirror/outbox.js';
-import useAIStore from './aiStore';
-import useCodexStore from './codexStore';
 
 function getNextOrderIndex(items) {
   return items.reduce((max, item) => {
@@ -174,8 +157,8 @@ async function reindexChapterScenes(chapterId) {
  * @param {string|object} [existingTemplates] - existing prompt_templates from data (optional)
  * @returns {string} - JSON string ready for DB storage
  */
-function buildInitialPromptTemplates(genreKey, existingTemplates) {
-  const template = GENRE_TEMPLATES[genreKey];
+function buildInitialPromptTemplates(genreKey, existingTemplates, genreTemplates = {}) {
+  const template = genreTemplates[genreKey];
 
   // Start with genre DNA defaults (empty if genre not found)
   const genreDNA = template
@@ -270,6 +253,7 @@ function parsePromptTemplates(rawValue) {
 
 async function persistChapterSummary({ projectId, chapterId, summary, chapterText }) {
   const existingMeta = await db.chapterMeta.where('chapter_id').equals(chapterId).first();
+  const { buildProseBuffer } = await import('../utils/proseBuffer');
   const lastProseBuffer = buildProseBuffer(chapterText);
 
   if (existingMeta) {
@@ -370,10 +354,12 @@ const useProjectStore = create((set, get) => ({
 
     // Auto-load writing DNA from the selected genre template.
     // Merge constitution + style_dna + anti_ai_blacklist into prompt_templates.
+    const { GENRE_TEMPLATES } = await import('../utils/genreTemplates');
     const genreKey = data.genre_primary || 'fantasy';
     const initialPromptTemplates = buildInitialPromptTemplates(
       genreKey,
       data.prompt_templates, // Merge caller-provided templates instead of overwriting.
+      GENRE_TEMPLATES,
     );
     const promptProfileVersion = normalizePromptProfileVersion(
       data.prompt_profile_version,
@@ -461,6 +447,7 @@ const useProjectStore = create((set, get) => ({
   },
 
   deleteProject: async (id) => {
+    const { deleteProjectCascade } = await import('../services/db/projectDataService.js');
     await deleteProjectCascade(id);
     set({
       currentProject: null,
@@ -681,6 +668,16 @@ const useProjectStore = create((set, get) => ({
   deleteChapter: async (id) => {
     const chapter = get().chapters.find((item) => item.id === id) || await db.chapters.get(id);
     if (!chapter) return;
+    const [
+      {
+        purgeChapterCanonState,
+        rebuildCanonFromChapter: rebuildCanonFromChapterEngine,
+      },
+      { default: useCodexStore },
+    ] = await Promise.all([
+      import('../services/canon/projection'),
+      import('./codexStore'),
+    ]);
     const {
       currentProject,
       chapters,
@@ -921,6 +918,24 @@ const useProjectStore = create((set, get) => ({
       let canonSucceeded = false;
       let canonReused = false;
       let canonRuntimeError = '';
+      const [
+        { default: useAIStore },
+        { default: useCodexStore },
+        {
+          resolveAndMaterializeEntityCandidates,
+          stageExtractedEntityCandidates,
+        },
+        { canonicalizeChapter: canonicalizeChapterEngine },
+        { purgeChapterCanonState },
+        { getChapterCanonState },
+      ] = await Promise.all([
+        import('./aiStore'),
+        import('./codexStore'),
+        import('../services/entityIdentity/index.js'),
+        import('../services/canon/workflow'),
+        import('../services/canon/projection'),
+        import('../services/canon/queries'),
+      ]);
       const { summarizeChapter, extractFromChapter } = useAIStore.getState();
 
       const runCanonWork = async () => {
@@ -1217,12 +1232,6 @@ const useProjectStore = create((set, get) => ({
     }
   },
 
-  updateProjectTimestamp: async () => {
-    const { currentProject } = get();
-    if (currentProject) {
-      await touchProjectUpdatedAt(currentProject.id, set);
-    }
-  },
 }));
 
 export default useProjectStore;

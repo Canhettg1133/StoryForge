@@ -35,6 +35,7 @@ import {
   renderStoryCreationTemplate,
 } from '../../services/ai/storyCreationSettings';
 import useMobileLayout from '../../hooks/useMobileLayout';
+import { useConfirmDialog } from '../../components/common/ConfirmDialogProvider.jsx';
 import './OutlineBoard.css';
 
 const ACTS = [
@@ -220,6 +221,7 @@ function formatCharacterForOutlinePrompt(character = {}) {
 }
 
 export default function OutlineBoard() {
+  const confirmAction = useConfirmDialog();
   const navigate = useNavigate();
   const {
     currentProject, chapters, scenes,
@@ -496,9 +498,12 @@ export default function OutlineBoard() {
 
   const handleClearAllOutlineMetadata = async () => {
     if (!chapters.length) return;
-    const ok = window.confirm(
-      'Xóa toàn bộ dàn ý AI của tất cả chương? Nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.',
-    );
+    const ok = await confirmAction({
+      title: 'Xóa toàn bộ dàn ý AI?',
+      message: 'Nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.',
+      confirmLabel: 'Xóa dàn ý',
+      danger: true,
+    });
     if (!ok) return;
 
     setOutlineAnalysisPreview(null);
@@ -516,9 +521,12 @@ export default function OutlineBoard() {
 
   const handleClearChapterOutlineMetadata = async (chapter) => {
     if (!chapter?.id) return;
-    const ok = window.confirm(
-      `Xóa dàn ý AI của "${chapter.title}"? Nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.`,
-    );
+    const ok = await confirmAction({
+      title: 'Xóa dàn ý AI của chương?',
+      message: `"${chapter.title}": nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.`,
+      confirmLabel: 'Xóa dàn ý',
+      danger: true,
+    });
     if (!ok) return;
 
     setOutlineAnalysisPreview(null);
@@ -648,7 +656,13 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
 
   // Xóa tuyến truyện đã chốt
   const handleDeleteThread = async (pt) => {
-    if (!window.confirm(`Xóa tuyến truyện "${pt.title}"? Các beat liên quan cũng sẽ bị xóa.`)) return;
+    const confirmed = await confirmAction({
+      title: 'Xóa tuyến truyện?',
+      message: `"${pt.title}" và các beat liên quan sẽ bị xóa.`,
+      confirmLabel: 'Xóa tuyến truyện',
+      danger: true,
+    });
+    if (!confirmed) return;
     await deletePlotThread(pt.id, currentProject.id);
   };
 

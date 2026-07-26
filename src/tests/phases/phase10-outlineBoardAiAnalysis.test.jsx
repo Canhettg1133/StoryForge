@@ -92,14 +92,24 @@ function buildAiChapters(count = 18) {
 
 async function loadOutlineBoard() {
   vi.resetModules();
-  const module = await import('../../pages/OutlineBoard/OutlineBoard.jsx');
-  return module.default;
+  const [boardModule, dialogModule] = await Promise.all([
+    import('../../pages/OutlineBoard/OutlineBoard.jsx'),
+    import('../../components/common/ConfirmDialogProvider.jsx'),
+  ]);
+  return {
+    OutlineBoard: boardModule.default,
+    ConfirmDialogProvider: dialogModule.ConfirmDialogProvider,
+  };
 }
 
 async function renderBoard(container, root) {
-  const OutlineBoard = await loadOutlineBoard();
+  const { OutlineBoard, ConfirmDialogProvider } = await loadOutlineBoard();
   await act(async () => {
-    root.render(<OutlineBoard />);
+    root.render(
+      <ConfirmDialogProvider>
+        <OutlineBoard />
+      </ConfirmDialogProvider>,
+    );
   });
 }
 
@@ -116,13 +126,20 @@ function clickByAriaLabel(container, label) {
   button.click();
 }
 
+function acceptOpenConfirmation(container) {
+  const dialog = container.querySelector('.confirm-dialog');
+  expect(dialog, 'Không tìm thấy hộp thoại xác nhận').toBeTruthy();
+  const button = Array.from(dialog.querySelectorAll('button')).at(-1);
+  expect(button).toBeTruthy();
+  button.click();
+}
+
 describe('phase10 outline board AI analysis safety', () => {
   let container;
   let root;
   let chapters;
   let updateChapter;
   let createPlotThread;
-  let confirmSpy;
 
   beforeEach(() => {
     chapters = buildChapters();
@@ -173,7 +190,6 @@ describe('phase10 outline board AI analysis safety', () => {
         }],
       }));
     });
-    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -188,7 +204,6 @@ describe('phase10 outline board AI analysis safety', () => {
     }
     container.remove();
     document.body.innerHTML = '';
-    confirmSpy.mockRestore();
     vi.clearAllMocks();
   });
 
@@ -281,7 +296,11 @@ describe('phase10 outline board AI analysis safety', () => {
       await Promise.resolve();
     });
 
-    expect(window.confirm).toHaveBeenCalled();
+    expect(container.querySelector('.confirm-dialog')?.textContent).toContain('Nội dung đã viết');
+    await act(async () => {
+      acceptOpenConfirmation(container);
+      await Promise.resolve();
+    });
     expect(updateChapter).toHaveBeenCalledTimes(18);
     expect(updateChapter).toHaveBeenCalledWith(1, expect.objectContaining({
       purpose: '',
@@ -320,7 +339,11 @@ describe('phase10 outline board AI analysis safety', () => {
       await Promise.resolve();
     });
 
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('"Chương 1"'));
+    expect(container.querySelector('.confirm-dialog')?.textContent).toContain('"Chương 1"');
+    await act(async () => {
+      acceptOpenConfirmation(container);
+      await Promise.resolve();
+    });
     expect(updateChapter).toHaveBeenCalledTimes(1);
     expect(updateChapter).toHaveBeenCalledWith(1, expect.objectContaining({
       purpose: '',
@@ -351,6 +374,10 @@ describe('phase10 outline board AI analysis safety', () => {
       await Promise.resolve();
     });
 
+    await act(async () => {
+      acceptOpenConfirmation(container);
+      await Promise.resolve();
+    });
     expect(updateChapter).toHaveBeenCalledTimes(1);
     expect(updateChapter).toHaveBeenCalledWith(1, expect.objectContaining({
       purpose: '',

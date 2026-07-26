@@ -21,6 +21,7 @@ import {
 } from '../../services/labLite/fanficProjectSetup.js';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import NumberStepper from '../../components/common/NumberStepper.jsx';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 
 function clampInitialChapterCount(value, fallback = 10) {
   const numeric = Number(value);
@@ -100,6 +101,7 @@ function buildTemplateIncludeFromCounts(counts = {}) {
 }
 
 export default function NewProjectModal({ onClose, onCreated }) {
+  const dialogRef = useModalAccessibility({ open: true, onClose });
   const { createProject, createChapter, projects, loadProjects } = useProjectStore();
   const [mode, setMode] = useState(null); // null = choose, 'manual' = form, 'ai' = wizard, 'template' = Bible transfer
   const [canonPacks, setCanonPacks] = useState([]);
@@ -398,7 +400,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
   if (mode === null) {
     return (
       <div className="modal-overlay" onClick={onClose}>
-        <div className="modal animate-scale-up" onClick={(e) => e.stopPropagation()}>
+        <div ref={dialogRef} className="modal animate-scale-up" role="dialog" aria-modal="true" aria-label="Tạo dự án mới" onClick={(e) => e.stopPropagation()}>
           <div className="modal-header">
             <h2 className="modal-title">
               <Sparkles size={20} style={{ color: 'var(--color-accent)' }} />
@@ -464,7 +466,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
   if (mode === 'template') {
     return (
       <div className="modal-overlay" onClick={onClose} style={{ backdropFilter: 'blur(3px)', backgroundColor: 'rgba(0, 0, 0, 0.4)' }}>
-        <div className="modal animate-scale-up" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', maxHeight: '90vh', maxWidth: '760px', padding: 0, borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--color-border)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+        <div ref={dialogRef} className="modal animate-scale-up" role="dialog" aria-modal="true" aria-label="Tạo dự án từ mẫu" onClick={(e) => e.stopPropagation()} style={{ display: 'flex', flexDirection: 'column', maxHeight: '90vh', maxWidth: '760px', padding: 0, borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--color-border)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
           <div className="modal-header" style={{ flexShrink: 0, padding: '24px', borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-bg-elevated)' }}>
             <h2 className="modal-title" style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{ padding: '8px', background: 'var(--color-accent)', color: '#fff', borderRadius: '10px', display: 'flex', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)' }}>
@@ -642,7 +644,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
   if (mode === 'fanfic') {
     return (
       <div className="modal-overlay" onClick={onClose}>
-        <div className="modal modal--lg animate-scale-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
+        <div ref={dialogRef} className="modal modal--lg animate-scale-up" role="dialog" aria-modal="true" aria-label="Tạo dự án fanfic" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
           <div className="modal-header">
             <h2 className="modal-title">
               <BookKey size={20} style={{ color: 'var(--color-accent)' }} />
@@ -728,7 +730,7 @@ export default function NewProjectModal({ onClose, onCreated }) {
   // Manual mode (expanded form)
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal--lg animate-scale-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
+      <div ref={dialogRef} className="modal modal--lg animate-scale-up" role="dialog" aria-modal="true" aria-label="Tạo dự án thủ công" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '620px' }}>
         <div className="modal-header">
           <h2 className="modal-title">
             <PenTool size={20} style={{ color: 'var(--color-accent)' }} />

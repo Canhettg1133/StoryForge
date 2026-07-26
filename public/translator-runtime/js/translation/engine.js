@@ -390,6 +390,9 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
     isTranslating = true;
     cancelRequested = false;
     isPaused = false;
+    if (typeof notifyStoryForgeTranslatorStatus === 'function') {
+        notifyStoryForgeTranslatorStatus('running', { force: true });
+    }
     translatedChunks = knownTotalChunks > 0 ? new Array(knownTotalChunks).fill(null) : [];
     translatedBlobParts = [];
     originalChunks = [];
@@ -569,6 +572,7 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
 
         const promises = dispatchBatch.map((chunk, batchOffset) => (async () => {
             await sleep(batchOffset * staggerDelayMs);
+            await waitWhilePaused();
             if (cancelRequested) throw new Error('TRANSLATION_CANCELLED');
             const promptedChunk = buildPromptForLargeChunk(chunk);
             return translateChunkWithRetry(promptedChunk, chunk.index);
@@ -727,6 +731,12 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
             shouldStartNextQueue = largeFileRunStatus === 'completed';
         } else if (largeFileRunStatus === 'completed') {
             shouldStartNextQueue = true;
+        }
+        if (typeof notifyStoryForgeTranslatorStatus === 'function') {
+            notifyStoryForgeTranslatorStatus(
+                largeFileRunStatus === 'completed' ? 'completed' : 'failed',
+                { force: true }
+            );
         }
         isTranslating = false;
         isPaused = false;
@@ -891,6 +901,9 @@ async function startTranslation() {
     isTranslating = true;
     cancelRequested = false;
     isPaused = false;
+    if (typeof notifyStoryForgeTranslatorStatus === 'function') {
+        notifyStoryForgeTranslatorStatus('running', { force: true });
+    }
 
     let isResumingFromHistory = false;
     let restoredTranslatedChunks = [];
@@ -1125,6 +1138,7 @@ async function startTranslation() {
                 : orderProxyBatchIndicesForDispatch(batchIndices);
             const batch = dispatchIndices.map((chunkIndex, batchOffset) => (async () => {
                 await sleep(batchOffset * staggerDelayMs);
+                await waitWhilePaused();
                 if (cancelRequested) {
                     throw new Error('TRANSLATION_CANCELLED');
                 }
@@ -1194,6 +1208,21 @@ async function startTranslation() {
             }
         }
 
+        const persistRecoveredTextChunk = async (chunkIndex, outputText) => {
+            if (!currentTranslatorSessionId || typeof updateTranslatorChunkResult !== 'function') return;
+            try {
+                await updateTranslatorChunkResult(currentTranslatorSessionId, chunkIndex, {
+                    status: 'done',
+                    outputText,
+                    error: '',
+                });
+            } catch (error) {
+                const checkpointError = new Error('TRANSLATOR_CHECKPOINT_WRITE_FAILED');
+                checkpointError.cause = error;
+                throw checkpointError;
+            }
+        };
+
         // ========== AUTO RETRY FAILED CHUNKS (với Progressive Prompt) ==========
         if (!cancelRequested) {
             const failedChunkIndices = [];
@@ -1214,6 +1243,7 @@ async function startTranslation() {
 
                     const stillFailed = [];
                     for (const idx of failedChunkIndices) {
+                        await waitWhilePaused();
                         if (cancelRequested) break;
 
                         try {
@@ -1247,6 +1277,7 @@ async function startTranslation() {
                                         );
                                         if (splitResult && !splitResult.startsWith('[LỖI')) {
                                             translatedChunks[idx] = splitResult;
+                                            await persistRecoveredTextChunk(idx, splitResult);
                                             console.log(`[AUTO-RETRY] Chunk ${idx + 1} SUCCESS via splitting!`);
                                             continue;
                                         }
@@ -1302,6 +1333,7 @@ async function startTranslation() {
 
                             if (result && !result.startsWith('[LỖI') && !result.startsWith('[AUTO-SPLIT]')) {
                                 translatedChunks[idx] = result;
+                                await persistRecoveredTextChunk(idx, result);
                                 console.log(`[AUTO-RETRY] Chunk ${idx + 1} SUCCESS at round ${round}!`);
                                 if (typeof trackChunkSuccess === 'function') {
                                     trackChunkSuccess(idx, result, '');
@@ -1311,6 +1343,9 @@ async function startTranslation() {
                             }
                         } catch (e) {
                             const retryErrorText = String(e?.message || e || '');
+                            if (retryErrorText.includes('TRANSLATOR_CHECKPOINT_WRITE_FAILED')) {
+                                throw e;
+                            }
                             if (cancelRequested || retryErrorText.includes('TRANSLATION_CANCELLED')) {
                                 break;
                             }
@@ -1466,6 +1501,9 @@ ${chunks[idx]}
             });
         }
     } finally {
+        if (typeof notifyStoryForgeTranslatorStatus === 'function') {
+            notifyStoryForgeTranslatorStatus(textRunCompleted ? 'completed' : 'failed', { force: true });
+        }
         isTranslating = false;
         isPaused = false;
         translateBtn.disabled = false;

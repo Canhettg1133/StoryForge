@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import { X, Download, FileText, Loader2, FileArchive } from 'lucide-react';
 import { exportToTxt, exportToDocx } from '../../utils/exportService';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 
 export default function ExportModal({ project, onClose }) {
     const [format, setFormat] = useState('docx');
     const [isExporting, setIsExporting] = useState(false);
     const [error, setError] = useState(null);
+    const closeIfIdle = () => {
+        if (!isExporting) onClose();
+    };
+    const dialogRef = useModalAccessibility({ open: true, onClose: closeIfIdle });
 
     const handleExport = async () => {
         setIsExporting(true);
@@ -27,9 +32,17 @@ export default function ExportModal({ project, onClose }) {
 
     return (
         <div className="modal-overlay" onClick={!isExporting ? onClose : undefined}>
-            <div className="modal animate-scale-up" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div
+                ref={dialogRef}
+                className="modal animate-scale-up"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="export-modal-title"
+                onClick={(e) => e.stopPropagation()}
+                style={{ maxWidth: '400px' }}
+            >
                 <div className="modal-header">
-                    <h2 className="modal-title">
+                    <h2 className="modal-title" id="export-modal-title">
                         <Download size={20} style={{ color: 'var(--color-accent)' }} />
                         {' '}Xuất bản Tác phẩm
                     </h2>

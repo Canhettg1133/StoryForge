@@ -1,9 +1,16 @@
 export function createSceneAutosaveController({
   delayMs = 2000,
+  retryDelayMs = 500,
   onSave,
+  onStatusChange,
 }) {
   let timerId = null;
-  let pending = null;
+  let drainPromise = null;
+  let inFlight = null;
+  let status = { state: 'idle', sceneId: null, error: null };
+  const pendingByScene = new Map();
+  const pendingOrder = [];
+  const failedByScene = new Map();
 
   const clearTimer = () => {
     if (timerId != null) {
@@ -12,49 +19,149 @@ export function createSceneAutosaveController({
     }
   };
 
-  const runSave = async (snapshot) => {
-    if (!snapshot?.sceneId || typeof onSave !== 'function') {
-      return;
-    }
-    await onSave(snapshot.sceneId, snapshot.html);
+  const setStatus = (state, snapshot = null, error = null) => {
+    status = {
+      state,
+      sceneId: snapshot?.sceneId ?? status.sceneId ?? null,
+      error,
+    };
+    onStatusChange?.({ ...status });
   };
 
-  const flush = async () => {
-    const snapshot = pending;
-    pending = null;
+  const wait = (ms) => new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+  const enqueue = (snapshot) => {
+    if (!snapshot?.sceneId) return;
+    if (!pendingByScene.has(snapshot.sceneId)) {
+      pendingOrder.push(snapshot.sceneId);
+    }
+    pendingByScene.set(snapshot.sceneId, { ...snapshot });
+  };
+
+  const takeNext = () => {
+    while (pendingOrder.length > 0) {
+      const sceneId = pendingOrder.shift();
+      const snapshot = pendingByScene.get(sceneId);
+      if (!snapshot) continue;
+      pendingByScene.delete(sceneId);
+      return snapshot;
+    }
+    return null;
+  };
+
+  const runSave = async (snapshot) => {
+    if (!snapshot?.sceneId || typeof onSave !== 'function') return false;
+
+    inFlight = snapshot;
+    setStatus('saving', snapshot);
+    try {
+      await onSave(snapshot.sceneId, snapshot.html);
+    } catch (firstError) {
+      await wait(retryDelayMs);
+      try {
+        await onSave(snapshot.sceneId, snapshot.html);
+      } catch (error) {
+        failedByScene.set(snapshot.sceneId, snapshot);
+        setStatus('error', snapshot, error || firstError);
+        return false;
+      }
+    } finally {
+      inFlight = null;
+    }
+
+    failedByScene.delete(snapshot.sceneId);
+    if (failedByScene.size > 0) {
+      const [failedSnapshot] = failedByScene.values();
+      setStatus('error', failedSnapshot, status.error);
+    } else {
+      setStatus(pendingByScene.size > 0 ? 'dirty' : 'saved', snapshot);
+    }
+    return true;
+  };
+
+  const drain = async () => {
     clearTimer();
-    if (!snapshot) return;
-    await runSave(snapshot);
+    if (drainPromise) {
+      await drainPromise;
+      if (pendingByScene.size > 0) await drain();
+      return;
+    }
+
+    drainPromise = (async () => {
+      let snapshot = takeNext();
+      while (snapshot) {
+        await runSave(snapshot);
+        snapshot = takeNext();
+      }
+    })();
+
+    try {
+      await drainPromise;
+    } finally {
+      drainPromise = null;
+      if (pendingByScene.size > 0) await drain();
+    }
+  };
+
+  const cancel = () => {
+    pendingByScene.clear();
+    pendingOrder.length = 0;
+    failedByScene.clear();
+    clearTimer();
+    setStatus('idle', { sceneId: null });
   };
 
   return {
     schedule(snapshot) {
-      pending = snapshot ? { ...snapshot } : null;
+      if (!snapshot?.sceneId) return;
+      failedByScene.delete(snapshot.sceneId);
+      enqueue(snapshot);
       clearTimer();
-      if (!pending) return;
+      setStatus('dirty', snapshot);
       timerId = setTimeout(() => {
-        const next = pending;
-        pending = null;
         timerId = null;
-        void runSave(next);
+        void drain();
       }, delayMs);
     },
 
     async flush() {
-      await flush();
+      await drain();
     },
 
-    cancel() {
-      pending = null;
-      clearTimer();
+    async retry() {
+      failedByScene.forEach((snapshot) => enqueue(snapshot));
+      failedByScene.clear();
+      if (pendingByScene.size > 0) {
+        const nextSceneId = pendingOrder.find((sceneId) => pendingByScene.has(sceneId));
+        setStatus('dirty', pendingByScene.get(nextSceneId));
+      }
+      await drain();
     },
+
+    getStatus() {
+      return { ...status };
+    },
+
+    hasPending() {
+      return Boolean(pendingByScene.size || failedByScene.size || inFlight || drainPromise);
+    },
+
+    hasPendingForScene(sceneId) {
+      return Boolean(
+        pendingByScene.has(sceneId)
+        || failedByScene.has(sceneId)
+        || inFlight?.sceneId === sceneId,
+      );
+    },
+
+    cancel,
 
     dispose({ flushPending = false } = {}) {
-      if (flushPending) {
-        void flush();
-        return;
-      }
-      this.cancel();
+      if (flushPending) return drain();
+      cancel();
+      return Promise.resolve();
     },
   };
 }

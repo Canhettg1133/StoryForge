@@ -495,6 +495,32 @@
   display: inline-block;
 }
 
+.story-editor-autosave.is-dirty::before,
+.story-editor-autosave.is-saving::before {
+  background: var(--color-warning);
+}
+
+.story-editor-autosave.is-error::before {
+  background: var(--color-danger);
+}
+
+.story-editor-autosave__retry {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-danger);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.story-editor-autosave__retry:focus-visible {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 3px;
+}
+
 /* Word Count Progress */
 .story-editor-progress-label {
   color: var(--color-text-secondary);

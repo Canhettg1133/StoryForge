@@ -101,6 +101,53 @@
   gap: 10px;
 }
 
+.translator-background-status {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: var(--z-toast);
+  min-height: 44px;
+  max-width: min(360px, calc(100vw - 36px));
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  font: inherit;
+}
+
+.translator-background-status:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.translator-background-status__dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--color-success);
+}
+
+.translator-background-status.is-paused .translator-background-status__dot {
+  background: var(--color-warning);
+}
+
+.translator-background-status.is-failed .translator-background-status__dot {
+  background: var(--color-danger);
+}
+
+.translator-background-status__progress {
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
 .app-main--translator-active {
   display: flex;
   flex-direction: column;

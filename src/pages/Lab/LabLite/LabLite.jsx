@@ -42,6 +42,7 @@ import {
 } from './labLiteUiHelpers.js';
 import LabLiteHero from './components/LabLiteHero.jsx';
 import GuidedWorkspaceRail from './components/GuidedWorkspaceRail.jsx';
+import { useConfirmDialog } from '../../../components/common/ConfirmDialogProvider.jsx';
 
 import { ChapterDetail, ChapterPanel } from './components/ChapterPanels.jsx';
 import { CorpusLibrary, IngestBatchPanel, ParseDiagnostics, UploadPanel } from './components/ImportPanels.jsx';
@@ -720,6 +721,7 @@ function MaterializePanel({
   onPlan,
   onApply,
 }) {
+  const confirmAction = useConfirmDialog();
   const [selectedPackId, setSelectedPackId] = useState('');
   const [activeGroup, setActiveGroup] = useState('all');
   const [selectedActionIds, setSelectedActionIds] = useState(new Set());
@@ -791,8 +793,12 @@ function MaterializePanel({
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => {
-            const confirmed = window.confirm(`Áp dụng ${formatNumber(selectedCount)} mục đã duyệt vào Story Bible của dự án này?`);
+          onClick={async () => {
+            const confirmed = await confirmAction({
+              title: 'Áp dụng vào Story Bible?',
+              message: `${formatNumber(selectedCount)} mục đã duyệt sẽ được áp dụng vào dự án này.`,
+              confirmLabel: 'Áp dụng',
+            });
             if (confirmed) onApply([...selectedActionIds]);
           }}
           disabled={!materializationPlan || materializeState.status === 'applying'}
@@ -865,6 +871,7 @@ function MaterializePanel({
 }
 
 export default function LabLite() {
+  const confirmAction = useConfirmDialog();
   const {
     corpuses,
     currentCorpus,
@@ -1026,12 +1033,15 @@ export default function LabLite() {
     }
   };
 
-  const handleDeleteCorpus = (corpusId) => {
+  const handleDeleteCorpus = async (corpusId) => {
     const corpus = corpuses.find((item) => item.id === corpusId);
     const title = corpus?.title || 'bộ dữ liệu này';
-    const confirmed = window.confirm(
-      `Xóa vĩnh viễn dữ liệu Lab Lite "${title}" khỏi IndexedDB?\n\nThao tác này sẽ xóa chương gốc, kết quả Scout, phân tích sâu, Canon Pack, cache, job và coverage liên quan. Không thể hoàn tác.`,
-    );
+    const confirmed = await confirmAction({
+      title: 'Xóa vĩnh viễn dữ liệu Lab Lite?',
+      message: `"${title}" cùng chương gốc, kết quả Scout, phân tích sâu, Canon Pack, cache, job và coverage liên quan sẽ bị xóa khỏi IndexedDB. Không thể hoàn tác.`,
+      confirmLabel: 'Xóa vĩnh viễn',
+      danger: true,
+    });
     if (!confirmed) return;
     deleteCorpus(corpusId).catch(() => {});
   };

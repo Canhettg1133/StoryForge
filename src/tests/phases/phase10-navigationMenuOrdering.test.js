@@ -36,7 +36,7 @@ describe('phase10 navigation menu ordering', () => {
   it('keeps the account route inside the app layout so persistent navigation remains visible', () => {
     const app = read('src/App.jsx');
     const appLayoutIndex = app.indexOf('<Route element={<AppLayout />}>');
-    const accountRouteIndex = app.indexOf('<Route path="/login" element={<Login />} />');
+    const accountRouteIndex = app.indexOf('<Route path="/login" element={withRouteBoundary(<Login />)} />');
 
     expect(appLayoutIndex).toBeGreaterThanOrEqual(0);
     expect(accountRouteIndex).toBeGreaterThan(appLayoutIndex);

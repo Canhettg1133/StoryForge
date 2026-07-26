@@ -7,6 +7,7 @@ import {
 } from './projectContentMode';
 import { useUserAccess } from '../../hooks/useUserAccess';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './ProjectContentModeControl.css';
 
 const SURFACE_COPY = {
@@ -50,6 +51,10 @@ export default function ProjectContentModeControl({
   const [adultError, setAdultError] = useState('');
   const writerMenuRef = useRef(null);
   const canUseAdultMode = hasFeature(ACCESS_FEATURES.ADULT_MODE);
+  const adultDialogRef = useModalAccessibility({
+    open: Boolean(adultPrompt),
+    onClose: () => setAdultPrompt(null),
+  });
 
   const isAdultOption = (value) =>
     value === PROJECT_CONTENT_MODES.NSFW || value === PROJECT_CONTENT_MODES.ENI;
@@ -90,6 +95,7 @@ export default function ProjectContentModeControl({
   const adultAccessModal = adultPrompt ? (
     <div className="project-content-mode__modal-backdrop" role="presentation" onMouseDown={() => setAdultPrompt(null)}>
       <section
+        ref={adultDialogRef}
         className="project-content-mode__modal"
         role="dialog"
         aria-modal="true"

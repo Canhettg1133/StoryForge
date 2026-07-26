@@ -1,14 +1,17 @@
 import React from 'react';
 import { QrCode, X } from 'lucide-react';
 import { SUPPORT_CONTACT } from '../../config/supportContact.js';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './SupportDonateModal.css';
 
 export default function SupportDonateModal({ open, onClose }) {
+  const dialogRef = useModalAccessibility({ open, onClose });
   if (!open) return null;
 
   return (
     <div className="support-donate-modal__overlay" role="presentation">
       <section
+        ref={dialogRef}
         className="support-donate-modal"
         role="dialog"
         aria-modal="true"

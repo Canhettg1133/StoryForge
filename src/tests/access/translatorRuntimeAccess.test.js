@@ -59,6 +59,34 @@ describe('translator runtime access gates', () => {
     expect(host).toContain('Tôi đủ 18 tuổi và đồng ý');
   });
 
+  it('uses a readiness handshake and sends only bounded translation status metadata', () => {
+    const app = read('public/translator-runtime/js/app.js');
+    const init = read('public/translator-runtime/js/init.js');
+    const progress = read('public/translator-runtime/js/ui/progress.js');
+    const controls = read('public/translator-runtime/js/ui/controls.js');
+
+    expect(app).toContain('STORYFORGE_TRANSLATOR_READY');
+    expect(app).toContain('STORYFORGE_TRANSLATOR_STATUS');
+    expect(app).toContain('notifyStoryForgeTranslatorStatus');
+    expect(app).toContain('handleStoryForgeAccessContext');
+    expect(init).toContain('notifyStoryForgeTranslatorReady');
+    expect(progress).toContain("notifyStoryForgeTranslatorStatus('running'");
+    expect(controls).toContain("notifyStoryForgeTranslatorStatus(isPaused ? 'paused' : 'running'");
+    expect(app).not.toMatch(/STORYFORGE_TRANSLATOR_STATUS[\s\S]{0,500}(prompt|apiKey|token):/u);
+  });
+
+  it('pauses at chunk boundaries and clears the translator token after access revocation', () => {
+    const app = read('public/translator-runtime/js/app.js');
+    const engine = read('public/translator-runtime/js/translation/engine.js');
+    const controls = read('public/translator-runtime/js/ui/controls.js');
+    const host = read('src/components/translator/PersistentTranslatorHost.jsx');
+
+    expect(controls).toContain("!hasStoryForgeFeature('translator.access')");
+    expect(engine.match(/await waitWhilePaused\(\);/gu)?.length).toBeGreaterThanOrEqual(4);
+    expect(app).toContain("storyForgeAccessToken = ''");
+    expect(host).toContain("token: translatorAllowed ? getCachedAccessToken() : ''");
+  });
+
   it('escapes translator runtime HTML sinks that receive upstream or key data', () => {
     const app = read('public/translator-runtime/js/app.js');
     const modelRotation = read('public/translator-runtime/js/gemini/model-rotation.js');

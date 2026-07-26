@@ -47,11 +47,23 @@ function togglePause() {
         showToast('⏸️ Đã tạm dừng dịch. Nhấn "Tiếp tục" để tiếp tục.', 'warning');
         console.log('[Pause] Paused translation');
     }
+    if (typeof notifyStoryForgeTranslatorStatus === 'function') {
+        notifyStoryForgeTranslatorStatus(isPaused ? 'paused' : 'running', { force: true });
+    }
 }
 
 // Wait while paused
 async function waitWhilePaused() {
-    while (isPaused && !cancelRequested) {
+    while (
+        !cancelRequested
+        && (
+            isPaused
+            || (
+                typeof hasStoryForgeFeature === 'function'
+                && !hasStoryForgeFeature('translator.access')
+            )
+        )
+    ) {
         await sleep(500);
     }
 }

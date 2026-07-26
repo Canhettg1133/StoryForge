@@ -22,6 +22,7 @@ import keyManager from '../../services/ai/keyManager';
 import modelRouter, { PROVIDERS, TASK_TYPES } from '../../services/ai/router';
 import { getProxyUrl } from '../../services/ai/client';
 import { navigateBackOr } from '../../utils/navigation.js';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import '../Settings/Settings.css';
 import './GeminiSetupGuide.css';
 import './GeminiProxyGuide.css';
@@ -179,6 +180,10 @@ export default function GeminiProxyGuide({ focusFixCli = false }) {
   const location = useLocation();
   const [copied, setCopied] = useState(false);
   const [activeShot, setActiveShot] = useState(null);
+  const lightboxRef = useModalAccessibility({
+    open: Boolean(activeShot),
+    onClose: () => setActiveShot(null),
+  });
 
   const setupState = useMemo(() => {
     const keyCount = keyManager.getKeyCount('gemini_proxy');
@@ -592,8 +597,8 @@ setx GOOGLE_CLOUD_PROJECT_ID "your-project-id"`}</code>
       </div>
 
       {activeShot ? (
-        <div className="gemini-guide-lightbox" role="dialog" aria-modal="true" onClick={() => setActiveShot(null)}>
-          <div className="gemini-guide-lightbox__dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="gemini-guide-lightbox" onClick={() => setActiveShot(null)}>
+          <div ref={lightboxRef} className="gemini-guide-lightbox__dialog" role="dialog" aria-modal="true" aria-label={activeShot.title} onClick={(event) => event.stopPropagation()}>
             <div className="gemini-guide-lightbox__header">
               <strong>{activeShot.title}</strong>
               <button className="btn btn-ghost btn-sm" type="button" onClick={() => setActiveShot(null)}>

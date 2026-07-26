@@ -84,10 +84,22 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (!id.includes('node_modules')) return null
-          if (id.includes('tiptap') || id.includes('prosemirror')) return 'vendor-editor'
-          if (id.includes('dexie')) return 'vendor-db'
-          return 'vendor'
+          const normalizedId = id.replaceAll('\\', '/')
+          if (!normalizedId.includes('/node_modules/')) return null
+          if (
+            /\/node_modules\/(?:react|react-dom|react-router|react-router-dom)\//u
+              .test(normalizedId)
+          ) return 'vendor-react'
+          if (
+            normalizedId.includes('/node_modules/@supabase/')
+            || normalizedId.includes('/node_modules/iceberg-js/')
+          ) return 'vendor-cloud'
+          if (
+            normalizedId.includes('/node_modules/@tiptap/')
+            || normalizedId.includes('/node_modules/prosemirror-')
+          ) return 'vendor-editor'
+          if (normalizedId.includes('/node_modules/dexie/')) return 'vendor-db'
+          return null
         },
       },
     },

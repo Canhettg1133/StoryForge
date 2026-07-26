@@ -25,6 +25,7 @@ import ReviewQueueView from './components/ReviewQueueView.jsx';
 import KnowledgeView from './components/KnowledgeView.jsx';
 import StoryGraphView from './components/StoryGraphView.jsx';
 import ArtifactDebugView from './components/ArtifactDebugView.jsx';
+import useModalAccessibility from '../../../hooks/useModalAccessibility.js';
 import './AnalysisViewer.css';
 import './AnalysisViewer.components.css';
 
@@ -70,6 +71,28 @@ function getViewCountSummary({
         total: totalEvents,
       };
   }
+}
+
+function AdaptationModal({ selectedEvents, corpusFandom, onClose }) {
+  const dialogRef = useModalAccessibility({ open: true, onClose });
+  return (
+    <div className="adapt-panel-backdrop" onClick={onClose}>
+      <div
+        ref={dialogRef}
+        className="adapt-panel-container"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Chuyển thể sự kiện"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <AdaptationPanel
+          selectedEvents={selectedEvents}
+          corpusFandom={corpusFandom}
+          onClose={onClose}
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: propAnalysisId }) {
@@ -626,15 +649,11 @@ export default function AnalysisViewer({ corpusId: propCorpusId, analysisId: pro
       )}
 
       {adaptPanelOpen && (
-        <div className="adapt-panel-backdrop" onClick={() => setAdaptPanelOpen(false)}>
-          <div className="adapt-panel-container" onClick={(e) => e.stopPropagation()}>
-            <AdaptationPanel
-              selectedEvents={selectedItems}
-              corpusFandom={corpus?.fandom || corpus?.genre}
-              onClose={() => setAdaptPanelOpen(false)}
-            />
-          </div>
-        </div>
+        <AdaptationModal
+          selectedEvents={selectedItems}
+          corpusFandom={corpus?.fandom || corpus?.genre}
+          onClose={() => setAdaptPanelOpen(false)}
+        />
       )}
     </div>
   );

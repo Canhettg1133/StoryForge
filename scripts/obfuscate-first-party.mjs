@@ -40,17 +40,13 @@ for (const file of walkJsFiles(rootDir)) {
   const source = readFileSync(file, 'utf8');
   const result = JavaScriptObfuscator.obfuscate(source, {
     compact: true,
-    controlFlowFlattening: true,
-    controlFlowFlatteningThreshold: 0.35,
-    deadCodeInjection: true,
-    deadCodeInjectionThreshold: 0.08,
-    identifierNamesGenerator: 'hexadecimal',
+    controlFlowFlattening: false,
+    deadCodeInjection: false,
+    identifierNamesGenerator: 'mangled',
     renameGlobals: false,
     selfDefending: false,
-    stringArray: true,
-    stringArrayEncoding: ['base64'],
-    stringArrayThreshold: 0.6,
-    transformObjectKeys: true,
+    stringArray: false,
+    transformObjectKeys: false,
   });
   writeFileSync(file, result.getObfuscatedCode());
   manifest.processed.push(relative);

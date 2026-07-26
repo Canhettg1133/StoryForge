@@ -31,6 +31,7 @@ import {
   renderStoryCreationTemplate,
 } from '../../services/ai/storyCreationSettings';
 import { PROMPT_PROFILE_VERSIONS } from '../../services/ai/promptProfiles';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import {
   buildChapterOutlinePassValidation,
   buildStoryBibleSeedValidation,
@@ -816,6 +817,7 @@ function buildCoverageWarnings(result, excluded) {
 }
 
 export default function ProjectWizard({ onClose, onCreated }) {
+  const dialogRef = useModalAccessibility({ open: true, onClose });
   const {
     createProject,
     createChapter,
@@ -2318,7 +2320,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal wizard-modal animate-scale-up" onClick={(event) => event.stopPropagation()}>
+      <div ref={dialogRef} className="modal wizard-modal animate-scale-up" role="dialog" aria-modal="true" aria-label="Trợ lý tạo dự án" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">
             <Sparkles size={20} style={{ color: 'var(--color-accent)' }} />

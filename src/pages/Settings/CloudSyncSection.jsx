@@ -23,6 +23,7 @@ import {
   getStoryCreationSettingsMeta,
 } from '../../services/ai/storyCreationSettings.js';
 import useProjectStore from '../../stores/projectStore';
+import { useConfirmDialog } from '../../components/common/ConfirmDialogProvider.jsx';
 import {
   backupChatThread,
   backupProject,
@@ -154,6 +155,7 @@ export default function CloudSyncSection() {
 }
 
 export function CloudSyncWorkspace({ standalone = false, compact = false }) {
+  const confirmAction = useConfirmDialog();
   const navigate = useNavigate();
   const { projectId } = useParams();
   const scopedProjectId = Number.isFinite(Number(projectId)) ? Number(projectId) : null;
@@ -598,7 +600,12 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
   };
 
   const handleChatRestore = async (item) => {
-    if (!window.confirm(`Khôi phục chat "${item.itemTitle}" thành thread local mới?`)) {
+    const confirmed = await confirmAction({
+      title: 'Khôi phục cuộc trò chuyện?',
+      message: `"${item.itemTitle}" sẽ được khôi phục thành một thread local mới.`,
+      confirmLabel: 'Khôi phục',
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -622,7 +629,13 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
   };
 
   const handlePromptRestore = async (item) => {
-    if (!window.confirm('Khôi phục prompt cloud sẽ ghi đè toàn bộ Global prompt hiện tại. Tiếp tục?')) {
+    const confirmed = await confirmAction({
+      title: 'Ghi đè Global prompt?',
+      message: 'Khôi phục prompt cloud sẽ ghi đè toàn bộ Global prompt hiện tại.',
+      confirmLabel: 'Khôi phục',
+      danger: true,
+    });
+    if (!confirmed) {
       return;
     }
 
@@ -641,7 +654,13 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
   };
 
   const handleDelete = async (scope, itemSlug) => {
-    if (!window.confirm('Xóa snapshot cloud này? Bản local sẽ không bị ảnh hưởng.')) {
+    const confirmed = await confirmAction({
+      title: 'Xóa snapshot cloud?',
+      message: 'Snapshot cloud sẽ bị xóa; bản local không bị ảnh hưởng.',
+      confirmLabel: 'Xóa snapshot',
+      danger: true,
+    });
+    if (!confirmed) {
       return;
     }
 

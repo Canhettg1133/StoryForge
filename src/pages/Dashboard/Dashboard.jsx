@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import useProjectStore from '../../stores/projectStore';
 import useMobileLayout from '../../hooks/useMobileLayout';
@@ -22,15 +22,25 @@ import {
   ArchiveRestore,
   PackageOpen,
 } from 'lucide-react';
-import NewProjectModal from './NewProjectModal';
-import ExportModal from '../../components/common/ExportModal';
 import ThemePicker from '../../components/common/ThemePicker.jsx';
 import MobileSheet from '../../components/mobile/MobileSheet';
 import MobileNavigationMenu from '../../components/mobile/MobileNavigationMenu.jsx';
 import SupportDonateModal from '../../components/support/SupportDonateModal.jsx';
-import StoryBundleModal from '../../components/storyBundle/StoryBundleModal.jsx';
+import { useConfirmDialog } from '../../components/common/ConfirmDialogProvider.jsx';
 import { getActiveProjectCoversForProjects } from '../../services/projectCovers/coverRepository.js';
 import './Dashboard.css';
+
+const NewProjectModal = React.lazy(() => import('./NewProjectModal'));
+const ExportModal = React.lazy(() => import('../../components/common/ExportModal'));
+const StoryBundleModal = React.lazy(() => import('../../components/storyBundle/StoryBundleModal.jsx'));
+
+function DashboardModalLoader() {
+  return (
+    <div className="dashboard-modal-loader" role="status" aria-live="polite">
+      <span>Đang mở…</span>
+    </div>
+  );
+}
 
 const UTILITY_ITEMS = [
   {
@@ -84,6 +94,7 @@ const VISIBLE_UTILITY_ITEMS = UTILITY_ITEMS.filter(shouldShowNavItem);
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
+  const confirmAction = useConfirmDialog();
   const { projects, loadProjects, loadProject, deleteProject } = useProjectStore();
   const isMobileLayout = useMobileLayout(900);
   const [showModal, setShowModal] = useState(false);
@@ -147,7 +158,13 @@ export default function Dashboard() {
 
   const handleDeleteProject = async (id, event) => {
     event.stopPropagation();
-    if (window.confirm('Bạn chắc chắn muốn xóa dự án này? Tất cả dữ liệu sẽ bị mất.')) {
+    const confirmed = await confirmAction({
+      title: 'Xóa dự án?',
+      message: 'Tất cả dữ liệu của dự án này sẽ bị xóa và không thể hoàn tác.',
+      confirmLabel: 'Xóa dự án',
+      danger: true,
+    });
+    if (confirmed) {
       await deleteProject(id);
     }
     setContextMenu(null);
@@ -226,7 +243,9 @@ export default function Dashboard() {
       </header>
 
       <div className="dashboard-mobile-search">
+        <label className="sr-only" htmlFor="dashboard-project-search">Tìm truyện</label>
         <input
+          id="dashboard-project-search"
           className="input"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
@@ -314,12 +333,17 @@ export default function Dashboard() {
               const coverUrl = project.cover_thumbnail_data_url || cover?.thumbnail_data_url || cover?.data_url || '';
               const hasCover = Boolean(coverUrl);
               return (
-                <div
+                <article
                   key={project.id}
                   className={`project-card card-glass animate-slide-up ${hasCover ? 'project-card--with-cover' : 'project-card--without-cover'} ${contextMenu === project.id ? 'project-card--menu-open' : ''}`}
                   style={{ animationDelay: `${(index + 1) * 60}ms` }}
-                  onClick={() => handleOpenProject(project.id)}
                 >
+                  <button
+                    type="button"
+                    className="project-card-open"
+                    onClick={() => handleOpenProject(project.id)}
+                    aria-label={`Mở dự án ${project.title}`}
+                  />
                   <div className="project-card-cover-frame">
                     {hasCover ? (
                       <img className="project-card-cover-thumb" src={coverUrl} alt="Bìa truyện" referrerPolicy="no-referrer" />
@@ -392,7 +416,7 @@ export default function Dashboard() {
                       <span className="project-card-date">{formatDate(project.updated_at)}</span>
                     </div>
                   </div>
-                </div>
+                </article>
               );
             })}
           </div>
@@ -407,6 +431,13 @@ export default function Dashboard() {
               </button>
             </div>
           )}
+          {projects.length > 0 && filteredProjects.length === 0 ? (
+            <div className="empty-state animate-fade-in" role="status">
+              <BookOpen size={40} />
+              <h3>Không tìm thấy truyện phù hợp</h3>
+              <p>Thử đổi từ khóa tìm kiếm để xem lại các dự án đang có.</p>
+            </div>
+          ) : null}
         </section>
       </div>
 
@@ -436,37 +467,39 @@ export default function Dashboard() {
         />
       </MobileSheet>
 
-      {showModal && (
-        <NewProjectModal
-          onClose={() => setShowModal(false)}
-          onCreated={handleProjectCreated}
-        />
-      )}
+      <Suspense fallback={<DashboardModalLoader />}>
+        {showModal && (
+          <NewProjectModal
+            onClose={() => setShowModal(false)}
+            onCreated={handleProjectCreated}
+          />
+        )}
 
-      {exportingProject && (
-        <ExportModal
-          project={exportingProject}
-          onClose={() => setExportingProject(null)}
-        />
-      )}
+        {exportingProject && (
+          <ExportModal
+            project={exportingProject}
+            onClose={() => setExportingProject(null)}
+          />
+        )}
 
-      {bundleExportProject ? (
-        <StoryBundleModal
-          mode="export"
-          project={bundleExportProject}
-          projects={projects}
-          onClose={() => setBundleExportProject(null)}
-        />
-      ) : null}
+        {bundleExportProject ? (
+          <StoryBundleModal
+            mode="export"
+            project={bundleExportProject}
+            projects={projects}
+            onClose={() => setBundleExportProject(null)}
+          />
+        ) : null}
 
-      {bundleImportOpen ? (
-        <StoryBundleModal
-          mode="import"
-          projects={projects}
-          onClose={() => setBundleImportOpen(false)}
-          onImported={handleStoryBundleImported}
-        />
-      ) : null}
+        {bundleImportOpen ? (
+          <StoryBundleModal
+            mode="import"
+            projects={projects}
+            onClose={() => setBundleImportOpen(false)}
+            onImported={handleStoryBundleImported}
+          />
+        ) : null}
+      </Suspense>
 
       <SupportDonateModal open={donateOpen} onClose={() => setDonateOpen(false)} />
     </div>

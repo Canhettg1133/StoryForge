@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react';
 import useProjectStore from '../../../../stores/projectStore.js';
+import useModalAccessibility from '../../../../hooks/useModalAccessibility.js';
 
 const SEVERITY_LABELS = {
   crucial: 'Cốt lõi',
@@ -19,6 +20,7 @@ export default function LinkToProjectModal({ event, corpusId, onLink, onUnlink, 
   const [selectedSceneId, setSelectedSceneId] = useState(null);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const dialogRef = useModalAccessibility({ open: true, onClose });
   const canonLabel = event.canonOrFanon?.type === 'fanon' ? 'Phi chính sử' : 'Chính sử';
 
   // Load projects
@@ -57,7 +59,14 @@ export default function LinkToProjectModal({ event, corpusId, onLink, onUnlink, 
 
   return (
     <div className="link-modal-backdrop" onClick={onClose}>
-      <div className="link-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="link-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Liên kết sự kiện vào dự án"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="link-modal-header">
           <h3>Liên kết vào dự án</h3>
           <button className="close-btn" onClick={onClose}>×</button>

@@ -16,6 +16,7 @@ import useCanonStore from '../../stores/canonStore';
 import CanonRepairDialog from '../canon/CanonRepairDialog';
 import { getCanonReportTitle } from '../../services/canon/reportLabels';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './ContinuityBar.css';
 
 function getOutcomeClass(outcome) {
@@ -66,6 +67,11 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   const [expanded, setExpanded] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [ignoredReportKeys, setIgnoredReportKeys] = useState(() => new Set());
+  const [completionNotice, setCompletionNotice] = useState('');
+  const issuesDialogRef = useModalAccessibility({
+    open: issuesOpen,
+    onClose: () => setIssuesOpen(false),
+  });
 
   useEffect(() => {
     if (isMobileLayout) {
@@ -77,6 +83,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     clearActionOutcome();
     clearRepairText();
     setIssuesOpen(false);
+    setCompletionNotice('');
     setIgnoredReportKeys(new Set());
   }, [activeChapterId, activeSceneId, clearActionOutcome, clearRepairText]);
 
@@ -197,19 +204,20 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   const handleCompleteChapter = async (event) => {
     event.stopPropagation();
     if (!activeChapterId || chapterDone) return;
+    setCompletionNotice('');
     try {
       const result = await runChapterCompletion(activeChapterId, { mode: 'manual' });
       if (!result) return;
       if (result.kind === 'empty') {
-        alert('Chương chưa có nội dung để hoàn thành.');
+        setCompletionNotice('Chương chưa có nội dung để hoàn thành.');
         return;
       }
       if (!result.ok) {
-        alert(result.message || 'Không thể hoàn thành chương.');
+        setCompletionNotice(result.message || 'Không thể hoàn thành chương.');
       }
     } catch (error) {
       console.error('[ContinuityBar] Chapter completion failed:', error);
-      alert(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
+      setCompletionNotice(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
     }
   };
 
@@ -388,6 +396,12 @@ export default function ContinuityBar({ isMobileLayout = false }) {
           {(!isMobileLayout || prevChapterInfo) && (expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
         </div>
 
+        {completionNotice ? (
+          <div className="continuity-bar-feedback continuity-bar-feedback--error" role="alert">
+            {completionNotice}
+          </div>
+        ) : null}
+
         {expanded && (
           <div className="continuity-bar-body">
             {lastActionOutcome?.message && (
@@ -409,7 +423,14 @@ export default function ContinuityBar({ isMobileLayout = false }) {
 
       {issuesOpen && (
         <div className="modal-overlay" onClick={() => setIssuesOpen(false)}>
-          <div className="modal continuity-issues-dialog" onClick={(event) => event.stopPropagation()}>
+          <div
+            ref={issuesDialogRef}
+            className="modal continuity-issues-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Kiểm tra canon"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="continuity-issues-dialog__header">
               <div>
                 <div className="continuity-issues-dialog__eyebrow">

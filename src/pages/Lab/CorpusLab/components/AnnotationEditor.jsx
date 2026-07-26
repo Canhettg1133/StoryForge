@@ -3,6 +3,7 @@
  */
 
 import { useState } from 'react';
+import useModalAccessibility from '../../../../hooks/useModalAccessibility.js';
 
 const TEMPLATES = [
   { label: 'Ý tưởng cho arc...', value: 'Ý tưởng cho ' },
@@ -31,6 +32,7 @@ export default function AnnotationEditor({ event, onSave, onCancel }) {
 
   const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
+  const dialogRef = useModalAccessibility({ open: true, onClose: onCancel });
 
   const handleSave = async () => {
     setSaving(true);
@@ -79,7 +81,14 @@ export default function AnnotationEditor({ event, onSave, onCancel }) {
 
   return (
     <div className="annotation-editor-backdrop" onClick={onCancel}>
-      <div className="annotation-editor" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="annotation-editor"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Ghi chú sự kiện"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="annotation-editor-header">
           <h3>Ghi chú sự kiện</h3>
           <button className="close-btn" onClick={onCancel}>×</button>

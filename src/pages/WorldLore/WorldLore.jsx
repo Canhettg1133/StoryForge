@@ -15,6 +15,7 @@ import AIGenerateButton from '../../components/common/AIGenerateButton';
 import BatchGenerate from '../../components/common/BatchGenerate';
 import EntityTimeline from '../../components/common/EntityTimeline';
 import MobileBibleTabs from '../../components/mobile/MobileBibleTabs';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './WorldLore.css';
 
 const TABS = [
@@ -51,6 +52,14 @@ export default function WorldLore() {
   const [editingWorld, setEditingWorld] = useState(false);
   const [worldForm, setWorldForm] = useState({});
   const { updateWorldProfile } = useProjectStore();
+  const itemDialogRef = useModalAccessibility({
+    open: showModal,
+    onClose: () => setShowModal(false),
+  });
+  const batchDialogRef = useModalAccessibility({
+    open: showBatchGen,
+    onClose: () => setShowBatchGen(false),
+  });
 
   useEffect(() => {
     if (currentProject) loadCodex(currentProject.id);
@@ -364,7 +373,7 @@ export default function WorldLore() {
       {/* Modal */}
       {showModal && (
         <div className="codex-modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="codex-modal codex-modal--sm" onClick={e => e.stopPropagation()}>
+          <div ref={itemDialogRef} className="codex-modal codex-modal--sm" role="dialog" aria-modal="true" aria-label={editingItem ? `Sửa ${tabLabel}` : `Thêm ${tabLabel}`} onClick={e => e.stopPropagation()}>
             <div className="codex-modal-header">
               <h3>{editingItem ? `Sửa ${tabLabel}` : `Thêm ${tabLabel} mới`}</h3>
               <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setShowModal(false)}>
@@ -516,7 +525,7 @@ export default function WorldLore() {
       {/* Batch Generate Modal */}
       {showBatchGen && (
         <div className="codex-modal-overlay" onClick={() => setShowBatchGen(false)}>
-          <div className="codex-modal codex-modal--lg" onClick={e => e.stopPropagation()}>
+          <div ref={batchDialogRef} className="codex-modal codex-modal--lg" role="dialog" aria-modal="true" aria-label="Tạo hàng loạt dữ liệu thế giới" onClick={e => e.stopPropagation()}>
             <BatchGenerate
               entityType={activeTab === 'locations' ? 'location' : activeTab === 'objects' ? 'object' : 'term'}
               projectContext={{

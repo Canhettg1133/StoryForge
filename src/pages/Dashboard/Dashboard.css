@@ -5,6 +5,24 @@
   min-height: 100vh;
 }
 
+.dashboard-modal-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: center;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.dashboard-modal-loader span {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+
 /* Header */
 .dashboard-header {
   margin-bottom: var(--space-8);
@@ -275,6 +293,28 @@
   padding: 12px;
   cursor: pointer;
   position: relative;
+}
+
+.project-card-open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.project-card-open:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.project-card-cover-action,
+.project-card-menu,
+.project-context-menu {
+  position: relative;
+  z-index: 2;
 }
 
 .project-card--menu-open {

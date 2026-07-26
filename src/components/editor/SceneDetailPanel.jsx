@@ -18,6 +18,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './SceneDetailPanel.css';
 
 const PACING_OPTIONS = [
@@ -46,6 +47,7 @@ export default function SceneDetailPanel({
     must_not_happen_input: '',
   });
   const [saving, setSaving] = useState(false);
+  const dialogRef = useModalAccessibility({ open: true, onClose });
 
   useEffect(() => {
     if (!scene) return;
@@ -140,7 +142,13 @@ export default function SceneDetailPanel({
     <>
       <div className="scene-detail-backdrop" onClick={onClose} />
 
-      <aside className="scene-detail-panel" aria-label="Chi tiết cảnh">
+      <aside
+        ref={dialogRef}
+        className="scene-detail-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Chi tiết cảnh"
+      >
         <div className="scene-detail-header">
           <div className="scene-detail-header-copy">
             <div className="scene-detail-kicker">Scene metadata</div>

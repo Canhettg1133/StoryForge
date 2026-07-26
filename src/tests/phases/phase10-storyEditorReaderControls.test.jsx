@@ -37,7 +37,6 @@ const mocks = vi.hoisted(() => ({
     activeSceneId: 101,
     updateScene: vi.fn(async () => {}),
     updateChapter: vi.fn(async () => {}),
-    updateProjectTimestamp: vi.fn(async () => {}),
   },
 }));
 

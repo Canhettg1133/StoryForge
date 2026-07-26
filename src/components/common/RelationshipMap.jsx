@@ -35,6 +35,7 @@ import {
   X,
 } from 'lucide-react';
 import './RelationshipMap.css';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 
 const RELATIONSHIP_OP_TYPES = new Set([
   'RELATIONSHIP_STATUS_CHANGED',
@@ -297,6 +298,7 @@ function formatAnalysisOutcome(result) {
 }
 
 export default function RelationshipMap({ onClose }) {
+  const dialogRef = useModalAccessibility({ open: true, onClose });
   const { currentProject, chapters = [], scenes = [] } = useProjectStore();
   const { characters } = useCodexStore();
   const {
@@ -1274,7 +1276,7 @@ export default function RelationshipMap({ onClose }) {
 
   return (
     <div className="codex-modal-overlay" onClick={onClose}>
-      <div className="codex-modal codex-modal--lg relationship-cockpit" onClick={(event) => event.stopPropagation()}>
+      <div ref={dialogRef} className="codex-modal codex-modal--lg relationship-cockpit" role="dialog" aria-modal="true" aria-label="Quản lý quan hệ nhân vật" onClick={(event) => event.stopPropagation()}>
         <div className="codex-modal-header rel-header">
           <div>
             <h3><Link2 size={18} /> Quan hệ nhân vật</h3>

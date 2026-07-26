@@ -1,4 +1,5 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import useProjectStore from '../../stores/projectStore';
 import {
   Plus,
@@ -15,6 +16,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
+import { useConfirmDialog } from './ConfirmDialogProvider.jsx';
 import './ChapterList.css';
 
 const CONTEXT_MENU_WIDTH = 220;
@@ -35,6 +37,7 @@ export default function ChapterList({
   aiWritingChapterId = null,
   aiWritingSceneId = null,
 }) {
+  const confirmAction = useConfirmDialog();
   const {
     chapters,
     scenes,
@@ -48,11 +51,26 @@ export default function ChapterList({
     updateScene,
     setActiveChapter,
     setActiveScene,
-    refreshChapterWordCount,
     completingChapterId,
     chapterCompletionById,
     runChapterCompletion,
-  } = useProjectStore();
+  } = useProjectStore(useShallow((state) => ({
+    chapters: state.chapters,
+    scenes: state.scenes,
+    activeChapterId: state.activeChapterId,
+    activeSceneId: state.activeSceneId,
+    createChapter: state.createChapter,
+    createScene: state.createScene,
+    deleteChapter: state.deleteChapter,
+    deleteScene: state.deleteScene,
+    updateChapter: state.updateChapter,
+    updateScene: state.updateScene,
+    setActiveChapter: state.setActiveChapter,
+    setActiveScene: state.setActiveScene,
+    completingChapterId: state.completingChapterId,
+    chapterCompletionById: state.chapterCompletionById,
+    runChapterCompletion: state.runChapterCompletion,
+  })));
 
   const [expandedChapters, setExpandedChapters] = useState(() => new Set());
   const [editingId, setEditingId] = useState(null);
@@ -67,6 +85,15 @@ export default function ChapterList({
   const collapsedTreeRef = useRef(null);
   const mobileTreeRef = useRef(null);
   const pendingScrollRestoreRef = useRef(null);
+  const scenesByChapter = useMemo(() => {
+    const grouped = new Map();
+    scenes.forEach((scene) => {
+      const chapterScenes = grouped.get(scene.chapter_id);
+      if (chapterScenes) chapterScenes.push(scene);
+      else grouped.set(scene.chapter_id, [scene]);
+    });
+    return grouped;
+  }, [scenes]);
 
   const getScrollContainer = () => {
     if (isMobileLayout) return mobileTreeRef.current;
@@ -91,13 +118,6 @@ export default function ChapterList({
     container.scrollTop = pendingScrollRestoreRef.current;
     pendingScrollRestoreRef.current = null;
   }, [chapters, scenes, isMobileLayout, panelCollapsed]);
-
-  useEffect(() => {
-    if (!activeSceneId || !activeChapterId) return;
-    const scene = scenes.find((item) => item.id === activeSceneId);
-    if (!scene) return;
-    refreshChapterWordCount(activeChapterId);
-  }, [activeSceneId, activeChapterId, scenes, refreshChapterWordCount]);
 
   useEffect(() => {
     if (!chapterNotice) return undefined;
@@ -159,7 +179,7 @@ export default function ChapterList({
 
   const handleSelectChapter = (chapterId) => {
     setActiveChapter(chapterId);
-    const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapterId);
+    const chapterScenes = scenesByChapter.get(chapterId) || [];
     if (chapterScenes.length > 0) {
       setActiveScene(chapterScenes[0].id);
     }
@@ -247,7 +267,13 @@ export default function ChapterList({
       ? 'Xóa chương này và tất cả cảnh bên trong?'
       : 'Xóa cảnh này?';
 
-    if (!window.confirm(message)) return;
+    const confirmed = await confirmAction({
+      title: type === 'chapter' ? 'Xóa chương?' : 'Xóa cảnh?',
+      message,
+      confirmLabel: 'Xóa',
+      danger: true,
+    });
+    if (!confirmed) return;
     pendingScrollRestoreRef.current = getScrollContainer()?.scrollTop ?? null;
     if (type === 'chapter') await deleteChapter(id);
     else await deleteScene(id);
@@ -260,16 +286,16 @@ export default function ChapterList({
       const result = await runChapterCompletion(chapterId, { mode: 'manual' });
       if (!result) return;
       if (result.kind === 'empty') {
-        alert('Chương chưa có nội dung để hoàn thành.');
+        setChapterNotice('Chương chưa có nội dung để hoàn thành.');
         return;
       }
       if (!result.ok) {
-        alert(result.message || 'Không thể hoàn thành chương.');
+        setChapterNotice(result.message || 'Không thể hoàn thành chương.');
       }
       return;
     } catch (error) {
       console.error('[ChapterList] Chapter completion failed:', error);
-      alert(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
+      setChapterNotice(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
       return;
     }
   };
@@ -394,7 +420,7 @@ export default function ChapterList({
 
           <div ref={collapsedTreeRef} className="chapter-list-collapsed-tree">
             {chapters.map((chapter, index) => {
-              const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapter.id);
+              const chapterScenes = scenesByChapter.get(chapter.id) || [];
               const isActiveChapter = activeChapterId === chapter.id;
               const isDone = chapter.status === 'done';
               const isAiWritingChapter = aiWritingChapterId === chapter.id;
@@ -446,7 +472,7 @@ export default function ChapterList({
       {!panelCollapsed && (
         <div ref={desktopTreeRef} className="chapter-list-tree">
           {chapters.map((chapter) => {
-            const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapter.id);
+            const chapterScenes = scenesByChapter.get(chapter.id) || [];
             const isExpanded = expandedChapters.has(chapter.id);
             const isEditingChapter = editingId === `chapter-${chapter.id}`;
             const isDone = chapter.status === 'done';
@@ -552,7 +578,7 @@ export default function ChapterList({
   const renderMobileTree = () => (
     <div ref={mobileTreeRef} className="chapter-list-mobile-tree">
       {chapters.map((chapter) => {
-        const chapterScenes = scenes.filter((scene) => scene.chapter_id === chapter.id);
+        const chapterScenes = scenesByChapter.get(chapter.id) || [];
         const isExpanded = expandedChapters.has(chapter.id);
         const isEditingChapter = editingId === `chapter-${chapter.id}`;
         const isDone = chapter.status === 'done';

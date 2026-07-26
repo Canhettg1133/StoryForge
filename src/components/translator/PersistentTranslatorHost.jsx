@@ -3,9 +3,11 @@ import { useUserAccess } from '../../hooks/useUserAccess.js';
 import { getCachedAccessToken } from '../../services/access/accessClient.js';
 import { normalizeTheme } from '../../config/themes.js';
 import useUIStore from '../../stores/uiStore.js';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './PersistentTranslatorHost.css';
 
-const TRANSLATOR_URL = '/translator-runtime/index.html?v=20';
+const TRANSLATOR_URL = '/translator-runtime/index.html?v=21';
+const TRANSLATOR_STATUS_STATES = new Set(['ready', 'idle', 'running', 'paused', 'completed', 'failed']);
 const ADULT_TEMPLATE_LABELS = {
   adult: 'Truyện 18+',
   sacHiep: 'Sắc hiệp',
@@ -30,28 +32,66 @@ function isAccessSnapshot(value) {
   );
 }
 
-export default function PersistentTranslatorHost({ active = false }) {
+function parseTranslatorStatus(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  if (!TRANSLATOR_STATUS_STATES.has(payload.state)) return null;
+  if (!Number.isSafeInteger(payload.completed) || payload.completed < 0) return null;
+  if (!Number.isSafeInteger(payload.total) || payload.total < 0) return null;
+  if (payload.total > 0 && payload.completed > payload.total) return null;
+  if (
+    typeof payload.sessionId !== 'string'
+    || payload.sessionId.length > 160
+    || !/^[A-Za-z0-9._:-]*$/u.test(payload.sessionId)
+  ) return null;
+  return {
+    state: payload.state === 'idle' ? 'ready' : payload.state,
+    completed: payload.completed,
+    total: payload.total,
+    sessionId: payload.sessionId,
+  };
+}
+
+function isSafeRequestId(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 160;
+}
+
+export default function PersistentTranslatorHost({ active = false, onStatusChange }) {
   const frameRef = useRef(null);
+  const frameReadyRef = useRef(false);
   const theme = useUIStore((state) => state.theme);
   const { access, confirmAdultTerms, refreshAccess } = useUserAccess();
   const [adultConsentRequest, setAdultConsentRequest] = useState(null);
   const [adultConsentBusy, setAdultConsentBusy] = useState(false);
   const [adultConsentError, setAdultConsentError] = useState('');
 
+  const publishLifecycleState = useCallback((state) => {
+    onStatusChange?.({
+      state,
+      completed: 0,
+      total: 0,
+      sessionId: '',
+    });
+  }, [onStatusChange]);
+
+  useEffect(() => {
+    publishLifecycleState('loading');
+  }, [publishLifecycleState]);
+
   const sendAccessContext = useCallback((nextAccess = access) => {
     const frame = frameRef.current;
-    if (!frame?.contentWindow || typeof window === 'undefined') return;
+    if (!frameReadyRef.current || !frame?.contentWindow || typeof window === 'undefined') return;
     const accessSnapshot = isAccessSnapshot(nextAccess) ? nextAccess : access;
+    const canUseTranslator = Boolean(accessSnapshot?.features?.['translator.access']?.allowed);
     frame.contentWindow.postMessage({
       type: 'STORYFORGE_ACCESS_CONTEXT',
-      token: getCachedAccessToken(),
+      token: canUseTranslator ? getCachedAccessToken() : '',
       access: accessSnapshot,
     }, window.location.origin);
   }, [access]);
 
   const sendThemeContext = useCallback((nextTheme = theme) => {
     const frame = frameRef.current;
-    if (!frame?.contentWindow || typeof window === 'undefined') return;
+    if (!frameReadyRef.current || !frame?.contentWindow || typeof window === 'undefined') return;
     frame.contentWindow.postMessage({
       type: 'STORYFORGE_THEME_CONTEXT',
       theme: normalizeTheme(nextTheme),
@@ -71,11 +111,15 @@ export default function PersistentTranslatorHost({ active = false }) {
   const sendAccessRefreshResult = useCallback((requestId, result) => {
     const frame = frameRef.current;
     if (!requestId || !frame?.contentWindow || typeof window === 'undefined') return;
+    const translatorAllowed = Boolean(
+      result?.ok
+      && result?.access?.features?.['translator.access']?.allowed,
+    );
     frame.contentWindow.postMessage({
       type: 'STORYFORGE_ACCESS_REFRESH_RESULT',
       requestId,
-      token: getCachedAccessToken(),
       ...result,
+      token: translatorAllowed ? getCachedAccessToken() : '',
     }, window.location.origin);
   }, []);
 
@@ -124,12 +168,27 @@ export default function PersistentTranslatorHost({ active = false }) {
       if (event.origin !== window.location.origin) return;
       const frameWindow = frameRef.current?.contentWindow;
       if (!frameWindow || event.source !== frameWindow) return;
-      const payload = event.data || {};
+      const payload = event.data;
+      if (!payload || typeof payload !== 'object') return;
+      if (payload.type === 'STORYFORGE_TRANSLATOR_READY') {
+        frameReadyRef.current = true;
+        publishLifecycleState('ready');
+        sendAccessContext();
+        sendThemeContext();
+        return;
+      }
+      if (payload.type === 'STORYFORGE_TRANSLATOR_STATUS') {
+        const nextStatus = parseTranslatorStatus(payload);
+        if (nextStatus) onStatusChange?.(nextStatus);
+        return;
+      }
       if (payload.type === 'STORYFORGE_CONFIRM_ADULT_TERMS') {
+        const requestId = String(payload.requestId || '');
+        if (!isSafeRequestId(requestId)) return;
         setAdultConsentRequest({
-          requestId: String(payload.requestId || ''),
-          templateId: String(payload.templateId || ''),
-          message: String(payload.message || ''),
+          requestId,
+          templateId: String(payload.templateId || '').slice(0, 80),
+          message: String(payload.message || '').slice(0, 1000),
         });
         setAdultConsentError('');
         setAdultConsentBusy(false);
@@ -137,6 +196,7 @@ export default function PersistentTranslatorHost({ active = false }) {
       }
       if (payload.type === 'STORYFORGE_REFRESH_ACCESS_CONTEXT') {
         const requestId = String(payload.requestId || '');
+        if (!isSafeRequestId(requestId)) return;
         refreshAccess({ silent: true })
           .then((snapshot) => {
             sendAccessContext(snapshot);
@@ -155,9 +215,13 @@ export default function PersistentTranslatorHost({ active = false }) {
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [refreshAccess, sendAccessContext, sendAccessRefreshResult]);
+  }, [onStatusChange, publishLifecycleState, refreshAccess, sendAccessContext, sendAccessRefreshResult, sendThemeContext]);
 
   const adultTemplateLabel = getAdultTemplateLabel(adultConsentRequest?.templateId);
+  const adultDialogRef = useModalAccessibility({
+    open: Boolean(active && adultConsentRequest),
+    onClose: closeAdultConsent,
+  });
 
   return (
     <section
@@ -169,14 +233,11 @@ export default function PersistentTranslatorHost({ active = false }) {
         className="persistent-translator-host__frame"
         src={TRANSLATOR_URL}
         title="StoryForge Translator"
-        onLoad={() => {
-          sendAccessContext();
-          sendThemeContext();
-        }}
       />
       {active && adultConsentRequest ? (
         <div className="persistent-translator-host__adult-backdrop" role="presentation" onMouseDown={closeAdultConsent}>
           <section
+            ref={adultDialogRef}
             className="persistent-translator-host__adult-dialog"
             role="dialog"
             aria-modal="true"

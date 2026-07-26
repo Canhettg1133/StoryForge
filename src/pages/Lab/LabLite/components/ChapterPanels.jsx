@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { BookOpen, CheckCircle2 } from 'lucide-react';
 import { getChapterContent } from '../../../../services/labLite/labLiteDb.js';
 import { buildChapterCoverageBadges, buildCoverageMap, chapterMatchesCoverageFilter, formatChapterDisplayTitle, formatNumber, getPriorityLabel, getRecommendationLabel } from '../labLiteUiHelpers.js';
+import { useConfirmDialog } from '../../../../components/common/ConfirmDialogProvider.jsx';
 
 export function ChapterPanel({ chapters, currentChapterId, scoutResults, chapterCoverage, filter, coverageFilter, onCoverageFilterChange, onSelect }) {
   const parentRef = useRef(null);
@@ -135,6 +136,7 @@ export function ChapterPanel({ chapters, currentChapterId, scoutResults, chapter
 }
 
 export function ChapterDetail({ chapter, corpus, hasPrevious, hasNext, onPrevious, onNext, onRename, onSplit }) {
+  const confirmAction = useConfirmDialog();
   const [title, setTitle] = useState('');
   const [splitLine, setSplitLine] = useState('');
   const [splitTitle, setSplitTitle] = useState('');
@@ -204,9 +206,12 @@ export function ChapterDetail({ chapter, corpus, hasPrevious, hasNext, onPreviou
     }
   };
   const handleSplit = async () => {
-    const confirmed = window.confirm(
-      'Tách chương sẽ thay đổi cấu trúc dữ liệu và xóa kết quả Scout, phân tích sâu, Canon Pack, cache liên quan để tránh dùng sai index chương. Tiếp tục?',
-    );
+    const confirmed = await confirmAction({
+      title: 'Tách chương?',
+      message: 'Cấu trúc dữ liệu sẽ thay đổi; kết quả Scout, phân tích sâu, Canon Pack và cache liên quan sẽ bị xóa để tránh dùng sai index chương.',
+      confirmLabel: 'Tách chương',
+      danger: true,
+    });
     if (!confirmed) return;
     setEditState({ status: 'saving', error: '' });
     try {

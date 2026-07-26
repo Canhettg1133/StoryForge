@@ -55,6 +55,10 @@ const TRANSLATOR_PROVIDERS = {
 };
 let storyForgeAccessToken = '';
 let storyForgeAccessSnapshot = null;
+const STORYFORGE_TRANSLATOR_STATUS_STATES = new Set(['idle', 'running', 'paused', 'completed', 'failed']);
+let storyForgeTranslatorLastStatusAt = 0;
+let storyForgeTranslatorPendingStatus = null;
+let storyForgeTranslatorStatusTimerId = null;
 const STORYFORGE_FEATURES = {
     TRANSLATOR_ACCESS: 'translator.access',
     AG_PROXY: 'provider.ag_proxy',
@@ -99,6 +103,65 @@ function escapeHtmlAttribute(value) {
 storyForgeRuntimeGlobal.getStoryForgeAccessToken = () => storyForgeAccessToken;
 storyForgeRuntimeGlobal.getStoryForgeAccessSnapshot = () => storyForgeAccessSnapshot;
 
+function canPostToStoryForgeHost() {
+    return typeof window !== 'undefined'
+        && window.parent
+        && window.parent !== window
+        && typeof window.parent.postMessage === 'function';
+}
+
+function notifyStoryForgeTranslatorReady() {
+    if (!canPostToStoryForgeHost()) return;
+    window.parent.postMessage({
+        type: 'STORYFORGE_TRANSLATOR_READY',
+    }, window.location.origin);
+}
+
+function notifyStoryForgeTranslatorStatus(state, options = {}) {
+    if (!STORYFORGE_TRANSLATOR_STATUS_STATES.has(state) || !canPostToStoryForgeHost()) return;
+    const now = Date.now();
+    const statusPayload = {
+        type: 'STORYFORGE_TRANSLATOR_STATUS',
+        state,
+        completed: Math.max(0, Math.floor(Number(options.completed ?? completedChunks) || 0)),
+        total: Math.max(0, Math.floor(Number(options.total ?? totalChunksCount) || 0)),
+        sessionId: String(options.sessionId ?? currentTranslatorSessionId ?? '').slice(0, 160),
+    };
+    const postStatus = (payload) => {
+        storyForgeTranslatorLastStatusAt = Date.now();
+        window.parent.postMessage(payload, window.location.origin);
+    };
+    const remainingDelay = 1000 - (now - storyForgeTranslatorLastStatusAt);
+    if (remainingDelay <= 0 && storyForgeTranslatorStatusTimerId == null) {
+        postStatus(statusPayload);
+        return;
+    }
+
+    storyForgeTranslatorPendingStatus = statusPayload;
+    if (storyForgeTranslatorStatusTimerId != null) return;
+    storyForgeTranslatorStatusTimerId = setTimeout(() => {
+        storyForgeTranslatorStatusTimerId = null;
+        const pendingStatus = storyForgeTranslatorPendingStatus;
+        storyForgeTranslatorPendingStatus = null;
+        if (pendingStatus) postStatus(pendingStatus);
+    }, Math.max(0, remainingDelay));
+}
+
+function handleStoryForgeAccessContext(payload = {}) {
+    const nextAccess = payload.access && typeof payload.access === 'object'
+        ? payload.access
+        : null;
+    const translatorDecision = nextAccess?.features?.[STORYFORGE_FEATURES.TRANSLATOR_ACCESS];
+    const translatorAllowed = translatorDecision?.allowed === true;
+    storyForgeAccessSnapshot = nextAccess;
+    storyForgeAccessToken = translatorAllowed ? String(payload.token || '') : '';
+
+    if (translatorDecision && !translatorAllowed && isTranslating) {
+        isPaused = true;
+        notifyStoryForgeTranslatorStatus('paused', { force: true });
+    }
+}
+
 function handleStoryForgeAdultTermsResult(payload = {}) {
     const requestId = String(payload.requestId || '');
     const pending = storyForgeAdultConsentRequests.get(requestId);
@@ -117,13 +180,20 @@ function handleStoryForgeAccessRefreshResult(payload = {}) {
     if (!pending) return;
     storyForgeAccessRefreshRequests.delete(requestId);
     clearTimeout(pending.timeoutId);
-    if (payload.token) {
-        storyForgeAccessToken = String(payload.token || '');
-    }
     if (payload.access) {
         storyForgeAccessSnapshot = payload.access;
     }
-    pending.resolve(Boolean(payload.ok && storyForgeAccessToken));
+    const translatorAllowed = storyForgeAccessSnapshot
+        ?.features?.[STORYFORGE_FEATURES.TRANSLATOR_ACCESS]
+        ?.allowed === true;
+    storyForgeAccessToken = payload.ok && translatorAllowed
+        ? String(payload.token || '')
+        : '';
+    if (!translatorAllowed && isTranslating) {
+        isPaused = true;
+        notifyStoryForgeTranslatorStatus('paused', { force: true });
+    }
+    pending.resolve(Boolean(payload.ok && translatorAllowed && storyForgeAccessToken));
 }
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -132,8 +202,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
         if (event.source !== window.parent) return;
         const payload = event.data || {};
         if (payload.type === 'STORYFORGE_ACCESS_CONTEXT') {
-            storyForgeAccessToken = String(payload.token || '');
-            storyForgeAccessSnapshot = payload.access || null;
+            handleStoryForgeAccessContext(payload);
             return;
         }
         if (payload.type === 'STORYFORGE_ADULT_TERMS_RESULT') {
@@ -181,6 +250,11 @@ async function refreshStoryForgeAccessSnapshot() {
     const payload = await response.json().catch(() => ({}));
     if (response.ok && payload?.access) {
         storyForgeAccessSnapshot = payload.access;
+        if (!hasStoryForgeFeature(STORYFORGE_FEATURES.TRANSLATOR_ACCESS)) {
+            storyForgeAccessToken = '';
+        }
+    } else if (response.status === 401 || response.status === 403) {
+        storyForgeAccessToken = '';
     }
     return storyForgeAccessSnapshot;
 }
@@ -319,6 +393,8 @@ storyForgeRuntimeGlobal.syncActiveTranslatorTemplateFromPrompt = syncActiveTrans
 storyForgeRuntimeGlobal.requestStoryForgeAdultTermsConfirmation = requestStoryForgeAdultTermsConfirmation;
 storyForgeRuntimeGlobal.requireStoryForgeAdultTemplateAccess = requireStoryForgeAdultTemplateAccess;
 storyForgeRuntimeGlobal.refreshStoryForgeAccessContext = refreshStoryForgeAccessContext;
+storyForgeRuntimeGlobal.notifyStoryForgeTranslatorReady = notifyStoryForgeTranslatorReady;
+storyForgeRuntimeGlobal.notifyStoryForgeTranslatorStatus = notifyStoryForgeTranslatorStatus;
 
 let activeTranslatorProvider = TRANSLATOR_PROVIDERS.GEMINI_DIRECT;
 let rpmPerKey = DEFAULT_TRANSLATOR_RPM_PER_KEY;

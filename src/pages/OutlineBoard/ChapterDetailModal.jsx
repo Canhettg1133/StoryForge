@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { SCENE_STATUSES } from '../../utils/constants';
 import { buildClearOutlinePatch } from './outlineMetadata';
+import { useConfirmDialog } from '../../components/common/ConfirmDialogProvider.jsx';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 
 const ACTS = [
   { value: null, label: 'Chưa gán' },
@@ -32,6 +34,7 @@ export default function ChapterDetailModal({
   onClose,
   onGoEditor,
 }) {
+  const confirmAction = useConfirmDialog();
   const { updateChapter, updateScene } = useProjectStore();
   const { plotThreads, threadBeats, loadThreadBeatsForProject } = usePlotStore();
 
@@ -151,9 +154,12 @@ export default function ChapterDetailModal({
   };
 
   const handleClearChapterOutline = async () => {
-    const ok = window.confirm(
-      `Xóa dàn ý AI của "${chapter.title}"? Nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.`,
-    );
+    const ok = await confirmAction({
+      title: 'Xóa dàn ý AI của chương?',
+      message: `"${chapter.title}": nội dung đã viết, cảnh, tiêu đề và trạng thái chương sẽ được giữ nguyên.`,
+      confirmLabel: 'Xóa dàn ý',
+      danger: true,
+    });
     if (!ok) return;
 
     await updateChapter(chapter.id, buildClearOutlinePatch());
@@ -165,9 +171,18 @@ export default function ChapterDetailModal({
     }));
   };
 
+  const dialogRef = useModalAccessibility({ open: true, onClose });
+
   return (
     <div className="codex-modal-overlay" onClick={onClose}>
-      <div className="codex-modal codex-modal--lg" onClick={e => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="codex-modal codex-modal--lg"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Chi tiết ${chapter?.title || 'chương'}`}
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="codex-modal-header">
           <h3>📋 {chForm.title}</h3>

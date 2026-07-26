@@ -25,6 +25,7 @@ import {
 } from '../../services/db/projectSnapshot.js';
 import { sanitizeSnapshotHtml } from '../../services/storyBundle/htmlSanitizer.js';
 import { parseBoundedJson, STORY_BUNDLE_LIMITS } from '../../services/storyBundle/storyBundleSafety.js';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './StoryBundleModal.css';
 
 const PHASE_LABELS = Object.freeze({
@@ -123,6 +124,7 @@ export default function StoryBundleModal({
   const closeIfIdle = () => {
     if (!working) onClose?.();
   };
+  const dialogRef = useModalAccessibility({ open: true, onClose: closeIfIdle });
 
   const handleExport = async () => {
     if (!project?.id) return;
@@ -260,7 +262,7 @@ export default function StoryBundleModal({
 
   return (
     <div className="modal-overlay story-bundle-overlay" onClick={closeIfIdle}>
-      <section className="modal story-bundle-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+      <section ref={dialogRef} className="modal story-bundle-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <header className="story-bundle-modal__header">
           <div className="story-bundle-modal__mark"><FileArchive size={20} /></div>
           <div>

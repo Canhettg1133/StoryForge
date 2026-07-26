@@ -61,6 +61,7 @@ import CloudSyncSection from './CloudSyncSection';
 import AccountAccessSummary from '../../components/access/AccountAccessSummary.jsx';
 import ThemePicker from '../../components/common/ThemePicker.jsx';
 import useMobileLayout from '../../hooks/useMobileLayout';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { useUserAccess } from '../../hooks/useUserAccess';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
@@ -931,6 +932,14 @@ export default function Settings() {
   const [creatingRelayRoom, setCreatingRelayRoom] = useState(false);
   const [copiedRelayRoom, setCopiedRelayRoom] = useState(false);
   const [showAIStudioRelaySetup, setShowAIStudioRelaySetup] = useState(false);
+  const customProxyDialogRef = useModalAccessibility({
+    open: showCustomProxySetup,
+    onClose: () => setShowCustomProxySetup(false),
+  });
+  const relayDialogRef = useModalAccessibility({
+    open: showAIStudioRelaySetup,
+    onClose: () => setShowAIStudioRelaySetup(false),
+  });
   const [aiStudioRelayStatus, setAIStudioRelayStatus] = useState(null);
   const [aiStudioRelayStatusError, setAIStudioRelayStatusError] = useState('');
   const [ollamaModel, setOllamaModel] = useState(localStorage.getItem('sf-ollama-model') || '');
@@ -2057,6 +2066,7 @@ export default function Settings() {
       {showCustomProxySetup ? (
         <div className="modal-overlay ai-studio-relay-overlay openai-proxy-setup-overlay" role="presentation" onClick={() => setShowCustomProxySetup(false)}>
           <div
+            ref={customProxyDialogRef}
             className="modal ai-studio-relay-modal openai-proxy-setup-modal"
             role="dialog"
             aria-modal="true"
@@ -2355,6 +2365,7 @@ export default function Settings() {
       {showAIStudioRelaySetup ? (
         <div className="modal-overlay ai-studio-relay-overlay" role="presentation" onClick={() => setShowAIStudioRelaySetup(false)}>
           <div
+            ref={relayDialogRef}
             className="modal ai-studio-relay-modal"
             role="dialog"
             aria-modal="true"

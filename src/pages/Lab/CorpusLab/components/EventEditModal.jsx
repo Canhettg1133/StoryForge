@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import NumberStepper, { clampNumberStepperValue } from '../../../../components/common/NumberStepper.jsx';
+import useModalAccessibility from '../../../../hooks/useModalAccessibility.js';
 
 const SEVERITY_OPTIONS = ['crucial', 'major', 'moderate', 'minor'];
 const POSITION_OPTIONS = ['start', 'middle', 'end'];
@@ -41,6 +42,7 @@ export default function EventEditModal({ event, onSave, onClose }) {
   const [tagInput, setTagInput] = useState('');
   const [charInput, setCharInput] = useState('');
   const [saving, setSaving] = useState(false);
+  const dialogRef = useModalAccessibility({ open: true, onClose });
 
   const handleSave = async () => {
     setSaving(true);
@@ -83,7 +85,14 @@ export default function EventEditModal({ event, onSave, onClose }) {
 
   return (
     <div className="event-edit-backdrop" onClick={onClose}>
-      <div className="event-edit-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="event-edit-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Chỉnh sửa sự kiện"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="event-edit-header">
           <h3>Chỉnh sửa sự kiện</h3>
           <button className="close-btn" onClick={onClose}>×</button>

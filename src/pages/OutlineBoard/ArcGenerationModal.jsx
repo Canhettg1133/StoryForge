@@ -5,6 +5,7 @@ import {
     AlertTriangle, Flag, RotateCcw, Save, Trash2, BookmarkPlus
 } from 'lucide-react';
 import NumberStepper from '../../components/common/NumberStepper.jsx';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './ArcGenerationModal.css';
 
 const QUICK_ACTIONS = [
@@ -186,6 +187,7 @@ function parseStateChangesFromTextarea(value = '') {
 }
 
 export default function ArcGenerationModal({ projectId, genre, currentChapterCount, onClose }) {
+    const dialogRef = useModalAccessibility({ open: true, onClose });
     const arcStore = useArcGenStore();
     const [step, setStep] = useState(1);
     const [activeTab, setActiveTab] = useState('guided');
@@ -983,7 +985,7 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
 
     return (
         <div className="arc-modal-overlay">
-            <div className="arc-modal">
+            <div ref={dialogRef} className="arc-modal" role="dialog" aria-modal="true" aria-label="Tạo chương tự động">
                 <div className="arc-modal-header">
                     <h2><Sparkles size={20} style={{ color: 'var(--color-accent)' }} /> Tạo chương tự động</h2>
                     <button className="btn btn-icon btn-ghost" onClick={onClose}><X size={20} /></button>

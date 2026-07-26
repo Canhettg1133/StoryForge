@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { X } from 'lucide-react';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './MobileSheet.css';
 
 export default function MobileSheet({
@@ -12,21 +13,14 @@ export default function MobileSheet({
   footer = null,
   bodyScroll = 'auto',
 }) {
-  useEffect(() => {
-    if (!open) return undefined;
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') onClose?.();
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open, onClose]);
+  const dialogRef = useModalAccessibility({ open, onClose });
 
   if (!open) return null;
 
   return (
     <div className="mobile-sheet-root">
       <button className="mobile-sheet-backdrop" type="button" onClick={onClose} aria-label="Đóng bảng điều khiển" />
-      <section className={`mobile-sheet mobile-sheet--${size}`} role="dialog" aria-modal="true" aria-label={title || 'Bảng điều khiển'}>
+      <section ref={dialogRef} className={`mobile-sheet mobile-sheet--${size}`} role="dialog" aria-modal="true" aria-label={title || 'Bảng điều khiển'}>
         <div className="mobile-sheet-handle" />
         <header className="mobile-sheet-header">
           <div className="mobile-sheet-title-block">

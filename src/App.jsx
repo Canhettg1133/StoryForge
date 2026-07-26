@@ -1,42 +1,49 @@
 import React from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from './components/common/AppLayout';
+import RouteBoundary from './components/common/RouteBoundary';
+import { ConfirmDialogProvider } from './components/common/ConfirmDialogProvider';
 import { PRODUCT_SURFACE } from './config/productSurface';
-import Dashboard from './pages/Dashboard/Dashboard';
-import StoryBible from './pages/StoryBible/StoryBible';
-import CanonTruth from './pages/CanonTruth/CanonTruth';
-import OutlineBoard from './pages/OutlineBoard/OutlineBoard';
-import CharacterHub from './pages/CharacterHub/CharacterHub';
-import WorldLore from './pages/WorldLore/WorldLore';
-import SceneEditor from './pages/SceneEditor/SceneEditor';
-import TimelineThread from './pages/TimelineThread/TimelineThread';
-import RevisionQA from './pages/RevisionQA/RevisionQA';
-import StyleLab from './pages/StyleLab/StyleLab';
-import NarrativeLab from './pages/Lab/NarrativeLab';
-import LabLite from './pages/Lab/LabLite/LabLite';
-import CorpusLab from './pages/Lab/CorpusLab/CorpusLab';
-import AnalysisViewer from './pages/Lab/CorpusLab/AnalysisViewer';
-import Settings from './pages/Settings/Settings';
-import CloudSyncPage from './pages/CloudSync/CloudSyncPage';
-import StoryCreationSettings from './pages/StoryCreationSettings/StoryCreationSettings';
-import ProjectPromptManager from './pages/ProjectPromptManager/ProjectPromptManager';
-import StyleImporter from './pages/StyleImporter/StyleImporter';
-import ProjectChat from './pages/ProjectChat/ProjectChat';
-import Translator from './pages/Translator/Translator';
-import GeminiSetupGuide from './pages/Guide/GeminiSetupGuide';
-import GeminiProxyGuide from './pages/Guide/GeminiProxyGuide';
-import TranslatorSetupGuide from './pages/Guide/TranslatorSetupGuide';
-import Notifications from './pages/Notifications/Notifications';
-import Login from './pages/Login/Login';
-import ProjectLayout from './components/common/ProjectLayout';
 import SiteAnnouncementCenter from './components/siteAnnouncement/SiteAnnouncementCenter';
 import { AccessProvider } from './services/access/AccessContext.jsx';
 import './styles/cream-overrides.css';
+
+const Dashboard = React.lazy(() => import('./pages/Dashboard/Dashboard'));
+const StoryBible = React.lazy(() => import('./pages/StoryBible/StoryBible'));
+const CanonTruth = React.lazy(() => import('./pages/CanonTruth/CanonTruth'));
+const OutlineBoard = React.lazy(() => import('./pages/OutlineBoard/OutlineBoard'));
+const CharacterHub = React.lazy(() => import('./pages/CharacterHub/CharacterHub'));
+const WorldLore = React.lazy(() => import('./pages/WorldLore/WorldLore'));
+const SceneEditor = React.lazy(() => import('./pages/SceneEditor/SceneEditor'));
+const TimelineThread = React.lazy(() => import('./pages/TimelineThread/TimelineThread'));
+const RevisionQA = React.lazy(() => import('./pages/RevisionQA/RevisionQA'));
+const StyleLab = React.lazy(() => import('./pages/StyleLab/StyleLab'));
+const NarrativeLab = React.lazy(() => import('./pages/Lab/NarrativeLab'));
+const LabLite = React.lazy(() => import('./pages/Lab/LabLite/LabLite'));
+const CorpusLab = React.lazy(() => import('./pages/Lab/CorpusLab/CorpusLab'));
+const AnalysisViewer = React.lazy(() => import('./pages/Lab/CorpusLab/AnalysisViewer'));
+const Settings = React.lazy(() => import('./pages/Settings/Settings'));
+const CloudSyncPage = React.lazy(() => import('./pages/CloudSync/CloudSyncPage'));
+const StoryCreationSettings = React.lazy(() => import('./pages/StoryCreationSettings/StoryCreationSettings'));
+const ProjectPromptManager = React.lazy(() => import('./pages/ProjectPromptManager/ProjectPromptManager'));
+const StyleImporter = React.lazy(() => import('./pages/StyleImporter/StyleImporter'));
+const ProjectChat = React.lazy(() => import('./pages/ProjectChat/ProjectChat'));
+const GeminiSetupGuide = React.lazy(() => import('./pages/Guide/GeminiSetupGuide'));
+const GeminiProxyGuide = React.lazy(() => import('./pages/Guide/GeminiProxyGuide'));
+const TranslatorSetupGuide = React.lazy(() => import('./pages/Guide/TranslatorSetupGuide'));
+const Notifications = React.lazy(() => import('./pages/Notifications/Notifications'));
+const Login = React.lazy(() => import('./pages/Login/Login'));
+const NotFound = React.lazy(() => import('./pages/NotFound/NotFound'));
+const ProjectLayout = React.lazy(() => import('./components/common/ProjectLayout'));
 
 const SHOW_WRITING_DEBUG = import.meta.env.VITE_SHOW_WRITING_DEBUG === 'true';
 const WritingRequestDebugger = SHOW_WRITING_DEBUG
   ? React.lazy(() => import('./pages/WritingRequestDebugger/WritingRequestDebugger'))
   : null;
+
+function withRouteBoundary(element) {
+  return <RouteBoundary>{element}</RouteBoundary>;
+}
 
 export default function App() {
   const labFallback = <Navigate to="../editor" replace />;
@@ -44,60 +51,79 @@ export default function App() {
 
   return (
     <AccessProvider>
-      <BrowserRouter>
-        <Routes>
+      <ConfirmDialogProvider>
+        <BrowserRouter>
+          <Routes>
           <Route element={<AppLayout />}>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/thong-bao" element={<Notifications />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/cloud-sync" element={<CloudSyncPage />} />
-          <Route path="/guide" element={<GeminiSetupGuide />} />
-          <Route path="/guide/proxy" element={<GeminiProxyGuide />} />
-          <Route path="/guide/proxy/fix-cli" element={<GeminiProxyGuide focusFixCli />} />
-          <Route path="/guide/translator" element={<TranslatorSetupGuide />} />
-          <Route path="/ai-chat" element={<ProjectChat />} />
-          <Route path="/translator" element={<Translator />} />
-          <Route path="/lab-lite" element={PRODUCT_SURFACE.showLabLite ? <LabLite /> : <Navigate to="/" replace />} />
-          <Route path="/prompt-manager" element={<StoryCreationSettings />} />
-          <Route path="/story-creation-settings" element={<Navigate to="/prompt-manager" replace />} />
+            <Route path="/login" element={withRouteBoundary(<Login />)} />
+            <Route path="/" element={withRouteBoundary(<Dashboard />)} />
+            <Route path="/thong-bao" element={withRouteBoundary(<Notifications />)} />
+            <Route path="/settings" element={withRouteBoundary(<Settings />)} />
+            <Route path="/cloud-sync" element={withRouteBoundary(<CloudSyncPage />)} />
+            <Route path="/guide" element={withRouteBoundary(<GeminiSetupGuide />)} />
+            <Route path="/guide/proxy" element={withRouteBoundary(<GeminiProxyGuide />)} />
+            <Route path="/guide/proxy/fix-cli" element={withRouteBoundary(<GeminiProxyGuide focusFixCli />)} />
+            <Route path="/guide/translator" element={withRouteBoundary(<TranslatorSetupGuide />)} />
+            <Route path="/ai-chat" element={withRouteBoundary(<ProjectChat />)} />
+            <Route path="/translator" element={null} />
+            <Route
+              path="/lab-lite"
+              element={withRouteBoundary(PRODUCT_SURFACE.showLabLite ? <LabLite /> : <Navigate to="/" replace />)}
+            />
+            <Route path="/prompt-manager" element={withRouteBoundary(<StoryCreationSettings />)} />
+            <Route path="/story-creation-settings" element={<Navigate to="/prompt-manager" replace />} />
 
-          {/* Project-specific routes */}
-          <Route path="/project/:projectId" element={<ProjectLayout />}>
-            <Route path="story-bible" element={<StoryBible />} />
-            <Route path="su-that" element={<CanonTruth />} />
-            <Route path="outline" element={<OutlineBoard />} />
-            <Route path="characters" element={<CharacterHub />} />
-            <Route path="world" element={<WorldLore />} />
-            <Route path="editor" element={<SceneEditor />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="cloud-sync" element={<CloudSyncPage />} />
-            <Route path="chat" element={<ProjectChat />} />
-            <Route path="prompts" element={<ProjectPromptManager />} />
-            <Route path="style-importer" element={<StyleImporter />} />
-            {SHOW_WRITING_DEBUG && WritingRequestDebugger && (
+            <Route path="/project/:projectId" element={withRouteBoundary(<ProjectLayout />)}>
+              <Route path="story-bible" element={withRouteBoundary(<StoryBible />)} />
+              <Route path="su-that" element={withRouteBoundary(<CanonTruth />)} />
+              <Route path="outline" element={withRouteBoundary(<OutlineBoard />)} />
+              <Route path="characters" element={withRouteBoundary(<CharacterHub />)} />
+              <Route path="world" element={withRouteBoundary(<WorldLore />)} />
+              <Route path="editor" element={withRouteBoundary(<SceneEditor />)} />
+              <Route path="settings" element={withRouteBoundary(<Settings />)} />
+              <Route path="cloud-sync" element={withRouteBoundary(<CloudSyncPage />)} />
+              <Route path="chat" element={withRouteBoundary(<ProjectChat />)} />
+              <Route path="prompts" element={withRouteBoundary(<ProjectPromptManager />)} />
+              <Route path="style-importer" element={withRouteBoundary(<StyleImporter />)} />
+              {SHOW_WRITING_DEBUG && WritingRequestDebugger ? (
+                <Route path="writing-debug" element={withRouteBoundary(<WritingRequestDebugger />)} />
+              ) : null}
+              <Route path="prompt-manager" element={withRouteBoundary(<StoryCreationSettings />)} />
               <Route
-                path="writing-debug"
-                element={(
-                  <React.Suspense fallback={null}>
-                    <WritingRequestDebugger />
-                  </React.Suspense>
-                )}
+                path="timeline"
+                element={withRouteBoundary(PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback)}
               />
-            )}
-            <Route path="prompt-manager" element={<StoryCreationSettings />} />
-            <Route path="timeline" element={PRODUCT_SURFACE.showRoadmapPages ? <TimelineThread /> : roadmapFallback} />
-            <Route path="revision" element={PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback} />
-            <Route path="style-lab" element={PRODUCT_SURFACE.showRoadmapPages ? <StyleLab /> : roadmapFallback} />
-            <Route path="lab" element={PRODUCT_SURFACE.showLabs ? <NarrativeLab /> : labFallback} />
-            <Route path="lab-lite" element={PRODUCT_SURFACE.showLabLite ? <LabLite /> : labFallback} />
-            <Route path="corpus-lab" element={PRODUCT_SURFACE.showLabs ? <CorpusLab /> : labFallback} />
-            <Route path="corpus-lab/viewer" element={PRODUCT_SURFACE.showLabs ? <AnalysisViewer /> : labFallback} />
+              <Route
+                path="revision"
+                element={withRouteBoundary(PRODUCT_SURFACE.showRoadmapPages ? <RevisionQA /> : roadmapFallback)}
+              />
+              <Route
+                path="style-lab"
+                element={withRouteBoundary(PRODUCT_SURFACE.showRoadmapPages ? <StyleLab /> : roadmapFallback)}
+              />
+              <Route
+                path="lab"
+                element={withRouteBoundary(PRODUCT_SURFACE.showLabs ? <NarrativeLab /> : labFallback)}
+              />
+              <Route
+                path="lab-lite"
+                element={withRouteBoundary(PRODUCT_SURFACE.showLabLite ? <LabLite /> : labFallback)}
+              />
+              <Route
+                path="corpus-lab"
+                element={withRouteBoundary(PRODUCT_SURFACE.showLabs ? <CorpusLab /> : labFallback)}
+              />
+              <Route
+                path="corpus-lab/viewer"
+                element={withRouteBoundary(PRODUCT_SURFACE.showLabs ? <AnalysisViewer /> : labFallback)}
+              />
+            </Route>
+            <Route path="*" element={withRouteBoundary(<NotFound />)} />
           </Route>
-        </Route>
-        </Routes>
-        <SiteAnnouncementCenter />
-      </BrowserRouter>
+          </Routes>
+          <SiteAnnouncementCenter />
+        </BrowserRouter>
+      </ConfirmDialogProvider>
     </AccessProvider>
   );
 }

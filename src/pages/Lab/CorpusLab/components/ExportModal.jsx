@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { exportEvents, downloadFile, copyToClipboard, getExportFilename } from '../../../../services/viewer/exportService.js';
+import useModalAccessibility from '../../../../hooks/useModalAccessibility.js';
 
 const FORMAT_OPTIONS = [
   { value: 'markdown', label: 'Markdown', desc: 'Dùng cho ghi chú và tài liệu' },
@@ -35,6 +36,7 @@ export default function ExportModal({ selectedItems, onClose, onExport }) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(null);
+  const dialogRef = useModalAccessibility({ open: true, onClose });
 
   const loadPreview = async () => {
     setPreviewLoading(true);
@@ -85,7 +87,14 @@ export default function ExportModal({ selectedItems, onClose, onExport }) {
 
   return (
     <div className="export-modal-backdrop" onClick={onClose}>
-      <div className="export-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="export-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Xuất sự kiện"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="export-modal-header">
           <h3>Xuất sự kiện ({selectedItems.length} mục đã chọn)</h3>
           <button className="close-btn" onClick={onClose}>×</button>

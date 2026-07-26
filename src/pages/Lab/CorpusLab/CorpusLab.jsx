@@ -9,6 +9,7 @@ import FilePreview from './components/FilePreview';
 import MetadataEditor from './components/MetadataEditor';
 import UploadDropzone from './components/UploadDropzone';
 import useCorpusUpload from './hooks/useCorpusUpload';
+import useModalAccessibility from '../../../hooks/useModalAccessibility.js';
 import {
   exportCorpusToDocx,
   exportCorpusToEpub,
@@ -178,6 +179,10 @@ export default function CorpusLab() {
     setPreviewLoading(false);
     setPreviewError(null);
   };
+  const previewDialogRef = useModalAccessibility({
+    open: Boolean(previewChapter || previewLoading || previewError),
+    onClose: closePreviewModal,
+  });
 
   const handleDeleteCorpus = async (corpus) => {
     if (!corpus?.id) {
@@ -323,7 +328,14 @@ export default function CorpusLab() {
 
       {(previewChapter || previewLoading || previewError) && (
         <div className="chapter-modal-backdrop" onClick={closePreviewModal}>
-          <div className="chapter-modal" onClick={(event) => event.stopPropagation()}>
+          <div
+            ref={previewDialogRef}
+            className="chapter-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={getChapterDisplayTitle(previewChapter)}
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="chapter-modal-header">
               <h3>{getChapterDisplayTitle(previewChapter)}</h3>
               <button

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { PRODUCT_SURFACE } from '../../config/productSurface';
@@ -25,6 +25,24 @@ export default function AppLayout() {
   const isTranslatorRoute = location.pathname === '/translator';
   const { access, hasFeature } = useUserAccess();
   const canUseTranslator = hasFeature(ACCESS_FEATURES.TRANSLATOR_ACCESS);
+  const [hasMountedTranslator, setHasMountedTranslator] = useState(false);
+  const [translatorStatus, setTranslatorStatus] = useState({
+    state: 'not-loaded',
+    completed: 0,
+    total: 0,
+    sessionId: '',
+  });
+
+  useEffect(() => {
+    if (isTranslatorRoute && canUseTranslator) {
+      setHasMountedTranslator(true);
+      setTranslatorStatus((current) => (
+        current.state === 'not-loaded'
+          ? { ...current, state: 'loading' }
+          : current
+      ));
+    }
+  }, [canUseTranslator, isTranslatorRoute]);
 
   const handleTranslatorBack = () => {
     navigateBackOr(navigate, '/', { location });
@@ -49,7 +67,13 @@ export default function AppLayout() {
             </div>
           ) : null}
           <div className="translator-shell__host">
-            <PersistentTranslatorHost active={isTranslatorRoute && canUseTranslator} access={access} />
+            {hasMountedTranslator ? (
+              <PersistentTranslatorHost
+                active={isTranslatorRoute && canUseTranslator}
+                access={access}
+                onStatusChange={setTranslatorStatus}
+              />
+            ) : null}
             {isTranslatorRoute && !canUseTranslator ? (
               <div className="translator-access-gate">
                 <AccessGate
@@ -62,6 +86,27 @@ export default function AppLayout() {
           </div>
         </div>
       </main>
+      {!isTranslatorRoute && ['running', 'paused', 'failed', 'completed'].includes(translatorStatus.state) ? (
+        <button
+          type="button"
+          className={`translator-background-status is-${translatorStatus.state}`}
+          onClick={() => navigate('/translator')}
+          aria-live="polite"
+        >
+          <span className="translator-background-status__dot" aria-hidden="true" />
+          <span>
+            {translatorStatus.state === 'running' ? 'Đang dịch nền' : null}
+            {translatorStatus.state === 'paused' ? 'Bản dịch đang tạm dừng' : null}
+            {translatorStatus.state === 'failed' ? 'Bản dịch cần kiểm tra' : null}
+            {translatorStatus.state === 'completed' ? 'Dịch truyện đã hoàn tất' : null}
+          </span>
+          {translatorStatus.total > 0 ? (
+            <span className="translator-background-status__progress">
+              {translatorStatus.completed}/{translatorStatus.total}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
       <StorageWarning />
       <CloudAuthRedirectHandler />
       <CloudAutoSyncAgent />

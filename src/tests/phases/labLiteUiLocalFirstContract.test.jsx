@@ -5,6 +5,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import LabLite from '../../pages/Lab/LabLite/LabLite.jsx';
+import { ConfirmDialogProvider } from '../../components/common/ConfirmDialogProvider.jsx';
 import useLabLiteStore from '../../stores/labLiteStore.js';
 import {
   bulkSaveChapterCoverage,
@@ -74,9 +75,11 @@ async function renderLabLite({ route = '/', path = '*' } = {}) {
   await act(async () => {
     root.render(
       <MemoryRouter initialEntries={[route]}>
-        <Routes>
-          <Route path={path} element={<LabLite />} />
-        </Routes>
+        <ConfirmDialogProvider>
+          <Routes>
+            <Route path={path} element={<LabLite />} />
+          </Routes>
+        </ConfirmDialogProvider>
       </MemoryRouter>,
     );
   });
@@ -218,8 +221,6 @@ describe('Lab Lite UI local-first contract', () => {
       title: 'Bộ dữ liệu cần xóa',
       chapterCount: 2,
     }));
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-
     const { container, root } = await renderLabLite();
     const deleteButton = container.querySelector('[aria-label="Xóa dữ liệu Lab Lite Bộ dữ liệu cần xóa"]');
 
@@ -228,6 +229,13 @@ describe('Lab Lite UI local-first contract', () => {
 
     await act(async () => {
       deleteButton.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await flushPromises();
+      await flushPromises();
+    });
+    const confirmDialog = container.querySelector('.confirm-dialog');
+    expect(confirmDialog?.textContent).toContain('Không thể hoàn tác');
+    await act(async () => {
+      Array.from(confirmDialog.querySelectorAll('button')).at(-1).click();
       await flushPromises();
       await flushPromises();
     });
@@ -253,12 +261,10 @@ describe('Lab Lite UI local-first contract', () => {
     }
 
     const bundle = await getLabLiteCorpusBundle('corpus_ui_delete');
-    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('Xóa vĩnh viễn dữ liệu Lab Lite'));
     expect(bundle.corpus).toBeNull();
     expect(container.textContent).toContain('Chưa có bộ dữ liệu nào.');
     expect(container.textContent).not.toContain('Bộ dữ liệu cần xóa');
 
-    confirmSpy.mockRestore();
     await act(async () => root.unmount());
   });
 

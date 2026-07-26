@@ -39,6 +39,7 @@ import { GENRE_TEMPLATES } from '../../utils/genreTemplates';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
 import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
+import { useConfirmDialog } from '../../components/common/ConfirmDialogProvider.jsx';
 
 const SHOW_FINAL_PROMPT_PREVIEW = false;
 
@@ -667,6 +668,7 @@ const PromptEditorCard = memo(function PromptEditorCard({
 });
 
 export default function ProjectPromptManager() {
+  const confirmAction = useConfirmDialog();
   const { projectId } = useParams();
   const {
     currentProject,
@@ -1055,7 +1057,12 @@ export default function ProjectPromptManager() {
 
   const handleDeleteRuntimeBlock = async () => {
     if (!currentProject || !savedRuntimeState.block || isSaving) return;
-    const confirmed = window.confirm('Xóa Project Style Runtime của truyện này? Prompt gốc và Project Override vẫn được giữ nguyên.');
+    const confirmed = await confirmAction({
+      title: 'Xóa Project Style Runtime?',
+      message: 'Prompt gốc và Project Override vẫn được giữ nguyên.',
+      confirmLabel: 'Xóa Runtime',
+      danger: true,
+    });
     if (!confirmed) return;
 
     setRuntimeMessage(null);

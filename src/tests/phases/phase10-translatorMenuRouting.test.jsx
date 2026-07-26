@@ -24,6 +24,20 @@ vi.mock('../../components/cloud/CloudAutoSyncAgent.jsx', () => ({
   default: () => null,
 }));
 
+vi.mock('../../hooks/useUserAccess', () => ({
+  useUserAccess: () => ({
+    access: {
+      authenticated: true,
+      features: {
+        'translator.access': { allowed: true },
+      },
+    },
+    hasFeature: () => true,
+    confirmAdultTerms: vi.fn(),
+    refreshAccess: vi.fn(),
+  }),
+}));
+
 async function loadAppLayout() {
   vi.resetModules();
   const module = await import('../../components/common/AppLayout.jsx');

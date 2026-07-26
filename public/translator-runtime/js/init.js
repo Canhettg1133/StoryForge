@@ -275,4 +275,8 @@ for (const eventName of ['dragstart', 'dragover', 'dragleave', 'drop', 'dragend'
     });
 }
 
+if (typeof notifyStoryForgeTranslatorReady === 'function') {
+    notifyStoryForgeTranslatorReady();
+}
+
 console.log('✅ All modules loaded and exposed globally');

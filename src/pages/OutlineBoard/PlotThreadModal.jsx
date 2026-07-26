@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import usePlotStore from '../../stores/plotStore';
 import { X, Save, AlertCircle } from 'lucide-react';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 
 const PLOT_TYPES = [
     { value: 'main', label: 'Tuyến chính (Main)' },
@@ -17,6 +18,7 @@ const PLOT_STATES = [
 ];
 
 export default function PlotThreadModal({ projectId, thread, onClose }) {
+    const dialogRef = useModalAccessibility({ open: true, onClose });
     const { createPlotThread, updatePlotThread } = usePlotStore();
 
     const [form, setForm] = useState({
@@ -52,7 +54,7 @@ export default function PlotThreadModal({ projectId, thread, onClose }) {
 
     return (
         <div className="codex-modal-overlay" onClick={onClose}>
-            <div className="codex-modal codex-modal--sm" onClick={e => e.stopPropagation()}>
+            <div ref={dialogRef} className="codex-modal codex-modal--sm" role="dialog" aria-modal="true" aria-label={thread ? 'Sửa tuyến truyện' : 'Thêm tuyến truyện'} onClick={e => e.stopPropagation()}>
                 <div className="codex-modal-header">
                     <h3>{thread ? 'Sửa Tuyến truyện' : 'Thêm Tuyến truyện mới'}</h3>
                     <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}>

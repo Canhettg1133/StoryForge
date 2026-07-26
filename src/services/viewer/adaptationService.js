@@ -137,31 +137,28 @@ export async function adaptEvent(event, targetFandom, sourceFandom = 'HP') {
   const prompt = buildAdaptationPrompt(event, targetFandom, sourceFandom);
 
   try {
-    const response = await aiService.send({
-      taskType: 'ADAPT_EVENT',
-      messages: [
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      nsfwMode: true,
-    });
-
     const result = await new Promise((resolve, reject) => {
       let fullText = '';
 
-      response.onToken = (token) => {
-        fullText += token;
-      };
-
-      response.onComplete = () => {
-        resolve(fullText);
-      };
-
-      response.onError = (err) => {
-        reject(err);
-      };
+      aiService.send({
+        taskType: 'ADAPT_EVENT',
+        messages: [
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        nsfwMode: true,
+        onToken: (token, streamedText) => {
+          fullText = typeof streamedText === 'string'
+            ? streamedText
+            : `${fullText}${token || ''}`;
+        },
+        onComplete: (text) => {
+          resolve(text || fullText);
+        },
+        onError: reject,
+      });
     });
 
     return parseAdaptationResponse(result);

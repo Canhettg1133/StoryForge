@@ -9,7 +9,7 @@
 
 import keyManager from './keyManager';
 import { AI_ERROR_CODES, normalizeAIError, shouldFallbackForError } from './errorUtils';
-import { PROVIDERS, TASK_TYPES } from './router';
+import modelRouter, { PROVIDERS, TASK_TYPES } from './router';
 import {
   classifyProxyModel,
   DEFAULT_PROXY_CHAT_PATH,
@@ -1346,6 +1346,15 @@ class AIService {
   }
 
   send({ taskType, messages, stream = true, onToken, onComplete, onError, onRouteChange, routeOptions = {}, nsfwMode, superNsfwMode, skipRefusal = false, chatSafetyOff = false, allowConcurrent = false, autoContinueOnIncomplete, maxContinuationAttempts = MAX_WRITING_CONTINUATIONS }) {
+    if (!this._router || typeof this._router.route !== 'function') {
+      const error = normalizeAIError({
+        code: AI_ERROR_CODES.AI_ROUTER_NOT_INITIALIZED,
+        rawMessage: 'Không thể khởi tạo bộ định tuyến AI. Hãy tải lại trang và thử lại.',
+      });
+      onError?.(error);
+      return { abort: () => {}, routeInfo: null };
+    }
+
     if (!allowConcurrent) {
       this.abort();
     }
@@ -1713,5 +1722,6 @@ class AIService {
 }
 
 const aiService = new AIService();
+aiService.setRouter(modelRouter);
 export default aiService;
 

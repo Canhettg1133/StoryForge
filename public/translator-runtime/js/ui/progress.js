@@ -18,6 +18,9 @@ function updateProgress(current, total, status) {
     if (downloadBtn && current > 0) {
         downloadBtn.innerHTML = `📥 Tải ${current} chunk đã dịch`;
     }
+    if (isTranslating && typeof notifyStoryForgeTranslatorStatus === 'function') {
+        notifyStoryForgeTranslatorStatus('running', { completed: current, total });
+    }
 }
 
 function updateLargeFileProgress({ byteCursor = 0, fileSize = 0, completed = completedChunks, status = '' } = {}) {
@@ -33,6 +36,12 @@ function updateLargeFileProgress({ byteCursor = 0, fileSize = 0, completed = com
     const downloadBtn = document.getElementById('downloadPartialBtn');
     if (downloadBtn && completed > 0) {
         downloadBtn.innerHTML = `📥 Tải ${completed.toLocaleString('vi-VN')} chunk đã dịch`;
+    }
+    if (isTranslating && typeof notifyStoryForgeTranslatorStatus === 'function') {
+        notifyStoryForgeTranslatorStatus('running', {
+            completed,
+            total: totalChunksCount,
+        });
     }
 }
 

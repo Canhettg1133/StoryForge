@@ -54,6 +54,7 @@ import useMobileLayout from '../../hooks/useMobileLayout';
 import { useUserAccess } from '../../hooks/useUserAccess';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import AccessGate from '../../components/access/AccessGate.jsx';
+import { useConfirmDialog } from '../../components/common/ConfirmDialogProvider.jsx';
 import { navigateBackOr } from '../../utils/navigation.js';
 import {
   CHAT_ATTACHMENT_SCOPES,
@@ -835,6 +836,7 @@ function PendingPastedTextChips({
 }
 
 export default function ProjectChat() {
+  const confirmAction = useConfirmDialog();
   const { projectId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -1446,7 +1448,12 @@ export default function ProjectChat() {
     const target = threads.find((thread) => String(thread.id) === String(threadId));
     if (!target) return;
 
-    const confirmed = window.confirm(`Xóa cuộc trò chuyện "${target.title}"?`);
+    const confirmed = await confirmAction({
+      title: 'Xóa cuộc trò chuyện?',
+      message: `Cuộc trò chuyện "${target.title}" sẽ bị xóa khỏi thiết bị này.`,
+      confirmLabel: 'Xóa',
+      danger: true,
+    });
     if (!confirmed) return;
 
     await deleteChatThreadAttachmentData(threadId);
@@ -1484,7 +1491,12 @@ export default function ProjectChat() {
   async function handleClearMessages() {
     if (!activeThread || isStreaming) return;
 
-    const confirmed = window.confirm('Xóa toàn bộ tin nhắn trong cuộc trò chuyện hiện tại?');
+    const confirmed = await confirmAction({
+      title: 'Xóa toàn bộ tin nhắn?',
+      message: 'Toàn bộ tin nhắn trong cuộc trò chuyện hiện tại sẽ bị xóa.',
+      confirmLabel: 'Xóa tin nhắn',
+      danger: true,
+    });
     if (!confirmed) return;
 
     const resetMode = activeThread.chat_mode || activeThreadMode;

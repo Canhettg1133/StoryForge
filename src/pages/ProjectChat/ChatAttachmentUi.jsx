@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { CHAT_ATTACHMENT_STATUSES } from '../../services/chatAttachments/fileSafety.js';
 import { isChatImageAttachment } from '../../services/chatAttachments/promptBuilder.js';
+import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 
 export const CHAT_ATTACHMENT_COPY = Object.freeze([
   'Thêm tệp/ảnh',
@@ -249,6 +250,10 @@ export function ChatMessageImageGrid({ attachments = [], onPreview }) {
 
 export function ChatImageViewer({ attachment = null, onClose }) {
   const dataUrl = getAttachmentDataUrl(attachment || {});
+  const dialogRef = useModalAccessibility({
+    open: Boolean(attachment && dataUrl),
+    onClose,
+  });
   if (!attachment || !dataUrl) return null;
   const fileName = getAttachmentFileName(attachment, 'Ảnh đính kèm');
   const handleStageClick = (event) => {
@@ -256,7 +261,7 @@ export function ChatImageViewer({ attachment = null, onClose }) {
   };
 
   return (
-    <div className="project-chat-image-viewer" role="dialog" aria-modal="true" aria-label={`Xem ảnh ${fileName}`}>
+    <div ref={dialogRef} className="project-chat-image-viewer" role="dialog" aria-modal="true" aria-label={`Xem ảnh ${fileName}`}>
       <button
         type="button"
         className="project-chat-image-viewer__backdrop"

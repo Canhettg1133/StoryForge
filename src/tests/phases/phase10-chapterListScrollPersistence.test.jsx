@@ -11,8 +11,14 @@ vi.mock('../../stores/projectStore', () => ({
 
 async function loadChapterList() {
   vi.resetModules();
-  const module = await import('../../components/common/ChapterList.jsx');
-  return module.default;
+  const [chapterModule, dialogModule] = await Promise.all([
+    import('../../components/common/ChapterList.jsx'),
+    import('../../components/common/ConfirmDialogProvider.jsx'),
+  ]);
+  return {
+    ChapterList: chapterModule.default,
+    ConfirmDialogProvider: dialogModule.ConfirmDialogProvider,
+  };
 }
 
 function buildChapters(count = 18) {
@@ -41,12 +47,10 @@ function buildScenes(chapters) {
 describe('phase10 chapter list scroll persistence', () => {
   let container;
   let root;
-  let confirmSpy;
 
   beforeEach(() => {
     container = document.createElement('div');
     document.body.appendChild(container);
-    confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
   afterEach(async () => {
@@ -57,12 +61,11 @@ describe('phase10 chapter list scroll persistence', () => {
       root = null;
     }
     container.remove();
-    confirmSpy.mockRestore();
     vi.clearAllMocks();
   });
 
   it('keeps the chapter panel scroll position after deleting a chapter', async () => {
-    const ChapterList = await loadChapterList();
+    const { ChapterList, ConfirmDialogProvider } = await loadChapterList();
     const initialChapters = buildChapters();
     const initialScenes = buildScenes(initialChapters);
 
@@ -92,7 +95,11 @@ describe('phase10 chapter list scroll persistence', () => {
         runChapterCompletion: vi.fn(),
       };
 
-      return <ChapterList />;
+      return (
+        <ConfirmDialogProvider>
+          <ChapterList />
+        </ConfirmDialogProvider>
+      );
     }
 
     root = createRoot(container);
@@ -121,6 +128,12 @@ describe('phase10 chapter list scroll persistence', () => {
 
     await act(async () => {
       deleteButton.click();
+    });
+
+    const confirmDialog = container.querySelector('.confirm-dialog');
+    expect(confirmDialog).not.toBeNull();
+    await act(async () => {
+      Array.from(confirmDialog.querySelectorAll('button')).at(-1).click();
     });
 
     expect(scrollContainer.scrollTop).toBe(240);
