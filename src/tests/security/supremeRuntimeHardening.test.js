@@ -96,4 +96,37 @@ describe('Supreme runtime hardening boundaries', () => {
       failureKind: 'upstream_http',
     });
   });
+
+  it('classifies Worker fetch failures without retaining sensitive diagnostics', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new TypeError('Fetch blocked with error 1021 for https://private-provider.example'),
+    );
+
+    let caught;
+    try {
+      await callSupremeProvider({
+        route: {
+          provider: 'openai_proxy',
+          proxyProfileId: 'custom-openai-proxy',
+          baseUrl: 'https://private-provider.example:20128',
+          chatCompletionsPath: '/v1/chat/completions',
+          model: 'model-id',
+        },
+        messages: [{ role: 'user', content: 'Hello' }],
+        upstreamKey: 'user-key',
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toMatchObject({
+      code: 'SUPREME_UPSTREAM_FAILED',
+      status: 502,
+      failureKind: 'network',
+      networkReason: 'target_not_allowed',
+      targetKind: 'nonstandard_https_port',
+    });
+    expect(caught.message).toBe('SUPREME_UPSTREAM_FAILED');
+    expect(JSON.stringify(caught)).not.toContain('private-provider.example');
+  });
 });

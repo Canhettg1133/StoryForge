@@ -487,6 +487,8 @@ export function createSupremeChatHandler() {
         status: Number(error?.status || 502),
         upstreamStatus: Number(error?.upstreamStatus || 0),
         failureKind: String(error?.failureKind || ''),
+        networkReason: String(error?.networkReason || ''),
+        targetKind: String(error?.targetKind || ''),
         elapsedMs: Date.now() - startedAt,
         platform: runtime.platform,
       });

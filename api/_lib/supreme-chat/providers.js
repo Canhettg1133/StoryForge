@@ -13,6 +13,8 @@ const MAX_OUTPUT_TOKENS = 8192;
 function upstreamError({
   upstreamStatus = 0,
   failureKind = 'unknown',
+  networkReason = '',
+  targetKind = '',
 } = {}) {
   const providerKeyRejected = upstreamStatus === 401 || upstreamStatus === 403;
   const code = providerKeyRejected
@@ -23,7 +25,69 @@ function upstreamError({
   error.code = code;
   error.upstreamStatus = Number.isInteger(upstreamStatus) ? upstreamStatus : 0;
   error.failureKind = String(failureKind || 'unknown');
+  error.networkReason = String(networkReason || '');
+  error.targetKind = String(targetKind || '');
   return error;
+}
+
+function classifyNetworkReason(error, signal) {
+  if (signal?.aborted) return 'request_aborted';
+  const details = [
+    error?.name,
+    error?.code,
+    error?.message,
+    error?.cause?.code,
+    error?.cause?.message,
+  ].map((value) => String(value || '').toLowerCase()).join(' ');
+  if (details.includes('too many subrequest') || details.includes('subrequest limit')) {
+    return 'subrequest_limit';
+  }
+  if (details.includes('1042') || details.includes('another worker') || details.includes('same zone')) {
+    return 'worker_to_worker';
+  }
+  if (
+    details.includes('1021')
+    || details.includes('cannot access')
+    || details.includes('not allowed')
+    || details.includes('unsupported port')
+  ) {
+    return 'target_not_allowed';
+  }
+  if (details.includes('redirect')) return 'redirect_rejected';
+  if (details.includes('dns') || details.includes('resolve') || details.includes('enotfound')) {
+    return 'dns';
+  }
+  if (
+    details.includes('tls')
+    || details.includes('ssl')
+    || details.includes('certificate')
+    || details.includes('cert_')
+  ) {
+    return 'tls';
+  }
+  if (
+    details.includes('network connection lost')
+    || details.includes('connection reset')
+    || details.includes('econnreset')
+    || details.includes('econnrefused')
+    || details.includes('timed out')
+    || details.includes('timeout')
+  ) {
+    return 'connection';
+  }
+  return 'unknown';
+}
+
+function classifyTarget(endpoint) {
+  try {
+    const target = new URL(endpoint);
+    if (target.port && target.port !== '443') return 'nonstandard_https_port';
+    if (target.hostname.endsWith('.workers.dev')) return 'workers_dev';
+    if (target.hostname.endsWith('.pages.dev')) return 'pages_dev';
+  } catch {
+    return 'invalid';
+  }
+  return 'public_https';
 }
 
 async function readJsonResponse(response) {
@@ -72,9 +136,11 @@ async function readJsonResponse(response) {
 async function fetchUpstream(endpoint, init) {
   try {
     return await fetch(endpoint, init);
-  } catch {
+  } catch (error) {
     throw upstreamError({
       failureKind: init.signal?.aborted ? 'request_aborted' : 'network',
+      networkReason: classifyNetworkReason(error, init.signal),
+      targetKind: classifyTarget(endpoint),
     });
   }
 }
