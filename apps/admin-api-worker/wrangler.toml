@@ -12,7 +12,7 @@ ADMIN_ALLOWED_ORIGINS = "http://localhost:5176,http://127.0.0.1:5176,https://sto
 # SUPABASE_URL is safe as a plain variable. Keep SUPABASE_SERVICE_ROLE_KEY as a secret:
 # wrangler secret put SUPABASE_SERVICE_ROLE_KEY
 # Keep the Supreme AES key as a secret too:
-# wrangler secret put SUPREME_PROMPT_ENCRYPTION_KEY_V4
-# Set SUPREME_PROMPT_ACTIVE_KEY_VERSION = "4" only after that secret exists.
+# wrangler secret put SUPREME_PROMPT_ENCRYPTION_KEY_V3
+# Set SUPREME_PROMPT_ACTIVE_KEY_VERSION = "3" only after that secret exists.
 SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
-SUPREME_PROMPT_ACTIVE_KEY_VERSION = "4"
+SUPREME_PROMPT_ACTIVE_KEY_VERSION = "3"

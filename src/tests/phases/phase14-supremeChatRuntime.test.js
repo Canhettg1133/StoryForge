@@ -626,6 +626,46 @@ describe('Supreme runtime request boundary', () => {
     expect(edgeSubjects.filter((subject) => operationSubjects.includes(subject))).toEqual([]);
   });
 
+  it('reports rejected provider credentials without leaking upstream details', async () => {
+    const { runtime } = await setupAuthorizedRuntime();
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: {
+        message: 'upstream-secret-diagnostic',
+      },
+    }), { status: 401 }));
+
+    const response = await createSupremeChatWebHandler()(buildRequest(), {
+      ...runtime,
+      platform: 'cloudflare',
+      env: {
+        ...runtime.env,
+        SUPREME_CHAT_RATE_LIMITER: {
+          limit: vi.fn().mockResolvedValue({ success: true }),
+        },
+      },
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(payload.code).toBe('SUPREME_PROVIDER_KEY_REJECTED');
+    expect(JSON.stringify(payload)).not.toContain('upstream-secret-diagnostic');
+    expect(JSON.stringify(payload)).not.toContain(ADMIN_PROMPT);
+    expect(JSON.stringify(payload)).not.toContain('user-provider-key');
+    expect(warning).toHaveBeenCalledWith(
+      '[supreme-chat] request rejected',
+      expect.objectContaining({
+        code: 'SUPREME_PROVIDER_KEY_REJECTED',
+        status: 422,
+        upstreamStatus: 401,
+        failureKind: 'upstream_http',
+      }),
+    );
+    expect(JSON.stringify(warning.mock.calls)).not.toContain('upstream-secret-diagnostic');
+    expect(JSON.stringify(warning.mock.calls)).not.toContain(ADMIN_PROMPT);
+    expect(JSON.stringify(warning.mock.calls)).not.toContain('user-provider-key');
+  });
+
   it('logs only safe error metadata for rejected requests', async () => {
     const { runtime } = await setupAuthorizedRuntime();
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});

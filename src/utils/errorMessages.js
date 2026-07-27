@@ -102,6 +102,9 @@ function translateKnownError(message) {
   if (lower.includes('openai proxy relay failed')) {
     return 'Relay OpenAI proxy thất bại.';
   }
+  if (lower.includes('supreme_provider_key_rejected')) {
+    return 'API key AI lưu trên địa chỉ web này đã bị nhà cung cấp từ chối. Vào Settings để thay hoặc nhập lại key hợp lệ.';
+  }
   if (lower.includes('unsupported proxy action')) {
     return 'Hành động proxy không được hỗ trợ.';
   }

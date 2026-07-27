@@ -423,6 +423,7 @@ describe('Supreme API security and runtime parity contract', () => {
       'SUPREME_ATTACHMENT_INVALID',
       'SUPREME_IMAGE_PROVIDER_UNSUPPORTED',
       'SUPREME_CHAT_RATE_LIMITED',
+      'SUPREME_PROVIDER_KEY_REJECTED',
       'SUPREME_UPSTREAM_FAILED',
       'SUPREME_PROMPT_UNAVAILABLE',
     ]) {

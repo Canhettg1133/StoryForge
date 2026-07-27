@@ -28,7 +28,7 @@ describe('Supreme Chat VIP rollout migration', () => {
     );
   });
 
-  it('pins the prompt encryption rollout to key version 4 in both Workers', () => {
+  it('pins the user Worker to key version 4 without changing the Admin rollout', () => {
     const webWrangler = fs.readFileSync(
       path.resolve(process.cwd(), 'wrangler.toml'),
       'utf8',
@@ -40,6 +40,7 @@ describe('Supreme Chat VIP rollout migration', () => {
 
     expect(webWrangler).not.toContain('SUPREME_PROMPT_ACTIVE_KEY_VERSION = "3"');
     expect(webWrangler.match(/SUPREME_PROMPT_ACTIVE_KEY_VERSION = "4"/g)).toHaveLength(2);
-    expect(adminWrangler).toContain('SUPREME_PROMPT_ACTIVE_KEY_VERSION = "4"');
+    expect(adminWrangler).toContain('SUPREME_PROMPT_ACTIVE_KEY_VERSION = "3"');
+    expect(adminWrangler).not.toContain('SUPREME_PROMPT_ACTIVE_KEY_VERSION = "4"');
   });
 });

@@ -76,4 +76,24 @@ describe('Supreme runtime hardening boundaries', () => {
     });
     expect(cancelled).toBe(true);
   });
+  it('retains only safe metadata when the upstream rejects a provider key', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: { message: 'upstream-secret-diagnostic' },
+    }), { status: 403 }));
+
+    await expect(callSupremeProvider({
+      route: {
+        provider: 'openai_proxy',
+        proxyProfileId: 'ag-gemini-proxy',
+        model: 'model-id',
+      },
+      messages: [{ role: 'user', content: 'Hello' }],
+      upstreamKey: 'user-key',
+    })).rejects.toMatchObject({
+      code: 'SUPREME_PROVIDER_KEY_REJECTED',
+      status: 422,
+      upstreamStatus: 403,
+      failureKind: 'upstream_http',
+    });
+  });
 });

@@ -8,6 +8,8 @@ describe('user-facing error messages', () => {
     expect(toVietnameseErrorMessage(new Error('Failed to fetch'))).toBe('Không thể kết nối mạng hoặc dịch vụ đang không phản hồi.');
     expect(toVietnameseErrorMessage(new Error('OPENAI_PROXY_MIXED_CONTENT_BLOCKED: Proxy URL uses public HTTP'))).toContain('HTTPS');
     expect(toVietnameseErrorMessage(new Error('OPENAI_PROXY_MIXED_CONTENT_BLOCKED: Proxy URL uses public HTTP'))).toContain('Mixed Content');
+    expect(toVietnameseErrorMessage(new Error('SUPREME_PROVIDER_KEY_REJECTED'))).toContain('Settings');
+    expect(toVietnameseErrorMessage(new Error('SUPREME_PROVIDER_KEY_REJECTED'))).toContain('địa chỉ web này');
   });
 
   it('keeps existing accented Vietnamese messages and hides unknown English fallback detail', () => {

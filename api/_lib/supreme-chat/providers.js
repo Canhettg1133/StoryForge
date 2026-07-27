@@ -10,20 +10,36 @@ const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models
 const MAX_UPSTREAM_RESPONSE_BYTES = 1024 * 1024;
 const MAX_OUTPUT_TOKENS = 8192;
 
-function upstreamError() {
-  const error = new Error('SUPREME_UPSTREAM_FAILED');
-  error.status = 502;
-  error.code = 'SUPREME_UPSTREAM_FAILED';
+function upstreamError({
+  upstreamStatus = 0,
+  failureKind = 'unknown',
+} = {}) {
+  const providerKeyRejected = upstreamStatus === 401 || upstreamStatus === 403;
+  const code = providerKeyRejected
+    ? 'SUPREME_PROVIDER_KEY_REJECTED'
+    : 'SUPREME_UPSTREAM_FAILED';
+  const error = new Error(code);
+  error.status = providerKeyRejected ? 422 : 502;
+  error.code = code;
+  error.upstreamStatus = Number.isInteger(upstreamStatus) ? upstreamStatus : 0;
+  error.failureKind = String(failureKind || 'unknown');
   return error;
 }
 
 async function readJsonResponse(response) {
+  if (!response.ok) {
+    await response.body?.cancel?.('SUPREME_UPSTREAM_HTTP_ERROR').catch(() => {});
+    throw upstreamError({
+      upstreamStatus: response.status,
+      failureKind: 'upstream_http',
+    });
+  }
   const contentLength = Number.parseInt(response.headers?.get?.('content-length') || '', 10);
   if (Number.isFinite(contentLength) && contentLength > MAX_UPSTREAM_RESPONSE_BYTES) {
     await response.body?.cancel?.('SUPREME_UPSTREAM_RESPONSE_TOO_LARGE').catch(() => {});
-    throw upstreamError();
+    throw upstreamError({ failureKind: 'response_too_large' });
   }
-  if (!response.body?.getReader) throw upstreamError();
+  if (!response.body?.getReader) throw upstreamError({ failureKind: 'response_unreadable' });
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let text = '';
@@ -38,7 +54,7 @@ async function readJsonResponse(response) {
       totalBytes += bytes.byteLength;
       if (totalBytes > MAX_UPSTREAM_RESPONSE_BYTES) {
         await reader.cancel('SUPREME_UPSTREAM_RESPONSE_TOO_LARGE').catch(() => {});
-        throw upstreamError();
+        throw upstreamError({ failureKind: 'response_too_large' });
       }
       text += decoder.decode(bytes, { stream: true });
     }
@@ -46,11 +62,20 @@ async function readJsonResponse(response) {
   } finally {
     reader.releaseLock?.();
   }
-  if (!response.ok) throw upstreamError();
   try {
     return JSON.parse(text);
   } catch {
-    throw upstreamError();
+    throw upstreamError({ failureKind: 'response_invalid_json' });
+  }
+}
+
+async function fetchUpstream(endpoint, init) {
+  try {
+    return await fetch(endpoint, init);
+  } catch {
+    throw upstreamError({
+      failureKind: init.signal?.aborted ? 'request_aborted' : 'network',
+    });
   }
 }
 
@@ -61,7 +86,7 @@ async function callOpenAICompatible({
   upstreamKey,
   signal,
 }) {
-  const response = await fetch(endpoint, {
+  const response = await fetchUpstream(endpoint, {
     method: 'POST',
     redirect: 'error',
     signal,
@@ -78,7 +103,7 @@ async function callOpenAICompatible({
   });
   const payload = await readJsonResponse(response);
   const text = String(payload?.choices?.[0]?.message?.content || '');
-  if (!text) throw upstreamError();
+  if (!text) throw upstreamError({ failureKind: 'response_empty' });
   return text;
 }
 
@@ -121,7 +146,7 @@ function toGeminiContents(messages) {
 async function callGeminiDirect({ route, messages, upstreamKey, signal }) {
   const systemMessage = messages.find((message) => message.role === 'system');
   const url = `${GEMINI_API_ROOT}/${encodeURIComponent(route.model)}:generateContent`;
-  const response = await fetch(url, {
+  const response = await fetchUpstream(url, {
     method: 'POST',
     redirect: 'error',
     signal,
@@ -143,7 +168,7 @@ async function callGeminiDirect({ route, messages, upstreamKey, signal }) {
   const text = (payload?.candidates?.[0]?.content?.parts || [])
     .map((part) => String(part?.text || ''))
     .join('');
-  if (!text) throw upstreamError();
+  if (!text) throw upstreamError({ failureKind: 'response_empty' });
   return text;
 }
 

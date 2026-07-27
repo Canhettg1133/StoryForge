@@ -46,6 +46,7 @@ const PUBLIC_ERROR_CODES = Object.freeze([
   'SUPREME_ATTACHMENT_INVALID',
   'SUPREME_IMAGE_PROVIDER_UNSUPPORTED',
   'SUPREME_CHAT_RATE_LIMITED',
+  'SUPREME_PROVIDER_KEY_REJECTED',
   'SUPREME_UPSTREAM_FAILED',
   'SUPREME_PROMPT_UNAVAILABLE',
 ]);
@@ -484,6 +485,8 @@ export function createSupremeChatHandler() {
         requestId,
         code,
         status: Number(error?.status || 502),
+        upstreamStatus: Number(error?.upstreamStatus || 0),
+        failureKind: String(error?.failureKind || ''),
         elapsedMs: Date.now() - startedAt,
         platform: runtime.platform,
       });
