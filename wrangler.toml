@@ -1,6 +1,7 @@
 name = "storyforge-web"
 main = "worker/index.js"
 compatibility_date = "2026-07-16"
+compatibility_flags = ["global_fetch_strictly_public"]
 workers_dev = true
 preview_urls = true
 

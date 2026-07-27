@@ -31,6 +31,7 @@ describe('Cloudflare build configuration', () => {
     expect(wrangler).toContain('name = "storyforge-web"');
     expect(wrangler).toContain('name = "storyforge"');
     expect(wrangler).toContain('main = "worker/index.js"');
+    expect(wrangler).toContain('compatibility_flags = ["global_fetch_strictly_public"]');
     expect(wrangler).toContain('run_worker_first = ["/api", "/api/*"]');
     expect(wrangler).toContain('not_found_handling = "single-page-application"');
   });
