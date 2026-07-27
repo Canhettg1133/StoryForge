@@ -36,7 +36,7 @@ namespace_id = "3103"
 
 [vars]
 SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
-SUPREME_PROMPT_ACTIVE_KEY_VERSION = "2"
+SUPREME_PROMPT_ACTIVE_KEY_VERSION = "3"
 DEPLOYMENT_MODE = "production"
 ACCESS_CACHE_ENABLED = "true"
 OPENAI_PROXY_MAX_BODY_BYTES = "4194304"
@@ -78,7 +78,7 @@ namespace_id = "3203"
 
 [env.preview.vars]
 SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
-SUPREME_PROMPT_ACTIVE_KEY_VERSION = "2"
+SUPREME_PROMPT_ACTIVE_KEY_VERSION = "3"
 DEPLOYMENT_MODE = "production"
 ACCESS_CACHE_ENABLED = "true"
 OPENAI_PROXY_MAX_BODY_BYTES = "4194304"
