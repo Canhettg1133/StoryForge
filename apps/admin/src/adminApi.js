@@ -159,6 +159,34 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       const query = new URLSearchParams({ domain });
       return request(`/prompt-settings?${query.toString()}`);
     },
+    securePrompts: ({
+      historyBeforeRevision = '',
+      metadataOnly = false,
+    } = {}) => {
+      const query = new URLSearchParams();
+      if (historyBeforeRevision) {
+        query.set('historyBeforeRevision', String(historyBeforeRevision));
+      }
+      if (metadataOnly) query.set('metadataOnly', '1');
+      const suffix = query.toString() ? `?${query.toString()}` : '';
+      return request(`/secure-prompts/supreme-chat${suffix}`);
+    },
+    saveSecurePromptDraft: (body) => request('/secure-prompts/supreme-chat/draft', {
+      method: 'PUT',
+      body,
+    }),
+    publishSecurePrompt: (body) => request('/secure-prompts/supreme-chat/publish', {
+      method: 'POST',
+      body,
+    }),
+    rollbackSecurePrompt: (body) => request('/secure-prompts/supreme-chat/rollback', {
+      method: 'POST',
+      body,
+    }),
+    disableSecurePrompt: () => request('/secure-prompts/supreme-chat/disable', {
+      method: 'POST',
+      body: {},
+    }),
     syncAuth: () => request('/users/sync-auth', { method: 'POST', body: {} }),
     userAccess: (userId) => request(`/users/${encodeURIComponent(userId)}/access`),
     updateUserAccess: (userId, role) => request(`/users/${encodeURIComponent(userId)}/access`, {

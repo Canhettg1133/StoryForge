@@ -15,6 +15,8 @@ import {
   TRANSLATOR_PROMPT_LABELS,
 } from '@storyforge/access';
 import { Badge, ErrorState } from '../../components/ui/AdminPrimitives.jsx';
+import SupremePromptSettingsPanel from './SupremePromptSettingsPanel.jsx';
+import { canDiscardSecurePromptDraft } from './dirtyNavigation.js';
 import './promptSettings.css';
 
 function emptyPromptItems() {
@@ -112,7 +114,13 @@ function PromptTemplateList({
   );
 }
 
-export default function PromptSettingsPage({ adminApi, reloadSignal = 0 }) {
+export default function PromptSettingsPage({
+  adminApi,
+  reloadSignal = 0,
+  onDirtyChange = () => {},
+}) {
+  const [activeSection, setActiveSection] = useState('translator');
+  const [supremeDirty, setSupremeDirty] = useState(false);
   const [domain] = useState('translator');
   const [items, setItems] = useState(() => emptyPromptItems());
   const [selectedKey, setSelectedKey] = useState('sacHiep');
@@ -137,6 +145,23 @@ export default function PromptSettingsPage({ adminApi, reloadSignal = 0 }) {
     content: draftContent,
     enabled: draftEnabled,
   }), [draftContent, draftEnabled]);
+
+  const selectActiveSection = useCallback((nextSection) => {
+    if (
+      activeSection === 'supreme'
+      && nextSection !== 'supreme'
+      && supremeDirty
+      && !canDiscardSecurePromptDraft({ dirty: supremeDirty })
+    ) {
+      return;
+    }
+    setActiveSection(nextSection);
+  }, [activeSection, supremeDirty]);
+
+  useEffect(() => {
+    onDirtyChange(supremeDirty);
+    return () => onDirtyChange(false);
+  }, [onDirtyChange, supremeDirty]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -232,6 +257,35 @@ export default function PromptSettingsPage({ adminApi, reloadSignal = 0 }) {
     }
   };
 
+  if (activeSection === 'supreme') {
+    return (
+      <section className="content-grid prompt-settings-page">
+        <div className="section-header prompt-settings-header">
+          <div>
+            <h1>Prompt hệ thống</h1>
+            <p>Quản lý prompt runtime theo đúng phạm vi và mức bảo mật của từng tính năng.</p>
+          </div>
+          <div className="section-header__actions prompt-domain-selector" aria-label="Chọn domain prompt">
+            <button type="button" className="button button--ghost" onClick={() => selectActiveSection('translator')}>
+              Dịch truyện
+            </button>
+            <button type="button" className="button button--ghost" disabled title="Sắp hỗ trợ prompt viết truyện">
+              Viết truyện · Sắp hỗ trợ
+            </button>
+            <button type="button" className="button button--primary">
+              Chat Tối Thượng
+            </button>
+          </div>
+        </div>
+        <SupremePromptSettingsPanel
+          adminApi={adminApi}
+          reloadSignal={reloadSignal}
+          onDirtyChange={setSupremeDirty}
+        />
+      </section>
+    );
+  }
+
   return (
     <section className="content-grid prompt-settings-page">
       <div className="section-header prompt-settings-header">
@@ -245,6 +299,9 @@ export default function PromptSettingsPage({ adminApi, reloadSignal = 0 }) {
           </button>
           <button type="button" className="button button--ghost" disabled title="Sắp hỗ trợ prompt viết truyện">
             Viết truyện · Sắp hỗ trợ
+          </button>
+          <button type="button" className="button button--ghost" onClick={() => selectActiveSection('supreme')}>
+            Chat Tối Thượng
           </button>
         </div>
       </div>

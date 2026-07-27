@@ -14,6 +14,12 @@
         },
         "api/translator-openai-proxy.js": {
             "maxDuration": 300
+        },
+        "api/supreme-chat.js": {
+            "maxDuration": 300
+        },
+        "api/supreme-chat-capabilities.js": {
+            "maxDuration": 10
         }
     },
     "headers": [

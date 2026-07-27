@@ -4,6 +4,7 @@ import { hasPermission } from '@storyforge/access';
 import { createAdminApiClient } from './adminApi.js';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase.js';
 import PromptSettingsPage from './features/promptSettings/PromptSettingsPage.jsx';
+import { canDiscardSecurePromptDraft } from './features/promptSettings/dirtyNavigation.js';
 import StoryMirrorPage from './features/storyMirror/StoryMirrorPage.jsx';
 import {
   EMPTY_DATA,
@@ -79,6 +80,7 @@ export default function App() {
   const [loadError, setLoadError] = useState('');
   const [pendingConfirm, setPendingConfirm] = useState(null);
   const [promptSettingsReloadSignal, setPromptSettingsReloadSignal] = useState(0);
+  const [promptSettingsDirty, setPromptSettingsDirty] = useState(false);
 
   const adminApi = useMemo(() => createAdminApiClient({
     getAccessToken: async () => {
@@ -362,6 +364,7 @@ export default function App() {
   };
 
   const logout = async () => {
+    if (!canDiscardSecurePromptDraft({ dirty: promptSettingsDirty })) return;
     await getSupabaseClient().auth.signOut();
     setActor(null);
     setData(EMPTY_DATA);
@@ -402,6 +405,7 @@ export default function App() {
     }
 
     if (activeView === 'prompt-settings') {
+      if (!canDiscardSecurePromptDraft({ dirty: promptSettingsDirty })) return;
       setPromptSettingsReloadSignal((value) => value + 1);
       return;
     }
@@ -416,7 +420,19 @@ export default function App() {
     usagePagination.pageSize,
     usagePagination.total,
     vipRanking.filters,
+    promptSettingsDirty,
   ]);
+
+  const selectActiveView = useCallback((nextView) => {
+    if (
+      nextView !== activeView
+      && activeView === 'prompt-settings'
+      && !canDiscardSecurePromptDraft({ dirty: promptSettingsDirty })
+    ) {
+      return;
+    }
+    setActiveView(nextView);
+  }, [activeView, promptSettingsDirty]);
 
   const confirmMutation = async () => {
     if (!pendingConfirm) return;
@@ -450,7 +466,15 @@ export default function App() {
     if (activeView === 'users') return <UsersPanel data={data} selectedUserId={selectedUserId} setSelectedUserId={setSelectedUserId} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'vip') return <VipPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'announcement') return <AnnouncementPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
-    if (activeView === 'prompt-settings') return <PromptSettingsPage adminApi={adminApi} reloadSignal={promptSettingsReloadSignal} />;
+    if (activeView === 'prompt-settings') {
+      return (
+        <PromptSettingsPage
+          adminApi={adminApi}
+          reloadSignal={promptSettingsReloadSignal}
+          onDirtyChange={setPromptSettingsDirty}
+        />
+      );
+    }
     if (activeView === 'story-mirror') return <StoryMirrorPage adminApi={adminApi} actor={actor} />;
     if (activeView === 'features') return <FeaturesPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'consent') return <ConsentPanel data={data} />;
@@ -484,7 +508,7 @@ export default function App() {
     || (activeView === 'usage' && usageLoading);
 
   return (
-    <AdminShell actor={actor} activeView={activeView} navGroups={visibleNavGroups} onSelectView={setActiveView} onLogout={logout} onRefresh={refreshActiveView} refreshLoading={reloadLoading}>
+    <AdminShell actor={actor} activeView={activeView} navGroups={visibleNavGroups} onSelectView={selectActiveView} onLogout={logout} onRefresh={refreshActiveView} refreshLoading={reloadLoading}>
       <main className="admin-main">
         <header className="topbar">
           <div>

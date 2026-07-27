@@ -1,5 +1,14 @@
 import { exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
+import { prepareSupremeAttachments } from '../api/_lib/supreme-chat/attachments.js';
+
+function bytesToBase64(bytes) {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  }
+  return btoa(binary);
+}
 
 describe('StoryForge Worker in workerd', () => {
   it('keeps unknown API routes as JSON instead of the SPA shell', async () => {
@@ -39,10 +48,34 @@ describe('StoryForge Worker in workerd', () => {
     expect(await response.json()).toMatchObject({ code: 'PREVIEW_READ_ONLY' });
   });
 
+  it('validates the maximum 12 MB Supreme image context inside workerd', () => {
+    const pngMagic = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    const attachments = Array.from({ length: 3 }, (_, index) => {
+      const bytes = new Uint8Array(4 * 1024 * 1024);
+      bytes.set(pngMagic);
+      return {
+        kind: 'image',
+        fileId: index + 1,
+        fileName: `image-${index + 1}.png`,
+        mimeType: 'image/png',
+        sizeBytes: bytes.byteLength,
+        dataUrl: `data:image/png;base64,${bytesToBase64(bytes)}`,
+        turnOnly: false,
+      };
+    });
+
+    const prepared = prepareSupremeAttachments(attachments);
+
+    expect(prepared.attachments).toHaveLength(3);
+    expect(prepared.skippedAttachmentChunks).toEqual([]);
+  });
+
   it('marks every API response as no-store, including preflight responses', async () => {
     const routes = [
       '/api/openai-proxy',
       '/api/translator-openai-proxy',
+      '/api/supreme-chat',
+      '/api/supreme-chat-capabilities',
       '/api/cloudflare-workers-ai',
       '/api/me/access',
       '/api/me/adult-consent',

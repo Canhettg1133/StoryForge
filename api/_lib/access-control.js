@@ -12,7 +12,12 @@ import { getBearerToken, getClientIp, getUserAgent, sendJson, sendPublicError } 
 import { getSupabaseAdminClient, getSupabaseAdminConfig } from './supabaseAdmin.js';
 import { isPreviewRuntime, normalizeRuntime } from './web.js';
 
-export { ACCESS_FEATURES, ACCESS_REASONS, SYSTEM_ROLES };
+export {
+  ACCESS_FEATURES,
+  ACCESS_REASONS,
+  SYSTEM_ROLES,
+  resolveFeatureDecision,
+};
 
 const ACCESS_GLOBAL_CATALOG_TTL_MS = 5 * 60 * 1000;
 const ACCESS_USER_SNAPSHOT_TTL_MS = 120 * 1000;

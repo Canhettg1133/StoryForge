@@ -25,11 +25,13 @@ import {
   toPublicSiteAnnouncement,
 } from '../../../packages/access/src/index.js';
 import { routePromptSettingsAdmin } from './promptSettings/index.js';
+import { routeSecurePromptsAdmin } from './securePrompts/index.js';
 import { routeStoryMirrorAdmin } from './storyMirror/index.js';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json; charset=utf-8' };
 const SECURITY_HEADERS = {
   'Cache-Control': 'no-store',
+  Pragma: 'no-cache',
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
 };
@@ -128,7 +130,7 @@ function isOriginAllowed(request, config) {
 function corsHeaders(request, config) {
   const origin = request.headers.get('Origin');
   const headers = {
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Authorization,Content-Type',
     Vary: 'Origin',
   };
@@ -2071,6 +2073,23 @@ async function routeRequest(request, config, actor, env = {}) {
     });
   }
 
+  if (resource === 'secure-prompts') {
+    return routeSecurePromptsAdmin({
+      request,
+      env,
+      config,
+      actor,
+      segments: segments.slice(1),
+      helpers: {
+        supabaseRest,
+        requirePermission,
+        readJsonLimited,
+        getClientIp,
+        withResponseHeaders,
+      },
+    });
+  }
+
   if (resource === 'users' && id === 'sync-auth' && request.method === 'POST') {
     return syncAuth(config, request, actor);
   }
@@ -2157,6 +2176,9 @@ async function routeRequest(request, config, actor, env = {}) {
 
 function publicAdminErrorMessage(error) {
   const status = Number(error?.status || 500);
+  if (error?.code === 'SECURE_PROMPT_ENCRYPTION_UNAVAILABLE') {
+    return 'Khóa mã hóa prompt Tối Thượng chưa được cấu hình hoặc không thể giải mã dữ liệu.';
+  }
   if (status >= 500 || error?.code === 'ADMIN_SUPABASE_FAILED') {
     return 'Admin API không xử lý được yêu cầu.';
   }

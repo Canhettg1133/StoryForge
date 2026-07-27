@@ -117,6 +117,24 @@ describe('phase12 admin API worker', () => {
     expect(response.headers.get('Access-Control-Allow-Methods')).toContain('DELETE');
   });
 
+  it('allows secure prompt draft PUT requests through CORS preflight', async () => {
+    const response = await adminWorker.fetch(
+      new Request('https://admin-api.storyforge.test/secure-prompts/supreme-chat/draft', {
+        method: 'OPTIONS',
+        headers: {
+          Origin: 'https://admin.storyforge.test',
+          'Access-Control-Request-Method': 'PUT',
+          'Access-Control-Request-Headers': 'Authorization,Content-Type',
+        },
+      }),
+      createEnv(),
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://admin.storyforge.test');
+    expect(response.headers.get('Access-Control-Allow-Methods')).toContain('PUT');
+  });
+
   it('keeps the deployed admin frontend origin in the checked-in worker config', () => {
     const wranglerConfig = readFileSync(resolve(process.cwd(), 'apps/admin-api-worker/wrangler.toml'), 'utf8');
 

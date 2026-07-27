@@ -1,6 +1,8 @@
 import { createCloudflareWorkersAIWebHandler } from '../api/cloudflare-workers-ai.js';
 import { createOpenAIProxyWebHandler } from '../api/openai-proxy.js';
 import { createTranslatorOpenAIProxyWebHandler } from '../api/translator-openai-proxy.js';
+import { createSupremeChatWebHandler } from '../api/supreme-chat.js';
+import { createSupremeChatCapabilitiesWebHandler } from '../api/supreme-chat-capabilities.js';
 import { createAdultConsentWebHandler, createMeAccessWebHandler } from '../api/_web/access.js';
 import { createLegacyCloudWebHandler } from '../api/_web/cloud.js';
 import {
@@ -13,6 +15,8 @@ import { isPreviewRuntime, jsonResponse, normalizeRuntime } from '../api/_lib/we
 const DEFAULT_HANDLERS = Object.freeze({
   '/api/openai-proxy': createOpenAIProxyWebHandler(),
   '/api/translator-openai-proxy': createTranslatorOpenAIProxyWebHandler(),
+  '/api/supreme-chat': createSupremeChatWebHandler(),
+  '/api/supreme-chat-capabilities': createSupremeChatCapabilitiesWebHandler(),
   '/api/cloudflare-workers-ai': createCloudflareWorkersAIWebHandler(),
   '/api/me/access': createMeAccessWebHandler(),
   '/api/me/adult-consent': createAdultConsentWebHandler(),

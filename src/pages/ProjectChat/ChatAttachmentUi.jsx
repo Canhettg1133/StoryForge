@@ -6,6 +6,7 @@ import {
   Image as ImageIcon,
   Loader2,
   MessageCircle,
+  Square,
   Trash2,
   X,
 } from 'lucide-react';
@@ -287,7 +288,7 @@ export function ChatImageViewer({ attachment = null, onClose }) {
   );
 }
 
-export function ChatAttachmentReadingStatus({ job = null } = {}) {
+export function ChatAttachmentReadingStatus({ job = null, onCancel } = {}) {
   if (!job) return null;
 
   const total = Math.max(1, Number(job.totalChunks || 1));
@@ -303,6 +304,16 @@ export function ChatAttachmentReadingStatus({ job = null } = {}) {
           {job.fileName || 'Tệp đính kèm'} · {isMerging ? 'Đang tổng hợp' : `${current}/${total} đoạn`}
         </span>
       </div>
+      {onCancel ? (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm project-chat-reading-status__cancel"
+          onClick={onCancel}
+        >
+          <Square size={14} />
+          Dừng
+        </button>
+      ) : null}
     </div>
   );
 }

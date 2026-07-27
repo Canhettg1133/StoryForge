@@ -9,6 +9,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  Crown,
   FileText,
   MessageSquare,
   PanelLeftClose,
@@ -30,6 +31,8 @@ import '../Settings/Settings.css';
 import './ProjectChat.css';
 import useProjectStore from '../../stores/projectStore';
 import aiService from '../../services/ai/client';
+import supremeChatClient from '../../services/ai/supremeChatClient.js';
+import { normalizeSupremeThreadForPersistence } from '../../services/ai/supremeThreadPersistence.js';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { buildProjectContentModeAiOptions } from '../../features/projectContentMode/projectContentMode.js';
 import { buildProjectStyleRuntimeBlockForProjectChat } from '../../services/ai/projectStyleRuntime';
@@ -81,6 +84,11 @@ import {
   selectRelevantAttachmentChunks,
 } from '../../services/chatAttachments/chunker.js';
 import {
+  buildSupremeAttachmentPayload,
+  buildSupremeFullReadAttachment,
+  buildSupremeMessages,
+} from '../../services/chatAttachments/supremePayload.js';
+import {
   buildAttachmentAwareMessages,
   buildImageAwareMessages,
   CHAT_IMAGE_PAYLOAD_FORMATS,
@@ -112,13 +120,21 @@ import {
   isLongComposerPaste,
   shouldCollapseUserMessage,
 } from './chatLongText.js';
+import { isSupremeModelAllowed } from '../../../packages/ai-contracts/src/supremeChat.js';
+import {
+  classifySupremeChunkResult,
+  classifySupremeMergeResult,
+  getReusableSupremeChunkNote,
+} from '../../services/ai/supremeFullRead.js';
 
 const GLOBAL_CHAT_PROJECT_ID = 0;
-const CHAT_THREAD_TITLE_FALLBACK = 'Cuộc trò chuyện mới';
+const CHAT_THREAD_DEFAULT_TITLE = 'Cuộc trò chuyện mới';
 const CHAT_MODES = {
   STORY: 'story',
   FREE: 'free',
+  SUPREME: 'supreme',
 };
+const SUPREME_CHAT_FEATURE = 'ai_chat.supreme';
 const PROVIDER_SELECT_AG_PROXY = `${PROVIDERS.OPENAI_PROXY}:${AG_PROXY_PROFILE_ID}`;
 const PROVIDER_SELECT_CUSTOM_PROXY = `${PROVIDERS.OPENAI_PROXY}:${CUSTOM_PROXY_PROFILE_ID}`;
 const COMPOSER_DESKTOP_MIN_HEIGHT = 58;
@@ -133,7 +149,7 @@ const sortThreadsDesc = (threads) =>
 
 function trimThreadTitle(text) {
   const normalized = String(text || '').replace(/\s+/g, ' ').trim();
-  if (!normalized) return CHAT_THREAD_TITLE_FALLBACK;
+  if (!normalized) return CHAT_THREAD_DEFAULT_TITLE;
   return normalized.length > 48 ? `${normalized.slice(0, 48).trim()}...` : normalized;
 }
 
@@ -170,7 +186,15 @@ function getProviderScopeLabel(provider) {
 }
 
 function getChatModeLabel(mode) {
-  return mode === CHAT_MODES.STORY ? 'AI của truyện' : 'Tự do hỏi đáp';
+  switch (mode) {
+    case CHAT_MODES.STORY:
+      return 'AI của truyện';
+    case CHAT_MODES.SUPREME:
+      return 'Tối Thượng';
+    case CHAT_MODES.FREE:
+    default:
+      return 'Tự do hỏi đáp';
+  }
 }
 
 export function getEffectiveChatModelLabel({ liveRouteInfo, activeThread, routePreview } = {}) {
@@ -341,6 +365,10 @@ function buildDefaultSystemPrompt(mode, project) {
   // Nó chỉ đóng vai trò như một bộ định tuyến (router) gọi đúng hàm bên trên dựa vào 'mode'.
   // Lưu ý: Đảm bảo biến CHAT_MODES.STORY tồn tại trong scope của file.
   return mode === CHAT_MODES.STORY ? buildStorySystemPrompt(project) : buildFreeSystemPrompt();
+}
+
+function buildEditableThreadPrompt(mode, project) {
+  return buildDefaultSystemPrompt(mode, project);
 }
 
 export function resolveThreadSystemPrompt(thread, defaultPrompt = '') {
@@ -529,16 +557,44 @@ function getModelOptionSelectLabel(option) {
 }
 
 export function normalizeThread(thread, projectScopeEnabled, project) {
-  const chatMode = thread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
-  const defaultSystemPrompt = buildDefaultSystemPrompt(chatMode, project);
+  const storedChatMode = thread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
+  const chatMode = projectScopeEnabled && storedChatMode === CHAT_MODES.SUPREME
+    ? CHAT_MODES.STORY
+    : storedChatMode;
+  const sourceThread = projectScopeEnabled && storedChatMode === CHAT_MODES.SUPREME
+    ? {
+      ...thread,
+      chat_mode: CHAT_MODES.STORY,
+      system_prompt: '',
+      system_prompt_customized: false,
+    }
+    : thread;
+  if (chatMode === CHAT_MODES.SUPREME) {
+    return normalizeSupremeThreadForPersistence({
+      ...sourceThread,
+      chat_mode: CHAT_MODES.SUPREME,
+      ...getThreadOverridePatch(sourceThread),
+      last_provider: sourceThread?.last_provider || '',
+      last_model: sourceThread?.last_model || '',
+    });
+  }
+  const defaultSystemPrompt = buildEditableThreadPrompt(chatMode, project);
   return {
-    ...thread,
+    ...sourceThread,
     chat_mode: chatMode,
-    system_prompt: resolveThreadSystemPrompt(thread, defaultSystemPrompt),
-    system_prompt_customized: isThreadSystemPromptCustomized(thread, defaultSystemPrompt),
-    ...getThreadOverridePatch(thread),
-    last_provider: thread?.last_provider || '',
-    last_model: thread?.last_model || '',
+    system_prompt: resolveThreadSystemPrompt(sourceThread, defaultSystemPrompt),
+    system_prompt_customized: isThreadSystemPromptCustomized(sourceThread, defaultSystemPrompt),
+    ...getThreadOverridePatch(sourceThread),
+    last_provider: sourceThread?.last_provider || '',
+    last_model: sourceThread?.last_model || '',
+  };
+}
+
+function buildSupremeThreadSecurityFields() {
+  return {
+    chat_mode: CHAT_MODES.SUPREME,
+    system_prompt: '',
+    system_prompt_customized: false,
   };
 }
 
@@ -549,12 +605,20 @@ export function buildThreadPayload({
   project,
   now = Date.now(),
 } = {}) {
+  const safeMode = projectScopeEnabled && mode === CHAT_MODES.SUPREME
+    ? CHAT_MODES.STORY
+    : mode;
+  const protectedModeFields = safeMode === CHAT_MODES.SUPREME
+    ? buildSupremeThreadSecurityFields()
+    : {
+      chat_mode: safeMode,
+      system_prompt: buildEditableThreadPrompt(safeMode, projectScopeEnabled ? project : null),
+      system_prompt_customized: false,
+    };
   return {
     project_id: scopedProjectId,
-    title: CHAT_THREAD_TITLE_FALLBACK,
-    chat_mode: mode,
-    system_prompt: buildDefaultSystemPrompt(mode, projectScopeEnabled ? project : null),
-    system_prompt_customized: false,
+    title: CHAT_THREAD_DEFAULT_TITLE,
+    ...protectedModeFields,
     provider_override: '',
     model_override: '',
     proxy_profile_id: '',
@@ -572,7 +636,13 @@ export function buildThreadConfigPatch(thread = {}, {
   projectScopeEnabled,
   project,
 } = {}) {
-  const defaultSystemPrompt = buildDefaultSystemPrompt(
+  if (activeThreadMode === CHAT_MODES.SUPREME) {
+    return {
+      ...buildSupremeThreadSecurityFields(),
+      ...getThreadOverridePatch(thread),
+    };
+  }
+  const defaultSystemPrompt = buildEditableThreadPrompt(
     activeThreadMode,
     projectScopeEnabled ? project : null,
   );
@@ -585,6 +655,14 @@ export function buildThreadConfigPatch(thread = {}, {
 }
 
 function getChatUsageContext(chatMode) {
+  if (chatMode === CHAT_MODES.SUPREME) {
+    return {
+      surface: 'global_chat',
+      chatMode: CHAT_MODES.SUPREME,
+      taskGroup: 'supreme_chat',
+      taskLabel: 'Chat Tối Thượng',
+    };
+  }
   return chatMode === CHAT_MODES.STORY
     ? {
       surface: 'project_chat',
@@ -620,6 +698,47 @@ export function getChatImagePayloadFormat() {
 
 export function routeSupportsChatImages(route = {}) {
   return route.provider === PROVIDERS.OPENAI_PROXY;
+}
+
+function isSupremeProviderSupported(route = {}) {
+  return route.provider === PROVIDERS.GEMINI_DIRECT
+    || (
+      route.provider === PROVIDERS.OPENAI_PROXY
+      && route.proxyProfileId === AG_PROXY_PROFILE_ID
+    );
+}
+
+function supremeRouteSupportsImages(route = {}) {
+  return route.provider === PROVIDERS.OPENAI_PROXY
+    && route.proxyProfileId === AG_PROXY_PROFILE_ID;
+}
+
+function buildSupremeRoute(route = {}) {
+  return {
+    provider: route.provider,
+    model: route.model,
+    ...(route.provider === PROVIDERS.OPENAI_PROXY
+      ? { proxyProfileId: AG_PROXY_PROFILE_ID }
+      : {}),
+  };
+}
+
+function buildAcceptedSourcesBlock(attachmentContexts = [], skippedAttachmentChunks = []) {
+  const skipped = new Set(
+    (skippedAttachmentChunks || []).map(
+      (item) => `${Number(item.fileId)}:${Number(item.chunkIndex)}`,
+    ),
+  );
+  const acceptedContexts = (attachmentContexts || []).map((context) => ({
+    ...context,
+    chunks: (context.chunks || []).filter(
+      (chunk) =>
+        !skipped.has(
+          `${Number(context.attachment?.id)}:${Number(chunk.chunk_index ?? chunk.chunkIndex ?? 0)}`,
+        ),
+    ),
+  }));
+  return buildUsedSourcesBlock(acceptedContexts);
 }
 
 function hasReusableHistoryImages(historyMessages = []) {
@@ -907,6 +1026,11 @@ export default function ProjectChat() {
   const [turnOnlyAttachmentScope, setTurnOnlyAttachmentScope] = useState(false);
   const [isAttachmentDragOver, setIsAttachmentDragOver] = useState(false);
   const [showScrollToLatest, setShowScrollToLatest] = useState(false);
+  const [modeGateFeature, setModeGateFeature] = useState('');
+  const [supremeCapabilities, setSupremeCapabilities] = useState({
+    status: 'idle',
+    images: false,
+  });
 
   const inputRef = useRef(null);
   const composerTextareaRef = useRef(null);
@@ -917,6 +1041,7 @@ export default function ProjectChat() {
   const pendingInitialBottomScrollRef = useRef(false);
   const isHydratingThreadRef = useRef(false);
   const activeRunRef = useRef(null);
+  const readingAbortRef = useRef(null);
   const isComposingRef = useRef(false);
 
   const activeThread = useMemo(
@@ -931,6 +1056,7 @@ export default function ProjectChat() {
 
   const activeThreadMode =
     activeThread?.chat_mode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
+  const isSupremeChatMode = activeThreadMode === CHAT_MODES.SUPREME;
   const defaultAttachmentScope =
     projectScopeEnabled && activeThreadMode === CHAT_MODES.STORY && !turnOnlyAttachmentScope
       ? CHAT_ATTACHMENT_SCOPES.PROJECT
@@ -968,17 +1094,38 @@ export default function ProjectChat() {
   const providerSelectValue = getProviderSelectValue(activeThread, routePreview);
   const providerFeature = getProviderFeature(activeChatProvider, activeProxyProfileId);
   const canUseChat = hasFeature(ACCESS_FEATURES.AI_CHAT_ACCESS);
+  const canUseSupremeChat = hasFeature(SUPREME_CHAT_FEATURE);
   const providerAllowed = providerFeature ? hasFeature(providerFeature) : true;
   const projectRequiresAdultAccess = Boolean(currentProject?.nsfw_mode || currentProject?.super_nsfw_mode);
   const adultAllowed = !projectRequiresAdultAccess || hasFeature(ACCESS_FEATURES.ADULT_MODE);
   const chatLockedFeature = !canUseChat
     ? ACCESS_FEATURES.AI_CHAT_ACCESS
+    : isSupremeChatMode && !canUseSupremeChat
+      ? SUPREME_CHAT_FEATURE
     : !providerAllowed
       ? providerFeature
       : !adultAllowed
         ? ACCESS_FEATURES.ADULT_MODE
         : '';
-  const chatLockedMessage = chatLockedFeature ? getDeniedMessage(chatLockedFeature) : '';
+  const displayedGateFeature = modeGateFeature || chatLockedFeature;
+  const supremeProviderUnsupported = isSupremeChatMode
+    && !isSupremeProviderSupported(routePreview);
+  const supremeModelUnsupported = isSupremeChatMode
+    && !supremeProviderUnsupported
+    && !isSupremeModelAllowed(routePreview);
+  const supremeProviderMessage = supremeProviderUnsupported
+    ? 'Provider hiện tại Không hỗ trợ Tối Thượng. Hãy chọn AG Proxy hoặc Gemini Direct.'
+    : supremeModelUnsupported
+      ? 'Model hiện tại Không hỗ trợ Tối Thượng. Hãy chọn một model an toàn trong danh sách.'
+      : '';
+  const supremeImageRuntimeMessage = isSupremeChatMode
+    && supremeCapabilities.status !== 'idle'
+    && supremeCapabilities.status !== 'loading'
+    && !supremeCapabilities.images
+    ? 'Ảnh Tối Thượng chưa hỗ trợ trên runtime này. Text và tài liệu vẫn hoạt động.'
+    : '';
+  const accessLockedMessage = chatLockedFeature ? getDeniedMessage(chatLockedFeature) : '';
+  const chatLockedMessage = accessLockedMessage || supremeProviderMessage;
 
   function resizeComposer(textarea) {
     if (!textarea) return;
@@ -1010,20 +1157,35 @@ export default function ProjectChat() {
   const hasManualModelOverride = Boolean(activeThread?.model_override);
 
   const providerOptions = useMemo(
-    () => getAvailableModelOptions(activeChatProvider, { proxyProfileId: activeProxyProfileId }),
-    [activeChatProvider, activeProxyProfileId, routingConfigStamp],
+    () => {
+      const options = getAvailableModelOptions(activeChatProvider, {
+        proxyProfileId: activeProxyProfileId,
+      });
+      if (!isSupremeChatMode) return options;
+      return options.filter((option) => isSupremeModelAllowed({
+        provider: activeChatProvider,
+        proxyProfileId: activeProxyProfileId,
+        model: option.id,
+      }));
+    },
+    [activeChatProvider, activeProxyProfileId, isSupremeChatMode, routingConfigStamp],
   );
   const groupedProviderOptions = useMemo(
     () => groupModelOptionsByChannel(providerOptions),
     [providerOptions],
   );
 
-  const defaultSystemPrompt = buildDefaultSystemPrompt(
-    activeThreadMode,
-    projectScopeEnabled ? currentProject : null,
-  );
-  const effectiveSystemPrompt = resolveThreadSystemPrompt(activeThread, defaultSystemPrompt);
-  const hasThreadPromptOverride = activeThread?.system_prompt_customized === true;
+  const defaultSystemPrompt = isSupremeChatMode
+    ? ''
+    : buildEditableThreadPrompt(
+      activeThreadMode,
+      projectScopeEnabled ? currentProject : null,
+    );
+  const effectiveSystemPrompt = isSupremeChatMode
+    ? ''
+    : resolveThreadSystemPrompt(activeThread, defaultSystemPrompt);
+  const hasThreadPromptOverride = !isSupremeChatMode
+    && activeThread?.system_prompt_customized === true;
   const alternateChatMode =
     activeThreadMode === CHAT_MODES.STORY ? CHAT_MODES.FREE : CHAT_MODES.STORY;
 
@@ -1047,6 +1209,40 @@ export default function ProjectChat() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [previewImageAttachment]);
+
+  useEffect(() => {
+    if (activeThreadMode === CHAT_MODES.SUPREME) {
+      setShowSystemPromptDrawer(false);
+    }
+  }, [activeThreadMode]);
+
+  useEffect(() => {
+    if (!isSupremeChatMode) {
+      setSupremeCapabilities({ status: 'idle', images: false });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+    setSupremeCapabilities({ status: 'loading', images: false });
+    supremeChatClient.getCapabilities({ signal: controller.signal })
+      .then((payload) => {
+        if (cancelled) return;
+        setSupremeCapabilities({
+          status: 'ready',
+          images: payload?.images === true,
+        });
+      })
+      .catch((error) => {
+        if (cancelled || error?.name === 'AbortError') return;
+        setSupremeCapabilities({ status: 'error', images: false });
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [isSupremeChatMode]);
 
   useEffect(() => {
     if (!projectScopeEnabled) return;
@@ -1507,7 +1703,7 @@ export default function ProjectChat() {
     const target = threads.find((thread) => String(thread.id) === String(threadId));
     if (!target) return;
 
-    const nextTitle = window.prompt('Đổi tên cuộc trò chuyện', target.title || CHAT_THREAD_TITLE_FALLBACK);
+    const nextTitle = window.prompt('Đổi tên cuộc trò chuyện', target.title || CHAT_THREAD_DEFAULT_TITLE);
     if (nextTitle == null) return;
     await persistThreadUpdate(threadId, { title: trimThreadTitle(nextTitle) });
   }
@@ -1537,11 +1733,13 @@ export default function ProjectChat() {
     clearPendingPastedTexts();
     resetComposerHeight();
     await persistThreadUpdate(activeThread.id, {
-      title: CHAT_THREAD_TITLE_FALLBACK,
-      system_prompt: buildDefaultSystemPrompt(
-        resetMode,
-        projectScopeEnabled ? currentProject : null,
-      ),
+      title: CHAT_THREAD_DEFAULT_TITLE,
+      system_prompt: resetMode === CHAT_MODES.SUPREME
+        ? ''
+        : buildEditableThreadPrompt(
+          resetMode,
+          projectScopeEnabled ? currentProject : null,
+        ),
       system_prompt_customized: false,
       provider_override: normalizeThreadOverrideValue(activeThread.provider_override),
       model_override: '',
@@ -1578,7 +1776,7 @@ export default function ProjectChat() {
   function buildConversationMessages(nextUserMessage, thread, sourceMessages = messages, attachmentContexts = [], options = {}) {
     const systemPrompt = resolveThreadSystemPrompt(
       thread,
-      buildDefaultSystemPrompt(
+      buildEditableThreadPrompt(
         thread.chat_mode || activeThreadMode,
         projectScopeEnabled ? currentProject : null,
       ),
@@ -1614,14 +1812,17 @@ export default function ProjectChat() {
     return apiMessages;
   }
 
-  function runAttachmentAiCall(callMessages, thread = activeThread) {
+  function runAttachmentAiCall(callMessages, thread = activeThread, signal) {
     return new Promise((resolve, reject) => {
       if (!thread) {
         reject(new Error('Chưa có cuộc chat để đọc tệp.'));
         return;
       }
       const { routeOptions } = getThreadRouting(thread);
-      aiService.send({
+      let requestHandle = null;
+      const abortRequest = () => requestHandle?.abort?.();
+      const cleanup = () => signal?.removeEventListener?.('abort', abortRequest);
+      requestHandle = aiService.send({
         taskType: TASK_TYPES.FREE_PROMPT,
         messages: callMessages,
         stream: false,
@@ -1631,10 +1832,51 @@ export default function ProjectChat() {
           chatMode: thread.chat_mode || activeThreadMode,
           project: projectScopeEnabled ? currentProject : null,
         }),
-        onComplete: (text) => resolve(text),
-        onError: (error) => reject(error),
+        onComplete: (text) => {
+          cleanup();
+          resolve(text);
+        },
+        onError: (error) => {
+          cleanup();
+          reject(error);
+        },
       });
+      if (signal?.aborted) abortRequest();
+      else signal?.addEventListener?.('abort', abortRequest, { once: true });
     });
+  }
+
+  async function runSupremeAttachmentOperation(operation, {
+    attachment,
+    chunks = [],
+    profileText = '',
+    signal,
+  } = {}) {
+    if (!activeThread || activeThreadMode !== CHAT_MODES.SUPREME) {
+      throw new Error('Chế độ Tối Thượng chưa được chọn.');
+    }
+    const { route } = getThreadRouting(activeThread);
+    if (!isSupremeProviderSupported(route)) {
+      throw new Error('Provider hiện tại Không hỗ trợ Tối Thượng.');
+    }
+    if (!isSupremeModelAllowed(route)) {
+      throw new Error('Model hiện tại Không hỗ trợ Tối Thượng.');
+    }
+    const result = await supremeChatClient.send({
+      operation,
+      route: buildSupremeRoute(route),
+      messages: [{
+        role: 'user',
+        content: operation === 'attachment_chunk'
+          ? 'Đọc kỹ chunk tệp đính kèm này.'
+          : 'Hợp nhất các ghi chú chunk an toàn thành hồ sơ tệp.',
+      }],
+      attachments: [
+        buildSupremeFullReadAttachment({ attachment, chunks, profileText }),
+      ],
+      signal,
+    });
+    return result;
   }
 
   async function handleAttachmentFiles(fileList) {
@@ -1643,6 +1885,18 @@ export default function ProjectChat() {
     if (files.length === 0) return;
 
     for (const file of files) {
+      if (
+        isSupremeChatMode
+        && detectChatAttachmentFileType(file) === 'image'
+        && !supremeCapabilities.images
+      ) {
+        setErrorMessage(
+          supremeCapabilities.status === 'loading'
+            ? 'Đang kiểm tra khả năng gửi ảnh Tối Thượng. Hãy thử lại sau giây lát.'
+            : 'Ảnh Tối Thượng chưa hỗ trợ trên runtime này. Text và tài liệu vẫn hoạt động.',
+        );
+        continue;
+      }
       const tempId = `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const tempAttachment = {
         temp_id: tempId,
@@ -1713,6 +1967,12 @@ export default function ProjectChat() {
 
   async function handleReadFullAttachment(attachment) {
     if (!attachment?.id || isStreaming || isReadingAttachment) return;
+    if (chatLockedMessage) {
+      setErrorMessage(chatLockedMessage);
+      return;
+    }
+    const readingController = new AbortController();
+    readingAbortRef.current = readingController;
     try {
       setErrorMessage('');
       await updateChatAttachment(attachment.id, {
@@ -1735,17 +1995,66 @@ export default function ProjectChat() {
       });
 
       const chunkNotes = [];
+      const supremeMergeChunks = [];
+      const skippedChunkIndexes = [];
       for (const [index, chunk] of chunks.entries()) {
         setReadingAttachmentJob((current) => current ? {
           ...current,
           currentChunk: index + 1,
           phase: 'reading',
         } : current);
-        const note = await runAttachmentAiCall(
-          buildFullReadChunkMessages({ attachment, chunk, totalChunks: chunks.length }),
-        );
+        const reusableNote = activeThreadMode === CHAT_MODES.SUPREME
+          ? getReusableSupremeChunkNote(chunk)
+          : '';
+        if (reusableNote) {
+          chunkNotes.push(reusableNote);
+          supremeMergeChunks.push({
+            chunk_index: Number(chunk.chunk_index ?? index),
+            title: `Ghi chú chunk ${Number(chunk.chunk_index ?? index) + 1}`,
+            text: reusableNote,
+          });
+          continue;
+        }
+        const supremeChunkResult = activeThreadMode === CHAT_MODES.SUPREME
+          ? await runSupremeAttachmentOperation('attachment_chunk', {
+            attachment,
+            chunks: [chunk],
+            signal: readingController.signal,
+          })
+          : null;
+        const supremeOutcome = activeThreadMode === CHAT_MODES.SUPREME
+          ? classifySupremeChunkResult(supremeChunkResult)
+          : null;
+        if (supremeOutcome?.errorCode) {
+          skippedChunkIndexes.push(index);
+          await updateChatAttachmentChunk(chunk.id, {
+            ai_notes: '',
+            ai_error_code: supremeOutcome.errorCode,
+          });
+          continue;
+        }
+        const note = activeThreadMode === CHAT_MODES.SUPREME
+          ? supremeOutcome.note
+          : await runAttachmentAiCall(
+            buildFullReadChunkMessages({ attachment, chunk, totalChunks: chunks.length }),
+            activeThread,
+            readingController.signal,
+          );
+        if (!String(note || '').trim()) {
+          throw new Error('AI không trả về ghi chú an toàn cho chunk tệp.');
+        }
         chunkNotes.push(note);
-        await updateChatAttachmentChunk(chunk.id, { ai_notes: note });
+        if (activeThreadMode === CHAT_MODES.SUPREME) {
+          supremeMergeChunks.push({
+            chunk_index: Number(chunk.chunk_index ?? index),
+            title: `Ghi chú chunk ${Number(chunk.chunk_index ?? index) + 1}`,
+            text: note,
+          });
+        }
+        await updateChatAttachmentChunk(chunk.id, {
+          ai_notes: note,
+          ai_error_code: '',
+        });
       }
 
       setReadingAttachmentJob((current) => current ? {
@@ -1753,9 +2062,35 @@ export default function ProjectChat() {
         currentChunk: chunks.length,
         phase: 'merging',
       } : current);
-      const profileText = await runAttachmentAiCall(
-        buildFullReadMergeMessages({ attachment, chunkNotes }),
-      );
+      const mergeResult = activeThreadMode === CHAT_MODES.SUPREME
+        && supremeMergeChunks.length > 0
+        ? await runSupremeAttachmentOperation('attachment_merge', {
+          attachment,
+          chunks: supremeMergeChunks,
+          profileText: skippedChunkIndexes.length > 0
+            ? `Có ${skippedChunkIndexes.length} chunk đã bị bỏ vì chứa chỉ dẫn không đáng tin.`
+            : '',
+          signal: readingController.signal,
+        })
+        : null;
+      const supremeMergeOutcome = activeThreadMode === CHAT_MODES.SUPREME
+        && supremeMergeChunks.length > 0
+        ? classifySupremeMergeResult(mergeResult)
+        : null;
+      if (supremeMergeOutcome?.errorCode) {
+        const blockedError = new Error('Không thể lưu hồ sơ tệp vì kết quả hợp nhất không an toàn hoặc bị trống.');
+        blockedError.code = supremeMergeOutcome.errorCode;
+        throw blockedError;
+      }
+      const profileText = activeThreadMode === CHAT_MODES.SUPREME
+        ? supremeMergeChunks.length > 0
+          ? supremeMergeOutcome.profileText
+          : `Không thể tạo hồ sơ vì ${skippedChunkIndexes.length} chunk đều bị chặn.`
+        : await runAttachmentAiCall(
+          buildFullReadMergeMessages({ attachment, chunkNotes }),
+          activeThread,
+          readingController.signal,
+        );
       await updateChatAttachment(attachment.id, {
         status: CHAT_ATTACHMENT_STATUSES.READY,
         profile_text: profileText,
@@ -1765,6 +2100,15 @@ export default function ProjectChat() {
       await refreshAvailableAttachments();
       setSaveStatus('Đã đọc kỹ toàn bộ tệp');
     } catch (error) {
+      if (readingController.signal.aborted) {
+        await updateChatAttachment(attachment.id, {
+          status: CHAT_ATTACHMENT_STATUSES.INDEXED,
+          error_message: '',
+        });
+        await refreshAvailableAttachments();
+        setSaveStatus('Đã dừng đọc kỹ tệp');
+        return;
+      }
       const message = toVietnameseErrorMessage(error?.userMessage || error, 'Không thể đọc kỹ toàn bộ tệp.');
       await updateChatAttachment(attachment.id, {
         status: CHAT_ATTACHMENT_STATUSES.INDEXED,
@@ -1773,8 +2117,14 @@ export default function ProjectChat() {
       await refreshAvailableAttachments();
       setErrorMessage(message);
     } finally {
+      if (readingAbortRef.current === readingController) readingAbortRef.current = null;
       setReadingAttachmentJob(null);
     }
+  }
+
+  function handleCancelReadingAttachment() {
+    readingAbortRef.current?.abort('user-aborted');
+    supremeChatClient.abort();
   }
 
   function handleAskAttachmentSample(attachment) {
@@ -1883,7 +2233,9 @@ export default function ProjectChat() {
     focusUserMessage = true,
   }) {
     if (!thread || isStreaming) return false;
-    if ((thread.chat_mode || activeThreadMode) === CHAT_MODES.STORY && !projectScopeEnabled) return false;
+    const threadMode = thread.chat_mode || activeThreadMode;
+    if (threadMode === CHAT_MODES.STORY && !projectScopeEnabled) return false;
+    if (threadMode === CHAT_MODES.SUPREME && projectScopeEnabled) return false;
 
     const normalizedUserContent = String(userContent || '').trim() || DEFAULT_ATTACHMENT_PROMPT;
     const currentAttachmentIds = attachmentIds.length > 0
@@ -1903,16 +2255,38 @@ export default function ProjectChat() {
     const attachmentContexts = await buildAttachmentPromptContexts(normalizedUserContent, currentAttachmentIds);
     const { routeOptions, route: currentRoute } = getThreadRouting(thread);
     const hasImageContext = currentImageAttachments.length > 0 || hasReusableHistoryImages(historyMessages);
-    if (hasImageContext && !routeSupportsChatImages(currentRoute)) {
-      setErrorMessage('Provider hiện tại chưa hỗ trợ gửi ảnh. Hãy đổi sang AG/OpenAI-compatible hoặc gỡ ảnh.');
+    const imageRouteSupported = threadMode === CHAT_MODES.SUPREME
+      ? supremeCapabilities.images && supremeRouteSupportsImages(currentRoute)
+      : routeSupportsChatImages(currentRoute);
+    if (hasImageContext && !imageRouteSupported) {
+      setErrorMessage(
+        threadMode === CHAT_MODES.SUPREME
+          ? !supremeCapabilities.images
+            ? 'Ảnh Tối Thượng chưa hỗ trợ trên runtime này. Bản nháp và ảnh vẫn được giữ nguyên.'
+            : 'Lượt có ảnh chỉ hỗ trợ AG Proxy trong chế độ Tối Thượng. Bản nháp và ảnh vẫn được giữ nguyên.'
+          : 'Provider hiện tại chưa hỗ trợ gửi ảnh. Hãy đổi sang AG/OpenAI-compatible hoặc gỡ ảnh.',
+      );
       return false;
     }
     let callMessages;
+    let supremeAttachments = [];
     try {
-      callMessages = buildConversationMessages(normalizedUserContent, thread, historyMessages, attachmentContexts, {
-        currentImageAttachments,
-        imagePayloadFormat: getChatImagePayloadFormat(),
-      });
+      if (threadMode === CHAT_MODES.SUPREME) {
+        callMessages = buildSupremeMessages({
+          historyMessages,
+          userText: normalizedUserContent,
+        });
+        supremeAttachments = buildSupremeAttachmentPayload({
+          attachmentContexts,
+          currentImageAttachments,
+          historyMessages,
+        });
+      } else {
+        callMessages = buildConversationMessages(normalizedUserContent, thread, historyMessages, attachmentContexts, {
+          currentImageAttachments,
+          imagePayloadFormat: getChatImagePayloadFormat(),
+        });
+      }
     } catch (error) {
       setErrorMessage(toVietnameseErrorMessage(error?.userMessage || error, 'Không thể chuẩn bị ảnh để gửi AI.'));
       return false;
@@ -1920,6 +2294,18 @@ export default function ProjectChat() {
     const selectedProviderFeature = getProviderFeature(currentRoute.provider, currentRoute.proxyProfileId);
     if (!hasFeature(ACCESS_FEATURES.AI_CHAT_ACCESS)) {
       setErrorMessage(getDeniedMessage(ACCESS_FEATURES.AI_CHAT_ACCESS));
+      return false;
+    }
+    if (threadMode === CHAT_MODES.SUPREME && !hasFeature(SUPREME_CHAT_FEATURE)) {
+      setErrorMessage(getDeniedMessage(SUPREME_CHAT_FEATURE));
+      return false;
+    }
+    if (threadMode === CHAT_MODES.SUPREME && !isSupremeProviderSupported(currentRoute)) {
+      setErrorMessage('Provider hiện tại Không hỗ trợ Tối Thượng. Hãy chọn AG Proxy hoặc Gemini Direct.');
+      return false;
+    }
+    if (threadMode === CHAT_MODES.SUPREME && !isSupremeModelAllowed(currentRoute)) {
+      setErrorMessage('Model hiện tại Không hỗ trợ Tối Thượng. Hãy chọn một model an toàn trong danh sách.');
       return false;
     }
     if (selectedProviderFeature && !hasFeature(selectedProviderFeature)) {
@@ -1932,7 +2318,7 @@ export default function ProjectChat() {
     }
     const tempAssistantId = `temp-assistant-${Date.now()}`;
     const provisionalTitle =
-      !thread.title || thread.title === CHAT_THREAD_TITLE_FALLBACK
+      !thread.title || thread.title === CHAT_THREAD_DEFAULT_TITLE
         ? trimThreadTitle(normalizedUserContent)
         : thread.title;
     const userMessage =
@@ -1968,10 +2354,13 @@ export default function ProjectChat() {
           project_id: scopedProjectId,
           thread_id: thread.id,
           role: 'assistant',
-          content: '',
+          content: threadMode === CHAT_MODES.SUPREME
+            ? 'Đang tạo và kiểm tra câu trả lời…'
+            : '',
           provider: currentRoute.provider,
           model: currentRoute.model,
           is_streaming: true,
+          is_status_message: threadMode === CHAT_MODES.SUPREME,
           created_at: Date.now(),
         },
       ];
@@ -1993,6 +2382,66 @@ export default function ProjectChat() {
       title: provisionalTitle,
       updated_at: Date.now(),
     });
+
+    if (threadMode === CHAT_MODES.SUPREME) {
+      try {
+        const result = await supremeChatClient.send({
+          operation: 'chat',
+          route: buildSupremeRoute(currentRoute),
+          messages: callMessages,
+          attachments: supremeAttachments,
+        });
+        if (!activeRunRef.current) return true;
+
+        const usedSourcesBlock = buildAcceptedSourcesBlock(
+          attachmentContexts,
+          result.skippedAttachmentChunks,
+        );
+        const finalText = usedSourcesBlock
+          ? `${result.text}\n\n${usedSourcesBlock}`
+          : result.text;
+        const assistantMessage = await appendMessage(thread.id, {
+          role: 'assistant',
+          content: finalText,
+          provider: result.provider || currentRoute.provider,
+          model: result.model || currentRoute.model,
+          elapsed_ms: result.elapsedMs || null,
+          is_partial: false,
+        });
+
+        replaceTempMessage(tempAssistantId, assistantMessage);
+        setIsStreaming(false);
+        setLiveRouteInfo(null);
+        activeRunRef.current = null;
+        if (result.skippedAttachmentChunks?.length > 0) {
+          setErrorMessage('Một số đoạn tệp chứa chỉ dẫn không đáng tin nên đã được bỏ qua.');
+        }
+        await persistThreadUpdate(thread.id, {
+          title: provisionalTitle,
+          updated_at: Date.now(),
+          last_provider: result.provider || currentRoute.provider,
+          last_model: result.model || currentRoute.model,
+          sticky_provider_override: '',
+          sticky_model_override: '',
+        });
+      } catch (error) {
+        if (error?.name === 'AbortError' || !activeRunRef.current) return true;
+        const message = toVietnameseErrorMessage(
+          error?.userMessage || error,
+          'AI không trả lời được cho yêu cầu này.',
+        );
+        const systemMessage = await appendMessage(thread.id, {
+          role: 'system',
+          content: message,
+        });
+        replaceTempMessage(tempAssistantId, systemMessage);
+        setErrorMessage(message);
+        setIsStreaming(false);
+        setLiveRouteInfo(null);
+        activeRunRef.current = null;
+      }
+      return true;
+    }
 
     aiService.send({
         taskType: TASK_TYPES.FREE_PROMPT,
@@ -2068,7 +2517,7 @@ export default function ProjectChat() {
     const { routeOptions, route: currentRoute } = getThreadRouting(currentThread);
     const tempAssistantId = `temp-assistant-${Date.now()}`;
     const provisionalTitle =
-      !currentThread.title || currentThread.title === CHAT_THREAD_TITLE_FALLBACK
+      !currentThread.title || currentThread.title === CHAT_THREAD_DEFAULT_TITLE
         ? trimThreadTitle(userContent)
         : currentThread.title;
 
@@ -2243,10 +2692,13 @@ export default function ProjectChat() {
     if (!isStreaming || !activeRunRef.current) return;
 
     aiService.abort();
+    supremeChatClient.abort();
     activeRunRef.current.streamBatcher?.flush();
     const { tempAssistantId, threadId, route, latestText } = activeRunRef.current;
     const tempMessage = messages.find((message) => String(message.id) === String(tempAssistantId));
-    const partialText = String(latestText || tempMessage?.content || '').trim();
+    const partialText = String(
+      latestText || (tempMessage?.is_status_message ? '' : tempMessage?.content) || '',
+    ).trim();
 
     if (partialText) {
       const partialMessage = await appendMessage(threadId, {
@@ -2355,7 +2807,16 @@ export default function ProjectChat() {
   async function handleChangeMode(mode, options = {}) {
     if (!activeThread || isStreaming) return;
     if (mode === CHAT_MODES.STORY && !projectScopeEnabled) return;
-    if (mode === activeThreadMode && !options.preserveHistory) return;
+    if (mode === CHAT_MODES.SUPREME && projectScopeEnabled) return;
+    if (mode === activeThreadMode && !options.preserveHistory) {
+      setModeGateFeature('');
+      return;
+    }
+    if (mode === CHAT_MODES.SUPREME && !hasFeature(SUPREME_CHAT_FEATURE)) {
+      setModeGateFeature(SUPREME_CHAT_FEATURE);
+      return;
+    }
+    setModeGateFeature('');
 
     if (!options.preserveHistory) {
       const nextThread = await createThread({ activate: true, initialMode: mode });
@@ -2367,11 +2828,11 @@ export default function ProjectChat() {
       return;
     }
 
-    const currentDefaultPrompt = buildDefaultSystemPrompt(
+    const currentDefaultPrompt = buildEditableThreadPrompt(
       activeThreadMode,
       projectScopeEnabled ? currentProject : null,
     );
-    const nextDefaultPrompt = buildDefaultSystemPrompt(
+    const nextDefaultPrompt = buildEditableThreadPrompt(
       mode,
       projectScopeEnabled ? currentProject : null,
     );
@@ -2390,6 +2851,7 @@ export default function ProjectChat() {
   function handleThreadSelect(threadId) {
     if (isStreaming) return;
     isHydratingThreadRef.current = true;
+    setModeGateFeature('');
     setActiveThreadId(threadId);
     setEditingMessageId(null);
     setDraft('');
@@ -2406,16 +2868,22 @@ export default function ProjectChat() {
   const chatSpaceLabel =
     isStoryChatMode && projectScopeEnabled
       ? 'Không gian chat của truyện'
+      : isSupremeChatMode
+        ? 'Chat Tối Thượng · prompt bảo mật phía server'
       : projectScopeEnabled
         ? 'Chat tự do - không dùng ngữ cảnh truyện'
         : 'Chat tự do toàn cục';
   const sidebarHint =
     isStoryChatMode && projectScopeEnabled
       ? 'Chat này dùng chung model và API key của dự án, đồng thời bám theo ngữ cảnh truyện hiện tại.'
+      : isSupremeChatMode
+        ? 'Chat Tối Thượng dùng prompt do owner xuất bản và chỉ xử lý prompt đó ở backend.'
       : 'Chat tự do chỉ dùng model và API key hiện tại. Không bơm ngữ cảnh truyện vào câu trả lời.';
   const providerScopeLabel =
     isStoryChatMode && projectScopeEnabled
       ? 'API key và provider dùng chung với phần AI của dự án'
+      : isSupremeChatMode
+        ? 'Tối Thượng: chỉ hỗ trợ AG Proxy và Gemini Direct'
       : 'Chat tự do: không dùng ngữ cảnh truyện';
 
   const handleGoBack = () => {
@@ -2469,12 +2937,21 @@ export default function ProjectChat() {
               <button
                 type="button"
                 className="btn btn-primary btn-icon"
-                onClick={() =>
+                onClick={() => {
+                  const initialMode = projectScopeEnabled
+                    ? activeThreadMode
+                    : isSupremeChatMode
+                      ? CHAT_MODES.SUPREME
+                      : CHAT_MODES.FREE;
+                  if (initialMode === CHAT_MODES.SUPREME && !canUseSupremeChat) {
+                    setModeGateFeature(SUPREME_CHAT_FEATURE);
+                    return;
+                  }
                   createThread({
                     activate: true,
-                    initialMode: projectScopeEnabled ? activeThreadMode : CHAT_MODES.FREE,
-                  })
-                }
+                    initialMode,
+                  });
+                }}
                 title="Tạo cuộc trò chuyện mới"
               >
                 <Plus size={16} />
@@ -2519,6 +2996,8 @@ export default function ProjectChat() {
                     <span className="project-chat-thread__icon">
                       {thread.chat_mode === CHAT_MODES.STORY ? (
                         <Sparkles size={14} />
+                      ) : thread.chat_mode === CHAT_MODES.SUPREME ? (
+                        <Crown size={14} />
                       ) : (
                         <MessageSquare size={14} />
                       )}
@@ -2571,7 +3050,13 @@ export default function ProjectChat() {
                   {chatSpaceLabel}
                 </div>
                 <h2 className="project-chat-hide-on-mobile" style={{ fontSize: '1.1rem', margin: '0 0 6px 0', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {activeThreadMode === CHAT_MODES.STORY ? <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} /> : <Bot size={16} style={{ flexShrink: 0 }} />}
+                  {activeThreadMode === CHAT_MODES.STORY ? (
+                    <Sparkles size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                  ) : activeThreadMode === CHAT_MODES.SUPREME ? (
+                    <Crown size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                  ) : (
+                    <Bot size={16} style={{ flexShrink: 0 }} />
+                  )}
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {activeThread?.title || 'Cuộc trò chuyện mới'}
                   </span>
@@ -2599,14 +3084,17 @@ export default function ProjectChat() {
                   <MessageSquare size={16} />
                   Lịch sử
                 </button>
-                <button
-                  type="button"
-                  className={`btn btn-secondary project-chat-settings-toggle ${showSystemPromptDrawer ? 'is-open' : ''}`}
-                  onClick={() => setShowSystemPromptDrawer((prev) => !prev)}
-                >
-                  <Settings2 size={16} />
-                  System prompt
-                </button>
+                {activeThreadMode !== CHAT_MODES.SUPREME ? (
+                  <button
+                    type="button"
+                    aria-label="System prompt"
+                    className={`btn btn-secondary project-chat-settings-toggle ${showSystemPromptDrawer ? 'is-open' : ''}`}
+                    onClick={() => setShowSystemPromptDrawer((prev) => !prev)}
+                  >
+                    <Settings2 size={16} />
+                    System prompt
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="btn btn-ghost"
@@ -2639,15 +3127,28 @@ export default function ProjectChat() {
                         Tự do hỏi đáp
                       </button>
                     </>
-                  ) : (
-                    <button
-                      type="button"
-                      className="project-chat-mode-switch__item is-active"
-                      disabled
-                    >
-                      Tự do hỏi đáp
-                    </button>
-                  )}
+                  ) : null}
+                  {!projectScopeEnabled ? (
+                    <>
+                      <button
+                        type="button"
+                        className={`project-chat-mode-switch__item ${activeThreadMode === CHAT_MODES.FREE ? 'is-active' : ''}`}
+                        onClick={() => handleChangeMode(CHAT_MODES.FREE)}
+                        disabled={isStreaming}
+                      >
+                        Tự do hỏi đáp
+                      </button>
+                      <button
+                        type="button"
+                        className={`project-chat-mode-switch__item ${activeThreadMode === CHAT_MODES.SUPREME ? 'is-active' : ''}`}
+                        onClick={() => handleChangeMode(CHAT_MODES.SUPREME)}
+                        disabled={isStreaming}
+                      >
+                        <Crown size={14} />
+                        Tối Thượng
+                      </button>
+                    </>
+                  ) : null}
                 </div>
                 {projectScopeEnabled ? (
                   <button
@@ -2672,12 +3173,20 @@ export default function ProjectChat() {
                   }}
                   disabled={!activeThread || isStreaming}
                 >
-                  <option value="">Theo Settings hiện tại ({getProviderLabel(activeChatProvider, activeProxyProfileId)})</option>
+                  <option value="">
+                    {`Theo Settings hiện tại (${getProviderLabel(activeChatProvider, activeProxyProfileId)}${isSupremeChatMode && !isSupremeProviderSupported(routePreview) ? ' · Không hỗ trợ Tối Thượng' : ''})`}
+                  </option>
                   <option value={PROVIDER_SELECT_AG_PROXY}>Gemini Proxy mặc định (ag)</option>
-                  <option value={PROVIDER_SELECT_CUSTOM_PROXY}>Custom OpenAI-compatible</option>
+                  <option value={PROVIDER_SELECT_CUSTOM_PROXY} disabled={isSupremeChatMode}>
+                    Custom OpenAI-compatible{isSupremeChatMode ? ' · Không hỗ trợ Tối Thượng' : ''}
+                  </option>
                   <option value={PROVIDERS.GEMINI_DIRECT}>Gemini Direct</option>
-                  <option value={PROVIDERS.AI_STUDIO_RELAY}>AI Studio Relay</option>
-                  <option value={PROVIDERS.OLLAMA}>Ollama</option>
+                  <option value={PROVIDERS.AI_STUDIO_RELAY} disabled={isSupremeChatMode}>
+                    AI Studio Relay{isSupremeChatMode ? ' · Không hỗ trợ Tối Thượng' : ''}
+                  </option>
+                  <option value={PROVIDERS.OLLAMA} disabled={isSupremeChatMode}>
+                    Ollama{isSupremeChatMode ? ' · Không hỗ trợ Tối Thượng' : ''}
+                  </option>
                 </select>
               </div>
 
@@ -2700,7 +3209,7 @@ export default function ProjectChat() {
                       selectedOption,
                     }));
                   }}
-                  disabled={!activeThread || isStreaming}
+                  disabled={!activeThread || isStreaming || supremeProviderUnsupported}
                 >
                   <option value="">Theo Settings hiện tại</option>
                   {groupedProviderOptions.length > 0 ? groupedProviderOptions.map((group) => (
@@ -2724,14 +3233,24 @@ export default function ProjectChat() {
 
 
 
-          {chatLockedMessage ? (
+          {displayedGateFeature ? (
             <div className="project-chat-access-lock">
               <AccessGate
-                feature={chatLockedFeature}
+                feature={displayedGateFeature}
                 title="Chat AI đang bị khóa"
                 compact
                 onOpenSettings={() => navigate('/settings')}
               />
+            </div>
+          ) : null}
+          {supremeProviderMessage ? (
+            <div className="project-chat-access-lock" role="status">
+              {supremeProviderMessage}
+            </div>
+          ) : null}
+          {supremeImageRuntimeMessage ? (
+            <div className="project-chat-access-lock" role="status">
+              {supremeImageRuntimeMessage}
             </div>
           ) : null}
 
@@ -2752,6 +3271,8 @@ export default function ProjectChat() {
                   <p>
                     {activeThreadMode === CHAT_MODES.STORY
                       ? 'Đặt câu hỏi về truyện, nhân vật, outline, canon hoặc nhờ AI cùng phát triển dự án.'
+                      : activeThreadMode === CHAT_MODES.SUPREME
+                        ? 'Hỏi bằng text hoặc gửi tệp/ảnh. Chỉ câu trả lời đã được server kiểm tra mới hiển thị ở đây.'
                       : 'Dùng như một khung chat tự do. Nó vẫn dùng đúng model và API key của hệ thống.'}
                   </p>
                 </div>
@@ -2778,7 +3299,10 @@ export default function ProjectChat() {
                   />
                 ))
               )}
-              <ChatAttachmentReadingStatus job={readingAttachmentJob} />
+              <ChatAttachmentReadingStatus
+                job={readingAttachmentJob}
+                onCancel={handleCancelReadingAttachment}
+              />
             </div>
             {showScrollToLatest ? (
               <button
@@ -2828,7 +3352,7 @@ export default function ProjectChat() {
                   type="button"
                   className="btn btn-secondary btn-sm project-chat-composer__file-command"
                   onClick={() => handleReadFullAttachment(directReadStoredAttachment)}
-                  disabled={isStreaming || isReadingAttachment}
+                  disabled={isStreaming || isReadingAttachment || Boolean(chatLockedMessage)}
                 >
                   <BookOpen size={14} />
                   Đọc kỹ toàn bộ
@@ -2838,7 +3362,7 @@ export default function ProjectChat() {
                   type="button"
                   className="btn btn-ghost btn-sm project-chat-composer__file-command"
                   onClick={() => setShowAttachmentDrawer(true)}
-                  disabled={isStreaming || isReadingAttachment}
+                  disabled={isStreaming || isReadingAttachment || Boolean(chatLockedMessage)}
                 >
                   <BookOpen size={14} />
                   Chọn tệp đọc kỹ
@@ -2919,6 +3443,8 @@ export default function ProjectChat() {
                 placeholder={
                   activeThreadMode === CHAT_MODES.STORY
                     ? 'Hỏi về truyện, canon, outline, cảnh đang viết hoặc nhờ AI xử lý vấn đề của dự án...'
+                    : activeThreadMode === CHAT_MODES.SUPREME
+                      ? 'Nhập yêu cầu cho chế độ Tối Thượng...'
                     : 'Hỏi gì cũng được ở chế độ tự do hỏi đáp...'
                 }
                 onKeyDown={(event) => {
@@ -2967,7 +3493,7 @@ export default function ProjectChat() {
         onReadFull={handleReadFullAttachment}
         onRemove={handleRemoveAttachment}
         onPreview={handlePreviewImage}
-        disabled={isStreaming || isReadingAttachment}
+        disabled={isStreaming || isReadingAttachment || Boolean(chatLockedMessage)}
       />
 
       <ChatImageViewer
@@ -2975,7 +3501,7 @@ export default function ProjectChat() {
         onClose={() => setPreviewImageAttachment(null)}
       />
 
-      {showSystemPromptDrawer && activeThread ? (
+      {activeThreadMode !== CHAT_MODES.SUPREME && showSystemPromptDrawer && activeThread ? (
         <>
           <button
             type="button"
@@ -2983,7 +3509,7 @@ export default function ProjectChat() {
             onClick={() => setShowSystemPromptDrawer(false)}
             aria-label="Đóng system prompt"
           />
-          <aside className="project-chat-drawer">
+          <aside className="project-chat-drawer project-chat-system-prompt">
             <div className="project-chat-drawer__header">
               <div>
                 <div className="project-chat-drawer__kicker">System prompt của cuộc trò chuyện</div>
@@ -3009,7 +3535,7 @@ export default function ProjectChat() {
                 className="btn btn-ghost"
                 onClick={() =>
                   persistThreadUpdate(activeThread.id, {
-                    system_prompt: buildDefaultSystemPrompt(
+                    system_prompt: buildEditableThreadPrompt(
                       activeThreadMode,
                       projectScopeEnabled ? currentProject : null,
                     ),

@@ -1,0 +1,9 @@
+{
+  "name": "@storyforge/server-security",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./secure-prompt-crypto": "./src/securePromptCrypto.js"
+  }
+}

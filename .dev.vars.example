@@ -1,1 +1,4 @@
 SUPABASE_SERVICE_ROLE_KEY=replace-with-local-service-role-key
+SUPREME_PROMPT_ACTIVE_KEY_VERSION=1
+# Local-only placeholder. Generate 32 random bytes and encode them as Base64.
+SUPREME_PROMPT_ENCRYPTION_KEY_V1=replace-with-base64-encoded-32-byte-secret

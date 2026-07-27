@@ -63,6 +63,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.resolve(__dirname, './src'),
+            '@storyforge/access': path.resolve(__dirname, './packages/access/src/index.js'),
             '@services': path.resolve(__dirname, './src/services'),
             '@stores': path.resolve(__dirname, './src/stores'),
             '@components': path.resolve(__dirname, './src/components'),

@@ -1,6 +1,7 @@
 export const ACCESS_FEATURES = {
   TRANSLATOR_ACCESS: 'translator.access',
   AI_CHAT_ACCESS: 'ai_chat.access',
+  AI_CHAT_SUPREME: 'ai_chat.supreme',
   ADULT_MODE: 'content.adult_mode',
   AG_PROXY: 'provider.ag_proxy',
   AI_STUDIO_RELAY: 'provider.ai_studio_relay',
@@ -71,6 +72,9 @@ export const ADMIN_PERMISSIONS = {
   CONSENT_WRITE: 'consent.write',
   PROMPTS_READ: 'prompts.read',
   PROMPTS_WRITE: 'prompts.write',
+  SECURE_PROMPTS_READ: 'secure_prompts.read',
+  SECURE_PROMPTS_WRITE: 'secure_prompts.write',
+  SECURE_PROMPTS_PUBLISH: 'secure_prompts.publish',
   ADMIN_SYNC_AUTH: 'admin.sync_auth',
 };
 
@@ -96,6 +100,7 @@ export const PLAN_LABELS_VI = {
 export const FEATURE_LABELS_VI = {
   [ACCESS_FEATURES.TRANSLATOR_ACCESS]: 'Dịch truyện',
   [ACCESS_FEATURES.AI_CHAT_ACCESS]: 'Chat AI',
+  [ACCESS_FEATURES.AI_CHAT_SUPREME]: 'Chat Tối Thượng',
   [ACCESS_FEATURES.ADULT_MODE]: 'Chế độ 18+',
   [ACCESS_FEATURES.AG_PROXY]: 'Gemini Proxy AG',
   [ACCESS_FEATURES.AI_STUDIO_RELAY]: 'AI Studio Relay',

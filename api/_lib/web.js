@@ -290,7 +290,7 @@ export function createVercelHandler(webHandler) {
     const { request, controller } = await nodeRequestToWebRequest(req);
     const runtime = normalizeRuntime({
       env: getNodeEnv(),
-      platform: 'vercel',
+      platform: req.__storyForgeRuntimePlatform === 'local' ? 'local' : 'vercel',
     });
     const response = await webHandler(request, runtime);
     await pipeWebResponseToNode(response, res, controller);

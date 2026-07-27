@@ -1,0 +1,9 @@
+{
+  "name": "@storyforge/ai-contracts",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./supreme-chat": "./src/supremeChat.js"
+  }
+}

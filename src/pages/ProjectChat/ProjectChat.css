@@ -1075,6 +1075,11 @@
   display: block;
 }
 
+.project-chat-reading-status__cancel {
+  min-height: 44px;
+  margin-left: auto;
+}
+
 .project-chat-reading-status strong {
   color: var(--color-text);
   font-size: 13px;

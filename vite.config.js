@@ -22,6 +22,8 @@ function resolveApiRoute(pathname) {
     '/api/openai-proxy': './api/openai-proxy.js',
     '/api/cloudflare-workers-ai': './api/cloudflare-workers-ai.js',
     '/api/translator-openai-proxy': './api/translator-openai-proxy.js',
+    '/api/supreme-chat': './api/supreme-chat.js',
+    '/api/supreme-chat-capabilities': './api/supreme-chat-capabilities.js',
     '/api/vip-page-content': './api/vip-page-content.js',
     '/api/site-announcement': './api/site-announcement.js',
     '/api/me/access': './api/me/access.js',
@@ -55,6 +57,7 @@ function storyForgeApiDevMiddleware() {
             ...Object.fromEntries(parsed.searchParams.entries()),
             ...route.params,
           }
+          req.__storyForgeRuntimePlatform = 'local'
           const moduleUrl = pathToFileURL(path.resolve(__dirname, route.modulePath)).href
           const { default: handler } = await import(`${moduleUrl}?t=${Date.now()}`)
           await handler(req, res)

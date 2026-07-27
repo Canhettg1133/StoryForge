@@ -10,8 +10,33 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api", "/api/*"]
 
+[[ratelimits]]
+name = "SUPREME_EDGE_RATE_LIMITER"
+namespace_id = "3101"
+
+  [ratelimits.simple]
+  limit = 180
+  period = 60
+
+[[ratelimits]]
+name = "SUPREME_CHAT_RATE_LIMITER"
+namespace_id = "3102"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
+[[ratelimits]]
+name = "SUPREME_CHUNK_RATE_LIMITER"
+namespace_id = "3103"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
 [vars]
 SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
+SUPREME_PROMPT_ACTIVE_KEY_VERSION = "1"
 DEPLOYMENT_MODE = "production"
 ACCESS_CACHE_ENABLED = "true"
 OPENAI_PROXY_MAX_BODY_BYTES = "4194304"
@@ -27,8 +52,33 @@ USAGE_LOGGING_TIMEOUT_MS = "2000"
 [env.preview]
 name = "storyforge"
 
+[[env.preview.ratelimits]]
+name = "SUPREME_EDGE_RATE_LIMITER"
+namespace_id = "3201"
+
+  [env.preview.ratelimits.simple]
+  limit = 180
+  period = 60
+
+[[env.preview.ratelimits]]
+name = "SUPREME_CHAT_RATE_LIMITER"
+namespace_id = "3202"
+
+  [env.preview.ratelimits.simple]
+  limit = 30
+  period = 60
+
+[[env.preview.ratelimits]]
+name = "SUPREME_CHUNK_RATE_LIMITER"
+namespace_id = "3203"
+
+  [env.preview.ratelimits.simple]
+  limit = 120
+  period = 60
+
 [env.preview.vars]
 SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
+SUPREME_PROMPT_ACTIVE_KEY_VERSION = "1"
 DEPLOYMENT_MODE = "production"
 ACCESS_CACHE_ENABLED = "true"
 OPENAI_PROXY_MAX_BODY_BYTES = "4194304"

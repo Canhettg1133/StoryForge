@@ -1,4 +1,5 @@
 import db from './database.js';
+import { normalizeSupremeThreadForPersistence } from '../ai/supremeThreadPersistence.js';
 import { normalizeEntityIdentity } from '../entityIdentity/index.js';
 import { normalizeCanonFactRecord } from '../entityIdentity/factIdentity.js';
 import {
@@ -680,11 +681,17 @@ async function importRows(snapshot, maps, now) {
 async function importChats(chats, maps, now, { preserveCloudMetadata = false } = {}) {
   if (!chats || typeof chats !== 'object') return;
   await addMappedRows('ai_chat_threads', chats.threads, maps.chatThread, async (row) => {
-    const data = stripProjectOwner(row);
+    const normalizedThread = normalizeSupremeThreadForPersistence(row);
+    const data = stripProjectOwner(normalizedThread);
     if (!preserveCloudMetadata) {
       for (const key of Object.keys(data)) {
         if (key.startsWith('cloud_')) delete data[key];
       }
+    }
+    if (data.chat_mode === 'supreme') {
+      data.chat_mode = 'story';
+      data.system_prompt = '';
+      data.system_prompt_customized = false;
     }
     return { ...data, project_id: maps.projectId, created_at: row.created_at || now, updated_at: row.updated_at || now };
   });

@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import db from '../db/database.js';
+import { sanitizeSupremeThreadExport } from '../ai/supremeThreadPersistence.js';
 import {
   buildProjectSnapshot,
   importProjectSnapshot,
@@ -198,7 +199,7 @@ async function collectProjectChats(projectId) {
     : [[], [], []];
   const links = new Map([...byAttachment, ...byMessage].map((row) => [row.id, row]));
   return {
-    threads: clone(threads),
+    threads: clone(threads.map(sanitizeSupremeThreadExport)),
     messages: clone(messages),
     attachments: clone(attachments),
     attachment_chunks: clone(attachmentChunks),

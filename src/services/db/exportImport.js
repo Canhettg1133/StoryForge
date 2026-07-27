@@ -9,6 +9,10 @@ import {
   stableStringify,
 } from './projectSnapshot.js';
 import { parseBoundedJson, STORY_BUNDLE_LIMITS } from '../storyBundle/storyBundleSafety.js';
+import {
+  normalizeSupremeThreadForPersistence,
+  sanitizeSupremeThreadExport,
+} from '../ai/supremeThreadPersistence.js';
 
 function resolveImportedChatTitle(title, titleMode = 'imported') {
   const normalizedTitle = String(title || 'Cuộc trò chuyện mới').trim() || 'Cuộc trò chuyện mới';
@@ -70,7 +74,7 @@ export async function exportChatThread(threadId) {
     _storyforge_version: 1,
     _cloud_scope: 'chat',
     _exported_at: new Date().toISOString(),
-    thread,
+    thread: sanitizeSupremeThreadExport(thread),
     messages,
     attachments,
     attachment_chunks: attachmentChunks,
@@ -124,7 +128,7 @@ export async function importChatThread(jsonString, options = {}) {
   const data = parseChatBackup(jsonString);
   const titleMode = options.titleMode === 'original' ? 'original' : 'imported';
   const preserveCloudMetadata = options.preserveCloudMetadata !== false;
-  const originalThread = data.thread || {};
+  const originalThread = normalizeSupremeThreadForPersistence(data.thread || {});
   const originalMessages = Array.isArray(data.messages) ? data.messages : [];
   const originalAttachments = Array.isArray(data.attachments) ? data.attachments : [];
   const originalAttachmentChunks = Array.isArray(data.attachment_chunks) ? data.attachment_chunks : [];
@@ -132,8 +136,15 @@ export async function importChatThread(jsonString, options = {}) {
   const requestedProjectCloudSlug = String(data?.metadata?.project_cloud_slug || '').trim();
 
   let targetProjectId = Number(options.targetProjectId || 0);
-  let nextChatMode = targetProjectId > 0 ? (originalThread.chat_mode || 'story') : 'free';
-  let nextSystemPrompt = targetProjectId > 0 ? String(originalThread.system_prompt || '').trim() : '';
+  const importedMode = originalThread.chat_mode || 'free';
+  let nextChatMode = targetProjectId > 0
+    ? (importedMode === 'supreme' ? 'story' : importedMode || 'story')
+    : (importedMode === 'supreme' ? 'supreme' : 'free');
+  let nextSystemPrompt = importedMode === 'supreme'
+    ? ''
+    : targetProjectId > 0
+      ? String(originalThread.system_prompt || '').trim()
+      : '';
   if (!(targetProjectId > 0) && requestedProjectCloudSlug) {
     const allProjects = await db.projects.toArray();
     const targetProject = allProjects.find(
@@ -141,8 +152,10 @@ export async function importChatThread(jsonString, options = {}) {
     ) || null;
     if (targetProject) {
       targetProjectId = Number(targetProject.id);
-      nextChatMode = originalThread.chat_mode || 'story';
-      nextSystemPrompt = String(originalThread.system_prompt || '').trim();
+      nextChatMode = importedMode === 'supreme' ? 'story' : importedMode || 'story';
+      nextSystemPrompt = importedMode === 'supreme'
+        ? ''
+        : String(originalThread.system_prompt || '').trim();
     }
   }
 
