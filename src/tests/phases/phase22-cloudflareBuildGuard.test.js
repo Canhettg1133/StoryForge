@@ -10,7 +10,9 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { cleanCloudflareBuildOutput } from '../../../scripts/cloudflare-command.mjs';
+import { removeServerOnlyBuildArtifacts } from '../../../scripts/build-production-app.mjs';
 import {
+  assertNoForbiddenRuntimeSecretFiles,
   assertNoServerOnlySecretMarkers,
   resolvePublicBundleRoot,
 } from '../../../scripts/secure-build-guard.mjs';
@@ -62,5 +64,28 @@ describe('Cloudflare secure build guard', () => {
     }, {
       markerRootDir: resolvePublicBundleRoot(root),
     })).toThrow(/SUPABASE_SERVICE_ROLE_KEY/u);
+  });
+
+  it('rejects generated runtime env files even when secret values are unavailable to the guard', () => {
+    const root = createCloudflareOutput();
+    writeFileSync(
+      path.join(root, 'storyforge_web', '.dev.vars'),
+      'SUPABASE_SECRET_KEY=secret-value-hidden-from-process-env',
+    );
+
+    expect(() => assertNoForbiddenRuntimeSecretFiles(root)).toThrow(/\.dev\.vars/u);
+  });
+
+  it('removes generated runtime env files before the production artifact is guarded', () => {
+    const root = createCloudflareOutput();
+    const runtimeEnvPath = path.join(root, 'storyforge_web', '.dev.vars');
+    writeFileSync(runtimeEnvPath, 'SUPABASE_SECRET_KEY=secret-value');
+
+    expect(removeServerOnlyBuildArtifacts(root)).toEqual([
+      path.relative(root, runtimeEnvPath),
+    ]);
+    expect(existsSync(runtimeEnvPath)).toBe(false);
+    expect(existsSync(path.join(root, 'storyforge_web', 'index.js'))).toBe(true);
+    expect(() => assertNoForbiddenRuntimeSecretFiles(root)).not.toThrow();
   });
 });

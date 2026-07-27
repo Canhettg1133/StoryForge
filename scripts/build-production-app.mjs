@@ -1,4 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+} from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -23,6 +28,11 @@ const SERVER_ONLY_SUPABASE_ENV_KEYS = Object.freeze([
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_SECRET_KEY',
   'SUPABASE_SERVICE_KEY',
+]);
+
+const SERVER_ONLY_BUILD_FILE_PATTERNS = Object.freeze([
+  /^\.dev\.vars(?:\..+)?$/u,
+  /^\.env(?:\..+)?$/u,
 ]);
 
 export function isClientBuildEnvKey(key) {
@@ -51,6 +61,31 @@ export function sanitizeClientBuildEnv(env = process.env) {
     delete safeEnv[key];
   }
   return safeEnv;
+}
+
+function isServerOnlyBuildFile(fileName) {
+  return SERVER_ONLY_BUILD_FILE_PATTERNS.some((pattern) => pattern.test(fileName));
+}
+
+export function removeServerOnlyBuildArtifacts(rootDirInput) {
+  const rootDir = path.resolve(rootDirInput);
+  if (!existsSync(rootDir)) return [];
+  const removed = [];
+
+  function scrub(directory) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const absolutePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        scrub(absolutePath);
+      } else if (entry.isFile() && isServerOnlyBuildFile(entry.name)) {
+        rmSync(absolutePath, { force: true });
+        removed.push(path.relative(rootDir, absolutePath));
+      }
+    }
+  }
+
+  scrub(rootDir);
+  return removed.sort();
 }
 
 function parseEnvValue(rawValue) {
@@ -145,6 +180,10 @@ export function main(argv = process.argv.slice(2)) {
   const clientBuildEnv = sanitizeClientBuildEnv(process.env);
   console.log(`[build-production-app] building ${target.label}`);
   runCommand(process.execPath, ['node_modules/vite/bin/vite.js', ...target.viteArgs], { env: clientBuildEnv });
+  const removedServerArtifacts = removeServerOnlyBuildArtifacts(target.outDir);
+  if (removedServerArtifacts.length > 0) {
+    console.log(`[build-production-app] removed ${removedServerArtifacts.length} server-only build artifact(s)`);
+  }
   runCommand(process.execPath, ['scripts/obfuscate-first-party.mjs', target.outDir], { env: clientBuildEnv });
   runCommand(process.execPath, ['scripts/secure-build-guard.mjs', target.outDir]);
 }

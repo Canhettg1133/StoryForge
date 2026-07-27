@@ -560,25 +560,25 @@ describe('Supreme runtime request boundary', () => {
     expect(payload.code).toBe('AUTH_REQUIRED');
   });
 
-  it('rejects a fabricated model before reading the protected prompt', async () => {
-    const { runtime, supabase } = await setupAuthorizedRuntime();
-    const fetchMock = vi.spyOn(globalThis, 'fetch');
+  it('accepts a proxy-specific AG model while keeping the AG upstream fixed', async () => {
+    const { runtime } = await setupAuthorizedRuntime();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: 'Phản hồi từ model AG mới.' } }],
+    }), { status: 200 }));
     const response = await createSupremeChatWebHandler()(buildRequest({
       route: {
         provider: 'openai_proxy',
         proxyProfileId: 'ag-gemini-proxy',
-        model: 'attacker-invented-model',
+        model: 'ag/newly-published-model',
       },
     }), runtime);
     const payload = await response.json();
 
-    expect(response.status).toBe(422);
-    expect(payload.code).toBe('SUPREME_PROVIDER_UNSUPPORTED');
-    expect(supabase.reads).toHaveLength(0);
-    expect(supabase.usageRows).toEqual([
-      expect.objectContaining({ status: 'SUPREME_PROVIDER_UNSUPPORTED' }),
-    ]);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(payload.text).toBe('Phản hồi từ model AG mới.');
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://ag.beijixingxing.com/v1/chat/completions',
+    );
   });
 
   it('rejects image payloads on Vercel before reading the protected prompt', async () => {
@@ -632,8 +632,8 @@ describe('Supreme runtime request boundary', () => {
     const response = await createSupremeChatWebHandler()(buildRequest({
       route: {
         provider: 'openai_proxy',
-        proxyProfileId: 'ag-gemini-proxy',
-        model: 'attacker-invented-model',
+        proxyProfileId: 'unknown-proxy-profile',
+        model: 'valid-model-id',
       },
     }), runtime);
 

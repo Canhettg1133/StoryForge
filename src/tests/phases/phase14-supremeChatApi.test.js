@@ -275,7 +275,7 @@ describe('Supreme API request schema', () => {
     }))).toThrow(/SUPREME_IMAGE_PROVIDER_UNSUPPORTED/u);
   });
 
-  it('keeps fixed model allowlists while allowing the selected Custom Proxy model', async () => {
+  it('accepts valid models exposed by supported web proxies without opening unknown profiles', async () => {
     const contract = await importPlannedModule(CONTRACT_PATH);
     if (!contract) return;
 
@@ -288,11 +288,16 @@ describe('Supreme API request schema', () => {
       provider: 'openai_proxy',
       proxyProfileId: 'ag-gemini-proxy',
       model: 'attacker-invented-model',
-    })).toBe(false);
+    })).toBe(true);
     expect(contract.isSupremeModelAllowed({
       provider: 'openai_proxy',
       proxyProfileId: 'custom-openai-proxy',
       model: `unsafe\u0000model`,
+    })).toBe(false);
+    expect(contract.isSupremeModelAllowed({
+      provider: 'openai_proxy',
+      proxyProfileId: 'unknown-proxy-profile',
+      model: 'valid-model-id',
     })).toBe(false);
   });
 });

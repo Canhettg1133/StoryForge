@@ -38,6 +38,8 @@ biến `VITE_*`, Pages build variables hoặc source frontend.
 ## Provider Tối Thượng
 
 - Hỗ trợ AG Proxy, Gemini Direct và Custom OpenAI-compatible Proxy.
+- AG Proxy và Custom Proxy chấp nhận model ID hợp lệ do chính proxy đang chọn cung
+  cấp; không khóa cứng danh sách model trong frontend hoặc runtime Supreme.
 - Custom Proxy chỉ được dùng khi Base URL là HTTPS công khai. Backend từ chối URL
   tương đối, HTTP, thông tin đăng nhập trong URL, localhost và địa chỉ IP riêng.
 - Backend tự ghép prompt Tối Thượng, chặn redirect, không fallback và quét toàn bộ

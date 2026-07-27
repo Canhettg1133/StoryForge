@@ -31,6 +31,11 @@ const TEXT_BUNDLE_EXTENSIONS = new Set([
   '.txt',
 ]);
 
+const FORBIDDEN_RUNTIME_SECRET_FILE_PATTERNS = Object.freeze([
+  /^\.dev\.vars(?:\..+)?$/u,
+  /^\.env(?:\..+)?$/u,
+]);
+
 function walkFiles(root) {
   const files = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -60,6 +65,19 @@ export function assertNoPublicSourceMaps(rootDir) {
     .filter((file) => readFileSync(file, 'utf8').includes('sourceMappingURL='));
   if (jsWithSourceMapComments.length > 0) {
     throw new Error(`Production JS still references sourcemaps: ${jsWithSourceMapComments.join(', ')}`);
+  }
+}
+
+export function assertNoForbiddenRuntimeSecretFiles(rootDir) {
+  const forbiddenFiles = walkFiles(rootDir).filter((file) => (
+    FORBIDDEN_RUNTIME_SECRET_FILE_PATTERNS.some(
+      (pattern) => pattern.test(path.basename(file)),
+    )
+  ));
+  if (forbiddenFiles.length > 0) {
+    throw new Error(
+      `Runtime env files are not allowed in production artifacts: ${forbiddenFiles.join(', ')}`,
+    );
   }
 }
 
@@ -122,6 +140,7 @@ export function runSecureBuildGuard(rootDirInput = process.argv[2] || 'dist') {
     throw new Error(`Build output not found: ${rootDir}`);
   }
 
+  assertNoForbiddenRuntimeSecretFiles(rootDir);
   assertNoPublicSourceMaps(rootDir);
   assertNoServerOnlySecretMarkers(rootDir, process.env, {
     markerRootDir: resolvePublicBundleRoot(rootDir),

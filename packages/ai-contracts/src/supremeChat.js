@@ -23,10 +23,13 @@ export const SUPREME_AG_PROXY_MODELS = Object.freeze([
 ]);
 
 const DIRECT_MODEL_SET = new Set(SUPREME_GEMINI_DIRECT_MODELS);
-const AG_MODEL_SET = new Set(SUPREME_AG_PROXY_MODELS);
 const MAX_MODEL_CHARS = 200;
+const OPENAI_PROXY_PROFILE_IDS = new Set([
+  'ag-gemini-proxy',
+  'custom-openai-proxy',
+]);
 
-function isValidCustomModel(model) {
+function isValidProxyModel(model) {
   const normalized = String(model || '').trim();
   return Boolean(normalized)
     && normalized.length <= MAX_MODEL_CHARS
@@ -39,15 +42,9 @@ export function isSupremeModelAllowed(route = {}) {
   }
   if (
     route.provider === 'openai_proxy'
-    && route.proxyProfileId === 'ag-gemini-proxy'
+    && OPENAI_PROXY_PROFILE_IDS.has(route.proxyProfileId)
   ) {
-    return AG_MODEL_SET.has(String(route.model || ''));
-  }
-  if (
-    route.provider === 'openai_proxy'
-    && route.proxyProfileId === 'custom-openai-proxy'
-  ) {
-    return isValidCustomModel(route.model);
+    return isValidProxyModel(route.model);
   }
   return false;
 }
