@@ -201,7 +201,7 @@ describe('Supreme runtime request boundary', () => {
     const { runtime } = await setupAuthorizedRuntime();
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
       const upstreamBody = JSON.parse(init.body);
-      expect(init.redirect).toBe('error');
+      expect(init.redirect).toBe('manual');
       expect(upstreamBody.stream).toBe(false);
       expect(upstreamBody.messages[0]).toEqual(expect.objectContaining({
         role: 'system',
@@ -232,6 +232,66 @@ describe('Supreme runtime request boundary', () => {
     expect(String(fetchMock.mock.calls[0][0])).toBe(
       'https://proxy.example.com/v1/chat/completions',
     );
+  });
+
+  it('follows one same-origin Custom Proxy redirect without exposing the key elsewhere', async () => {
+    const { runtime } = await setupAuthorizedRuntime();
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(null, {
+        status: 308,
+        headers: { Location: '/canonical/v1/chat/completions' },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: 'Redirect an toĂ n.' } }],
+      }), { status: 200 }));
+
+    const response = await createSupremeChatWebHandler()(buildRequest({
+      route: {
+        provider: 'openai_proxy',
+        proxyProfileId: 'custom-openai-proxy',
+        model: 'vendor/custom-model-v2',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+      },
+    }), runtime);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.text).toBe('Redirect an toĂ n.');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1][0])).toBe(
+      'https://proxy.example.com/canonical/v1/chat/completions',
+    );
+    expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({
+      method: 'POST',
+      redirect: 'manual',
+      headers: expect.objectContaining({
+        Authorization: 'Bearer user-provider-key',
+      }),
+    }));
+  });
+
+  it('blocks a cross-origin Custom Proxy redirect before forwarding the provider key', async () => {
+    const { runtime } = await setupAuthorizedRuntime();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, {
+      status: 307,
+      headers: { Location: 'https://redirected.example/v1/chat/completions' },
+    }));
+
+    const response = await createSupremeChatWebHandler()(buildRequest({
+      route: {
+        provider: 'openai_proxy',
+        proxyProfileId: 'custom-openai-proxy',
+        model: 'vendor/custom-model-v2',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+      },
+    }), runtime);
+    const payload = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(payload.code).toBe('SUPREME_UPSTREAM_FAILED');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('applies the protected-output scanner to Custom Proxy responses', async () => {

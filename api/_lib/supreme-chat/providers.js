@@ -9,6 +9,8 @@ const AG_CHAT_URL = 'https://ag.beijixingxing.com/v1/chat/completions';
 const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_UPSTREAM_RESPONSE_BYTES = 1024 * 1024;
 const MAX_OUTPUT_TOKENS = 8192;
+const MAX_SAME_ORIGIN_REDIRECTS = 2;
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 function upstreamError({
   upstreamStatus = 0,
@@ -134,15 +136,49 @@ async function readJsonResponse(response) {
 }
 
 async function fetchUpstream(endpoint, init) {
-  try {
-    return await fetch(endpoint, init);
-  } catch (error) {
-    throw upstreamError({
-      failureKind: init.signal?.aborted ? 'request_aborted' : 'network',
-      networkReason: classifyNetworkReason(error, init.signal),
-      targetKind: classifyTarget(endpoint),
-    });
+  const initialTarget = new URL(endpoint);
+  let currentTarget = initialTarget;
+  for (let redirectCount = 0; redirectCount <= MAX_SAME_ORIGIN_REDIRECTS; redirectCount += 1) {
+    let response;
+    try {
+      response = await fetch(currentTarget.toString(), {
+        ...init,
+        redirect: 'manual',
+      });
+    } catch (error) {
+      throw upstreamError({
+        failureKind: init.signal?.aborted ? 'request_aborted' : 'network',
+        networkReason: classifyNetworkReason(error, init.signal),
+        targetKind: classifyTarget(endpoint),
+      });
+    }
+    if (!REDIRECT_STATUSES.has(response.status)) return response;
+
+    const location = response.headers.get('location');
+    let nextTarget;
+    try {
+      nextTarget = new URL(location || '', currentTarget);
+    } catch {
+      nextTarget = null;
+    }
+    const safeRedirect = Boolean(nextTarget)
+      && Boolean(location)
+      && nextTarget.protocol === 'https:'
+      && !nextTarget.username
+      && !nextTarget.password
+      && nextTarget.origin === initialTarget.origin;
+    if (!safeRedirect || redirectCount === MAX_SAME_ORIGIN_REDIRECTS) {
+      await response.body?.cancel?.('SUPREME_UPSTREAM_REDIRECT_BLOCKED').catch(() => {});
+      throw upstreamError({
+        upstreamStatus: response.status,
+        failureKind: safeRedirect ? 'redirect_limit' : 'redirect_blocked',
+        targetKind: classifyTarget(endpoint),
+      });
+    }
+    await response.body?.cancel?.('SUPREME_UPSTREAM_REDIRECT_FOLLOWED').catch(() => {});
+    currentTarget = nextTarget;
   }
+  throw upstreamError({ failureKind: 'redirect_limit', targetKind: classifyTarget(endpoint) });
 }
 
 async function callOpenAICompatible({
@@ -154,7 +190,7 @@ async function callOpenAICompatible({
 }) {
   const response = await fetchUpstream(endpoint, {
     method: 'POST',
-    redirect: 'error',
+    redirect: 'manual',
     signal,
     headers: {
       Authorization: `Bearer ${upstreamKey}`,
@@ -214,7 +250,7 @@ async function callGeminiDirect({ route, messages, upstreamKey, signal }) {
   const url = `${GEMINI_API_ROOT}/${encodeURIComponent(route.model)}:generateContent`;
   const response = await fetchUpstream(url, {
     method: 'POST',
-    redirect: 'error',
+    redirect: 'manual',
     signal,
     headers: {
       'Content-Type': 'application/json',
