@@ -57,19 +57,23 @@ describe('Cloudflare build configuration', () => {
     expect(previewVars).toContain('USAGE_LOGGING_ENABLED = "true"');
   });
 
-  it('always targets the isolated preview Worker for preview dry-runs and deploys', () => {
+  it('deploys the generated Worker bundle and asset root selected during the build', () => {
     expect(resolveWranglerArgs('dry-run', 'preview')).toEqual([
       'deploy',
-      '--env',
-      'preview',
+      '--config',
+      'dist/storyforge_web/wrangler.json',
       '--dry-run',
     ]);
     expect(resolveWranglerArgs('deploy', 'preview')).toEqual([
       'deploy',
-      '--env',
-      'preview',
+      '--config',
+      'dist/storyforge_web/wrangler.json',
     ]);
-    expect(resolveWranglerArgs('deploy', 'production')).toEqual(['deploy']);
+    expect(resolveWranglerArgs('deploy', 'production')).toEqual([
+      'deploy',
+      '--config',
+      'dist/storyforge_web/wrangler.json',
+    ]);
   });
 
   it('previews the generated Cloudflare artifact without re-selecting an environment', () => {

@@ -7,6 +7,7 @@ import { loadEnvFile } from './build-production-app.mjs';
 
 const TARGETS = new Set(['preview', 'production']);
 const ACTIONS = new Set(['dev', 'build', 'preview', 'dry-run', 'deploy']);
+const GENERATED_WRANGLER_CONFIG = 'dist/storyforge_web/wrangler.json';
 
 export function resolveCloudflareBuildEnv(target, baseEnv = {}) {
   if (!TARGETS.has(target)) throw new Error(`Unknown Cloudflare target: ${target}`);
@@ -27,8 +28,7 @@ export function resolveCloudflareBuildEnv(target, baseEnv = {}) {
 }
 
 export function resolveWranglerArgs(action, target) {
-  const args = ['deploy'];
-  if (target === 'preview') args.push('--env', 'preview');
+  const args = ['deploy', '--config', GENERATED_WRANGLER_CONFIG];
   if (action === 'dry-run') args.push('--dry-run');
   return args;
 }
