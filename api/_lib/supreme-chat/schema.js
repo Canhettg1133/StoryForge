@@ -1,7 +1,20 @@
+import {
+  CUSTOM_PROXY_PROFILE_ID,
+  DEFAULT_PROXY_CHAT_PATH,
+  isOpenAIProxyRequestPathAllowed,
+  isRelayAllowedTarget,
+} from '../../../src/services/ai/openAIProxyCore.js';
+
 const OPERATIONS = new Set(['chat', 'attachment_chunk', 'attachment_merge']);
 const MESSAGE_ROLES = new Set(['user', 'assistant']);
 const TOP_LEVEL_FIELDS = new Set(['operation', 'route', 'messages', 'attachments']);
-const ROUTE_FIELDS = new Set(['provider', 'proxyProfileId', 'model']);
+const ROUTE_FIELDS = new Set([
+  'provider',
+  'proxyProfileId',
+  'model',
+  'baseUrl',
+  'chatCompletionsPath',
+]);
 const MESSAGE_FIELDS = new Set(['role', 'content']);
 const IMAGE_FIELDS = new Set([
   'kind',
@@ -26,6 +39,7 @@ const MAX_MESSAGES = 60;
 const MAX_MESSAGE_CHARS = 20000;
 const MAX_TOTAL_TEXT_CHARS = 200000;
 const MAX_MODEL_CHARS = 200;
+const MAX_PROXY_BASE_URL_CHARS = 2048;
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGE_CONTEXT_BYTES = 12 * 1024 * 1024;
@@ -69,17 +83,55 @@ function normalizeRoute(route) {
   const provider = String(route.provider || '').trim();
   const model = String(route.model || '').trim();
   const proxyProfileId = String(route.proxyProfileId || '').trim();
+  const baseUrl = String(route.baseUrl || '').trim();
+  const chatCompletionsPath = String(
+    route.chatCompletionsPath || DEFAULT_PROXY_CHAT_PATH,
+  ).trim();
   if (!model || model.length > MAX_MODEL_CHARS || /[\u0000-\u001f\u007f]/u.test(model)) {
     throw schemaError();
   }
   if (provider === 'openai_proxy') {
-    if (proxyProfileId !== 'ag-gemini-proxy') throw schemaError('SUPREME_PROVIDER_UNSUPPORTED');
+    if (proxyProfileId === 'ag-gemini-proxy') {
+      if (route.baseUrl !== undefined || route.chatCompletionsPath !== undefined) {
+        throw schemaError('SUPREME_PROVIDER_UNSUPPORTED');
+      }
+      return { provider, model, proxyProfileId };
+    }
+    if (proxyProfileId !== CUSTOM_PROXY_PROFILE_ID) {
+      throw schemaError('SUPREME_PROVIDER_UNSUPPORTED');
+    }
+    if (
+      !baseUrl
+      || baseUrl.length > MAX_PROXY_BASE_URL_CHARS
+      || /[\s\u0000-\u001f\u007f]/u.test(baseUrl)
+      || !isRelayAllowedTarget(baseUrl)
+      || !isOpenAIProxyRequestPathAllowed(chatCompletionsPath)
+    ) {
+      throw schemaError('SUPREME_PROVIDER_UNSUPPORTED');
+    }
+    const parsedBaseUrl = new URL(baseUrl);
+    if (parsedBaseUrl.search || parsedBaseUrl.hash) {
+      throw schemaError('SUPREME_PROVIDER_UNSUPPORTED');
+    }
+    return {
+      provider,
+      model,
+      proxyProfileId,
+      baseUrl,
+      chatCompletionsPath,
+    };
   } else if (provider === 'gemini_direct') {
-    if (proxyProfileId) throw schemaError('SUPREME_PROVIDER_UNSUPPORTED');
+    if (
+      proxyProfileId
+      || route.baseUrl !== undefined
+      || route.chatCompletionsPath !== undefined
+    ) {
+      throw schemaError('SUPREME_PROVIDER_UNSUPPORTED');
+    }
   } else {
     throw schemaError('SUPREME_PROVIDER_UNSUPPORTED');
   }
-  return { provider, model, ...(proxyProfileId ? { proxyProfileId } : {}) };
+  return { provider, model };
 }
 
 function normalizeMessages(messages) {
@@ -233,6 +285,7 @@ export const SUPREME_CHAT_LIMITS = Object.freeze({
   MAX_MESSAGE_CHARS,
   MAX_TOTAL_TEXT_CHARS,
   MAX_MODEL_CHARS,
+  MAX_PROXY_BASE_URL_CHARS,
   MAX_IMAGES,
   MAX_IMAGE_BYTES,
   MAX_IMAGE_CONTEXT_BYTES,

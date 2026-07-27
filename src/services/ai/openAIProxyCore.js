@@ -403,6 +403,17 @@ export function isRelayAllowedTarget(rawBaseUrl) {
   return !isLocalProxyHost(parsed.hostname);
 }
 
+export function isOpenAIProxyRequestPathAllowed(rawPath, fallback = DEFAULT_PROXY_CHAT_PATH) {
+  const path = String(rawPath || fallback || '').trim();
+  return Boolean(path)
+    && path.length <= 512
+    && path.startsWith('/')
+    && !path.startsWith('//')
+    && !path.includes('\\')
+    && !path.includes('://')
+    && !/[\u0000-\u001f\u007f]/u.test(path);
+}
+
 export function resolveProxyTransportMode(profile = {}) {
   const transport = String(profile.transport || 'auto').trim();
   const baseUrl = String(profile.baseUrl || '').trim();

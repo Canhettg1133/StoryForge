@@ -101,9 +101,23 @@ describe('Supreme global chat UI contract', () => {
     const source = read('src/pages/ProjectChat/ProjectChat.jsx');
 
     expect(source.includes('Không hỗ trợ Tối Thượng'), 'labels unsupported providers').toBe(true);
-    expect(/AG_PROXY_PROFILE_ID/u.test(source), 'allows only the fixed AG proxy profile').toBe(true);
+    expect(/AG_PROXY_PROFILE_ID/u.test(source), 'keeps the fixed AG proxy profile').toBe(true);
     expect(/PROVIDERS\.GEMINI_DIRECT/u.test(source), 'allows Gemini Direct for supported turns').toBe(true);
     expect(/CHAT_MODES\.SUPREME[\s\S]+disabled/u.test(source), 'disables unsupported composer routes').toBe(true);
+    expect(/CHAT_MODES\.SUPREME[\s\S]{0,500}(fallback|setPreferredProvider)/iu.test(source)).toBe(false);
+  });
+
+  it('supports only guarded public HTTPS Custom Proxy routes without fallback', () => {
+    const source = read('src/pages/ProjectChat/ProjectChat.jsx');
+    const client = readPlannedFile('src/services/ai/supremeChatClient.js');
+
+    expect(source).toContain('isRelayAllowedTarget');
+    expect(source).toContain('CUSTOM_PROXY_PROFILE_ID');
+    expect(source).toContain('getActiveOpenAIProxyProfile(route.proxyProfileId)');
+    expect(source).not.toMatch(
+      /value=\{PROVIDER_SELECT_CUSTOM_PROXY\}\s+disabled=\{isSupremeChatMode\}/u,
+    );
+    expect(client).toContain('getOpenAIProxyKeyProvider(route.proxyProfileId)');
     expect(/CHAT_MODES\.SUPREME[\s\S]{0,500}(fallback|setPreferredProvider)/iu.test(source)).toBe(false);
   });
 

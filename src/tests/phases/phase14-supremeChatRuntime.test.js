@@ -11,6 +11,7 @@ const edgeRateLimitMocks = vi.hoisted(() => ({
 vi.mock('../../../api/_lib/access-control.js', () => ({
   ACCESS_FEATURES: {
     AG_PROXY: 'provider.ag_proxy',
+    CUSTOM_PROXY: 'provider.custom_proxy',
     GEMINI_DIRECT: 'provider.gemini_direct',
   },
   requireFeatures: accessMocks.requireFeatures,
@@ -194,6 +195,111 @@ describe('Supreme runtime request boundary', () => {
       'https://ag.beijixingxing.com/v1/chat/completions',
     );
     expect(supabase.reads).toEqual([{ rpc: 'get_published_secure_prompt' }]);
+  });
+
+  it('uses the guarded Custom Proxy endpoint and Custom Proxy feature permission', async () => {
+    const { runtime } = await setupAuthorizedRuntime();
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      const upstreamBody = JSON.parse(init.body);
+      expect(init.redirect).toBe('error');
+      expect(upstreamBody.stream).toBe(false);
+      expect(upstreamBody.messages[0]).toEqual(expect.objectContaining({
+        role: 'system',
+        content: expect.stringContaining(ADMIN_PROMPT),
+      }));
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'Custom Proxy trả lời an toàn.' } }],
+      }), { status: 200 });
+    });
+
+    const response = await createSupremeChatWebHandler()(buildRequest({
+      route: {
+        provider: 'openai_proxy',
+        proxyProfileId: 'custom-openai-proxy',
+        model: 'vendor/custom-model-v2',
+        baseUrl: 'https://proxy.example.com/',
+        chatCompletionsPath: '/v1/chat/completions',
+      },
+    }), runtime);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.text).toBe('Custom Proxy trả lời an toàn.');
+    expect(JSON.stringify(payload)).not.toContain(ADMIN_PROMPT);
+    expect(accessMocks.resolveFeatureDecision.mock.calls[0]?.[1]).toBe(
+      'provider.custom_proxy',
+    );
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      'https://proxy.example.com/v1/chat/completions',
+    );
+  });
+
+  it('applies the protected-output scanner to Custom Proxy responses', async () => {
+    const { runtime } = await setupAuthorizedRuntime();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: ADMIN_PROMPT } }],
+    }), { status: 200 }));
+
+    const response = await createSupremeChatWebHandler()(buildRequest({
+      route: {
+        provider: 'openai_proxy',
+        proxyProfileId: 'custom-openai-proxy',
+        model: 'vendor/custom-model-v2',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+      },
+    }), runtime);
+    const payload = await response.json();
+
+    expect(payload.blocked).toBe(true);
+    expect(payload.text).not.toContain(ADMIN_PROMPT);
+  });
+
+  it('rejects a private Custom Proxy target before reading the prompt or calling upstream', async () => {
+    const { runtime, supabase } = await setupAuthorizedRuntime();
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+    const response = await createSupremeChatWebHandler()(buildRequest({
+      route: {
+        provider: 'openai_proxy',
+        proxyProfileId: 'custom-openai-proxy',
+        model: 'vendor/custom-model-v2',
+        baseUrl: 'https://127.0.0.1',
+        chatCompletionsPath: '/v1/chat/completions',
+      },
+    }), runtime);
+    const payload = await response.json();
+
+    expect(response.status).toBe(422);
+    expect(payload.code).toBe('SUPREME_PROVIDER_UNSUPPORTED');
+    expect(supabase.reads).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('requires the Custom Proxy feature before reading the prompt or calling upstream', async () => {
+    const { runtime, supabase } = await setupAuthorizedRuntime();
+    accessMocks.resolveFeatureDecision.mockReturnValue({
+      allowed: false,
+      status: 403,
+      feature: 'provider.custom_proxy',
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+
+    const response = await createSupremeChatWebHandler()(buildRequest({
+      route: {
+        provider: 'openai_proxy',
+        proxyProfileId: 'custom-openai-proxy',
+        model: 'vendor/custom-model-v2',
+        baseUrl: 'https://proxy.example.com',
+        chatCompletionsPath: '/v1/chat/completions',
+      },
+    }), runtime);
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.code).toBe('SUPREME_PROVIDER_NOT_ALLOWED');
+    expect(supabase.reads).toHaveLength(0);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('authenticates first but blocks extraction before reading or decrypting the prompt', async () => {

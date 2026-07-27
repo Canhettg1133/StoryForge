@@ -179,6 +179,9 @@ function providerFeature(route) {
   if (route.provider === 'openai_proxy' && route.proxyProfileId === 'ag-gemini-proxy') {
     return ACCESS_FEATURES.AG_PROXY;
   }
+  if (route.provider === 'openai_proxy' && route.proxyProfileId === 'custom-openai-proxy') {
+    return ACCESS_FEATURES.CUSTOM_PROXY;
+  }
   throw safeError('SUPREME_PROVIDER_UNSUPPORTED', 422);
 }
 

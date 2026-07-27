@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 const SCHEMA_PATH = 'api/_lib/supreme-chat/schema.js';
 const HANDLER_PATH = 'api/_web/supreme-chat.js';
 const CAPABILITIES_PATH = 'api/_web/supreme-chat-capabilities.js';
+const CONTRACT_PATH = 'packages/ai-contracts/src/supremeChat.js';
 
 function readPlannedFile(path) {
   const absolutePath = resolve(process.cwd(), path);
@@ -183,7 +184,7 @@ describe('Supreme API request schema', () => {
     }))).toThrow(/SUPREME_ATTACHMENT_INVALID/u);
   });
 
-  it('rejects unsupported providers, custom proxy profiles, and image routes', async () => {
+  it('accepts only a public HTTPS Custom Proxy route and rejects unsafe targets', async () => {
     const schema = await importPlannedModule(SCHEMA_PATH);
     if (!schema) return;
 
@@ -192,6 +193,23 @@ describe('Supreme API request schema', () => {
         route: { provider, model: 'model-id' },
       }))).toThrow();
     }
+
+    expect(schema.validateSupremeChatRequest(validChatRequest({
+      route: {
+        provider: 'openai_proxy',
+        proxyProfileId: 'custom-openai-proxy',
+        model: 'custom-model-id',
+        baseUrl: 'https://proxy.example.com/',
+        chatCompletionsPath: '/v1/chat/completions',
+      },
+    })).route).toEqual({
+      provider: 'openai_proxy',
+      proxyProfileId: 'custom-openai-proxy',
+      model: 'custom-model-id',
+      baseUrl: 'https://proxy.example.com/',
+      chatCompletionsPath: '/v1/chat/completions',
+    });
+
     expect(() => schema.validateSupremeChatRequest(validChatRequest({
       route: {
         provider: 'openai_proxy',
@@ -199,6 +217,51 @@ describe('Supreme API request schema', () => {
         model: 'model-id',
       },
     }))).toThrow();
+
+    for (const baseUrl of [
+      'http://proxy.example.com',
+      'https://localhost',
+      'https://127.0.0.1',
+      'https://10.0.0.8',
+      'https://user:password@proxy.example.com',
+      '/api/local-proxy',
+    ]) {
+      expect(() => schema.validateSupremeChatRequest(validChatRequest({
+        route: {
+          provider: 'openai_proxy',
+          proxyProfileId: 'custom-openai-proxy',
+          model: 'model-id',
+          baseUrl,
+          chatCompletionsPath: '/v1/chat/completions',
+        },
+      }))).toThrow(/SUPREME_PROVIDER_UNSUPPORTED/u);
+    }
+
+    for (const chatCompletionsPath of [
+      '//attacker.example/v1/chat/completions',
+      'https://attacker.example/v1/chat/completions',
+      '/v1/chat\\completions',
+    ]) {
+      expect(() => schema.validateSupremeChatRequest(validChatRequest({
+        route: {
+          provider: 'openai_proxy',
+          proxyProfileId: 'custom-openai-proxy',
+          model: 'model-id',
+          baseUrl: 'https://proxy.example.com',
+          chatCompletionsPath,
+        },
+      }))).toThrow(/SUPREME_PROVIDER_UNSUPPORTED/u);
+    }
+
+    expect(() => schema.validateSupremeChatRequest(validChatRequest({
+      route: {
+        provider: 'openai_proxy',
+        proxyProfileId: 'ag-gemini-proxy',
+        model: 'model-id',
+        baseUrl: 'https://attacker.example',
+      },
+    }))).toThrow();
+
     expect(() => schema.validateSupremeChatRequest(validChatRequest({
       route: { provider: 'gemini_direct', model: 'gemini-model' },
       attachments: [{
@@ -210,6 +273,27 @@ describe('Supreme API request schema', () => {
         dataUrl: 'data:image/png;base64,iVBORw0KGgo=',
       }],
     }))).toThrow(/SUPREME_IMAGE_PROVIDER_UNSUPPORTED/u);
+  });
+
+  it('keeps fixed model allowlists while allowing the selected Custom Proxy model', async () => {
+    const contract = await importPlannedModule(CONTRACT_PATH);
+    if (!contract) return;
+
+    expect(contract.isSupremeModelAllowed({
+      provider: 'openai_proxy',
+      proxyProfileId: 'custom-openai-proxy',
+      model: 'vendor/custom-model-v2',
+    })).toBe(true);
+    expect(contract.isSupremeModelAllowed({
+      provider: 'openai_proxy',
+      proxyProfileId: 'ag-gemini-proxy',
+      model: 'attacker-invented-model',
+    })).toBe(false);
+    expect(contract.isSupremeModelAllowed({
+      provider: 'openai_proxy',
+      proxyProfileId: 'custom-openai-proxy',
+      model: `unsafe\u0000model`,
+    })).toBe(false);
   });
 });
 
@@ -260,7 +344,7 @@ describe('Supreme API security and runtime parity contract', () => {
     );
   });
 
-  it('keeps the upstream key in a header and never accepts a client-selected URL', () => {
+  it('keeps the upstream key in a header and constrains Custom Proxy targets server-side', () => {
     const handler = readPlannedFile(HANDLER_PATH);
     const provider = readPlannedFile('api/_lib/supreme-chat/providers.js');
 
@@ -272,7 +356,10 @@ describe('Supreme API security and runtime parity contract', () => {
     expect(provider).toContain('ag-gemini-proxy');
     expect(provider).toMatch(/generativelanguage\.googleapis\.com/iu);
     expect(provider).toMatch(/redirect\s*:\s*['"]error['"]/u);
-    expect(provider).not.toMatch(/body\.baseUrl|route\.baseUrl|targetBaseUrl/u);
+    expect(provider).toContain('CUSTOM_PROXY_PROFILE_ID');
+    expect(provider).toContain('isRelayAllowedTarget');
+    expect(provider).toContain('buildOpenAIProxyEndpoint');
+    expect(provider).not.toMatch(/body\.baseUrl|targetBaseUrl/u);
   });
 
   it('keeps shared Supreme contracts and server crypto outside app-specific source trees', () => {

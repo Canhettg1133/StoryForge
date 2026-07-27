@@ -52,6 +52,10 @@ import {
   groupProxyModelsForDisplay,
   normalizeOpenAIProxyProvider,
 } from '../../services/ai/openAIProxyConfig';
+import {
+  isOpenAIProxyRequestPathAllowed,
+  isRelayAllowedTarget,
+} from '../../services/ai/openAIProxyCore';
 import db from '../../services/db/database';
 import useMobileLayout from '../../hooks/useMobileLayout';
 import { useUserAccess } from '../../hooks/useUserAccess';
@@ -700,25 +704,45 @@ export function routeSupportsChatImages(route = {}) {
   return route.provider === PROVIDERS.OPENAI_PROXY;
 }
 
+function getSupremeCustomProxyProfile(route = {}) {
+  if (
+    route.provider !== PROVIDERS.OPENAI_PROXY
+    || route.proxyProfileId !== CUSTOM_PROXY_PROFILE_ID
+  ) {
+    return null;
+  }
+  const profile = getActiveOpenAIProxyProfile(route.proxyProfileId);
+  return profile.id === CUSTOM_PROXY_PROFILE_ID ? profile : null;
+}
+
 function isSupremeProviderSupported(route = {}) {
-  return route.provider === PROVIDERS.GEMINI_DIRECT
-    || (
-      route.provider === PROVIDERS.OPENAI_PROXY
-      && route.proxyProfileId === AG_PROXY_PROFILE_ID
-    );
+  if (route.provider === PROVIDERS.GEMINI_DIRECT) return true;
+  if (route.provider !== PROVIDERS.OPENAI_PROXY) return false;
+  if (route.proxyProfileId === AG_PROXY_PROFILE_ID) return true;
+  const profile = getSupremeCustomProxyProfile(route);
+  return Boolean(profile)
+    && isRelayAllowedTarget(profile.baseUrl)
+    && isOpenAIProxyRequestPathAllowed(profile.chatCompletionsPath);
 }
 
 function supremeRouteSupportsImages(route = {}) {
   return route.provider === PROVIDERS.OPENAI_PROXY
-    && route.proxyProfileId === AG_PROXY_PROFILE_ID;
+    && isSupremeProviderSupported(route);
 }
 
 function buildSupremeRoute(route = {}) {
+  const customProfile = getSupremeCustomProxyProfile(route);
   return {
     provider: route.provider,
     model: route.model,
     ...(route.provider === PROVIDERS.OPENAI_PROXY
-      ? { proxyProfileId: AG_PROXY_PROFILE_ID }
+      ? customProfile
+        ? {
+          proxyProfileId: CUSTOM_PROXY_PROFILE_ID,
+          baseUrl: customProfile.baseUrl,
+          chatCompletionsPath: customProfile.chatCompletionsPath,
+        }
+        : { proxyProfileId: AG_PROXY_PROFILE_ID }
       : {}),
   };
 }
@@ -1114,7 +1138,7 @@ export default function ProjectChat() {
     && !supremeProviderUnsupported
     && !isSupremeModelAllowed(routePreview);
   const supremeProviderMessage = supremeProviderUnsupported
-    ? 'Provider hiện tại Không hỗ trợ Tối Thượng. Hãy chọn AG Proxy hoặc Gemini Direct.'
+    ? 'Provider hiện tại không hỗ trợ Tối Thượng. Hãy chọn AG Proxy, Custom Proxy HTTPS công khai hoặc Gemini Direct.'
     : supremeModelUnsupported
       ? 'Model hiện tại Không hỗ trợ Tối Thượng. Hãy chọn một model an toàn trong danh sách.'
       : '';
@@ -1857,7 +1881,7 @@ export default function ProjectChat() {
     }
     const { route } = getThreadRouting(activeThread);
     if (!isSupremeProviderSupported(route)) {
-      throw new Error('Provider hiện tại Không hỗ trợ Tối Thượng.');
+      throw new Error('Provider hiện tại không hỗ trợ Tối Thượng. Custom Proxy phải dùng URL HTTPS công khai.');
     }
     if (!isSupremeModelAllowed(route)) {
       throw new Error('Model hiện tại Không hỗ trợ Tối Thượng.');
@@ -2263,7 +2287,7 @@ export default function ProjectChat() {
         threadMode === CHAT_MODES.SUPREME
           ? !supremeCapabilities.images
             ? 'Ảnh Tối Thượng chưa hỗ trợ trên runtime này. Bản nháp và ảnh vẫn được giữ nguyên.'
-            : 'Lượt có ảnh chỉ hỗ trợ AG Proxy trong chế độ Tối Thượng. Bản nháp và ảnh vẫn được giữ nguyên.'
+            : 'Lượt có ảnh chỉ hỗ trợ AG Proxy hoặc Custom Proxy HTTPS công khai trong chế độ Tối Thượng. Bản nháp và ảnh vẫn được giữ nguyên.'
           : 'Provider hiện tại chưa hỗ trợ gửi ảnh. Hãy đổi sang AG/OpenAI-compatible hoặc gỡ ảnh.',
       );
       return false;
@@ -2301,7 +2325,7 @@ export default function ProjectChat() {
       return false;
     }
     if (threadMode === CHAT_MODES.SUPREME && !isSupremeProviderSupported(currentRoute)) {
-      setErrorMessage('Provider hiện tại Không hỗ trợ Tối Thượng. Hãy chọn AG Proxy hoặc Gemini Direct.');
+      setErrorMessage('Provider hiện tại không hỗ trợ Tối Thượng. Hãy chọn AG Proxy, Custom Proxy HTTPS công khai hoặc Gemini Direct.');
       return false;
     }
     if (threadMode === CHAT_MODES.SUPREME && !isSupremeModelAllowed(currentRoute)) {
@@ -2883,7 +2907,7 @@ export default function ProjectChat() {
     isStoryChatMode && projectScopeEnabled
       ? 'API key và provider dùng chung với phần AI của dự án'
       : isSupremeChatMode
-        ? 'Tối Thượng: chỉ hỗ trợ AG Proxy và Gemini Direct'
+        ? 'Tối Thượng: hỗ trợ AG Proxy, Custom Proxy HTTPS công khai và Gemini Direct'
       : 'Chat tự do: không dùng ngữ cảnh truyện';
 
   const handleGoBack = () => {
@@ -3177,9 +3201,7 @@ export default function ProjectChat() {
                     {`Theo Settings hiện tại (${getProviderLabel(activeChatProvider, activeProxyProfileId)}${isSupremeChatMode && !isSupremeProviderSupported(routePreview) ? ' · Không hỗ trợ Tối Thượng' : ''})`}
                   </option>
                   <option value={PROVIDER_SELECT_AG_PROXY}>Gemini Proxy mặc định (ag)</option>
-                  <option value={PROVIDER_SELECT_CUSTOM_PROXY} disabled={isSupremeChatMode}>
-                    Custom OpenAI-compatible{isSupremeChatMode ? ' · Không hỗ trợ Tối Thượng' : ''}
-                  </option>
+                  <option value={PROVIDER_SELECT_CUSTOM_PROXY}>Custom OpenAI-compatible</option>
                   <option value={PROVIDERS.GEMINI_DIRECT}>Gemini Direct</option>
                   <option value={PROVIDERS.AI_STUDIO_RELAY} disabled={isSupremeChatMode}>
                     AI Studio Relay{isSupremeChatMode ? ' · Không hỗ trợ Tối Thượng' : ''}

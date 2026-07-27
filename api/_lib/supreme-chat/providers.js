@@ -1,3 +1,10 @@
+import {
+  CUSTOM_PROXY_PROFILE_ID,
+  buildOpenAIProxyEndpoint,
+  isOpenAIProxyRequestPathAllowed,
+  isRelayAllowedTarget,
+} from '../../../src/services/ai/openAIProxyCore.js';
+
 const AG_CHAT_URL = 'https://ag.beijixingxing.com/v1/chat/completions';
 const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_UPSTREAM_RESPONSE_BYTES = 1024 * 1024;
@@ -47,8 +54,14 @@ async function readJsonResponse(response) {
   }
 }
 
-async function callAgProxy({ route, messages, upstreamKey, signal }) {
-  const response = await fetch(AG_CHAT_URL, {
+async function callOpenAICompatible({
+  endpoint,
+  route,
+  messages,
+  upstreamKey,
+  signal,
+}) {
+  const response = await fetch(endpoint, {
     method: 'POST',
     redirect: 'error',
     signal,
@@ -67,6 +80,33 @@ async function callAgProxy({ route, messages, upstreamKey, signal }) {
   const text = String(payload?.choices?.[0]?.message?.content || '');
   if (!text) throw upstreamError();
   return text;
+}
+
+function callAgProxy(options) {
+  return callOpenAICompatible({ ...options, endpoint: AG_CHAT_URL });
+}
+
+function callCustomProxy(options) {
+  const { route } = options;
+  if (
+    !isRelayAllowedTarget(route.baseUrl)
+    || !isOpenAIProxyRequestPathAllowed(route.chatCompletionsPath)
+  ) {
+    throw Object.assign(new Error('SUPREME_PROVIDER_UNSUPPORTED'), {
+      status: 422,
+      code: 'SUPREME_PROVIDER_UNSUPPORTED',
+    });
+  }
+  const endpoint = buildOpenAIProxyEndpoint(route.baseUrl, route.chatCompletionsPath);
+  const baseUrl = new URL(route.baseUrl);
+  const targetUrl = new URL(endpoint);
+  if (targetUrl.origin !== baseUrl.origin || !isRelayAllowedTarget(endpoint)) {
+    throw Object.assign(new Error('SUPREME_PROVIDER_UNSUPPORTED'), {
+      status: 422,
+      code: 'SUPREME_PROVIDER_UNSUPPORTED',
+    });
+  }
+  return callOpenAICompatible({ ...options, endpoint });
 }
 
 function toGeminiContents(messages) {
@@ -114,6 +154,12 @@ export async function callSupremeProvider(options) {
   });
   if (options.route.provider === 'openai_proxy' && options.route.proxyProfileId === 'ag-gemini-proxy') {
     return callAgProxy(options);
+  }
+  if (
+    options.route.provider === 'openai_proxy'
+    && options.route.proxyProfileId === CUSTOM_PROXY_PROFILE_ID
+  ) {
+    return callCustomProxy(options);
   }
   if (options.route.provider === 'gemini_direct') return callGeminiDirect(options);
   throw Object.assign(new Error('SUPREME_PROVIDER_UNSUPPORTED'), {

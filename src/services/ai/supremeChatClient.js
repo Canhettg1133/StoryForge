@@ -1,17 +1,23 @@
 import { fetchStoryForgeApi } from '../access/accessClient.js';
 import keyManager from './keyManager.js';
-import { getOpenAIProxyKeyProvider } from './openAIProxyConfig.js';
+import {
+  AG_PROXY_PROFILE_ID,
+  CUSTOM_PROXY_PROFILE_ID,
+  getOpenAIProxyKeyProvider,
+} from './openAIProxyConfig.js';
 
 const SUPREME_CHAT_ENDPOINT = '/api/supreme-chat';
 const SUPREME_CHAT_CAPABILITIES_ENDPOINT = '/api/supreme-chat-capabilities';
-const AG_PROXY_PROFILE_ID = 'ag-gemini-proxy';
 
 function getUpstreamKey(route = {}) {
   if (route.provider === 'gemini_direct') {
     return keyManager.getNextKey('gemini_direct') || '';
   }
-  if (route.provider === 'openai_proxy' && route.proxyProfileId === AG_PROXY_PROFILE_ID) {
-    return keyManager.getNextKey(getOpenAIProxyKeyProvider(AG_PROXY_PROFILE_ID)) || '';
+  if (
+    route.provider === 'openai_proxy'
+    && [AG_PROXY_PROFILE_ID, CUSTOM_PROXY_PROFILE_ID].includes(route.proxyProfileId)
+  ) {
+    return keyManager.getNextKey(getOpenAIProxyKeyProvider(route.proxyProfileId)) || '';
   }
   return '';
 }
