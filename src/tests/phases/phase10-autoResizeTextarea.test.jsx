@@ -3,7 +3,9 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
+import AutoResizeTextarea, {
+  resizeTextareaToContent,
+} from '../../components/common/AutoResizeTextarea.jsx';
 
 describe('phase10 AutoResizeTextarea', () => {
   let container;
@@ -80,5 +82,19 @@ describe('phase10 AutoResizeTextarea', () => {
 
     expect(textarea.style.height).toBe('120px');
     expect(textarea.style.overflowY).toBe('auto');
+  });
+
+  it('does not let a long placeholder inflate an empty field', async () => {
+    const { textarea } = await renderTextarea();
+    textarea.setAttribute('placeholder', 'Gợi ý rất dài '.repeat(20));
+    Object.defineProperty(textarea, 'scrollHeight', {
+      configurable: true,
+      get: () => textarea.hasAttribute('placeholder') ? 180 : 38,
+    });
+
+    resizeTextareaToContent(textarea);
+
+    expect(textarea.style.height).toBe('38px');
+    expect(textarea.placeholder).toContain('Gợi ý rất dài');
   });
 });

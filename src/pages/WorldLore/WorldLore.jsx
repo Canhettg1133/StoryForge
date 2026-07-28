@@ -8,7 +8,7 @@ import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import {
   Globe, MapPin, Package, BookOpen, Plus, Edit3, Trash2,
-  X, Save, Search, Sparkles, ChevronDown, ChevronUp,
+  X, Save, Search, Sparkles, ChevronDown, ChevronUp, CheckSquare, Square,
 } from 'lucide-react';
 import { WORLD_TERM_CATEGORIES } from '../../utils/constants';
 import AIGenerateButton from '../../components/common/AIGenerateButton';
@@ -33,9 +33,9 @@ export default function WorldLore() {
   const { currentProject } = useProjectStore();
   const {
     locations, objects, worldTerms, characters, loading, loadCodex,
-    createLocation, updateLocation, deleteLocation,
-    createObject, updateObject, deleteObject,
-    createWorldTerm, updateWorldTerm, deleteWorldTerm,
+    createLocation, updateLocation, deleteLocation, deleteLocations,
+    createObject, updateObject, deleteObject, deleteObjects,
+    createWorldTerm, updateWorldTerm, deleteWorldTerm, deleteWorldTerms,
   } = useCodexStore();
 
   const [activeTab, setActiveTab] = useState('locations');
@@ -43,6 +43,9 @@ export default function WorldLore() {
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
   const [showBatchGen, setShowBatchGen] = useState(false);
   const [modalTab, setModalTab] = useState('info'); // 'info' | 'timeline'
 
@@ -139,6 +142,57 @@ export default function WorldLore() {
     else if (activeTab === 'objects') await deleteObject(id, pid);
     else await deleteWorldTerm(id, pid);
     setDeleteConfirm(null);
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setBulkDeleteConfirm(false);
+  };
+
+  const toggleSelectionMode = () => {
+    if (selectionMode) {
+      clearSelection();
+      setSelectionMode(false);
+      return;
+    }
+
+    setSelectionMode(true);
+  };
+
+  const toggleItemSelection = (id) => {
+    setBulkDeleteConfirm(false);
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setBulkDeleteConfirm(false);
+    setSelectedIds(new Set(filtered.map((item) => item.id)));
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    const pid = currentProject.id;
+
+    if (activeTab === 'locations') await deleteLocations(ids, pid);
+    else if (activeTab === 'objects') await deleteObjects(ids, pid);
+    else await deleteWorldTerms(ids, pid);
+
+    clearSelection();
+    setSelectionMode(false);
+  };
+
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+    setSearchQuery('');
+    setDeleteConfirm(null);
+    clearSelection();
+    setSelectionMode(false);
   };
 
   if (!currentProject) {
@@ -267,7 +321,7 @@ export default function WorldLore() {
             <button
               key={tab.id}
               className={`codex-tab ${activeTab === tab.id ? 'codex-tab--active' : ''}`}
-              onClick={() => { setActiveTab(tab.id); setSearchQuery(''); }}
+              onClick={() => handleTabChange(tab.id)}
             >
               <tab.icon size={15} /> {tab.label}
               <span className="codex-tab-count">{counts[tab.id]}</span>
@@ -276,8 +330,18 @@ export default function WorldLore() {
         </div>
 
         <div className="codex-header-actions">
-          <button className="btn btn-accent btn-sm" onClick={() => setShowBatchGen(true)}>
-            <Sparkles size={14} /> Tạo hàng loạt
+          {getData().length > 0 && (
+            <button
+              className={`btn btn-ghost btn-sm world-header-action ${selectionMode ? 'world-select-mode-active' : ''}`}
+              onClick={toggleSelectionMode}
+              title={selectionMode ? 'Đóng chế độ chọn' : `Chọn nhiều ${tabLabel.toLowerCase()}`}
+            >
+              <CheckSquare size={14} />
+              <span className="world-action-label">{selectionMode ? 'Đóng chọn' : 'Chọn nhiều'}</span>
+            </button>
+          )}
+          <button className="btn btn-accent btn-sm world-header-action" onClick={() => setShowBatchGen(true)} title={`Tạo hàng loạt ${tabLabel.toLowerCase()}`}>
+            <Sparkles size={14} /> <span className="world-action-label">Tạo hàng loạt</span>
           </button>
           <AIGenerateButton
             entityType={activeTab === 'locations' ? 'location' : activeTab === 'objects' ? 'object' : 'term'}
@@ -294,8 +358,8 @@ export default function WorldLore() {
               setShowModal(true);
             }}
           />
-          <button className="btn btn-primary btn-sm" onClick={openCreate}>
-            <Plus size={15} /> Thêm thủ công
+          <button className="btn btn-primary btn-sm world-header-action" onClick={openCreate} title={`Thêm ${tabLabel.toLowerCase()} thủ công`}>
+            <Plus size={15} /> <span className="world-action-label">Thêm thủ công</span>
           </button>
         </div>
       </div>
@@ -310,6 +374,47 @@ export default function WorldLore() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />
+        </div>
+      )}
+
+      {selectionMode && (
+        <div className="world-bulk-toolbar">
+          <strong>{selectedIds.size} {tabLabel.toLowerCase()} đã chọn</strong>
+          <button className="btn btn-ghost btn-sm bulk-selection-action" onClick={selectAllFiltered}>
+            <CheckSquare size={14} /> Chọn tất cả{searchQuery ? ' kết quả' : ''}
+          </button>
+          <button
+            className="btn btn-ghost btn-sm bulk-selection-action"
+            onClick={clearSelection}
+            disabled={selectedIds.size === 0}
+          >
+            <Square size={14} /> Bỏ chọn
+          </button>
+          {bulkDeleteConfirm ? (
+            <>
+              <span className="world-bulk-warning">
+                Xóa vĩnh viễn {selectedIds.size} {tabLabel.toLowerCase()} đã chọn?
+              </span>
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={handleBulkDelete}
+                disabled={selectedIds.size === 0}
+              >
+                Xóa {selectedIds.size} {tabLabel.toLowerCase()}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setBulkDeleteConfirm(false)}>
+                Hủy
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn btn-danger btn-sm"
+              onClick={() => setBulkDeleteConfirm(true)}
+              disabled={selectedIds.size === 0}
+            >
+              <Trash2 size={14} /> Xóa đã chọn
+            </button>
+          )}
         </div>
       )}
 
@@ -329,44 +434,69 @@ export default function WorldLore() {
         </div>
       ) : (
         <div className="world-list">
-          {filtered.map(item => (
-            <div key={item.id} className="world-card" onClick={() => openEdit(item)}>
-              <div className="world-card-icon">
-                {React.createElement(TABS.find(t => t.id === activeTab)?.icon || Globe, { size: 18 })}
+          {filtered.map(item => {
+            const selected = selectedIds.has(item.id);
+            return (
+              <div
+                key={item.id}
+                className={`world-card ${selectionMode ? 'world-card--selecting' : ''} ${selected ? 'world-card--selected' : ''}`}
+                onClick={() => {
+                  if (selectionMode) {
+                    toggleItemSelection(item.id);
+                    return;
+                  }
+                  openEdit(item);
+                }}
+              >
+                {selectionMode && (
+                  <label className="world-card-select" onClick={e => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleItemSelection(item.id)}
+                      aria-label={`Chọn ${item.name}`}
+                    />
+                  </label>
+                )}
+                <div className="world-card-icon">
+                  {React.createElement(TABS.find(t => t.id === activeTab)?.icon || Globe, { size: 18 })}
+                </div>
+                <div className="world-card-content">
+                  <h4 className="world-card-name">{item.name}</h4>
+                  {activeTab === 'locations' && item.description && (
+                    <p className="world-card-desc">{item.description.substring(0, 120)}{item.description.length > 120 ? '...' : ''}</p>
+                  )}
+                  {activeTab === 'objects' && (
+                    <p className="world-card-desc">
+                      {item.owner_character_id ? `Chủ: ${characters.find(c => c.id === item.owner_character_id)?.name || '—'}` : ''}
+                      {item.description && (item.owner_character_id ? ' — ' : '') + item.description.substring(0, 80)}
+                    </p>
+                  )}
+                  {activeTab === 'terms' && (
+                    <>
+                      <span className="world-card-category">
+                        {WORLD_TERM_CATEGORIES.find(c => c.value === item.category)?.label || item.category}
+                      </span>
+                      {item.definition && <p className="world-card-desc">{item.definition.substring(0, 120)}{item.definition.length > 120 ? '...' : ''}</p>}
+                    </>
+                  )}
+                </div>
+                {!selectionMode && (
+                  <div className="world-card-actions" onClick={e => e.stopPropagation()}>
+                    <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(item)} title="Sửa"><Edit3 size={14} /></button>
+                    {deleteConfirm === item.id ? (
+                      <>
+                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(item.id)}>Xoá</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirm(null)}>Huỷ</button>
+                      </>
+                    ) : (
+                      <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setDeleteConfirm(item.id)} title="Xoá"><Trash2 size={14} /></button>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className="world-card-content">
-                <h4 className="world-card-name">{item.name}</h4>
-                {activeTab === 'locations' && item.description && (
-                  <p className="world-card-desc">{item.description.substring(0, 120)}{item.description.length > 120 ? '...' : ''}</p>
-                )}
-                {activeTab === 'objects' && (
-                  <p className="world-card-desc">
-                    {item.owner_character_id ? `Chủ: ${characters.find(c => c.id === item.owner_character_id)?.name || '—'}` : ''}
-                    {item.description && (item.owner_character_id ? ' — ' : '') + item.description.substring(0, 80)}
-                  </p>
-                )}
-                {activeTab === 'terms' && (
-                  <>
-                    <span className="world-card-category">
-                      {WORLD_TERM_CATEGORIES.find(c => c.value === item.category)?.label || item.category}
-                    </span>
-                    {item.definition && <p className="world-card-desc">{item.definition.substring(0, 120)}{item.definition.length > 120 ? '...' : ''}</p>}
-                  </>
-                )}
-              </div>
-              <div className="world-card-actions" onClick={e => e.stopPropagation()}>
-                <button className="btn btn-ghost btn-icon btn-sm" onClick={() => openEdit(item)} title="Sửa"><Edit3 size={14} /></button>
-                {deleteConfirm === item.id ? (
-                  <>
-                    <button className="btn btn-danger btn-sm" onClick={() => handleDelete(item.id)}>Xoá</button>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirm(null)}>Huỷ</button>
-                  </>
-                ) : (
-                  <button className="btn btn-ghost btn-icon btn-sm" onClick={() => setDeleteConfirm(item.id)} title="Xoá"><Trash2 size={14} /></button>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -404,6 +534,7 @@ export default function WorldLore() {
                   <div className="form-group">
                     <label>Tên *</label>
                     <input
+                      className="input"
                       type="text"
                       value={form.name || ''}
                       onChange={e => setForm({ ...form, name: e.target.value })}
@@ -422,6 +553,7 @@ export default function WorldLore() {
                       <div className="form-group">
                         <label>Mô tả</label>
                         <textarea
+                          className="textarea"
                           value={form.description || ''}
                           onChange={e => setForm({ ...form, description: e.target.value })}
                           placeholder="Tòa thành cổ nằm trên đỉnh núi, bao quanh bởi sương mù..."
@@ -431,6 +563,7 @@ export default function WorldLore() {
                       <div className="form-group">
                         <label>Chi tiết bổ sung</label>
                         <textarea
+                          className="textarea"
                           value={form.details || ''}
                           onChange={e => setForm({ ...form, details: e.target.value })}
                           placeholder="4 tháp canh, cổng chính hướng đông, có mật đạo dưới hầm..."
@@ -446,6 +579,7 @@ export default function WorldLore() {
                       <div className="form-group">
                         <label>Chủ sở hữu</label>
                         <select
+                          className="select"
                           value={form.owner_character_id || ''}
                           onChange={e => setForm({ ...form, owner_character_id: e.target.value ? Number(e.target.value) : null })}
                         >
@@ -458,6 +592,7 @@ export default function WorldLore() {
                       <div className="form-group">
                         <label>Mô tả</label>
                         <textarea
+                          className="textarea"
                           value={form.description || ''}
                           onChange={e => setForm({ ...form, description: e.target.value })}
                           placeholder="Thanh kiếm có lưỡi màu bạc, phát sáng trong bóng tối..."
@@ -467,6 +602,7 @@ export default function WorldLore() {
                       <div className="form-group">
                         <label>Thuộc tính</label>
                         <textarea
+                          className="textarea"
                           value={form.properties || ''}
                           onChange={e => setForm({ ...form, properties: e.target.value })}
                           placeholder="Tăng sức mạnh x2, nhưng tiêu hao sinh lực người dùng..."
@@ -482,6 +618,7 @@ export default function WorldLore() {
                       <div className="form-group">
                         <label>Phân loại</label>
                         <select
+                          className="select"
                           value={form.category || 'other'}
                           onChange={e => setForm({ ...form, category: e.target.value })}
                         >
@@ -493,6 +630,7 @@ export default function WorldLore() {
                       <div className="form-group">
                         <label>Định nghĩa</label>
                         <textarea
+                          className="textarea"
                           value={form.definition || ''}
                           onChange={e => setForm({ ...form, definition: e.target.value })}
                           placeholder="Năng lượng tự nhiên thẩm thấu khắp nơi, tu sĩ hấp thụ để tăng cảnh giới..."

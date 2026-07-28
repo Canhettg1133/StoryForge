@@ -533,9 +533,10 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     .sort((a, b) => String(a.thread_title || '').localeCompare(String(b.thread_title || '')));
 
   const decoratedItemStates = itemStates
+    .filter((itemState) => objectMap.has(itemState.object_id))
     .map((itemState) => ({
       ...itemState,
-      object_name: objectMap.get(itemState.object_id)?.name || `Vật phẩm ${itemState.object_id}`,
+      object_name: objectMap.get(itemState.object_id)?.name || '',
     }))
     .sort((a, b) => String(a.object_name || '').localeCompare(String(b.object_name || '')));
 

@@ -415,6 +415,41 @@ describe('phase10 CharacterHub deletion', () => {
     expect(text).not.toContain('Ha: nguoi tung phan boi hoi dong');
   });
 
+  it('uses accessible compact tabs and auto-resizing fields in the character editor', async () => {
+    codexState.characters = [
+      createCharacter({
+        id: 1,
+        name: 'Lan',
+        appearance: 'Tóc dài',
+        personality: 'Điềm tĩnh',
+      }),
+    ];
+
+    await renderHub();
+
+    const editButton = container.querySelector('.character-card-actions button:first-child');
+    await act(async () => {
+      editButton.click();
+    });
+
+    const tabList = container.querySelector('.character-modal-tabs[role="tablist"]');
+    expect(tabList).not.toBeNull();
+
+    const tabs = Array.from(tabList.querySelectorAll('[role="tab"]'));
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(tabs[1].getAttribute('aria-selected')).toBe('false');
+
+    const textareas = Array.from(
+      container.querySelectorAll('.codex-modal--character textarea.character-form-textarea'),
+    );
+    expect(textareas).toHaveLength(8);
+    textareas.forEach((textarea) => {
+      expect(textarea.classList.contains('auto-resize-textarea')).toBe(true);
+      expect(textarea.rows).toBe(1);
+    });
+  });
+
   it('does not open the character editor when confirming a card deletion', async () => {
     await renderHub();
 

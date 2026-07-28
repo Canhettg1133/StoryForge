@@ -30,6 +30,15 @@ function readCreamTokens() {
   );
 }
 
+function readLightTokens() {
+  const css = fs.readFileSync(path.join(repoRoot, 'src/styles/index.css'), 'utf8');
+  const block = css.match(/\[data-theme="light"\]\s*\{([\s\S]*?)\n\}/u)?.[1] || '';
+  return Object.fromEntries(
+    [...block.matchAll(/(--[\w-]+):\s*([^;]+);/gu)]
+      .map(([, name, value]) => [name, value.trim()]),
+  );
+}
+
 describe('phase10 StoryForge theme system', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -148,6 +157,55 @@ describe('phase10 StoryForge theme system', () => {
     expect(sidebarCss).toMatch(/\.sidebar-theme-popover\s*\{[\s\S]*?position:\s*fixed;/u);
     expect(settings).toContain('<h2>Giao diện</h2>');
     expect(settings).toContain('<ThemePicker variant="settings" />');
+  });
+
+  it('gives the light theme clear neutral surface hierarchy and accessible contrast', () => {
+    const tokens = readLightTokens();
+
+    expect(tokens).toMatchObject({
+      '--color-bg-primary': '#f5f7fb',
+      '--color-bg-sidebar': '#eef1f7',
+      '--color-bg-secondary': '#ffffff',
+      '--color-bg-tertiary': '#edf0f6',
+      '--color-bg-modal': '#ffffff',
+      '--color-bg-editor': '#ffffff',
+      '--color-surface': '#ffffff',
+      '--color-surface-raised': '#f8f9fc',
+      '--color-text-heading': '#171a2b',
+      '--color-text-primary': '#242a3d',
+      '--color-text-secondary': '#4d5870',
+      '--color-text-muted': '#657087',
+      '--color-accent': '#6546c7',
+      '--color-accent-fill': '#6546c7',
+    });
+    expect(contrastRatio(tokens['--color-text-primary'], tokens['--color-bg-secondary'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(tokens['--color-text-secondary'], tokens['--color-bg-primary'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(tokens['--color-text-muted'], tokens['--color-bg-secondary'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(tokens['--color-accent'], tokens['--color-bg-secondary'])).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio('#ffffff', tokens['--color-accent-fill'])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps shared Codex headers, modals, and form grids in globally loaded component styles', () => {
+    const sharedCss = fs.readFileSync(path.join(repoRoot, 'src/styles/components.css'), 'utf8');
+    const characterCss = fs.readFileSync(path.join(repoRoot, 'src/pages/CharacterHub/CharacterHub.css'), 'utf8');
+
+    for (const selector of ['.codex-header', '.codex-modal-overlay', '.codex-modal', '.form-row']) {
+      expect(sharedCss).toContain(selector);
+    }
+    expect(characterCss).not.toMatch(/^\.codex-header\s*\{/mu);
+    expect(characterCss).not.toMatch(/^\.codex-modal\s*\{/mu);
+  });
+
+  it('keeps desktop outline and Codex headers on one adaptive row', () => {
+    const sharedCss = fs.readFileSync(path.join(repoRoot, 'src/styles/components.css'), 'utf8');
+    const outlineCss = fs.readFileSync(path.join(repoRoot, 'src/pages/OutlineBoard/OutlineBoard.css'), 'utf8');
+
+    expect(sharedCss).toMatch(/\.codex-header\s*\{[^}]*flex-wrap:\s*nowrap;/u);
+    expect(sharedCss).toMatch(/\.codex-header-actions\s*\{[^}]*flex-wrap:\s*nowrap;/u);
+    expect(outlineCss).toMatch(/\.outline-header\s*\{[^}]*flex-wrap:\s*nowrap;/u);
+    expect(outlineCss).toMatch(/\.outline-header-actions\s*\{[^}]*flex-wrap:\s*nowrap;/u);
+    expect(outlineCss).toMatch(/\.outline-header \.btn\s*\{[^}]*font-size:\s*clamp\(/u);
+    expect(outlineCss).not.toContain('outline-action-label--compact');
   });
 });
 

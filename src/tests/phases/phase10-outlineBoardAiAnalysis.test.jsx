@@ -139,11 +139,13 @@ describe('phase10 outline board AI analysis safety', () => {
   let root;
   let chapters;
   let updateChapter;
+  let deleteChapter;
   let createPlotThread;
 
   beforeEach(() => {
     chapters = buildChapters();
     updateChapter = vi.fn(async () => {});
+    deleteChapter = vi.fn(async () => {});
     createPlotThread = vi.fn(async () => 99);
     projectState = {
       currentProject: {
@@ -156,6 +158,7 @@ describe('phase10 outline board AI analysis safety', () => {
       scenes: buildScenes(chapters),
       createChapter: vi.fn(async () => ({ chapterId: 999 })),
       updateChapter,
+      deleteChapter,
       setActiveChapter: vi.fn(),
       setActiveScene: vi.fn(),
     };
@@ -389,5 +392,61 @@ describe('phase10 outline board AI analysis safety', () => {
     }));
     expect(updateChapter.mock.calls[0][1]).not.toHaveProperty('title');
     expect(updateChapter.mock.calls[0][1]).not.toHaveProperty('status');
+  });
+
+  it('deletes a chapter and all of its contents from the chapter detail modal after confirmation', async () => {
+    await renderBoard(container, root);
+
+    await act(async () => {
+      const chapterOneCard = Array.from(container.querySelectorAll('.outline-card'))
+        .find((item) => item.querySelector('.outline-card-title')?.textContent.trim() === 'Chương 1');
+      expect(chapterOneCard, 'Không tìm thấy card Chương 1').toBeTruthy();
+      chapterOneCard.click();
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      clickByText(container, 'Xóa chương');
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('.confirm-dialog')?.textContent).toContain('tất cả cảnh và nội dung');
+    await act(async () => {
+      acceptOpenConfirmation(container);
+      await Promise.resolve();
+    });
+
+    expect(deleteChapter).toHaveBeenCalledTimes(1);
+    expect(deleteChapter).toHaveBeenCalledWith(1);
+  });
+
+  it('selects and deletes multiple chapters through one bulk action', async () => {
+    await renderBoard(container, root);
+
+    await act(async () => {
+      clickByText(container, 'Chọn nhiều');
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      container.querySelector('input[aria-label="Chọn Chương 1"]').click();
+      container.querySelector('input[aria-label="Chọn Chương 3"]').click();
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain('2 chương đã chọn');
+
+    await act(async () => {
+      clickByText(container, 'Xóa đã chọn');
+      await Promise.resolve();
+    });
+
+    expect(container.querySelector('.confirm-dialog')?.textContent).toContain('2 chương');
+    await act(async () => {
+      acceptOpenConfirmation(container);
+      await Promise.resolve();
+    });
+
+    expect(deleteChapter.mock.calls.map(([id]) => id)).toEqual([1, 3]);
   });
 });

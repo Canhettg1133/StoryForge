@@ -8,16 +8,27 @@ import React, {
 export function resizeTextareaToContent(textarea) {
   if (!textarea || typeof window === 'undefined') return;
 
+  const placeholder = textarea.getAttribute('placeholder');
+  const ignorePlaceholder = !textarea.value && placeholder !== null;
+  if (ignorePlaceholder) {
+    textarea.removeAttribute('placeholder');
+  }
+
   textarea.style.height = 'auto';
 
   const computed = window.getComputedStyle(textarea);
   const maxHeight = Number.parseFloat(computed.maxHeight);
+  const contentHeight = textarea.scrollHeight;
+  if (ignorePlaceholder) {
+    textarea.setAttribute('placeholder', placeholder);
+  }
+
   const nextHeight = Number.isFinite(maxHeight) && maxHeight > 0
-    ? Math.min(textarea.scrollHeight, maxHeight)
-    : textarea.scrollHeight;
+    ? Math.min(contentHeight, maxHeight)
+    : contentHeight;
 
   textarea.style.height = `${nextHeight}px`;
-  textarea.style.overflowY = Number.isFinite(maxHeight) && textarea.scrollHeight > maxHeight
+  textarea.style.overflowY = Number.isFinite(maxHeight) && contentHeight > maxHeight
     ? 'auto'
     : 'hidden';
 }

@@ -30,8 +30,8 @@ describe('Canon Truth responsive layout', () => {
     expect(jsx.match(/su-that-page__report-message/g)).toHaveLength(2);
     expect(jsx).not.toContain('className="su-that-page__report-row"');
 
-    expect(reportItem).toContain('display: grid;');
-    expect(reportItem).toContain('grid-template-columns: minmax(0, 1fr);');
+    expect(reportItem).toContain('display: flex;');
+    expect(reportItem).toContain('flex-direction: column;');
     expect(reportMessage).toContain('overflow-wrap: break-word;');
     expect(reportMessage).toContain('word-break: normal;');
     expect(reportMeta).toContain('text-overflow: ellipsis;');
@@ -94,24 +94,49 @@ describe('Canon Truth responsive layout', () => {
     expect(listCopy).toContain('word-break: normal;');
   });
 
-  it('gives the evidence viewer enough space on desktop and reflows it responsively', () => {
+  it('keeps state names on the first row instead of squeezing them into vertical text', () => {
+    const css = read('src/pages/CanonTruth/CanonTruth.css');
+    const wideStatePanel = getCssRuleBody(css, '.su-that-page__state-panel--wide');
+    const stateItem = getCssRuleBody(css, '.su-that-page__state-panel .su-that-page__flow-item');
+    const stateTitle = getCssRuleBody(css, '.su-that-page__state-panel .su-that-page__flow-item > div > strong');
+    const stateBadge = getCssRuleBody(css, '.su-that-page__state-panel .su-that-page__flow-item > .bible-canon-badge,\n.su-that-page__state-panel .su-that-page__flow-item > .bible-canon-meta');
+
+    expect(css).toMatch(/\.su-that-page__state-panel\s*\{[^}]*grid-column:\s*span 4;/u);
+    expect(wideStatePanel).toContain('grid-column: span 8;');
+    expect(stateItem).toContain('grid-template-areas:');
+    expect(stateItem).toContain('"title status"');
+    expect(stateItem).toContain('"detail detail"');
+    expect(stateTitle).toContain('grid-area: title;');
+    expect(stateTitle).toContain('word-break: normal;');
+    expect(stateBadge).toContain('grid-area: status;');
+    expect(stateBadge).not.toContain('grid-column: auto;');
+    expect(stateBadge).not.toContain('grid-row: auto;');
+  });
+
+  it('uses equal-height detail panels and collapses an empty evidence viewer to one useful pane', () => {
     const jsx = read('src/pages/CanonTruth/CanonTruth.jsx');
     const css = read('src/pages/CanonTruth/CanonTruth.css');
     const detailGrid = getCssRuleBody(css, '.story-bible.su-that-page .bible-canon-detail-grid');
     const evidencePanel = getCssRuleBody(css, '.su-that-page__detail-panel--evidence');
     const snapshotPanel = getCssRuleBody(css, '.su-that-page__detail-panel--snapshot');
     const evidenceLayout = getCssRuleBody(css, '.su-that-page__detail-panel--evidence .bible-canon-evidence-layout');
+    const emptyEvidenceLayout = getCssRuleBody(css, '.su-that-page__detail-panel--evidence .bible-canon-evidence-layout.is-empty');
 
     expect(jsx).toContain('su-that-page__detail-panel--events');
     expect(jsx).toContain('su-that-page__detail-panel--evidence');
     expect(jsx).toContain('su-that-page__detail-panel--reports');
     expect(jsx).toContain('su-that-page__detail-panel--snapshot');
+    expect(jsx).toContain("revisionDetail.evidence.length === 0 ? ' is-empty' : ''");
     expect(detailGrid).toContain('grid-template-columns: repeat(12, minmax(0, 1fr));');
+    expect(detailGrid).toContain('align-items: stretch;');
     expect(evidencePanel).toContain('grid-column: span 6;');
     expect(snapshotPanel).toContain('grid-column: 1 / -1;');
     expect(evidenceLayout).toContain('minmax(220px, 0.8fr)');
     expect(evidenceLayout).toContain('minmax(320px, 1.2fr)');
+    expect(emptyEvidenceLayout).toContain('grid-template-columns: minmax(0, 1fr);');
+    expect(emptyEvidenceLayout).toContain('min-height: 280px;');
     expect(css).toMatch(/@media \(max-width: 1400px\)[\s\S]*\.su-that-page__detail-panel--evidence[\s\S]*grid-column: span 8;/u);
     expect(css).toMatch(/@media \(max-width: 960px\)[\s\S]*\.su-that-page__detail-panel[\s\S]*grid-row: auto;/u);
+    expect(css).toMatch(/@media \(max-width: 960px\)[\s\S]*\.bible-canon-evidence-layout\.is-empty[\s\S]*min-height: 0;/u);
   });
 });

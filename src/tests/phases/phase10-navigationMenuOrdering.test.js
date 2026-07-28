@@ -85,4 +85,15 @@ describe('phase10 navigation menu ordering', () => {
       expect(itemLine).toContain("surface: 'roadmap'");
     }
   });
+
+  it('keeps long mobile menus scrollable with stable non-overlapping tap targets', () => {
+    const css = read('src/components/mobile/MobileNavigationMenu.css');
+    const listRule = css.match(/\.dashboard-mobile-menu-list\s*\{([^}]*)\}/u)?.[1] || '';
+    const itemRule = css.match(/\.dashboard-mobile-menu-item\s*\{([^}]*)\}/u)?.[1] || '';
+
+    expect(listRule).toMatch(/display:\s*flex;[\s\S]*?flex-direction:\s*column;[\s\S]*?overflow-y:\s*auto;/u);
+    expect(itemRule).toMatch(/min-height:\s*44px;[\s\S]*?height:\s*auto;/u);
+    expect(css).not.toContain('grid-auto-rows: minmax(0, 1fr)');
+    expect(listRule).not.toMatch(/overflow:\s*hidden;/u);
+  });
 });

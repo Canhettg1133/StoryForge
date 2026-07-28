@@ -12,7 +12,7 @@ import usePlotStore from '../../stores/plotStore';
 import db from '../../services/db/database';
 import {
   X, Save, PenTool, Target, Zap, Users, MapPin, FileText,
-  ChevronDown, ChevronRight, Heart, Clock, Shield, Combine, Trash2
+  ChevronDown, ChevronRight, Heart, Clock, Shield, Combine, Trash2, Loader2
 } from 'lucide-react';
 import { SCENE_STATUSES } from '../../utils/constants';
 import { buildClearOutlinePatch } from './outlineMetadata';
@@ -33,6 +33,8 @@ export default function ChapterDetailModal({
   locations = [],
   onClose,
   onGoEditor,
+  onDelete,
+  deleting = false,
 }) {
   const confirmAction = useConfirmDialog();
   const { updateChapter, updateScene } = useProjectStore();
@@ -177,7 +179,7 @@ export default function ChapterDetailModal({
     <div className="codex-modal-overlay" onClick={onClose}>
       <div
         ref={dialogRef}
-        className="codex-modal codex-modal--lg"
+        className="codex-modal codex-modal--lg chapter-detail-modal"
         role="dialog"
         aria-modal="true"
         aria-label={`Chi tiết ${chapter?.title || 'chương'}`}
@@ -204,6 +206,7 @@ export default function ChapterDetailModal({
               <div className="form-group form-group--wide">
                 <label>Tên chương</label>
                 <input
+                  className="input"
                   type="text"
                   value={chForm.title}
                   onChange={e => setChForm({ ...chForm, title: e.target.value })}
@@ -212,6 +215,7 @@ export default function ChapterDetailModal({
               <div className="form-group">
                 <label>Hồi (Act)</label>
                 <select
+                  className="select"
                   value={chForm.arc_id || ''}
                   onChange={e => setChForm({ ...chForm, arc_id: e.target.value ? Number(e.target.value) : null })}
                 >
@@ -226,6 +230,7 @@ export default function ChapterDetailModal({
               <div className="form-group">
                 <label><Target size={13} /> Mục tiêu chương</label>
                 <textarea
+                  className="textarea"
                   value={chForm.purpose}
                   onChange={e => setChForm({ ...chForm, purpose: e.target.value })}
                   placeholder="Chương này phục vụ cốt truyện bằng cách nào?"
@@ -234,7 +239,7 @@ export default function ChapterDetailModal({
               </div>
               <div className="form-group">
                 <label>Trạng thái</label>
-                <select value={chForm.status} onChange={e => setChForm({ ...chForm, status: e.target.value })}>
+                <select className="select" value={chForm.status} onChange={e => setChForm({ ...chForm, status: e.target.value })}>
                   {SCENE_STATUSES.map(s => (
                     <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
@@ -245,6 +250,7 @@ export default function ChapterDetailModal({
             <div className="form-group">
               <label>Tóm tắt nội dung</label>
               <textarea
+                className="textarea"
                 value={chForm.summary}
                 onChange={e => setChForm({ ...chForm, summary: e.target.value })}
                 placeholder="Tóm tắt những gì xảy ra trong chương này..."
@@ -273,6 +279,7 @@ export default function ChapterDetailModal({
                     <div className="form-group">
                       <label>Tên cảnh</label>
                       <input
+                        className="input"
                         type="text"
                         value={sf.title}
                         onChange={e => updateSceneForm(sf.id, 'title', e.target.value)}
@@ -282,6 +289,7 @@ export default function ChapterDetailModal({
                       <div className="form-group">
                         <label><Target size={12} /> Mục tiêu cảnh</label>
                         <textarea
+                          className="textarea"
                           value={sf.goal}
                           onChange={e => updateSceneForm(sf.id, 'goal', e.target.value)}
                           placeholder="Mục tiêu: đạt được gì trong cảnh này?"
@@ -291,6 +299,7 @@ export default function ChapterDetailModal({
                       <div className="form-group">
                         <label><Zap size={12} /> Xung đột</label>
                         <textarea
+                          className="textarea"
                           value={sf.conflict}
                           onChange={e => updateSceneForm(sf.id, 'conflict', e.target.value)}
                           placeholder="Xung đột chính trong cảnh"
@@ -302,6 +311,7 @@ export default function ChapterDetailModal({
                       <div className="form-group">
                         <label><Users size={12} /> Nhân vật POV</label>
                         <select
+                          className="select"
                           value={sf.pov_character_id || ''}
                           onChange={e => updateSceneForm(sf.id, 'pov_character_id', e.target.value ? Number(e.target.value) : null)}
                         >
@@ -314,6 +324,7 @@ export default function ChapterDetailModal({
                       <div className="form-group">
                         <label><MapPin size={12} /> Địa điểm</label>
                         <select
+                          className="select"
                           value={sf.location_id || ''}
                           onChange={e => updateSceneForm(sf.id, 'location_id', e.target.value ? Number(e.target.value) : null)}
                         >
@@ -347,6 +358,7 @@ export default function ChapterDetailModal({
                             <div className="form-group">
                               <label><Heart size={12} /> Cảm xúc đầu cảnh</label>
                               <input
+                                className="input"
                                 type="text"
                                 value={sf.emotional_start}
                                 onChange={e => updateSceneForm(sf.id, 'emotional_start', e.target.value)}
@@ -356,6 +368,7 @@ export default function ChapterDetailModal({
                             <div className="form-group">
                               <label><Heart size={12} /> Cảm xúc cuối cảnh</label>
                               <input
+                                className="input"
                                 type="text"
                                 value={sf.emotional_end}
                                 onChange={e => updateSceneForm(sf.id, 'emotional_end', e.target.value)}
@@ -368,6 +381,7 @@ export default function ChapterDetailModal({
                           <div className="form-group">
                             <label><Clock size={12} /> Nhịp cảnh</label>
                             <select
+                              className="select"
                               value={sf.pacing}
                               onChange={e => updateSceneForm(sf.id, 'pacing', e.target.value)}
                             >
@@ -395,6 +409,7 @@ export default function ChapterDetailModal({
                             </div>
                             <div className="tag-input-row">
                               <input
+                                className="input"
                                 type="text"
                                 value={sf.must_happen_input || ''}
                                 onChange={e => updateSceneForm(sf.id, 'must_happen_input', e.target.value)}
@@ -427,6 +442,7 @@ export default function ChapterDetailModal({
                             </div>
                             <div className="tag-input-row">
                               <input
+                                className="input"
                                 type="text"
                                 value={sf.must_not_happen_input || ''}
                                 onChange={e => updateSceneForm(sf.id, 'must_not_happen_input', e.target.value)}
@@ -462,6 +478,7 @@ export default function ChapterDetailModal({
                               })}
                             </div>
                             <select
+                              className="select"
                               value=""
                               onChange={e => {
                                 const id = Number(e.target.value);
@@ -498,6 +515,7 @@ export default function ChapterDetailModal({
                               })}
                             </div>
                             <select
+                              className="select"
                               value=""
                               onChange={e => {
                                 const id = Number(e.target.value);
@@ -523,14 +541,22 @@ export default function ChapterDetailModal({
         </div>
 
         {/* Footer */}
-        <div className="codex-modal-footer">
-          <button className="btn btn-ghost" onClick={handleClearChapterOutline}>
-            <Trash2 size={15} /> Xóa dàn ý chương này
-          </button>
-          <button className="btn btn-ghost" onClick={onClose}>Huỷ</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-            <Save size={15} /> {saving ? 'Đang lưu...' : 'Lưu tất cả'}
-          </button>
+        <div className="codex-modal-footer chapter-detail-footer">
+          <div className="chapter-detail-footer__danger">
+            <button className="btn btn-ghost" onClick={handleClearChapterOutline} disabled={saving || deleting}>
+              Xóa dàn ý chương này
+            </button>
+            <button className="btn btn-danger" onClick={onDelete} disabled={saving || deleting}>
+              {deleting ? <Loader2 size={15} className="spin" /> : <Trash2 size={15} />}
+              {deleting ? 'Đang xóa...' : 'Xóa chương'}
+            </button>
+          </div>
+          <div className="chapter-detail-footer__primary">
+            <button className="btn btn-ghost" onClick={onClose} disabled={saving || deleting}>Huỷ</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving || deleting}>
+              <Save size={15} /> {saving ? 'Đang lưu...' : 'Lưu tất cả'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -228,7 +228,10 @@ async function loadModules(seed, options = {}) {
   }));
   const engine = await import('../../services/canon/engine');
   const exportImport = await import('../../services/db/exportImport');
-  return { db, engine, exportImport, sendMock };
+  const codexStore = options.includeCodexStore
+    ? (await import('../../stores/codexStore')).default
+    : null;
+  return { db, engine, exportImport, sendMock, codexStore };
 }
 
 describe('phase10 canon integration', () => {
@@ -1644,5 +1647,151 @@ describe('phase10 canon integration', () => {
     expect(overview.chapterCommits[0].status).toBe('canonical');
     expect(storedReports.some((report) => report.id === 71)).toBe(false);
     expect(storedReports.some((report) => report.id === 72)).toBe(true);
+  });
+
+  it('removes deleted objects from current truth and never resurrects them from canon history', async () => {
+    const { db, engine, codexStore } = await loadModules({
+      projects: [{ id: 1, title: 'Object deletion consistency' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [],
+      characters: [],
+      locations: [],
+      objects: [
+        { id: 30, project_id: 1, name: 'Ngoc boi' },
+        { id: 31, project_id: 1, name: 'Kiem co' },
+      ],
+      worldTerms: [],
+      factions: [],
+      taboos: [],
+      canonFacts: [],
+      chapterMeta: [],
+      plotThreads: [],
+      relationships: [],
+      chapter_revisions: [{ id: 101, project_id: 1, chapter_id: 11, status: 'canonical' }],
+      chapter_commits: [{
+        id: 201,
+        project_id: 1,
+        chapter_id: 11,
+        current_revision_id: 101,
+        canonical_revision_id: 101,
+        status: 'canonical',
+      }],
+      story_events: [{
+        id: 301,
+        project_id: 1,
+        chapter_id: 11,
+        revision_id: 101,
+        op_type: 'OBJECT_TRANSFERRED',
+        object_id: 30,
+        target_id: null,
+        payload: { status_summary: 'Da chuyen giao' },
+        summary: 'Chuyen vat',
+        status: 'committed',
+        created_at: 1,
+      }],
+      validator_reports: [],
+      memory_evidence: [],
+      chapter_snapshots: [],
+      entity_state_current: [],
+      plot_thread_state: [],
+      item_state_current: [
+        { id: 401, project_id: 1, object_id: 30, availability: 'available' },
+        { id: 402, project_id: 1, object_id: 31, availability: 'available' },
+        { id: 403, project_id: 1, object_id: 999, availability: 'available' },
+      ],
+      relationship_state_current: [],
+    }, { includeCodexStore: true });
+
+    const beforeDelete = await engine.getProjectCanonOverview(1);
+    expect(beforeDelete.itemStates.map((item) => item.object_id)).toEqual([31, 30]);
+    expect(beforeDelete.stats.item_count).toBe(2);
+
+    await codexStore.getState().deleteObjects([30, 31], 1);
+
+    expect(await db.objects.toArray()).toEqual([]);
+    expect((await db.item_state_current.toArray()).map((item) => item.object_id)).toEqual([999]);
+
+    const rebuilt = await engine.rebuildCanonFromChapter(1);
+    expect(rebuilt.itemStates).toEqual([]);
+
+    const afterDelete = await engine.getProjectCanonOverview(1);
+    expect(afterDelete.itemStates).toEqual([]);
+    expect(afterDelete.stats.item_count).toBe(0);
+  });
+
+  it('clears live references when deleting a location', async () => {
+    const { db, engine, codexStore } = await loadModules({
+      projects: [{ id: 1, title: 'Location deletion consistency' }],
+      chapters: [{ id: 10, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 11, project_id: 1, chapter_id: 10, location_id: 50 }],
+      characters: [{ id: 20, project_id: 1, name: 'Lan' }],
+      locations: [
+        { id: 50, project_id: 1, name: 'Thanh co', parent_location_id: null },
+        { id: 51, project_id: 1, name: 'Cong thanh', parent_location_id: 50 },
+      ],
+      objects: [{ id: 30, project_id: 1, name: 'Ngoc boi' }],
+      worldTerms: [],
+      factions: [],
+      taboos: [],
+      canonFacts: [],
+      chapterMeta: [],
+      plotThreads: [],
+      relationships: [],
+      chapter_revisions: [{ id: 101, project_id: 1, chapter_id: 10, status: 'canonical' }],
+      chapter_commits: [{
+        id: 201,
+        project_id: 1,
+        chapter_id: 10,
+        current_revision_id: 101,
+        canonical_revision_id: 101,
+        status: 'canonical',
+      }],
+      story_events: [{
+        id: 401,
+        project_id: 1,
+        chapter_id: 10,
+        revision_id: 101,
+        op_type: 'CHARACTER_LOCATION_CHANGED',
+        subject_id: 20,
+        location_id: 50,
+        location_name: 'Thanh co',
+        payload: {},
+        status: 'committed',
+        created_at: 1,
+      }],
+      entity_state_current: [{
+        id: 201,
+        project_id: 1,
+        entity_id: 20,
+        current_location_id: 50,
+        current_location_name: 'Thanh co',
+      }],
+      item_state_current: [{
+        id: 301,
+        project_id: 1,
+        object_id: 30,
+        current_location_id: 50,
+        current_location_name: 'Thanh co',
+      }],
+    }, { includeCodexStore: true });
+
+    await codexStore.getState().deleteLocations([50], 1);
+
+    expect((await db.locations.get(51)).parent_location_id).toBeNull();
+    expect((await db.scenes.get(11)).location_id).toBeNull();
+    expect((await db.entity_state_current.get(201))).toMatchObject({
+      current_location_id: null,
+      current_location_name: '',
+    });
+    expect((await db.item_state_current.get(301))).toMatchObject({
+      current_location_id: null,
+      current_location_name: '',
+    });
+
+    const rebuilt = await engine.rebuildCanonFromChapter(1);
+    expect(rebuilt.entityStates[0]).toMatchObject({
+      current_location_id: null,
+      current_location_name: '',
+    });
   });
 });

@@ -1,5 +1,12 @@
 .style-importer-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
   max-width: 1180px;
+}
+
+.style-importer-page > .settings-header {
+  margin-bottom: var(--space-3);
 }
 
 .style-importer-header {

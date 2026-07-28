@@ -21,9 +21,32 @@ function buildStateMaps(entityStates, threadStates) {
   return { entityMap, threadMap };
 }
 
-function toEntityStateRecords(projectId, entityMap) {
-  return Array.from(entityMap.values()).map((state) => ({
+function sanitizeLocationReference(state, validLocationIds) {
+  if (
+    !state.current_location_id
+    || validLocationIds.has(String(state.current_location_id))
+  ) {
+    return state;
+  }
+
+  return {
     ...state,
+    current_location_id: null,
+    current_location_name: '',
+  };
+}
+
+function toEntityStateRecords(projectId, entityMap, validLocationIds) {
+  return Array.from(entityMap.values()).map((state) => ({
+    ...sanitizeLocationReference(state, validLocationIds),
+    project_id: projectId,
+    updated_at: Date.now(),
+  }));
+}
+
+function toItemStateRecords(projectId, itemMap, validLocationIds) {
+  return Array.from(itemMap.values()).map((state) => ({
+    ...sanitizeLocationReference(state, validLocationIds),
     project_id: projectId,
     updated_at: Date.now(),
   }));
@@ -241,7 +264,9 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null, optio
   const baseThreads = await db.plotThreads.where('project_id').equals(projectId).toArray();
   const baseFacts = await db.canonFacts.where('project_id').equals(projectId).toArray();
   const baseObjects = await db.objects.where('project_id').equals(projectId).toArray();
+  const baseLocations = await db.locations.where('project_id').equals(projectId).toArray();
   const baseRelationships = await db.relationships.where('project_id').equals(projectId).toArray();
+  const validLocationIds = new Set(baseLocations.map((location) => String(location.id)));
   const { entityMap, threadMap } = buildStateMaps(
     baseCharacters.map((character) => createInitialEntityState(character)),
     baseThreads.map((thread) => createInitialThreadState(thread))
@@ -288,9 +313,8 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null, optio
             || createInitialThreadState({ id: event.thread_id, project_id: projectId });
           threadMap.set(event.thread_id, applyEventToThreadState(currentThread, event));
         }
-        if (event.object_id) {
-          const currentItem = itemMap.get(event.object_id)
-            || createInitialItemState({ id: event.object_id, project_id: projectId });
+        if (event.object_id && itemMap.has(event.object_id)) {
+          const currentItem = itemMap.get(event.object_id);
           itemMap.set(event.object_id, applyEventToItemState(currentItem, event));
         }
         if (event.subject_id && event.target_id && [
@@ -312,17 +336,17 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null, optio
       });
 
     await writeSnapshot(projectId, chapter.id, commit.canonical_revision_id, {
-      entityStates: toEntityStateRecords(projectId, entityMap),
+      entityStates: toEntityStateRecords(projectId, entityMap, validLocationIds),
       threadStates: toThreadStateRecords(projectId, threadMap),
       factStates,
-      itemStates: Array.from(itemMap.values()).map((state) => ({ ...state, project_id: projectId, updated_at: Date.now() })),
+      itemStates: toItemStateRecords(projectId, itemMap, validLocationIds),
       relationshipStates: Array.from(relationshipMap.values()).map((state) => ({ ...state, project_id: projectId, updated_at: Date.now() })),
     });
   }
 
-  const finalEntityStates = toEntityStateRecords(projectId, entityMap);
+  const finalEntityStates = toEntityStateRecords(projectId, entityMap, validLocationIds);
   const finalThreadStates = toThreadStateRecords(projectId, threadMap);
-  const finalItemStates = Array.from(itemMap.values()).map((state) => ({ ...state, project_id: projectId, updated_at: Date.now() }));
+  const finalItemStates = toItemStateRecords(projectId, itemMap, validLocationIds);
   const finalRelationshipStates = Array.from(relationshipMap.values()).map((state) => ({ ...state, project_id: projectId, updated_at: Date.now() }));
   if (finalEntityStates.length > 0) {
     await db.entity_state_current.bulkPut(finalEntityStates);

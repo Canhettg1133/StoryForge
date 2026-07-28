@@ -170,41 +170,50 @@
 /* --- Light Theme --- */
 [data-theme="light"] {
   color-scheme: light;
-  --color-bg-primary: #f8fafc;
+  --color-bg-primary: #f5f7fb;
   --color-bg-secondary: #ffffff;
-  --color-bg-tertiary: #f1f5f9;
+  --color-bg-tertiary: #edf0f6;
   --color-bg-elevated: #ffffff;
-  --color-bg-hover: #f1f5f9;
-  --color-bg-active: #e2e8f0;
-  --color-bg-sidebar: var(--color-bg-secondary);
-  --color-bg-modal: var(--color-bg-elevated);
-  --color-bg-editor: transparent;
+  --color-bg-hover: #e9edf5;
+  --color-bg-active: #dfe4ef;
+  --color-bg-sidebar: #eef1f7;
+  --color-bg-modal: #ffffff;
+  --color-bg-editor: #ffffff;
   --color-bg: var(--color-bg-primary);
 
-  --color-glass: rgba(255, 255, 255, 0.78);
-  --color-glass-border: rgba(0, 0, 0, 0.06);
-  --color-glass-hover: rgba(241, 245, 249, 0.9);
+  --color-glass: rgba(255, 255, 255, 0.9);
+  --color-glass-border: rgba(35, 42, 61, 0.09);
+  --color-glass-hover: rgba(248, 249, 252, 0.96);
 
   --color-surface: #ffffff;
-  --color-surface-raised: #f8fafc;
-  --color-surface-overlay: rgba(248, 250, 252, 0.95);
+  --color-surface-raised: #f8f9fc;
+  --color-surface-overlay: rgba(245, 247, 251, 0.96);
   --color-surface-1: var(--color-surface);
   --color-surface-2: var(--color-surface-raised);
   --color-surface-3: var(--color-bg-tertiary);
 
-  --color-text-primary: #0f172a;
-  --color-text-heading: var(--color-text-primary);
-  --color-text-secondary: #475569;
-  --color-text-tertiary: #64748b;
-  --color-text-muted: #59677a;
+  --color-text-primary: #242a3d;
+  --color-text-heading: #171a2b;
+  --color-text-secondary: #4d5870;
+  --color-text-tertiary: #5c6880;
+  --color-text-muted: #657087;
 
-  --color-border: rgba(0, 0, 0, 0.08);
-  --color-border-strong: rgba(0, 0, 0, 0.14);
+  --color-accent: #6546c7;
+  --color-accent-fill: #6546c7;
+  --color-primary: var(--color-accent-fill);
+  --color-accent-rgb: 101, 70, 199;
+  --color-accent-hover: #5638b5;
+  --color-accent-muted: rgba(101, 70, 199, 0.12);
+  --color-accent-glow: rgba(101, 70, 199, 0.2);
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.1);
-  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.12);
+  --color-border: rgba(35, 42, 61, 0.11);
+  --color-border-strong: rgba(35, 42, 61, 0.19);
+  --color-border-accent: rgba(101, 70, 199, 0.34);
+
+  --shadow-sm: 0 1px 2px rgba(35, 42, 61, 0.06);
+  --shadow-md: 0 4px 12px rgba(35, 42, 61, 0.08);
+  --shadow-lg: 0 8px 24px rgba(35, 42, 61, 0.1);
+  --shadow-xl: 0 16px 48px rgba(35, 42, 61, 0.12);
 }
 
 /* --- Cream Paper Theme --- */

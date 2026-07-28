@@ -15,6 +15,7 @@ import {
   CHARACTER_ROLES, PRONOUN_PRESETS, GENRE_PRONOUN_MAP,
 } from '../../utils/constants';
 import AIGenerateButton from '../../components/common/AIGenerateButton';
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
 import BatchGenerate from '../../components/common/BatchGenerate';
 import RelationshipMap from '../../components/common/RelationshipMap';
 import EntityTimeline from '../../components/common/EntityTimeline';
@@ -601,14 +602,24 @@ export default function CharacterHub() {
             </div>
 
             {editingChar && (
-              <div className="codex-tabs" style={{ padding: '0 24px', borderBottom: '1px solid var(--color-border)' }}>
+              <div className="codex-tabs character-modal-tabs" role="tablist" aria-label="Nội dung nhân vật">
                 <button
+                  id="character-info-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="character-modal-panel"
+                  aria-selected={modalTab === 'info'}
                   className={`codex-tab ${modalTab === 'info' ? 'codex-tab--active' : ''}`}
                   onClick={() => setModalTab('info')}
                 >
                   Thông tin
                 </button>
                 <button
+                  id="character-timeline-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="character-modal-panel"
+                  aria-selected={modalTab === 'timeline'}
                   className={`codex-tab ${modalTab === 'timeline' ? 'codex-tab--active' : ''}`}
                   onClick={() => setModalTab('timeline')}
                 >
@@ -617,7 +628,12 @@ export default function CharacterHub() {
               </div>
             )}
 
-            <div className="codex-modal-body">
+            <div
+              id="character-modal-panel"
+              className="codex-modal-body"
+              role={editingChar ? 'tabpanel' : undefined}
+              aria-labelledby={editingChar ? `character-${modalTab}-tab` : undefined}
+            >
               {modalTab === 'info' ? (
                 <>
                   <div className="form-row">
@@ -727,21 +743,23 @@ export default function CharacterHub() {
 
                   <div className="form-group">
                     <label>Ngoại hình</label>
-                    <textarea
+                    <AutoResizeTextarea
+                      className="character-form-textarea"
                       value={form.appearance}
                       onChange={e => setForm({ ...form, appearance: e.target.value })}
                       placeholder="Cao, tóc dài, mặc áo xanh đậm, vết sẹo trên mặt trái..."
-                      rows={2}
+                      rows={1}
                     />
                   </div>
 
                   <div className="form-group">
                     <label>Tính cách</label>
-                    <textarea
+                    <AutoResizeTextarea
+                      className="character-form-textarea"
                       value={form.personality}
                       onChange={e => setForm({ ...form, personality: e.target.value })}
                       placeholder="Trầm tĩnh, lạnh lùng bên ngoài nhưng bảo vệ người thân..."
-                      rows={2}
+                      rows={1}
                     />
                     <span className="form-hint">Mô tả 1–3 câu về cách nhân vật suy nghĩ và phản ứng; dùng tag bên dưới để khóa các nét cốt lõi.</span>
                   </div>
@@ -753,62 +771,68 @@ export default function CharacterHub() {
 
                   <div className="form-group">
                     <label>Điểm yếu / Khuyết điểm</label>
-                    <textarea
+                    <AutoResizeTextarea
+                      className="character-form-textarea"
                       value={form.flaws}
                       onChange={e => setForm({ ...form, flaws: e.target.value })}
                       placeholder="Ví dụ: Nóng vội, quá tự tin, sợ bị bỏ rơi, dễ mất bình tĩnh khi bị nghi ngờ..."
-                      rows={2}
+                      rows={1}
                     />
                   </div>
 
                   <div className="form-group">
                     <label>🗣️ Giọng nói / Khẩu ngữ</label>
-                    <textarea
+                    <AutoResizeTextarea
+                      className="character-form-textarea"
                       value={form.speech_pattern}
                       onChange={e => setForm({ ...form, speech_pattern: e.target.value })}
                       placeholder={'Ví dụ: Nói chậm rãi, hay dùng "hừm...", gọi mọi người là "tiểu tử".\nKhi tức giận chuyển sang giọng lạnh, cắt ngắn câu.\nKhẩu ngữ: "Ngươi... thật sự muốn chết sao?"'}
-                      rows={3}
+                      rows={1}
                     />
                   </div>
 
                   <div className="form-row">
                     <div className="form-group">
                       <label>Mục tiêu</label>
-                      <textarea
+                      <AutoResizeTextarea
+                        className="character-form-textarea"
                         value={form.goals}
                         onChange={e => setForm({ ...form, goals: e.target.value })}
                         placeholder="Tìm lại sư phụ, khôi phục môn phái..."
-                        rows={2}
+                        rows={1}
                       />
                     </div>
                     <div className="form-group">
                       <label>Trạng thái hiện tại / ràng buộc canon đang hiệu lực</label>
-                      <textarea
+                      <AutoResizeTextarea
+                        className="character-form-textarea"
                         value={form.current_status}
                         onChange={e => setForm({ ...form, current_status: e.target.value })}
                         placeholder="Ví dụ: Đang sống dưới danh phận góa phụ trong nhà chồng; tránh điều tiếng, không dễ tin người lạ. Chưa biết chồng từng để lại thư mật. Tay trái còn đau sau trận trước."
-                        rows={2}
+                        rows={1}
                       />
                     </div>
                   </div>
 
                   <div className="form-group">
                     <label>Bí mật</label>
-                    <textarea
+                    <AutoResizeTextarea
+                      className="character-form-textarea"
                       value={form.secrets}
                       onChange={e => setForm({ ...form, secrets: e.target.value })}
                       placeholder="Thực ra là con trai bị thất lạc của..."
-                      rows={2}
+                      rows={1}
                     />
                   </div>
 
                   <div className="form-group">
                     <label>Ghi chú</label>
-                    <textarea
+                    <AutoResizeTextarea
+                      className="character-form-textarea"
                       value={form.notes}
                       onChange={e => setForm({ ...form, notes: e.target.value })}
                       placeholder="Ghi chú riêng..."
-                      rows={2}
+                      rows={1}
                     />
                   </div>
                 </>

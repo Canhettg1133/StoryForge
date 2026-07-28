@@ -18,7 +18,7 @@ import {
   Map, Plus, Sparkles, Loader2, FileText,
   Users, MapPin, Target, Zap, PenTool, LayoutGrid, List,
   CheckCircle2, GitPullRequest, Combine, X, ArrowRight,
-  AlertTriangle, Trash2
+  AlertTriangle, Trash2, CheckSquare, Square
 } from 'lucide-react';
 import { SCENE_STATUSES } from '../../utils/constants';
 import aiService from '../../services/ai/client';
@@ -225,7 +225,7 @@ export default function OutlineBoard() {
   const navigate = useNavigate();
   const {
     currentProject, chapters, scenes,
-    createChapter, updateChapter,
+    createChapter, updateChapter, deleteChapter,
     setActiveChapter, setActiveScene,
   } = useProjectStore();
   const { characters, locations, loadCodex } = useCodexStore();
@@ -240,6 +240,9 @@ export default function OutlineBoard() {
   const [genError, setGenError] = useState(null);
   const [outlineAnalysisPreview, setOutlineAnalysisPreview] = useState(null);
   const [chapterNotice, setChapterNotice] = useState('');
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedChapterIds, setSelectedChapterIds] = useState(() => new Set());
+  const [isDeletingChapters, setIsDeletingChapters] = useState(false);
 
   // Plot Threads modal state
   const [showPlotModal, setShowPlotModal] = useState(false);
@@ -543,6 +546,63 @@ export default function OutlineBoard() {
     }
   };
 
+  const clearChapterSelection = () => {
+    setSelectedChapterIds(new Set());
+  };
+
+  const toggleChapterSelectionMode = () => {
+    if (selectionMode) {
+      clearChapterSelection();
+      setSelectionMode(false);
+      return;
+    }
+    if (isMobileLayout) setMobileTab('chapters');
+    setSelectionMode(true);
+  };
+
+  const toggleChapterSelection = (chapterId) => {
+    setSelectedChapterIds((current) => {
+      const next = new Set(current);
+      if (next.has(chapterId)) next.delete(chapterId);
+      else next.add(chapterId);
+      return next;
+    });
+  };
+
+  const handleDeleteChapters = async (chapterIds) => {
+    const ids = [...new Set(chapterIds)].filter((id) => chapters.some((chapter) => chapter.id === id));
+    if (ids.length === 0 || isDeletingChapters) return false;
+
+    const confirmed = await confirmAction({
+      title: ids.length === 1 ? 'Xóa chương?' : `Xóa ${ids.length} chương?`,
+      message: ids.length === 1
+        ? 'Chương này, tất cả cảnh và nội dung bên trong sẽ bị xóa vĩnh viễn.'
+        : `${ids.length} chương, tất cả cảnh và nội dung bên trong sẽ bị xóa vĩnh viễn.`,
+      confirmLabel: ids.length === 1 ? 'Xóa chương' : `Xóa ${ids.length} chương`,
+      danger: true,
+    });
+    if (!confirmed) return false;
+
+    setIsDeletingChapters(true);
+    setGenError(null);
+    try {
+      for (const id of ids) {
+        await deleteChapter(id);
+      }
+      setSelectedChapter((current) => (current && ids.includes(current.id) ? null : current));
+      setSelectedChapterIds(new Set());
+      setSelectionMode(false);
+      setChapterNotice(ids.length === 1 ? 'Đã xóa chương.' : `Đã xóa ${ids.length} chương.`);
+      return true;
+    } catch (err) {
+      console.error('[OutlineBoard] Delete chapters failed:', err);
+      setGenError(toVietnameseErrorMessage(err, 'Không xóa được chương.'));
+      return false;
+    } finally {
+      setIsDeletingChapters(false);
+    }
+  };
+
   // AI Suggest Threads - nhan hint tuy chon tu tac gia
   const handleSuggestThreads = async () => {
     if (!currentProject || isSuggesting) return;
@@ -781,14 +841,31 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
     const sceneCount = sceneCountMap[chapter.id] || 0;
     const wordCount = wordCountMap[chapter.id] || 0;
     const isDone = chapter.status === 'done';
+    const isSelected = selectedChapterIds.has(chapter.id);
 
     return (
       <div
         key={chapter.id}
-        className={`outline-card ${isDone ? 'outline-card--done' : ''}`}
-        onClick={() => setSelectedChapter(chapter)}
+        className={`outline-card ${isDone ? 'outline-card--done' : ''} ${selectionMode ? 'outline-card--selecting' : ''} ${isSelected ? 'outline-card--selected' : ''}`}
+        onClick={() => {
+          if (selectionMode) {
+            toggleChapterSelection(chapter.id);
+            return;
+          }
+          setSelectedChapter(chapter);
+        }}
       >
         <div className="outline-card-header">
+          {selectionMode && (
+            <label className="outline-card-select" onClick={e => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={() => toggleChapterSelection(chapter.id)}
+                aria-label={`Chọn ${chapter.title}`}
+              />
+            </label>
+          )}
           <span className="outline-card-title">
             {isDone && <CheckCircle2 size={13} className="outline-card-done-icon" />}
             {chapter.title}
@@ -823,7 +900,7 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
           )}
         </div>
 
-        <div className="outline-card-actions" onClick={e => e.stopPropagation()}>
+        {!selectionMode && <div className="outline-card-actions" onClick={e => e.stopPropagation()}>
           <button className="btn btn-ghost btn-sm" onClick={() => goToEditor(chapter.id)} title="Mở editor">
             <PenTool size={12} /> Viết
           </button>
@@ -835,7 +912,7 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
           >
             <Trash2 size={12} /> Xóa dàn ý
           </button>
-        </div>
+        </div>}
       </div>
     );
   };
@@ -879,33 +956,53 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
 
           <div className="outline-action-group">
             <button
-              className="btn btn-accent btn-sm"
+              className="btn btn-accent btn-sm outline-header-button"
               style={{ backgroundImage: 'linear-gradient(135deg, var(--color-accent-hover), var(--color-accent))', color: '#fff' }}
               onClick={() => setShowArcGen(true)}
+              title="Tạo chương tự động"
+              aria-label="Tạo chương tự động"
             >
-              <Sparkles size={14} /> Tạo chương tự động
+              <Sparkles size={14} /> <span className="outline-action-label">Tạo chương tự động</span>
             </button>
 
             <button
-              className="btn btn-accent btn-sm"
+              className="btn btn-accent btn-sm outline-header-button"
               onClick={handleAIOutline}
               disabled={isGenerating}
+              title={chapters.length > 0 ? 'AI Phân tích' : 'AI Outline'}
+              aria-label={chapters.length > 0 ? 'AI Phân tích' : 'AI Outline'}
             >
               {isGenerating ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />}
-              {chapters.length > 0 ? 'AI Phân tích' : 'AI Outline'}
+              <span className="outline-action-label">
+                {chapters.length > 0 ? 'AI Phân tích' : 'AI Outline'}
+              </span>
             </button>
 
             {chapters.length > 0 && (
               <button
-                className="btn btn-ghost btn-sm outline-clear-btn outline-clear-all-btn"
+                className="btn btn-ghost btn-sm outline-clear-btn outline-clear-all-btn outline-header-button"
                 onClick={handleClearAllOutlineMetadata}
                 disabled={isGenerating || isApplyingAnalysis}
                 title="Xóa metadata dàn ý AI của tất cả chương, không xóa nội dung đã viết"
               >
-                <Trash2 size={14} /> Xóa toàn bộ dàn ý AI
+                <Trash2 size={14} /> <span className="outline-action-label">Xóa toàn bộ dàn ý AI</span>
               </button>
             )}
           </div>
+
+          {chapters.length > 0 && (
+            <button
+              className={`btn btn-ghost btn-sm outline-header-button ${selectionMode ? 'outline-select-mode-active' : ''}`}
+              onClick={toggleChapterSelectionMode}
+              title={selectionMode ? 'Đóng chế độ chọn' : 'Chọn nhiều chương'}
+              aria-label={selectionMode ? 'Đóng chế độ chọn' : 'Chọn nhiều chương'}
+            >
+              <CheckSquare size={14} />
+              <span className="outline-action-label">
+                {selectionMode ? 'Đóng chọn' : 'Chọn nhiều'}
+              </span>
+            </button>
+          )}
 
           <button className="btn btn-primary btn-sm" onClick={() => handleCreateManualChapter()}>
             <Plus size={15} /> Thêm chương
@@ -917,6 +1014,30 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
         <div className="outline-action-notice" role="status" aria-live="polite">
           <CheckCircle2 size={14} />
           {chapterNotice}
+        </div>
+      )}
+
+      {selectionMode && chapters.length > 0 && (
+        <div className="outline-bulk-toolbar">
+          <strong>{selectedChapterIds.size} chương đã chọn</strong>
+          <button className="btn btn-ghost btn-sm bulk-selection-action" onClick={() => setSelectedChapterIds(new Set(chapters.map((chapter) => chapter.id)))}>
+            <CheckSquare size={14} /> Chọn tất cả
+          </button>
+          <button
+            className="btn btn-ghost btn-sm bulk-selection-action"
+            onClick={clearChapterSelection}
+            disabled={selectedChapterIds.size === 0}
+          >
+            <Square size={14} /> Bỏ chọn
+          </button>
+          <button
+            className="btn btn-danger btn-sm"
+            onClick={() => handleDeleteChapters([...selectedChapterIds])}
+            disabled={selectedChapterIds.size === 0 || isDeletingChapters}
+          >
+            {isDeletingChapters ? <Loader2 size={14} className="spin" /> : <Trash2 size={14} />}
+            Xóa đã chọn
+          </button>
         </div>
       )}
 
@@ -1050,7 +1171,27 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
               {chapters.map((chapter, idx) => {
                 const act = ACTS.find(a => a.id === chapter.arc_id);
                 return (
-                  <div key={chapter.id} className="outline-list-item" onClick={() => setSelectedChapter(chapter)}>
+                  <div
+                    key={chapter.id}
+                    className={`outline-list-item ${selectionMode ? 'outline-list-item--selecting' : ''} ${selectedChapterIds.has(chapter.id) ? 'outline-list-item--selected' : ''}`}
+                    onClick={() => {
+                      if (selectionMode) {
+                        toggleChapterSelection(chapter.id);
+                        return;
+                      }
+                      setSelectedChapter(chapter);
+                    }}
+                  >
+                    {selectionMode && (
+                      <label className="outline-list-select" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedChapterIds.has(chapter.id)}
+                          onChange={() => toggleChapterSelection(chapter.id)}
+                          aria-label={`Chọn ${chapter.title}`}
+                        />
+                      </label>
+                    )}
                     <span className="outline-list-index">{idx + 1}</span>
                     {act ? (
                       <span className="outline-list-act" style={{ color: act.color }}>H{act.id}</span>
@@ -1062,10 +1203,10 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
                       {chapter.purpose && <span className="outline-list-purpose"> — {chapter.purpose}</span>}
                     </div>
                     <span className="outline-list-scenes">{sceneCountMap[chapter.id]} cảnh</span>
-                    <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); goToEditor(chapter.id); }}>
+                    {!selectionMode && <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); goToEditor(chapter.id); }}>
                       <PenTool size={12} />
-                    </button>
-                    <button
+                    </button>}
+                    {!selectionMode && <button
                       className="btn btn-ghost btn-sm outline-list-clear"
                       aria-label={`Xóa dàn ý AI của ${chapter.title}`}
                       title="Xóa dàn ý AI của riêng chương này"
@@ -1075,7 +1216,7 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
                       }}
                     >
                       <Trash2 size={12} />
-                    </button>
+                    </button>}
                   </div>
                 );
               })}
@@ -1212,6 +1353,8 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
           locations={locations}
           onClose={() => setSelectedChapter(null)}
           onGoEditor={() => goToEditor(selectedChapter.id)}
+          onDelete={() => handleDeleteChapters([selectedChapter.id])}
+          deleting={isDeletingChapters}
         />
       )}
 

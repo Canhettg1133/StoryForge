@@ -895,36 +895,41 @@ export default function CanonTruth() {
                   <strong>Bộ xem bằng chứng</strong>
                   <span>{revisionDetail.evidence.length}</span>
                 </div>
-                <div className="bible-canon-evidence-layout">
-                  <div className="bible-canon-evidence-list">
-                    {revisionDetail.evidence.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`bible-canon-list-item bible-canon-list-item--interactive su-that-page__flow-item ${selectedEvidence?.id === item.id ? 'is-selected' : ''}`}
-                        onClick={() => setSelectedEvidenceId(item.id)}
-                      >
-                        <div>
-                          <strong>{translateEvidenceType(item.target_type)}</strong>
-                          <p>{item.summary || item.evidence_text || 'Chưa có mô tả bằng chứng.'}</p>
-                        </div>
-                      </button>
-                    ))}
-                    {revisionDetail.evidence.length === 0 && (
-                      <p className="text-muted bible-canon-empty">Phiên bản này chưa có bằng chứng.</p>
-                    )}
-                  </div>
-                  <div className="bible-canon-evidence-preview">
-                    {selectedEvidence ? (
-                      <>
-                        <strong>{translateEvidenceType(selectedEvidence.target_type)}</strong>
-                        <p>{selectedEvidence.summary || 'Chưa có tóm tắt.'}</p>
-                        <pre>{selectedEvidence.evidence_text || 'Chưa có nội dung bằng chứng.'}</pre>
-                      </>
-                    ) : (
-                      <p className="text-muted bible-canon-empty">Chọn một bằng chứng để xem chi tiết.</p>
-                    )}
-                  </div>
+                <div className={`bible-canon-evidence-layout${revisionDetail.evidence.length === 0 ? ' is-empty' : ''}`}>
+                  {revisionDetail.evidence.length === 0 ? (
+                    <p className="text-muted bible-canon-empty su-that-page__evidence-empty">
+                      Phiên bản này chưa có bằng chứng.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="bible-canon-evidence-list">
+                        {revisionDetail.evidence.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className={`bible-canon-list-item bible-canon-list-item--interactive su-that-page__flow-item ${selectedEvidence?.id === item.id ? 'is-selected' : ''}`}
+                            onClick={() => setSelectedEvidenceId(item.id)}
+                          >
+                            <div>
+                              <strong>{translateEvidenceType(item.target_type)}</strong>
+                              <p>{item.summary || item.evidence_text || 'Chưa có mô tả bằng chứng.'}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="bible-canon-evidence-preview">
+                        {selectedEvidence ? (
+                          <>
+                            <strong>{translateEvidenceType(selectedEvidence.target_type)}</strong>
+                            <p>{selectedEvidence.summary || 'Chưa có tóm tắt.'}</p>
+                            <pre>{selectedEvidence.evidence_text || 'Chưa có nội dung bằng chứng.'}</pre>
+                          </>
+                        ) : (
+                          <p className="text-muted bible-canon-empty">Chọn một bằng chứng để xem chi tiết.</p>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 

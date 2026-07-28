@@ -70,6 +70,62 @@ function mergeByIdAndName(existingItems = [], nextItems = []) {
   return merged;
 }
 
+function normalizeDeletionIds(ids) {
+  return [...new Set((ids || [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id)))];
+}
+
+async function clearDeletedLocationReferences(locationIds, projectId) {
+  if (!projectId || locationIds.length === 0) return;
+
+  const deletedIds = new Set(locationIds);
+  const [childLocations, scenes, entityStates, itemStates] = await Promise.all([
+    db.locations.where('project_id').equals(projectId)
+      .filter((item) => deletedIds.has(item.parent_location_id))
+      .toArray(),
+    db.scenes.where('project_id').equals(projectId)
+      .filter((scene) => deletedIds.has(scene.location_id))
+      .toArray(),
+    db.entity_state_current.where('project_id').equals(projectId)
+      .filter((state) => deletedIds.has(state.current_location_id))
+      .toArray(),
+    db.item_state_current.where('project_id').equals(projectId)
+      .filter((state) => deletedIds.has(state.current_location_id))
+      .toArray(),
+  ]);
+  const now = Date.now();
+
+  await Promise.all([
+    childLocations.length > 0
+      ? db.locations.bulkPut(childLocations.map((item) => ({
+        ...item,
+        parent_location_id: null,
+        updated_at: now,
+      })))
+      : Promise.resolve(),
+    scenes.length > 0
+      ? db.scenes.bulkPut(scenes.map((scene) => ({ ...scene, location_id: null })))
+      : Promise.resolve(),
+    entityStates.length > 0
+      ? db.entity_state_current.bulkPut(entityStates.map((state) => ({
+        ...state,
+        current_location_id: null,
+        current_location_name: '',
+        updated_at: now,
+      })))
+      : Promise.resolve(),
+    itemStates.length > 0
+      ? db.item_state_current.bulkPut(itemStates.map((state) => ({
+        ...state,
+        current_location_id: null,
+        current_location_name: '',
+        updated_at: now,
+      })))
+      : Promise.resolve(),
+  ]);
+}
+
 // ---------------------------------------------
 
 let latestCodexLoadRequestId = 0;
@@ -344,9 +400,7 @@ const useCodexStore = create((set, get) => ({
   },
 
   deleteCharacters: async (ids, projectId) => {
-    const characterIds = [...new Set((ids || [])
-      .map((id) => Number(id))
-      .filter((id) => Number.isFinite(id)))];
+    const characterIds = normalizeDeletionIds(ids);
     if (characterIds.length === 0) return;
 
     await db.characters.bulkDelete(characterIds);
@@ -407,8 +461,28 @@ const useCodexStore = create((set, get) => ({
   },
 
   deleteLocation: async (id, projectId) => {
-    await db.locations.delete(id);
-    if (projectId) await get().loadCodex(projectId);
+    await get().deleteLocations([id], projectId);
+  },
+
+  deleteLocations: async (ids, projectId) => {
+    const locationIds = normalizeDeletionIds(ids);
+    if (locationIds.length === 0) return;
+    const fallbackLocation = get().locations.find((item) => locationIds.includes(item.id))
+      || await db.locations.get(locationIds[0]);
+    const effectiveProjectId = projectId || fallbackLocation?.project_id;
+
+    await db.transaction(
+      'rw',
+      db.locations,
+      db.scenes,
+      db.entity_state_current,
+      db.item_state_current,
+      async () => {
+        await db.locations.bulkDelete(locationIds);
+        await clearDeletedLocationReferences(locationIds, effectiveProjectId);
+      },
+    );
+    if (effectiveProjectId) await get().loadCodex(effectiveProjectId);
   },
 
   // ---------------------------------------------
@@ -461,7 +535,21 @@ const useCodexStore = create((set, get) => ({
   },
 
   deleteObject: async (id, projectId) => {
-    await db.objects.delete(id);
+    await db.transaction('rw', db.objects, db.item_state_current, async () => {
+      await db.objects.delete(id);
+      await db.item_state_current.where('object_id').equals(id).delete();
+    });
+    if (projectId) await get().loadCodex(projectId);
+  },
+
+  deleteObjects: async (ids, projectId) => {
+    const objectIds = normalizeDeletionIds(ids);
+    if (objectIds.length === 0) return;
+
+    await db.transaction('rw', db.objects, db.item_state_current, async () => {
+      await db.objects.bulkDelete(objectIds);
+      await db.item_state_current.where('object_id').anyOf(objectIds).delete();
+    });
     if (projectId) await get().loadCodex(projectId);
   },
 
@@ -518,6 +606,14 @@ const useCodexStore = create((set, get) => ({
 
   deleteWorldTerm: async (id, projectId) => {
     await db.worldTerms.delete(id);
+    if (projectId) await get().loadCodex(projectId);
+  },
+
+  deleteWorldTerms: async (ids, projectId) => {
+    const termIds = normalizeDeletionIds(ids);
+    if (termIds.length === 0) return;
+
+    await db.worldTerms.bulkDelete(termIds);
     if (projectId) await get().loadCodex(projectId);
   },
 

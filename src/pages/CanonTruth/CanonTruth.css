@@ -214,11 +214,11 @@
 }
 
 .su-that-page__state-panel {
-  grid-column: span 3;
+  grid-column: span 4;
 }
 
 .su-that-page__state-panel--wide {
-  grid-column: span 6;
+  grid-column: span 8;
 }
 
 .su-that-page__log-grid {
@@ -265,6 +265,32 @@
   white-space: nowrap;
 }
 
+.su-that-page__state-panel .su-that-page__flow-item {
+  grid-template-areas:
+    "title status"
+    "detail detail";
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.su-that-page__state-panel .su-that-page__flow-item > div > strong {
+  grid-area: title;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.su-that-page__state-panel .su-that-page__flow-item > div > p:first-of-type {
+  grid-area: detail;
+}
+
+.su-that-page__state-panel .su-that-page__flow-item > div > p:not(:first-of-type) {
+  grid-column: 1 / -1;
+}
+
+.su-that-page__state-panel .su-that-page__flow-item > .bible-canon-badge,
+.su-that-page__state-panel .su-that-page__flow-item > .bible-canon-meta {
+  grid-area: status;
+}
+
 .story-bible.su-that-page .bible-canon-list-item p {
   color: var(--color-text-secondary);
   line-height: 1.55;
@@ -283,7 +309,7 @@
 
 .story-bible.su-that-page .bible-canon-detail-grid {
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  align-items: start;
+  align-items: stretch;
 }
 
 .su-that-page__detail-panel {
@@ -306,6 +332,20 @@
 .su-that-page__detail-panel--evidence .bible-canon-evidence-layout {
   grid-template-columns: minmax(220px, 0.8fr) minmax(320px, 1.2fr);
   gap: var(--space-3);
+}
+
+.su-that-page__detail-panel--evidence .bible-canon-evidence-layout.is-empty {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 280px;
+}
+
+.su-that-page__evidence-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: var(--space-4);
+  text-align: center;
 }
 
 .su-that-page__detail-panel--evidence .bible-canon-evidence-list,
@@ -387,8 +427,8 @@
 }
 
 .su-that-page__report-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   align-items: stretch;
 }
@@ -397,6 +437,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-2);
   min-width: 0;
 }
@@ -518,6 +559,10 @@
   .su-that-page__detail-panel--evidence .bible-canon-evidence-layout,
   .su-that-page__detail-panel--snapshot .bible-canon-list {
     grid-template-columns: 1fr;
+  }
+
+  .su-that-page__detail-panel--evidence .bible-canon-evidence-layout.is-empty {
+    min-height: 0;
   }
 }
 
