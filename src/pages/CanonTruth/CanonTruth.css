@@ -227,7 +227,7 @@
   gap: var(--space-3);
 }
 
-.su-that-page__flow-item {
+.bible-canon-list-item.su-that-page__flow-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: var(--space-2);

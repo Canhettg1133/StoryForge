@@ -17,6 +17,10 @@ function getCssRuleBody(source, selector) {
   return source.slice(braceStart + 1, end);
 }
 
+function classSpecificity(selector) {
+  return selector.match(/\.[A-Za-z0-9_-]+/gu)?.length || 0;
+}
+
 describe('Canon Truth responsive layout', () => {
   it('keeps report copy readable and moves repair actions out of the text column', () => {
     const jsx = read('src/pages/CanonTruth/CanonTruth.jsx');
@@ -79,7 +83,7 @@ describe('Canon Truth responsive layout', () => {
   it('lets list copy use the full card width throughout the truth page', () => {
     const jsx = read('src/pages/CanonTruth/CanonTruth.jsx');
     const css = read('src/pages/CanonTruth/CanonTruth.css');
-    const flowItem = getCssRuleBody(css, '.su-that-page__flow-item');
+    const flowItem = getCssRuleBody(css, '.bible-canon-list-item.su-that-page__flow-item');
     const flowCopy = getCssRuleBody(css, '.su-that-page__flow-item > div > p');
     const flowBadge = getCssRuleBody(css, '.su-that-page__flow-item > .bible-canon-badge,\n.su-that-page__flow-item > .bible-canon-meta');
     const listCopy = getCssRuleBody(css, '.story-bible.su-that-page .bible-canon-list-item p');
@@ -111,6 +115,20 @@ describe('Canon Truth responsive layout', () => {
     expect(stateBadge).toContain('grid-area: status;');
     expect(stateBadge).not.toContain('grid-column: auto;');
     expect(stateBadge).not.toContain('grid-row: auto;');
+  });
+
+  it('keeps the truth-page grid authoritative when Story Bible CSS loads later', () => {
+    const truthCss = read('src/pages/CanonTruth/CanonTruth.css');
+    const storyBibleCss = read('src/pages/StoryBible/StoryBible.css');
+    const truthFlowSelector = '.bible-canon-list-item.su-that-page__flow-item';
+    const storyBibleItemSelector = '.bible-canon-list-item';
+    const truthFlowItem = getCssRuleBody(truthCss, truthFlowSelector);
+    const storyBibleItem = getCssRuleBody(storyBibleCss, storyBibleItemSelector);
+
+    expect(storyBibleItem).toContain('display: flex;');
+    expect(truthFlowItem).toContain('display: grid;');
+    expect(classSpecificity(truthFlowSelector))
+      .toBeGreaterThan(classSpecificity(storyBibleItemSelector));
   });
 
   it('uses equal-height detail panels and collapses an empty evidence viewer to one useful pane', () => {
