@@ -23,6 +23,7 @@ import useProjectStore from '../../stores/projectStore';
 import useUIStore from '../../stores/uiStore';
 import MobileSheet from './MobileSheet';
 import MobileProjectTopBar from './MobileProjectTopBar';
+import './MobileNavigationMenu.css';
 import './MobileProjectShell.css';
 
 const EDITOR_PANEL_EVENT = 'storyforge:open-mobile-editor-panel';
@@ -156,7 +157,7 @@ export default function MobileProjectShell({ children }) {
         size="full"
         onClose={() => setMoreOpen(false)}
       >
-        <div className="project-mobile-more-list">
+        <div className="dashboard-mobile-menu-list">
           {visibleMoreItems.map((item) => {
             const Icon = item.icon;
             const target = item.path(numericProjectId);
@@ -165,7 +166,7 @@ export default function MobileProjectShell({ children }) {
               <button
                 key={item.id}
                 type="button"
-                className={`project-mobile-more-item ${active ? 'project-mobile-more-item--active' : ''}`}
+                className={`dashboard-mobile-menu-item ${active ? 'dashboard-mobile-menu-item--active' : ''}`}
                 onClick={() => handleMoreNavigate(item)}
               >
                 <Icon size={18} />

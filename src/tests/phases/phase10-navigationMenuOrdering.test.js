@@ -96,4 +96,15 @@ describe('phase10 navigation menu ordering', () => {
     expect(css).not.toContain('grid-auto-rows: minmax(0, 1fr)');
     expect(listRule).not.toMatch(/overflow:\s*hidden;/u);
   });
+
+  it('reuses the stable scrollable menu layout inside the project mobile sheet', () => {
+    const projectShell = read('src/components/mobile/MobileProjectShell.jsx');
+    const projectShellCss = read('src/components/mobile/MobileProjectShell.css');
+
+    expect(projectShell).toContain("import './MobileNavigationMenu.css'");
+    expect(projectShell).toContain('className="dashboard-mobile-menu-list"');
+    expect(projectShell).toContain('dashboard-mobile-menu-item');
+    expect(projectShellCss).not.toContain('.project-mobile-more-list');
+    expect(projectShellCss).not.toContain('.project-mobile-more-item');
+  });
 });
