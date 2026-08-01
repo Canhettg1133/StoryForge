@@ -68,6 +68,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [ignoredReportKeys, setIgnoredReportKeys] = useState(() => new Set());
   const [completionNotice, setCompletionNotice] = useState('');
+  const [completionNoticeType, setCompletionNoticeType] = useState('error');
   const issuesDialogRef = useModalAccessibility({
     open: issuesOpen,
     onClose: () => setIssuesOpen(false),
@@ -84,6 +85,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     clearRepairText();
     setIssuesOpen(false);
     setCompletionNotice('');
+    setCompletionNoticeType('error');
     setIgnoredReportKeys(new Set());
   }, [activeChapterId, activeSceneId, clearActionOutcome, clearRepairText]);
 
@@ -208,15 +210,22 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     try {
       const result = await runChapterCompletion(activeChapterId, { mode: 'manual' });
       if (!result) return;
+      if (currentProject?.id) {
+        await Promise.all([
+          loadChapterCanon(currentProject.id, activeChapterId, activeSceneId || null),
+          loadCodex(currentProject.id),
+        ]);
+      }
       if (result.kind === 'empty') {
+        setCompletionNoticeType('error');
         setCompletionNotice('Chương chưa có nội dung để hoàn thành.');
         return;
       }
-      if (!result.ok) {
-        setCompletionNotice(result.message || 'Không thể hoàn thành chương.');
-      }
+      setCompletionNoticeType(result.ok ? 'success' : 'error');
+      setCompletionNotice(result.message || (result.ok ? 'Đã hoàn thành chương.' : 'Không thể hoàn thành chương.'));
     } catch (error) {
       console.error('[ContinuityBar] Chapter completion failed:', error);
+      setCompletionNoticeType('error');
       setCompletionNotice(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
     }
   };
@@ -292,10 +301,13 @@ export default function ContinuityBar({ isMobileLayout = false }) {
           {(!isMobileLayout || prevChapterInfo) && (
             <div className="continuity-bar-left">
               {!isMobileLayout && (
-                <div className="continuity-bar-current">
-                  {canonStatusOk ? <ShieldCheck size={13} /> : <ShieldAlert size={13} />}
-                  <span className="continuity-bar-label">Chương hiện tại:</span>
-                  <span className="continuity-bar-title">{currentChapterInfo?.title || 'Chương hiện tại'}</span>
+                <div className="continuity-bar-current" role="group" aria-label="Chương hiện tại">
+                  <span
+                    className="continuity-bar-title"
+                    title={currentChapterInfo?.title || 'Chương hiện tại'}
+                  >
+                    {currentChapterInfo?.title || 'Chương hiện tại'}
+                  </span>
                   {activeChapterId && (chapterDone ? (
                     <span className={`continuity-bar-status ${desktopCompletionClass}`} title="Chương đã hoàn thành">
                       <CheckCircle2 size={12} />
@@ -397,7 +409,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
         </div>
 
         {completionNotice ? (
-          <div className="continuity-bar-feedback continuity-bar-feedback--error" role="alert">
+          <div className={`continuity-bar-feedback continuity-bar-feedback--${completionNoticeType}`} role="alert">
             {completionNotice}
           </div>
         ) : null}

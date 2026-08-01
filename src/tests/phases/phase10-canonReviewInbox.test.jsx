@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let suggestionState;
-let aiState;
+let canonState;
 let projectState;
 let codexState;
 
@@ -12,8 +12,8 @@ vi.mock('../../stores/suggestionStore', () => ({
   default: () => suggestionState,
 }));
 
-vi.mock('../../stores/aiStore', () => ({
-  default: () => aiState,
+vi.mock('../../stores/canonStore', () => ({
+  default: () => canonState,
 }));
 
 vi.mock('../../stores/projectStore', () => ({
@@ -67,9 +67,15 @@ describe('phase10 canon review inbox UI', () => {
       rejectAll: vi.fn(async () => {}),
       clearResolved: vi.fn(async () => {}),
     };
-    aiState = {
-      generateSuggestions: vi.fn(async () => ({ status: 'no_suggestions' })),
-      isSuggesting: false,
+    canonState = {
+      canonicalizeChapter: vi.fn(async () => ({
+        ok: true,
+        committedCount: 1,
+        filteredCount: 0,
+        invalidatedChapterCount: 0,
+        message: 'Đã áp dụng 1 thay đổi canon.',
+      })),
+      canonicalizing: false,
     };
     projectState = {
       currentProject: { id: 1, genre_primary: 'fantasy' },
@@ -98,5 +104,45 @@ describe('phase10 canon review inbox UI', () => {
     expect(text).toContain('Bằng chứng');
     expect(text).toContain('Duyệt');
     expect(text).toContain('Bỏ');
+  });
+
+  it('uses the typed canon pipeline for chapter reanalysis', async () => {
+    suggestionState.suggestions = [];
+    await act(async () => {
+      root.render(<SuggestionInbox projectId={1} />);
+    });
+
+    const button = Array.from(container.querySelectorAll('button'))
+      .find((item) => item.textContent.includes('Phân tích lại'));
+    expect(button).toBeTruthy();
+
+    await act(async () => {
+      button.click();
+    });
+
+    expect(canonState.canonicalizeChapter).toHaveBeenCalledWith(1, 11);
+    expect(container.textContent).toContain('Đã áp dụng 1 thay đổi canon.');
+  });
+
+  it('labels superseded suggestions as replaced instead of rejected', async () => {
+    suggestionState.suggestions = [{
+      id: 2,
+      project_id: 1,
+      type: 'character_status',
+      status: 'superseded',
+      source_chapter_id: 11,
+      target_name: 'Lan',
+      suggested_value: 'Trang thai cu',
+    }];
+    await act(async () => {
+      root.render(<SuggestionInbox projectId={1} />);
+    });
+
+    const resolvedHeader = container.querySelector('.si-resolved-header');
+    await act(async () => {
+      resolvedHeader.click();
+    });
+
+    expect(container.textContent).toContain('Đã được thay thế');
   });
 });

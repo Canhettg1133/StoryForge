@@ -34,6 +34,61 @@ describe('phase10 prompt builder coverage', () => {
     expect(TASK_INSTRUCTIONS[TASK_TYPES.QA_CHECK]).toBeTruthy();
   });
 
+  it('instructs canon extraction to register and reveal a new secret in the same response', () => {
+    const instruction = TASK_INSTRUCTIONS[TASK_TYPES.CANON_EXTRACT_OPS];
+
+    expect(instruction).toContain('FACT_REGISTERED trước SECRET_REVEALED');
+    expect(instruction).toContain('fact_description giống hệt nhau');
+    expect(instruction).toContain('người vừa biết bí mật');
+  });
+
+  it('labels revealed and unrevealed canon secrets distinctly in the model prompt', () => {
+    const messages = buildPrompt(TASK_TYPES.CANON_EXTRACT_OPS, {
+      canonFacts: [
+        {
+          id: 1,
+          status: 'active',
+          fact_type: 'secret',
+          description: 'Bạch Ly điều khiển Cổng Tro',
+          revealed_at_chapter: 3,
+        },
+        {
+          id: 2,
+          status: 'active',
+          fact_type: 'secret',
+          description: 'Chiếc chìa khóa nằm dưới giếng',
+          revealed_at_chapter: null,
+        },
+      ],
+      sceneText: 'Một chương thử.',
+    });
+    const systemPrompt = messages[0].content;
+
+    expect(systemPrompt).toContain('BÍ MẬT ĐÃ CÓ LẦN TIẾT LỘ TRONG CANON');
+    expect(systemPrompt).toContain('[lộ lần đầu ở chương 3] Bạch Ly điều khiển Cổng Tro');
+    expect(systemPrompt).toContain('BÍ MẬT CHƯA CÓ LẦN TIẾT LỘ TRONG CANON');
+    expect(systemPrompt).toContain('- Chiếc chìa khóa nằm dưới giếng');
+    expect(systemPrompt).not.toContain('BÍ MẬT - CHƯA TIẾT LỘ');
+  });
+
+  it('tells canon extraction exactly which facts each character already knows', () => {
+    const messages = buildPrompt(TASK_TYPES.CANON_EXTRACT_OPS, {
+      characters: [{
+        id: 1,
+        name: 'Mai An',
+        current_status: 'Còn sống.',
+        known_canon_facts: [
+          'Bạch Ly điều khiển Cổng Tro',
+          'Ấn Đồng chỉ nhận máu tự nguyện',
+        ],
+      }],
+      sceneText: 'Mai nhắc lại điều cô đã biết.',
+    });
+    const fullPrompt = messages.map((message) => message.content).join('\n');
+
+    expect(fullPrompt).toContain('Tri thức canon đã biết: Bạch Ly điều khiển Cổng Tro; Ấn Đồng chỉ nhận máu tự nguyện');
+  });
+
   it('builds entity generation prompts with explicit schema and context', () => {
     const messages = buildPrompt(TASK_TYPES.AI_GENERATE_ENTITY, {
       projectTitle: 'Du An Thu',
@@ -197,6 +252,10 @@ describe('phase10 prompt builder coverage', () => {
     expect(messages[0].content).toContain('"identity_action": "existing|new"');
     expect(messages[0].content).toContain('"existing_entity_id": 123');
     expect(messages[0].content).toContain('Nếu không đủ căn cứ để quyết định');
+    expect(messages[0].content).toContain('Không đưa đại từ hoặc danh xưng chung');
+    expect(messages[0].content).toContain('đạo cụ vô danh dùng một lần');
+    expect(messages[0].content).toContain('tên tuyến truyện/nhiệm vụ');
+    expect(messages[0].content).toContain('có thể dùng null');
   });
 
   it('still sends an explicit empty roster when the project has no existing entities', () => {

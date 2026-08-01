@@ -58,4 +58,16 @@ describe('phase10 character modal surface', () => {
     expect(textarea).toContain('max-height:');
     expect(textarea).toContain('resize: none;');
   });
+
+  it('separates editable profile status from read-only current canon', () => {
+    const hub = read('src/pages/CharacterHub/CharacterHub.jsx');
+    const draftCard = read('src/pages/StoryBible/components/CharacterDraftCard.jsx');
+
+    expect(hub).toContain('Canon hiện tại');
+    expect(hub).toContain('Trạng thái hồ sơ ban đầu');
+    expect(hub).toContain('editingChar?.canon_status_summary');
+    expect(hub).toContain('editingChar?.canon_state?.alive_status');
+    expect(draftCard).toContain('Trạng thái hồ sơ ban đầu');
+    expect(draftCard).toContain('Canon hiện tại');
+  });
 });

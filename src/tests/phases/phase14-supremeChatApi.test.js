@@ -360,7 +360,11 @@ describe('Supreme API security and runtime parity contract', () => {
     expect(handler).toMatch(/key\??\.fill\(0\)/u);
     expect(provider).toContain('ag-gemini-proxy');
     expect(provider).toMatch(/generativelanguage\.googleapis\.com/iu);
-    expect(provider).toMatch(/redirect\s*:\s*['"]error['"]/u);
+    expect(provider).toMatch(/redirect\s*:\s*['"]manual['"]/u);
+    expect(provider).toContain('MAX_SAME_ORIGIN_REDIRECTS');
+    expect(provider).toMatch(/nextTarget\.protocol\s*===\s*['"]https:['"]/u);
+    expect(provider).toMatch(/nextTarget\.origin\s*===\s*initialTarget\.origin/u);
+    expect(provider).toMatch(/!nextTarget\.username[\s\S]*!nextTarget\.password/u);
     expect(provider).toContain('CUSTOM_PROXY_PROFILE_ID');
     expect(provider).toContain('isRelayAllowedTarget');
     expect(provider).toContain('buildOpenAIProxyEndpoint');

@@ -201,7 +201,9 @@ export default function BatchGenerate({
         .map((c) => {
           const specificRole = String(c.specific_role || c.specificRole || '').trim();
           const roleLocked = Boolean((c.specific_role_locked ?? c.specificRoleLocked) && specificRole);
-          return `- ${c.name} (${c.role})${specificRole ? ' | Vai tro cu the: ' + specificRole + (roleLocked ? ' (da khoa canon)' : '') : ''}${c.current_status ? ' | Live Canon: ' + c.current_status : ''}${c.goals ? ': ' + c.goals.substring(0, 50) : ''}`;
+          const canonStatus = String(c.canon_status_summary || '').trim();
+          const profileStatus = String(c.current_status || '').trim();
+          return `- ${c.name} (${c.role})${specificRole ? ' | Vai tro cu the: ' + specificRole + (roleLocked ? ' (da khoa canon)' : '') : ''}${canonStatus ? ' | Canon hiện tại: ' + canonStatus : ''}${profileStatus ? ' | Trạng thái hồ sơ ban đầu: ' + profileStatus : ''}${c.goals ? ': ' + c.goals.substring(0, 50) : ''}`;
         })
         .join('\n');
       parts.push(`Nhân vật đã có:\n${charList}`);
@@ -472,7 +474,7 @@ export default function BatchGenerate({
                   {item.personality && <p>{item.personality}</p>}
                   {item.personality_tags && <p><b>Tags:</b> {item.personality_tags}</p>}
                   {item.flaws && <p><b>Flaws:</b> {item.flaws}</p>}
-                  {item.current_status && <p><b>Live Canon:</b> {item.current_status}</p>}
+                  {item.current_status && <p><b>Trạng thái hồ sơ ban đầu:</b> {item.current_status}</p>}
                   {item.description && <p>{item.description}</p>}
                   {item.definition && <p>{item.definition}</p>}
                   {item.goals && <p><b>Mục tiêu:</b> {item.goals}</p>}

@@ -14,7 +14,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import useSuggestionStore from '../../stores/suggestionStore';
-import useAIStore from '../../stores/aiStore';
+import useCanonStore from '../../stores/canonStore';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
@@ -79,8 +79,8 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
     clearResolved,
   } = useSuggestionStore();
 
-  const { generateSuggestions, isSuggesting } = useAIStore();
-  const { currentProject, chapters } = useProjectStore();
+  const { canonicalizeChapter, canonicalizing } = useCanonStore();
+  const { chapters } = useProjectStore();
   const { loadCodex } = useCodexStore();
 
   const [selectedChapter, setSelectedChapter] = useState('');
@@ -111,30 +111,18 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
     setNotice(null);
 
     try {
-      const outcome = await generateSuggestions({
-        projectId,
-        chapterId: Number(selectedChapter),
-        genre: currentProject?.genre_primary || '',
-      });
-
-      if (outcome?.status === 'created') {
-        setInfo(`Đã tạo ${outcome.createdCount} đề xuất mới.`, 'success');
-        return;
-      }
-
-      if (outcome?.status === 'empty_chapter') {
-        setInfo('Chương này chưa có nội dung để phân tích.');
-        return;
-      }
-
-      if (outcome?.status === 'invalid_response') {
-        setInfo('AI trả về kết quả sai định dạng nên chưa lưu được đề xuất.', 'error');
-        return;
-      }
-
-      setInfo('Không tìm thấy thay đổi nào đủ rõ để tạo đề xuất mới.');
+      const outcome = await canonicalizeChapter(projectId, Number(selectedChapter));
+      await Promise.all([
+        loadSuggestions(projectId),
+        loadCodex(projectId),
+      ]);
+      await onAccepted?.();
+      setInfo(
+        outcome?.message || 'Đã phân tích lại chương bằng canon pipeline.',
+        outcome?.ok ? 'success' : 'error',
+      );
     } catch (err) {
-      setInfo(toVietnameseErrorMessage(err, 'Lỗi khi tạo đề xuất.'), 'error');
+      setInfo(toVietnameseErrorMessage(err, 'Lỗi khi phân tích lại chương.'), 'error');
     }
   };
 
@@ -153,7 +141,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
       if (projectId) {
         loadCodex(projectId);
       }
-      onAccepted?.();
+      await onAccepted?.();
       setInfo('Đã duyệt đề xuất qua canon engine và cập nhật dữ liệu dự án.', 'success');
     } catch (err) {
       setInfo(toVietnameseErrorMessage(err, 'Không thể canon hóa đề xuất này.'), 'error');
@@ -171,7 +159,7 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
       if (projectId) {
         loadCodex(projectId);
       }
-      onAccepted?.();
+      await onAccepted?.();
       setInfo('Đã duyệt toàn bộ đề xuất qua canon engine.', 'success');
     } catch (err) {
       setInfo(toVietnameseErrorMessage(err, 'Không thể canon hóa toàn bộ đề xuất.'), 'error');
@@ -237,15 +225,15 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
           type="button"
           className="btn btn-accent btn-sm"
           onClick={handleGenerate}
-          disabled={isSuggesting || !selectedChapter}
+          disabled={canonicalizing || !selectedChapter}
         >
-          {isSuggesting ? (
+          {canonicalizing ? (
             <>
               <Loader size={14} className="spin" /> Đang phân tích...
             </>
           ) : (
             <>
-              <Sparkles size={14} /> Phân tích chương
+              <Sparkles size={14} /> Phân tích lại
             </>
           )}
         </button>
@@ -378,12 +366,11 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
         </>
       )}
 
-      {pending.length === 0 && !isSuggesting && !loading && (
+      {pending.length === 0 && !canonicalizing && !loading && (
         <div className="si-empty">
           <Sparkles size={24} className="si-empty-icon" />
           <p>
-            Chưa có đề xuất nào. Chọn chương và bấm <strong>Phân tích chương</strong> để AI đề xuất cập
-            nhật.
+            Chưa có đề xuất nào cần duyệt. Chọn chương và bấm <strong>Phân tích lại</strong> để chạy cùng pipeline canon typed.
           </p>
         </div>
       )}
@@ -414,10 +401,11 @@ export default function SuggestionInbox({ projectId, onAccepted }) {
               {resolved.map((item) => (
                 <div key={item.id} className={`si-resolved-item si-resolved--${item.status}`}>
                   <span className="si-resolved-status">
-                    {item.status === 'accepted' ? <Check size={12} /> : <X size={12} />}
+                    {item.status === 'accepted' ? <Check size={12} /> : item.status === 'superseded' ? <Sparkles size={12} /> : <X size={12} />}
                   </span>
                   <span className="si-resolved-type">{typeIcon(item.type)}</span>
                   <span className="si-resolved-text">
+                    {item.status === 'superseded' ? 'Đã được thay thế — ' : ''}
                     {item.type === 'character_status'
                       ? `${item.target_name}: ${item.suggested_value}`
                       : item.type === 'entity_resolution'

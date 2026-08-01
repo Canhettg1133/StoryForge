@@ -515,16 +515,21 @@ export default function CharacterHub() {
                       </div>
                     )}
 
-                    {char.current_status && (
-                      <p className="character-snippet" style={{ color: 'var(--color-warning)', fontWeight: 500 }}>
-                        <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }} />
-                        Live Canon: {char.current_status}
+                    {char.canon_status_summary && (
+                      <p className="character-snippet" style={{ color: 'var(--color-accent)', fontWeight: 500 }}>
+                        Canon hiện tại: {char.canon_status_summary}
+                        {char.canon_state?.alive_status && char.canon_state.alive_status !== 'unknown' && (
+                          <span className="character-card-tag" style={{ marginLeft: 8 }}>
+                            {char.canon_state.alive_status === 'dead' ? 'Đã chết' : 'Còn sống'}
+                          </span>
+                        )}
                       </p>
                     )}
 
-                    {char.canon_status_summary && char.canon_status_summary !== char.current_status && (
-                      <p className="character-snippet" style={{ color: 'var(--color-accent)', fontWeight: 500 }}>
-                        Canon: {char.canon_status_summary}
+                    {char.current_status && (
+                      <p className="character-snippet" style={{ color: 'var(--color-warning)', fontWeight: 500 }}>
+                        <AlertTriangle size={12} style={{ display: 'inline', marginRight: 4, verticalAlign: '-2px' }} />
+                        Trạng thái hồ sơ ban đầu: {char.current_status}
                       </p>
                     )}
 
@@ -803,7 +808,7 @@ export default function CharacterHub() {
                       />
                     </div>
                     <div className="form-group">
-                      <label>Trạng thái hiện tại / ràng buộc canon đang hiệu lực</label>
+                      <label>Trạng thái hồ sơ ban đầu</label>
                       <AutoResizeTextarea
                         className="character-form-textarea"
                         value={form.current_status}
@@ -811,8 +816,21 @@ export default function CharacterHub() {
                         placeholder="Ví dụ: Đang sống dưới danh phận góa phụ trong nhà chồng; tránh điều tiếng, không dễ tin người lạ. Chưa biết chồng từng để lại thư mật. Tay trái còn đau sau trận trước."
                         rows={1}
                       />
+                      <span className="form-hint">Dữ liệu nền có thể sửa; các chương đã hoàn thành không ghi đè trường này.</span>
                     </div>
                   </div>
+
+                  {editingChar?.canon_status_summary && (
+                    <div className="form-group">
+                      <label>Canon hiện tại (chỉ đọc)</label>
+                      <div className="input character-form-textarea" aria-readonly="true">
+                        {editingChar.canon_status_summary}
+                        {editingChar?.canon_state?.alive_status && editingChar.canon_state.alive_status !== 'unknown'
+                          ? ` · ${editingChar.canon_state.alive_status === 'dead' ? 'Đã chết' : 'Còn sống'}`
+                          : ''}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="form-group">
                     <label>Bí mật</label>

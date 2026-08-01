@@ -169,6 +169,7 @@ export function applyEventToEntityState(prevState, event) {
   switch (event.op_type) {
     case CANON_OP_TYPES.CHARACTER_STATUS_CHANGED:
       next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
+      if (payload.injury_level) next.injury_level = cleanText(payload.injury_level);
       break;
     case CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED:
       next.current_location_id = event.location_id || payload.location_id || null;
@@ -407,6 +408,7 @@ export function applyEventToRelationshipState(prevState, event) {
   switch (event.op_type) {
     case CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED:
       next.relationship_type = cleanText(payload.relationship_type || payload.status || next.relationship_type || 'other') || 'other';
+      if (payload.trust_level) next.trust_level = cleanText(payload.trust_level);
       next.summary = cleanText(payload.status_summary || event.summary || next.summary || '');
       next.emotional_aftermath = cleanText(payload.emotional_aftermath || next.emotional_aftermath || '');
       if (payload.secrecy_state) next.secrecy_state = cleanText(payload.secrecy_state) || next.secrecy_state;
@@ -440,8 +442,7 @@ export function applyEventToFactStates(prevFactStates, event, chapterOrder) {
     const targetFact = facts.find((fact) => fact.id === event.fact_id)
       || facts.find((fact) => normalizeKey(fact.description) === normalizeKey(event.fact_description));
     if (targetFact) {
-      targetFact.revealed_at_chapter = chapterOrder + 1;
-      targetFact.fact_type = 'fact';
+      targetFact.revealed_at_chapter ??= chapterOrder + 1;
     }
     return facts;
   }

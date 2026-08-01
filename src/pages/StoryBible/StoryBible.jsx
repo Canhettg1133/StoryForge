@@ -276,7 +276,10 @@ export default function StoryBible() {
           <div className="bible-edit-card">
             <SuggestionInbox
               projectId={currentProject.id}
-              onAccepted={() => loadStoryBibleCodex(currentProject.id)}
+              onAccepted={() => Promise.all([
+                loadStoryBibleCodex(currentProject.id),
+                loadCanonOverview(),
+              ])}
             />
           </div>
         )}

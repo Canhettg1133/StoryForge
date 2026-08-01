@@ -214,24 +214,42 @@ async function loadModules(seed, options = {}) {
   vi.resetModules();
   const db = createMockDb(seed);
   const sendMock = vi.fn(options.sendImpl || (() => {}));
-  vi.doMock('../../services/db/database', () => ({ default: db }));
+  const buildPromptMock = vi.fn(() => []);
+  const scheduleBackgroundCanonRebuild = vi.fn();
+  vi.doMock('../../services/db/database', () => ({ default: db, scheduleBackgroundCanonRebuild }));
   vi.doMock('../../services/ai/client', () => ({
     default: { send: sendMock, abort: vi.fn(), setRouter: vi.fn() },
   }));
   vi.doMock('../../services/ai/promptBuilder', () => ({
-    buildPrompt: vi.fn(() => []),
+    buildPrompt: buildPromptMock,
   }));
   vi.doMock('../../services/ai/router', () => ({
     TASK_TYPES: options.taskTypes || {},
     QUALITY_MODES: {},
     PROVIDERS: {},
   }));
+  vi.doUnmock('../../services/canon/projection');
+  if (options.rebuildCanonFromChapterImpl) {
+    const actualProjection = await vi.importActual('../../services/canon/projection');
+    vi.doMock('../../services/canon/projection', () => ({
+      ...actualProjection,
+      rebuildCanonFromChapter: vi.fn(options.rebuildCanonFromChapterImpl),
+    }));
+  }
   const engine = await import('../../services/canon/engine');
   const exportImport = await import('../../services/db/exportImport');
   const codexStore = options.includeCodexStore
     ? (await import('../../stores/codexStore')).default
     : null;
-  return { db, engine, exportImport, sendMock, codexStore };
+  return {
+    db,
+    engine,
+    exportImport,
+    sendMock,
+    buildPromptMock,
+    codexStore,
+    scheduleBackgroundCanonRebuild,
+  };
 }
 
 describe('phase10 canon integration', () => {
@@ -282,6 +300,175 @@ describe('phase10 canon integration', () => {
       taskType: 'canon_extract_ops',
       allowConcurrent: true,
     }));
+  });
+
+  it('reports a valid empty extraction as a successful zero-op canonicalization', async () => {
+    const { engine } = await loadModules({
+      projects: [{ id: 1, title: 'Empty canon', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, draft_text: 'Troi mua nhe.' }],
+    }, {
+      sendImpl: ({ onComplete }) => onComplete('{"ops":[]}'),
+    });
+
+    const result = await engine.canonicalizeChapter(1, 11);
+
+    expect(result).toMatchObject({
+      ok: true,
+      extractionStatus: 'succeeded',
+      extractedCount: 0,
+      committedCount: 0,
+      filteredCount: 0,
+    });
+  });
+
+  it('blocks the revision and records a retryable error when projection rebuild fails after commit', async () => {
+    const { db, engine, scheduleBackgroundCanonRebuild } = await loadModules({
+      projects: [{ id: 1, title: 'Projection failure', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, draft_text: 'Troi mua nhe.' }],
+    }, {
+      sendImpl: ({ onComplete }) => onComplete('{"ops":[]}'),
+      rebuildCanonFromChapterImpl: async () => {
+        throw new Error('projection storage unavailable');
+      },
+    });
+
+    const result = await engine.canonicalizeChapter(1, 11);
+    const revision = await db.chapter_revisions.get(result.revisionId);
+    const commit = await db.chapter_commits.where('[project_id+chapter_id]').equals([1, 11]).first();
+    const reports = await db.validator_reports.where('revision_id').equals(result.revisionId).toArray();
+
+    expect(result).toMatchObject({
+      ok: false,
+      extractionStatus: 'succeeded',
+      committedCount: 0,
+    });
+    expect(revision.status).toBe('blocked');
+    expect(commit).toMatchObject({ status: 'blocked', error_count: 1 });
+    expect(reports).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: 'error',
+        rule_code: 'CANON_PROJECTION_REBUILD_FAILED',
+      }),
+    ]));
+    expect(scheduleBackgroundCanonRebuild).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts typed ops that are filtered before commit, including unmapped entity references', async () => {
+    const { engine } = await loadModules({
+      projects: [{ id: 1, title: 'Filtered canon counts', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, draft_text: 'Lan tu hua se bao ve ngoi lang. Khong co trong roster. Chi la tin don.' }],
+      characters: [{ id: 30, project_id: 1, name: 'Lan', current_status: 'Con song.' }],
+    }, {
+      sendImpl: ({ onComplete }) => onComplete(JSON.stringify({
+        ops: [
+          {
+            op_type: 'GOAL_CHANGED',
+            subject_name: 'Lan',
+            summary: 'Lan quyet dinh bao ve ngoi lang.',
+            evidence: 'Lan tu hua se bao ve ngoi lang.',
+            confidence: 0.95,
+            payload: { new_goal: 'Bao ve ngoi lang' },
+          },
+          {
+            op_type: 'CHARACTER_STATUS_CHANGED',
+            subject_name: 'Nguoi Khong Ton Tai',
+            summary: 'Tham chieu khong map duoc.',
+            evidence: 'Khong co trong roster.',
+            confidence: 0.95,
+            payload: { status_summary: 'Khong hop le' },
+          },
+          {
+            op_type: 'ALLEGIANCE_CHANGED',
+            subject_name: 'Lan',
+            summary: 'Tin don Lan doi phe.',
+            evidence: 'Chi la tin don.',
+            confidence: 0.4,
+            payload: { allegiance: 'Hoi Suong' },
+          },
+        ],
+      })),
+    });
+
+    const result = await engine.canonicalizeChapter(1, 11);
+
+    expect(result).toMatchObject({
+      ok: true,
+      extractedCount: 3,
+      committedCount: 1,
+      filteredCount: 2,
+    });
+    expect(result.reports).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        severity: 'warning',
+        rule_code: 'CANON_OP_MISSING_REFERENCE_FILTERED',
+        evidence: 'Khong co trong roster.',
+      }),
+    ]));
+  });
+
+  it('builds the typed extraction prompt from pre-chapter projected truth', async () => {
+    const { engine, buildPromptMock } = await loadModules({
+      projects: [{ id: 1, title: 'Projected truth', genre_primary: 'fantasy' }],
+      chapters: [
+        { id: 10, project_id: 1, order_index: 0, title: 'Chuong 1' },
+        { id: 11, project_id: 1, order_index: 1, title: 'Chuong 2' },
+      ],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, draft_text: 'Lan khong xuat hien.' }],
+      characters: [{ id: 30, project_id: 1, name: 'Lan', current_status: 'Con song o lang.' }],
+      canonFacts: [{ id: 40, project_id: 1, description: 'Su that nen', fact_type: 'fact' }],
+      chapter_snapshots: [{
+        id: 50,
+        project_id: 1,
+        chapter_id: 10,
+        revision_id: 60,
+        snapshot_json: JSON.stringify({
+          entityStates: [{
+            project_id: 1,
+            entity_id: 30,
+            entity_type: 'character',
+            alive_status: 'dead',
+            summary: 'Lan da qua doi.',
+          }],
+          factStates: [{
+            id: 'derived:1',
+            project_id: 1,
+            description: 'Lan da hy sinh o cong thanh',
+            fact_type: 'fact',
+            source_chapter_id: 10,
+          }],
+          threadStates: [],
+          itemStates: [],
+          relationshipStates: [],
+        }),
+      }],
+      chapter_commits: [{
+        id: 70,
+        project_id: 1,
+        chapter_id: 10,
+        current_revision_id: 60,
+        canonical_revision_id: 60,
+        status: 'canonical',
+      }],
+      chapter_revisions: [{
+        id: 60,
+        project_id: 1,
+        chapter_id: 10,
+        revision_number: 1,
+        status: 'canonical',
+      }],
+    }, {
+      sendImpl: ({ onComplete }) => onComplete('{"ops":[]}'),
+    });
+
+    await engine.canonicalizeChapter(1, 11);
+
+    const promptContext = buildPromptMock.mock.calls[0][1];
+    expect(promptContext.characters[0].current_status).toContain('Lan da qua doi');
+    expect(promptContext.canonFacts.map((fact) => fact.description)).toContain('Lan da hy sinh o cong thanh');
+    expect(promptContext.canonFacts.map((fact) => fact.description)).toContain('Su that nen');
   });
 
   it('passes allowConcurrent from revision validation to canon extraction', async () => {
@@ -479,7 +666,7 @@ describe('phase10 canon integration', () => {
     }));
   });
 
-  it('defers risky character death during chapter canonicalization without blocking safe ops', async () => {
+  it('commits character death during chapter canonicalization and exposes it to the next chapter', async () => {
     const { db, engine } = await loadModules({
       projects: [{ id: 1, title: 'Canon review', genre_primary: 'fantasy' }],
       chapters: [
@@ -551,40 +738,20 @@ describe('phase10 canon integration', () => {
     const result = await engine.canonicalizeChapter(1, 11);
 
     expect(result.ok).toBe(true);
-    expect(result.deferredCount).toBe(1);
-    expect(result.deferredOps[0].op_type).toBe('CHARACTER_DIED');
+    expect(result.extractionStatus).toBe('succeeded');
+    expect(result.extractedCount).toBe(2);
+    expect(result.committedCount).toBe(2);
+    expect(result.filteredCount).toBe(0);
 
     const events = await db.story_events.toArray();
-    expect(events.some((event) => event.op_type === 'CHARACTER_DIED')).toBe(false);
+    expect(events.some((event) => event.op_type === 'CHARACTER_DIED')).toBe(true);
     expect(events.some((event) => event.op_type === 'GOAL_CHANGED')).toBe(true);
 
     const lanState = (await db.entity_state_current.toArray()).find((state) => state.entity_id === 10);
-    expect(lanState.alive_status).toBe('unknown');
+    expect(lanState.alive_status).toBe('dead');
 
     const suggestions = await db.suggestions.toArray();
-    expect(suggestions).toHaveLength(1);
-    expect(suggestions[0]).toMatchObject({
-      type: 'canon_op_review',
-      status: 'pending',
-      source_chapter_id: 11,
-      source_scene_id: 21,
-      target_id: 10,
-      target_name: 'Lan',
-      suggested_value: 'Lan hy sinh ở cổng thành.',
-      reasoning: 'Lan hy sinh ở cổng thành.',
-    });
-    expect(JSON.parse(suggestions[0].candidate_op).op_type).toBe('CHARACTER_DIED');
-
-    const accepted = await engine.canonicalizeCandidateOps({
-      projectId: 1,
-      chapterId: 11,
-      candidateOps: [JSON.parse(suggestions[0].candidate_op)],
-      sourceType: 'suggestion_inbox',
-    });
-
-    expect(accepted.ok).toBe(true);
-    const committedLanState = (await db.entity_state_current.toArray()).find((state) => state.entity_id === 10);
-    expect(committedLanState.alive_status).toBe('dead');
+    expect(suggestions).toEqual([]);
 
     const packet = await engine.buildRetrievalPacket({
       projectId: 1,
@@ -595,7 +762,7 @@ describe('phase10 canon integration', () => {
     expect(packet.criticalConstraints.deadCharacters).toContain(10);
   });
 
-  it('defers consumed and risky object status ops without mutating item state', async () => {
+  it('commits consumed and risky object status ops without manual review', async () => {
     const { db, engine } = await loadModules({
       projects: [{ id: 1, title: 'Object review', genre_primary: 'fantasy' }],
       chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
@@ -605,7 +772,7 @@ describe('phase10 canon integration', () => {
         chapter_id: 11,
         order_index: 0,
         title: 'Canh 1',
-        draft_text: 'Lan kich hoat Ngoc An Hon va danh roi Kiem Vo Anh.',
+        draft_text: 'Ngọc An Hồn đã dùng hết. Kiếm Vô Ảnh bị thất lạc.',
       }],
       characters: [{ id: 10, project_id: 1, name: 'Lan' }],
       locations: [],
@@ -657,21 +824,20 @@ describe('phase10 canon integration', () => {
     const result = await engine.canonicalizeChapter(1, 11);
 
     expect(result.ok).toBe(true);
-    expect(result.deferredCount).toBe(2);
-    expect(await db.story_events.toArray()).toEqual([]);
-
-    const itemStates = await db.item_state_current.toArray();
-    expect(itemStates.find((state) => state.object_id === 30).availability).toBe('available');
-    expect(itemStates.find((state) => state.object_id === 31).availability).toBe('available');
-
-    const suggestions = await db.suggestions.toArray();
-    expect(suggestions.map((item) => JSON.parse(item.candidate_op).op_type)).toEqual([
+    expect(result.committedCount).toBe(2);
+    expect((await db.story_events.toArray()).map((event) => event.op_type)).toEqual([
       'OBJECT_CONSUMED',
       'OBJECT_STATUS_CHANGED',
     ]);
+
+    const itemStates = await db.item_state_current.toArray();
+    expect(itemStates.find((state) => state.object_id === 30).availability).toBe('consumed');
+    expect(itemStates.find((state) => state.object_id === 31).availability).toBe('lost');
+
+    expect(await db.suggestions.toArray()).toEqual([]);
   });
 
-  it('does not create duplicate pending canon review suggestions for the same risky op', async () => {
+  it('supersedes pending legacy canon suggestions after canonicalization succeeds', async () => {
     const duplicateOp = {
       op_type: 'CHARACTER_DIED',
       chapter_id: 11,
@@ -725,8 +891,10 @@ describe('phase10 canon integration', () => {
     const result = await engine.canonicalizeChapter(1, 11);
 
     expect(result.ok).toBe(true);
-    expect(result.deferredCount).toBe(1);
-    expect(await db.suggestions.toArray()).toHaveLength(1);
+    const suggestions = await db.suggestions.toArray();
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].status).toBe('superseded');
+    expect((await db.story_events.toArray()).some((event) => event.op_type === 'CHARACTER_DIED')).toBe(true);
   });
 
   it('invalidates downstream canon and rebuilds projection from surviving canonical chain', async () => {
@@ -1647,6 +1815,128 @@ describe('phase10 canon integration', () => {
     expect(overview.chapterCommits[0].status).toBe('canonical');
     expect(storedReports.some((report) => report.id === 71)).toBe(false);
     expect(storedReports.some((report) => report.id === 72)).toBe(true);
+  });
+
+  it('returns projected chapter facts from the latest active canon snapshot', async () => {
+    const { engine } = await loadModules({
+      projects: [{ id: 1, title: 'Derived facts' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      canonFacts: [{
+        id: 30,
+        project_id: 1,
+        description: 'Su that nen',
+        fact_type: 'fact',
+        status: 'active',
+      }],
+      chapter_revisions: [{
+        id: 40,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'canonical',
+      }],
+      chapter_commits: [{
+        id: 50,
+        project_id: 1,
+        chapter_id: 11,
+        current_revision_id: 40,
+        canonical_revision_id: 40,
+        status: 'canonical',
+      }],
+      chapter_snapshots: [{
+        id: 60,
+        project_id: 1,
+        chapter_id: 11,
+        revision_id: 40,
+        snapshot_json: JSON.stringify({
+          entityStates: [],
+          threadStates: [],
+          itemStates: [],
+          relationshipStates: [],
+          factStates: [
+            {
+              id: 30,
+              project_id: 1,
+              description: 'Su that nen',
+              fact_type: 'fact',
+              status: 'active',
+            },
+            {
+              id: 'event:70',
+              project_id: 1,
+              description: 'Lan da hy sinh',
+              fact_type: 'fact',
+              status: 'active',
+              source_chapter_id: 11,
+            },
+          ],
+        }),
+      }],
+    });
+
+    const overview = await engine.getProjectCanonOverview(1);
+
+    expect(overview.factStates.map((fact) => fact.description)).toEqual([
+      'Su that nen',
+      'Lan da hy sinh',
+    ]);
+    expect(overview.factStates[1]).toMatchObject({
+      source_chapter_id: 11,
+      source_chapter_title: 'Chuong 1',
+      derived_from_chapter: true,
+    });
+    expect(overview.stats.fact_count).toBe(2);
+  });
+
+  it('keeps hydrated canon state when applying a completion delta', async () => {
+    const { db, codexStore } = await loadModules({
+      projects: [{ id: 1, title: 'Hydration' }],
+      characters: [{
+        id: 10,
+        project_id: 1,
+        name: 'Lan',
+        current_status: 'Ho so ban dau',
+      }],
+      entity_state_current: [{
+        id: 20,
+        project_id: 1,
+        entity_id: 10,
+        entity_type: 'character',
+        alive_status: 'dead',
+        summary: 'Lan da qua doi.',
+      }],
+      locations: [{ id: 30, project_id: 1, name: 'Thanh Co', description: 'Mo ta cu' }],
+      objects: [{ id: 40, project_id: 1, name: 'La ban', description: 'Vat cu' }],
+      worldTerms: [{ id: 50, project_id: 1, name: 'Cong Tro', definition: 'Dinh nghia cu' }],
+      canonFacts: [],
+      chapterMeta: [],
+    }, { includeCodexStore: true });
+
+    await codexStore.getState().loadCodex(1);
+    await Promise.all([
+      db.locations.update(30, { description: 'Mo ta moi tu chuong' }),
+      db.objects.update(40, { description: 'Vat da cap nhat' }),
+      db.worldTerms.update(50, { definition: 'Dinh nghia moi tu chuong' }),
+    ]);
+    await codexStore.getState().applyCompletionDelta({
+      projectId: 1,
+      chapterId: null,
+      refreshProjection: true,
+    });
+
+    expect(codexStore.getState().characters[0]).toMatchObject({
+      current_status: 'Ho so ban dau',
+      canon_status_summary: expect.stringContaining('Lan da qua doi'),
+      canon_state: expect.objectContaining({ alive_status: 'dead' }),
+    });
+    expect(codexStore.getState().locations[0].description).toBe('Mo ta moi tu chuong');
+    expect(codexStore.getState().objects[0].description).toBe('Vat da cap nhat');
+    expect(codexStore.getState().worldTerms[0].definition).toBe('Dinh nghia moi tu chuong');
+    expect(codexStore.getState().storyBibleWorldCounts).toEqual({
+      locations: 1,
+      objects: 1,
+      terms: 1,
+    });
   });
 
   it('removes deleted objects from current truth and never resurrects them from canon history', async () => {

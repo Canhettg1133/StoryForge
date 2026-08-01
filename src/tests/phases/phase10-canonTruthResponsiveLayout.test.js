@@ -157,4 +157,18 @@ describe('Canon Truth responsive layout', () => {
     expect(css).toMatch(/@media \(max-width: 960px\)[\s\S]*\.su-that-page__detail-panel[\s\S]*grid-row: auto;/u);
     expect(css).toMatch(/@media \(max-width: 960px\)[\s\S]*\.bible-canon-evidence-layout\.is-empty[\s\S]*min-height: 0;/u);
   });
+
+  it('keeps AI reanalysis separate from projection rebuild and renders derived facts read-only', () => {
+    const truth = read('src/pages/CanonTruth/CanonTruth.jsx');
+    const storyBibleCanon = read('src/pages/StoryBible/sections/StoryBibleCanonSection.jsx');
+
+    expect(truth).toContain('Dựng lại canon');
+    expect(truth).toContain('Rà lại toàn bộ chương bằng AI');
+    expect(truth).toContain('reanalyzeCompletedChapters');
+    expect(truth).toContain('Sự thật nền thủ công');
+    expect(truth).toContain('Sự thật phát sinh từ chương');
+    expect(truth).toContain('Chỉ đọc');
+    expect(storyBibleCanon).toContain('Sự thật nền thủ công');
+    expect(storyBibleCanon).toContain('Sự thật phát sinh từ chương');
+  });
 });

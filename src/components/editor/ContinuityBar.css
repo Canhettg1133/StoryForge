@@ -51,6 +51,18 @@
 .continuity-bar-current {
   padding-right: var(--space-2);
   flex: 1 1 100%;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.continuity-bar-current .continuity-bar-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.continuity-bar-current > .continuity-bar-status,
+.continuity-bar-current > .continuity-bar-issue-trigger {
+  flex: 0 0 auto;
 }
 
 .continuity-bar-previous {

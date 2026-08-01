@@ -92,12 +92,15 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
   handleRestoreCanonFact,
   handleDeleteCanonFactPermanent,
 }) {
+  const derivedCanonFacts = (canonOverview?.factStates || []).filter((fact) => (
+    fact.status === 'active' && fact.derived_from_chapter
+  ));
   return (
     <div className="bible-section">
       <div className="bible-section-header" onClick={() => onToggle('canon')} style={{ cursor: 'pointer' }}>
         <h3 className="bible-section-title">
           <RotateCcw size={14} style={{ transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)', transition: '0.2s' }} />
-          <BookKey size={18} /> Sự thật Canon ({activeCanonFacts.length})
+          <BookKey size={18} /> Sự thật Canon ({activeCanonFacts.length + derivedCanonFacts.length})
         </h3>
         <div className="bible-inline-actions">
           <button className="btn btn-ghost btn-sm" onClick={(event) => { event.stopPropagation(); loadCanonOverview(); }} disabled={canonOverviewLoading}>
@@ -118,6 +121,7 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
               <div className="bible-canon-stat"><span className="bible-canon-stat-label">Sự kiện</span><strong>{canonOverview?.stats?.event_count || 0}</strong></div>
               <div className="bible-canon-stat"><span className="bible-canon-stat-label">Báo cáo</span><strong>{(canonOverview?.stats?.warning_count || 0) + (canonOverview?.stats?.error_count || 0)}</strong></div>
               <div className="bible-canon-stat"><span className="bible-canon-stat-label">Bằng chứng</span><strong>{canonOverview?.stats?.evidence_count || 0}</strong></div>
+              <div className="bible-canon-stat"><span className="bible-canon-stat-label">Sự thật</span><strong>{canonOverview?.stats?.fact_count || activeCanonFacts.length}</strong></div>
             </div>
 
             <div className="bible-canon-columns">
@@ -311,6 +315,10 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
             {!selectedRevisionDetail && !canonDetailLoading && <p className="text-muted bible-canon-empty">Chọn một chương đã chốt canon để xem phiên bản và bằng chứng.</p>}
           </div>
 
+          <div className="bible-canon-panel-header">
+            <strong>Sự thật nền thủ công</strong>
+            <span>{activeCanonFacts.length}</span>
+          </div>
           {activeCanonFacts.map((fact) => {
             const draft = canonFactDrafts[fact.id] || fact;
             return (
@@ -328,6 +336,24 @@ const StoryBibleCanonSection = React.memo(function StoryBibleCanonSection({
             );
           })}
           {activeCanonFacts.length === 0 && <p className="text-muted" style={{ fontSize: '13px', fontStyle: 'italic' }}>Chưa có sự thật canon nào đang hoạt động.</p>}
+
+          <div className="bible-canon-panel-header">
+            <strong>Sự thật phát sinh từ chương</strong>
+            <span>{derivedCanonFacts.length}</span>
+          </div>
+          {derivedCanonFacts.map((fact) => (
+            <div key={fact.id || fact.fact_fingerprint} className="bible-edit-card">
+              <strong>{fact.description}</strong>
+              <span className="bible-canon-meta">
+                Chỉ đọc · {fact.source_chapter_title || `Chương ${fact.source_chapter_id}`}
+              </span>
+            </div>
+          ))}
+          {derivedCanonFacts.length === 0 && (
+            <p className="text-muted" style={{ fontSize: '13px', fontStyle: 'italic' }}>
+              Chưa có sự thật nào phát sinh từ chương.
+            </p>
+          )}
 
           {deprecatedCanonFacts.length > 0 && (
             <details style={{ marginTop: 'var(--space-4)' }}>

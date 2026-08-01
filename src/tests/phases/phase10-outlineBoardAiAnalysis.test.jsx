@@ -169,7 +169,8 @@ describe('phase10 outline board AI analysis safety', () => {
           name: 'Lan',
           role: 'protagonist',
           specific_role: 'nhân vật chính nữ của Thần Vũ Tông',
-          current_status: 'Đang giữ ngọc bội.',
+          current_status: 'Ho so ban dau',
+          canon_status_summary: 'Trang thai canon moi nhat',
         },
       ],
       locations: [{ id: 1, name: 'Thành Cổ' }],
@@ -225,6 +226,9 @@ describe('phase10 outline board AI analysis safety', () => {
     expect(sentMessages).toContain('Nội dung đã viết');
     expect(sentMessages).toContain('Lan là nhân vật chính nữ của Thần Vũ Tông');
     expect(sentMessages).toContain('không được bịa entity ngoài Codex');
+    expect(sentMessages).toContain('Canon hiện tại: Trang thai canon moi nhat');
+    expect(sentMessages).toContain('Trạng thái hồ sơ ban đầu: Ho so ban dau');
+    expect(sentMessages).not.toContain('Live Canon: Ho so ban dau');
     expect(updateChapter).not.toHaveBeenCalled();
     expect(createPlotThread).not.toHaveBeenCalled();
     expect(container.textContent).toContain('Đề xuất phân tích dàn ý');

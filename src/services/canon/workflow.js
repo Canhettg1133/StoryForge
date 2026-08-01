@@ -19,8 +19,9 @@ import {
   replaceValidatorReports,
   updateChapterCommitSummary,
 } from './core';
-import { buildSemanticOpFingerprint, dedupeCandidateOps, mapAiOpsToCandidateOps } from './opMapping';
+import { dedupeCandidateOps, mapAiOpsToCandidateOpsDetailed } from './opMapping';
 import { invalidateFromChapter, rebuildCanonFromChapter } from './projection';
+import { buildCharacterStateSummary, buildRelationshipPairKey } from './state';
 import {
   filterCommitReadyOps,
   reportsHaveErrors,
@@ -29,6 +30,7 @@ import {
   validateGeneratedProseDiscipline,
 } from './validation';
 import { resolveCanonFactRegistration } from '../entityIdentity/factIdentity.js';
+import { assertCanonRunAllowed } from './runLock.js';
 import {
   buildCanonChapterTextFromScenes,
   buildCanonContentSignature,
@@ -39,150 +41,69 @@ import {
 function normalizeAiOpsResponse(parsed) {
   if (Array.isArray(parsed)) return parsed;
   if (parsed && Array.isArray(parsed.ops)) return parsed.ops;
-  return [];
+  return null;
 }
 
-const CANON_REVIEW_SUGGESTION_TYPE = 'canon_op_review';
-
-const CANON_REVIEW_REQUIRED_OP_TYPES = new Set([
-  CANON_OP_TYPES.CHARACTER_DIED,
-  CANON_OP_TYPES.CHARACTER_RESCUED,
-  CANON_OP_TYPES.SECRET_REVEALED,
-  CANON_OP_TYPES.OBJECT_LOST,
-  CANON_OP_TYPES.OBJECT_CONSUMED,
+const RETRYABLE_CANON_EXTRACTION_RULES = new Set([
+  'CANON_OP_MISSING_REFERENCE_FILTERED',
+  'CANON_OP_UNSUPPORTED_TYPE_FILTERED',
+  'CANON_EVIDENCE_NOT_GROUNDED',
+  'INVALID_CANON_OP_PAYLOAD',
+  'LOW_CONFIDENCE_CANON_OP_FILTERED',
 ]);
 
-const OBJECT_REVIEW_AVAILABILITY = new Set([
-  'lost',
-  'consumed',
-  'destroyed',
-  'unavailable',
-]);
-
-const OBJECT_REVIEW_OP_TYPES = new Set([
-  CANON_OP_TYPES.OBJECT_ACQUIRED,
-  CANON_OP_TYPES.OBJECT_STATUS_CHANGED,
-  CANON_OP_TYPES.OBJECT_TRANSFERRED,
-  CANON_OP_TYPES.OBJECT_CONSUMED,
-  CANON_OP_TYPES.OBJECT_LOST,
-  CANON_OP_TYPES.OBJECT_FOUND,
-  CANON_OP_TYPES.OBJECT_RESTORED,
-  CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
-  CANON_OP_TYPES.OBJECT_SPENT,
-  CANON_OP_TYPES.OBJECT_RETURNED,
-]);
-
-function getOpPayload(op) {
-  return op?.payload && typeof op.payload === 'object' ? op.payload : {};
+function shouldRetryCanonExtraction({ extractedCount, committedCount, reports = [] }) {
+  return extractedCount > 0
+    && committedCount === 0
+    && reports.some((report) => RETRYABLE_CANON_EXTRACTION_RULES.has(report.rule_code));
 }
 
-function shouldDeferForCanonReview(op) {
-  if (!op?.op_type) return false;
-  if (CANON_REVIEW_REQUIRED_OP_TYPES.has(op.op_type)) return true;
-  if (op.op_type !== CANON_OP_TYPES.OBJECT_STATUS_CHANGED) return false;
-  return OBJECT_REVIEW_AVAILABILITY.has(normalizeKey(getOpPayload(op).availability));
-}
-
-function splitCanonReviewOps(candidateOps = []) {
-  const autoCommitOps = [];
-  const deferredOps = [];
-  (candidateOps || []).forEach((op) => {
-    if (shouldDeferForCanonReview(op)) {
-      deferredOps.push(op);
-    } else {
-      autoCommitOps.push(op);
-    }
+function buildCanonExtractionRetryMessage(reports = []) {
+  const reportLines = reports.slice(0, 12).map((report, index) => {
+    const evidence = cleanText(report.evidence || '');
+    return [
+      `${index + 1}. [${report.rule_code || 'CANON_INVALID'}] ${cleanText(report.message || '')}`,
+      evidence ? `Evidence đã trả: ${evidence}` : '',
+    ].filter(Boolean).join('\n');
   });
-  return { autoCommitOps, deferredOps };
-}
-
-function getCanonReviewTarget(op) {
-  if (OBJECT_REVIEW_OP_TYPES.has(op?.op_type)) {
-    return {
-      id: op.object_id || null,
-      name: cleanText(op.object_name || ''),
-    };
-  }
-  if (op?.op_type === CANON_OP_TYPES.SECRET_REVEALED) {
-    return {
-      id: op.fact_id || null,
-      name: cleanText(op.fact_description || ''),
-    };
-  }
   return {
-    id: op?.subject_id || op?.target_id || null,
-    name: cleanText(op?.subject_name || op?.target_name || ''),
+    role: 'user',
+    content: [
+      '[SỬA PHẢN HỒI CANON LẦN TRƯỚC]',
+      'Phản hồi trước không có operation nào đủ điều kiện commit vì các lỗi dưới đây:',
+      ...reportLines,
+      '',
+      'Hãy đọc lại DANH SÁCH CẢNH và toàn bộ roster trong prompt gốc, rồi trả lại TOÀN BỘ object {"ops":[...]} đã sửa.',
+      'Evidence phải là một đoạn nguyên văn liên tục trong đúng scene_index; không nối các câu rời bằng dấu ba chấm.',
+      'Tên nhân vật, địa điểm, vật phẩm và tuyến truyện phải dùng đúng tên hoặc alias có trong roster. Thông tin như địa chỉ/tên người không được biến thành vật phẩm.',
+      'Nếu sau khi đọc lại thực sự không có thay đổi canon, trả chính xác {"ops":[]}. Chỉ trả JSON, không giải thích.',
+    ].join('\n'),
   };
 }
 
-function summarizeCanonReviewOp(op) {
-  const payload = getOpPayload(op);
-  return cleanText(
-    op?.summary
-    || payload.status_summary
-    || payload.description
-    || payload.availability
-    || op?.op_type
-  );
-}
+const SUPERSEDED_CANON_SUGGESTION_TYPES = new Set([
+  'canon_op_review',
+  'character_status',
+  'canon_fact',
+  'relationship_update',
+]);
 
-function parseSuggestionCandidateOp(value) {
-  if (!value) return null;
-  try {
-    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-async function loadPendingCanonReviewFingerprints(projectId, chapterId) {
-  const existing = await db.suggestions
+async function supersedeLegacyCanonSuggestions(projectId, chapterId) {
+  const pending = await db.suggestions
     .where('project_id').equals(projectId)
     .filter((suggestion) => (
-      suggestion.type === CANON_REVIEW_SUGGESTION_TYPE
-      && suggestion.status === 'pending'
+      suggestion.status === 'pending'
       && suggestion.source_chapter_id === chapterId
+      && SUPERSEDED_CANON_SUGGESTION_TYPES.has(suggestion.type)
     ))
     .toArray();
-
-  return new Set(
-    existing
-      .map((suggestion) => parseSuggestionCandidateOp(suggestion.candidate_op))
-      .filter(Boolean)
-      .map((op) => buildSemanticOpFingerprint(op))
-  );
-}
-
-async function buildCanonReviewSuggestionRecords(projectId, chapterId, deferredOps = []) {
-  if (!deferredOps.length) return [];
-  const existingFingerprints = await loadPendingCanonReviewFingerprints(projectId, chapterId);
-  const records = [];
   const now = Date.now();
-
-  deferredOps.forEach((op) => {
-    const fingerprint = buildSemanticOpFingerprint(op);
-    if (existingFingerprints.has(fingerprint)) return;
-    existingFingerprints.add(fingerprint);
-    const target = getCanonReviewTarget(op);
-    records.push({
-      project_id: projectId,
-      type: CANON_REVIEW_SUGGESTION_TYPE,
-      status: 'pending',
-      source_chapter_id: op.chapter_id || chapterId,
-      source_scene_id: op.scene_id || null,
-      target_id: target.id,
-      target_name: target.name,
-      current_value: '',
-      suggested_value: summarizeCanonReviewOp(op),
-      fact_type: null,
-      reasoning: cleanText(op.evidence || op.summary || ''),
-      candidate_op: JSON.stringify(op),
-      created_at: now,
-    });
-  });
-
-  return records;
+  await Promise.all(pending.map((suggestion) => db.suggestions.update(suggestion.id, {
+    status: 'superseded',
+    superseded_at: now,
+    last_error: '',
+  })));
+  return pending.length;
 }
 
 function sendAiTask(taskType, messages, options = {}) {
@@ -230,6 +151,54 @@ async function rebuildCanonProjectionAfterCommit(projectId, chapterId) {
     scheduleBackgroundCanonRebuild(db, { delayMs: 1000 });
     throw error;
   }
+}
+
+async function blockRevisionAfterProjectionFailure({
+  projectId,
+  chapterId,
+  revisionId,
+  reports = [],
+  error,
+}) {
+  const projectionReport = createReport({
+    severity: CANON_SEVERITY.ERROR,
+    ruleCode: 'CANON_PROJECTION_REBUILD_FAILED',
+    message: 'Đã lưu kết quả phân tích nhưng chưa dựng được trạng thái canon hiện tại. Hãy chạy lại phân tích chương.',
+    projectId,
+    chapterId,
+    revisionId,
+    evidence: cleanText(error?.message || String(error || '')),
+  });
+  const nextReports = [
+    ...reports.filter((report) => report.rule_code !== projectionReport.rule_code),
+    projectionReport,
+  ];
+  const revision = await db.chapter_revisions.get(revisionId);
+  let validatorSummary = {};
+  try {
+    validatorSummary = JSON.parse(revision?.validator_summary || '{}');
+  } catch {
+    validatorSummary = {};
+  }
+
+  await replaceValidatorReports(projectId, revisionId, nextReports);
+  await db.chapter_revisions.update(revisionId, {
+    status: CHAPTER_REVISION_STATUS.BLOCKED,
+    validator_summary: JSON.stringify({
+      ...validatorSummary,
+      warning_count: nextReports.filter((report) => report.severity === CANON_SEVERITY.WARNING).length,
+      error_count: nextReports.filter((report) => report.severity === CANON_SEVERITY.ERROR).length,
+    }),
+    updated_at: Date.now(),
+  });
+  await updateChapterCommitSummary(
+    projectId,
+    chapterId,
+    CHAPTER_COMMIT_STATUS.BLOCKED,
+    nextReports,
+    revisionId,
+  );
+  return nextReports;
 }
 
 function normalizeAdjudicationResponse(parsed) {
@@ -549,18 +518,63 @@ export async function extractCandidateOps({
   revisionId = null,
   chapterText = '',
   scenes = [],
+  preTruth = null,
   routeOptions = null,
   allowConcurrent = false,
+  retryReports = [],
 }) {
   const { project } = await getChapterAndProject(projectId, chapterId);
-  const [characters, locations, plotThreads, canonFacts, objects, relationships] = await Promise.all([
-    db.characters.where('project_id').equals(projectId).toArray(),
-    db.locations.where('project_id').equals(projectId).toArray(),
-    db.plotThreads.where('project_id').equals(projectId).toArray(),
-    db.canonFacts.where('project_id').equals(projectId).toArray(),
-    db.objects.where('project_id').equals(projectId).toArray(),
-    db.relationships.where('project_id').equals(projectId).toArray(),
-  ]);
+  const truth = preTruth || await loadPreChapterTruth(projectId, chapterId);
+  const entityStateById = new Map((truth.entityStates || []).map((state) => [state.entity_id, state]));
+  const threadStateById = new Map((truth.threadStates || []).map((state) => [state.thread_id, state]));
+  const itemStateById = new Map((truth.itemStates || []).map((state) => [state.object_id, state]));
+  const relationshipStateByPair = new Map(
+    (truth.relationshipStates || []).map((state) => [state.pair_key, state]),
+  );
+  const canonFacts = (truth.factStates || []).map((fact) => ({
+    ...fact,
+    status: fact.status || 'active',
+  }));
+  const factDescriptionById = new Map(canonFacts.map((fact) => [
+    String(fact.id),
+    fact.description || '',
+  ]));
+  const characters = (truth.characters || []).map((character) => {
+    const state = entityStateById.get(character.id);
+    return {
+      ...character,
+      current_status: buildCharacterStateSummary(state, character.current_status || ''),
+      canon_state: state || null,
+      known_canon_facts: Object.entries(state?.knowledge || {})
+        .filter(([, known]) => known)
+        .map(([factId]) => factDescriptionById.get(String(factId)))
+        .filter(Boolean),
+    };
+  });
+  const locations = truth.locations || [];
+  const plotThreads = (truth.plotThreads || []).map((thread) => ({
+    ...thread,
+    ...(threadStateById.get(thread.id) || {}),
+  }));
+  const objects = (truth.objects || []).map((object) => ({
+    ...object,
+    ...(itemStateById.get(object.id) || {}),
+  }));
+  const characterNameById = new Map(characters.map((character) => [character.id, character.name]));
+  const relationships = (truth.relationships || []).map((relationship) => {
+    const pairKey = buildRelationshipPairKey(
+      relationship.character_a_id,
+      relationship.character_b_id,
+    );
+    const projectedState = relationshipStateByPair.get(pairKey) || {};
+    return {
+      ...relationship,
+      ...projectedState,
+      charA: characterNameById.get(relationship.character_a_id) || `#${relationship.character_a_id}`,
+      charB: characterNameById.get(relationship.character_b_id) || `#${relationship.character_b_id}`,
+      label: projectedState.relationship_type || relationship.relation_type || 'other',
+    };
+  });
 
   let promptTemplates = {};
   if (project?.prompt_templates) {
@@ -592,6 +606,9 @@ export async function extractCandidateOps({
     nsfwMode: !!project?.nsfw_mode,
     superNsfwMode: !!project?.super_nsfw_mode,
   });
+  if (retryReports.length > 0) {
+    messages.push(buildCanonExtractionRetryMessage(retryReports));
+  }
 
   const rawText = await sendAiTask(TASK_TYPES.CANON_EXTRACT_OPS, messages, {
     routeOptions: routeOptions || undefined,
@@ -610,7 +627,12 @@ export async function extractCandidateOps({
     throw buildCanonExtractError(error, rawText);
   }
 
-  const candidateOps = mapAiOpsToCandidateOps(normalizeAiOpsResponse(parsed), {
+  const extractedOps = normalizeAiOpsResponse(parsed);
+  if (!extractedOps) {
+    throw buildCanonExtractError(new Error('JSON canon phải là một mảng hoặc object có trường ops là mảng.'), rawText);
+  }
+
+  const mapping = mapAiOpsToCandidateOpsDetailed(extractedOps, {
     chapterId,
     scenes,
     characters,
@@ -622,12 +644,47 @@ export async function extractCandidateOps({
 
   if (revisionId) {
     await db.chapter_revisions.update(revisionId, {
-      candidate_ops: JSON.stringify(candidateOps),
+      candidate_ops: JSON.stringify(mapping.candidateOps),
       updated_at: Date.now(),
     });
   }
 
-  return candidateOps;
+  return {
+    candidateOps: mapping.candidateOps,
+    mappingFilteredOps: mapping.filteredOps,
+    extractedCount: extractedOps.length,
+  };
+}
+
+function buildMappingFilteredReports({
+  filteredOps = [],
+  projectId,
+  chapterId,
+  revisionId,
+}) {
+  return filteredOps.map((filteredOp) => {
+    const missingReferences = filteredOp.missingReferences?.filter(Boolean) || [];
+    const message = filteredOp.reasonCode === 'CANON_OP_DUPLICATE_FILTERED'
+      ? `Thao tác ${filteredOp.opType || 'không rõ loại'} trùng nghĩa với một thao tác khác trong cùng phản hồi AI nên đã được loại.`
+      : filteredOp.reasonCode === 'CANON_OP_MISSING_REFERENCE_FILTERED'
+        ? `Thao tác ${filteredOp.opType || 'không rõ loại'} không ánh xạ được tham chiếu bắt buộc${missingReferences.length > 0 ? ` (${missingReferences.join(', ')})` : ''} nên đã được loại.`
+        : `Thao tác AI dùng loại không được hỗ trợ (${filteredOp.opType || 'trống'}) nên đã được loại.`;
+    return createReport({
+      severity: CANON_SEVERITY.WARNING,
+      ruleCode: filteredOp.reasonCode,
+      message,
+      projectId,
+      chapterId,
+      revisionId,
+      sceneId: filteredOp.mappedOp?.scene_id || null,
+      relatedEntityIds: [
+        filteredOp.mappedOp?.subject_id,
+        filteredOp.mappedOp?.target_id,
+      ],
+      relatedThreadIds: [filteredOp.mappedOp?.thread_id],
+      evidence: filteredOp.evidence || '',
+    });
+  });
 }
 
 export async function validateRevision(chapterRevisionId, mode = 'draft', options = {}) {
@@ -641,31 +698,125 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
   const preTruth = await loadPreChapterTruth(revision.project_id, revision.chapter_id);
   const project = await db.projects.get(revision.project_id);
   let candidateOps = loadRevisionOps(revision);
-  let deferredOps = [];
   const extractionFallbackReports = [];
-  const commitReadinessReports = [];
+  let commitReadinessReports = [];
   const shouldFailClosed = mode === 'canonicalize';
   let extractionAttempted = false;
+  let extractionSucceeded = false;
+  let extractionRetried = false;
+  let extractionAttemptCount = 0;
+  let extractedCount = candidateOps.length;
+  const sceneTextById = new Map(scenes.map((scene) => [
+    scene.id,
+    cleanText(scene.draft_text || scene.final_text || ''),
+  ]));
 
-  if (!options.skipExtraction && candidateOps.length === 0 && cleanText(revision.chapter_text)) {
+  const runExtractionAttempt = async (retryReports = []) => {
     extractionAttempted = true;
-    try {
-      candidateOps = await extractCandidateOps({
+    extractionAttemptCount += 1;
+    const extraction = await extractCandidateOps({
+      projectId: revision.project_id,
+      chapterId: revision.chapter_id,
+      revisionId: revision.id,
+      chapterText: revision.chapter_text,
+      scenes,
+      preTruth,
+      routeOptions: options.routeOptions || null,
+      allowConcurrent: !!options.allowConcurrent,
+      retryReports,
+    });
+    let nextOps = extraction.candidateOps;
+    const nextReports = buildMappingFilteredReports({
+      filteredOps: extraction.mappingFilteredOps,
+      projectId: revision.project_id,
+      chapterId: revision.chapter_id,
+      revisionId: revision.id,
+    });
+    if (shouldFailClosed) {
+      const filtered = filterCommitReadyOps(nextOps, {
         projectId: revision.project_id,
         chapterId: revision.chapter_id,
         revisionId: revision.id,
-        chapterText: revision.chapter_text,
-        scenes,
-        routeOptions: options.routeOptions || null,
-        allowConcurrent: !!options.allowConcurrent,
+        requireConfidence: true,
+        requireEvidenceGrounding: true,
+        sceneTextById,
+        entityStates: preTruth.entityStates,
       });
+      nextOps = filtered.ops;
+      nextReports.push(...filtered.reports);
+    }
+    return {
+      candidateOps: nextOps,
+      reports: nextReports,
+      extractedCount: extraction.extractedCount,
+    };
+  };
+
+  if (!options.skipExtraction && candidateOps.length === 0 && cleanText(revision.chapter_text)) {
+    try {
+      const extraction = await runExtractionAttempt();
+      candidateOps = extraction.candidateOps;
+      extractionSucceeded = true;
+      extractedCount = extraction.extractedCount;
+      commitReadinessReports = extraction.reports;
+
+      if (shouldRetryCanonExtraction({
+        extractedCount,
+        committedCount: candidateOps.length,
+        reports: commitReadinessReports,
+      })) {
+        extractionRetried = true;
+        const retryFeedback = commitReadinessReports;
+        try {
+          const retry = await runExtractionAttempt(retryFeedback);
+          candidateOps = retry.candidateOps;
+          extractedCount = retry.extractedCount;
+          commitReadinessReports = retry.reports;
+          if (candidateOps.length > 0) {
+            commitReadinessReports.unshift(createReport({
+              severity: CANON_SEVERITY.INFO,
+              ruleCode: 'CANON_EXTRACT_RETRY_SUCCEEDED',
+              message: 'Phản hồi canon đầu tiên không hợp lệ; hệ thống đã yêu cầu AI sửa một lần và dùng kết quả đã được kiểm chứng lại.',
+              projectId: revision.project_id,
+              chapterId: revision.chapter_id,
+              revisionId: revision.id,
+            }));
+          } else {
+            extractionSucceeded = false;
+            commitReadinessReports.push(createReport({
+              severity: CANON_SEVERITY.ERROR,
+              ruleCode: 'CANON_EXTRACT_RETRY_EXHAUSTED',
+              message: 'AI vẫn không trả về thao tác canon có thể kiểm chứng sau lần sửa tự động; chương chưa được đánh dấu hoàn thành.',
+              projectId: revision.project_id,
+              chapterId: revision.chapter_id,
+              revisionId: revision.id,
+              evidence: retry.reports.map((report) => report.message).filter(Boolean).join(' | ')
+                || 'Phản hồi sửa lỗi không còn thao tác canon có thể commit.',
+            }));
+          }
+        } catch (error) {
+          extractionSucceeded = false;
+          candidateOps = [];
+          commitReadinessReports = [createReport({
+            severity: CANON_SEVERITY.ERROR,
+            ruleCode: 'CANON_EXTRACT_RETRY_FAILED',
+            message: 'Không thể hoàn tất lần sửa tự động cho phản hồi canon; chương chưa được đánh dấu hoàn thành.',
+            projectId: revision.project_id,
+            chapterId: revision.chapter_id,
+            revisionId: revision.id,
+            evidence: error?.message || '',
+          })];
+        }
+      }
     } catch (error) {
       console.warn('[Canon] extractCandidateOps failed, falling back to heuristic-only validation:', error);
       candidateOps = [];
       extractionFallbackReports.push(createReport({
-        severity: CANON_SEVERITY.INFO,
+        severity: shouldFailClosed ? CANON_SEVERITY.ERROR : CANON_SEVERITY.INFO,
         ruleCode: 'CANON_EXTRACT_FALLBACK',
-      message: 'AI không trích xuất được canon ops, hệ thống đã tiếp tục kiểm tra heuristic và không xem đây là lỗi chặn chương.',
+        message: shouldFailClosed
+          ? 'AI không trích xuất được canon ops nên chương chưa thể hoàn thành canon.'
+          : 'AI không trích xuất được canon ops, hệ thống chỉ tiếp tục kiểm tra bản nháp và chưa ghi canon.',
         projectId: revision.project_id,
         chapterId: revision.chapter_id,
         revisionId: revision.id,
@@ -674,21 +825,21 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
     }
   }
 
-  if (shouldFailClosed) {
+  if (shouldFailClosed && !extractionAttempted) {
     const filtered = filterCommitReadyOps(candidateOps, {
       projectId: revision.project_id,
       chapterId: revision.chapter_id,
       revisionId: revision.id,
-      requireConfidence: extractionAttempted,
+      requireConfidence: false,
+      requireEvidenceGrounding: false,
+      sceneTextById,
+      entityStates: preTruth.entityStates,
     });
     candidateOps = filtered.ops;
     commitReadinessReports.push(...filtered.reports);
-    if (options.deferRiskyCanonOps) {
-      const split = splitCanonReviewOps(candidateOps);
-      candidateOps = split.autoCommitOps;
-      deferredOps = split.deferredOps;
-    }
   }
+  const committedCount = candidateOps.length;
+  const filteredCount = Math.max(0, extractedCount - committedCount);
 
   const schemaReports = validateCandidateOps({
     projectId: revision.project_id,
@@ -714,6 +865,7 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
     characters: preTruth.characters,
     objects: preTruth.objects,
     itemStates: preTruth.itemStates,
+    candidateOps,
   });
 
   let reports = [...schemaReports, ...heuristicReports, ...commitReadinessReports, ...extractionFallbackReports];
@@ -733,6 +885,9 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
   const status = hasErrors
     ? CHAPTER_REVISION_STATUS.BLOCKED
     : (mode === 'canonicalize' ? CHAPTER_REVISION_STATUS.VALIDATED : CHAPTER_REVISION_STATUS.DRAFT);
+  const extractionStatus = extractionAttempted
+    ? (extractionSucceeded ? 'succeeded' : 'failed')
+    : 'skipped';
 
   await db.chapter_revisions.update(revision.id, {
     status,
@@ -740,6 +895,12 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
     validator_summary: JSON.stringify({
       warning_count: reports.filter((report) => report.severity === CANON_SEVERITY.WARNING).length,
       error_count: reports.filter((report) => report.severity === CANON_SEVERITY.ERROR).length,
+      extraction_status: extractionStatus,
+      extracted_count: extractedCount,
+      committed_count: committedCount,
+      filtered_count: filteredCount,
+      extraction_retried: extractionRetried,
+      extraction_attempt_count: extractionAttemptCount,
     }),
     updated_at: Date.now(),
   });
@@ -756,9 +917,14 @@ export async function validateRevision(chapterRevisionId, mode = 'draft', option
   return {
     revision: await db.chapter_revisions.get(revision.id),
     candidateOps,
-    deferredOps,
     reports,
     hasErrors,
+    extractionStatus,
+    extractedCount,
+    committedCount,
+    filteredCount,
+    extractionRetried,
+    extractionAttemptCount,
   };
 }
 
@@ -832,6 +998,7 @@ function resolveFactRegistrations(candidateOps, factStates) {
 }
 
 export async function canonicalizeChapter(projectId, chapterId, options = {}) {
+  assertCanonRunAllowed(options.bulkRunToken || null);
   const scenes = await getChapterScenes(chapterId);
   const chapterText = buildCanonChapterTextFromScenes(scenes);
   const commit = await getOrCreateChapterCommit(projectId, chapterId);
@@ -844,7 +1011,6 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
 
   const validation = await validateRevision(revision.id, 'canonicalize', {
     routeOptions: options.routeOptions || null,
-    deferRiskyCanonOps: true,
     allowConcurrent: !!options.allowConcurrent,
   });
   if (validation.hasErrors) {
@@ -853,13 +1019,18 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
       ok: false,
       revisionId: revision.id,
       reports: validation.reports,
+      extractionStatus: validation.extractionStatus,
+      extractedCount: validation.extractedCount,
+      committedCount: 0,
+      filteredCount: validation.filteredCount,
+      extractionRetried: validation.extractionRetried,
+      extractionAttemptCount: validation.extractionAttemptCount,
+      invalidatedChapterIds: [],
     };
   }
 
   const preTruth = await loadPreChapterTruth(projectId, chapterId);
   const candidateOps = resolveFactRegistrations(validation.candidateOps, preTruth.factStates);
-  const deferredOps = validation.deferredOps || [];
-  const canonReviewSuggestions = await buildCanonReviewSuggestionRecords(projectId, chapterId, deferredOps);
   const storyEvents = buildStoryEventsFromOps(projectId, revision.id, candidateOps);
   const memoryEvidence = buildEvidenceFromOps(projectId, revision.id, candidateOps);
 
@@ -902,9 +1073,7 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
       if (memoryEvidence.length > 0) {
         await db.memory_evidence.bulkAdd(memoryEvidence);
       }
-      if (canonReviewSuggestions.length > 0) {
-        await db.suggestions.bulkAdd(canonReviewSuggestions);
-      }
+      await supersedeLegacyCanonSuggestions(projectId, chapterId);
 
       await db.chapter_commits.update(commit.id, {
         current_revision_id: revision.id,
@@ -916,7 +1085,30 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
       });
     });
 
-  await rebuildCanonProjectionAfterCommit(projectId, chapterId);
+  try {
+    await rebuildCanonProjectionAfterCommit(projectId, chapterId);
+  } catch (error) {
+    const reports = await blockRevisionAfterProjectionFailure({
+      projectId,
+      chapterId,
+      revisionId: revision.id,
+      reports: validation.reports,
+      error,
+    });
+    return {
+      ok: false,
+      revisionId: revision.id,
+      reports,
+      invalidatedChapterIds,
+      invalidatedChapterCount: invalidatedChapterIds.length,
+      extractionStatus: validation.extractionStatus,
+      extractedCount: validation.extractedCount,
+      committedCount: 0,
+      filteredCount: validation.filteredCount,
+      extractionRetried: validation.extractionRetried,
+      extractionAttemptCount: validation.extractionAttemptCount,
+    };
+  }
   await db.chapter_commits.update(commit.id, {
     status: CHAPTER_COMMIT_STATUS.CANONICAL,
     updated_at: Date.now(),
@@ -927,8 +1119,13 @@ export async function canonicalizeChapter(projectId, chapterId, options = {}) {
     revisionId: revision.id,
     reports: validation.reports,
     invalidatedChapterIds,
-    deferredCount: deferredOps.length,
-    deferredOps,
+    invalidatedChapterCount: invalidatedChapterIds.length,
+    extractionStatus: validation.extractionStatus,
+    extractedCount: validation.extractedCount,
+    committedCount: candidateOps.length,
+    filteredCount: validation.filteredCount,
+    extractionRetried: validation.extractionRetried,
+    extractionAttemptCount: validation.extractionAttemptCount,
   };
 }
 
@@ -1075,7 +1272,23 @@ export async function canonicalizeCandidateOps({
       });
     });
 
-  await rebuildCanonProjectionAfterCommit(projectId, chapterId);
+  try {
+    await rebuildCanonProjectionAfterCommit(projectId, chapterId);
+  } catch (error) {
+    const failureReports = await blockRevisionAfterProjectionFailure({
+      projectId,
+      chapterId,
+      revisionId: revision.id,
+      reports,
+      error,
+    });
+    return {
+      ok: false,
+      revisionId: revision.id,
+      reports: failureReports,
+      invalidatedChapterIds,
+    };
+  }
   await db.chapter_commits.update(commit.id, {
     status: CHAPTER_COMMIT_STATUS.CANONICAL,
     updated_at: Date.now(),

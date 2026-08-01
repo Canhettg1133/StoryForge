@@ -73,6 +73,16 @@ function normalizeIdentityText(value) {
     .trim();
 }
 
+function normalizeChapterDedupeName(value) {
+  return cleanText(value)
+    .normalize('NFC')
+    .toLocaleLowerCase('vi')
+    .replace(/[\u2018\u2019\u201c\u201d"'`()\[\]{}]/gu, ' ')
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
 function normalizeKind(kind) {
   if (kind === 'term') return 'world_term';
   return kind;
@@ -158,6 +168,13 @@ function safeSubsetMatchScore(left, right) {
 
 function mergeUniqueAliases(existing = [], incoming = []) {
   return uniqueTextList([...(Array.isArray(existing) ? existing : []), ...(Array.isArray(incoming) ? incoming : [])]);
+}
+
+function chapterExtractAliases(kind, aliases = []) {
+  const values = Array.isArray(aliases) ? aliases : [];
+  if (normalizeKind(kind) !== 'character') return values;
+  const genericAliases = new Set([...HONORIFICS, ...AMBIGUOUS_TOKENS]);
+  return values.filter((alias) => !genericAliases.has(normalizeIdentityText(alias)));
 }
 
 function firstBlankFill(existingValue, incomingValue) {
@@ -351,14 +368,15 @@ function sameEntityId(left, right) {
 }
 
 function strictIdentityMatches(candidateIdentity, index) {
-  const strictKeys = uniqueKeyList([
-    candidateIdentity.normalized_name,
+  const strictKeys = new Set([
+    candidateIdentity.raw_name,
     ...candidateIdentity.aliases,
-  ]);
-  return uniqueRecords(strictKeys.flatMap((key) => [
-    ...(index.exactName.get(key) || []),
-    ...(index.literalAliases.get(key) || []),
-  ]));
+  ].map(normalizeChapterDedupeName).filter(Boolean));
+  return uniqueRecords(index.records.filter((record) => (
+    [record.name, ...record.identity.aliases]
+      .map(normalizeChapterDedupeName)
+      .some((key) => strictKeys.has(key))
+  )));
 }
 
 function resolveChapterExtractCandidate(candidate, existingEntities = [], kind) {
@@ -384,7 +402,8 @@ function resolveChapterExtractCandidate(candidate, existingEntities = [], kind) 
     const identityMatches = strictIdentityMatches(candidateIdentity, index);
     const hasUniqueCanonicalTarget = identityMatches.length === 1
       && sameEntityId(identityMatches[0].id, target.id)
-      && candidateIdentity.normalized_name === target.identity.normalized_name;
+      && normalizeChapterDedupeName(candidateIdentity.raw_name)
+        === normalizeChapterDedupeName(target.name);
     if (!hasUniqueCanonicalTarget) {
       return resolveRejected(
         candidateIdentity,
@@ -410,7 +429,13 @@ function resolveChapterExtractCandidate(candidate, existingEntities = [], kind) 
       return resolveMatched(candidateIdentity, target, tier, 'AI-new candidate matched one exact existing name or alias.');
     }
     if (exactMatches.length > 1) {
-      return resolveRejected(candidateIdentity, exactMatches, 'AI-new candidate matches multiple exact existing identities.');
+      return resolveAmbiguous(
+        candidateIdentity,
+        exactMatches,
+        'strict_exact_alias',
+        'AI-new candidate matches multiple exact existing identities.',
+        1,
+      );
     }
     return resolveCreated(candidateIdentity, [], 'AI marked the candidate new and no exact name or alias exists.');
   }
@@ -611,6 +636,14 @@ function mergeGenericEntityPatch(existing, incoming, kind) {
   return patch;
 }
 
+function payloadForExistingEntity(candidate, payload) {
+  if (candidate.source_type !== 'chapter_extract') return payload;
+  const existingPayload = { ...payload };
+  delete existingPayload.source_chapter_id;
+  delete existingPayload.source_kind;
+  return existingPayload;
+}
+
 function tablePayloadFromCandidate(projectId, candidate, kind) {
   const normalizedKind = normalizeKind(kind);
   const rawPayload = typeof candidate.payload_json === 'string'
@@ -620,7 +653,7 @@ function tablePayloadFromCandidate(projectId, candidate, kind) {
     ? chapterExtractMaterializationPayload(rawPayload, normalizedKind)
     : rawPayload;
   const identityInput = candidate.source_type === 'chapter_extract'
-    ? safeIdentityNormalizationPayload(payload)
+    ? safeIdentityNormalizationPayload(payload, normalizedKind)
     : payload;
   const identity = normalizeEntityIdentity(normalizedKind, identityInput);
   const base = {
@@ -761,23 +794,24 @@ async function materializeResolvedDecision(projectId, candidate, resolution, kin
     if (!current) {
       return { status: 'ambiguous_review', createdEntry: null, matchedEntityId: null };
     }
+    const mergePayload = payloadForExistingEntity(candidate, payload);
     const genericPayload = candidate.source_type === 'chapter_extract'
-      && payload.name
-      && normalizeIdentityText(payload.name) !== normalizeIdentityText(current.name)
+      && mergePayload.name
+      && normalizeIdentityText(mergePayload.name) !== normalizeIdentityText(current.name)
       ? {
-        ...payload,
-        aliases: mergeUniqueAliases(payload.aliases, [payload.name]),
+        ...mergePayload,
+        aliases: mergeUniqueAliases(mergePayload.aliases, [mergePayload.name]),
       }
-      : payload;
+      : mergePayload;
     const patch = normalizedKind === 'character'
       ? {
         ...mergeCharacterPatch(current, {
-          ...payload,
-          aliases: payload.aliases || [],
+          ...mergePayload,
+          aliases: mergePayload.aliases || [],
         }),
-        normalized_name: payload.normalized_name,
-        alias_keys: payload.alias_keys,
-        identity_key: payload.identity_key,
+        normalized_name: mergePayload.normalized_name,
+        alias_keys: mergePayload.alias_keys,
+        identity_key: mergePayload.identity_key,
       }
       : mergeGenericEntityPatch(current, genericPayload, normalizedKind);
     if (Object.keys(patch).length > 0) {
@@ -853,19 +887,24 @@ function isValidChapterExtractIdentityPayload(payload, kind) {
   if (action !== 'existing' && action !== 'new') return false;
   if (!hasValidChapterExtractEntityId(payload, action)) return false;
   return (CHAPTER_EXTRACT_TEXT_FIELDS[normalizeKind(kind)] || []).every((field) => (
-    !Object.prototype.hasOwnProperty.call(payload, field) || typeof payload[field] === 'string'
+    !Object.prototype.hasOwnProperty.call(payload, field)
+      || payload[field] == null
+      || typeof payload[field] === 'string'
   ));
 }
 
-function safeIdentityNormalizationPayload(payload = {}) {
+function safeIdentityNormalizationPayload(payload = {}, kind = '') {
   const name = typeof payload.name === 'string' ? payload.name : '';
   return {
     ...payload,
     name,
     raw_name: name,
-    aliases: Array.isArray(payload.aliases)
-      ? payload.aliases.filter((alias) => typeof alias === 'string')
-      : [],
+    aliases: chapterExtractAliases(
+      kind,
+      Array.isArray(payload.aliases)
+        ? payload.aliases.filter((alias) => typeof alias === 'string')
+        : [],
+    ),
   };
 }
 
@@ -877,8 +916,11 @@ function chapterExtractMaterializationPayload(payload = {}, kind) {
   ];
   return Object.fromEntries(
     allowedFields
-      .filter((field) => Object.prototype.hasOwnProperty.call(payload, field))
-      .map((field) => [field, payload[field]]),
+      .filter((field) => Object.prototype.hasOwnProperty.call(payload, field) && payload[field] != null)
+      .map((field) => [
+        field,
+        field === 'aliases' ? chapterExtractAliases(kind, payload[field]) : payload[field],
+      ]),
   );
 }
 
@@ -910,13 +952,16 @@ function toCandidateRows({
         ? { ...rawPayload, identity_contract_invalid: true }
         : rawPayload;
       const identityInput = sourceType === 'chapter_extract'
-        ? safeIdentityNormalizationPayload(payload)
+        ? safeIdentityNormalizationPayload(payload, kind)
         : payload;
       const identity = normalizeEntityIdentity(kind, identityInput);
       if (!identity.normalized_name && sourceType !== 'chapter_extract') continue;
+      const chapterDedupeName = sourceType === 'chapter_extract'
+        ? normalizeChapterDedupeName(payload.name)
+        : '';
       const dedupeKey = identity.normalized_name
         ? `${kind}:${sourceType === 'chapter_extract'
-          ? identity.normalized_name
+          ? (chapterDedupeName || `invalid:${itemIndex}`)
           : (identity.identity_key || identity.normalized_name)}`
         : `${kind}:invalid:${itemIndex}`;
       const existing = rowsByKey.get(dedupeKey);
@@ -927,22 +972,22 @@ function toCandidateRows({
             || chapterIdentityDecisionSignature(existingPayload) !== chapterIdentityDecisionSignature(payload));
         const mergedPayload = sourceType === 'chapter_extract'
           ? mergePayloads(
-            safeIdentityNormalizationPayload(existingPayload),
-            safeIdentityNormalizationPayload(payload),
+            safeIdentityNormalizationPayload(existingPayload, kind),
+            safeIdentityNormalizationPayload(payload, kind),
           )
           : mergePayloads(existingPayload, payload);
         if (hasDecisionConflict) {
           mergedPayload.identity_decision_conflict = true;
         }
         const mergedIdentityInput = sourceType === 'chapter_extract'
-          ? safeIdentityNormalizationPayload(mergedPayload)
+          ? safeIdentityNormalizationPayload(mergedPayload, kind)
           : mergedPayload;
         const mergedIdentity = normalizeEntityIdentity(kind, mergedIdentityInput);
         rowsByKey.set(dedupeKey, {
           ...existing,
           raw_name: existing.raw_name || mergedIdentity.raw_name,
           normalized_name: mergedIdentity.normalized_name,
-          aliases: mergeUniqueAliases(existing.aliases, payload.aliases),
+          aliases: mergedIdentity.aliases,
           alias_keys: mergedIdentity.alias_keys,
           identity_key: mergedIdentity.identity_key,
           payload_json: JSON.stringify(mergedPayload),
@@ -1009,6 +1054,301 @@ export async function stageExtractedEntityCandidates({
     stagedCount: materializedRows.length,
     rows: materializedRows,
   };
+}
+
+function emptyMaterializationResult() {
+  return {
+    createdCount: 0,
+    created: {
+      characters: 0,
+      locations: 0,
+      objects: 0,
+      worldTerms: 0,
+    },
+    createdEntries: { characters: [], locations: [], objects: [], worldTerms: [] },
+    stats: {
+      matched_existing: 0,
+      created_new: 0,
+      ambiguous_review: 0,
+      rejected: 0,
+      skipped_ai_identity: 0,
+    },
+  };
+}
+
+function addCreatedEntry(result, kind, entry) {
+  if (!entry) return;
+  if (kind === 'character') result.createdEntries.characters.push(entry);
+  if (kind === 'location') result.createdEntries.locations.push(entry);
+  if (kind === 'object') result.createdEntries.objects.push(entry);
+  if (kind === 'world_term') result.createdEntries.worldTerms.push(entry);
+}
+
+function finalizeMaterializationCounts(result) {
+  result.created = {
+    characters: result.createdEntries.characters.length,
+    locations: result.createdEntries.locations.length,
+    objects: result.createdEntries.objects.length,
+    worldTerms: result.createdEntries.worldTerms.length,
+  };
+  result.createdCount = Object.values(result.created).reduce((sum, count) => sum + count, 0);
+  return result;
+}
+
+/**
+ * Resolve chapter-extracted identities before canon mapping. Only genuinely new
+ * entities are inserted at this stage so typed canon can map them by ID. Patches
+ * to existing records are delayed until canon succeeds.
+ */
+export async function prepareEntityCandidatesForCanon({
+  projectId,
+  sessionKey = '',
+  chapterId = null,
+  revisionId = null,
+}) {
+  const result = emptyMaterializationResult();
+  if (!projectId) return { ...result, ok: false };
+
+  await markEntityCandidatesPendingResolution({
+    projectId,
+    sessionKey,
+    chapterId,
+    revisionId,
+  });
+  const candidates = await db.entity_resolution_candidates
+    .where('project_id')
+    .equals(projectId)
+    .filter((candidate) => {
+      if (sessionKey && candidate.session_key !== sessionKey) return false;
+      if (chapterId != null && candidate.chapter_id !== chapterId) return false;
+      return candidate.resolution_status === 'pending_resolution';
+    })
+    .toArray();
+  if (candidates.length === 0) return { ...result, ok: true };
+
+  const existingByKind = {
+    character: await loadExistingEntities(projectId, 'character'),
+    location: await loadExistingEntities(projectId, 'location'),
+    object: await loadExistingEntities(projectId, 'object'),
+    world_term: await loadExistingEntities(projectId, 'world_term'),
+  };
+  const plans = candidates.map((candidate) => {
+    const kind = normalizeKind(candidate.entity_kind);
+    const payload = {
+      ...parseCandidatePayload(candidate),
+      raw_name: candidate.raw_name,
+      aliases: candidate.aliases || [],
+      entity_kind: kind,
+    };
+    return {
+      candidate,
+      kind,
+      resolution: candidate.source_type === 'chapter_extract'
+        ? resolveChapterExtractCandidate(payload, existingByKind[kind] || [], kind)
+        : resolveEntityCandidate(payload, existingByKind[kind] || [], kind),
+    };
+  });
+
+  const unresolvedPlans = plans.filter(({ resolution }) => (
+    resolution.status !== 'matched_existing' && resolution.status !== 'created_new'
+  ));
+  for (const { candidate, resolution } of unresolvedPlans) {
+    const invalidIdentity = candidate.source_type === 'chapter_extract'
+      && resolution.matchTier === 'invalid_ai_identity';
+    const ambiguous = resolution.status === 'ambiguous_review';
+    result.stats[ambiguous ? 'ambiguous_review' : 'rejected'] += 1;
+    if (invalidIdentity) result.stats.skipped_ai_identity += 1;
+    await updateCandidateStatus(candidate.id, {
+      revision_id: revisionId ?? candidate.revision_id ?? null,
+      resolution_status: ambiguous ? 'ready_review' : 'rejected',
+      resolver_debug_json: JSON.stringify(resolution.debug),
+    });
+  }
+  if (unresolvedPlans.some(({ resolution }) => resolution.status === 'rejected')) {
+    return { ...finalizeMaterializationCounts(result), ok: false };
+  }
+
+  await db.transaction(
+    'rw',
+    db.entity_resolution_candidates,
+    db.characters,
+    db.locations,
+    db.objects,
+    db.worldTerms,
+    async () => {
+      for (const { candidate, kind, resolution } of plans.filter(({ resolution }) => (
+        resolution.status === 'matched_existing' || resolution.status === 'created_new'
+      ))) {
+        if (resolution.status === 'matched_existing') {
+          result.stats.matched_existing += 1;
+          await updateCandidateStatus(candidate.id, {
+            revision_id: revisionId ?? candidate.revision_id ?? null,
+            resolution_status: 'ready_existing',
+            matched_entity_id: resolution.matchedEntityId || null,
+            resolver_debug_json: JSON.stringify(resolution.debug),
+          });
+          continue;
+        }
+
+        const materialized = await materializeResolvedDecision(
+          projectId,
+          candidate,
+          resolution,
+          kind,
+          existingByKind[kind] || [],
+        );
+        if (materialized.status !== 'created_new' || !materialized.createdEntry) {
+          throw new Error(`Không thể chuẩn bị thực thể mới ${candidate.raw_name || candidate.id} cho canon.`);
+        }
+        result.stats.created_new += 1;
+        addCreatedEntry(result, kind, materialized.createdEntry);
+        await updateCandidateStatus(candidate.id, {
+          revision_id: revisionId ?? candidate.revision_id ?? null,
+          resolution_status: 'provisional_created',
+          matched_entity_id: materialized.matchedEntityId || null,
+          resolver_debug_json: JSON.stringify(resolution.debug),
+        });
+      }
+    },
+  );
+
+  return { ...finalizeMaterializationCounts(result), ok: true };
+}
+
+export async function finalizePreparedEntityCandidates({
+  projectId,
+  sessionKey = '',
+  chapterId = null,
+  revisionId = null,
+}) {
+  const result = emptyMaterializationResult();
+  if (!projectId) return result;
+  const candidates = await db.entity_resolution_candidates
+    .where('project_id')
+    .equals(projectId)
+    .filter((candidate) => {
+      if (sessionKey && candidate.session_key !== sessionKey) return false;
+      if (chapterId != null && candidate.chapter_id !== chapterId) return false;
+      return ['ready_existing', 'provisional_created', 'ready_review'].includes(candidate.resolution_status);
+    })
+    .toArray();
+  const existingByKind = {
+    character: await loadExistingEntities(projectId, 'character'),
+    location: await loadExistingEntities(projectId, 'location'),
+    object: await loadExistingEntities(projectId, 'object'),
+    world_term: await loadExistingEntities(projectId, 'world_term'),
+  };
+
+  await db.transaction(
+    'rw',
+    db.entity_resolution_candidates,
+    db.characters,
+    db.locations,
+    db.objects,
+    db.worldTerms,
+    async () => {
+      for (const candidate of candidates) {
+        const kind = normalizeKind(candidate.entity_kind);
+        if (candidate.resolution_status === 'ready_review') {
+          let resolverDebug = {};
+          try {
+            resolverDebug = JSON.parse(candidate.resolver_debug_json || '{}');
+          } catch {
+            resolverDebug = {};
+          }
+          await createEntityResolutionSuggestion(
+            projectId,
+            candidate,
+            { status: 'ambiguous_review', matchedEntityId: null, debug: resolverDebug },
+            kind,
+          );
+          result.stats.ambiguous_review += 1;
+          await updateCandidateStatus(candidate.id, {
+            revision_id: revisionId ?? candidate.revision_id ?? null,
+            resolution_status: 'ambiguous_review',
+          });
+          continue;
+        }
+        if (candidate.resolution_status === 'provisional_created') {
+          const table = db[KIND_TO_TABLE[kind]];
+          const createdEntry = candidate.matched_entity_id
+            ? await table.get(candidate.matched_entity_id)
+            : null;
+          if (!createdEntry) {
+            throw new Error(`Thực thể tạm ${candidate.raw_name || candidate.id} không còn tồn tại.`);
+          }
+          result.stats.created_new += 1;
+          addCreatedEntry(result, kind, createdEntry);
+          await updateCandidateStatus(candidate.id, {
+            revision_id: revisionId ?? candidate.revision_id ?? null,
+            resolution_status: 'created_new',
+          });
+          continue;
+        }
+
+        const materialized = await materializeResolvedDecision(
+          projectId,
+          candidate,
+          { status: 'matched_existing', matchedEntityId: candidate.matched_entity_id },
+          kind,
+          existingByKind[kind] || [],
+        );
+        if (materialized.status !== 'matched_existing') {
+          throw new Error(`Không thể hoàn tất nhận diện ${candidate.raw_name || candidate.id}.`);
+        }
+        result.stats.matched_existing += 1;
+        await updateCandidateStatus(candidate.id, {
+          revision_id: revisionId ?? candidate.revision_id ?? null,
+          resolution_status: 'matched_existing',
+          matched_entity_id: materialized.matchedEntityId || null,
+        });
+      }
+    },
+  );
+  return finalizeMaterializationCounts(result);
+}
+
+export async function rollbackPreparedEntityCandidates({
+  projectId,
+  sessionKey = '',
+  chapterId = null,
+  discard = false,
+}) {
+  if (!projectId) return 0;
+  const candidates = await db.entity_resolution_candidates
+    .where('project_id')
+    .equals(projectId)
+    .filter((candidate) => {
+      if (sessionKey && candidate.session_key !== sessionKey) return false;
+      if (chapterId != null && candidate.chapter_id !== chapterId) return false;
+      return ['ready_existing', 'provisional_created', 'ready_review'].includes(candidate.resolution_status);
+    })
+    .toArray();
+  await db.transaction(
+    'rw',
+    db.entity_resolution_candidates,
+    db.characters,
+    db.locations,
+    db.objects,
+    db.worldTerms,
+    async () => {
+      for (const candidate of candidates) {
+        if (candidate.resolution_status === 'provisional_created' && candidate.matched_entity_id) {
+          const table = db[KIND_TO_TABLE[normalizeKind(candidate.entity_kind)]];
+          await table.delete(candidate.matched_entity_id);
+        }
+        if (discard) {
+          await db.entity_resolution_candidates.delete(candidate.id);
+        } else {
+          await updateCandidateStatus(candidate.id, {
+            resolution_status: 'rolled_back',
+            matched_entity_id: null,
+          });
+        }
+      }
+    },
+  );
+  return candidates.length;
 }
 
 export async function markEntityCandidatesPendingResolution({

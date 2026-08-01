@@ -761,6 +761,7 @@ function dbNormalizeText(value = '') {
 function dbStripDiacritics(value = '') {
   return dbNormalizeText(value)
     .toLowerCase()
+    .replace(/đ/g, 'd')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 }

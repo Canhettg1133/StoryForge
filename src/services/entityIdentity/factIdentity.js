@@ -9,6 +9,7 @@ function cleanText(value) {
 function stripDiacritics(value) {
   return cleanText(value)
     .toLowerCase()
+    .replace(/đ/g, 'd')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 }

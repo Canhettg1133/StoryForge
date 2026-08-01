@@ -16,7 +16,42 @@ function exactReferenceMatches(items, target, getValues) {
   ));
 }
 
+function normalizeExactReference(value) {
+  return cleanText(value)
+    .normalize('NFC')
+    .toLocaleLowerCase('vi')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
+function literalReferenceMatches(items, target, getValues) {
+  if (!target) return [];
+  return (items || []).filter((item) => (
+    getValues(item)
+      .map((value) => normalizeExactReference(value))
+      .filter(Boolean)
+      .some((value) => value === target)
+  ));
+}
+
 function resolveReference(items, rawValue, getValues, kind) {
+  const literalTarget = normalizeExactReference(rawValue);
+  const literalMatches = literalReferenceMatches(items, literalTarget, getValues);
+  if (literalMatches.length === 1) {
+    return { match: literalMatches[0], error: null };
+  }
+  if (literalMatches.length > 1) {
+    return {
+      match: null,
+      error: {
+        kind,
+        ruleCode: `AMBIGUOUS_${kind}_REFERENCE`,
+        rawValue: cleanText(rawValue),
+        candidateIds: literalMatches.map((item) => item.id),
+      },
+    };
+  }
   const target = normalizeKey(rawValue);
   if (!target) {
     return { match: null, error: null };
@@ -42,19 +77,25 @@ function resolveReference(items, rawValue, getValues, kind) {
 function findLocationByName(locations, name) {
   const target = normalizeKey(name);
   if (!target) return null;
-  return locations.find((location) => {
+  const exact = locations.find((location) => normalizeKey(location.name) === target);
+  if (exact) return exact;
+  const partialMatches = locations.filter((location) => {
     const normalized = normalizeKey(location.name);
-    return normalized === target || normalized.includes(target) || target.includes(normalized);
-  }) || null;
+    return normalized.includes(target) || target.includes(normalized);
+  });
+  return partialMatches.length === 1 ? partialMatches[0] : null;
 }
 
 function findThreadByTitle(threads, title) {
   const target = normalizeKey(title);
   if (!target) return null;
-  return threads.find((thread) => {
+  const exact = threads.find((thread) => normalizeKey(thread.title) === target);
+  if (exact) return exact;
+  const partialMatches = threads.filter((thread) => {
     const normalized = normalizeKey(thread.title);
-    return normalized === target || normalized.includes(target) || target.includes(normalized);
-  }) || null;
+    return normalized.includes(target) || target.includes(normalized);
+  });
+  return partialMatches.length === 1 ? partialMatches[0] : null;
 }
 
 function findThreadById(threads, id) {
@@ -195,13 +236,122 @@ function hasRequiredAiOpReferences(op) {
   return true;
 }
 
-export function mapAiOpsToCandidateOps(rawOps, refs) {
+function linkSameChapterFactReferences(candidateOps, chapterId) {
+  const registrationsByDescription = new Map();
+  const withRegistrationIds = candidateOps.map((op) => {
+    if (op.op_type !== CANON_OP_TYPES.FACT_REGISTERED || op.fact_id) {
+      return op;
+    }
+    const descriptionKey = normalizeKey(op.fact_description || op.payload?.description || op.summary);
+    if (!descriptionKey) return op;
+
+    const linked = {
+      ...op,
+      fact_id: `chapter:${chapterId}:fact:${descriptionKey}`,
+    };
+    const registrations = registrationsByDescription.get(descriptionKey) || [];
+    registrations.push(linked);
+    registrationsByDescription.set(descriptionKey, registrations);
+    return linked;
+  });
+
+  const linkedOps = withRegistrationIds.map((op) => {
+    if (op.op_type !== CANON_OP_TYPES.SECRET_REVEALED || op.fact_id) {
+      return op;
+    }
+    const hasAmbiguousFactReference = (op.mapping_errors || [])
+      .some((error) => error.kind === 'FACT');
+    if (hasAmbiguousFactReference) return op;
+
+    const descriptionKey = normalizeKey(op.fact_description || op.payload?.fact_description);
+    const registrations = registrationsByDescription.get(descriptionKey) || [];
+    if (registrations.length !== 1) return op;
+    return { ...op, fact_id: registrations[0].fact_id };
+  });
+
+  const sourceOrder = new Map(linkedOps.map((op, index) => [op, index]));
+  return [...linkedOps].sort((left, right) => {
+    if (left.fact_id && left.fact_id === right.fact_id) {
+      if (
+        left.op_type === CANON_OP_TYPES.FACT_REGISTERED
+        && right.op_type === CANON_OP_TYPES.SECRET_REVEALED
+      ) return -1;
+      if (
+        left.op_type === CANON_OP_TYPES.SECRET_REVEALED
+        && right.op_type === CANON_OP_TYPES.FACT_REGISTERED
+      ) return 1;
+    }
+    return sourceOrder.get(left) - sourceOrder.get(right);
+  });
+}
+
+function missingAiOpReferences(op) {
+  const missing = [];
+  const requireSubject = [
+    CANON_OP_TYPES.CHARACTER_STATUS_CHANGED,
+    CANON_OP_TYPES.CHARACTER_RESCUED,
+    CANON_OP_TYPES.CHARACTER_DIED,
+    CANON_OP_TYPES.GOAL_CHANGED,
+    CANON_OP_TYPES.ALLEGIANCE_CHANGED,
+    CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED,
+    CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED,
+    CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED,
+    CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED,
+  ].includes(op.op_type);
+  if (requireSubject && !op.subject_id) missing.push(`subject_name:${op.subject_name || ''}`);
+  if (op.op_type === CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED && !op.location_id) {
+    missing.push(`location_name:${op.location_name || ''}`);
+  }
+  if ([
+    CANON_OP_TYPES.THREAD_OPENED,
+    CANON_OP_TYPES.THREAD_PROGRESS,
+    CANON_OP_TYPES.THREAD_RESOLVED,
+  ].includes(op.op_type) && !op.thread_id) {
+    missing.push(`thread_title:${op.thread_title || ''}`);
+  }
+  if (op.op_type === CANON_OP_TYPES.SECRET_REVEALED && !op.fact_id) {
+    missing.push(`fact_description:${op.fact_description || ''}`);
+  }
+  if ([
+    CANON_OP_TYPES.OBJECT_ACQUIRED,
+    CANON_OP_TYPES.OBJECT_STATUS_CHANGED,
+    CANON_OP_TYPES.OBJECT_TRANSFERRED,
+    CANON_OP_TYPES.OBJECT_CONSUMED,
+    CANON_OP_TYPES.OBJECT_LOST,
+    CANON_OP_TYPES.OBJECT_FOUND,
+    CANON_OP_TYPES.OBJECT_RESTORED,
+    CANON_OP_TYPES.OBJECT_PARTIALLY_CONSUMED,
+    CANON_OP_TYPES.OBJECT_SPENT,
+    CANON_OP_TYPES.OBJECT_RETURNED,
+  ].includes(op.op_type) && !op.object_id) {
+    missing.push(`object_name:${op.object_name || ''}`);
+  }
+  if ([
+    CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED,
+    CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED,
+    CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED,
+  ].includes(op.op_type) && !op.target_id) {
+    missing.push(`target_name:${op.target_name || ''}`);
+  }
+  return missing;
+}
+
+export function mapAiOpsToCandidateOpsDetailed(rawOps, refs) {
   const sceneMap = new Map(refs.scenes.map((scene, index) => [index + 1, scene]));
-  const seen = new Set();
-  return rawOps
-    .map((rawOp) => {
+  const filteredOps = [];
+  const mappedEntries = rawOps
+    .map((rawOp, sourceIndex) => {
       const opType = normalizeOpType(rawOp?.op_type);
-      if (!opType) return null;
+      if (!opType) {
+        filteredOps.push({
+          reasonCode: 'CANON_OP_UNSUPPORTED_TYPE_FILTERED',
+          opType: cleanText(rawOp?.op_type || ''),
+          evidence: cleanText(rawOp?.evidence || ''),
+          sourceIndex,
+          missingReferences: [],
+        });
+        return null;
+      }
 
       const scene = sceneMap.get(Number(rawOp.scene_index) || 1) || refs.scenes[0] || null;
       const subjectRef = resolveReference(refs.characters, rawOp.subject_name, (character) => {
@@ -226,7 +376,7 @@ export function mapAiOpsToCandidateOps(rawOps, refs) {
         objectRef.error,
       ].filter(Boolean);
 
-      return {
+      return { sourceIndex, mappedOp: {
         op_type: opType,
         chapter_id: refs.chapterId,
         scene_id: scene?.id || null,
@@ -247,15 +397,49 @@ export function mapAiOpsToCandidateOps(rawOps, refs) {
         confidence: clampConfidence(rawOp.confidence),
         evidence: cleanText(rawOp.evidence || ''),
         payload: normalizePayload(rawOp.payload),
+        payload_validation_errors: rawOp.payload != null
+          && (typeof rawOp.payload !== 'object' || Array.isArray(rawOp.payload))
+          ? ['payload']
+          : [],
         mapping_errors: mappingErrors,
-      };
+      } };
     })
-    .filter(Boolean)
-    .filter(hasRequiredAiOpReferences)
-    .filter((op) => {
-      const fingerprint = buildSemanticOpFingerprint(op);
-      if (seen.has(fingerprint)) return false;
-      seen.add(fingerprint);
-      return true;
+    .filter(Boolean);
+
+  const mappedOps = mappedEntries.map((entry) => entry.mappedOp);
+  const dedupedOps = dedupeCandidateOps(mappedOps);
+  const retainedOps = new Set(dedupedOps);
+  mappedEntries.forEach(({ sourceIndex, mappedOp }) => {
+    if (retainedOps.has(mappedOp)) return;
+    filteredOps.push({
+      reasonCode: 'CANON_OP_DUPLICATE_FILTERED',
+      opType: mappedOp.op_type,
+      evidence: mappedOp.evidence,
+      sourceIndex,
+      missingReferences: [],
+      mappedOp,
     });
+  });
+
+  const candidateOps = [];
+  linkSameChapterFactReferences(dedupedOps, refs.chapterId).forEach((mappedOp) => {
+    if (hasRequiredAiOpReferences(mappedOp)) {
+      candidateOps.push(mappedOp);
+      return;
+    }
+    filteredOps.push({
+      reasonCode: 'CANON_OP_MISSING_REFERENCE_FILTERED',
+      opType: mappedOp.op_type,
+      evidence: mappedOp.evidence,
+      sourceIndex: mappedEntries.find((entry) => entry.mappedOp === mappedOp)?.sourceIndex ?? null,
+      missingReferences: missingAiOpReferences(mappedOp),
+      mappedOp,
+    });
+  });
+
+  return { candidateOps, filteredOps };
+}
+
+export function mapAiOpsToCandidateOps(rawOps, refs) {
+  return mapAiOpsToCandidateOpsDetailed(rawOps, refs).candidateOps;
 }

@@ -216,7 +216,8 @@ function formatCharacterForOutlinePrompt(character = {}) {
   const aliases = normalizeOutlineListField(character.aliases);
   if (aliases.length > 0) parts.push('aliases: ' + aliases.join(', '));
   if (character.specific_role) parts.push('specific_role: ' + character.specific_role);
-  if (character.current_status) parts.push('Live Canon: ' + character.current_status);
+  if (character.canon_status_summary) parts.push('Canon hiện tại: ' + character.canon_status_summary);
+  if (character.current_status) parts.push('Trạng thái hồ sơ ban đầu: ' + character.current_status);
   return '- ' + parts.join(' | ');
 }
 
@@ -364,8 +365,8 @@ export default function OutlineBoard() {
     const storyCreationSettings = getStoryCreationSettings();
     const outlinePrompts = storyCreationSettings.outlineGeneration;
     const outlineTaskInstruction = chapters.length > 0
-      ? 'Phân tích dàn ý hiện tại DỰA TRÊN "Nội dung đã viết / trích đoạn scene" của từng chương. Chỉ được đề xuất purpose, summary, state_delta, act và anchor phản ánh nội dung đã có; không được viết lại diễn biến mới, không được bịa entity ngoài Codex, không đổi giới tính/vai trò/thân phận nếu Codex hoặc nội dung đã viết không cho phép. Đọc Character Live Canon/current_status trước khi gắn beat/cast.'
-      : 'Tạo outline 10 chương theo cấu trúc 3 hồi. Mỗi chương phải có mục tiêu rõ ràng và tôn trọng Character Live Canon/current_status của nhân vật.';
+      ? 'Phân tích dàn ý hiện tại DỰA TRÊN "Nội dung đã viết / trích đoạn scene" của từng chương. Chỉ được đề xuất purpose, summary, state_delta, act và anchor phản ánh nội dung đã có; không được viết lại diễn biến mới, không được bịa entity ngoài Codex, không đổi giới tính/vai trò/thân phận nếu Codex hoặc nội dung đã viết không cho phép. Ưu tiên Canon hiện tại; chỉ dùng trạng thái hồ sơ ban đầu khi chưa có projection canon.'
+      : 'Tạo outline 10 chương theo cấu trúc 3 hồi. Mỗi chương phải có mục tiêu rõ ràng và tôn trọng Canon hiện tại của nhân vật; chỉ dùng trạng thái hồ sơ ban đầu khi chưa có projection canon.';
     const outlineUserRequest = chapters.length > 0
       ? 'Phân tích metadata dàn ý cho các chương hiện có. Đây là bước đề xuất, không tự viết tiếp hoặc sáng tác lại nội dung.'
       : `Tạo outline 10 chương cho truyện "${currentProject.title}".`;

@@ -2,6 +2,7 @@ import db from '../db/database';
 import { CANON_SEVERITY, CHAPTER_COMMIT_STATUS } from './constants';
 import { collectFactStatesFromSnapshot, loadPreChapterTruth } from './core';
 import { validateDraftTextAgainstTruth } from './validation';
+import { normalizeCanonFactRecord } from '../entityIdentity/factIdentity.js';
 import {
   buildCanonChapterTextFromScenes,
   buildCanonContentSignature,
@@ -63,6 +64,16 @@ const RETRIEVAL_MODE_CONFIG = {
     includeFullProse: true,
   },
 };
+
+function parseValidatorSummary(revision) {
+  try {
+    return typeof revision?.validator_summary === 'string'
+      ? JSON.parse(revision.validator_summary)
+      : (revision?.validator_summary || {});
+  } catch {
+    return {};
+  }
+}
 
 function resolveRetrievalModeConfig(mode) {
   return RETRIEVAL_MODE_CONFIG[mode] || RETRIEVAL_MODE_CONFIG.standard;
@@ -336,6 +347,12 @@ export async function getChapterCanonState(projectId, chapterId) {
       revisionContentSignature: '',
       isFresh: false,
       isStale: false,
+      extractionStatus: 'not_started',
+      extractedCount: 0,
+      committedCount: 0,
+      filteredCount: 0,
+      extractionRetried: false,
+      extractionAttemptCount: 0,
     };
   }
   const revision = commit.current_revision_id ? await db.chapter_revisions.get(commit.current_revision_id) : null;
@@ -366,6 +383,7 @@ export async function getChapterCanonState(projectId, chapterId) {
     : (commit.status === CHAPTER_COMMIT_STATUS.BLOCKED && errorCount === 0
       ? (warningCount > 0 ? CHAPTER_COMMIT_STATUS.HAS_WARNINGS : CHAPTER_COMMIT_STATUS.CANONICAL)
       : commit.status);
+  const validatorSummary = parseValidatorSummary(revision);
   return {
     status: effectiveStatus,
     warningCount,
@@ -378,6 +396,12 @@ export async function getChapterCanonState(projectId, chapterId) {
     revisionContentSignature,
     isFresh,
     isStale: Boolean(freshnessRevision && !isFresh),
+    extractionStatus: validatorSummary.extraction_status || 'unknown',
+    extractedCount: Number(validatorSummary.extracted_count || 0),
+    committedCount: Number(validatorSummary.committed_count || 0),
+    filteredCount: Number(validatorSummary.filtered_count || 0),
+    extractionRetried: Boolean(validatorSummary.extraction_retried),
+    extractionAttemptCount: Number(validatorSummary.extraction_attempt_count || 0),
   };
 }
 
@@ -396,6 +420,8 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     itemStates,
     relationshipStates,
     purgeArchives,
+    snapshots,
+    canonFacts,
   ] = await Promise.all([
     db.chapters.where('project_id').equals(projectId).sortBy('order_index'),
     db.plotThreads.where('project_id').equals(projectId).toArray(),
@@ -410,6 +436,8 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     db.item_state_current.where('project_id').equals(projectId).toArray(),
     db.relationship_state_current.where('project_id').equals(projectId).toArray(),
     db.canon_purge_archives.where('project_id').equals(projectId).toArray(),
+    db.chapter_snapshots.where('project_id').equals(projectId).toArray(),
+    db.canonFacts.where('project_id').equals(projectId).toArray(),
   ]);
 
   const chapterMap = new Map(chapters.map((chapter) => [chapter.id, chapter]));
@@ -471,6 +499,42 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
       error_count: counts.errorCount,
     };
   });
+  const latestActiveCommit = effectiveChapterCommits
+    .filter((commit) => (
+      [CHAPTER_COMMIT_STATUS.CANONICAL, CHAPTER_COMMIT_STATUS.HAS_WARNINGS].includes(commit.status)
+      && commit.canonical_revision_id
+    ))
+    .sort((a, b) => b.chapter_order - a.chapter_order)[0] || null;
+  const latestSnapshot = latestActiveCommit
+    ? snapshots.find((snapshot) => (
+      snapshot.chapter_id === latestActiveCommit.chapter_id
+      && snapshot.revision_id === latestActiveCommit.canonical_revision_id
+    )) || null
+    : null;
+  const normalizedBaseFacts = canonFacts.map((fact) => ({
+    ...fact,
+    ...normalizeCanonFactRecord(fact),
+  }));
+  const baseFactKeys = new Set(normalizedBaseFacts.map((fact) => fact.fact_fingerprint));
+  const factStateByFingerprint = new Map();
+  collectFactStatesFromSnapshot(latestSnapshot, normalizedBaseFacts)
+    .forEach((fact) => {
+      const normalizedFact = {
+        ...fact,
+        ...normalizeCanonFactRecord(fact),
+      };
+      const factKey = normalizedFact.fact_fingerprint;
+      const derivedFromChapter = !baseFactKeys.has(factKey);
+      factStateByFingerprint.set(factKey, {
+        ...normalizedFact,
+        status: fact.status || 'active',
+        derived_from_chapter: derivedFromChapter,
+        source_chapter_title: fact.source_chapter_id
+          ? chapterMap.get(fact.source_chapter_id)?.title || ''
+          : '',
+      });
+    });
+  const factStates = [...factStateByFingerprint.values()];
 
   const recentEvents = events
     .slice()
@@ -575,6 +639,7 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     revision_count: revisions.length,
     item_count: decoratedItemStates.length,
     relationship_count: decoratedRelationshipStates.length,
+    fact_count: factStates.filter((fact) => fact.status === 'active').length,
     purge_archive_count: purgeArchives.length,
   };
 
@@ -602,6 +667,7 @@ export async function getProjectCanonOverview(projectId, { limit = 12 } = {}) {
     threadStates: decoratedThreadStates,
     itemStates: decoratedItemStates,
     relationshipStates: decoratedRelationshipStates,
+    factStates,
     recentEvents,
     recentReports,
     recentEvidence,
@@ -624,15 +690,24 @@ export async function getChapterRevisionHistory(projectId, chapterId) {
   ]);
 
   const history = revisions
-    .map((revision) => ({
-      ...revision,
-      report_count: reports.filter((report) => report.revision_id === revision.id).length,
-      event_count: events.filter((event) => event.revision_id === revision.id).length,
-      evidence_count: evidence.filter((item) => item.revision_id === revision.id).length,
-      has_snapshot: snapshots.some((snapshot) => snapshot.revision_id === revision.id),
-      is_current: commit?.current_revision_id === revision.id,
-      is_canonical: commit?.canonical_revision_id === revision.id,
-    }))
+    .map((revision) => {
+      const validatorSummary = parseValidatorSummary(revision);
+      return {
+        ...revision,
+        report_count: reports.filter((report) => report.revision_id === revision.id).length,
+        event_count: events.filter((event) => event.revision_id === revision.id).length,
+        evidence_count: evidence.filter((item) => item.revision_id === revision.id).length,
+        has_snapshot: snapshots.some((snapshot) => snapshot.revision_id === revision.id),
+        is_current: commit?.current_revision_id === revision.id,
+        is_canonical: commit?.canonical_revision_id === revision.id,
+        extraction_status: validatorSummary.extraction_status || 'unknown',
+        extracted_count: Number(validatorSummary.extracted_count || 0),
+        committed_count: Number(validatorSummary.committed_count || 0),
+        filtered_count: Number(validatorSummary.filtered_count || 0),
+        extraction_retried: Boolean(validatorSummary.extraction_retried),
+        extraction_attempt_count: Number(validatorSummary.extraction_attempt_count || 0),
+      };
+    })
     .sort((a, b) => (b.revision_number || 0) - (a.revision_number || 0) || (b.created_at || 0) - (a.created_at || 0));
 
   return {
@@ -673,6 +748,7 @@ export async function getChapterRevisionDetail(projectId, revisionId) {
   const sortedEvidence = evidence
     .slice()
     .sort((a, b) => (a.scene_id || 0) - (b.scene_id || 0) || (a.id || 0) - (b.id || 0));
+  const validatorSummary = parseValidatorSummary(revision);
 
   return {
     chapter,
@@ -681,6 +757,12 @@ export async function getChapterRevisionDetail(projectId, revisionId) {
       ...revision,
       is_current: commit?.current_revision_id === revision.id,
       is_canonical: commit?.canonical_revision_id === revision.id,
+      extraction_status: validatorSummary.extraction_status || 'unknown',
+      extracted_count: Number(validatorSummary.extracted_count || 0),
+      committed_count: Number(validatorSummary.committed_count || 0),
+      filtered_count: Number(validatorSummary.filtered_count || 0),
+      extraction_retried: Boolean(validatorSummary.extraction_retried),
+      extraction_attempt_count: Number(validatorSummary.extraction_attempt_count || 0),
     },
     reports: reports.slice().sort((a, b) => (b.created_at || 0) - (a.created_at || 0)),
     events: sortedEvents,

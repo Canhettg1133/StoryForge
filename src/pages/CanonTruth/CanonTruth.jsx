@@ -14,6 +14,7 @@ import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import useCanonStore from '../../stores/canonStore';
 import CanonRepairDialog from '../../components/canon/CanonRepairDialog';
+import { useConfirmDialog } from '../../components/common/ConfirmDialogProvider.jsx';
 import MobileBibleTabs from '../../components/mobile/MobileBibleTabs';
 import {
   getChapterRevisionDetail,
@@ -162,7 +163,8 @@ function formatConstraintCount(items = []) {
 }
 
 export default function CanonTruth() {
-  const { currentProject, chapters } = useProjectStore();
+  const confirmAction = useConfirmDialog();
+  const { currentProject, chapters, loadProject } = useProjectStore();
   const {
     characters,
     canonFacts,
@@ -178,6 +180,9 @@ export default function CanonTruth() {
     savingRepairDraft,
     rebuildCanonFromChapter,
     rebuilding,
+    reanalyzeCompletedChapters,
+    bulkCanonicalizing,
+    bulkProgress,
     lastActionOutcome,
     clearRepairText,
     clearActionOutcome,
@@ -199,6 +204,12 @@ export default function CanonTruth() {
   const archivedFacts = useMemo(
     () => canonFacts.filter((fact) => fact.status === 'deprecated'),
     [canonFacts]
+  );
+  const derivedFacts = useMemo(
+    () => (overview?.factStates || []).filter((fact) => (
+      fact.status === 'active' && fact.derived_from_chapter
+    )),
+    [overview?.factStates],
   );
   const characterNameMap = useMemo(
     () => new Map(characters.map((character) => [character.id, character.name])),
@@ -440,6 +451,31 @@ export default function CanonTruth() {
     await loadOverview();
   }, [currentProject?.id, loadOverview, rebuildCanonFromChapter]);
 
+  const handleReanalyzeAll = useCallback(async () => {
+    if (!currentProject?.id || bulkCanonicalizing) return;
+    const confirmed = await confirmAction({
+      title: 'Rà lại toàn bộ chương bằng AI?',
+      message: 'Hệ thống sẽ gọi AI tuần tự theo thứ tự chương và thay thế canon cũ. Nếu một chương lỗi, tác vụ sẽ dừng tại đó để Anh Đạt có thể chạy tiếp.',
+      confirmLabel: 'Bắt đầu rà lại',
+      danger: true,
+    });
+    if (!confirmed) return;
+    await reanalyzeCompletedChapters(currentProject.id);
+    await Promise.all([
+      loadOverview(),
+      loadCodex(currentProject.id),
+      loadProject(currentProject.id),
+    ]);
+  }, [
+    bulkCanonicalizing,
+    confirmAction,
+    currentProject?.id,
+    loadCodex,
+    loadOverview,
+    loadProject,
+    reanalyzeCompletedChapters,
+  ]);
+
   return (
     <div className="story-bible su-that-page">
       <MobileBibleTabs />
@@ -464,6 +500,10 @@ export default function CanonTruth() {
           <button className="btn btn-ghost" type="button" onClick={handleRebuildCanon} disabled={!currentProject?.id || rebuilding}>
             {rebuilding ? <Loader2 size={16} className="spin" /> : <RotateCcw size={16} />}
             Dựng lại canon
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={handleReanalyzeAll} disabled={!currentProject?.id || bulkCanonicalizing || rebuilding}>
+            {bulkCanonicalizing ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+            {bulkProgress?.status === 'failed' ? 'Tiếp tục rà lại bằng AI' : 'Rà lại toàn bộ chương bằng AI'}
           </button>
           <button className="btn btn-primary" type="button" onClick={handleAddFact} disabled={!currentProject?.id}>
             <Plus size={16} />
@@ -502,6 +542,16 @@ export default function CanonTruth() {
       {lastActionOutcome?.message && (
         <div className={`su-that-page__feedback su-that-page__feedback--${lastActionOutcome.ok ? 'success' : lastActionOutcome.kind === 'blocked' ? 'warning' : 'error'}`}>
           {lastActionOutcome.message}
+        </div>
+      )}
+
+      {bulkProgress && (
+        <div className={`su-that-page__feedback su-that-page__feedback--${bulkProgress.status === 'failed' ? 'error' : 'success'}`}>
+          {bulkProgress.status === 'running'
+            ? `Đang rà ${bulkProgress.chapterTitle}: ${bulkProgress.current}/${bulkProgress.total}`
+            : bulkProgress.status === 'failed'
+              ? `${bulkProgress.error} Có thể bấm “Tiếp tục rà lại bằng AI” để chạy lại từ chương này.`
+              : `Đã rà xong ${bulkProgress.current}/${bulkProgress.total} chương.`}
         </div>
       )}
 
@@ -1030,7 +1080,7 @@ export default function CanonTruth() {
         <div className="bible-section-header">
           <h3 className="bible-section-title">
             <Sparkles size={18} />
-            Sự thật đang hiệu lực ({activeFacts.length})
+            Sự thật nền thủ công ({activeFacts.length})
           </h3>
         </div>
 
@@ -1070,6 +1120,33 @@ export default function CanonTruth() {
           ))}
           {activeFacts.length === 0 && (
             <p className="text-muted su-that-page__empty">Chưa có sự thật nào đang hiệu lực.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="bible-section">
+        <div className="bible-section-header">
+          <h3 className="bible-section-title">
+            <Sparkles size={18} />
+            Sự thật phát sinh từ chương ({derivedFacts.length})
+          </h3>
+        </div>
+        <div className="bible-cards-list">
+          {derivedFacts.map((fact) => (
+            <div key={fact.id || fact.fact_fingerprint} className="bible-edit-card su-that-page__fact-card">
+              <div className="su-that-page__fact-editor-row">
+                <span className="bible-canon-meta">{translateFactType(fact.fact_type)}</span>
+                <span className="su-that-page__fact-description">{fact.description}</span>
+              </div>
+              <div className="su-that-page__fact-meta">
+                <span className="bible-canon-meta">
+                  Chỉ đọc · {fact.source_chapter_title || `Chương ${fact.source_chapter_id}`}
+                </span>
+              </div>
+            </div>
+          ))}
+          {derivedFacts.length === 0 && (
+            <p className="text-muted su-that-page__empty">Chưa có sự thật nào phát sinh từ chương.</p>
           )}
         </div>
       </div>

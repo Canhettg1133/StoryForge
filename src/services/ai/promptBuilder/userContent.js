@@ -588,7 +588,11 @@ export function buildUserContent(taskType, context = {}, effectiveMacroArcContra
 
     case TASK_TYPES.CANON_EXTRACT_OPS: {
       const knownCharacters = characters.map(function (c) {
-        return '- ' + c.name + (c.current_status ? ': ' + c.current_status : '');
+        const status = c.current_status ? ': ' + c.current_status : '';
+        const knowledge = Array.isArray(c.known_canon_facts) && c.known_canon_facts.length > 0
+          ? ' | Tri thức canon đã biết: ' + c.known_canon_facts.join('; ')
+          : '';
+        return '- ' + c.name + status + knowledge;
       }).join('\n');
       const knownThreads = plotThreads.map(function (pt) {
         return '- #' + pt.id + ' | ' + pt.title + ' [' + (pt.state || 'active') + ']';

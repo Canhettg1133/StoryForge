@@ -99,7 +99,8 @@ describe('phase10 AI generation canon role locks', () => {
             role: 'supporting',
             specific_role: 'nguoi giu ban do co',
             specific_role_locked: true,
-            current_status: 'Dang giu ban do',
+            current_status: 'Ho so ban dau',
+            canon_status_summary: 'Da mat ban do trong chuong truoc',
           }],
           locations: [],
           objects: [],
@@ -120,6 +121,9 @@ describe('phase10 AI generation canon role locks', () => {
     expect(messages[0].content).toContain('[CANON VAI TRÒ ĐÃ KHÓA - BẮT BUỘC]');
     expect(messages[0].content).toContain('- Lan: nguoi giu ban do co');
     expect(combined).toContain('Vai tro cu the: nguoi giu ban do co (da khoa canon)');
+    expect(combined).toContain('Canon hiện tại: Da mat ban do trong chuong truoc');
+    expect(combined).toContain('Trạng thái hồ sơ ban đầu: Ho so ban dau');
+    expect(combined).not.toContain('Live Canon: Ho so ban dau');
     expect(messages[1].content).toContain('Nếu yêu cầu cần một vai trò đã khóa');
   });
 });

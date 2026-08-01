@@ -70,6 +70,21 @@ function mergeByIdAndName(existingItems = [], nextItems = []) {
   return merged;
 }
 
+export function hydrateCharactersWithCanonState(characters = [], entityStates = []) {
+  const canonStateByCharacterId = new Map(
+    entityStates.map((state) => [state.entity_id, state]),
+  );
+  return characters.map((character) => {
+    const canonState = canonStateByCharacterId.get(character.id);
+    if (!canonState) return character;
+    return {
+      ...character,
+      canon_state: canonState,
+      canon_status_summary: buildCharacterStateSummary(canonState, ''),
+    };
+  });
+}
+
 function normalizeDeletionIds(ids) {
   return [...new Set((ids || [])
     .map((id) => Number(id))
@@ -171,16 +186,7 @@ const useCodexStore = create((set, get) => ({
       db.chapterMeta.where('project_id').equals(projectId).toArray(),
       db.entity_state_current.where('project_id').equals(projectId).toArray(),
     ]);
-    const canonStateByCharacterId = new Map(entityStates.map((state) => [state.entity_id, state]));
-    const hydratedCharacters = characters.map((character) => {
-      const canonState = canonStateByCharacterId.get(character.id);
-      if (!canonState) return character;
-      return {
-        ...character,
-        canon_state: canonState,
-        canon_status_summary: buildCharacterStateSummary(canonState, ''),
-      };
-    });
+    const hydratedCharacters = hydrateCharactersWithCanonState(characters, entityStates);
     if (requestId !== latestCodexLoadRequestId) {
       return;
     }
@@ -226,16 +232,7 @@ const useCodexStore = create((set, get) => ({
       db.objects.where('project_id').equals(projectId).count(),
       db.worldTerms.where('project_id').equals(projectId).count(),
     ]);
-    const canonStateByCharacterId = new Map(entityStates.map((state) => [state.entity_id, state]));
-    const hydratedCharacters = characters.map((character) => {
-      const canonState = canonStateByCharacterId.get(character.id);
-      if (!canonState) return character;
-      return {
-        ...character,
-        canon_state: canonState,
-        canon_status_summary: buildCharacterStateSummary(canonState, ''),
-      };
-    });
+    const hydratedCharacters = hydrateCharactersWithCanonState(characters, entityStates);
     if (requestId !== latestCodexLoadRequestId) {
       return;
     }
@@ -262,14 +259,24 @@ const useCodexStore = create((set, get) => ({
 
     const updates = {};
     if (refreshProjection) {
-      const [characters, objects, canonFacts] = await Promise.all([
+      const [characters, locations, objects, worldTerms, canonFacts, entityStates] = await Promise.all([
         db.characters.where('project_id').equals(projectId).toArray(),
+        db.locations.where('project_id').equals(projectId).toArray(),
         db.objects.where('project_id').equals(projectId).toArray(),
+        db.worldTerms.where('project_id').equals(projectId).toArray(),
         db.canonFacts.where('project_id').equals(projectId).toArray(),
+        db.entity_state_current.where('project_id').equals(projectId).toArray(),
       ]);
-      updates.characters = characters;
+      updates.characters = hydrateCharactersWithCanonState(characters, entityStates);
+      updates.locations = locations;
       updates.objects = objects;
+      updates.worldTerms = worldTerms;
       updates.canonFacts = canonFacts;
+      updates.storyBibleWorldCounts = {
+        locations: locations.length,
+        objects: objects.length,
+        terms: worldTerms.length,
+      };
     }
 
     if (chapterId) {
@@ -279,8 +286,10 @@ const useCodexStore = create((set, get) => ({
 
     set((state) => {
       const nextState = {
-        locations: mergeByIdAndName(state.locations, createdEntries.locations || []),
-        worldTerms: mergeByIdAndName(state.worldTerms, createdEntries.worldTerms || []),
+        locations: updates.locations
+          || mergeByIdAndName(state.locations, createdEntries.locations || []),
+        worldTerms: updates.worldTerms
+          || mergeByIdAndName(state.worldTerms, createdEntries.worldTerms || []),
       };
 
       nextState.characters = updates.characters
@@ -290,6 +299,9 @@ const useCodexStore = create((set, get) => ({
 
       if (updates.canonFacts) {
         nextState.canonFacts = updates.canonFacts;
+      }
+      if (updates.storyBibleWorldCounts) {
+        nextState.storyBibleWorldCounts = updates.storyBibleWorldCounts;
       }
 
       if (Object.prototype.hasOwnProperty.call(updates, 'chapterMeta')) {

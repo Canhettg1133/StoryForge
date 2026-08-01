@@ -194,6 +194,11 @@ const COMPLETION_SUCCESS_CANON_STATUSES = new Set([
   CHAPTER_COMMIT_STATUS.HAS_WARNINGS,
 ]);
 
+const RETRYABLE_CANON_REPORT_CODES = new Set([
+  'CANON_EXTRACT_FALLBACK',
+  'CANON_PROJECTION_REBUILD_FAILED',
+]);
+
 function sanitizeChapterText(scenes = []) {
   return scenes
     .map((scene) => scene.draft_text || '')
@@ -921,8 +926,11 @@ const useProjectStore = create((set, get) => ({
       const [
         { default: useAIStore },
         { default: useCodexStore },
+        { default: useSuggestionStore },
         {
-          resolveAndMaterializeEntityCandidates,
+          finalizePreparedEntityCandidates,
+          prepareEntityCandidatesForCanon,
+          rollbackPreparedEntityCandidates,
           stageExtractedEntityCandidates,
         },
         { canonicalizeChapter: canonicalizeChapterEngine },
@@ -931,6 +939,7 @@ const useProjectStore = create((set, get) => ({
       ] = await Promise.all([
         import('./aiStore'),
         import('./codexStore'),
+        import('./suggestionStore'),
         import('../services/entityIdentity/index.js'),
         import('../services/canon/workflow'),
         import('../services/canon/projection'),
@@ -938,12 +947,13 @@ const useProjectStore = create((set, get) => ({
       ]);
       const { summarizeChapter, extractFromChapter } = useAIStore.getState();
 
-      const runCanonWork = async () => {
+      const readCachedCanonOutcome = async () => {
         let existingCanonState = null;
         try {
           existingCanonState = await getChapterCanonState(currentProject.id, chapterId);
         } catch (error) {
           console.warn('[ChapterCompletion] Read canon state failed, falling back to canonicalize:', error);
+          return null;
         }
 
         const reusableRevision = existingCanonState?.canonicalRevision || existingCanonState?.revision || null;
@@ -951,38 +961,67 @@ const useProjectStore = create((set, get) => ({
         const canonStatus = existingCanonState?.status || CHAPTER_COMMIT_STATUS.DRAFT;
         const canonHasBlockingErrors = canonStatus === CHAPTER_COMMIT_STATUS.BLOCKED
           || (existingCanonState?.errorCount || 0) > 0;
+        const canonHasRetryableFailure = (existingCanonState?.reports || [])
+          .some((report) => RETRYABLE_CANON_REPORT_CODES.has(report?.rule_code));
         const canonCanCompleteFromCache = canonFreshForCurrentText
           && COMPLETION_SUCCESS_CANON_STATUSES.has(canonStatus)
-          && !canonHasBlockingErrors;
-        const canonStillBlockedFromCache = canonFreshForCurrentText && canonHasBlockingErrors;
+          && !canonHasBlockingErrors
+          && !canonHasRetryableFailure;
+        const canonStillBlockedFromCache = canonFreshForCurrentText
+          && canonHasBlockingErrors
+          && !canonHasRetryableFailure;
+
+        if (!canonCanCompleteFromCache && !canonStillBlockedFromCache) return null;
+        return {
+          canonProcessed: true,
+          canonReused: true,
+          canonSucceeded: canonCanCompleteFromCache,
+          canonRuntimeError: '',
+          canonResult: {
+            ok: canonCanCompleteFromCache,
+            reused: true,
+            status: canonStatus,
+            revisionId: reusableRevision?.id || existingCanonState?.commit?.current_revision_id || null,
+            reports: existingCanonState?.reports || [],
+            extractionStatus: existingCanonState?.extractionStatus || 'succeeded',
+            extractedCount: existingCanonState?.extractedCount || 0,
+            committedCount: existingCanonState?.committedCount || 0,
+            filteredCount: existingCanonState?.filteredCount || 0,
+            extractionRetried: !!existingCanonState?.extractionRetried,
+            extractionAttemptCount: existingCanonState?.extractionAttemptCount || 0,
+            invalidatedChapterCount: 0,
+          },
+        };
+      };
+
+      const runCanonWork = async ({ force = false } = {}) => {
+        if (!force) {
+          const cachedOutcome = await readCachedCanonOutcome();
+          if (cachedOutcome) return cachedOutcome;
+        }
 
         try {
-          if (canonCanCompleteFromCache || canonStillBlockedFromCache) {
-            return {
-              canonProcessed: true,
-              canonReused: true,
-              canonSucceeded: canonCanCompleteFromCache,
-              canonRuntimeError: '',
-              canonResult: {
-                ok: canonCanCompleteFromCache,
-                reused: true,
-                status: canonStatus,
-                revisionId: reusableRevision?.id || existingCanonState?.commit?.current_revision_id || null,
-                reports: existingCanonState?.reports || [],
-              },
-            };
-          }
-
           const nextCanonResult = await canonicalizeChapterEngine(currentProject.id, chapterId, {
             allowConcurrent: true,
             routeOptions: CHAPTER_COMPLETION_ROUTE_OPTIONS,
           });
+          const hasExplicitCanonResult = nextCanonResult
+            && typeof nextCanonResult === 'object';
           return {
             canonProcessed: true,
             canonReused: false,
-            canonSucceeded: nextCanonResult?.ok !== false,
+            canonSucceeded: nextCanonResult?.ok === true,
             canonRuntimeError: '',
-            canonResult: nextCanonResult,
+            canonResult: hasExplicitCanonResult
+              ? nextCanonResult
+              : {
+                ok: false,
+                extractionStatus: 'failed',
+                reports: [],
+                extractedCount: 0,
+                committedCount: 0,
+                filteredCount: 0,
+              },
           };
         } catch (error) {
           console.warn('[ChapterCompletion] Canonicalize failed:', error);
@@ -1000,6 +1039,55 @@ const useProjectStore = create((set, get) => ({
         }
       };
 
+      const cachedCanonOutcome = await readCachedCanonOutcome();
+      const canFinishDirectlyFromCache = cachedCanonOutcome
+        && (!cachedCanonOutcome.canonSucceeded || chapter.status === 'done');
+      if (canFinishDirectlyFromCache) {
+        canonResult = cachedCanonOutcome.canonResult;
+        canonProcessed = cachedCanonOutcome.canonProcessed;
+        canonSucceeded = cachedCanonOutcome.canonSucceeded;
+        canonReused = true;
+        await get().updateChapter(chapterId, { status: canonSucceeded ? 'done' : 'draft' });
+        await useCodexStore.getState().applyCompletionDelta({
+          projectId: currentProject.id,
+          chapterId,
+          createdEntries: {},
+          refreshProjection: canonSucceeded,
+        });
+        if (canonSucceeded) {
+          await useSuggestionStore.getState().loadSuggestions(currentProject.id);
+        }
+
+        const filteredCanonCount = Number(canonResult?.filteredCount || 0);
+        const cachedMessage = canonSucceeded
+          ? [
+            'Đã hoàn thành chương. Phân tích sự thật đã có sẵn và vẫn khớp nội dung.',
+            filteredCanonCount > 0
+              ? `${filteredCanonCount} thay đổi bị lọc vì không đủ độ tin cậy hoặc chưa hợp lệ.`
+              : '',
+          ].filter(Boolean).join(' ')
+          : 'Phân tích sự thật hiện tại vẫn đang có lỗi chặn, chương chưa được đánh dấu hoàn thành.';
+        const cachedResult = {
+          ok: canonSucceeded,
+          kind: canonProcessed ? (canonSucceeded ? 'success' : 'blocked') : 'runtime',
+          message: cachedMessage,
+          summary: '',
+          extracted: null,
+          extractionWarning: '',
+          extractionStats,
+          canonResult,
+        };
+        get().setChapterCompletionState(chapterId, {
+          running: false,
+          phase: cachedResult.ok ? 'done' : 'error',
+          progress: cachedResult.ok ? 100 : 0,
+          message: cachedResult.message,
+          error: cachedResult.ok ? '' : cachedResult.message,
+          result: cachedResult,
+        });
+        return cachedResult;
+      }
+
       get().setChapterCompletionState(chapterId, {
         phase: 'summarize_extract',
         progress: 20,
@@ -1007,17 +1095,18 @@ const useProjectStore = create((set, get) => ({
       });
       const summaryPromise = summarizeChapter(context);
       const extractPromise = extractFromChapter(context);
-      const canonWorkPromise = runCanonWork();
       await yieldToUi();
       const [summaryResult, extractResult] = await Promise.allSettled([
         summaryPromise,
         extractPromise,
       ]);
 
-      if (summaryResult.status === 'fulfilled') {
-        summary = summaryResult.value || '';
-      } else {
-        console.warn('[ChapterCompletion] Summarize failed (non-fatal):', summaryResult.reason);
+      const summaryFailed = summaryResult.status !== 'fulfilled'
+        || !String(summaryResult.value || '').trim();
+      if (!summaryFailed) {
+        summary = summaryResult.value;
+      } else if (summaryResult.status === 'rejected') {
+        console.warn('[ChapterCompletion] Summarize failed:', summaryResult.reason);
       }
 
       if (extractResult.status === 'fulfilled') {
@@ -1026,20 +1115,124 @@ const useProjectStore = create((set, get) => ({
           extractionWarning = 'AI không trả về dữ liệu Codex hợp lệ ở lần hoàn thành này.';
         }
       } else {
-        console.warn('[ChapterCompletion] Extraction failed (non-fatal):', extractResult.reason);
+        console.warn('[ChapterCompletion] Extraction failed:', extractResult.reason);
         extractionWarning = 'Không thể trích xuất Codex ở lần hoàn thành này.';
+      }
+
+      if (summaryFailed) {
+        await get().updateChapter(chapterId, { status: 'draft' });
+        const summaryFailure = {
+          ok: false,
+          kind: 'blocked',
+          message: 'Không thể tóm tắt chương ở lần hoàn thành này. Chương vẫn ở trạng thái bản nháp; hãy thử lại.',
+          summary: '',
+          extracted,
+          extractionWarning: 'AI không trả về bản tóm tắt chương hợp lệ.',
+          extractionStats,
+          canonResult: null,
+        };
+        get().setChapterCompletionState(chapterId, {
+          running: false,
+          phase: 'error',
+          progress: 0,
+          message: summaryFailure.message,
+          error: summaryFailure.message,
+          result: summaryFailure,
+        });
+        return summaryFailure;
+      }
+
+      if (!extracted) {
+        await get().updateChapter(chapterId, { status: 'draft' });
+        const extractionFailure = {
+          ok: false,
+          kind: 'blocked',
+          message: `${extractionWarning} Chương vẫn ở trạng thái bản nháp; hãy thử lại.`,
+          summary,
+          extracted: null,
+          extractionWarning,
+          extractionStats,
+          canonResult: null,
+        };
+        get().setChapterCompletionState(chapterId, {
+          running: false,
+          phase: 'error',
+          progress: 0,
+          message: extractionFailure.message,
+          error: extractionFailure.message,
+          result: extractionFailure,
+        });
+        return extractionFailure;
+      }
+
+      let preparedEntities;
+      try {
+        const staged = await stageExtractedEntityCandidates({
+          projectId: currentProject.id,
+          chapterId,
+          sessionKey: completionSessionKey,
+          sourceType: 'chapter_extract',
+          sourceRef: `chapter:${chapterId}`,
+          extracted,
+        });
+        preparedEntities = await prepareEntityCandidatesForCanon({
+          projectId: currentProject.id,
+          chapterId,
+          sessionKey: completionSessionKey,
+        });
+        extractionStats = {
+          ...preparedEntities,
+          created: {
+            ...(preparedEntities.created || {}),
+            staged: staged.stagedCount || 0,
+          },
+        };
+      } catch (error) {
+        console.warn('[ChapterCompletion] Prepare entity extraction failed:', error);
+        extractionWarning = 'Không thể chuẩn bị dữ liệu nhân vật, địa điểm, vật phẩm hoặc thuật ngữ cho canon.';
+      }
+
+      if (!preparedEntities?.ok) {
+        await rollbackPreparedEntityCandidates({
+          projectId: currentProject.id,
+          chapterId,
+          sessionKey: completionSessionKey,
+          discard: true,
+        });
+        await get().updateChapter(chapterId, { status: 'draft' });
+        const invalidIdentityCount = Number(
+          preparedEntities?.stats?.rejected || preparedEntities?.stats?.ambiguous_review || 0,
+        );
+        const extractionFailure = {
+          ok: false,
+          kind: 'blocked',
+          message: extractionWarning
+            || `AI trả về ${invalidIdentityCount || 'một số'} thực thể không thể nhận diện chắc chắn. Chương vẫn ở trạng thái bản nháp; hãy thử lại.`,
+          summary,
+          extracted,
+          extractionWarning: extractionWarning || 'Dữ liệu Codex có thực thể không hợp lệ hoặc mơ hồ.',
+          extractionStats,
+          canonResult: null,
+        };
+        get().setChapterCompletionState(chapterId, {
+          running: false,
+          phase: 'error',
+          progress: 0,
+          message: extractionFailure.message,
+          error: extractionFailure.message,
+          result: extractionFailure,
+        });
+        return extractionFailure;
       }
 
       const snapshotBeforeCanon = await loadCompletionChapterText(chapterId);
       if (snapshotBeforeCanon.chapterText !== chapterText) {
-        const earlyCanonOutcome = await canonWorkPromise;
-        if (!earlyCanonOutcome.canonReused) {
-          try {
-            await purgeChapterCanonState(currentProject.id, chapterId);
-          } catch (error) {
-            console.warn('[ChapterCompletion] Failed to purge stale canon state:', error);
-          }
-        }
+        await rollbackPreparedEntityCandidates({
+          projectId: currentProject.id,
+          chapterId,
+          sessionKey: completionSessionKey,
+          discard: true,
+        });
         const staleResult = buildChapterCompletionResult(
           'stale',
           'Nội dung chương đã thay đổi trong lúc hoàn thành. Hãy chạy lại để tránh ghi đè dữ liệu cũ.',
@@ -1061,12 +1254,27 @@ const useProjectStore = create((set, get) => ({
         message: 'Đang kiểm tra trạng thái phân tích sự thật...',
       });
       await yieldToUi();
-      const canonOutcome = await canonWorkPromise;
+      const canonOutcome = await runCanonWork({
+        force: Number(preparedEntities.createdCount || 0) > 0,
+      });
       canonResult = canonOutcome.canonResult;
       canonProcessed = canonOutcome.canonProcessed;
       canonSucceeded = canonOutcome.canonSucceeded;
       canonReused = canonOutcome.canonReused;
       canonRuntimeError = canonOutcome.canonRuntimeError;
+
+      if (!canonSucceeded) {
+        await rollbackPreparedEntityCandidates({
+          projectId: currentProject.id,
+          chapterId,
+          sessionKey: completionSessionKey,
+        });
+        extractionStats = {
+          ...extractionStats,
+          createdCount: 0,
+          createdEntries: { characters: [], locations: [], objects: [], worldTerms: [] },
+        };
+      }
 
       const snapshotAfterCanon = await loadCompletionChapterText(chapterId);
       if (snapshotAfterCanon.chapterText !== chapterText) {
@@ -1077,6 +1285,12 @@ const useProjectStore = create((set, get) => ({
             console.warn('[ChapterCompletion] Failed to purge stale canon state:', error);
           }
         }
+        await rollbackPreparedEntityCandidates({
+          projectId: currentProject.id,
+          chapterId,
+          sessionKey: completionSessionKey,
+          discard: true,
+        });
         const staleResult = buildChapterCompletionResult(
           'stale',
           'Nội dung chương đã thay đổi trong lúc hoàn thành. Hãy chạy lại để tránh ghi đè dữ liệu cũ.',
@@ -1109,30 +1323,36 @@ const useProjectStore = create((set, get) => ({
           console.warn('[ChapterCompletion] Persist summary failed (non-fatal):', error);
         }
       }
-      if (extracted) {
+      if (canonSucceeded) {
         try {
-          const staged = await stageExtractedEntityCandidates({
+          extractionStats = await finalizePreparedEntityCandidates({
+            projectId: currentProject.id,
+            chapterId,
+            revisionId: canonResult?.revisionId || null,
+            sessionKey: completionSessionKey,
+          });
+        } catch (error) {
+          console.warn('[ChapterCompletion] Entity finalization failed:', error);
+          await rollbackPreparedEntityCandidates({
             projectId: currentProject.id,
             chapterId,
             sessionKey: completionSessionKey,
-            sourceType: 'chapter_extract',
-            sourceRef: `chapter:${chapterId}`,
-            extracted,
           });
+          if (!canonReused) {
+            try {
+              await purgeChapterCanonState(currentProject.id, chapterId);
+            } catch (purgeError) {
+              console.warn('[ChapterCompletion] Failed to purge canon after entity finalization error:', purgeError);
+            }
+          }
+          canonSucceeded = false;
+          canonProcessed = false;
+          canonRuntimeError = 'Không thể hoàn tất dữ liệu Codex sau khi phân tích canon.';
           extractionStats = {
+            ...extractionStats,
             createdCount: 0,
-            created: {
-              staged: staged.stagedCount || 0,
-            },
-            createdEntries: {
-              characters: [],
-              locations: [],
-              worldTerms: [],
-              objects: [],
-            },
+            createdEntries: { characters: [], locations: [], objects: [], worldTerms: [] },
           };
-        } catch (error) {
-          console.warn('[ChapterCompletion] Stage extraction failed (non-fatal):', error);
         }
       }
       if (canonSucceeded) {
@@ -1140,37 +1360,48 @@ const useProjectStore = create((set, get) => ({
       } else {
         await get().updateChapter(chapterId, { status: 'draft' });
       }
-      if (canonSucceeded) {
-        try {
-          extractionStats = await resolveAndMaterializeEntityCandidates({
-            projectId: currentProject.id,
-            chapterId,
-            revisionId: canonResult?.revisionId || null,
-            sessionKey: completionSessionKey,
-          });
-        } catch (error) {
-          console.warn('[ChapterCompletion] Entity materialization failed after canon pass:', error);
-        }
-      }
       await useCodexStore.getState().applyCompletionDelta({
         projectId: currentProject.id,
         chapterId,
         createdEntries: extractionStats.createdEntries || {},
         refreshProjection: canonSucceeded,
       });
+      if (canonSucceeded) {
+        await useSuggestionStore.getState().loadSuggestions(currentProject.id);
+      }
       await yieldToUi();
 
-      const deferredCanonCount = Number(canonResult?.deferredCount || 0);
-      const baseCompletionMessage = deferredCanonCount > 0
-        ? `Đã hoàn thành chương. Có ${deferredCanonCount} thay đổi canon lớn đang chờ duyệt.`
-        : canonReused
-          ? 'Đã hoàn thành chương. Phân tích sự thật đã có sẵn và vẫn khớp nội dung.'
-          : 'Đã hoàn thành chương.';
+      const committedCanonCount = Number(canonResult?.committedCount || 0);
+      const filteredCanonCount = Number(canonResult?.filteredCount || 0);
+      const canonExtractionRetried = !!canonResult?.extractionRetried;
+      const invalidatedChapterCount = Number(
+        canonResult?.invalidatedChapterCount
+        ?? canonResult?.invalidatedChapterIds?.length
+        ?? 0,
+      );
+      const baseCompletionMessage = canonReused
+        ? 'Đã hoàn thành chương. Phân tích sự thật đã có sẵn và vẫn khớp nội dung.'
+        : committedCanonCount > 0
+          ? `Đã hoàn thành chương và áp dụng ${committedCanonCount} thay đổi canon.`
+          : 'Đã hoàn thành chương; không phát hiện thay đổi canon mới.';
       const skippedIdentityCount = Number(extractionStats?.stats?.skipped_ai_identity || 0);
+      const ambiguousIdentityCount = Number(extractionStats?.stats?.ambiguous_review || 0);
       const completionSuccessMessage = [
         baseCompletionMessage,
+        filteredCanonCount > 0
+          ? `${filteredCanonCount} thay đổi bị lọc vì không đủ độ tin cậy hoặc chưa hợp lệ.`
+          : '',
+        canonExtractionRetried
+          ? 'Phản hồi canon ban đầu đã được AI tự sửa và kiểm chứng lại trước khi áp dụng.'
+          : '',
+        invalidatedChapterCount > 0
+          ? `${invalidatedChapterCount} chương phía sau đã được đánh dấu cần phân tích lại.`
+          : '',
         skippedIdentityCount > 0
           ? `Bỏ qua ${skippedIdentityCount} mục trích xuất vì nhận diện AI không hợp lệ.`
+          : '',
+        ambiguousIdentityCount > 0
+          ? `${ambiguousIdentityCount} thực thể mơ hồ đã được đưa vào Hộp đề xuất.`
           : '',
         extractionWarning,
       ].filter(Boolean).join(' ');
@@ -1182,7 +1413,9 @@ const useProjectStore = create((set, get) => ({
         message: canonSucceeded
           ? completionSuccessMessage
           : canonProcessed
-            ? (canonReused
+            ? (canonResult?.extractionStatus === 'failed'
+              ? 'AI không trích xuất được canon hợp lệ, chương vẫn ở trạng thái bản nháp. Hãy thử phân tích lại.'
+              : canonReused
               ? 'Phân tích sự thật hiện tại vẫn đang có lỗi chặn, chương chưa được đánh dấu hoàn thành.'
               : 'Phân tích sự thật phát hiện mâu thuẫn, chương chưa được đánh dấu hoàn thành.')
             : (canonRuntimeError

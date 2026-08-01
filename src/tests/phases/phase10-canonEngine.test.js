@@ -18,10 +18,19 @@ vi.mock('../../services/ai/router', () => ({
 
 const engine = await import('../../services/canon/engine');
 const { CANON_OP_TYPES } = await import('../../services/canon/constants');
+const { normalizeCanonFactDescription } = await import('../../services/entityIdentity/factIdentity');
+const { filterCommitReadyOps } = await import('../../services/canon/validation');
 
 describe('phase10 canon engine', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('normalizes Vietnamese đ as d instead of dropping it from fact fingerprints', () => {
+    expect(normalizeCanonFactDescription('Đèn đã được sửa')).toBe('den da duoc sua');
+    expect(normalizeCanonFactDescription('Đèn')).not.toBe(
+      normalizeCanonFactDescription('Én'),
+    );
   });
 
   it('applies death and rescue events to entity state', () => {
@@ -188,6 +197,62 @@ describe('phase10 canon engine', () => {
     expect(ops[0].thread_title).toBe('Bi mat hoang toc');
   });
 
+  it('prefers an exact location match over an earlier substring match', () => {
+    const refs = {
+      chapterId: 2,
+      scenes: [{ id: 11, title: 'Canh 1' }],
+      characters: [{ id: 5, name: 'Mai An' }],
+      locations: [
+        { id: 20, name: 'Thành Cổ' },
+        { id: 21, name: 'Trạm Y Tế Thành Cổ' },
+      ],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+    };
+
+    const [mapped] = engine.mapAiOpsToCandidateOps([{
+      op_type: CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED,
+      scene_index: 1,
+      subject_name: 'Mai An',
+      location_name: 'Trạm Y Tế Thành Cổ',
+      summary: 'Mai An được đưa tới trạm y tế để điều trị.',
+      evidence: 'Mọi người đưa Mai An vào Trạm Y Tế Thành Cổ.',
+      confidence: 0.95,
+      payload: { reason: 'Điều trị' },
+    }], refs);
+
+    expect(mapped.location_id).toBe(21);
+    expect(mapped.location_name).toBe('Trạm Y Tế Thành Cổ');
+  });
+
+  it('prefers an exact thread title over an earlier substring match', () => {
+    const refs = {
+      chapterId: 2,
+      scenes: [{ id: 11, title: 'Canh 1' }],
+      characters: [],
+      locations: [],
+      plotThreads: [
+        { id: 30, title: 'Cổng Tro' },
+        { id: 31, title: 'Khóa Cổng Tro' },
+      ],
+      canonFacts: [],
+      objects: [],
+    };
+
+    const [mapped] = engine.mapAiOpsToCandidateOps([{
+      op_type: CANON_OP_TYPES.THREAD_PROGRESS,
+      scene_index: 1,
+      thread_title: 'Khóa Cổng Tro',
+      summary: 'Nhóm đã tìm được nửa chìa khóa.',
+      evidence: 'Nửa chìa khóa nằm trong hốc đá.',
+      confidence: 0.91,
+    }], refs);
+
+    expect(mapped.thread_id).toBe(31);
+    expect(mapped.thread_title).toBe('Khóa Cổng Tro');
+  });
+
   it('keeps risky terminal character ops at mapping time for later review', () => {
     const refs = {
       chapterId: 2,
@@ -279,6 +344,89 @@ describe('phase10 canon engine', () => {
     expect(ops.every((op) => op.object_id === 8)).toBe(true);
   });
 
+  it('links a newly registered secret to its same-chapter reveal and orders the dependency first', () => {
+    const refs = {
+      chapterId: 2,
+      scenes: [{ id: 11, title: 'Canh 1' }],
+      characters: [
+        { id: 5, name: 'Mai An' },
+        { id: 6, name: 'Le Minh' },
+      ],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+    };
+
+    const ops = engine.mapAiOpsToCandidateOps([
+      {
+        op_type: CANON_OP_TYPES.SECRET_REVEALED,
+        scene_index: 1,
+        subject_name: 'Mai An',
+        target_name: 'Le Minh',
+        fact_description: 'An Dong chi chap nhan mau cua nguoi giu cong tu nguyen',
+        summary: 'Mai biet quy tac cua an dong.',
+        evidence: 'Le Minh chi noi rieng voi Mai ve quy tac cua an dong.',
+        confidence: 0.96,
+      },
+      {
+        op_type: CANON_OP_TYPES.FACT_REGISTERED,
+        scene_index: 1,
+        fact_description: 'An Dong chi chap nhan mau cua nguoi giu cong tu nguyen',
+        summary: 'Quy tac bi mat cua an dong.',
+        evidence: 'An Dong chi chap nhan mau cua nguoi giu cong tu nguyen.',
+        confidence: 0.97,
+        payload: {
+          description: 'An Dong chi chap nhan mau cua nguoi giu cong tu nguyen',
+          fact_type: 'secret',
+        },
+      },
+    ], refs);
+
+    expect(ops.map((op) => op.op_type)).toEqual([
+      CANON_OP_TYPES.FACT_REGISTERED,
+      CANON_OP_TYPES.SECRET_REVEALED,
+    ]);
+    expect(ops[0].fact_id).toBeTruthy();
+    expect(ops[1]).toMatchObject({
+      fact_id: ops[0].fact_id,
+      subject_id: 5,
+      target_id: 6,
+    });
+  });
+
+  it('does not guess a same-chapter secret reference when fact descriptions differ', () => {
+    const refs = {
+      chapterId: 2,
+      scenes: [{ id: 11, title: 'Canh 1' }],
+      characters: [{ id: 5, name: 'Mai An' }],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+    };
+
+    const ops = engine.mapAiOpsToCandidateOps([
+      {
+        op_type: CANON_OP_TYPES.FACT_REGISTERED,
+        fact_description: 'Bi mat cua an dong',
+        evidence: 'Van ban noi ro bi mat cua an dong.',
+        confidence: 0.9,
+        payload: { fact_type: 'secret' },
+      },
+      {
+        op_type: CANON_OP_TYPES.SECRET_REVEALED,
+        subject_name: 'Mai An',
+        fact_description: 'Bi mat cua canh cong',
+        evidence: 'Mai nghe mot bi mat khac.',
+        confidence: 0.9,
+      },
+    ], refs);
+
+    expect(ops).toHaveLength(1);
+    expect(ops[0].op_type).toBe(CANON_OP_TYPES.FACT_REGISTERED);
+  });
+
   it('marks secret reveal on an already revealed fact as contradiction', () => {
     const reports = engine.validateCandidateOps({
       projectId: 1,
@@ -301,6 +449,72 @@ describe('phase10 canon engine', () => {
     });
 
     expect(reports.some((report) => report.rule_code === 'SECRET_ALREADY_REVEALED')).toBe(true);
+  });
+
+  it('preserves the secret type and first reveal chapter when another character learns it later', () => {
+    const factStates = [{
+      id: 7,
+      fact_type: 'secret',
+      revealed_at_chapter: 2,
+      description: 'Than phan that cua Lan',
+    }];
+
+    const next = engine.applyEventToFactStates(factStates, {
+      op_type: CANON_OP_TYPES.SECRET_REVEALED,
+      fact_id: 7,
+      fact_description: 'Than phan that cua Lan',
+    }, 2);
+
+    expect(next[0]).toMatchObject({
+      fact_type: 'secret',
+      revealed_at_chapter: 2,
+    });
+  });
+
+  it('does not report a repeated reveal when a different character learns the secret', () => {
+    const reports = engine.validateCandidateOps({
+      projectId: 1,
+      chapterId: 3,
+      candidateOps: [{
+        op_type: CANON_OP_TYPES.SECRET_REVEALED,
+        scene_id: 12,
+        subject_id: 8,
+        subject_name: 'Minh',
+        fact_id: 7,
+        fact_description: 'Than phan that cua Lan',
+        evidence: 'Lan noi rieng bi mat cho Minh.',
+      }],
+      entityStates: [{ entity_id: 8, knowledge: {} }],
+      threadStates: [],
+      factStates: [{
+        id: 7,
+        fact_type: 'secret',
+        revealed_at_chapter: 2,
+        description: 'Than phan that cua Lan',
+      }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'SECRET_ALREADY_REVEALED')).toBe(false);
+  });
+
+  it('filters a repeated secret reveal for a character who already knows that fact', () => {
+    const result = filterCommitReadyOps([{
+      op_type: CANON_OP_TYPES.SECRET_REVEALED,
+      subject_id: 10,
+      subject_name: 'Mai',
+      fact_id: 7,
+      confidence: 0.99,
+      evidence: 'Mai nhắc lại bí mật.',
+    }], {
+      projectId: 1,
+      chapterId: 4,
+      entityStates: [{ entity_id: 10, knowledge: { 7: true } }],
+    });
+
+    expect(result.ops).toEqual([]);
+    expect(result.reports).toEqual([
+      expect.objectContaining({ rule_code: 'SECRET_ALREADY_REVEALED' }),
+    ]);
   });
 
   it('requires strong references for important canon ops', () => {
@@ -596,6 +810,64 @@ describe('phase10 canon engine', () => {
     });
 
     expect(reports.some((report) => report.rule_code === 'DRAFT_REFERENCES_SPENT_ITEM')).toBe(false);
+  });
+
+  it('does not warn about an unavailable item when the same chapter recovers it first', () => {
+    const reports = engine.validateDraftTextAgainstTruth({
+      projectId: 1,
+      chapterId: 9,
+      sceneText: 'Kha tim thay La Ban Thoi Vu trong luoi chan rac, sua lai roi tra cho Mai.',
+      objects: [{ id: 8, name: 'La Ban Thoi Vu' }],
+      itemStates: [{ object_id: 8, availability: 'lost', is_consumed: false }],
+      candidateOps: [{
+        op_type: CANON_OP_TYPES.OBJECT_FOUND,
+        object_id: 8,
+        scene_id: 91,
+      }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'DRAFT_REFERENCES_SPENT_ITEM')).toBe(false);
+  });
+
+  it('does not mistake common words for a reference to a hidden secret', () => {
+    const reports = engine.validateDraftTextAgainstTruth({
+      projectId: 1,
+      chapterId: 2,
+      sceneText: 'Mai dieu tra Cong Tro de cuu nguoi anh.',
+      factStates: [{
+        id: 7,
+        fact_type: 'secret',
+        description: 'Bach Ly la nguoi dieu khien Cong Tro',
+      }],
+    });
+
+    expect(reports.some((report) => report.rule_code === 'DRAFT_TOUCHES_HIDDEN_SECRET')).toBe(false);
+  });
+
+  it('keeps a real hidden-secret warning until the chapter explicitly reveals that fact', () => {
+    const input = {
+      projectId: 1,
+      chapterId: 3,
+      sceneText: 'Le Minh thu nhan Bach Ly la nguoi dieu khien Cong Tro.',
+      factStates: [{
+        id: 7,
+        fact_type: 'secret',
+        description: 'Bach Ly la nguoi dieu khien Cong Tro',
+      }],
+    };
+
+    const unresolvedReports = engine.validateDraftTextAgainstTruth(input);
+    const resolvedReports = engine.validateDraftTextAgainstTruth({
+      ...input,
+      candidateOps: [{
+        op_type: CANON_OP_TYPES.SECRET_REVEALED,
+        fact_id: 7,
+        subject_id: 10,
+      }],
+    });
+
+    expect(unresolvedReports.some((report) => report.rule_code === 'DRAFT_TOUCHES_HIDDEN_SECRET')).toBe(true);
+    expect(resolvedReports.some((report) => report.rule_code === 'DRAFT_TOUCHES_HIDDEN_SECRET')).toBe(false);
   });
 
   it('does not confuse dan duoc names with an eat/use marker', () => {

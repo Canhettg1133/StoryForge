@@ -30,6 +30,8 @@ function setStoreState({
   chapterStatus = 'draft',
   canonStatus = 'draft',
   canonIsFresh = false,
+  committedCount = 0,
+  filteredCount = 0,
   runChapterCompletion = vi.fn().mockResolvedValue({ ok: true, kind: 'success' }),
 } = {}) {
   mockedProjectStoreState = {
@@ -62,6 +64,8 @@ function setStoreState({
       reports: [],
       errorCount: 0,
       warningCount: 0,
+      committedCount,
+      filteredCount,
     },
     loadChapterCanon: vi.fn(),
     canonicalizeChapter: vi.fn(),
@@ -77,7 +81,11 @@ function setStoreState({
     clearActionOutcome: vi.fn(),
   };
 
-  return { runChapterCompletion };
+  return {
+    runChapterCompletion,
+    loadCodex: mockedCodexStoreState.loadCodex,
+    loadChapterCanon: mockedCanonStoreState.loadChapterCanon,
+  };
 }
 
 describe('phase10 continuity bar completion shortcut', () => {
@@ -102,7 +110,13 @@ describe('phase10 continuity bar completion shortcut', () => {
 
   it('shows the desktop completion action next to the unanalyzed canon state', async () => {
     const ContinuityBar = await loadContinuityBar();
-    const { runChapterCompletion } = setStoreState();
+    const { runChapterCompletion, loadCodex, loadChapterCanon } = setStoreState({
+      runChapterCompletion: vi.fn().mockResolvedValue({
+        ok: true,
+        kind: 'success',
+        message: 'Đã hoàn thành chương và áp dụng 2 thay đổi canon.',
+      }),
+    });
 
     root = createRoot(container);
     await act(async () => {
@@ -124,6 +138,9 @@ describe('phase10 continuity bar completion shortcut', () => {
     });
 
     expect(runChapterCompletion).toHaveBeenCalledWith(11, { mode: 'manual' });
+    expect(loadChapterCanon).toHaveBeenCalledWith(1, 11, 101);
+    expect(loadCodex).toHaveBeenCalledWith(1);
+    expect(container.textContent).toContain('áp dụng 2 thay đổi canon');
   });
 
   it('does not render the desktop rebuild button', async () => {
@@ -177,11 +194,64 @@ describe('phase10 continuity bar completion shortcut', () => {
     expect(container.querySelector('.continuity-bar-status--completed')).not.toBeNull();
   });
 
+  it('keeps detailed canon counts in change history instead of the crowded status row', async () => {
+    const ContinuityBar = await loadContinuityBar();
+    setStoreState({
+      chapterStatus: 'done',
+      canonStatus: 'canonical',
+      canonIsFresh: true,
+      committedCount: 1,
+      filteredCount: 6,
+    });
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<ContinuityBar isMobileLayout={false} />);
+    });
+
+    expect(container.textContent).toContain('Đã phân tích');
+    expect(container.textContent).not.toContain('1 thay đổi');
+    expect(container.textContent).not.toContain('6 lọc');
+  });
+
+  it('uses the chapter title as the desktop row label without redundant leading content', async () => {
+    const ContinuityBar = await loadContinuityBar();
+    setStoreState({
+      chapterStatus: 'done',
+      canonStatus: 'canonical',
+      canonIsFresh: true,
+    });
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<ContinuityBar isMobileLayout={false} />);
+    });
+
+    const currentRow = container.querySelector('.continuity-bar-current');
+    const title = currentRow?.querySelector('.continuity-bar-title');
+
+    expect(currentRow?.getAttribute('aria-label')).toBe('Chương hiện tại');
+    expect(currentRow?.querySelector('.continuity-bar-label')).toBeNull();
+    expect(currentRow?.firstElementChild).toBe(title);
+    expect(title?.textContent).toBe(mockedProjectStoreState.chapters[0].title);
+  });
+
   it('styles the desktop completion shortcut as an action instead of success state', () => {
     const css = readFileSync('src/components/editor/ContinuityBar.css', 'utf8');
     const completionRule = css.match(/\.continuity-bar-status--completion\s*\{[^}]+\}/)?.[0] || '';
 
     expect(completionRule).toContain('var(--color-accent)');
     expect(completionRule).not.toContain('var(--color-success)');
+  });
+
+  it('keeps the desktop chapter status row on one line and truncates only the title', () => {
+    const css = readFileSync('src/components/editor/ContinuityBar.css', 'utf8');
+    const currentRowRule = css.match(/\.continuity-bar-current\s*\{[^}]+\}/)?.[0] || '';
+    const currentTitleRule = css.match(/\.continuity-bar-current \.continuity-bar-title\s*\{[^}]+\}/)?.[0] || '';
+
+    expect(currentRowRule).toContain('flex-wrap: nowrap');
+    expect(currentRowRule).toContain('overflow: hidden');
+    expect(currentTitleRule).toContain('flex: 1 1 auto');
+    expect(currentTitleRule).toContain('min-width: 0');
   });
 });

@@ -770,11 +770,14 @@ export function buildPromptSystemParts(taskType, context = {}) {
   if (canonFacts.length > 0) {
     const facts = canonFacts.filter(function (f) { return f.status === 'active' && f.fact_type === 'fact'; });
     const secrets = canonFacts.filter(function (f) { return f.status === 'active' && f.fact_type === 'secret'; });
+    const revealedSecrets = secrets.filter(function (f) { return f.revealed_at_chapter != null && f.revealed_at_chapter !== ''; });
+    const unrevealedSecrets = secrets.filter(function (f) { return f.revealed_at_chapter == null || f.revealed_at_chapter === ''; });
     const rules = canonFacts.filter(function (f) { return f.status === 'active' && f.fact_type === 'rule'; });
     const cParts = [];
     if (facts.length > 0) cParts.push('Sự thật:\n' + facts.map(function (f) { return '- ' + f.description; }).join('\n'));
     if (rules.length > 0) cParts.push('Quy tắc:\n' + rules.map(function (f) { return '- ' + f.description; }).join('\n'));
-    if (secrets.length > 0) cParts.push('BÍ MẬT - CHƯA TIẾT LỘ:\n' + secrets.map(function (f) { return '[x] ' + f.description; }).join('\n'));
+    if (revealedSecrets.length > 0) cParts.push('BÍ MẬT ĐÃ CÓ LẦN TIẾT LỘ TRONG CANON:\n' + revealedSecrets.map(function (f) { return '- [lộ lần đầu ở chương ' + f.revealed_at_chapter + '] ' + f.description; }).join('\n'));
+    if (unrevealedSecrets.length > 0) cParts.push('BÍ MẬT CHƯA CÓ LẦN TIẾT LỘ TRONG CANON:\n' + unrevealedSecrets.map(function (f) { return '- ' + f.description; }).join('\n'));
     if (cParts.length > 0) systemParts.push('\n[CANON TRUYEN]\n' + cParts.join('\n\n'));
   }
 

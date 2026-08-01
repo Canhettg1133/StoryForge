@@ -1,11 +1,15 @@
 import React from 'react';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import StoryEditor from '../../components/editor/StoryEditor.jsx';
 
 const mocks = vi.hoisted(() => ({
+  canonState: {
+    chapterCanon: { revision: { id: 501 } },
+  },
   projectState: {
     currentProject: { id: 1, title: 'Mùa hạ cuối cùng' },
     chapters: [
@@ -44,6 +48,10 @@ vi.mock('../../stores/projectStore', () => ({
   default: () => mocks.projectState,
 }));
 
+vi.mock('../../stores/canonStore', () => ({
+  default: (selector) => (selector ? selector(mocks.canonState) : mocks.canonState),
+}));
+
 vi.mock('../../services/db/database', () => ({
   default: {
     characters: {
@@ -64,6 +72,12 @@ vi.mock('../../components/editor/SceneDetailPanel', () => ({
 
 vi.mock('../../components/editor/ChapterReader', () => ({
   default: ({ chapterId }) => <div data-testid="chapter-reader">Reader {chapterId}</div>,
+}));
+
+vi.mock('../../components/editor/ChapterChangeHistory', () => ({
+  default: ({ chapterId, refreshKey }) => (
+    <div data-testid="chapter-change-history" data-refresh-key={refreshKey}>Lịch sử {chapterId}</div>
+  ),
 }));
 
 describe('phase10 StoryEditor reader controls', () => {
@@ -91,16 +105,78 @@ describe('phase10 StoryEditor reader controls', () => {
     });
   }
 
-  it('uses a separate desktop row for the chapter heading above editor actions', async () => {
+  it('centers a prominent chapter title above the story area without an editable scene title', async () => {
     await renderEditor({
       isMobileLayout: false,
       viewMode: 'scene',
     });
 
     const headerMain = container.querySelector('.story-editor-header-main');
-    expect(headerMain.classList.contains('story-editor-header-main--desktop')).toBe(true);
-    expect(headerMain.firstElementChild.classList.contains('story-editor-heading')).toBe(true);
+    const storyArea = container.querySelector('.story-editor-wrapper');
+    const heading = headerMain.querySelector('.story-editor-heading');
+    const chapterTitle = heading?.querySelector('.story-editor-chapter-title');
+    const css = readFileSync('src/components/editor/StoryEditor.css', 'utf8');
+    const titleRule = css.match(/\.story-editor-chapter-title\s*\{[^}]+\}/)?.[0] || '';
+
+    expect(headerMain.firstElementChild).toBe(heading);
     expect(headerMain.lastElementChild.classList.contains('story-editor-header-actions')).toBe(true);
+    expect(chapterTitle?.textContent).toBe(mocks.projectState.chapters[0].title);
+    expect(storyArea?.querySelector('.story-editor-chapter-title')).toBeNull();
+    expect(container.querySelector('.story-editor-scene-title')).toBeNull();
+    expect(container.querySelector('input[aria-label="Tên cảnh"]')).toBeNull();
+    expect(titleRule).toContain('text-align: center');
+    expect(titleRule).toContain('font-size: var(--text-2xl)');
+    expect(titleRule).toContain('font-family: var(--font-prose)');
+  });
+
+  it('removes the dedicated scene-title autosave path', () => {
+    const source = readFileSync('src/components/editor/StoryEditor.jsx', 'utf8');
+
+    expect(source).not.toContain('titleAutosaveControllerRef');
+    expect(source).not.toContain('titleAutosaveStatus');
+    expect(source).not.toContain('sceneTitleDraft');
+    expect(source).not.toContain('scheduleSceneTitle');
+    expect(source).not.toContain('flushSceneTitle');
+  });
+
+  it('places change history beside the chapter outline and opens it inline', async () => {
+    await renderEditor({
+      isMobileLayout: false,
+      viewMode: 'scene',
+    });
+
+    const toggleRow = container.querySelector('.chapter-outline-toggle-row');
+    const buttons = Array.from(toggleRow.querySelectorAll('button'));
+    expect(buttons.map((button) => button.textContent.trim())).toEqual(expect.arrayContaining([
+      'Dàn ý chương',
+      'Lịch sử thay đổi',
+    ]));
+
+    const historyButton = buttons.find((button) => button.textContent.includes('Lịch sử thay đổi'));
+    await act(async () => historyButton.click());
+
+    expect(historyButton.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('[data-testid="chapter-change-history"]')?.textContent)
+      .toBe('Lịch sử 10');
+    expect(container.querySelector('[data-testid="chapter-change-history"]')?.dataset.refreshKey)
+      .toContain('501');
+    expect(container.querySelector('.chapter-outline-body')).toBeNull();
+  });
+
+  it('keeps the full change-history label and a comfortable tap target on mobile', async () => {
+    await renderEditor({
+      isMobileLayout: true,
+      viewMode: 'scene',
+    });
+
+    const historyButton = Array.from(container.querySelectorAll('.chapter-history-toggle'))
+      .find((button) => button.textContent.includes('Lịch sử thay đổi'));
+    const css = readFileSync('src/components/editor/StoryEditor.css', 'utf8');
+    const mobileRule = css.match(/\.story-editor--mobile \.chapter-history-toggle\s*\{[^}]+\}/)?.[0] || '';
+
+    expect(historyButton).toBeTruthy();
+    expect(css).not.toMatch(/\.chapter-history-toggle span\s*\{\s*display:\s*none/);
+    expect(mobileRule).toContain('min-height: 34px');
   });
 
   it('renders the desktop segmented control and removes writing-only panels in reader mode', async () => {

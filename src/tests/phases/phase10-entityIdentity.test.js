@@ -84,7 +84,7 @@ describe('phase10 entity identity', () => {
     expect(resolution.matchTier).toBe('strict_exact_alias');
   });
 
-  it('rejects an AI-new candidate when the exact alias belongs to multiple entities', () => {
+  it('marks an AI-new candidate ambiguous when the exact alias belongs to multiple entities', () => {
     const resolution = identity.resolveChapterExtractCandidate(
       {
         name: 'Thanh Vân',
@@ -98,8 +98,8 @@ describe('phase10 entity identity', () => {
       'location',
     );
 
-    expect(resolution.status).toBe('rejected');
-    expect(resolution.matchTier).toBe('invalid_ai_identity');
+    expect(resolution.status).toBe('ambiguous_review');
+    expect(resolution.matchTier).toBe('strict_exact_alias');
   });
 
   it('does not fuzzy-merge a genuinely different AI-new name', () => {

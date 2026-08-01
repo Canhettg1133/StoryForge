@@ -150,9 +150,133 @@ async function loadCanonEngine(seed, sendImpl = null) {
   return { db, engine, sendMock };
 }
 
+function canonRecoverySeed() {
+  return {
+    projects: [{ id: 1, title: 'Canon recovery', genre_primary: 'fantasy' }],
+    chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+    scenes: [{
+      id: 21,
+      project_id: 1,
+      chapter_id: 11,
+      order_index: 0,
+      title: 'Canh 1',
+      draft_text: 'Lan nói: "Tôi sẽ đến Thành Trắng." Cô cất bản đồ và lên đường.',
+    }],
+    chapter_revisions: [{
+      id: 31,
+      project_id: 1,
+      chapter_id: 11,
+      revision_number: 1,
+      status: 'draft',
+      chapter_text: 'Lan nói: "Tôi sẽ đến Thành Trắng." Cô cất bản đồ và lên đường.',
+      candidate_ops: '[]',
+      created_at: 1,
+      updated_at: 1,
+    }],
+    characters: [{ id: 41, project_id: 1, name: 'Lan', aliases: [] }],
+    locations: [],
+    plotThreads: [],
+    canonFacts: [],
+    objects: [],
+    relationships: [],
+    chapter_commits: [],
+    chapter_snapshots: [],
+    story_events: [],
+    memory_evidence: [],
+    validator_reports: [],
+  };
+}
+
+function goalChangedResponse(evidence) {
+  return JSON.stringify({
+    ops: [{
+      op_type: 'GOAL_CHANGED',
+      scene_index: 1,
+      subject_name: 'Lan',
+      target_name: '',
+      location_name: '',
+      thread_id: null,
+      thread_title: '',
+      fact_description: '',
+      object_name: '',
+      summary: 'Lan quyết định đến Thành Trắng.',
+      confidence: 0.96,
+      evidence,
+      payload: {
+        new_goal: 'Đến Thành Trắng',
+        goals_active: ['Đến Thành Trắng'],
+      },
+    }],
+  });
+}
+
 describe('phase10 canon extraction fallback', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('retries a contract-invalid extraction once and keeps the repaired canon op', async () => {
+    let attempt = 0;
+    const { engine, sendMock } = await loadCanonEngine(canonRecoverySeed(), ({ onComplete }) => {
+      attempt += 1;
+      onComplete(attempt === 1
+        ? goalChangedResponse('Tôi sẽ đến... Cô cất bản đồ và lên đường.')
+        : goalChangedResponse('Tôi sẽ đến Thành Trắng.'));
+    });
+
+    const validation = await engine.validateRevision(31, 'canonicalize');
+
+    expect(sendMock).toHaveBeenCalledTimes(2);
+    expect(validation.hasErrors).toBe(false);
+    expect(validation.extractionStatus).toBe('succeeded');
+    expect(validation.extractionRetried).toBe(true);
+    expect(validation.extractionAttemptCount).toBe(2);
+    expect(validation.candidateOps).toHaveLength(1);
+    expect(validation.candidateOps[0]).toMatchObject({
+      op_type: 'GOAL_CHANGED',
+      subject_id: 41,
+      evidence: 'Tôi sẽ đến Thành Trắng.',
+    });
+    expect(validation.reports.map((report) => report.rule_code))
+      .toContain('CANON_EXTRACT_RETRY_SUCCEEDED');
+  });
+
+  it('fails closed when the bounded retry still returns no committable op', async () => {
+    const { engine, sendMock } = await loadCanonEngine(
+      canonRecoverySeed(),
+      ({ onComplete }) => onComplete(goalChangedResponse('Tôi sẽ đến... Cô cất bản đồ và lên đường.')),
+    );
+
+    const validation = await engine.validateRevision(31, 'canonicalize');
+
+    expect(sendMock).toHaveBeenCalledTimes(2);
+    expect(validation.hasErrors).toBe(true);
+    expect(validation.extractionStatus).toBe('failed');
+    expect(validation.extractionRetried).toBe(true);
+    expect(validation.candidateOps).toEqual([]);
+    expect(validation.reports).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        rule_code: 'CANON_EXTRACT_RETRY_EXHAUSTED',
+        severity: 'error',
+      }),
+    ]));
+  });
+
+  it('accepts an explicit zero-op response without retrying', async () => {
+    const { engine, sendMock } = await loadCanonEngine(
+      canonRecoverySeed(),
+      ({ onComplete }) => onComplete('{"ops":[]}'),
+    );
+
+    const validation = await engine.validateRevision(31, 'canonicalize');
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(validation.hasErrors).toBe(false);
+    expect(validation.extractionStatus).toBe('succeeded');
+    expect(validation.extractionRetried).toBe(false);
+    expect(validation.extractionAttemptCount).toBe(1);
+    expect(validation.extractedCount).toBe(0);
+    expect(validation.candidateOps).toEqual([]);
   });
 
   it('keeps extraction runtime fallback as warning in draft mode', async () => {
@@ -197,7 +321,7 @@ describe('phase10 canon extraction fallback', () => {
     warnSpy.mockRestore();
   });
 
-  it('does not block canonicalize when canon extraction runtime fails without real canon conflicts', async () => {
+  it('blocks canonicalize when canon extraction runtime fails', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { db, engine } = await loadCanonEngine({
       projects: [{ id: 1, title: 'Canon fallback', genre_primary: 'fantasy' }],
@@ -229,13 +353,13 @@ describe('phase10 canon extraction fallback', () => {
 
     const validation = await engine.validateRevision(31, 'canonicalize');
 
-    expect(validation.hasErrors).toBe(false);
+    expect(validation.hasErrors).toBe(true);
     expect(validation.candidateOps).toEqual([]);
-    expect(validation.reports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'info')).toBe(true);
+    expect(validation.reports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'error')).toBe(true);
     expect(validation.reports.some((item) => item.rule_code === 'NO_COMMITTABLE_CANON_OPS')).toBe(false);
 
     const persistedReports = await db.validator_reports.toArray();
-    expect(persistedReports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'info')).toBe(true);
+    expect(persistedReports.some((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK' && item.severity === 'error')).toBe(true);
     warnSpy.mockRestore();
   });
 
@@ -273,8 +397,45 @@ describe('phase10 canon extraction fallback', () => {
     const fallbackReport = validation.reports.find((item) => item.rule_code === 'CANON_EXTRACT_FALLBACK');
 
     expect(fallbackReport).toBeTruthy();
-    expect(fallbackReport.severity).toBe('info');
+    expect(fallbackReport.severity).toBe('error');
     expect(fallbackReport.evidence).toContain('AI không trả về nội dung trích xuất canon.');
+    warnSpy.mockRestore();
+  });
+
+  it('does not create a canonical revision when extraction fails', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { db, engine } = await loadCanonEngine({
+      projects: [{ id: 1, title: 'Canon fallback', genre_primary: 'fantasy' }],
+      chapters: [{ id: 11, project_id: 1, order_index: 0, title: 'Chuong 1' }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, order_index: 0, draft_text: 'Lan buoc vao thanh.' }],
+      characters: [],
+      locations: [],
+      plotThreads: [],
+      canonFacts: [],
+      objects: [],
+      relationships: [],
+      chapter_revisions: [],
+      chapter_commits: [],
+      chapter_snapshots: [],
+      story_events: [],
+      memory_evidence: [],
+      validator_reports: [],
+    });
+
+    const result = await engine.canonicalizeChapter(1, 11);
+    const revisions = await db.chapter_revisions.toArray();
+    const commits = await db.chapter_commits.toArray();
+
+    expect(result).toMatchObject({
+      ok: false,
+      extractionStatus: 'failed',
+      committedCount: 0,
+    });
+    expect(revisions.some((revision) => revision.status === 'canonical')).toBe(false);
+    expect(commits[0]).toMatchObject({
+      status: 'blocked',
+      canonical_revision_id: null,
+    });
     warnSpy.mockRestore();
   });
 

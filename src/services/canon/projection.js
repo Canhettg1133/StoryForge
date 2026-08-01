@@ -299,15 +299,6 @@ export async function rebuildCanonFromChapter(projectId, chapterId = null, optio
             || createInitialEntityState({ id: event.subject_id, project_id: projectId });
           entityMap.set(event.subject_id, applyEventToEntityState(current, event));
         }
-        if (event.target_id && event.op_type === CANON_OP_TYPES.CHARACTER_RESCUED) {
-          const targetState = entityMap.get(event.target_id)
-            || createInitialEntityState({ id: event.target_id, project_id: projectId });
-          entityMap.set(event.target_id, applyEventToEntityState(targetState, {
-            ...event,
-            subject_id: event.target_id,
-            summary: event.summary || 'Đã được cứu',
-          }));
-        }
         if (event.thread_id) {
           const currentThread = threadMap.get(event.thread_id)
             || createInitialThreadState({ id: event.thread_id, project_id: projectId });

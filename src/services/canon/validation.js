@@ -51,6 +51,60 @@ const STRICT_UNIQUE_ITEM_CATEGORIES = new Set([
   ITEM_CATEGORIES.QUEST_ITEM,
 ]);
 
+const EPISTEMICALLY_RISKY_OP_TYPES = new Set([
+  CANON_OP_TYPES.CHARACTER_STATUS_CHANGED,
+  CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED,
+  CANON_OP_TYPES.CHARACTER_RESCUED,
+  CANON_OP_TYPES.CHARACTER_DIED,
+  CANON_OP_TYPES.SECRET_REVEALED,
+  CANON_OP_TYPES.ALLEGIANCE_CHANGED,
+  CANON_OP_TYPES.THREAD_RESOLVED,
+  CANON_OP_TYPES.FACT_REGISTERED,
+  ...ITEM_OP_TYPES,
+  CANON_OP_TYPES.RELATIONSHIP_STATUS_CHANGED,
+  CANON_OP_TYPES.RELATIONSHIP_SECRET_CHANGED,
+  CANON_OP_TYPES.INTIMACY_LEVEL_CHANGED,
+]);
+
+const EXPLICIT_UNCERTAINTY_MARKERS = [
+  'chi la tin don',
+  'tin don',
+  'lai don',
+  'don rang',
+  'cho rang',
+  'chac da',
+  'co the da',
+  'khong dua ra bang chung',
+  'khong co bang chung',
+  'chua the xac dinh',
+  'khong the xac minh',
+  'bi tuong la',
+  'giac mo',
+  'hoi tuong',
+  'loi noi doi',
+  'gia chet',
+  'sap chet',
+  'gan chet',
+];
+
+function hasUnnegatedUncertaintyMarker(evidenceText) {
+  return EXPLICIT_UNCERTAINTY_MARKERS.some((marker) => {
+    const markerPattern = new RegExp(`\\b${marker.replace(/\s+/gu, '\\s+')}\\b`, 'gu');
+    for (const match of evidenceText.matchAll(markerPattern)) {
+      const markerIndex = match.index || 0;
+      const prefix = evidenceText.slice(Math.max(0, markerIndex - 100), markerIndex);
+      const negationMatches = [...prefix.matchAll(/\bkhong phai(?: la)?\b/gu)];
+      const lastNegation = negationMatches.at(-1);
+      const negationScope = lastNegation
+        ? prefix.slice((lastNegation.index || 0) + lastNegation[0].length)
+        : '';
+      const scopeWasBroken = /\b(?:nhung|tuy nhien|song|sau do)\b/gu.test(negationScope);
+      if (!lastNegation || scopeWasBroken) return true;
+    }
+    return false;
+  });
+}
+
 const CANON_OP_LABELS = {
   [CANON_OP_TYPES.CHARACTER_STATUS_CHANGED]: 'đổi trạng thái nhân vật',
   [CANON_OP_TYPES.CHARACTER_LOCATION_CHANGED]: 'đổi vị trí nhân vật',
@@ -86,6 +140,101 @@ function toOptionalNumber(value) {
   if (value == null || value === '') return null;
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;
+}
+
+const NUMERIC_PAYLOAD_FIELDS = [
+  'quantity_delta',
+  'quantity',
+  'amount',
+  'count',
+  'quantity_remaining',
+  'quantity_total',
+  'location_id',
+  'target_character_id',
+  'receiver_character_id',
+  'recipient_character_id',
+  'owner_character_id',
+  'holder_character_id',
+  'return_to_character_id',
+];
+
+const NON_NEGATIVE_PAYLOAD_FIELDS = new Set([
+  'quantity_remaining',
+  'quantity_total',
+]);
+
+const BOOLEAN_PAYLOAD_FIELDS = [
+  'is_consumed',
+  'is_damaged',
+  'is_physical_intimacy',
+  'requires_consent',
+];
+
+const TEXT_PAYLOAD_FIELDS = [
+  'status_summary',
+  'summary',
+  'description',
+  'new_goal',
+  'old_goal',
+  'allegiance',
+  'new_allegiance',
+  'relationship_type',
+  'status',
+  'trust_level',
+  'secrecy_state',
+  'secret_state',
+  'intimacy_level',
+  'level',
+  'consent_state',
+  'availability',
+  'usage_notes',
+  'item_category',
+  'item_type',
+  'object_type',
+  'quantity_unit',
+  'unit',
+  'fact_type',
+  'subject_type',
+  'subject_name',
+  'reason',
+  'emotional_aftermath',
+  'transfer_kind',
+  'transfer_mode',
+  'transfer_type',
+  'location_name',
+];
+
+function invalidCanonPayloadFields(op) {
+  const payload = normalizePayload(op.payload);
+  const invalid = [...(op.payload_validation_errors || [])];
+
+  NUMERIC_PAYLOAD_FIELDS.forEach((field) => {
+    const value = payload[field];
+    if (value == null || value === '') return;
+    const numeric = typeof value === 'number'
+      ? value
+      : (typeof value === 'string' && value.trim() ? Number(value) : Number.NaN);
+    if (!Number.isFinite(numeric) || (NON_NEGATIVE_PAYLOAD_FIELDS.has(field) && numeric < 0)) {
+      invalid.push(field);
+    }
+  });
+  BOOLEAN_PAYLOAD_FIELDS.forEach((field) => {
+    if (payload[field] != null && typeof payload[field] !== 'boolean') invalid.push(field);
+  });
+  TEXT_PAYLOAD_FIELDS.forEach((field) => {
+    if (payload[field] != null && typeof payload[field] !== 'string') invalid.push(field);
+  });
+
+  const category = payload.item_category || payload.item_type || payload.object_type;
+  if (typeof category === 'string' && category && !normalizeItemCategory(category)) {
+    invalid.push('item_category');
+  }
+  ['goals_active', 'goals_abandoned'].forEach((field) => {
+    const value = payload[field];
+    if (value != null && typeof value !== 'string' && !Array.isArray(value)) invalid.push(field);
+  });
+
+  return [...new Set(invalid)];
 }
 
 function getPayloadQuantity(payload) {
@@ -616,11 +765,21 @@ export function validateCandidateOps({
 
     if (op.op_type === CANON_OP_TYPES.SECRET_REVEALED) {
       const fact = factMap.get(op.fact_id);
-      if (fact?.revealed_at_chapter) {
+      const subjectKnowledge = op.subject_id
+        ? entityMap.get(op.subject_id)?.knowledge
+        : null;
+      const subjectAlreadyKnows = Boolean(
+        subjectKnowledge
+        && Object.prototype.hasOwnProperty.call(subjectKnowledge, op.fact_id)
+        && subjectKnowledge[op.fact_id],
+      );
+      if (subjectAlreadyKnows || (!op.subject_id && fact?.revealed_at_chapter)) {
         reports.push(createReport({
           severity: CANON_SEVERITY.WARNING,
           ruleCode: 'SECRET_ALREADY_REVEALED',
-          message: `Bí mật "${fact.description}" đã được tiết lộ trước đó.`,
+          message: op.subject_id
+            ? `${op.subject_name || 'Nhân vật'} đã biết bí mật "${fact?.description || op.fact_description || ''}" trước đó.`
+            : `Bí mật "${fact.description}" đã được tiết lộ trước đó.`,
           projectId,
           chapterId,
           revisionId,
@@ -737,11 +896,32 @@ export function filterCommitReadyOps(candidateOps = [], {
   chapterId,
   revisionId = null,
   requireConfidence = false,
+  requireEvidenceGrounding = false,
+  sceneTextById = new Map(),
+  entityStates = [],
 } = {}) {
   const reports = [];
   const ops = [];
+  const entityStateById = new Map(entityStates.map((state) => [state.entity_id, state]));
 
   candidateOps.forEach((op) => {
+    const invalidPayloadFields = invalidCanonPayloadFields(op);
+    if (invalidPayloadFields.length > 0) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'INVALID_CANON_OP_PAYLOAD',
+        message: `Thao tác ${describeCanonOp(op.op_type)} có payload sai kiểu hoặc giá trị không hợp lệ tại: ${invalidPayloadFields.join(', ')}; thao tác đã bị loại khỏi phần chốt canon.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id, op.target_id],
+        relatedThreadIds: [op.thread_id],
+        evidence: op.evidence,
+      }));
+      return;
+    }
+
     const confidence = clampConfidence(op.confidence);
     const hasConfidence = Number.isFinite(Number(op.confidence)) && Number(op.confidence) > 0;
     const shouldFilter = requireConfidence
@@ -759,6 +939,66 @@ export function filterCommitReadyOps(candidateOps = [], {
         sceneId: op.scene_id || null,
         relatedEntityIds: [op.subject_id, op.target_id],
         relatedThreadIds: [op.thread_id],
+        evidence: op.evidence,
+      }));
+      return;
+    }
+
+    if (requireEvidenceGrounding) {
+      const sceneText = normalizeKey(sceneTextById.get(op.scene_id) || '');
+      const evidenceText = normalizeKey(op.evidence || '');
+      if (!evidenceText || !sceneText.includes(evidenceText)) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.WARNING,
+          ruleCode: 'CANON_EVIDENCE_NOT_GROUNDED',
+          message: `Thao tác ${describeCanonOp(op.op_type)} có bằng chứng không xuất hiện trong cảnh đã chọn và đã bị loại khỏi phần chốt canon.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          relatedEntityIds: [op.subject_id, op.target_id],
+          relatedThreadIds: [op.thread_id],
+          evidence: op.evidence,
+        }));
+        return;
+      }
+      if (
+        EPISTEMICALLY_RISKY_OP_TYPES.has(op.op_type)
+        && hasUnnegatedUncertaintyMarker(evidenceText)
+      ) {
+        reports.push(createReport({
+          severity: CANON_SEVERITY.WARNING,
+          ruleCode: 'CANON_EVIDENCE_EXPLICITLY_UNCERTAIN',
+          message: `Thao tác ${describeCanonOp(op.op_type)} chỉ dựa trên tin đồn hoặc thông tin chưa được xác minh và đã bị loại khỏi phần chốt canon.`,
+          projectId,
+          chapterId,
+          revisionId,
+          sceneId: op.scene_id || null,
+          relatedEntityIds: [op.subject_id, op.target_id],
+          relatedThreadIds: [op.thread_id],
+          evidence: op.evidence,
+        }));
+        return;
+      }
+    }
+
+    const subjectKnowledge = op.subject_id != null
+      ? entityStateById.get(op.subject_id)?.knowledge
+      : null;
+    if (
+      op.op_type === CANON_OP_TYPES.SECRET_REVEALED
+      && op.fact_id != null
+      && subjectKnowledge?.[op.fact_id]
+    ) {
+      reports.push(createReport({
+        severity: CANON_SEVERITY.WARNING,
+        ruleCode: 'SECRET_ALREADY_REVEALED',
+        message: `${op.subject_name || 'Nhân vật'} đã biết bí mật này trước đó; thao tác lặp đã bị loại khỏi phần chốt canon.`,
+        projectId,
+        chapterId,
+        revisionId,
+        sceneId: op.scene_id || null,
+        relatedEntityIds: [op.subject_id],
         evidence: op.evidence,
       }));
       return;
@@ -1028,10 +1268,17 @@ export function validateDraftTextAgainstTruth({
   characters = [],
   objects = [],
   itemStates = [],
+  candidateOps = [],
 }) {
   const reports = [];
   const normalizedText = normalizeKey(sceneText);
   if (!normalizedText) return reports;
+  const revealedFactIds = new Set(candidateOps
+    .filter((op) => op.op_type === CANON_OP_TYPES.SECRET_REVEALED && op.fact_id != null)
+    .map((op) => String(op.fact_id)));
+  const recoveredObjectIds = new Set(candidateOps
+    .filter((op) => ITEM_RECOVERY_OP_TYPES.has(op.op_type) && op.object_id != null)
+    .map((op) => String(op.object_id)));
 
   threadStates.forEach((threadState) => {
     if (threadState.state !== 'resolved') return;
@@ -1051,10 +1298,12 @@ export function validateDraftTextAgainstTruth({
 
   factStates.forEach((fact) => {
     if (fact.fact_type !== 'secret' || fact.revealed_at_chapter) return;
+    if (fact.id != null && revealedFactIds.has(String(fact.id))) return;
     const tokens = tokenizeFactDescription(fact.description).slice(0, 5);
     if (tokens.length < 2) return;
     const hitCount = tokens.filter((token) => normalizedText.includes(token)).length;
-    if (hitCount >= Math.min(3, tokens.length)) {
+    const requiredHitCount = tokens.length <= 4 ? tokens.length : 4;
+    if (hitCount >= requiredHitCount) {
       reports.push(createReport({
         severity: CANON_SEVERITY.WARNING,
         ruleCode: 'DRAFT_TOUCHES_HIDDEN_SECRET',
@@ -1068,6 +1317,7 @@ export function validateDraftTextAgainstTruth({
 
   itemStates.forEach((state) => {
     if (!(state.is_consumed || ['consumed', 'destroyed', 'lost'].includes(cleanText(state.availability)))) return;
+    if (state.object_id != null && recoveredObjectIds.has(String(state.object_id))) return;
     const object = objects.find((item) => item.id === state.object_id);
     if (!object?.name) return;
     const target = normalizeKey(object.name);

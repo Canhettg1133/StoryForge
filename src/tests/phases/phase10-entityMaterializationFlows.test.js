@@ -322,7 +322,7 @@ describe('phase10 entity materialization flows', () => {
   });
 
   it('does not materialize extracted entities when canonization fails', async () => {
-    const { store, db } = await loadProjectStoreModule({
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Ly Mac xuat hien.', final_text: '', order_index: 0 }],
@@ -354,10 +354,16 @@ describe('phase10 entity materialization flows', () => {
     expect(await db.characters.toArray()).toHaveLength(0);
     const candidates = await db.entity_resolution_candidates.toArray();
     expect(candidates).toHaveLength(1);
-    expect(candidates[0].resolution_status).toBe('pending_canon');
+    expect(candidates[0].resolution_status).toBe('rolled_back');
+    expect(mocks.applyCompletionDelta).toHaveBeenCalledWith(expect.objectContaining({
+      createdEntries: { characters: [], locations: [], objects: [], worldTerms: [] },
+      refreshProjection: false,
+    }));
   });
 
-  it('materializes a valid new extracted entity only after canonization succeeds', async () => {
+  it('makes a valid new extracted entity available before canonization and keeps it only after success', async () => {
+    let mockDb;
+    let characterCountAtCanon = -1;
     const { store, db } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
@@ -376,8 +382,12 @@ describe('phase10 entity materialization flows', () => {
           existing_entity_id: null,
         }],
       },
-      canonResult: { ok: true, revisionId: 91 },
+      canonicalizeChapterImpl: async () => {
+        characterCountAtCanon = (await mockDb.characters.toArray()).length;
+        return { ok: true, revisionId: 91 };
+      },
     });
+    mockDb = db;
 
     store.setState({
       currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
@@ -388,6 +398,7 @@ describe('phase10 entity materialization flows', () => {
     const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
 
     expect(result.ok).toBe(true);
+    expect(characterCountAtCanon).toBe(1);
     expect(await db.characters.toArray()).toEqual([
       expect.objectContaining({
         name: 'Lý Mặc',
@@ -402,8 +413,8 @@ describe('phase10 entity materialization flows', () => {
     expect(result.extractionStats.stats.created_new).toBe(1);
   });
 
-  it('rejects and reports chapter extraction items with invalid identity field types', async () => {
-    const { store, db } = await loadProjectStoreModule({
+  it('blocks completion when chapter extraction contains invalid identity field types', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung chuong.', final_text: '', order_index: 0 }],
@@ -455,7 +466,8 @@ describe('phase10 entity materialization flows', () => {
 
     const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe('blocked');
     expect(await db.characters.toArray()).toHaveLength(0);
     expect(await db.locations.toArray()).toHaveLength(0);
     expect(await db.objects.toArray()).toHaveLength(0);
@@ -464,11 +476,12 @@ describe('phase10 entity materialization flows', () => {
     expect(candidates).toHaveLength(5);
     expect(candidates.every((candidate) => candidate.resolution_status === 'rejected')).toBe(true);
     expect(result.extractionStats.stats.skipped_ai_identity).toBe(5);
-    expect(result.message).toContain('Bỏ qua 5 mục trích xuất');
+    expect(result.message).toContain('không thể nhận diện chắc chắn');
+    expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
   });
 
-  it('skips chapter extraction candidates that omit the identity contract', async () => {
-    const { store, db } = await loadProjectStoreModule({
+  it('blocks completion when a chapter extraction candidate omits the identity contract', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh nhin ve phia xa.', final_text: '', order_index: 0 }],
@@ -494,14 +507,75 @@ describe('phase10 entity materialization flows', () => {
 
     const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe('blocked');
     expect(await db.characters.toArray()).toHaveLength(2);
     const suggestions = await db.suggestions.toArray();
     expect(suggestions.some((item) => item.type === 'entity_resolution')).toBe(false);
     const candidates = await db.entity_resolution_candidates.toArray();
     expect(candidates[0].resolution_status).toBe('rejected');
     expect(result.extractionStats.stats.skipped_ai_identity).toBe(1);
-    expect(result.message).toContain('Bỏ qua 1 mục trích xuất');
+    expect(result.message).toContain('không thể nhận diện chắc chắn');
+    expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
+  });
+
+  it('sends a valid but ambiguous alias to entity review without blocking chapter canon', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh mở cánh cửa nhưng người kể không nói đó là ai.', final_text: '', order_index: 0 }],
+      characters: [
+        { id: 1, project_id: 1, name: 'Ngọc Anh', aliases: ['Anh'] },
+        { id: 2, project_id: 1, name: 'Lan Anh', aliases: ['Anh'] },
+      ],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: {
+        characters: [{
+          identity_action: 'new',
+          existing_entity_id: null,
+          name: 'Anh',
+          aliases: [],
+        }],
+        locations: [],
+        objects: [],
+        terms: [],
+      },
+      canonResult: {
+        ok: true,
+        revisionId: 91,
+        extractedCount: 0,
+        committedCount: 0,
+        filteredCount: 0,
+      },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh mở cánh cửa nhưng người kể không nói đó là ai.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(await db.characters.toArray()).toHaveLength(2);
+    expect(mocks.canonicalizeChapter).toHaveBeenCalledTimes(1);
+    expect(result.extractionStats.stats.ambiguous_review).toBe(1);
+    expect(result.message).toContain('Hộp đề xuất');
+    const candidates = await db.entity_resolution_candidates.toArray();
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].resolution_status).toBe('ambiguous_review');
+    const suggestions = await db.suggestions.toArray();
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]).toMatchObject({
+      type: 'entity_resolution',
+      status: 'pending',
+      source_chapter_id: 11,
+      target_name: 'Anh',
+    });
   });
 
   it('matches an existing extracted object by validated AI identity and stores its observed alias', async () => {
@@ -622,8 +696,66 @@ describe('phase10 entity materialization flows', () => {
     expect(result.extractionStats.stats.matched_existing).toBe(1);
   });
 
-  it('skips and reports an extracted identity whose id and canonical name conflict', async () => {
-    const { store, db } = await loadProjectStoreModule({
+  it('accepts null optional metadata from a valid existing identity and drops pronoun aliases', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Mai An bước vào kho. Cô kiểm tra la bàn.', final_text: '', order_index: 0 }],
+      characters: [{
+        id: 7,
+        project_id: 1,
+        name: 'Mai An',
+        aliases: ['An'],
+        role: 'protagonist',
+        age: '',
+        appearance: '',
+        personality: '',
+        personality_tags: '',
+        flaws: '',
+      }],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: {
+        characters: [{
+          identity_action: 'existing',
+          existing_entity_id: 7,
+          name: 'Mai An',
+          aliases: ['An', 'Cô'],
+          role: 'Người kiểm tra la bàn.',
+          age: null,
+          appearance: null,
+          personality: 'Cẩn trọng.',
+          personality_tags: null,
+          flaws: null,
+        }],
+      },
+      canonResult: { ok: true, revisionId: 91 },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Mai An bước vào kho. Cô kiểm tra la bàn.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(mocks.canonicalizeChapter).toHaveBeenCalledTimes(1);
+    const character = await db.characters.get(7);
+    expect(character.aliases).toEqual(['An']);
+    expect(character.personality).toBe('Cẩn trọng.');
+    expect(character.age).toBe('');
+    expect(character.appearance).toBe('');
+    expect(character.personality_tags).toBe('');
+    expect(character.flaws).toBe('');
+    expect(result.extractionStats.stats.skipped_ai_identity).toBe(0);
+  });
+
+  it('blocks completion when an extracted identity id conflicts with its canonical name', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Huyet Lien Dan xuat hien.', final_text: '', order_index: 0 }],
@@ -653,15 +785,17 @@ describe('phase10 entity materialization flows', () => {
 
     const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe('blocked');
     expect(await db.objects.toArray()).toHaveLength(2);
     expect(await db.suggestions.toArray()).toHaveLength(0);
     expect(result.extractionStats.stats.skipped_ai_identity).toBe(1);
-    expect(result.message).toContain('Bỏ qua 1 mục trích xuất');
+    expect(result.message).toContain('không thể nhận diện chắc chắn');
+    expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
   });
 
-  it('rejects duplicate extracted identities whose AI decisions conflict', async () => {
-    const { store, db } = await loadProjectStoreModule({
+  it('blocks completion when duplicate extracted identities disagree about identity', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Lý Mặc xuất hiện.', final_text: '', order_index: 0 }],
@@ -697,18 +831,20 @@ describe('phase10 entity materialization flows', () => {
 
     const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe('blocked');
     expect(result.extractionStats.stats.skipped_ai_identity).toBe(1);
-    expect(result.message).toContain('Bỏ qua 1 mục trích xuất');
+    expect(result.message).toContain('không thể nhận diện chắc chắn');
     expect((await db.characters.get(7)).aliases).toEqual([]);
     expect(await db.suggestions.toArray()).toHaveLength(0);
     const candidates = await db.entity_resolution_candidates.toArray();
     expect(candidates).toHaveLength(1);
     expect(candidates[0].resolution_status).toBe('rejected');
+    expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
   });
 
-  it('stages and reports a chapter extraction item that is missing its canonical name', async () => {
-    const { store, db } = await loadProjectStoreModule({
+  it('blocks completion when a chapter extraction item lacks a canonical name', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Một người vô danh xuất hiện.', final_text: '', order_index: 0 }],
@@ -735,17 +871,19 @@ describe('phase10 entity materialization flows', () => {
 
     const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe('blocked');
     expect(result.extractionStats.stats.skipped_ai_identity).toBe(1);
-    expect(result.message).toContain('Bỏ qua 1 mục trích xuất');
+    expect(result.message).toContain('không thể nhận diện chắc chắn');
     expect(await db.characters.toArray()).toHaveLength(0);
     const candidates = await db.entity_resolution_candidates.toArray();
     expect(candidates).toHaveLength(1);
     expect(candidates[0].resolution_status).toBe('rejected');
+    expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
   });
 
-  it('continues canon completion and reports when Codex extraction fails closed', async () => {
-    const { store, db } = await loadProjectStoreModule({
+  it('keeps the chapter draft and skips canon when Codex extraction throws', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung chuong.', final_text: '', order_index: 0 }],
@@ -768,14 +906,16 @@ describe('phase10 entity materialization flows', () => {
 
     const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
 
-    expect(result.ok).toBe(true);
-    expect((await db.chapters.get(11)).status).toBe('done');
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe('blocked');
+    expect((await db.chapters.get(11)).status).toBe('draft');
     expect(result.extractionWarning).toContain('Không thể trích xuất Codex');
     expect(result.message).toContain('Không thể trích xuất Codex');
+    expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
   });
 
-  it('reports an invalid empty extraction response without blocking canon completion', async () => {
-    const { store, db } = await loadProjectStoreModule({
+  it('keeps the chapter draft and skips canon when Codex extraction is invalid', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
       scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Noi dung chuong.', final_text: '', order_index: 0 }],
@@ -792,13 +932,15 @@ describe('phase10 entity materialization flows', () => {
 
     const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
 
-    expect(result.ok).toBe(true);
-    expect((await db.chapters.get(11)).status).toBe('done');
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe('blocked');
+    expect((await db.chapters.get(11)).status).toBe('draft');
     expect(result.extractionWarning).toContain('AI không trả về dữ liệu Codex hợp lệ');
     expect(result.message).toContain('AI không trả về dữ liệu Codex hợp lệ');
+    expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
   });
 
-  it('skips chapter canonization when existing canon is fresh for current chapter text', async () => {
+  it('finishes summary and Codex extraction for a draft chapter while reusing its fresh canon', async () => {
     const { store, db, mocks } = await loadProjectStoreModule({
       projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
       chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
@@ -843,6 +985,122 @@ describe('phase10 entity materialization flows', () => {
     expect(result.ok).toBe(true);
     expect(result.canonResult.reused).toBe(true);
     expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
+    expect(mocks.summarizeChapter).toHaveBeenCalledOnce();
+    expect(mocks.extractFromChapter).toHaveBeenCalledOnce();
+    expect((await db.chapters.get(11)).status).toBe('done');
+  });
+
+  it('does not reuse a fresh revision that contains a canon extraction fallback', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh nhin ve phia xa.', final_text: '', order_index: 0 }],
+      chapter_revisions: [{
+        id: 501,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'canonical',
+        chapter_text: 'Anh nhin ve phia xa.',
+      }],
+      chapter_commits: [{
+        id: 601,
+        project_id: 1,
+        chapter_id: 11,
+        current_revision_id: 501,
+        canonical_revision_id: 501,
+        status: 'canonical',
+        warning_count: 0,
+        error_count: 0,
+      }],
+      validator_reports: [{
+        id: 701,
+        project_id: 1,
+        chapter_id: 11,
+        revision_id: 501,
+        rule_code: 'CANON_EXTRACT_FALLBACK',
+        severity: 'info',
+      }],
+    }, {
+      extracted: { characters: [] },
+      canonResult: {
+        ok: true,
+        revisionId: 502,
+        extractionStatus: 'succeeded',
+        extractedCount: 0,
+        committedCount: 0,
+        filteredCount: 0,
+      },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh nhin ve phia xa.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(result.canonResult.reused).not.toBe(true);
+    expect(mocks.canonicalizeChapter).toHaveBeenCalledTimes(1);
+    expect((await db.chapters.get(11)).status).toBe('done');
+  });
+
+  it('retries a fresh blocked revision when its canon projection rebuild failed', async () => {
+    const { store, db, mocks } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh nhin ve phia xa.', final_text: '', order_index: 0 }],
+      chapter_revisions: [{
+        id: 501,
+        project_id: 1,
+        chapter_id: 11,
+        revision_number: 1,
+        status: 'blocked',
+        chapter_text: 'Anh nhin ve phia xa.',
+      }],
+      chapter_commits: [{
+        id: 601,
+        project_id: 1,
+        chapter_id: 11,
+        current_revision_id: 501,
+        canonical_revision_id: 501,
+        status: 'blocked',
+        warning_count: 0,
+        error_count: 1,
+      }],
+      validator_reports: [{
+        id: 701,
+        project_id: 1,
+        chapter_id: 11,
+        revision_id: 501,
+        rule_code: 'CANON_PROJECTION_REBUILD_FAILED',
+        severity: 'error',
+      }],
+    }, {
+      extracted: { characters: [] },
+      canonResult: {
+        ok: true,
+        revisionId: 502,
+        extractionStatus: 'succeeded',
+        extractedCount: 0,
+        committedCount: 0,
+        filteredCount: 0,
+      },
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Anh nhin ve phia xa.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(true);
+    expect(result.canonResult.reused).not.toBe(true);
+    expect(mocks.canonicalizeChapter).toHaveBeenCalledTimes(1);
     expect((await db.chapters.get(11)).status).toBe('done');
   });
 
@@ -883,12 +1141,39 @@ describe('phase10 entity materialization flows', () => {
     expect((await db.chapters.get(11)).status).toBe('done');
   });
 
-  it('starts chapter canonization in parallel with summary and codex extraction', async () => {
+  it('keeps the chapter draft when the canon engine returns no explicit success result', async () => {
+    const { store, db } = await loadProjectStoreModule({
+      projects: [{ id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 }],
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Nội dung chương.', final_text: '', order_index: 0 }],
+      characters: [],
+      locations: [],
+      objects: [],
+      worldTerms: [],
+    }, {
+      extracted: { characters: [], locations: [], objects: [], terms: [] },
+      canonicalizeChapterImpl: async () => null,
+    });
+
+    store.setState({
+      currentProject: { id: 1, title: 'Test', genre_primary: 'fantasy', prompt_templates: '{}', updated_at: 1 },
+      chapters: [{ id: 11, project_id: 1, title: 'Chuong 1', status: 'draft', actual_word_count: 100 }],
+      scenes: [{ id: 21, project_id: 1, chapter_id: 11, draft_text: 'Nội dung chương.', final_text: '', order_index: 0 }],
+    });
+
+    const result = await store.getState().runChapterCompletion(11, { mode: 'manual' });
+
+    expect(result.ok).toBe(false);
+    expect(result.kind).toBe('blocked');
+    expect((await db.chapters.get(11)).status).toBe('draft');
+  });
+
+  it('waits for Codex extraction before starting canonization', async () => {
     let resolveSummary;
     let resolveExtract;
     let summaryResolved = false;
     let extractResolved = false;
-    let canonStartedBeforeAnalysisSettled = false;
+    let canonStartedAfterAnalysisSettled = false;
     const summaryPromise = new Promise((resolve) => {
       resolveSummary = (value) => {
         summaryResolved = true;
@@ -914,7 +1199,7 @@ describe('phase10 entity materialization flows', () => {
       summarizeChapterImpl: () => summaryPromise,
       extractFromChapterImpl: () => extractPromise,
       canonicalizeChapterImpl: async () => {
-        canonStartedBeforeAnalysisSettled = !summaryResolved && !extractResolved;
+        canonStartedAfterAnalysisSettled = summaryResolved && extractResolved;
         return { ok: true, revisionId: 91 };
       },
     });
@@ -928,9 +1213,16 @@ describe('phase10 entity materialization flows', () => {
     const completionPromise = store.getState().runChapterCompletion(11, { mode: 'manual' });
 
     await vi.waitFor(() => {
+      expect(mocks.extractFromChapter).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.canonicalizeChapter).not.toHaveBeenCalled();
+    resolveSummary('Tom tat');
+    resolveExtract({ characters: [] });
+
+    await vi.waitFor(() => {
       expect(mocks.canonicalizeChapter).toHaveBeenCalledTimes(1);
     });
-    expect(canonStartedBeforeAnalysisSettled).toBe(true);
+    expect(canonStartedAfterAnalysisSettled).toBe(true);
     expect(mocks.canonicalizeChapter).toHaveBeenCalledWith(
       1,
       11,
@@ -939,9 +1231,6 @@ describe('phase10 entity materialization flows', () => {
         routeOptions: expect.any(Object),
       }),
     );
-
-    resolveSummary('Tom tat');
-    resolveExtract({ characters: [] });
 
     const result = await completionPromise;
     expect(result.ok).toBe(true);
@@ -968,7 +1257,12 @@ describe('phase10 entity materialization flows', () => {
     }, {
       summary: 'Tom tat cu',
       extracted: {
-        characters: [{ name: 'Ly Mac' }],
+        characters: [{
+          name: 'Ly Mac',
+          aliases: [],
+          identity_action: 'new',
+          existing_entity_id: null,
+        }],
       },
       canonicalizeChapterImpl: async () => {
         releaseCanon();
@@ -996,6 +1290,7 @@ describe('phase10 entity materialization flows', () => {
       kind: 'stale',
     });
     expect((await db.chapters.get(11)).status).toBe('draft');
+    expect(await db.characters.toArray()).toHaveLength(0);
     expect(await db.chapterMeta.toArray()).toHaveLength(0);
     expect(await db.entity_resolution_candidates.toArray()).toHaveLength(0);
     expect(mocks.applyCompletionDelta).not.toHaveBeenCalled();

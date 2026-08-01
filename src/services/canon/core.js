@@ -66,7 +66,20 @@ export function buildFactStates(canonFacts) {
 
 export function collectFactStatesFromSnapshot(snapshot, canonFacts) {
   const snapshotFacts = loadSnapshotValue(snapshot, 'factStates', null);
-  return Array.isArray(snapshotFacts) ? snapshotFacts.map((fact) => ({ ...fact })) : buildFactStates(canonFacts);
+  const baseFacts = buildFactStates(canonFacts);
+  if (!Array.isArray(snapshotFacts)) return baseFacts;
+
+  const mergedFacts = snapshotFacts.map((fact) => ({
+    ...fact,
+    ...normalizeCanonFactRecord(fact),
+  }));
+  const knownIds = new Set(mergedFacts.map((fact) => String(fact.id)));
+  const knownFingerprints = new Set(mergedFacts.map((fact) => fact.fact_fingerprint));
+  baseFacts.forEach((fact) => {
+    if (knownIds.has(String(fact.id)) || knownFingerprints.has(fact.fact_fingerprint)) return;
+    mergedFacts.push(fact);
+  });
+  return mergedFacts;
 }
 
 export function loadRevisionOps(revision) {
