@@ -14,7 +14,8 @@
  *   buttonLabel?: string
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useId } from 'react';
+import { createPortal } from 'react-dom';
 import { Sparkles, X, Loader2, Check, RotateCcw } from 'lucide-react';
 import aiService from '../../services/ai/client';
 import { TASK_TYPES } from '../../services/ai/router';
@@ -57,7 +58,10 @@ export default function AIGenerateButton({
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const triggerRef = useRef(null);
   const popupRef = useRef(null);
+  const popupId = useId();
+  const headingId = `${popupId}-heading`;
 
   const config = ENTITY_PROMPTS[entityType] || ENTITY_PROMPTS.character;
   const label = ENTITY_LABELS[entityType] || 'mục';
@@ -75,15 +79,48 @@ export default function AIGenerateButton({
 
   useEffect(() => {
     if (!isOpen) return undefined;
+    const popup = popupRef.current;
 
     const handler = (e) => {
-      if (popupRef.current && !popupRef.current.contains(e.target)) {
-        setIsOpen(false);
+      if (popupRef.current?.contains(e.target) || triggerRef.current?.contains(e.target)) return;
+      setIsOpen(false);
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setIsOpen(false);
+      triggerRef.current?.focus();
+    };
+
+    const preventScrollChain = (e) => {
+      const preview = e.target instanceof Element
+        ? e.target.closest('.ai-gen-preview')
+        : null;
+
+      if (!preview) {
+        e.preventDefault();
+        return;
+      }
+
+      if (e.type !== 'wheel') return;
+      const canScrollUp = preview.scrollTop > 0;
+      const canScrollDown = preview.scrollTop + preview.clientHeight < preview.scrollHeight;
+      if ((e.deltaY < 0 && !canScrollUp) || (e.deltaY > 0 && !canScrollDown)) {
+        e.preventDefault();
       }
     };
 
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('keydown', handleKeyDown);
+    popup?.addEventListener('wheel', preventScrollChain, { passive: false });
+    popup?.addEventListener('touchmove', preventScrollChain, { passive: false });
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      document.removeEventListener('keydown', handleKeyDown);
+      popup?.removeEventListener('wheel', preventScrollChain);
+      popup?.removeEventListener('touchmove', preventScrollChain);
+    };
   }, [isOpen]);
 
   const handleGenerate = async () => {
@@ -155,24 +192,36 @@ export default function AIGenerateButton({
     setPrompt('');
     setError(null);
     setIsGenerating(false);
+    triggerRef.current?.focus();
   };
 
   return (
     <div className="ai-gen-wrapper">
       <button
+        ref={triggerRef}
+        type="button"
         className="btn btn-accent btn-sm ai-gen-trigger"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => setIsOpen((current) => !current)}
         title={`Tạo ${label} bằng AI`}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? popupId : undefined}
       >
         <Sparkles size={14} />
         {buttonLabel || `AI tạo ${label}`}
       </button>
 
-      {isOpen && (
-        <div className="ai-gen-popup" ref={popupRef}>
+      {isOpen && typeof document !== 'undefined' && createPortal(
+        <div
+          className="ai-gen-popup"
+          id={popupId}
+          ref={popupRef}
+          role="dialog"
+          aria-labelledby={headingId}
+        >
           <div className="ai-gen-popup-header">
-            <h4><Sparkles size={14} /> Tạo {label} bằng AI</h4>
-            <button className="btn btn-ghost btn-icon btn-sm" onClick={handleClose}>
+            <h4 id={headingId}><Sparkles size={14} /> Tạo {label} bằng AI</h4>
+            <button type="button" className="btn btn-ghost btn-icon btn-sm" onClick={handleClose} aria-label="Đóng">
               <X size={16} />
             </button>
           </div>
@@ -195,6 +244,7 @@ export default function AIGenerateButton({
                 }}
               />
               <button
+                type="button"
                 className="btn btn-primary btn-sm ai-gen-submit"
                 onClick={handleGenerate}
                 disabled={!prompt.trim() || isGenerating}
@@ -211,7 +261,7 @@ export default function AIGenerateButton({
           {error && (
             <div className="ai-gen-popup-body">
               <div className="ai-gen-error">{error}</div>
-              <button className="btn btn-ghost btn-sm" onClick={handleRetry}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={handleRetry}>
                 <RotateCcw size={14} /> Thử lại
               </button>
             </div>
@@ -230,16 +280,17 @@ export default function AIGenerateButton({
                 ))}
               </div>
               <div className="ai-gen-actions">
-                <button className="btn btn-ghost btn-sm" onClick={handleRetry}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={handleRetry}>
                   <RotateCcw size={14} /> Tạo lại
                 </button>
-                <button className="btn btn-primary btn-sm" onClick={handleApprove}>
+                <button type="button" className="btn btn-primary btn-sm" onClick={handleApprove}>
                   <Check size={14} /> Dùng kết quả
                 </button>
               </div>
             </div>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -92,6 +92,7 @@ export default function Login() {
   const navigate = useNavigate();
   const { access, loading } = useUserAccess();
   const currentProject = useProjectStore((state) => state.currentProject);
+  const projects = useProjectStore((state) => state.projects || []);
   const isMobileLayout = useMobileLayout(900);
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
@@ -359,6 +360,7 @@ export default function Login() {
       >
         <MobileNavigationMenu
           activeProjectId={activeProjectId}
+          hasProjects={projects.length > 0}
           onNavigate={() => setMobileMenuOpen(false)}
         />
       </MobileSheet>

@@ -71,6 +71,7 @@ describe('phase10 navigation menu ordering', () => {
 
     expect(dashboard).toContain('MobileNavigationMenu');
     expect(login).toContain('MobileNavigationMenu');
+    expect(login).toContain('hasProjects={projects.length > 0}');
     expect(login).not.toContain('ACCOUNT_MOBILE_NAV_ITEMS');
     expect(login).not.toContain('login-page__mobile-menu-list');
   });

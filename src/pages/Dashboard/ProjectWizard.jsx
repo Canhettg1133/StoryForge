@@ -3,7 +3,7 @@
  * Luồng hai lượt: ý tưởng -> nền truyện -> dàn ý chương -> tạo dự án.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   GENRES,
   TONES,
@@ -43,6 +43,11 @@ import {
   resolveWizardProjectTitle,
 } from '../../services/ai/blueprintGuardrails';
 import { buildMacroArcDbPayload } from '../StoryBible/utils/storyBibleHelpers';
+import {
+  clearProjectWizardDraft,
+  loadProjectWizardDraft,
+  saveProjectWizardDraft,
+} from '../../services/projects/projectWizardDraftRepository.js';
 import {
   AlertCircle,
   ArrowLeft,
@@ -266,6 +271,48 @@ const REVISION_QUICK_ACTIONS = {
 };
 
 const emptyValidation = { blockingIssues: [], warnings: [] };
+const WIZARD_AUTOSAVE_DELAY_MS = 400;
+
+function WizardExitDialog({ isGenerating, onContinue, onSaveAndClose, onDiscardAndClose }) {
+  const dialogRef = useModalAccessibility({ open: true, onClose: onContinue });
+
+  return (
+    <div
+      className="wizard-exit-overlay"
+      role="presentation"
+      onMouseDown={onContinue}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <section
+        ref={dialogRef}
+        className="wizard-exit-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wizard-exit-title"
+        aria-describedby="wizard-exit-message"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <h3 id="wizard-exit-title">{isGenerating ? 'AI vẫn đang tạo...' : 'Thoát trình tạo truyện?'}</h3>
+        <p id="wizard-exit-message">
+          {isGenerating
+            ? 'Nếu thoát, tác vụ AI hiện tại sẽ dừng. Bản nháp của bạn vẫn được giữ lại để tiếp tục sau.'
+            : 'Bản nháp của bạn vẫn được giữ lại trên máy để có thể tiếp tục sau.'}
+        </p>
+        <div className="wizard-exit-actions">
+          <button type="button" className="btn btn-ghost" onClick={onContinue}>
+            {isGenerating ? 'Tiếp tục chờ' : 'Tiếp tục chỉnh'}
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onSaveAndClose}>
+            {isGenerating ? 'Dừng AI, lưu nháp và thoát' : 'Lưu nháp và thoát'}
+          </button>
+          <button type="button" className="btn btn-danger" onClick={onDiscardAndClose}>
+            {isGenerating ? 'Dừng AI và bỏ bản nháp' : 'Bỏ bản nháp và thoát'}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
 
 function clampInitialChapterCount(value) {
   const numeric = Number(value);
@@ -722,6 +769,20 @@ function filterApprovedSeed(result = {}, excluded = new Set()) {
   }, result.title || '');
 }
 
+function createSeedFingerprint(result, excluded = new Set()) {
+  if (!result) return '';
+  return JSON.stringify(filterApprovedSeed(result, excluded));
+}
+
+function keepExistingOutlineFallback(seed, previousResult) {
+  if (!previousResult?.chapters?.length) return seed;
+  return {
+    ...seed,
+    chapters: previousResult.chapters,
+    proposed_entities: previousResult.proposed_entities || {},
+  };
+}
+
 function buildCoverageWarnings(result, excluded) {
   if (!result?.chapters?.length) return [];
 
@@ -817,7 +878,6 @@ function buildCoverageWarnings(result, excluded) {
 }
 
 export default function ProjectWizard({ onClose, onCreated }) {
-  const dialogRef = useModalAccessibility({ open: true, onClose });
   const {
     createProject,
     createChapter,
@@ -864,15 +924,296 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [excluded, setExcluded] = useState(new Set());
   const [editingKey, setEditingKey] = useState(null);
   const [acceptedProposals, setAcceptedProposals] = useState(new Set());
+  const [exitDialogOpen, setExitDialogOpen] = useState(false);
+  const [draftLoadComplete, setDraftLoadComplete] = useState(false);
+  const [draftToRestore, setDraftToRestore] = useState(null);
+  const [draftSaveStatus, setDraftSaveStatus] = useState('idle');
+  const [draftNotice, setDraftNotice] = useState('');
+  const [startFreshConfirmationOpen, setStartFreshConfirmationOpen] = useState(false);
+  const [outlineSeedFingerprint, setOutlineSeedFingerprint] = useState('');
+  const activeRequestRef = useRef(null);
+  const requestSequenceRef = useRef(0);
+  const autosaveTimerRef = useRef(null);
+  const draftSaveSequenceRef = useRef(0);
+  const closingRef = useRef(false);
+  const latestDraftSnapshotRef = useRef(null);
+
+  const hasMeaningfulProgress = useMemo(() => (
+    Boolean(idea.trim())
+    || Boolean(tone)
+    || Boolean(projectTags.trim())
+    || Boolean(synopsis.trim())
+    || Boolean(storyStructure)
+    || Boolean(ultimateGoal.trim())
+    || genre !== AUTO_GENRE_VALUE
+    || povMode !== 'third_omni'
+    || pronounStyle !== (GENRE_TO_PRONOUN_STYLE[AUTO_GENRE_VALUE] || 'hien_dai')
+    || contentMode !== PROJECT_CONTENT_MODES.SAFE
+    || targetLengthType !== 'unset'
+    || Number(targetLength) > 0
+    || clampInitialChapterCount(initialChapterCount) !== 10
+    || milestonesInfo.length > 0
+    || macroArcsInput.length > 0
+    || autoGenerateOutline
+    || inheritPromptEnabled
+    || !useTemplate
+    || !useTagFirstPromptProfile
+    || Boolean(result)
+    || step > 0
+  ), [
+    autoGenerateOutline,
+    contentMode,
+    genre,
+    idea,
+    inheritPromptEnabled,
+    initialChapterCount,
+    macroArcsInput.length,
+    milestonesInfo.length,
+    povMode,
+    projectTags,
+    pronounStyle,
+    result,
+    step,
+    storyStructure,
+    synopsis,
+    targetLength,
+    targetLengthType,
+    tone,
+    ultimateGoal,
+    useTagFirstPromptProfile,
+    useTemplate,
+  ]);
+
+  const requestClose = useCallback(() => {
+    if (isCreatingProject) {
+      setExitDialogOpen(false);
+      setError('Đang hoàn tất dữ liệu dự án. Hãy chờ thao tác này kết thúc để tránh tạo dữ liệu dang dở.');
+      return;
+    }
+    if (!hasMeaningfulProgress && !isGenerating) {
+      onClose?.();
+      return;
+    }
+    setExitDialogOpen(true);
+  }, [hasMeaningfulProgress, isCreatingProject, isGenerating, onClose]);
+
+  const dialogRef = useModalAccessibility({ open: true, onClose: requestClose });
+
+  const buildDraftPayload = useCallback(() => ({
+    step: isGenerating
+      ? (result?.chapters?.length ? 4 : result ? 2 : 0)
+      : ([0, 2, 4].includes(step) ? step : (result?.chapters?.length ? 4 : result ? 2 : 0)),
+    interrupted: isGenerating,
+    idea,
+    genre,
+    tone,
+    projectTags,
+    useTemplate,
+    useTagFirstPromptProfile,
+    povMode,
+    pronounStyle,
+    synopsis,
+    storyStructure,
+    contentMode,
+    targetLength,
+    targetLengthType,
+    ultimateGoal,
+    milestonesInfo,
+    initialChapterCount,
+    macroArcsInput,
+    showMacroArcs,
+    autoGenerateOutline,
+    inheritPromptEnabled,
+    inheritedPromptProjectId,
+    selectedInheritedPromptGroupKeys: [...selectedInheritedPromptGroupKeys],
+    removedInheritedPromptGroupKeys: [...removedInheritedPromptGroupKeys],
+    seedRevisionPrompt,
+    outlineRevisionPrompt,
+    result,
+    excluded: [...excluded],
+    acceptedProposals: [...acceptedProposals],
+    outlineSeedFingerprint,
+  }), [
+    acceptedProposals,
+    autoGenerateOutline,
+    contentMode,
+    excluded,
+    genre,
+    idea,
+    inheritPromptEnabled,
+    inheritedPromptProjectId,
+    initialChapterCount,
+    isGenerating,
+    macroArcsInput,
+    milestonesInfo,
+    outlineRevisionPrompt,
+    outlineSeedFingerprint,
+    povMode,
+    projectTags,
+    pronounStyle,
+    removedInheritedPromptGroupKeys,
+    result,
+    seedRevisionPrompt,
+    selectedInheritedPromptGroupKeys,
+    showMacroArcs,
+    step,
+    storyStructure,
+    synopsis,
+    targetLength,
+    targetLengthType,
+    tone,
+    ultimateGoal,
+    useTagFirstPromptProfile,
+    useTemplate,
+  ]);
+
+  latestDraftSnapshotRef.current = {
+    hasMeaningfulProgress,
+    payload: buildDraftPayload(),
+  };
+
+  const persistCurrentDraft = useCallback(async () => {
+    if (!hasMeaningfulProgress) return true;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+
+    const saveSequence = draftSaveSequenceRef.current + 1;
+    draftSaveSequenceRef.current = saveSequence;
+    setDraftSaveStatus('saving');
+    try {
+      await saveProjectWizardDraft(buildDraftPayload());
+      if (draftSaveSequenceRef.current === saveSequence) {
+        setDraftSaveStatus('saved');
+      }
+      return true;
+    } catch (saveError) {
+      console.error('[Wizard] Failed to save draft:', saveError);
+      if (draftSaveSequenceRef.current === saveSequence) {
+        setDraftSaveStatus('error');
+      }
+      return false;
+    }
+  }, [buildDraftPayload, hasMeaningfulProgress]);
+
+  const restoreDraftPayload = useCallback((payload) => {
+    setStep([0, 2, 4].includes(payload.step) ? payload.step : 0);
+    setIdea(payload.idea || '');
+    setGenre(payload.genre || AUTO_GENRE_VALUE);
+    setTone(payload.tone || '');
+    setProjectTags(payload.projectTags || '');
+    setUseTemplate(payload.useTemplate !== false);
+    setUseTagFirstPromptProfile(payload.useTagFirstPromptProfile !== false);
+    setPovMode(payload.povMode || 'third_omni');
+    setPronounStyle(payload.pronounStyle || GENRE_TO_PRONOUN_STYLE[AUTO_GENRE_VALUE] || 'hien_dai');
+    setSynopsis(payload.synopsis || '');
+    setStoryStructure(payload.storyStructure || '');
+    setContentMode(payload.contentMode || PROJECT_CONTENT_MODES.SAFE);
+    setTargetLength(payload.targetLength ?? 0);
+    setTargetLengthType(payload.targetLengthType || 'unset');
+    setUltimateGoal(payload.ultimateGoal || '');
+    setMilestonesInfo(Array.isArray(payload.milestonesInfo) ? payload.milestonesInfo : []);
+    setInitialChapterCount(payload.initialChapterCount ?? 10);
+    setMacroArcsInput(Array.isArray(payload.macroArcsInput) ? payload.macroArcsInput : []);
+    setShowMacroArcs(Boolean(payload.showMacroArcs));
+    setAutoGenerateOutline(Boolean(payload.autoGenerateOutline));
+    setInheritPromptEnabled(Boolean(payload.inheritPromptEnabled));
+    setInheritedPromptProjectId(payload.inheritedPromptProjectId || '');
+    setSelectedInheritedPromptGroupKeys(new Set(payload.selectedInheritedPromptGroupKeys || []));
+    setRemovedInheritedPromptGroupKeys(new Set(payload.removedInheritedPromptGroupKeys || []));
+    setSeedRevisionPrompt(payload.seedRevisionPrompt || '');
+    setOutlineRevisionPrompt(payload.outlineRevisionPrompt || '');
+    setResult(payload.result || null);
+    setExcluded(new Set(payload.excluded || []));
+    setAcceptedProposals(new Set(payload.acceptedProposals || []));
+    setOutlineSeedFingerprint(payload.outlineSeedFingerprint || '');
+    setEditingKey(null);
+    setError(null);
+    setIsGenerating(false);
+    setDraftNotice(payload.interrupted
+      ? 'Lần tạo trước bị gián đoạn. Phần hoàn thành gần nhất đã được khôi phục.'
+      : 'Đã khôi phục bản nháp gần nhất.');
+    setDraftSaveStatus('saved');
+    setDraftToRestore(null);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadProjectWizardDraft()
+      .then((record) => {
+        if (cancelled) return;
+        if (record?.payload) setDraftToRestore(record.payload);
+        setDraftLoadComplete(true);
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+        console.error('[Wizard] Failed to load draft:', loadError);
+        setDraftSaveStatus('error');
+        setDraftLoadComplete(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => () => {
+    const latestSnapshot = latestDraftSnapshotRef.current;
+    if (closingRef.current || !latestSnapshot?.hasMeaningfulProgress) return;
+    saveProjectWizardDraft(latestSnapshot.payload).catch((saveError) => {
+      console.error('[Wizard] Failed to flush draft while unmounting:', saveError);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (closingRef.current || !draftLoadComplete || draftToRestore || !hasMeaningfulProgress) return undefined;
+
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    setDraftSaveStatus('pending');
+    autosaveTimerRef.current = setTimeout(() => {
+      autosaveTimerRef.current = null;
+      persistCurrentDraft();
+    }, WIZARD_AUTOSAVE_DELAY_MS);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [draftLoadComplete, draftToRestore, hasMeaningfulProgress, persistCurrentDraft]);
+
+  useEffect(() => {
+    if (!hasMeaningfulProgress) return undefined;
+    const handleBeforeUnload = (event) => {
+      const writeNeedsProtection = draftSaveStatus === 'saving' || draftSaveStatus === 'error';
+      if (!autosaveTimerRef.current && !isGenerating && !writeNeedsProtection) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [draftSaveStatus, hasMeaningfulProgress, isGenerating]);
 
   const currentPronoun = PRONOUN_STYLE_PRESETS.find((p) => p.value === pronounStyle);
   const currentTemplate = GENRE_TEMPLATES[genre];
   const selectedProjectTags = useMemo(() => normalizeProjectTagList(projectTags), [projectTags]);
   const hasDNA = !!(currentTemplate?.constitution?.length || currentTemplate?.style_dna?.length);
   const chapterCount = clampInitialChapterCount(initialChapterCount);
+  const currentSeedFingerprint = useMemo(
+    () => createSeedFingerprint(result, excluded),
+    [excluded, result],
+  );
+  const hasExistingOutline = Boolean(result?.chapters?.length);
+  const isOutlineSeedStale = Boolean(
+    hasExistingOutline
+    && outlineSeedFingerprint
+    && currentSeedFingerprint !== outlineSeedFingerprint
+  );
   const availablePromptProjects = useMemo(
     () => (Array.isArray(projects) ? projects : []).filter((project) => project?.id),
     [projects],
@@ -919,6 +1260,11 @@ export default function ProjectWizard({ onClose, onCreated }) {
   }, [availablePromptProjects.length, loadProjects]);
 
   useEffect(() => {
+    if (
+      inheritPromptEnabled
+      && inheritedPromptProjectId
+      && !selectedInheritedPromptProject
+    ) return;
     const groupKeys = new Set(availableInheritedPromptGroups.map((group) => group.key));
     setSelectedInheritedPromptGroupKeys((prev) => {
       const next = new Set([...prev].filter((key) => groupKeys.has(key)));
@@ -928,7 +1274,12 @@ export default function ProjectWizard({ onClose, onCreated }) {
       const next = new Set([...prev].filter((key) => groupKeys.has(key)));
       return next.size === prev.size ? prev : next;
     });
-  }, [availableInheritedPromptGroups]);
+  }, [
+    availableInheritedPromptGroups,
+    inheritPromptEnabled,
+    inheritedPromptProjectId,
+    selectedInheritedPromptProject,
+  ]);
 
   const workingResult = useMemo(
     () => (result ? mergeAcceptedProposals(result, acceptedProposals) : null),
@@ -1145,6 +1496,20 @@ export default function ProjectWizard({ onClose, onCreated }) {
     };
   };
 
+  const abortActiveRequest = useCallback(() => {
+    const activeRequest = activeRequestRef.current;
+    requestSequenceRef.current += 1;
+    activeRequestRef.current = null;
+    activeRequest?.abort?.();
+  }, []);
+
+  useEffect(() => () => {
+    const activeRequest = activeRequestRef.current;
+    requestSequenceRef.current += 1;
+    activeRequestRef.current = null;
+    activeRequest?.abort?.();
+  }, []);
+
   const sendStoryCreationRequest = ({ groupKey, taskType, variables, extraUserContent = '', onComplete, onError }) => {
     const storyCreationSettings = getStoryCreationSettings();
     const prompts = storyCreationSettings[groupKey];
@@ -1163,13 +1528,29 @@ export default function ProjectWizard({ onClose, onCreated }) {
       },
     ];
 
-    aiService.send({
+    const requestId = requestSequenceRef.current + 1;
+    requestSequenceRef.current = requestId;
+    activeRequestRef.current = { requestId, abort: null };
+
+    const requestHandle = aiService.send({
       taskType,
       messages,
       stream: false,
-      onComplete,
-      onError,
+      onComplete: (...args) => {
+        if (activeRequestRef.current?.requestId !== requestId) return;
+        activeRequestRef.current = null;
+        onComplete?.(...args);
+      },
+      onError: (...args) => {
+        if (activeRequestRef.current?.requestId !== requestId) return;
+        activeRequestRef.current = null;
+        onError?.(...args);
+      },
     });
+
+    if (activeRequestRef.current?.requestId === requestId) {
+      activeRequestRef.current.abort = requestHandle?.abort;
+    }
   };
 
   const applyOutlinePassText = (text, approvedSeed) => {
@@ -1200,12 +1581,13 @@ export default function ProjectWizard({ onClose, onCreated }) {
       plot_threads: mergedPlotThreads,
       proposed_entities: proposedEntities,
     }, idea));
+    setOutlineSeedFingerprint(createSeedFingerprint(approvedSeed));
     setAcceptedProposals(new Set());
     setEditingKey(null);
   };
 
-  const requestOutline = (seedInput) => {
-    const approvedSeed = filterApprovedSeed(seedInput, excluded);
+  const requestOutline = (seedInput, outlineExcluded = excluded) => {
+    const approvedSeed = filterApprovedSeed(seedInput, outlineExcluded);
     const validation = buildStoryBibleSeedValidation(approvedSeed, {
       initialChapterCount: chapterCount,
       excluded: new Set(),
@@ -1262,8 +1644,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
     const instruction = seedRevisionPrompt.trim();
     if (!result || !instruction || isGenerating) return;
 
+    const previousResult = result;
+    const hasOutlineFallback = Boolean(previousResult.chapters?.length);
     const currentSeed = {
-      ...result,
+      ...previousResult,
       chapters: [],
       proposed_entities: {},
     };
@@ -1286,9 +1670,15 @@ export default function ProjectWizard({ onClose, onCreated }) {
         try {
           const parsed = parseWizardJson(text);
           const seed = normalizeStoryBibleSeedResult(parsed, idea);
-          setResult(seed);
-          setExcluded(new Set());
-          setAcceptedProposals(new Set());
+          const nextExcluded = hasOutlineFallback
+            ? new Set([...excluded].filter((key) => key.startsWith('chapter-')))
+            : new Set();
+          setResult(keepExistingOutlineFallback(seed, previousResult));
+          if (!hasOutlineFallback) {
+            setOutlineSeedFingerprint('');
+            setAcceptedProposals(new Set());
+          }
+          setExcluded(nextExcluded);
           setEditingKey(null);
           setSeedRevisionPrompt('');
           setStep(2);
@@ -1355,15 +1745,12 @@ export default function ProjectWizard({ onClose, onCreated }) {
   };
 
   const handleGenerateSeed = async () => {
+    const previousResult = result;
+    const hadStableResult = Boolean(previousResult);
+    const hasOutlineFallback = Boolean(previousResult?.chapters?.length);
     setStep(1);
     setIsGenerating(true);
     setError(null);
-    setResult(null);
-    setExcluded(new Set());
-    setAcceptedProposals(new Set());
-    setEditingKey(null);
-    setSeedRevisionPrompt('');
-    setOutlineRevisionPrompt('');
 
     sendStoryCreationRequest({
       groupKey: 'storyBibleSeed',
@@ -1373,13 +1760,24 @@ export default function ProjectWizard({ onClose, onCreated }) {
         try {
           const parsed = parseWizardJson(text);
           const seed = normalizeStoryBibleSeedResult(parsed, idea);
-          setResult(seed);
+          const nextExcluded = hasOutlineFallback
+            ? new Set([...excluded].filter((key) => key.startsWith('chapter-')))
+            : new Set();
+          setResult(keepExistingOutlineFallback(seed, previousResult));
+          if (!hasOutlineFallback) {
+            setOutlineSeedFingerprint('');
+            setAcceptedProposals(new Set());
+          }
+          setExcluded(nextExcluded);
+          setEditingKey(null);
+          setSeedRevisionPrompt('');
+          setOutlineRevisionPrompt('');
           const validation = buildStoryBibleSeedValidation(seed, {
             initialChapterCount: chapterCount,
             excluded: new Set(),
           });
           if (autoGenerateOutline && validation.blockingIssues.length === 0) {
-            requestOutline(seed);
+            requestOutline(seed, nextExcluded);
             return;
           }
           setIsGenerating(false);
@@ -1388,19 +1786,23 @@ export default function ProjectWizard({ onClose, onCreated }) {
           console.error('[Wizard] Seed parse error:', parseError, '\nRaw:', text);
           setIsGenerating(false);
           setError('Không parse được nền truyện. Hãy thử lại.');
-          setStep(0);
+          setStep(hadStableResult ? 2 : 0);
         }
       },
       onError: (err) => {
         setIsGenerating(false);
         setError(toVietnameseErrorMessage(err, 'Lỗi kết nối AI khi tạo nền truyện.'));
-        setStep(0);
+        setStep(hadStableResult ? 2 : 0);
       },
     });
   };
 
   const handleApprove = async () => {
     if (!result) return;
+    if (isOutlineSeedStale) {
+      setError('Nền truyện đã thay đổi so với dàn ý hiện tại. Hãy cập nhật dàn ý trước khi tạo dự án.');
+      return;
+    }
     const finalResult = mergeAcceptedProposals(result, acceptedProposals);
     const finalSeedValidation = buildStoryBibleSeedValidation({ ...finalResult, chapters: [] }, { initialChapterCount: chapterCount, excluded });
     const finalOutlineValidation = finalResult.chapters?.length
@@ -1421,6 +1823,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
       return;
     }
 
+    setIsCreatingProject(true);
     setIsGenerating(true);
     setError(null);
 
@@ -1589,23 +1992,78 @@ export default function ProjectWizard({ onClose, onCreated }) {
         });
       }
 
+      try {
+        closingRef.current = true;
+        if (autosaveTimerRef.current) {
+          clearTimeout(autosaveTimerRef.current);
+          autosaveTimerRef.current = null;
+        }
+        draftSaveSequenceRef.current += 1;
+        await clearProjectWizardDraft();
+      } catch (draftError) {
+        console.error('[Wizard] Project was created, but its draft could not be removed:', draftError);
+      }
       onCreated(projectId);
     } catch (err) {
       console.error('[Wizard] Create error:', err);
       setError(`Lỗi khi tạo dự án: ${toVietnameseErrorMessage(err, 'Không tạo được dự án.')}`);
+      setIsCreatingProject(false);
       setIsGenerating(false);
     }
   };
 
   const handleReset = () => {
     setStep(0);
-    setResult(null);
-    setExcluded(new Set());
-    setAcceptedProposals(new Set());
     setEditingKey(null);
-    setSeedRevisionPrompt('');
-    setOutlineRevisionPrompt('');
     setError(null);
+  };
+
+  const handleSaveAndClose = async () => {
+    closingRef.current = true;
+    abortActiveRequest();
+    setIsGenerating(false);
+    const saved = await persistCurrentDraft();
+    if (!saved) {
+      closingRef.current = false;
+      return;
+    }
+    setExitDialogOpen(false);
+    onClose?.();
+  };
+
+  const handleDiscardAndClose = async () => {
+    closingRef.current = true;
+    abortActiveRequest();
+    setIsGenerating(false);
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    draftSaveSequenceRef.current += 1;
+    try {
+      await clearProjectWizardDraft();
+      setExitDialogOpen(false);
+      onClose?.();
+    } catch (deleteError) {
+      console.error('[Wizard] Failed to discard draft:', deleteError);
+      closingRef.current = false;
+      setError('Không thể xóa bản nháp. Dữ liệu vẫn được giữ lại; hãy thử lại.');
+    }
+  };
+
+  const handleStartFresh = async () => {
+    closingRef.current = false;
+    try {
+      await clearProjectWizardDraft();
+      setDraftToRestore(null);
+      setDraftSaveStatus('idle');
+      setDraftNotice('');
+      setStartFreshConfirmationOpen(false);
+      setError(null);
+    } catch (deleteError) {
+      console.error('[Wizard] Failed to delete restored draft:', deleteError);
+      setError('Không thể xóa bản nháp. Dữ liệu vẫn được giữ lại; hãy thử lại.');
+    }
   };
 
   const renderInheritedPromptPanel = () => {
@@ -2319,14 +2777,20 @@ export default function ProjectWizard({ onClose, onCreated }) {
   );
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={requestClose}>
       <div ref={dialogRef} className="modal wizard-modal animate-scale-up" role="dialog" aria-modal="true" aria-label="Trợ lý tạo dự án" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <h2 className="modal-title">
             <Sparkles size={20} style={{ color: 'var(--color-accent)' }} />
             {' '}Trợ lý AI - {STEPS[step]}
           </h2>
-          <button className="btn btn-ghost btn-icon btn-sm" onClick={onClose}>
+          <span className={`wizard-draft-status wizard-draft-status--${draftSaveStatus}`} role="status" aria-live="polite">
+            {draftSaveStatus === 'saving' && 'Đang lưu bản nháp...'}
+            {draftSaveStatus === 'pending' && 'Đang chờ lưu thay đổi...'}
+            {draftSaveStatus === 'saved' && 'Đã lưu bản nháp'}
+            {draftSaveStatus === 'error' && 'Không thể lưu bản nháp'}
+          </span>
+          <button className="btn btn-ghost btn-icon btn-sm" onClick={requestClose} aria-label="Đóng trình tạo truyện">
             <X size={18} />
           </button>
         </div>
@@ -2345,7 +2809,59 @@ export default function ProjectWizard({ onClose, onCreated }) {
           ))}
         </div>
 
-        {step === 0 && (
+        {!draftLoadComplete && (
+          <div className="wizard-body wizard-loading">
+            <Loader2 size={36} className="spin" />
+            <h3>Đang kiểm tra bản nháp...</h3>
+          </div>
+        )}
+
+        {draftLoadComplete && draftToRestore && (
+          <div className="wizard-body wizard-restore">
+            <div className="wizard-restore-content">
+              <Sparkles size={28} aria-hidden="true" />
+              <h3>Tìm thấy bản nháp</h3>
+              <p>Tiếp tục từ phần gần nhất đã lưu, hoặc bắt đầu lại với một bản trống.</p>
+              {draftToRestore.interrupted && (
+                <div className="wizard-notice wizard-notice--warning" role="status">
+                  <AlertCircle size={16} />
+                  Lần tạo trước bị gián đoạn. Kết quả hoàn thành gần nhất vẫn an toàn.
+                </div>
+              )}
+              {startFreshConfirmationOpen && (
+                <div className="wizard-notice wizard-notice--warning" role="alert">
+                  <AlertCircle size={16} />
+                  <span><strong>Xóa bản nháp này?</strong> Toàn bộ ý tưởng, nền truyện và dàn ý đã lưu sẽ bị xóa khỏi máy.</span>
+                </div>
+              )}
+              {error && <div className="wizard-error"><AlertCircle size={14} /> {error}</div>}
+            </div>
+            <div className="modal-actions">
+              {startFreshConfirmationOpen ? (
+                <>
+                  <button className="btn btn-ghost" onClick={() => setStartFreshConfirmationOpen(false)}>Giữ bản nháp</button>
+                  <button className="btn btn-danger" onClick={handleStartFresh}>Xóa bản nháp, bắt đầu lại</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-ghost" onClick={() => setStartFreshConfirmationOpen(true)}>Bắt đầu lại</button>
+                  <button className="btn btn-primary" onClick={() => restoreDraftPayload(draftToRestore)}>
+                    Tiếp tục bản nháp <ArrowRight size={16} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {draftLoadComplete && !draftToRestore && draftNotice && (
+          <div className="wizard-notice wizard-notice--success" role="status">
+            <Check size={16} /> {draftNotice}
+            <button type="button" className="btn btn-ghost btn-xs" onClick={() => setDraftNotice('')}>Ẩn</button>
+          </div>
+        )}
+
+        {draftLoadComplete && !draftToRestore && step === 0 && (
           <div className="wizard-body">
             <div className="wizard-scroll">
               {error && <div className="wizard-error"><AlertCircle size={14} /> {error}</div>}
@@ -2551,19 +3067,24 @@ export default function ProjectWizard({ onClose, onCreated }) {
             </div>
 
             <div className="modal-actions">
-              <button className="btn btn-ghost" onClick={onClose}>Hủy</button>
+              <button className="btn btn-ghost" onClick={requestClose}>Hủy</button>
               <label className="wizard-template-toggle wizard-auto-toggle wizard-auto-toggle--action">
                 <input type="checkbox" checked={autoGenerateOutline} onChange={(event) => setAutoGenerateOutline(event.target.checked)} />
                 <span>Tự tạo dàn ý sau khi nền truyện hợp lệ</span>
               </label>
+              {result && (
+                <button className="btn btn-secondary" onClick={() => setStep(2)}>
+                  Quay lại nền truyện hiện tại
+                </button>
+              )}
               <button className="btn btn-primary" onClick={handleGenerateSeed} disabled={!idea.trim()}>
-                <Sparkles size={16} /> Tạo nền truyện <ArrowRight size={16} />
+                <Sparkles size={16} /> {result ? 'Tạo lại nền truyện' : 'Tạo nền truyện'} <ArrowRight size={16} />
               </button>
             </div>
           </div>
         )}
 
-        {step === 1 && (
+        {draftLoadComplete && !draftToRestore && step === 1 && (
           <div className="wizard-body wizard-loading">
             <Loader2 size={48} className="spin" />
             <h3>AI đang tạo nền truyện...</h3>
@@ -2571,23 +3092,40 @@ export default function ProjectWizard({ onClose, onCreated }) {
           </div>
         )}
 
-        {step === 2 && result && (
+        {draftLoadComplete && !draftToRestore && step === 2 && result && (
           <div className="wizard-body wizard-review">
             <div className="wizard-scroll">
               {error && <div className="wizard-error"><AlertCircle size={14} /> {error}</div>}
+              {isOutlineSeedStale && (
+                <div className="wizard-notice wizard-notice--warning" role="status">
+                  <AlertCircle size={16} />
+                  <span><strong>Nền truyện đã thay đổi.</strong> Dàn ý cũ vẫn được giữ và chỉ được thay thế khi bản cập nhật tạo thành công.</span>
+                </div>
+              )}
               {renderSeedReview()}
             </div>
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={handleReset}><ArrowLeft size={16} /> Quay lại</button>
               <button className="btn btn-ghost" onClick={handleGenerateSeed}><RotateCcw size={16} /> Tạo lại nền truyện</button>
-              <button className="btn btn-primary" onClick={() => requestOutline(result)} disabled={isGenerating || seedValidation.blockingIssues.length > 0}>
-                <List size={16} /> Tạo dàn ý <ArrowRight size={16} />
-              </button>
+              {result.chapters?.length > 0 ? (
+                <>
+                  <button className="btn btn-ghost" onClick={() => requestOutline(result)} disabled={isGenerating || seedValidation.blockingIssues.length > 0}>
+                    <RotateCcw size={16} /> {isOutlineSeedStale ? 'Cập nhật dàn ý' : 'Tạo lại dàn ý'}
+                  </button>
+                  <button className="btn btn-primary" onClick={() => setStep(4)}>
+                    <List size={16} /> {isOutlineSeedStale ? 'Xem dàn ý cũ' : 'Quay lại dàn ý hiện tại'} <ArrowRight size={16} />
+                  </button>
+                </>
+              ) : (
+                <button className="btn btn-primary" onClick={() => requestOutline(result)} disabled={isGenerating || seedValidation.blockingIssues.length > 0}>
+                  <List size={16} /> Tạo dàn ý <ArrowRight size={16} />
+                </button>
+              )}
             </div>
           </div>
         )}
 
-        {step === 3 && (
+        {draftLoadComplete && !draftToRestore && step === 3 && (
           <div className="wizard-body wizard-loading">
             <Loader2 size={48} className="spin" />
             <h3>AI đang tạo dàn ý chương...</h3>
@@ -2595,10 +3133,16 @@ export default function ProjectWizard({ onClose, onCreated }) {
           </div>
         )}
 
-        {step === 4 && result && (
+        {draftLoadComplete && !draftToRestore && step === 4 && result && (
           <div className="wizard-body wizard-review">
             <div className="wizard-scroll">
               {error && <div className="wizard-error"><AlertCircle size={14} /> {error}</div>}
+              {isOutlineSeedStale && (
+                <div className="wizard-notice wizard-notice--warning" role="status">
+                  <AlertCircle size={16} />
+                  <span>Dàn ý này thuộc nền truyện trước khi chỉnh sửa. Hãy cập nhật dàn ý trước khi tạo dự án.</span>
+                </div>
+              )}
               {renderOutlineReview()}
               {macroArcsInput.filter((item) => item.title?.trim()).length > 0 && (
                 <div className="wizard-section">
@@ -2620,7 +3164,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setStep(2)}><ArrowLeft size={16} /> Sửa nền truyện</button>
               <button className="btn btn-ghost" onClick={() => requestOutline(result)}><RotateCcw size={16} /> Tạo lại dàn ý</button>
-              <button className="btn btn-primary" onClick={handleApprove} disabled={isGenerating || blockingIssues.length > 0}>
+              <button className="btn btn-primary" onClick={handleApprove} disabled={isGenerating || isOutlineSeedStale || blockingIssues.length > 0}>
                 {isGenerating ? (
                   <><Loader2 size={16} className="spin" /> Đang tạo...</>
                 ) : (
@@ -2631,6 +3175,14 @@ export default function ProjectWizard({ onClose, onCreated }) {
           </div>
         )}
       </div>
+      {exitDialogOpen && (
+        <WizardExitDialog
+          isGenerating={isGenerating}
+          onContinue={() => setExitDialogOpen(false)}
+          onSaveAndClose={handleSaveAndClose}
+          onDiscardAndClose={handleDiscardAndClose}
+        />
+      )}
     </div>
   );
 }

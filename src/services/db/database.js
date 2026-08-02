@@ -1287,6 +1287,10 @@ db.version(24).stores({
   project_assets: '++id, project_id, role, source, mime_type, updated_at, created_at, [project_id+role]',
 });
 
+db.version(25).stores({
+  wizard_drafts: 'id, updated_at',
+});
+
 db.getPlotSuggestions = (chapterId) =>
   db.suggestions
     .where('source_chapter_id').equals(chapterId)

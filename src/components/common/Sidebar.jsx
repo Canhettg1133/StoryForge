@@ -112,8 +112,9 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { projectId } = useParams();
   const { sidebarCollapsed, toggleSidebar, theme } = useUIStore();
-  const { currentProject, chapters, activeChapterId } = useProjectStore();
+  const { currentProject, chapters, activeChapterId, projects = [] } = useProjectStore();
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [projectGateItem, setProjectGateItem] = useState(null);
   const themeTriggerRef = useRef(null);
   const themePopoverRef = useRef(null);
   const [isNarrowViewport, setIsNarrowViewport] = useState(() => {
@@ -177,15 +178,29 @@ export default function Sidebar() {
   const isAutoCollapsed = isNarrowViewport;
   const isCollapsed = isAutoCollapsed || sidebarCollapsed;
   const activeTheme = getThemeDefinition(theme);
+  const hasProjects = projects.length > 0;
+  const firstProjectItemId = visibleNavItems.find((item) => item.needsProject)?.id;
 
   const handleNav = (item) => {
-    if (item.needsProject && !activeProjectId) return;
+    if (item.needsProject && !activeProjectId) {
+      setProjectGateItem(item);
+      return;
+    }
+    setProjectGateItem(null);
     const path = getNavPath(item, activeProjectId);
     navigate(
       path,
       item.id === 'cloud-sync'
         ? { state: { returnTo: `${location.pathname}${location.search}${location.hash}` } }
         : undefined,
+    );
+  };
+
+  const handleProjectGateAction = () => {
+    setProjectGateItem(null);
+    navigate(
+      hasProjects ? '/#projects' : '/',
+      hasProjects ? undefined : { state: { openNewProject: true } },
     );
   };
 
@@ -238,29 +253,62 @@ export default function Sidebar() {
             || (item.path !== '/' && item.path !== '/settings' && location.pathname.startsWith(expectedPath));
           const isDisabled = item.needsProject && !activeProjectId;
           const isComingSoon = item.comingSoon && !isActive;
+          const showProjectContext = isDisabled && item.id === firstProjectItemId && !isCollapsed;
           const Icon = item.icon;
 
           return (
-            <button
-              key={item.id}
-              className={`sidebar-item ${isActive ? 'sidebar-item--active' : ''} ${isDisabled ? 'sidebar-item--disabled' : ''} ${item.primary ? 'sidebar-item--primary' : ''} ${isComingSoon ? 'sidebar-item--coming-soon' : ''}`}
-              onClick={() => handleNav(item)}
-              disabled={isDisabled}
-              aria-disabled={isDisabled || undefined}
-              title={isDisabled
-                ? `Chọn truyện trước để mở ${item.label}`
-                : isCollapsed
-                  ? (item.comingSoon ? `${item.label} (Sắp có)` : item.label)
-                  : undefined}
-            >
-              <Icon size={18} />
-              {!isCollapsed && <span>{item.label}</span>}
-              {!isCollapsed && item.comingSoon && <span className="sidebar-soon-badge">Sắp có</span>}
-              {isActive && <div className="sidebar-item-indicator" />}
-            </button>
+            <React.Fragment key={item.id}>
+              {showProjectContext && (
+                <p className="sidebar-project-context">
+                  {hasProjects
+                    ? 'Chọn một truyện để sử dụng các mục này.'
+                    : 'Tạo một truyện để sử dụng các mục này.'}
+                </p>
+              )}
+              <button
+                className={`sidebar-item ${isActive ? 'sidebar-item--active' : ''} ${isDisabled ? 'sidebar-item--disabled' : ''} ${item.primary && !isDisabled ? 'sidebar-item--primary' : ''} ${isComingSoon ? 'sidebar-item--coming-soon' : ''}`}
+                onClick={() => handleNav(item)}
+                aria-disabled={isDisabled || undefined}
+                title={isDisabled
+                  ? `${hasProjects ? 'Chọn một truyện' : 'Tạo một truyện'} để sử dụng ${item.label}`
+                  : isCollapsed
+                    ? (item.comingSoon ? `${item.label} (Sắp có)` : item.label)
+                    : undefined}
+              >
+                <Icon size={18} />
+                {!isCollapsed && <span>{item.label}</span>}
+                {!isCollapsed && item.comingSoon && <span className="sidebar-soon-badge">Sắp có</span>}
+                {isActive && <div className="sidebar-item-indicator" />}
+              </button>
+            </React.Fragment>
           );
         })}
       </nav>
+
+      {projectGateItem && (
+        <div
+          id="sidebar-project-gate"
+          className={`sidebar-project-gate ${isCollapsed ? 'sidebar-project-gate--collapsed' : ''}`}
+          role="status"
+        >
+          <div className="sidebar-project-gate__heading">
+            <strong>{hasProjects ? 'Chưa chọn truyện' : 'Chưa có truyện'}</strong>
+          </div>
+          <p>
+            {hasProjects
+              ? `Hãy chọn một truyện để sử dụng mục ${projectGateItem.label}.`
+              : `Mục ${projectGateItem.label} dùng bên trong một truyện. Hãy tạo truyện trước.`}
+          </p>
+          <div className="sidebar-project-gate__actions">
+            <button type="button" className="btn btn-primary btn-xs" onClick={handleProjectGateAction}>
+              {hasProjects ? 'Chọn truyện' : 'Tạo truyện mới'}
+            </button>
+            <button type="button" className="btn btn-ghost btn-xs" onClick={() => setProjectGateItem(null)}>
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="sidebar-footer">
         <button

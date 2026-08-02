@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BookKey,
@@ -81,14 +81,23 @@ export function getMobileDrawerPath(item, activeProjectId) {
 
 export default function MobileNavigationMenu({
   activeProjectId = null,
+  hasProjects = false,
+  onCreateProject,
+  onChooseProject,
   onNavigate,
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const [projectGateItem, setProjectGateItem] = useState(null);
+  const firstProjectItemId = COMPACT_MOBILE_DRAWER_ITEMS.find((item) => item.needsProject)?.id;
 
   const handleNavigate = (item) => {
-    if (item.needsProject && !activeProjectId) return;
+    if (item.needsProject && !activeProjectId) {
+      setProjectGateItem(item);
+      return;
+    }
 
+    setProjectGateItem(null);
     const targetPath = getMobileDrawerPath(item, activeProjectId);
     navigate(
       targetPath,
@@ -99,29 +108,71 @@ export default function MobileNavigationMenu({
     onNavigate?.(item, targetPath);
   };
 
+  const handleProjectGateAction = () => {
+    setProjectGateItem(null);
+    if (hasProjects) {
+      if (onChooseProject) onChooseProject();
+      else navigate('/#projects');
+      return;
+    }
+    if (onCreateProject) onCreateProject();
+    else navigate('/', { state: { openNewProject: true } });
+  };
+
   return (
     <div className="dashboard-mobile-menu-list">
+      {projectGateItem && (
+        <div className="dashboard-mobile-project-gate" role="status">
+          <div className="dashboard-mobile-project-gate__heading">
+            <strong>{hasProjects ? 'Chưa chọn truyện' : 'Chưa có truyện'}</strong>
+          </div>
+          <p>
+            {hasProjects
+              ? `Hãy chọn một truyện để sử dụng mục ${projectGateItem.title}.`
+              : `Mục ${projectGateItem.title} dùng bên trong một truyện. Hãy tạo truyện trước.`}
+          </p>
+          <div className="dashboard-mobile-project-gate__actions">
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleProjectGateAction}>
+              {hasProjects ? 'Chọn truyện' : 'Tạo truyện mới'}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setProjectGateItem(null)}>
+              Đóng
+            </button>
+          </div>
+        </div>
+      )}
       {COMPACT_MOBILE_DRAWER_ITEMS.map((item) => {
         const Icon = item.icon;
         const targetPath = getMobileDrawerPath(item, activeProjectId);
         const active = location.pathname === targetPath
           || (targetPath !== '/' && location.pathname.startsWith(targetPath));
         const disabled = item.needsProject && !activeProjectId;
+        const showProjectContext = disabled && item.id === firstProjectItemId;
 
         return (
-          <button
-            key={item.id}
-            type="button"
-            data-nav-id={item.id}
-            className={`dashboard-mobile-menu-item ${active ? 'dashboard-mobile-menu-item--active' : ''} ${disabled ? 'dashboard-mobile-menu-item--disabled' : ''}`}
-            onClick={() => handleNavigate(item)}
-            disabled={disabled}
-            title={disabled ? 'Cần mở một project trước' : undefined}
-          >
-            <Icon size={18} />
-            <span>{item.title}</span>
-            {item.comingSoon ? <span className="dashboard-mobile-menu-badge">Soon</span> : null}
-          </button>
+          <React.Fragment key={item.id}>
+            {showProjectContext && (
+              <p className="dashboard-mobile-project-context">
+                {hasProjects
+                  ? 'Chọn một truyện để sử dụng các mục này.'
+                  : 'Tạo một truyện để sử dụng các mục này.'}
+              </p>
+            )}
+            <button
+              type="button"
+              data-nav-id={item.id}
+              className={`dashboard-mobile-menu-item ${active ? 'dashboard-mobile-menu-item--active' : ''} ${disabled ? 'dashboard-mobile-menu-item--disabled' : ''}`}
+              onClick={() => handleNavigate(item)}
+              aria-disabled={disabled || undefined}
+              title={disabled
+                ? `${hasProjects ? 'Chọn một truyện' : 'Tạo một truyện'} để sử dụng ${item.title}`
+                : undefined}
+            >
+              <Icon size={18} />
+              <span>{item.title}</span>
+              {item.comingSoon ? <span className="dashboard-mobile-menu-badge">Soon</span> : null}
+            </button>
+          </React.Fragment>
         );
       })}
     </div>

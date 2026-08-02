@@ -23,21 +23,27 @@
 
 /* Popup */
 .ai-gen-popup {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 380px;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: min(380px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: none;
+  transform: translate(-50%, -50%);
   background: var(--color-surface-1, var(--color-bg-secondary));
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl, 12px);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-  z-index: 100;
+  z-index: var(--z-dropdown, 300);
   animation: fadeSlideDown 0.2s ease;
 }
 
 @keyframes fadeSlideDown {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .ai-gen-popup-header {
@@ -67,6 +73,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3, 12px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Input */
@@ -78,7 +86,7 @@
   color: var(--color-text, #fff);
   font-size: 13px;
   padding: var(--space-2, 8px) var(--space-3, 12px);
-  resize: vertical;
+  resize: none;
   font-family: inherit;
   line-height: 1.5;
   outline: none;
@@ -115,8 +123,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2, 8px);
-  max-height: 300px;
+  max-height: min(300px, max(96px, calc(100dvh - 180px)));
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .ai-gen-preview-field {
@@ -155,4 +164,36 @@
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@media (max-width: 600px) {
+  .ai-gen-popup {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    width: auto;
+    transform: none;
+  }
+
+  .ai-gen-popup-header,
+  .ai-gen-popup-body {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .ai-gen-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ai-gen-actions .btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-gen-popup {
+    animation: none;
+  }
 }

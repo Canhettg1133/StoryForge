@@ -114,6 +114,12 @@ export default function Dashboard() {
   }, [loadProjects]);
 
   useEffect(() => {
+    if (!location.state?.openNewProject) return;
+    setShowModal(true);
+    navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
+  }, [location.hash, location.pathname, location.search, location.state, navigate]);
+
+  useEffect(() => {
     if (!PRODUCT_SURFACE.enableStoryBundle || !location.state?.openStoryBundleImport) return;
     setBundleImportOpen(true);
     navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, state: null });
@@ -297,7 +303,7 @@ export default function Dashboard() {
           </button>
         </section>
 
-        <section className="dashboard-projects">
+        <section id="projects" className="dashboard-projects">
           <div className="dashboard-projects__header">
             <div>
               <h2>Dự án truyện</h2>
@@ -463,6 +469,15 @@ export default function Dashboard() {
       >
         <MobileNavigationMenu
           activeProjectId={activeProjectId}
+          hasProjects={projects.length > 0}
+          onCreateProject={() => {
+            setMobileMenuOpen(false);
+            setShowModal(true);
+          }}
+          onChooseProject={() => {
+            setMobileMenuOpen(false);
+            window.requestAnimationFrame(() => document.getElementById('projects')?.scrollIntoView({ block: 'start' }));
+          }}
           onNavigate={() => setMobileMenuOpen(false)}
         />
       </MobileSheet>

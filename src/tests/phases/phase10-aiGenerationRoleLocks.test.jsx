@@ -75,10 +75,10 @@ describe('phase10 AI generation canon role locks', () => {
       container.querySelector('.ai-gen-trigger').click();
     });
     await act(async () => {
-      setTextareaValue(container.querySelector('.ai-gen-input'), 'Tao mot nhan vat phu.');
+      setTextareaValue(document.querySelector('.ai-gen-input'), 'Tao mot nhan vat phu.');
     });
     await act(async () => {
-      container.querySelector('.ai-gen-submit').click();
+      document.querySelector('.ai-gen-submit').click();
     });
 
     const messages = aiService.send.mock.calls[0][0].messages;

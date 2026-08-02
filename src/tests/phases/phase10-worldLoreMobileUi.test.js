@@ -34,4 +34,21 @@ describe('phase10 WorldLore mobile UI contract', () => {
     expect(css).toContain('.project-mobile-shell .world-lore .ai-gen-wrapper');
     expect(css).toContain('.project-mobile-shell .world-lore .ai-gen-trigger');
   });
+
+  it('matches the compact accessible character modal tabs for every world entity', () => {
+    const source = read('src/pages/WorldLore/WorldLore.jsx');
+    const css = read('src/pages/WorldLore/WorldLore.css');
+
+    expect(source).toContain('className="codex-tabs world-modal-tabs"');
+    expect(source).toContain('role="tablist"');
+    expect(source).toContain('id="world-info-tab"');
+    expect(source).toContain('id="world-timeline-tab"');
+    expect(source).toContain('aria-controls="world-modal-panel"');
+    expect(source).toContain('aria-selected={modalTab === \'info\'}');
+    expect(source).toContain('aria-selected={modalTab === \'timeline\'}');
+    expect(source).toContain('id="world-modal-panel"');
+    expect(source).not.toContain("style={{ padding: '0 24px', borderBottom:");
+
+    expect(css).toMatch(/\.world-modal-tabs\s*\{[^}]*align-self:\s*flex-start;[^}]*width:\s*fit-content;[^}]*margin:/su);
+  });
 });

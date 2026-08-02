@@ -151,9 +151,13 @@ describe('phase10 StoryForge theme system', () => {
 
     expect(sidebar).toContain('aria-expanded={themeMenuOpen}');
     expect(sidebar).toContain('<ThemePicker');
-    expect(sidebar).toContain('disabled={isDisabled}');
+    expect(sidebar).not.toContain('disabled={isDisabled}');
     expect(sidebar).toContain('aria-disabled={isDisabled || undefined}');
-    expect(sidebar).toContain('Chọn truyện trước để mở');
+    expect(sidebar).not.toContain('sidebar-item-lock');
+    expect(sidebar).not.toContain('<Lock');
+    expect(sidebar).toContain('sidebar-project-context');
+    expect(sidebar).toContain('Chưa có truyện');
+    expect(sidebar).toContain('Tạo một truyện để sử dụng các mục này.');
     expect(sidebarCss).toMatch(/\.sidebar-theme-popover\s*\{[\s\S]*?position:\s*fixed;/u);
     expect(settings).toContain('<h2>Giao diện</h2>');
     expect(settings).toContain('<ThemePicker variant="settings" />');

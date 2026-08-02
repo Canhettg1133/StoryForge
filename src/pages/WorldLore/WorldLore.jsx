@@ -512,14 +512,24 @@ export default function WorldLore() {
             </div>
 
             {editingItem && (
-              <div className="codex-tabs" style={{ padding: '0 24px', borderBottom: '1px solid var(--color-border)' }}>
+              <div className="codex-tabs world-modal-tabs" role="tablist" aria-label={`Nội dung ${tabLabel.toLowerCase()}`}>
                 <button
+                  id="world-info-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="world-modal-panel"
+                  aria-selected={modalTab === 'info'}
                   className={`codex-tab ${modalTab === 'info' ? 'codex-tab--active' : ''}`}
                   onClick={() => setModalTab('info')}
                 >
                   Thông tin
                 </button>
                 <button
+                  id="world-timeline-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="world-modal-panel"
+                  aria-selected={modalTab === 'timeline'}
                   className={`codex-tab ${modalTab === 'timeline' ? 'codex-tab--active' : ''}`}
                   onClick={() => setModalTab('timeline')}
                 >
@@ -528,7 +538,12 @@ export default function WorldLore() {
               </div>
             )}
 
-            <div className="codex-modal-body">
+            <div
+              id="world-modal-panel"
+              className="codex-modal-body"
+              role={editingItem ? 'tabpanel' : undefined}
+              aria-labelledby={editingItem ? `world-${modalTab}-tab` : undefined}
+            >
               {modalTab === 'info' ? (
                 <>
                   <div className="form-group">
