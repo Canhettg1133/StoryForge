@@ -131,7 +131,7 @@ function loadStoryPromptUiRuntime({ requestCount = 1, translateImpl } = {}) {
   elements.set('storyPromptScanRequestCount', createElement(String(requestCount)));
   const refineButton = elements.get('storyPromptRefineBtn');
   refineButton.refineLabel = createElement();
-  refineButton.refineLabel.textContent = 'Chỉnh prompt theo góp ý';
+  refineButton.refineLabel.textContent = 'Chỉnh quy tắc theo góp ý';
   refineButton.querySelector = (selector) => (
     selector === '.story-prompt-refine-label' ? refineButton.refineLabel : null
   );
@@ -367,7 +367,7 @@ describe('translator story prompt scan execution', () => {
     expect(refineButton.disabled).toBe(true);
     expect(refineButton.classList.contains('is-loading')).toBe(true);
     expect(refineButton.getAttribute('aria-busy')).toBe('true');
-    expect(refineButton.refineLabel.textContent).toBe('Đang chỉnh prompt...');
+    expect(refineButton.refineLabel.textContent).toBe('Đang chỉnh quy tắc...');
 
     finishRefine('SYSTEM PROMPT ĐÃ CHỈNH');
     await pending;
@@ -375,7 +375,7 @@ describe('translator story prompt scan execution', () => {
     expect(refineButton.disabled).toBe(false);
     expect(refineButton.classList.contains('is-loading')).toBe(false);
     expect(refineButton.getAttribute('aria-busy')).toBe('false');
-    expect(refineButton.refineLabel.textContent).toBe('Chỉnh prompt theo góp ý');
+    expect(refineButton.refineLabel.textContent).toBe('Chỉnh quy tắc theo góp ý');
   });
 
   it('persists a completed scan to the session that started it even if the workspace switches files', async () => {
@@ -682,7 +682,7 @@ describe('translator story prompt session defaults', () => {
 });
 
 describe('translator story prompt UI contract', () => {
-  it('places a Vietnamese story profile card between source preview and the translate button', () => {
+  it('keeps optional story rules collapsed between source preview and the translate button', () => {
     const html = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/index.html'), 'utf8');
     const css = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/style.css'), 'utf8');
     const previewIndex = html.indexOf('class="preview-section glass-card"');
@@ -691,11 +691,16 @@ describe('translator story prompt UI contract', () => {
 
     expect(storyPromptIndex).toBeGreaterThan(previewIndex);
     expect(storyPromptIndex).toBeLessThan(translateIndex);
-    expect(html).toContain('Hồ sơ dịch riêng của truyện');
-    expect(html).toContain('Quét 20 chunk đầu');
-    expect(html).toContain('Số request quét song song');
-    expect(html).toContain('System prompt riêng của truyện');
-    expect(html).toContain('Ý kiến để AI chỉnh lại prompt');
+    expect(html).toContain('<details id="storyPromptDetails">');
+    expect(html).toContain('Chuẩn hóa tên và xưng hô');
+    expect(html).toContain('Tùy chọn · bỏ qua nếu không cần');
+    expect(html).toContain('Tạo quy tắc dịch');
+    expect(html).toContain('Dùng quy tắc này khi dịch');
+    expect(html).toContain('<details class="story-prompt-advanced">');
+    expect(html).toContain('Tùy chỉnh nâng cao');
+    expect(html).toContain('Số lượt AI chạy song song');
+    expect(html).toContain('Quy tắc dịch của truyện');
+    expect(html).toContain('Ý kiến để AI chỉnh lại quy tắc');
     expect(html).toContain('class="story-prompt-feedback-header"');
     expect(html).toContain('id="storyPromptFeedbackHint"');
     expect(html).toContain('aria-describedby="storyPromptFeedbackHint storyPromptFeedbackSaveNote"');
@@ -709,8 +714,134 @@ describe('translator story prompt UI contract', () => {
     expect(html).toContain('data-input-action="saveStoryPromptText"');
     expect(html).toContain('data-change-action="toggleStoryPromptEnabled"');
     expect(css).toContain('.story-prompt-panel');
+    expect(css).toContain('.optional-tool-summary');
     expect(css).toContain('.story-prompt-refine-btn:focus-visible');
     expect(css).toMatch(/@media[^}]+max-width:[^}]+[\s\S]*story-prompt/u);
+  });
+
+  it('keeps the primary translate action clear and reachable on mobile', () => {
+    const html = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/index.html'), 'utf8');
+    const css = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/style.css'), 'utf8');
+    const fileHandler = fs.readFileSync(
+      path.join(repoRoot, 'public/translator-runtime/js/ui/file-handler.js'),
+      'utf8'
+    );
+    const storyPrompt = fs.readFileSync(
+      path.join(repoRoot, 'public/translator-runtime/js/translation/story-prompt.js'),
+      'utf8'
+    );
+
+    expect(html).toContain('id="translateActionTitle"');
+    expect(html).toContain('id="translateActionHint"');
+    expect(html).toMatch(/id="translateBtn"[^>]+disabled/u);
+    expect(css).toContain('body.translator-source-ready:not(.translator-is-translating) .translate-actions');
+    expect(fileHandler).toContain('function updateTranslateActionState()');
+    expect(fileHandler).toContain("button.dataset.startSearchBusy === 'true'");
+    expect(storyPrompt).toContain("translateButton.dataset.storyPromptBusy = String(storyPromptBusy)");
+  });
+
+  it('enables translation only with a source and locks it during optional analysis', () => {
+    const sourceInput = { value: '' };
+    const buttonLabel = { textContent: '' };
+    const translateButton = {
+      dataset: {},
+      disabled: false,
+      querySelector: selector => selector === '.btn-text' ? buttonLabel : null,
+    };
+    const searchButton = { disabled: false, textContent: '' };
+    const cancelSearchButton = { hidden: true };
+    const actionTitle = { textContent: '' };
+    const actionHint = { textContent: '' };
+    const bodyClasses = new Set();
+    const elements = new Map([
+      ['originalText', sourceInput],
+      ['translateBtn', translateButton],
+      ['translateActionTitle', actionTitle],
+      ['translateActionHint', actionHint],
+      ['startChunkSearchBtn', searchButton],
+      ['cancelStartChunkSearchBtn', cancelSearchButton],
+    ]);
+    const context = {
+      console: { error() {}, log() {}, warn() {} },
+      currentSourceFile: null,
+      currentSourceMode: 'text',
+      currentTranslatorSessionId: null,
+      isTranslating: false,
+      translationStartChunkIndex: 0,
+      TRANSLATOR_SOURCE_MODES: { LARGE_FILE: 'large-file' },
+      document: {
+        body: {
+          classList: {
+            toggle(name, force) {
+              if (force) bodyClasses.add(name);
+              else bodyClasses.delete(name);
+            },
+          },
+        },
+        getElementById: id => elements.get(id) || null,
+      },
+    };
+    context.globalThis = context;
+    context.window = context;
+    vm.runInNewContext(
+      fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/ui/file-handler.js'), 'utf8'),
+      context,
+      { filename: 'file-handler.js' }
+    );
+
+    context.updateTranslateActionState();
+    expect(translateButton.disabled).toBe(true);
+    expect(actionTitle.textContent).toBe('Chưa có nội dung');
+
+    context.currentTranslatorSessionId = 'empty-file-session';
+    context.updateTranslateActionState();
+    expect(translateButton.disabled).toBe(true);
+    expect(actionTitle.textContent).toBe('Chưa có nội dung');
+    context.currentTranslatorSessionId = null;
+
+    sourceInput.value = 'Nội dung truyện';
+    context.updateTranslateActionState();
+    expect(translateButton.disabled).toBe(false);
+    expect(bodyClasses.has('translator-source-ready')).toBe(true);
+    expect(actionTitle.textContent).toBe('Sẵn sàng dịch');
+
+    context.setFileLoadState('reading');
+    expect(translateButton.disabled).toBe(true);
+    expect(actionTitle.textContent).toBe('Đang chuẩn bị truyện');
+    context.setFileLoadState('idle');
+    expect(translateButton.disabled).toBe(false);
+
+    context.setStartChunkSearchBusy(true);
+    expect(translateButton.disabled).toBe(true);
+    expect(cancelSearchButton.hidden).toBe(false);
+    expect(actionTitle.textContent).toBe('Đang tìm vị trí bắt đầu');
+
+    context.setStartChunkSearchBusy(false);
+    translateButton.dataset.storyPromptBusy = 'true';
+    context.updateTranslateActionState();
+    expect(translateButton.disabled).toBe(true);
+    expect(actionTitle.textContent).toBe('Đang tạo quy tắc dịch');
+  });
+
+  it('does not dispatch click actions from disabled controls', () => {
+    const initSource = fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/init.js'), 'utf8');
+    const runnerSource = initSource.match(/function runTranslatorDelegatedAction[\s\S]*?\n\}/u)?.[0];
+    expect(runnerSource).toBeTruthy();
+
+    let callCount = 0;
+    const context = { console: { error() {} } };
+    vm.runInNewContext(runnerSource, context, { filename: 'translator-delegated-action.js' });
+    context.runTranslatorDelegatedAction(
+      { startTranslation: () => { callCount += 1; } },
+      'startTranslation',
+      {
+        dataset: {},
+        matches: selector => selector.includes(':disabled'),
+      },
+      { stopPropagation() {} }
+    );
+
+    expect(callCount).toBe(0);
   });
 
   it('loads the request contract before providers and keeps Vietnamese text free of mojibake', () => {

@@ -8,6 +8,7 @@ const {
   clearTranslatorLocalStoreForTests,
   createTranslatorSessionFromFile,
   enqueueTranslatorSession,
+  getTranslatorSessionSource,
   getTranslatorSessionChunks,
   getTranslatorSessionOutputParts,
   getTranslatorQueueItems,
@@ -16,6 +17,8 @@ const {
   updateTranslatorChunkResult,
   updateTranslatorQueueItemStatus,
   claimNextTranslatorQueueItem,
+  DB_NAME,
+  persistTranslatorChunkBatch,
   reorderTranslatorQueueItems,
   summarizeTranslatorChunks,
 } = globalThis.TranslatorLocalStore;
@@ -51,7 +54,7 @@ describe('translator local store and queue', () => {
     await clearTranslatorLocalStoreForTests();
   });
 
-  it('indexes a synthetic 20MB txt file with bounded slices and searchable chunks', async () => {
+  it('stores a large source once and does not eager-index source chunks', async () => {
     const marker = 'Từ khóa bí mật nằm ở chương giữa.';
     const file = new TrackingFile([makeLargeText(20 * 1024 * 1024, marker)], {
       name: 'truyen-20mb.txt',
@@ -59,20 +62,139 @@ describe('translator local store and queue', () => {
     });
 
     const session = await createTranslatorSessionFromFile(file, {
-      chunkSize: 200000,
+      chunkSize: 4500,
       windowBytes: 256000,
       minWindowBytes: 256000,
     });
 
     expect(file.fullTextCalls).toBe(0);
-    expect(file.sliceCalls.length).toBeGreaterThan(1);
-    expect(session.totalChunks).toBeGreaterThan(10);
+    expect(file.sliceCalls.length).toBeLessThanOrEqual(2);
+    expect(file.sliceCalls[0].end - file.sliceCalls[0].start).toBeLessThanOrEqual(64 * 1024);
+    expect(session.estimatedChunks).toBeGreaterThan(10);
+    expect(session.totalChunksExact).toBe(false);
     expect(session.fileFingerprint).toContain('truyen-20mb.txt');
+    expect(session).not.toHaveProperty('sourceBlob');
 
-    const matches = await searchTranslatorSessionChunks(session.id, 'bí mật', { limit: 5 });
-    expect(matches).toHaveLength(1);
-    expect(matches[0].sourcePreview).toContain(marker);
-    expect(matches[0].byteStart).toBeLessThan(matches[0].byteEnd);
+    expect(await getTranslatorSessionChunks(session.id)).toEqual([]);
+    expect(await getTranslatorSessionSource(session.id)).toBeTruthy();
+  });
+
+  it('upserts a new output-only row without requiring a pre-indexed source chunk', async () => {
+    const session = await createTranslatorSessionFromFile(new TrackingFile(['Một\n\nHai']), {
+      chunkSize: 5,
+    });
+
+    const updated = await updateTranslatorChunkResult(session.id, 0, {
+      byteStart: 0,
+      byteEnd: 3,
+      sourcePreview: 'Một',
+      status: 'done',
+      outputText: 'One',
+    });
+
+    expect(updated).toMatchObject({
+      chunkIndex: 0,
+      status: 'done',
+      outputText: 'One',
+    });
+    expect(updated).not.toHaveProperty('sourceText');
+  });
+
+  it('writes 1,000 output rows in one transaction without getAll in the hot path', async () => {
+    const session = await createTranslatorSessionFromFile(new TrackingFile(['Nguồn']), { chunkSize: 5 });
+    const rows = Array.from({ length: 1000 }, (_, chunkIndex) => ({
+      chunkIndex,
+      byteStart: chunkIndex,
+      byteEnd: chunkIndex + 1,
+      status: 'done',
+      outputText: `Output ${chunkIndex}`,
+    }));
+    const originalTransaction = IDBDatabase.prototype.transaction;
+    const originalGetAll = IDBObjectStore.prototype.getAll;
+    let transactionCount = 0;
+    let getAllCount = 0;
+
+    IDBDatabase.prototype.transaction = function (...args) {
+      transactionCount += 1;
+      return originalTransaction.apply(this, args);
+    };
+    IDBObjectStore.prototype.getAll = function (...args) {
+      getAllCount += 1;
+      return originalGetAll.apply(this, args);
+    };
+    try {
+      await persistTranslatorChunkBatch(session.id, rows, {
+        completedChunks: rows.length,
+        totalChunks: rows.length,
+        totalChunksExact: true,
+      });
+    } finally {
+      IDBDatabase.prototype.transaction = originalTransaction;
+      IDBObjectStore.prototype.getAll = originalGetAll;
+    }
+
+    expect(transactionCount).toBe(1);
+    expect(getAllCount).toBe(0);
+    expect(await getTranslatorSessionChunks(session.id)).toHaveLength(1000);
+  });
+
+  it('lazily migrates a v1 session without losing source, output or queue state', async () => {
+    await clearTranslatorLocalStoreForTests();
+    const legacyDb = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        const sessions = db.createObjectStore('translationSessions', { keyPath: 'id' });
+        sessions.createIndex('status', 'status', { unique: false });
+        sessions.createIndex('updatedAt', 'updatedAt', { unique: false });
+        const chunks = db.createObjectStore('translationChunks', { keyPath: 'id' });
+        chunks.createIndex('sessionId', 'sessionId', { unique: false });
+        chunks.createIndex('sessionStatus', ['sessionId', 'status'], { unique: false });
+        const queue = db.createObjectStore('translationQueue', { keyPath: 'id' });
+        queue.createIndex('status', 'status', { unique: false });
+        queue.createIndex('position', 'position', { unique: false });
+        queue.createIndex('sessionId', 'sessionId', { unique: false });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const legacyTx = legacyDb.transaction(['translationSessions', 'translationChunks', 'translationQueue'], 'readwrite');
+    legacyTx.objectStore('translationSessions').put({
+      id: 'legacy-session',
+      sourceBlob: { legacy: true },
+      fileName: 'legacy.txt',
+      fileSize: 12,
+      startChunkIndex: 0,
+      totalChunks: 1,
+      completedChunks: 1,
+      status: 'paused',
+      updatedAt: new Date().toISOString(),
+    });
+    legacyTx.objectStore('translationChunks').put({
+      id: 'legacy-session:0',
+      sessionId: 'legacy-session',
+      chunkIndex: 0,
+      sourceText: 'Nguồn cũ',
+      outputText: 'Bản dịch cũ',
+      status: 'done',
+    });
+    legacyTx.objectStore('translationQueue').put({
+      id: 'legacy-queue',
+      sessionId: 'legacy-session',
+      status: 'paused',
+      position: 1,
+    });
+    await new Promise((resolve, reject) => {
+      legacyTx.oncomplete = resolve;
+      legacyTx.onerror = () => reject(legacyTx.error);
+    });
+    legacyDb.close();
+
+    const migrated = await globalThis.TranslatorLocalStore.getTranslatorSession('legacy-session');
+    expect(migrated).not.toHaveProperty('sourceBlob');
+    expect(await getTranslatorSessionSource('legacy-session')).toEqual({ legacy: true });
+    expect((await getTranslatorSessionChunks('legacy-session'))[0].outputText).toBe('Bản dịch cũ');
+    expect((await getTranslatorQueueItems())[0]).toMatchObject({ status: 'paused', position: 1 });
   });
 
   it('stores skipped chunks and builds downloadable output only from translated chunks', async () => {
@@ -96,8 +218,8 @@ describe('translator local store and queue', () => {
     });
 
     const chunks = await getTranslatorSessionChunks(session.id);
-    expect(chunks[0].status).toBe('skipped');
-    expect(chunks[1].status).toBe('skipped');
+    expect(chunks.map(chunk => chunk.chunkIndex)).toEqual([2, 3]);
+    expect(chunks.every(chunk => chunk.status === 'done')).toBe(true);
 
     const parts = await getTranslatorSessionOutputParts(session.id);
     expect(parts.join('')).toBe('Ba đã dịch\n\nBốn đã dịch');

@@ -111,7 +111,7 @@ function confirmCancel() {
             </div>
             <div class="cancel-stats-item">
                 <span class="cancel-stats-label">📄 File:</span>
-                <span class="cancel-stats-value">${originalFileName}</span>
+                <span class="cancel-stats-value">${typeof escapeHtml === 'function' ? escapeHtml(originalFileName) : ''}</span>
             </div>
             <div class="cancel-stats-item">
                 <span class="cancel-stats-label">Ghi chú:</span>

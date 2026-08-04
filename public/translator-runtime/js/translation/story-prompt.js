@@ -42,8 +42,8 @@
 
     function getStoryPromptScanDistributionText(requestCount = 1) {
         const assignments = buildStoryPromptCategoryAssignments(requestCount);
-        if (assignments.length === 1) return '1 request phân tích toàn bộ 17 nhóm';
-        return `${assignments.length} request: ${assignments.map((item) => item.categoryIds.length).join(' + ')} nhóm`;
+        if (assignments.length === 1) return '1 lượt phân tích toàn bộ 17 nhóm';
+        return `${assignments.length} lượt: ${assignments.map((item) => item.categoryIds.length).join(' + ')} nhóm`;
     }
 
     function normalizeStoryPromptChunks(chunks) {
@@ -195,7 +195,6 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
             'storyPromptEnabled',
             'storyPromptText',
             'storyPromptFeedback',
-            'translateBtn',
         ].forEach((id) => {
             const element = document.getElementById(id);
             if (element) element.disabled = storyPromptBusy;
@@ -206,7 +205,16 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
             refineButton.classList?.toggle('is-loading', isRefining);
             refineButton.setAttribute?.('aria-busy', String(isRefining));
             const label = refineButton.querySelector?.('.story-prompt-refine-label');
-            if (label) label.textContent = isRefining ? 'Đang chỉnh prompt...' : 'Chỉnh prompt theo góp ý';
+            if (label) label.textContent = isRefining ? 'Đang chỉnh quy tắc...' : 'Chỉnh quy tắc theo góp ý';
+        }
+        const translateButton = document.getElementById('translateBtn');
+        if (translateButton) {
+            translateButton.dataset.storyPromptBusy = String(storyPromptBusy);
+            if (typeof updateTranslateActionState === 'function') {
+                updateTranslateActionState();
+            } else {
+                translateButton.disabled = storyPromptBusy;
+            }
         }
         const progress = document.getElementById('storyPromptProgress');
         if (progress) {
@@ -238,7 +246,7 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
             toggle.checked = enabled;
             toggle.disabled = !promptText.trim() || storyPromptBusy;
         }
-        if (scanButton) scanButton.textContent = promptText.trim() ? 'Quét lại' : 'Quét 20 chunk đầu';
+        if (scanButton) scanButton.textContent = promptText.trim() ? 'Tạo lại quy tắc' : 'Tạo quy tắc dịch';
         if (editorArea) editorArea.hidden = !promptText.trim();
         const countInput = document.getElementById('storyPromptScanRequestCount');
         if (countInput) countInput.value = String(requestCount);
@@ -246,8 +254,8 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
         renderStoryPromptUncertainties(session.storyPromptUncertainties || []);
         setStoryPromptStatus(
             promptText.trim()
-                ? (enabled ? 'Đang áp dụng khi dịch' : 'Đã có hồ sơ, hiện đang tắt')
-                : 'Chưa quét hồ sơ truyện',
+                ? (enabled ? 'Đang dùng' : 'Đã tạo · đang tắt')
+                : 'Chưa tạo',
             enabled ? 'success' : ''
         );
     }
@@ -323,13 +331,14 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
     async function scanStoryPrompt() {
         if (storyPromptBusy) return;
         if (typeof isTranslating !== 'undefined' && isTranslating) {
-            if (typeof showToast === 'function') showToast('Hãy đợi lượt dịch hiện tại kết thúc trước khi quét hồ sơ truyện.', 'warning');
+            if (typeof showToast === 'function') showToast('Hãy đợi lượt dịch hiện tại kết thúc trước khi tạo quy tắc.', 'warning');
             return;
         }
         if (!await requireStoryPromptAccess()) return;
         const session = getStoryPromptSession();
-        if (!session?.id || typeof getTranslatorSessionChunks !== 'function') {
-            if (typeof showToast === 'function') showToast('Hãy tải file TXT trước khi quét hồ sơ truyện.', 'warning');
+        const canStreamSource = typeof createLazyChunkReader === 'function' && typeof getTranslatorSessionSource === 'function';
+        if (!session?.id || (!canStreamSource && typeof getTranslatorSessionChunks !== 'function')) {
+            if (typeof showToast === 'function') showToast('Hãy tải file TXT trước khi tạo quy tắc dịch.', 'warning');
             return;
         }
         const providerError = getStoryPromptProviderReadyError();
@@ -340,16 +349,31 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
         if (
             String(session.storyPromptText || '').trim()
             && typeof global.confirm === 'function'
-            && !global.confirm('Quét lại sẽ ghi đè system prompt riêng hiện tại. Bạn có muốn tiếp tục?')
+            && !global.confirm('Tạo lại sẽ ghi đè quy tắc dịch hiện tại. Bạn có muốn tiếp tục?')
         ) return;
 
         const input = typeof document !== 'undefined' ? document.getElementById('storyPromptScanRequestCount') : null;
         const requestCount = normalizeStoryPromptScanRequestCount(input?.value || 1);
-        const chunks = await getTranslatorSessionChunks(session.id);
+        const chunks = [];
+        if (canStreamSource) {
+            const source = typeof currentSourceFile !== 'undefined' && currentSourceFile
+                ? currentSourceFile
+                : await getTranslatorSessionSource(session.id);
+            if (!source) {
+                if (typeof showToast === 'function') showToast('Không tìm thấy file nguồn để tạo quy tắc dịch.', 'error');
+                return;
+            }
+            for await (const chunk of createLazyChunkReader(source, { chunkSize: session.chunkSize })) {
+                chunks.push({ chunkIndex: chunk.index, sourceText: chunk.text });
+                if (chunks.length >= STORY_PROMPT_SCAN_CHUNK_LIMIT) break;
+            }
+        } else {
+            chunks.push(...(await getTranslatorSessionChunks(session.id)).slice(0, STORY_PROMPT_SCAN_CHUNK_LIMIT));
+        }
         const requests = buildStoryPromptScanRequests(chunks, requestCount);
         let completed = 0;
-        setStoryPromptBusy(true, `Đã hoàn tất 0/${requests.length} request`);
-        setStoryPromptStatus('Đang quét 20 chunk đầu...', 'working');
+        setStoryPromptBusy(true, `Đã hoàn tất 0/${requests.length} lượt`);
+        setStoryPromptStatus('Đang tạo quy tắc...', 'working');
 
         let scanError = null;
         try {
@@ -362,10 +386,10 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
                     return { assignment: request.assignment, text };
                 } catch (error) {
                     const ids = request.assignment.categoryIds;
-                    throw new Error(`Request ${request.assignment.requestIndex + 1} (nhóm ${ids[0]}–${ids[ids.length - 1]}) thất bại: ${error.message}`);
+                    throw new Error(`Lượt ${request.assignment.requestIndex + 1} (nhóm ${ids[0]}–${ids[ids.length - 1]}) thất bại: ${error.message}`);
                 } finally {
                     completed += 1;
-                    setStoryPromptBusy(true, `Đã hoàn tất ${completed}/${requests.length} request`);
+                    setStoryPromptBusy(true, `Đã hoàn tất ${completed}/${requests.length} lượt`);
                 }
             }));
             const merged = mergeStoryPromptScanResponses(responses);
@@ -384,19 +408,21 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
             }, session.id);
             if (getStoryPromptSession()?.id === session.id) {
                 renderStoryPromptPanel();
+                const details = document.getElementById('storyPromptDetails');
+                if (details) details.open = true;
                 const editorArea = document.getElementById('storyPromptEditorArea');
                 if (editorArea) editorArea.hidden = false;
             }
-            if (typeof showToast === 'function') showToast('Đã tạo hồ sơ dịch riêng. Hãy kiểm tra rồi tự bật khi muốn áp dụng.', 'success');
+            if (typeof showToast === 'function') showToast('Đã tạo quy tắc dịch. Hãy kiểm tra rồi bật khi muốn áp dụng.', 'success');
         } catch (error) {
             scanError = error;
             console.error('[Story Prompt] Scan failed:', error);
-            if (typeof showToast === 'function') showToast(error.message || 'Quét hồ sơ truyện thất bại.', 'error');
+            if (typeof showToast === 'function') showToast(error.message || 'Không thể tạo quy tắc dịch.', 'error');
         } finally {
             setStoryPromptBusy(false);
             renderStoryPromptPanel();
             if (scanError && getStoryPromptSession()?.id === session.id) {
-                setStoryPromptStatus(scanError.message || 'Quét hồ sơ truyện thất bại.', 'error');
+                setStoryPromptStatus(scanError.message || 'Không thể tạo quy tắc.', 'error');
             }
         }
     }
@@ -446,7 +472,7 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
     async function refineStoryPromptFromFeedback() {
         if (storyPromptBusy || typeof document === 'undefined') return;
         if (typeof isTranslating !== 'undefined' && isTranslating) {
-            if (typeof showToast === 'function') showToast('Hãy đợi lượt dịch hiện tại kết thúc trước khi chỉnh hồ sơ truyện.', 'warning');
+            if (typeof showToast === 'function') showToast('Hãy đợi lượt dịch hiện tại kết thúc trước khi chỉnh quy tắc.', 'warning');
             return;
         }
         if (!await requireStoryPromptAccess()) return;
@@ -456,7 +482,7 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
         const feedbackInput = document.getElementById('storyPromptFeedback');
         const feedback = String(feedbackInput?.value || '').trim();
         if (!promptText || !feedback) {
-            if (typeof showToast === 'function') showToast('Hãy nhập góp ý và bảo đảm system prompt hiện tại không trống.', 'warning');
+            if (typeof showToast === 'function') showToast('Hãy nhập góp ý và bảo đảm quy tắc hiện tại không trống.', 'warning');
             return;
         }
         const providerError = getStoryPromptProviderReadyError();
@@ -473,24 +499,24 @@ ${categories.map((category) => `${category.id}. ${category.title}`).join('\n')}`
             userText: `[SYSTEM PROMPT HIỆN TẠI]\n${promptText}\n\n[GÓP Ý CỦA NGƯỜI DÙNG]\n${feedback}`,
             sourceText: promptText,
         };
-        setStoryPromptBusy(true, 'AI đang chỉnh lại prompt theo góp ý...', 'refine');
+        setStoryPromptBusy(true, 'AI đang chỉnh lại quy tắc theo góp ý...', 'refine');
         try {
             const revised = String(await requestStoryPromptAiText(request, {
                 retries: 3,
                 requestIndex: 0,
                 kind: 'story_prompt_refine',
             })).trim();
-            if (!revised) throw new Error('AI trả về system prompt trống.');
+            if (!revised) throw new Error('AI trả về quy tắc trống.');
             const updatedAt = new Date().toISOString();
             await persistStoryPromptSession({ storyPromptText: revised, storyPromptUpdatedAt: updatedAt }, session.id);
             if (getStoryPromptSession()?.id === session.id) {
                 if (feedbackInput) feedbackInput.value = '';
                 renderStoryPromptPanel();
             }
-            if (typeof showToast === 'function') showToast('Đã chỉnh system prompt theo góp ý.', 'success');
+            if (typeof showToast === 'function') showToast('Đã chỉnh quy tắc dịch theo góp ý.', 'success');
         } catch (error) {
             console.error('[Story Prompt] Refine failed:', error);
-            if (typeof showToast === 'function') showToast(error.message || 'Không thể chỉnh prompt lúc này.', 'error');
+            if (typeof showToast === 'function') showToast(error.message || 'Không thể chỉnh quy tắc lúc này.', 'error');
         } finally {
             setStoryPromptBusy(false);
         }

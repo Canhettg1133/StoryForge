@@ -32,6 +32,38 @@ function loadTranslatorEngineContext() {
 }
 
 describe('phase10 translator notifications', () => {
+  it('rejects an empty source before access or provider checks can run', async () => {
+    const context = loadTranslatorEngineContext();
+    const toasts = [];
+    let accessChecks = 0;
+    Object.assign(context, {
+      apiKeys: [],
+      currentSourceFile: null,
+      currentSourceMode: 'text',
+      TRANSLATOR_SOURCE_MODES: { LARGE_FILE: 'large-file' },
+      useOllama: false,
+      useProxy: false,
+      document: {
+        getElementById(id) {
+          if (id === 'originalText') return { value: '   ' };
+          throw new Error(`Unexpected UI access: ${id}`);
+        },
+      },
+      requireStoryForgeFeature: async () => {
+        accessChecks += 1;
+        return true;
+      },
+      showToast: (message, tone) => toasts.push({ message, tone }),
+    });
+
+    await context.startTranslation();
+
+    expect(accessChecks).toBe(0);
+    expect(toasts).toEqual([
+      { message: 'Hãy nhập hoặc tải file truyện trước khi bắt đầu dịch.', tone: 'warning' },
+    ]);
+  });
+
   it('maps official Gemini HTTP failures to precise Vietnamese messages', () => {
     const context = loadTranslatorErrorContext();
 

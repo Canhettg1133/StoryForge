@@ -87,7 +87,19 @@
             if (after > 0) return after;
         }
 
-        return targetChars;
+        return avoidSplittingSurrogatePair(source, targetChars);
+    }
+
+    function avoidSplittingSurrogatePair(text, cutIndex) {
+        const source = String(text || '');
+        const safeCut = Math.max(0, Math.min(source.length, Number(cutIndex) || 0));
+        if (safeCut <= 0 || safeCut >= source.length) return safeCut;
+        const before = source.charCodeAt(safeCut - 1);
+        const after = source.charCodeAt(safeCut);
+        if (before >= 0xD800 && before <= 0xDBFF && after >= 0xDC00 && after <= 0xDFFF) {
+            return safeCut + 1;
+        }
+        return safeCut;
     }
 
     async function readFilePreview(file, previewBytes = LARGE_FILE_PREVIEW_BYTES) {
@@ -119,49 +131,136 @@
 
         const chunkSize = normalizeChunkSize(options.chunkSize);
         const windowBytes = normalizeWindowBytes({ ...options, chunkSize });
-        let byteCursor = Math.max(0, Number(options.startByte) || 0);
+        const startByte = Math.min(Math.max(0, Number(options.startByte) || 0), Math.max(0, Number(file.size) || 0));
+        let readByteCursor = startByte;
+        let emittedByteCursor = startByte;
         let index = Math.max(0, Number(options.startIndex) || 0);
         const fileSize = Math.max(0, Number(file.size) || 0);
+        const decoder = new TextDecoder('utf-8');
+        const forwardRatio = Number.isFinite(options.forwardRatio)
+            ? Math.max(1, Math.min(2, options.forwardRatio))
+            : 1.25;
+        const minimumBufferedChars = Math.max(chunkSize + 1, Math.ceil(chunkSize * forwardRatio));
+        let carry = '';
+        let firstWindow = true;
+        let leadingBomBytes = 0;
 
-        while (byteCursor < fileSize) {
+        while (readByteCursor < fileSize) {
             if (options.signal?.aborted) break;
 
-            const byteStart = byteCursor;
-            const byteWindowEnd = Math.min(fileSize, byteCursor + windowBytes);
-            const sliceText = await file.slice(byteCursor, byteWindowEnd).text();
-            if (!sliceText) break;
-
-            const isAtEnd = byteWindowEnd >= fileSize;
-            const cutIndex = isAtEnd && sliceText.length <= chunkSize
-                ? sliceText.length
-                : selectLargeFileChunkCut(sliceText, chunkSize, options);
-            const safeCutIndex = Math.max(1, Math.min(sliceText.length, cutIndex || chunkSize));
-            const usedText = sliceText.slice(0, safeCutIndex);
-            let bytesConsumed = getByteLength(usedText);
-
-            if (!Number.isFinite(bytesConsumed) || bytesConsumed <= 0) {
-                bytesConsumed = Math.min(byteWindowEnd - byteCursor, Math.max(1, getByteLength(sliceText.slice(0, 1))));
+            const byteWindowEnd = Math.min(fileSize, readByteCursor + windowBytes);
+            const bytes = new Uint8Array(await file.slice(readByteCursor, byteWindowEnd).arrayBuffer());
+            if (firstWindow && startByte === 0 && bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+                leadingBomBytes = 3;
             }
+            firstWindow = false;
+            readByteCursor = byteWindowEnd;
+            carry += decoder.decode(bytes, { stream: readByteCursor < fileSize });
 
-            const nextCursor = Math.min(fileSize, byteCursor + bytesConsumed);
-            if (nextCursor <= byteCursor) {
-                throw new Error('Không thể tiến con trỏ đọc file lớn.');
-            }
+            const isAtEnd = readByteCursor >= fileSize;
+            if (isAtEnd) carry += decoder.decode();
 
-            byteCursor = nextCursor;
+            let consumedChars = 0;
+            while (carry.length - consumedChars > (isAtEnd ? 0 : minimumBufferedChars)) {
+                if (options.signal?.aborted) return;
+                const remaining = carry.slice(consumedChars);
+                const cutIndex = isAtEnd && remaining.length <= chunkSize
+                    ? remaining.length
+                    : selectLargeFileChunkCut(remaining, chunkSize, options);
+                const safeCutIndex = avoidSplittingSurrogatePair(
+                    remaining,
+                    Math.max(1, Math.min(remaining.length, cutIndex || chunkSize))
+                );
+                const usedText = remaining.slice(0, safeCutIndex);
+                let bytesConsumed = getByteLength(usedText);
+                if (leadingBomBytes > 0) {
+                    bytesConsumed += leadingBomBytes;
+                    leadingBomBytes = 0;
+                }
+                const byteStart = emittedByteCursor;
+                emittedByteCursor = Math.min(fileSize, emittedByteCursor + bytesConsumed);
+                consumedChars += safeCutIndex;
 
-            if (usedText.length > 0) {
                 yield {
                     index,
                     text: usedText,
                     byteStart,
-                    byteEnd: byteCursor,
+                    byteEnd: emittedByteCursor,
                     bytesConsumed,
                     fileSize,
                 };
                 index += 1;
             }
+
+            if (consumedChars > 0) carry = carry.slice(consumedChars);
         }
+    }
+
+    function clipSearchPreview(text, matchIndex, queryLength, maxChars = 420) {
+        const source = String(text || '');
+        const before = Math.max(0, Math.floor((maxChars - queryLength) * 0.4));
+        const start = Math.max(0, matchIndex - before);
+        return source.slice(start, Math.min(source.length, start + maxChars)).replace(/\s+/g, ' ').trim();
+    }
+
+    function yieldToMainThread() {
+        return new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    async function scanTranslatorSource(file, query, options = {}) {
+        const needle = String(query || '').trim().toLocaleLowerCase('vi-VN');
+        if (!needle) return { matches: [], cancelled: false, scannedBytes: 0 };
+
+        const limit = Math.max(1, Math.min(12, Number(options.limit) || 12));
+        const contextCount = Math.max(0, Math.min(10, Number(options.contextCount) || 3));
+        const yieldEvery = Math.max(1, Number(options.yieldEvery) || 24);
+        const previousChunks = [];
+        const matches = [];
+        const fileSize = Math.max(0, Number(file?.size) || 0);
+        let scannedBytes = 0;
+        let processedChunks = 0;
+        let lastProgress = -1;
+
+        for await (const chunk of createLazyChunkReader(file, options)) {
+            if (options.signal?.aborted) {
+                return { matches, cancelled: true, scannedBytes };
+            }
+
+            scannedBytes = chunk.byteEnd;
+            const haystack = String(chunk.text || '').toLocaleLowerCase('vi-VN');
+            const matchIndex = haystack.indexOf(needle);
+            if (matchIndex >= 0) {
+                matches.push({
+                    chunkIndex: chunk.index,
+                    byteStart: chunk.byteStart,
+                    byteEnd: chunk.byteEnd,
+                    sourcePreview: clipSearchPreview(chunk.text, matchIndex, needle.length),
+                    contextBefore: previousChunks
+                        .map(item => `Chunk ${item.index + 1}: ${item.text}`)
+                        .join('\n\n'),
+                });
+            }
+
+            previousChunks.push({ index: chunk.index, text: String(chunk.text || '') });
+            if (previousChunks.length > contextCount) previousChunks.shift();
+
+            const progress = fileSize > 0 ? Math.min(1, scannedBytes / fileSize) : 1;
+            if (typeof options.onProgress === 'function' && (progress >= 1 || progress - lastProgress >= 0.01)) {
+                lastProgress = progress;
+                options.onProgress(progress);
+            }
+
+            if (matches.length >= limit) break;
+            processedChunks += 1;
+            if (options.cooperative !== false && processedChunks % yieldEvery === 0) {
+                await yieldToMainThread();
+            }
+        }
+
+        if (typeof options.onProgress === 'function' && scannedBytes >= fileSize && lastProgress < 1) {
+            options.onProgress(1);
+        }
+        return { matches, cancelled: Boolean(options.signal?.aborted), scannedBytes };
     }
 
     function buildBlobPartsFromChunks(chunks, options = {}) {
@@ -200,6 +299,7 @@
         isLargeFileCandidate,
         normalizeChunkSize,
         readFilePreview,
+        scanTranslatorSource,
         selectLargeFileChunkCut,
     };
 

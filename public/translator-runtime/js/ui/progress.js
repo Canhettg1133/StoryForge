@@ -151,7 +151,11 @@ async function downloadTranslatorSessionResult(sessionId, fileName, options = {}
 }
 
 async function downloadCurrentLargeFileResult({ partial = false } = {}) {
-    if (currentTranslatorSessionId && typeof getTranslatorSessionOutputParts === 'function') {
+    if (
+        currentTranslatorSessionId
+        && (typeof currentTranslatorPersistenceAvailable === 'undefined' || currentTranslatorPersistenceAvailable)
+        && typeof getTranslatorSessionOutputParts === 'function'
+    ) {
         await downloadTranslatorSessionResult(currentTranslatorSessionId, originalFileName, { partial });
         return;
     }

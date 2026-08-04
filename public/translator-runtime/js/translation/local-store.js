@@ -1,8 +1,9 @@
 (function registerTranslatorLocalStore(global) {
     const DB_NAME = 'NovelTranslatorLocalStore';
-    const DB_VERSION = 1;
+    const DB_VERSION = 2;
     const STORES = {
         SESSIONS: 'translationSessions',
+        SOURCES: 'translationSources',
         CHUNKS: 'translationChunks',
         QUEUE: 'translationQueue',
     };
@@ -70,6 +71,9 @@
                     sessions.createIndex('status', 'status', { unique: false });
                     sessions.createIndex('updatedAt', 'updatedAt', { unique: false });
                 }
+                if (!db.objectStoreNames.contains(STORES.SOURCES)) {
+                    db.createObjectStore(STORES.SOURCES, { keyPath: 'sessionId' });
+                }
                 if (!db.objectStoreNames.contains(STORES.CHUNKS)) {
                     const chunks = db.createObjectStore(STORES.CHUNKS, { keyPath: 'id' });
                     chunks.createIndex('sessionId', 'sessionId', { unique: false });
@@ -83,7 +87,19 @@
                 }
             };
 
-            request.onsuccess = () => resolve(request.result);
+            let blocked = false;
+            request.onblocked = () => {
+                blocked = true;
+                reject(new Error('IndexedDB đang được một tab Translator cũ sử dụng. Hãy đóng tab cũ rồi tải lại trang.'));
+            };
+            request.onsuccess = () => {
+                if (blocked) {
+                    request.result.close();
+                    return;
+                }
+                request.result.onversionchange = () => request.result.close();
+                resolve(request.result);
+            };
             request.onerror = () => reject(request.error || new Error('Không thể mở IndexedDB của Translator.'));
         });
 
@@ -123,8 +139,38 @@
         await txDone(tx);
     }
 
+    function withoutEmbeddedSource(session) {
+        if (!session || !Object.prototype.hasOwnProperty.call(session, 'sourceBlob')) return session;
+        const clean = { ...session };
+        delete clean.sourceBlob;
+        return clean;
+    }
+
+    async function migrateLegacySessionSource(session) {
+        if (!session?.sourceBlob) return session;
+        try {
+            const db = await openTranslatorLocalDB();
+            const tx = db.transaction([STORES.SESSIONS, STORES.SOURCES], 'readwrite');
+            const cleanSession = withoutEmbeddedSource(session);
+            tx.objectStore(STORES.SOURCES).put({
+                sessionId: session.id,
+                sourceBlob: session.sourceBlob,
+                fileName: session.fileName,
+                fileSize: session.fileSize,
+                fileLastModified: session.fileLastModified,
+                migratedAt: nowIso(),
+            });
+            tx.objectStore(STORES.SESSIONS).put(cleanSession);
+            await txDone(tx);
+            return cleanSession;
+        } catch (error) {
+            console.warn('Không thể migrate nguồn Translator v1; tiếp tục dùng record cũ.', error);
+            return session;
+        }
+    }
+
     async function updateTranslatorSession(sessionId, patch = {}) {
-        const existing = await getRecord(STORES.SESSIONS, sessionId);
+        const existing = await getTranslatorSession(sessionId);
         if (!existing) return null;
         const updated = {
             ...existing,
@@ -136,7 +182,15 @@
     }
 
     async function getTranslatorSession(sessionId) {
-        return getRecord(STORES.SESSIONS, sessionId);
+        const session = await getRecord(STORES.SESSIONS, sessionId);
+        return migrateLegacySessionSource(session);
+    }
+
+    async function getTranslatorSessionSource(sessionId) {
+        const sourceRecord = await getRecord(STORES.SOURCES, sessionId);
+        if (sourceRecord?.sourceBlob) return sourceRecord.sourceBlob;
+        const legacySession = await getRecord(STORES.SESSIONS, sessionId);
+        return legacySession?.sourceBlob || null;
     }
 
     async function getTranslatorSessionChunks(sessionId) {
@@ -177,20 +231,25 @@
         if (!file || typeof file.slice !== 'function') {
             throw new Error('File truyện không hợp lệ.');
         }
-        if (typeof createLazyChunkReader !== 'function') {
-            throw new Error('Bộ đọc file lớn chưa sẵn sàng.');
-        }
 
         const createdAt = nowIso();
         const sessionId = options.sessionId || makeId('session');
         const chunkSize = typeof normalizeChunkSize === 'function'
             ? normalizeChunkSize(options.chunkSize)
             : Math.max(1, parseInt(options.chunkSize || 4500, 10) || 4500);
-        const previewText = typeof readFilePreview === 'function'
-            ? await readFilePreview(file)
-            : await file.slice(0, Math.min(Number(file.size || 0), 64 * 1024)).text();
+        const previewText = typeof options.previewText === 'string'
+            ? options.previewText
+            : typeof readFilePreview === 'function'
+                ? await readFilePreview(file)
+                : await file.slice(0, Math.min(Number(file.size || 0), 64 * 1024)).text();
         const isLarge = typeof isLargeFileCandidate === 'function' ? isLargeFileCandidate(file) : Number(file.size || 0) >= 1024 * 1024;
-        let session = {
+        const sourceBlob = typeof File !== 'undefined' && file instanceof File
+            ? file
+            : file.slice(0, Number(file.size || 0), file.type || 'text/plain;charset=utf-8');
+        const estimate = typeof estimateChunkCountFromPreview === 'function'
+            ? estimateChunkCountFromPreview({ fileSize: file.size, previewText, chunkSize })
+            : { count: Math.max(1, Math.ceil(String(previewText || '').length / chunkSize)), approximate: true };
+        const session = {
             id: sessionId,
             fileName: file.name || 'truyen.txt',
             outputFileName: outputFileNameFor(file.name),
@@ -198,13 +257,18 @@
             fileLastModified: Number(file.lastModified || 0),
             fileFingerprint: fileFingerprint(file),
             sourceMode: isLarge ? 'large-file' : 'text-file',
-            sourceBlob: file,
             chunkSize,
-            totalChunks: 0,
+            estimatedChunks: estimate.count,
+            totalChunks: estimate.count,
+            totalChunksExact: false,
             completedChunks: 0,
             failedChunks: 0,
             startChunkIndex: 0,
             startByte: 0,
+            startContextText: '',
+            resumeChunkIndex: 0,
+            resumeByte: 0,
+            resumeContextText: '',
             status: 'ready',
             isComplete: false,
             previewText,
@@ -216,77 +280,131 @@
             createdAt,
             updatedAt: createdAt,
         };
-        await putRecord(STORES.SESSIONS, session);
 
-        let count = 0;
-        for await (const chunk of createLazyChunkReader(file, {
-            chunkSize,
-            windowBytes: options.windowBytes,
-            minWindowBytes: options.minWindowBytes,
-        })) {
-            const row = {
-                id: `${sessionId}:${chunk.index}`,
-                sessionId,
-                chunkIndex: chunk.index,
-                byteStart: chunk.byteStart,
-                byteEnd: chunk.byteEnd,
-                sourceText: chunk.text,
-                sourcePreview: clipText(chunk.text),
-                outputText: '',
-                status: 'pending',
-                createdAt,
-                updatedAt: createdAt,
-            };
-            await putRecord(STORES.CHUNKS, row);
-            count += 1;
-        }
-
-        session = await updateTranslatorSession(sessionId, {
-            totalChunks: count,
-            status: 'ready',
+        const db = await openTranslatorLocalDB();
+        const tx = db.transaction([STORES.SESSIONS, STORES.SOURCES], 'readwrite');
+        tx.objectStore(STORES.SESSIONS).put(session);
+        tx.objectStore(STORES.SOURCES).put({
+            sessionId,
+            sourceBlob,
+            fileName: session.fileName,
+            fileSize: session.fileSize,
+            fileLastModified: session.fileLastModified,
+            createdAt,
         });
+        await txDone(tx);
         return session;
     }
 
-    async function updateTranslatorChunkResult(sessionId, chunkIndex, patch = {}) {
-        const id = `${sessionId}:${chunkIndex}`;
-        const existing = await getRecord(STORES.CHUNKS, id);
-        if (!existing) return null;
-        const updated = {
+    function normalizeChunkRow(sessionId, chunkIndex, existing, patch, timestamp) {
+        const row = {
+            id: `${sessionId}:${chunkIndex}`,
+            sessionId,
+            chunkIndex: Number(chunkIndex),
+            outputText: '',
+            status: 'pending',
+            createdAt: existing?.createdAt || timestamp,
             ...existing,
             ...patch,
-            updatedAt: nowIso(),
+            updatedAt: timestamp,
         };
-        await putRecord(STORES.CHUNKS, updated);
+        if (!existing?.sourceText && !patch.sourceText) delete row.sourceText;
+        return row;
+    }
 
-        const chunks = await getTranslatorSessionChunks(sessionId);
-        const session = await getTranslatorSession(sessionId);
-        const summary = summarizeTranslatorChunks(chunks, session?.startChunkIndex || 0);
-        await updateTranslatorSession(sessionId, {
-            completedChunks: summary.completedChunks,
-            failedChunks: summary.failedChunks,
-            isComplete: summary.isComplete,
-            status: summary.isComplete ? 'completed' : 'running',
+    function isFailedOutput(row) {
+        return row?.status === 'failed' && hasTranslatorChunkOutput(row);
+    }
+
+    async function persistTranslatorChunkBatch(sessionId, chunkPatches = [], sessionPatch = {}) {
+        const db = await openTranslatorLocalDB();
+        const tx = db.transaction([STORES.SESSIONS, STORES.CHUNKS], 'readwrite');
+        const sessions = tx.objectStore(STORES.SESSIONS);
+        const chunks = tx.objectStore(STORES.CHUNKS);
+        const existingSession = await requestToPromise(sessions.get(sessionId));
+        if (!existingSession) {
+            tx.abort();
+            throw new Error('Không tìm thấy phiên dịch để lưu kết quả.');
+        }
+
+        const timestamp = nowIso();
+        const savedRows = [];
+        for (const patch of chunkPatches) {
+            const chunkIndex = Math.max(0, Number(patch?.chunkIndex) || 0);
+            const id = `${sessionId}:${chunkIndex}`;
+            const existing = await requestToPromise(chunks.get(id));
+            const updated = normalizeChunkRow(sessionId, chunkIndex, existing, patch, timestamp);
+            chunks.put(updated);
+            savedRows.push(updated);
+        }
+
+        const updatedSession = {
+            ...existingSession,
+            ...sessionPatch,
+            updatedAt: timestamp,
+        };
+        sessions.put(updatedSession);
+        await txDone(tx);
+        return { session: updatedSession, chunks: savedRows };
+    }
+
+    async function updateTranslatorChunkResult(sessionId, chunkIndex, patch = {}) {
+        const db = await openTranslatorLocalDB();
+        const tx = db.transaction([STORES.SESSIONS, STORES.CHUNKS], 'readwrite');
+        const sessions = tx.objectStore(STORES.SESSIONS);
+        const chunks = tx.objectStore(STORES.CHUNKS);
+        const id = `${sessionId}:${chunkIndex}`;
+        const [session, existing] = await Promise.all([
+            requestToPromise(sessions.get(sessionId)),
+            requestToPromise(chunks.get(id)),
+        ]);
+        if (!session) {
+            tx.abort();
+            return null;
+        }
+
+        const timestamp = nowIso();
+        const updated = normalizeChunkRow(sessionId, chunkIndex, existing, patch, timestamp);
+        const completedDelta = Number(hasTranslatorChunkOutput(updated)) - Number(hasTranslatorChunkOutput(existing));
+        const failedDelta = Number(isFailedOutput(updated)) - Number(isFailedOutput(existing));
+        const completedChunks = Math.max(0, Number(session.completedChunks || 0) + completedDelta);
+        const failedChunks = Math.max(0, Number(session.failedChunks || 0) + failedDelta);
+        const totalChunks = Math.max(Number(session.totalChunks || 0), Number(chunkIndex) + 1);
+        const isComplete = Boolean(session.totalChunksExact && totalChunks > 0 && completedChunks >= totalChunks);
+
+        chunks.put(updated);
+        sessions.put({
+            ...session,
+            completedChunks,
+            failedChunks,
+            totalChunks,
+            isComplete,
+            status: isComplete ? 'completed' : 'running',
+            updatedAt: timestamp,
         });
+        await txDone(tx);
         return updated;
     }
 
     async function markTranslatorChunksBefore(sessionId, startChunkIndex = 0) {
         const chunks = await getTranslatorSessionChunks(sessionId);
         const safeStart = Math.max(0, Number(startChunkIndex) || 0);
+        const timestamp = nowIso();
+        const changed = [];
         for (const chunk of chunks) {
             if (chunk.chunkIndex >= safeStart) continue;
             if (hasTranslatorChunkOutput(chunk)) continue;
-            await putRecord(STORES.CHUNKS, {
+            changed.push({
                 ...chunk,
                 status: 'skipped',
                 outputText: '',
-                updatedAt: nowIso(),
+                updatedAt: timestamp,
             });
         }
-        const updatedChunks = await getTranslatorSessionChunks(sessionId);
+        const changedByIndex = new Map(changed.map(chunk => [Number(chunk.chunkIndex), chunk]));
+        const updatedChunks = chunks.map(chunk => changedByIndex.get(Number(chunk.chunkIndex)) || chunk);
         const summary = summarizeTranslatorChunks(updatedChunks, safeStart);
-        await updateTranslatorSession(sessionId, {
+        await persistTranslatorChunkBatch(sessionId, changed, {
             completedChunks: summary.completedChunks,
             failedChunks: summary.failedChunks,
             isComplete: summary.isComplete,
@@ -297,6 +415,17 @@
         const needle = String(query || '').trim().toLocaleLowerCase('vi-VN');
         if (!needle) return [];
         const limit = Math.max(1, Math.min(50, Number(options.limit) || 12));
+        const source = await getTranslatorSessionSource(sessionId);
+        const session = await getTranslatorSession(sessionId);
+        if (source && typeof scanTranslatorSource === 'function') {
+            const result = await scanTranslatorSource(source, query, {
+                ...options,
+                chunkSize: session?.chunkSize,
+                limit: Math.min(12, limit),
+                contextCount: 3,
+            });
+            return result.matches;
+        }
         const chunks = await getTranslatorSessionChunks(sessionId);
         const matches = [];
         for (const chunk of chunks) {
@@ -342,6 +471,18 @@
             .join('\n\n');
     }
 
+    async function readTranslatorChunkSource(sessionId, chunkOrIndex) {
+        const chunk = typeof chunkOrIndex === 'object' && chunkOrIndex
+            ? chunkOrIndex
+            : await getTranslatorChunk(sessionId, chunkOrIndex);
+        if (typeof chunk?.sourceText === 'string') return chunk.sourceText;
+        if (!Number.isFinite(Number(chunk?.byteStart)) || !Number.isFinite(Number(chunk?.byteEnd))) return '';
+        const source = await getTranslatorSessionSource(sessionId);
+        if (!source) return '';
+        const text = await source.slice(Number(chunk.byteStart), Number(chunk.byteEnd)).text();
+        return Number(chunk.byteStart) === 0 ? text.replace(/^\uFEFF/, '') : text;
+    }
+
     async function getLastQueuePosition() {
         const rows = await getAllRecords(STORES.QUEUE);
         return rows.reduce((max, row) => Math.max(max, Number(row.position) || 0), 0);
@@ -380,10 +521,9 @@
             updatedAt: nowIso(),
         };
         await putRecord(STORES.QUEUE, updated);
-        await updateTranslatorSession(updated.sessionId, {
-            status: status === 'completed' ? 'completed' : status,
-            isComplete: status === 'completed' ? true : undefined,
-        });
+        const sessionPatch = { status: status === 'completed' ? 'completed' : status };
+        if (status === 'completed') sessionPatch.isComplete = true;
+        await updateTranslatorSession(updated.sessionId, sessionPatch);
         return updated;
     }
 
@@ -456,12 +596,15 @@
         getTranslatorQueueItems,
         getTranslatorSession,
         getTranslatorSessionChunks,
+        getTranslatorSessionSource,
         getTranslatorSessionOutputParts,
         markTranslatorChunksBefore,
         removeTranslatorQueueItem,
+        readTranslatorChunkSource,
         reorderTranslatorQueueItems,
         searchTranslatorSessionChunks,
         summarizeTranslatorChunks,
+        persistTranslatorChunkBatch,
         updateTranslatorChunkResult,
         updateTranslatorQueueItemStatus,
         updateTranslatorSession,

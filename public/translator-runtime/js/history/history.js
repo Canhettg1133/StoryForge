@@ -518,16 +518,21 @@ async function continueFromHistory(id) {
         const session = await loadTranslatorSessionIntoWorkspace(item.sessionId);
         if (!session) return;
         currentHistoryId = id;
-        const chunks = typeof getTranslatorSessionChunks === 'function'
-            ? await getTranslatorSessionChunks(item.sessionId)
-            : [];
-        const nextChunk = chunks.find(chunk => !['done', 'failed', 'skipped'].includes(chunk.status)) ||
-            chunks.find(chunk => chunk.chunkIndex >= (session.startChunkIndex || 0));
-        if (nextChunk) {
-            translationStartChunkIndex = Number(nextChunk.chunkIndex) || 0;
-            translationStartByte = Number(nextChunk.byteStart) || 0;
-            if (typeof updateStartChunkSelection === 'function') updateStartChunkSelection();
+        if (Number.isFinite(Number(session.resumeChunkIndex)) && Number.isFinite(Number(session.resumeByte))) {
+            translationStartChunkIndex = Math.max(0, Number(session.resumeChunkIndex) || 0);
+            translationStartByte = Math.max(0, Number(session.resumeByte) || 0);
+        } else {
+            const chunks = typeof getTranslatorSessionChunks === 'function'
+                ? await getTranslatorSessionChunks(item.sessionId)
+                : [];
+            const nextChunk = chunks.find(chunk => !['done', 'failed', 'skipped'].includes(chunk.status)) ||
+                chunks.find(chunk => chunk.chunkIndex >= (session.startChunkIndex || 0));
+            if (nextChunk) {
+                translationStartChunkIndex = Number(nextChunk.chunkIndex) || 0;
+                translationStartByte = Number(nextChunk.byteStart) || 0;
+            }
         }
+        if (typeof updateStartChunkSelection === 'function') updateStartChunkSelection();
         document.getElementById('translatedText').value = item.translatedText || '';
         document.getElementById('resultSection').style.display = 'block';
         showToast(`Đã tải "${item.name}" để tiếp tục dịch.`, 'success');

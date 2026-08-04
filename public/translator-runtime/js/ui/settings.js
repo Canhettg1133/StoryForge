@@ -586,6 +586,7 @@ function updateStats() {
         document.getElementById('charCount').textContent = `${formatFileSize(largeFileMeta.size)} file nguồn`;
         document.getElementById('chunkCount').textContent = `~${estimatedChunks.toLocaleString('vi-VN')} chunk ước tính`;
         document.getElementById('estimatedTime').textContent = translatedCount;
+        if (typeof updateTranslateActionState === 'function') updateTranslateActionState();
         return;
     }
 
@@ -606,6 +607,7 @@ function updateStats() {
     document.getElementById('charCount').textContent = `${charCount.toLocaleString()} ký tự`;
     document.getElementById('chunkCount').textContent = `${chunkCount} chunk`;
     document.getElementById('estimatedTime').textContent = `~${Math.ceil(estimatedSeconds)} giây`;
+    if (typeof updateTranslateActionState === 'function') updateTranslateActionState();
 }
 
 // ============================================

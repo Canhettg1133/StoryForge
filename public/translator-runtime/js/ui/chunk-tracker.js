@@ -96,11 +96,24 @@ function summarizeTranslatorChunkIssues(options = {}) {
     const totalChunks = Number.isFinite(Number(options.totalChunks))
         ? Math.max(0, Math.trunc(Number(options.totalChunks)))
         : chunks.length;
-    const rowCount = Math.max(totalChunks, chunks.length);
+    const indexedRows = new Map();
+    let hasExplicitIndices = false;
+    let highestChunkIndex = -1;
+    chunks.forEach((chunk, fallbackIndex) => {
+        if (chunk && typeof chunk === 'object' && Number.isFinite(Number(chunk.chunkIndex))) {
+            hasExplicitIndices = true;
+            const chunkIndex = getSafeChunkIndex(chunk, fallbackIndex);
+            indexedRows.set(chunkIndex, chunk);
+            highestChunkIndex = Math.max(highestChunkIndex, chunkIndex);
+        }
+    });
+    const rowCount = Math.max(totalChunks, hasExplicitIndices ? highestChunkIndex + 1 : chunks.length);
     const issues = [];
 
     for (let fallbackIndex = 0; fallbackIndex < rowCount; fallbackIndex += 1) {
-        const chunk = fallbackIndex < chunks.length ? chunks[fallbackIndex] : null;
+        const chunk = hasExplicitIndices
+            ? indexedRows.get(fallbackIndex) || null
+            : (fallbackIndex < chunks.length ? chunks[fallbackIndex] : null);
         const chunkIndex = getSafeChunkIndex(chunk, fallbackIndex);
         if (chunkIndex < startChunkIndex) continue;
 
@@ -355,7 +368,7 @@ function initChunkTracker(chunks, preparedChunks, customPrompt, options = {}) {
     showChunkTrackerPanel();
 }
 
-function trackChunkDiscovered(chunkIndex, chunkText) {
+function trackChunkDiscovered(chunkIndex, chunkText, sourceMeta = {}) {
     const text = String(chunkText || '');
     if (!chunkTrackingData[chunkIndex]) {
         chunkTrackingData[chunkIndex] = {
@@ -372,10 +385,16 @@ function trackChunkDiscovered(chunkIndex, chunkText) {
             startTime: 0,
             originalPreview: text.slice(0, 2000),
             originalTruncated: text.length > 2000,
+            byteStart: Number.isFinite(Number(sourceMeta.byteStart)) ? Number(sourceMeta.byteStart) : undefined,
+            byteEnd: Number.isFinite(Number(sourceMeta.byteEnd)) ? Number(sourceMeta.byteEnd) : undefined,
         };
         chunkTrackerSummaryState.total = Math.max(chunkTrackerSummaryState.total, chunkIndex + 1);
         chunkTrackerSummaryState.totalInput += text.length;
     }
+
+    const trackedChunk = chunkTrackingData[chunkIndex];
+    if (trackedChunk && Number.isFinite(Number(sourceMeta.byteStart))) trackedChunk.byteStart = Number(sourceMeta.byteStart);
+    if (trackedChunk && Number.isFinite(Number(sourceMeta.byteEnd))) trackedChunk.byteEnd = Number(sourceMeta.byteEnd);
 
     if (chunkTrackerLargeFileMode) {
         originalChunksRef[chunkIndex] = text.slice(0, 2000);
@@ -715,15 +734,28 @@ async function retryIssueChunks(options = {}) {
 
     if (source === 'large-file') {
         const sessionId = typeof currentTranslatorSessionId !== 'undefined' ? currentTranslatorSessionId : null;
-        if (!sessionId || typeof getTranslatorSessionChunks !== 'function') {
+        const canReadPersistedRows = Boolean(
+            sessionId
+            && (typeof currentTranslatorPersistenceAvailable === 'undefined' || currentTranslatorPersistenceAvailable)
+            && typeof getTranslatorSessionChunks === 'function'
+        );
+        const memoryRows = typeof translatedChunks !== 'undefined' && Array.isArray(translatedChunks)
+            ? translatedChunks
+            : [];
+        if (!sessionId && memoryRows.length === 0) {
             showToast('Chưa tìm thấy phiên file lớn để dịch lại chunk lỗi.', 'warning');
             return { ok: false, reason: 'missing_session' };
         }
-        sessionRows = await getTranslatorSessionChunks(sessionId);
+        sessionRows = canReadPersistedRows
+            ? await getTranslatorSessionChunks(sessionId)
+            : memoryRows;
         summary = summarizeTranslatorChunkIssues({
             chunks: sessionRows,
             startChunkIndex: startIndex,
-            totalChunks: sessionRows.length,
+            totalChunks: Number(
+                (typeof currentTranslatorSessionMeta !== 'undefined' && currentTranslatorSessionMeta?.totalChunks)
+                || sessionRows.length
+            ),
         });
     } else {
         const chunks = typeof translatedChunks !== 'undefined' && Array.isArray(translatedChunks) ? translatedChunks : [];
@@ -757,8 +789,27 @@ async function retryIssueChunks(options = {}) {
         const row = source === 'large-file'
             ? sessionRows.find(item => Number(item.chunkIndex) === issue.chunkIndex)
             : null;
+        let retrySourceText = row?.sourceText;
+        if (source === 'large-file' && row && typeof readTranslatorChunkSource === 'function') {
+            retrySourceText = await readTranslatorChunkSource(currentTranslatorSessionId, row);
+        }
+        const trackedRow = typeof chunkTrackingData !== 'undefined' ? chunkTrackingData[issue.chunkIndex] : null;
+        const byteStart = Number(row?.byteStart ?? trackedRow?.byteStart);
+        const byteEnd = Number(row?.byteEnd ?? trackedRow?.byteEnd);
+        if (
+            source === 'large-file'
+            && !retrySourceText
+            && typeof currentSourceFile !== 'undefined'
+            && currentSourceFile?.slice
+            && Number.isFinite(byteStart)
+            && Number.isFinite(byteEnd)
+            && byteEnd > byteStart
+        ) {
+            retrySourceText = await currentSourceFile.slice(byteStart, byteEnd).text();
+            if (byteStart === 0) retrySourceText = retrySourceText.replace(/^\uFEFF/, '');
+        }
         const result = await retrySingleIssueChunk(issue.chunkIndex, {
-            sourceText: row?.sourceText,
+            sourceText: retrySourceText,
             silent: true,
         });
         if (result.ok) {
@@ -769,12 +820,20 @@ async function retryIssueChunks(options = {}) {
         }
     }
 
-    if (source === 'large-file' && typeof getTranslatorSessionChunks === 'function' && typeof currentTranslatorSessionId !== 'undefined') {
+    if (
+        source === 'large-file'
+        && typeof getTranslatorSessionChunks === 'function'
+        && typeof currentTranslatorSessionId !== 'undefined'
+        && (typeof currentTranslatorPersistenceAvailable === 'undefined' || currentTranslatorPersistenceAvailable)
+    ) {
         sessionRows = await getTranslatorSessionChunks(currentTranslatorSessionId);
         renderChunkIssuePanel(summarizeTranslatorChunkIssues({
             chunks: sessionRows,
             startChunkIndex: startIndex,
-            totalChunks: sessionRows.length,
+            totalChunks: Number(
+                (typeof currentTranslatorSessionMeta !== 'undefined' && currentTranslatorSessionMeta?.totalChunks)
+                || sessionRows.length
+            ),
         }));
     }
 

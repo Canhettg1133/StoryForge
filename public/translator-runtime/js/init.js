@@ -156,6 +156,8 @@ const TRANSLATOR_CLICK_ACTIONS = Object.freeze({
     clearFile: () => clearFile(),
     scanStoryPrompt: () => scanStoryPrompt(),
     refineStoryPromptFromFeedback: () => refineStoryPromptFromFeedback(),
+    runStartChunkSearch: () => runStartChunkSearch(),
+    cancelStartChunkSearch: () => cancelStartChunkSearch(),
     selectStartChunk: element => selectStartChunk(Number(element.dataset.chunkIndex), Number(element.dataset.byteStart)),
     startTranslation: () => startTranslation(),
     downloadPartial: () => downloadPartial(),
@@ -221,11 +223,16 @@ const TRANSLATOR_INPUT_ACTIONS = Object.freeze({
 const TRANSLATOR_KEYDOWN_ACTIONS = Object.freeze({
     addProxyKey: () => addProxyKey(),
     addCustomProxyKey: () => addCustomProxyKey(),
+    runStartChunkSearch: () => runStartChunkSearch(),
 });
 
 function runTranslatorDelegatedAction(handlers, actionName, element, event) {
     const handler = handlers[actionName];
-    if (!handler) return;
+    const isDisabled = Boolean(
+        element?.disabled
+        || element?.matches?.(':disabled, [aria-disabled="true"]')
+    );
+    if (!handler || isDisabled) return;
     if (element.dataset.stopPropagation === 'true') event.stopPropagation();
     try {
         const result = handler(element, event);

@@ -84,7 +84,7 @@ describe('translator queue/history audit', () => {
     expect(localStoreIndex).toBeLessThan(engineIndex);
     expect(html).toContain('id="startChunkPanel"');
     expect(html).toContain('id="translationQueuePanel"');
-    expect(html).toContain('Tìm đoạn bắt đầu');
+    expect(html).toContain('Dịch từ đoạn khác');
     expect(html).toContain('Hàng đợi');
     expect(initSource).toContain('handleStartChunkSearchInput');
     expect(initSource).toContain('toggleTranslationQueuePanel');

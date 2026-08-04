@@ -241,6 +241,45 @@ describe('phase10 translator runtime performance', () => {
     expect(toastMessage).toBe('Đã tải bản dịch đầy đủ.');
   });
 
+  it('downloads the in-memory large-file output when checkpoint persistence becomes unavailable', async () => {
+    let downloadedBlob = null;
+    let persistedReadCount = 0;
+    const context = loadRuntimeContext([
+      'public/translator-runtime/js/translation/source-reader.js',
+      'public/translator-runtime/js/ui/progress.js',
+    ], {
+      Blob,
+      TextEncoder,
+      TextDecoder,
+      URL: {
+        createObjectURL(blob) {
+          downloadedBlob = blob;
+          return 'blob:translator-memory-test';
+        },
+        revokeObjectURL() {},
+      },
+      document: {
+        body: { appendChild() {}, removeChild() {} },
+        createElement() { return { click() {}, href: '', download: '' }; },
+      },
+    });
+    context.showToast = () => {};
+    context.currentTranslatorSessionId = 'session-with-quota-error';
+    context.currentTranslatorPersistenceAvailable = false;
+    context.originalFileName = 'story.txt';
+    context.completedChunks = 2;
+    context.translatedChunks = ['Bản dịch một', 'Bản dịch hai'];
+    context.getTranslatorSessionOutputParts = async () => {
+      persistedReadCount += 1;
+      return ['Dữ liệu cũ'];
+    };
+
+    await context.downloadCurrentLargeFileResult();
+
+    expect(persistedReadCount).toBe(0);
+    expect(await downloadedBlob.text()).toBe('Bản dịch một\n\nBản dịch hai');
+  });
+
   it('runs chunk settlement callbacks as each request finishes instead of waiting for the whole batch', async () => {
     const context = loadRuntimeContext([
       'public/translator-runtime/js/translation/engine.js',

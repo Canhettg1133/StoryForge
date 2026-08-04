@@ -7,6 +7,7 @@ import '../../../public/translator-runtime/js/translation/source-reader.js';
 const {
   createLazyChunkReader,
   estimateChunkCountFromPreview,
+  scanTranslatorSource,
   selectLargeFileChunkCut,
   buildBlobPartsFromChunks,
 } = globalThis.TranslatorLargeFileSource;
@@ -32,6 +33,95 @@ class TrackingFile extends Blob {
 }
 
 describe('translator large-file source helpers', () => {
+  it.each([4500, 6000])('reads each source byte at most once for %i-character chunks', async (chunkSize) => {
+    const text = `${'Đoạn truyện có tiếng Việt và emoji 🐉. '.repeat(140000)}Kết thúc.`;
+    const file = new TrackingFile([text]);
+
+    const chunks = [];
+    for await (const chunk of createLazyChunkReader(file, {
+      chunkSize,
+      windowBytes: 256 * 1024,
+      minWindowBytes: 256 * 1024,
+    })) {
+      chunks.push(chunk);
+    }
+
+    const bytesRead = file.sliceCalls.reduce((sum, call) => sum + (call.end - call.start), 0);
+    expect(bytesRead).toBeLessThanOrEqual(Math.ceil(file.size * 1.05));
+    expect(chunks.map(chunk => chunk.text).join('')).toBe(text);
+  });
+
+  it('preserves UTF-8 BOM, emoji, CRLF and exact checkpoint offsets', async () => {
+    const text = '\uFEFFMở đầu 🐉\r\n\r\nChương hai 😄\r\n\r\nKết thúc.';
+    const file = new TrackingFile([text]);
+    const firstPass = [];
+
+    for await (const chunk of createLazyChunkReader(file, {
+      chunkSize: 12,
+      windowBytes: 16,
+      minWindowBytes: 16,
+    })) {
+      firstPass.push(chunk);
+    }
+
+    expect(firstPass.map(chunk => chunk.text).join('')).toBe(text.replace(/^\uFEFF/, ''));
+    expect(firstPass.every((chunk, index) => (
+      index === 0 || chunk.byteStart === firstPass[index - 1].byteEnd
+    ))).toBe(true);
+    expect(firstPass.at(-1).byteEnd).toBe(file.size);
+
+    const checkpoint = firstPass[1];
+    const resumed = [];
+    for await (const chunk of createLazyChunkReader(file, {
+      chunkSize: 12,
+      windowBytes: 16,
+      minWindowBytes: 16,
+      startByte: checkpoint.byteStart,
+      startIndex: checkpoint.index,
+    })) {
+      resumed.push(chunk);
+    }
+
+    expect(resumed[0].byteStart).toBe(checkpoint.byteStart);
+    expect(resumed.map(chunk => chunk.text).join('')).toBe(firstPass.slice(1).map(chunk => chunk.text).join(''));
+  });
+
+  it('searches a source once, reports progress and returns three preceding chunks', async () => {
+    const text = Array.from({ length: 80 }, (_, index) => (
+      index === 73 ? `Chương ${index}: MỐC BÍ MẬT ở gần cuối.` : `Chương ${index}: Nội dung bình thường.`
+    )).join('\n\n');
+    const file = new TrackingFile([text]);
+    const progress = [];
+
+    const result = await scanTranslatorSource(file, 'mốc bí mật', {
+      chunkSize: 40,
+      limit: 12,
+      contextCount: 3,
+      onProgress: value => progress.push(value),
+    });
+
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].sourcePreview.toLocaleLowerCase('vi-VN')).toContain('mốc bí mật');
+    expect(result.matches[0].contextBefore.split('\n\nChunk ')).toHaveLength(3);
+    expect(result.matches[0].byteEnd).toBeGreaterThan(result.matches[0].byteStart);
+    expect(progress.at(-1)).toBe(1);
+    expect(file.sliceCalls.reduce((sum, call) => sum + call.end - call.start, 0)).toBeLessThanOrEqual(file.size);
+  });
+
+  it('cancels a cooperative search before reading the whole file', async () => {
+    const file = new TrackingFile(['Nội dung không có từ khóa.\n\n'.repeat(250000)]);
+    const controller = new AbortController();
+
+    const result = await scanTranslatorSource(file, 'không-tồn-tại', {
+      chunkSize: 4500,
+      signal: controller.signal,
+      onProgress: () => controller.abort(),
+    });
+
+    expect(result.cancelled).toBe(true);
+    expect(result.scannedBytes).toBeLessThan(file.size);
+  });
+
   it('reads large files through bounded slices instead of file.text()', async () => {
     const text = Array.from({ length: 1200 }, (_, index) =>
       `Đoạn ${index + 1}: Nội dung tiếng Việt có dấu để kiểm tra đọc file lớn.`
@@ -117,6 +207,45 @@ describe('translator large-file source helpers', () => {
     expect(engineIndex).toBeGreaterThan(-1);
     expect(workerIndex).toBeLessThan(engineIndex);
     expect(sourceReaderIndex).toBeLessThan(engineIndex);
+  });
+
+  it('searches only on button or Enter and ships a cancellable worker', () => {
+    const html = readFileSync(resolve(process.cwd(), 'public/translator-runtime/index.html'), 'utf8');
+    const fileHandler = readFileSync(
+      resolve(process.cwd(), 'public/translator-runtime/js/ui/file-handler.js'),
+      'utf8'
+    );
+    const worker = readFileSync(
+      resolve(process.cwd(), 'public/translator-runtime/js/translation/source-search-worker.js'),
+      'utf8'
+    );
+
+    expect(html).toContain('data-click-action="runStartChunkSearch"');
+    expect(html).toContain('data-keydown-action="runStartChunkSearch"');
+    expect(html).toContain('<details id="startChunkDetails">');
+    expect(fileHandler).not.toContain('setTimeout(() => runStartChunkSearch()');
+    expect(fileHandler).toContain("startChunkSearchWorker.terminate()");
+    expect(worker).toContain("importScripts('./source-reader.js?v=22')");
+    expect(worker).toContain("type: 'progress'");
+  });
+
+  it('presents start-position search as an optional, plain-language action', () => {
+    const html = readFileSync(resolve(process.cwd(), 'public/translator-runtime/index.html'), 'utf8');
+    const css = readFileSync(resolve(process.cwd(), 'public/translator-runtime/style.css'), 'utf8');
+    const fileHandler = readFileSync(
+      resolve(process.cwd(), 'public/translator-runtime/js/ui/file-handler.js'),
+      'utf8'
+    );
+
+    expect(html).toContain('Dịch từ đoạn khác');
+    expect(html).toContain('Tùy chọn · mặc định dịch từ đầu truyện');
+    expect(html).toContain('Tìm trong truyện');
+    expect(html).toContain('id="cancelStartChunkSearchBtn"');
+    expect(html).toMatch(/id="cancelStartChunkSearchBtn"[^>]+hidden/u);
+    expect(html).not.toContain('Dùng 3 chunk trước làm ngữ cảnh');
+    expect(html).not.toContain('Tìm đoạn bắt đầu</h2>');
+    expect(css).toContain('.optional-tool-summary');
+    expect(fileHandler).toContain('function setStartChunkSearchBusy(isBusy)');
   });
 
   it('routes large uploads through preview loading before the FileReader text path', () => {

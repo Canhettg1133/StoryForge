@@ -6,7 +6,7 @@ import useUIStore from '../../stores/uiStore.js';
 import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './PersistentTranslatorHost.css';
 
-const TRANSLATOR_URL = '/translator-runtime/index.html?v=21';
+const TRANSLATOR_URL = '/translator-runtime/index.html?v=24';
 const TRANSLATOR_STATUS_STATES = new Set(['ready', 'idle', 'running', 'paused', 'completed', 'failed']);
 const ADULT_TEMPLATE_LABELS = {
   adult: 'Truyện 18+',

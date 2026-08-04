@@ -1,10 +1,13 @@
 /**
  * Novel Translator Pro - File Handler
- * Xử lý upload, lập chỉ mục cục bộ, tìm đoạn bắt đầu và hàng đợi dịch.
+ * Xử lý upload, lưu nguồn cục bộ, tìm đoạn bắt đầu và hàng đợi dịch.
  */
 
-let startChunkSearchTimer = null;
 let startChunkSearchController = null;
+let startChunkSearchWorker = null;
+let startChunkSearchReject = null;
+let activeStartChunkSearchId = '';
+let startChunkSearchMatches = new Map();
 let draggedTranslatorQueueItemId = null;
 
 function setFileLoadState(state = 'idle', file = null) {
@@ -26,6 +29,9 @@ function setFileLoadState(state = 'idle', file = null) {
     if (fileInput) fileInput.disabled = isBusy;
     if (queueFileInput) queueFileInput.disabled = isBusy;
     if (queueFilesBtn) queueFilesBtn.disabled = isBusy;
+    const translateButton = document.getElementById('translateBtn');
+    if (translateButton) translateButton.dataset.fileLoadBusy = String(isBusy);
+    if (typeof updateTranslateActionState === 'function') updateTranslateActionState();
 
     if (!uploadStatus) return;
     uploadStatus.hidden = !isBusy;
@@ -37,7 +43,7 @@ function setFileLoadState(state = 'idle', file = null) {
 
     const messages = {
         reading: 'Đang đọc file truyện...',
-        indexing: 'Đang lập chỉ mục cục bộ để có thể tìm đoạn và tiếp tục dịch...',
+        indexing: 'Đang lưu file nguồn cục bộ để có thể tiếp tục sau khi tải lại trang...',
         preview: 'Đang tải bản xem trước file lớn...',
         queued: 'Đang thêm truyện vào hàng đợi dịch...',
     };
@@ -48,6 +54,65 @@ function setFileLoadState(state = 'idle', file = null) {
         uploadStatusMeta.textContent = file
             ? `${file.name || 'truyen.txt'} • ${formatFileSize(Number(file.size || 0))}`
             : 'Vui lòng chờ trong giây lát.';
+    }
+}
+
+function updateTranslateActionState() {
+    const button = document.getElementById('translateBtn');
+    const title = document.getElementById('translateActionTitle');
+    const hint = document.getElementById('translateActionHint');
+    const buttonText = button?.querySelector('.btn-text');
+    const text = document.getElementById('originalText')?.value?.trim() || '';
+    const hasLargeFileSource = currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE
+        && Boolean(currentSourceFile && Number(currentSourceFile.size) > 0);
+    const hasSource = Boolean(hasLargeFileSource || text);
+    const isFileLoadBusy = Boolean(button && button.dataset.fileLoadBusy === 'true');
+    const isStartSearchBusy = Boolean(button && button.dataset.startSearchBusy === 'true');
+    const isStoryPromptBusy = Boolean(button && button.dataset.storyPromptBusy === 'true');
+
+    document.body?.classList.toggle('translator-source-ready', hasSource);
+    document.body?.classList.toggle('translator-is-translating', Boolean(isTranslating));
+    if (button) button.disabled = Boolean(
+        isTranslating || isFileLoadBusy || isStartSearchBusy || isStoryPromptBusy || !hasSource
+    );
+
+    if (isTranslating) {
+        if (buttonText) buttonText.textContent = 'Đang dịch...';
+        if (title) title.textContent = 'Đang dịch truyện';
+        if (hint) hint.textContent = 'Theo dõi tiến trình hoặc tạm dừng ở phần bên dưới.';
+        return;
+    }
+    if (isFileLoadBusy) {
+        if (buttonText) buttonText.textContent = 'Đang tải truyện...';
+        if (title) title.textContent = 'Đang chuẩn bị truyện';
+        if (hint) hint.textContent = 'Nút dịch sẽ sẵn sàng ngay khi file được đọc xong.';
+        return;
+    }
+    if (isStartSearchBusy) {
+        if (buttonText) buttonText.textContent = 'Đang tìm vị trí...';
+        if (title) title.textContent = 'Đang tìm vị trí bắt đầu';
+        if (hint) hint.textContent = 'Có thể dừng tìm để dịch ngay từ đầu truyện.';
+        return;
+    }
+    if (isStoryPromptBusy) {
+        if (buttonText) buttonText.textContent = 'Đang tạo quy tắc...';
+        if (title) title.textContent = 'Đang tạo quy tắc dịch';
+        if (hint) hint.textContent = 'Nút dịch sẽ sẵn sàng ngay khi AI hoàn tất.';
+        return;
+    }
+    if (!hasSource) {
+        if (buttonText) buttonText.textContent = 'Bắt đầu dịch';
+        if (title) title.textContent = 'Chưa có nội dung';
+        if (hint) hint.textContent = 'Tải file hoặc dán nội dung truyện để bắt đầu.';
+        return;
+    }
+
+    if (buttonText) buttonText.textContent = 'Bắt đầu dịch';
+    if (title) title.textContent = 'Sẵn sàng dịch';
+    if (hint) {
+        hint.textContent = translationStartChunkIndex > 0
+            ? `Sẽ bắt đầu từ đoạn ${translationStartChunkIndex + 1}.`
+            : 'Bắt đầu từ đầu truyện. Hai mục phía trên là tùy chọn.';
     }
 }
 
@@ -122,9 +187,13 @@ async function processFile(file) {
         return;
     }
 
+    cancelStartChunkSearch({ silent: true });
+    startChunkSearchMatches = new Map();
+
     originalFileName = file.name.replace(/\.txt$/i, '_translated.txt');
     currentTranslatorSessionId = null;
     currentTranslatorSessionMeta = null;
+    currentTranslatorPersistenceAvailable = true;
     translationStartChunkIndex = 0;
     translationStartByte = 0;
 
@@ -145,6 +214,8 @@ async function processFile(file) {
 }
 
 function resetSourceModeToText() {
+    cancelStartChunkSearch({ silent: true });
+    startChunkSearchMatches = new Map();
     currentSourceMode = TRANSLATOR_SOURCE_MODES.TEXT;
     currentSourceFile = null;
     largeFileMeta = null;
@@ -177,6 +248,67 @@ function getCurrentChunkSizeValue() {
     return parseInt(document.getElementById('chunkSize')?.value, 10) || 4500;
 }
 
+async function handleTranslatorChunkSizeChange() {
+    const input = document.getElementById('chunkSize');
+    const nextChunkSize = getCurrentChunkSizeValue();
+    const previousChunkSize = Number(currentTranslatorSessionMeta?.chunkSize || largeFileMeta?.chunkSize || nextChunkSize);
+    if (typeof saveSettings === 'function') saveSettings();
+    if (nextChunkSize === previousChunkSize) return;
+
+    if (Number(currentTranslatorSessionMeta?.completedChunks || 0) > 0) {
+        if (input) input.value = String(previousChunkSize);
+        if (typeof saveSettings === 'function') saveSettings();
+        showToast('Không thể đổi kích thước chunk của phiên đã dịch dở. Hãy tải lại file để tạo phiên mới.', 'warning');
+        return;
+    }
+
+    const hadCustomStart = translationStartChunkIndex > 0 || translationStartByte > 0;
+    translationStartChunkIndex = 0;
+    translationStartByte = 0;
+    startChunkSearchMatches = new Map();
+    cancelStartChunkSearch({ silent: true });
+    const results = document.getElementById('chunkSearchResults');
+    if (results) results.innerHTML = '<p class="empty-message">Kích thước chunk đã đổi. Nhấn Tìm để quét lại.</p>';
+
+    const estimate = typeof estimateChunkCountFromPreview === 'function' && currentTranslatorSessionMeta
+        ? estimateChunkCountFromPreview({
+            fileSize: currentTranslatorSessionMeta.fileSize,
+            previewText: currentTranslatorSessionMeta.previewText,
+            chunkSize: nextChunkSize,
+        })
+        : null;
+    const sessionPatch = {
+        chunkSize: nextChunkSize,
+        estimatedChunks: estimate?.count || currentTranslatorSessionMeta?.estimatedChunks,
+        totalChunks: estimate?.count || currentTranslatorSessionMeta?.totalChunks,
+        totalChunksExact: false,
+        startChunkIndex: 0,
+        startByte: 0,
+        startContextText: '',
+        resumeChunkIndex: 0,
+        resumeByte: 0,
+        resumeContextText: '',
+    };
+    if (currentTranslatorSessionId && typeof updateTranslatorSession === 'function') {
+        try {
+            currentTranslatorSessionMeta = await updateTranslatorSession(currentTranslatorSessionId, sessionPatch) || currentTranslatorSessionMeta;
+        } catch (error) {
+            currentTranslatorPersistenceAvailable = false;
+            currentTranslatorSessionMeta = { ...currentTranslatorSessionMeta, ...sessionPatch };
+            console.warn('[Translator] Không thể lưu kích thước chunk mới vào checkpoint.', error);
+            showToast('Đã đổi kích thước chunk cho phiên hiện tại, nhưng không thể lưu để resume sau khi tải lại trang.', 'warning');
+        }
+    } else if (currentTranslatorSessionMeta) {
+        currentTranslatorSessionMeta = { ...currentTranslatorSessionMeta, ...sessionPatch };
+    }
+    if (largeFileMeta) {
+        largeFileMeta.chunkSize = nextChunkSize;
+        if (estimate) largeFileMeta.estimatedChunks = estimate.count;
+    }
+    updateStartChunkSelection();
+    if (hadCustomStart) showToast('Đã đổi kích thước chunk và reset điểm bắt đầu. Hãy tìm lại đoạn nếu cần.', 'info');
+}
+
 async function createLocalSessionForFile(file, options = {}) {
     if (typeof createTranslatorSessionFromFile !== 'function') return null;
     const chunkSize = getCurrentChunkSizeValue();
@@ -186,8 +318,9 @@ async function createLocalSessionForFile(file, options = {}) {
 function setCurrentTranslatorSession(session) {
     currentTranslatorSessionId = session?.id || null;
     currentTranslatorSessionMeta = session || null;
-    translationStartChunkIndex = Number(session?.startChunkIndex || 0);
-    translationStartByte = Number(session?.startByte || 0);
+    currentTranslatorPersistenceAvailable = true;
+    translationStartChunkIndex = Number(session?.resumeChunkIndex ?? session?.startChunkIndex ?? 0);
+    translationStartByte = Number(session?.resumeByte ?? session?.startByte ?? 0);
     if (Number.isFinite(parseInt(session?.chunkSize, 10))) {
         const chunkSizeInput = document.getElementById('chunkSize');
         if (chunkSizeInput) chunkSizeInput.value = String(parseInt(session.chunkSize, 10));
@@ -197,9 +330,10 @@ function setCurrentTranslatorSession(session) {
 
 async function processTextFile(file) {
     resetSourceModeToText();
-    setFileLoadState('indexing', file);
     const session = await createLocalSessionForFile(file).catch((error) => {
-        console.warn('[Translator] Không thể tạo chỉ mục local cho file nhỏ:', error);
+        console.warn('[Translator] Không thể lưu file nhỏ vào bộ nhớ cục bộ:', error);
+        showToast('Bộ nhớ cục bộ không đủ. Vẫn có thể dịch, nhưng queue/resume sau khi tải lại trang sẽ không khả dụng.', 'warning');
+        currentTranslatorPersistenceAvailable = false;
         return null;
     });
     if (session) setCurrentTranslatorSession(session);
@@ -238,9 +372,11 @@ async function processLargeFile(file) {
         ? await readFilePreview(file)
         : await file.slice(0, Math.min(file.size, 64 * 1024)).text();
     setFileLoadState('indexing', file);
-    const session = await createLocalSessionForFile(file, {
-        windowBytes: Math.max(256 * 1024, chunkSize * 6),
-        minWindowBytes: 256 * 1024,
+    const session = await createLocalSessionForFile(file, { previewText }).catch((error) => {
+        console.warn('[Translator] Không thể lưu file lớn vào bộ nhớ cục bộ:', error);
+        showToast('Bộ nhớ cục bộ không đủ. File hiện tại vẫn dịch được, nhưng queue/resume sau khi tải lại trang sẽ không khả dụng.', 'warning');
+        currentTranslatorPersistenceAvailable = false;
+        return null;
     });
     if (session) {
         setCurrentTranslatorSession(session);
@@ -255,8 +391,9 @@ async function processLargeFile(file) {
         size: file.size,
         lastModified: file.lastModified,
         previewText,
-        estimatedChunks: session?.totalChunks || estimate.count,
-        approximate: !session,
+        chunkSize,
+        estimatedChunks: session?.estimatedChunks || estimate.count,
+        approximate: true,
         sessionId: session?.id || null,
     };
 
@@ -285,7 +422,7 @@ function updateLargeFileNotice() {
     notice.innerHTML = `
         <div class="source-mode-card">
             <strong>Chế độ file lớn</strong>
-            <span>Không tải toàn bộ truyện lên giao diện. File đã được lập chỉ mục cục bộ để tìm đoạn và tiếp tục dịch.</span>
+            <span>Đã sẵn sàng dịch từ đầu. Chỉ quét toàn truyện khi bạn chủ động tìm đoạn bắt đầu khác.</span>
         </div>
         <div class="source-mode-metrics">
             <span>${formatFileSize(largeFileMeta.size)}</span>
@@ -307,6 +444,7 @@ function showFileInfo(file, options = {}) {
 function clearFile() {
     setFileLoadState('idle');
     resetSourceModeToText();
+    currentTranslatorPersistenceAvailable = true;
     document.getElementById('fileInput').value = '';
     document.getElementById('fileInfo').style.display = 'none';
     document.getElementById('originalText').value = '';
@@ -340,28 +478,104 @@ function formatFileSize(bytes) {
 function renderStartChunkPanel() {
     const panel = document.getElementById('startChunkPanel');
     if (!panel) return;
-    const hasSession = Boolean(currentTranslatorSessionId);
-    panel.style.display = hasSession ? '' : 'none';
-    const badge = document.getElementById('startChunkContextBadge');
-    if (badge) badge.textContent = 'Dùng 3 chunk trước làm ngữ cảnh';
+    const hasSource = Boolean(currentTranslatorSessionId || currentSourceFile);
+    panel.style.display = hasSource ? '' : 'none';
     updateStartChunkSelection();
 }
 
 function updateStartChunkSelection() {
     const selection = document.getElementById('startChunkSelection');
-    if (!selection) return;
-    if (!currentTranslatorSessionId) {
-        selection.textContent = '';
-        return;
+    if (selection) {
+        selection.textContent = translationStartChunkIndex > 0
+            ? `Đoạn ${translationStartChunkIndex + 1}`
+            : 'Đầu truyện';
     }
-    selection.textContent = translationStartChunkIndex > 0
-        ? `Sẽ bắt đầu từ chunk ${translationStartChunkIndex + 1}. Các chunk trước đó chỉ dùng làm ngữ cảnh nếu cần.`
-        : 'Đang chọn dịch từ đầu truyện.';
+    updateTranslateActionState();
+}
+
+function setStartChunkSearchBusy(isBusy) {
+    const searchButton = document.getElementById('startChunkSearchBtn');
+    const cancelButton = document.getElementById('cancelStartChunkSearchBtn');
+    if (searchButton) {
+        searchButton.disabled = Boolean(isBusy);
+        searchButton.textContent = isBusy ? 'Đang tìm...' : 'Tìm trong truyện';
+    }
+    if (cancelButton) cancelButton.hidden = !isBusy;
+    const button = document.getElementById('translateBtn');
+    if (button) button.dataset.startSearchBusy = String(Boolean(isBusy));
+    updateTranslateActionState();
 }
 
 function handleStartChunkSearchInput() {
-    clearTimeout(startChunkSearchTimer);
-    startChunkSearchTimer = setTimeout(() => runStartChunkSearch(), 250);
+    if (activeStartChunkSearchId) cancelStartChunkSearch({ silent: true });
+    const results = document.getElementById('chunkSearchResults');
+    if (results) results.textContent = '';
+}
+
+function cancelStartChunkSearch(options = {}) {
+    if (startChunkSearchController) startChunkSearchController.abort();
+    startChunkSearchController = null;
+    if (startChunkSearchWorker) startChunkSearchWorker.terminate();
+    startChunkSearchWorker = null;
+    const rejectPendingSearch = startChunkSearchReject;
+    startChunkSearchReject = null;
+    activeStartChunkSearchId = '';
+    setStartChunkSearchBusy(false);
+    if (rejectPendingSearch) {
+        const error = new Error('Translator source search cancelled');
+        error.name = 'AbortError';
+        rejectPendingSearch(error);
+    }
+    if (!options.silent) {
+        const results = document.getElementById('chunkSearchResults');
+        if (results) results.innerHTML = '<p class="empty-message">Đã dừng tìm.</p>';
+    }
+}
+
+async function getCurrentTranslatorSource() {
+    if (currentSourceFile) return currentSourceFile;
+    if (currentTranslatorSessionId && typeof getTranslatorSessionSource === 'function') {
+        return getTranslatorSessionSource(currentTranslatorSessionId);
+    }
+    return null;
+}
+
+function scanStartChunkInWorker(file, query, requestId, options = {}) {
+    return new Promise((resolve, reject) => {
+        const worker = new Worker('js/translation/source-search-worker.js?v=22');
+        startChunkSearchWorker = worker;
+        startChunkSearchReject = reject;
+        const cleanup = () => {
+            worker.terminate();
+            if (startChunkSearchWorker === worker) startChunkSearchWorker = null;
+            if (startChunkSearchReject === reject) startChunkSearchReject = null;
+        };
+        worker.addEventListener('message', (event) => {
+            const message = event.data || {};
+            if (message.requestId !== requestId || requestId !== activeStartChunkSearchId) return;
+            if (message.type === 'progress') {
+                options.onProgress?.(message.progress);
+                return;
+            }
+            cleanup();
+            if (message.type === 'complete') {
+                resolve({ matches: message.matches || [], scannedBytes: message.scannedBytes || 0 });
+            } else if (message.type === 'error') {
+                reject(new Error(message.message || 'Không thể quét file truyện.'));
+            }
+        });
+        worker.addEventListener('error', (event) => {
+            cleanup();
+            reject(event.error || new Error(event.message || 'Web Worker quét truyện gặp lỗi.'));
+        }, { once: true });
+        worker.postMessage({
+            type: 'scan',
+            requestId,
+            file,
+            query,
+            options: { chunkSize: getCurrentChunkSizeValue(), limit: 12, contextCount: 3 },
+        });
+    });
 }
 
 async function runStartChunkSearch() {
@@ -369,7 +583,15 @@ async function runStartChunkSearch() {
     const results = document.getElementById('chunkSearchResults');
     const query = String(input?.value || '').trim();
     if (!results) return;
-    if (!currentTranslatorSessionId) {
+    let source;
+    try {
+        source = await getCurrentTranslatorSource();
+    } catch (error) {
+        console.error('Could not read Translator source:', error);
+        results.innerHTML = '<p class="empty-message">Không thể đọc file nguồn lúc này.</p>';
+        return;
+    }
+    if (!source) {
         results.innerHTML = '<p class="empty-message">Hãy tải truyện trước khi tìm đoạn bắt đầu.</p>';
         return;
     }
@@ -378,43 +600,88 @@ async function runStartChunkSearch() {
         return;
     }
 
-    if (startChunkSearchController) startChunkSearchController.abort();
+    cancelStartChunkSearch({ silent: true });
     startChunkSearchController = new AbortController();
-    results.innerHTML = '<p class="empty-message">Đang tìm trong chỉ mục cục bộ...</p>';
+    const requestId = `search-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    activeStartChunkSearchId = requestId;
+    setStartChunkSearchBusy(true);
+    results.innerHTML = '<p class="empty-message">Đang quét truyện... 0%</p>';
 
     try {
-        const matches = await searchTranslatorSessionChunks(currentTranslatorSessionId, query, {
-            limit: 12,
-            signal: startChunkSearchController.signal,
-        });
+        const onProgress = progress => {
+            if (activeStartChunkSearchId !== requestId) return;
+            const percent = Math.max(0, Math.min(100, Math.round(Number(progress || 0) * 100)));
+            results.innerHTML = `<p class="empty-message">Đang quét truyện... ${percent}%</p>`;
+        };
+        let scanResult;
+        if (typeof Worker === 'function') {
+            try {
+                scanResult = await scanStartChunkInWorker(source, query, requestId, { onProgress });
+            } catch (workerError) {
+                if (activeStartChunkSearchId !== requestId || startChunkSearchController?.signal?.aborted) return;
+                console.warn('[Translator] Worker tìm đoạn không khả dụng, chuyển sang quét cooperative.', workerError);
+            }
+        }
+        if (!scanResult) {
+            scanResult = await scanTranslatorSource(source, query, {
+                chunkSize: getCurrentChunkSizeValue(),
+                limit: 12,
+                contextCount: 3,
+                signal: startChunkSearchController.signal,
+                onProgress,
+            });
+        }
+        if (activeStartChunkSearchId !== requestId || startChunkSearchController.signal.aborted) return;
+        const matches = scanResult.matches || [];
+        startChunkSearchMatches = new Map(matches.map(match => [Number(match.chunkIndex), match]));
         if (matches.length === 0) {
             results.innerHTML = '<p class="empty-message">Không tìm thấy đoạn phù hợp.</p>';
             return;
         }
         results.innerHTML = matches.map(match => `
             <button type="button" class="start-chunk-result" data-click-action="selectStartChunk" data-chunk-index="${match.chunkIndex}" data-byte-start="${match.byteStart}">
-                <span class="start-chunk-result__title">Chunk ${match.chunkIndex + 1}</span>
+                <span class="start-chunk-result__title">Bắt đầu từ đoạn ${match.chunkIndex + 1}</span>
                 <span class="start-chunk-result__text">${escapeHtml(match.sourcePreview)}</span>
             </button>
         `).join('');
     } catch (error) {
-        if (startChunkSearchController?.signal?.aborted) return;
+        if (activeStartChunkSearchId !== requestId || startChunkSearchController?.signal?.aborted) return;
         console.error('Chunk search failed:', error);
         results.innerHTML = '<p class="empty-message">Không thể tìm trong truyện lúc này.</p>';
+    } finally {
+        if (activeStartChunkSearchId === requestId) {
+            activeStartChunkSearchId = '';
+            startChunkSearchController = null;
+            setStartChunkSearchBusy(false);
+        }
     }
 }
 
 async function selectStartChunk(chunkIndex, byteStart) {
     translationStartChunkIndex = Math.max(0, Number(chunkIndex) || 0);
     translationStartByte = Math.max(0, Number(byteStart) || 0);
+    const match = startChunkSearchMatches.get(translationStartChunkIndex);
+    const startContextText = String(match?.contextBefore || '');
+    const selectionPatch = {
+        startChunkIndex: translationStartChunkIndex,
+        startByte: translationStartByte,
+        startContextText,
+        resumeChunkIndex: translationStartChunkIndex,
+        resumeByte: translationStartByte,
+        resumeContextText: startContextText,
+    };
     if (currentTranslatorSessionId && typeof updateTranslatorSession === 'function') {
-        currentTranslatorSessionMeta = await updateTranslatorSession(currentTranslatorSessionId, {
-            startChunkIndex: translationStartChunkIndex,
-            startByte: translationStartByte,
-        }) || currentTranslatorSessionMeta;
+        try {
+            currentTranslatorSessionMeta = await updateTranslatorSession(currentTranslatorSessionId, selectionPatch) || currentTranslatorSessionMeta;
+        } catch (error) {
+            currentTranslatorPersistenceAvailable = false;
+            currentTranslatorSessionMeta = { ...currentTranslatorSessionMeta, ...selectionPatch };
+            console.warn('[Translator] Không thể lưu điểm bắt đầu vào checkpoint.', error);
+            showToast('Đã chọn điểm bắt đầu cho phiên hiện tại, nhưng không thể lưu để resume sau khi tải lại trang.', 'warning');
+        }
     }
     updateStartChunkSelection();
-    showToast(`Đã chọn bắt đầu từ chunk ${translationStartChunkIndex + 1}.`, 'success');
+    showToast(`Đã chọn bắt đầu từ đoạn ${translationStartChunkIndex + 1}.`, 'success');
 }
 
 // ============================================
@@ -489,14 +756,17 @@ async function enqueueTranslatorFiles(files) {
 
 async function loadTranslatorSessionIntoWorkspace(sessionId) {
     const session = await getTranslatorSession(sessionId);
-    if (!session?.sourceBlob) {
+    const sourceBlob = session && typeof getTranslatorSessionSource === 'function'
+        ? await getTranslatorSessionSource(session.id)
+        : session?.sourceBlob;
+    if (!sourceBlob) {
         showToast('Không tìm thấy file nguồn trong bộ nhớ cục bộ.', 'error');
         return null;
     }
     setCurrentTranslatorSession(session);
     currentSourceMode = TRANSLATOR_SOURCE_MODES.LARGE_FILE;
-    currentSourceFile = session.sourceBlob;
-    largeFileByteCursor = session.startByte || 0;
+    currentSourceFile = sourceBlob;
+    largeFileByteCursor = session.resumeByte ?? session.startByte ?? 0;
     translatedChunks = [];
     translatedBlobParts = [];
     completedChunks = session.completedChunks || 0;
@@ -508,8 +778,9 @@ async function loadTranslatorSessionIntoWorkspace(sessionId) {
         size: session.fileSize,
         lastModified: session.fileLastModified,
         previewText: session.previewText || '',
-        estimatedChunks: session.totalChunks || 1,
-        approximate: false,
+        chunkSize: session.chunkSize,
+        estimatedChunks: session.estimatedChunks || session.totalChunks || 1,
+        approximate: !session.totalChunksExact,
         sessionId: session.id,
     };
 

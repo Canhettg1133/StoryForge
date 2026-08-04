@@ -163,6 +163,23 @@ describe('translator chunk issue workflow', () => {
     expect(summary.issues.map((issue) => issue.chunkIndex)).toEqual([2, 3, 4]);
   });
 
+  it('maps sparse output-only rows by chunkIndex without creating phantom positions', () => {
+    const context = loadChunkIssueRuntime();
+
+    const summary = context.summarizeTranslatorChunkIssues({
+      chunks: [
+        { chunkIndex: 7, status: 'done', outputText: 'Đã dịch chunk 8' },
+        { chunkIndex: 9, status: 'failed', outputText: '[LỖI CHUNK 10]\nNguyên nhân: quota' },
+      ],
+      startChunkIndex: 7,
+      totalChunks: 10,
+    });
+
+    expect(summary.issues.map(issue => issue.chunkIndex)).toEqual([8, 9]);
+    expect(summary.pendingCount).toBe(1);
+    expect(summary.failedCount).toBe(1);
+  });
+
   it('persists manual edits into current output, history, and session chunk state', async () => {
     const context = loadChunkIssueRuntime();
     vm.runInContext(`
@@ -339,6 +356,34 @@ describe('translator chunk issue workflow', () => {
       2,
       { status: 'done', outputText: 'Đã dịch lại 3', error: '' },
     ]);
+  });
+
+  it('retries a large-file chunk from exact in-memory byte offsets when persistence is unavailable', async () => {
+    const context = loadChunkIssueRuntime({ Blob });
+    context.currentSourceFile = new Blob(['HEADexact-sourceTAIL']);
+    vm.runInContext(`
+      TRANSLATOR_SOURCE_MODES = { LARGE_FILE: 'large-file' };
+      currentSourceMode = 'large-file';
+      currentTranslatorSessionId = 'memory-session';
+      currentTranslatorPersistenceAvailable = false;
+      currentHistoryId = 'history-memory';
+      translatedChunks = ['[LỖI CHUNK 1]'];
+      isTranslating = false;
+      useProxy = false;
+      useOllama = false;
+      initChunkTracker([], null, 'PROMPT', { dynamic: true, largeFile: true });
+      trackChunkDiscovered(0, 'truncated-preview', { byteStart: 4, byteEnd: 16 });
+      trackChunkFailed(0, 'quota');
+    `, context);
+
+    const result = await vm.runInContext('retryIssueChunks({ source: "large-file", limit: 1 })', context);
+
+    expect(result).toMatchObject({ ok: true, attempted: 1, succeeded: 1 });
+    expect(context.directAttempts[0]).toMatchObject({
+      chunkIndex: 0,
+      kind: 'manual_retry',
+      text: 'PROMPT\nexact-source',
+    });
   });
 
   it('limits default large-file retries to a small batch and skips pending chunks', async () => {

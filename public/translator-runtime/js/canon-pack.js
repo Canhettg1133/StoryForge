@@ -118,6 +118,11 @@ function loadStoryForgeCanonPacks() {
         request.onsuccess = (event) => {
             try {
                 const db = event.target.result;
+                if (db.objectStoreNames && !db.objectStoreNames.contains(CANON_PACK_STORE)) {
+                    db.close();
+                    resolve([]);
+                    return;
+                }
                 const transaction = db.transaction(CANON_PACK_STORE, 'readonly');
                 const store = transaction.objectStore(CANON_PACK_STORE);
                 const getAllRequest = store.getAll();

@@ -8,6 +8,10 @@ const runtimeSource = fs.readFileSync(
   path.join(process.cwd(), 'public/translator-runtime/js/translation/local-store.js'),
   'utf8',
 );
+const engineSource = fs.readFileSync(
+  path.join(process.cwd(), 'public/translator-runtime/js/translation/engine.js'),
+  'utf8',
+);
 let activeStore;
 
 function requestResult(request) {
@@ -40,7 +44,7 @@ async function createRuntime() {
 }
 
 async function seedResumeSession(store, sessionId) {
-  const database = await requestResult(indexedDB.open(store.DB_NAME, 1));
+  const database = await requestResult(indexedDB.open(store.DB_NAME));
   const transaction = database.transaction(
     [store.STORES.SESSIONS, store.STORES.CHUNKS],
     'readwrite',
@@ -88,6 +92,37 @@ afterEach(async () => {
 });
 
 describe('translator resume output persistence', () => {
+  it('treats persisted failed output as processed so resume does not translate it twice', () => {
+    const context = vm.createContext({ console, Date, Math, Promise, Set, Map, setTimeout, clearTimeout });
+    vm.runInContext(engineSource, context);
+
+    expect(context.isPersistedTranslatorChunkProcessed({ status: 'done', outputText: 'done' })).toBe(true);
+    expect(context.isPersistedTranslatorChunkProcessed({ status: 'failed', outputText: '[LỖI CHUNK 2]' })).toBe(true);
+    expect(context.isPersistedTranslatorChunkProcessed({ status: 'failed', outputText: '' })).toBe(false);
+    expect(context.isPersistedTranslatorChunkProcessed({ status: 'pending', outputText: 'stale' })).toBe(false);
+  });
+
+  it('does not advance a checkpoint across an out-of-order completion gap', () => {
+    const context = vm.createContext({ console, Date, Math, Promise, Set, Map, setTimeout, clearTimeout });
+    vm.runInContext(engineSource, context);
+    const snapshot = vm.runInContext(`
+      (() => {
+        const tracker = createContiguousTranslationCheckpoint({ chunkIndex: 0, byte: 0 });
+        tracker.markProcessed({ index: 1, byteEnd: 20, text: 'Hai' });
+        const afterOutOfOrder = tracker.snapshot();
+        tracker.markProcessed({ index: 0, byteEnd: 10, text: 'Một' });
+        const afterGapClosed = tracker.snapshot();
+        tracker.markProcessed({ index: 3, byteEnd: 40, text: 'Bốn' });
+        const afterCancelledGap = tracker.snapshot();
+        return { afterOutOfOrder, afterGapClosed, afterCancelledGap };
+      })()
+    `, context);
+
+    expect(snapshot.afterOutOfOrder).toMatchObject({ chunkIndex: 0, byte: 0 });
+    expect(snapshot.afterGapClosed).toMatchObject({ chunkIndex: 2, byte: 20 });
+    expect(snapshot.afterCancelledGap).toMatchObject({ chunkIndex: 2, byte: 20 });
+  });
+
   it('keeps completed chunk output when translation resumes from a later chunk', async () => {
     const store = await createRuntime();
     activeStore = store;

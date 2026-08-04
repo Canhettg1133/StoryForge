@@ -26,6 +26,7 @@ let translatedBlobParts = [];
 let largeFileByteCursor = 0;
 let currentTranslatorSessionId = null;
 let currentTranslatorSessionMeta = null;
+let currentTranslatorPersistenceAvailable = true;
 let translationStartChunkIndex = 0;
 let translationStartByte = 0;
 let translatorQueueAutoRunning = false;
@@ -1930,10 +1931,12 @@ function setupEventListeners() {
     if (originalText) originalText.addEventListener('input', updateStats);
 
     // Settings auto-save
-    ['sourceLang', 'parallelCount', 'chunkSize', 'rpmPerKey'].forEach(id => {
+    ['sourceLang', 'parallelCount', 'rpmPerKey'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('change', saveSettings);
     });
+    const chunkSizeInput = document.getElementById('chunkSize');
+    if (chunkSizeInput) chunkSizeInput.addEventListener('change', handleTranslatorChunkSizeChange);
 
     // Enter key for adding API
     const newApiKey = document.getElementById('newApiKey');

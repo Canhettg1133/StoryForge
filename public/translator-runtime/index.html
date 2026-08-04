@@ -22,7 +22,7 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
     <script src="js/theme.js?v=2"></script>
-    <link rel="stylesheet" href="style.css?v=23">
+    <link rel="stylesheet" href="style.css?v=25">
 </head>
 
 <body>
@@ -881,24 +881,31 @@
 
             <!-- Start From Chunk Panel -->
             <section class="start-chunk-panel glass-card" id="startChunkPanel" style="display: none;">
-                <div class="start-chunk-header">
-                    <div>
-                        <h2 class="section-title">
-                            <span class="icon">🔎</span>
-                            Tìm đoạn bắt đầu
-                        </h2>
-                        <p class="panel-subtitle">Tìm một câu, tên riêng hoặc mốc chương để dịch từ đúng chunk, không cần dịch lại phần trước.</p>
+                <details id="startChunkDetails">
+                    <summary class="optional-tool-summary">
+                        <span class="optional-tool-heading">
+                            <span class="optional-tool-icon" aria-hidden="true">🔎</span>
+                            <span>
+                                <strong>Dịch từ đoạn khác</strong>
+                                <small>Tùy chọn · mặc định dịch từ đầu truyện</small>
+                            </span>
+                        </span>
+                        <span class="optional-tool-status" id="startChunkSelection">Đầu truyện</span>
+                    </summary>
+                    <div class="optional-tool-body">
+                        <p class="optional-tool-copy">Dán một câu hoặc tên chương có trong truyện để tìm vị trí bắt đầu. Ứng dụng chỉ quét file khi bạn bấm Tìm.</p>
+                        <p class="optional-tool-note">Khi chọn kết quả, 3 đoạn trước sẽ được dùng làm ngữ cảnh và không được dịch lại.</p>
+                        <div class="start-chunk-search">
+                            <input type="search" id="chunkSearchInput" placeholder="Dán câu hoặc tên chương cần tìm"
+                                data-input-action="handleStartChunkSearchInput" data-keydown-action="runStartChunkSearch">
+                            <button type="button" class="btn btn-primary btn-small" id="startChunkSearchBtn"
+                                data-click-action="runStartChunkSearch">Tìm trong truyện</button>
+                            <button type="button" class="btn btn-secondary btn-small" id="cancelStartChunkSearchBtn"
+                                data-click-action="cancelStartChunkSearch" hidden>Dừng tìm</button>
+                        </div>
+                        <div class="start-chunk-results" id="chunkSearchResults" role="status" aria-live="polite"></div>
                     </div>
-                    <span class="start-chunk-context-badge" id="startChunkContextBadge">Dùng 3 chunk trước làm ngữ cảnh</span>
-                </div>
-                <div class="start-chunk-search">
-                    <input type="search" id="chunkSearchInput" placeholder="Nhập đoạn cần tìm trong truyện..."
-                        data-input-action="handleStartChunkSearchInput">
-                </div>
-                <div class="start-chunk-selection" id="startChunkSelection"></div>
-                <div class="start-chunk-results" id="chunkSearchResults">
-                    <p class="empty-message">Nhập từ khóa để tìm chunk.</p>
-                </div>
+                </details>
             </section>
 
             <!-- Text Preview -->
@@ -920,91 +927,103 @@
             </section>
 
             <section class="story-prompt-panel glass-card" id="storyPromptPanel" hidden>
-                <div class="story-prompt-header">
-                    <div>
-                        <h2 class="section-title">
-                            <span class="icon">📚</span>
-                            Hồ sơ dịch riêng của truyện
-                        </h2>
-                        <p class="panel-subtitle">AI đọc cùng lúc tối đa 20 chunk đầu để đề xuất tên chuẩn, xưng hô, thuật ngữ và văn phong riêng cho truyện này.</p>
-                    </div>
-                    <div class="story-prompt-state">
-                        <span class="story-prompt-status" id="storyPromptStatus" role="status">Chưa quét hồ sơ truyện</span>
-                        <div class="story-prompt-toggle-row">
-                            <span class="toggle-label">Áp dụng khi dịch</span>
-                            <label class="toggle-switch" title="Prompt riêng chỉ được dùng khi công tắc này bật">
-                                <input type="checkbox" id="storyPromptEnabled" data-change-action="toggleStoryPromptEnabled" disabled>
-                                <span class="toggle-slider"></span>
-                            </label>
+                <details id="storyPromptDetails">
+                    <summary class="optional-tool-summary">
+                        <span class="optional-tool-heading">
+                            <span class="optional-tool-icon" aria-hidden="true">📚</span>
+                            <span>
+                                <strong>Chuẩn hóa tên và xưng hô</strong>
+                                <small>Tùy chọn · bỏ qua nếu không cần</small>
+                            </span>
+                        </span>
+                        <span class="story-prompt-status optional-tool-status" id="storyPromptStatus" role="status">Chưa tạo</span>
+                    </summary>
+                    <div class="optional-tool-body">
+                        <p class="optional-tool-copy">AI đọc tối đa 20 đoạn đầu để tạo quy tắc nhất quán cho tên riêng, xưng hô, thuật ngữ và văn phong.</p>
+                        <div class="story-prompt-intro">
+                            <div class="story-prompt-toggle-row">
+                                <span class="toggle-label">Dùng quy tắc này khi dịch</span>
+                                <label class="toggle-switch" title="Chỉ áp dụng quy tắc riêng khi công tắc này bật">
+                                    <input type="checkbox" id="storyPromptEnabled" data-change-action="toggleStoryPromptEnabled" disabled>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                            <button type="button" class="btn btn-primary story-prompt-scan-btn" id="storyPromptScanBtn"
+                                data-click-action="scanStoryPrompt">Tạo quy tắc dịch</button>
                         </div>
-                    </div>
-                </div>
 
-                <div class="story-prompt-scan-grid">
-                    <div class="form-group story-prompt-request-count">
-                        <label for="storyPromptScanRequestCount">Số request quét song song</label>
-                        <input type="number" id="storyPromptScanRequestCount" min="1" max="17" value="1"
-                            data-change-action="saveStoryPromptScanRequestCount">
-                    </div>
-                    <div class="story-prompt-distribution-wrap">
-                        <strong id="storyPromptScanDistribution">1 request phân tích toàn bộ 17 nhóm</strong>
-                        <span>Mỗi request vẫn đọc đủ cùng một tập 20 chunk. Tăng số request chỉ chia 17 nhóm phân tích; không khắc phục giới hạn context của model.</span>
-                    </div>
-                    <button type="button" class="btn btn-primary story-prompt-scan-btn" id="storyPromptScanBtn"
-                        data-click-action="scanStoryPrompt">Quét 20 chunk đầu</button>
-                </div>
+                        <details class="story-prompt-advanced">
+                            <summary>Tùy chỉnh nâng cao</summary>
+                            <div class="story-prompt-scan-grid">
+                                <div class="form-group story-prompt-request-count">
+                                    <label for="storyPromptScanRequestCount">Số lượt AI chạy song song</label>
+                                    <input type="number" id="storyPromptScanRequestCount" min="1" max="17" value="1"
+                                        data-change-action="saveStoryPromptScanRequestCount">
+                                </div>
+                                <div class="story-prompt-distribution-wrap">
+                                    <strong id="storyPromptScanDistribution">1 lượt phân tích toàn bộ 17 nhóm</strong>
+                                    <span>Mỗi lượt vẫn đọc cùng tối đa 20 đoạn đầu. Chỉ tăng khi nhà cung cấp AI cho phép chạy song song.</span>
+                                </div>
+                            </div>
+                        </details>
 
-                <div class="story-prompt-progress" id="storyPromptProgress" role="status" hidden></div>
+                        <div class="story-prompt-progress" id="storyPromptProgress" role="status" hidden></div>
 
-                <div class="story-prompt-editor" id="storyPromptEditorArea" hidden>
-                    <div class="form-group">
-                        <label for="storyPromptText">System prompt riêng của truyện</label>
-                        <textarea id="storyPromptText" rows="16"
-                            placeholder="Kết quả quét sẽ xuất hiện ở đây và được tự lưu sau khi chỉnh sửa."
-                            data-input-action="saveStoryPromptText"></textarea>
-                    </div>
+                        <div class="story-prompt-editor" id="storyPromptEditorArea" hidden>
+                            <div class="form-group">
+                                <label for="storyPromptText">Quy tắc dịch của truyện</label>
+                                <textarea id="storyPromptText" rows="16"
+                                    placeholder="Quy tắc do AI tạo sẽ xuất hiện ở đây và được tự lưu khi chỉnh sửa."
+                                    data-input-action="saveStoryPromptText"></textarea>
+                            </div>
 
-                    <div class="story-prompt-feedback-grid">
-                        <div class="story-prompt-feedback-header">
-                            <div>
-                                <label for="storyPromptFeedback">Ý kiến để AI chỉnh lại prompt</label>
-                                <p id="storyPromptFeedbackHint">AI dùng prompt hiện tại để chỉnh sửa, không quét lại nội dung truyện.</p>
+                            <div class="story-prompt-feedback-grid">
+                                <div class="story-prompt-feedback-header">
+                                    <div>
+                                        <label for="storyPromptFeedback">Ý kiến để AI chỉnh lại quy tắc</label>
+                                        <p id="storyPromptFeedbackHint">AI chỉnh từ quy tắc hiện tại, không đọc lại nội dung truyện.</p>
+                                    </div>
+                                </div>
+                                <textarea id="storyPromptFeedback" rows="4"
+                                    aria-describedby="storyPromptFeedbackHint storyPromptFeedbackSaveNote"
+                                    placeholder="Ví dụ: Giữ tên nhân vật theo pinyin; nhân vật A xưng tôi với B, nhưng xưng thuộc hạ với C."></textarea>
+                                <div class="story-prompt-feedback-footer">
+                                    <p class="story-prompt-feedback-note" id="storyPromptFeedbackSaveNote">
+                                        <svg class="story-prompt-save-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="M20 6 9 17l-5-5"></path>
+                                        </svg>
+                                        Quy tắc mới sẽ thay bản hiện tại và được tự lưu.
+                                    </p>
+                                    <button type="button" class="btn story-prompt-refine-btn" id="storyPromptRefineBtn"
+                                        data-click-action="refineStoryPromptFromFeedback">
+                                        <svg class="story-prompt-refine-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                            <path d="m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2L12 3ZM5 14l-.8 2.2L2 17l2.2.8L5 20l.8-2.2L8 17l-2.2-.8L5 14Zm14-1-.8 2.2L16 16l2.2.8L19 19l.8-2.2L22 16l-2.2-.8L19 13Z"></path>
+                                        </svg>
+                                        <span class="story-prompt-refine-spinner" aria-hidden="true"></span>
+                                        <span class="story-prompt-refine-label" aria-live="polite">Chỉnh quy tắc theo góp ý</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="story-prompt-uncertainties">
+                                <h3>Điểm cần kiểm tra</h3>
+                                <p>Các suy luận chưa đủ chắc chắn được giữ riêng tại đây và không tự biến thành luật dịch.</p>
+                                <div id="storyPromptUncertainties">
+                                    <p class="story-prompt-empty">Chưa có điểm nào cần kiểm tra.</p>
+                                </div>
                             </div>
                         </div>
-                        <textarea id="storyPromptFeedback" rows="4"
-                            aria-describedby="storyPromptFeedbackHint storyPromptFeedbackSaveNote"
-                            placeholder="Ví dụ: Giữ tên nhân vật theo pinyin; nhân vật A xưng tôi với B, nhưng xưng thuộc hạ với C."></textarea>
-                        <div class="story-prompt-feedback-footer">
-                            <p class="story-prompt-feedback-note" id="storyPromptFeedbackSaveNote">
-                                <svg class="story-prompt-save-icon" viewBox="0 0 24 24" aria-hidden="true">
-                                    <path d="M20 6 9 17l-5-5"></path>
-                                </svg>
-                                Prompt mới sẽ thay prompt hiện tại và được tự lưu.
-                            </p>
-                            <button type="button" class="btn story-prompt-refine-btn" id="storyPromptRefineBtn"
-                                data-click-action="refineStoryPromptFromFeedback">
-                                <svg class="story-prompt-refine-icon" viewBox="0 0 24 24" aria-hidden="true">
-                                    <path d="m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2L12 3ZM5 14l-.8 2.2L2 17l2.2.8L5 20l.8-2.2L8 17l-2.2-.8L5 14Zm14-1-.8 2.2L16 16l2.2.8L19 19l.8-2.2L22 16l-2.2-.8L19 13Z"></path>
-                                </svg>
-                                <span class="story-prompt-refine-spinner" aria-hidden="true"></span>
-                                <span class="story-prompt-refine-label" aria-live="polite">Chỉnh prompt theo góp ý</span>
-                            </button>
-                        </div>
                     </div>
-
-                    <div class="story-prompt-uncertainties">
-                        <h3>Điểm cần kiểm tra</h3>
-                        <p>Các suy luận chưa đủ chắc chắn được giữ riêng tại đây và không tự biến thành luật dịch.</p>
-                        <div id="storyPromptUncertainties">
-                            <p class="story-prompt-empty">Chưa có điểm nào cần kiểm tra.</p>
-                        </div>
-                    </div>
-                </div>
+                </details>
             </section>
 
             <!-- Translate Button -->
             <div class="translate-actions">
-                <button class="btn btn-translate" id="translateBtn" data-click-action="startTranslation">
+                <div class="translate-action-copy">
+                    <strong id="translateActionTitle">Chưa có nội dung</strong>
+                    <span id="translateActionHint">Tải file hoặc dán nội dung truyện để bắt đầu.</span>
+                </div>
+                <button class="btn btn-translate" id="translateBtn" data-click-action="startTranslation" disabled>
                     <span class="btn-icon">🚀</span>
                     <span class="btn-text">Bắt đầu dịch</span>
                 </button>
@@ -1135,10 +1154,10 @@
     ============================================== -->
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
-    <script src="js/app.js?v=20"></script>
+    <script src="js/app.js?v=22"></script>
     <script src="js/translation/prompt-settings.js?v=1"></script>
     <script src="js/translation/request-contract.js?v=1"></script>
-    <script src="js/canon-pack.js?v=13"></script>
+    <script src="js/canon-pack.js?v=22"></script>
 
     <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
     <script src="js/worker-timer.js?v=13"></script>
@@ -1152,19 +1171,19 @@
 
     <!-- 3. Translation Engine -->
     <script src="js/translation/chunker.js?v=13"></script>
-    <script src="js/translation/source-reader.js?v=13"></script>
-    <script src="js/translation/local-store.js?v=13"></script>
+    <script src="js/translation/source-reader.js?v=22"></script>
+    <script src="js/translation/local-store.js?v=22"></script>
     <script src="js/translation/retry.js?v=17"></script>
-    <script src="js/translation/engine.js?v=18"></script>
-    <script src="js/translation/story-prompt.js?v=2"></script>
+    <script src="js/translation/engine.js?v=24"></script>
+    <script src="js/translation/story-prompt.js?v=23"></script>
 
 
     <!-- 4. UI Components -->
-    <script src="js/ui/progress.js?v=14"></script>
-    <script src="js/ui/file-handler.js?v=15"></script>
-    <script src="js/ui/settings.js?v=16"></script>
-    <script src="js/ui/controls.js?v=14"></script>
-    <script src="js/ui/chunk-tracker.js?v=16"></script>
+    <script src="js/ui/progress.js?v=22"></script>
+    <script src="js/ui/file-handler.js?v=24"></script>
+    <script src="js/ui/settings.js?v=17"></script>
+    <script src="js/ui/controls.js?v=22"></script>
+    <script src="js/ui/chunk-tracker.js?v=22"></script>
 
     <!-- 5. History -->
     <script src="js/history/history.js?v=14"></script>
@@ -1176,7 +1195,7 @@
     <script src="js/proxy/proxy-api.js?v=17"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
-    <script src="js/init.js?v=17"></script>
+    <script src="js/init.js?v=23"></script>
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->
