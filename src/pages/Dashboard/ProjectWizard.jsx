@@ -752,7 +752,7 @@ function mergeAcceptedProposals(result = {}, acceptedProposals = new Set()) {
     next[group.key] = mergeRecordsByName(next[group.key], acceptedItems, group.nameField);
   });
 
-  return normalizeWizardBlueprintResult(next);
+  return next;
 }
 
 function filterApprovedSeed(result = {}, excluded = new Set()) {
@@ -928,6 +928,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const [excluded, setExcluded] = useState(new Set());
   const [editingKey, setEditingKey] = useState(null);
   const [acceptedProposals, setAcceptedProposals] = useState(new Set());
+  const [creationGuidance, setCreationGuidance] = useState(null);
   const [exitDialogOpen, setExitDialogOpen] = useState(false);
   const [draftLoadComplete, setDraftLoadComplete] = useState(false);
   const [draftToRestore, setDraftToRestore] = useState(null);
@@ -1315,6 +1316,51 @@ export default function ProjectWizard({ onClose, onCreated }) {
       ...buildCoverageWarnings(workingResult, excluded).map((message) => ({ code: 'coverage-warning', message })),
     ]
     : seedValidation.warnings;
+  const proposalReview = useMemo(() => {
+    const proposed = normalizeProposedEntitiesForUi(result?.proposed_entities);
+    const keys = PROPOSAL_GROUPS.flatMap((group) => (
+      proposed[group.key].map((_, index) => proposalKey(group.key, index))
+    ));
+    const acceptedCount = keys.filter((key) => acceptedProposals.has(key)).length;
+    return {
+      total: keys.length,
+      accepted: acceptedCount,
+      pending: keys.length - acceptedCount,
+    };
+  }, [acceptedProposals, result]);
+  const hasPendingProposalBlocker = blockingIssues.some((issue) => issue.code === 'outline-proposal-pending');
+  const createReadiness = (() => {
+    if (isCreatingProject) {
+      return {
+        tone: 'progress',
+        message: 'Đang tạo và lưu dữ liệu dự án...',
+      };
+    }
+    if (creationGuidance) return creationGuidance;
+    if (isOutlineSeedStale) {
+      return {
+        tone: 'danger',
+        message: 'Dàn ý cần được cập nhật vì nền truyện đã thay đổi.',
+      };
+    }
+    if (hasPendingProposalBlocker && proposalReview.pending > 0) {
+      return {
+        tone: 'warning',
+        message: `Còn ${proposalReview.pending} đề xuất cần duyệt trước khi tạo dự án. Bấm “Duyệt & tạo dự án” để đi tới mục cần duyệt.`,
+      };
+    }
+    if (blockingIssues.length > 0) {
+      const remainingCount = blockingIssues.length - 1;
+      return {
+        tone: 'danger',
+        message: `Còn ${blockingIssues.length} lỗi cần xử lý. ${blockingIssues[0].message}${remainingCount > 0 ? ` Và ${remainingCount} lỗi khác.` : ''}`,
+      };
+    }
+    return {
+      tone: 'success',
+      message: 'Sẵn sàng tạo dự án. Tất cả điều kiện bắt buộc đã đạt.',
+    };
+  })();
 
   const handleSelectNumericField = (event) => {
     const input = event.currentTarget;
@@ -1377,6 +1423,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
   const removeMacroArc = (index) => setMacroArcsInput((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
 
   const toggleExclude = (key) => {
+    setCreationGuidance(null);
     setExcluded((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -1386,6 +1433,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
   };
   const toggleEdit = (key) => setEditingKey((prev) => (prev === key ? null : key));
   const toggleProposal = (key) => {
+    setCreationGuidance(null);
     setAcceptedProposals((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -1430,6 +1478,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
   };
 
   const updateResultItem = (section, index, field, value) => {
+    setCreationGuidance(null);
     setResult((prev) => {
       const arr = [...(prev?.[section] || [])];
       arr[index] = { ...arr[index], [field]: value };
@@ -1440,6 +1489,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
     updateResultItem(section, index, field, normalizeChapterListField(value));
   };
   const updateCharacterSpecificRole = (index, value) => {
+    setCreationGuidance(null);
     setResult((prev) => {
       const arr = [...(prev?.characters || [])];
       const current = arr[index] || {};
@@ -1454,6 +1504,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
     });
   };
   const updateCharacterSpecificRoleLocked = (index, checked) => {
+    setCreationGuidance(null);
     setResult((prev) => {
       const arr = [...(prev?.characters || [])];
       const current = arr[index] || {};
@@ -1553,7 +1604,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
     }
   };
 
-  const applyOutlinePassText = (text, approvedSeed) => {
+  const applyOutlinePassText = (text, approvedSeed, outlineExcluded = excluded, sourceResult = approvedSeed) => {
     const parsed = parseWizardJson(text);
     const outline = normalizeChapterOutlinePassResult(parsed, approvedSeed);
     const seedThreadNames = new Set((approvedSeed.plot_threads || []).map((thread) => normalizeSearchText(thread.title)));
@@ -1564,9 +1615,13 @@ export default function ProjectWizard({ onClose, onCreated }) {
         ...thread,
         reason: thread.reason || 'Dàn ý đề xuất tuyến truyện mới ngoài nền truyện đã duyệt.',
       }));
-    const mergedPlotThreads = existingOutlineThreads.length
-      ? mergeRecordsByName(approvedSeed.plot_threads, existingOutlineThreads, 'title')
+    const baseResult = sourceResult || approvedSeed;
+    const basePlotThreads = Array.isArray(baseResult.plot_threads)
+      ? baseResult.plot_threads
       : approvedSeed.plot_threads;
+    const mergedPlotThreads = existingOutlineThreads.length
+      ? mergeRecordsByName(basePlotThreads, existingOutlineThreads, 'title')
+      : basePlotThreads;
     const proposedEntities = {
       ...outline.proposed_entities,
       plot_threads: mergeRecordsByName(
@@ -1575,14 +1630,16 @@ export default function ProjectWizard({ onClose, onCreated }) {
         'title',
       ),
     };
-    setResult((prev) => normalizeWizardBlueprintResult({
-      ...(prev || approvedSeed),
+    const nextResult = {
+      ...baseResult,
       chapters: outline.chapters,
       plot_threads: mergedPlotThreads,
       proposed_entities: proposedEntities,
-    }, idea));
-    setOutlineSeedFingerprint(createSeedFingerprint(approvedSeed));
+    };
+    setResult(nextResult);
+    setOutlineSeedFingerprint(createSeedFingerprint(nextResult, outlineExcluded));
     setAcceptedProposals(new Set());
+    setCreationGuidance(null);
     setEditingKey(null);
   };
 
@@ -1602,6 +1659,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
     setStep(3);
     setIsGenerating(true);
     setError(null);
+    setCreationGuidance(null);
 
     sendStoryCreationRequest({
       groupKey: 'chapterOutlinePass',
@@ -1610,7 +1668,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
       onComplete: (text) => {
         setIsGenerating(false);
         try {
-          applyOutlinePassText(text, approvedSeed);
+          applyOutlinePassText(text, approvedSeed, outlineExcluded, seedInput);
           setStep(4);
         } catch (parseError) {
           console.error('[Wizard] Outline parse error:', parseError, '\nRaw:', text);
@@ -1729,7 +1787,7 @@ export default function ProjectWizard({ onClose, onCreated }) {
       onComplete: (text) => {
         setIsGenerating(false);
         try {
-          applyOutlinePassText(text, approvedSeed);
+          applyOutlinePassText(text, approvedSeed, excluded, result);
           setOutlineRevisionPrompt('');
           setStep(4);
         } catch (parseError) {
@@ -1797,10 +1855,34 @@ export default function ProjectWizard({ onClose, onCreated }) {
     });
   };
 
+  const moveToReviewTarget = (selector, focusSelector = '') => {
+    const revealTarget = () => {
+      const target = dialogRef.current?.querySelector(selector);
+      if (!target) return;
+      const prefersReducedMotion = typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      target.scrollIntoView?.({
+        behavior: prefersReducedMotion ? 'auto' : 'smooth',
+        block: 'center',
+      });
+      const focusTarget = focusSelector ? target.querySelector(focusSelector) : target;
+      focusTarget?.focus?.();
+    };
+
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(revealTarget);
+    } else {
+      revealTarget();
+    }
+  };
+
   const handleApprove = async () => {
     if (!result) return;
     if (isOutlineSeedStale) {
-      setError('Nền truyện đã thay đổi so với dàn ý hiện tại. Hãy cập nhật dàn ý trước khi tạo dự án.');
+      const message = 'Chưa thể tạo dự án: nền truyện đã thay đổi. Hãy cập nhật dàn ý trước khi tạo dự án.';
+      setError(message);
+      setCreationGuidance({ tone: 'danger', message });
+      moveToReviewTarget('[data-review-target="stale-outline"]');
       return;
     }
     const finalResult = mergeAcceptedProposals(result, acceptedProposals);
@@ -1819,13 +1901,44 @@ export default function ProjectWizard({ onClose, onCreated }) {
     ]);
 
     if (finalBlockers.length > 0) {
-      setError('Blueprint hiện tại còn lỗi chặn. Hãy sửa các mục đỏ trước khi tạo dự án.');
+      const pendingProposalIssue = finalBlockers.find((issue) => issue.code === 'outline-proposal-pending');
+      if (pendingProposalIssue) {
+        const group = PROPOSAL_GROUPS.find((item) => item.key === pendingProposalIssue.collectionKey);
+        const proposed = normalizeProposedEntitiesForUi(result.proposed_entities);
+        const proposalIndex = group
+          ? proposed[group.key].findIndex((item) => (
+            normalizeSearchText(getRecordName(item, group.nameField))
+            === normalizeSearchText(pendingProposalIssue.entityName)
+          ))
+          : -1;
+        const pendingProposalKey = group && proposalIndex >= 0
+          ? proposalKey(group.key, proposalIndex)
+          : '';
+        const pendingCount = Math.max(1, proposalReview.pending);
+        const message = `Chưa thể tạo dự án: còn ${pendingCount} đề xuất chưa duyệt. Hãy duyệt mục vừa được đưa tới rồi thử lại.`;
+        setError(null);
+        setCreationGuidance({ tone: 'warning', message });
+        moveToReviewTarget(
+          pendingProposalKey
+            ? `[data-proposal-key="${pendingProposalKey}"]`
+            : '.wizard-proposal-item:not(.wizard-proposal-item--accepted)',
+          '[data-review-action="approve-proposal"]',
+        );
+        return;
+      }
+
+      const remainingCount = finalBlockers.length - 1;
+      const message = `Chưa thể tạo dự án: còn ${finalBlockers.length} lỗi cần xử lý. ${finalBlockers[0].message}${remainingCount > 0 ? ` Và ${remainingCount} lỗi khác.` : ''}`;
+      setError(message);
+      setCreationGuidance({ tone: 'danger', message });
+      moveToReviewTarget('[data-review-issue="blocking"]');
       return;
     }
 
     setIsCreatingProject(true);
     setIsGenerating(true);
     setError(null);
+    setCreationGuidance(null);
 
     try {
       const wp = finalResult.world_profile || {};
@@ -2437,7 +2550,12 @@ export default function ProjectWizard({ onClose, onCreated }) {
         <h4><AlertCircle size={16} /> {title}</h4>
         <div className="wizard-warning-list">
           {issues.map((issue, index) => (
-            <div key={`${issue.code || 'issue'}-${index}`} className={`wizard-warning-item ${danger ? 'wizard-warning-item--danger' : ''}`}>
+            <div
+              key={`${issue.code || 'issue'}-${index}`}
+              className={`wizard-warning-item ${danger ? 'wizard-warning-item--danger' : ''}`}
+              data-review-issue={danger ? 'blocking' : undefined}
+              tabIndex={danger ? -1 : undefined}
+            >
               <AlertCircle size={14} />
               <span>{issue.message || issue}</span>
             </div>
@@ -2584,7 +2702,10 @@ export default function ProjectWizard({ onClose, onCreated }) {
     return (
       <div className="wizard-section wizard-proposals">
         <h4><Plus size={16} /> Đề xuất mới</h4>
-        <p className="wizard-section-note">Các mục này chưa thành canon. Chỉ những mục được duyệt mới được tạo vào dự án.</p>
+        <p className="wizard-section-note">
+          Các mục chưa duyệt sẽ không thành canon; mục đang được dàn ý sử dụng phải được duyệt trước khi tạo dự án.
+          <strong className="wizard-proposal-progress">Đã duyệt {proposalReview.accepted}/{proposalReview.total} đề xuất.</strong>
+        </p>
         {PROPOSAL_GROUPS.map((group) => {
           const Icon = group.icon;
           const items = proposed[group.key];
@@ -2597,7 +2718,11 @@ export default function ProjectWizard({ onClose, onCreated }) {
                   const key = proposalKey(group.key, index);
                   const accepted = acceptedProposals.has(key);
                   return (
-                    <div key={key} className={`wizard-item wizard-proposal-item ${accepted ? 'wizard-proposal-item--accepted' : ''}`}>
+                    <div
+                      key={key}
+                      className={`wizard-item wizard-proposal-item ${accepted ? 'wizard-proposal-item--accepted' : ''}`}
+                      data-proposal-key={key}
+                    >
                       <div className="wizard-item-content">
                         <strong>{getRecordName(item, group.nameField)}</strong>
                         {item.description && <p>{item.description}</p>}
@@ -2605,7 +2730,11 @@ export default function ProjectWizard({ onClose, onCreated }) {
                         {item.story_function && <p><strong>Vai trò:</strong> {item.story_function}</p>}
                         {item.reason && <p><strong>Lý do đề xuất:</strong> {item.reason}</p>}
                       </div>
-                      <button className={`btn btn-sm ${accepted ? 'btn-primary' : 'btn-ghost'}`} onClick={() => toggleProposal(key)}>
+                      <button
+                        className={`btn btn-sm ${accepted ? 'btn-primary' : 'btn-ghost'}`}
+                        data-review-action="approve-proposal"
+                        onClick={() => toggleProposal(key)}
+                      >
                         {accepted ? <><Check size={14} /> Đã duyệt</> : <><Plus size={14} /> Duyệt</>}
                       </button>
                     </div>
@@ -3097,7 +3226,12 @@ export default function ProjectWizard({ onClose, onCreated }) {
             <div className="wizard-scroll">
               {error && <div className="wizard-error"><AlertCircle size={14} /> {error}</div>}
               {isOutlineSeedStale && (
-                <div className="wizard-notice wizard-notice--warning" role="status">
+                <div
+                  className="wizard-notice wizard-notice--warning"
+                  role="status"
+                  tabIndex={-1}
+                  data-review-target="stale-outline"
+                >
                   <AlertCircle size={16} />
                   <span><strong>Nền truyện đã thay đổi.</strong> Dàn ý cũ vẫn được giữ và chỉ được thay thế khi bản cập nhật tạo thành công.</span>
                 </div>
@@ -3138,7 +3272,12 @@ export default function ProjectWizard({ onClose, onCreated }) {
             <div className="wizard-scroll">
               {error && <div className="wizard-error"><AlertCircle size={14} /> {error}</div>}
               {isOutlineSeedStale && (
-                <div className="wizard-notice wizard-notice--warning" role="status">
+                <div
+                  className="wizard-notice wizard-notice--warning"
+                  role="status"
+                  tabIndex={-1}
+                  data-review-target="stale-outline"
+                >
                   <AlertCircle size={16} />
                   <span>Dàn ý này thuộc nền truyện trước khi chỉnh sửa. Hãy cập nhật dàn ý trước khi tạo dự án.</span>
                 </div>
@@ -3162,9 +3301,30 @@ export default function ProjectWizard({ onClose, onCreated }) {
               )}
             </div>
             <div className="modal-actions">
+              <div
+                id="wizard-create-readiness"
+                className={`wizard-create-readiness wizard-create-readiness--${createReadiness.tone}`}
+                role="status"
+                aria-live="polite"
+              >
+                {createReadiness.tone === 'success' ? (
+                  <Check size={15} />
+                ) : createReadiness.tone === 'progress' ? (
+                  <Loader2 size={15} className="spin" />
+                ) : (
+                  <AlertCircle size={15} />
+                )}
+                <span>{createReadiness.message}</span>
+              </div>
               <button className="btn btn-ghost" onClick={() => setStep(2)}><ArrowLeft size={16} /> Sửa nền truyện</button>
               <button className="btn btn-ghost" onClick={() => requestOutline(result)}><RotateCcw size={16} /> Tạo lại dàn ý</button>
-              <button className="btn btn-primary" onClick={handleApprove} disabled={isGenerating || isOutlineSeedStale || blockingIssues.length > 0}>
+              <button
+                className="btn btn-primary wizard-create-button"
+                onClick={handleApprove}
+                disabled={isGenerating}
+                aria-describedby="wizard-create-readiness"
+                title={createReadiness.message}
+              >
                 {isGenerating ? (
                   <><Loader2 size={16} className="spin" /> Đang tạo...</>
                 ) : (

@@ -281,7 +281,13 @@ describe('phase10 project wizard safety', () => {
     await act(async () => {
       findButton(container, 'Xem dàn ý cũ').click();
     });
-    expect(findButton(container, 'Duyệt & tạo dự án').disabled).toBe(true);
+    const staleApproveButton = findButton(container, 'Duyệt & tạo dự án');
+    expect(staleApproveButton.disabled).toBe(false);
+    await act(async () => {
+      staleApproveButton.click();
+    });
+    expect(container.textContent).toContain('Hãy cập nhật dàn ý trước khi tạo dự án');
+    expect(projectState.createProject).not.toHaveBeenCalled();
 
     await act(async () => {
       findButton(container, 'Sửa nền truyện').click();
@@ -291,6 +297,111 @@ describe('phase10 project wizard safety', () => {
     });
     expect(findButton(container, 'Quay lại dàn ý hiện tại')).toBeTruthy();
     expect(container.textContent).not.toContain('Dàn ý cũ vẫn được giữ');
+  });
+
+  it('keeps a freshly generated outline current when it enriches an approved plot thread', async () => {
+    const outlineWithProposal = {
+      ...outlineResult,
+      chapters: [{
+        ...outlineResult.chapters[0],
+        primary_location: 'Tháp Canh',
+      }],
+      plot_threads: [{
+        ...seedResult.plot_threads[0],
+        description: 'Dàn ý làm rõ hướng truy tìm nguồn gốc bản đồ.',
+        anchor_chapters: ['Chương 1'],
+      }],
+      proposed_entities: {
+        ...outlineResult.proposed_entities,
+        locations: [{
+          name: 'Tháp Canh',
+          description: 'Nơi Lan phát hiện mình bị theo dõi.',
+          story_function: 'Địa điểm chính của Chương 1.',
+          reason: 'Dàn ý dùng Tháp Canh nhưng nền truyện chưa có địa điểm này.',
+        }],
+      },
+    };
+    aiService.send.mockImplementation(({ taskType, onComplete }) => {
+      onComplete(JSON.stringify(
+        taskType === 'chapter_outline_pass' ? outlineWithProposal : seedResult,
+      ));
+      return { abort: vi.fn() };
+    });
+
+    await renderWizard();
+    await generateSeedAndOutline();
+
+    expect(container.textContent).not.toContain('Dàn ý này thuộc nền truyện trước khi chỉnh sửa');
+    expect(container.querySelector('.wizard-create-readiness')?.textContent).toContain('Còn 1 đề xuất cần duyệt');
+    const blockedApproveButton = findButton(container, 'Duyệt & tạo dự án');
+    expect(blockedApproveButton.disabled).toBe(false);
+    await act(async () => {
+      blockedApproveButton.click();
+      await Promise.resolve();
+    });
+    expect(container.textContent).toContain('còn 1 đề xuất chưa duyệt');
+    expect(document.activeElement?.textContent).toContain('Duyệt');
+    expect(projectState.createProject).not.toHaveBeenCalled();
+    await act(async () => {
+      findButton(container, 'Duyệt').click();
+    });
+    expect(container.querySelector('.wizard-create-readiness')?.textContent).toContain('Sẵn sàng tạo dự án');
+    expect(findButton(container, 'Duyệt & tạo dự án').disabled).toBe(false);
+  });
+
+  it('preserves plot-thread exclusions without shifting the approved thread index', async () => {
+    const seedWithTwoThreads = {
+      ...seedResult,
+      plot_threads: [
+        {
+          title: 'Tuyến sẽ loại',
+          type: 'subplot',
+          description: 'Không đưa vào dự án.',
+          state: 'active',
+          opening_window: 'Chương 1',
+          anchor_chapters: ['Chương 1'],
+        },
+        seedResult.plot_threads[0],
+      ],
+    };
+    aiService.send.mockImplementation(({ taskType, onComplete }) => {
+      onComplete(JSON.stringify(
+        taskType === 'chapter_outline_pass' ? outlineResult : seedWithTwoThreads,
+      ));
+      return { abort: vi.fn() };
+    });
+
+    await renderWizard();
+    await enterIdea();
+    await act(async () => {
+      findButton(container, 'Tạo nền truyện').click();
+    });
+    const plotThreadSection = Array.from(container.querySelectorAll('.wizard-section'))
+      .find((section) => section.querySelector('h4')?.textContent.includes('Tuyến truyện'));
+    await act(async () => {
+      plotThreadSection.querySelector('button[title="Loại khỏi dự án"]').click();
+    });
+    await act(async () => {
+      findButton(container, 'Tạo dàn ý').click();
+    });
+
+    expect(container.textContent).not.toContain('Dàn ý này thuộc nền truyện trước khi chỉnh sửa');
+    const approveButton = findButton(container, 'Duyệt & tạo dự án');
+    expect(approveButton.disabled).toBe(false);
+    await act(async () => {
+      approveButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(plotState.createPlotThread).toHaveBeenCalledTimes(1);
+    expect(plotState.createPlotThread).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Bí mật bản đồ',
+    }));
+    expect(projectState.createChapter).toHaveBeenCalledWith(
+      7,
+      'Chương 1',
+      expect.objectContaining({ thread_titles: ['Bí mật bản đồ'] }),
+    );
   });
 
   it('keeps the previous seed when regenerating the seed fails', async () => {
@@ -369,6 +480,39 @@ describe('phase10 project wizard safety', () => {
     expect(findButton(container, 'Duyệt & tạo dự án')).toBeTruthy();
     expect(findButton(container, 'Duyệt & tạo dự án').disabled).toBe(false);
     expect(container.textContent).not.toContain('Dàn ý này thuộc nền truyện trước khi chỉnh sửa');
+  });
+
+  it('applies an automatically regenerated outline to the latest seed result', async () => {
+    let seedCallCount = 0;
+    aiService.send.mockImplementation(({ taskType, onComplete }) => {
+      if (taskType === 'chapter_outline_pass') {
+        onComplete(JSON.stringify(outlineResult));
+      } else {
+        seedCallCount += 1;
+        onComplete(JSON.stringify(seedCallCount === 1
+          ? seedResult
+          : { ...seedResult, title: 'Bản Đồ Mới' }));
+      }
+      return { abort: vi.fn() };
+    });
+    await renderWizard();
+    await generateSeedAndOutline();
+    await act(async () => {
+      findButton(container, 'Sửa nền truyện').click();
+    });
+    await act(async () => {
+      findButton(container, 'Quay lại').click();
+    });
+    await act(async () => {
+      container.querySelector('.wizard-auto-toggle input').click();
+      findButton(container, 'Tạo lại nền truyện').click();
+    });
+
+    expect(findButton(container, 'Duyệt & tạo dự án')).toBeTruthy();
+    await act(async () => {
+      findButton(container, 'Sửa nền truyện').click();
+    });
+    expect(container.querySelector('.wizard-title-input').value).toBe('Bản Đồ Mới');
   });
 
   it('updates the textarea immediately and writes only after the autosave delay', async () => {
