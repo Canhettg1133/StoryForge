@@ -19,6 +19,7 @@
     "dev:zalo": "npm run zalo:dev",
     "analysis:eval:live": "node scripts/analysis-live-eval.mjs",
     "test": "vitest run",
+    "test:core": "vitest run src/tests/utils/characterIdentity.test.js src/tests/phases/phase10-projectContentModeStore.test.js src/tests/phases/phase10-canonEngine.test.js src/tests/phases/phase10-promptBuilder.test.js src/tests/access/accessControl.test.js src/tests/security/securityHeadersStatic.test.js",
     "test:cloudflare-runtime": "vitest run --config vitest.cloudflare.config.js",
     "test:admin": "vitest run src/tests/phases/phase12-adminAccess.test.js src/tests/phases/phase12-adminApiWorker.test.js",
     "test:phase6b": "vitest run src/tests/phases/phase6b-incidentFirst.test.js",

@@ -1,0 +1,47 @@
+name: Báo lỗi
+description: Báo một lỗi có thể tái hiện trong StoryForge
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Cảm ơn bạn đã báo lỗi. Không đăng API key, token, bản thảo riêng tư hoặc dữ liệu người dùng.
+  - type: checkboxes
+    attributes:
+      label: Kiểm tra trước
+      options:
+        - label: Tôi đã tìm issue hiện có và chưa thấy lỗi trùng.
+          required: true
+        - label: Báo cáo này không chứa secret hoặc dữ liệu cá nhân.
+          required: true
+  - type: textarea
+    attributes:
+      label: Lỗi đang xảy ra
+      description: Mô tả ngắn gọn điều bạn quan sát được.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Các bước tái hiện
+      description: Liệt kê dữ liệu mẫu an toàn và các bước tối thiểu để gặp lỗi.
+      placeholder: |
+        1. Mở...
+        2. Chọn...
+        3. Quan sát...
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Kết quả mong đợi
+    validations:
+      required: true
+  - type: input
+    attributes:
+      label: Môi trường
+      description: Hệ điều hành, trình duyệt và phiên bản StoryForge hoặc commit.
+      placeholder: Windows 11, Chrome 128, v0.1.0
+  - type: textarea
+    attributes:
+      label: Thông tin bổ sung
+      description: Ảnh chụp hoặc log đã xóa toàn bộ dữ liệu nhạy cảm.

@@ -1,0 +1,31 @@
+name: Đề xuất tính năng
+description: Đề xuất một cải tiến có vấn đề sử dụng rõ ràng
+title: "[Feature] "
+labels:
+  - enhancement
+body:
+  - type: checkboxes
+    attributes:
+      label: Kiểm tra trước
+      options:
+        - label: Tôi đã tìm issue hiện có và chưa thấy đề xuất trùng.
+          required: true
+  - type: textarea
+    attributes:
+      label: Vấn đề cần giải quyết
+      description: Ai gặp vấn đề này và trong workflow nào?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Giải pháp đề xuất
+      description: Mô tả hành vi mong muốn, không chỉ mô tả giao diện.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Phương án khác đã cân nhắc
+  - type: textarea
+    attributes:
+      label: Ngữ cảnh bổ sung
+      description: Mockup, ví dụ hoặc tài liệu liên quan đã loại bỏ dữ liệu riêng tư.

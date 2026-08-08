@@ -1,5 +1,9 @@
 # StoryForge AI
 
+[![Core CI](https://github.com/Canhettg1133/StoryForge/actions/workflows/ci.yml/badge.svg)](https://github.com/Canhettg1133/StoryForge/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/Canhettg1133/StoryForge)](https://github.com/Canhettg1133/StoryForge/releases)
+[![Live app](https://img.shields.io/badge/live-story--forge--virid.vercel.app-111827)](https://story-forge-virid.vercel.app)
+
 StoryForge AI là workspace viết truyện dài dành cho tác giả muốn dùng AI nhưng vẫn giữ được canon, mạch truyện, giọng văn và trạng thái nhân vật qua nhiều chương. Dự án không chỉ là một editor có thêm khung chat, mà là một hệ thống quản lý truyện: từ lên ý tưởng, dựng Story Bible, quản lý nhân vật, lập outline, viết chương, kiểm tra canon, phân tích bản thảo, dịch truyện và đồng bộ dữ liệu.
 
 Điểm khác biệt của StoryForge nằm ở cách app đặt AI vào trong cấu trúc truyện có sẵn. AI không được "generate mù"; mỗi tác vụ đều được nạp đúng bối cảnh dự án, hồ sơ nhân vật, outline chương, live canon, giới hạn thể loại, style guide và những điều chưa được phép xảy ra.
@@ -258,6 +262,7 @@ Các nguyên tắc an toàn:
 npm run dev
 npm run build
 npm run preview
+npm run test:core
 npm test
 npm run db:start
 npm run db:stop
@@ -266,6 +271,12 @@ npm run jobs:server
 ```
 
 ## Kiểm thử
+
+Chạy nhóm test cốt lõi dùng trong CI:
+
+```bash
+npm run test:core
+```
 
 Chạy toàn bộ test:
 
@@ -289,6 +300,11 @@ StoryForge đang là sản phẩm đang phát triển mạnh, đã có nhiều m
 - AI flow: Prompt Manager, Model Router, Project Chat, Arc Generation, batch outline/draft.
 - Advanced lab flow: Lab Lite, Corpus Lab, Analysis Viewer, backend jobs.
 - Sync flow: Cloud Sync tùy chọn.
+
+## Đóng góp và bảo mật
+
+- Xem [CONTRIBUTING.md](./CONTRIBUTING.md) trước khi gửi pull request.
+- Báo cáo lỗ hổng theo hướng dẫn riêng tư trong [SECURITY.md](./SECURITY.md), không mở issue công khai.
 
 ## Tầm nhìn
 
