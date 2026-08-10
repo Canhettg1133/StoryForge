@@ -36,9 +36,7 @@ import {
   getCloudSyncPreferences,
   importCloudBackups,
   isCloudAuthConfigured,
-  listChatBackups,
-  listProjectBackups,
-  listPromptBackups,
+  listCloudBackups,
   runAutoSyncCycle,
   restoreChatBackup,
   restoreProjectBackup,
@@ -277,14 +275,10 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
 
     setLoadingCloud(true);
     try {
-      const [nextProjects, nextChats, nextPrompts] = await Promise.all([
-        listProjectBackups(),
-        listChatBackups(),
-        listPromptBackups(),
-      ]);
-      setProjectItems(nextProjects);
-      setChatItems(nextChats);
-      setPromptItems(nextPrompts);
+      const items = await listCloudBackups();
+      setProjectItems(items.filter((item) => item.scope === 'project'));
+      setChatItems(items.filter((item) => item.scope === 'chat'));
+      setPromptItems(items.filter((item) => item.scope === 'prompt_bundle'));
       await refreshSyncStatus();
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));
@@ -476,10 +470,12 @@ export function CloudSyncWorkspace({ standalone = false, compact = false }) {
       const result = await importCloudBackups(file);
       await refreshCloud();
       showMessage(
-        'success',
-        result.skippedCount > 0
-          ? `Đã import ${result.importedCount} snapshot, bỏ qua ${result.skippedCount} snapshot cloud mới hơn.`
-          : `Đã import ${result.importedCount} snapshot cloud.`,
+        result.failedCount > 0 ? 'error' : 'success',
+        result.failedCount > 0
+          ? `Đã import ${result.importedCount} snapshot; ${result.failedCount} snapshot lỗi và ${result.skippedCount} snapshot bị bỏ qua.`
+          : result.skippedCount > 0
+            ? `Đã import ${result.importedCount} snapshot, bỏ qua ${result.skippedCount} snapshot cloud mới hơn.`
+            : `Đã import ${result.importedCount} snapshot cloud.`,
       );
     } catch (error) {
       showMessage('error', toVietnameseErrorMessage(error, 'Không thể xử lý Cloud Sync.'));

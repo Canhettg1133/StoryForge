@@ -18,9 +18,13 @@
     "zalo:dev": "node tools/zalo-local-server/server.mjs --open",
     "dev:zalo": "npm run zalo:dev",
     "analysis:eval:live": "node scripts/analysis-live-eval.mjs",
+    "migrate:cloud-sync-r2": "node scripts/cloud-sync-r2-backfill.mjs",
+    "reconcile:cloud-sync-r2": "node scripts/cloud-sync-r2-reconcile.mjs",
+    "smoke:cloud-sync-r2": "node scripts/cloud-sync-http-smoke.mjs",
     "test": "vitest run",
     "test:core": "vitest run src/tests/utils/characterIdentity.test.js src/tests/phases/phase10-projectContentModeStore.test.js src/tests/phases/phase10-canonEngine.test.js src/tests/phases/phase10-promptBuilder.test.js src/tests/access/accessControl.test.js src/tests/security/securityHeadersStatic.test.js",
     "test:cloudflare-runtime": "vitest run --config vitest.cloudflare.config.js",
+    "test:cloud-sync-postgres": "node scripts/cloud-sync-postgres-integration.mjs",
     "test:admin": "vitest run src/tests/phases/phase12-adminAccess.test.js src/tests/phases/phase12-adminApiWorker.test.js",
     "test:phase6b": "vitest run src/tests/phases/phase6b-incidentFirst.test.js",
     "test:phase6d": "vitest run src/tests/phases/phase6d-analysisV2.test.js",
@@ -42,7 +46,8 @@
     "deploy:cloudflare:production": "node scripts/cloudflare-command.mjs deploy production",
     "worker:admin:dry-run": "npx wrangler deploy --config apps/admin-api-worker/wrangler.toml --dry-run",
     "worker:relay:dry-run": "npx wrangler deploy --config relay-worker/wrangler.toml --dry-run",
-    "worker:story-mirror:dry-run": "npx wrangler deploy --config apps/story-mirror-worker/wrangler.toml --dry-run"
+    "worker:story-mirror:dry-run": "npx wrangler deploy --config apps/story-mirror-worker/wrangler.toml --dry-run",
+    "worker:cloud-sync:dry-run": "npx wrangler deploy --config apps/cloud-sync-worker/wrangler.toml --dry-run"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.3",
@@ -60,6 +65,7 @@
     "express": "^5.2.1",
     "fast-xml-parser": "^5.5.10",
     "file-saver": "^2.0.5",
+    "jose": "^6.2.8",
     "jszip": "^3.10.1",
     "linkify-it": "^5.0.2",
     "lucide-react": "^0.469.0",
@@ -80,6 +86,7 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
     "@cloudflare/vite-plugin": "1.45.0",
     "@cloudflare/vitest-pool-workers": "0.18.5",
     "@vitejs/plugin-react": "^4.3.0",

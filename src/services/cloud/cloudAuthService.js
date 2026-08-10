@@ -119,6 +119,19 @@ export async function getSession() {
   return data?.session || null;
 }
 
+export async function getCloudAccessToken({ refresh = false } = {}) {
+  ensureConfigured();
+  const client = getSupabaseClient();
+  if (refresh) {
+    const { data, error } = await client.auth.refreshSession();
+    if (error) throw error;
+    return data?.session?.access_token || '';
+  }
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  return data?.session?.access_token || '';
+}
+
 export async function signInWithGoogle(options = {}) {
   ensureConfigured();
   const client = getSupabaseClient();
@@ -162,6 +175,7 @@ export function isCloudAuthConfigured() {
 
 export default {
   getSession,
+  getCloudAccessToken,
   signInWithGoogle,
   signOut,
   subscribe,

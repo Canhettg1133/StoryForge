@@ -18,8 +18,15 @@ import {
   STORY_CREATION_PROMPT_GROUPS,
   markStoryCreationSettingsSynced,
 } from '../ai/storyCreationSettings.js';
-import { getSupabaseClient, getSupabaseConfigError, isSupabaseConfigured } from './supabaseClient.js';
+import { getSupabaseConfigError, isSupabaseConfigured } from './supabaseClient.js';
 import { getSession } from './cloudAuthService.js';
+import {
+  deleteCloudSnapshot,
+  getCloudSnapshot,
+  listCloudSnapshotMetadata,
+  listCloudSnapshotsWithPayload,
+  putCloudSnapshot,
+} from './cloudSnapshotStore.js';
 
 const PROJECT_SCOPE = 'project';
 const CHAT_SCOPE = 'chat';
@@ -302,187 +309,99 @@ function mapSnapshotRow(row) {
   return {
     id: row.id,
     scope: row.scope,
-    itemSlug: row.item_slug,
-    itemTitle: row.item_title,
-    payloadText: row.payload_text,
-    payloadVersion: row.payload_version,
-    sourceUpdatedAt: row.source_updated_at,
-    sizeBytes: Number(row.size_bytes || 0),
+    itemSlug: row.itemSlug ?? row.item_slug,
+    itemTitle: row.itemTitle ?? row.item_title,
+    payloadText: row.payloadText ?? row.payload_text,
+    payloadVersion: row.payloadVersion ?? row.payload_version,
+    sourceUpdatedAt: row.sourceUpdatedAt ?? row.source_updated_at,
+    sizeBytes: Number(row.sizeBytes ?? row.size_bytes ?? 0),
     metadata: row.metadata || {},
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    payloadSha256: row.payloadSha256 ?? row.payload_sha256 ?? null,
+    revisionId: row.revisionId ?? row.revision_id ?? null,
+    createdAt: row.createdAt ?? row.created_at,
+    updatedAt: row.updatedAt ?? row.updated_at,
+    storageBackend: row.storageBackend || 'legacy',
   };
 }
 
-async function getSnapshotRow(scope, itemSlug) {
-  const user = await requireUser();
-  const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('cloud_snapshots')
-    .select(`
-      id,
-      scope,
-      item_slug,
-      item_title,
-      payload_text,
-      payload_version,
-      source_updated_at,
-      size_bytes,
-      metadata,
-      created_at,
-      updated_at
-    `)
-    .eq('user_id', user.id)
-    .eq('scope', scope)
-    .eq('item_slug', itemSlug)
-    .maybeSingle();
-
-  if (error) throw error;
-  if (!data) {
-    throw new Error('Không tìm thấy snapshot cloud đã chọn.');
-  }
-
-  return data;
+async function getSnapshotRow(scope, itemSlug, knownItem = null) {
+  return getCloudSnapshot(scope, itemSlug, knownItem);
 }
 
 async function listBackups(scope) {
-  const user = await requireUser();
-  const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('cloud_snapshots')
-    .select(`
-      id,
-      scope,
-      item_slug,
-      item_title,
-      payload_version,
-      source_updated_at,
-      size_bytes,
-      metadata,
-      created_at,
-      updated_at
-    `)
-    .eq('user_id', user.id)
-    .eq('scope', scope)
-    .order('updated_at', { ascending: false });
-
-  if (error) throw error;
-  return Array.isArray(data) ? data.map(mapSnapshotRow) : [];
+  const items = await listCloudSnapshotMetadata();
+  return items.filter((item) => item.scope === scope).map(mapSnapshotRow);
 }
 
 async function listAllBackupsWithPayload() {
-  const user = await requireUser();
-  const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('cloud_snapshots')
-    .select(`
-      id,
-      scope,
-      item_slug,
-      item_title,
-      payload_text,
-      payload_version,
-      source_updated_at,
-      size_bytes,
-      metadata,
-      created_at,
-      updated_at
-    `)
-    .eq('user_id', user.id)
-    .order('scope', { ascending: true })
-    .order('updated_at', { ascending: false });
-
-  if (error) throw error;
-  return Array.isArray(data) ? data.map(mapSnapshotRow) : [];
+  const items = await listCloudSnapshotsWithPayload();
+  return items.map(mapSnapshotRow);
 }
 
 async function listAllBackupsMetadata() {
-  const user = await requireUser();
-  const client = getSupabaseClient();
-  const { data, error } = await client
-    .from('cloud_snapshots')
-    .select(`
-      id,
-      scope,
-      item_slug,
-      item_title,
-      payload_version,
-      source_updated_at,
-      size_bytes,
-      metadata,
-      created_at,
-      updated_at
-    `)
-    .eq('user_id', user.id)
-    .order('scope', { ascending: true })
-    .order('updated_at', { ascending: false });
-
-  if (error) throw error;
-  return Array.isArray(data) ? data.map(mapSnapshotRow) : [];
+  const items = await listCloudSnapshotMetadata();
+  return items.map(mapSnapshotRow);
 }
 
 function mapCloudWriteError(error) {
   const message = String(error?.message || '').toLowerCase();
-  if (message.includes('cloud_snapshot_quota') || message.includes('snapshot quota')) {
+  if (['QUOTA_EXCEEDED', 'CLOUD_SNAPSHOT_QUOTA_EXCEEDED'].includes(error?.code)
+      || message.includes('cloud_snapshot_quota') || message.includes('snapshot quota')) {
     return makeCloudLimitError(
       'CLOUD_SNAPSHOT_QUOTA_EXCEEDED',
       'Dung lượng Cloud Sync đã đạt giới hạn 256 MiB hoặc 200 snapshot. Hãy xóa bớt snapshot rồi thử lại.',
     );
   }
+  if (error?.code === 'REVISION_CONFLICT') {
+    return makeCloudLimitError(
+      'CLOUD_SNAPSHOT_REVISION_CONFLICT',
+      'Snapshot cloud vừa thay đổi ở nơi khác. Hãy tải lại danh sách trước khi đồng bộ.',
+    );
+  }
+  if (error?.code === 'PENDING_UPLOAD_LIMIT') {
+    return makeCloudLimitError(
+      'CLOUD_SNAPSHOT_UPLOAD_BUSY',
+      'Đang có quá nhiều lượt tải Cloud Sync chưa hoàn tất. Hãy chờ một lúc rồi thử lại.',
+    );
+  }
   return error;
 }
 
-async function upsertSnapshot({ scope, itemSlug, itemTitle, payloadText, payloadVersion = 1, sourceUpdatedAt, metadata = {} }) {
+async function upsertSnapshot({
+  scope,
+  itemSlug,
+  itemTitle,
+  payloadText,
+  payloadVersion = 1,
+  sourceUpdatedAt,
+  metadata = {},
+  expectedRevisionId,
+}) {
   const validated = validateCloudSnapshotInput({ itemSlug, itemTitle, payloadText, metadata });
-  const user = await requireUser();
-  const client = getSupabaseClient();
-  const row = {
-    user_id: user.id,
+  const input = {
     scope,
-    item_slug: validated.itemSlug,
-    item_title: validated.itemTitle,
-    payload_text: validated.payloadText,
-    payload_version: payloadVersion,
-    source_updated_at: Number(sourceUpdatedAt || Date.now()),
-    size_bytes: validated.sizeBytes,
+    itemSlug: validated.itemSlug,
+    itemTitle: validated.itemTitle,
+    payloadText: validated.payloadText,
+    payloadVersion,
+    sourceUpdatedAt: Number(sourceUpdatedAt || Date.now()),
+    sizeBytes: validated.sizeBytes,
     metadata: validated.metadata,
-    updated_at: new Date().toISOString(),
   };
-
-  const { data, error } = await client
-    .from('cloud_snapshots')
-    .upsert(row, {
-      onConflict: 'user_id,scope,item_slug',
-    })
-    .select(`
-      id,
-      scope,
-      item_slug,
-      item_title,
-      payload_version,
-      source_updated_at,
-      size_bytes,
-      metadata,
-      created_at,
-      updated_at
-    `)
-    .single();
-
-  if (error) throw mapCloudWriteError(error);
-  return mapSnapshotRow(data);
+  if (expectedRevisionId !== undefined) input.expectedRevisionId = expectedRevisionId;
+  try {
+    return mapSnapshotRow(await putCloudSnapshot(input));
+  } catch (error) {
+    throw mapCloudWriteError(error);
+  }
 }
 
 async function deleteBackup(scope, itemSlug) {
-  const user = await requireUser();
-  const client = getSupabaseClient();
-  const { error } = await client
-    .from('cloud_snapshots')
-    .delete()
-    .eq('user_id', user.id)
-    .eq('scope', scope)
-    .eq('item_slug', itemSlug);
+  return deleteCloudSnapshot(scope, itemSlug);
+}
 
-  if (error) throw error;
+export async function listCloudBackups() {
+  return listAllBackupsMetadata();
 }
 
 export async function listProjectBackups() {
@@ -557,6 +476,9 @@ export async function backupProject(project, options = {}) {
       warningCount: Array.isArray(snapshot._warnings) ? snapshot._warnings.length : 0,
       writerVersion: CLOUD_SNAPSHOT_V2_ENABLED ? 2 : 1,
     },
+    ...(cloudItem?.storageBackend === 'r2'
+      ? { expectedRevisionId: cloudItem.revisionId }
+      : {}),
   });
 
   await db.projects.update(freshProject.id, {
@@ -578,7 +500,7 @@ export async function restoreProjectBackup(itemSlug, options = {}) {
   const normalizedTargetProjectId = Number(options.targetProjectId);
   const user = await requireUser();
   const snapshotRow = await getSnapshotRow(PROJECT_SCOPE, itemSlug);
-  const payloadText = String(snapshotRow.payload_text || '').trim();
+  const payloadText = String(snapshotRow.payloadText || '').trim();
 
   if (!payloadText) {
     throw new Error('Snapshot cloud không có dữ liệu để khôi phục.');
@@ -595,9 +517,9 @@ export async function restoreProjectBackup(itemSlug, options = {}) {
     legacyChatBackups = chatBackups.filter((item) => !String(item?.metadata?.projectCloudSlug || '').trim());
     const chatPayloads = [];
     for (const chatBackup of matchedChatBackups) {
-      const chatRow = await getSnapshotRow(CHAT_SCOPE, chatBackup.itemSlug);
+      const chatRow = await getSnapshotRow(CHAT_SCOPE, chatBackup.itemSlug, chatBackup);
       chatPayloads.push(namespaceChatSnapshot(
-        validateChatSnapshotPayload(String(chatRow.payload_text || '')),
+        validateChatSnapshotPayload(String(chatRow.payloadText || '')),
         chatBackup.itemSlug,
       ));
     }
@@ -639,7 +561,7 @@ export async function restoreProjectBackup(itemSlug, options = {}) {
     await db.projects.update(newProjectId, {
       cloud_project_slug: itemSlug,
       cloud_last_synced_at: Date.now(),
-      cloud_last_server_updated_at: snapshotRow.updated_at,
+      cloud_last_server_updated_at: snapshotRow.updatedAt,
       cloud_owner_user_id: user.id,
       cloud_pending_local_fork_until_change: 0,
     });
@@ -675,7 +597,7 @@ export async function listChatBackups() {
   return listBackups(CHAT_SCOPE);
 }
 
-export async function backupChatThread(thread) {
+export async function backupChatThread(thread, options = {}) {
   if (!thread?.id) {
     throw new Error('Không tìm thấy thread chat local để backup.');
   }
@@ -696,6 +618,9 @@ export async function backupChatThread(thread) {
       chatMode: String(thread.chat_mode || 'free'),
       messageCount: Array.isArray(parsed.messages) ? parsed.messages.length : 0,
     },
+    ...(options.cloudItem?.storageBackend === 'r2'
+      ? { expectedRevisionId: options.cloudItem.revisionId }
+      : {}),
   });
 
   await db.ai_chat_threads.update(thread.id, {
@@ -711,7 +636,7 @@ export async function backupChatThread(thread) {
 export async function restoreChatBackup(itemSlug) {
   const user = await requireUser();
   const snapshotRow = await getSnapshotRow(CHAT_SCOPE, itemSlug);
-  const payloadText = String(snapshotRow.payload_text || '').trim();
+  const payloadText = String(snapshotRow.payloadText || '').trim();
 
   if (!payloadText) {
     throw new Error('Snapshot chat cloud không có dữ liệu để khôi phục.');
@@ -725,7 +650,7 @@ export async function restoreChatBackup(itemSlug) {
   await db.ai_chat_threads.update(result.newThreadId, {
     cloud_chat_slug: itemSlug,
     cloud_last_synced_at: Date.now(),
-    cloud_last_server_updated_at: snapshotRow.updated_at,
+    cloud_last_server_updated_at: snapshotRow.updatedAt,
     cloud_owner_user_id: user.id,
   });
 
@@ -745,7 +670,7 @@ export async function listPromptBackups() {
   return listBackups(PROMPT_BUNDLE_SCOPE);
 }
 
-export async function backupPromptBundle() {
+export async function backupPromptBundle(options = {}) {
   const user = await requireUser();
   const payloadText = await exportPromptBundle();
   const validated = validatePromptBundlePayload(payloadText);
@@ -761,6 +686,9 @@ export async function backupPromptBundle() {
       exportedAt: validated._exported_at || null,
       customizedGroupCount,
     },
+    ...(options.cloudItem?.storageBackend === 'r2'
+      ? { expectedRevisionId: options.cloudItem.revisionId }
+      : {}),
   });
   markStoryCreationSettingsSynced(Date.now(), {
     serverUpdatedAt: backup.updatedAt,
@@ -772,7 +700,7 @@ export async function backupPromptBundle() {
 export async function restorePromptBackup(itemSlug = PROMPT_BUNDLE_SLUG) {
   const user = await requireUser();
   const snapshotRow = await getSnapshotRow(PROMPT_BUNDLE_SCOPE, itemSlug);
-  const payloadText = String(snapshotRow.payload_text || '').trim();
+  const payloadText = String(snapshotRow.payloadText || '').trim();
 
   if (!payloadText) {
     throw new Error('Snapshot prompt cloud không có dữ liệu để khôi phục.');
@@ -781,7 +709,7 @@ export async function restorePromptBackup(itemSlug = PROMPT_BUNDLE_SLUG) {
   validatePromptBundlePayload(payloadText);
   const settings = importPromptBundle(payloadText);
   markStoryCreationSettingsSynced(Date.now(), {
-    serverUpdatedAt: snapshotRow.updated_at,
+    serverUpdatedAt: snapshotRow.updatedAt,
     ownerUserId: user.id,
   });
 
@@ -795,28 +723,34 @@ export async function deletePromptBackup(itemSlug = PROMPT_BUNDLE_SLUG) {
   return deleteBackup(PROMPT_BUNDLE_SCOPE, itemSlug);
 }
 
-function buildCloudExportManifest(items) {
+export function buildCloudExportManifest(items, { includePayload = true } = {}) {
   return {
-    _storyforge_version: 1,
+    _storyforge_version: 2,
     _cloud_export_scope: 'all_snapshots',
     _exported_at: new Date().toISOString(),
     snapshot_count: items.length,
-    snapshots: items.map((item) => ({
-      scope: item.scope,
-      item_slug: item.itemSlug,
-      item_title: item.itemTitle,
-      payload_text: item.payloadText,
-      payload_version: item.payloadVersion,
-      source_updated_at: item.sourceUpdatedAt,
-      size_bytes: item.sizeBytes,
-      metadata: item.metadata || {},
-      created_at: item.createdAt,
-      updated_at: item.updatedAt,
-    })),
+    snapshots: items.map((item) => {
+      const entry = {
+        id: item.id,
+        scope: item.scope,
+        item_slug: item.itemSlug,
+        item_title: item.itemTitle,
+        payload_path: `snapshots/${item.id}.json`,
+        payload_sha256: item.payloadSha256 || null,
+        payload_version: item.payloadVersion,
+        source_updated_at: item.sourceUpdatedAt,
+        size_bytes: item.sizeBytes,
+        metadata: item.metadata || {},
+        created_at: item.createdAt,
+        updated_at: item.updatedAt,
+      };
+      if (includePayload) entry.payload_text = item.payloadText;
+      return entry;
+    }),
   };
 }
 
-function validateCloudExportManifest(manifest) {
+export function validateCloudExportManifest(manifest) {
   if (!manifest?._cloud_export_scope || manifest._cloud_export_scope !== 'all_snapshots' || !Array.isArray(manifest?.snapshots)) {
     throw new Error('File import cloud không đúng định dạng StoryForge.');
   }
@@ -838,6 +772,25 @@ function validateCloudExportManifest(manifest) {
     .filter((item) => item.itemSlug && item.payloadText);
 }
 
+async function verifyCloudImportChecksums(manifest) {
+  if (Number(manifest?._storyforge_version || 1) < 2) return;
+  for (const item of Array.isArray(manifest?.snapshots) ? manifest.snapshots : []) {
+    const expected = String(item?.payload_sha256 || '').trim().toLowerCase();
+    if (!expected) continue;
+    if (!/^[0-9a-f]{64}$/u.test(expected)) {
+      throw new Error('File import cloud có checksum snapshot không hợp lệ.');
+    }
+    const bytes = new TextEncoder().encode(String(item?.payload_text || ''));
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const actual = [...new Uint8Array(digest)]
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('');
+    if (actual !== expected) {
+      throw new Error('File import cloud có snapshot sai checksum.');
+    }
+  }
+}
+
 function triggerDownload(blob, filename) {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return;
@@ -853,9 +806,9 @@ function triggerDownload(blob, filename) {
 
 export async function exportCloudBackups(format = 'zip') {
   const items = await listAllBackupsWithPayload();
-  const manifest = buildCloudExportManifest(items);
 
   if (format === 'json') {
+    const manifest = buildCloudExportManifest(items, { includePayload: true });
     const json = JSON.stringify(manifest, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     triggerDownload(blob, `storyforge-cloud-backups-${Date.now()}.json`);
@@ -863,16 +816,17 @@ export async function exportCloudBackups(format = 'zip') {
   }
 
   const zip = new JSZip();
+  const manifest = buildCloudExportManifest(items, { includePayload: false });
   zip.file('manifest.json', JSON.stringify(manifest, null, 2));
   items.forEach((item) => {
-    zip.file(`snapshots/${item.scope}-${item.itemSlug}.json`, item.payloadText);
+    zip.file(`snapshots/${item.id}.json`, item.payloadText);
   });
   const blob = await zip.generateAsync({ type: 'blob' });
   triggerDownload(blob, `storyforge-cloud-backups-${Date.now()}.zip`);
   return { count: items.length, format: 'zip' };
 }
 
-async function readCloudImportManifestFromFile(file) {
+export async function readCloudImportManifestFromFile(file) {
   const lowerName = String(file?.name || '').toLowerCase();
   if (Number(file?.size || 0) > CLOUD_IMPORT_LIMITS.totalPayloadBytes) {
     throw makeCloudLimitError('CLOUD_IMPORT_FILE_TOO_LARGE', 'File import cloud vượt giới hạn 512 MiB.');
@@ -889,11 +843,55 @@ async function readCloudImportManifestFromFile(file) {
       throw makeCloudLimitError('CLOUD_IMPORT_FILE_TOO_LARGE', 'manifest.json vượt giới hạn 512 MiB.');
     }
     const text = await manifestEntry.async('string');
-    return JSON.parse(text);
+    const manifest = JSON.parse(text);
+    if (Array.isArray(manifest?.snapshots) && manifest.snapshots.length > CLOUD_IMPORT_LIMITS.itemCount) {
+      throw makeCloudLimitError(
+        'CLOUD_IMPORT_TOO_MANY_ITEMS',
+        `File import cloud vượt giới hạn ${CLOUD_IMPORT_LIMITS.itemCount} snapshot.`,
+      );
+    }
+    if (Number(manifest?._storyforge_version || 1) >= 2) {
+      let totalPayloadBytes = 0;
+      const payloadPaths = new Set();
+      for (const item of Array.isArray(manifest?.snapshots) ? manifest.snapshots : []) {
+        const payloadPath = String(item?.payload_path || '');
+        const snapshotId = String(item?.id || '').trim().toLowerCase();
+        const expectedPayloadPath = `snapshots/${snapshotId}.json`;
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(snapshotId)
+            || payloadPath !== expectedPayloadPath) {
+          throw new Error('File zip cloud có đường dẫn snapshot không hợp lệ.');
+        }
+        if (payloadPaths.has(payloadPath)) {
+          throw new Error('File zip cloud có đường dẫn snapshot bị trùng.');
+        }
+        payloadPaths.add(payloadPath);
+        const payloadEntry = zip.file(payloadPath);
+        if (!payloadEntry) throw new Error(`File zip cloud thiếu ${payloadPath}.`);
+        const payloadBytes = Number(payloadEntry?._data?.uncompressedSize || 0);
+        if (payloadBytes > CLOUD_SNAPSHOT_LIMITS.payloadBytes) {
+          throw makeCloudLimitError('CLOUD_SNAPSHOT_PAYLOAD_TOO_LARGE', 'Snapshot cloud vượt giới hạn 64 MiB.');
+        }
+        totalPayloadBytes += payloadBytes;
+        if (totalPayloadBytes > CLOUD_IMPORT_LIMITS.totalPayloadBytes) {
+          throw makeCloudLimitError('CLOUD_IMPORT_TOTAL_TOO_LARGE', 'Tổng dữ liệu import cloud vượt giới hạn 512 MiB.');
+        }
+        item.payload_text = await payloadEntry.async('string');
+      }
+    }
+    await verifyCloudImportChecksums(manifest);
+    return manifest;
   }
 
   const text = await file.text();
-  return JSON.parse(text);
+  const manifest = JSON.parse(text);
+  if (Array.isArray(manifest?.snapshots) && manifest.snapshots.length > CLOUD_IMPORT_LIMITS.itemCount) {
+    throw makeCloudLimitError(
+      'CLOUD_IMPORT_TOO_MANY_ITEMS',
+      `File import cloud vượt giới hạn ${CLOUD_IMPORT_LIMITS.itemCount} snapshot.`,
+    );
+  }
+  await verifyCloudImportChecksums(manifest);
+  return manifest;
 }
 
 export async function importCloudBackups(file) {
@@ -913,12 +911,12 @@ export async function importCloudBackups(file) {
     throw new Error('File import cloud không có snapshot hợp lệ nào.');
   }
 
-  const user = await requireUser();
-  const client = getSupabaseClient();
+  await requireUser();
   const existingItems = await listAllBackupsMetadata();
   const existingMap = new Map(existingItems.map((item) => [`${item.scope}:${item.itemSlug}`, item]));
   const imported = [];
   const skipped = [];
+  const failed = [];
 
   for (const item of items) {
     const key = `${item.scope}:${item.itemSlug}`;
@@ -935,34 +933,39 @@ export async function importCloudBackups(file) {
       continue;
     }
 
-    const row = {
-      user_id: user.id,
-      scope: item.scope,
-      item_slug: item.itemSlug,
-      item_title: item.itemTitle || item.itemSlug,
-      payload_text: item.payloadText,
-      payload_version: item.payloadVersion || 1,
-      source_updated_at: incomingUpdated || Date.now(),
-      size_bytes: item.sizeBytes,
-      metadata: item.metadata || {},
-      updated_at: item.updatedAt || new Date().toISOString(),
-    };
-
-    const { error } = await client
-      .from('cloud_snapshots')
-      .upsert(row, {
-        onConflict: 'user_id,scope,item_slug',
+    try {
+      const writeInput = {
+        scope: item.scope,
+        itemSlug: item.itemSlug,
+        itemTitle: item.itemTitle || item.itemSlug,
+        payloadText: item.payloadText,
+        payloadVersion: item.payloadVersion || 1,
+        sourceUpdatedAt: incomingUpdated || Date.now(),
+        sizeBytes: item.sizeBytes,
+        metadata: item.metadata || {},
+      };
+      if (existing?.storageBackend === 'r2') {
+        writeInput.expectedRevisionId = existing.revisionId;
+      }
+      const saved = await putCloudSnapshot(writeInput);
+      existingMap.set(key, saved);
+      imported.push({ scope: item.scope, itemSlug: item.itemSlug });
+    } catch (error) {
+      failed.push({
+        scope: item.scope,
+        itemSlug: item.itemSlug,
+        code: String(error?.code || 'IMPORT_FAILED'),
       });
-
-    if (error) throw error;
-    imported.push({ scope: item.scope, itemSlug: item.itemSlug });
+    }
   }
 
   return {
     importedCount: imported.length,
     skippedCount: skipped.length,
+    failedCount: failed.length,
     imported,
     skipped,
+    failed,
   };
 }
 
@@ -970,6 +973,7 @@ export default {
   deriveProjectCloudSlug,
   deriveChatCloudSlug,
   listProjectBackups,
+  listCloudBackups,
   backupProject,
   restoreProjectBackup,
   restoreCloudStory,

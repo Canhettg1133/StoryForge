@@ -68,7 +68,17 @@ describe('phase20 cloud sync outage protection', () => {
     releaseCloudSyncLock('tab-b');
     expect(tryAcquireCloudSyncLock({ owner: 'tab-b', now: 4_000, ttlMs: 60_000 })).toBe(false);
 
-    expect(tryAcquireCloudSyncLock({ owner: 'tab-b', now: 62_000, ttlMs: 60_000 })).toBe(true);
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-b', now: 62_000, ttlMs: 60_000 })).toBe(false);
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-b', now: 63_000, ttlMs: 60_000 })).toBe(true);
+    releaseCloudSyncLock('tab-b');
+  });
+
+  it('keeps the default cross-tab lease alive across all transfer retry attempts', () => {
+    localStorage.clear();
+
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-a', now: 1_000 })).toBe(true);
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-b', now: 16 * 60_000 })).toBe(false);
+    expect(tryAcquireCloudSyncLock({ owner: 'tab-b', now: 20 * 60_000 + 1_000 })).toBe(true);
     releaseCloudSyncLock('tab-b');
   });
 

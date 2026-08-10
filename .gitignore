@@ -44,6 +44,7 @@ dist/
 .vercel
 .codex-artifacts/
 .wrangler/
+.cloud-sync-r2-backfill.checkpoint.json*
 supabase/.temp/
 screenshot.ps1
 qr.png

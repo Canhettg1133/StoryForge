@@ -1,0 +1,44 @@
+name = "storyforge-cloud-sync"
+main = "src/index.js"
+compatibility_date = "2026-07-16"
+
+[[r2_buckets]]
+binding = "CLOUD_SYNC_BUCKET"
+bucket_name = "storyforge-cloud-sync"
+
+[[ratelimits]]
+name = "CLOUD_SYNC_UNAUTH_RATE_LIMITER"
+namespace_id = "21001"
+
+  [ratelimits.simple]
+  limit = 60
+  period = 60
+
+[[ratelimits]]
+name = "CLOUD_SYNC_READ_RATE_LIMITER"
+namespace_id = "21002"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
+[[ratelimits]]
+name = "CLOUD_SYNC_UPLOAD_RATE_LIMITER"
+namespace_id = "21003"
+
+  [ratelimits.simple]
+  limit = 30
+  period = 60
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[vars]
+CLOUD_SYNC_MODE = "active"
+CLOUD_SYNC_TEST_USER_IDS = ""
+CLOUD_SYNC_ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,https://story-forge-virid.vercel.app,https://story-forge-kohl.vercel.app,https://storyforge.canhettg113.workers.dev,https://storyforge-web.canhettg113.workers.dev,https://storyforge-web-preview.canhettg113.workers.dev"
+SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
+
+# Set these with `wrangler secret put`; never commit their values:
+# SUPABASE_SERVICE_ROLE_KEY
+# SUPABASE_PUBLISHABLE_KEY

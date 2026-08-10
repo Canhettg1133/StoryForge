@@ -8,9 +8,7 @@ import {
   backupPromptBundle,
   deriveChatCloudSlug,
   deriveProjectCloudSlug,
-  listChatBackups,
-  listProjectBackups,
-  listPromptBackups,
+  listCloudBackups,
 } from './cloudBackupService.js';
 import { getSession } from './cloudAuthService.js';
 import { getDirtyProjectIds } from './projectBackupDirty.js';
@@ -18,7 +16,9 @@ import { getDirtyProjectIds } from './projectBackupDirty.js';
 const PREFS_KEY = 'sf-cloud-sync-prefs';
 const STATUS_EVENT = 'storyforge:cloud-sync-status';
 const CLOUD_SYNC_LOCK_KEY = 'cloudSyncLock';
-const CLOUD_SYNC_LOCK_TTL_MS = 90 * 1000;
+// A transfer may use three 5-minute attempts (initial + two retries).
+// Keep the cross-tab lease longer than that worst-case request window.
+const CLOUD_SYNC_LOCK_TTL_MS = 20 * 60 * 1000;
 
 let cyclePromise = null;
 let cloudSyncOwnerId = '';
@@ -56,7 +56,6 @@ export function tryAcquireCloudSyncLock({
   const current = readCloudSyncLock();
   const currentActive = current?.owner && Number(current.expiresAt || 0) > Number(now || 0);
   if (currentActive && current.owner !== normalizedOwner) return false;
-  if (currentActive && current.owner === normalizedOwner) return true;
 
   localStorage.setItem(CLOUD_SYNC_LOCK_KEY, JSON.stringify({
     owner: normalizedOwner,
@@ -264,6 +263,7 @@ function detectChatState(thread, cloudItem, currentUserId) {
       localId: Number(thread.id),
       localUpdatedAt,
       cloudUpdatedAt,
+      cloudItem,
       data: thread,
     };
   }
@@ -317,6 +317,7 @@ function detectPromptState(cloudItem, currentUserId) {
       localId: 'story-creation-settings',
       localUpdatedAt,
       cloudUpdatedAt,
+      cloudItem,
       data: meta,
     };
   }
@@ -369,13 +370,15 @@ export async function scanCloudSyncState(options = {}) {
     };
   }
 
-  const [projects, threads, projectBackups, chatBackups, promptBackups] = await Promise.all([
+  const [projects, threads, cloudBackups] = await Promise.all([
     db.projects.toArray(),
     db.ai_chat_threads.toArray(),
-    listProjectBackups(),
-    listChatBackups(),
-    listPromptBackups(),
+    listCloudBackups(),
   ]);
+
+  const projectBackups = cloudBackups.filter((item) => item.scope === 'project');
+  const chatBackups = cloudBackups.filter((item) => item.scope === 'chat');
+  const promptBackups = cloudBackups.filter((item) => item.scope === 'prompt_bundle');
 
   const projectBackupMap = mapBackupsBySlug(projectBackups);
   const chatBackupMap = mapBackupsBySlug(chatBackups);
@@ -487,13 +490,17 @@ export async function runAutoSyncCycle(options = {}) {
 
     if (prefs.autoSyncEnabled || options.force === true) {
       for (const item of scan.pendingUploads) {
+        tryAcquireCloudSyncLock({
+          owner: lockOwner,
+          ttlMs: options.lockTtlMs || CLOUD_SYNC_LOCK_TTL_MS,
+        });
         if (item.scope === 'project') {
           const backup = await backupProject(item.data, { cloudItem: item.cloudItem });
           if (backup?.skipped) continue;
         } else if (item.scope === 'chat') {
-          await backupChatThread(item.data);
+          await backupChatThread(item.data, { cloudItem: item.cloudItem });
         } else if (item.scope === 'prompt_bundle') {
-          await backupPromptBundle();
+          await backupPromptBundle({ cloudItem: item.cloudItem });
         }
         uploaded.push({ scope: item.scope, itemSlug: item.itemSlug });
       }

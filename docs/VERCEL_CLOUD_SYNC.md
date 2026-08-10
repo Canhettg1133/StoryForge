@@ -1,6 +1,6 @@
 # Vercel and Supabase Cloud Sync
 
-StoryForge is local-first: project data remains in IndexedDB, while optional cloud backups use `public.cloud_snapshots` through Supabase Auth and Row Level Security.
+StoryForge is local-first: project data remains in IndexedDB. New Cloud Sync payloads are written to the private Cloudflare R2 bucket through the dedicated Cloud Sync Worker; Supabase Auth and small manifest/quota RPCs remain authoritative. During the seven-day hybrid window, unmigrated rows can still be read from `public.cloud_snapshots`.
 
 ## Required Vercel variables
 
@@ -8,6 +8,8 @@ StoryForge is local-first: project data remains in IndexedDB, while optional clo
 - `VITE_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` for trusted Vercel API routes only
 - `VITE_ENABLE_CLOUD_SYNC=true` when the Cloud Sync UI should be available
+- `VITE_CLOUD_SYNC_API_URL=https://<cloud-sync-worker>` to enable the R2 path
+- `VITE_CLOUD_SYNC_STORAGE_MODE=hybrid` during migration, then `r2-only` only after reconciliation passes
 - `VITE_ENABLE_CLOUD_SNAPSHOT_V2=true` to write complete schema-8 project snapshots; set `false` only as a temporary writer rollback
 - `VITE_ENABLE_STORY_BUNDLE=true` to expose local `.storyforge` import/export (this feature does not use Supabase)
 
@@ -15,14 +17,17 @@ Do not configure `VITE_CLOUD_SYNC_BASE_URL` or `STORYFORGE_DATABASE_URL`. They b
 
 ## Database setup
 
-Run `docs/supabase-cloud-sync.sql`, followed by:
+Existing installations first keep `docs/supabase-cloud-sync.sql` and the prior guardrails, then apply the additive R2 migration:
 
 1. Deploy the matching client validation and wait for Vercel Production to be `Ready`.
 2. `docs/supabase-access-control/011_cloud_snapshot_guardrails.sql`
 3. `docs/supabase-access-control/012_validate_cloud_snapshot_guardrails.sql` outside peak hours.
 4. `docs/supabase-access-control/015_cloud_snapshot_quota_and_rls.sql` to enforce the 200 snapshot / 256 MiB per-user quota and optimized RLS policies.
+5. `docs/supabase-access-control/018_cloud_sync_r2_manifests.sql` before enabling the R2 Worker.
 
-RLS restricts every select/insert/update/delete to `auth.uid() = user_id`. The client keeps uploads sequential and uses a multi-tab lock, cooldown, timeout, and progressive backoff.
+The four R2 metadata/outbox tables have RLS enabled and no direct `anon`/`authenticated` privileges. Only the dedicated Worker calls fixed-search-path, service-role-only RPCs. The client keeps uploads sequential and uses a multi-tab lock, cooldown, timeout, exact SHA-256, and progressive backoff.
+
+The complete staged rollout, smoke, reconciliation, rollback, and seven-day deletion gate are in `docs/CLOUD_SYNC_R2_RUNBOOK.md`.
 
 ## Google OAuth redirect
 
