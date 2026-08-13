@@ -22,7 +22,7 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
     <script src="js/theme.js?v=2"></script>
-    <link rel="stylesheet" href="style.css?v=25">
+    <link rel="stylesheet" href="style.css?v=26">
 </head>
 
 <body>
@@ -1132,6 +1132,7 @@
                     </div>
                 </div>
                 <div class="chunk-issue-panel" id="chunkIssuePanel" style="display: none;"></div>
+                <div class="han-audit-panel" id="hanAuditPanel" style="display: none;"></div>
                 <textarea id="translatedText" placeholder="Nội dung đã dịch sẽ hiển thị ở đây..." rows="15"
                     readonly></textarea>
             </section>
@@ -1154,7 +1155,7 @@
     ============================================== -->
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
-    <script src="js/app.js?v=22"></script>
+    <script src="js/app.js?v=23"></script>
     <script src="js/translation/prompt-settings.js?v=1"></script>
     <script src="js/translation/request-contract.js?v=1"></script>
     <script src="js/canon-pack.js?v=22"></script>
@@ -1172,21 +1173,23 @@
     <!-- 3. Translation Engine -->
     <script src="js/translation/chunker.js?v=13"></script>
     <script src="js/translation/source-reader.js?v=22"></script>
-    <script src="js/translation/local-store.js?v=22"></script>
+    <script src="js/translation/han-audit-core.js?v=1"></script>
+    <script src="js/translation/local-store.js?v=23"></script>
     <script src="js/translation/retry.js?v=17"></script>
-    <script src="js/translation/engine.js?v=24"></script>
+    <script src="js/translation/han-audit.js?v=1"></script>
+    <script src="js/translation/engine.js?v=25"></script>
     <script src="js/translation/story-prompt.js?v=23"></script>
 
 
     <!-- 4. UI Components -->
     <script src="js/ui/progress.js?v=22"></script>
-    <script src="js/ui/file-handler.js?v=24"></script>
+    <script src="js/ui/file-handler.js?v=25"></script>
     <script src="js/ui/settings.js?v=17"></script>
-    <script src="js/ui/controls.js?v=22"></script>
-    <script src="js/ui/chunk-tracker.js?v=22"></script>
+    <script src="js/ui/controls.js?v=23"></script>
+    <script src="js/ui/chunk-tracker.js?v=23"></script>
 
     <!-- 5. History -->
-    <script src="js/history/history.js?v=14"></script>
+    <script src="js/history/history.js?v=15"></script>
 
     <!-- 6. Local AI (Ollama) -->
     <script src="js/local-ai/ollama.js?v=15"></script>
@@ -1195,7 +1198,7 @@
     <script src="js/proxy/proxy-api.js?v=17"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
-    <script src="js/init.js?v=23"></script>
+    <script src="js/init.js?v=24"></script>
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->

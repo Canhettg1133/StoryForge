@@ -6,7 +6,7 @@ import useUIStore from '../../stores/uiStore.js';
 import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './PersistentTranslatorHost.css';
 
-const TRANSLATOR_URL = '/translator-runtime/index.html?v=24';
+const TRANSLATOR_URL = '/translator-runtime/index.html?v=25';
 const TRANSLATOR_STATUS_STATES = new Set(['ready', 'idle', 'running', 'paused', 'completed', 'failed']);
 const ADULT_TEMPLATE_LABELS = {
   adult: 'Truyện 18+',
@@ -98,6 +98,15 @@ export default function PersistentTranslatorHost({ active = false, onStatusChang
     }, window.location.origin);
   }, [theme]);
 
+  const sendVisibilityContext = useCallback((nextActive = active) => {
+    const frame = frameRef.current;
+    if (!frameReadyRef.current || !frame?.contentWindow || typeof window === 'undefined') return;
+    frame.contentWindow.postMessage({
+      type: 'STORYFORGE_TRANSLATOR_VISIBILITY',
+      active: Boolean(nextActive),
+    }, window.location.origin);
+  }, [active]);
+
   const sendAdultConsentResult = useCallback((request, result) => {
     const frame = frameRef.current;
     if (!request?.requestId || !frame?.contentWindow || typeof window === 'undefined') return;
@@ -163,6 +172,10 @@ export default function PersistentTranslatorHost({ active = false, onStatusChang
   }, [sendThemeContext]);
 
   useEffect(() => {
+    sendVisibilityContext();
+  }, [sendVisibilityContext]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const handleMessage = (event) => {
       if (event.origin !== window.location.origin) return;
@@ -175,6 +188,7 @@ export default function PersistentTranslatorHost({ active = false, onStatusChang
         publishLifecycleState('ready');
         sendAccessContext();
         sendThemeContext();
+        sendVisibilityContext();
         return;
       }
       if (payload.type === 'STORYFORGE_TRANSLATOR_STATUS') {
@@ -215,7 +229,7 @@ export default function PersistentTranslatorHost({ active = false, onStatusChang
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [onStatusChange, publishLifecycleState, refreshAccess, sendAccessContext, sendAccessRefreshResult, sendThemeContext]);
+  }, [onStatusChange, publishLifecycleState, refreshAccess, sendAccessContext, sendAccessRefreshResult, sendThemeContext, sendVisibilityContext]);
 
   const adultTemplateLabel = getAdultTemplateLabel(adultConsentRequest?.templateId);
   const adultDialogRef = useModalAccessibility({

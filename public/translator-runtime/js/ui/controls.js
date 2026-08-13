@@ -152,6 +152,9 @@ function executeCancel() {
     // Set cancel flag
     cancelRequested = true;
     isPaused = false;
+    if (typeof cancelHanAudit === 'function' && typeof isHanAuditBusy !== 'undefined' && isHanAuditBusy) {
+        cancelHanAudit();
+    }
     if (typeof abortActiveTranslationRequests === 'function') {
         abortActiveTranslationRequests();
     }

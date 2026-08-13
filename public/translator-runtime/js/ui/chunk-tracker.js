@@ -154,7 +154,8 @@ function summarizeTranslatorChunkIssues(options = {}) {
 }
 
 function isChunkIssueActionBusy() {
-    return typeof isTranslating !== 'undefined' && isTranslating;
+    return (typeof isTranslating !== 'undefined' && isTranslating)
+        || (typeof isHanAuditBusy !== 'undefined' && isHanAuditBusy);
 }
 
 function notifyChunkIssueBusy() {
@@ -271,6 +272,7 @@ async function persistTranslatedChunkUpdate(chunkIndex, outputText, options = {}
 
     if (typeof translatedChunks !== 'undefined' && Array.isArray(translatedChunks)) {
         translatedChunks[safeIndex] = text;
+        if (typeof bumpTranslatorOutputGeneration === 'function') bumpTranslatorOutputGeneration();
     }
 
     if (typeof currentTranslatorSessionId !== 'undefined' &&

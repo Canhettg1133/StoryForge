@@ -35,6 +35,14 @@ namespace_id = "3103"
   limit = 120
   period = 60
 
+[[ratelimits]]
+name = "TTS_EDGE_RATE_LIMITER"
+namespace_id = "3104"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
 [vars]
 SUPABASE_URL = "https://mjeuajnswqyuerztsncz.supabase.co"
 SUPREME_PROMPT_ACTIVE_KEY_VERSION = "4"
@@ -72,6 +80,14 @@ namespace_id = "3202"
 [[env.preview.ratelimits]]
 name = "SUPREME_CHUNK_RATE_LIMITER"
 namespace_id = "3203"
+
+  [env.preview.ratelimits.simple]
+  limit = 120
+  period = 60
+
+[[env.preview.ratelimits]]
+name = "TTS_EDGE_RATE_LIMITER"
+namespace_id = "3204"
 
   [env.preview.ratelimits.simple]
   limit = 120

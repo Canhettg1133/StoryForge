@@ -20,6 +20,12 @@
         },
         "api/supreme-chat-capabilities.js": {
             "maxDuration": 10
+        },
+        "api/tts/edge.js": {
+            "maxDuration": 30
+        },
+        "api/tts/google-free.js": {
+            "maxDuration": 15
         }
     },
     "headers": [

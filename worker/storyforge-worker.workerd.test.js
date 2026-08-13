@@ -48,6 +48,30 @@ describe('StoryForge Worker in workerd', () => {
     expect(await response.json()).toMatchObject({ code: 'PREVIEW_READ_ONLY' });
   });
 
+  it('validates the Edge TTS route inside workerd before contacting the provider', async () => {
+    const response = await exports.default.fetch('https://storyforge.test/api/tts/edge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '', voiceId: 'hoai-my' }),
+    });
+
+    expect(response.status).toBe(422);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(await response.json()).toMatchObject({ code: 'TTS_TEXT_REQUIRED' });
+  });
+
+  it('validates the fast Google TTS route inside workerd before contacting the provider', async () => {
+    const response = await exports.default.fetch('https://storyforge.test/api/tts/google-free', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '' }),
+    });
+
+    expect(response.status).toBe(422);
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(await response.json()).toMatchObject({ code: 'TTS_TEXT_REQUIRED' });
+  });
+
   it('validates the maximum 12 MB Supreme image context inside workerd', () => {
     const pngMagic = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
     const attachments = Array.from({ length: 3 }, (_, index) => {
@@ -83,6 +107,8 @@ describe('StoryForge Worker in workerd', () => {
       '/api/translator-prompt-settings',
       '/api/vip-page-content',
       '/api/cloud',
+      '/api/tts/edge',
+      '/api/tts/google-free',
     ];
 
     for (const route of routes) {

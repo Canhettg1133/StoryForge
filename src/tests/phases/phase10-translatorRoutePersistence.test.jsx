@@ -333,6 +333,41 @@ describe('phase10 translator route persistence', () => {
     });
   });
 
+  it('tells the persistent translator whether its route is visible', async () => {
+    const module = await import('../../components/translator/PersistentTranslatorHost.jsx');
+    const PersistentTranslatorHost = module.default;
+
+    root = createRoot(container);
+    await act(async () => {
+      root.render(<PersistentTranslatorHost active />);
+    });
+
+    const iframe = container.querySelector('iframe[title="StoryForge Translator"]');
+    const postMessageSpy = vi.spyOn(iframe.contentWindow, 'postMessage');
+
+    await act(async () => {
+      window.dispatchEvent(new MessageEvent('message', {
+        origin: window.location.origin,
+        source: iframe.contentWindow,
+        data: { type: 'STORYFORGE_TRANSLATOR_READY' },
+      }));
+    });
+
+    expect(postMessageSpy.mock.calls.map(([payload]) => payload)).toContainEqual({
+      type: 'STORYFORGE_TRANSLATOR_VISIBILITY',
+      active: true,
+    });
+
+    await act(async () => {
+      root.render(<PersistentTranslatorHost active={false} />);
+    });
+
+    expect(postMessageSpy.mock.calls.map(([payload]) => payload)).toContainEqual({
+      type: 'STORYFORGE_TRANSLATOR_VISIBILITY',
+      active: false,
+    });
+  });
+
   it('accepts only validated translator status messages from its own iframe', async () => {
     const module = await import('../../components/translator/PersistentTranslatorHost.jsx');
     const PersistentTranslatorHost = module.default;

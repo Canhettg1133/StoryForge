@@ -30,6 +30,8 @@ function resolveApiRoute(pathname) {
     '/api/me/adult-consent': './api/me/adult-consent.js',
     '/api/translator-prompt-settings': './api/translator-prompt-settings.js',
     '/api/cloud': './api/cloud.js',
+    '/api/tts/edge': './api/tts/edge.js',
+    '/api/tts/google-free': './api/tts/google-free.js',
   }
   if (exactRoutes[pathname]) return { modulePath: exactRoutes[pathname], params: {} }
 
@@ -58,8 +60,15 @@ function storyForgeApiDevMiddleware() {
             ...route.params,
           }
           req.__storyForgeRuntimePlatform = 'local'
-          const moduleUrl = pathToFileURL(path.resolve(__dirname, route.modulePath)).href
-          const { default: handler } = await import(`${moduleUrl}?t=${Date.now()}`)
+          let routeModule
+          if (apiPathname.startsWith('/api/tts/')) {
+            const moduleId = `/${route.modulePath.replace(/^\.\//u, '')}`
+            routeModule = await server.ssrLoadModule(moduleId)
+          } else {
+            const moduleUrl = pathToFileURL(path.resolve(__dirname, route.modulePath)).href
+            routeModule = await import(`${moduleUrl}?t=${Date.now()}`)
+          }
+          const { default: handler } = routeModule
           await handler(req, res)
         } catch (error) {
           next(error)

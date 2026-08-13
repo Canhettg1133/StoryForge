@@ -16,6 +16,7 @@ import { countWords } from '../../utils/constants';
 import ContinuityBar from './ContinuityBar';
 import SceneDetailPanel from './SceneDetailPanel';
 import ChapterReader from './ChapterReader';
+import ChapterSpeechControl from './ChapterSpeechControl';
 import ChapterChangeHistory from './ChapterChangeHistory';
 import db from '../../services/db/database';
 import { createSceneAutosaveController } from './storyEditorAutosave';
@@ -75,6 +76,13 @@ export default function StoryEditor({
 
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
+  const nextChapterId = useMemo(() => {
+    const orderedChapters = chapters.slice().sort(
+      (left, right) => Number(left?.order_index || 0) - Number(right?.order_index || 0),
+    );
+    const activeIndex = orderedChapters.findIndex((chapter) => chapter.id === activeChapterId);
+    return activeIndex >= 0 ? (orderedChapters[activeIndex + 1]?.id ?? null) : null;
+  }, [activeChapterId, chapters]);
   const activeCanonRevisionId = useCanonStore((state) => (
     state.chapterCanon?.revision?.id
     || state.chapterCanon?.commit?.current_revision_id
@@ -646,6 +654,13 @@ export default function StoryEditor({
           </div>
         </div>
       </div>
+
+      <ChapterSpeechControl
+        chapterId={activeChapterId}
+        nextChapterId={nextChapterId}
+        placement={isReaderMode ? 'reader' : 'writing'}
+        scenes={scenes}
+      />
 
       {/* Scene Detail Drawer */}
       {!isReaderMode && sceneDetailOpen && (

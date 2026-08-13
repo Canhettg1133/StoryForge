@@ -199,6 +199,15 @@ describe('phase10 StoryEditor reader controls', () => {
     expect(container.textContent).toContain('Đọc liền · 2 cảnh');
     expect(container.textContent).toContain('Chương 1: Cơn mưa đầu mùa');
     expect(container.querySelector('[data-testid="chapter-reader"]')).not.toBeNull();
+    expect(container.querySelector('.chapter-speech-trigger')?.getAttribute('aria-label'))
+      .toBe('Mở điều khiển nghe chương');
+    expect(container.querySelector('.story-editor-header-actions .chapter-speech-control')).toBeNull();
+    expect(container.querySelector('.chapter-speech-control')?.classList)
+      .toContain('chapter-speech-control--floating');
+    expect(container.querySelector('.chapter-speech-control')?.classList)
+      .toContain('chapter-speech-control--reader');
+    const css = readFileSync('src/components/editor/StoryEditor.css', 'utf8');
+    expect(css).toMatch(/\.story-editor-header--reader[^{}]*\.story-editor-header-actions\s*\{[^}]*justify-content:\s*center/isu);
     expect(container.querySelector('.story-editor-detail-trigger')).toBeNull();
     expect(container.querySelector('.chapter-outline-panel')).toBeNull();
     expect(container.querySelector('[data-testid="continuity-bar"]')).toBeNull();
@@ -210,7 +219,20 @@ describe('phase10 StoryEditor reader controls', () => {
     expect(mocks.projectState.activeSceneId).toBe(101);
   });
 
-  it('renders only scene and font actions in the phone reader header', async () => {
+  it('keeps the listening icon on the writing page and aligns it to the prose edge on desktop', async () => {
+    await renderEditor({
+      isMobileLayout: false,
+      viewMode: 'scene',
+    });
+
+    const speechControl = container.querySelector('.chapter-speech-control');
+    const css = readFileSync('src/components/editor/ChapterSpeechControl.css', 'utf8');
+    expect(speechControl).not.toBeNull();
+    expect(speechControl.classList).toContain('chapter-speech-control--writing');
+    expect(css).toMatch(/\.chapter-speech-control--writing\s*\{[^}]*right:\s*max\(24px,\s*calc\(\(100% - 920px\) \/ 2 \+ 24px\)\)/isu);
+  });
+
+  it('keeps the phone header compact and renders listening as a separate floating control', async () => {
     const onViewModeChange = vi.fn();
 
     await renderEditor({
@@ -224,6 +246,9 @@ describe('phase10 StoryEditor reader controls', () => {
       container.querySelectorAll('.story-editor-reader-action'),
     );
     expect(readerActions.map((button) => button.textContent.trim())).toEqual(['Từng cảnh']);
+    expect(container.querySelector('.story-editor-header-actions .chapter-speech-control')).toBeNull();
+    expect(container.querySelector('.chapter-speech-trigger')?.getAttribute('aria-label'))
+      .toBe('Mở điều khiển nghe chương');
     expect(container.querySelector('.story-editor-font-trigger')?.textContent.trim()).toBe('Cỡ chữ');
     expect(container.querySelector('.story-editor-view-switch')).toBeNull();
     expect(container.textContent).not.toContain('Chương 1: Cơn mưa đầu mùa');
@@ -233,7 +258,7 @@ describe('phase10 StoryEditor reader controls', () => {
     expect(onViewModeChange).toHaveBeenCalledWith('scene');
   });
 
-  it('renders chapter, scene, and font actions in the tablet reader header', async () => {
+  it('keeps the tablet header compact and renders listening as a separate floating control', async () => {
     const onOpenChapters = vi.fn();
 
     await renderEditor({
@@ -250,6 +275,9 @@ describe('phase10 StoryEditor reader controls', () => {
       'Chương',
       'Từng cảnh',
     ]);
+    expect(container.querySelector('.story-editor-header-actions .chapter-speech-control')).toBeNull();
+    expect(container.querySelector('.chapter-speech-trigger')?.getAttribute('aria-label'))
+      .toBe('Mở điều khiển nghe chương');
     expect(container.querySelector('.story-editor-font-trigger')?.textContent.trim()).toBe('Cỡ chữ');
 
     await act(async () => readerActions[0].click());

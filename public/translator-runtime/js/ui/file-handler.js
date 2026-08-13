@@ -361,6 +361,7 @@ async function processLargeFile(file) {
     currentSourceFile = file;
     largeFileByteCursor = 0;
     translatedChunks = [];
+    if (typeof bumpTranslatorOutputGeneration === 'function') bumpTranslatorOutputGeneration();
     translatedBlobParts = [];
     completedChunks = 0;
     totalChunksCount = 0;
@@ -451,6 +452,7 @@ function clearFile() {
     document.getElementById('translatedText').value = '';
     document.getElementById('resultSection').style.display = 'none';
     translatedChunks = [];
+    if (typeof bumpTranslatorOutputGeneration === 'function') bumpTranslatorOutputGeneration();
     originalChunks = [];
     translatedBlobParts = [];
     completedChunks = 0;
@@ -768,6 +770,7 @@ async function loadTranslatorSessionIntoWorkspace(sessionId) {
     currentSourceFile = sourceBlob;
     largeFileByteCursor = session.resumeByte ?? session.startByte ?? 0;
     translatedChunks = [];
+    if (typeof bumpTranslatorOutputGeneration === 'function') bumpTranslatorOutputGeneration();
     translatedBlobParts = [];
     completedChunks = session.completedChunks || 0;
     totalChunksCount = session.totalChunks || 0;

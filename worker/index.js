@@ -5,6 +5,7 @@ import { createSupremeChatWebHandler } from '../api/supreme-chat.js';
 import { createSupremeChatCapabilitiesWebHandler } from '../api/supreme-chat-capabilities.js';
 import { createAdultConsentWebHandler, createMeAccessWebHandler } from '../api/_web/access.js';
 import { createLegacyCloudWebHandler } from '../api/_web/cloud.js';
+import { createEdgeTtsWebHandler, createGoogleFreeTtsWebHandler } from '../api/_web/tts.js';
 import {
   createSiteAnnouncementWebHandler,
   createTranslatorPromptSettingsWebHandler,
@@ -24,6 +25,8 @@ const DEFAULT_HANDLERS = Object.freeze({
   '/api/translator-prompt-settings': createTranslatorPromptSettingsWebHandler(),
   '/api/vip-page-content': createVipPageContentWebHandler(),
   '/api/cloud': createLegacyCloudWebHandler(),
+  '/api/tts/edge': createEdgeTtsWebHandler(),
+  '/api/tts/google-free': createGoogleFreeTtsWebHandler(),
 });
 
 export async function handleStoryForgeWorkerRequest(request, env = {}, ctx = {}, options = {}) {

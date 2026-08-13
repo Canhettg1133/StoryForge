@@ -198,6 +198,108 @@
         return rows.sort((a, b) => Number(a.chunkIndex) - Number(b.chunkIndex));
     }
 
+    async function scanTranslatorSessionOutputRows(sessionId, options = {}) {
+        const db = await openTranslatorLocalDB();
+        const tx = db.transaction([STORES.SESSIONS, STORES.CHUNKS], 'readonly');
+        const completion = txDone(tx);
+        const session = await requestToPromise(tx.objectStore(STORES.SESSIONS).get(sessionId));
+        const maxChunks = Math.max(1, Math.trunc(Number(options.maxChunks) || 32));
+        const maxChars = Math.max(1024, Math.trunc(Number(options.maxChars) || 64 * 1024));
+        const onBatch = typeof options.onBatch === 'function' ? options.onBatch : () => {};
+        const shouldStop = typeof options.shouldStop === 'function' ? options.shouldStop : () => false;
+        const index = tx.objectStore(STORES.CHUNKS).index('sessionId');
+        let batch = [];
+        let batchChars = 0;
+        let rowCount = 0;
+        let cancelled = false;
+
+        const flush = () => {
+            if (batch.length === 0) return;
+            onBatch(batch);
+            batch = [];
+            batchChars = 0;
+        };
+
+        const appendOutputRow = (row, outputText) => {
+            rowCount += 1;
+            let offset = 0;
+            while (offset < outputText.length) {
+                if (shouldStop()) {
+                    cancelled = true;
+                    return;
+                }
+                if (batch.length >= maxChunks || batchChars >= maxChars) flush();
+                if (shouldStop()) {
+                    cancelled = true;
+                    return;
+                }
+                const remainingChars = Math.max(1, maxChars - batchChars);
+                let end = Math.min(outputText.length, offset + remainingChars);
+                if (end < outputText.length) {
+                    const last = outputText.charCodeAt(end - 1);
+                    if (last >= 0xD800 && last <= 0xDBFF) end -= 1;
+                }
+                if (end <= offset && batchChars > 0) {
+                    flush();
+                    continue;
+                }
+                if (end <= offset) end = Math.min(outputText.length, offset + 2);
+                batch.push({
+                    chunkIndex: Number(row.chunkIndex),
+                    status: String(row.status || ''),
+                    baseOffset: offset,
+                    outputText: outputText.slice(offset, end),
+                });
+                batchChars += end - offset;
+                offset = end;
+            }
+        };
+
+        try {
+            await new Promise((resolve, reject) => {
+                const request = index.openCursor(sessionId);
+                request.onerror = () => reject(request.error || new Error('Kh\u00F4ng th\u1EC3 \u0111\u1ECDc chunk \u0111\u1EC3 qu\u00E9t H\u00E1n t\u1EF1.'));
+                request.onsuccess = () => {
+                    try {
+                        if (shouldStop()) {
+                            cancelled = true;
+                            resolve(false);
+                            return;
+                        }
+                        const cursor = request.result;
+                        if (!cursor) {
+                            flush();
+                            resolve(true);
+                            return;
+                        }
+                        const row = cursor.value;
+                        const outputText = typeof row?.outputText === 'string' ? row.outputText : '';
+                        if (row?.status !== 'skipped' && outputText.length > 0) {
+                            appendOutputRow(row, outputText);
+                        }
+                        if (cancelled) {
+                            resolve(false);
+                            return;
+                        }
+                        cursor.continue();
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+            });
+        } catch (error) {
+            try { tx.abort(); } catch (_abortError) { }
+            await completion.catch(() => {});
+            throw error;
+        }
+        await completion;
+        return {
+            revision: Math.max(0, Number(session?.outputRevision) || 0),
+            rowCount,
+            cancelled,
+        };
+    }
+
     async function getTranslatorChunk(sessionId, chunkIndex) {
         return getRecord(STORES.CHUNKS, `${sessionId}:${chunkIndex}`);
     }
@@ -277,6 +379,11 @@
             storyPromptUncertainties: [],
             storyPromptUpdatedAt: null,
             storyPromptScanMeta: null,
+            outputRevision: 0,
+            hanAuditStatus: 'pending',
+            hanAuditHitChunks: 0,
+            hanAuditHitChars: 0,
+            hanAuditUpdatedAt: null,
             createdAt,
             updatedAt: createdAt,
         };
@@ -341,6 +448,9 @@
         const updatedSession = {
             ...existingSession,
             ...sessionPatch,
+            outputRevision: chunkPatches.length > 0
+                ? Math.max(0, Number(existingSession.outputRevision) || 0) + 1
+                : Math.max(0, Number(existingSession.outputRevision) || 0),
             updatedAt: timestamp,
         };
         sessions.put(updatedSession);
@@ -380,6 +490,7 @@
             totalChunks,
             isComplete,
             status: isComplete ? 'completed' : 'running',
+            outputRevision: Math.max(0, Number(session.outputRevision) || 0) + 1,
             updatedAt: timestamp,
         });
         await txDone(tx);
@@ -586,6 +697,7 @@
 
     const api = {
         DB_NAME,
+        DB_VERSION,
         STORES,
         claimNextTranslatorQueueItem,
         clearTranslatorLocalStoreForTests,
@@ -601,6 +713,7 @@
         markTranslatorChunksBefore,
         removeTranslatorQueueItem,
         readTranslatorChunkSource,
+        scanTranslatorSessionOutputRows,
         reorderTranslatorQueueItems,
         searchTranslatorSessionChunks,
         summarizeTranslatorChunks,

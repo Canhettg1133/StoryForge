@@ -9,11 +9,13 @@
 let apiKeys = [];
 let translationHistory = [];
 let currentHistoryId = null;
+let lastTranslatorHistoryId = null;
 let originalFileName = 'translated_novel.txt';
 let isTranslating = false;
 let cancelRequested = false;
 let isPaused = false;
 let translatedChunks = [];
+let translatorOutputGeneration = 0;
 let originalChunks = [];
 const TRANSLATOR_SOURCE_MODES = {
     TEXT: 'text',
@@ -56,6 +58,7 @@ const TRANSLATOR_PROVIDERS = {
 };
 let storyForgeAccessToken = '';
 let storyForgeAccessSnapshot = null;
+let storyForgeTranslatorVisible = true;
 const STORYFORGE_TRANSLATOR_STATUS_STATES = new Set(['idle', 'running', 'paused', 'completed', 'failed']);
 let storyForgeTranslatorLastStatusAt = 0;
 let storyForgeTranslatorPendingStatus = null;
@@ -163,6 +166,11 @@ function handleStoryForgeAccessContext(payload = {}) {
     }
 }
 
+function bumpTranslatorOutputGeneration() {
+    translatorOutputGeneration += 1;
+    return translatorOutputGeneration;
+}
+
 function handleStoryForgeAdultTermsResult(payload = {}) {
     const requestId = String(payload.requestId || '');
     const pending = storyForgeAdultConsentRequests.get(requestId);
@@ -212,6 +220,13 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
         }
         if (payload.type === 'STORYFORGE_ACCESS_REFRESH_RESULT') {
             handleStoryForgeAccessRefreshResult(payload);
+            return;
+        }
+        if (payload.type === 'STORYFORGE_TRANSLATOR_VISIBILITY') {
+            storyForgeTranslatorVisible = payload.active === true;
+            if (storyForgeTranslatorVisible && typeof renderHanAuditPanel === 'function') {
+                renderHanAuditPanel();
+            }
         }
     });
 }

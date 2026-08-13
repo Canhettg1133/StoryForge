@@ -3,6 +3,7 @@
    ============================================ */
 
 .story-editor {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -93,6 +94,10 @@
   background: var(--color-bg-secondary);
   color: var(--color-text-secondary);
   box-shadow: var(--shadow-lg);
+}
+
+.story-editor-header--reader .story-editor-header-main--desktop .story-editor-header-actions {
+  justify-content: center;
 }
 
 .story-editor-font-control--open {
@@ -1498,6 +1503,11 @@
   width: 100%;
 }
 
+.story-editor--mobile.story-editor--reader:not(.story-editor--mobile-shell) .story-editor-reader-action,
+.story-editor--mobile.story-editor--reader:not(.story-editor--mobile-shell) .story-editor-font-trigger {
+  min-height: 44px;
+}
+
 .story-editor--mobile-shell.story-editor--reader .story-editor-header {
   padding: 6px 12px;
 }
@@ -1512,6 +1522,11 @@
 .story-editor--mobile-shell.story-editor--reader .story-editor-reader-action,
 .story-editor--mobile-shell.story-editor--reader .story-editor-font-trigger {
   width: 100%;
+}
+
+.story-editor--mobile-shell.story-editor--reader .story-editor-reader-action,
+.story-editor--mobile-shell.story-editor--reader .story-editor-font-trigger {
+  min-height: 44px;
 }
 
 .story-editor--mobile .story-editor-wrapper--ai-draft-focus .story-editor-ai-draft__body {

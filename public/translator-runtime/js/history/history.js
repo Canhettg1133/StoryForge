@@ -306,6 +306,7 @@ function addToHistory(name, originalText, translatedText, chunks, completedCount
 
     saveHistory();
     renderHistoryList();
+    if (typeof lastTranslatorHistoryId !== 'undefined') lastTranslatorHistoryId = historyItem.id;
     return historyItem.id;
 }
 
@@ -564,11 +565,13 @@ async function continueFromHistory(id) {
     // Preferred path: exact per-chunk data (new format)
     if (Array.isArray(item.translatedChunksData) && item.translatedChunksData.length === totalChunksCount) {
         translatedChunks = item.translatedChunksData.map(chunk => typeof chunk === 'string' ? chunk : null);
+        if (typeof bumpTranslatorOutputGeneration === 'function') bumpTranslatorOutputGeneration();
         canResumePrecisely = true;
     } else {
         // Legacy entries do not have precise per-chunk snapshots.
         // Do not try to split by "\n\n" because that corrupts chunk mapping.
         translatedChunks = new Array(totalChunksCount).fill(null);
+        if (typeof bumpTranslatorOutputGeneration === 'function') bumpTranslatorOutputGeneration();
     }
 
     completedChunks = translatedChunks.filter(chunk => isChunkSuccessfullyTranslated(chunk)).length;
@@ -595,6 +598,11 @@ async function loadFromHistory(id) {
         showToast('Không tìm thấy lịch sử!', 'error');
         return;
     }
+    if (typeof lastTranslatorHistoryId !== 'undefined') lastTranslatorHistoryId = item.id;
+    if (!isLargeHistoryItem(item) && typeof TRANSLATOR_SOURCE_MODES !== 'undefined') {
+        currentSourceMode = TRANSLATOR_SOURCE_MODES.TEXT;
+        currentSourceFile = null;
+    }
 
     if (isLargeHistoryItem(item) && item.sessionId && typeof loadTranslatorSessionIntoWorkspace === 'function') {
         await loadTranslatorSessionIntoWorkspace(item.sessionId);
@@ -610,7 +618,24 @@ async function loadFromHistory(id) {
 
     if (item.sessionId && typeof getTranslatorSession === 'function') {
         const session = await getTranslatorSession(item.sessionId);
-        if (session && typeof setCurrentTranslatorSession === 'function') setCurrentTranslatorSession(session);
+        if (session && typeof setCurrentTranslatorSession === 'function') {
+            setCurrentTranslatorSession(session);
+            if (!isLargeHistoryItem(item) && typeof getTranslatorSessionChunks === 'function') {
+                const rows = await getTranslatorSessionChunks(item.sessionId);
+                if (rows.length > 0) {
+                    const highestIndex = rows.reduce((max, row) => Math.max(max, Number(row.chunkIndex) || 0), -1);
+                    const restoredCount = Math.max(Number(session.totalChunks) || 0, Number(item.totalChunks) || 0, highestIndex + 1);
+                    translatedChunks = new Array(restoredCount).fill(null);
+                    originalChunks = new Array(restoredCount).fill('');
+                    rows.forEach((row) => {
+                        const chunkIndex = Math.max(0, Math.trunc(Number(row.chunkIndex) || 0));
+                        if (typeof row.outputText === 'string' && row.outputText.length > 0) translatedChunks[chunkIndex] = row.outputText;
+                        if (typeof row.sourceText === 'string') originalChunks[chunkIndex] = row.sourceText;
+                    });
+                    if (typeof bumpTranslatorOutputGeneration === 'function') bumpTranslatorOutputGeneration();
+                }
+            }
+        }
     }
 
     document.getElementById('originalText').value = item.originalText;
