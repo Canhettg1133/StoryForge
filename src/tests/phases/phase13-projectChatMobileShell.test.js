@@ -37,4 +37,28 @@ describe('phase13 ProjectChat mobile shell', () => {
       /\.project-chat-topbar__status\s*>\s*span\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/su,
     );
   });
+
+  it('closes mobile history before creating a thread and never focuses the hidden composer', () => {
+    const chat = read('src/pages/ProjectChat/ProjectChat.jsx');
+
+    expect(chat).toContain('focusComposer = !isMobileLayout');
+    expect(chat).toContain('if (activate && focusComposer)');
+    expect(chat).toContain('setMobileThreadsOpen(false);');
+    expect(chat).toContain('focusComposer: false');
+  });
+
+  it('uses one mobile viewport owner and removes expensive blur while the keyboard resizes chat', () => {
+    const viewport = read('index.html');
+    const appLayoutCss = read('src/components/common/AppLayout.css');
+    const chatCss = read('src/pages/ProjectChat/ProjectChat.css');
+
+    expect(viewport).toContain('viewport-fit=cover');
+    expect(viewport).toContain('interactive-widget=resizes-content');
+    expect(appLayoutCss).toMatch(
+      /\.app-layout--mobile \.app-main\s*\{[^}]*height:\s*100%;[^}]*min-height:\s*0;/su,
+    );
+    expect(chatCss).toMatch(
+      /@media \(max-width: 900px\)[\s\S]*\.project-chat-composer\s*\{[^}]*backdrop-filter:\s*none;/su,
+    );
+  });
 });

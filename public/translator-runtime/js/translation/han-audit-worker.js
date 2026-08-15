@@ -1,6 +1,7 @@
-importScripts('han-audit-core.js?v=1');
+importScripts('han-audit-core.js?v=2');
 
 const activeRequests = new Map();
+let hanFileSourceLoaded = false;
 
 function postFor(requestId, type, payload = {}) {
     self.postMessage({ requestId, type, ...payload });
@@ -14,6 +15,43 @@ function closeRequest(requestId) {
     const state = activeRequests.get(requestId);
     if (state?.db) state.db.close();
     activeRequests.delete(requestId);
+}
+
+function ensureHanFileSource() {
+    if (hanFileSourceLoaded && self.TranslatorHanFileSource) return self.TranslatorHanFileSource;
+    importScripts('source-reader.js?v=22', 'han-audit/file-source.js?v=1');
+    hanFileSourceLoaded = true;
+    return self.TranslatorHanFileSource;
+}
+
+async function scanFile(message) {
+    const { requestId } = message;
+    const state = { cancelled: false, db: null };
+    activeRequests.set(requestId, state);
+    try {
+        const fileSource = ensureHanFileSource();
+        const snapshot = await fileSource.createSnapshot(message.blob, {
+            fileName: message.fileName,
+            chunkSize: message.chunkSize,
+            lastModified: message.lastModified,
+            revision: message.revision,
+        });
+        const result = await fileSource.scanSnapshot(snapshot, {
+            shouldCancel: () => isCancelled(requestId),
+            onProgress: progress => postFor(requestId, 'progress', { progress }),
+        });
+        if (isCancelled(requestId) || result.cancelled) {
+            postFor(requestId, 'cancelled');
+            return;
+        }
+        postFor(requestId, 'complete', result);
+    } catch (error) {
+        if (!isCancelled(requestId)) {
+            postFor(requestId, 'error', { message: String(error?.message || error || 'Cannot scan TXT file.') });
+        }
+    } finally {
+        closeRequest(requestId);
+    }
 }
 
 function openAuditDatabase(dbName) {
@@ -159,6 +197,10 @@ self.addEventListener('message', (event) => {
     }
     if (message.type === 'scan-session') {
         scanSession({ ...message, requestId });
+        return;
+    }
+    if (message.type === 'scan-file') {
+        scanFile({ ...message, requestId });
         return;
     }
     if (message.type === 'start-memory') {

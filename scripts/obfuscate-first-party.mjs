@@ -16,8 +16,9 @@ function walkJsFiles(root) {
   return files;
 }
 
-function isVendorChunk(file) {
-  return path.basename(file).startsWith('vendor');
+function isVendorFile(file) {
+  return path.normalize(file).split(path.sep).includes('vendor')
+    || path.basename(file).startsWith('vendor');
 }
 
 const rootDir = path.resolve(process.argv[2] || 'dist');
@@ -32,7 +33,7 @@ const manifest = {
 
 for (const file of walkJsFiles(rootDir)) {
   const relative = path.relative(rootDir, file).replace(/\\/g, '/');
-  if (isVendorChunk(file)) {
+  if (isVendorFile(file)) {
     manifest.skipped.push(relative);
     continue;
   }

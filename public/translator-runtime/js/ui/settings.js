@@ -550,6 +550,7 @@ function loadSettings() {
     if (typeof renderCustomProxyPreviews === 'function') renderCustomProxyPreviews();
     if (typeof renderCustomProxyKeysList === 'function') renderCustomProxyKeysList();
     if (typeof renderCustomProxyModelsDropdown === 'function') renderCustomProxyModelsDropdown();
+    if (typeof renderTranslatorCustomProxyPresets === 'function') renderTranslatorCustomProxyPresets();
     if (document.getElementById('useCanonPackToggle') && typeof useCanonPackTranslation !== 'undefined') {
         document.getElementById('useCanonPackToggle').checked = useCanonPackTranslation;
     }

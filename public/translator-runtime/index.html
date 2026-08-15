@@ -22,7 +22,10 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
     <script src="js/theme.js?v=2"></script>
-    <link rel="stylesheet" href="style.css?v=26">
+    <link rel="stylesheet" href="style.css?v=27">
+    <link rel="stylesheet" href="custom-proxy-presets.css?v=1">
+    <link rel="stylesheet" href="chapter-reader.css?v=1">
+    <link rel="stylesheet" href="han-audit-file.css?v=2">
 </head>
 
 <body>
@@ -400,6 +403,29 @@
                 </div>
 
                 <div class="proxy-settings custom-proxy-settings" id="customProxySettings" style="display: none;">
+                    <section class="translator-custom-presets" aria-labelledby="translatorCustomProxyPresetsTitle">
+                        <header class="translator-custom-presets__header">
+                            <div>
+                                <h3 id="translatorCustomProxyPresetsTitle">Các bộ kết nối đã lưu</h3>
+                                <p>URL, model và API key được giữ cùng nhau, chỉ trong trình duyệt này.</p>
+                            </div>
+                            <div class="translator-custom-presets__current" id="translatorCustomProxyPresetCurrent"></div>
+                        </header>
+                        <div class="translator-custom-presets__save">
+                            <label for="translatorCustomProxyPresetName">
+                                <span>Tên bộ mới</span>
+                                <input type="text" id="translatorCustomProxyPresetName" maxlength="80"
+                                    placeholder="Ví dụ: OpenRouter cá nhân">
+                            </label>
+                            <button type="button" class="btn btn-primary btn-small"
+                                data-click-action="saveTranslatorCustomProxyPreset">Lưu thành bộ mới</button>
+                            <button type="button" class="btn btn-secondary btn-small"
+                                id="updateTranslatorCustomProxyPresetBtn"
+                                data-click-action="updateActiveTranslatorCustomProxyPreset" disabled>Cập nhật bộ đang dùng</button>
+                        </div>
+                        <div class="translator-custom-presets__list" id="translatorCustomProxyPresetList"></div>
+                    </section>
+
                     <div class="custom-proxy-grid">
                         <div class="form-group">
                             <label for="customProxyBaseUrlInput">
@@ -451,7 +477,7 @@
                                     Xuất key
                                 </button>
                             </div>
-                            <small class="hint">Key này dùng riêng cho Custom Proxy và lưu cùng Settings chính.</small>
+                            <small class="hint">Key này dùng riêng cho Custom Proxy và chỉ lưu trong trình duyệt này.</small>
                         </div>
                     </div>
 
@@ -911,14 +937,46 @@
             <!-- Text Preview -->
             <section class="preview-section glass-card">
                 <div class="preview-header">
-                    <h2 class="section-title">
-                        <span class="icon">👁️</span>
-                        <span id="sourcePreviewTitle">Nội dung gốc</span>
-                    </h2>
-                    <div class="preview-stats">
-                        <span id="charCount">0 ký tự</span>
-                        <span id="chunkCount">0 chunks</span>
-                        <span id="estimatedTime">~0 giây</span>
+                    <div class="preview-header__top">
+                        <h2 class="section-title">
+                            <span class="icon">👁️</span>
+                            <span id="sourcePreviewTitle">Nội dung gốc</span>
+                        </h2>
+                        <div class="preview-stats" aria-label="Thông tin tệp">
+                            <span id="charCount">0 ký tự</span>
+                            <span id="chunkCount">0 chunks</span>
+                            <span id="estimatedTime">~0 giây</span>
+                        </div>
+                    </div>
+                    <div class="preview-tools" role="group" aria-label="Công cụ cho tệp hiện tại">
+                        <button type="button"
+                            class="preview-tool preview-tool--audit han-file-open-button"
+                            data-click-action="openHanFileAudit">
+                            <span class="preview-tool__icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M5 4h10l4 4v12H5V4Z"></path>
+                                    <path d="M15 4v4h4M8 12h8M8 16h5"></path>
+                                </svg>
+                            </span>
+                            <span class="preview-tool__copy">
+                                <strong>Quét Hán tự trong file đã dịch</strong>
+                                <small>Quét và sửa chữ Trung còn sót trong TXT đã dịch</small>
+                            </span>
+                        </button>
+                        <button type="button"
+                            class="preview-tool preview-tool--reader chapter-open-button"
+                            data-click-action="openSourceChapterReader">
+                            <span class="preview-tool__icon" aria-hidden="true">
+                                <svg class="chapter-action-icon" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11a3 3 0 0 1 3 3v15a3 3 0 0 0-3-3H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"></path>
+                                    <path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H14v18a3 3 0 0 1 3-3h.5a2.5 2.5 0 0 1 2.5 2.5v-15Z"></path>
+                                </svg>
+                            </span>
+                            <span class="preview-tool__copy">
+                                <strong>Đọc theo chương</strong>
+                                <small>Mục lục, đọc truyện và xuất EPUB</small>
+                            </span>
+                        </button>
                     </div>
                 </div>
                 <textarea id="originalText"
@@ -1065,6 +1123,9 @@
                     <button class="btn btn-success" id="downloadPartialBtn" data-click-action="downloadPartial">
                         📥 Tải phần đã dịch
                     </button>
+                    <button type="button" class="btn btn-secondary" data-click-action="openPartialChapterReader">
+                        Đọc bản tạm
+                    </button>
                     <button class="btn btn-warning" id="pauseBtn" data-click-action="togglePause">
                         <span class="btn-icon">⏸️</span>
                         <span class="btn-text">Tạm dừng</span>
@@ -1123,6 +1184,9 @@
                         Kết quả dịch
                     </h2>
                     <div class="result-actions">
+                        <button type="button" class="btn btn-secondary" data-click-action="openResultChapterReader">
+                            Đọc theo chương
+                        </button>
                         <button class="btn btn-secondary" data-click-action="copyResult">
                             📋 Copy
                         </button>
@@ -1148,6 +1212,185 @@
     <!-- Toast Notification -->
     <div class="toast-container" id="toastContainer"></div>
 
+    <div class="han-file-audit" id="hanFileAudit" role="dialog" aria-modal="true"
+        aria-labelledby="hanFileAuditTitle" aria-describedby="hanFileAuditStatus" hidden>
+        <button type="button" class="han-file-audit__backdrop" data-click-action="closeHanFileAudit"
+            aria-label="Đóng kiểm tra Hán tự"></button>
+        <section class="han-file-audit__shell">
+            <header class="han-file-audit__header">
+                <div>
+                    <h2 id="hanFileAuditTitle">Kiểm tra Hán tự trong TXT đã dịch</h2>
+                    <p id="hanFileAuditFileName"></p>
+                </div>
+                <button type="button" class="han-file-audit__close" id="closeHanFileAuditBtn"
+                    data-click-action="closeHanFileAudit" aria-label="Đóng">×</button>
+            </header>
+
+            <div class="han-file-audit__warning" id="hanFileAuditWarning" role="note" hidden></div>
+            <div class="han-file-audit__progress" id="hanFileAuditProgress" hidden>
+                <span id="hanFileAuditProgressFill"></span>
+            </div>
+
+            <div class="han-file-audit__summary">
+                <div>
+                    <strong id="hanFileAuditSummary">Chưa quét file.</strong>
+                    <span id="hanFileAuditMeta">Công cụ chỉ dùng cho TXT đã dịch hoặc convert.</span>
+                </div>
+                <div class="han-file-audit__toolbar">
+                    <button type="button" class="btn btn-primary btn-small" id="correctAllHanFileBtn"
+                        data-click-action="correctAllHanFileIssues" disabled>Dịch lại tất cả còn sót</button>
+                    <button type="button" class="btn btn-secondary btn-small" id="cancelHanFileBtn"
+                        data-click-action="cancelHanFileAudit" hidden>Dừng</button>
+                    <button type="button" class="btn btn-secondary btn-small" id="downloadHanFileBtn"
+                        data-click-action="downloadHanFileAudit" disabled>Tải TXT đã sửa</button>
+                </div>
+            </div>
+
+            <div class="han-file-audit__layout" id="hanFileAuditLayout" hidden>
+                <aside class="han-file-audit__issues" aria-label="Các chunk còn Hán tự">
+                    <div class="han-file-audit__issues-heading">
+                        <strong>Chunk bị ảnh hưởng</strong>
+                        <span id="hanFileAuditIssueCount">0 chunk</span>
+                    </div>
+                    <div class="han-file-audit__issue-viewport" id="hanFileAuditIssueViewport">
+                        <div class="han-file-audit__issue-canvas" id="hanFileAuditIssueCanvas"></div>
+                    </div>
+                </aside>
+
+                <main class="han-file-audit__detail">
+                    <header>
+                        <div>
+                            <h3 id="hanFileAuditChunkTitle">Chọn một chunk</h3>
+                            <span id="hanFileAuditChunkState"></span>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-small" id="correctOneHanFileBtn"
+                            data-click-action="correctOneHanFileIssue" disabled>Dịch lại chunk này</button>
+                    </header>
+                    <div class="han-file-audit__text" id="hanFileAuditChunkText">
+                        Chọn một mục để chỉ tải phần văn bản cần xem.
+                    </div>
+                    <nav class="han-file-audit__nav" aria-label="Chuyển chunk">
+                        <button type="button" class="btn btn-secondary btn-small" id="previousHanFileIssueBtn"
+                            data-click-action="previousHanFileIssue" disabled>Trước</button>
+                        <span id="hanFileAuditPosition">0 / 0</span>
+                        <button type="button" class="btn btn-secondary btn-small" id="nextHanFileIssueBtn"
+                            data-click-action="nextHanFileIssue" disabled>Sau</button>
+                    </nav>
+                </main>
+            </div>
+
+            <footer class="han-file-audit__footer">
+                <p id="hanFileAuditStatus" role="status" aria-live="polite"></p>
+            </footer>
+        </section>
+    </div>
+
+    <!-- Chapter reader: opened on demand; scanning/export stay inside one Worker. -->
+    <div class="chapter-reader" id="chapterReader" role="dialog" aria-modal="true"
+        aria-labelledby="chapterReaderTitle" hidden>
+        <button type="button" class="chapter-reader__backdrop" data-click-action="closeChapterReader"
+            aria-label="Đóng trình đọc"></button>
+        <section class="chapter-reader__shell" aria-describedby="chapterReaderStatus">
+            <header class="chapter-reader__header">
+                <button type="button" class="chapter-reader__toc-toggle" data-click-action="toggleChapterToc"
+                    aria-label="Mở mục lục">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+                <div class="chapter-reader__heading">
+                    <h2 id="chapterReaderTitle">Đọc theo chương</h2>
+                    <span id="chapterReaderScope"></span>
+                </div>
+                <div class="chapter-reader__toolbar">
+                    <button type="button" class="btn btn-secondary btn-small" id="toggleChapterEditBtn"
+                        data-click-action="toggleChapterEditMode" aria-pressed="false">Sửa mốc</button>
+                    <button type="button" class="btn btn-primary btn-small" id="exportChapterEpubBtn"
+                        data-click-action="exportChapterEpub">Xuất EPUB</button>
+                    <button type="button" class="chapter-reader__close" id="closeChapterReaderBtn"
+                        data-click-action="closeChapterReader" aria-label="Đóng trình đọc">×</button>
+                </div>
+            </header>
+
+            <div class="chapter-reader__stale" id="chapterReaderStale" hidden>
+                <span>Có bản dịch mới kể từ lúc mở snapshot này.</span>
+                <button type="button" class="btn btn-secondary btn-small" data-click-action="refreshChapterReader">Cập nhật</button>
+            </div>
+            <div class="chapter-reader__warning" id="chapterReaderWarning" role="note" hidden></div>
+
+            <div class="chapter-reader__metadata">
+                <label>
+                    <span>Tên sách</span>
+                    <input type="text" id="chapterBookTitle" maxlength="240" autocomplete="off">
+                </label>
+                <label>
+                    <span>Tác giả (tùy chọn)</span>
+                    <input type="text" id="chapterBookAuthor" maxlength="160" autocomplete="off">
+                </label>
+            </div>
+
+            <div class="chapter-reader__progress" hidden>
+                <span id="chapterReaderProgressFill"></span>
+            </div>
+            <div class="chapter-reader__loading" id="chapterReaderLoading">Đang chuẩn bị mục lục…</div>
+
+            <div class="chapter-reader__layout" id="chapterReaderLayout" hidden>
+                <aside class="chapter-reader__toc" aria-label="Mục lục">
+                    <div class="chapter-reader__toc-header">
+                        <strong>Mục lục</strong>
+                        <span id="chapterReaderCount">0 mục</span>
+                    </div>
+                    <label class="chapter-reader__suggestions" id="toggleChapterSuggestionsWrap" hidden>
+                        <input type="checkbox" data-change-action="toggleChapterSuggestions">
+                        Hiện mốc gợi ý
+                    </label>
+                    <div class="chapter-reader__toc-viewport" id="chapterTocViewport">
+                        <div class="chapter-reader__toc-canvas" id="chapterTocCanvas"></div>
+                    </div>
+                    <div class="chapter-reader__edit" id="chapterReaderEditPanel" hidden>
+                        <label for="chapterHeadingQuery">Thêm nguyên dòng tiêu đề</label>
+                        <div class="chapter-reader__find-row">
+                            <input type="text" id="chapterHeadingQuery" maxlength="1024" autocomplete="off"
+                                placeholder="Ví dụ: Chương thứ 96">
+                            <button type="button" class="btn btn-secondary btn-small"
+                                data-click-action="findChapterHeading">Tìm</button>
+                        </div>
+                        <div class="chapter-heading-matches" id="chapterHeadingMatches"></div>
+                    </div>
+                </aside>
+
+                <main class="chapter-reader__content" id="chapterReaderContent">
+                    <article class="chapter-reader__article">
+                        <h3 id="chapterReaderChapterTitle"></h3>
+                        <p class="chapter-reader__partial-note" id="chapterReaderPartialNote" hidden>
+                            Chương cuối của bản tạm có thể chưa hoàn tất.
+                        </p>
+                        <div class="chapter-reader__body" id="chapterReaderBody"></div>
+                    </article>
+                    <nav class="chapter-reader__page-actions" id="chapterReaderPageActions" aria-label="Trang trong chương" hidden>
+                        <button type="button" class="btn btn-secondary btn-small" id="previousReaderPageBtn"
+                            data-click-action="previousReaderPage">Trang trước</button>
+                        <span id="chapterReaderPageInfo"></span>
+                        <button type="button" class="btn btn-secondary btn-small" id="nextReaderPageBtn"
+                            data-click-action="nextReaderPage">Trang sau</button>
+                    </nav>
+                    <nav class="chapter-reader__chapter-actions" aria-label="Chuyển chương">
+                        <button type="button" class="btn btn-secondary" id="previousReaderChapterBtn"
+                            data-click-action="previousReaderChapter">Chương trước</button>
+                        <button type="button" class="btn btn-secondary" id="nextReaderChapterBtn"
+                            data-click-action="nextReaderChapter">Chương sau</button>
+                    </nav>
+                </main>
+            </div>
+
+            <footer class="chapter-reader__footer">
+                <p id="chapterReaderStatus" role="status" aria-live="polite"></p>
+                <button type="button" class="btn btn-secondary btn-small" id="cancelChapterTaskBtn"
+                    data-click-action="cancelChapterTask" hidden>Hủy tác vụ</button>
+            </footer>
+        </section>
+    </div>
+
     <!-- 
     ============================================== 
     Novel Translator Pro - Modular JavaScript
@@ -1156,6 +1399,7 @@
 
     <!-- 1. Main App (Global variables, PROMPT_TEMPLATES, GEMINI_MODELS, init) -->
     <script src="js/app.js?v=23"></script>
+    <script src="js/proxy/custom-proxy-presets.js?v=1"></script>
     <script src="js/translation/prompt-settings.js?v=1"></script>
     <script src="js/translation/request-contract.js?v=1"></script>
     <script src="js/canon-pack.js?v=22"></script>
@@ -1173,10 +1417,17 @@
     <!-- 3. Translation Engine -->
     <script src="js/translation/chunker.js?v=13"></script>
     <script src="js/translation/source-reader.js?v=22"></script>
-    <script src="js/translation/han-audit-core.js?v=1"></script>
+    <script src="js/translation/han-audit-core.js?v=2"></script>
+    <script src="js/translation/han-audit/file-source.js?v=1"></script>
+    <script src="js/translation/han-audit/correction-runner.js?v=1"></script>
     <script src="js/translation/local-store.js?v=23"></script>
+    <script src="js/chapter/chapter-rules.js?v=1"></script>
+    <script src="js/chapter/chapter-indexer.js?v=1"></script>
+    <script src="js/chapter/chapter-snapshot.js?v=1"></script>
+    <script src="js/chapter/chapter-epub.js?v=1"></script>
     <script src="js/translation/retry.js?v=17"></script>
-    <script src="js/translation/han-audit.js?v=1"></script>
+    <script src="js/translation/han-audit.js?v=2"></script>
+    <script src="js/translation/han-audit/file-feature.js?v=1"></script>
     <script src="js/translation/engine.js?v=25"></script>
     <script src="js/translation/story-prompt.js?v=23"></script>
 
@@ -1190,6 +1441,7 @@
 
     <!-- 5. History -->
     <script src="js/history/history.js?v=15"></script>
+    <script src="js/chapter/chapter-feature.js?v=1"></script>
 
     <!-- 6. Local AI (Ollama) -->
     <script src="js/local-ai/ollama.js?v=15"></script>
@@ -1198,7 +1450,7 @@
     <script src="js/proxy/proxy-api.js?v=17"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
-    <script src="js/init.js?v=24"></script>
+    <script src="js/init.js?v=25"></script>
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->

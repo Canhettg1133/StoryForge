@@ -1602,7 +1602,11 @@ export default function ProjectChat() {
     return () => window.clearTimeout(timeout);
   }, [saveStatus]);
 
-  async function createThread({ activate = true, initialMode } = {}) {
+  async function createThread({
+    activate = true,
+    initialMode,
+    focusComposer = !isMobileLayout,
+  } = {}) {
     const mode = initialMode || (projectScopeEnabled ? CHAT_MODES.STORY : CHAT_MODES.FREE);
     const payload = buildThreadPayload({
       scopedProjectId,
@@ -1622,6 +1626,8 @@ export default function ProjectChat() {
       clearPendingPastedTexts();
       resetComposerHeight();
       setShowSystemPromptDrawer(false);
+    }
+    if (activate && focusComposer) {
       window.setTimeout(() => inputRef.current?.focus(), 0);
     }
 
@@ -2886,6 +2892,28 @@ export default function ProjectChat() {
     }, 0);
   }
 
+  function openMobileThreadHistory() {
+    inputRef.current?.blur();
+    setMobileThreadsOpen(true);
+  }
+
+  async function handleCreateThreadFromSidebar(initialMode) {
+    if (isMobileLayout) {
+      setMobileThreadsOpen(false);
+      await createThread({
+        activate: true,
+        initialMode,
+        focusComposer: false,
+      });
+      return;
+    }
+    await createThread({
+      activate: true,
+      initialMode,
+      focusComposer: true,
+    });
+  }
+
   const pageTitle = projectScopeEnabled ? currentProject?.title || 'Chat AI' : 'Chat tự do';
   const pageKicker = projectScopeEnabled ? 'Dự án hiện tại' : 'Không gắn với truyện';
   const isStoryChatMode = activeThreadMode === CHAT_MODES.STORY;
@@ -2935,7 +2963,12 @@ export default function ProjectChat() {
           />
         ) : null}
 
-        <aside className={`project-chat-sidebar card ${sidebarCollapsed ? 'is-collapsed' : ''} ${mobileThreadsOpen ? 'is-mobile-open' : ''}`}>
+        <aside
+          className={`project-chat-sidebar card ${sidebarCollapsed ? 'is-collapsed' : ''} ${mobileThreadsOpen ? 'is-mobile-open' : ''}`}
+          role={isMobileLayout ? 'dialog' : undefined}
+          aria-modal={isMobileLayout && mobileThreadsOpen ? 'true' : undefined}
+          aria-label={isMobileLayout ? 'Danh sách cuộc trò chuyện' : undefined}
+        >
           <div className="project-chat-sidebar__header">
             <div>
               <div className="project-chat-sidebar__kicker">{pageKicker}</div>
@@ -2971,10 +3004,7 @@ export default function ProjectChat() {
                     setModeGateFeature(SUPREME_CHAT_FEATURE);
                     return;
                   }
-                  createThread({
-                    activate: true,
-                    initialMode,
-                  });
+                  handleCreateThreadFromSidebar(initialMode);
                 }}
                 title="Tạo cuộc trò chuyện mới"
               >
@@ -3055,7 +3085,10 @@ export default function ProjectChat() {
           </div>
         </aside>
 
-        <section className="project-chat-main card">
+        <section
+          className="project-chat-main card"
+          inert={isMobileLayout && mobileThreadsOpen ? '' : undefined}
+        >
           <div className="project-chat-topbar">
             {!projectScopeEnabled && isMobileLayout ? (
               <div className="project-chat-topbar__nav">
@@ -3103,7 +3136,7 @@ export default function ProjectChat() {
                 <button
                   type="button"
                   className="btn btn-ghost project-chat-mobile-threads-btn"
-                  onClick={() => setMobileThreadsOpen(true)}
+                  onClick={openMobileThreadHistory}
                 >
                   <MessageSquare size={16} />
                   Lịch sử

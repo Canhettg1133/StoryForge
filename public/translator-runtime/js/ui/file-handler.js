@@ -69,11 +69,12 @@ function updateTranslateActionState() {
     const isFileLoadBusy = Boolean(button && button.dataset.fileLoadBusy === 'true');
     const isStartSearchBusy = Boolean(button && button.dataset.startSearchBusy === 'true');
     const isStoryPromptBusy = Boolean(button && button.dataset.storyPromptBusy === 'true');
+    const isHanFileBusy = Boolean(globalThis.isHanFileAuditBusy);
 
     document.body?.classList.toggle('translator-source-ready', hasSource);
     document.body?.classList.toggle('translator-is-translating', Boolean(isTranslating));
     if (button) button.disabled = Boolean(
-        isTranslating || isFileLoadBusy || isStartSearchBusy || isStoryPromptBusy || !hasSource
+        isTranslating || isFileLoadBusy || isStartSearchBusy || isStoryPromptBusy || isHanFileBusy || !hasSource
     );
 
     if (isTranslating) {
@@ -98,6 +99,12 @@ function updateTranslateActionState() {
         if (buttonText) buttonText.textContent = 'Đang tạo quy tắc...';
         if (title) title.textContent = 'Đang tạo quy tắc dịch';
         if (hint) hint.textContent = 'Nút dịch sẽ sẵn sàng ngay khi AI hoàn tất.';
+        return;
+    }
+    if (isHanFileBusy) {
+        if (buttonText) buttonText.textContent = 'Đang kiểm tra file...';
+        if (title) title.textContent = 'Đang kiểm tra Hán tự';
+        if (hint) hint.textContent = 'Có thể dừng tác vụ trong cửa sổ kiểm tra TXT.';
         return;
     }
     if (!hasSource) {
@@ -187,6 +194,8 @@ async function processFile(file) {
         return;
     }
 
+    globalThis.TranslatorChapterFeature?.reset();
+    globalThis.TranslatorHanFileFeature?.reset();
     cancelStartChunkSearch({ silent: true });
     startChunkSearchMatches = new Map();
 
@@ -262,6 +271,8 @@ async function handleTranslatorChunkSizeChange() {
         return;
     }
 
+    globalThis.TranslatorHanFileFeature?.reset();
+
     const hadCustomStart = translationStartChunkIndex > 0 || translationStartByte > 0;
     translationStartChunkIndex = 0;
     translationStartByte = 0;
@@ -330,6 +341,7 @@ function setCurrentTranslatorSession(session) {
 
 async function processTextFile(file) {
     resetSourceModeToText();
+    currentSourceFile = file;
     const session = await createLocalSessionForFile(file).catch((error) => {
         console.warn('[Translator] Không thể lưu file nhỏ vào bộ nhớ cục bộ:', error);
         showToast('Bộ nhớ cục bộ không đủ. Vẫn có thể dịch, nhưng queue/resume sau khi tải lại trang sẽ không khả dụng.', 'warning');
@@ -443,6 +455,8 @@ function showFileInfo(file, options = {}) {
 }
 
 function clearFile() {
+    globalThis.TranslatorChapterFeature?.reset();
+    globalThis.TranslatorHanFileFeature?.reset();
     setFileLoadState('idle');
     resetSourceModeToText();
     currentTranslatorPersistenceAvailable = true;

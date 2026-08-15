@@ -162,18 +162,13 @@
 
 .app-layout--mobile {
   display: block;
-  height: 100vh;
-  min-height: 100vh;
-  height: 100svh;
-  min-height: 100svh;
-  height: 100dvh;
-  min-height: 100dvh;
+  height: 100%;
+  min-height: 100%;
 }
 
 .app-layout--mobile .app-main {
-  height: 100vh;
-  height: 100svh;
-  height: 100dvh;
+  height: 100%;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;

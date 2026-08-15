@@ -580,28 +580,37 @@ async function retryHanAuditIssues(options = {}) {
         const requestedParallel = typeof normalizeTranslatorParallel === 'function'
             ? normalizeTranslatorParallel(document.getElementById('parallelCount')?.value || 1)
             : Math.max(1, Math.min(30, Number(document.getElementById('parallelCount')?.value) || 1));
-        while (cursor < issues.length && !hanAuditCancelRequested) {
-            const remaining = issues.length - cursor;
-            const rpmPlan = typeof waitForTranslatorRpmBatchPlan === 'function'
-                ? await waitForTranslatorRpmBatchPlan({ requestedParallel, remainingChunks: remaining })
-                : { capacity: Math.min(requestedParallel, remaining) };
-            if (hanAuditCancelRequested) break;
-            const capacity = Math.max(1, Math.min(remaining, Number(rpmPlan?.capacity) || 1));
-            const wave = issues.slice(cursor, cursor + capacity);
-            if (typeof useProxy !== 'undefined' && useProxy && typeof buildTranslatorWaveAssignments === 'function') {
-                buildTranslatorWaveAssignments(wave.map(issue => issue.chunkIndex), rpmPlan);
-            }
-            const results = await Promise.all(wave.map(correctHanAuditIssue));
-            results.forEach((result) => {
-                if (result.ok) succeeded += 1;
-                else if (result.issue) unresolved.push(result.issue);
-            });
-            cursor += wave.length;
-            setHanAuditState({
-                corrected: cursor,
-                issues: mergeHanAuditIssueLists(untouchedIssues, unresolved, issues.slice(cursor)),
-            });
+        if (typeof TranslatorHanCorrectionRunner === 'undefined') {
+            throw new Error('HAN_CORRECTION_RUNNER_UNAVAILABLE');
         }
+        const runResult = await TranslatorHanCorrectionRunner.run({
+            items: issues,
+            requestedParallel,
+            shouldCancel: () => hanAuditCancelRequested,
+            getPlan: ({ requestedParallel: waveParallel, remainingChunks }) => (
+                typeof waitForTranslatorRpmBatchPlan === 'function'
+                    ? waitForTranslatorRpmBatchPlan({ requestedParallel: waveParallel, remainingChunks })
+                    : { capacity: Math.min(waveParallel, remainingChunks) }
+            ),
+            assignWave: (wave, rpmPlan) => {
+                if (typeof useProxy !== 'undefined' && useProxy && typeof buildTranslatorWaveAssignments === 'function') {
+                    buildTranslatorWaveAssignments(wave.map(issue => issue.chunkIndex), rpmPlan);
+                }
+            },
+            correctItem: correctHanAuditIssue,
+            onWaveComplete: ({ processed, results }) => {
+                results.forEach((result) => {
+                    if (result.ok) succeeded += 1;
+                    else if (result.issue) unresolved.push(result.issue);
+                });
+                cursor = processed;
+                setHanAuditState({
+                    corrected: cursor,
+                    issues: mergeHanAuditIssueLists(untouchedIssues, unresolved, issues.slice(cursor)),
+                });
+            },
+        });
+        cursor = runResult.processed;
         if (cursor < issues.length) unresolved.push(...issues.slice(cursor));
         const remainingIssues = mergeHanAuditIssueLists(untouchedIssues, unresolved);
         const status = hanAuditCancelRequested

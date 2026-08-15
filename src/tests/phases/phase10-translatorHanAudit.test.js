@@ -12,6 +12,10 @@ const detectorSource = fs.readFileSync(
   path.join(repoRoot, 'public/translator-runtime/js/translation/han-audit-core.js'),
   'utf8',
 );
+const correctionRunnerSource = fs.readFileSync(
+  path.join(repoRoot, 'public/translator-runtime/js/translation/han-audit/correction-runner.js'),
+  'utf8',
+);
 
 function loadDetector() {
   const context = {
@@ -123,6 +127,7 @@ function loadHanAuditRuntime(overrides = {}) {
   context.globalThis = context;
   vm.createContext(context);
   vm.runInContext(detectorSource, context);
+  vm.runInContext(correctionRunnerSource, context);
   vm.runInContext(
     fs.readFileSync(path.join(repoRoot, 'public/translator-runtime/js/translation/han-audit.js'), 'utf8'),
     context,

@@ -18,6 +18,8 @@
     "zalo:dev": "node tools/zalo-local-server/server.mjs --open",
     "dev:zalo": "npm run zalo:dev",
     "analysis:eval:live": "node scripts/analysis-live-eval.mjs",
+    "benchmark:translator-chapters": "node --expose-gc scripts/benchmark-translator-chapters.mjs --sizes=5,20,50 --epub",
+    "benchmark:translator-han-file": "node --expose-gc scripts/benchmark-translator-han-file.mjs --sizes=5,20,50",
     "migrate:cloud-sync-r2": "node scripts/cloud-sync-r2-backfill.mjs",
     "reconcile:cloud-sync-r2": "node scripts/cloud-sync-r2-reconcile.mjs",
     "smoke:cloud-sync-r2": "node scripts/cloud-sync-http-smoke.mjs",

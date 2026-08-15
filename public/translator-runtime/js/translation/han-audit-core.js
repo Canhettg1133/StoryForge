@@ -21,10 +21,18 @@
 
     function isHanCodePoint(codePoint) {
         if (!Number.isFinite(codePoint)) return false;
+        if (codePoint === 0x3007
+            || (codePoint >= 0x3400 && codePoint <= 0x4DBF)
+            || (codePoint >= 0x4E00 && codePoint <= 0x9FFF)) {
+            return true;
+        }
+        if (codePoint >= 0xF900 && codePoint <= 0xFAFF) return true;
+        if (codePoint < 0x20000 || codePoint > 0x3FFFF) return false;
+        if (isFallbackHanCodePoint(codePoint)) return true;
         if (unifiedIdeographRegex) {
             return unifiedIdeographRegex.test(String.fromCodePoint(codePoint));
         }
-        return isFallbackHanCodePoint(codePoint);
+        return false;
     }
 
     function clampSliceStart(text, offset) {
@@ -57,32 +65,36 @@
         return text.slice(start, end);
     }
 
-    function scanHanInText(value) {
+    function scanHanInText(value, options = {}) {
         const text = typeof value === 'string' ? value : '';
+        const collectRanges = options.collectRanges !== false;
         const ranges = [];
         let hanCount = 0;
+        let codePointCount = 0;
         let activeStart = -1;
 
         for (let offset = 0; offset < text.length;) {
             const codePoint = text.codePointAt(offset);
             const width = codePoint > 0xFFFF ? 2 : 1;
+            codePointCount += 1;
             if (isHanCodePoint(codePoint)) {
                 hanCount += 1;
-                if (activeStart < 0) activeStart = offset;
-            } else if (activeStart >= 0) {
+                if (collectRanges && activeStart < 0) activeStart = offset;
+            } else if (collectRanges && activeStart >= 0) {
                 if (ranges.length < HAN_AUDIT_MAX_RANGES) ranges.push({ start: activeStart, end: offset });
                 activeStart = -1;
             }
             offset += width;
         }
-        if (activeStart >= 0 && ranges.length < HAN_AUDIT_MAX_RANGES) {
+        if (collectRanges && activeStart >= 0 && ranges.length < HAN_AUDIT_MAX_RANGES) {
             ranges.push({ start: activeStart, end: text.length });
         }
 
         return {
             hanCount,
+            codePointCount,
             ranges,
-            preview: buildHanPreview(text, ranges[0]),
+            preview: collectRanges ? buildHanPreview(text, ranges[0]) : '',
         };
     }
 

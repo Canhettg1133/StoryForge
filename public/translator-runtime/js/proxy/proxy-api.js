@@ -366,6 +366,9 @@ function executeImportProxyKeys(provider = 'ag') {
     config.setKeys([...config.keys(), ...result.newKeys]);
     config.render();
     saveSettings();
+    if (provider === 'custom' && typeof renderTranslatorCustomProxyPresets === 'function') {
+        renderTranslatorCustomProxyPresets();
+    }
     if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
     closeProxyImportModal(provider);
 
@@ -1074,6 +1077,7 @@ function updateCustomProxyConfig(patch = {}) {
     renderCustomProxyModelsDropdown();
     persistCustomProxySharedSettings();
     saveSettings();
+    if (typeof renderTranslatorCustomProxyPresets === 'function') renderTranslatorCustomProxyPresets();
     if (typeof updateWorkspaceToolbar === 'function') updateWorkspaceToolbar();
     return customProxyProfile;
 }
@@ -1096,6 +1100,7 @@ function addCustomProxyKey() {
     renderCustomProxyKeysList();
     persistCustomProxySharedSettings();
     saveSettings();
+    if (typeof renderTranslatorCustomProxyPresets === 'function') renderTranslatorCustomProxyPresets();
     showToast(`Đã thêm Custom Proxy key. Hiện có ${customProxyApiKeys.length} key để xoay.`, 'success');
 }
 
@@ -1106,6 +1111,7 @@ function removeCustomProxyKey(index) {
     renderCustomProxyKeysList();
     persistCustomProxySharedSettings();
     saveSettings();
+    if (typeof renderTranslatorCustomProxyPresets === 'function') renderTranslatorCustomProxyPresets();
     showToast('Đã xóa Custom Proxy key.', 'info');
 }
 
@@ -1364,6 +1370,7 @@ async function fetchCustomProxyModels() {
     renderCustomProxyModelsDropdown();
     persistCustomProxySharedSettings(true);
     saveSettings();
+    if (typeof renderTranslatorCustomProxyPresets === 'function') renderTranslatorCustomProxyPresets();
 
     if (modelStatus) {
         modelStatus.textContent = `Đã lấy ${allModels.length} model Custom Proxy.`;
@@ -1393,6 +1400,7 @@ function selectCustomProxyModel(modelName = '') {
     renderCustomProxyModelsDropdown();
     persistCustomProxySharedSettings(true);
     saveSettings();
+    if (typeof renderTranslatorCustomProxyPresets === 'function') renderTranslatorCustomProxyPresets();
     showToast(`Đã chọn model Custom Proxy: ${profile.defaultModel}`, 'success');
     return true;
 }

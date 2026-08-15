@@ -1,0 +1,209 @@
+.translator-custom-presets {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 16px;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 35%, var(--border-color));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+}
+
+.translator-custom-presets__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.translator-custom-presets__header h3 {
+    margin: 0 0 3px;
+    color: var(--text-primary);
+    font-size: 1rem;
+}
+
+.translator-custom-presets__header p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.translator-custom-presets__current {
+    display: grid;
+    flex: 0 0 auto;
+    gap: 2px;
+    max-width: min(280px, 42%);
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.translator-custom-presets__current strong {
+    color: var(--text-primary);
+    font-size: 0.82rem;
+}
+
+.translator-custom-presets__current span {
+    color: var(--success);
+    font-size: 0.72rem;
+}
+
+.translator-custom-presets__current[data-dirty='true'] span {
+    color: var(--warning);
+}
+
+.translator-custom-presets__save {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.translator-custom-presets__save label {
+    display: grid;
+    flex: 1 1 240px;
+    gap: 5px;
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+}
+
+.translator-custom-presets__save input {
+    width: 100%;
+}
+
+.translator-custom-presets__list {
+    display: grid;
+    gap: 8px;
+}
+
+.translator-custom-preset {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.1fr) minmax(180px, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+}
+
+.translator-custom-preset.is-active {
+    border-color: color-mix(in srgb, var(--accent-primary) 70%, var(--border-color));
+    background: color-mix(in srgb, var(--accent-primary) 10%, var(--bg-card));
+}
+
+.translator-custom-preset__identity {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.translator-custom-preset__identity strong,
+.translator-custom-preset__identity span,
+.translator-custom-preset__meta > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.translator-custom-preset__identity strong {
+    color: var(--text-primary);
+    font-size: 0.86rem;
+}
+
+.translator-custom-preset__identity span,
+.translator-custom-preset__meta {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.translator-custom-preset__meta,
+.translator-custom-preset__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex-wrap: wrap;
+}
+
+.translator-custom-preset__active {
+    color: var(--success);
+}
+
+.translator-custom-preset__actions {
+    justify-content: flex-end;
+}
+
+.translator-custom-preset__warning {
+    max-width: 180px;
+    color: var(--warning);
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+
+.translator-custom-preset__actions .is-danger {
+    color: var(--danger);
+}
+
+.custom-preset-empty {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    color: var(--text-secondary);
+    background: var(--bg-card);
+    font-size: 0.8rem;
+}
+
+@media (max-width: 768px) {
+    .translator-custom-presets {
+        padding: 12px;
+    }
+
+    .translator-custom-presets__header {
+        display: grid;
+    }
+
+    .translator-custom-presets__current {
+        max-width: none;
+        text-align: left;
+    }
+
+    .translator-custom-presets__save,
+    .translator-custom-presets__save label,
+    .translator-custom-presets__save .btn {
+        width: 100%;
+    }
+
+    .translator-custom-presets__save input {
+        min-height: 44px;
+        font-size: 16px;
+    }
+
+    .translator-custom-preset {
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+    }
+
+    .translator-custom-preset__identity strong,
+    .translator-custom-preset__identity span,
+    .translator-custom-preset__meta > span:first-child {
+        overflow: visible;
+        text-overflow: clip;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .translator-custom-preset__actions {
+        justify-content: stretch;
+    }
+
+    .translator-custom-preset__actions .btn {
+        flex: 1 1 132px;
+        min-height: 42px;
+    }
+
+    .translator-custom-preset__warning {
+        flex-basis: 100%;
+        max-width: none;
+    }
+}

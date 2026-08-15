@@ -1,0 +1,333 @@
+.han-file-open-button svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+body.han-file-audit-open {
+    overflow: hidden;
+}
+
+.han-file-audit[hidden],
+.han-file-audit [hidden] {
+    display: none !important;
+}
+
+.han-file-audit {
+    position: fixed;
+    inset: 0;
+    z-index: 10060;
+    display: grid;
+    place-items: center;
+    padding: 3vh 2vw;
+}
+
+.han-file-audit__backdrop {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: rgba(2, 6, 23, 0.78);
+    cursor: default;
+}
+
+.han-file-audit__shell {
+    position: relative;
+    width: min(94vw, 1180px);
+    height: min(92dvh, 860px);
+    display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    overflow: hidden;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.han-file-audit__header,
+.han-file-audit__summary,
+.han-file-audit__footer {
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.han-file-audit__header,
+.han-file-audit__summary,
+.han-file-audit__toolbar,
+.han-file-audit__detail > header,
+.han-file-audit__nav,
+.han-file-audit__issues-heading {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.han-file-audit__header,
+.han-file-audit__summary,
+.han-file-audit__detail > header,
+.han-file-audit__issues-heading {
+    justify-content: space-between;
+}
+
+.han-file-audit__header h2,
+.han-file-audit__detail h3 {
+    margin: 0;
+    letter-spacing: -0.02em;
+}
+
+.han-file-audit__header h2 {
+    font-size: clamp(1.1rem, 2vw, 1.45rem);
+}
+
+.han-file-audit__header p,
+.han-file-audit__summary span,
+.han-file-audit__detail header span,
+.han-file-audit__issues-heading span,
+.han-file-audit__footer p {
+    margin: 0.2rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+}
+
+.han-file-audit__close {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-size: 1.7rem;
+    cursor: pointer;
+}
+
+.han-file-audit__close:hover {
+    color: var(--text-primary);
+    background: rgba(99, 102, 241, 0.12);
+}
+
+.han-file-audit__warning {
+    margin: 0.75rem 1rem 0;
+    padding: 0.7rem 0.85rem;
+    color: var(--text-primary);
+    background: rgba(245, 158, 11, 0.09);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    border-radius: var(--radius-sm);
+    font-size: 0.88rem;
+}
+
+.han-file-audit__progress {
+    height: 3px;
+    overflow: hidden;
+    background: rgba(99, 102, 241, 0.12);
+}
+
+.han-file-audit__progress span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform: scaleX(0);
+    transform-origin: left;
+    background: var(--primary-color);
+    transition: transform 0.18s ease-out;
+}
+
+.han-file-audit__summary > div:first-child {
+    min-width: 0;
+    display: grid;
+}
+
+.han-file-audit__toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.han-file-audit__layout {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(250px, 31%) minmax(0, 1fr);
+}
+
+.han-file-audit__issues {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    border-right: 1px solid var(--border-color);
+}
+
+.han-file-audit__issues-heading {
+    min-height: 52px;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.han-file-audit__issue-viewport {
+    position: relative;
+    min-height: 0;
+    overflow: auto;
+    contain: strict;
+}
+
+.han-file-audit__issue-canvas {
+    position: relative;
+    width: 100%;
+}
+
+.han-file-audit__issue-row {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 54px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.9rem;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    text-align: left;
+    cursor: pointer;
+}
+
+.han-file-audit__issue-row:hover,
+.han-file-audit__issue-row.is-active {
+    color: var(--text-primary);
+    background: rgba(99, 102, 241, 0.12);
+}
+
+.han-file-audit__issue-row.is-corrected {
+    color: var(--success-color, #34d399);
+}
+
+.han-file-audit__issue-row strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.han-file-audit__issue-row span {
+    font-size: 0.75rem;
+}
+
+.han-file-audit__detail {
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.han-file-audit__detail > header,
+.han-file-audit__nav {
+    min-height: 58px;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.han-file-audit__detail h3 {
+    font-size: 1rem;
+}
+
+.han-file-audit__text {
+    min-height: 0;
+    overflow: auto;
+    padding: 1rem;
+    color: var(--text-primary);
+    font-family: 'Noto Serif', Georgia, serif;
+    font-size: 1rem;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.han-file-audit__text .han-audit-mark {
+    color: var(--warning-color, #f59e0b);
+}
+
+.han-file-audit__nav {
+    justify-content: center;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 0;
+}
+
+.han-file-audit__nav span {
+    min-width: 72px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.han-file-audit__footer {
+    border-top: 1px solid var(--border-color);
+    border-bottom: 0;
+}
+
+.han-file-audit__footer p[data-tone="error"] {
+    color: var(--danger-color, #f87171);
+}
+
+.han-file-audit__footer p[data-tone="success"] {
+    color: var(--success-color, #34d399);
+}
+
+@media (max-width: 820px) {
+    .han-file-audit {
+        align-items: end;
+        padding: 0;
+    }
+
+    .han-file-audit__shell {
+        width: 100%;
+        height: 96dvh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    }
+
+    .han-file-audit__summary {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .han-file-audit__toolbar {
+        justify-content: flex-start;
+    }
+
+    .han-file-audit__layout {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(150px, 34%) minmax(0, 1fr);
+    }
+
+    .han-file-audit__issues {
+        border-right: 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+}
+
+@media (max-width: 520px) {
+    .han-file-audit__header,
+    .han-file-audit__summary,
+    .han-file-audit__footer {
+        padding-inline: 0.75rem;
+    }
+
+    .han-file-audit__toolbar .btn {
+        flex: 1 1 135px;
+    }
+
+    .han-file-audit__detail > header {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}

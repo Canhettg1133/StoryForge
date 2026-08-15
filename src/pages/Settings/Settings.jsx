@@ -58,6 +58,7 @@ import {
   Palette,
 } from 'lucide-react';
 import CloudSyncSection from './CloudSyncSection';
+import CustomProxyPresetManager from './CustomProxyPresetManager.jsx';
 import AccountAccessSummary from '../../components/access/AccountAccessSummary.jsx';
 import ThemePicker from '../../components/common/ThemePicker.jsx';
 import useMobileLayout from '../../hooks/useMobileLayout';
@@ -69,7 +70,15 @@ import { navigateBackOr } from '../../utils/navigation.js';
 import './Settings.css';
 
 // ─── Reusable Key Section Component ───
-function KeySection({ provider, providerLabel, description = '', icon: Icon, onKeysChange, children = null }) {
+function KeySection({
+  provider,
+  providerLabel,
+  description = '',
+  icon: Icon,
+  onKeysChange,
+  refreshToken = 0,
+  children = null,
+}) {
   const [keys, setKeys] = useState([...keyManager.getKeys(provider)]);
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkText, setBulkText] = useState('');
@@ -77,6 +86,11 @@ function KeySection({ provider, providerLabel, description = '', icon: Icon, onK
   const [copied, setCopied] = useState(false);
   const [singleKey, setSingleKey] = useState('');
   const [feedback, setFeedback] = useState(null); // { type: 'success'|'error'|'warn', text }
+
+  useEffect(() => {
+    setKeys([...keyManager.getKeys(provider)]);
+    setShowKeys({});
+  }, [provider, refreshToken]);
 
   const refresh = () => {
     const nextKeys = [...keyManager.getKeys(provider)];
@@ -923,6 +937,7 @@ export default function Settings() {
   const [showCustomProxyAdvanced, setShowCustomProxyAdvanced] = useState(false);
   const [showCustomProxySetup, setShowCustomProxySetup] = useState(false);
   const [keyCounts, setKeyCounts] = useState(readSettingsKeyCounts);
+  const [customProxyKeysRevision, setCustomProxyKeysRevision] = useState(0);
   const [directUrl, setDirectUrl] = useState(getGeminiDirectBaseUrl());
   const [ollamaUrl, setOllamaUrl] = useState(getOllamaUrl());
   const [aiStudioRelayUrl, setAIStudioRelayUrl] = useState(getAIStudioRelayUrl());
@@ -1223,7 +1238,27 @@ export default function Settings() {
   const handleGoBack = () => {
     navigateBackOr(navigate, '/', { location });
   };
-  const handleKeysChange = () => setKeyCounts(readSettingsKeyCounts());
+  const handleKeysChange = (changedProvider) => {
+    setKeyCounts(readSettingsKeyCounts());
+    if (changedProvider === PROVIDERS.OPENAI_PROXY) {
+      setCustomProxyKeysRevision((revision) => revision + 1);
+    }
+  };
+
+  const handleCustomProxyPresetActivated = ({ profile: activatedProfile }) => {
+    setCustomProxyProfile(activatedProfile);
+    setOpenAIProxyActiveProfile(CUSTOM_PROXY_PROFILE_ID);
+    setActiveProxyProfileId(CUSTOM_PROXY_PROFILE_ID);
+    setSelectedProviderCardOverride('');
+    setProvider(PROVIDERS.OPENAI_PROXY);
+    modelRouter.setPreferredProvider(PROVIDERS.OPENAI_PROXY);
+    setKeyCounts(readSettingsKeyCounts());
+    setCustomProxyKeysRevision((revision) => revision + 1);
+    setProxyModelFetchStatus({
+      type: 'success',
+      text: 'Đã chuyển URL, model và API key sang bộ đã chọn.',
+    });
+  };
 
   const handleSelectAgProxyModel = (model) => {
     const normalized = String(model || '').trim();
@@ -1718,6 +1753,7 @@ export default function Settings() {
               description="Dùng riêng cho web/proxy custom. Không dùng chung với Gemini Proxy mặc định ag."
               icon={Server}
               onKeysChange={handleKeysChange}
+              refreshToken={customProxyKeysRevision}
             />
             <KeySection
               provider={PROVIDERS.GEMINI_DIRECT}
@@ -2107,6 +2143,12 @@ export default function Settings() {
                 </div>
               </div>
 
+              <CustomProxyPresetManager
+                profile={customProxyProfile}
+                keysRevision={customProxyKeysRevision}
+                onActivated={handleCustomProxyPresetActivated}
+              />
+
               <div className="ai-studio-relay-layout openai-proxy-layout">
                 <aside className="ai-studio-relay-guide openai-proxy-guide">
                   <h3>Cách cấu hình</h3>
@@ -2181,6 +2223,7 @@ export default function Settings() {
                         description="Key này chỉ dùng cho Base URL custom, không dùng cho ag."
                         icon={Key}
                         onKeysChange={handleKeysChange}
+                        refreshToken={customProxyKeysRevision}
                       />
                     </div>
                   </div>

@@ -114,6 +114,38 @@ class KeyManager {
   }
 
   /**
+   * Replace one provider pool in a single persisted write.
+   * Used when switching a saved provider set so URL and keys stay paired.
+   */
+  replaceKeys(provider, keys = []) {
+    const poolKey = normalizeProviderKey(provider);
+    const previousKeys = new Set((this.pools[poolKey] || []).map((entry) => entry.key));
+    const seen = new Set();
+    const normalized = [];
+
+    for (const rawEntry of Array.isArray(keys) ? keys : []) {
+      const rawKey = typeof rawEntry === 'string' ? rawEntry : rawEntry?.key;
+      const key = String(rawKey || '').trim();
+      if (!key || seen.has(key) || (poolKey !== 'gemini_direct' && key.length < 10)) continue;
+      seen.add(key);
+      normalized.push({
+        key,
+        label: String(typeof rawEntry === 'string' ? '' : rawEntry?.label || '').trim()
+          || `Key ${normalized.length + 1}`,
+      });
+    }
+
+    this.pools[poolKey] = normalized;
+    this.currentIndex[poolKey] = 0;
+    new Set([...previousKeys, ...seen]).forEach((key) => {
+      this.rateLimited.delete(key);
+      this.reservations.delete(key);
+    });
+    this._save();
+    return [...normalized];
+  }
+
+  /**
    * Add a single key. Returns false if duplicate.
    */
   addKey(provider, key, label = '') {
