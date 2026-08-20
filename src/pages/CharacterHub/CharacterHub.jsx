@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import {
@@ -55,12 +56,27 @@ const ROLE_ICONS = {
 };
 
 export default function CharacterHub() {
-  const { currentProject, chapters } = useProjectStore();
+  const { currentProject, chapters } = useProjectStore(useShallow((state) => ({
+    currentProject: state.currentProject,
+    chapters: state.chapters,
+  })));
   const {
     characters, taboos, loading, loadCodex,
     createCharacter, updateCharacter, deleteCharacter, deleteCharacters,
     createTaboo, updateTaboo, deleteTaboo,
-  } = useCodexStore();
+  } = useCodexStore(useShallow((state) => ({
+    characters: state.characters,
+    taboos: state.taboos,
+    loading: state.loading,
+    loadCodex: state.loadCodex,
+    createCharacter: state.createCharacter,
+    updateCharacter: state.updateCharacter,
+    deleteCharacter: state.deleteCharacter,
+    deleteCharacters: state.deleteCharacters,
+    createTaboo: state.createTaboo,
+    updateTaboo: state.updateTaboo,
+    deleteTaboo: state.deleteTaboo,
+  })));
 
   const [showModal, setShowModal] = useState(false);
   const [editingChar, setEditingChar] = useState(null);
@@ -96,7 +112,7 @@ export default function CharacterHub() {
   });
 
   useEffect(() => {
-    if (currentProject) loadCodex(currentProject.id);
+    if (currentProject) loadCodex(currentProject.id, { preferCache: true });
   }, [currentProject?.id]);
 
   useEffect(() => {
@@ -823,12 +839,17 @@ export default function CharacterHub() {
                   {editingChar?.canon_status_summary && (
                     <div className="form-group">
                       <label>Canon hiện tại (chỉ đọc)</label>
-                      <div className="input character-form-textarea" aria-readonly="true">
-                        {editingChar.canon_status_summary}
-                        {editingChar?.canon_state?.alive_status && editingChar.canon_state.alive_status !== 'unknown'
-                          ? ` · ${editingChar.canon_state.alive_status === 'dead' ? 'Đã chết' : 'Còn sống'}`
-                          : ''}
-                      </div>
+                      <AutoResizeTextarea
+                        className="character-form-textarea"
+                        aria-label="Canon hiện tại"
+                        value={`${editingChar.canon_status_summary}${
+                          editingChar?.canon_state?.alive_status && editingChar.canon_state.alive_status !== 'unknown'
+                            ? ` · ${editingChar.canon_state.alive_status === 'dead' ? 'Đã chết' : 'Còn sống'}`
+                            : ''
+                        }`}
+                        rows={1}
+                        readOnly
+                      />
                     </div>
                   )}
 

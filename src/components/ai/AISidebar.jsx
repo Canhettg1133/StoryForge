@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import useAIStore from '../../stores/aiStore';
 import useProjectStore from '../../stores/projectStore';
 import useUIStore from '../../stores/uiStore';
@@ -354,7 +355,7 @@ function buildOutputScope(context = {}, taskId = null) {
   };
 }
 
-export default function AISidebar({
+function AISidebar({
   editor,
   isMobileLayout = false,
   mobileTab = 'ai',
@@ -385,7 +386,28 @@ export default function AISidebar({
     freePrompt,
     checkConflict,
     isCheckingConflict,
-  } = useAIStore();
+  } = useAIStore(useShallow((state) => ({
+    isStreaming: state.isStreaming,
+    streamingText: state.streamingText,
+    completedText: state.completedText,
+    error: state.error,
+    outputScope: state.outputScope,
+    lastTaskId: state.lastTaskId,
+    lastRouteInfo: state.lastRouteInfo,
+    lastElapsed: state.lastElapsed,
+    abort: state.abort,
+    clearOutput: state.clearOutput,
+    setOutputTracking: state.setOutputTracking,
+    continueWriting: state.continueWriting,
+    rewriteText: state.rewriteText,
+    expandText: state.expandText,
+    suggestPlot: state.suggestPlot,
+    outlineChapter: state.outlineChapter,
+    extractTerms: state.extractTerms,
+    freePrompt: state.freePrompt,
+    checkConflict: state.checkConflict,
+    isCheckingConflict: state.isCheckingConflict,
+  })));
 
   const {
     currentProject,
@@ -394,7 +416,14 @@ export default function AISidebar({
     chapters,
     activeChapterId,
     updateChapter,
-  } = useProjectStore();
+  } = useProjectStore(useShallow((state) => ({
+    currentProject: state.currentProject,
+    scenes: state.scenes,
+    activeSceneId: state.activeSceneId,
+    chapters: state.chapters,
+    activeChapterId: state.activeChapterId,
+    updateChapter: state.updateChapter,
+  })));
   const { contentMode, setContentMode } = useProjectContentMode();
   const contentFontSize = useUIStore((state) => state.contentFontSize);
   const contentTypographyStyle = contentFontSize
@@ -1710,3 +1739,5 @@ export default function AISidebar({
     </div>
   );
 }
+
+export default React.memo(AISidebar);

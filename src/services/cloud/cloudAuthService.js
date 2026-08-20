@@ -1,8 +1,7 @@
 import {
-  getSupabaseClient,
   getSupabaseConfigError,
   isSupabaseConfigured,
-} from './supabaseClient.js';
+} from './supabaseConfig.js';
 
 const CLOUD_AUTH_REDIRECT_URL = String(
   import.meta.env.VITE_CLOUD_AUTH_REDIRECT_URL
@@ -10,6 +9,22 @@ const CLOUD_AUTH_REDIRECT_URL = String(
     || '',
 ).trim();
 const CLOUD_AUTH_RETURN_PATH_KEY = 'sf-cloud-auth-return-path';
+let supabaseClientModulePromise = null;
+
+function loadSupabaseClientModule() {
+  if (!supabaseClientModulePromise) {
+    supabaseClientModulePromise = import('./supabaseClient.js').catch((error) => {
+      supabaseClientModulePromise = null;
+      throw error;
+    });
+  }
+  return supabaseClientModulePromise;
+}
+
+async function getSupabaseClient() {
+  const module = await loadSupabaseClientModule();
+  return module.getSupabaseClient();
+}
 
 function ensureConfigured() {
   if (!isSupabaseConfigured()) {
@@ -113,7 +128,7 @@ export function consumeCloudAuthReturnPath() {
 
 export async function getSession() {
   if (!isSupabaseConfigured()) return null;
-  const client = getSupabaseClient();
+  const client = await getSupabaseClient();
   const { data, error } = await client.auth.getSession();
   if (error) throw error;
   return data?.session || null;
@@ -121,7 +136,7 @@ export async function getSession() {
 
 export async function getCloudAccessToken({ refresh = false } = {}) {
   ensureConfigured();
-  const client = getSupabaseClient();
+  const client = await getSupabaseClient();
   if (refresh) {
     const { data, error } = await client.auth.refreshSession();
     if (error) throw error;
@@ -134,7 +149,7 @@ export async function getCloudAccessToken({ refresh = false } = {}) {
 
 export async function signInWithGoogle(options = {}) {
   ensureConfigured();
-  const client = getSupabaseClient();
+  const client = await getSupabaseClient();
   rememberCloudAuthReturnPath(options.returnPath || options.returnTo || getCurrentReturnPath());
   const currentOrigin = typeof window !== 'undefined' ? window.location?.origin : '';
   const redirectTo = resolveCloudRedirectUrl(
@@ -151,7 +166,7 @@ export async function signInWithGoogle(options = {}) {
 
 export async function signOut() {
   ensureConfigured();
-  const client = getSupabaseClient();
+  const client = await getSupabaseClient();
   const { error } = await client.auth.signOut();
   if (error) throw error;
 }
@@ -161,12 +176,21 @@ export function subscribe(listener) {
     return () => {};
   }
 
-  const client = getSupabaseClient();
-  const { data } = client.auth.onAuthStateChange((_event, session) => {
-    listener?.(session || null);
-  });
+  let disposed = false;
+  let unsubscribe = null;
+  void getSupabaseClient().then((client) => {
+    if (disposed) return;
+    const { data } = client.auth.onAuthStateChange((_event, session) => {
+      listener?.(session || null);
+    });
+    unsubscribe = () => data?.subscription?.unsubscribe?.();
+    if (disposed) unsubscribe();
+  }).catch(() => {});
 
-  return () => data?.subscription?.unsubscribe?.();
+  return () => {
+    disposed = true;
+    unsubscribe?.();
+  };
 }
 
 export function isCloudAuthConfigured() {

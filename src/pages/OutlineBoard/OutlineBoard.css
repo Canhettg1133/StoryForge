@@ -1749,3 +1749,26 @@
     border-radius: 0;
   }
 }
+
+/* Keep large chapter collections bounded without changing their visible layout. */
+.outline-board .outline-virtual-collection {
+  position: relative;
+  display: block;
+}
+
+.outline-virtual-content {
+  position: relative;
+  width: 100%;
+}
+
+.outline-virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  contain: layout paint style;
+}
+
+.outline-virtual-grid-row {
+  display: grid;
+}

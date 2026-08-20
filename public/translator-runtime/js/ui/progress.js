@@ -8,10 +8,13 @@
 // ============================================
 function updateProgress(current, total, status) {
     const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
+    const countdownStatus = typeof getActiveTranslatorCountdownStatus === 'function'
+        ? getActiveTranslatorCountdownStatus()
+        : '';
     document.getElementById('progressFill').style.width = `${percentage}%`;
     document.getElementById('progressText').textContent = `${percentage}%`;
     document.getElementById('progressDetails').textContent = `${current} / ${total} chunk`;
-    document.getElementById('progressStatus').textContent = status;
+    document.getElementById('progressStatus').textContent = countdownStatus || status;
 
     // Update download button text
     const downloadBtn = document.getElementById('downloadPartialBtn');
@@ -27,11 +30,14 @@ function updateLargeFileProgress({ byteCursor = 0, fileSize = 0, completed = com
     const safeFileSize = Math.max(1, Number(fileSize) || 1);
     const safeCursor = Math.max(0, Math.min(safeFileSize, Number(byteCursor) || 0));
     const percentage = Math.round((safeCursor / safeFileSize) * 100);
+    const countdownStatus = typeof getActiveTranslatorCountdownStatus === 'function'
+        ? getActiveTranslatorCountdownStatus()
+        : '';
     document.getElementById('progressFill').style.width = `${percentage}%`;
     document.getElementById('progressText').textContent = `${percentage}%`;
     document.getElementById('progressDetails').textContent =
         `Đã xử lý ${completed.toLocaleString('vi-VN')} chunk • ${percentage}% file`;
-    document.getElementById('progressStatus').textContent = status || 'Đang dịch file lớn...';
+    document.getElementById('progressStatus').textContent = countdownStatus || status || 'Đang dịch file lớn...';
 
     const downloadBtn = document.getElementById('downloadPartialBtn');
     if (downloadBtn && completed > 0) {

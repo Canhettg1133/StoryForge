@@ -7,7 +7,9 @@ import { createMemoryRouter, RouterProvider } from 'react-router-dom';
 let mockedProjectStoreState = {};
 
 vi.mock('../../stores/projectStore', () => ({
-  default: () => mockedProjectStoreState,
+  default: (selector) => selector
+    ? selector(mockedProjectStoreState)
+    : mockedProjectStoreState,
 }));
 
 vi.mock('../../hooks/useMobileLayout', () => ({

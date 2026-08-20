@@ -5,6 +5,7 @@ import {
     AlertTriangle, Flag, RotateCcw, Save, Trash2, BookmarkPlus
 } from 'lucide-react';
 import NumberStepper from '../../components/common/NumberStepper.jsx';
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
 import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './ArcGenerationModal.css';
 
@@ -732,9 +733,10 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                 <div className="arc-outline-summary-grid">
                                     <div className="form-group">
                                         <label className="form-label">Mục tiêu</label>
-                                        <textarea
+                                        <AutoResizeTextarea
                                             className="textarea"
                                             rows={2}
+                                            aria-label={`Mục tiêu chương ${index + 1}`}
                                             placeholder="Mục tiêu của chương..."
                                             value={chapter.purpose || ''}
                                             onChange={(e) => arcStore.updateOutlineChapter(index, { purpose: e.target.value })}
@@ -742,9 +744,10 @@ export default function ArcGenerationModal({ projectId, genre, currentChapterCou
                                     </div>
                                     <div className="form-group">
                                         <label className="form-label">Tóm tắt</label>
-                                        <textarea
+                                        <AutoResizeTextarea
                                             className="textarea"
                                             rows={2}
+                                            aria-label={`Tóm tắt chương ${index + 1}`}
                                             value={chapter.summary || ''}
                                             onChange={(e) => arcStore.updateOutlineChapter(index, { summary: e.target.value })}
                                         />

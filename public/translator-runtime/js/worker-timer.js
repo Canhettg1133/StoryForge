@@ -153,23 +153,73 @@ function sleep(ms) {
     });
 }
 
+let translatorCountdownWaitId = 0;
+const translatorCountdownWaits = new Map();
+let translatorCountdownRenderer = null;
+let lastTranslatorCountdownStatus = '';
+
+function getActiveTranslatorCountdownWait(now = Date.now()) {
+    let selected = null;
+    translatorCountdownWaits.forEach((entry, id) => {
+        if (entry.deadline <= now) {
+            translatorCountdownWaits.delete(id);
+            return;
+        }
+        if (!selected || entry.deadline > selected.deadline) selected = entry;
+    });
+    return selected;
+}
+
+function getActiveTranslatorCountdownStatus(now = Date.now()) {
+    const activeWait = getActiveTranslatorCountdownWait(now);
+    if (!activeWait) return '';
+    const remainingSeconds = Math.max(1, Math.ceil((activeWait.deadline - now) / 1000));
+    return `${activeWait.statusPrefix}... ${remainingSeconds}s`;
+}
+
+function renderActiveTranslatorCountdown() {
+    const status = getActiveTranslatorCountdownStatus();
+    if (!status || status === lastTranslatorCountdownStatus) return status;
+    lastTranslatorCountdownStatus = status;
+    updateProgress(completedChunks, totalChunksCount, status);
+    return status;
+}
+
+function ensureTranslatorCountdownRenderer() {
+    if (translatorCountdownRenderer) return translatorCountdownRenderer;
+    translatorCountdownRenderer = (async () => {
+        while (!cancelRequested && getActiveTranslatorCountdownWait()) {
+            renderActiveTranslatorCountdown();
+            await sleep(1000);
+        }
+    })().finally(() => {
+        translatorCountdownRenderer = null;
+        lastTranslatorCountdownStatus = '';
+        if (!cancelRequested && getActiveTranslatorCountdownWait()) ensureTranslatorCountdownRenderer();
+    });
+    return translatorCountdownRenderer;
+}
+
 /**
- * Sleep với countdown hiển thị trên UI
- * FIX: Thêm check isPaused để countdown dừng khi user tạm dừng
+ * Chờ theo deadline thật và dùng một countdown chung cho mọi waiter.
+ * Quota vẫn hồi theo wall-clock khi tab ẩn hoặc khi người dùng tạm dừng.
  */
 async function sleepWithCountdown(ms, statusPrefix = '⏳ Chờ quota reset') {
-    const totalSeconds = Math.ceil(ms / 1000);
-    for (let remaining = totalSeconds; remaining > 0; remaining--) {
-        if (cancelRequested) return;
+    const duration = Number.isFinite(ms) ? Math.max(0, ms) : 0;
+    if (duration === 0 || cancelRequested) return;
 
-        // FIX: Chờ khi user bấm Tạm dừng
-        while (isPaused && !cancelRequested) {
-            await sleep(200);
-        }
-        if (cancelRequested) return;
+    const waitId = ++translatorCountdownWaitId;
+    translatorCountdownWaits.set(waitId, {
+        deadline: Date.now() + duration,
+        statusPrefix,
+    });
+    renderActiveTranslatorCountdown();
+    ensureTranslatorCountdownRenderer();
 
-        updateProgress(completedChunks, totalChunksCount, `${statusPrefix}... ${remaining}s`);
-        await sleep(1000);
+    try {
+        await sleep(duration);
+    } finally {
+        translatorCountdownWaits.delete(waitId);
     }
 }
 

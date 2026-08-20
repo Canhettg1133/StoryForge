@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <meta name="description" content="Web dịch truyện chữ sang tiếng Việt - Hỗ trợ nhiều ngôn ngữ, dịch siêu nhanh">
     <title>📚 Dịch Truyện Convert - Novel Translator Pro</title>
 
@@ -22,10 +22,10 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
     <script src="js/theme.js?v=2"></script>
-    <link rel="stylesheet" href="style.css?v=27">
+    <link rel="stylesheet" href="style.css?v=28">
     <link rel="stylesheet" href="custom-proxy-presets.css?v=1">
     <link rel="stylesheet" href="chapter-reader.css?v=1">
-    <link rel="stylesheet" href="han-audit-file.css?v=2">
+    <link rel="stylesheet" href="han-audit-file.css?v=3">
 </head>
 
 <body>
@@ -900,7 +900,7 @@
                             <span class="file-size" id="fileSize"></span>
                         </div>
                     </div>
-                    <button class="btn btn-danger btn-small" data-click-action="clearFile">×</button>
+                    <button type="button" class="btn btn-danger btn-small" data-click-action="clearFile" aria-label="Xóa file">×</button>
                 </div>
                 <div class="source-mode-notice" id="sourceModeNotice" style="display: none;"></div>
             </section>
@@ -1405,13 +1405,13 @@
     <script src="js/canon-pack.js?v=22"></script>
 
     <!-- 1b. Worker Timer (PHẢI load trước tất cả module dùng sleep() - chống throttle tab ẩn) -->
-    <script src="js/worker-timer.js?v=13"></script>
+    <script src="js/worker-timer.js?v=14"></script>
 
     <!-- 1c. Error messages (PHẢI load trước Gemini/Proxy/Ollama để chuẩn hóa lỗi) -->
     <script src="js/translation/errors.js?v=13"></script>
 
     <!-- 2. Gemini API -->
-    <script src="js/gemini/model-rotation.js?v=16"></script>
+    <script src="js/gemini/model-rotation.js?v=17"></script>
     <script src="js/gemini/api.js?v=17"></script>
 
     <!-- 3. Translation Engine -->
@@ -1425,7 +1425,7 @@
     <script src="js/chapter/chapter-indexer.js?v=1"></script>
     <script src="js/chapter/chapter-snapshot.js?v=1"></script>
     <script src="js/chapter/chapter-epub.js?v=1"></script>
-    <script src="js/translation/retry.js?v=17"></script>
+    <script src="js/translation/retry.js?v=18"></script>
     <script src="js/translation/han-audit.js?v=2"></script>
     <script src="js/translation/han-audit/file-feature.js?v=1"></script>
     <script src="js/translation/engine.js?v=25"></script>
@@ -1433,7 +1433,7 @@
 
 
     <!-- 4. UI Components -->
-    <script src="js/ui/progress.js?v=22"></script>
+    <script src="js/ui/progress.js?v=23"></script>
     <script src="js/ui/file-handler.js?v=25"></script>
     <script src="js/ui/settings.js?v=17"></script>
     <script src="js/ui/controls.js?v=23"></script>

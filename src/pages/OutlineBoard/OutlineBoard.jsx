@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import usePlotStore from '../../stores/plotStore';
@@ -36,6 +37,8 @@ import {
 } from '../../services/ai/storyCreationSettings';
 import useMobileLayout from '../../hooks/useMobileLayout';
 import { useConfirmDialog } from '../../components/common/ConfirmDialogProvider.jsx';
+import { buildOutlineRuntimeIndex } from './outlineRuntimeIndex.js';
+import { VirtualOutlineGrid, VirtualOutlineStack } from './VirtualOutlineCollection.jsx';
 import './OutlineBoard.css';
 
 const ACTS = [
@@ -228,9 +231,34 @@ export default function OutlineBoard() {
     currentProject, chapters, scenes,
     createChapter, updateChapter, deleteChapter,
     setActiveChapter, setActiveScene,
-  } = useProjectStore();
-  const { characters, locations, loadCodex } = useCodexStore();
-  const { plotThreads, loadPlotThreads, loadThreadBeatsForProject, createPlotThread, deletePlotThread } = usePlotStore();
+  } = useProjectStore(useShallow((state) => ({
+    currentProject: state.currentProject,
+    chapters: state.chapters,
+    scenes: state.scenes,
+    createChapter: state.createChapter,
+    updateChapter: state.updateChapter,
+    deleteChapter: state.deleteChapter,
+    setActiveChapter: state.setActiveChapter,
+    setActiveScene: state.setActiveScene,
+  })));
+  const { characters, locations, loadCodex } = useCodexStore(useShallow((state) => ({
+    characters: state.characters,
+    locations: state.locations,
+    loadCodex: state.loadCodex,
+  })));
+  const {
+    plotThreads,
+    loadPlotThreads,
+    loadThreadBeatsForProject,
+    createPlotThread,
+    deletePlotThread,
+  } = usePlotStore(useShallow((state) => ({
+    plotThreads: state.plotThreads,
+    loadPlotThreads: state.loadPlotThreads,
+    loadThreadBeatsForProject: state.loadThreadBeatsForProject,
+    createPlotThread: state.createPlotThread,
+    deletePlotThread: state.deletePlotThread,
+  })));
 
   const [selectedChapter, setSelectedChapter] = useState(null);
   const [viewMode, setViewMode] = useState('board');
@@ -263,7 +291,7 @@ export default function OutlineBoard() {
 
   useEffect(() => {
     if (currentProject) {
-      loadCodex(currentProject.id);
+      loadCodex(currentProject.id, { preferCache: true });
       loadPlotThreads(currentProject.id);
       loadThreadBeatsForProject(currentProject.id);
     }
@@ -302,40 +330,15 @@ export default function OutlineBoard() {
     return groups;
   }, [chapters]);
 
-  const sceneCountMap = useMemo(() => {
-    const map = {};
-    chapters.forEach(ch => {
-      map[ch.id] = scenes.filter(s => s.chapter_id === ch.id).length;
-    });
-    return map;
-  }, [chapters, scenes]);
-
-  const wordCountMap = useMemo(() => {
-    const map = {};
-    chapters.forEach(ch => {
-      const chScenes = scenes.filter(s => s.chapter_id === ch.id);
-      map[ch.id] = chScenes.reduce((sum, s) => {
-        const text = (s.draft_text || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
-        return sum + (text.trim() ? text.trim().split(/\s+/).length : 0);
-      }, 0);
-    });
-    return map;
-  }, [chapters, scenes]);
-
-  const getChapterPOV = (chapterId) => {
-    const firstScene = scenes.find(s => s.chapter_id === chapterId && s.pov_character_id);
-    if (!firstScene?.pov_character_id) return null;
-    return characters.find(c => c.id === firstScene.pov_character_id)?.name || null;
-  };
-
-  const getChapterLocation = (chapterId) => {
-    const firstScene = scenes.find(s => s.chapter_id === chapterId && s.location_id);
-    if (!firstScene?.location_id) return null;
-    return locations.find(l => l.id === firstScene.location_id)?.name || null;
-  };
+  const outlineRuntimeIndex = useMemo(() => buildOutlineRuntimeIndex({
+    chapters,
+    scenes,
+    characters,
+    locations,
+  }), [chapters, scenes, characters, locations]);
 
   const goToEditor = (chapterId) => {
-    const scene = scenes.find(s => s.chapter_id === chapterId);
+    const scene = outlineRuntimeIndex.firstSceneByChapterId.get(chapterId);
     setActiveChapter(chapterId);
     if (scene) setActiveScene(scene.id);
     navigate(`/project/${currentProject.id}/editor`);
@@ -837,10 +840,10 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
 
   const renderChapterCard = (chapter) => {
     const statusObj = SCENE_STATUSES.find(s => s.value === chapter.status) || SCENE_STATUSES[0];
-    const povName = getChapterPOV(chapter.id);
-    const locName = getChapterLocation(chapter.id);
-    const sceneCount = sceneCountMap[chapter.id] || 0;
-    const wordCount = wordCountMap[chapter.id] || 0;
+    const povName = outlineRuntimeIndex.povNameByChapterId.get(chapter.id);
+    const locName = outlineRuntimeIndex.locationNameByChapterId.get(chapter.id);
+    const sceneCount = outlineRuntimeIndex.sceneCountByChapterId.get(chapter.id) || 0;
+    const wordCount = outlineRuntimeIndex.wordCountByChapterId.get(chapter.id) || 0;
     const isDone = chapter.status === 'done';
     const isSelected = selectedChapterIds.has(chapter.id);
 
@@ -914,6 +917,58 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
             <Trash2 size={12} /> Xóa dàn ý
           </button>
         </div>}
+      </div>
+    );
+  };
+
+  const renderChapterListItem = (chapter, idx) => {
+    const act = ACTS.find((item) => item.id === chapter.arc_id);
+    return (
+      <div
+        className={`outline-list-item ${selectionMode ? 'outline-list-item--selecting' : ''} ${selectedChapterIds.has(chapter.id) ? 'outline-list-item--selected' : ''}`}
+        onClick={() => {
+          if (selectionMode) {
+            toggleChapterSelection(chapter.id);
+            return;
+          }
+          setSelectedChapter(chapter);
+        }}
+      >
+        {selectionMode && (
+          <label className="outline-list-select" onClick={event => event.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={selectedChapterIds.has(chapter.id)}
+              onChange={() => toggleChapterSelection(chapter.id)}
+              aria-label={`Chọn ${chapter.title}`}
+            />
+          </label>
+        )}
+        <span className="outline-list-index">{idx + 1}</span>
+        {act ? (
+          <span className="outline-list-act" style={{ color: act.color }}>H{act.id}</span>
+        ) : (
+          <span className="outline-list-act outline-list-act--empty">Chưa</span>
+        )}
+        <div className="outline-list-content">
+          <strong>{chapter.title}</strong>
+          {chapter.purpose && <span className="outline-list-purpose"> — {chapter.purpose}</span>}
+        </div>
+        <span className="outline-list-scenes">{outlineRuntimeIndex.sceneCountByChapterId.get(chapter.id) || 0} cảnh</span>
+        {!selectionMode && <button className="btn btn-ghost btn-sm" onClick={event => { event.stopPropagation(); goToEditor(chapter.id); }}>
+          <PenTool size={12} />
+        </button>}
+        {!selectionMode && <button
+          className="btn btn-ghost btn-sm outline-list-clear"
+          aria-label={`Xóa dàn ý AI của ${chapter.title}`}
+          title="Xóa dàn ý AI của riêng chương này"
+          onClick={event => {
+            event.stopPropagation();
+            handleClearChapterOutlineMetadata(chapter);
+          }}
+        >
+          <Trash2 size={12} />
+        </button>}
       </div>
     );
   };
@@ -1140,9 +1195,14 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
                     </div>
                     <span>{chaptersByAct.unassigned.length} chương</span>
                   </div>
-                  <div className="outline-unassigned-list">
-                    {chaptersByAct.unassigned.map(renderChapterCard)}
-                  </div>
+                  <VirtualOutlineGrid
+                    className="outline-unassigned-list"
+                    items={chaptersByAct.unassigned}
+                    minColumnWidth={260}
+                    estimateSize={() => 190}
+                    renderItem={renderChapterCard}
+                    scrollElementMode={isMobileLayout ? 'ancestor' : 'self'}
+                  />
                 </section>
               )}
 
@@ -1157,71 +1217,29 @@ Huong di tac gia muon khai thac: ${suggestHint.trim()}
                       <span className="outline-lane-percent">{act.percent}</span>
                     </div>
 
-                    <div className="outline-lane-body">
-                      {chaptersByAct[act.id].map(renderChapterCard)}
-                      <button className="outline-add-card" onClick={() => addChapterToAct(act.id)}>
+                    <VirtualOutlineStack
+                      className="outline-lane-body"
+                      items={chaptersByAct[act.id]}
+                      estimateSize={() => 190}
+                      renderItem={renderChapterCard}
+                      scrollElementMode={isMobileLayout ? 'ancestor' : 'self'}
+                      footer={<button className="outline-add-card" onClick={() => addChapterToAct(act.id)}>
                         <Plus size={14} /> Thêm vào {act.label.split('—')[0].trim()}
-                      </button>
-                    </div>
+                      </button>}
+                    />
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-            <div className="outline-list">
-              {chapters.map((chapter, idx) => {
-                const act = ACTS.find(a => a.id === chapter.arc_id);
-                return (
-                  <div
-                    key={chapter.id}
-                    className={`outline-list-item ${selectionMode ? 'outline-list-item--selecting' : ''} ${selectedChapterIds.has(chapter.id) ? 'outline-list-item--selected' : ''}`}
-                    onClick={() => {
-                      if (selectionMode) {
-                        toggleChapterSelection(chapter.id);
-                        return;
-                      }
-                      setSelectedChapter(chapter);
-                    }}
-                  >
-                    {selectionMode && (
-                      <label className="outline-list-select" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selectedChapterIds.has(chapter.id)}
-                          onChange={() => toggleChapterSelection(chapter.id)}
-                          aria-label={`Chọn ${chapter.title}`}
-                        />
-                      </label>
-                    )}
-                    <span className="outline-list-index">{idx + 1}</span>
-                    {act ? (
-                      <span className="outline-list-act" style={{ color: act.color }}>H{act.id}</span>
-                    ) : (
-                      <span className="outline-list-act outline-list-act--empty">Chưa</span>
-                    )}
-                    <div className="outline-list-content">
-                      <strong>{chapter.title}</strong>
-                      {chapter.purpose && <span className="outline-list-purpose"> — {chapter.purpose}</span>}
-                    </div>
-                    <span className="outline-list-scenes">{sceneCountMap[chapter.id]} cảnh</span>
-                    {!selectionMode && <button className="btn btn-ghost btn-sm" onClick={e => { e.stopPropagation(); goToEditor(chapter.id); }}>
-                      <PenTool size={12} />
-                    </button>}
-                    {!selectionMode && <button
-                      className="btn btn-ghost btn-sm outline-list-clear"
-                      aria-label={`Xóa dàn ý AI của ${chapter.title}`}
-                      title="Xóa dàn ý AI của riêng chương này"
-                      onClick={e => {
-                        e.stopPropagation();
-                        handleClearChapterOutlineMetadata(chapter);
-                      }}
-                    >
-                      <Trash2 size={12} />
-                    </button>}
-                  </div>
-                );
-              })}
-            </div>
+            <VirtualOutlineStack
+              className="outline-list"
+              items={chapters}
+              estimateSize={() => 64}
+              renderItem={renderChapterListItem}
+              scrollElementMode={isMobileLayout ? 'ancestor' : 'self'}
+              rowGap={8}
+            />
           )}
         </div>
 

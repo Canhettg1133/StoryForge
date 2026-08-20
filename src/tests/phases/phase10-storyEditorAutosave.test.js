@@ -195,4 +195,46 @@ describe('phase10 story editor autosave controller', () => {
     expect(onSave).toHaveBeenNthCalledWith(4, 31, '<p>Scene failed</p>');
     expect(controller.hasPending()).toBe(false);
   });
+
+  it('preserves the original failure while a later scene saves successfully', async () => {
+    const quotaError = new Error('Quota exceeded');
+    const onSave = vi.fn()
+      .mockRejectedValueOnce(quotaError)
+      .mockRejectedValueOnce(quotaError)
+      .mockResolvedValueOnce(undefined);
+    const controller = createSceneAutosaveController({
+      delayMs: 2000,
+      retryDelayMs: 500,
+      onSave,
+    });
+
+    controller.schedule({ sceneId: 31, html: '<p>Scene failed</p>' });
+    controller.schedule({ sceneId: 32, html: '<p>Scene saved</p>' });
+    const flushPromise = controller.flush();
+    await vi.advanceTimersByTimeAsync(500);
+    await flushPromise;
+
+    expect(controller.getStatus()).toMatchObject({
+      state: 'error',
+      sceneId: 31,
+      error: quotaError,
+    });
+  });
+
+  it('clears the scene identity and error when pending autosave is cancelled', () => {
+    const controller = createSceneAutosaveController({
+      delayMs: 2000,
+      onSave: vi.fn(async () => undefined),
+    });
+
+    controller.schedule({ sceneId: 44, html: '<p>Discarded</p>' });
+    controller.cancel();
+
+    expect(controller.getStatus()).toEqual({
+      state: 'idle',
+      sceneId: null,
+      error: null,
+    });
+    expect(controller.hasPending()).toBe(false);
+  });
 });

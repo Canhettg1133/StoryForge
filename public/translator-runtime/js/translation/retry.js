@@ -8,7 +8,10 @@
 // ============================================
 function updateTranslationRuntimeStatus(message) {
     const statusEl = typeof document !== 'undefined' ? document.getElementById('progressStatus') : null;
-    if (statusEl) statusEl.textContent = message;
+    const countdownStatus = typeof getActiveTranslatorCountdownStatus === 'function'
+        ? getActiveTranslatorCountdownStatus()
+        : '';
+    if (statusEl) statusEl.textContent = countdownStatus || message;
 }
 
 async function translateChunkWithRetry(text, chunkIndex, retries = 5) {

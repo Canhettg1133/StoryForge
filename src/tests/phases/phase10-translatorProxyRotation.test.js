@@ -4,6 +4,13 @@ import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
+const liveGeminiKeys = [
+  process.env.STORYFORGE_LIVE_GEMINI_KEY_1,
+  process.env.STORYFORGE_LIVE_GEMINI_KEY_2,
+].map((key) => String(key || '').trim()).filter(Boolean);
+const liveGeminiIt = process.env.STORYFORGE_LIVE_GEMINI === '1' && liveGeminiKeys.length === 2
+  ? it
+  : it.skip;
 
 function loadProxyRuntimeContext(fetchImpl) {
   const stored = new Map();
@@ -1453,6 +1460,167 @@ describe('phase10 translator proxy key rotation', () => {
     expect(usedKeys.filter((key) => key === 'DIRECT_KEY_A')).toHaveLength(10);
     expect(usedKeys.filter((key) => key === 'DIRECT_KEY_B')).toHaveLength(10);
   });
+
+  liveGeminiIt('live: sends 30 Gemini Direct requests and retries 20 after cooldown when needed', async () => {
+    if (liveGeminiKeys[0] === liveGeminiKeys[1]) {
+      throw new Error('Live Gemini rotation test requires two distinct API keys.');
+    }
+
+    const listModelsForKey = async (key) => {
+      let response;
+      try {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`);
+      } catch {
+        throw new Error('Could not reach Gemini ListModels during the live rotation test.');
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(`Gemini ListModels failed for a live test key with HTTP ${response.status}.`);
+      }
+
+      return (Array.isArray(payload.models) ? payload.models : [])
+        .filter((model) => (model.supportedGenerationMethods || []).includes('generateContent'))
+        .map((model) => String(model.name || '').replace(/^models\//, ''))
+        .filter(Boolean);
+    };
+
+    const modelLists = await Promise.all(liveGeminiKeys.map(listModelsForKey));
+    const targetModel = modelLists[0].find((model) => /^gemini-3\.5-flash-lite(?:$|-)/i.test(model));
+    if (!targetModel) {
+      throw new Error('The first live Gemini key does not expose a Gemini 3.5 Flash Lite generateContent model.');
+    }
+
+    const calls = [];
+    let activeStage = 'wave-30';
+    const context = loadProxyRuntimeContext(async (url, options = {}) => {
+      const requestUrl = new URL(String(url));
+      const keyIndex = liveGeminiKeys.indexOf(requestUrl.searchParams.get('key'));
+      const startedAt = Date.now();
+
+      try {
+        const response = await fetch(url, options);
+        calls.push({
+          stage: activeStage,
+          key: keyIndex >= 0 ? `key-${keyIndex + 1}` : 'unknown-key',
+          status: response.status,
+          durationMs: Date.now() - startedAt,
+        });
+        return response;
+      } catch {
+        calls.push({
+          stage: activeStage,
+          key: keyIndex >= 0 ? `key-${keyIndex + 1}` : 'unknown-key',
+          status: 'NETWORK_ERROR',
+          durationMs: Date.now() - startedAt,
+        });
+        throw new Error('Gemini live generateContent request failed without a response.');
+      }
+    });
+
+    context.liveGeminiKeys = liveGeminiKeys;
+    context.liveGeminiModel = targetModel;
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = liveGeminiKeys;
+      rpmPerKey = 15;
+      GEMINI_MODELS = [{ name: liveGeminiModel, enabled: true }];
+      cancelRequested = false;
+      translatorRpmTimestamps = {};
+      modelKeyHealthMap = {};
+    `, context);
+    context.sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const runWave = (size) => Promise.allSettled(Array.from({ length: size }, (_, chunkIndex) => (
+      context.sendDirectTranslationAttempt({
+        chunkIndex,
+        text: 'Chỉ trả lời đúng hai từ: Đã nhận.',
+        kind: 'main',
+        requestOptions: { skipValidation: true },
+      })
+    )));
+    const getRpmCounts = () => JSON.parse(vm.runInContext(`JSON.stringify([
+      getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0),
+      getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 1),
+    ])`, context));
+    const summarizeStage = (stage, results) => {
+      const stageCalls = calls.filter((call) => call.stage === stage);
+      const summarizeKey = (key) => {
+        const keyCalls = stageCalls.filter((call) => call.key === key);
+        const statuses = {};
+        keyCalls.forEach((call) => {
+          statuses[call.status] = (statuses[call.status] || 0) + 1;
+        });
+        const durations = keyCalls.map((call) => call.durationMs);
+        return {
+          count: keyCalls.length,
+          statuses,
+          minMs: durations.length ? Math.min(...durations) : 0,
+          maxMs: durations.length ? Math.max(...durations) : 0,
+          avgMs: durations.length
+            ? Math.round(durations.reduce((sum, duration) => sum + duration, 0) / durations.length)
+            : 0,
+        };
+      };
+      const resultCodes = {};
+      results.forEach((result) => {
+        const code = result.status === 'fulfilled'
+          ? 'OK'
+          : String(result.reason?.code || result.reason?.status || 'ERROR');
+        resultCodes[code] = (resultCodes[code] || 0) + 1;
+      });
+      return {
+        key1: summarizeKey('key-1'),
+        key2: summarizeKey('key-2'),
+        resultCodes,
+        rpmCounts: getRpmCounts(),
+      };
+    };
+
+    const wave30Results = await runWave(30);
+    const wave30Summary = summarizeStage('wave-30', wave30Results);
+    console.info('LIVE_GEMINI_WAVE_30_RESULT', JSON.stringify({
+      model: targetModel,
+      modelAvailableByKey: modelLists.map((models) => models.includes(targetModel)),
+      ...wave30Summary,
+    }));
+
+    expect(wave30Summary.key1.count).toBe(15);
+    expect(wave30Summary.key2.count).toBe(15);
+    expect(wave30Summary.rpmCounts).toEqual([15, 15]);
+
+    const wave30HasErrors = wave30Results.some((result) => result.status === 'rejected')
+      || calls.some((call) => call.stage === 'wave-30' && call.status !== 200);
+    if (!wave30HasErrors) return;
+
+    const waitState = JSON.parse(vm.runInContext(`JSON.stringify({
+      rpmWaits: [
+        getTranslatorRpmWaitMsForKey(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0),
+        getTranslatorRpmWaitMsForKey(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 1),
+      ],
+      cooldownWaits: [
+        getModelKeyCooldownMs(liveGeminiModel, 0),
+        getModelKeyCooldownMs(liveGeminiModel, 1),
+      ],
+    })`, context));
+    const waitMs = Math.max(...waitState.rpmWaits, ...waitState.cooldownWaits, 0) + 2000;
+    console.info('LIVE_GEMINI_WAIT_BEFORE_WAVE_20', JSON.stringify({
+      waitMs,
+      ...waitState,
+    }));
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+    activeStage = 'wave-20';
+    const wave20Results = await runWave(20);
+    const wave20Summary = summarizeStage('wave-20', wave20Results);
+    console.info('LIVE_GEMINI_WAVE_20_RESULT', JSON.stringify(wave20Summary));
+
+    expect(wave20Summary.key1.count).toBe(10);
+    expect(wave20Summary.key2.count).toBe(10);
+    expect(wave20Summary.rpmCounts).toEqual([10, 10]);
+    expect(wave20Results.every((result) => result.status === 'fulfilled')).toBe(true);
+  }, 180000);
 
   it('throws the final Direct API error instead of returning undefined', async () => {
     const context = loadProxyRuntimeContext(async () => ({

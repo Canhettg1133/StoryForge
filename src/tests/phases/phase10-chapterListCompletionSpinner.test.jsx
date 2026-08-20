@@ -4,9 +4,22 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
 let mockedProjectStoreState = {};
+const projectStoreListeners = new Set();
+
+function updateMockedProjectStoreState(nextState) {
+  mockedProjectStoreState = nextState;
+  projectStoreListeners.forEach((listener) => listener());
+}
 
 vi.mock('../../stores/projectStore', () => ({
-  default: () => mockedProjectStoreState,
+  default: (selector = (state) => state) => React.useSyncExternalStore(
+    (listener) => {
+      projectStoreListeners.add(listener);
+      return () => projectStoreListeners.delete(listener);
+    },
+    () => selector(mockedProjectStoreState),
+    () => selector(mockedProjectStoreState),
+  ),
 }));
 
 async function loadChapterList() {
@@ -93,15 +106,13 @@ describe('phase10 chapter list completion spinner', () => {
 
     expect(container.querySelector('.chapter-loading-icon')).not.toBeNull();
 
-    mockedProjectStoreState = buildStoreState({
-      completingChapterId: null,
-      chapterCompletionById: {
-        6: { running: false, phase: 'done' },
-      },
-    });
-
     await act(async () => {
-      root.render(<ChapterList />);
+      updateMockedProjectStoreState(buildStoreState({
+        completingChapterId: null,
+        chapterCompletionById: {
+          6: { running: false, phase: 'done' },
+        },
+      }));
     });
 
     expect(container.querySelector('.chapter-loading-icon')).toBeNull();

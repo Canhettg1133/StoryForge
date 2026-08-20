@@ -32,7 +32,7 @@ vi.mock('../../hooks/useMobileLayout', () => ({
 }));
 
 vi.mock('../../stores/projectStore', () => ({
-  default: () => mocks.projectState,
+  default: (selector = (state) => state) => selector(mocks.projectState),
 }));
 
 vi.mock('../../stores/aiStore', () => ({
@@ -228,6 +228,27 @@ describe('phase10 responsive chapter reader controls', () => {
     expect(text).toContain('Chương');
     expect(text).toContain('Đọc liền');
     expect(text).toContain('AI viết');
+  });
+
+  it('initializes a heavy mobile panel on first open and keeps its state mounted afterward', async () => {
+    await renderSceneEditor(800);
+
+    expect(container.textContent).not.toContain('AI Sidebar');
+
+    const aiButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('AI viết'));
+    await act(async () => aiButton.click());
+
+    expect(container.textContent).toContain('AI Sidebar');
+    const aiPanel = container.querySelector('.scene-editor-side--ai');
+    expect(aiPanel?.classList.contains('is-open')).toBe(true);
+
+    const closeButton = aiPanel.querySelector('button[title="Đóng AI"]');
+    await act(async () => closeButton.click());
+
+    expect(container.textContent).toContain('AI Sidebar');
+    expect(aiPanel.classList.contains('is-open')).toBe(false);
+    expect(aiPanel.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('keeps reader mode active when the chapter changes', async () => {

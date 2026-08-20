@@ -22,6 +22,10 @@ import { parseAIJsonValue, isPlainObject } from '../utils/aiJson';
 import { buildProseBuffer } from '../utils/proseBuffer';
 import { normalizePlanningText as normalizePlanText } from '../utils/planningText';
 import {
+    WORD_COUNT_CACHE_VERSION,
+    countSceneWords,
+} from '../services/projects/sceneWordCounts.js';
+import {
     buildMacroArcPersistenceSnapshot,
     compileMacroArcContract,
     getChapterAnchorsInRange,
@@ -1593,6 +1597,7 @@ function buildGeneratedChapterPersistencePayload({
         status,
         word_count_target: 7000,
         actual_word_count: actualWordCount,
+        word_count_version: WORD_COUNT_CACHE_VERSION,
         opening_state: context.opening_state,
         continuity_in: context.continuity_in,
         handoff_from_previous: context.handoff_from_previous,
@@ -2544,6 +2549,8 @@ const useArcGenStore = create((set, get) => ({
                 status: 'outline',
                 draft_text: '',
                 final_text: '',
+                word_count: 0,
+                word_count_version: WORD_COUNT_CACHE_VERSION,
             });
 
             await upsertChapterMetaForGeneratedChapter({
@@ -2607,6 +2614,7 @@ const useArcGenStore = create((set, get) => ({
         for (let di = 0; di < doneDrafts.length; di++) {
             const draft = doneDrafts[di];
             const outlineChapter = state.generatedOutline?.chapters?.[draft.outlineIndex] || null;
+            const draftWordCount = countSceneWords({ draft_text: draft.content });
 
             const chapterId = await db.chapters.add(buildGeneratedChapterPersistencePayload({
                 projectId,
@@ -2615,7 +2623,7 @@ const useArcGenStore = create((set, get) => ({
                 chapter: outlineChapter || { title: draft.title },
                 status: 'draft',
                 title: draft.title,
-                actualWordCount: draft.wordCount,
+                actualWordCount: draftWordCount,
             }));
             createdCount++;
 
@@ -2635,6 +2643,8 @@ const useArcGenStore = create((set, get) => ({
                 status: 'draft',
                 draft_text: draft.content,
                 final_text: '',
+                word_count: draftWordCount,
+                word_count_version: WORD_COUNT_CACHE_VERSION,
             });
 
             await upsertChapterMetaForGeneratedChapter({

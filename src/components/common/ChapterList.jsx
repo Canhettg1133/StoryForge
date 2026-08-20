@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import useProjectStore from '../../stores/projectStore';
+import { createProjectTreeSelector } from '../../stores/selectors/projectTreeSelectors.js';
 import {
   Plus,
   ChevronDown,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import { useConfirmDialog } from './ConfirmDialogProvider.jsx';
+import VirtualChapterWindow from './chapterList/VirtualChapterWindow.jsx';
 import './ChapterList.css';
 
 const CONTEXT_MENU_WIDTH = 220;
@@ -30,7 +32,7 @@ function formatStoryLabel(value) {
     .replace(/^Chuong(?=(\s|:|-))/i, 'Chương');
 }
 
-export default function ChapterList({
+function ChapterList({
   allowCollapse = true,
   onItemSelect,
   isMobileLayout = false,
@@ -38,11 +40,16 @@ export default function ChapterList({
   aiWritingSceneId = null,
 }) {
   const confirmAction = useConfirmDialog();
+  const projectTreeSelector = useMemo(() => createProjectTreeSelector(), []);
   const {
     chapters,
     scenes,
     activeChapterId,
     activeSceneId,
+    completingChapterId,
+    chapterCompletionById,
+  } = useProjectStore(useShallow(projectTreeSelector));
+  const {
     createChapter,
     createScene,
     deleteChapter,
@@ -51,14 +58,8 @@ export default function ChapterList({
     updateScene,
     setActiveChapter,
     setActiveScene,
-    completingChapterId,
-    chapterCompletionById,
     runChapterCompletion,
   } = useProjectStore(useShallow((state) => ({
-    chapters: state.chapters,
-    scenes: state.scenes,
-    activeChapterId: state.activeChapterId,
-    activeSceneId: state.activeSceneId,
     createChapter: state.createChapter,
     createScene: state.createScene,
     deleteChapter: state.deleteChapter,
@@ -67,8 +68,6 @@ export default function ChapterList({
     updateScene: state.updateScene,
     setActiveChapter: state.setActiveChapter,
     setActiveScene: state.setActiveScene,
-    completingChapterId: state.completingChapterId,
-    chapterCompletionById: state.chapterCompletionById,
     runChapterCompletion: state.runChapterCompletion,
   })));
 
@@ -85,6 +84,8 @@ export default function ChapterList({
   const collapsedTreeRef = useRef(null);
   const mobileTreeRef = useRef(null);
   const pendingScrollRestoreRef = useRef(null);
+  const knownChapterIdsRef = useRef(new Set());
+  const knownProjectIdRef = useRef(null);
   const scenesByChapter = useMemo(() => {
     const grouped = new Map();
     scenes.forEach((scene) => {
@@ -108,7 +109,23 @@ export default function ChapterList({
   }, [allowCollapse]);
 
   useEffect(() => {
-    setExpandedChapters(new Set(chapters.map((chapter) => chapter.id)));
+    const projectId = chapters[0]?.project_id ?? null;
+    const currentIds = new Set(chapters.map((chapter) => chapter.id));
+    if (knownProjectIdRef.current !== projectId) {
+      knownProjectIdRef.current = projectId;
+      knownChapterIdsRef.current = currentIds;
+      setExpandedChapters(currentIds);
+      return;
+    }
+
+    setExpandedChapters((previous) => {
+      const next = new Set([...previous].filter((id) => currentIds.has(id)));
+      for (const id of currentIds) {
+        if (!knownChapterIdsRef.current.has(id)) next.add(id);
+      }
+      return next;
+    });
+    knownChapterIdsRef.current = currentIds;
   }, [chapters]);
 
   useLayoutEffect(() => {
@@ -418,8 +435,20 @@ export default function ChapterList({
             {chapters.length}
           </div>
 
-          <div ref={collapsedTreeRef} className="chapter-list-collapsed-tree">
-            {chapters.map((chapter, index) => {
+          <VirtualChapterWindow
+            scrollRef={collapsedTreeRef}
+            className="chapter-list-collapsed-tree"
+            items={chapters}
+            overscan={4}
+            activeItemId={activeChapterId}
+            measurementKey={`${activeChapterId ?? ''}:${activeSceneId ?? ''}:${scenes.length}`}
+            rowClassName="chapter-virtual-row--collapsed"
+            estimateSize={(index) => {
+              const chapter = chapters[index];
+              const sceneCount = scenesByChapter.get(chapter?.id)?.length || 0;
+              return activeChapterId === chapter?.id ? 76 + (sceneCount * 32) : 42;
+            }}
+            renderItem={(chapter, index) => {
               const chapterScenes = scenesByChapter.get(chapter.id) || [];
               const isActiveChapter = activeChapterId === chapter.id;
               const isDone = chapter.status === 'done';
@@ -464,14 +493,26 @@ export default function ChapterList({
                   )}
                 </div>
               );
-            })}
-          </div>
+            }}
+          />
         </div>
       )}
 
       {!panelCollapsed && (
-        <div ref={desktopTreeRef} className="chapter-list-tree">
-          {chapters.map((chapter) => {
+        <VirtualChapterWindow
+          scrollRef={desktopTreeRef}
+          className="chapter-list-tree"
+          items={chapters}
+          overscan={4}
+          activeItemId={activeChapterId}
+          measurementKey={`${editingId ?? ''}:${expandedChapters.size}:${scenes.length}`}
+          rowClassName="chapter-virtual-row--desktop"
+          estimateSize={(index) => {
+            const chapter = chapters[index];
+            const sceneCount = scenesByChapter.get(chapter?.id)?.length || 0;
+            return expandedChapters.has(chapter?.id) ? 74 + (sceneCount * 32) : 40;
+          }}
+          renderItem={(chapter) => {
             const chapterScenes = scenesByChapter.get(chapter.id) || [];
             const isExpanded = expandedChapters.has(chapter.id);
             const isEditingChapter = editingId === `chapter-${chapter.id}`;
@@ -569,15 +610,27 @@ export default function ChapterList({
                 )}
               </div>
             );
-          })}
-        </div>
+          }}
+        />
       )}
     </>
   );
 
   const renderMobileTree = () => (
-    <div ref={mobileTreeRef} className="chapter-list-mobile-tree">
-      {chapters.map((chapter) => {
+    <VirtualChapterWindow
+      scrollRef={mobileTreeRef}
+      className="chapter-list-mobile-tree"
+      items={chapters}
+      overscan={2}
+      activeItemId={activeChapterId}
+      measurementKey={`${editingId ?? ''}:${expandedChapters.size}:${scenes.length}`}
+      rowClassName="chapter-virtual-row--mobile"
+      estimateSize={(index) => {
+        const chapter = chapters[index];
+        const sceneCount = scenesByChapter.get(chapter?.id)?.length || 0;
+        return expandedChapters.has(chapter?.id) ? 126 + (sceneCount * 60) : 66;
+      }}
+      renderItem={(chapter) => {
         const chapterScenes = scenesByChapter.get(chapter.id) || [];
         const isExpanded = expandedChapters.has(chapter.id);
         const isEditingChapter = editingId === `chapter-${chapter.id}`;
@@ -686,8 +739,8 @@ export default function ChapterList({
             )}
           </div>
         );
-      })}
-    </div>
+      }}
+    />
   );
 
   const mobileActionItem = mobileActionMenu
@@ -810,3 +863,5 @@ export default function ChapterList({
     </div>
   );
 }
+
+export default React.memo(ChapterList);

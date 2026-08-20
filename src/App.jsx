@@ -6,39 +6,40 @@ import { ConfirmDialogProvider } from './components/common/ConfirmDialogProvider
 import { PRODUCT_SURFACE } from './config/productSurface';
 import SiteAnnouncementCenter from './components/siteAnnouncement/SiteAnnouncementCenter';
 import { AccessProvider } from './services/access/AccessContext.jsx';
+import { lazyRoute } from './routes/routeModules.js';
 import './styles/cream-overrides.css';
 
-const Dashboard = React.lazy(() => import('./pages/Dashboard/Dashboard'));
-const StoryBible = React.lazy(() => import('./pages/StoryBible/StoryBible'));
-const CanonTruth = React.lazy(() => import('./pages/CanonTruth/CanonTruth'));
-const OutlineBoard = React.lazy(() => import('./pages/OutlineBoard/OutlineBoard'));
-const CharacterHub = React.lazy(() => import('./pages/CharacterHub/CharacterHub'));
-const WorldLore = React.lazy(() => import('./pages/WorldLore/WorldLore'));
-const SceneEditor = React.lazy(() => import('./pages/SceneEditor/SceneEditor'));
-const TimelineThread = React.lazy(() => import('./pages/TimelineThread/TimelineThread'));
-const RevisionQA = React.lazy(() => import('./pages/RevisionQA/RevisionQA'));
-const StyleLab = React.lazy(() => import('./pages/StyleLab/StyleLab'));
-const NarrativeLab = React.lazy(() => import('./pages/Lab/NarrativeLab'));
-const LabLite = React.lazy(() => import('./pages/Lab/LabLite/LabLite'));
-const CorpusLab = React.lazy(() => import('./pages/Lab/CorpusLab/CorpusLab'));
-const AnalysisViewer = React.lazy(() => import('./pages/Lab/CorpusLab/AnalysisViewer'));
-const Settings = React.lazy(() => import('./pages/Settings/Settings'));
-const CloudSyncPage = React.lazy(() => import('./pages/CloudSync/CloudSyncPage'));
-const StoryCreationSettings = React.lazy(() => import('./pages/StoryCreationSettings/StoryCreationSettings'));
-const ProjectPromptManager = React.lazy(() => import('./pages/ProjectPromptManager/ProjectPromptManager'));
-const StyleImporter = React.lazy(() => import('./pages/StyleImporter/StyleImporter'));
-const ProjectChat = React.lazy(() => import('./pages/ProjectChat/ProjectChat'));
-const GeminiSetupGuide = React.lazy(() => import('./pages/Guide/GeminiSetupGuide'));
-const GeminiProxyGuide = React.lazy(() => import('./pages/Guide/GeminiProxyGuide'));
-const TranslatorSetupGuide = React.lazy(() => import('./pages/Guide/TranslatorSetupGuide'));
-const Notifications = React.lazy(() => import('./pages/Notifications/Notifications'));
-const Login = React.lazy(() => import('./pages/Login/Login'));
-const NotFound = React.lazy(() => import('./pages/NotFound/NotFound'));
-const ProjectLayout = React.lazy(() => import('./components/common/ProjectLayout'));
+const Dashboard = lazyRoute('dashboard');
+const StoryBible = lazyRoute('storyBible');
+const CanonTruth = lazyRoute('canonTruth');
+const OutlineBoard = lazyRoute('outlineBoard');
+const CharacterHub = lazyRoute('characterHub');
+const WorldLore = lazyRoute('worldLore');
+const SceneEditor = lazyRoute('sceneEditor');
+const TimelineThread = lazyRoute('timelineThread');
+const RevisionQA = lazyRoute('revisionQA');
+const StyleLab = lazyRoute('styleLab');
+const NarrativeLab = lazyRoute('narrativeLab');
+const LabLite = lazyRoute('labLite');
+const CorpusLab = lazyRoute('corpusLab');
+const AnalysisViewer = lazyRoute('analysisViewer');
+const Settings = lazyRoute('settings');
+const CloudSyncPage = lazyRoute('cloudSync');
+const StoryCreationSettings = lazyRoute('storyCreationSettings');
+const ProjectPromptManager = lazyRoute('projectPromptManager');
+const StyleImporter = lazyRoute('styleImporter');
+const ProjectChat = lazyRoute('projectChat');
+const GeminiSetupGuide = lazyRoute('geminiSetupGuide');
+const GeminiProxyGuide = lazyRoute('geminiProxyGuide');
+const TranslatorSetupGuide = lazyRoute('translatorSetupGuide');
+const Notifications = lazyRoute('notifications');
+const Login = lazyRoute('login');
+const NotFound = lazyRoute('notFound');
+const ProjectLayout = lazyRoute('projectLayout');
 
 const SHOW_WRITING_DEBUG = import.meta.env.VITE_SHOW_WRITING_DEBUG === 'true';
 const WritingRequestDebugger = SHOW_WRITING_DEBUG
-  ? React.lazy(() => import('./pages/WritingRequestDebugger/WritingRequestDebugger'))
+  ? lazyRoute('writingRequestDebugger')
   : null;
 
 function withRouteBoundary(element) {

@@ -22,7 +22,7 @@ export function createSceneAutosaveController({
   const setStatus = (state, snapshot = null, error = null) => {
     status = {
       state,
-      sceneId: snapshot?.sceneId ?? status.sceneId ?? null,
+      sceneId: snapshot ? (snapshot.sceneId ?? null) : (status.sceneId ?? null),
       error,
     };
     onStatusChange?.({ ...status });
@@ -63,8 +63,9 @@ export function createSceneAutosaveController({
       try {
         await onSave(snapshot.sceneId, snapshot.html);
       } catch (error) {
-        failedByScene.set(snapshot.sceneId, snapshot);
-        setStatus('error', snapshot, error || firstError);
+        const failure = { snapshot, error: error || firstError };
+        failedByScene.set(snapshot.sceneId, failure);
+        setStatus('error', snapshot, failure.error);
         return false;
       }
     } finally {
@@ -73,8 +74,8 @@ export function createSceneAutosaveController({
 
     failedByScene.delete(snapshot.sceneId);
     if (failedByScene.size > 0) {
-      const [failedSnapshot] = failedByScene.values();
-      setStatus('error', failedSnapshot, status.error);
+      const [failure] = failedByScene.values();
+      setStatus('error', failure.snapshot, failure.error);
     } else {
       setStatus(pendingByScene.size > 0 ? 'dirty' : 'saved', snapshot);
     }
@@ -131,7 +132,7 @@ export function createSceneAutosaveController({
     },
 
     async retry() {
-      failedByScene.forEach((snapshot) => enqueue(snapshot));
+      failedByScene.forEach(({ snapshot }) => enqueue(snapshot));
       failedByScene.clear();
       if (pendingByScene.size > 0) {
         const nextSceneId = pendingOrder.find((sceneId) => pendingByScene.has(sceneId));

@@ -44,7 +44,7 @@ function isModelKeyAvailable(modelName, keyIndex) {
 
 function createGeminiRotationError(code, userMessage, options = {}) {
     if (typeof createTranslatorError === 'function') {
-        return createTranslatorError(code, {
+        const error = createTranslatorError(code, {
             provider: 'Gemini',
             userMessage,
             rawMessage: userMessage,
@@ -52,6 +52,8 @@ function createGeminiRotationError(code, userMessage, options = {}) {
             shouldRotate: true,
             retryAfterSeconds: options.retryAfterSeconds,
         });
+        if (Number.isFinite(options.retryAfterMs)) error.retryAfterMs = options.retryAfterMs;
+        return error;
     }
 
     const error = new Error(userMessage);
@@ -60,6 +62,7 @@ function createGeminiRotationError(code, userMessage, options = {}) {
     error.retryable = options.retryable !== false;
     error.shouldRotate = true;
     error.retryAfterSeconds = options.retryAfterSeconds;
+    if (Number.isFinite(options.retryAfterMs)) error.retryAfterMs = options.retryAfterMs;
     return error;
 }
 
@@ -140,14 +143,14 @@ function throwNoAvailableDirectPair() {
         );
     }
 
-    const waitSeconds = Math.max(1, Math.ceil(Math.min(state.minWaitMs, 30000) / 1000));
+    const waitSeconds = Math.max(1, Math.ceil(state.minWaitMs / 1000));
     const waitReason = state.cooldownBlocked > 0 && state.rpmBlocked === 0
         ? 'cooldown của Gemini Direct'
         : 'giới hạn RPM chung của Gemini Direct';
     throw createGeminiRotationError(
         'GEMINI_RATE_LIMIT',
         `Đang chờ ${waitReason} (${waitSeconds}s).`,
-        { retryable: true, retryAfterSeconds: waitSeconds }
+        { retryable: true, retryAfterSeconds: waitSeconds, retryAfterMs: state.minWaitMs }
     );
 }
 
@@ -249,12 +252,14 @@ async function waitForNextModelKeyPairWithQueue(kind = 'main') {
         } catch (error) {
             if (error?.code !== 'GEMINI_RATE_LIMIT' || error?.retryable === false) throw error;
 
+            const retryAfterMs = Number(error?.retryAfterMs);
             const retryAfterSeconds = Number(error?.retryAfterSeconds);
-            const waitMs = Math.min(
-                30000,
-                Math.max(1000, Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-                    ? retryAfterSeconds * 1000
-                    : 5000)
+            const waitMs = Math.max(1000,
+                Number.isFinite(retryAfterMs) && retryAfterMs > 0
+                    ? retryAfterMs
+                    : (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+                        ? retryAfterSeconds * 1000
+                        : 5000)
             );
             const waitSeconds = Math.ceil(waitMs / 1000);
             if (typeof updateTranslationRuntimeStatus === 'function') {

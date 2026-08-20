@@ -202,6 +202,7 @@ describe('projectTemplateService', () => {
     expect(newChapters[0].title).toBe('Chương 1');
     expect(newScenes).toHaveLength(1);
     expect(newScenes[0].draft_text).toBe('');
+    expect(newScenes[0].word_count).toBe(0);
 
     const newCharacters = (await db.characters.toArray()).filter((item) => item.project_id === result.projectId);
     const newLocations = (await db.locations.toArray()).filter((item) => item.project_id === result.projectId);

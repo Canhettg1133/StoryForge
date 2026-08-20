@@ -38,6 +38,21 @@ function clickButton(container, text) {
   button.click();
 }
 
+function setTextareaValue(textarea, value) {
+  const valueSetter = Object.getOwnPropertyDescriptor(textarea, 'value')?.set;
+  const prototypeValueSetter = Object.getOwnPropertyDescriptor(
+    window.HTMLTextAreaElement.prototype,
+    'value',
+  )?.set;
+
+  if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+    prototypeValueSetter.call(textarea, value);
+  } else {
+    textarea.value = value;
+  }
+  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 describe('phase10 WorldLore bulk deletion', () => {
   let container;
   let root;
@@ -195,5 +210,47 @@ describe('phase10 WorldLore bulk deletion', () => {
     modal.querySelectorAll('textarea').forEach((field) => {
       expect(field.classList.contains('textarea')).toBe(true);
     });
+  });
+
+  it.each([
+    { tabLabel: 'Địa điểm', expectedFields: 2 },
+    { tabLabel: 'Vật phẩm', expectedFields: 2 },
+    { tabLabel: 'Thuật ngữ', expectedFields: 1 },
+  ])('expands every $tabLabel detail field without internal scrolling', async ({
+    tabLabel,
+    expectedFields,
+  }) => {
+    await act(async () => {
+      root.render(<WorldLore />);
+    });
+
+    if (tabLabel !== 'Địa điểm') {
+      await act(async () => {
+        clickButton(container, tabLabel);
+      });
+    }
+    await act(async () => {
+      clickButton(container, 'Thêm thủ công');
+    });
+
+    const fields = Array.from(container.querySelectorAll('.codex-modal textarea'));
+    expect(fields).toHaveLength(expectedFields);
+    fields.forEach((field) => {
+      expect(field.classList).toContain('textarea');
+      expect(field.classList).toContain('auto-resize-textarea');
+    });
+
+    const longField = fields[fields.length - 1];
+    Object.defineProperty(longField, 'scrollHeight', {
+      configurable: true,
+      value: 248,
+    });
+
+    await act(async () => {
+      setTextareaValue(longField, 'Nội dung thế giới dài '.repeat(30));
+    });
+
+    expect(longField.style.height).toBe('248px');
+    expect(longField.style.overflowY).toBe('hidden');
   });
 });

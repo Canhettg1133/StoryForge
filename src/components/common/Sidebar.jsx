@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import {
   BookKey,
   BookOpen,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react';
 import { shouldShowNavItem } from '../../config/productSurface';
 import { getThemeDefinition } from '../../config/themes.js';
+import { prefetchRouteFromPath } from '../../routes/routeModules.js';
 import useProjectStore from '../../stores/projectStore';
 import useUIStore from '../../stores/uiStore';
 import ArcNavigator from './ArcNavigator';
@@ -111,8 +113,24 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { projectId } = useParams();
-  const { sidebarCollapsed, toggleSidebar, theme } = useUIStore();
-  const { currentProject, chapters, activeChapterId, projects = [] } = useProjectStore();
+  const { sidebarCollapsed, toggleSidebar, theme } = useUIStore(useShallow((state) => ({
+    sidebarCollapsed: state.sidebarCollapsed,
+    toggleSidebar: state.toggleSidebar,
+    theme: state.theme,
+  })));
+  const {
+    currentProjectId,
+    currentProjectTitle,
+    currentProjectTargetLength,
+    currentChapterIndex,
+    hasProjects,
+  } = useProjectStore(useShallow((state) => ({
+    currentProjectId: state.currentProject?.id || null,
+    currentProjectTitle: state.currentProject?.title || '',
+    currentProjectTargetLength: state.currentProject?.target_length || 0,
+    currentChapterIndex: state.chapters.findIndex((chapter) => chapter.id === state.activeChapterId),
+    hasProjects: state.projects.length > 0,
+  })));
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [projectGateItem, setProjectGateItem] = useState(null);
   const themeTriggerRef = useRef(null);
@@ -161,7 +179,7 @@ export default function Sidebar() {
   }, [themeMenuOpen]);
 
   const routeProjectId = projectId || null;
-  const appScopedProjectId = ['/settings', '/login'].includes(location.pathname) ? currentProject?.id || null : null;
+  const appScopedProjectId = ['/settings', '/login'].includes(location.pathname) ? currentProjectId : null;
   const activeProjectId = routeProjectId || appScopedProjectId;
   const baseVisibleNavItems = NAV_ITEMS.filter((item) => {
     if (item.divider) return true;
@@ -178,7 +196,6 @@ export default function Sidebar() {
   const isAutoCollapsed = isNarrowViewport;
   const isCollapsed = isAutoCollapsed || sidebarCollapsed;
   const activeTheme = getThemeDefinition(theme);
-  const hasProjects = projects.length > 0;
   const firstProjectItemId = visibleNavItems.find((item) => item.needsProject)?.id;
 
   const handleNav = (item) => {
@@ -194,6 +211,11 @@ export default function Sidebar() {
         ? { state: { returnTo: `${location.pathname}${location.search}${location.hash}` } }
         : undefined,
     );
+  };
+
+  const handleRouteIntent = (item) => {
+    if (item.comingSoon || (item.needsProject && !activeProjectId)) return;
+    void prefetchRouteFromPath(getNavPath(item, activeProjectId));
   };
 
   const handleProjectGateAction = () => {
@@ -216,7 +238,7 @@ export default function Sidebar() {
         )}
       </div>
 
-      {routeProjectId && currentProject && !isCollapsed && (
+      {routeProjectId && currentProjectId && !isCollapsed && (
         <div className="sidebar-project-container">
           <div
             className="sidebar-project"
@@ -231,12 +253,12 @@ export default function Sidebar() {
             }}
           >
             <ChevronLeft size={14} />
-            <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{currentProject.title}</span>
+            <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{currentProjectTitle}</span>
           </div>
           <ArcNavigator
-            projectId={currentProject.id}
-            currentChapter={chapters.findIndex((chapter) => chapter.id === activeChapterId)}
-            totalChapters={currentProject.target_length || 0}
+            projectId={currentProjectId}
+            currentChapter={currentChapterIndex}
+            totalChapters={currentProjectTargetLength}
             compact={true}
           />
         </div>
@@ -268,6 +290,11 @@ export default function Sidebar() {
               <button
                 className={`sidebar-item ${isActive ? 'sidebar-item--active' : ''} ${isDisabled ? 'sidebar-item--disabled' : ''} ${item.primary && !isDisabled ? 'sidebar-item--primary' : ''} ${isComingSoon ? 'sidebar-item--coming-soon' : ''}`}
                 onClick={() => handleNav(item)}
+                onPointerEnter={() => handleRouteIntent(item)}
+                onFocus={() => handleRouteIntent(item)}
+                onPointerDown={(event) => {
+                  if (event.pointerType !== 'mouse') handleRouteIntent(item);
+                }}
                 aria-disabled={isDisabled || undefined}
                 title={isDisabled
                   ? `${hasProjects ? 'Chọn một truyện' : 'Tạo một truyện'} để sử dụng ${item.label}`

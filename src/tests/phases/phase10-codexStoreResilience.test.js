@@ -65,9 +65,11 @@ class MemoryQuery {
 class MemoryTable {
   constructor(rows = []) {
     this.rows = clone(rows);
+    this.readCount = 0;
   }
 
   where(field) {
+    this.readCount += 1;
     return new MemoryQuery(this, field);
   }
 
@@ -180,5 +182,114 @@ describe('phase10 codex store resilience', () => {
     expect(store.getState().characters.map((item) => item.name)).toEqual(['New Hero']);
     expect(store.getState().locations.map((item) => item.name)).toEqual(['New Place']);
     expect(store.getState().loading).toBe(false);
+  });
+
+  it('renders a same-project Codex cache immediately and revalidates without a blocking loader', async () => {
+    const { store, db } = await loadCodexStore({
+      characters: [{ id: 1, project_id: 1, name: 'Bản đã tải' }],
+    });
+    await store.getState().loadCodex(1);
+    db.characters.rows = [{ id: 1, project_id: 1, name: 'Bản mới trong DB' }];
+    const loadingStates = [];
+    const unsubscribe = store.subscribe((state) => loadingStates.push(state.loading));
+
+    await store.getState().loadCodex(1, { preferCache: true });
+
+    expect(loadingStates).not.toContain(true);
+    expect(store.getState().characters[0].name).toBe('Bản đã tải');
+    await vi.waitFor(() => {
+      expect(store.getState().characters[0].name).toBe('Bản mới trong DB');
+    });
+    unsubscribe();
+  });
+
+  it('does not let a scheduled background revalidation overwrite a newer project load', async () => {
+    const { store, db } = await loadCodexStore({
+      characters: [
+        { id: 1, project_id: 1, name: 'Project cũ' },
+        { id: 2, project_id: 2, name: 'Project mới' },
+      ],
+    });
+    await store.getState().loadCodex(1);
+    db.characters.rows = [
+      { id: 1, project_id: 1, name: 'Project cũ đã đổi' },
+      { id: 2, project_id: 2, name: 'Project mới' },
+    ];
+
+    await store.getState().loadCodex(1, { preferCache: true });
+    await store.getState().loadCodex(2);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(store.getState().loadedProjectId).toBe(2);
+    expect(store.getState().characters.map((item) => item.name)).toEqual(['Project mới']);
+  });
+
+  it('does not dedupe a forced refresh onto an older background revalidation', async () => {
+    const { store, db } = await loadCodexStore({
+      characters: [{ id: 1, project_id: 1, name: 'Bản ban đầu' }],
+    });
+    await store.getState().loadCodex(1);
+
+    const backgroundCharacters = createDeferred();
+    const originalWhere = db.characters.where.bind(db.characters);
+    let projectCharacterReads = 0;
+    db.characters.where = vi.fn((field) => {
+      const query = originalWhere(field);
+      return {
+        equals(projectId) {
+          if (field === 'project_id' && projectId === 1) {
+            projectCharacterReads += 1;
+            if (projectCharacterReads === 1) {
+              return { toArray: () => backgroundCharacters.promise };
+            }
+          }
+          return query.equals(projectId);
+        },
+      };
+    });
+
+    await store.getState().loadCodex(1, { preferCache: true });
+    await vi.waitFor(() => expect(projectCharacterReads).toBe(1));
+
+    db.characters.rows = [{ id: 1, project_id: 1, name: 'Bản vừa mutation' }];
+    const forcedRefresh = store.getState().loadCodex(1);
+
+    expect(projectCharacterReads).toBe(2);
+    await forcedRefresh;
+    backgroundCharacters.resolve([{ id: 1, project_id: 1, name: 'Bản nền cũ' }]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(store.getState().characters.map((item) => item.name)).toEqual(['Bản vừa mutation']);
+  });
+
+  it('contains background revalidation failures and keeps the cached Codex usable', async () => {
+    const { store, db } = await loadCodexStore({
+      characters: [{ id: 1, project_id: 1, name: 'Bản an toàn' }],
+    });
+    await store.getState().loadCodex(1);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const originalWhere = db.characters.where.bind(db.characters);
+    db.characters.where = vi.fn((field) => {
+      const query = originalWhere(field);
+      return {
+        equals(projectId) {
+          if (field === 'project_id' && projectId === 1) {
+            return { toArray: async () => { throw new Error('background read failed'); } };
+          }
+          return query.equals(projectId);
+        },
+      };
+    });
+
+    await store.getState().loadCodex(1, { preferCache: true });
+
+    await vi.waitFor(() => {
+      expect(warning).toHaveBeenCalledWith(
+        '[CodexStore] Background revalidation failed:',
+        expect.any(Error),
+      );
+    });
+    expect(store.getState().characters.map((item) => item.name)).toEqual(['Bản an toàn']);
+    warning.mockRestore();
   });
 });

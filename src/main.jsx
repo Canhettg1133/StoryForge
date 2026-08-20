@@ -12,6 +12,7 @@ import {
 } from './config/themes.js';
 
 // Styles
+import './styles/fonts.css';
 import './styles/index.css';
 import './styles/animations.css';
 import './styles/components.css';

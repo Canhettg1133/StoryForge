@@ -11,8 +11,10 @@ function read(relativePath) {
 describe('Lab Lite Phase 0 - surface contract', () => {
   it('registers the project route behind the Lab Lite gate', () => {
     const app = read('src/App.jsx');
+    const routeModules = read('src/routes/routeModules.js');
 
-    expect(app).toContain("React.lazy(() => import('./pages/Lab/LabLite/LabLite'))");
+    expect(app).toContain("const LabLite = lazyRoute('labLite')");
+    expect(routeModules).toContain("labLite: createSharedModuleLoader(() => import('../pages/Lab/LabLite/LabLite'))");
     expect(app).toContain('path="lab-lite"');
     expect(app).toContain('PRODUCT_SURFACE.showLabLite ? <LabLite /> : labFallback');
   });

@@ -70,4 +70,29 @@ describe('phase10 character modal surface', () => {
     expect(draftCard).toContain('Trạng thái hồ sơ ban đầu');
     expect(draftCard).toContain('Canon hiện tại');
   });
+
+  it('keeps the read-only current canon from overflowing into the secrets field', () => {
+    const hub = read('src/pages/CharacterHub/CharacterHub.jsx');
+    const canonStart = hub.indexOf('<label>Canon hiện tại (chỉ đọc)</label>');
+    const secretsStart = hub.indexOf('<label>Bí mật</label>', canonStart);
+    const canonField = hub.slice(canonStart, secretsStart);
+
+    expect(canonStart).toBeGreaterThanOrEqual(0);
+    expect(secretsStart).toBeGreaterThan(canonStart);
+    expect(canonField).toContain('<AutoResizeTextarea');
+    expect(canonField).toContain('readOnly');
+    expect(canonField).not.toContain('className="input character-form-textarea"');
+  });
+
+  it('keeps long current-canon text in the character card document flow', () => {
+    const draftCard = read('src/pages/StoryBible/components/CharacterDraftCard.jsx');
+    const css = read('src/pages/StoryBible/StoryBible.css');
+    const canonStatus = getCssRuleBody(css, '.bible-card-canon-status');
+
+    expect(draftCard).toContain('className="bible-card-canon-status"');
+    expect(draftCard).not.toContain('className="input input-inline" aria-readonly="true"');
+    expect(canonStatus).toContain('height: auto;');
+    expect(canonStatus).toContain('line-height:');
+    expect(canonStatus).toContain('overflow-wrap: anywhere;');
+  });
 });

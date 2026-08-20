@@ -7,7 +7,6 @@ import JobNotificationToast from '../jobs/JobNotificationToast';
 import JobQueuePanel from '../jobs/JobQueuePanel';
 import StorageWarning from './StorageWarning';
 import useMobileLayout from '../../hooks/useMobileLayout';
-import CloudAutoSyncAgent from '../cloud/CloudAutoSyncAgent';
 import CloudAuthRedirectHandler from '../cloud/CloudAuthRedirectHandler';
 import PersistentTranslatorHost from '../translator/PersistentTranslatorHost';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
@@ -16,6 +15,8 @@ import AccessGate from '../access/AccessGate.jsx';
 import { navigateBackOr } from '../../utils/navigation.js';
 import CloudflarePreviewBanner from './CloudflarePreviewBanner.jsx';
 import './AppLayout.css';
+
+const CloudAutoSyncAgent = React.lazy(() => import('../cloud/CloudAutoSyncAgent'));
 
 export default function AppLayout() {
   const location = useLocation();
@@ -109,7 +110,9 @@ export default function AppLayout() {
       ) : null}
       <StorageWarning />
       <CloudAuthRedirectHandler />
-      <CloudAutoSyncAgent />
+      <React.Suspense fallback={null}>
+        <CloudAutoSyncAgent />
+      </React.Suspense>
       {PRODUCT_SURFACE.showJobUi ? <JobQueuePanel /> : null}
       {PRODUCT_SURFACE.showJobUi ? <JobNotificationToast /> : null}
     </div>

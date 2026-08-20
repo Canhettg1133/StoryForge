@@ -35,7 +35,7 @@ const CharacterDraftCard = React.memo(function CharacterDraftCard({
       <input className="input input-inline" value={draft.personality || ''} placeholder="Tính cách" onChange={(event) => onChange(character.id, 'personality', event.target.value)} />
       <input className="input input-inline" value={draft.personality_tags || ''} placeholder="Tags (VD: #Kiên_nhẫn, #Quyết_đoán)" onChange={(event) => onChange(character.id, 'personality_tags', event.target.value)} />
       {character.canon_status_summary && (
-        <div className="input input-inline" aria-readonly="true">
+        <div className="bible-card-canon-status">
           Canon hiện tại: {character.canon_status_summary}
           {character.canon_state?.alive_status && character.canon_state.alive_status !== 'unknown'
             ? ` · ${character.canon_state.alive_status === 'dead' ? 'Đã chết' : 'Còn sống'}`

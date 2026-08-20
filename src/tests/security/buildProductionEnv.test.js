@@ -8,10 +8,17 @@ import {
   loadEnvFile,
   loadProductionBuildEnv,
   loadVercelProductionEnv,
+  resolveFrontendBudgetOutDir,
   sanitizeClientBuildEnv,
 } from '../../../scripts/build-production-app.mjs';
 
 describe('production build env loading', () => {
+  it('targets the Cloudflare client bundle when enforcing frontend budgets', () => {
+    expect(resolveFrontendBudgetOutDir('dist', { STORYFORGE_CLOUDFLARE: 'true' }))
+      .toBe(path.join('dist', 'client'));
+    expect(resolveFrontendBudgetOutDir('dist', {})).toBe('dist');
+  });
+
   it('loads Vercel production env for local prebuilt deploys without overriding existing values', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'storyforge-env-'));
     const vercelDir = path.join(root, '.vercel');

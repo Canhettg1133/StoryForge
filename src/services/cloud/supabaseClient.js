@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
+import {
+  SUPABASE_ANON_KEY,
+  SUPABASE_URL,
+  getSupabaseConfigError,
+  isSupabaseConfigured,
+} from './supabaseConfig.js';
 
-const SUPABASE_URL = String(import.meta.env.VITE_SUPABASE_URL || '').trim();
-const SUPABASE_ANON_KEY = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 const SUPABASE_REQUEST_TIMEOUT_MS = 20_000;
 
 let supabaseClient = null;
@@ -52,14 +56,7 @@ export function createSupabaseFetchWithTimeout({
   };
 }
 
-export function isSupabaseConfigured() {
-  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
-}
-
-export function getSupabaseConfigError() {
-  if (isSupabaseConfigured()) return '';
-  return 'Thiếu VITE_SUPABASE_URL hoặc VITE_SUPABASE_ANON_KEY.';
-}
+export { getSupabaseConfigError, isSupabaseConfigured } from './supabaseConfig.js';
 
 export function getSupabaseClient() {
   if (!isSupabaseConfigured()) {

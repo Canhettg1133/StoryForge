@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import {
@@ -14,6 +15,7 @@ import { WORLD_TERM_CATEGORIES } from '../../utils/constants';
 import AIGenerateButton from '../../components/common/AIGenerateButton';
 import BatchGenerate from '../../components/common/BatchGenerate';
 import EntityTimeline from '../../components/common/EntityTimeline';
+import AutoResizeTextarea from '../../components/common/AutoResizeTextarea.jsx';
 import MobileBibleTabs from '../../components/mobile/MobileBibleTabs';
 import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './WorldLore.css';
@@ -30,13 +32,35 @@ function getInitialWorldExpanded() {
 }
 
 export default function WorldLore() {
-  const { currentProject } = useProjectStore();
+  const { currentProject, updateWorldProfile } = useProjectStore(useShallow((state) => ({
+    currentProject: state.currentProject,
+    updateWorldProfile: state.updateWorldProfile,
+  })));
   const {
     locations, objects, worldTerms, characters, loading, loadCodex,
     createLocation, updateLocation, deleteLocation, deleteLocations,
     createObject, updateObject, deleteObject, deleteObjects,
     createWorldTerm, updateWorldTerm, deleteWorldTerm, deleteWorldTerms,
-  } = useCodexStore();
+  } = useCodexStore(useShallow((state) => ({
+    locations: state.locations,
+    objects: state.objects,
+    worldTerms: state.worldTerms,
+    characters: state.characters,
+    loading: state.loading,
+    loadCodex: state.loadCodex,
+    createLocation: state.createLocation,
+    updateLocation: state.updateLocation,
+    deleteLocation: state.deleteLocation,
+    deleteLocations: state.deleteLocations,
+    createObject: state.createObject,
+    updateObject: state.updateObject,
+    deleteObject: state.deleteObject,
+    deleteObjects: state.deleteObjects,
+    createWorldTerm: state.createWorldTerm,
+    updateWorldTerm: state.updateWorldTerm,
+    deleteWorldTerm: state.deleteWorldTerm,
+    deleteWorldTerms: state.deleteWorldTerms,
+  })));
 
   const [activeTab, setActiveTab] = useState('locations');
   const [searchQuery, setSearchQuery] = useState('');
@@ -54,7 +78,6 @@ export default function WorldLore() {
   const [worldExpanded, setWorldExpanded] = useState(getInitialWorldExpanded);
   const [editingWorld, setEditingWorld] = useState(false);
   const [worldForm, setWorldForm] = useState({});
-  const { updateWorldProfile } = useProjectStore();
   const itemDialogRef = useModalAccessibility({
     open: showModal,
     onClose: () => setShowModal(false),
@@ -65,7 +88,7 @@ export default function WorldLore() {
   });
 
   useEffect(() => {
-    if (currentProject) loadCodex(currentProject.id);
+    if (currentProject) loadCodex(currentProject.id, { preferCache: true });
   }, [currentProject?.id]);
 
   // Get current data based on active tab
@@ -567,8 +590,9 @@ export default function WorldLore() {
                     <>
                       <div className="form-group">
                         <label>Mô tả</label>
-                        <textarea
+                        <AutoResizeTextarea
                           className="textarea"
+                          aria-label="Mô tả địa điểm"
                           value={form.description || ''}
                           onChange={e => setForm({ ...form, description: e.target.value })}
                           placeholder="Tòa thành cổ nằm trên đỉnh núi, bao quanh bởi sương mù..."
@@ -577,8 +601,9 @@ export default function WorldLore() {
                       </div>
                       <div className="form-group">
                         <label>Chi tiết bổ sung</label>
-                        <textarea
+                        <AutoResizeTextarea
                           className="textarea"
+                          aria-label="Chi tiết bổ sung địa điểm"
                           value={form.details || ''}
                           onChange={e => setForm({ ...form, details: e.target.value })}
                           placeholder="4 tháp canh, cổng chính hướng đông, có mật đạo dưới hầm..."
@@ -606,8 +631,9 @@ export default function WorldLore() {
                       </div>
                       <div className="form-group">
                         <label>Mô tả</label>
-                        <textarea
+                        <AutoResizeTextarea
                           className="textarea"
+                          aria-label="Mô tả vật phẩm"
                           value={form.description || ''}
                           onChange={e => setForm({ ...form, description: e.target.value })}
                           placeholder="Thanh kiếm có lưỡi màu bạc, phát sáng trong bóng tối..."
@@ -616,8 +642,9 @@ export default function WorldLore() {
                       </div>
                       <div className="form-group">
                         <label>Thuộc tính</label>
-                        <textarea
+                        <AutoResizeTextarea
                           className="textarea"
+                          aria-label="Thuộc tính vật phẩm"
                           value={form.properties || ''}
                           onChange={e => setForm({ ...form, properties: e.target.value })}
                           placeholder="Tăng sức mạnh x2, nhưng tiêu hao sinh lực người dùng..."
@@ -644,8 +671,9 @@ export default function WorldLore() {
                       </div>
                       <div className="form-group">
                         <label>Định nghĩa</label>
-                        <textarea
+                        <AutoResizeTextarea
                           className="textarea"
+                          aria-label="Định nghĩa thuật ngữ"
                           value={form.definition || ''}
                           onChange={e => setForm({ ...form, definition: e.target.value })}
                           placeholder="Năng lượng tự nhiên thẩm thấu khắp nơi, tu sĩ hấp thụ để tăng cảnh giới..."

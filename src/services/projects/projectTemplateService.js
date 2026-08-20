@@ -7,6 +7,7 @@ import {
   resolvePromptProfileVersion,
 } from '../ai/promptProfiles.js';
 import { GENRE_TEMPLATES } from '../../utils/genreTemplates.js';
+import { WORD_COUNT_CACHE_VERSION } from './sceneWordCounts.js';
 
 const DEFAULT_INCLUDE = {
   settings: true,
@@ -156,6 +157,7 @@ async function createInitialChapters(projectId, count, now) {
       status: 'draft',
       word_count_target: 3000,
       actual_word_count: 0,
+      word_count_version: WORD_COUNT_CACHE_VERSION,
       created_at: now,
       updated_at: now,
     });
@@ -176,6 +178,8 @@ async function createInitialChapters(projectId, count, now) {
       status: 'draft',
       draft_text: '',
       final_text: '',
+      word_count: 0,
+      word_count_version: WORD_COUNT_CACHE_VERSION,
       must_happen: '[]',
       must_not_happen: '[]',
       pacing: '',

@@ -187,6 +187,50 @@ describe('phase10 arc generation modal causal outline UI', () => {
     });
   });
 
+  it('expands generated chapter text to its full height without internal scrolling', async () => {
+    arcStoreState.generatedOutline.chapters[0].purpose = 'Mục tiêu dài '.repeat(12);
+    arcStoreState.generatedOutline.chapters[0].summary = 'Tóm tắt dài '.repeat(30);
+
+    await act(async () => {
+      root.render(
+        <ArcGenerationModal
+          projectId={1}
+          genre="fantasy"
+          currentChapterCount={10}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+
+    const generateButton = Array.from(container.querySelectorAll('button'))
+      .find((button) => button.textContent.includes('Tạo dàn ý'));
+
+    await act(async () => {
+      generateButton.click();
+      await Promise.resolve();
+    });
+
+    const purposeField = container.querySelector('textarea[aria-label="Mục tiêu chương 1"]');
+    const summaryField = container.querySelector('textarea[aria-label="Tóm tắt chương 1"]');
+
+    expect(purposeField).toBeTruthy();
+    expect(summaryField).toBeTruthy();
+    expect(purposeField.classList).toContain('auto-resize-textarea');
+    expect(summaryField.classList).toContain('auto-resize-textarea');
+
+    Object.defineProperty(summaryField, 'scrollHeight', {
+      configurable: true,
+      value: 264,
+    });
+
+    await act(async () => {
+      setTextareaValue(summaryField, `${summaryField.value} Nội dung bổ sung.`);
+    });
+
+    expect(summaryField.style.height).toBe('264px');
+    expect(summaryField.style.overflowY).toBe('hidden');
+  });
+
   it('lets chapter-count input be cleared before committing a new arc batch size', async () => {
     await act(async () => {
       root.render(

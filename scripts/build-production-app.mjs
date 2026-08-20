@@ -15,6 +15,7 @@ const TARGETS = {
     outDir: 'dist',
     viteArgs: ['build'],
     requiredEnv: ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'],
+    enforceFrontendBudgets: true,
   },
   admin: {
     label: 'StoryForge admin app',
@@ -151,6 +152,12 @@ export function assertRequiredEnv(keys, env = process.env) {
   }
 }
 
+export function resolveFrontendBudgetOutDir(outDir, env = process.env) {
+  return env.STORYFORGE_CLOUDFLARE === 'true'
+    ? path.join(outDir, 'client')
+    : outDir;
+}
+
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
     stdio: 'inherit',
@@ -186,6 +193,12 @@ export function main(argv = process.argv.slice(2)) {
   }
   runCommand(process.execPath, ['scripts/obfuscate-first-party.mjs', target.outDir], { env: clientBuildEnv });
   runCommand(process.execPath, ['scripts/secure-build-guard.mjs', target.outDir]);
+  if (target.enforceFrontendBudgets) {
+    runCommand(process.execPath, [
+      'scripts/performance-budget-guard.mjs',
+      resolveFrontendBudgetOutDir(target.outDir, clientBuildEnv),
+    ]);
+  }
 }
 
 const isDirectRun = process.argv[1]

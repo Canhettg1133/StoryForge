@@ -419,6 +419,7 @@ describe('phase10 arc outline revision flow', () => {
     expect(forced.forced).toBe(true);
     expect(dbMock.__rows('chapters')).toHaveLength(2);
     expect(dbMock.__rows('scenes')).toHaveLength(2);
+    expect(dbMock.__rows('scenes').every((scene) => scene.word_count === 0)).toBe(true);
   });
 
   it('persists causal outline metadata when saving outline-only chapters', async () => {
@@ -485,8 +486,10 @@ describe('phase10 arc outline revision flow', () => {
     expect(saved).toBe(true);
 
     const [firstChapter] = dbMock.__rows('chapters');
+    const [firstScene] = dbMock.__rows('scenes');
     expect(firstChapter).toEqual(expect.objectContaining({
       status: 'draft',
+      actual_word_count: 4,
       conflict: 'Lam Mac muon tranh bi truy sat nhung dong doi dang bi bao vay.',
       decision_or_consequence: 'Lam Mac lo dau vet de ke dich nhan ra anh con song.',
       pacing: 'slow',
@@ -497,6 +500,7 @@ describe('phase10 arc outline revision flow', () => {
     expect(firstChapter.state_changes).toEqual([
       { subject: 'Lam Mac', change: 'Bi lo dau vet sinh ton va mat loi the an than.' },
     ]);
+    expect(firstScene.word_count).toBe(4);
   });
 
   it('revalidates revised outlines and records improved outcomes', async () => {

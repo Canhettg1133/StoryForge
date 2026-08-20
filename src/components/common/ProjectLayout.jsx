@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, useParams, useNavigate } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import useProjectStore from '../../stores/projectStore';
 import { Loader2 } from 'lucide-react';
 import useMobileLayout from '../../hooks/useMobileLayout';
@@ -8,7 +9,10 @@ import MobileProjectShell from '../mobile/MobileProjectShell';
 export default function ProjectLayout() {
     const { projectId } = useParams();
     const navigate = useNavigate();
-    const { currentProject, loadProject, loading } = useProjectStore();
+    const { currentProjectId, loadProject } = useProjectStore(useShallow((state) => ({
+        currentProjectId: state.currentProject?.id || null,
+        loadProject: state.loadProject,
+    })));
     const [init, setInit] = useState(false);
     const isMobileLayout = useMobileLayout(900);
 
@@ -23,7 +27,7 @@ export default function ProjectLayout() {
             }
 
             // If store is empty (reload) OR we navigated to a different project
-            if (!currentProject || currentProject.id !== id) {
+            if (currentProjectId !== id) {
                 try {
                     await loadProject(id);
                 } catch (err) {
@@ -35,10 +39,10 @@ export default function ProjectLayout() {
         };
 
         initProject();
-    }, [projectId, currentProject?.id, loadProject, navigate]);
+    }, [projectId, currentProjectId, loadProject, navigate]);
 
     const numericProjectId = Number(projectId);
-    const hasLoadedRouteProject = currentProject?.id === numericProjectId;
+    const hasLoadedRouteProject = currentProjectId === numericProjectId;
     const shouldShowBlockingLoader = !init || (projectId && !hasLoadedRouteProject);
 
     if (shouldShowBlockingLoader) {

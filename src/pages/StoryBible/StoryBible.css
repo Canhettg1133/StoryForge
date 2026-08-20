@@ -1533,6 +1533,15 @@
   font-size: 14px;
 }
 
+.bible-card-canon-status {
+  height: auto;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .select-mini {
   font-size: 12px;
   padding: 2px 6px;

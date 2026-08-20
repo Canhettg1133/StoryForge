@@ -11,13 +11,18 @@ function read(relativePath) {
 describe('frontend delivery performance guard', () => {
   it('loads page modules lazily while keeping the persistent app shell eager', () => {
     const app = read('src/App.jsx');
+    const sidebar = read('src/components/common/Sidebar.jsx');
     const dashboard = read('src/pages/Dashboard/Dashboard.jsx');
     const projectStore = read('src/stores/projectStore.js');
 
     expect(app).toContain("import AppLayout from './components/common/AppLayout'");
     expect(app).not.toMatch(/^import\s+\w+\s+from\s+'\.\/pages\//gmu);
-    expect(app).toContain("React.lazy(() => import('./pages/Dashboard/Dashboard'))");
-    expect(app).toContain("React.lazy(() => import('./pages/SceneEditor/SceneEditor'))");
+    expect(app).toContain("lazyRoute('dashboard')");
+    expect(app).toContain("lazyRoute('sceneEditor')");
+    expect(app).toContain("from './routes/routeModules.js'");
+    expect(sidebar).toContain('prefetchRouteFromPath');
+    expect(sidebar).toContain('onPointerEnter');
+    expect(sidebar).toContain('onFocus');
     expect(app).toContain('<RouteBoundary>');
     expect(app).toContain('path="*"');
     expect(dashboard).toContain("React.lazy(() => import('../../components/common/ExportModal'))");

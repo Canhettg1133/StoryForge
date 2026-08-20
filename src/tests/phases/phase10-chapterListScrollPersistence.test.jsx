@@ -137,6 +137,7 @@ describe('phase10 chapter list scroll persistence', () => {
     });
 
     expect(scrollContainer.scrollTop).toBe(240);
-    expect(container.querySelectorAll('.chapter-item')).toHaveLength(initialChapters.length - 1);
+    expect(mockedProjectStoreState.chapters).toHaveLength(initialChapters.length - 1);
+    expect(mockedProjectStoreState.chapters.some((chapter) => chapter.id === 11)).toBe(false);
   });
 });

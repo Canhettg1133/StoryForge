@@ -163,6 +163,43 @@ describe('phase10 StoryEditor reader controls', () => {
     expect(container.querySelector('.chapter-outline-body')).toBeNull();
   });
 
+  it('collapses the chapter outline as soon as the live editor receives prose', async () => {
+    const originalScene = mocks.projectState.scenes[0];
+    mocks.projectState.scenes[0] = { ...originalScene, draft_text: '' };
+    let editorInstance = null;
+
+    try {
+      await renderEditor({
+        isMobileLayout: false,
+        viewMode: 'scene',
+        onEditorReady: (editor) => {
+          editorInstance = editor;
+        },
+      });
+
+      const outlineButton = container.querySelector('.chapter-outline-toggle');
+      expect(outlineButton?.getAttribute('aria-expanded')).toBe('true');
+
+      await act(async () => {
+        editorInstance.commands.insertContent('Nội dung vừa gõ');
+        await Promise.resolve();
+      });
+
+      expect(outlineButton?.getAttribute('aria-expanded')).toBe('false');
+      expect(container.querySelector('.chapter-outline-body')).toBeNull();
+    } finally {
+      mocks.projectState.scenes[0] = originalScene;
+    }
+  });
+
+  it('drives live outline state from the editor update callback instead of autosave state', () => {
+    const source = readFileSync('src/components/editor/StoryEditor.jsx', 'utf8');
+    const onUpdateBlock = source.match(/onUpdate:\s*\(\{ editor \}\)\s*=>\s*\{[\s\S]*?autosaveControllerRef\.current\?\.schedule/iu)?.[0] || '';
+
+    expect(onUpdateBlock).toContain('setLiveEditorIsEmpty');
+    expect(source).not.toContain('const liveEditorIsEmpty = useEditorState');
+  });
+
   it('keeps the full change-history label and a comfortable tap target on mobile', async () => {
     await renderEditor({
       isMobileLayout: true,

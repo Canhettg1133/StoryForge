@@ -6,6 +6,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import useCodexStore from '../../stores/codexStore';
 import useAIStore from '../../stores/aiStore';
 import useProjectStore from '../../stores/projectStore';
@@ -299,20 +300,36 @@ function formatAnalysisOutcome(result) {
 
 export default function RelationshipMap({ onClose }) {
   const dialogRef = useModalAccessibility({ open: true, onClose });
-  const { currentProject, chapters = [], scenes = [] } = useProjectStore();
-  const { characters } = useCodexStore();
+  const { currentProject, chapters = [], scenes = [] } = useProjectStore(useShallow((state) => ({
+    currentProject: state.currentProject,
+    chapters: state.chapters,
+    scenes: state.scenes,
+  })));
+  const { characters } = useCodexStore(useShallow((state) => ({
+    characters: state.characters,
+  })));
   const {
     isAnalyzingRelationships,
     relationshipAnalysisProgress,
     analyzeRelationshipChapters,
     analyzeNeededRelationshipChapters,
-  } = useAIStore();
+  } = useAIStore(useShallow((state) => ({
+    isAnalyzingRelationships: state.isAnalyzingRelationships,
+    relationshipAnalysisProgress: state.relationshipAnalysisProgress,
+    analyzeRelationshipChapters: state.analyzeRelationshipChapters,
+    analyzeNeededRelationshipChapters: state.analyzeNeededRelationshipChapters,
+  })));
   const {
     suggestions,
     loadSuggestions,
     acceptSuggestion,
     rejectSuggestion,
-  } = useSuggestionStore();
+  } = useSuggestionStore(useShallow((state) => ({
+    suggestions: state.suggestions,
+    loadSuggestions: state.loadSuggestions,
+    acceptSuggestion: state.acceptSuggestion,
+    rejectSuggestion: state.rejectSuggestion,
+  })));
 
   const [relationships, setRelationships] = useState([]);
   const [relationshipStates, setRelationshipStates] = useState([]);

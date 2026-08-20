@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, useEditorState } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
@@ -19,7 +19,9 @@ import ChapterReader from './ChapterReader';
 import ChapterSpeechControl from './ChapterSpeechControl';
 import ChapterChangeHistory from './ChapterChangeHistory';
 import db from '../../services/db/database';
+import { getStoredSceneWordCount } from '../../services/projects/sceneWordCounts.js';
 import { createSceneAutosaveController } from './storyEditorAutosave';
+import { deriveChapterProgress } from './storyEditorMetrics.js';
 import { ChevronDown, ChevronRight, BookOpen, FileText, History, ListChecks, Pencil, Check, X, Settings, Copy, Type, Minus, Plus, RotateCcw, PanelLeft, Palette } from 'lucide-react';
 import './StoryEditor.css';
 
@@ -50,7 +52,76 @@ function textToHtml(text = '') {
     .join('');
 }
 
-export default function StoryEditor({
+const StoryEditorFooter = React.memo(function StoryEditorFooter({
+  editor,
+  chapterWordCount,
+  persistedSceneWordCount,
+  targetWordCount,
+  autosaveStatus,
+  onRetryAutosave,
+}) {
+  const liveMetrics = useEditorState({
+    editor,
+    selector: ({ editor: currentEditor }) => ({
+      wordCount: currentEditor?.storage.characterCount.words() || 0,
+      charCount: currentEditor?.storage.characterCount.characters() || 0,
+    }),
+  }) || { wordCount: 0, charCount: 0 };
+  const chapterProgress = deriveChapterProgress({
+    chapterWordCount,
+    persistedSceneWordCount,
+    liveSceneWordCount: liveMetrics.wordCount,
+    targetWordCount,
+  });
+
+  return (
+    <div className="story-editor-footer">
+      <div className="story-editor-stats">
+        <span>{liveMetrics.wordCount.toLocaleString()} từ</span>
+        <span className="story-editor-stats-divider">·</span>
+        <span>{liveMetrics.charCount.toLocaleString()} ký tự</span>
+        <span className="story-editor-stats-divider">·</span>
+        <span className="story-editor-progress-label">
+          Chương: {chapterProgress.current.toLocaleString()}/{chapterProgress.target.toLocaleString()}
+        </span>
+      </div>
+
+      <div className="story-editor-progress">
+        <div
+          className="story-editor-progress-bar"
+          style={{ width: `${chapterProgress.percent}%` }}
+          data-complete={chapterProgress.percent >= 100 ? 'true' : 'false'}
+        />
+      </div>
+
+      <div className="story-editor-status">
+        <span className="story-editor-progress-pct">{chapterProgress.percent}%</span>
+        <span className="story-editor-mobile-word-count">{liveMetrics.wordCount.toLocaleString()} từ</span>
+        <span
+          className={`story-editor-autosave is-${autosaveStatus.state}`}
+          role={autosaveStatus.state === 'error' ? 'alert' : 'status'}
+          aria-live={autosaveStatus.state === 'error' ? 'assertive' : 'polite'}
+        >
+          {autosaveStatus.state === 'idle' ? 'Đã lưu' : null}
+          {autosaveStatus.state === 'dirty' ? 'Chưa lưu' : null}
+          {autosaveStatus.state === 'saving' ? 'Đang lưu…' : null}
+          {autosaveStatus.state === 'saved' ? 'Đã lưu' : null}
+          {autosaveStatus.state === 'error' ? (
+            <button
+              type="button"
+              className="story-editor-autosave__retry"
+              onClick={onRetryAutosave}
+            >
+              Lưu thất bại – Thử lại
+            </button>
+          ) : null}
+        </span>
+      </div>
+    </div>
+  );
+});
+
+function StoryEditor({
   onEditorReady,
   isMobileLayout = false,
   hasMobileProjectShell = false,
@@ -76,6 +147,16 @@ export default function StoryEditor({
 
   const activeScene = scenes.find(s => s.id === activeSceneId) || null;
   const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
+  const persistedActiveSceneWordCount = useMemo(
+    () => getStoredSceneWordCount(activeScene || {}),
+    [
+      activeScene?.id,
+      activeScene?.word_count,
+      activeScene?.word_count_version,
+      activeScene?.draft_text,
+      activeScene?.final_text,
+    ],
+  );
   const nextChapterId = useMemo(() => {
     const orderedChapters = chapters.slice().sort(
       (left, right) => Number(left?.order_index || 0) - Number(right?.order_index || 0),
@@ -107,6 +188,9 @@ export default function StoryEditor({
   const editorWrapperRef = useRef(null);
   const fontControlRef = useRef(null);
   const [outlinePanelOpen, setOutlinePanelOpen] = useState(() => !isMobileLayout);
+  const [liveEditorIsEmpty, setLiveEditorIsEmpty] = useState(() => (
+    isContentEmpty(activeScene?.draft_text || '')
+  ));
   const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
   const [sceneDetailOpen, setSceneDetailOpen] = useState(false);
   const [fontPopoverOpen, setFontPopoverOpen] = useState(false);
@@ -218,19 +302,13 @@ export default function StoryEditor({
     setIsEditingOutline(false);
     setCopiedOutlineField('');
     setHistoryPanelOpen(false);
-    setOutlinePanelOpen(isContentEmpty(activeScene?.draft_text || ''));
+    const contentIsEmpty = isContentEmpty(activeScene?.draft_text || '');
+    setLiveEditorIsEmpty(contentIsEmpty);
+    setOutlinePanelOpen(contentIsEmpty);
   }, [activeChapterId, activeSceneId, isMobileLayout]);
 
-  useEffect(() => {
-    if (isEditingOutline) return;
-    if (aiDraft || !isContentEmpty(activeScene?.draft_text || '')) {
-      setOutlinePanelOpen(false);
-    } else {
-      setOutlinePanelOpen(true);
-    }
-  }, [activeScene?.draft_text, aiDraft, isEditingOutline]);
-
   const editor = useEditor({
+    shouldRerenderOnTransaction: false,
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
@@ -249,12 +327,21 @@ export default function StoryEditor({
     },
     onUpdate: ({ editor }) => {
       if (!activeSceneId) return;
+      const contentIsEmpty = !editor.getText().replace(/\s+/g, ' ').trim();
+      setLiveEditorIsEmpty((current) => (
+        current === contentIsEmpty ? current : contentIsEmpty
+      ));
       autosaveControllerRef.current?.schedule({
         sceneId: activeSceneId,
         html: editor.getHTML(),
       });
     },
   });
+
+  useEffect(() => {
+    if (isEditingOutline) return;
+    setOutlinePanelOpen(!aiDraft && liveEditorIsEmpty);
+  }, [activeScene?.draft_text, aiDraft, isEditingOutline, liveEditorIsEmpty]);
 
   // Load characters when project changes
   useEffect(() => {
@@ -290,6 +377,7 @@ export default function StoryEditor({
   useEffect(() => {
     if (editor && activeScene) {
       const content = activeScene.draft_text || '';
+      setLiveEditorIsEmpty(isContentEmpty(content));
       if (autosaveControllerRef.current?.hasPendingForScene(activeScene.id)) return;
       const lastSaved = lastSavedBySceneRef.current.get(activeScene.id) || '';
       if (content !== lastSaved) {
@@ -299,6 +387,7 @@ export default function StoryEditor({
         editor.commands.setContent(content, false);
       }
     } else if (editor && !activeScene) {
+      setLiveEditorIsEmpty(true);
       editor.commands.setContent('', false);
     }
   }, [activeSceneId, activeScene?.draft_text, editor]);
@@ -368,8 +457,6 @@ export default function StoryEditor({
     }
   }, [editor, onEditorReady]);
 
-  const wordCount = editor ? countWords(editor.getHTML()) : 0;
-  const charCount = editor ? editor.storage.characterCount.characters() : 0;
   const isEmptySceneForAiDraft = !activeScene?.draft_text || isContentEmpty(activeScene.draft_text || '');
   const useAiDraftFocus = !!aiDraft && isEmptySceneForAiDraft;
   const activeContentFontSize = contentFontSize ?? DEFAULT_CONTENT_FONT_SIZE;
@@ -378,19 +465,6 @@ export default function StoryEditor({
     ? { '--sf-content-font-size': `${contentFontSize}px` }
     : undefined;
   const aiDraftTitle = aiDraft?.isStreaming ? 'AI đang viết cảnh trống này' : 'AI đã viết cảnh trống này';
-
-  const chapterProgress = useMemo(() => {
-    const chapter = chapters.find(c => c.id === activeChapterId);
-    if (!chapter) return null;
-    let target = chapter.word_count_target || 7000;
-    if (target === 3000) target = 7000;
-    const chapterScenes = scenes.filter(s => s.chapter_id === activeChapterId);
-    const total = chapterScenes.reduce((sum, s) => {
-      const text = (s.draft_text || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ');
-      return sum + (text.trim() ? text.trim().split(/\s+/).length : 0);
-    }, 0);
-    return { current: total, target, percent: Math.min(100, Math.round((total / target) * 100)) };
-  }, [activeChapterId, scenes, chapters, wordCount]);
 
   const handleSave = useCallback(async (sceneId, html) => {
     if (!sceneId) return;
@@ -916,61 +990,20 @@ export default function StoryEditor({
         <EditorContent editor={editor} />
         </div>
 
-        <div className="story-editor-footer">
-        <div className="story-editor-stats">
-          <span>{wordCount.toLocaleString()} từ</span>
-          <span className="story-editor-stats-divider">·</span>
-          <span>{charCount.toLocaleString()} ký tự</span>
-          {chapterProgress && (
-            <>
-              <span className="story-editor-stats-divider">·</span>
-              <span className="story-editor-progress-label">
-                Chương: {chapterProgress.current.toLocaleString()}/{chapterProgress.target.toLocaleString()}
-              </span>
-            </>
-          )}
-        </div>
-
-        {chapterProgress && (
-          <div className="story-editor-progress">
-            <div
-              className="story-editor-progress-bar"
-              style={{ width: `${chapterProgress.percent}%` }}
-              data-complete={chapterProgress.percent >= 100 ? 'true' : 'false'}
-            />
-          </div>
-        )}
-
-        <div className="story-editor-status">
-          {chapterProgress && (
-            <span className="story-editor-progress-pct">{chapterProgress.percent}%</span>
-          )}
-          <span className="story-editor-mobile-word-count">{wordCount.toLocaleString()} từ</span>
-          <span
-            className={`story-editor-autosave is-${autosaveStatus.state}`}
-            role={autosaveStatus.state === 'error' ? 'alert' : 'status'}
-            aria-live={autosaveStatus.state === 'error' ? 'assertive' : 'polite'}
-          >
-            {autosaveStatus.state === 'idle' ? 'Đã lưu' : null}
-            {autosaveStatus.state === 'dirty' ? 'Chưa lưu' : null}
-            {autosaveStatus.state === 'saving' ? 'Đang lưu…' : null}
-            {autosaveStatus.state === 'saved' ? 'Đã lưu' : null}
-            {autosaveStatus.state === 'error' ? (
-              <button
-                type="button"
-                className="story-editor-autosave__retry"
-                onClick={() => {
-                  void autosaveControllerRef.current?.retry();
-                }}
-              >
-                Lưu thất bại – Thử lại
-              </button>
-            ) : null}
-          </span>
-        </div>
-        </div>
+        <StoryEditorFooter
+          editor={editor}
+          chapterWordCount={activeChapter?.actual_word_count || 0}
+          persistedSceneWordCount={persistedActiveSceneWordCount}
+          targetWordCount={activeChapter?.word_count_target || 7_000}
+          autosaveStatus={autosaveStatus}
+          onRetryAutosave={() => {
+            void autosaveControllerRef.current?.retry();
+          }}
+        />
         </>
       )}
     </div>
   );
 }
+
+export default React.memo(StoryEditor);

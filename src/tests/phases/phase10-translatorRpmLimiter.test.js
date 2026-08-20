@@ -205,6 +205,39 @@ describe('phase10 translator RPM limiter', () => {
     `, context)).toEqual([10, 10]);
   });
 
+  it('reserves a 30-request Gemini Direct wave as 15 RPM for each of two keys', () => {
+    const context = loadRuntime();
+    vm.runInContext(`
+      useProxy = false;
+      useOllama = false;
+      apiKeys = ['DIRECT_A', 'DIRECT_B'];
+      GEMINI_MODELS = [{ name: 'gemini-3.5-flash-lite', enabled: true }];
+      translatorRpmTimestamps = {};
+      rpmPerKey = 15;
+    `, context);
+
+    const plan = vm.runInContext(
+      'getTranslatorRpmBatchPlan({ requestedParallel: 30, remainingChunks: 30 })',
+      context
+    );
+    const selected = recordDirectBatchSequence(context, 30);
+
+    expect(plan.capacity).toBe(30);
+    expect(plan.targetAllocations).toEqual([15, 15]);
+    expect(selected.filter((keyIndex) => keyIndex === 0)).toHaveLength(15);
+    expect(selected.filter((keyIndex) => keyIndex === 1)).toHaveLength(15);
+    expect(vm.runInContext(`
+      [
+        getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 0),
+        getTranslatorRpmRecentCount(TRANSLATOR_PROVIDERS.GEMINI_DIRECT, 1),
+      ]
+    `, context)).toEqual([15, 15]);
+    expect(vm.runInContext(
+      'getTranslatorRpmBatchPlan({ requestedParallel: 30, remainingChunks: 30 }).capacity',
+      context
+    )).toBe(0);
+  });
+
   it('reduces only the key-specific main wave share consumed by retry debt', () => {
     const context = loadRuntime();
     vm.runInContext(`

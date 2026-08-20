@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import {
   BookMarked,
   BookOpen,
@@ -8,11 +9,11 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react';
-import SuggestionInbox from '../../components/ai/SuggestionInbox';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import { resolveProjectContentMode } from '../../features/projectContentMode/projectContentMode.js';
 import useCodexStore from '../../stores/codexStore';
 import useProjectStore from '../../stores/projectStore';
+import useProgressiveIdleSections from '../../hooks/useProgressiveIdleSections.js';
 import {
   AI_STRICTNESS_LEVELS,
   PRONOUN_STYLE_PRESETS,
@@ -22,19 +23,25 @@ import useStoryBibleCanonInspector from './hooks/useStoryBibleCanonInspector';
 import useStoryBibleDrafts from './hooks/useStoryBibleDrafts';
 import useStoryBibleMacroArcs from './hooks/useStoryBibleMacroArcs';
 import useStoryBibleProjectFields from './hooks/useStoryBibleProjectFields';
-import StoryBibleCanonSection from './sections/StoryBibleCanonSection';
-import StoryBibleCharactersSection from './sections/StoryBibleCharactersSection';
-import StoryBibleMacroArcSection from './sections/StoryBibleMacroArcSection';
 import StoryBibleOverviewSection from './sections/StoryBibleOverviewSection';
-import StoryBibleSummariesSection from './sections/StoryBibleSummariesSection';
 import StoryBibleWorldLoreSummarySection from './sections/StoryBibleWorldLoreSummarySection';
 import './StoryBible.css';
+
+const SuggestionInbox = React.lazy(() => import('../../components/ai/SuggestionInbox'));
+const StoryBibleCanonSection = React.lazy(() => import('./sections/StoryBibleCanonSection'));
+const StoryBibleCharactersSection = React.lazy(() => import('./sections/StoryBibleCharactersSection'));
+const StoryBibleMacroArcSection = React.lazy(() => import('./sections/StoryBibleMacroArcSection'));
+const StoryBibleSummariesSection = React.lazy(() => import('./sections/StoryBibleSummariesSection'));
 
 export default function StoryBible() {
   const navigate = useNavigate();
   const location = useLocation();
   const { projectId: routeProjectId } = useParams();
-  const { currentProject, chapters, updateProjectSettings } = useProjectStore();
+  const { currentProject, chapters, updateProjectSettings } = useProjectStore(useShallow((state) => ({
+    currentProject: state.currentProject,
+    chapters: state.chapters,
+    updateProjectSettings: state.updateProjectSettings,
+  })));
   const {
     characters,
     canonFacts,
@@ -45,7 +52,17 @@ export default function StoryBible() {
     updateCanonFact,
     deleteCanonFact,
     updateCharacter,
-  } = useCodexStore();
+  } = useCodexStore(useShallow((state) => ({
+    characters: state.characters,
+    canonFacts: state.canonFacts,
+    chapterMetas: state.chapterMetas,
+    storyBibleWorldCounts: state.storyBibleWorldCounts,
+    loadStoryBibleCodex: state.loadStoryBibleCodex,
+    createCanonFact: state.createCanonFact,
+    updateCanonFact: state.updateCanonFact,
+    deleteCanonFact: state.deleteCanonFact,
+    updateCharacter: state.updateCharacter,
+  })));
   const [openSections, setOpenSections] = useState({
     overview: true,
     ai: false,
@@ -56,10 +73,11 @@ export default function StoryBible() {
     worldLore: true,
     summaries: true,
   });
+  const visibleDeferredSections = useProgressiveIdleSections(5);
 
   useEffect(() => {
     if (currentProject?.id) {
-      loadStoryBibleCodex(currentProject.id);
+      loadStoryBibleCodex(currentProject.id, { preferCache: true });
     }
   }, [currentProject?.id, loadStoryBibleCodex]);
 
@@ -119,6 +137,18 @@ export default function StoryBible() {
     characterNameMap,
   });
 
+  const activeProjectId = currentProject?.id || Number(routeProjectId) || null;
+  const buildProjectPath = useCallback((path = '') => {
+    if (!path) return activeProjectId ? `/project/${activeProjectId}` : '/';
+    if (!activeProjectId) return path;
+    if (path.startsWith(`/project/${activeProjectId}`)) return path;
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `/project/${activeProjectId}${normalizedPath}`;
+  }, [activeProjectId]);
+  const handleNavigate = useCallback((path) => {
+    navigate(buildProjectPath(path));
+  }, [buildProjectPath, navigate]);
+
   if (!currentProject) {
     return (
       <div style={{ padding: 'var(--space-8)' }}>
@@ -138,18 +168,7 @@ export default function StoryBible() {
   };
   const totalWorldLoreItems = worldLoreCounts.locations + worldLoreCounts.objects + worldLoreCounts.terms;
   const totalItems = characters.length + totalWorldLoreItems;
-  const activeProjectId = currentProject.id || Number(routeProjectId) || null;
   const currentContentMode = resolveProjectContentMode(currentProject);
-  const buildProjectPath = useCallback((path = '') => {
-    if (!path) return activeProjectId ? `/project/${activeProjectId}` : '/';
-    if (!activeProjectId) return path;
-    if (path.startsWith(`/project/${activeProjectId}`)) return path;
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    return `/project/${activeProjectId}${normalizedPath}`;
-  }, [activeProjectId]);
-  const handleNavigate = useCallback((path) => {
-    navigate(buildProjectPath(path));
-  }, [buildProjectPath, navigate]);
 
   return (
     <div className="story-bible">
@@ -254,61 +273,73 @@ export default function StoryBible() {
         )}
       </div>
 
-      <StoryBibleMacroArcSection
-        currentProjectId={currentProject.id}
-        chapters={chapters}
-        targetLength={projectFields.targetLength}
-        isOpen={openSections.grandStrategy}
-        onToggle={toggleSection}
-        allCharacterNames={allCharacterNames}
-        {...macroArcState}
-      />
+      {visibleDeferredSections >= 1 && (
+        <React.Suspense fallback={null}>
+          <StoryBibleMacroArcSection
+            currentProjectId={currentProject.id}
+            chapters={chapters}
+            targetLength={projectFields.targetLength}
+            isOpen={openSections.grandStrategy}
+            onToggle={toggleSection}
+            allCharacterNames={allCharacterNames}
+            {...macroArcState}
+          />
+        </React.Suspense>
+      )}
 
-      <div className="bible-section">
-        <StoryBibleSectionHeader
-          icon={Sparkles}
-          title="Hộp đề xuất"
-          sectionKey="suggestions"
-          isOpen={openSections.suggestions}
+      {visibleDeferredSections >= 2 && <React.Suspense fallback={null}>
+        <div className="bible-section">
+          <StoryBibleSectionHeader
+            icon={Sparkles}
+            title="Hộp đề xuất"
+            sectionKey="suggestions"
+            isOpen={openSections.suggestions}
+            onToggle={toggleSection}
+          />
+          {openSections.suggestions && (
+            <div className="bible-edit-card">
+              <SuggestionInbox
+                projectId={currentProject.id}
+                onAccepted={() => Promise.all([
+                  loadStoryBibleCodex(currentProject.id),
+                  canonState.loadCanonOverview(),
+                ])}
+              />
+            </div>
+          )}
+        </div>
+      </React.Suspense>}
+
+      {visibleDeferredSections >= 3 && <React.Suspense fallback={null}>
+        <StoryBibleCanonSection
+          isOpen={openSections.canon}
+          onToggle={toggleSection}
+          chapters={chapters}
+          characterNameMap={characterNameMap}
+          {...canonState}
+          {...draftState}
+        />
+      </React.Suspense>}
+
+      {visibleDeferredSections >= 4 && <React.Suspense fallback={null}>
+        <StoryBibleCharactersSection
+          characters={characters}
+          characterDrafts={draftState.characterDrafts}
+          isOpen={openSections.characters}
+          onToggle={toggleSection}
+          onNavigate={handleNavigate}
+          onDraftChange={draftState.handleCharacterDraftChange}
+        />
+      </React.Suspense>}
+
+      {visibleDeferredSections >= 5 && <React.Suspense fallback={null}>
+        <StoryBibleSummariesSection
+          chapterMetas={chapterMetas}
+          chapters={chapters}
+          isOpen={openSections.summaries}
           onToggle={toggleSection}
         />
-        {openSections.suggestions && (
-          <div className="bible-edit-card">
-            <SuggestionInbox
-              projectId={currentProject.id}
-              onAccepted={() => Promise.all([
-                loadStoryBibleCodex(currentProject.id),
-                loadCanonOverview(),
-              ])}
-            />
-          </div>
-        )}
-      </div>
-
-      <StoryBibleCanonSection
-        isOpen={openSections.canon}
-        onToggle={toggleSection}
-        chapters={chapters}
-        characterNameMap={characterNameMap}
-        {...canonState}
-        {...draftState}
-      />
-
-      <StoryBibleCharactersSection
-        characters={characters}
-        characterDrafts={draftState.characterDrafts}
-        isOpen={openSections.characters}
-        onToggle={toggleSection}
-        onNavigate={handleNavigate}
-        onDraftChange={draftState.handleCharacterDraftChange}
-      />
-
-      <StoryBibleSummariesSection
-        chapterMetas={chapterMetas}
-        chapters={chapters}
-        isOpen={openSections.summaries}
-        onToggle={toggleSection}
-      />
+      </React.Suspense>}
 
       {totalItems === 0 && (
         <div className="empty-state">

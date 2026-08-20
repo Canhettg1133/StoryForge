@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import {
   BookOpen,
   BookKey,
@@ -29,6 +30,7 @@ import AISidebar from '../../components/ai/AISidebar';
 import useMobileLayout from '../../hooks/useMobileLayout';
 import { EDITOR_PANEL_EVENT } from '../../components/mobile/MobileProjectShell';
 import { shouldShowNavItem } from '../../config/productSurface';
+import { prefetchRouteFromPath } from '../../routes/routeModules.js';
 import useProjectStore from '../../stores/projectStore';
 import useAIStore from '../../stores/aiStore';
 import useUIStore from '../../stores/uiStore';
@@ -69,13 +71,20 @@ function isHtmlBlank(html = '') {
 }
 
 export default function SceneEditor() {
-  const { currentProject, chapters, scenes, activeSceneId, activeChapterId } = useProjectStore();
+  const { currentProject, chapters, scenes, activeSceneId, activeChapterId } = useProjectStore(useShallow((state) => ({
+    currentProject: state.currentProject,
+    chapters: state.chapters,
+    scenes: state.scenes,
+    activeSceneId: state.activeSceneId,
+    activeChapterId: state.activeChapterId,
+  })));
   const location = useLocation();
   const navigate = useNavigate();
   const [editorInstance, setEditorInstance] = useState(null);
   const isMobileLayout = useMobileLayout(1180);
   const hasMobileProjectShell = useMobileLayout(900);
   const [mobilePanel, setMobilePanel] = useState(null);
+  const [initializedMobilePanels, setInitializedMobilePanels] = useState(() => new Set());
   const [mobileAITab, setMobileAITab] = useState('ai');
   const [aiDraftPreview, setAiDraftPreview] = useState(null);
   const [aiActivity, setAiActivity] = useState(null);
@@ -92,11 +101,29 @@ export default function SceneEditor() {
   }, [currentProject?.id, setStoryEditorViewMode]);
 
   const openMobilePanel = useCallback((panel) => {
+    setInitializedMobilePanels((current) => {
+      if (current.has(panel)) return current;
+      const next = new Set(current);
+      next.add(panel);
+      return next;
+    });
     setMobilePanel(panel);
     if (panel === 'ai') {
       setMobileAITab((current) => current || 'ai');
     }
   }, []);
+
+  const closeMobilePanel = useCallback(() => {
+    setMobilePanel(null);
+  }, []);
+
+  const handleOpenChapters = useCallback(() => {
+    openMobilePanel('chapters');
+  }, [openMobilePanel]);
+
+  const handleMobileItemSelect = useCallback(() => {
+    if (isMobileLayout) closeMobilePanel();
+  }, [closeMobilePanel, isMobileLayout]);
 
   const handleViewModeChange = useCallback((mode) => {
     setMobilePanel(null);
@@ -106,6 +133,10 @@ export default function SceneEditor() {
   useEffect(() => {
     if (!isMobileLayout) {
       setMobilePanel(null);
+      setInitializedMobilePanels((current) => {
+        if (current.has('nav') && current.has('chapters') && current.has('ai')) return current;
+        return new Set(['nav', 'chapters', 'ai']);
+      });
     }
   }, [isMobileLayout]);
 
@@ -189,9 +220,7 @@ export default function SceneEditor() {
     [activeProjectId],
   );
 
-  const closeMobilePanel = () => {
-    setMobilePanel(null);
-  };
+  const shouldRenderMobilePanel = (panel) => !isMobileLayout || initializedMobilePanels.has(panel);
 
   const handleMobileNavigate = (item) => {
     if (item.comingSoon || (item.needsProject && !activeProjectId)) return;
@@ -205,6 +234,14 @@ export default function SceneEditor() {
         : undefined,
     );
     closeMobilePanel();
+  };
+
+  const handleMobileRouteIntent = (item) => {
+    if (item.comingSoon || (item.needsProject && !activeProjectId)) return;
+    const targetPath = item.id === 'settings' && activeProjectId
+      ? `/project/${activeProjectId}/settings`
+      : item.getPath(activeProjectId);
+    void prefetchRouteFromPath(targetPath);
   };
 
   if (!currentProject) {
@@ -230,8 +267,10 @@ export default function SceneEditor() {
 
       <aside
         className={`scene-editor-side scene-editor-side--nav ${isMobileLayout ? 'scene-editor-side--sheet scene-editor-side--sheet-left' : ''} ${mobilePanel === 'nav' ? 'is-open' : ''}`}
+        aria-hidden={isMobileLayout && mobilePanel !== 'nav' ? 'true' : undefined}
+        inert={isMobileLayout && mobilePanel !== 'nav' ? true : undefined}
       >
-        {isMobileLayout && (
+        {isMobileLayout && shouldRenderMobilePanel('nav') && (
           <div className="scene-editor-sheet-header">
             <div>
               <div className="scene-editor-sheet-kicker">Điều hướng</div>
@@ -242,7 +281,7 @@ export default function SceneEditor() {
             </button>
           </div>
         )}
-        {isMobileLayout && (
+        {isMobileLayout && shouldRenderMobilePanel('nav') && (
           <div className="scene-editor-mobile-nav">
             {currentProject && (
               <div className="scene-editor-mobile-nav-project">
@@ -262,6 +301,8 @@ export default function SceneEditor() {
                     key={item.id}
                     className={`scene-editor-mobile-nav-item ${item.primary ? 'scene-editor-mobile-nav-item--primary' : ''} ${isActive ? 'scene-editor-mobile-nav-item--active' : ''} ${isDisabled ? 'scene-editor-mobile-nav-item--disabled' : ''}`}
                     onClick={() => handleMobileNavigate(item)}
+                    onPointerDown={() => handleMobileRouteIntent(item)}
+                    onFocus={() => handleMobileRouteIntent(item)}
                     disabled={isDisabled}
                   >
                     <Icon size={17} />
@@ -277,8 +318,10 @@ export default function SceneEditor() {
 
       <aside
         className={`scene-editor-side scene-editor-side--chapter ${isMobileLayout ? 'scene-editor-side--sheet scene-editor-side--sheet-left' : ''} ${mobilePanel === 'chapters' ? 'is-open' : ''}`}
+        aria-hidden={isMobileLayout && mobilePanel !== 'chapters' ? 'true' : undefined}
+        inert={isMobileLayout && mobilePanel !== 'chapters' ? true : undefined}
       >
-        {isMobileLayout && (
+        {isMobileLayout && shouldRenderMobilePanel('chapters') && (
           <div className="scene-editor-sheet-header">
             <div>
               <div className="scene-editor-sheet-kicker">Điều hướng</div>
@@ -289,15 +332,17 @@ export default function SceneEditor() {
             </button>
           </div>
         )}
-        <div className="scene-editor-side-body">
-          <ChapterList
-            allowCollapse={!isMobileLayout}
-            isMobileLayout={isMobileLayout}
-            onItemSelect={() => isMobileLayout && closeMobilePanel()}
-            aiWritingChapterId={aiActivity?.chapterId || null}
-            aiWritingSceneId={aiActivity?.sceneId || null}
-          />
-        </div>
+        {shouldRenderMobilePanel('chapters') && (
+          <div className="scene-editor-side-body">
+            <ChapterList
+              allowCollapse={!isMobileLayout}
+              isMobileLayout={isMobileLayout}
+              onItemSelect={handleMobileItemSelect}
+              aiWritingChapterId={aiActivity?.chapterId || null}
+              aiWritingSceneId={aiActivity?.sceneId || null}
+            />
+          </div>
+        )}
       </aside>
 
       <div className="scene-editor-main">
@@ -348,7 +393,7 @@ export default function SceneEditor() {
           hasMobileProjectShell={hasMobileProjectShell}
           viewMode={storyEditorViewMode}
           onViewModeChange={handleViewModeChange}
-          onOpenChapters={() => openMobilePanel('chapters')}
+          onOpenChapters={handleOpenChapters}
           aiDraftPreview={scopedAiDraftPreview}
           onAiDraftSaved={handleAiDraftSaved}
         />
@@ -357,8 +402,10 @@ export default function SceneEditor() {
       {!isReaderMode && (
         <aside
           className={`scene-editor-side scene-editor-side--ai ${isMobileLayout ? 'scene-editor-side--sheet scene-editor-side--sheet-full' : ''} ${mobilePanel === 'ai' ? 'is-open' : ''}`}
+          aria-hidden={isMobileLayout && mobilePanel !== 'ai' ? 'true' : undefined}
+          inert={isMobileLayout && mobilePanel !== 'ai' ? true : undefined}
         >
-        {isMobileLayout && (
+        {isMobileLayout && shouldRenderMobilePanel('ai') && (
           <div className="scene-editor-sheet-header scene-editor-sheet-header--ai">
             <div>
               <div className="scene-editor-sheet-kicker">Trợ lý viết</div>
@@ -369,16 +416,18 @@ export default function SceneEditor() {
             </button>
           </div>
         )}
-        <div className="scene-editor-side-body">
-          <AISidebar
-            editor={editorInstance}
-            isMobileLayout={isMobileLayout}
-            mobileTab={mobileAITab}
-            onMobileTabChange={setMobileAITab}
-            onDraftPreviewChange={handleDraftPreviewChange}
-            onAiActivityChange={handleAiActivityChange}
-          />
-        </div>
+        {shouldRenderMobilePanel('ai') && (
+          <div className="scene-editor-side-body">
+            <AISidebar
+              editor={editorInstance}
+              isMobileLayout={isMobileLayout}
+              mobileTab={mobileAITab}
+              onMobileTabChange={setMobileAITab}
+              onDraftPreviewChange={handleDraftPreviewChange}
+              onAiActivityChange={handleAiActivityChange}
+            />
+          </div>
+        )}
         </aside>
       )}
     </div>

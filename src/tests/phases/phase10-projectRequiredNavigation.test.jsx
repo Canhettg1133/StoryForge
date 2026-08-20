@@ -10,7 +10,7 @@ import MobileNavigationMenu from '../../components/mobile/MobileNavigationMenu.j
 let projectState;
 
 vi.mock('../../stores/projectStore', () => ({
-  default: () => projectState,
+  default: (selector = (state) => state) => selector(projectState),
 }));
 
 vi.mock('../../stores/uiStore', () => ({

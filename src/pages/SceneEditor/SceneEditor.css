@@ -191,6 +191,13 @@
     display: flex;
     flex-direction: column;
     transition: transform var(--transition-normal);
+    pointer-events: none;
+  }
+
+  .scene-editor-layout--mobile .scene-editor-side--sheet:not(.is-open) {
+    contain: layout paint style;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 800px;
   }
 
   .scene-editor-layout--mobile .scene-editor-side--sheet-left {
@@ -208,6 +215,8 @@
 
   .scene-editor-layout--mobile .scene-editor-side--sheet.is-open {
     transform: translateX(0);
+    content-visibility: visible;
+    pointer-events: auto;
   }
 
   .scene-editor-layout--mobile .scene-editor-sheet-header {

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import {
   BookMarked,
   BookOpen,
@@ -89,28 +90,43 @@ export default function MobileProjectShell({ children }) {
   const { projectId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentProject, chapters, scenes, activeChapterId, activeSceneId } = useProjectStore();
+  const {
+    currentProjectId,
+    currentProjectTitle,
+    activeChapterTitle,
+    activeSceneTitle,
+    activeChapterSceneCount,
+  } = useProjectStore(useShallow((state) => {
+    const activeChapter = state.chapters.find((chapter) => chapter.id === state.activeChapterId);
+    const activeScene = state.scenes.find((scene) => scene.id === state.activeSceneId);
+    return {
+      currentProjectId: state.currentProject?.id || null,
+      currentProjectTitle: state.currentProject?.title || '',
+      activeChapterTitle: activeChapter?.title || '',
+      activeSceneTitle: activeScene?.title || '',
+      activeChapterSceneCount: state.scenes.reduce((count, scene) => (
+        scene.chapter_id === state.activeChapterId ? count + 1 : count
+      ), 0),
+    };
+  }));
   const storyEditorViewMode = useUIStore((state) => state.storyEditorViewMode);
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const numericProjectId = Number(projectId || currentProject?.id);
+  const numericProjectId = Number(projectId || currentProjectId);
   const isEditorRoute = location.pathname.includes('/editor');
   const isChatRoute = location.pathname.includes('/chat');
-  const activeChapter = chapters.find((chapter) => chapter.id === activeChapterId) || null;
-  const activeScene = scenes.find((scene) => scene.id === activeSceneId) || null;
   const isReaderMode = isEditorRoute && storyEditorViewMode === 'reader';
-  const activeChapterSceneCount = scenes.filter((scene) => scene.chapter_id === activeChapterId).length;
   const pageTitle = isReaderMode
     ? `Đọc liền · ${activeChapterSceneCount.toLocaleString('vi-VN')} cảnh`
     : getPageTitle(location.pathname);
-  const displaySceneTitle = formatStoryLabel(activeScene?.title);
-  const displayChapterTitle = formatStoryLabel(activeChapter?.title);
+  const displaySceneTitle = formatStoryLabel(activeSceneTitle);
+  const displayChapterTitle = formatStoryLabel(activeChapterTitle);
   const editorTitle = [displayChapterTitle, displaySceneTitle].filter(Boolean).join(' · ');
   const mobileTitle = isReaderMode
-    ? (displayChapterTitle || currentProject?.title || 'StoryForge')
+    ? (displayChapterTitle || currentProjectTitle || 'StoryForge')
     : isEditorRoute
-    ? (editorTitle || displaySceneTitle || displayChapterTitle || currentProject?.title || 'StoryForge')
-    : (currentProject?.title || 'StoryForge');
+    ? (editorTitle || displaySceneTitle || displayChapterTitle || currentProjectTitle || 'StoryForge')
+    : (currentProjectTitle || 'StoryForge');
   const backLabel = isEditorRoute ? 'V\u1ec1 Dashboard' : 'V\u1ec1 m\u00e0n vi\u1ebft';
 
   const visibleMoreItems = useMemo(() => MORE_ITEMS.filter(canShowItem), []);
@@ -153,7 +169,7 @@ export default function MobileProjectShell({ children }) {
       <MobileSheet
         open={moreOpen}
         title="Menu"
-        kicker={currentProject?.title || 'StoryForge'}
+        kicker={currentProjectTitle || 'StoryForge'}
         size="full"
         onClose={() => setMoreOpen(false)}
       >

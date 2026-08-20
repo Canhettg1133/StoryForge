@@ -144,6 +144,29 @@ async function clearDeletedLocationReferences(locationIds, projectId) {
 // ---------------------------------------------
 
 let latestCodexLoadRequestId = 0;
+const codexLoadPromises = new Map();
+const scheduledCodexRevalidations = new Set();
+
+function scheduleCodexRevalidation(key, callback) {
+  if (scheduledCodexRevalidations.has(key)) return;
+  scheduledCodexRevalidations.add(key);
+  const run = () => {
+    void Promise.resolve()
+      .then(callback)
+      .catch((error) => {
+        console.warn('[CodexStore] Background revalidation failed:', error);
+      })
+      .finally(() => scheduledCodexRevalidations.delete(key));
+  };
+
+  if (import.meta.env.MODE === 'test') {
+    setTimeout(run, 0);
+  } else if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(run, { timeout: 400 });
+  } else {
+    setTimeout(run, 32);
+  }
+}
 
 const useCodexStore = create((set, get) => ({
   // --- State ---
@@ -157,96 +180,179 @@ const useCodexStore = create((set, get) => ({
   chapterMetas: [],
   storyBibleWorldCounts: { locations: 0, objects: 0, terms: 0 },
   loading: false,
+  loadedProjectId: null,
+  loadedScope: null,
 
   // =============================================
   // LOAD ALL codex data for a project
   // =============================================
-  loadCodex: async (projectId) => {
+  loadCodex: async (projectId, options = {}) => {
     if (!projectId) return;
-    const requestId = ++latestCodexLoadRequestId;
-    set({ loading: true });
-    const [
-      characters,
-      locations,
-      objects,
-      worldTerms,
-      factions,      // new
-      taboos,
-      canonFacts,
-      chapterMetas,
-      entityStates,
-    ] = await Promise.all([
-      db.characters.where('project_id').equals(projectId).toArray(),
-      db.locations.where('project_id').equals(projectId).toArray(),
-      db.objects.where('project_id').equals(projectId).toArray(),
-      db.worldTerms.where('project_id').equals(projectId).toArray(),
-      db.factions.where('project_id').equals(projectId).toArray(), // new
-      db.taboos.where('project_id').equals(projectId).toArray(),
-      db.canonFacts.where('project_id').equals(projectId).toArray(),
-      db.chapterMeta.where('project_id').equals(projectId).toArray(),
-      db.entity_state_current.where('project_id').equals(projectId).toArray(),
-    ]);
-    const hydratedCharacters = hydrateCharactersWithCanonState(characters, entityStates);
-    if (requestId !== latestCodexLoadRequestId) {
+    const normalizedProjectId = Number(projectId);
+    const { preferCache = false, background = false } = options;
+    const state = get();
+    if (background && state.loadedProjectId !== normalizedProjectId) return;
+    if (
+      preferCache
+      && state.loadedProjectId === normalizedProjectId
+      && state.loadedScope === 'all'
+    ) {
+      const revalidationKey = `all:${normalizedProjectId}`;
+      scheduleCodexRevalidation(revalidationKey, () => (
+        get().loadCodex(normalizedProjectId, { background: true })
+      ));
       return;
     }
-    set({
-      characters: hydratedCharacters,
-      locations,
-      objects,
-      worldTerms,
-      factions,      // new
-      taboos,
-      canonFacts,
-      chapterMetas,
-      storyBibleWorldCounts: {
-        locations: locations.length,
-        objects: objects.length,
-        terms: worldTerms.length,
-      },
-      loading: false,
-    });
+
+    const loadKey = `all:${normalizedProjectId}:${background ? 'background' : 'foreground'}`;
+    if (codexLoadPromises.has(loadKey)) {
+      return codexLoadPromises.get(loadKey);
+    }
+
+    const loadPromise = (async () => {
+      const requestId = background ? latestCodexLoadRequestId : ++latestCodexLoadRequestId;
+      if (!background) set({ loading: true });
+      try {
+        const [
+          characters,
+          locations,
+          objects,
+          worldTerms,
+          factions,
+          taboos,
+          canonFacts,
+          chapterMetas,
+          entityStates,
+        ] = await Promise.all([
+          db.characters.where('project_id').equals(normalizedProjectId).toArray(),
+          db.locations.where('project_id').equals(normalizedProjectId).toArray(),
+          db.objects.where('project_id').equals(normalizedProjectId).toArray(),
+          db.worldTerms.where('project_id').equals(normalizedProjectId).toArray(),
+          db.factions.where('project_id').equals(normalizedProjectId).toArray(),
+          db.taboos.where('project_id').equals(normalizedProjectId).toArray(),
+          db.canonFacts.where('project_id').equals(normalizedProjectId).toArray(),
+          db.chapterMeta.where('project_id').equals(normalizedProjectId).toArray(),
+          db.entity_state_current.where('project_id').equals(normalizedProjectId).toArray(),
+        ]);
+        const hydratedCharacters = hydrateCharactersWithCanonState(characters, entityStates);
+        if (requestId !== latestCodexLoadRequestId) return;
+        set({
+          characters: hydratedCharacters,
+          locations,
+          objects,
+          worldTerms,
+          factions,
+          taboos,
+          canonFacts,
+          chapterMetas,
+          storyBibleWorldCounts: {
+            locations: locations.length,
+            objects: objects.length,
+            terms: worldTerms.length,
+          },
+          loadedProjectId: normalizedProjectId,
+          loadedScope: 'all',
+          loading: false,
+        });
+      } finally {
+        if (!background && requestId === latestCodexLoadRequestId && get().loading) {
+          set({ loading: false });
+        }
+      }
+    })();
+
+    codexLoadPromises.set(loadKey, loadPromise);
+    try {
+      return await loadPromise;
+    } finally {
+      if (codexLoadPromises.get(loadKey) === loadPromise) {
+        codexLoadPromises.delete(loadKey);
+      }
+    }
   },
 
   // =============================================
   // LOAD ONLY the data Story Bible needs up front
   // =============================================
-  loadStoryBibleCodex: async (projectId) => {
+  loadStoryBibleCodex: async (projectId, options = {}) => {
     if (!projectId) return;
-    const requestId = ++latestCodexLoadRequestId;
-    set({ loading: true });
-    const [
-      characters,
-      canonFacts,
-      chapterMetas,
-      entityStates,
-      locationsCount,
-      objectsCount,
-      worldTermsCount,
-    ] = await Promise.all([
-      db.characters.where('project_id').equals(projectId).toArray(),
-      db.canonFacts.where('project_id').equals(projectId).toArray(),
-      db.chapterMeta.where('project_id').equals(projectId).toArray(),
-      db.entity_state_current.where('project_id').equals(projectId).toArray(),
-      db.locations.where('project_id').equals(projectId).count(),
-      db.objects.where('project_id').equals(projectId).count(),
-      db.worldTerms.where('project_id').equals(projectId).count(),
-    ]);
-    const hydratedCharacters = hydrateCharactersWithCanonState(characters, entityStates);
-    if (requestId !== latestCodexLoadRequestId) {
+    const normalizedProjectId = Number(projectId);
+    const { preferCache = false, background = false } = options;
+    const state = get();
+    if (background && state.loadedProjectId !== normalizedProjectId) return;
+    if (
+      preferCache
+      && state.loadedProjectId === normalizedProjectId
+      && (state.loadedScope === 'story-bible' || state.loadedScope === 'all')
+    ) {
+      const revalidationKey = `story-bible:${normalizedProjectId}`;
+      scheduleCodexRevalidation(revalidationKey, () => (
+        get().loadStoryBibleCodex(normalizedProjectId, { background: true })
+      ));
       return;
     }
-    set({
-      characters: hydratedCharacters,
-      canonFacts,
-      chapterMetas,
-      storyBibleWorldCounts: {
-        locations: locationsCount,
-        objects: objectsCount,
-        terms: worldTermsCount,
-      },
-      loading: false,
-    });
+
+    const loadKey = `story-bible:${normalizedProjectId}:${background ? 'background' : 'foreground'}`;
+    if (codexLoadPromises.has(loadKey)) {
+      return codexLoadPromises.get(loadKey);
+    }
+
+    const loadPromise = (async () => {
+      const requestId = background ? latestCodexLoadRequestId : ++latestCodexLoadRequestId;
+      if (!background) set({ loading: true });
+      try {
+        const [
+          characters,
+          canonFacts,
+          chapterMetas,
+          entityStates,
+          locationsCount,
+          objectsCount,
+          worldTermsCount,
+        ] = await Promise.all([
+          db.characters.where('project_id').equals(normalizedProjectId).toArray(),
+          db.canonFacts.where('project_id').equals(normalizedProjectId).toArray(),
+          db.chapterMeta.where('project_id').equals(normalizedProjectId).toArray(),
+          db.entity_state_current.where('project_id').equals(normalizedProjectId).toArray(),
+          db.locations.where('project_id').equals(normalizedProjectId).count(),
+          db.objects.where('project_id').equals(normalizedProjectId).count(),
+          db.worldTerms.where('project_id').equals(normalizedProjectId).count(),
+        ]);
+        const hydratedCharacters = hydrateCharactersWithCanonState(characters, entityStates);
+        if (requestId !== latestCodexLoadRequestId) return;
+        const currentState = get();
+        const loadedScope = currentState.loadedProjectId === normalizedProjectId
+          && currentState.loadedScope === 'all'
+          ? 'all'
+          : 'story-bible';
+        set({
+          characters: hydratedCharacters,
+          canonFacts,
+          chapterMetas,
+          storyBibleWorldCounts: {
+            locations: locationsCount,
+            objects: objectsCount,
+            terms: worldTermsCount,
+          },
+          loadedProjectId: normalizedProjectId,
+          loadedScope,
+          loading: false,
+        });
+      } finally {
+        if (!background && requestId === latestCodexLoadRequestId && get().loading) {
+          set({ loading: false });
+        }
+      }
+    })();
+
+    codexLoadPromises.set(loadKey, loadPromise);
+    try {
+      return await loadPromise;
+    } finally {
+      if (codexLoadPromises.get(loadKey) === loadPromise) {
+        codexLoadPromises.delete(loadKey);
+      }
+    }
   },
 
   applyCompletionDelta: async ({
