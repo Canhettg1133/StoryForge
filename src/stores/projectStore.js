@@ -6,6 +6,7 @@ import {
   normalizePromptProfileVersion,
   PROMPT_PROFILE_VERSIONS,
 } from '../services/ai/promptProfiles.js';
+import { getChapterCompletionRouteOptions } from '../services/ai/chapterCompletionModelRouting.js';
 import { toVietnameseErrorMessage } from '../utils/errorMessages';
 import { enqueueSceneMirror } from '../services/storyMirror/outbox.js';
 import {
@@ -154,8 +155,6 @@ function buildInitialPromptTemplates(genreKey, existingTemplates, genreTemplates
 
   return JSON.stringify(merged);
 }
-
-const CHAPTER_COMPLETION_ROUTE_OPTIONS = {};
 
 const COMPLETION_SUCCESS_CANON_STATUSES = new Set([
   CHAPTER_COMMIT_STATUS.CANONICAL,
@@ -1108,6 +1107,7 @@ const useProjectStore = create((set, get) => ({
       return result;
     }
 
+    const completionRouteOptions = getChapterCompletionRouteOptions();
     const chapter = chapters.find((item) => item.id === chapterId) || await db.chapters.get(chapterId);
     if (!chapter) return null;
 
@@ -1151,7 +1151,7 @@ const useProjectStore = create((set, get) => ({
         nsfwMode: !!currentProject.nsfw_mode,
         superNsfwMode: !!currentProject.super_nsfw_mode,
         allowConcurrent: true,
-        routeOptions: CHAPTER_COMPLETION_ROUTE_OPTIONS,
+        routeOptions: completionRouteOptions,
       };
 
       let summary = '';
@@ -1249,7 +1249,7 @@ const useProjectStore = create((set, get) => ({
         try {
           const nextCanonResult = await canonicalizeChapterEngine(currentProject.id, chapterId, {
             allowConcurrent: true,
-            routeOptions: CHAPTER_COMPLETION_ROUTE_OPTIONS,
+            routeOptions: completionRouteOptions,
           });
           const hasExplicitCanonResult = nextCanonResult
             && typeof nextCanonResult === 'object';

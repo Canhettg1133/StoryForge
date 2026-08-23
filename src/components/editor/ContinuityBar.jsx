@@ -14,7 +14,12 @@ import useProjectStore from '../../stores/projectStore';
 import useCodexStore from '../../stores/codexStore';
 import useCanonStore from '../../stores/canonStore';
 import CanonRepairDialog from '../canon/CanonRepairDialog';
+import ChapterCompletionModelDialog from '../ai/ChapterCompletionModelDialog.jsx';
 import { getCanonReportTitle } from '../../services/canon/reportLabels';
+import {
+  getChapterCompletionModelState,
+  saveChapterCompletionModelPreference,
+} from '../../services/ai/chapterCompletionModelRouting.js';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import useModalAccessibility from '../../hooks/useModalAccessibility.js';
 import './ContinuityBar.css';
@@ -69,6 +74,8 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   const [ignoredReportKeys, setIgnoredReportKeys] = useState(() => new Set());
   const [completionNotice, setCompletionNotice] = useState('');
   const [completionNoticeType, setCompletionNoticeType] = useState('error');
+  const [completionModelPrompt, setCompletionModelPrompt] = useState(null);
+  const [completionModelState, setCompletionModelState] = useState(() => getChapterCompletionModelState());
   const issuesDialogRef = useModalAccessibility({
     open: issuesOpen,
     onClose: () => setIssuesOpen(false),
@@ -86,6 +93,7 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     setIssuesOpen(false);
     setCompletionNotice('');
     setCompletionNoticeType('error');
+    setCompletionModelPrompt(null);
     setIgnoredReportKeys(new Set());
   }, [activeChapterId, activeSceneId, clearActionOutcome, clearRepairText]);
 
@@ -182,6 +190,9 @@ export default function ContinuityBar({ isMobileLayout = false }) {
   const completionLabel = isCompletingChapter
     ? 'Đang hoàn thành'
     : (chapterDone ? 'Đã hoàn thành' : 'Hoàn thành chương');
+  const completionActionTitle = completionModelState.shouldPrompt
+    ? 'Chọn model rồi hoàn thành chương'
+    : `Hoàn thành chương bằng ${completionModelState.routeOptions.modelOverride || 'model hiện tại'}`;
   const desktopCompletionClass = chapterDone
     ? 'continuity-bar-status--completed'
     : 'continuity-bar-status--completion';
@@ -203,16 +214,18 @@ export default function ContinuityBar({ isMobileLayout = false }) {
     await canonicalizeChapter(currentProject.id, activeChapterId);
   };
 
-  const handleCompleteChapter = async (event) => {
-    event.stopPropagation();
-    if (!activeChapterId || chapterDone) return;
+  const completeChapter = async (chapterId) => {
     setCompletionNotice('');
     try {
-      const result = await runChapterCompletion(activeChapterId, { mode: 'manual' });
+      const result = await runChapterCompletion(chapterId, { mode: 'manual' });
       if (!result) return;
       if (currentProject?.id) {
         await Promise.all([
-          loadChapterCanon(currentProject.id, activeChapterId, activeSceneId || null),
+          loadChapterCanon(
+            currentProject.id,
+            chapterId,
+            chapterId === activeChapterId ? (activeSceneId || null) : null,
+          ),
           loadCodex(currentProject.id),
         ]);
       }
@@ -228,6 +241,31 @@ export default function ContinuityBar({ isMobileLayout = false }) {
       setCompletionNoticeType('error');
       setCompletionNotice(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
     }
+  };
+
+  const handleCompleteChapter = async (event) => {
+    event.stopPropagation();
+    if (!activeChapterId || chapterDone) return;
+    const modelState = getChapterCompletionModelState();
+    setCompletionModelState(modelState);
+    if (modelState.shouldPrompt) {
+      setCompletionModelPrompt({ chapterId: activeChapterId, modelState });
+      return;
+    }
+    await completeChapter(activeChapterId);
+  };
+
+  const handleConfirmCompletionModel = async (model) => {
+    if (!completionModelPrompt) return;
+    const { chapterId, modelState } = completionModelPrompt;
+    saveChapterCompletionModelPreference({
+      provider: modelState.provider,
+      proxyProfileId: modelState.proxyProfileId,
+      model,
+    });
+    setCompletionModelState(getChapterCompletionModelState());
+    setCompletionModelPrompt(null);
+    await completeChapter(chapterId);
   };
 
   const handleRepair = async (reportId = null) => {
@@ -319,7 +357,8 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                       className={`continuity-bar-status continuity-bar-status--button ${desktopCompletionClass}`}
                       onClick={handleCompleteChapter}
                       disabled={!canCompleteChapter}
-                      title="Hoàn thành chương và chạy phân tích sự thật"
+                      title={completionActionTitle}
+                      aria-label={completionActionTitle}
                     >
                       {isCompletingChapter ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
                       {completionLabel}
@@ -370,6 +409,8 @@ export default function ContinuityBar({ isMobileLayout = false }) {
                 className={`continuity-bar-btn ${mobileCompletionClass}`}
                 onClick={handleCompleteChapter}
                 disabled={!canCompleteChapter}
+                title={completionActionTitle}
+                aria-label={completionActionTitle}
               >
                 {isCompletingChapter ? <Loader2 size={12} className="spin" /> : (chapterDone ? <CheckCircle2 size={12} /> : <Sparkles size={12} />)}
                 {completionLabel}
@@ -536,6 +577,11 @@ export default function ContinuityBar({ isMobileLayout = false }) {
         onRetry={() => handleRepair(scopedRepairPreview?.reportId || null)}
         onCopy={handleCopyRepair}
         onSaveDraft={handleSaveDraft}
+      />
+      <ChapterCompletionModelDialog
+        modelState={completionModelPrompt?.modelState || null}
+        onCancel={() => setCompletionModelPrompt(null)}
+        onConfirm={handleConfirmCompletionModel}
       />
     </>
   );

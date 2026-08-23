@@ -8,6 +8,75 @@
     stroke-linejoin: round;
 }
 
+.han-file-session[hidden],
+.han-file-session [hidden] {
+    display: none !important;
+}
+
+.han-file-session {
+    display: grid;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.han-file-session__main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.han-file-session__copy {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
+.han-file-session__copy .section-title,
+.han-file-session__copy p {
+    margin: 0;
+}
+
+.han-file-session__file {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.han-file-session__copy p {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    overflow-wrap: anywhere;
+}
+
+.han-file-session__actions {
+    flex: 0 1 auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.han-file-session__progress {
+    height: 4px;
+    overflow: hidden;
+    background: rgba(99, 102, 241, 0.14);
+    border-radius: 999px;
+}
+
+.han-file-session__progress span {
+    display: block;
+    width: 100%;
+    height: 100%;
+    transform: scaleX(0);
+    transform-origin: left;
+    background: var(--primary-color);
+    transition: transform 0.18s ease-out;
+}
+
 body.han-file-audit-open {
     overflow: hidden;
 }
@@ -84,6 +153,10 @@ body.han-file-audit-open {
     letter-spacing: -0.02em;
 }
 
+.han-file-audit__header > div {
+    min-width: 0;
+}
+
 .han-file-audit__header h2 {
     font-size: clamp(1.1rem, 2vw, 1.45rem);
 }
@@ -96,6 +169,10 @@ body.han-file-audit-open {
     margin: 0.2rem 0 0;
     color: var(--text-secondary);
     font-size: 0.82rem;
+}
+
+#hanFileAuditFileName {
+    overflow-wrap: anywhere;
 }
 
 .han-file-audit__close {
@@ -347,6 +424,22 @@ body.han-file-audit-open {
     .han-file-audit__detail > header {
         align-items: stretch;
         flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .han-file-session__main {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .han-file-session__actions {
+        justify-content: stretch;
+    }
+
+    .han-file-session__actions .btn {
+        flex: 1 1 132px;
+        min-width: 0;
     }
 }
 

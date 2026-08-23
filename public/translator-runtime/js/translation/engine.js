@@ -936,6 +936,14 @@ async function startLargeFileTranslation({ sourceLang, chunkSize, parallelCount,
 }
 
 async function startTranslation() {
+    if (
+        (typeof isHanAuditBusy !== 'undefined' && isHanAuditBusy)
+        || Boolean(globalThis.isHanFileAuditBusy)
+        || Boolean(globalThis.isChunkIssueRetryBusy)
+    ) {
+        showToast('Hãy dừng hoặc chờ tác vụ rà soát/dịch lại chunk hiện tại hoàn tất.', 'warning');
+        return;
+    }
     const largeFileSource = isLargeFileSourceActive();
     const text = largeFileSource ? '' : String(document.getElementById('originalText')?.value || '').trim();
     if (!largeFileSource && !text) {

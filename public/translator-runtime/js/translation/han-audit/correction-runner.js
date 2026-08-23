@@ -41,5 +41,7 @@
         };
     }
 
-    global.TranslatorHanCorrectionRunner = Object.freeze({ run });
+    const runner = Object.freeze({ run });
+    global.TranslatorCorrectionRunner = runner;
+    global.TranslatorHanCorrectionRunner = runner;
 }(typeof globalThis !== 'undefined' ? globalThis : self));

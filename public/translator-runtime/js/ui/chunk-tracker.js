@@ -25,6 +25,18 @@ let chunkTrackerSummaryState = {
     totalRetries: 0,
 };
 let lastChunkIssueSummary = null;
+const chunkIssueRetryState = {
+    status: 'idle',
+    total: 0,
+    processed: 0,
+    succeeded: 0,
+    failed: 0,
+    cancelRequested: false,
+};
+if (typeof globalThis !== 'undefined') {
+    globalThis.isChunkIssueRetryBusy = false;
+    globalThis.chunkIssueRetrySessionId = null;
+}
 
 // Status enum
 const CHUNK_STATUS = {
@@ -155,7 +167,24 @@ function summarizeTranslatorChunkIssues(options = {}) {
 
 function isChunkIssueActionBusy() {
     return (typeof isTranslating !== 'undefined' && isTranslating)
-        || (typeof isHanAuditBusy !== 'undefined' && isHanAuditBusy);
+        || (typeof isHanAuditBusy !== 'undefined' && isHanAuditBusy)
+        || (typeof globalThis !== 'undefined' && Boolean(globalThis.isHanFileAuditBusy))
+        || chunkIssueRetryState.status !== 'idle';
+}
+
+function setChunkIssueRetryStatus(status, patch = {}) {
+    Object.assign(chunkIssueRetryState, patch, { status });
+    if (typeof globalThis !== 'undefined') {
+        globalThis.isChunkIssueRetryBusy = status !== 'idle';
+        globalThis.chunkIssueRetrySessionId = status === 'idle'
+            ? null
+            : (typeof currentTranslatorSessionId !== 'undefined' && currentTranslatorSessionId
+                ? String(currentTranslatorSessionId)
+                : null);
+    }
+    if (typeof updateTranslateActionState === 'function') updateTranslateActionState();
+    if (typeof updateChunkSummary === 'function') updateChunkSummary();
+    updateChunkIssueDownloadAction(lastChunkIssueSummary);
 }
 
 function notifyChunkIssueBusy() {
@@ -171,9 +200,46 @@ function getIssueTypeLabel(type) {
     return 'Cần xử lý';
 }
 
+function updateChunkIssueDownloadAction(summary = null) {
+    const button = document.getElementById('downloadResultBtn');
+    const label = document.getElementById('downloadResultBtnText');
+    const status = document.getElementById('downloadResultStatus');
+    const partialButton = document.getElementById('downloadPartialBtn');
+
+    const retryBusy = chunkIssueRetryState.status !== 'idle';
+    if (partialButton) {
+        partialButton.disabled = retryBusy;
+        partialButton.setAttribute('aria-busy', retryBusy ? 'true' : 'false');
+    }
+    if (!button || !label) return;
+    const failedOrManual = Math.max(0, Number(summary?.failedCount) || 0)
+        + Math.max(0, Number(summary?.manualCount) || 0);
+    const pending = Math.max(0, Number(summary?.pendingCount) || 0);
+    const text = retryBusy
+        ? 'Đang hoàn thiện file…'
+        : failedOrManual > 0
+            ? 'Tải bản có đánh dấu'
+            : pending > 0
+                ? 'Tải bản chưa hoàn tất'
+                : 'Tải bản dịch hoàn chỉnh';
+    const statusText = retryBusy
+        ? 'Bản dịch đang được cập nhật. Vui lòng đợi trước khi tải file.'
+        : failedOrManual > 0
+            ? `Bản dịch còn chunk lỗi; file tải xuống sẽ giữ ${failedOrManual} đánh dấu.`
+            : pending > 0
+                ? `Bản dịch chưa hoàn tất; file tải xuống chỉ gồm phần đã xử lý và còn thiếu ${pending} chunk.`
+                : 'Bản dịch hoàn chỉnh đã sẵn sàng tải.';
+
+    if (status) status.textContent = statusText;
+
+    button.disabled = retryBusy;
+    button.setAttribute('aria-busy', retryBusy ? 'true' : 'false');
+    button.setAttribute('aria-label', text);
+    label.textContent = text;
+}
+
 function renderChunkIssuePanel(summary = null) {
     const panel = document.getElementById('chunkIssuePanel');
-    if (!panel) return summary;
 
     const renderedChunks = typeof translatedChunks !== 'undefined' && Array.isArray(translatedChunks) ? translatedChunks : [];
     const safeSummary = summary || summarizeTranslatorChunkIssues({
@@ -181,6 +247,8 @@ function renderChunkIssuePanel(summary = null) {
         totalChunks: renderedChunks.length,
     });
     lastChunkIssueSummary = safeSummary;
+    updateChunkIssueDownloadAction(safeSummary);
+    if (!panel) return safeSummary;
 
     if (!safeSummary || safeSummary.issueCount === 0) {
         panel.style.display = 'none';
@@ -188,7 +256,8 @@ function renderChunkIssuePanel(summary = null) {
         return safeSummary;
     }
 
-    const busy = typeof isTranslating !== 'undefined' && isTranslating;
+    const retryBusy = chunkIssueRetryState.status !== 'idle';
+    const busy = isChunkIssueActionBusy();
     const source = (typeof currentSourceMode !== 'undefined' &&
         typeof TRANSLATOR_SOURCE_MODES !== 'undefined' &&
         currentSourceMode === TRANSLATOR_SOURCE_MODES.LARGE_FILE)
@@ -202,11 +271,18 @@ function renderChunkIssuePanel(summary = null) {
     const safetyNote = safeSummary.safetyCount > 0
         ? '<p class="chunk-issue-note chunk-issue-note--warning">Có chunk nghi bị model kiểm duyệt gắt. Hãy thử đổi sang gemini-2.5-flash, giảm kích thước chunk hoặc chỉnh prompt nếu retry vẫn lỗi.</p>'
         : '';
-    const busyNote = busy
-        ? '<p class="chunk-issue-note">Đang dịch. Chỉ xử lý sau khi dừng hoặc hoàn tất bản dịch để không tranh request/RPM với job chính.</p>'
+    const busyNote = retryBusy
+        ? `<p class="chunk-issue-note">${chunkIssueRetryState.status === 'stopping'
+            ? 'Đang dừng tác vụ… Các chunk hoàn tất vẫn được giữ.'
+            : `Đang dịch lại ${chunkIssueRetryState.processed}/${chunkIssueRetryState.total} chunk theo RPM và số luồng đã cài đặt.`}</p>`
+        : (busy
+            ? '<p class="chunk-issue-note">Chỉ xử lý sau khi dừng hoặc hoàn tất bản dịch hay rà soát hiện tại để không tranh request/RPM.</p>'
         : (source === 'large-file'
-            ? '<p class="chunk-issue-note">File lớn chỉ retry batch nhỏ từ phiên lưu, không đọc lại toàn truyện và không tự dịch lại toàn bộ.</p>'
-            : '<p class="chunk-issue-note">Hệ thống đã thử tự khôi phục trước. Các thao tác dưới đây chỉ chạy trên chunk cần xử lý.</p>');
+            ? '<p class="chunk-issue-note">Một lần bấm sẽ xử lý toàn bộ chunk lỗi theo RPM; ứng dụng chỉ đọc nguyên văn của wave đang chạy.</p>'
+            : '<p class="chunk-issue-note">Hệ thống đã thử tự khôi phục trước. Các thao tác dưới đây chỉ chạy trên chunk cần xử lý.</p>'));
+    const primaryAction = retryBusy
+        ? `<button class="btn btn-danger btn-small" type="button" data-click-action="cancelChunkIssueRetry" ${chunkIssueRetryState.status === 'stopping' ? 'disabled' : ''}>${chunkIssueRetryState.status === 'stopping' ? 'Đang dừng…' : 'Dừng dịch lại'}</button>`
+        : `<button class="btn btn-warning btn-small" type="button" data-click-action="retryIssueChunks" data-issue-source="${source}" ${busy ? 'disabled' : ''}>Dịch lại chunk lỗi</button>`;
 
     panel.style.display = 'block';
     panel.innerHTML = `
@@ -219,9 +295,9 @@ function renderChunkIssuePanel(summary = null) {
                 </div>
             </div>
             <div class="chunk-issue-actions">
-                <button class="btn btn-warning btn-small" type="button" data-click-action="retryIssueChunks" data-issue-source="${source}" ${busy ? 'disabled' : ''}>Dịch lại chunk lỗi</button>
+                ${primaryAction}
                 <button class="btn btn-secondary btn-small" type="button" data-click-action="focusFirstIssueChunk">Xem chunk lỗi</button>
-                <button class="btn btn-secondary btn-small" type="button" data-click-action="downloadMarkedIssueResult">Tải bản có đánh dấu</button>
+                <button class="btn btn-secondary btn-small" type="button" data-click-action="downloadMarkedIssueResult" ${retryBusy ? 'disabled' : ''}>${retryBusy ? 'Đang cập nhật file…' : (safeSummary.failedCount + safeSummary.manualCount > 0 ? 'Tải bản có đánh dấu' : 'Tải bản chưa hoàn tất')}</button>
             </div>
         </div>
         <div class="chunk-issue-list">
@@ -285,8 +361,15 @@ async function persistTranslatedChunkUpdate(chunkIndex, outputText, options = {}
         });
     }
 
+    if (!options.deferDerivedUpdates) {
+        refreshTranslatedChunkDerivedState({ status });
+    }
+}
+
+function refreshTranslatedChunkDerivedState(options = {}) {
     const resultEl = document.getElementById('translatedText');
     const allChunks = typeof translatedChunks !== 'undefined' && Array.isArray(translatedChunks) ? translatedChunks : [];
+    const status = options.status || '';
     if (resultEl) {
         if (getCurrentSourceModeForIssuePanel() === 'large-file' && typeof buildLargeFileResultPreview === 'function') {
             resultEl.value = buildLargeFileResultPreview(status === 'failed' ? '⚠️ Cần xử lý' : '✅ Hoàn thành', 60000);
@@ -325,11 +408,13 @@ async function persistTranslatedChunkUpdate(chunkIndex, outputText, options = {}
         );
     }
 
-    renderChunkIssuePanel(summarizeTranslatorChunkIssues({
+    const summary = summarizeTranslatorChunkIssues({
         chunks: allChunks,
         startChunkIndex: getCurrentChunkIssueStartIndex(),
         totalChunks: allChunks.length,
-    }));
+    });
+    renderChunkIssuePanel(summary);
+    return summary;
 }
 
 // ============================================
@@ -521,7 +606,7 @@ function buildFailedRetryOutput(chunkIndex, userMessage, sourceText) {
     return `[LỖI CHUNK ${chunkIndex + 1}]\nNguyên nhân: ${userMessage}\n\n${sourceText || ''}`;
 }
 
-function markChunkRetrying(chunkIndex) {
+function markChunkRetrying(chunkIndex, options = {}) {
     const data = chunkTrackingData[chunkIndex];
     if (!data) return null;
 
@@ -530,7 +615,7 @@ function markChunkRetrying(chunkIndex) {
     data.retryCount = 0;
     data.startTime = Date.now();
     data.error = '';
-    renderChunkRow(chunkIndex);
+    if (!options.deferRender) renderChunkRow(chunkIndex);
     return data;
 }
 
@@ -544,12 +629,33 @@ function markChunkRetrySucceeded(chunkIndex, outputText, data) {
     data.error = '';
 }
 
-function markChunkRetryFailed(chunkIndex, userMessage, data) {
+function markChunkRetryFailed(chunkIndex, userMessage, data, options = {}) {
     if (!data) return;
     applyChunkStatus(data, CHUNK_STATUS.FAILED);
     data.error = userMessage;
     data.timeMs = data.startTime > 0 ? Date.now() - data.startTime : 0;
-    renderChunkRow(chunkIndex);
+    if (!options.deferRender) renderChunkRow(chunkIndex);
+}
+
+function captureChunkRetryTrackerState(data) {
+    if (!data) return null;
+    return {
+        status: data.status,
+        retryCount: data.retryCount,
+        startTime: data.startTime,
+        timeMs: data.timeMs,
+        error: data.error,
+        outputLen: data.outputLen,
+        ratio: data.ratio,
+    };
+}
+
+function restoreChunkRetryTrackerState(data, snapshot, options = {}) {
+    if (!data || !snapshot) return;
+    applyChunkStatus(data, snapshot.status);
+    chunkTrackerSummaryState.totalRetries += Math.max(0, Number(snapshot.retryCount) || 0);
+    Object.assign(data, snapshot);
+    if (!options.deferRender) renderChunkRow(data.index);
 }
 
 async function sendManualRetryAttempt(chunkIndex, chunkText) {
@@ -610,6 +716,8 @@ function showSafetyRetryGuidance() {
 
 async function retrySingleIssueChunk(chunkIndex, options = {}) {
     const safeIndex = Math.max(0, Number(chunkIndex) || 0);
+    const shouldCancel = typeof options.shouldCancel === 'function' ? options.shouldCancel : () => false;
+    if (shouldCancel()) return { ok: false, chunkIndex: safeIndex, reason: 'cancelled', cancelled: true };
     const sourceText = getManualRetrySourceText(safeIndex, options);
     if (!sourceText) {
         if (!options.silent && typeof showToast === 'function') {
@@ -618,32 +726,50 @@ async function retrySingleIssueChunk(chunkIndex, options = {}) {
         return { ok: false, chunkIndex: safeIndex, reason: 'missing_source' };
     }
 
-    const data = markChunkRetrying(safeIndex);
+    const data = typeof chunkTrackingData !== 'undefined' ? chunkTrackingData[safeIndex] : null;
+    const trackerSnapshot = captureChunkRetryTrackerState(data);
+    markChunkRetrying(safeIndex, options);
     const chunkText = getPreparedChunkForTracker(safeIndex, sourceText);
 
     try {
         const result = await sendManualRetryAttempt(safeIndex, chunkText);
+        if (shouldCancel()) throw new Error('CHUNK_ISSUE_RETRY_CANCELLED');
         if (!result || result.startsWith('[LỖI')) {
             throw createInvalidManualRetryResponseError(result);
         }
 
         markChunkRetrySucceeded(safeIndex, result, data);
-        await persistTranslatedChunkUpdate(safeIndex, result, { status: 'done', error: '' });
-        renderChunkRow(safeIndex);
-        updateChunkSummary();
+        await persistTranslatedChunkUpdate(safeIndex, result, {
+            status: 'done',
+            error: '',
+            deferDerivedUpdates: options.deferDerivedUpdates,
+        });
+        if (!options.deferRender) {
+            renderChunkRow(safeIndex);
+            updateChunkSummary();
+        }
         if (!options.silent && typeof showToast === 'function') {
             showToast(`Chunk ${safeIndex + 1} đã dịch lại thành công.`, 'success');
         }
         return { ok: true, chunkIndex: safeIndex };
     } catch (e) {
+        const cancelled = shouldCancel() || String(e?.message || e).includes('CHUNK_ISSUE_RETRY_CANCELLED');
+        if (cancelled) {
+            restoreChunkRetryTrackerState(data, trackerSnapshot, options);
+            return { ok: false, chunkIndex: safeIndex, reason: 'cancelled', cancelled: true };
+        }
         const userMessage = typeof formatTranslatorError === 'function'
             ? formatTranslatorError(e)
             : String(e?.message || e || 'Lỗi chưa xác định');
-        markChunkRetryFailed(safeIndex, userMessage, data);
+        markChunkRetryFailed(safeIndex, userMessage, data, options);
         const failedOutput = buildFailedRetryOutput(safeIndex, userMessage, sourceText);
-        await persistTranslatedChunkUpdate(safeIndex, failedOutput, { status: 'failed', error: userMessage });
-        updateChunkSummary();
-        if (isSafetyRelatedTranslatorIssue(failedOutput, userMessage)) {
+        await persistTranslatedChunkUpdate(safeIndex, failedOutput, {
+            status: 'failed',
+            error: userMessage,
+            deferDerivedUpdates: options.deferDerivedUpdates,
+        });
+        if (!options.deferRender) updateChunkSummary();
+        if (!options.deferSafetyGuidance && isSafetyRelatedTranslatorIssue(failedOutput, userMessage)) {
             showSafetyRetryGuidance();
         }
         if (!options.silent && typeof showToast === 'function') {
@@ -664,7 +790,16 @@ async function retranslateChunk(chunkIndex) {
         return { ok: false, reason: 'large_file_panel_only' };
     }
 
-    return retrySingleIssueChunk(chunkIndex);
+    const safeIndex = Math.max(0, Number(chunkIndex) || 0);
+    const tracked = chunkTrackingData[safeIndex];
+    return retryIssueChunks({
+        source: 'text',
+        issues: [{
+            chunkIndex: safeIndex,
+            type: TRANSLATOR_CHUNK_ISSUE_TYPES.FAILED,
+            safetyRelated: isSafetyRelatedTranslatorIssue('', tracked?.error || ''),
+        }],
+    });
 }
 
 // Retranslate all failed + warning chunks
@@ -683,33 +818,21 @@ async function retranslateAllFailed() {
         return;
     }
 
-    showToast(`Đang dịch lại ${toRetranslate.length} chunk...`, 'info');
-
-    const parallelInput = typeof document !== 'undefined' ? Number(document.getElementById('parallelCount')?.value) : 1;
-    const manualParallel = typeof normalizeTranslatorParallel === 'function'
-        ? normalizeTranslatorParallel(parallelInput || 1)
-        : Math.max(1, Math.min(30, parallelInput || 1));
-
-    for (let offset = 0; offset < toRetranslate.length; offset += manualParallel) {
-        const batch = toRetranslate.slice(offset, offset + manualParallel);
-        await Promise.all(batch.map(d => retranslateChunk(d.index)));
-        if (offset + manualParallel < toRetranslate.length) {
-            await sleep(5000);
-        }
-    }
-
-    showToast('Đã hoàn tất dịch lại.', 'success');
-    return { ok: true, attempted: toRetranslate.length };
+    return retryIssueChunks({
+        source: 'text',
+        issues: toRetranslate.map(data => ({
+            chunkIndex: data.index,
+            type: TRANSLATOR_CHUNK_ISSUE_TYPES.FAILED,
+            safetyRelated: isSafetyRelatedTranslatorIssue('', data.error || ''),
+        })),
+    });
 }
 
-function getManualRetryDefaultLimit(source, issueCount) {
-    if (source !== 'large-file') return issueCount;
-
+function getManualRetryParallel() {
     const parallelInput = typeof document !== 'undefined' ? Number(document.getElementById('parallelCount')?.value) : 1;
-    const normalizedParallel = typeof normalizeTranslatorParallel === 'function'
+    return typeof normalizeTranslatorParallel === 'function'
         ? normalizeTranslatorParallel(parallelInput || 1)
         : Math.max(1, Math.min(30, parallelInput || 1));
-    return Math.max(1, Math.min(2, normalizedParallel, issueCount));
 }
 
 function pickRetryIssues(summary, source) {
@@ -723,125 +846,223 @@ function pickRetryIssues(summary, source) {
     return issues;
 }
 
+async function readIssueRetrySource(issue, source) {
+    if (source !== 'large-file') return getManualRetrySourceText(issue.chunkIndex);
+
+    const sessionId = typeof currentTranslatorSessionId !== 'undefined' ? currentTranslatorSessionId : null;
+    const canReadPersistedRow = Boolean(
+        sessionId
+        && (typeof currentTranslatorPersistenceAvailable === 'undefined' || currentTranslatorPersistenceAvailable)
+        && typeof getTranslatorChunk === 'function'
+    );
+    const row = canReadPersistedRow ? await getTranslatorChunk(sessionId, issue.chunkIndex) : null;
+    let sourceText = row?.sourceText || '';
+    const trackedRow = typeof chunkTrackingData !== 'undefined' ? chunkTrackingData[issue.chunkIndex] : null;
+    const byteStart = Number(row?.byteStart ?? trackedRow?.byteStart);
+    const byteEnd = Number(row?.byteEnd ?? trackedRow?.byteEnd);
+    if (
+        !sourceText
+        && typeof currentSourceFile !== 'undefined'
+        && currentSourceFile?.slice
+        && Number.isFinite(byteStart)
+        && Number.isFinite(byteEnd)
+        && byteEnd > byteStart
+    ) {
+        sourceText = await currentSourceFile.slice(byteStart, byteEnd).text();
+        if (byteStart === 0) sourceText = sourceText.replace(/^\uFEFF/, '');
+    }
+    if (!sourceText && row && typeof readTranslatorChunkSource === 'function') {
+        sourceText = await readTranslatorChunkSource(sessionId, row);
+    }
+    return sourceText;
+}
+
+function cancelChunkIssueRetry() {
+    if (chunkIssueRetryState.status === 'idle') return { ok: false, reason: 'idle' };
+    if (chunkIssueRetryState.status === 'stopping') return { ok: false, reason: 'stopping' };
+
+    setChunkIssueRetryStatus('stopping', { cancelRequested: true });
+    try {
+        if (typeof cancelRequested !== 'undefined') cancelRequested = true;
+    } catch (_error) {
+        // Embedded test runtimes may not expose the shared cancellation flag.
+    }
+    if (typeof abortActiveTranslationRequests === 'function') {
+        abortActiveTranslationRequests('chunk-issue-retry-cancelled');
+    }
+    renderChunkIssuePanel(lastChunkIssueSummary);
+    return { ok: true };
+}
+
 async function retryIssueChunks(options = {}) {
     if (isChunkIssueActionBusy()) {
         notifyChunkIssueBusy();
         return { ok: false, reason: 'busy' };
     }
 
+    setChunkIssueRetryStatus('running', {
+        total: 0,
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+        cancelRequested: false,
+    });
+    try {
+        if (typeof cancelRequested !== 'undefined') cancelRequested = false;
+    } catch (_error) {
+        // Embedded test runtimes may not expose the shared cancellation flag.
+    }
+
     const source = options.source || getCurrentSourceModeForIssuePanel();
     const startIndex = getCurrentChunkIssueStartIndex();
-    let summary;
-    let sessionRows = [];
-
-    if (source === 'large-file') {
+    const hasExplicitIssues = Array.isArray(options.issues);
+    let plannedIssueCount = 0;
+    let summary = null;
+    try {
+        const chunks = typeof translatedChunks !== 'undefined' && Array.isArray(translatedChunks) ? translatedChunks : [];
         const sessionId = typeof currentTranslatorSessionId !== 'undefined' ? currentTranslatorSessionId : null;
-        const canReadPersistedRows = Boolean(
-            sessionId
-            && (typeof currentTranslatorPersistenceAvailable === 'undefined' || currentTranslatorPersistenceAvailable)
-            && typeof getTranslatorSessionChunks === 'function'
-        );
-        const memoryRows = typeof translatedChunks !== 'undefined' && Array.isArray(translatedChunks)
-            ? translatedChunks
-            : [];
-        if (!sessionId && memoryRows.length === 0) {
+        if (source === 'large-file' && !sessionId && chunks.length === 0) {
             showToast('Chưa tìm thấy phiên file lớn để dịch lại chunk lỗi.', 'warning');
             return { ok: false, reason: 'missing_session' };
         }
-        sessionRows = canReadPersistedRows
-            ? await getTranslatorSessionChunks(sessionId)
-            : memoryRows;
-        summary = summarizeTranslatorChunkIssues({
-            chunks: sessionRows,
-            startChunkIndex: startIndex,
-            totalChunks: Number(
-                (typeof currentTranslatorSessionMeta !== 'undefined' && currentTranslatorSessionMeta?.totalChunks)
-                || sessionRows.length
-            ),
-        });
-    } else {
-        const chunks = typeof translatedChunks !== 'undefined' && Array.isArray(translatedChunks) ? translatedChunks : [];
+
         summary = summarizeTranslatorChunkIssues({
             chunks,
             startChunkIndex: startIndex,
-            totalChunks: chunks.length,
-        });
-    }
-
-    renderChunkIssuePanel(summary);
-    const retryableIssues = pickRetryIssues(summary, source);
-    if (retryableIssues.length === 0) {
-        showToast(source === 'large-file'
-            ? 'File lớn hiện không có chunk lỗi cần retry. Chunk chưa dịch sẽ được xử lý bằng resume/chạy tiếp.'
-            : 'Không có chunk nào cần dịch lại.', 'info');
-        return { ok: true, attempted: 0, succeeded: 0, failed: 0 };
-    }
-
-    const requestedLimit = Number(options.limit);
-    const maxAttempts = Number.isFinite(requestedLimit) && requestedLimit > 0
-        ? Math.min(retryableIssues.length, Math.trunc(requestedLimit))
-        : getManualRetryDefaultLimit(source, retryableIssues.length);
-    const issueBatch = retryableIssues.slice(0, maxAttempts);
-    let succeeded = 0;
-    let failed = 0;
-    let safetyFailed = false;
-
-    showToast(`Đang dịch lại ${issueBatch.length} chunk lỗi...`, 'info');
-    for (const issue of issueBatch) {
-        const row = source === 'large-file'
-            ? sessionRows.find(item => Number(item.chunkIndex) === issue.chunkIndex)
-            : null;
-        let retrySourceText = row?.sourceText;
-        if (source === 'large-file' && row && typeof readTranslatorChunkSource === 'function') {
-            retrySourceText = await readTranslatorChunkSource(currentTranslatorSessionId, row);
-        }
-        const trackedRow = typeof chunkTrackingData !== 'undefined' ? chunkTrackingData[issue.chunkIndex] : null;
-        const byteStart = Number(row?.byteStart ?? trackedRow?.byteStart);
-        const byteEnd = Number(row?.byteEnd ?? trackedRow?.byteEnd);
-        if (
-            source === 'large-file'
-            && !retrySourceText
-            && typeof currentSourceFile !== 'undefined'
-            && currentSourceFile?.slice
-            && Number.isFinite(byteStart)
-            && Number.isFinite(byteEnd)
-            && byteEnd > byteStart
-        ) {
-            retrySourceText = await currentSourceFile.slice(byteStart, byteEnd).text();
-            if (byteStart === 0) retrySourceText = retrySourceText.replace(/^\uFEFF/, '');
-        }
-        const result = await retrySingleIssueChunk(issue.chunkIndex, {
-            sourceText: retrySourceText,
-            silent: true,
-        });
-        if (result.ok) {
-            succeeded += 1;
-        } else {
-            failed += 1;
-            safetyFailed = safetyFailed || issue.safetyRelated || isSafetyRelatedTranslatorIssue('', String(result.reason || ''));
-        }
-    }
-
-    if (
-        source === 'large-file'
-        && typeof getTranslatorSessionChunks === 'function'
-        && typeof currentTranslatorSessionId !== 'undefined'
-        && (typeof currentTranslatorPersistenceAvailable === 'undefined' || currentTranslatorPersistenceAvailable)
-    ) {
-        sessionRows = await getTranslatorSessionChunks(currentTranslatorSessionId);
-        renderChunkIssuePanel(summarizeTranslatorChunkIssues({
-            chunks: sessionRows,
-            startChunkIndex: startIndex,
             totalChunks: Number(
-                (typeof currentTranslatorSessionMeta !== 'undefined' && currentTranslatorSessionMeta?.totalChunks)
-                || sessionRows.length
+                (source === 'large-file' && typeof currentTranslatorSessionMeta !== 'undefined' && currentTranslatorSessionMeta?.totalChunks)
+                || chunks.length
             ),
-        }));
-    }
+        });
+        renderChunkIssuePanel(summary);
+        const retryableIssues = Array.isArray(options.issues)
+            ? options.issues.slice()
+            : pickRetryIssues(summary, source);
+        const requestedLimit = Number(options.limit);
+        const issueBatch = Number.isFinite(requestedLimit) && requestedLimit > 0
+            ? retryableIssues.slice(0, Math.trunc(requestedLimit))
+            : retryableIssues;
+        plannedIssueCount = issueBatch.length;
+        if (issueBatch.length === 0) {
+            showToast(source === 'large-file'
+                ? 'File lớn hiện không có chunk lỗi cần retry. Chunk chưa dịch sẽ được xử lý bằng resume/chạy tiếp.'
+                : 'Không có chunk nào cần dịch lại.', 'info');
+            return { ok: true, attempted: 0, succeeded: 0, failed: 0, remaining: 0, cancelled: false };
+        }
 
-    if (safetyFailed) showSafetyRetryGuidance();
-    showToast(`Đã xử lý ${issueBatch.length} chunk: ${succeeded} thành công, ${failed} còn lỗi.`, failed > 0 ? 'warning' : 'success');
-    return { ok: true, attempted: issueBatch.length, succeeded, failed };
+        chunkIssueRetryState.total = issueBatch.length;
+        renderChunkIssuePanel(summary);
+        const runner = typeof globalThis !== 'undefined'
+            ? (globalThis.TranslatorCorrectionRunner || globalThis.TranslatorHanCorrectionRunner)
+            : null;
+        if (!runner?.run) throw new Error('Không tìm thấy wave runner để dịch lại chunk lỗi.');
+
+        const requestedParallel = getManualRetryParallel();
+        let safetyFailed = false;
+        showToast(`Đang dịch lại ${issueBatch.length} chunk lỗi theo RPM...`, 'info');
+        const runResult = await runner.run({
+            items: issueBatch,
+            requestedParallel,
+            shouldCancel: () => chunkIssueRetryState.cancelRequested,
+            getPlan: ({ requestedParallel: parallel, remainingChunks }) => (
+                typeof waitForTranslatorRpmBatchPlan === 'function'
+                    ? waitForTranslatorRpmBatchPlan({ requestedParallel: parallel, remainingChunks })
+                    : { capacity: Math.min(parallel, remainingChunks) }
+            ),
+            assignWave: (wave, plan) => {
+                if (typeof useProxy !== 'undefined' && useProxy && typeof buildTranslatorWaveAssignments === 'function') {
+                    buildTranslatorWaveAssignments(wave.map(issue => issue.chunkIndex), plan);
+                }
+            },
+            correctItem: async (issue) => {
+                if (chunkIssueRetryState.cancelRequested) {
+                    return { ok: false, issue, reason: 'cancelled', cancelled: true };
+                }
+                try {
+                    const sourceText = await readIssueRetrySource(issue, source);
+                    const result = await retrySingleIssueChunk(issue.chunkIndex, {
+                        sourceText,
+                        silent: true,
+                        deferDerivedUpdates: true,
+                        deferRender: true,
+                        deferSafetyGuidance: true,
+                        shouldCancel: () => chunkIssueRetryState.cancelRequested,
+                    });
+                    return { ...result, issue };
+                } catch (error) {
+                    if (chunkIssueRetryState.cancelRequested) {
+                        return { ok: false, issue, reason: 'cancelled', cancelled: true };
+                    }
+                    return { ok: false, issue, reason: String(error?.message || error || 'retry_failed') };
+                }
+            },
+            onWaveComplete: ({ processed, wave, results }) => {
+                chunkIssueRetryState.processed = processed;
+                results.forEach((result) => {
+                    if (result?.ok) chunkIssueRetryState.succeeded += 1;
+                    else if (!result?.cancelled) chunkIssueRetryState.failed += 1;
+                    safetyFailed = safetyFailed || Boolean(
+                        !result?.cancelled
+                        && (result?.issue?.safetyRelated || isSafetyRelatedTranslatorIssue('', String(result?.reason || '')))
+                    );
+                });
+                wave.forEach(issue => renderChunkRow(issue.chunkIndex));
+                updateChunkSummary();
+                summary = refreshTranslatedChunkDerivedState();
+            },
+        });
+
+        const cancelled = chunkIssueRetryState.cancelRequested || runResult.cancelled;
+        const finalSummary = summary || refreshTranslatedChunkDerivedState();
+        const remaining = Array.isArray(options.issues)
+            ? Math.max(0, issueBatch.length - chunkIssueRetryState.succeeded)
+            : pickRetryIssues(finalSummary, source).length;
+        if (safetyFailed) showSafetyRetryGuidance();
+        showToast(
+            cancelled
+                ? `Đã dừng. Giữ ${chunkIssueRetryState.succeeded} chunk hoàn tất; còn ${remaining} chunk cần xử lý.`
+                : `Đã xử lý ${runResult.processed} chunk: ${chunkIssueRetryState.succeeded} thành công, ${chunkIssueRetryState.failed} còn lỗi.`,
+            cancelled || chunkIssueRetryState.failed > 0 ? 'warning' : 'success'
+        );
+        return {
+            ok: !cancelled,
+            attempted: runResult.processed,
+            succeeded: chunkIssueRetryState.succeeded,
+            failed: chunkIssueRetryState.failed,
+            remaining,
+            cancelled,
+        };
+    } catch (error) {
+        const cancelled = chunkIssueRetryState.cancelRequested;
+        const remaining = hasExplicitIssues
+            ? Math.max(0, plannedIssueCount - chunkIssueRetryState.succeeded)
+            : pickRetryIssues(summary, source).length;
+        if (!cancelled) {
+            console.error('[ChunkIssueRetry] Retry job failed.', error);
+            showToast('Không thể hoàn tất lượt dịch lại. Các chunk đã xong vẫn được giữ; hãy thử lại phần còn lỗi.', 'error');
+        }
+        return {
+            ok: false,
+            reason: cancelled ? 'cancelled' : 'failed',
+            attempted: chunkIssueRetryState.processed,
+            succeeded: chunkIssueRetryState.succeeded,
+            failed: chunkIssueRetryState.failed,
+            remaining,
+            cancelled,
+            error,
+        };
+    } finally {
+        const resetSharedCancel = chunkIssueRetryState.cancelRequested;
+        setChunkIssueRetryStatus('idle', { cancelRequested: false });
+        if (resetSharedCancel) {
+            try {
+                if (typeof cancelRequested !== 'undefined') cancelRequested = false;
+            } catch (_error) {
+                // Embedded test runtimes may not expose the shared cancellation flag.
+            }
+        }
+        renderChunkIssuePanel(summary);
+    }
 }
 
 function focusFirstIssueChunk() {

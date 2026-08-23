@@ -1,0 +1,104 @@
+.chapter-completion-model-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal-overlay);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(3, 7, 18, 0.72);
+}
+
+.chapter-completion-model-dialog {
+  z-index: var(--z-modal);
+  width: min(500px, 100%);
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-6);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-modal);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-lg);
+}
+
+.chapter-completion-model-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.chapter-completion-model-dialog__header h2,
+.chapter-completion-model-dialog__header p,
+.chapter-completion-model-dialog__hint {
+  margin: 0;
+}
+
+.chapter-completion-model-dialog__header h2 {
+  font-size: var(--text-xl);
+}
+
+.chapter-completion-model-dialog__header p {
+  margin-top: 4px;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.chapter-completion-model-dialog__body {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.chapter-completion-model-dialog__body .select {
+  width: 100%;
+}
+
+.chapter-completion-model-dialog__hint {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.chapter-completion-model-dialog__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+}
+
+.chapter-completion-model-dialog__status--warning {
+  color: var(--color-warning);
+}
+
+.chapter-completion-model-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.chapter-completion-model-dialog__actions .btn {
+  min-height: 44px;
+}
+
+@media (max-width: 520px) {
+  .chapter-completion-model-overlay {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .chapter-completion-model-dialog {
+    width: 100%;
+    padding: var(--space-5);
+    border-radius: var(--radius-lg);
+  }
+
+  .chapter-completion-model-dialog__actions {
+    flex-direction: column-reverse;
+  }
+
+  .chapter-completion-model-dialog__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

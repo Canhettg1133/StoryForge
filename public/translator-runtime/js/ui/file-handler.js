@@ -69,12 +69,14 @@ function updateTranslateActionState() {
     const isFileLoadBusy = Boolean(button && button.dataset.fileLoadBusy === 'true');
     const isStartSearchBusy = Boolean(button && button.dataset.startSearchBusy === 'true');
     const isStoryPromptBusy = Boolean(button && button.dataset.storyPromptBusy === 'true');
+    const isAutomaticHanAuditBusy = typeof isHanAuditBusy !== 'undefined' && Boolean(isHanAuditBusy);
     const isHanFileBusy = Boolean(globalThis.isHanFileAuditBusy);
+    const isChunkRetryBusy = Boolean(globalThis.isChunkIssueRetryBusy);
 
     document.body?.classList.toggle('translator-source-ready', hasSource);
     document.body?.classList.toggle('translator-is-translating', Boolean(isTranslating));
     if (button) button.disabled = Boolean(
-        isTranslating || isFileLoadBusy || isStartSearchBusy || isStoryPromptBusy || isHanFileBusy || !hasSource
+        isTranslating || isFileLoadBusy || isStartSearchBusy || isStoryPromptBusy || isAutomaticHanAuditBusy || isHanFileBusy || isChunkRetryBusy || !hasSource
     );
 
     if (isTranslating) {
@@ -101,10 +103,22 @@ function updateTranslateActionState() {
         if (hint) hint.textContent = 'Nút dịch sẽ sẵn sàng ngay khi AI hoàn tất.';
         return;
     }
+    if (isAutomaticHanAuditBusy) {
+        if (buttonText) buttonText.textContent = 'Đang rà Hán tự...';
+        if (title) title.textContent = 'Đang rà soát kết quả dịch';
+        if (hint) hint.textContent = 'Chờ tác vụ rà soát hiện tại hoàn tất hoặc dừng trong khu vực kết quả.';
+        return;
+    }
     if (isHanFileBusy) {
         if (buttonText) buttonText.textContent = 'Đang kiểm tra file...';
         if (title) title.textContent = 'Đang kiểm tra Hán tự';
-        if (hint) hint.textContent = 'Có thể dừng tác vụ trong cửa sổ kiểm tra TXT.';
+        if (hint) hint.textContent = 'Tác vụ vẫn chạy khi đóng chi tiết; dùng thẻ kiểm tra Hán tự để dừng.';
+        return;
+    }
+    if (isChunkRetryBusy) {
+        if (buttonText) buttonText.textContent = 'Đang dịch lại lỗi...';
+        if (title) title.textContent = 'Đang xử lý chunk lỗi';
+        if (hint) hint.textContent = 'Theo dõi hoặc dừng tác vụ trong thẻ chunk cần xử lý.';
         return;
     }
     if (!hasSource) {
@@ -446,7 +460,7 @@ function updateLargeFileNotice() {
 }
 
 function showFileInfo(file, options = {}) {
-    document.getElementById('fileInfo').style.display = 'flex';
+    document.getElementById('fileInfo').style.display = 'grid';
     document.getElementById('fileName').textContent = file.name;
     const modeText = options.mode === 'large-file'
         ? `File lớn • ${formatFileSize(file.size)}`
@@ -813,6 +827,15 @@ async function loadTranslatorSessionIntoWorkspace(sessionId) {
     updateLargeFileNotice();
     renderStartChunkPanel();
     if (typeof renderStoryPromptPanel === 'function') renderStoryPromptPanel();
+    if (typeof updateChunkIssueDownloadAction === 'function') {
+        updateChunkIssueDownloadAction({
+            failedCount: session.failedChunks || 0,
+            manualCount: 0,
+            pendingCount: session.isComplete
+                ? 0
+                : Math.max(0, Number(session.totalChunks || 0) - Number(session.completedChunks || 0)),
+        });
+    }
     updateStats();
     return session;
 }
@@ -841,6 +864,11 @@ async function renderTranslationQueue() {
         const session = await getTranslatorSession(item.sessionId);
         const sessionName = session?.fileName || item.sessionId;
         const canReorder = isQueueReorderable(item.status);
+        const issueCount = Math.max(0, Number(session?.failedChunks) || 0);
+        const statusLabel = item.status === 'completed' && issueCount > 0
+            ? `Còn ${issueCount.toLocaleString('vi-VN')} chunk lỗi`
+            : queueStatusLabel(item.status);
+        const downloadLabel = issueCount > 0 ? 'Tải bản có đánh dấu' : 'Tải về';
         const totalToTranslate = Math.max(1, (session?.totalChunks || 0) - (session?.startChunkIndex || 0));
         const progress = session?.isComplete
             ? 100
@@ -850,14 +878,14 @@ async function renderTranslationQueue() {
                 <span class="translation-queue-item__drag ${canReorder ? '' : 'translation-queue-item__drag--locked'}" title="Kéo để đổi thứ tự">${canReorder ? '↕' : ''}</span>
                 <div class="translation-queue-item__main">
                 <strong title="${escapeHtmlAttribute(sessionName)}">${escapeHtml(sessionName)}</strong>
-                    <span>${queueStatusLabel(item.status)} • ${progress}% • ${session?.completedChunks || 0}/${totalToTranslate} chunk</span>
+                    <span>${statusLabel} • ${progress}% • ${session?.completedChunks || 0}/${totalToTranslate} chunk</span>
                 </div>
                 <div class="translation-queue-item__actions">
                     ${item.status === 'queued' ? `<button type="button" class="btn btn-small btn-secondary" data-click-action="pauseQueuedTranslatorItem" data-queue-id="${escapeHtmlAttribute(item.id)}">Tạm dừng</button>` : ''}
                     ${item.status === 'paused' ? `<button type="button" class="btn btn-small btn-primary" data-click-action="resumeQueuedTranslatorItem" data-queue-id="${escapeHtmlAttribute(item.id)}">Tiếp tục</button>` : ''}
                     ${item.status === 'running' ? `<button type="button" class="btn btn-small btn-danger" data-click-action="cancelQueuedTranslatorItem" data-queue-id="${escapeHtmlAttribute(item.id)}">Hủy</button>` : ''}
                     ${item.status === 'queued' || item.status === 'paused' || item.status === 'failed' || item.status === 'cancelled' || item.status === 'completed' ? `<button type="button" class="btn btn-small btn-secondary" data-click-action="removeQueuedTranslatorItem" data-queue-id="${escapeHtmlAttribute(item.id)}">Xóa</button>` : ''}
-                    ${item.status === 'completed' ? `<button type="button" class="btn btn-small btn-primary" data-click-action="downloadQueuedTranslatorResult" data-session-id="${escapeHtmlAttribute(item.sessionId)}">Tải về</button>` : ''}
+                    ${item.status === 'completed' ? `<button type="button" class="btn btn-small btn-primary" data-click-action="downloadQueuedTranslatorResult" data-session-id="${escapeHtmlAttribute(item.sessionId)}">${downloadLabel}</button>` : ''}
                 </div>
             </article>
         `;
@@ -1027,8 +1055,14 @@ async function handleQueueDrop(event, targetQueueId) {
 
 async function downloadQueuedTranslatorResult(sessionId) {
     const session = await getTranslatorSession(sessionId);
-    const parts = await getTranslatorSessionOutputParts(sessionId);
-    downloadBlobParts(parts, session?.outputFileName || 'translated_novel.txt', 'Đã tải bản dịch từ lịch sử cục bộ.');
+    if (typeof downloadTranslatorSessionResult !== 'function') {
+        showToast('Không thể chuẩn bị file tải xuống trong phiên hiện tại.', 'error');
+        return false;
+    }
+    return downloadTranslatorSessionResult(
+        sessionId,
+        session?.outputFileName || session?.fileName || 'translated_novel.txt'
+    );
 }
 
 async function processNextTranslatorQueue() {

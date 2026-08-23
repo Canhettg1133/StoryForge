@@ -51,6 +51,10 @@
         renderFrame: 0,
         revision: 0,
         operationToken: 0,
+        statusMessage: '',
+        statusTone: '',
+        statusProgress: 0,
+        statusBusy: false,
     };
 
     const byId = id => global.document.getElementById(id);
@@ -76,11 +80,64 @@
         }
     }
 
+    function isChunkIssueRetryBusy() {
+        return Boolean(global.isChunkIssueRetryBusy);
+    }
+
+    function isExternalTaskBusy() {
+        return isTranslationBusy() || isAutomaticAuditBusy() || isChunkIssueRetryBusy();
+    }
+
     function showMessage(message, tone = 'info') {
         if (typeof showToast === 'function') showToast(message, tone);
     }
 
+    function renderSessionPanel() {
+        const panel = byId('hanFileAuditSessionPanel');
+        if (!panel) return;
+        panel.hidden = !state.snapshot;
+        if (!state.snapshot) return;
+
+        const remaining = getRemainingIssues();
+        const title = byId('hanFileSessionTitle');
+        const file = byId('hanFileSessionFile');
+        const meta = byId('hanFileSessionMeta');
+        const progressWrap = byId('hanFileSessionProgress');
+        const progress = byId('hanFileSessionProgressFill');
+        const cancelButton = byId('cancelHanFileSessionBtn');
+        const correctButton = byId('correctAllHanFileSessionBtn');
+        const downloadButton = byId('downloadHanFileSessionBtn');
+        const externalBusy = isExternalTaskBusy();
+
+        if (title) {
+            if (state.busyKind === 'scanning') title.textContent = 'Đang quét Hán tự trong TXT';
+            else if (state.busyKind === 'correcting') title.textContent = 'Đang dịch lại các chunk còn sót';
+            else if (state.scanned && remaining.length === 0) title.textContent = 'File TXT đã sạch Hán tự';
+            else if (state.scanned) title.textContent = `Còn ${remaining.length.toLocaleString('vi-VN')} chunk cần xử lý`;
+            else title.textContent = 'Kiểm tra Hán tự trong TXT';
+        }
+        if (file) {
+            file.textContent = `${state.snapshot.fileName} • ${(state.snapshot.size / 1024 / 1024).toLocaleString('vi-VN', { maximumFractionDigits: 1 })} MiB`;
+            file.title = state.snapshot.fileName;
+        }
+        if (meta) {
+            meta.textContent = state.statusMessage || (state.scanned
+                ? `${state.totalChunks.toLocaleString('vi-VN')} chunk đã quét`
+                : 'Mở chi tiết để bắt đầu quét file.');
+            meta.dataset.tone = state.statusTone;
+        }
+        if (progressWrap) progressWrap.hidden = !state.statusBusy;
+        if (progress) progress.style.transform = `scaleX(${state.statusProgress})`;
+        if (cancelButton) cancelButton.hidden = !state.busyKind;
+        if (correctButton) correctButton.hidden = Boolean(state.busyKind) || externalBusy || !state.scanned || remaining.length === 0;
+        if (downloadButton) downloadButton.hidden = Boolean(state.busyKind) || !state.scanned;
+    }
+
     function setStatus(message, options = {}) {
+        state.statusMessage = String(message || '');
+        state.statusTone = options.tone || '';
+        state.statusBusy = Boolean(options.busy);
+        state.statusProgress = Math.max(0, Math.min(1, Number(options.progress) || 0));
         const status = byId('hanFileAuditStatus');
         if (status) {
             status.textContent = String(message || '');
@@ -90,9 +147,9 @@
         const progress = byId('hanFileAuditProgressFill');
         if (progressWrap) progressWrap.hidden = !options.busy;
         if (progress) {
-            const ratio = Math.max(0, Math.min(1, Number(options.progress) || 0));
-            progress.style.transform = `scaleX(${ratio})`;
+            progress.style.transform = `scaleX(${state.statusProgress})`;
         }
+        renderSessionPanel();
     }
 
     function setBusy(kind = '') {
@@ -102,9 +159,10 @@
         const cancelButton = byId('cancelHanFileBtn');
         if (cancelButton) cancelButton.hidden = !busy;
         const closeButton = byId('closeHanFileAuditBtn');
-        if (closeButton) closeButton.setAttribute('aria-label', busy ? 'Đóng và dừng tác vụ' : 'Đóng');
+        if (closeButton) closeButton.setAttribute('aria-label', 'Đóng chi tiết');
         if (typeof updateTranslateActionState === 'function') updateTranslateActionState();
         renderActions();
+        renderSessionPanel();
     }
 
     function terminateWorker(reason = '') {
@@ -164,10 +222,11 @@
                 ? 'Tỷ lệ Hán tự từ 10% trở lên. File này có thể là truyện Trung gốc; vẫn có thể tiếp tục nếu đây đúng là bản dịch cần sửa.'
                 : '';
         }
+        renderSessionPanel();
     }
 
     function renderActions() {
-        const busy = Boolean(state.busyKind);
+        const busy = Boolean(state.busyKind) || isExternalTaskBusy();
         const remaining = getRemainingIssues();
         const selected = getIssue(state.selectedChunkIndex);
         const correctAll = byId('correctAllHanFileBtn');
@@ -175,10 +234,12 @@
         const download = byId('downloadHanFileBtn');
         if (correctAll) correctAll.disabled = busy || !state.scanned || remaining.length === 0;
         if (correctOne) correctOne.disabled = busy || !selected || selected.status === 'corrected';
-        if (download) download.disabled = busy || !state.scanned;
+        if (download) download.disabled = Boolean(state.busyKind) || !state.scanned;
+        renderSessionPanel();
     }
 
     function renderIssueRows() {
+        if (!isOpen()) return;
         const viewport = byId('hanFileAuditIssueViewport');
         const canvas = byId('hanFileAuditIssueCanvas');
         if (!viewport || !canvas) return;
@@ -212,6 +273,7 @@
     }
 
     function scheduleIssueRows() {
+        if (!isOpen()) return;
         if (state.renderFrame) return;
         const schedule = global.requestAnimationFrame || (callback => global.setTimeout(callback, 16));
         state.renderFrame = schedule(() => {
@@ -221,6 +283,7 @@
     }
 
     function renderDetailShell() {
+        if (!isOpen()) return;
         const issue = getIssue(state.selectedChunkIndex);
         const position = getSelectedPosition();
         const title = byId('hanFileAuditChunkTitle');
@@ -373,7 +436,10 @@
             state.totalChunks = Math.max(0, Number(result.totalChunks) || 0);
             renderSummary();
             renderIssueRows();
-            if (state.issues.length > 0) await selectIssue(state.issues[0].chunkIndex);
+            if (state.issues.length > 0) {
+                state.selectedChunkIndex = state.issues[0].chunkIndex;
+                if (isOpen()) await selectIssue(state.selectedChunkIndex);
+            }
             setStatus(
                 state.issues.length > 0
                     ? `Đã quét xong. Có ${state.issues.length.toLocaleString('vi-VN')} chunk cần xem.`
@@ -401,6 +467,8 @@
         if (operation.token !== state.operationToken || operation.snapshot !== state.snapshot) {
             return { ok: false, issue, stale: true };
         }
+        const previousStatus = issue.status;
+        const previousError = issue.error;
         issue.status = 'correcting';
         issue.error = '';
         renderIssueRows();
@@ -428,6 +496,14 @@
             issue.error = '';
             return { ok: match.hanCount === 0, issue };
         } catch (error) {
+            const cancelled = state.cancelRequested
+                || operation.token !== state.operationToken
+                || String(error?.message || error).includes('TRANSLATION_CANCELLED');
+            if (cancelled) {
+                issue.status = previousStatus;
+                issue.error = previousError;
+                return { ok: false, issue, cancelled: true };
+            }
             issue.status = 'failed';
             issue.error = String(error?.message || error || 'correction_failed');
             return { ok: false, issue, error };
@@ -438,7 +514,7 @@
         if (!state.scanned || state.busyKind || !Array.isArray(issues) || issues.length === 0) {
             return { ok: false, reason: 'empty-or-busy' };
         }
-        if (isTranslationBusy() || isAutomaticAuditBusy()) {
+        if (isTranslationBusy() || isAutomaticAuditBusy() || isChunkIssueRetryBusy()) {
             showMessage('Hãy đợi tác vụ dịch hoặc rà soát tự động hoàn tất.', 'warning');
             return { ok: false, reason: 'busy' };
         }
@@ -459,7 +535,9 @@
             const requestedParallel = typeof normalizeTranslatorParallel === 'function'
                 ? normalizeTranslatorParallel(byId('parallelCount')?.value || 1)
                 : Math.max(1, Math.min(30, Number(byId('parallelCount')?.value) || 1));
-            const runResult = await global.TranslatorHanCorrectionRunner.run({
+            const runner = global.TranslatorCorrectionRunner || global.TranslatorHanCorrectionRunner;
+            if (!runner?.run) throw new Error('Không tìm thấy wave runner để sửa Hán tự.');
+            const runResult = await runner.run({
                 items: issues,
                 requestedParallel,
                 shouldCancel: () => state.cancelRequested || operation.token !== state.operationToken,
@@ -486,7 +564,7 @@
                 },
             });
             if (operation.token !== state.operationToken) return { ok: false, reason: 'stale' };
-            if (state.selectedChunkIndex !== null) await selectIssue(state.selectedChunkIndex);
+            if (state.selectedChunkIndex !== null && isOpen()) await selectIssue(state.selectedChunkIndex);
             const remaining = getRemainingIssues();
             const cancelled = state.cancelRequested || runResult.cancelled;
             setStatus(
@@ -554,8 +632,25 @@
         }
     }
 
+    function revealDetails() {
+        global.TranslatorChapterFeature?.close();
+        const modal = byId('hanFileAudit');
+        if (!isOpen()) state.previousFocus = global.document.activeElement;
+        if (modal) modal.hidden = false;
+        global.document.body?.classList.add('han-file-audit-open');
+        renderSummary();
+        renderIssueRows();
+        renderDetailShell();
+        byId('closeHanFileAuditBtn')?.focus();
+    }
+
     async function open() {
-        if (isTranslationBusy() || isAutomaticAuditBusy() || global.isHanFileAuditBusy) {
+        if (state.snapshot && (state.busyKind || state.scanned)) {
+            revealDetails();
+            if (state.selectedChunkIndex !== null && !state.selectedText) await selectIssue(state.selectedChunkIndex);
+            return { ok: true, cached: true, busy: Boolean(state.busyKind), issues: state.issues.slice() };
+        }
+        if (isExternalTaskBusy()) {
             showMessage('Hãy đợi tác vụ dịch hoặc rà soát hiện tại hoàn tất.', 'warning');
             return { ok: false, reason: 'busy' };
         }
@@ -574,11 +669,7 @@
             return { ok: false, reason: 'missing-source' };
         }
 
-        global.TranslatorChapterFeature?.close();
-        const modal = byId('hanFileAudit');
-        if (!isOpen()) state.previousFocus = global.document.activeElement;
-        if (modal) modal.hidden = false;
-        global.document.body?.classList.add('han-file-audit-open');
+        revealDetails();
 
         const fileName = String(source.name || (
             typeof currentTranslatorSessionMeta !== 'undefined' && currentTranslatorSessionMeta?.fileName
@@ -613,19 +704,15 @@
         renderSummary();
         renderIssueRows();
         renderDetailShell();
-        byId('closeHanFileAuditBtn')?.focus();
         if (!state.scanned) return scan();
         if (state.selectedChunkIndex !== null) await selectIssue(state.selectedChunkIndex);
         return { ok: true, cached: true, issues: state.issues.slice() };
     }
 
     function close() {
-        if (state.busyKind) cancel();
         const modal = byId('hanFileAudit');
         if (modal) modal.hidden = true;
         global.document.body?.classList.remove('han-file-audit-open');
-        state.selectedLoadToken += 1;
-        state.selectedText = '';
         const focusTarget = state.previousFocus;
         state.previousFocus = null;
         if (focusTarget && typeof focusTarget.focus === 'function' && focusTarget.isConnected !== false) focusTarget.focus();
@@ -644,7 +731,13 @@
         state.totalCodePoints = 0;
         state.totalChunks = 0;
         state.selectedChunkIndex = null;
+        state.selectedLoadToken += 1;
+        state.selectedText = '';
         state.cancelRequested = false;
+        state.statusMessage = '';
+        state.statusTone = '';
+        state.statusProgress = 0;
+        state.statusBusy = false;
         setBusy('');
         renderSummary();
         renderIssueRows();

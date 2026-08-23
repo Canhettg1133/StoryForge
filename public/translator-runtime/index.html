@@ -22,10 +22,10 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Serif:wght@400;700&display=swap"
         rel="stylesheet">
     <script src="js/theme.js?v=2"></script>
-    <link rel="stylesheet" href="style.css?v=28">
+    <link rel="stylesheet" href="style.css?v=29">
     <link rel="stylesheet" href="custom-proxy-presets.css?v=1">
     <link rel="stylesheet" href="chapter-reader.css?v=1">
-    <link rel="stylesheet" href="han-audit-file.css?v=3">
+    <link rel="stylesheet" href="han-audit-file.css?v=4">
 </head>
 
 <body>
@@ -1170,6 +1170,30 @@
                 </div>
             </section>
 
+            <section class="han-file-session glass-card" id="hanFileAuditSessionPanel"
+                aria-labelledby="hanFileSessionTitle" hidden>
+                <div class="han-file-session__main">
+                    <div class="han-file-session__copy">
+                        <h2 class="section-title" id="hanFileSessionTitle">Kiểm tra Hán tự trong TXT</h2>
+                        <strong class="han-file-session__file" id="hanFileSessionFile"></strong>
+                        <p id="hanFileSessionMeta" role="status" aria-live="polite"></p>
+                    </div>
+                    <div class="han-file-session__actions">
+                        <button type="button" class="btn btn-secondary btn-small"
+                            data-click-action="openHanFileAudit">Mở chi tiết</button>
+                        <button type="button" class="btn btn-primary btn-small" id="correctAllHanFileSessionBtn"
+                            data-click-action="correctAllHanFileIssues" hidden>Dịch lại còn sót</button>
+                        <button type="button" class="btn btn-danger btn-small" id="cancelHanFileSessionBtn"
+                            data-click-action="cancelHanFileAudit" hidden>Dừng</button>
+                        <button type="button" class="btn btn-secondary btn-small" id="downloadHanFileSessionBtn"
+                            data-click-action="downloadHanFileAudit" hidden>Tải TXT</button>
+                    </div>
+                </div>
+                <div class="han-file-session__progress" id="hanFileSessionProgress" hidden aria-hidden="true">
+                    <span id="hanFileSessionProgressFill"></span>
+                </div>
+            </section>
+
             <!-- Chunk Detail Modal -->
             <div class="chunk-detail-modal" id="chunkDetailModal" style="display: none;">
                 <div class="chunk-detail-modal-content glass-card" id="chunkDetailContent">
@@ -1190,11 +1214,16 @@
                         <button class="btn btn-secondary" data-click-action="copyResult">
                             📋 Copy
                         </button>
-                        <button class="btn btn-primary" data-click-action="downloadResult">
-                            💾 Tải xuống
+                        <button class="btn btn-primary" id="downloadResultBtn" data-click-action="downloadResult"
+                            aria-busy="false" aria-label="Tải bản dịch hoàn chỉnh">
+                            <span class="btn-icon" aria-hidden="true">💾</span>
+                            <span class="btn-text" id="downloadResultBtnText">Tải bản dịch hoàn chỉnh</span>
                         </button>
                     </div>
                 </div>
+                <p class="translator-sr-only" id="downloadResultStatus" role="status" aria-live="polite">
+                    Bản dịch hoàn chỉnh đã sẵn sàng tải.
+                </p>
                 <div class="chunk-issue-panel" id="chunkIssuePanel" style="display: none;"></div>
                 <div class="han-audit-panel" id="hanAuditPanel" style="display: none;"></div>
                 <textarea id="translatedText" placeholder="Nội dung đã dịch sẽ hiển thị ở đây..." rows="15"
@@ -1419,28 +1448,28 @@
     <script src="js/translation/source-reader.js?v=22"></script>
     <script src="js/translation/han-audit-core.js?v=2"></script>
     <script src="js/translation/han-audit/file-source.js?v=1"></script>
-    <script src="js/translation/han-audit/correction-runner.js?v=1"></script>
-    <script src="js/translation/local-store.js?v=23"></script>
+    <script src="js/translation/han-audit/correction-runner.js?v=2"></script>
+    <script src="js/translation/local-store.js?v=24"></script>
     <script src="js/chapter/chapter-rules.js?v=1"></script>
     <script src="js/chapter/chapter-indexer.js?v=1"></script>
     <script src="js/chapter/chapter-snapshot.js?v=1"></script>
     <script src="js/chapter/chapter-epub.js?v=1"></script>
     <script src="js/translation/retry.js?v=18"></script>
-    <script src="js/translation/han-audit.js?v=2"></script>
-    <script src="js/translation/han-audit/file-feature.js?v=1"></script>
-    <script src="js/translation/engine.js?v=25"></script>
+    <script src="js/translation/han-audit.js?v=3"></script>
+    <script src="js/translation/han-audit/file-feature.js?v=2"></script>
+    <script src="js/translation/engine.js?v=26"></script>
     <script src="js/translation/story-prompt.js?v=23"></script>
 
 
     <!-- 4. UI Components -->
-    <script src="js/ui/progress.js?v=23"></script>
-    <script src="js/ui/file-handler.js?v=25"></script>
+    <script src="js/ui/progress.js?v=24"></script>
+    <script src="js/ui/file-handler.js?v=27"></script>
     <script src="js/ui/settings.js?v=17"></script>
     <script src="js/ui/controls.js?v=23"></script>
-    <script src="js/ui/chunk-tracker.js?v=23"></script>
+    <script src="js/ui/chunk-tracker.js?v=25"></script>
 
     <!-- 5. History -->
-    <script src="js/history/history.js?v=15"></script>
+    <script src="js/history/history.js?v=16"></script>
     <script src="js/chapter/chapter-feature.js?v=1"></script>
 
     <!-- 6. Local AI (Ollama) -->
@@ -1450,7 +1479,7 @@
     <script src="js/proxy/proxy-api.js?v=17"></script>
 
     <!-- 7. Init (expose globally - PHẢI LOAD CUỐI CÙNG) -->
-    <script src="js/init.js?v=25"></script>
+    <script src="js/init.js?v=26"></script>
 
     <!-- Backup: Uncomment line below and comment all above to use old monolithic script -->
     <!-- <script src="script.js.backup"></script> -->

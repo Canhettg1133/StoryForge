@@ -338,7 +338,8 @@ async function getHanAuditRevision() {
 
 async function runHanAuditScan(options = {}) {
     const allowWhileTranslating = options.allowWhileTranslating === true;
-    if (isHanAuditBusy || (!allowWhileTranslating && typeof isTranslating !== 'undefined' && isTranslating)) {
+    const externalAuditBusy = Boolean(globalThis.isHanFileAuditBusy || globalThis.isChunkIssueRetryBusy);
+    if (isHanAuditBusy || externalAuditBusy || (!allowWhileTranslating && typeof isTranslating !== 'undefined' && isTranslating)) {
         if (!options.silent && typeof showToast === 'function') showToast('H\u00E3y \u0111\u1EE3i t\u00E1c v\u1EE5 hi\u1EC7n t\u1EA1i ho\u00E0n t\u1EA5t.', 'warning');
         return { ok: false, reason: 'busy', issues: hanAuditState.issues };
     }
@@ -354,6 +355,7 @@ async function runHanAuditScan(options = {}) {
     }
 
     isHanAuditBusy = true;
+    if (typeof updateTranslateActionState === 'function') updateTranslateActionState();
     hanAuditCancelRequested = false;
     lastHanAuditProgressAt = 0;
     setHanAuditState({ status: 'scanning', issues: [], processedRows: 0, message: '' }, { force: true });
@@ -407,6 +409,7 @@ async function runHanAuditScan(options = {}) {
         return { ok: false, reason: cancelled ? 'cancelled' : 'failed', error, issues: hanAuditState.issues };
     } finally {
         isHanAuditBusy = false;
+        if (typeof updateTranslateActionState === 'function') updateTranslateActionState();
         activeHanAuditAbort = null;
         activeHanAuditWorker = null;
         activeHanAuditRequestId = '';
@@ -552,7 +555,8 @@ function mergeHanAuditIssueLists(...groups) {
 async function retryHanAuditIssues(options = {}) {
     const allowWhileTranslating = options.allowWhileTranslating === true;
     const deferDerivedUpdates = options.deferDerivedUpdates === true;
-    if (isHanAuditBusy || (!allowWhileTranslating && typeof isTranslating !== 'undefined' && isTranslating)) {
+    const externalAuditBusy = Boolean(globalThis.isHanFileAuditBusy || globalThis.isChunkIssueRetryBusy);
+    if (isHanAuditBusy || externalAuditBusy || (!allowWhileTranslating && typeof isTranslating !== 'undefined' && isTranslating)) {
         if (!options.silent && typeof showToast === 'function') showToast('H\u00E3y \u0111\u1EE3i t\u00E1c v\u1EE5 hi\u1EC7n t\u1EA1i ho\u00E0n t\u1EA5t.', 'warning');
         return { ok: false, reason: 'busy' };
     }
@@ -564,6 +568,7 @@ async function retryHanAuditIssues(options = {}) {
         : [];
 
     isHanAuditBusy = true;
+    if (typeof updateTranslateActionState === 'function') updateTranslateActionState();
     hanAuditCancelRequested = false;
     const unresolved = [];
     let succeeded = 0;
@@ -659,6 +664,7 @@ async function retryHanAuditIssues(options = {}) {
             }
         }
         isHanAuditBusy = false;
+        if (typeof updateTranslateActionState === 'function') updateTranslateActionState();
         renderHanAuditPanel();
     }
 }

@@ -18,6 +18,11 @@ import {
 } from 'lucide-react';
 import { toVietnameseErrorMessage } from '../../utils/errorMessages';
 import { useConfirmDialog } from './ConfirmDialogProvider.jsx';
+import ChapterCompletionModelDialog from '../ai/ChapterCompletionModelDialog.jsx';
+import {
+  getChapterCompletionModelState,
+  saveChapterCompletionModelPreference,
+} from '../../services/ai/chapterCompletionModelRouting.js';
 import VirtualChapterWindow from './chapterList/VirtualChapterWindow.jsx';
 import './ChapterList.css';
 
@@ -78,6 +83,8 @@ function ChapterList({
   const [mobileActionMenu, setMobileActionMenu] = useState(null);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [chapterNotice, setChapterNotice] = useState('');
+  const [completionModelPrompt, setCompletionModelPrompt] = useState(null);
+  const [completionModelState, setCompletionModelState] = useState(() => getChapterCompletionModelState());
   const contextMenuRef = useRef(null);
   const mobileActionMenuRef = useRef(null);
   const desktopTreeRef = useRef(null);
@@ -296,7 +303,7 @@ function ChapterList({
     else await deleteScene(id);
   };
 
-  const handleCompleteChapter = async (chapterId) => {
+  const completeChapter = async (chapterId) => {
     setContextMenu(null);
     setMobileActionMenu(null);
     try {
@@ -315,6 +322,31 @@ function ChapterList({
       setChapterNotice(toVietnameseErrorMessage(error, 'Không thể hoàn thành chương.'));
       return;
     }
+  };
+
+  const handleCompleteChapter = async (chapterId) => {
+    setContextMenu(null);
+    setMobileActionMenu(null);
+    const modelState = getChapterCompletionModelState();
+    setCompletionModelState(modelState);
+    if (modelState.shouldPrompt) {
+      setCompletionModelPrompt({ chapterId, modelState });
+      return;
+    }
+    await completeChapter(chapterId);
+  };
+
+  const handleConfirmCompletionModel = async (model) => {
+    if (!completionModelPrompt) return;
+    const { chapterId, modelState } = completionModelPrompt;
+    saveChapterCompletionModelPreference({
+      provider: modelState.provider,
+      proxyProfileId: modelState.proxyProfileId,
+      model,
+    });
+    setCompletionModelState(getChapterCompletionModelState());
+    setCompletionModelPrompt(null);
+    await completeChapter(chapterId);
   };
 
   /*
@@ -748,6 +780,9 @@ function ChapterList({
       ? chapters.find((chapter) => chapter.id === mobileActionMenu.id)
       : scenes.find((scene) => scene.id === mobileActionMenu.id)
     : null;
+  const completionActionTitle = completionModelState.shouldPrompt
+    ? 'Chọn model rồi hoàn thành chương'
+    : `Hoàn thành chương bằng ${completionModelState.routeOptions.modelOverride || 'model hiện tại'}`;
 
   return (
     <div className={`chapter-list ${panelCollapsed ? 'chapter-list--collapsed' : ''} ${isMobileLayout ? 'chapter-list--mobile' : ''}`} onClick={() => {
@@ -812,6 +847,8 @@ function ChapterList({
                 className="context-menu-item context-menu-item--action"
                 onClick={() => handleCompleteChapter(contextMenu.id)}
                 disabled={Boolean(getCompletionState(contextMenu.id).running)}
+                title={completionActionTitle}
+                aria-label={completionActionTitle}
               >
                 {getCompletionState(contextMenu.id).running ? <Loader2 size={14} className="chapter-loading-icon" /> : <Sparkles size={14} />}
                 Hoàn thành chương
@@ -844,6 +881,8 @@ function ChapterList({
                   className="chapter-mobile-sheet-btn chapter-mobile-sheet-btn--action"
                   onClick={() => handleCompleteChapter(mobileActionMenu.id)}
                   disabled={Boolean(getCompletionState(mobileActionMenu.id).running)}
+                  title={completionActionTitle}
+                  aria-label={completionActionTitle}
                 >
                   {getCompletionState(mobileActionMenu.id).running ? <Loader2 size={16} className="chapter-loading-icon" /> : <Sparkles size={16} />}
                   Hoàn thành chương
@@ -860,6 +899,11 @@ function ChapterList({
           </div>
         </div>
       )}
+      <ChapterCompletionModelDialog
+        modelState={completionModelPrompt?.modelState || null}
+        onCancel={() => setCompletionModelPrompt(null)}
+        onConfirm={handleConfirmCompletionModel}
+      />
     </div>
   );
 }

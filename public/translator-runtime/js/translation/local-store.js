@@ -560,14 +560,38 @@
 
     async function getTranslatorSessionOutputParts(sessionId, options = {}) {
         const includePending = Boolean(options.includePending);
-        const chunks = await getTranslatorSessionChunks(sessionId);
+        const db = await openTranslatorLocalDB();
+        const tx = db.transaction(STORES.CHUNKS, 'readonly');
+        const completion = txDone(tx);
+        const index = tx.objectStore(STORES.CHUNKS).index('sessionId');
+        const compactOutputs = [];
+        const cursorCompletion = new Promise((resolve, reject) => {
+            const request = index.openCursor(IDBKeyRange.only(sessionId));
+            request.onerror = () => reject(request.error || new Error('Không thể đọc các chunk đã dịch.'));
+            request.onsuccess = () => {
+                const cursor = request.result;
+                if (!cursor) {
+                    resolve();
+                    return;
+                }
+                const chunk = cursor.value;
+                const hasOutput = hasTranslatorChunkOutput(chunk);
+                if (hasOutput || (includePending && chunk.status !== 'skipped')) {
+                    compactOutputs.push({
+                        chunkIndex: Number(chunk.chunkIndex) || 0,
+                        text: hasOutput ? chunk.outputText : `[Chưa dịch chunk ${Number(chunk.chunkIndex) + 1}]`,
+                    });
+                }
+                cursor.continue();
+            };
+        });
+        await Promise.all([cursorCompletion, completion]);
+        compactOutputs.sort((a, b) => a.chunkIndex - b.chunkIndex);
+
         const parts = [];
-        for (const chunk of chunks) {
-            const hasOutput = hasTranslatorChunkOutput(chunk);
-            if (!hasOutput && !includePending) continue;
-            if (!hasOutput && chunk.status === 'skipped') continue;
+        for (const output of compactOutputs) {
             if (parts.length > 0) parts.push('\n\n');
-            parts.push(hasOutput ? chunk.outputText : `[Chưa dịch chunk ${chunk.chunkIndex + 1}]`);
+            parts.push(output.text);
         }
         return parts;
     }

@@ -80,6 +80,7 @@ if (typeof viewChunkDetail === 'function') window.viewChunkDetail = viewChunkDet
 if (typeof closeChunkDetail === 'function') window.closeChunkDetail = closeChunkDetail;
 if (typeof editChunkManual === 'function') window.editChunkManual = editChunkManual;
 if (typeof retryIssueChunks === 'function') window.retryIssueChunks = retryIssueChunks;
+if (typeof cancelChunkIssueRetry === 'function') window.cancelChunkIssueRetry = cancelChunkIssueRetry;
 if (typeof focusFirstIssueChunk === 'function') window.focusFirstIssueChunk = focusFirstIssueChunk;
 if (typeof downloadMarkedIssueResult === 'function') window.downloadMarkedIssueResult = downloadMarkedIssueResult;
 if (typeof toggleChunkTracker === 'function') window.toggleChunkTracker = toggleChunkTracker;
@@ -217,6 +218,7 @@ const TRANSLATOR_CLICK_ACTIONS = Object.freeze({
     viewChunkDetail: element => viewChunkDetail(Number(element.dataset.chunkIndex)),
     retranslateAllFailed: () => retranslateAllFailed(),
     retryIssueChunks: element => retryIssueChunks({ source: element.dataset.issueSource }),
+    cancelChunkIssueRetry: () => cancelChunkIssueRetry(),
     focusFirstIssueChunk: () => focusFirstIssueChunk(),
     downloadMarkedIssueResult: () => downloadMarkedIssueResult(),
     runHanAuditManual: () => runHanAuditManual(),

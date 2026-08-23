@@ -68,6 +68,7 @@ import { useUserAccess } from '../../hooks/useUserAccess';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import { navigateBackOr } from '../../utils/navigation.js';
 import './Settings.css';
+import ChapterCompletionModelSetting from './ChapterCompletionModelSetting.jsx';
 import SetupGuideButtons from '../../features/setupGuides/SetupGuideButtons.jsx';
 
 // ─── Reusable Key Section Component ───
@@ -516,7 +517,7 @@ function CloudflareWorkersAIAccountSettingsFields() {
 }
 
 // ─── Model Manager (Gemini Direct) ───
-function DirectModelManager() {
+function DirectModelManager({ onModelsChange }) {
   const [activeModels, setActiveModels] = useState(modelRouter.getActiveDirectModels());
 
   const allModels = DIRECT_MODELS;
@@ -531,6 +532,7 @@ function DirectModelManager() {
     }
     setActiveModels(next);
     modelRouter.setActiveDirectModels(next);
+    onModelsChange?.();
   };
 
   return (
@@ -966,6 +968,7 @@ export default function Settings() {
   const [proxyModel, setProxyModel] = useState(modelRouter.getProxyModel());
   const [provider, setProvider] = useState(modelRouter.getPreferredProvider());
   const [selectedProviderCardOverride, setSelectedProviderCardOverride] = useState('');
+  const [, setDirectModelCatalogRevision] = useState(0);
   const selectedProxyPreset = PROXY_MODEL_PRESETS.find((model) => model.id === proxyModel)
     || (proxyModel ? { id: proxyModel, label: proxyModel } : PROXY_MODEL_PRESETS[1] || PROXY_MODEL_PRESETS[0]);
   const chatProviderCard = provider === PROVIDERS.OPENAI_PROXY
@@ -1712,6 +1715,14 @@ export default function Settings() {
               </button>
             </div>
           ) : null}
+
+          {selectedProviderCard !== PROVIDER_CARD_CLOUDFLARE_COVER ? (
+            <ChapterCompletionModelSetting
+              ollamaModels={selectedProviderCard === PROVIDERS.OLLAMA && testResults[PROVIDERS.OLLAMA]?.success
+                ? ollamaModels
+                : undefined}
+            />
+          ) : null}
         </section>
 
         {/* === API KEYS === */}
@@ -1892,7 +1903,7 @@ export default function Settings() {
             )}
           </div>
 
-          <DirectModelManager />
+          <DirectModelManager onModelsChange={() => setDirectModelCatalogRevision((value) => value + 1)} />
         </section>
 
         {/* === AI STUDIO RELAY === */}

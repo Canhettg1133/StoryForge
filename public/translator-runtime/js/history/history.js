@@ -541,6 +541,9 @@ async function continueFromHistory(id) {
         return;
     }
 
+    if (!isLargeHistoryItem(item) && typeof renderChunkIssuePanel === 'function') {
+        renderChunkIssuePanel();
+    }
     document.getElementById('originalText').value = item.originalText;
     originalFileName = item.name;
 

@@ -37,10 +37,6 @@ import { toVietnameseErrorMessage } from '../../utils/errorMessages.js';
 import { buildProjectContentModeAiOptions } from '../../features/projectContentMode/projectContentMode.js';
 import { buildProjectStyleRuntimeBlockForProjectChat } from '../../services/ai/projectStyleRuntime';
 import modelRouter, {
-  AI_STUDIO_RELAY_MODELS,
-  DIRECT_MODELS,
-  PROXY_MODELS,
-  PROXY_MODEL_PRESETS,
   PROVIDERS,
   TASK_TYPES,
 } from '../../services/ai/router';
@@ -48,10 +44,9 @@ import {
   AG_PROXY_PROFILE_ID,
   CUSTOM_PROXY_PROFILE_ID,
   getActiveOpenAIProxyProfile,
-  getOpenAIProxyModel,
-  groupProxyModelsForDisplay,
   normalizeOpenAIProxyProvider,
 } from '../../services/ai/openAIProxyConfig';
+import { getAvailableModelOptions } from '../../services/ai/modelOptions.js';
 import {
   isOpenAIProxyRequestPathAllowed,
   isRelayAllowedTarget,
@@ -427,60 +422,10 @@ function getRoutePreview(routeOptions = {}) {
   return modelRouter.route(TASK_TYPES.FREE_PROMPT, routeOptions);
 }
 
-function normalizeModelList(models = []) {
-  return [...new Set(
-    models
-      .map((model) => String(model || '').trim())
-      .filter(Boolean),
-  )];
-}
-
 function getProxyModelConfidenceLabel(confidence) {
   if (confidence === 'low' || confidence === 'medium') return 'Chưa chắc';
   if (confidence === 'unknown') return 'Chưa rõ';
   return '';
-}
-
-function getGroupedProxyModelOptions(modelIds, profile) {
-  return groupProxyModelsForDisplay(modelIds, {
-    profileId: profile.id,
-    profileLabel: profile.label,
-  }).flatMap((group) => group.models.map((model) => getProxyModelOption(model.id, profile, model)));
-}
-
-function getProxyModelOption(model, profile, classification = null) {
-  const preset = profile.id === AG_PROXY_PROFILE_ID
-    ? PROXY_MODEL_PRESETS.find((item) => item.id === model)
-      || PROXY_MODELS.find((item) => item.id === model)
-    : null;
-  const family = classification?.family || '';
-  const channel = classification?.channel || '';
-  const confidence = classification?.confidence || 'high';
-  return {
-    id: model,
-    label: preset?.label || model,
-    meta: preset
-      ? (preset.tier === 'pro' ? 'Proxy - Pro' : 'Proxy - Flash')
-      : [channel, family].filter(Boolean).join(' - ') || (profile?.label || 'Proxy - fetched'),
-    providerProfileId: profile.id,
-    channel,
-    family,
-    confidence,
-  };
-}
-
-function getAgProxyModelOptions(profile) {
-  const fetchedModels = normalizeModelList(Array.isArray(profile.models) ? profile.models : []);
-  const presetModels = PROXY_MODEL_PRESETS.map((model) => model.id);
-  const currentModel = getOpenAIProxyModel(profile, '');
-  const modelIds = fetchedModels.length > 0
-    ? normalizeModelList([currentModel, ...fetchedModels])
-    : normalizeModelList([
-      ...(currentModel && !presetModels.includes(currentModel) ? [currentModel] : []),
-      ...presetModels,
-    ]);
-
-  return getGroupedProxyModelOptions(modelIds, profile);
 }
 
 export function getThreadRouting(thread) {
@@ -491,49 +436,7 @@ export function getThreadRouting(thread) {
   };
 }
 
-export function getAvailableModelOptions(provider, { proxyProfileId = '' } = {}) {
-  const normalizedProvider = normalizeOpenAIProxyProvider(provider);
-
-  if (normalizedProvider === PROVIDERS.OPENAI_PROXY) {
-    const profile = getActiveOpenAIProxyProfile(proxyProfileId || null);
-    if (profile.id === AG_PROXY_PROFILE_ID) {
-      return getAgProxyModelOptions(profile);
-    }
-
-    const models = normalizeModelList([
-      getOpenAIProxyModel(profile, ''),
-      ...(Array.isArray(profile.models) ? profile.models : []),
-    ]);
-
-    return getGroupedProxyModelOptions(models, profile);
-  }
-
-  if (normalizedProvider === PROVIDERS.AI_STUDIO_RELAY) {
-    return AI_STUDIO_RELAY_MODELS.map((model) => ({
-      id: model.id,
-      label: model.label,
-      meta: 'AI Studio Relay',
-    }));
-  }
-
-  if (normalizedProvider === PROVIDERS.GEMINI_DIRECT) {
-    const activeIds = new Set(modelRouter.getActiveDirectModels().map((item) => item.id));
-    return DIRECT_MODELS
-      .filter((model) => activeIds.size === 0 || activeIds.has(model.id))
-      .map((model) => ({
-        id: model.id,
-        label: model.label,
-        meta: `${model.rpm} RPM · ${model.rpd} RPD`,
-      }));
-  }
-
-  if (normalizedProvider === PROVIDERS.OLLAMA) {
-    const currentModel = localStorage.getItem('sf-ollama-model') || 'llama3';
-    return [{ id: currentModel, label: currentModel, meta: 'Model local hiện tại' }];
-  }
-
-  return [];
-}
+export { getAvailableModelOptions };
 
 function groupModelOptionsByChannel(options = []) {
   const groups = [];

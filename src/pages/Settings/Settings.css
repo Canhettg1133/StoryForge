@@ -322,6 +322,45 @@
 
 .settings-hint { font-size: var(--text-xs); color: var(--color-text-muted); margin-top: var(--space-3); }
 
+.chapter-completion-model-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(280px, 1.1fr);
+  gap: var(--space-5);
+  align-items: end;
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.chapter-completion-model-setting__copy p {
+  max-width: 62ch;
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+
+.chapter-completion-model-setting__control {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.chapter-completion-model-setting__control .select {
+  width: 100%;
+}
+
+.chapter-completion-model-setting__control span {
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+@media (max-width: 720px) {
+  .chapter-completion-model-setting {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+}
+
 /* OpenAI-compatible proxy */
 .openai-proxy-stack {
   display: flex;
