@@ -704,6 +704,7 @@ textarea:disabled {
 
 .user-detail-scroll {
   max-height: clamp(520px, calc(100vh - 150px), 820px);
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   align-content: start;
@@ -921,8 +922,9 @@ textarea:disabled {
 }
 
 .vip-extension-form {
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(90px, 0.8fr) minmax(120px, 1fr) minmax(130px, 1fr);
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 8px;
   align-items: end;
   padding-top: 10px;
