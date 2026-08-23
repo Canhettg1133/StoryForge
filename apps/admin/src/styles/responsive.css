@@ -297,6 +297,7 @@
 
   .quick-actions,
   .inline-actions,
+  .vip-extension-form,
   .story-mirror-actions {
     grid-template-columns: 1fr;
   }

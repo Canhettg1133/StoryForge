@@ -296,6 +296,14 @@ textarea:disabled {
   gap: 16px;
 }
 
+.admin-panel-loading {
+  min-height: 96px;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: var(--ink-soft);
+}
+
 .user-page {
   gap: 12px;
 }
@@ -910,6 +918,41 @@ textarea:disabled {
 
 .quick-actions .button:last-child {
   grid-column: 1 / -1;
+}
+
+.vip-extension-form {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(120px, 1fr) minmax(130px, 1fr);
+  gap: 8px;
+  align-items: end;
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 127, 104, 0.16);
+}
+
+.vip-extension-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.vip-extension-form input,
+.vip-extension-form select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.vip-extension-form .button {
+  width: 100%;
+  min-height: 40px;
 }
 
 .inline-actions {

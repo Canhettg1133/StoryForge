@@ -3,9 +3,8 @@ import { KeyRound, RefreshCw, Shield, ShieldCheck } from 'lucide-react';
 import { hasPermission } from '@storyforge/access';
 import { createAdminApiClient } from './adminApi.js';
 import { getSupabaseClient, isSupabaseConfigured } from './supabase.js';
-import PromptSettingsPage from './features/promptSettings/PromptSettingsPage.jsx';
 import { canDiscardSecurePromptDraft } from './features/promptSettings/dirtyNavigation.js';
-import StoryMirrorPage from './features/storyMirror/StoryMirrorPage.jsx';
+import { canDiscardSetupGuideChanges } from './features/setupGuides/dirtyNavigation.js';
 import {
   EMPTY_DATA,
   EMPTY_USAGE_PAGE_CURSORS,
@@ -31,6 +30,10 @@ import {
   VipRankingPanel,
 } from './views/AdminViews.jsx';
 
+const PromptSettingsPage = React.lazy(() => import('./features/promptSettings/PromptSettingsPage.jsx'));
+const StoryMirrorPage = React.lazy(() => import('./features/storyMirror/StoryMirrorPage.jsx'));
+const SetupGuidesPage = React.lazy(() => import('./features/setupGuides/SetupGuidesPage.jsx'));
+
 function SetupScreen() {
   return (
     <main className="auth-screen">
@@ -40,6 +43,14 @@ function SetupScreen() {
         <p>Cần cấu hình `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` và `VITE_ADMIN_API_BASE_URL` trước khi mở console quản trị.</p>
       </section>
     </main>
+  );
+}
+
+function AdminPanelLoading() {
+  return (
+    <section className="panel admin-panel-loading" aria-live="polite" aria-busy="true">
+      Đang tải khu vực quản trị…
+    </section>
   );
 }
 
@@ -81,6 +92,8 @@ export default function App() {
   const [pendingConfirm, setPendingConfirm] = useState(null);
   const [promptSettingsReloadSignal, setPromptSettingsReloadSignal] = useState(0);
   const [promptSettingsDirty, setPromptSettingsDirty] = useState(false);
+  const [setupGuidesReloadSignal, setSetupGuidesReloadSignal] = useState(0);
+  const [setupGuidesDirty, setSetupGuidesDirty] = useState(false);
 
   const adminApi = useMemo(() => createAdminApiClient({
     getAccessToken: async () => {
@@ -211,6 +224,10 @@ export default function App() {
       }
 
       if (viewToLoad === 'prompt-settings') {
+        return;
+      }
+
+      if (viewToLoad === 'setup-guides') {
         return;
       }
     } catch (error) {
@@ -365,6 +382,7 @@ export default function App() {
 
   const logout = async () => {
     if (!canDiscardSecurePromptDraft({ dirty: promptSettingsDirty })) return;
+    if (!canDiscardSetupGuideChanges({ dirty: setupGuidesDirty })) return;
     await getSupabaseClient().auth.signOut();
     setActor(null);
     setData(EMPTY_DATA);
@@ -410,6 +428,12 @@ export default function App() {
       return;
     }
 
+    if (activeView === 'setup-guides') {
+      if (!canDiscardSetupGuideChanges({ dirty: setupGuidesDirty })) return;
+      setSetupGuidesReloadSignal((value) => value + 1);
+      return;
+    }
+
     await loadAdminData(activeView);
   }, [
     activeView,
@@ -421,6 +445,7 @@ export default function App() {
     usagePagination.total,
     vipRanking.filters,
     promptSettingsDirty,
+    setupGuidesDirty,
   ]);
 
   const selectActiveView = useCallback((nextView) => {
@@ -431,8 +456,15 @@ export default function App() {
     ) {
       return;
     }
+    if (
+      nextView !== activeView
+      && activeView === 'setup-guides'
+      && !canDiscardSetupGuideChanges({ dirty: setupGuidesDirty })
+    ) {
+      return;
+    }
     setActiveView(nextView);
-  }, [activeView, promptSettingsDirty]);
+  }, [activeView, promptSettingsDirty, setupGuidesDirty]);
 
   const confirmMutation = async () => {
     if (!pendingConfirm) return;
@@ -466,6 +498,16 @@ export default function App() {
     if (activeView === 'users') return <UsersPanel data={data} selectedUserId={selectedUserId} setSelectedUserId={setSelectedUserId} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'vip') return <VipPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
     if (activeView === 'announcement') return <AnnouncementPanel data={data} onMutation={openMutationConfirm} actor={actor} />;
+    if (activeView === 'setup-guides') {
+      return (
+        <SetupGuidesPage
+          adminApi={adminApi}
+          actor={actor}
+          reloadSignal={setupGuidesReloadSignal}
+          onDirtyChange={setSetupGuidesDirty}
+        />
+      );
+    }
     if (activeView === 'prompt-settings') {
       return (
         <PromptSettingsPage
@@ -521,7 +563,9 @@ export default function App() {
           </button>
         </header>
         {loadError ? <ErrorState message={loadError} onRetry={refreshActiveView} /> : null}
-        {panel}
+        <React.Suspense fallback={<AdminPanelLoading />}>
+          {panel}
+        </React.Suspense>
       </main>
       <ConfirmDialog pending={pendingConfirm} onCancel={() => setPendingConfirm(null)} onConfirm={confirmMutation} />
     </AdminShell>

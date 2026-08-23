@@ -27,6 +27,7 @@
     "test:core": "vitest run src/tests/utils/characterIdentity.test.js src/tests/phases/phase10-projectContentModeStore.test.js src/tests/phases/phase10-canonEngine.test.js src/tests/phases/phase10-promptBuilder.test.js src/tests/access/accessControl.test.js src/tests/security/securityHeadersStatic.test.js",
     "test:cloudflare-runtime": "vitest run --config vitest.cloudflare.config.js",
     "test:cloud-sync-postgres": "node scripts/cloud-sync-postgres-integration.mjs",
+    "test:admin-postgres": "node scripts/admin-mutations-postgres-integration.mjs",
     "test:admin": "vitest run src/tests/phases/phase12-adminAccess.test.js src/tests/phases/phase12-adminApiWorker.test.js",
     "test:phase6b": "vitest run src/tests/phases/phase6b-incidentFirst.test.js",
     "test:phase6d": "vitest run src/tests/phases/phase6d-analysisV2.test.js",

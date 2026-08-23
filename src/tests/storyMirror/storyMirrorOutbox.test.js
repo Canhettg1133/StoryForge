@@ -33,11 +33,15 @@ describe('story mirror outbox integration', () => {
       })),
     });
 
+    const projects = makeTable('projects');
+    const chapters = makeTable('chapters');
+    const scenes = makeTable('scenes');
     vi.doMock('../../services/db/database.js', () => ({
       default: {
-        projects: makeTable('projects'),
-        chapters: makeTable('chapters'),
-        scenes: makeTable('scenes'),
+        projects,
+        chapters,
+        scenes,
+        transaction: vi.fn(async (...args) => args.at(-1)()),
       },
     }));
 

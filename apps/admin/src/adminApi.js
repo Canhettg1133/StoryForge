@@ -42,6 +42,7 @@ function toVietnameseAdminApiErrorMessage(message, fallback = 'Admin API trả v
 
 export function createAdminApiClient({ baseUrl, getAccessToken }) {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+  const pendingMutationIds = new Map();
 
   async function request(path, options = {}) {
     if (!normalizedBaseUrl) {
@@ -97,6 +98,23 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
     }
 
     return payload;
+  }
+
+  async function requestIdempotentMutation(path, body) {
+    const sourceBody = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+    const mutationKey = `${path}:${JSON.stringify(sourceBody)}`;
+    const mutationId = pendingMutationIds.get(mutationKey) || globalThis.crypto.randomUUID();
+    pendingMutationIds.set(mutationKey, mutationId);
+    try {
+      const payload = await request(path, {
+        method: path === '/setup-guides' ? 'PUT' : 'POST',
+        body: { ...sourceBody, mutationId },
+      });
+      pendingMutationIds.delete(mutationKey);
+      return payload;
+    } catch (error) {
+      throw error;
+    }
   }
 
   return {
@@ -155,6 +173,7 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
     features: () => request('/features'),
     consent: () => request('/consent'),
     announcement: () => request('/announcement'),
+    setupGuides: () => request('/setup-guides'),
     promptSettings: ({ domain = 'translator' } = {}) => {
       const query = new URLSearchParams({ domain });
       return request(`/prompt-settings?${query.toString()}`);
@@ -193,10 +212,12 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       method: 'PATCH',
       body: { role },
     }),
-    setUserPlan: (userId, body) => request(`/users/${encodeURIComponent(userId)}/plan`, {
-      method: 'POST',
-      body,
-    }),
+    setUserPlan: (userId, body) => {
+      const path = `/users/${encodeURIComponent(userId)}/plan`;
+      return String(body?.operation || 'set').toLowerCase() === 'extend'
+        ? requestIdempotentMutation(path, body)
+        : request(path, { method: 'POST', body });
+    },
     updateUserPlan: (userId, planKey) => request(`/users/${encodeURIComponent(userId)}/plan`, {
       method: 'POST',
       body: { operation: 'set', planKey },
@@ -233,6 +254,7 @@ export function createAdminApiClient({ baseUrl, getAccessToken }) {
       method: 'PATCH',
       body,
     }),
+    updateSetupGuides: (body) => requestIdempotentMutation('/setup-guides', body),
     updatePromptSetting: (domain, key, body) => request(`/prompt-settings/${encodeURIComponent(domain)}/${encodeURIComponent(key)}`, {
       method: 'PATCH',
       body,

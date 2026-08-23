@@ -26,6 +26,7 @@ function resolveApiRoute(pathname) {
     '/api/supreme-chat-capabilities': './api/supreme-chat-capabilities.js',
     '/api/vip-page-content': './api/vip-page-content.js',
     '/api/site-announcement': './api/site-announcement.js',
+    '/api/setup-guides': './api/setup-guides.js',
     '/api/me/access': './api/me/access.js',
     '/api/me/adult-consent': './api/me/adult-consent.js',
     '/api/translator-prompt-settings': './api/translator-prompt-settings.js',

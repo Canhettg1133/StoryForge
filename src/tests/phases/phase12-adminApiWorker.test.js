@@ -172,6 +172,42 @@ describe('phase12 admin API worker', () => {
     expect(payload.items).toEqual([]);
   });
 
+  it('reports lifetime as the current plan even when a newer VIP row exists', async () => {
+    mockAuthAndActor({ role: 'support', id: 'support-1' }, async (target) => {
+      if (target.includes('/rest/v1/profiles') && target.includes('order=updated_at.desc')) {
+        return jsonResponse([{
+          user_id: 'user-1',
+          email: 'user@example.com',
+          system_role: 'user',
+          status: 'active',
+          user_plans: [
+            {
+              id: 'new-vip',
+              status: 'active',
+              starts_at: '2026-07-19T00:00:00.000Z',
+              expires_at: '2099-08-01T00:00:00.000Z',
+              plans: { key: 'vip', name: 'VIP' },
+            },
+            {
+              id: 'old-lifetime',
+              status: 'active',
+              starts_at: '2026-07-01T00:00:00.000Z',
+              expires_at: null,
+              plans: { key: 'lifetime', name: 'Trọn đời' },
+            },
+          ],
+        }]);
+      }
+      throw new Error(`Unexpected fetch ${target}`);
+    });
+
+    const response = await adminWorker.fetch(authedRequest('/users'), createEnv());
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.items[0].plan).toBe('lifetime');
+  });
+
   it('serves a lightweight overview without loading usage history or ranking', async () => {
     const { calls } = mockAuthAndActor({ role: 'admin', id: 'admin-1' }, async (target, init = {}) => {
       if (target.includes('/rest/v1/profiles')) {
@@ -1529,7 +1565,7 @@ describe('phase12 admin API worker', () => {
       body: JSON.stringify({
         operation: 'set',
         planKey: 'vip',
-        expiresAt: '2026-07-01T00:00:00.000Z',
+        expiresAt: '2099-07-01T00:00:00.000Z',
       }),
     }), createEnv());
     const payload = await response.json();

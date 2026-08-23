@@ -45,7 +45,6 @@ import {
 } from '../constants/adminDefaults.js';
 import { Badge, EmptyState, ErrorState, Metric } from '../components/ui/AdminPrimitives.jsx';
 import {
-  addDaysIso,
   explainDecision,
   formatDate,
   formatNumber,
@@ -188,6 +187,7 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
   const [statusFilter, setStatusFilter] = useState('all');
   const [expiryFilter, setExpiryFilter] = useState('all');
   const [planForm, setPlanForm] = useState(DEFAULT_PLAN_FORM);
+  const [vipExtension, setVipExtension] = useState({ amount: '30', unit: 'day' });
   const [overrideForm, setOverrideForm] = useState(DEFAULT_OVERRIDE_FORM);
   const [accessCheck, setAccessCheck] = useState(null);
   const [accessLoading, setAccessLoading] = useState(false);
@@ -266,6 +266,11 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
   const currentPlanKey = selected ? getCurrentUserPlanKey(selected) : 'free';
   const selectedPlans = selected ? getVisibleUserPlans(selected) : [];
   const selectedEmail = selected ? getUserEmail(selected) : 'Chưa chọn';
+  const vipExtensionAmount = Number(vipExtension.amount);
+  const vipExtensionMax = vipExtension.unit === 'month' ? 120 : 3650;
+  const vipExtensionValid = Number.isInteger(vipExtensionAmount)
+    && vipExtensionAmount >= 1
+    && vipExtensionAmount <= vipExtensionMax;
   const quickGrantPlanActions = selected ? [
     {
       key: 'vip-30',
@@ -273,7 +278,7 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
       shortLabel: 'VIP 30 ngày',
       title: 'Cấp VIP 30 ngày',
       message: `Cấp VIP 30 ngày cho ${getUserEmail(selected)}?`,
-      body: () => ({ operation: 'set', planKey: 'vip', expiresAt: addDaysIso(30) }),
+      body: () => ({ operation: 'extend', planKey: 'vip', amount: 30, unit: 'day' }),
       tone: 'primary',
     },
     {
@@ -282,7 +287,7 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
       shortLabel: 'VIP 90 ngày',
       title: 'Cấp VIP 90 ngày',
       message: `Cấp VIP 90 ngày cho ${getUserEmail(selected)}?`,
-      body: () => ({ operation: 'set', planKey: 'vip', expiresAt: addDaysIso(90) }),
+      body: () => ({ operation: 'extend', planKey: 'vip', amount: 90, unit: 'day' }),
       tone: 'primary',
     },
     {
@@ -562,6 +567,50 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
                     </button>
                   ))}
                 </div>
+                <div className="vip-extension-form" aria-label="Gia hạn VIP theo ngày hoặc tháng">
+                  <label>
+                    <span>Gia hạn VIP</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max={vipExtensionMax}
+                      step="1"
+                      inputMode="numeric"
+                      value={vipExtension.amount}
+                      disabled={!canMutatePlan}
+                      onChange={(event) => setVipExtension((current) => ({ ...current, amount: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    <span>Đơn vị</span>
+                    <select
+                      value={vipExtension.unit}
+                      disabled={!canMutatePlan}
+                      onChange={(event) => setVipExtension((current) => ({ ...current, unit: event.target.value }))}
+                    >
+                      <option value="day">Ngày</option>
+                      <option value="month">Tháng lịch</option>
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="button button--primary"
+                    disabled={!canMutatePlan || !vipExtensionValid}
+                    onClick={() => runPlanOperation(
+                      'Gia hạn VIP',
+                      `Cộng thêm ${vipExtensionAmount} ${vipExtension.unit === 'month' ? 'tháng' : 'ngày'} VIP cho ${getUserEmail(selected)}?`,
+                      {
+                        operation: 'extend',
+                        planKey: 'vip',
+                        amount: vipExtensionAmount,
+                        unit: vipExtension.unit,
+                      },
+                    )}
+                  >
+                    Gia hạn VIP
+                  </button>
+                </div>
+                <p className="detail-section__note">Nếu VIP còn hạn, thời gian mới được cộng nối từ hạn xa nhất; tháng được tính theo tháng lịch.</p>
               </section>
 
               <section className="detail-section user-plan-card">
@@ -654,7 +703,9 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
                 <button
                   type="button"
                   className="button button--primary"
-                  disabled={!canMutatePlan}
+                  disabled={!canMutatePlan
+                    || (planForm.planKey === 'vip' && !planForm.expiresAt)
+                    || (planForm.status === 'scheduled' && !planForm.startsAt)}
                   onClick={() => runPlanOperation(
                     'Cấp hoặc đặt lịch gói',
                     `Áp dụng gói ${getPlanLabel(planForm.planKey)} cho ${getUserEmail(selected)}?`,
@@ -663,7 +714,7 @@ export function UsersPanel({ data, selectedUserId, setSelectedUserId, onMutation
                       planKey: planForm.planKey,
                       status: planForm.status,
                       startsAt: planForm.startsAt || undefined,
-                      expiresAt: planForm.expiresAt || undefined,
+                      expiresAt: planForm.planKey === 'lifetime' ? undefined : (planForm.expiresAt || undefined),
                     },
                   )}
                 >

@@ -129,13 +129,13 @@ describe('phase10 translator proxy model default', () => {
     expect(html).toContain('Lấy models');
     expect(html).toContain('Nhập model thủ công');
     expect(html).toContain('src="js/theme.js?v=2"');
-    expect(html).toContain('href="style.css?v=27"');
+    expect(html).toContain('href="style.css?v=28"');
     expect(html).toContain('src="js/app.js?v=23"');
-    expect(html).toContain('src="js/gemini/model-rotation.js?v=16"');
+    expect(html).toContain('src="js/gemini/model-rotation.js?v=17"');
     expect(html).toContain('src="js/gemini/api.js?v=17"');
-    expect(html).toContain('src="js/translation/retry.js?v=17"');
+    expect(html).toContain('src="js/translation/retry.js?v=18"');
     expect(html).toContain('src="js/translation/engine.js?v=25"');
-    expect(html).toContain('src="js/ui/progress.js?v=22"');
+    expect(html).toContain('src="js/ui/progress.js?v=23"');
     expect(html).toContain('src="js/ui/controls.js?v=23"');
     expect(html).toContain('src="js/ui/chunk-tracker.js?v=23"');
     expect(html).toContain('src="js/proxy/proxy-api.js?v=17"');

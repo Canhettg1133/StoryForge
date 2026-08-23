@@ -8,6 +8,7 @@ export const EMPTY_DATA = {
   planFeatures: [],
   consent: [],
   announcement: null,
+  setupGuides: null,
 };
 
 export const DEFAULT_USAGE_PAGE_SIZE = 100;

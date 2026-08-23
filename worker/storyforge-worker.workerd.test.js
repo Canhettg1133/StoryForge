@@ -104,6 +104,7 @@ describe('StoryForge Worker in workerd', () => {
       '/api/me/access',
       '/api/me/adult-consent',
       '/api/site-announcement',
+      '/api/setup-guides',
       '/api/translator-prompt-settings',
       '/api/vip-page-content',
       '/api/cloud',

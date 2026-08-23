@@ -172,10 +172,19 @@ export function getPlanFeatureRows(data, planKey) {
 export function getActiveUserPlan(user) {
   const plans = getUserPlans(user);
   const now = Date.now();
+  const planPriority = { lifetime: 300, vip: 200, free: 100 };
   return plans
     .filter((item) => String(item.status || '').toLowerCase() === 'active')
+    .filter((item) => !item.starts_at || new Date(item.starts_at).getTime() <= now)
     .filter((item) => !item.expires_at || new Date(item.expires_at).getTime() > now)
-    .sort((left, right) => new Date(right.starts_at || right.created_at || 0) - new Date(left.starts_at || left.created_at || 0))[0] || null;
+    .sort((left, right) => {
+      const priorityDiff = (planPriority[getPlanKey(right)] || 0) - (planPriority[getPlanKey(left)] || 0);
+      if (priorityDiff !== 0) return priorityDiff;
+      const leftExpiry = left.expires_at ? new Date(left.expires_at).getTime() : Number.POSITIVE_INFINITY;
+      const rightExpiry = right.expires_at ? new Date(right.expires_at).getTime() : Number.POSITIVE_INFINITY;
+      if (rightExpiry !== leftExpiry) return rightExpiry > leftExpiry ? 1 : -1;
+      return new Date(right.starts_at || right.created_at || 0) - new Date(left.starts_at || left.created_at || 0);
+    })[0] || null;
 }
 
 export function getCurrentUserPlanKey(user) {

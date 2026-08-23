@@ -20,6 +20,7 @@ export default defineConfig({
         
         include: [
             'src/tests/**/*.test.{js,jsx,ts,tsx}',
+            'apps/admin/src/**/*.test.{js,jsx,ts,tsx}',
         ],
         
         exclude: [

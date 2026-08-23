@@ -22,7 +22,12 @@ import {
   resolveUserAccess,
   hasSiteAnnouncementContentChanged,
   SITE_ANNOUNCEMENT_KEY,
+  SETUP_GUIDES_ADMIN_BODY_MAX_BYTES,
+  SETUP_GUIDES_KEY,
+  SetupGuideValidationError,
+  normalizeSetupGuideConfig,
   toPublicSiteAnnouncement,
+  validateSetupGuideConfig,
 } from '../../../packages/access/src/index.js';
 import { routePromptSettingsAdmin } from './promptSettings/index.js';
 import { routeSecurePromptsAdmin } from './securePrompts/index.js';
@@ -343,11 +348,13 @@ async function supabaseRestResult(config, table, {
   });
   const payload = await readSupabaseJson(response);
   if (!response.ok) {
-    throw makeError(
+    const error = makeError(
       response.status || 500,
       'ADMIN_SUPABASE_REST_FAILED',
       toVietnameseAdminErrorMessage(payload, 'Supabase REST trả về lỗi.'),
     );
+    error.supabasePayload = payload;
+    throw error;
   }
   return { payload, headers: response.headers };
 }
@@ -423,6 +430,21 @@ function normalizeUsageFilter(value) {
 
 function looksLikeUuid(value) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(String(value || '').trim());
+}
+
+function requireMutationId(body = {}) {
+  const mutationId = String(body.mutationId || body.mutation_id || '').trim().toLowerCase();
+  if (!looksLikeUuid(mutationId)) {
+    throw makeError(400, 'ADMIN_MUTATION_ID_INVALID', 'Mã chống lặp của thao tác không hợp lệ. Hãy tải lại và thử lại.');
+  }
+  return mutationId;
+}
+
+function getMutationAuditContext(request) {
+  return {
+    clientIp: String(getClientIp(request) || '').slice(0, 255),
+    userAgent: String(request.headers.get('User-Agent') || '').slice(0, 512),
+  };
 }
 
 function encodeUsageCursor(row) {
@@ -577,6 +599,24 @@ function toIsoOrNull(value) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function parseOptionalIso(body, camelKey, snakeKey, { required = false } = {}) {
+  const hasValue = Object.prototype.hasOwnProperty.call(body, camelKey)
+    || Object.prototype.hasOwnProperty.call(body, snakeKey);
+  const raw = body[camelKey] ?? body[snakeKey];
+  if (!hasValue || raw === undefined || raw === null || raw === '') {
+    if (required) {
+      throw makeError(400, 'ADMIN_PLAN_EXPIRES_AT_REQUIRED', 'Gói VIP phải có ngày hết hạn hợp lệ.');
+    }
+    return null;
+  }
+  const parsed = toIsoOrNull(raw);
+  if (!parsed) {
+    const code = camelKey === 'expiresAt' ? 'ADMIN_PLAN_EXPIRES_AT_INVALID' : 'ADMIN_PLAN_STARTS_AT_INVALID';
+    throw makeError(400, code, 'Ngày áp dụng gói không hợp lệ.');
+  }
+  return parsed;
+}
+
 function isFuture(value) {
   const date = new Date(value);
   return Number.isFinite(date.getTime()) && date.getTime() > Date.now();
@@ -588,8 +628,17 @@ function normalizeFeatureKey(value) {
 
 function resolvePlanStatus(body = {}) {
   const explicit = String(body.status || '').trim().toLowerCase();
-  if (Object.values(PLAN_STATUSES).includes(explicit)) return explicit;
+  if (explicit) {
+    if (![PLAN_STATUSES.ACTIVE, PLAN_STATUSES.SCHEDULED].includes(explicit)) {
+      throw makeError(400, 'ADMIN_PLAN_STATUS_INVALID', 'Trạng thái gói không hợp lệ.');
+    }
+    return explicit;
+  }
   return isFuture(body.startsAt || body.starts_at) ? PLAN_STATUSES.SCHEDULED : PLAN_STATUSES.ACTIVE;
+}
+
+function getSupabaseErrorMessage(error) {
+  return String(error?.supabasePayload?.message || error?.message || '');
 }
 
 function asObject(value) {
@@ -688,6 +737,8 @@ function getAuditActionSummary(action, before = {}, after = {}, targetFeatureKey
   switch (action) {
     case 'users.plan.set':
       return `Cấp gói${getPlanLabelFromChange(afterObject) ? ` ${getPlanLabelFromChange(afterObject)}` : ''}`;
+    case 'users.plan.extend':
+      return 'Gia hạn VIP';
     case 'users.plan.cancel_current':
       return 'Hủy gói hiện tại';
     case 'users.plan.cancel_scheduled':
@@ -704,6 +755,8 @@ function getAuditActionSummary(action, before = {}, after = {}, targetFeatureKey
       return `Gỡ quyền riêng ${getFeatureLabel(targetFeatureKey)}`;
     case 'site_announcement.update':
       return 'Cập nhật thông báo hệ thống';
+    case 'setup_guides.update':
+      return 'Cập nhật nút hướng dẫn';
     case 'prompt_settings.update':
       return 'Cập nhật prompt hệ thống';
     case 'plans.update':
@@ -735,6 +788,11 @@ function getAuditChangeSummary(action, before = {}, after = {}, targetFeatureKey
       const expiresAt = afterObject.expires_at || afterObject.expiresAt;
       return `Gói: ${getPlanLabelFromChange(afterObject) || 'chưa rõ'}. Hết hạn: ${expiresAt ? formatAuditDate(expiresAt) : 'không giới hạn'}`;
     }
+    case 'users.plan.extend': {
+      const amount = Number(afterObject.amount || 0);
+      const unit = afterObject.unit === 'month' ? 'tháng' : 'ngày';
+      return `Gia hạn ${amount} ${unit}. Hết hạn: ${formatAuditDate(afterObject.expires_at)}`;
+    }
     case 'users.plan.cancel_current':
     case 'users.plan.cancel_scheduled':
       return `Số dòng bị ảnh hưởng: ${Number(afterObject.count || 0)}`;
@@ -745,6 +803,8 @@ function getAuditChangeSummary(action, before = {}, after = {}, targetFeatureKey
     case 'plan_features.upsert':
       return `${afterObject.enabled === false ? 'Tắt' : 'Bật'} ${getFeatureLabel(targetFeatureKey)} trong gói ${getPlanLabel(afterObject.planKey || afterObject.plan_key)}`;
     case 'site_announcement.update':
+      return `Phiên bản: ${beforeObject.revision || 1} → ${afterObject.revision || 1}`;
+    case 'setup_guides.update':
       return `Phiên bản: ${beforeObject.revision || 1} → ${afterObject.revision || 1}`;
     case 'prompt_settings.update':
       return `Prompt ${afterObject.key || beforeObject.key || ''}: revision ${beforeObject.revision || 0} → ${afterObject.revision || 0}`;
@@ -761,6 +821,7 @@ function getResourceLabel({ targetSnapshot = {}, targetFeatureKey = '', action =
   if (target.label && target.label !== 'Hệ thống') return target.label;
   if (targetFeatureKey) return getFeatureLabel(targetFeatureKey);
   if (String(action || '').startsWith('site_announcement')) return 'Thông báo hệ thống';
+  if (String(action || '').startsWith('setup_guides')) return 'Nút hướng dẫn';
   if (String(action || '').startsWith('prompt_settings')) return 'Prompt hệ thống';
   if (String(action || '').startsWith('plans')) return 'Danh mục gói';
   if (String(action || '').startsWith('consent')) return 'Điều khoản 18+';
@@ -1562,10 +1623,21 @@ async function countOwners(config) {
 function getCurrentPlanKey(user) {
   const now = Date.now();
   const plans = Array.isArray(user?.user_plans) ? user.user_plans : [];
+  const planPriority = { lifetime: 300, vip: 200, free: 100 };
   return plans
     .filter((item) => item.status === PLAN_STATUSES.ACTIVE)
+    .filter((item) => !item.starts_at || new Date(item.starts_at).getTime() <= now)
     .filter((item) => !item.expires_at || new Date(item.expires_at).getTime() > now)
-    .sort((left, right) => new Date(right.starts_at || right.created_at || 0) - new Date(left.starts_at || left.created_at || 0))[0]
+    .sort((left, right) => {
+      const leftKey = String(left?.plans?.key || '').toLowerCase();
+      const rightKey = String(right?.plans?.key || '').toLowerCase();
+      const priorityDiff = (planPriority[rightKey] || 0) - (planPriority[leftKey] || 0);
+      if (priorityDiff !== 0) return priorityDiff;
+      const leftExpiry = left.expires_at ? new Date(left.expires_at).getTime() : Number.POSITIVE_INFINITY;
+      const rightExpiry = right.expires_at ? new Date(right.expires_at).getTime() : Number.POSITIVE_INFINITY;
+      if (rightExpiry !== leftExpiry) return rightExpiry > leftExpiry ? 1 : -1;
+      return new Date(right.starts_at || right.created_at || 0) - new Date(left.starts_at || left.created_at || 0);
+    })[0]
     ?.plans?.key || 'free';
 }
 
@@ -1645,19 +1717,104 @@ async function getUserAccess(config, actor, userId) {
   };
 }
 
+function validatePlanKeyForSet(value) {
+  const planKey = String(value || '').trim().toLowerCase();
+  if (!['free', 'vip', 'lifetime'].includes(planKey)) {
+    throw makeError(400, 'ADMIN_PLAN_KEY_INVALID', 'Gói được chọn không hợp lệ.');
+  }
+  return planKey;
+}
+
+function validateVipExtension(body = {}) {
+  const planKey = String(body.planKey || body.plan || '').trim().toLowerCase();
+  if (planKey !== 'vip') {
+    throw makeError(400, 'ADMIN_VIP_EXTENSION_PLAN_INVALID', 'Chỉ gói VIP có thể gia hạn theo ngày hoặc tháng.');
+  }
+  const unit = String(body.unit || '').trim().toLowerCase();
+  if (!['day', 'month'].includes(unit)) {
+    throw makeError(400, 'ADMIN_VIP_EXTENSION_UNIT_INVALID', 'Đơn vị gia hạn phải là ngày hoặc tháng.');
+  }
+  const amount = Number(body.amount);
+  const max = unit === 'day' ? 3650 : 120;
+  if (!Number.isInteger(amount) || amount < 1 || amount > max) {
+    throw makeError(400, 'ADMIN_VIP_EXTENSION_AMOUNT_INVALID', `Số ${unit === 'day' ? 'ngày' : 'tháng'} gia hạn không hợp lệ.`);
+  }
+  return { amount, unit };
+}
+
+async function extendVipPlan(config, request, actor, userId, body) {
+  const { amount, unit } = validateVipExtension(body);
+  const mutationId = requireMutationId(body);
+  const auditContext = getMutationAuditContext(request);
+  let rows;
+  try {
+    rows = await supabaseRest(config, 'rpc/admin_extend_vip', {
+      method: 'POST',
+      body: {
+        p_user_id: userId,
+        p_amount: amount,
+        p_unit: unit,
+        p_granted_by: actor.id || null,
+        p_mutation_id: mutationId,
+        p_client_ip: auditContext.clientIp,
+        p_user_agent: auditContext.userAgent,
+      },
+    });
+  } catch (error) {
+    const message = getSupabaseErrorMessage(error);
+    if (message.includes('VIP_EXTENSION_UNLIMITED')) {
+      throw makeError(409, 'ADMIN_VIP_EXTENSION_UNLIMITED', 'Tài khoản đang có gói trọn đời hoặc VIP không giới hạn. Quyền hiện tại được giữ nguyên.');
+    }
+    if (message.includes('VIP_EXTENSION_USER_NOT_FOUND')) {
+      throw makeError(404, 'ADMIN_USER_NOT_FOUND', 'Không tìm thấy người dùng cần gia hạn VIP.');
+    }
+    if (message.includes('VIP_EXTENSION_PLAN_NOT_FOUND')) {
+      throw makeError(404, 'ADMIN_PLAN_NOT_FOUND', 'Không tìm thấy gói VIP đang hoạt động.');
+    }
+    if (message.includes('ADMIN_MUTATION_ID_CONFLICT')) {
+      throw makeError(409, 'ADMIN_MUTATION_ID_CONFLICT', 'Mã chống lặp đã được dùng cho một thao tác khác. Hãy tải lại trước khi tiếp tục.');
+    }
+    throw error;
+  }
+
+  const item = Array.isArray(rows) ? rows[0] || null : rows;
+  if (!item) throw makeError(500, 'ADMIN_VIP_EXTENSION_EMPTY', 'Supabase không trả về kết quả gia hạn VIP.');
+  return { ok: true, item };
+}
+
 async function mutateUserPlan(config, request, actor, userId, body) {
   requirePermission(actor, ADMIN_PERMISSIONS.USERS_PLAN_UPDATE);
   const operation = String(body.operation || 'set').trim().toLowerCase();
 
+  if (operation === 'extend') {
+    return extendVipPlan(config, request, actor, userId, body);
+  }
+
   if (operation === 'set') {
-    const plan = await findPlanByKey(config, body.planKey || body.plan || 'vip');
-    const startsAt = toIsoOrNull(body.startsAt || body.starts_at) || new Date().toISOString();
+    const planKey = validatePlanKeyForSet(body.planKey || body.plan || 'vip');
+    const startsAt = parseOptionalIso(body, 'startsAt', 'starts_at') || new Date().toISOString();
+    const expiresAt = parseOptionalIso(body, 'expiresAt', 'expires_at', { required: planKey === 'vip' });
+    const status = resolvePlanStatus(body);
+    if (expiresAt && new Date(expiresAt).getTime() <= new Date(startsAt).getTime()) {
+      throw makeError(400, 'ADMIN_PLAN_DATE_RANGE_INVALID', 'Ngày hết hạn phải sau ngày bắt đầu.');
+    }
+    if (status === PLAN_STATUSES.SCHEDULED && new Date(startsAt).getTime() <= Date.now()) {
+      throw makeError(400, 'ADMIN_PLAN_STARTS_AT_INVALID', 'Gói đặt lịch phải bắt đầu trong tương lai.');
+    }
+    if (status === PLAN_STATUSES.ACTIVE && new Date(startsAt).getTime() > Date.now()) {
+      throw makeError(400, 'ADMIN_PLAN_STARTS_AT_INVALID', 'Gói có hiệu lực ngay không được bắt đầu trong tương lai.');
+    }
+    if (planKey === 'lifetime' && expiresAt) {
+      throw makeError(400, 'ADMIN_PLAN_DATE_RANGE_INVALID', 'Gói trọn đời không được có ngày hết hạn.');
+    }
+
+    const plan = await findPlanByKey(config, planKey);
     const item = {
       user_id: userId,
       plan_id: plan.id,
-      status: resolvePlanStatus(body),
+      status,
       starts_at: startsAt,
-      expires_at: toIsoOrNull(body.expiresAt || body.expires_at),
+      expires_at: expiresAt,
       source: 'manual',
       granted_by: actor.id,
       metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
@@ -1813,6 +1970,72 @@ async function getSiteAnnouncementSetting(config) {
     prefer: '',
   });
   return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function getSetupGuidesSetting(config) {
+  const rows = await supabaseRest(config, SITE_SETTINGS_TABLE, {
+    query: `select=key,value_json,revision&${filterEq('key', SETUP_GUIDES_KEY)}&limit=1`,
+    prefer: '',
+  });
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+async function getSetupGuides(config, actor) {
+  requirePermission(actor, ADMIN_PERMISSIONS.CATALOG_READ);
+  return {
+    ok: true,
+    setupGuides: normalizeSetupGuideConfig(await getSetupGuidesSetting(config)),
+  };
+}
+
+async function mutateSetupGuides(config, request, actor, body) {
+  requirePermission(actor, ADMIN_PERMISSIONS.CATALOG_WRITE);
+  const mutationId = requireMutationId(body);
+  const auditContext = getMutationAuditContext(request);
+  let next;
+  try {
+    next = validateSetupGuideConfig({
+      expectedRevision: body.expectedRevision ?? body.expected_revision ?? body.revision,
+      items: body.items,
+    });
+  } catch (error) {
+    if (error instanceof SetupGuideValidationError) {
+      throw makeError(400, 'ADMIN_SETUP_GUIDES_INVALID', error.message);
+    }
+    throw error;
+  }
+
+  let rows;
+  try {
+    rows = await supabaseRest(config, 'rpc/update_setup_guides', {
+      method: 'POST',
+      body: {
+        p_items: next.items,
+        p_expected_revision: next.revision,
+        p_updated_by: actor.id || null,
+        p_mutation_id: mutationId,
+        p_client_ip: auditContext.clientIp,
+        p_user_agent: auditContext.userAgent,
+      },
+    });
+  } catch (error) {
+    const message = getSupabaseErrorMessage(error);
+    if (message.includes('SETUP_GUIDES_REVISION_CONFLICT')) {
+      throw makeError(409, 'ADMIN_SETUP_GUIDES_REVISION_CONFLICT', 'Danh sách hướng dẫn đã được admin khác cập nhật. Hãy tải lại trước khi lưu.');
+    }
+    if (message.includes('SETUP_GUIDES_')) {
+      throw makeError(400, 'ADMIN_SETUP_GUIDES_INVALID', 'Cấu hình nút hướng dẫn không hợp lệ.');
+    }
+    if (message.includes('ADMIN_MUTATION_ID_CONFLICT')) {
+      throw makeError(409, 'ADMIN_MUTATION_ID_CONFLICT', 'Mã chống lặp đã được dùng cho một thao tác khác. Hãy tải lại trước khi tiếp tục.');
+    }
+    throw error;
+  }
+
+  const row = Array.isArray(rows) ? rows[0] || null : rows;
+  if (!row) throw makeError(500, 'ADMIN_SETUP_GUIDES_EMPTY', 'Supabase không trả về cấu hình hướng dẫn sau khi lưu.');
+  const after = normalizeSetupGuideConfig(row);
+  return { ok: true, setupGuides: after };
 }
 
 async function getSiteAnnouncement(config, actor) {
@@ -2128,6 +2351,19 @@ async function routeRequest(request, config, actor, env = {}) {
     if (request.method === 'GET' && !id) return getSiteAnnouncement(config, actor);
     if ((request.method === 'PATCH' || request.method === 'POST') && !id) {
       return mutateSiteAnnouncement(config, request, actor, await readJson(request));
+    }
+  }
+
+  if (resource === 'setup-guides') {
+    if (request.method === 'GET' && !id) return getSetupGuides(config, actor);
+    if (request.method === 'PUT' && !id) {
+      requirePermission(actor, ADMIN_PERMISSIONS.CATALOG_WRITE);
+      return mutateSetupGuides(
+        config,
+        request,
+        actor,
+        await readJsonLimited(request, SETUP_GUIDES_ADMIN_BODY_MAX_BYTES),
+      );
     }
   }
 

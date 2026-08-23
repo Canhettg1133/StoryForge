@@ -8,6 +8,7 @@ import { createLegacyCloudWebHandler } from '../api/_web/cloud.js';
 import { createEdgeTtsWebHandler, createGoogleFreeTtsWebHandler } from '../api/_web/tts.js';
 import {
   createSiteAnnouncementWebHandler,
+  createSetupGuidesWebHandler,
   createTranslatorPromptSettingsWebHandler,
   createVipPageContentWebHandler,
 } from '../api/_web/public-content.js';
@@ -22,6 +23,7 @@ const DEFAULT_HANDLERS = Object.freeze({
   '/api/me/access': createMeAccessWebHandler(),
   '/api/me/adult-consent': createAdultConsentWebHandler(),
   '/api/site-announcement': createSiteAnnouncementWebHandler(),
+  '/api/setup-guides': createSetupGuidesWebHandler(),
   '/api/translator-prompt-settings': createTranslatorPromptSettingsWebHandler(),
   '/api/vip-page-content': createVipPageContentWebHandler(),
   '/api/cloud': createLegacyCloudWebHandler(),

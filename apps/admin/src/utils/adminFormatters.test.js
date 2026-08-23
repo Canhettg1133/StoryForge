@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { matchesUserPlanExpiryFilter, sortUsersByPlanExpiry } from './adminFormatters.js';
+import {
+  getActiveUserPlan,
+  getCurrentUserPlanKey,
+  matchesUserPlanExpiryFilter,
+  sortUsersByPlanExpiry,
+} from './adminFormatters.js';
 
 function createUserPlan({ userId, expiresAt, status = 'active', planKey = 'vip' } = {}) {
   return {
@@ -62,5 +67,38 @@ describe('matchesUserPlanExpiryFilter', () => {
       'expires-12d',
       'expires-20d',
     ]);
+  });
+
+  it('prefers lifetime, then the VIP row with the furthest expiry', () => {
+    const user = {
+      user_plans: [
+        {
+          id: 'newer-short-vip',
+          status: 'active',
+          starts_at: '2026-07-19T00:00:00.000Z',
+          expires_at: '2026-08-01T00:00:00.000Z',
+          plans: { key: 'vip' },
+        },
+        {
+          id: 'older-long-vip',
+          status: 'active',
+          starts_at: '2026-07-01T00:00:00.000Z',
+          expires_at: '2026-09-01T00:00:00.000Z',
+          plans: { key: 'vip' },
+        },
+      ],
+    };
+
+    expect(getActiveUserPlan(user)?.id).toBe('older-long-vip');
+
+    user.user_plans.push({
+      id: 'lifetime',
+      status: 'active',
+      starts_at: '2026-06-01T00:00:00.000Z',
+      expires_at: null,
+      plans: { key: 'lifetime' },
+    });
+    expect(getActiveUserPlan(user)?.id).toBe('lifetime');
+    expect(getCurrentUserPlanKey(user)).toBe('lifetime');
   });
 });

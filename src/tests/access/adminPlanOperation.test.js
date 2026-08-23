@@ -51,6 +51,10 @@ describe('admin plan operations', () => {
 
     expect(adminUi).toContain('Cấp VIP 30 ngày');
     expect(adminUi).toContain('Cấp VIP 90 ngày');
+    expect(adminUi).toContain("operation: 'extend'");
+    expect(adminUi).toContain("unit: 'day'");
+    expect(adminUi).toContain('<option value="month">Tháng lịch</option>');
+    expect(adminUi).toContain('Gia hạn VIP');
     expect(adminUi).toContain('Cấp trọn đời');
     expect(adminUi).toContain('Hủy gói hiện tại');
     expect(adminUi).toContain('Hủy gói đã đặt lịch');

@@ -153,9 +153,18 @@ function getLatestActiveOverride(accessData, featureKey, nowMs) {
     .sort(compareOverridesDesc)[0] || null;
 }
 
+function compareActivePlans(left, right) {
+  const priorityDiff = (PLAN_PRIORITY[getPlanKey(right)] || 0) - (PLAN_PRIORITY[getPlanKey(left)] || 0);
+  if (priorityDiff !== 0) return priorityDiff;
+  const leftExpiry = toTime(left?.expires_at, Number.POSITIVE_INFINITY);
+  const rightExpiry = toTime(right?.expires_at, Number.POSITIVE_INFINITY);
+  if (rightExpiry !== leftExpiry) return rightExpiry > leftExpiry ? 1 : -1;
+  return toTime(right?.starts_at || right?.created_at, 0) - toTime(left?.starts_at || left?.created_at, 0);
+}
+
 function getActivePlans(accessData, nowMs) {
   const explicit = accessData?.activePlans || accessData?.active_plans;
-  if (Array.isArray(explicit)) return explicit;
+  if (Array.isArray(explicit)) return [...explicit].sort(compareActivePlans);
 
   const singleExplicit = accessData?.activePlan || accessData?.active_plan;
   if (singleExplicit) return [singleExplicit];
@@ -164,11 +173,7 @@ function getActivePlans(accessData, nowMs) {
     .filter((plan) => normalizeKey(plan.status) === PLAN_STATUSES.ACTIVE)
     .filter((plan) => isPastOrNow(plan.starts_at, nowMs))
     .filter((plan) => isFutureOrOpen(plan.expires_at, nowMs))
-    .sort((a, b) => {
-      const priorityDiff = (PLAN_PRIORITY[getPlanKey(b)] || 0) - (PLAN_PRIORITY[getPlanKey(a)] || 0);
-      if (priorityDiff !== 0) return priorityDiff;
-      return toTime(b?.starts_at || b?.created_at, 0) - toTime(a?.starts_at || a?.created_at, 0);
-    });
+    .sort(compareActivePlans);
 }
 
 function getPrimaryActivePlan(accessData, nowMs) {

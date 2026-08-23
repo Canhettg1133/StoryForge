@@ -68,6 +68,7 @@ import { useUserAccess } from '../../hooks/useUserAccess';
 import { ACCESS_FEATURES } from '../../services/access/accessControl.js';
 import { navigateBackOr } from '../../utils/navigation.js';
 import './Settings.css';
+import SetupGuideButtons from '../../features/setupGuides/SetupGuideButtons.jsx';
 
 // ─── Reusable Key Section Component ───
 function KeySection({
@@ -1232,9 +1233,6 @@ export default function Settings() {
     setProvider(nextProvider);
     modelRouter.setPreferredProvider(nextProvider);
   };
-  const handleOpenAiStudio = () => {
-    window.open('https://aistudio.google.com/app/apikey', '_blank', 'noopener,noreferrer');
-  };
   const handleGoBack = () => {
     navigateBackOr(navigate, '/', { location });
   };
@@ -1484,20 +1482,7 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="settings-action-row">
-            <button className="btn btn-primary" onClick={() => navigate('/guide')}>
-              <BookOpen size={14} /> Hướng dẫn Gemini Direct
-            </button>
-            <button className="btn btn-secondary" onClick={() => navigate('/guide/proxy')}>
-              <BookOpen size={14} /> Hướng dẫn Gemini Proxy
-            </button>
-            <button className="btn btn-secondary" onClick={() => navigate('/guide/translator')}>
-              <BookOpen size={14} /> Hướng dẫn Dịch truyện
-            </button>
-            <button className="btn btn-secondary" onClick={handleOpenAiStudio}>
-              <ExternalLink size={14} /> Mở Google AI Studio
-            </button>
-          </div>
+          <SetupGuideButtons />
         </section>
 
         {/* === PROVIDER PREFERENCE === */}
