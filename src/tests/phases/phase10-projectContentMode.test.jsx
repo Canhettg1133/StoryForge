@@ -56,6 +56,7 @@ describe('phase10 project content mode helpers', () => {
       'outline',
       'extract',
       'conflict',
+      'revision',
     ]);
 
     expect(getWriterQuickActionOrder(true)).toEqual([
@@ -67,6 +68,7 @@ describe('phase10 project content mode helpers', () => {
       'extract',
       CONTENT_MODE_QUICK_ACTION_ID,
       'conflict',
+      'revision',
     ]);
   });
 });

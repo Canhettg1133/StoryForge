@@ -3,6 +3,7 @@ import { useEditor, EditorContent, useEditorState } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import CharacterCount from '@tiptap/extension-character-count';
+import AnalysisHighlightExtension from './AnalysisHighlightExtension.js';
 import { useShallow } from 'zustand/react/shallow';
 import useProjectStore from '../../stores/projectStore';
 import useCanonStore from '../../stores/canonStore';
@@ -317,6 +318,7 @@ function StoryEditor({
         placeholder: 'Bắt đầu viết câu chuyện của bạn...',
       }),
       CharacterCount,
+      AnalysisHighlightExtension,
     ],
     content: '',
     editorProps: {

@@ -29,7 +29,9 @@ import {
   Replace,
   Bookmark,
   History,
+  FileSearch,
 } from 'lucide-react';
+import ManuscriptAnalysisPanel from './ManuscriptAnalysisPanel.jsx';
 import ProjectContentModeControl from '../../features/projectContentMode/ProjectContentModeControl.jsx';
 import useProjectContentMode from '../../features/projectContentMode/useProjectContentMode.js';
 import { loadCanonPack } from '../../services/labLite/canonPackRepository.js';
@@ -69,6 +71,7 @@ const QUICK_ACTIONS = [
   { id: 'outline', icon: MapIcon, label: 'Dàn ý chương', taskFn: 'outlineChapter', needsText: false },
   { id: 'extract', icon: Sparkles, label: 'Trích xuất', taskFn: 'extractTerms', needsText: true, needsChapterContent: true, usesChapterTextFallback: true },
   { id: 'conflict', icon: ShieldAlert, label: 'Check Mâu Thuẫn', taskFn: 'checkConflict', needsText: true, needsChapterContent: true, usesChapterTextFallback: true, isCustom: true },
+  { id: 'revision', icon: FileSearch, label: 'Biên tập', isCustom: true },
 ];
 const QUICK_ACTIONS_BY_ID = Object.fromEntries(QUICK_ACTIONS.map((action) => [action.id, action]));
 
@@ -363,6 +366,7 @@ function AISidebar({
   onMobileInputFocusChange,
   onDraftPreviewChange,
   onAiActivityChange,
+  onFindingNavigate,
 }) {
   const navigate = useNavigate();
   const {
@@ -416,6 +420,8 @@ function AISidebar({
     chapters,
     activeChapterId,
     updateChapter,
+    updateProjectSettings,
+    setActiveScene,
   } = useProjectStore(useShallow((state) => ({
     currentProject: state.currentProject,
     scenes: state.scenes,
@@ -423,6 +429,8 @@ function AISidebar({
     chapters: state.chapters,
     activeChapterId: state.activeChapterId,
     updateChapter: state.updateChapter,
+    updateProjectSettings: state.updateProjectSettings,
+    setActiveScene: state.setActiveScene,
   })));
   const { contentMode, setContentMode } = useProjectContentMode();
   const contentFontSize = useUIStore((state) => state.contentFontSize);
@@ -445,6 +453,7 @@ function AISidebar({
   const [canonReviewMode, setCanonReviewMode] = useState('standard');
   const [canonReviewState, setCanonReviewState] = useState({ status: 'idle', error: null });
   const [canonReviewItems, setCanonReviewItems] = useState([]);
+  const [showRevisionPanel, setShowRevisionPanel] = useState(false);
   const [, setEditorRevision] = useState(0);
   const outputRef = useRef(null);
   const guidanceRef = useRef(null);
@@ -785,6 +794,13 @@ function AISidebar({
 
     if (action.id !== 'plot' && showPlotManager) {
       setShowPlotManager(false);
+    }
+
+    if (action.id === 'revision') {
+      setPendingAction(null);
+      setShowPlotManager(false);
+      setShowRevisionPanel(true);
+      return;
     }
 
     if (action.id === 'plot' && plotSuggestions.length > 0 && !isStreaming) {
@@ -1722,9 +1738,49 @@ function AISidebar({
   );
 
   if (isMobileLayout) {
+    if (showRevisionPanel) {
+      return (
+        <div className="ai-sidebar ai-sidebar--mobile" style={contentTypographyStyle}>
+          <ManuscriptAnalysisPanel
+            editor={editor}
+            currentProject={currentProject}
+            scenes={scenes}
+            activeSceneId={activeSceneId}
+            activeChapterId={activeChapterId}
+            onBack={() => {
+              setShowRevisionPanel(false);
+              requestAnimationFrame(() => actionButtonRefs.current.get('revision')?.focus());
+            }}
+            onSetActiveScene={setActiveScene}
+            onUpdateProjectSettings={updateProjectSettings}
+            onFindingNavigate={onFindingNavigate}
+          />
+        </div>
+      );
+    }
     return (
       <div className="ai-sidebar ai-sidebar--mobile" style={contentTypographyStyle}>
         {renderMobileBody()}
+      </div>
+    );
+  }
+
+  if (showRevisionPanel) {
+    return (
+      <div className="ai-sidebar" style={contentTypographyStyle}>
+        <ManuscriptAnalysisPanel
+          editor={editor}
+          currentProject={currentProject}
+          scenes={scenes}
+          activeSceneId={activeSceneId}
+          activeChapterId={activeChapterId}
+          onBack={() => {
+            setShowRevisionPanel(false);
+            requestAnimationFrame(() => actionButtonRefs.current.get('revision')?.focus());
+          }}
+          onSetActiveScene={setActiveScene}
+          onUpdateProjectSettings={updateProjectSettings}
+        />
       </div>
     );
   }

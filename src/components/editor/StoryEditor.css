@@ -1533,3 +1533,9 @@
   flex: 1;
   max-height: none;
 }
+/* Transient Revision QA decoration. It never enters editor HTML or autosave. */
+.revision-qa-highlight {
+  background: color-mix(in srgb, var(--color-warning) 28%, transparent);
+  border-radius: 3px;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--color-warning) 70%, transparent);
+}

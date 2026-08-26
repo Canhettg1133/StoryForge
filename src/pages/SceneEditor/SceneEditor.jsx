@@ -425,6 +425,7 @@ export default function SceneEditor() {
               onMobileTabChange={setMobileAITab}
               onDraftPreviewChange={handleDraftPreviewChange}
               onAiActivityChange={handleAiActivityChange}
+              onFindingNavigate={isMobileLayout ? closeMobilePanel : undefined}
             />
           </div>
         )}

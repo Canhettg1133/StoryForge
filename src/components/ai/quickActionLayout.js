@@ -11,6 +11,7 @@ export function getWriterQuickActionOrder(isMobileLayout = false) {
       'extract',
       CONTENT_MODE_QUICK_ACTION_ID,
       'conflict',
+      'revision',
     ];
   }
 
@@ -23,5 +24,6 @@ export function getWriterQuickActionOrder(isMobileLayout = false) {
     'outline',
     'extract',
     'conflict',
+    'revision',
   ];
 }
